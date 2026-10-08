@@ -4356,8 +4356,8 @@
    "metadata_source": "verified",
    "description": "Viola is Luma’s web browser, built around workspaces: keep work, home and projects apart, each with its own tabs.\n\nGroup and split tabs, use separate profiles, keep a video playing in a mini player while you work, and keep your workspaces organized across devices with end-to-end encrypted sync.",
    "icon": {
-    "url": "https://dl.simplyluma.com/media/listings/viola/icon-256-e44974e20027e205.png",
-    "sha256": "e44974e20027e20589060cb61ded42989bcdcb95887c9890c5fa685f4418c748",
+    "url": "https://dl.simplyluma.com/media/listings/viola/icon-256-e9b01960dac11196.png",
+    "sha256": "e9b01960dac111960a47dcb0778bca17cbf0c075977ecdb8e0900ad5587879b8",
     "width": 256,
     "height": 256
    },

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Expose retained application commands through the toolkit identity menu."""
-from gi.repository import Gio
+from gi.repository import Gio, Gtk
 from native_menu import NativeMenu
 
 
@@ -39,6 +39,17 @@ class NativeIdentityMenu:
                 existing.append_item(Gio.MenuItem.new_from_model(model, index))
         else:
             application.set_menubar(model)
+        # AppKit's v71 identity owns an explicit popover rather than watching
+        # the application's menubar. Give it the retained Chromium presenter.
+        identity = getattr(window, 'identity', None)
+        if isinstance(identity, Gtk.MenuButton):
+            previous = identity.get_popover()
+            self.menu.set_name(previous.get_name())
+            self.menu.set_position(Gtk.PositionType.BOTTOM)
+            self.menu.set_offset(*previous.get_offset())
+            if hasattr(identity, '_place_menu'):
+                self.menu.connect('map', lambda popup: identity._place_menu(popup))
+            identity.set_popover(self.menu)
         window.submit(lambda: window.services.dismiss_menu(description['nonce']))
 
     def activate(self, _old_nonce, path):

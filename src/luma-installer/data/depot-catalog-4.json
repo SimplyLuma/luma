@@ -6164,7 +6164,7 @@
         "x86_64"
       ],
       "backend": "flatpak",
-      "branch": "stable",
+      "branch": "beta",
       "categories": [
         "internet"
       ],
@@ -6182,8 +6182,8 @@
       "distribution": "publisher",
       "homepage": "https://violabrowser.com/",
       "icon": {
-        "url": "https://dl.simplyluma.com/media/listings/viola/icon-256-e44974e20027e205.png",
-        "sha256": "e44974e20027e20589060cb61ded42989bcdcb95887c9890c5fa685f4418c748",
+        "url": "https://dl.simplyluma.com/media/listings/viola/icon-256-e9b01960dac11196.png",
+        "sha256": "e9b01960dac111960a47dcb0778bca17cbf0c075977ecdb8e0900ad5587879b8",
         "width": 256,
         "height": 256
       },
@@ -6210,85 +6210,33 @@
           "level": "standard"
         },
         {
-          "key": "files.documents",
-          "level": "sensitive",
-          "access": "read-write"
-        },
-        {
-          "key": "files.pictures",
-          "level": "sensitive",
-          "access": "read-write"
-        },
-        {
-          "key": "files.music",
-          "level": "sensitive",
-          "access": "read-write"
-        },
-        {
-          "key": "files.videos",
-          "level": "sensitive",
-          "access": "read-write"
-        },
-        {
           "key": "files.downloads",
           "level": "sensitive",
-          "access": "read-write"
+          "access": "read-write",
+          "names": [
+            "xdg-download:rw"
+          ]
         },
         {
           "key": "files.other",
           "level": "sensitive",
-          "access": "read-write",
+          "access": "read",
           "names": [
-            "/run/.heim_org.h5l.kcm-socket"
+            "xdg-run/luma-viola:ro"
           ]
-        },
-        {
-          "key": "devices.camera",
-          "level": "sensitive"
         },
         {
           "key": "devices.microphone",
           "level": "sensitive"
         },
         {
-          "key": "devices.all",
-          "level": "high"
-        },
-        {
-          "key": "devices.smartcard",
-          "level": "sensitive"
-        },
-        {
-          "key": "notifications",
-          "level": "standard"
-        },
-        {
-          "key": "printing",
-          "level": "standard"
-        },
-        {
-          "key": "system.bus",
-          "level": "high",
-          "names": [
-            "org.bluez",
-            "org.freedesktop.Avahi",
-            "org.freedesktop.UPower"
-          ]
-        },
-        {
           "key": "session.bus",
           "level": "sensitive",
           "names": [
-            "org.freedesktop.FileManager1",
-            "org.freedesktop.ScreenSaver",
-            "org.freedesktop.secrets",
-            "org.gnome.SessionManager",
-            "org.kde.StatusNotifierWatcher"
+            "org.projectluma.AppData1",
+            "org.projectluma.ApplicationDirectory1",
+            "org.projectluma.ViolaHost1"
           ]
-        },
-        {
-          "key": "display.x11",
-          "level": "high"
         }
       ],
       "preinstalled_on_luma": true,
@@ -6296,10 +6244,10 @@
       "qualification_reason": "Included with Luma as its default web browser.",
       "reference_url": "https://violabrowser.com/",
       "release": {
-        "version": "0.2.10",
-        "date": "2026-08-31",
-        "download_bytes": 171878428,
-        "installed_bytes": 410130944
+        "version": "0.2.10.36",
+        "date": "2026-10-08",
+        "download_bytes": 167594867,
+        "installed_bytes": 395678720
       },
       "repository": "luma",
       "screenshots": [
@@ -6313,7 +6261,7 @@
       ],
       "sign_in": "none",
       "source_id": "com.rhyme.viola",
-      "source_url": "https://github.com/nmcmil/Viola",
+      "source_url": "https://github.com/SimplyLuma/luma/tree/main/src/external/viola",
       "sources": {
         "luma_system": {
           "package": "viola-browser-stable",
@@ -6323,11 +6271,11 @@
         "flatpak": {
           "repository": "luma",
           "source_id": "com.rhyme.viola",
-          "branch": "stable"
+          "branch": "beta"
         }
       },
       "summary": "Luma’s default web browser, built around workspaces.",
-      "support_url": "https://github.com/nmcmil/Viola/issues",
+      "support_url": "https://github.com/SimplyLuma/luma/issues",
       "tier": "verified",
       "visibility": "public"
     },

@@ -18,12 +18,13 @@ APP_ID = 'org.projectluma.Viola.NativeHostProbe'
 
 class NativeHost(AppWindow):
     def __init__(self, application):
+        Gtk.Window.set_default_icon_name('com.rhyme.viola.browser')
         commands = CommandRegistry((CommandGroup(None, (
             Command('probe.close', 'Close integration probe', self.close, 'window-close-symbolic'),
         )),))
         super().__init__(application=application, app_id=APP_ID,
                          title='Viola native host integration probe',
-                         icon_name='com.rhyme.viola', commands=commands,
+                         icon_name='com.rhyme.viola.browser', commands=commands,
                          default_width=1180, default_height=820,
                          minimum_width=640, minimum_height=460)
         content = Island()

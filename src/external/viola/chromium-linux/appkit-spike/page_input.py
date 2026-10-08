@@ -3,7 +3,7 @@
 
 Physical key names reuse Chromium's table. Target and tab identities must
 match the displayed frame and the existing active-tab state before dispatch.
-Clipboard, drag/drop, touch and page accessibility are separate open gates.
+Clipboard, drag/drop and page accessibility are separate open gates.
 """
 import json
 import time
@@ -68,6 +68,9 @@ class PageInput:
         self.last_pending_input = None
         self.deferred_motion = None
         self.motion_retry = None
+        self.wheel_queue = []
+        self.wheel_timer = None
+        self.wheel_inflight = 0
         self.buttons = 0
         self.pointer = (0, 0)
         self.composing = False
@@ -81,9 +84,9 @@ class PageInput:
         self.motion.connect('motion', self._motion)
         page.add_controller(self.motion)
         self.click = Gtk.GestureClick(button=0)
-        self.click.connect('pressed', lambda gesture, count, x, y: self.pointer_button(
+        self.click.connect('pressed', lambda gesture, count, x, y: self.click_event(gesture,
             True, gesture.get_current_button(), count, x, y, gesture.get_current_event_state()))
-        self.click.connect('released', lambda gesture, count, x, y: self.pointer_button(
+        self.click.connect('released', lambda gesture, count, x, y: self.click_event(gesture,
             False, gesture.get_current_button(), count, x, y, gesture.get_current_event_state()))
         page.add_controller(self.click)
         self.scroll = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.BOTH_AXES)
@@ -111,8 +114,12 @@ class PageInput:
         focus.connect('enter', lambda *_: self._focus(True))
         focus.connect('leave', lambda *_: self._focus(False))
         page.add_controller(focus)
+        from page_touch import PageTouch
+        self.touch = PageTouch(self)
 
     def frame_changed(self, metadata):
+        if metadata['target_id'] != self.target and hasattr(self, 'touch'):
+            self.touch.cancel()
         self.tab_id = metadata.get('tab_id')
         target = metadata['target_id']
         if target == self.target:
@@ -223,12 +230,15 @@ class PageInput:
         return GLib.SOURCE_REMOVE
 
     def close(self):
+        if hasattr(self, 'touch'):
+            self.touch.close()
         self.page_requests.clear()
         self.target = self.session = self.viewport = None
         self.viewport_refresh_session = None
         self.desired_size = None
         self.deferred_motion = None
-        for name in ('resize_timer', 'motion_retry'):
+        self.wheel_queue = []
+        for name in ('resize_timer', 'motion_retry', 'wheel_timer'):
             source = getattr(self, name, None)
             if source:
                 GLib.source_remove(source)
@@ -245,7 +255,7 @@ class PageInput:
                     and self.tab_id == self.services.state.get('activeTabId')
                     and self.page.frame and self.page.frame['target_id'] == self.target)
 
-    def dispatch(self, method, params, *, flush_motion=False):
+    def dispatch(self, method, params, *, flush_motion=False, on_settled=None):
         if not self.valid_identity():
             self.metrics['identity_rejections'] += 1
             return False
@@ -265,7 +275,9 @@ class PageInput:
                 # A release must follow the last held position even when ACKs
                 # are slow. Dropping it can turn a short drag into a click.
                 self.dispatch('Input.dispatchMouseEvent', deferred[1], flush_motion=True)
-        if self.last_pending_input and self.last_pending_input.merge(identity, method, params):
+        if method != 'Input.dispatchMouseEvent' or params.get('type') not in ('mouseMoved', 'mouseWheel'):
+            self.flush_wheels(force=True)
+        if on_settled is None and self.last_pending_input and self.last_pending_input.merge(identity, method, params):
             self.metrics['coalesced'] += 1
             return True
         if self.pending >= 64:
@@ -297,19 +309,23 @@ class PageInput:
             return True
         future = getattr(self, 'input_submit', self.submit)(send)
         settled = [False]
+        def complete_input():
+            if settled[0]:
+                return False
+            settled[0] = True
+            self.pending -= 1
+            if on_settled:
+                GLib.idle_add(on_settled)
+            return True
         def expire():
-            if not settled[0]:
-                settled[0] = True
-                self.pending -= 1
+            if complete_input():
                 self.metrics['ack_timeouts'] = self.metrics.get('ack_timeouts', 0) + 1
             return GLib.SOURCE_REMOVE
         deadline = GLib.timeout_add_seconds(5, expire)
         def acknowledge(response):
-            if settled[0]:
+            if not complete_input():
                 return GLib.SOURCE_REMOVE
-            settled[0] = True
             GLib.source_remove(deadline)
-            self.pending -= 1
             if response.exception():
                 # Destruction and renderState travel on different queues. A
                 # tab can already be gone while all cached identities still
@@ -328,15 +344,14 @@ class PageInput:
             return GLib.SOURCE_REMOVE
         def finished(result):
             if result.exception() or not isinstance(result.result(), Future):
-                settled[0] = True
+                if not complete_input():
+                    return
                 GLib.source_remove(deadline)
             if result.exception():
-                self.pending -= 1
                 GLib.idle_add(self.on_error, str(result.exception()))
             elif isinstance(result.result(), Future):
                 result.result().add_done_callback(lambda response: GLib.idle_add(acknowledge, response))
             else:
-                self.pending -= 1
                 if result.result():
                     self.metrics['sent'] += 1
         future.add_done_callback(finished)
@@ -372,7 +387,11 @@ class PageInput:
                 'y': max(0, min(y, height)) * scale / zoom}
 
     def _motion(self, controller, x, y):
+        from page_touch import touchscreen
+        if touchscreen(controller):
+            return
         self.pointer = (x, y)
+        getattr(self, 'on_motion', lambda *_: None)(x, y)
         point = self.point(x, y)
         if point:
             # Chromium's drag handler checks the button identity as well as
@@ -383,6 +402,11 @@ class PageInput:
             self.dispatch('Input.dispatchMouseEvent', {'type': 'mouseMoved', **point,
                 'button': button, 'buttons': self.buttons,
                 'modifiers': modifiers(controller.get_current_event_state())})
+
+    def click_event(self, gesture, pressed, button, count, x, y, state=0):
+        from page_touch import touchscreen
+        if not touchscreen(gesture):
+            self.pointer_button(pressed, button, count, x, y, state)
 
     def pointer_button(self, pressed, button, count, x, y, state=0):
         mapping = {1: ('left', 1), 2: ('middle', 4), 3: ('right', 2),
@@ -411,6 +435,45 @@ class PageInput:
             if self.buttons & bit:
                 self.pointer_button(False, button, 1, *self.pointer)
 
+    def queue_wheel(self, params):
+        if not self.valid_identity():
+            self.metrics['identity_rejections'] += 1
+            return False
+        identity = (self.session, self.target, self.tab_id)
+        queue = self.wheel_queue
+        if queue and queue[-1].merge(identity, 'Input.dispatchMouseEvent', params):
+            self.metrics['wheel_coalesced'] = self.metrics.get('wheel_coalesced', 0) + 1
+        else:
+            if len(queue) >= 16:
+                self.flush_wheels(force=True)
+            queue.append(PendingInput(identity, 'Input.dispatchMouseEvent', params))
+        if self.wheel_timer is None:
+            self.wheel_timer = GLib.timeout_add(16, self.flush_wheels)
+        return True
+
+    def flush_wheels(self, *, force=False):
+        queue = getattr(self, 'wheel_queue', [])
+        if force and getattr(self, 'wheel_timer', None):
+            GLib.source_remove(self.wheel_timer)
+        self.wheel_timer = None
+        while queue and (force or self.wheel_inflight < 2):
+            entry = queue.pop(0)
+            if entry.identity != (self.session, self.target, self.tab_id):
+                self.metrics['identity_rejections'] += 1
+                continue
+            self.wheel_inflight += 1
+            if not self.dispatch(entry.method, entry.take(), on_settled=self.wheel_settled):
+                self.wheel_inflight -= 1
+        if queue and self.wheel_inflight < 2:
+            self.wheel_timer = GLib.timeout_add(16, self.flush_wheels)
+        return GLib.SOURCE_REMOVE
+
+    def wheel_settled(self):
+        self.wheel_inflight = max(0, self.wheel_inflight - 1)
+        if self.wheel_queue and self.wheel_timer is None:
+            self.wheel_timer = GLib.timeout_add(16, self.flush_wheels)
+        return GLib.SOURCE_REMOVE
+
     def _scroll(self, controller, dx, dy):
         self.metrics['scroll_events'] = self.metrics.get('scroll_events', 0) + 1
         self.metrics['last_scroll'] = [dx, dy, str(controller.get_unit()), list(self.pointer)]
@@ -421,7 +484,8 @@ class PageInput:
         # GDK wheel units are notches; surface units retain raw Wayland
         # values (10 per conventional notch), not Chromium scroll pixels.
         factor = 120 if controller.get_unit() == Gdk.ScrollUnit.WHEEL else 12
-        return self.dispatch('Input.dispatchMouseEvent', {'type': 'mouseWheel', **point,
+        getattr(self, 'on_scroll', lambda *_: None)(dx * factor, dy * factor)
+        return self.queue_wheel({'type': 'mouseWheel', **point,
             'deltaX': dx * factor, 'deltaY': dy * factor,
             'modifiers': modifiers(controller.get_current_event_state())})
 
@@ -429,6 +493,8 @@ class PageInput:
         if focused:
             self.ime.focus_in()
         else:
+            if hasattr(self, 'touch'):
+                self.touch.cancel()
             self.ime.focus_out()
             self.ime.reset()
         self.dispatch('Emulation.setFocusEmulationEnabled', {'enabled': focused})

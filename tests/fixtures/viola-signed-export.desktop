@@ -3,7 +3,7 @@ Type=Application
 Name=Viola
 Comment=Browse the web
 Exec=/usr/bin/flatpak run --branch=beta --arch=x86_64 --command=viola-browser --file-forwarding com.rhyme.viola @@u %U @@
-Icon=com.rhyme.viola
+Icon=com.rhyme.viola.browser
 Terminal=false
 StartupNotify=true
 Categories=Network;WebBrowser;

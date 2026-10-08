@@ -1,39 +1,117 @@
 {
   "comment": "Listings from verified developers that install from the Luma remote (ADR-028: tier verified). Each is the developer's own signed release, imported into the Luma remote; runtimes from Flathub (org.freedesktop.*, org.gnome.*, org.kde.*) are never copied onto it: Depot installs them from the configured Flathub remote. Permissions are computed from the Flatpak's metadata by scripts/depot/flatpak-permissions.py, never typed in. An app Luma's image also ships as a package names it in sources.luma_system, so Depot shows it as included where the image has it and offers the Flatpak only where it does not (both export the same desktop id). Until Hub serves catalog snapshots, this file, depot-first-party.json and depot-catalog.json are the catalog source that scripts/depot/publish-repo-catalog.sh signs and publishes.",
   "defaults": {
-    "backend": "flatpak", "repository": "luma", "branch": "stable", "tier": "verified", "visibility": "private",
-    "distribution": "publisher", "qualification": "pending", "sign_in": "none"
+    "backend": "flatpak",
+    "repository": "luma",
+    "branch": "stable",
+    "tier": "verified",
+    "visibility": "private",
+    "distribution": "publisher",
+    "qualification": "pending",
+    "sign_in": "none"
   },
   "applications": [
-    {"id": "viola", "name": "Viola", "app_id": "com.rhyme.viola", "source_id": "com.rhyme.viola",
-     "visibility": "public", "tier": "verified", "architectures": ["x86_64"],
-     "developer": {"id": "dev_rhyme", "name": "Rhyme Social LLC", "verified": "organization"},
-     "sources": {"luma_system": {"package": "viola-browser-stable", "desktop_id": "com.rhyme.viola.desktop", "removable": true},
-                 "flatpak": {"repository": "luma", "source_id": "com.rhyme.viola", "branch": "stable"}},
-     "preinstalled_on_luma": true,
-     "summary": "Luma’s default web browser, built around workspaces.",
-     "keywords": ["browser", "web browser", "default browser", "internet", "web", "chromium", "tabs", "workspaces"],
-     "description": "Viola is a browser with workspaces, tab groups, splits, profiles, a mini player, and encrypted cross-device organization sync.",
-     "categories": ["internet"], "license": "GPL-3.0-only AND BSD-3-Clause",
-     "homepage": "https://violabrowser.com/", "reference_url": "https://violabrowser.com/",
-     "support_url": "https://github.com/nmcmil/Viola/issues", "source_url": "https://github.com/nmcmil/Viola",
-     "icon": {"url": "https://dl.simplyluma.com/media/apps/viola/0.2.10/com.rhyme.viola.png",
-              "sha256": "a80a7dee7dd07c8b62861158e726bd06850934f772f94e368779183d088dc7aa"},
-     "release": {"version": "0.2.10", "date": "2026-08-31", "download_bytes": 171878428, "installed_bytes": 410130944},
-     "permissions": [
-       {"key": "network", "level": "standard"}, {"key": "files.portal", "level": "standard"},
-       {"key": "files.documents", "level": "sensitive", "access": "read-write"},
-       {"key": "files.pictures", "level": "sensitive", "access": "read-write"},
-       {"key": "files.music", "level": "sensitive", "access": "read-write"},
-       {"key": "files.videos", "level": "sensitive", "access": "read-write"},
-       {"key": "files.downloads", "level": "sensitive", "access": "read-write"},
-       {"key": "files.other", "level": "sensitive", "access": "read-write", "names": ["/run/.heim_org.h5l.kcm-socket"]},
-       {"key": "devices.camera", "level": "sensitive"}, {"key": "devices.microphone", "level": "sensitive"},
-       {"key": "devices.all", "level": "high"}, {"key": "devices.smartcard", "level": "sensitive"},
-       {"key": "notifications", "level": "standard"}, {"key": "printing", "level": "standard"},
-       {"key": "system.bus", "level": "high", "names": ["org.bluez", "org.freedesktop.Avahi", "org.freedesktop.UPower"]},
-       {"key": "session.bus", "level": "sensitive", "names": ["org.freedesktop.FileManager1", "org.freedesktop.ScreenSaver", "org.freedesktop.secrets", "org.gnome.SessionManager", "org.kde.StatusNotifierWatcher"]},
-       {"key": "display.x11", "level": "high"}],
-     "qualification_reason": "Included with Luma as its default web browser."}
+    {
+      "id": "viola",
+      "name": "Viola",
+      "app_id": "com.rhyme.viola",
+      "source_id": "com.rhyme.viola",
+      "visibility": "public",
+      "tier": "verified",
+      "architectures": [
+        "x86_64"
+      ],
+      "developer": {
+        "id": "dev_rhyme",
+        "name": "Rhyme Social LLC",
+        "verified": "organization"
+      },
+      "sources": {
+        "luma_system": {
+          "package": "viola-browser-stable",
+          "desktop_id": "com.rhyme.viola.desktop",
+          "removable": true
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "com.rhyme.viola",
+          "branch": "beta"
+        }
+      },
+      "preinstalled_on_luma": true,
+      "summary": "Luma’s default web browser, built around workspaces.",
+      "keywords": [
+        "browser",
+        "web browser",
+        "default browser",
+        "internet",
+        "web",
+        "chromium",
+        "tabs",
+        "workspaces"
+      ],
+      "description": "Viola is a browser with workspaces, tab groups, splits, profiles, a mini player, and encrypted cross-device organization sync.",
+      "categories": [
+        "internet"
+      ],
+      "license": "GPL-3.0-only AND BSD-3-Clause",
+      "homepage": "https://violabrowser.com/",
+      "reference_url": "https://violabrowser.com/",
+      "support_url": "https://github.com/SimplyLuma/luma/issues",
+      "source_url": "https://github.com/SimplyLuma/luma/tree/main/src/external/viola",
+      "icon": {
+        "url": "https://dl.simplyluma.com/media/listings/viola/icon-256-e9b01960dac11196.png",
+        "sha256": "e9b01960dac111960a47dcb0778bca17cbf0c075977ecdb8e0900ad5587879b8",
+        "width": 256,
+        "height": 256
+      },
+      "release": {
+        "version": "0.2.10.36",
+        "date": "2026-10-08",
+        "download_bytes": 167594867,
+        "installed_bytes": 395678720
+      },
+      "permissions": [
+        {
+          "key": "network",
+          "level": "standard"
+        },
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "files.downloads",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-download:rw"
+          ]
+        },
+        {
+          "key": "files.other",
+          "level": "sensitive",
+          "access": "read",
+          "names": [
+            "xdg-run/luma-viola:ro"
+          ]
+        },
+        {
+          "key": "devices.microphone",
+          "level": "sensitive"
+        },
+        {
+          "key": "session.bus",
+          "level": "sensitive",
+          "names": [
+            "org.projectluma.AppData1",
+            "org.projectluma.ApplicationDirectory1",
+            "org.projectluma.ViolaHost1"
+          ]
+        }
+      ],
+      "qualification_reason": "Included with Luma as its default web browser.",
+      "branch": "beta"
+    }
   ]
 }

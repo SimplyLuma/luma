@@ -10,6 +10,7 @@ from luma_appkit import AppWindow, Command, CommandGroup, CommandRegistry
 
 class NativePip(AppWindow):
     def __init__(self, host, tab_id):
+        Gtk.Window.set_default_icon_name('com.rhyme.viola.browser')
         self.host, self.tab_id = host, tab_id
         application = host.get_application()
         menu = application.get_menubar()
@@ -22,7 +23,7 @@ class NativePip(AppWindow):
                     shortcut=('Ctrl', 'Shift', 'T')),
         )),))
         super().__init__(application=application, app_id=application.get_application_id(),
-                         title='Picture in Picture', icon_name='com.rhyme.viola', commands=commands,
+                         title='Picture in Picture', icon_name='com.rhyme.viola.browser', commands=commands,
                          geometry_scope='picture-in-picture',
                          default_width=480, default_height=320,
                          minimum_width=240, minimum_height=160)

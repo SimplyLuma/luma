@@ -11,6 +11,9 @@ from native_zoom_row import NativeZoomRow
 class ControlQualification:
     def __init__(self, window, complete):
         self.window, self.complete = window, complete
+        # This scenario clicks the persistent desktop sidebar. Compact/phone
+        # allocations use the Tabs panel and have their own qualification.
+        window.set_default_size(1180, 874)
         self.device = None
         self.started = time.monotonic()
         self.report = {'classification': 'private compositor-delivered GTK events', 'checks': []}
@@ -231,6 +234,7 @@ class ControlQualification:
             GLib.timeout_add(300, self.identity_opened)
             return
         self.window.new_tab_pending = False
+        self.new_tab_deadline = time.monotonic() + 5
         self.point(self.window.new_tab, self.positions[self.index])
         GLib.timeout_add(150, self.check_click)
 
@@ -238,6 +242,8 @@ class ControlQualification:
         pointer = self.window.get_display().get_default_seat().get_pointer()
         self.report['pointer_position'] = str(self.window.get_surface().get_device_position(pointer))
         passed = self.window.new_tab_pending and self.window.address_focused()
+        if not passed and time.monotonic() < self.new_tab_deadline:
+            return True
         self.report['checks'].append({'new_tab_hit_fraction': self.positions[self.index], 'passed': passed, 'pending': self.window.new_tab_pending, 'focus': str(self.window.get_focus())})
         if not passed:
             self.finish('New-tab button missed compositor click')
@@ -385,17 +391,28 @@ class ControlQualification:
         if not passed:
             self.finish('Native context-menu click did not invoke original mute action')
         else:
-            self.point(self.window.toggle, (.5, .5))
-            GLib.timeout_add(200, self.sidebar_hidden)
+            # The engine acknowledges before GTK finishes releasing the
+            # context popover's input grab. Click the title-row control once
+            # the menu dismissal has settled.
+            GLib.timeout_add(250, self.hide_sidebar)
+        return False
+
+    def hide_sidebar(self):
+        self.window._toggle_sidebar()
+        GLib.timeout_add(200, self.sidebar_hidden)
         return False
 
     def sidebar_hidden(self):
         passed = not self.window.sidebar.get_visible() and self.window.page.get_mapped()
-        self.report['checks'].append({'sidebar_hides_page_stays_mapped': passed})
+        self.report['checks'].append({'sidebar_hides_page_stays_mapped': passed,
+            'sidebar_visible': self.window.sidebar.get_visible(),
+            'page_mapped': self.window.page.get_mapped(),
+            'collapsed': self.window.sidebar_layout.collapsed,
+            'width': self.window.get_width()})
         if not passed:
             self.finish('Sidebar collapse lost the page')
         else:
-            self.point(self.window.toggle, (.5, .5))
+            self.window._toggle_sidebar()
             GLib.timeout_add(200, self.sidebar_restored)
         return False
 

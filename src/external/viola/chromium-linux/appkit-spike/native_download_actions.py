@@ -75,8 +75,9 @@ class DownloadActions:
             actions.append(('Cancel Download', 'cancel', True))
         elif state == 'interrupted' and download.get('canResume'):
             actions.append(('Resume', 'resume', True))
-        actions += [('Remove from Download History', 'remove', state not in ('progressing','paused')),
-                    ('Dismiss Notification', 'dismiss', True)]
+        actions += [('Remove from Download History', 'remove', state not in ('progressing','paused'))]
+        if not self.card.item.get('syntheticDownload'):
+            actions.append(('Dismiss Notification', 'dismiss', True))
         items = [dict(index=i,kind='item',label=label,visible=True,enabled=enabled)
                  for i,(label,_,enabled) in enumerate(actions)]
         notification = self.card.item['id']

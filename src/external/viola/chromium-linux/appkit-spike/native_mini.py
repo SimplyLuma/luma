@@ -13,18 +13,12 @@ class NativeMini:
         window.add_css_class('viola-mini')
         # AppKit owns the titlebar, identity, real window controls and shadows.
         # A separate geometry scope keeps authentication sizing out of browsing.
-        self.expand = Gtk.Button(label='Open in Viola',
-                                 tooltip_text='Move this live page into the full browser')
-        self.expand.add_css_class('flat')
-        self.expand.connect('clicked', lambda _: window.window_manager.command(window, 'Open in Viola'))
-        window.title_bar.pack_end(self.expand)
+        self.expand = window.responsive.expand
         for widget in (window.sidebar_bin, window.sidebar, window.toggle,
-                       window.bookmark, window.new_tab, window.menu_button,
+                       window.bookmark, window.new_tab,
                        window.sidebar_layout.handle, window.sidebar_layout.edge,
                        window.sidebar_layout.reveal):
             widget.set_visible(False)
-        window.address.set_width_chars(12)
-        window.address.set_max_width_chars(45)
         window.address.set_placeholder_text('Search or enter address')
         # Permissions are contextual, not a permanent notification/sidebar area.
         self.permission = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)

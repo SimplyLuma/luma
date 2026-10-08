@@ -35,7 +35,13 @@ def compose(root, signed):
     def entry(text, extra):
         return ''.join(line for line in text.splitlines(True)
                        if not line.startswith(('NoDisplay=', 'StartupWMClass='))) + extra + '\n'
-    canonical_output.write_text(entry(original, 'StartupWMClass=com.rhyme.viola'))
+    # The signed application owns its visible artwork independently of the
+    # immutable native engine package. Its dedicated icon name also avoids
+    # the native package's legacy com.rhyme.viola PNG aliases shadowing it.
+    canonical = ''.join(line for line in original.splitlines(True)
+                        if not line.startswith('Icon='))
+    canonical += 'Icon=com.rhyme.viola.browser\n'
+    canonical_output.write_text(entry(canonical, 'StartupWMClass=com.rhyme.viola'))
     alias_output = overrides / legacy.name
     alias_output.write_text(entry(legacy.read_text(), 'NoDisplay=true'))
     dock.write_text(''.join(lines))

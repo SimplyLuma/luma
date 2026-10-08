@@ -123,5 +123,5 @@ luma-vitals-energy-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
 luma-vitals-memory-guard-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
 luma-vitals-crash-evidence-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
 luma-vitals-power-guard-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
-viola-browser-stable-151.0.7922.72-13.viola8210.native35.creator20261008.1.fc44.x86_64
+viola-browser-stable-151.0.7922.72-14.viola8210.native36.creator20261008.1.fc44.x86_64
 luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64

@@ -23,7 +23,7 @@ for app in Gio.AppInfo.get_all():
  if app.get_id() in ('com.rhyme.viola.desktop','viola-browser.desktop'):
   rows.append({'id':app.get_id(),'visible':app.should_show(), 'filename':app.get_filename(),
                'executable':app.get_executable(),'commandline':app.get_commandline(),
-               'wmclass':app.get_startup_wm_class()})
+               'wmclass':app.get_startup_wm_class(), 'icon':app.get_icon().to_string()})
 print(json.dumps(rows))
 '''
 
@@ -104,6 +104,7 @@ class DesktopPolicy(unittest.TestCase):
                 self.assertEqual(Path(canonical['filename']), self.discovery / expected.relative_to(self.root) / 'com.rhyme.viola.desktop')
                 self.assertEqual(canonical['executable'], '/usr/bin/flatpak' if first else str(self.executable))
                 self.assertIn('com.rhyme.viola', canonical['commandline'] if first else canonical['wmclass'])
+                self.assertEqual(canonical['icon'], 'com.rhyme.viola.browser')
                 legacy = rows['viola-browser.desktop']
                 self.assertFalse(legacy['visible']); self.assertIsNone(legacy['wmclass'])
                 self.assertEqual(legacy['commandline'], str(self.executable) + ' %U')
@@ -113,6 +114,17 @@ class DesktopPolicy(unittest.TestCase):
                 self.assertIn('Exec=/usr/bin/viola-browser %U', canonical_original.read_text().splitlines())
         self.assertIn("'com.rhyme.viola.desktop'", self.dock.read_text())
         self.assertNotIn("'viola-browser.desktop'", self.dock.read_text())
+        self.assertEqual(self.personal.read_bytes(), b'owned personal preference')
+
+    def test_signed_policy_uses_app_owned_icon_even_with_older_native_artwork(self):
+        native = self.root / 'usr/share/applications/com.rhyme.viola.desktop'
+        original = native.read_text().replace('Icon=com.rhyme.viola.browser', 'Icon=viola-browser')
+        native.write_text(original)
+        policy.compose(self.root, True)
+        canonical = self.root / 'usr/share/luma/desktop-overrides/applications/com.rhyme.viola.desktop'
+        icons = [line for line in canonical.read_text().splitlines() if line.startswith('Icon=')]
+        self.assertEqual(icons, ['Icon=com.rhyme.viola.browser'])
+        self.assertEqual(native.read_text(), original)
         self.assertEqual(self.personal.read_bytes(), b'owned personal preference')
 
     def test_unfixed_signed_plus_native_is_detected_as_duplicate(self):

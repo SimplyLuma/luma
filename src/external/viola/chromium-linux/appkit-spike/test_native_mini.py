@@ -17,11 +17,15 @@ class MiniPresentationTest(unittest.TestCase):
             toggle=Gtk.Button(),bookmark=Gtk.Button(),new_tab=Gtk.Button(),menu_button=Gtk.Button(),
             sidebar_layout=SimpleNamespace(handle=Gtk.Box(),edge=Gtk.Box(),reveal=Gtk.Box()),
             address=Gtk.Entry(),island=Gtk.Box(orientation=Gtk.Orientation.VERTICAL),toolbar=Gtk.Box())
+        host.responsive=SimpleNamespace(expand=Gtk.Button(label='Open in Viola'))
+        host.toolbar.set_visible(False)
         host.island.append(host.toolbar)
         compact=NativeMini(host)
         self.addCleanup(compact.idle.close)
-        self.assertFalse(any(widget.get_visible() for widget in (host.sidebar,host.sidebar_bin,host.toggle,host.bookmark,host.new_tab,host.menu_button,host.sidebar_layout.edge)))
-        self.assertTrue(host.toolbar.get_visible())
+        self.assertFalse(any(widget.get_visible() for widget in (host.sidebar,host.sidebar_bin,host.toggle,host.bookmark,host.new_tab,host.sidebar_layout.edge)))
+        self.assertFalse(host.toolbar.get_visible())
+        self.assertTrue(host.menu_button.get_visible())
+        self.assertIs(compact.expand,host.responsive.expand)
         self.assertFalse(compact.permission.get_visible())
 
     def test_mini_shortcuts_cannot_create_hidden_tabs_or_reveal_sidebar(self):

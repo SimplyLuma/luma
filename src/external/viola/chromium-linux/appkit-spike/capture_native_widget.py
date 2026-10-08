@@ -6,12 +6,12 @@ gi.require_version('Graphene', '1.0')
 from gi.repository import Gsk, Graphene, Gtk
 
 
-def capture(window, path, width=1180, height=820):
+def capture(window, path, width=1180, height=820, *, paintable=None):
     if not window.get_mapped():
         raise RuntimeError('GTK capture requires the isolated mapped QA display')
     width, height = window.get_width(), window.get_height()
     snapshot = Gtk.Snapshot()
-    Gtk.WidgetPaintable.new(window).snapshot(snapshot, width, height)
+    (paintable or Gtk.WidgetPaintable.new(window)).snapshot(snapshot, width, height)
     node = snapshot.to_node()
     if node is None:
         raise RuntimeError('Unpresented GTK window produced no render node')

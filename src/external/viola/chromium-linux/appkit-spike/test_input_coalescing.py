@@ -106,7 +106,7 @@ class CoalescingTest(unittest.TestCase):
         adapter.metrics, adapter.pointer = {}, (10, 20)
         adapter.point = lambda *_: {'x': 10, 'y': 20}
         sent = []
-        adapter.dispatch = lambda method, params: sent.append(params) or True
+        adapter.queue_wheel = lambda params: sent.append(params) or True
         for unit, delta in ((Gdk.ScrollUnit.WHEEL, 1), (Gdk.ScrollUnit.SURFACE, 10)):
             controller = SimpleNamespace(get_unit=lambda: unit, get_current_event_state=lambda: 0)
             adapter._scroll(controller, -delta, delta)
@@ -161,6 +161,56 @@ class CoalescingTest(unittest.TestCase):
             GLib.MainContext.default().iteration(False)
         self.assertEqual(adapter.pending, 0)
         self.assertEqual(adapter.metrics['ack_timeouts'], 1)
+
+    def test_slow_wheels_are_bounded_and_preserve_distance_before_click(self):
+        from page_input import PageInput, GLib
+        adapter = PageInput.__new__(PageInput)
+        adapter.session, adapter.target, adapter.tab_id = 's', 'target', 'tab'
+        adapter.services = SimpleNamespace(state={'activeTabId': 'tab'})
+        adapter.valid_identity = lambda: True
+        adapter.pending, adapter.last_pending_input = 0, None
+        adapter.wheel_queue, adapter.wheel_timer, adapter.wheel_inflight = [], None, 0
+        adapter.metrics = dict(sent=0, identity_rejections=0, coalesced=0, pointer_backpressure=0)
+        sent, responses = [], []
+        adapter.on_error = self.fail
+        def request(method, params, session):
+            sent.append(params)
+            response = Future(); responses.append(response); return response
+        def write(work):
+            future = Future(); future.set_result(work()); return future
+        adapter.engine = SimpleNamespace(request=request)
+        adapter.input_submit = adapter.submit = write
+        wheel = dict(type='mouseWheel', x=30, y=40, deltaX=0, deltaY=5, modifiers=0)
+        for index in range(120):
+            adapter.queue_wheel(wheel)
+            if index < 2:
+                GLib.source_remove(adapter.wheel_timer)
+                adapter.flush_wheels()
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(adapter.wheel_inflight, 2)
+        adapter.dispatch('Input.dispatchMouseEvent', dict(type='mousePressed', x=30, y=40))
+        self.assertEqual([p['type'] for p in sent], ['mouseWheel', 'mouseWheel', 'mouseWheel', 'mousePressed'])
+        self.assertEqual(sum(p.get('deltaY', 0) for p in sent), 600)
+        for response in responses: response.set_result({})
+        while GLib.MainContext.default().pending(): GLib.MainContext.default().iteration(False)
+        self.assertEqual(adapter.pending, 0)
+        self.assertEqual(adapter.wheel_inflight, 0)
+
+    def test_queued_wheels_never_cross_tab_or_modifier_boundaries(self):
+        from page_input import PageInput, GLib
+        adapter = PageInput.__new__(PageInput)
+        adapter.session, adapter.target, adapter.tab_id = 's', 'target', 'tab'
+        adapter.valid_identity = lambda: True
+        adapter.wheel_queue, adapter.wheel_timer, adapter.wheel_inflight = [], None, 2
+        adapter.metrics = dict(identity_rejections=0)
+        for mask in (0, 2):
+            adapter.queue_wheel(dict(type='mouseWheel', x=30, y=40, deltaX=0, deltaY=5, modifiers=mask))
+        self.assertEqual(len(adapter.wheel_queue), 2)
+        adapter.tab_id = 'new-tab'
+        adapter.dispatch = lambda *_args, **_kwargs: self.fail('stale wheel reached new tab')
+        adapter.flush_wheels(force=True)
+        self.assertFalse(adapter.wheel_queue)
+        self.assertEqual(adapter.metrics['identity_rejections'], 2)
 
     def test_closed_tab_ack_before_sidebar_update_is_not_fatal(self):
         from page_input import PageInput, GLib

@@ -21,11 +21,48 @@ class PrivateInput:
     def interface(self):
         return self.call(self.session, 'org.freedesktop.DBus.Introspectable', 'Introspect')[0]
 
-    def start(self):
+    def start(self, *, touch=False):
+        if touch:
+            self.prepare_touch()
         self.call(self.session, self.service + '.Session', 'Start')
         # Establish the virtual keyboard/keymap before the fixture's first
         # actionable key; a neutral modifier press/release has no command.
         self.key(0xffe1)
+
+    def prepare_touch(self):
+        import gi
+        gi.require_version('Gst', '1.0')
+        from gi.repository import Gst
+        Gst.init(None)
+        session_id = self.call(self.session, 'org.freedesktop.DBus.Properties', 'Get',
+            GLib.Variant('(ss)', (self.service + '.Session', 'SessionId')))[0]
+        if isinstance(session_id, GLib.Variant):
+            session_id = session_id.unpack()
+        service = 'org.gnome.Mutter.ScreenCast'
+        def call(path, interface, method, params):
+            return self.connection.call_sync(service, path, interface, method, params,
+                None, Gio.DBusCallFlags.NONE, 5000, None).unpack()
+        self.cast_session = call('/org/gnome/Mutter/ScreenCast', service, 'CreateSession',
+            GLib.Variant('(a{sv})', ({'remote-desktop-session-id': GLib.Variant('s', session_id)},)))[0]
+        self.touch_stream = call(self.cast_session, service + '.Session', 'RecordMonitor',
+            GLib.Variant('(sa{sv})', ('Meta-0', {'cursor-mode': GLib.Variant('u', 0)})))[0]
+        self.touch_node = None
+        self.touch_pipeline = None
+        # Keep this private monitor stream negotiated while injecting input
+        # in its coordinates. No frames are captured or sent anywhere.
+        def ready(_connection, _sender, _path, _interface, _signal, parameters):
+            self.touch_node = parameters.unpack()[0]
+            self.touch_pipeline = Gst.parse_launch(
+                f'pipewiresrc path={int(self.touch_node)} do-timestamp=true ! fakesink sync=false')
+            self.touch_pipeline.set_state(Gst.State.PLAYING)
+        self.touch_subscription = self.connection.signal_subscribe(service,
+            service + '.Stream', 'PipeWireStreamAdded', self.touch_stream, None,
+            Gio.DBusSignalFlags.NONE, ready)
+
+    def touch(self, kind, slot, x=0, y=0):
+        params = GLib.Variant('(u)', (slot,)) if kind == 'Up' else GLib.Variant(
+            '(sudd)', (self.touch_stream, slot, float(x), float(y)))
+        self.call(self.session, self.service + '.Session', 'NotifyTouch' + kind, params)
 
     def move(self, x, y):
         def relative(dx, dy):
@@ -59,6 +96,11 @@ class PrivateInput:
         GLib.timeout_add(150, lambda: modifier_state(False) or False)
 
     def close(self):
+        if getattr(self, 'touch_pipeline', None):
+            from gi.repository import Gst
+            self.touch_pipeline.set_state(Gst.State.NULL)
+        if getattr(self, 'touch_subscription', None):
+            self.connection.signal_unsubscribe(self.touch_subscription)
         self.call(self.session, self.service + '.Session', 'Stop')
 
 

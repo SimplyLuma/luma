@@ -42,6 +42,10 @@ class NativeMenu(AppKitMenu):
 
     def __init__(self, description, activate, action_prefix='viola', repeat=None, context=None, prefer_submenu_left=False, hide_root_title=False):
         Gtk.PopoverMenu.__init__(self, flags=Gtk.PopoverMenuFlags.NESTED)
+        # Retained Chromium models are already native popover rows. The
+        # AppKit drawer path expects a CommandRegistry that this adapter
+        # deliberately does not synthesize from the live engine model.
+        self.phone_placement = 'popover'
         self.action_prefix = action_prefix
         self._activate = activate
         self._repeat = repeat

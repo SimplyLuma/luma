@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
-from gi.repository import GLib
+from gi.repository import GLib, Gtk
 from qualify_native_windows import WindowQualification
 from private_input import PrivateInput
 
@@ -39,7 +39,13 @@ class MiniQualification(WindowQualification):
         self.mini=next(c['window'] for c in self.manager.contexts.values() if c['window'] is not self.primary)
         self.check('external_link_uses_compact_native_window',self.mini.mini)
         self.check('primary_page_untouched',self.primary.page_input.target==self.original)
-        self.check('no_sidebar_hover_edge_or_browser_menu',not any(w.get_visible() for w in (self.mini.sidebar_bin,self.mini.sidebar_layout.edge,self.mini.toggle,self.mini.new_tab,self.mini.menu_button,self.mini.bookmark)))
+        self.check('shared_page_bar_and_primary_open_action_without_sidebar',
+            not any(w.get_visible() for w in (self.mini.sidebar_bin,self.mini.sidebar_layout.edge,self.mini.toggle,self.mini.new_tab,self.mini.bookmark))
+            and not self.mini.toolbar.get_mapped()
+            and self.mini.responsive.center.bar.get_mapped()
+            and self.mini.menu_button.get_mapped()
+            and self.mini.responsive.expand.has_css_class('primary')
+            and self.mini.responsive.expand is self.mini.responsive.center.bar_row.get_last_child())
         self.check('native_titlebar_and_page_frame_retained',self.mini.title_bar.get_visible() and self.mini.island.get_visible())
         self.target=self.mini.page_input.target
         self.mini.submit(lambda:self.evaluate(self.mini,'window.violaLivePageProof="retained";document.cookie.includes("violaMiniProof=shared")'),self.shared_session)
@@ -47,7 +53,24 @@ class MiniQualification(WindowQualification):
     def shared_session(self, shared):
         self.check('mini_shares_existing_profile_cookie',shared)
         self.mini.present()
-        GLib.timeout_add(1200, self.capture_and_expand)
+        self.mini.set_default_size(460,740)
+        GLib.timeout_add(900, self.narrow_bar)
+
+    def narrow_bar(self):
+        from capture_native_widget import capture
+        ok,bar=self.mini.responsive.center.bar.compute_bounds(self.mini)
+        self.report['narrow_geometry']=dict(width=self.mini.get_width(),bar=[bar.get_x(),bar.get_width()] if ok else None,
+            address_mapped=self.mini.address.get_mapped(),expand_mapped=self.mini.responsive.expand.get_mapped(),
+            forward_visible=self.mini.forward.get_visible(),reload_visible=self.mini.reload.get_visible())
+        self.check('shared_bar_and_labelled_open_action_fit_460px_popup',
+            self.mini.get_width()==460 and ok and bar.get_x()>=0 and
+            bar.get_x()+bar.get_width()<=self.mini.get_width()+1 and
+            self.mini.responsive.expand.get_mapped() and self.mini.address.get_mapped())
+        capture(self.mini,Path('/tmp/viola-mini-460.png'))
+        self.report['narrow_snapshot']='/tmp/viola-mini-460.png'
+        self.mini.set_default_size(600,740)
+        GLib.timeout_add(900,self.capture_and_expand)
+        return False
 
     def capture_and_expand(self):
         def capture_monitor():
@@ -59,7 +82,8 @@ class MiniQualification(WindowQualification):
 
     def expand(self, path):
         self.report['monitor_snapshot']=path
-        self.manager.command(self.mini,'Open in Viola')
+        # Exercise the actual end action and retain DOM state after adoption.
+        self.mini.responsive.expand.emit('clicked')
         self.wait(lambda:len(self.manager.contexts)==1 and self.primary.page_input.target==self.target and self.primary.page_input.valid_identity(),self.adopted)
         return False
 

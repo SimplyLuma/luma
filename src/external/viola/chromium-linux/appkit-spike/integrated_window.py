@@ -20,10 +20,11 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
-from luma_appkit import AppWindow, Command, CommandGroup, CommandRegistry, ConnectedButtonGroup, IconButton, Island, Toolbar, install_appkit
+from luma_appkit import AppWindow, Command, CommandGroup, CommandRegistry, ConnectedButtonGroup, IconButton, Island, LayerHost, Toolbar, install_appkit
 from browser_services import BrowserServices
 from engine_pipe import EnginePipe
 from frame_receiver import FrameReceiver
+from luma_appkit.bar_tokens import Well
 from gpu_page import GpuPage
 from measure_service_navigation import Fixture
 from native_menu import NativeMenu
@@ -41,6 +42,10 @@ APP_ID = ('com.rhyme.viola' if os.environ.get('FLATPAK_ID') == 'com.rhyme.viola'
 
 class IntegratedWindow(AppWindow):
     def __init__(self, application, loop, submit, errors, *, mini=False):
+        # Gtk.Application startup defaults to its canonical application ID.
+        # Older native packages export different artwork under that name.
+        # Set the owned icon before AppKit constructs the window identity.
+        Gtk.Window.set_default_icon_name('com.rhyme.viola.browser')
         self.mini = mini
         self.phone = False
         self.loop = loop
@@ -69,7 +74,7 @@ class IntegratedWindow(AppWindow):
 
         )),))
         super().__init__(application=application, app_id=APP_ID, title='Viola',
-                         icon_name='com.rhyme.viola', commands=commands,
+                         icon_name='com.rhyme.viola.browser', commands=commands,
                          default_width=600 if mini else 1180, default_height=740 if mini else 820,
                          minimum_width=460 if mini else 360, minimum_height=380 if mini else 460,
                          geometry_scope='mini' if mini else '')
@@ -126,10 +131,11 @@ class IntegratedWindow(AppWindow):
         focus = Gtk.EventControllerFocus()
         focus.connect('enter', self._address_focus)
         self.address.add_controller(focus)
-        self.address_field = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.address_field = Well(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.address_field.add_css_class('lumaui-bar-entry')
         self.address_field.add_css_class('viola-address')
         self.address_field.append(self.address)
-        self.bookmark = self.button('non-starred-symbolic', 'Bookmark this page', lambda: self.send('tab:bookmark'))
+        self.bookmark = self.button('lumaui-pin-symbolic', 'Pin to top', lambda: self.responsive.toggle_pin())
         self.address_field.append(self.bookmark)
         address_clamp = Adw.Clamp(maximum_size=720, tightening_threshold=720, hexpand=True,
                                  child=self.address_field)
@@ -140,7 +146,9 @@ class IntegratedWindow(AppWindow):
         self.toolbar.append(self.menu_button)
         self.page = GpuPage()
         self.island.append(self.page)
-        composition.append(self.island)
+        self.page_layers = LayerHost(self.island, name="viola-page")
+        self.page_layers.set_hexpand(True)
+        composition.append(self.page_layers)
         from resizable_sidebar import ResizableSidebar
         self.sidebar_layout = ResizableSidebar(self, composition, fixed_sidebar, sidebar_bin)
         self.set_body(self.sidebar_layout.overlay)
@@ -209,7 +217,7 @@ class IntegratedWindow(AppWindow):
             self.submit(lambda: self.services.send('sidebar', channel, payload))
 
     def _toggle_sidebar(self):
-        if self.phone:
+        if not self.mini and (self.phone or self.get_width() < 900):
             self.responsive.show_tabs()
             return
         if not self.mini:
@@ -230,7 +238,9 @@ class IntegratedWindow(AppWindow):
             self.address_suggestions.changed()
 
     def _focus_address(self):
-        if self.phone:
+        if hasattr(self, 'responsive'):
+            self.responsive.reveal_bar()
+        if not self.mini and self.phone:
             self.responsive.focus_address()
             return
         self.new_tab_pending = False
@@ -269,6 +279,7 @@ class IntegratedWindow(AppWindow):
         self.submit(self.services.create_new_tab)
 
     def _edit_blank_tab(self):
+        self.responsive.reveal_bar()
         self.new_tab_pending = True
         self.address.set_text('')
         self.address.grab_focus()
@@ -293,7 +304,7 @@ class IntegratedWindow(AppWindow):
     def _browser_menu(self):
         anchor = {'anchorRect': {'x': 10, 'y': 10, 'width': 28, 'height': 28}}
         self.submit(lambda: self.services.open_menu('browser:menu', anchor),
-                    lambda model: self.show_menu(self.menu_button, model))
+                    lambda model: self.show_menu(self.menu_button, model, position=Gtk.PositionType.TOP if not self.mini else Gtk.PositionType.BOTTOM))
 
     def open_retained_menu(self, parent, channel, payload, x=None, y=None):
         if not self.services:
@@ -432,12 +443,17 @@ class IntegratedWindow(AppWindow):
             self._edit_blank_tab()
         self.present_selected_frame()
         self.toolbar.set_sensitive(True)
+        self.address_field.set_sensitive(True)
         self.back.set_sensitive(state.get('canGoBack', False))
         self.forward.set_sensitive(state.get('canGoForward', False))
         if not self.address_focused() and not self.address_suggestions.owns_focus() and not self.new_tab_pending:
             self.address.set_text(state.get('nativePrettyUrl') or state.get('activeUrl', ''))
         self.address_suggestions.refresh_icon()
-        self.bookmark.get_child().set_from_icon_name('starred-symbolic' if state.get('bookmarked') else 'non-starred-symbolic')
+        pinned = any(tab['id'] == state.get('activeTabId') for tab in state.get('favorites', []))
+        self.bookmark.get_child().set_from_icon_name('lumaui-pin-symbolic')
+        self.bookmark.set_tooltip_text('Unpin from top' if pinned else 'Pin to top')
+        self.bookmark.update_property([Gtk.AccessibleProperty.LABEL], [self.bookmark.get_tooltip_text()])
+        (self.bookmark.add_css_class if pinned else self.bookmark.remove_css_class)('lumaui-selected')
         if self.mini:
             self.mini_presentation.render(state)
         else:
@@ -667,6 +683,8 @@ def main():
                     from qualify_window_focus import WindowQualification
                 if os.environ.get("VIOLA_QA_MINI") == "1":
                     from qualify_mini import MiniQualification as WindowQualification
+                if os.environ.get("VIOLA_QA_TOUCH") == "1":
+                    from qualify_touch import TouchQualification as WindowQualification
                 if os.environ.get("VIOLA_QA_INVENTORY") == "1":
                     from qualify_tab_inventory import TabInventoryQualification as WindowQualification
                 if os.environ.get("VIOLA_QA_CLOSE_BURST") == "1":
@@ -754,9 +772,13 @@ def main():
             frame_size=active_window.page.frame_size_diagnostic,
             imported_frames=receiver.imported, pending_leases=len(receiver.pending),
             input_pending=active_window.page_input.pending,
+            address_input=dict(active_window.address_suggestions.input_metrics,
+                               focused=active_window.address_focused(),
+                               held_key_count=len(active_window.address_suggestions.held_keys)),
             input_metrics={key: active_window.page_input.metrics.get(key, 0) for key in (
                 'sent', 'identity_rejections', 'coalesced', 'pointer_backpressure',
-                'scroll_events', 'inflight_max', 'queue_wait_ms_max', 'ack_ms_max',
+                'scroll_events', 'wheel_coalesced', 'native_touch_events', 'touch_events',
+                'inflight_max', 'queue_wait_ms_max', 'ack_ms_max',
                 'ack_timeouts')})
         summary['transport_metrics'] = dict(engine.transport_metrics)
         temporary = args.work_root / 'presentation-live.tmp'
@@ -831,6 +853,10 @@ def main():
             receiver.close()
         except Exception as exception:
             errors.append(str(exception))
+        # close() drains queued GTK imports/releases. Record the final lease
+        # count, rather than an earlier count during teardown.
+        report['released_frames'] = receiver.released
+        report['pending_leases'] = len(receiver.pending)
         clipboard_bridge.close()
         engine.close()
         report['engine_exit_code'] = engine.process.returncode
@@ -852,7 +878,7 @@ def main():
             not layout_report.get('windows_qualification', {}).get('completed') or
             layout_report.get('windows_qualification', {}).get('error') or
             not layout_report.get('windows_qualification', {}).get('separate_engine_display') or
-            len(layout_report.get('windows_qualification', {}).get('checks', [])) != (8 if os.environ.get('VIOLA_QA_DEVTOOLS') == '1' else 12 if os.environ.get('VIOLA_QA_WINDOW_FOCUS') == '1' else 11 if os.environ.get('VIOLA_QA_MINI') == '1' else 4 if os.environ.get('VIOLA_QA_CLOSE_BURST') == '1' else 12 if os.environ.get('VIOLA_QA_INVENTORY') == '1' else 2 if os.environ.get('VIOLA_QA_POPUP_ONLY') == '1' else 19 if os.environ.get('VIOLA_QA_POPUP') == '1' else 27 if os.environ.get('VIOLA_QA_REPEAT_CLOSE') == '1' else 17)):
+            len(layout_report.get('windows_qualification', {}).get('checks', [])) != (8 if os.environ.get('VIOLA_QA_TOUCH') == '1' else 8 if os.environ.get('VIOLA_QA_DEVTOOLS') == '1' else 12 if os.environ.get('VIOLA_QA_WINDOW_FOCUS') == '1' else 12 if os.environ.get('VIOLA_QA_MINI') == '1' else 4 if os.environ.get('VIOLA_QA_CLOSE_BURST') == '1' else 12 if os.environ.get('VIOLA_QA_INVENTORY') == '1' else 2 if os.environ.get('VIOLA_QA_POPUP_ONLY') == '1' else 19 if os.environ.get('VIOLA_QA_POPUP') == '1' else 27 if os.environ.get('VIOLA_QA_REPEAT_CLOSE') == '1' else 17)):
         raise SystemExit(1)
     if (os.environ.get('VIOLA_QA_MEDIA_CHECKS') == '1' and (len(media_checks) != (5 if os.environ.get('VIOLA_QA_PIP') == '1' else 3) or not all(all(check.values()) for check in media_checks))):
         raise SystemExit(1)

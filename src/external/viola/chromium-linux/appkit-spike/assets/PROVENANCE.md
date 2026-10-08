@@ -1,13 +1,14 @@
 # Luma browser identity artwork
 
-`org.projectluma.Viola.NativeIntegration.svg` is an unchanged copy of the
-existing Luma browser icon, originally named `14-browser.svg` in the project's
-icon source collection. The published copy retains its artwork and notices.
+`org.projectluma.Viola.NativeIntegration.svg` and the nine PNGs in
+`viola-icon/` are the existing pointer-and-rings Viola artwork supplied in the
+October 4 icon handoff. They are copied unchanged from the qualified native
+application source. The SVG retains the supplied viewBox; no redraw or extra
+mask is added. The retained Chromium engine artwork is unchanged.
 
-It supplies the cyan/blue globe from Luma's icon system, replacing the probe's
-previous use of the Chromium package's Viola arrow artwork. The native toolkit
-continues to own identity placement, treatment and menu behavior. No icon theme
-is selected or replaced by this application.
+The native toolkit owns identity placement and treatment. The application does
+not select or replace a system icon theme. See `viola-icon/PROVENANCE.md` for the
+artwork source and the repository's existing artwork licensing notice.
 
 ## Sidebar Lucide symbols
 The existing Lucide `square-stack` and `layers` geometry is reused under its

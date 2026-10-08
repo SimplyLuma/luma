@@ -16,7 +16,7 @@ class NewTabControlsTest(unittest.TestCase):
         address = Gtk.Entry()
         window = Gtk.Window()
         window.set_child(address)
-        host = SimpleNamespace(phone=False, services=SimpleNamespace(create_new_tab=lambda: None),
+        host = SimpleNamespace(phone=False, responsive=SimpleNamespace(reveal_bar=lambda: None), services=SimpleNamespace(create_new_tab=lambda: None),
                                submit=lambda *args: work.append(args), address=address,
                                address_suggestions=SimpleNamespace(changed=lambda: None))
         IntegratedWindow._new_tab(host)

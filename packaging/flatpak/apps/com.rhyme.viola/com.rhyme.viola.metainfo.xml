@@ -15,6 +15,11 @@
   <url type="homepage">https://github.com/nmcmil/Viola</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.2.10.36" date="2026-10-08">
+      <description>
+        <p>Restores the shared floating page toolbar and current pointer-and-rings Viola icon. Existing browser history, bookmarks and profile data are preserved.</p>
+      </description>
+    </release>
     <release version="0.2.10" date="2026-10-07" />
   </releases>
   <screenshots>

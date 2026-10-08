@@ -9,6 +9,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 from luma_appkit import add_style_sheet
 from native_footer import NativeFooter
+from luma_appkit.content_cards import Card
 from workspace_colors import set_theme
 
 
@@ -47,6 +48,9 @@ class NativeSidebar(Gtk.Box):
         from sidebar_preferences import SidebarPreferences
         self.preferences = SidebarPreferences(self)
         self.favorite_grid = Gtk.Grid(column_homogeneous=True, column_spacing=8, row_spacing=8)
+        # Retain four equal columns when only one or two pages are pinned.
+        for column in range(4):
+            self.favorite_grid.attach(Gtk.Box(can_target=False), column, 0, 1, 1)
         self.append(self.favorite_grid)
         self.favorite_hint = None
         from native_reorder import NativeReorder
@@ -67,6 +71,7 @@ class NativeSidebar(Gtk.Box):
         self.append(self.footer)
         self.switcher = Gtk.Button()
         self.switcher.add_css_class('viola-workspace-switcher')
+        self.switcher.add_css_class('flat')
         switcher_line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         switcher_line.append(Gtk.Image(icon_name='viola-layers-symbolic', pixel_size=14))
         self.switcher_label = Gtk.Label(xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
@@ -74,7 +79,8 @@ class NativeSidebar(Gtk.Box):
         switcher_line.append(Gtk.Image(icon_name='luma-chevron-down-symbolic', pixel_size=12))
         self.switcher.set_child(switcher_line)
         self.switcher.connect('clicked', self.open_workspace_picker)
-        self.append(self.switcher)
+        self.workspace_well = Card(self.switcher, padded=False, recessed=True)
+        self.append(self.workspace_well)
 
     def open_workspace_picker(self, *_):
         scopes = self.state.get('workspaceScopes') or self.state.get('spaces', [])
@@ -196,7 +202,7 @@ class NativeSidebar(Gtk.Box):
         key = tab['id']
         widget = pool.get(key)
         if widget is None:
-            widget = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            widget = Card(padded=False) if favorite else Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             widget.add_css_class('viola-favorite' if favorite else 'viola-tab')
             widget.tab_id = key
             widget.activate = Gtk.Button(hexpand=True)
@@ -263,7 +269,9 @@ class NativeSidebar(Gtk.Box):
             (tab.get('audible'), 'playing audio'),
             (elsewhere, 'viewing in another window; activate to move here')) if condition)
         widget.activate.update_property([Gtk.AccessibleProperty.LABEL], [', '.join(filter(None, states))])
-        for name, enabled in (('active', key == self.state.get('activeTabId')),
+        selected = key == self.state.get('activeTabId')
+        (widget.add_css_class if selected else widget.remove_css_class)('lumaui-selected')
+        for name, enabled in (('active', selected),
                               ('sleeping', tab.get('discarded', False)),
                               ('viewed-elsewhere', elsewhere)):
             (widget.add_css_class if enabled else widget.remove_css_class)(name)

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Native address suggestions over the existing bounded Chromium service."""
 import json
+import time
 from urllib.parse import urlsplit
 from gi.repository import Gdk, GLib, Gtk, Pango
 from luma_appkit import Command, CommandGroup, CommandRegistry
@@ -49,10 +50,44 @@ class NativeAddress:
         self.restoring_focus = False
         self.search_destination = None
         self.search_texture = None
+        self.input_metrics = {'key_presses': 0, 'key_releases': 0, 'held_repeats': 0, 'paste_requests': 0, 'insertions': 0, 'inserted_characters': 0}
+        self.held_keys = set()
+        self.last_input = 0
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect('key-pressed', self.key_pressed)
+        keys.connect('key-released', self.key_released)
+        host.address.add_controller(keys)
+        host.address.connect('insert-text', self.inserted)
+        delegate = host.address.get_delegate()
+        if delegate:
+            delegate.connect('paste-clipboard', self.pasted)
         host.address.connect('changed', lambda *_: self.changed())
         focus = Gtk.EventControllerFocus()
         focus.connect('leave', lambda *_: GLib.idle_add(self.focus_left))
         host.address.add_controller(focus)
+
+    def key_pressed(self, _controller, _key, code, _state):
+        self.input_metrics['key_presses'] += 1
+        if code in self.held_keys:
+            self.input_metrics['held_repeats'] += 1
+        self.held_keys.add(code)
+        self.last_input = time.monotonic()
+        return False
+
+    def key_released(self, _controller, _key, code, _state):
+        self.input_metrics['key_releases'] += 1
+        self.held_keys.discard(code)
+        self.last_input = time.monotonic()
+
+    def pasted(self, *_):
+        self.input_metrics['paste_requests'] += 1
+        self.last_input = time.monotonic()
+
+    def inserted(self, _entry, text, _length, _position):
+        # Counts only; never record clipboard contents, typed keys or URLs.
+        self.input_metrics['insertions'] += 1
+        self.input_metrics['inserted_characters'] += len(text)
 
     def refresh_icon(self):
         entry = self.host.address
@@ -65,8 +100,12 @@ class NativeAddress:
                                         'Search with ' + urlsplit(self.search_destination).netloc)
         else:
             connection = (self.host.state or {}).get('activeConnection') or {}
+            secure = connection.get('kind') == 'secure'
+            field = getattr(self.host, 'address_field', None)
+            if field:
+                (field.add_css_class if secure else field.remove_css_class)('secure')
             entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY,
-                'channel-secure-symbolic' if connection.get('kind') == 'secure' else 'channel-insecure-symbolic')
+                'lumaui-shield-check-symbolic' if secure else 'channel-insecure-symbolic')
             entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, None)
 
     def update_search_icon(self, generation, tab, items):
@@ -99,7 +138,14 @@ class NativeAddress:
 
     def focus_left(self):
         if not self.host.address_focused() and not self.owns_focus():
+            self.held_keys.clear()
             self.close()
+            state = self.host.state or {}
+            if not self.host.new_tab_pending:
+                url = state.get('activeUrl', '')
+                self.host.address.set_text('' if url == 'about:blank'
+                                           else state.get('nativePrettyUrl') or url)
+                self.host.address.select_region(0, 0)
         return GLib.SOURCE_REMOVE
 
     def changed(self):
@@ -163,7 +209,7 @@ class NativeAddress:
         rectangle.x, rectangle.y = int(bounds.get_x()), int(bounds.get_y())
         rectangle.width, rectangle.height = int(bounds.get_width()), int(bounds.get_height())
         popup.set_pointing_to(rectangle)
-        popup.set_position(Gtk.PositionType.BOTTOM)
+        popup.set_position(Gtk.PositionType.TOP)
         popup.set_halign(Gtk.Align.START)
         popup.set_size_request(rectangle.width, -1)
         popup.add_tick_callback(self.track_geometry)

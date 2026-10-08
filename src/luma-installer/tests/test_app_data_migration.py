@@ -423,6 +423,37 @@ class NativeDataMigration(unittest.TestCase):
         self.assertTrue((second / '.var/app/org.projectluma.Notes').is_dir())
         self.assertFalse((second / '.var/app/org.projectluma.Notes/data/luma/notes').exists())
 
+    def test_viola_bookmarks_and_history_survive_migration_and_repeat_update(self):
+        profile = self.home / '.local/share/viola-luma/profile/Default'
+        profile.mkdir(parents=True)
+        bookmarks = {'roots': {'bookmark_bar': {'children': [
+            {'name': 'Retained bookmark', 'url': 'https://example.test/bookmark'}]}}}
+        (profile / 'Bookmarks').write_text(json.dumps(bookmarks))
+        database = sqlite3.connect(profile / 'History')
+        database.execute('PRAGMA journal_mode=WAL')
+        database.execute('CREATE TABLE urls(url TEXT, title TEXT)')
+        database.execute('INSERT INTO urls VALUES(?, ?)',
+                         ('https://example.test/visited', 'Retained visit'))
+        database.commit()
+        self.addCleanup(database.close)
+        result = module.migrate('com.rhyme.viola', self.home)
+        target = self.home / '.var/app/com.rhyme.viola/data/viola-luma/profile/Default'
+        self.assertEqual(json.loads((target / 'Bookmarks').read_text()), bookmarks)
+        with sqlite3.connect(target / 'History') as imported:
+            self.assertEqual(imported.execute('SELECT url, title FROM urls').fetchall(),
+                             [('https://example.test/visited', 'Retained visit')])
+        # A later app update must retain newly added sandbox bookmarks rather
+        # than importing the original native snapshot over them again.
+        bookmarks['roots']['bookmark_bar']['children'].append(
+            {'name': 'New bookmark', 'url': 'https://example.test/new'})
+        (target / 'Bookmarks').write_text(json.dumps(bookmarks))
+        module.migrate('com.rhyme.viola', self.home)
+        self.assertEqual(json.loads((target / 'Bookmarks').read_text()), bookmarks)
+        self.assertEqual(len(json.loads((profile / 'Bookmarks').read_text())
+                             ['roots']['bookmark_bar']['children']), 1)
+        self.assertEqual(database.execute('SELECT COUNT(*) FROM urls').fetchone()[0], 1)
+        self.assertTrue(result['native_data_retained'])
+
     def test_viola_profile_only_ignores_live_bridge_socket_sibling(self):
         browser = self.home / '.local/share/viola-luma'
         profile = browser / 'profile'; profile.mkdir(parents=True)

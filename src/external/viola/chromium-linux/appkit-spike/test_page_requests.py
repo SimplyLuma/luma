@@ -61,6 +61,7 @@ class PageRequestsTest(unittest.TestCase):
             return response
         adapter = PageInput.__new__(PageInput)
         adapter.target = adapter.session = adapter.viewport = None
+        adapter.viewport_revision, adapter.viewport_refresh_session = 0, None
         adapter.desired_size = (900, 700, 1.25)
         adapter.resize_inflight, adapter.resize_timer = False, None
         adapter.metrics = {}

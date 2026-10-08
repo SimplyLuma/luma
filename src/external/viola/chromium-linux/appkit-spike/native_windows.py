@@ -96,6 +96,8 @@ class NativeWindows:
         window.favicons = BrowserFavicons(services)
         window.page_input = PageInput(window.page, client, services, scoped_submit,
                                       self.error, input_submit=self.input_submit)
+        window.page_input.on_scroll = window.responsive.page_scrolled
+        window.page_input.on_motion = window.responsive.pointer_moved
         from native_dialogs import NativeDialogs
         context['dialogs'] = NativeDialogs(window)
         window.page_input.on_session_changed = context['dialogs'].sync

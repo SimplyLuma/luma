@@ -32,7 +32,7 @@ class AddressIconTest(unittest.TestCase):
         a, shown, requests = self.adapter()
         a.update_search_icon(1,'tab',[{'type':'url','url':'https://example.com'}, {'type':'search','url':'https://google.com/search?q=example.com'}])
         a.refresh_icon()
-        self.assertEqual(shown[-1],'channel-secure-symbolic')
+        self.assertEqual(shown[-1],'lumaui-shield-check-symbolic')
         self.assertFalse(requests)
 
     def test_late_favicon_cannot_replace_new_input_or_other_tab(self):
@@ -60,7 +60,7 @@ class AddressIconTest(unittest.TestCase):
         self.assertTrue(all(icon is texture for icon in shown))
         self.assertEqual(len(requests),1)
         a.update_search_icon(a.generation,'tab',[{'type':'url','url':'https://example.com'}])
-        self.assertEqual(shown[-1],'channel-secure-symbolic')
+        self.assertEqual(shown[-1],'lumaui-shield-check-symbolic')
 
     def test_empty_input_resets_search_icon_immediately(self):
         a, shown, requests = self.adapter()
@@ -70,13 +70,13 @@ class AddressIconTest(unittest.TestCase):
         a.update_search_icon(1,'tab',[{'type':'search','url':'https://google.com/search?q=cats'}])
         a.changed()
         self.assertIsNone(a.search_destination)
-        self.assertEqual(shown[-1],'channel-secure-symbolic')
+        self.assertEqual(shown[-1],'lumaui-shield-check-symbolic')
 
     def test_blur_restores_connection_icon(self):
         a, shown, requests = self.adapter()
         a.update_search_icon(1,'tab',[{'type':'search','url':'https://google.com/search?q=test'}])
         a.host.address_focused=lambda:False
         a.refresh_icon()
-        self.assertEqual(shown[-1],'channel-secure-symbolic')
+        self.assertEqual(shown[-1],'lumaui-shield-check-symbolic')
 
 if __name__ == '__main__': unittest.main()

@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 35
+%global native_release 36
 # Native release 30's own engine (released already stripped).
 %global engine_release 30
 %global approved_release 20260921-native-30
@@ -29,7 +29,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        13.viola%{viola_build}.native%{native_release}.creator20261008.1%{?dist}
+Release:        14.viola%{viola_build}.native%{native_release}.creator20261008.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -98,14 +98,8 @@ tar -xzf %{SOURCE1} -C host --strip-components=1
 (cd host/appkit-spike && sha256sum -c --quiet ../luma-package/native-%{native_release}-host.sha256)
 
 %build
-# The engine remains the admitted prebuilt release. Render the maintained
-# locked SVG into standard hicolor PNG sizes as part of the normal build.
-mkdir -p host/appkit-spike/assets/viola-icon
-for size in 16 24 32 48 64 128 256 512 1024; do
-  rsvg-convert --width "$size" --height "$size" \
-    host/appkit-spike/assets/org.projectluma.Viola.NativeIntegration.svg \
-    > "host/appkit-spike/assets/viola-icon/viola-$size.png"
-done
+# The host manifest includes the supplied SVG and all nine locked PNGs.
+# Preserve those bytes; do not regenerate artwork during packaging.
 
 %install
 engine=%{buildroot}/opt/viola/browser
@@ -141,10 +135,11 @@ for size in 16 24 32 48 64 128 256 512 1024; do
   install -D -m 0644 "host/appkit-spike/assets/viola-icon/viola-$size.png" \
     %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/viola-browser.png
   ln -s viola-browser.png %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/com.rhyme.viola.png
+  ln -s viola-browser.png %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/com.rhyme.viola.browser.png
 done
 install -D -m 0644 host/appkit-spike/assets/org.projectluma.Viola.NativeIntegration.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/viola-browser.svg
-for name in com.rhyme.viola org.projectluma.Viola.NativeIntegration; do
+for name in com.rhyme.viola com.rhyme.viola.browser org.projectluma.Viola.NativeIntegration; do
   ln -s viola-browser.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/$name.svg
 done
 cp -a system/usr/share/appdata system/usr/share/gnome-control-center system/usr/share/man \
@@ -237,8 +232,10 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_datadir}/applications/com.rhyme.viola.desktop
 %{_datadir}/icons/hicolor/*/apps/viola-browser.png
 %{_datadir}/icons/hicolor/*/apps/com.rhyme.viola.png
+%{_datadir}/icons/hicolor/*/apps/com.rhyme.viola.browser.png
 %{_datadir}/icons/hicolor/scalable/apps/viola-browser.svg
 %{_datadir}/icons/hicolor/scalable/apps/com.rhyme.viola.svg
+%{_datadir}/icons/hicolor/scalable/apps/com.rhyme.viola.browser.svg
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Viola.NativeIntegration.svg
 %{_datadir}/appdata/viola-browser.appdata.xml
 %{_datadir}/gnome-control-center/default-apps/viola-browser.xml
@@ -246,6 +243,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Thu Oct 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-14.viola8210.native36.creator20261008.1
+- Restore qualified shared floating page controls and pointer-and-rings artwork; retain the existing engine, signed host service and profile migration.
+
 * Thu Oct 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-13.viola8210.native35.creator20261008.1
 - Restore the established hidden-engine GTK3 backend, guarantee its runtime dependency, and report abnormal engine termination while retaining the exact native30 engine.
 
