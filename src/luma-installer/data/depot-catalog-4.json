@@ -1392,11 +1392,10 @@
     {
       "app_id": "org.projectluma.Connect",
       "architectures": [
-        "x86_64",
-        "aarch64"
+        "x86_64"
       ],
-      "backend": "rpm",
-      "branch": "stable",
+      "backend": "flatpak",
+      "branch": "beta",
       "categories": [
         "utilities"
       ],
@@ -1422,19 +1421,44 @@
       "id": "connect",
       "license": "Apache-2.0",
       "name": "Luma Connect",
+      "permissions": [
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "session.bus",
+          "level": "sensitive",
+          "names": [
+            "org.projectluma.AppData1",
+            "org.projectluma.Connect1"
+          ]
+        }
+      ],
       "preinstalled_on_luma": true,
       "qualification": "pending",
       "qualification_reason": "Included with Luma.",
       "reference_url": "https://simplyluma.com/apps/connect",
+      "release": {
+        "version": "0.64.0",
+        "date": "2026-10-09",
+        "download_bytes": 153608,
+        "installed_bytes": 278016
+      },
       "repository": "luma",
       "screenshots_pending": "Shows only sign-in and an empty state without an account and a paired phone.",
       "sign_in": "none",
-      "source_id": "luma-continuity",
+      "source_id": "org.projectluma.Connect",
       "sources": {
         "luma_system": {
           "package": "luma-continuity",
           "desktop_id": "org.projectluma.Connect.desktop",
           "removable": false
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Connect",
+          "branch": "beta"
         }
       },
       "summary": "Your Luma account, its devices and your phones.",
