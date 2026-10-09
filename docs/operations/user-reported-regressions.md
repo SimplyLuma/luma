@@ -47,4 +47,7 @@ available. Add coverage at the boundary the user actually encountered.
   did not claim a successful live-account sync test.
 - Regression coverage: must exercise the sync request and returned outcome,
   including retained account authentication; a device-list test is insufficient.
+- Diagnostic: `scripts/diagnostics/connect-routing.py` checks fixed Hub routes
+  using the local registration, without changing it or printing credentials,
+  account details, or synced content.
 - First shipped correction: pending.
