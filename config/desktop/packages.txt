@@ -103,7 +103,7 @@ python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 luma-android-runtime-0.1.0-1.luma.80.creator20261007.1.fc44.noarch
 luma-android-images-20.0-1.luma.9.creator20261008.1.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.x86_64
-luma-application-installer-0.1.0-1.luma.68.creator20261008.1.fc44.noarch
+luma-application-installer-0.1.0-1.luma.69.creator20261009.1.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
 luma-homebrew-0.1.0-1.luma.1.fc44.noarch
 luma-relay-0.1.0-1.luma.12.fc44.noarch

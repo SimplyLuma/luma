@@ -152,7 +152,7 @@ class AppUpdateRun:
             title = f"{len(held)} app updates ask for more"
         notification = Gio.Notification.new(title)
         notification.set_body("Look at what changes in Depot before they update. Nothing changes until you do.")
-        notification.set_default_action_and_target_value("app.show-view", GLib.Variant.new_string("updates"))
+        notification.set_default_action_and_target("app.show-view", GLib.Variant.new_string("updates"))
         try:
             self.application.send_notification("held-app-updates", notification)
         except GLib.Error:
@@ -167,7 +167,7 @@ class AppUpdateRun:
         notification = Gio.Notification.new(title)
         notification.set_body("Running apps keep their current version until you open them again."
                               if completed else "Open Updates in Depot to review and install them.")
-        notification.set_default_action_and_target_value("app.show-view", GLib.Variant.new_string("updates"))
+        notification.set_default_action_and_target("app.show-view", GLib.Variant.new_string("updates"))
         try:
             self.application.send_notification("completed-app-updates" if completed else "available-app-updates",
                                                notification)
@@ -189,7 +189,7 @@ class AppUpdateRun:
         notification = Gio.Notification.new(title)
         notification.set_body("Install it in Depot when this computer is connected to power. "
                               "Nothing is installed without you.")
-        notification.set_default_action_and_target_value("app.show-view", GLib.Variant.new_string("updates"))
+        notification.set_default_action_and_target("app.show-view", GLib.Variant.new_string("updates"))
         try:
             self.application.send_notification("security-firmware", notification)
         except GLib.Error:

@@ -215,7 +215,7 @@ class ProvisionRun:
     def _notify(self) -> None:
         notification = Gio.Notification.new(self.headline())
         notification.set_body(self.detail())
-        notification.set_default_action_and_target_value("app.show-view", GLib.Variant.new_string("mine"))
+        notification.set_default_action_and_target("app.show-view", GLib.Variant.new_string("mine"))
         try:
             self.application.send_notification("first-boot-apps", notification)
         except GLib.Error:

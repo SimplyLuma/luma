@@ -176,6 +176,26 @@ def installed_flatpak_refs():
     return found
 
 
+def installed_source(record, refs):
+    """Associate a canonical Luma launcher with its installed Flatpak owner."""
+    source = (record.app_info.get_string('X-Flatpak')
+              if hasattr(record.app_info, 'get_string') else None)
+    if source:
+        return source
+    # Older images put a native launcher ahead of Flatpak's exported desktop
+    # file. Its canonical id still names the managed app, but X-Flatpak is
+    # absent. Infer ownership only from that exact id and an installed ref
+    # from a known remote, never from a display name or catalogue alias.
+    from luma_installer.depot_flatpak import APPLICATION_SOURCES
+    candidate = record.desktop_id.removesuffix('.desktop')
+    ref = refs.get(candidate)
+    if (record.desktop_id == candidate + '.desktop'
+            and candidate in APPLICATION_SOURCES.values()
+            and ref is not None and ref[1].get_origin() in _SOURCE_TITLES):
+        return candidate
+    return None
+
+
 def runtime_installed(name):
     """Whether any installation has runtime ``name`` (any branch or arch)."""
     import gi
@@ -495,8 +515,7 @@ class NativeInstallation:
                     records.append(InstalledApp(identity, channel['version'], channel['bytes'],
                                                 app=app_for_installed(record), managed=channel['managed']))
                     continue
-                source = (record.app_info.get_string('X-Flatpak')
-                          if hasattr(record.app_info, 'get_string') else None)
+                source = installed_source(record, refs)
                 ref = refs.get(source) if source else None
                 pending = self._compared_update(updates.get(source), ref[1] if ref else None)
                 is_managed = bool(ref and source in managed and ref[1].get_origin() in _SOURCE_TITLES)
