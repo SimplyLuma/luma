@@ -38,10 +38,12 @@ def digest(path):
 def release_evidence(manifest_path, record):
     """Read the exact evidence hashes recorded by normal state preparation."""
     evidence = {}
-    for name in ('delivery', 'gate'):
+    for name in ('delivery', 'gate', 'provenance'):
         hash_key = name + '_sha256'
         if hash_key in record:
-            original = manifest_path.parent / ('PUBLIC-DELIVERY.json' if name == 'delivery' else 'gate-result.json')
+            filename = {'delivery': 'PUBLIC-DELIVERY.json', 'gate': 'gate-result.json',
+                        'provenance': 'provenance.json'}[name]
+            original = manifest_path.parent / filename
             protected(original)
             if digest(original) != record[hash_key]:
                 raise ValueError('Publication evidence changed')
@@ -114,6 +116,8 @@ def main():
         evidence=release_evidence(path,record)
         if 'gate' in evidence and record['gate_sha256']!=manifest.get('gate',{}).get('sha256'):
             raise ValueError('Passing gate hash differs from the genuine publication manifest')
+        if 'provenance' in evidence and record['provenance_sha256']!=manifest.get('provenance_sha256'):
+            raise ValueError('Source provenance differs from the genuine publication manifest')
         checks.admitted_release(release,manifest,public_repository_url=public_repository_url,**evidence)
         commit=repo/'objects'/release['commit'][:2]/(release['commit'][2:]+'.commit')
         if not commit.is_file(): raise ValueError('Approved release backend is missing; preserve the old feed')

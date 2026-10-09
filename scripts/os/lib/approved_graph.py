@@ -10,7 +10,7 @@ def same_policy(approved, served):
     if policy(approved) != policy(served):
         raise ValueError('The published policy changed; admit its new approved refresh state before replacing it')
 
-def admitted_release(release, manifest, delivery=None, gate=None, public_repository_url=None):
+def admitted_release(release, manifest, delivery=None, gate=None, public_repository_url=None, provenance=None):
     if (release['commit'], release['version'], release['released_at']) != (
             manifest['commit'], manifest['version'], manifest['published_utc']):
         raise ValueError('Approved graph and genuine publication manifest disagree')
@@ -19,7 +19,17 @@ def admitted_release(release, manifest, delivery=None, gate=None, public_reposit
                 or release['paused'] is not True or manifest['bootstrap'].get('paused') is not True):
             raise ValueError('The initial installation baseline must remain paused')
         return
-    if manifest.get('source_dirty') is not False or manifest.get('gate', {}).get('result') != 'pass':
+    # Normal publication binds provenance by hash; source cleanliness lives
+    # in that document, rather than in the release manifest itself.
+    dirty = manifest.get('source_dirty')
+    if provenance is not None:
+        source = provenance.get('source', {})
+        if source.get('revision') != manifest.get('source_revision'):
+            raise ValueError('Published source revision and provenance disagree')
+        if dirty is not None and dirty != source.get('dirty'):
+            raise ValueError('Published source cleanliness and provenance disagree')
+        dirty = source.get('dirty')
+    if dirty is not False or manifest.get('gate', {}).get('result') != 'pass':
         raise ValueError('Only a clean, gate-qualified published release can be refreshed')
     if not gate or gate.get('commit') != release['commit'] or gate.get('result') != 'pass':
         raise ValueError('The release lacks its genuine passing gate evidence')

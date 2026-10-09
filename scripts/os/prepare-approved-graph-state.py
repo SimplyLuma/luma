@@ -44,12 +44,15 @@ def main():
         if manifest['channel']!=channel:raise ValueError('Wrong genuine publication channel')
         record={'manifest_sha256':runner.digest(path)};evidence={}
         if manifest.get('bootstrap') is None:
-            for name,filename in (('gate','gate-result.json'),('delivery','PUBLIC-DELIVERY.json')):
+            for name,filename in (('gate','gate-result.json'),('delivery','PUBLIC-DELIVERY.json'),
+                                  ('provenance','provenance.json')):
                 original=path.parent/filename;runner.protected(original)
                 record[name+'_sha256']=runner.digest(original)
                 evidence[name]=json.loads(original.read_text())
             if record['gate_sha256']!=manifest['gate']['sha256']:
                 raise ValueError('Gate evidence differs from the signed publication manifest')
+            if record['provenance_sha256']!=manifest['provenance_sha256']:
+                raise ValueError('Source provenance differs from the signed publication manifest')
         checks.admitted_release(release,manifest,public_repository_url=selected['public_repository_url'],**evidence)
         records[release['commit']]=record
     if target.exists():raise ValueError('Refusing to alter an existing approval snapshot')

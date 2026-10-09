@@ -25,6 +25,30 @@ class ApprovedRefresh(unittest.TestCase):
     def test_qualified_delivered_release_is_admitted(self):
         graph.admitted_release(self.release,self.manifest,self.delivery,self.gate)
 
+    def test_normal_manifest_reads_clean_source_from_bound_provenance(self):
+        manifest={k:v for k,v in self.manifest.items() if k!='source_dirty'}
+        manifest['source_revision']='c'*40
+        provenance={'source':{'revision':'c'*40,'dirty':False}}
+        graph.admitted_release(self.release,manifest,self.delivery,self.gate,provenance=provenance)
+        for source in ({'revision':'d'*40,'dirty':False}, {'revision':'c'*40,'dirty':True},
+                       {'revision':'c'*40}):
+            with self.subTest(source=source),self.assertRaises(ValueError):
+                graph.admitted_release(self.release,manifest,self.delivery,self.gate,
+                                       provenance={'source':source})
+
+    def test_normal_provenance_is_loaded_and_cannot_change_after_approval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest=Path(directory)/'manifest.json'
+            path=manifest.parent/'provenance.json'
+            provenance={'source':{'revision':'c'*40,'dirty':False}}
+            path.write_text(json.dumps(provenance))
+            record={'provenance_sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+            with mock.patch.object(refresh,'protected'):
+                self.assertEqual(refresh.release_evidence(manifest,record),{'provenance':provenance})
+                path.write_text(json.dumps({'source':{'revision':'c'*40,'dirty':True}}))
+                with self.assertRaises(ValueError):
+                    refresh.release_evidence(manifest,record)
+
     def test_prepared_hash_record_loads_real_gate_and_delivery_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             manifest=Path(directory)/'manifest.json'
