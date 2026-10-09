@@ -12,7 +12,7 @@ class ApprovedRefresh(unittest.TestCase):
         self.release={'commit':'a'*64,'version':'1.0.0-beta.1.1','released_at':'2026-10-09T12:00:00Z','paused':False}
         self.manifest={'commit':'a'*64,'version':'1.0.0-beta.1.1','published_utc':self.release['released_at'],
                        'source_dirty':False,'gate':{'result':'pass'},'parent':'b'*64}
-        self.gate={'commit':'a'*64,'result':'pass','fresh':'pass','no_account':'pass','upgrade':'pass','rollback':'pass'}
+        self.gate={'commit':'a'*64,'result':'pass','fresh':'pass','no_account':'pass','update':'pass','rollback':'pass'}
         self.delivery={'schema':'org.projectluma.os-public-delivery/v1','commit':'a'*64,
                        'complete_closure_readback':True,'commit_signature_verified':True,'summary_signature_verified':True}
 
@@ -44,9 +44,15 @@ class ApprovedRefresh(unittest.TestCase):
             with self.subTest(gate=gate),self.assertRaises(ValueError):
                 graph.admitted_release(self.release,self.manifest,self.delivery,gate)
 
-    def test_initial_channel_can_have_not_applicable_upgrade_gates(self):
+    def test_upgrade_alias_does_not_replace_required_update_gate(self):
+        alias={key:value for key,value in self.gate.items() if key!='update'}
+        alias['upgrade']='pass'
+        with self.assertRaises(ValueError):
+            graph.admitted_release(self.release,self.manifest,self.delivery,alias)
+
+    def test_initial_channel_can_have_not_applicable_update_gates(self):
         graph.admitted_release(self.release,{**self.manifest,'parent':None},self.delivery,
-                               {**self.gate,'upgrade':'not-applicable','rollback':'not-applicable'})
+                               {**self.gate,'update':'not-applicable','rollback':'not-applicable'})
 
     def test_nightly_staging_label_is_not_proof_of_public_delivery(self):
         public='https://dl.simplyluma.com/os/repo'

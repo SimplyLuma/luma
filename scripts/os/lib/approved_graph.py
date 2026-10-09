@@ -25,7 +25,7 @@ def admitted_release(release, manifest, delivery=None, gate=None, public_reposit
         raise ValueError('The release lacks its genuine passing gate evidence')
     if any(gate.get(stage) != 'pass' for stage in ('fresh', 'no_account')):
         raise ValueError('Fresh and no-account release gates are required')
-    for stage in ('upgrade', 'rollback'):
+    for stage in ('update', 'rollback'):
         accepted = ('pass',) if manifest.get('parent') else ('pass', 'not-applicable')
         if gate.get(stage) not in accepted:
             raise ValueError('Upgrade and rollback release gates are required')
