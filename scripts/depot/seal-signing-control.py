@@ -100,7 +100,11 @@ def seal(source, target, inputs=False, graph=False):
         source / 'packaging/flatpak/apps/titles.json',
         source / 'assets/icon-theme/Prairie/scalable/apps/org.projectluma.Depot.svg',
         source / 'src/luma-installer/luma_installer/__init__.py',
-        source / 'src/luma-installer/luma_installer/depot_permissions.py']
+        source / 'src/luma-installer/luma_installer/depot_permissions.py',
+        # The catalogue signer validates legacy documents with the same
+        # parser clients use. Keep those imports inside the sealed control.
+        source / 'src/luma-installer/luma_installer/depot_catalog.py',
+        source / 'src/luma-installer/luma_installer/depot_signature.py']
     records = {}
     for path in sorted(selected):
         if '__pycache__' in path.parts: continue
