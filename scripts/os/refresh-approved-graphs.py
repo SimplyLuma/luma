@@ -35,6 +35,19 @@ def module(path, name):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def release_evidence(manifest_path, record):
+    """Read the exact evidence hashes recorded by normal state preparation."""
+    evidence = {}
+    for name in ('delivery', 'gate'):
+        hash_key = name + '_sha256'
+        if hash_key in record:
+            original = manifest_path.parent / ('PUBLIC-DELIVERY.json' if name == 'delivery' else 'gate-result.json')
+            protected(original)
+            if digest(original) != record[hash_key]:
+                raise ValueError('Publication evidence changed')
+            evidence[name] = json.loads(original.read_text())
+    return evidence
+
 def main():
     if os.getuid() or len(sys.argv) not in (6,7):
         raise ValueError('Root-only usage: CONTROL CONTROL_SHA STATE STATE_SHA CHANNEL')
@@ -98,13 +111,7 @@ def main():
         if digest(path)!=record['manifest_sha256']: raise ValueError('Published release manifest changed')
         manifest=json.loads(path.read_text())
         if manifest['channel']!=channel: raise ValueError('Published release channel changed')
-        evidence={}
-        for name in ('delivery','gate'):
-            if name in record:
-                original=path.parent/('PUBLIC-DELIVERY.json' if name=='delivery' else 'gate-result.json')
-                protected(original)
-                if digest(original)!=record[name+'_sha256']: raise ValueError('Publication evidence changed')
-                evidence[name]=json.loads(original.read_text())
+        evidence=release_evidence(path,record)
         if 'gate' in evidence and record['gate_sha256']!=manifest.get('gate',{}).get('sha256'):
             raise ValueError('Passing gate hash differs from the genuine publication manifest')
         checks.admitted_release(release,manifest,public_repository_url=public_repository_url,**evidence)

@@ -1,11 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+import hashlib
+import json
+import tempfile
+from unittest import mock
 import importlib.util
 from pathlib import Path
 import unittest
 ROOT=Path(__file__).parents[2]
 spec=importlib.util.spec_from_file_location('approved_graph',ROOT/'scripts/os/lib/approved_graph.py')
 graph=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph)
+spec=importlib.util.spec_from_file_location('refresh_graph',ROOT/'scripts/os/refresh-approved-graphs.py')
+refresh=importlib.util.module_from_spec(spec);spec.loader.exec_module(refresh)
 
 class ApprovedRefresh(unittest.TestCase):
     def setUp(self):
@@ -18,6 +24,32 @@ class ApprovedRefresh(unittest.TestCase):
 
     def test_qualified_delivered_release_is_admitted(self):
         graph.admitted_release(self.release,self.manifest,self.delivery,self.gate)
+
+    def test_prepared_hash_record_loads_real_gate_and_delivery_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest=Path(directory)/'manifest.json'
+            manifest.write_text(json.dumps(self.manifest))
+            record={}
+            for name,filename,value in (('gate','gate-result.json',self.gate),
+                                       ('delivery','PUBLIC-DELIVERY.json',self.delivery)):
+                path=manifest.parent/filename;path.write_text(json.dumps(value))
+                record[name+'_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+            # Deployment-path ownership is independently enforced by the root
+            # control verifier; this fixture exercises evidence admission.
+            with mock.patch.object(refresh,'protected'):
+                evidence=refresh.release_evidence(manifest,record)
+            self.assertEqual(evidence,{'gate':self.gate,'delivery':self.delivery})
+            graph.admitted_release(self.release,self.manifest,**evidence)
+            with self.assertRaises(ValueError):
+                graph.admitted_release(self.release,self.manifest,
+                    **{**evidence,'gate':{**evidence['gate'],'update':'fail'}})
+
+    def test_prepared_evidence_bytes_cannot_change_after_approval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest=Path(directory)/'manifest.json'
+            (manifest.parent/'gate-result.json').write_text(json.dumps(self.gate))
+            with mock.patch.object(refresh,'protected'),self.assertRaises(ValueError):
+                refresh.release_evidence(manifest,{'gate_sha256':'0'*64})
 
     def test_signature_timestamp_refresh_keeps_exact_policy(self):
         before={'channel':'beta','generated_at':'old','releases':[self.release]}
