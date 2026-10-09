@@ -12,7 +12,9 @@ export async function run() {
     const original = settings.get_strv('favorite-apps');
     const favorites = AppFavorites.getAppFavorites();
     const before = favorites._getIds();
-    const app = Shell.AppSystem.get_default().get_installed()
+    const system = Shell.AppSystem.get_default();
+    const app = system.get_installed().map(info => system.lookup_app(info.get_id()))
+        .filter(candidate => candidate !== null)
         .find(candidate => !before.includes(candidate.get_id()) &&
             ParentalControlsManager.getDefault().shouldShowApp(candidate.app_info));
     if (!app) throw new Error('An installed, unpinned application is required');

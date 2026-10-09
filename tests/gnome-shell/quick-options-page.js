@@ -39,6 +39,9 @@ const item = {
 const host = {
     _grid: {layout_manager: {child_set_property() {}}},
     _pages: {add_child() {}},
+    // Use the real late-indicator adoption method. Without Studio utilities,
+    // ordinary embedded pages retain their original menu ownership behavior.
+    _adoptStudioTiling: new Function('item', method(quick, '_adoptStudioTiling')),
 };
 const PopupMenu = {PopupSeparatorMenuItem: class {}};
 new Function('item', 'colSpan', 'PopupMenu', method(quick, '_completeAddItem'))
