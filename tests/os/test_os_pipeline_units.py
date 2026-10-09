@@ -147,13 +147,14 @@ class ReleaseIdentityTests(unittest.TestCase):
         text = release_identity.render_os_release(ident, channel, build, day, "2026-10-01")
         return text, dict(line.split("=", 1) for line in text.splitlines())
 
-    def test_contract_names_prairie_beta_1(self):
+    def test_contract_advances_installed_prairie_beta_1(self):
         ident = release_identity.load(os.path.join(ROOT, "config", "os", "release.env"))
-        self.assertEqual(release_identity.display_name(ident, "beta"), "Luma (Prairie, Beta 1)")
-        self.assertEqual(release_identity.machine_version(ident, "beta", "20261008.1"),
-                         "1.0.0-beta.1")
+        self.assertEqual(release_identity.display_name(ident, "beta"), "Luma (Prairie, Beta 1.1)")
+        next_version = release_identity.machine_version(ident, "beta", "20261009.1")
+        self.assertEqual(next_version, "1.0.0-beta.1.1")
+        self.assertGreater(versions.compare(next_version, "1.0.0-beta.1"), 0)
         self.assertEqual(release_identity.display_name(ident, "nightly", "2026-09-16"),
-                         "Luma (Prairie, Beta 1, Nightly 20260916)")
+                         "Luma (Prairie, Beta 1.1, Nightly 20260916)")
 
     def test_owner_names(self):
         self.assertEqual(release_identity.display_name(identity(), "nightly", "2026-09-16"),
