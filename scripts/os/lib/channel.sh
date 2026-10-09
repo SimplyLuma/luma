@@ -91,6 +91,9 @@ luma_os_advance_channel() {
   if [ -n "$head" ] && [ "$LUMA_OS_EMPTY_DELTA" = 1 ]; then
     ostree static-delta delete --repo="$repo" "$head" >/dev/null 2>&1 || true
   fi
+  # Delta generation can outlive the agent's preset or its root login session.
+  # Refresh the protected unlock at the actual summary-signing boundary.
+  luma_os_gpg_unlock
   ostree summary --repo="$repo" --update \
     --gpg-sign="$(luma_os_gpg_fingerprint)" --gpg-homedir="$(luma_os_gpg_home)" \
     --add-metadata="org.projectluma.generated-utc='$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
