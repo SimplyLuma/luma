@@ -53,11 +53,13 @@ def readability_account(pre_account=False):
                 'The pre-account gate must run before UID1000 exists.')
         interactive = [account for account in accounts
                        if account.pw_uid >= 1000
-                       and not (account.pw_uid == 65534 and account.pw_name == 'nobody')
+                       and account.pw_name != 'nobody'
                        and Path(account.pw_shell).name not in ('nologin', 'false')]
         require(not interactive, 'The pre-account gate found an existing interactive account.')
         ordinary = pwd.getpwnam('nobody')
-        require(ordinary.pw_uid == 65534 and ordinary.pw_gid != 0,
+        require(ordinary.pw_name == 'nobody' and ordinary.pw_uid > 0
+                and ordinary.pw_gid > 0
+                and Path(ordinary.pw_shell).name in ('nologin', 'false'),
                 'The pre-account query requires the existing unprivileged nobody identity.')
     else:
         ordinary = pwd.getpwuid(1000)

@@ -41,6 +41,15 @@ class RemovalReadabilityPhaseTests(unittest.TestCase):
     def test_preaccount_selects_real_nonroot_system_identity(self):
         self.assertIs(self.module['readability_account'](True), self.nobody)
 
+    def test_preaccount_uses_fedora_nobody_identity(self):
+        self.nobody = account('nobody', 99, 99, '/usr/sbin/nologin')
+        self.assertIs(self.module['readability_account'](True), self.nobody)
+
+    def test_preaccount_refuses_interactive_nobody_identity(self):
+        self.module['pwd'].getpwnam = lambda name: account('nobody', 99, 99)
+        with self.assertRaisesRegex(ValueError, 'unprivileged nobody'):
+            self.module['readability_account'](True)
+
     def test_preaccount_refuses_existing_uid1000_even_without_login_shell(self):
         self.module['pwd'].getpwall = lambda: [account('service', 1000, shell='/sbin/nologin')]
         with self.assertRaisesRegex(ValueError, 'before UID1000'):
