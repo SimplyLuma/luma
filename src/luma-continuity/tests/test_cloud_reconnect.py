@@ -10,7 +10,7 @@ from unittest.mock import patch
 from luma_continuity.cloud_sync import CloudSync, DEFAULT_HUB, connect_problem
 from luma_continuity.connect_cloud_contract import command_plan
 from prairie_apps.connect_sync import (ConnectError, DeviceIdentity, HubResponseError,
-    device_file, enrol, load_identity, save_identity)
+    HubClient, _push_once, device_file, enrol, load_identity, save_identity)
 
 class ExplicitReconnect(unittest.TestCase):
     def setUp(self):
@@ -52,6 +52,25 @@ class ExplicitReconnect(unittest.TestCase):
                 self.assertEqual((self.local.read_bytes(),self.service.read_bytes()),before)
                 self.assertEqual(load_identity(self.environment),self.identity)
         self.system.assert_not_called()
+    def test_first_sync_request_uses_new_saved_token_after_accepted_replacement(self):
+        self.submit(lambda *args,**kwargs:{'device_id':'new-device','token':'synthetic-valid-token'})
+        class ProbeComplete(Exception):
+            pass
+        requests=[]
+        def capture(request,timeout):
+            requests.append(request)
+            # Stop at the actual HTTP boundary; this fixture proves bearer
+            # replacement, not a full service sync or production Hub access.
+            raise ProbeComplete()
+        client=HubClient()
+        with patch.object(client,'_open',side_effect=capture),self.assertRaises(ProbeComplete):
+            _push_once(hub=DEFAULT_HUB,dry_run=False,environment=self.environment,
+                transport=lambda *args,**kwargs:None,contacts_loader=None,
+                notes_path=None,out=io.StringIO(),force=True,http=client)
+        self.assertEqual(len(requests),1)
+        self.assertEqual(requests[0].full_url,DEFAULT_HUB+'/api/hub/sync/events?after=0&wait=0')
+        self.assertEqual(requests[0].get_header('Authorization'),'Bearer synthetic-valid-token')
+        self.assertEqual(load_identity(self.environment).device_id,'new-device')
     def test_cli_without_explicit_force_remains_idempotent(self):
         def no_request(*args,**kwargs):raise AssertionError('Unexpected enrollment')
         self.assertEqual(enrol(code='ABCDEFGH',hub=DEFAULT_HUB,environment=self.environment,
@@ -68,6 +87,29 @@ class ExplicitReconnect(unittest.TestCase):
             'This computer needs to be connected to Luma Connect again.')
         self.assertEqual(connect_problem('Hub refused this code.'),'Hub refused this code.')
         self.assertIsNone(connect_problem(None))
+    def test_status_normalizes_older_host_nested_problem(self):
+        client=CloudSync();observed=[]
+        client._run=lambda arguments,timeout,done:done(0,None,
+            '{"signed_in":false,"problem":"This computer needs to be connected to Luma Cloud again."}')
+        client.status(lambda report,problem:observed.append((report,problem)))
+        self.assertFalse(observed[0][0]['signed_in'])
+        self.assertEqual(observed[0][0]['problem'],'This computer needs to be connected to Luma Connect again.')
+        self.assertIsNone(observed[0][1])
+    def test_native_other_failure_normalizes_older_engine_wording(self):
+        from gi.repository import GLib
+        from types import SimpleNamespace
+        class ImmediateThread:
+            def __init__(self,*,target,**kwargs):self.target=target
+            def start(self):self.target()
+        observed=[]
+        with patch.dict(os.environ,{'FLATPAK_ID':''}), \
+             patch('luma_continuity.cloud_sync.command',return_value='/synthetic/luma-connect-sync'), \
+             patch('luma_continuity.cloud_sync.threading.Thread',ImmediateThread), \
+             patch('luma_continuity.cloud_sync.subprocess.run',return_value=SimpleNamespace(
+                 returncode=1,stdout='',stderr='luma-connect-sync: Luma Cloud refused this request.')), \
+             patch.object(GLib,'idle_add',side_effect=lambda fn,*args:fn(*args)):
+            CloudSync().sync_now(lambda problem:observed.append(problem))
+        self.assertEqual(observed,['Luma Connect refused this request.'])
     def test_sandbox_translates_existing_and_new_internal_argument_shapes(self):
         from gi.repository import Gio,GLib
         client=CloudSync();base=['enrol','--hub',DEFAULT_HUB,'--code','ABCDEFGH','--name','Laptop']

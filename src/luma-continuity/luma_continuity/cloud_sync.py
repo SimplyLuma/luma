@@ -113,7 +113,7 @@ class CloudSync:
             elif code != 0:
                 last = (err or out).strip().splitlines()[-1:] or ['']
                 problem = last[0].removeprefix('luma-connect-sync: ') or 'Luma Connect could not be reached. Try again.'
-            GLib.idle_add(done, code, problem, out)
+            GLib.idle_add(done, code, connect_problem(problem), out)
 
         threading.Thread(target=worker, daemon=True, name='luma-cloud-sync').start()
 
@@ -165,6 +165,8 @@ class CloudSync:
             if code == 0:
                 try:
                     report = json.loads(out)
+                    if isinstance(report, dict):
+                        report['problem'] = connect_problem(report.get('problem'))
                 except ValueError:
                     problem = 'Luma Connect sync gave an answer this app does not understand.'
             callback(report, problem)
