@@ -20,8 +20,9 @@ available. Add coverage at the boundary the user actually encountered.
   service. The original view fails the hidden-bar assertion before any native
   write. The corrected view passes desktop and compact runs: mapped Apply/Keep
   clicks, scale/main-display retention after reopening, Cancel without writes,
-  and exact Revert. These use the shipped platform107 runtime. Packaged checks
-  and delivery remain pending.
+  and exact Revert. These use the shipped platform107 runtime. Settings51's
+  normal packaged checks passed, including 22 Meson checks and the scroll-speed
+  check. Signed OS delivery remains pending.
 - First shipped version: pending.
 - Temporary workaround: use `org.projectluma.Displays` and Keep Arrangement.
 
@@ -45,6 +46,11 @@ available. Add coverage at the boundary the user actually encountered.
 - Status: investigating sync authentication and the app-to-host broker.
   Device listing is not proof that sync is authenticated. The prior release
   did not claim a successful live-account sync test.
+- Confirmed client behavior: account status and sync reuse the same saved
+  device bearer. Native sync starts with the events request; a 401 becomes
+  exit code 3, which the app translates into the generic reconnect message.
+  The XPS's actual failing route and response remain unverified; do not
+  discard its registration or assume that signing in again fixes the cause.
 - Regression coverage: must exercise the sync request and returned outcome,
   including retained account authentication; a device-list test is insufficient.
 - Diagnostic: `scripts/diagnostics/connect-routing.py` checks fixed Hub routes
