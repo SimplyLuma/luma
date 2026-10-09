@@ -40,6 +40,7 @@ def observe(pid, url):
     environment = dict(part.split(b'=',1) for part in (process/'environ').read_bytes().split(b'\0') if b'=' in part)
     record = {'pid':pid, 'name':metadata['Application']['name'],
               'app_path':metadata['Instance']['app-path'],
+              'instance_id':metadata['Instance']['instance-id'],
               'flatpak_id':environment.get(b'FLATPAK_ID',b'').decode(),
               'exe':os.readlink(process/'exe'),
               'argv':[part.decode() for part in (process/'cmdline').read_bytes().split(b'\0') if part]}

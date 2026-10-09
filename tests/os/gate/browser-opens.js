@@ -4,6 +4,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
+Gio._promisify(Gio.Subprocess.prototype, 'wait_async', 'wait_finish');
 
 const OUT = GLib.getenv('BROWSER_GATE_OUT');
 const URL = GLib.getenv('BROWSER_GATE_URL');
@@ -27,7 +28,7 @@ async function launch(url, requirePage) {
     const app=browser();
     if (!app) throw new Error('Shell does not know the canonical browser');
     if (app.get_windows().length) {
-        app.request_quit();
+        for (const window of app.get_windows()) window.delete(global.get_current_time());
         if (!await until(()=>app.get_windows().length===0,15000)) throw new Error('browser did not close');
     }
     const launcher=new Gio.SubprocessLauncher({flags:Gio.SubprocessFlags.STDOUT_PIPE|Gio.SubprocessFlags.STDERR_PIPE});
@@ -53,7 +54,21 @@ async function launch(url, requirePage) {
         new GLib.Variant('(as)',[names.map(name=>`${name}=${activation[name]}`)]),
         null,Gio.DBusCallFlags.NONE,5000,null);
     if (managerReply.get_type_string() !== '()') throw new Error('unexpected user-manager environment reply');
-    const opened=await capture(launcher.spawnv(['/usr/bin/timeout','-k','5','90','/usr/bin/xdg-open',url]));
+    // A graphical app may inherit xdg-open's output descriptors after the
+    // launcher exits. Wait for the launcher, not for the app to close its pipes.
+    const opener=new Gio.SubprocessLauncher({flags:Gio.SubprocessFlags.NONE});
+    for (const name of [...names,'DBUS_SESSION_BUS_ADDRESS','XDG_RUNTIME_DIR']) {
+        const value=launcher.getenv(name);
+        if (value) opener.setenv(name,value,true);
+    }
+    opener.unsetenv('DISPLAY');
+    const prefix=`${OUT}/xdg-open-${requirePage?'http':'https'}`;
+    opener.set_stdout_file_path(`${prefix}.stdout`);
+    opener.set_stderr_file_path(`${prefix}.stderr`);
+    const opening=opener.spawnv(['/usr/bin/timeout','-k','5','90','/usr/bin/xdg-open',url]);
+    await opening.wait_async(null);
+    const readLog=path=>new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+    const opened={ok:opening.get_successful(),stdout:readLog(`${prefix}.stdout`),stderr:readLog(`${prefix}.stderr`)};
     if (!opened.ok) throw new Error(`xdg-open failed: ${opened.stderr}`);
     const window=await until(()=>browser()?.get_windows().find(w=>w.get_frame_rect().width>0 && w.get_frame_rect().height>0 && w.get_compositor_private() && w.showing_on_its_workspace()),60000);
     if (!window) {
@@ -73,8 +88,18 @@ async function launch(url, requirePage) {
         throw new Error('the browser did not request the unique local page');
     check(requirePage?'signed-browser-loads-requested-page':'xdg-open-https-launches-viola',true,
         JSON.stringify({window_id:window.get_stable_sequence(),app_id:browser().get_id(),url,proof:observed}));
-    app.request_quit();
-    if (!await until(()=>app.get_windows().length===0,15000)) throw new Error('browser did not close after proof');
+    window.delete(global.get_current_time());
+    if (!await until(()=>!global.get_window_actors().some(actor=>actor.meta_window === window),15000)) throw new Error(`browser did not close after proof: ${JSON.stringify({time:global.get_current_time(),appWindows:app.get_windows().map(w=>({id:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),canClose:w.can_close()})),actors:global.get_window_actors().map(a=>({id:a.meta_window.get_stable_sequence(),title:a.meta_window.get_title()}))})}`);
+    // Each URL proof starts a separate disposable Flatpak instance. A closed
+    // frame need not stop the app's backend or its GApplication forwarding.
+    const instance=observed.record.instance_id;
+    if (typeof instance !== 'string' || !/^[0-9]+$/.test(instance))
+        throw new Error('the proven browser has no valid Flatpak instance identity');
+    const stopped=await capture(launcher.spawnv(['/usr/bin/flatpak','kill',instance]));
+    if (!stopped.ok && GLib.file_test(`/proc/${observed.record.pid}`,GLib.FileTest.EXISTS))
+        throw new Error(`disposable browser instance cleanup failed: ${stopped.stderr}`);
+    if (!await until(()=>!GLib.file_test(`/proc/${observed.record.pid}`,GLib.FileTest.EXISTS),30000))
+        throw new Error(`the closed browser host is still alive: ${observed.record.pid}`);
 }
 export function init() {
     GLib.timeout_add(GLib.PRIORITY_DEFAULT,5000,()=>{
