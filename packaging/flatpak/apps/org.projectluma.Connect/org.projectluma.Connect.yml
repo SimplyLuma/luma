@@ -13,7 +13,7 @@
     "--device=dri",
     "--talk-name=org.projectluma.Connect1",
     "--talk-name=org.projectluma.AppData1",
-    "--metadata=X-Luma=min-host-continuity=63"
+    "--metadata=X-Luma=min-host-continuity=65"
   ],
   "modules": [
     {
