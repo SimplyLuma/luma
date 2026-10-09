@@ -81,6 +81,13 @@ luma_os_graph_tools() {
   fi
   local access=ro
   [ "$mode" != sign ] || access=rw
+  # Unlocking the existing encrypted minisign key needs slightly over 1 GiB
+  # for its KDF. Keep verification small; give signing bounded headroom.
+  local memory=1g memory_swap=1250m
+  if [ "$mode" = sign ]; then
+    memory=2g
+    memory_swap=2500m
+  fi
   local mounts=(--volume "$minisign_dir/luma-update-graph.pub:$minisign_dir/luma-update-graph.pub:ro")
   if [ "$mode" = sign ]; then
     mounts+=(--volume "$minisign_dir/luma-update-graph.key:$minisign_dir/luma-update-graph.key:ro")
@@ -96,7 +103,7 @@ luma_os_graph_tools() {
   # boundary. Private key bytes are read-only, and the passphrase stays stdin.
   luma_os_podman run --rm -i --pull=never --network=none --cap-drop=ALL \
     --security-opt label=disable --security-opt no-new-privileges --read-only \
-    --hooks-dir="$work/empty-hooks" --cpus=1 --memory=1g --memory-swap=1250m \
+    --hooks-dir="$work/empty-hooks" --cpus=1 --memory="$memory" --memory-swap="$memory_swap" \
     --pids-limit=128 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
     "${mounts[@]}" --volume "$data:$data:$access" \
     --env LANG=C.UTF-8 --entrypoint=/usr/bin/env "$graph_tools_image" -i \
