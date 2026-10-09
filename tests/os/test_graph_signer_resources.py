@@ -16,6 +16,13 @@ SOURCE=ROOT/'scripts/os/sign-update-graph.sh'
 
 @unittest.skipUnless(os.getuid()==0,'real key ownership boundary requires root')
 class Resources(unittest.TestCase):
+    def test_signer_host_imports_leave_sealed_source_unchanged(self):
+        prefix=SOURCE.read_text().split('set -euo pipefail',1)[1].splitlines()[1]
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory);(p/'sealed_module.py').write_text('VALUE=1\n')
+            subprocess.run(['bash','-c',prefix+'\ncd "$1"\npython3 -c "import sealed_module; assert sealed_module.VALUE==1"',
+                            'test',str(p)],check=True)
+            self.assertEqual({x.name for x in p.iterdir()},{'sealed_module.py'})
     def invocation(self,mode):
         text=SOURCE.read_text()
         function=text[text.index('luma_os_graph_tools() {'):text.index('# Validation and the previous-generation')]

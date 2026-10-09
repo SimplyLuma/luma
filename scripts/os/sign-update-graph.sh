@@ -28,6 +28,7 @@
 # --dry-run performs 1 to 3 in a temporary directory and changes nothing.
 
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1
 . "$(dirname -- "$0")/lib/common.sh"
 
 channel=

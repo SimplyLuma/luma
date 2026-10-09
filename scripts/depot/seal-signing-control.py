@@ -88,6 +88,8 @@ def verify(root, digest, schema='org.projectluma.signing-control/v1'):
     return doc
 
 def seal(source, target, inputs=False, graph=False):
+    if not source.is_dir() or source.is_symlink():
+        raise ValueError('publisher source must be an existing non-symlink directory')
     target = Path(os.path.abspath(target))
     protected(target.parent)
     if target.exists(): raise ValueError('refusing to replace sealed publisher control')
@@ -160,7 +162,7 @@ def main():
     parser.add_argument('value', help='destination path for seal; pinned manifest SHA256 for verify')
     args = parser.parse_args()
     if args.operation in ('seal', 'seal-inputs', 'seal-graph'):
-        print(seal(args.root.resolve(), args.value, args.operation == 'seal-inputs', args.operation == 'seal-graph'))
+        print(seal(args.root.absolute(), args.value, args.operation == 'seal-inputs', args.operation == 'seal-graph'))
     else:
         verify(args.root, args.value, 'org.projectluma.signing-inputs/v1' if args.operation == 'verify-inputs' else 'org.projectluma.signing-control/v1')
         print('publisher snapshot verified')

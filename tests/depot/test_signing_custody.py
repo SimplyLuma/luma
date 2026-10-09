@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -52,5 +53,22 @@ class Custody(unittest.TestCase):
     def test_wrong_owner_fails(self):
         os.chown(self.target / 'actual-object', 65534, 65534)
         with self.assertRaises(ValueError): self.verify()
+    def test_missing_source_creates_no_snapshot(self):
+        target = self.base / 'missing-sealed'
+        with self.assertRaisesRegex(ValueError, 'existing non-symlink'):
+            control.seal(self.base / 'missing', target, inputs=True)
+        self.assertFalse(target.exists())
+    def test_cli_source_symlink_rejected_before_snapshot(self):
+        alias = self.base / 'source-alias'; alias.symlink_to(self.source, target_is_directory=True)
+        target = self.base / 'alias-sealed'
+        result = subprocess.run(['/usr/bin/python3', '-B', str(SOURCE / 'scripts/depot/seal-signing-control.py'),
+                                 'seal-inputs', str(alias), str(target)], capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(target.exists())
+    def test_existing_empty_input_directory_allowed(self):
+        source = self.base / 'empty-input'; source.mkdir(mode=0o700)
+        target = self.base / 'empty-input-sealed'
+        digest = control.seal(source, target, inputs=True)
+        control.verify(target, digest, 'org.projectluma.signing-inputs/v1')
 
 if __name__ == '__main__': unittest.main()
