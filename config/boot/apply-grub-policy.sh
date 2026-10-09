@@ -43,9 +43,21 @@ custom_cfg=$grub_dir/luma.cfg
 grep -Fq 'load_env' "$grub_cfg"
 grep -Eq '(^|[[:space:]])blscfg([[:space:]]|$)|source \$prefix/luma.cfg' "$grub_cfg"
 
+# Older signed deployments may omit supplemental sizes their own boot policy
+# does not reference. The primary font and every referenced size remain required.
+fonts=(prairie.pf2 prairie-12.pf2 prairie-22.pf2)
+for font in "${fonts[@]}"; do
+  if [[ ! -s /usr/share/luma/boot/grub-theme/$font ]] &&
+     { [[ $font == prairie.pf2 ]] || grep -Fq "$font" \
+       /usr/share/luma/boot/luma.cfg /usr/share/luma/boot/grub-theme/theme.txt; }; then
+    printf 'error: installed Luma GRUB policy requires missing font %s\n' "$font" >&2
+    exit 1
+  fi
+done
 install -D -m 0644 /usr/share/luma/boot/grub-theme/theme.txt \
   "$theme_dir/theme.txt"
-for font in prairie.pf2 prairie-12.pf2 prairie-22.pf2; do
+for font in "${fonts[@]}"; do
+  [[ -s /usr/share/luma/boot/grub-theme/$font ]] || continue
   install -D -m 0644 "/usr/share/luma/boot/grub-theme/$font" "$theme_dir/$font"
 done
 install -D -m 0644 /usr/share/luma/boot/luma.cfg "$custom_cfg"

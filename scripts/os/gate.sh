@@ -904,6 +904,11 @@ agent_setup() {
     # (mirror-list layout), or a preview mirror list and the remote's url line
     # pointing at it (URL layout, earlier images) (docs/os/luma-update.md).
     guest "$domain" "umask 077; printf '{\"credential\": \"luma-gate-%s\", \"channel\": \"%s\", \"channels\": [\"%s\"], \"issued_at\": %s}\n' '$run_id' '$channel' '$channel' \$(date +%s) > /etc/luma/update-preview-credential && if grep -Fxq 'url=mirrorlist=file:///etc/luma/update-mirrorlist' /etc/ostree/remotes.d/luma.conf; then printf 'http://%s:%s\n' '$guest_gateway' '$http_port' > /etc/luma/update-mirrorlist; else printf 'http://%s:%s\n' '$guest_gateway' '$http_port' > /etc/luma/update-preview-mirrorlist && umask 022 && sed -i 's#^url=.*#url=mirrorlist=file:///etc/luma/update-preview-mirrorlist#' /etc/ostree/remotes.d/luma.conf; fi"
+  else
+    # A retained public-channel guest may still reference an earlier gate's
+    # HTTP port. Update its payload endpoint along with the graph endpoint,
+    # without enrollment credentials or changes to signature verification.
+    guest "$domain" "umask 022; printf 'http://%s:%s\n' '$guest_gateway' '$http_port' > /etc/luma/update-mirrorlist && sed -i 's#^url=.*#url=mirrorlist=file:///etc/luma/update-mirrorlist#' /etc/ostree/remotes.d/luma.conf"
   fi
   guest "$domain" 'systemctl restart luma-updated.service >/dev/null 2>&1 || true; rpm-ostree status >/dev/null'
 
@@ -1058,6 +1063,9 @@ print("yes" if newer > 0 or (newer == 0 and m.rpmvercmp(release, "1.luma.4") >= 
     if [ "$manual" = pass ]; then
       if [ "$mode" = agent ]; then
         built=0
+        # The rollback round trip can restore a deployment's older /etc
+        # endpoint. Reapply this gate's graph and payload URLs before staging.
+        agent_setup "$upd" >>"$gate_dir/rollback-build.log" 2>&1
         luma_os_gpg_unlock
         "$luma_os_repo_root/scripts/os/lib/gate-failure-build.sh" \
           --source-repo "$gate_repo" --into-repo "$gate_repo" --commit "$candidate" \
