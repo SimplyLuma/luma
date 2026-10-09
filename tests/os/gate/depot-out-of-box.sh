@@ -23,6 +23,12 @@ user=luma-gate-depot
 failed=0
 work=$(mktemp -d /tmp/luma-gate-depot.XXXXXX)
 chmod 0755 "$work"
+declare -A originally_installed=()
+for app in org.projectluma.Notes com.transmissionbt.Transmission; do
+  if flatpak info --system "$app" >/dev/null 2>&1; then
+    originally_installed[$app]=1
+  fi
+done
 
 emit() {
   python3 -c 'import json, sys; print(json.dumps({"check": sys.argv[1], "result": sys.argv[2], "detail": sys.argv[3][-600:]}))' "$1" "$2" "$3"
@@ -47,7 +53,9 @@ cleanup() {
   loginctl disable-linger "$user" >/dev/null 2>&1 || true
   loginctl terminate-user "$user" >/dev/null 2>&1 || true
   for app in org.projectluma.Notes com.transmissionbt.Transmission; do
-    flatpak uninstall --system -y --noninteractive "$app" >/dev/null 2>&1 || true
+    if [ "${originally_installed[$app]:-0}" != 1 ]; then
+      flatpak uninstall --system -y --noninteractive "$app" >/dev/null 2>&1 || true
+    fi
     runuser -u "$user" -- flatpak uninstall --user -y --noninteractive "$app" >/dev/null 2>&1 || true
   done
   flatpak uninstall --system -y --noninteractive --unused >/dev/null 2>&1 || true
@@ -183,18 +191,41 @@ from luma_installer import depot_flatpak, depot_inventory
 app_id = '$app_id'
 installation, remote = depot_flatpak.installation_for(app_id)
 source = depot_flatpak.resolve(installation, app_id, 'x86_64')
-tx = depot_flatpak.transaction(installation, source)
-if tx is None:
-    raise SystemExit(f'{app_id} was already installed; the gate needs a clean computer')
-tx.run(None)
-ref = depot_flatpak.installed_ref(installation, source)
-if ref is None or ref.get_commit() != source.commit or ref.get_origin() != remote:
-    raise SystemExit(f'{app_id} is not installed at {source.commit[:12]} from {remote}')
-print(f'installed {source.ref} {source.commit[:12]} from {remote} ({installation.get_id()})')
-depot_flatpak.removal_transaction(installation, ref).run(None)
-if depot_flatpak.installed_ref(installation, source) is not None:
-    raise SystemExit(f'{app_id} is still installed after removal')
-print(f'removed {app_id}')
+original = depot_flatpak.installed_ref(installation, source)
+original_identity = None
+if original is not None:
+    original_identity = (original.format_ref(), original.get_commit(), original.get_origin())
+    # Resolve and verify the signed source before changing a bundled application.
+    # Refuse to replace an older installed commit merely to exercise this fixture.
+    if original_identity != (source.ref, source.commit, remote):
+        raise SystemExit(f'{app_id}: installed ref differs from the signed source; leaving it untouched')
+try:
+    if original is not None:
+        depot_flatpak.removal_transaction(installation, original).run(None)
+    if depot_flatpak.installed_ref(installation, source) is not None:
+        raise SystemExit(f'{app_id}: clean-install setup failed')
+    tx = depot_flatpak.transaction(installation, source)
+    if tx is None:
+        raise SystemExit(f'{app_id}: clean-install setup unexpectedly retained the app')
+    tx.run(None)
+    ref = depot_flatpak.installed_ref(installation, source)
+    if ref is None or ref.get_commit() != source.commit or ref.get_origin() != remote:
+        raise SystemExit(f'{app_id} is not installed at {source.commit[:12]} from {remote}')
+    print(f'installed {source.ref} {source.commit[:12]} from {remote} ({installation.get_id()})')
+    depot_flatpak.removal_transaction(installation, ref).run(None)
+    if depot_flatpak.installed_ref(installation, source) is not None:
+        raise SystemExit(f'{app_id} is still installed after removal')
+    print(f'removed {app_id}')
+finally:
+    if original_identity is not None:
+        restore = depot_flatpak.transaction(installation, source)
+        if restore is not None:
+            restore.run(None)
+        restored = depot_flatpak.installed_ref(installation, source)
+        identity = None if restored is None else (restored.format_ref(), restored.get_commit(), restored.get_origin())
+        if identity != original_identity:
+            raise SystemExit(f'{app_id}: failed to restore the original signed ref')
+        print(f'restored original {identity[0]} {identity[1]} from {identity[2]}')
 PY
   py_check "$name" "$name.py"
 }
