@@ -128,8 +128,11 @@ def _error_detail(error: HTTPError) -> str:
 
 
 def _response_error(error: HTTPError) -> "HubResponseError":
-    message, code = _error_body(error)
-    return HubResponseError(error.code, error.reason or "no reason given", message, _retry_after(error), code)
+    try:
+        message, code = _error_body(error)
+        return HubResponseError(error.code, error.reason or "no reason given", message, _retry_after(error), code)
+    finally:
+        error.close()
 
 
 @dataclass(frozen=True)
@@ -650,11 +653,15 @@ def _push_once(*, hub: str, dry_run: bool, environment: dict[str, str] | None, t
             print(f"collaboration: {result['updated']} updated; {result['conflicts']} unsent copies retained", file=stream)
         except HubResponseError as error:
             if error.status == 401:
-                raise _reauthorise(address) from None
-            _note_backoff(state, scope, error, environment)
-            if error.status in (429, 503):
-                raise
-            problems.append(error)
+                problems.append(_collaboration_refusal(http, identity, address, 'Shared Notes'))
+                # The Hub still accepts this registration, but refused this
+                # sharing service. Never accept its rejected data or stop the
+                # separately authorized personal services from syncing.
+            else:
+                _note_backoff(state, scope, error, environment)
+                if error.status in (429, 503):
+                    raise
+                problems.append(error)
         except ConnectError as error:
             problems.append(error)
     if http is not None and not dry_run and transport is send_json:
@@ -664,11 +671,12 @@ def _push_once(*, hub: str, dry_run: bool, environment: dict[str, str] | None, t
             print(f"shared tasks: {count} documents refreshed", file=stream)
         except HubResponseError as error:
             if error.status == 401:
-                raise _reauthorise(address) from None
-            _note_backoff(state, scope, error, environment)
-            if error.status in (429, 503):
-                raise
-            problems.append(error)
+                problems.append(_collaboration_refusal(http, identity, address, 'Shared Tasks'))
+            else:
+                _note_backoff(state, scope, error, environment)
+                if error.status in (429, 503):
+                    raise
+                problems.append(error)
         except (ConnectError, ValueError) as error:
             problems.append(ConnectError(str(error)))
     if collaboration_only:
@@ -818,6 +826,21 @@ def _reauthorise(address: str) -> AuthorisationError:
         f"Re-enrol: luma-connect-sync enrol --code CODE --hub {address} --force")
 
 
+def _collaboration_refusal(http, identity: DeviceIdentity, address: str, label: str) -> ConnectError:
+    """A sharing denial is not proof that the entire registration was revoked.
+
+    Recheck the authoritative account endpoint with the same saved bearer.
+    Its 401 still requires reconnection, and an unavailable account check
+    remains a retryable failure. A successful check grants no sharing access:
+    the refused service stays incomplete while personal services authorize
+    their own requests independently.
+    """
+    _account(http, identity, address)
+    return ConnectError(
+        f'{label} couldn’t sync with Luma Connect. '
+        'This computer is still connected.')
+
+
 FULL_PULL_SECONDS = 15 * 60
 _UNOBSERVED_REVISION = object()
 
@@ -871,7 +894,7 @@ def _sync_shared(*, identity: DeviceIdentity, address: str, http, state: dict, s
         problems.append(error)
         return
     remote_changed = revision is None or _remote_changed(state, scope, revision, own_bumps)
-    complete = revision is not None
+    complete = revision is not None and not problems
     from .connect_services import enabled_services
     enabled = enabled_services(connect_data_directory(environment))
     tasks = [(collection.name, lambda c=collection: sync_collection(

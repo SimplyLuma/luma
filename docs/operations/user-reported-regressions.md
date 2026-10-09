@@ -22,8 +22,10 @@ available. Add coverage at the boundary the user actually encountered.
   clicks, scale/main-display retention after reopening, Cancel without writes,
   and exact Revert. These use the shipped platform107 runtime. Settings51's
   normal packaged checks passed, including 22 Meson checks and the scroll-speed
-  check. Signed OS delivery remains pending.
-- First shipped version: pending.
+  check. The normal OS gate passed all 47 stages, followed by signed canonical
+  client delivery and update-graph verification.
+- First shipped version: `1.0.0-nightly.20261009.5`, Settings51. Published
+  2026-10-09; physical display confirmation remains a user acceptance check.
 - Temporary workaround: use `org.projectluma.Displays` and Keep Arrangement.
 
 ## UPD-001 — Successive updates have unclear date labels
@@ -49,10 +51,26 @@ available. Add coverage at the boundary the user actually encountered.
 - Confirmed client behavior: account status and sync reuse the same saved
   device bearer. Native sync starts with the events request; a 401 becomes
   exit code 3, which the app translates into the generic reconnect message.
-  The XPS's actual failing route and response remain unverified; do not
-  discard its registration or assume that signing in again fixes the cause.
-- Regression coverage: must exercise the sync request and returned outcome,
-  including retained account authentication; a device-list test is insufficient.
+  The XPS's actual results are account/events/capabilities/notes/contacts/profile
+  HTTP 200, but shared-document listing HTTP 401. This rejects a collaboration
+  request while accepting the same device registration elsewhere. The client
+  currently aborts healthy personal sync and mislabels that failure as expired
+  registration; the server's reason for rejecting sharing remains unverified.
+  Preserve registration, report incomplete sharing honestly, and do not let
+  that failure prevent healthy services from syncing.
+- Client fix: on a sharing 401, recheck account authentication using the same
+  saved bearer. A valid account allows separately authorized personal services
+  to continue while reporting incomplete sharing. A rejected account still
+  requires reconnection. Do not stamp an overall or sharing success checkpoint
+  after a sharing failure.
+- Regression coverage: real loopback HTTP reproduces documents 401 with account
+  200, accepted personal Notes/Contacts requests, preserved credentials/local
+  Notes, and unchanged incomplete checkpoints. The old core100 fails these
+  cases, including CLI exit 3; core101 passes 17 watch/service tests with HTTP
+  resource warnings treated as failures, plus adjacent sync/profile/shared/
+  notes/calendar checks. Genuine account, events, and personal request 401s
+  remain authorization failures. Packaged delivery and live XPS confirmation
+  remain pending; the server's sharing refusal still needs investigation.
 - Diagnostic: `scripts/diagnostics/connect-routing.py` checks fixed Hub routes
   using the local registration, without changing it or printing credentials,
   account details, or synced content.
