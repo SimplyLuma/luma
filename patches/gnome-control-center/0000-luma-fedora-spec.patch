@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,106 @@
+@@ -28,14 +28,107 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.50.creator20261009.1%{?dist}
++Release:        1.luma.51.creator20261009.2%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -95,6 +95,7 @@
 +Patch1076:      0077-settings-native-pointer-write-qualification.patch
 +Patch1077:      0078-settings-tiling-controls-native-autotiling.patch
 +Patch1078:      0079-settings-display-apply-preview.patch
++Patch1079:      0080-settings-retain-live-display-apply-bar.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
@@ -160,7 +161,7 @@
 +glib-compile-schemas --strict "$task_runtime/schema"
 +export GSETTINGS_SCHEMA_DIR="$task_runtime/schema"
 +# LumaUI Settings model and adapter tests; display-bound tests run below.
-+%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard luma-settings-display-preview
++%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard luma-settings-display-preview luma-settings-display-save-view-1180 luma-settings-display-save-view-320
 +# Test the actual native network editor frame and Cancel with accessibility enabled.
 +xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-network-editor
 +# Native page actions must reach the owned BlueZ/Rfkill service on a private bus.

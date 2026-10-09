@@ -167,3 +167,10 @@ Light-first source fails the new order assertion. Release42 includes0069 and
 0070 and passed all fourteen Luma native package suites against platform91.
 The first-profile dark preference belongs to packaged desktop defaults;
 opening Settings does not overwrite a saved light selection.
+
+`0080-settings-retain-live-display-apply-bar.patch` keeps the native display
+transaction's Apply/Keep controls visible. The editor fold handler previously
+hid this bar immediately because its display exemption covered only fixtures.
+The live display adapter still owns temporary preview, persistent Keep, and
+safe rollback. Regression tracking is in
+`docs/operations/user-reported-regressions.md`.

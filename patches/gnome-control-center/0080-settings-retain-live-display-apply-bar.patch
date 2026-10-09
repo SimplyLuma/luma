@@ -1,0 +1,241 @@
+Subject: [PATCH] Settings: retain Apply and Keep for native display drafts
+
+The editor fold handler hid every single-row bar except the fixture's
+display countdown. Native display drafts live in the DisplayConfig adapter,
+so showing their Apply or Keep bar immediately invoked that handler and
+hid the controls. Retain the bar while the native adapter owns a pending
+display transaction; other editor folding keeps its existing behavior.
+
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -533,6 +533,10 @@
+ static void center_changed (LumaActionCenter *center, const char *state, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v && g_str_equal (v->page, "displays") &&
++      cc_luma_fixture_is_live (v->model) &&
++      cc_luma_view_flag (v, "display.pending"))
++    return;
+   if (v && v->display_draft && cc_luma_display_draft_remaining (v->display_draft)) return;
+   if (g_str_equal (state, "bar")) luma_action_center_hide_bar (center);
+ }
+
+--- /dev/null
++++ b/shell/test-luma-display-save-view.c
+@@ -0,0 +1,129 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Real live view and native display adapter, isolated from physical displays. */
++#include "cc-luma-view-private.h"
++#include "cc-luma-live-displays.c"
++
++void cc_luma_live_ready (CcLumaFixture *model, const char *adapter)
++{ cc_luma_fixture_changed (model); }
++static void spin (void)
++{
++  gint64 end = g_get_monotonic_time () + 250000;
++  do { while (g_main_context_iteration (NULL, FALSE)); g_usleep (1000); }
++  while (g_get_monotonic_time () < end);
++}
++static gboolean write_display (CcLumaFixture *model, const char *key,
++                               JsonNode *value, gpointer data, GError **error)
++{ return displays_write (data, key, value, error); }
++static CcLumaFixture *start_model (Displays **owner)
++{
++  g_autoptr(JsonParser) parser = json_parser_new ();
++  g_assert_true (json_parser_load_from_data (parser,
++    "{\"settings\":{\"night\":false},\"data\":{},\"pages\":[{\"id\":\"displays\"}]}", -1, NULL));
++  CcLumaFixture *model = cc_luma_fixture_new_live (json_parser_get_root (parser));
++  *owner = displays_start (model); spin ();
++  cc_luma_fixture_set_writer (model, write_display, *owner);
++  const char *keys[] = { "dsel", "d.int.scale", "d.int.rot", "d.ext.primary" };
++  for (guint i = 0; i < G_N_ELEMENTS (keys); i++) cc_luma_fixture_verify_key (model, keys[i]);
++  return model;
++}
++static GtkWidget *open_view (CcLumaFixture *model, View **view)
++{
++  g_autoptr(GError) error = NULL;
++  GtkWidget *root = cc_luma_view_new (model, "displays", &error);
++  g_assert_no_error (error); g_assert_nonnull (root);
++  GtkWidget *window = gtk_window_new ();
++  gtk_window_set_child (GTK_WINDOW (window), root);
++  const char *width = g_getenv ("LUMA_SETTINGS_TEST_WIDTH");
++  gtk_window_set_default_size (GTK_WINDOW (window), width ? atoi (width) : 1180, 740);
++  gtk_window_present (GTK_WINDOW (window)); spin ();
++  *view = g_object_get_data (G_OBJECT (root), "cf-view");
++  return window;
++}
++static gboolean has_caption (GtkWidget *widget, const char *caption)
++{
++  if (GTK_IS_LABEL (widget) && g_str_equal (gtk_label_get_text (GTK_LABEL (widget)), caption)) return TRUE;
++  for (GtkWidget *child = gtk_widget_get_first_child (widget); child; child = gtk_widget_get_next_sibling (child))
++    if (has_caption (child, caption)) return TRUE;
++  return FALSE;
++}
++static GtkWidget *caption_button (GtkWidget *widget, const char *caption)
++{
++  if (GTK_IS_BUTTON (widget) && has_caption (widget, caption)) return widget;
++  for (GtkWidget *child = gtk_widget_get_first_child (widget); child; child = gtk_widget_get_next_sibling (child)) {
++    GtkWidget *found = caption_button (child, caption); if (found) return found;
++  }
++  return NULL;
++}
++static GtkWidget *named (GtkWidget *widget, const char *name)
++{
++  if (g_str_equal (gtk_widget_get_name (widget), name)) return widget;
++  for (GtkWidget *child = gtk_widget_get_first_child (widget); child; child = gtk_widget_get_next_sibling (child)) {
++    GtkWidget *found = named (child, name); if (found) return found;
++  }
++  return NULL;
++}
++static void click_named (View *view, const char *name)
++{
++  g_print ("Clicking %s on display %s\n", name, cc_luma_view_text (view, "dsel"));
++  GtkWidget *control = named (view->root, name);
++  g_assert_nonnull (control); g_assert_true (gtk_widget_is_sensitive (control));
++  g_signal_emit_by_name (control, "clicked"); spin ();
++}
++static void click_bar (View *view, guint index, const char *caption)
++{
++  g_assert_cmpstr (luma_action_center_get_state (view->center), ==, "bar");
++  GtkWidget *control = caption_button (GTK_WIDGET (view->center), caption);
++  g_assert_nonnull (control);
++  g_assert_true (gtk_widget_get_visible (GTK_WIDGET (view->center)));
++  g_assert_true (gtk_widget_get_mapped (control));
++  g_assert_true (gtk_widget_is_sensitive (control));
++  g_assert_cmpint (gtk_widget_get_width (control), >, 0);
++  g_assert_cmpint (gtk_widget_get_height (control), >, 0);
++  g_print ("Visible mapped %s control %d x %d\n", caption,
++           gtk_widget_get_width (control), gtk_widget_get_height (control));
++  g_signal_emit_by_name (control, "clicked"); spin ();
++}
++int main (int argc, char **argv)
++{
++  gtk_init ();
++  Displays *owner; g_autoptr(CcLumaFixture) model = start_model (&owner);
++  View *view; GtkWidget *window = open_view (model, &view);
++  g_assert_null (view->display_draft); /* Native draft belongs to the adapter. */
++  g_assert_true (gtk_widget_activate_action (view->root, "cf.pick", "(ss)", "d.int.scale", "125")); spin ();
++  g_assert_nonnull (owner->draft); g_assert_false (owner->preview);
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "display.pending")));
++  g_assert_null (view->display_draft);
++  click_named (view, "cf-display-ext");
++  click_named (view, "cf-d.ext.primary");
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "d.ext.primary")));
++  click_bar (view, 2, "Apply");
++  g_assert_true (owner->preview);
++  g_assert_false (gtk_widget_get_sensitive (GTK_WIDGET (view->body)));
++  click_bar (view, 2, "Keep");
++  g_assert_null (owner->draft); g_assert_false (owner->preview);
++  g_assert_cmpstr (luma_action_center_get_state (view->center), ==, "hidden");
++  gtk_window_destroy (GTK_WINDOW (window)); spin ();
++  displays_stop (owner); spin (); g_clear_object (&model);
++  /* A brand new owner must read the retained native state, not the old model. */
++  model = start_model (&owner);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.int.scale")), ==, "125");
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "d.ext.primary")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "d.int.primary")));
++  window = open_view (model, &view);
++  g_assert_cmpstr (luma_action_center_get_state (view->center), ==, "hidden");
++  click_named (view, "cf-display-int");
++  g_assert_true (gtk_widget_activate_action (view->root, "cf.pick", "(ss)", "d.int.rot", "Portrait right")); spin ();
++  click_bar (view, 1, "Cancel");
++  g_assert_null (owner->draft);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.int.rot")), ==, "Landscape");
++  g_assert_true (gtk_widget_activate_action (view->root, "cf.pick", "(ss)", "d.int.rot", "Portrait right")); spin ();
++  click_bar (view, 2, "Apply");
++  click_bar (view, 1, "Revert");
++  g_assert_null (owner->draft); g_assert_false (owner->preview);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.int.rot")), ==, "Landscape");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.int.scale")), ==, "125");
++  gtk_window_destroy (GTK_WINDOW (window)); spin ();
++  displays_stop (owner); spin ();
++  g_print ("Native live UI Apply/Keep/Cancel/Revert and new-owner retained readback PASS\n");
++  return 0;
++}
+--- /dev/null
++++ b/shell/test-luma-display-save-view.py
+@@ -0,0 +1,60 @@
++#!/usr/bin/python3
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""Private D-Bus owner: no real session, displays, or profile is accessed."""
++import subprocess, sys, json, pathlib, resource, tempfile
++resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
++temporary_profile = tempfile.TemporaryDirectory(prefix="luma-display-save-test-")
++persistent = pathlib.Path(temporary_profile.name) / "monitors.json"
++from gi.repository import Gio, GLib
++TYPE='(ua((ssss)a(siiddada{sv})a{sv})a(iiduba(ssss)a{sv})a{sv})'
++xml='''<node><interface name="org.gnome.Mutter.DisplayConfig">
++<method name="GetCurrentState"><arg type="u" direction="out"/><arg type="a((ssss)a(siiddada{sv})a{sv})" direction="out"/><arg type="a(iiduba(ssss)a{sv})" direction="out"/><arg type="a{sv}" direction="out"/></method>
++<method name="ApplyMonitorsConfig"><arg type="u" direction="in"/><arg type="u" direction="in"/><arg type="a(iiduba(ssa{sv}))" direction="in"/><arg type="a{sv}" direction="in"/></method>
++<property name="ApplyMonitorsConfigAllowed" type="b" access="read"/>
++<property name="PanelOrientationManaged" type="b" access="read"/>
++<property name="NightLightSupported" type="b" access="read"/>
++<signal name="MonitorsChanged"/></interface></node>'''
++bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
++bus.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus','RequestName',GLib.Variant('(su)',('org.gnome.Mutter.DisplayConfig',0)),None,0,5000,None)
++serial=1; calls=[]; chosen={'eDP-1':'60','DP-1':'60'}
++specs={'eDP-1':('eDP-1','VND','Panel','S'),'DP-1':('DP-1','VND','External','T')}
++logical=[(0,0,1.,0,True,[specs['eDP-1']],{}),(1920,0,1.,0,False,[specs['DP-1']],{})]
++def state():
++    monitors=[]
++    for connector,spec in specs.items():
++        modes=[(rate,1920,1200,float(rate),1.,[1.,1.25,1.5,2.],{'is-current':GLib.Variant('b',chosen[connector]==rate),'is-preferred':GLib.Variant('b',rate=='60')}) for rate in ('60','75')]
++        monitors.append((spec,modes,{'is-builtin':GLib.Variant('b',connector=='eDP-1'),'display-name':GLib.Variant('s',spec[2])}))
++    return GLib.Variant(TYPE,(serial,monitors,logical,{'layout-mode':GLib.Variant('u',1),'supports-changing-layout-mode':GLib.Variant('b',True),'supports-mirroring':GLib.Variant('b',True)}))
++def method(_bus,_sender,_path,_iface,name,args,call):
++    global serial, logical
++    if name=='GetCurrentState': call.return_value(state());return
++    proposed,kind,rows,props=args.unpack()
++    if proposed!=serial: call.return_dbus_error('org.test.StaleSerial','Stale display serial');return
++    calls.append((kind,rows))
++    if kind:
++        serial+=1; logical=[]
++        for x,y,scale,rotation,primary,members in rows:
++            for connector,mode,_props in members: chosen[connector]=mode
++            logical.append((x,y,scale,rotation,primary,[specs[c] for c,_,_ in members],{}))
++        bus.emit_signal(None,'/org/gnome/Mutter/DisplayConfig','org.gnome.Mutter.DisplayConfig','MonitorsChanged',None)
++    if kind == 2: persistent.write_text(json.dumps({'serial': serial, 'rows': rows}, sort_keys=True))
++    call.return_value(GLib.Variant('()',()))
++info=Gio.DBusNodeInfo.new_for_xml(xml)
++bus.register_object('/org/gnome/Mutter/DisplayConfig',info.interfaces[0],method,lambda *_:GLib.Variant('b',_[-1]=='ApplyMonitorsConfigAllowed'),None)
++child=subprocess.Popen([sys.argv[1]])
++loop=GLib.MainLoop()
++def poll():
++    if child.poll() is None:return True
++    loop.quit();return False
++GLib.timeout_add(20,poll);loop.run()
++assert child.returncode==0,child.returncode
++assert [k for k,_ in calls]==[0,1,0,2,0,1,0,1],calls
++first=calls[1][1]
++assert any(s==1.25 and r==0 and m[0][0]=='eDP-1' for x,y,s,r,p,m in first),first
++saved=json.loads(persistent.read_text())['rows']
++assert saved==json.loads(json.dumps(calls[3][1])),(saved,calls[3])
++assert any(p and m[0][0]=='DP-1' for x,y,s,r,p,m in saved),saved
++assert not any(p and m[0][0]=='eDP-1' for x,y,s,r,p,m in saved),saved
++assert any(s==1.25 and r==0 and m[0][0]=='eDP-1' for x,y,s,r,p,m in calls[-1][1]),calls[-1]
++assert all(r==0 for x,y,s,r,p,m in calls[-1][1]),calls[-1]
++print('Private native D-Bus verifies preview/Keep/persistent profile, Cancel without writes, and exact Revert PASS')
+
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -432,3 +432,20 @@
+ test('luma-settings-display-preview', find_program('dbus-run-session'),
+   args: ['--', find_program('python3'), files('test-luma-display-preview.py'), display_preview_test],
+   timeout: 30, env: ['GSETTINGS_BACKEND=memory', 'GTK_A11Y=none', 'G_DEBUG=fatal-criticals'])
++
++# The actual live GTK view must expose Apply/Keep and send native persistence.
++display_save_view_test = executable('test-luma-display-save-view',
++  ['test-luma-display-save-view.c', 'cc-luma-live-gsettings.c',
++   '../panels/display/cc-display-config.c', '../panels/display/cc-display-config-manager.c',
++   '../panels/display/cc-display-arrangement.c'] + fixture_view_sources,
++  include_directories: [top_inc, common_inc],
++  dependencies: fixture_view_deps + [gnome_desktop_dep])
++foreach width : ['1180', '320']
++  test('luma-settings-display-save-view-' + width, find_program('dbus-run-session'),
++    args: ['--', find_program('xvfb-run'), '-a', find_program('python3'),
++           files('test-luma-display-save-view.py'), display_save_view_test],
++    timeout: 30,
++    env: ['GSETTINGS_BACKEND=memory', 'GTK_A11Y=none', 'G_DEBUG=fatal-criticals',
++          'GSK_RENDERER=cairo', 'GIO_USE_VFS=local', 'LUMA_SETTINGS_TEST_WIDTH=' + width,
++          'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++endforeach
