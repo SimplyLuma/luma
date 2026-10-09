@@ -45,7 +45,8 @@ available. Add coverage at the boundary the user actually encountered.
 - Reported: 2026-10-09, Connect `0.65.0`.
 - Reproduction: signed-in Connect shows XPS devices; click Sync Now and receive
   “This computer needs to be connected to Luma Connect again.”
-- Status: investigating sync authentication and the app-to-host broker.
+- Status: client isolation correction shipped; server sharing authorization
+  and live XPS confirmation remain pending.
   Device listing is not proof that sync is authenticated. The prior release
   did not claim a successful live-account sync test.
 - Confirmed client behavior: account status and sync reuse the same saved
@@ -69,9 +70,26 @@ available. Add coverage at the boundary the user actually encountered.
   cases, including CLI exit 3; core101 passes 17 watch/service tests with HTTP
   resource warnings treated as failures, plus adjacent sync/profile/shared/
   notes/calendar checks. Genuine account, events, and personal request 401s
-  remain authorization failures. Packaged delivery and live XPS confirmation
-  remain pending; the server's sharing refusal still needs investigation.
+  remain authorization failures. Packaged delivery passed the normal native
+  checks, all 47 OS gate stages, and trusted canonical download/signature,
+  complete closure and filesystem checks. Live XPS confirmation remains
+  pending; the server's sharing refusal still needs investigation.
 - Diagnostic: `scripts/diagnostics/connect-routing.py` checks fixed Hub routes
   using the local registration, without changing it or printing credentials,
   account details, or synced content.
+- First shipped client correction: Nightly `20261009.6`, version
+  `1.0.0-nightly.20261009.6`, commit
+  `b022c0bf2a6c65d74fb842ba007bf92df0b6f5e2e45daa5fc7ac6045a16a4c07`.
+  Published 2026-10-09. Shared syncing is not claimed repaired.
+
+## MON-001 — Monitor cannot read system activity on the XPS
+
+- Reported: 2026-10-09 on a newly installed Dell XPS.
+- Reproduction: open Monitor; it says it couldn't read system activity while
+  CPU activity continues showing Loading.
+- Status: investigating the sampler, host broker and error presentation.
+  No cause or successful physical-device test has been established.
+- Required behavior: show real measured activity when available and a clear
+  unavailable state after a failed read, with a recoverable retry. Do not
+  present a failed sample as an indefinitely pending measurement.
 - First shipped correction: pending.
