@@ -1,0 +1,23 @@
+From: Project Luma
+Subject: [PATCH] display: start unconfigured desktop monitors at 100 percent
+
+Keep explicit global scale overrides and stored monitor arrangements. Only
+the automatic desktop fallback starts at 1.0; handheld profiles continue to
+choose scale from their panel DPI. No profile or monitors.xml is rewritten.
+
+--- a/src/backends/meta-monitor.c
++++ b/src/backends/meta-monitor.c
+@@ -2420,6 +2420,13 @@
+                                                &global_scaling_factor))
+     return global_scaling_factor;
+ 
++  /* This fallback is used when no saved monitor configuration supplies a
++   * scale. Desktop installs start at 100%; a later explicit display choice
++   * stays in monitors.xml. Handheld profiles retain their DPI-based default.
++   */
++  if (g_strcmp0 (g_getenv ("LUMA_DEVICE_CLASS"), "handheld") != 0)
++    return 1.0f;
++
+   return calculate_scale (monitor, monitor_mode, constraints);
+ }
+ 

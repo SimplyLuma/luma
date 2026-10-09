@@ -1,0 +1,61 @@
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Subject: [PATCH] Keep dock pinning quiet
+
+Favorite changes are visible in the dock immediately. Do not add transient
+system notifications for routine pin and unpin actions. Keep the existing
+settings mutations, ordering, and change signals.
+
+--- a/js/ui/appFavorites.js
++++ b/js/ui/appFavorites.js
+@@ -1,4 +1,3 @@
+-import * as MessageTray from './messageTray.js';
+ import Shell from 'gi://Shell';
+ import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as Signals from '../misc/signals.js';
+@@ -96,14 +95,7 @@
+     }
+ 
+     addFavoriteAtPos(appId, pos) {
+-        if (!this._addFavorite(appId, pos))
+-            return;
+-
+-        const app = Shell.AppSystem.get_default().lookup_app(appId);
+-
+-        this._showNotification(_('%s has been pinned to the dash.').format(app.get_name()),
+-            null,
+-            () => this._removeFavorite(appId));
++        this._addFavorite(appId, pos);
+     }
+ 
+     addFavorite(appId) {
+@@ -125,29 +117,7 @@
+     }
+ 
+     removeFavorite(appId) {
+-        const ids = this._getIds();
+-        const pos = ids.indexOf(appId);
+-
+-        const app = this._favorites[appId];
+-        if (!this._removeFavorite(appId))
+-            return;
+-
+-        this._showNotification(_('%s has been unpinned from the dash.').format(app.get_name()),
+-            null,
+-            () => this._addFavorite(appId, pos));
+-    }
+-
+-    _showNotification(title, body, undoCallback) {
+-        const source = MessageTray.getSystemSource();
+-        const notification = new MessageTray.Notification({
+-            source,
+-            title,
+-            body,
+-            isTransient: true,
+-            forFeedback: true,
+-        });
+-        notification.addAction(_('Undo'), () => undoCallback());
+-        source.addNotification(notification);
++        this._removeFavorite(appId);
+     }
+ }
+ 

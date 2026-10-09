@@ -1,0 +1,33 @@
+Subject: [PATCH] Keep Settings display previews in Settings
+
+--- a/js/ui/lumaDisplayArrival.js
++++ b/js/ui/lumaDisplayArrival.js
+@@ -24,6 +24,9 @@
+     }
+ 
+     _schedule(seconds) {
++        // Settings owns its preview; geometry changes aren't a new cable arrival.
++        if (Shell.WindowTracker.get_default().focus_app?.get_id() === 'org.gnome.Settings.desktop')
++            return;
+         if (this._source)
+             GLib.source_remove(this._source);
+         this._source = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
+@@ -36,6 +39,8 @@
+     _ask() {
+         const mode = Main.sessionMode;
+         if (mode.isLocked || mode.isGreeter || !mode.hasOverview)
++            return;
++        if (Shell.WindowTracker.get_default().focus_app?.get_id() === 'org.gnome.Settings.desktop')
+             return;
+         if (Main.layoutManager.monitors.length < 2)
+             return;
+@@ -59,5 +64,8 @@
+ // same question twice.
+ export function keptByDisplays() {
+     const app = Shell.WindowTracker.get_default().focus_app;
+-    return app?.get_id() === `${DISPLAYS}.desktop`;
++    // Settings persists only after its own explicit Keep button. Preview uses
++    // Mutter's temporary method and never enters the Shell confirmation path.
++    return app?.get_id() === `${DISPLAYS}.desktop` ||
++        app?.get_id() === 'org.gnome.Settings.desktop';
+ }

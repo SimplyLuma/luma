@@ -4,7 +4,7 @@
 
 Name:           gnome-shell-extension-luma-tiling-toggle
 Version:        0.1.0
-Release:        1.luma.10%{?dist}
+Release:        1.luma.11%{?dist}
 Summary:        Project Luma Quick Settings bridge for Tiling Shell
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -52,6 +52,10 @@ install -D -m 0644 %{SOURCE2} \
 %{_datadir}/gnome-shell/extensions/%{extension_uuid}/
 
 %changelog
+* Fri Oct 09 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.11
+- Keep the Quick Options switch in sync with native automatic tiling and
+  disabled extensions; restore its state when the Shell refuses a request.
+
 * Fri Sep 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.10
 - The layout sheet reads like every Quick Options sheet: "Window layouts" with
   a muted count, and its actions as plain sentence-case rows under the

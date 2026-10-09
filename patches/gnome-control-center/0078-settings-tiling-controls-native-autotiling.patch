@@ -1,0 +1,93 @@
+diff --git a/shell/cc-luma-live-windows.c b/shell/cc-luma-live-windows.c
+--- a/shell/cc-luma-live-windows.c
++++ b/shell/cc-luma-live-windows.c
+@@ -43,7 +43,8 @@
+       g_autoptr (GSettingsSchemaSource) source =
+         g_settings_schema_source_new_from_directory (dirs->pdata[i], g_settings_schema_source_get_default (), FALSE, NULL);
+       g_autoptr (GSettingsSchema) schema = source ? g_settings_schema_source_lookup (source, TILING_SCHEMA, FALSE) : NULL;
+-      if (schema && g_settings_schema_has_key (schema, "inner-gaps") && g_settings_schema_has_key (schema, "active-screen-edges"))
++      if (schema && g_settings_schema_has_key (schema, "inner-gaps") && g_settings_schema_has_key (schema, "active-screen-edges") &&
++          g_settings_schema_has_key (schema, "enable-autotiling"))
+         return g_settings_new_full (schema, NULL, NULL);
+     }
+   return NULL;
+@@ -55,7 +56,8 @@
+   g_auto (GStrv) enabled = g_settings_get_strv (self->shell, "enabled-extensions");
+   g_auto (GStrv) disabled = g_settings_get_strv (self->shell, "disabled-extensions");
+   return g_strv_contains ((const char * const *) enabled, TILING_UUID) &&
+-         !g_strv_contains ((const char * const *) disabled, TILING_UUID);
++         !g_strv_contains ((const char * const *) disabled, TILING_UUID) &&
++         g_settings_get_boolean (self->tiling, "enable-autotiling");
+ }
+ 
+ static void
+@@ -95,19 +97,38 @@
+   return self;
+ }
+ 
++typedef struct {
++  CcLumaFixture *model;
++  GSettings *shell;
++  GSettings *tiling;
++  gboolean enabled;
++} TilingRequest;
++
+ static void
+ extension_called (GObject *source, GAsyncResult *result, gpointer data)
+ {
++  TilingRequest *request = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
+   gboolean done = FALSE;
+   if (reply) g_variant_get (reply, "(b)", &done);
+-  if (!done && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    {
+-      g_warning ("Settings live: GNOME Shell did not switch tiling: %s", error ? error->message : "refused");
+-      /* Show what the shell has, not what was asked for. */
+-      publish_tiling (data);
+-    }
++  if (done)
++    done = g_settings_set_boolean (request->tiling, "enable-autotiling", request->enabled);
++  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    {
++      if (!done)
++        g_warning ("Settings live: GNOME Shell did not switch tiling: %s", error ? error->message : "refused");
++      g_auto (GStrv) enabled = g_settings_get_strv (request->shell, "enabled-extensions");
++      g_auto (GStrv) disabled = g_settings_get_strv (request->shell, "disabled-extensions");
++      cc_luma_fixture_publish_boolean (request->model, "tile",
++        g_strv_contains ((const char * const *) enabled, TILING_UUID) &&
++        !g_strv_contains ((const char * const *) disabled, TILING_UUID) &&
++        g_settings_get_boolean (request->tiling, "enable-autotiling"));
++    }
++  g_object_unref (request->model);
++  g_object_unref (request->shell);
++  g_object_unref (request->tiling);
++  g_free (request);
+ }
+ 
+ static gboolean
+@@ -148,13 +169,23 @@
+         }
+       return g_settings_set_boolean (self->tiling, "active-screen-edges", json_node_get_boolean (value));
+     }
++  if (!g_settings_is_writable (self->tiling, "enable-autotiling"))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "tiling is locked by policy");
++      return FALSE;
++    }
+   /* The same call the Quick Options tiling toggle makes. */
+   g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, error);
+   if (!bus) return FALSE;
++  TilingRequest *request = g_new0 (TilingRequest, 1);
++  request->model = g_object_ref (self->model);
++  request->shell = g_object_ref (self->shell);
++  request->tiling = g_object_ref (self->tiling);
++  request->enabled = json_node_get_boolean (value);
+   g_dbus_connection_call (bus, "org.gnome.Shell.Extensions", "/org/gnome/Shell/Extensions", "org.gnome.Shell.Extensions",
+                           json_node_get_boolean (value) ? "EnableExtension" : "DisableExtension",
+                           g_variant_new ("(s)", TILING_UUID), G_VARIANT_TYPE ("(b)"),
+-                          G_DBUS_CALL_FLAGS_NO_AUTO_START, -1, self->cancel, extension_called, self);
++                          G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, self->cancel, extension_called, request);
+   return TRUE;
+ }
+ 

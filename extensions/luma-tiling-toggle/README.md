@@ -3,7 +3,9 @@
 This Luma-owned GNOME Shell extension provides one narrow integration point: a
 standard Quick Settings menu named **Tiling**. Its primary tile calls GNOME
 Shell's live extension service to enable or disable
-`tilingshell@ferrarodomenico.com` immediately. The submenu reads Tiling Shell's
+`tilingshell@ferrarodomenico.com` and its automatic window placement immediately.
+The switch follows both the enabled and disabled extension lists, and returns
+to its actual state when the Shell refuses a change. The submenu reads Tiling Shell's
 compiled extension-local schema, renders its saved tile geometry, and uses the
 tiler's Shell D-Bus object to select a layout or open its existing edit/new
 layout interfaces. A direct **Tiling settings** action remains available.

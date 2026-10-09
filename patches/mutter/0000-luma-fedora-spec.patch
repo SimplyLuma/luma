@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,34 @@
+@@ -29,13 +29,36 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.12.preview20260922.1%{?dist}
++Release:       1.luma.13.creator20261009.1%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -13,6 +13,7 @@
  URL:           http://www.gnome.org
  Source0:       http://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 +Source1:       ext-background-effect-v1.xml
++Source2:       default-monitor-scale.py
 +Patch1000:     0001-luma-handheld-scales.patch
 +Patch1001:     0002-clutter-Add-blur-node-support-for-framebuffer-region.patch
 +Patch1002:     0003-compositor-Add-background-blur-support.patch
@@ -33,6 +34,7 @@
 +Patch1017:     0018-keyboard-Keys-typed-while-the-focus-moves-reach-the-new-window.patch
 +Patch1018:     0019-input-Adjustable-scroll-speed-for-mice-and-touchpads.patch
 +Patch1019:     0020-x11-Keep-the-geometry-the-shell-chose-before-map.patch
++Patch1020:     0021-display-Default-unconfigured-desktop-monitors-to-100-percent.patch
  
  
  BuildRequires: cvt
@@ -45,11 +47,12 @@
  
  %build
  %meson -Degl_device=true
-@@ -179,6 +202,25 @@
+@@ -179,6 +202,26 @@
  
  %find_lang %{name}
  
 +%check
++python3 %{SOURCE2} src/backends/meta-monitor.c
 +# Luma: the scroll speed arithmetic (0019). Every test must report ok; a run
 +# that reaches fewer than all of them fails with the count.
 +gcc -o scroll-scale-test -I%{_vpath_builddir} -Isrc \

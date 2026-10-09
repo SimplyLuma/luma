@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,104 @@
+@@ -28,14 +28,106 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.48.creator20261006.1%{?dist}
++Release:        1.luma.49.creator20261009.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -93,6 +93,8 @@
 +Patch1074:      0075-settings-bluetooth-error-notice.patch
 +Patch1075:      0076-settings-retained-bluetooth-and-wifi-drafts.patch
 +Patch1076:      0077-settings-native-pointer-write-qualification.patch
++Patch1077:      0078-settings-tiling-controls-native-autotiling.patch
++Patch1078:      0079-settings-display-apply-preview.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1

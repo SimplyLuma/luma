@@ -63,6 +63,7 @@ rpm2cpio "$srpm" >"$work_dir/mutter.srpm.cpio"
 mv "$extract_dir/mutter.spec" "$rpmbuild_dir/SPECS/"
 find "$extract_dir" -maxdepth 1 -type f -exec mv -t "$rpmbuild_dir/SOURCES" {} +
 install -m 0644 "$protocol" "$rpmbuild_dir/SOURCES/ext-background-effect-v1.xml"
+install -m 0644 "$repo_root/tests/mutter/default-monitor-scale.py" "$rpmbuild_dir/SOURCES/"
 for patch in "$repo_root"/patches/mutter/00[0-9][0-9]-*.patch; do
   install -m 0644 "$patch" "$rpmbuild_dir/SOURCES/"
 done

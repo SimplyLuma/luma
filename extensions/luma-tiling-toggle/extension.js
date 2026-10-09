@@ -165,9 +165,14 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
 
         this._shellSettings = new Gio.Settings({schemaId: 'org.gnome.shell'});
         this._tilingSettings = createTilingSettings();
+        this._cancellable = new Gio.Cancellable();
         this._syncing = false;
         this._settingsChangedId = this._shellSettings.connect(
             'changed::enabled-extensions', () => this._syncFromSettings());
+        this._disabledChangedId = this._shellSettings.connect(
+            'changed::disabled-extensions', () => this._syncFromSettings());
+        this._autoTilingChangedId = this._tilingSettings.connect(
+            'changed::enable-autotiling', () => this._syncFromSettings());
         this._layoutsChangedId = this._tilingSettings.connect(
             'changed::layouts-json', () => this._renderLayouts());
         this._selectionChangedId = this._tilingSettings.connect(
@@ -212,7 +217,7 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
             null,
             Gio.DBusCallFlags.NONE,
             -1,
-            null,
+            this._cancellable,
             (connection, result) => {
                 try {
                     const [, monitors, logicalMonitors] =
@@ -244,9 +249,12 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
 
     _syncFromSettings() {
         const extensions = this._shellSettings.get_strv('enabled-extensions');
+        const disabled = this._shellSettings.get_strv('disabled-extensions');
 
         this._syncing = true;
-        this.checked = extensions.includes(TILING_SHELL_UUID);
+        this.checked = extensions.includes(TILING_SHELL_UUID) &&
+            !disabled.includes(TILING_SHELL_UUID) &&
+            this._tilingSettings.get_boolean('enable-autotiling');
         this._syncing = false;
     }
 
@@ -260,13 +268,16 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
             method === 'LaunchExtensionPrefs' ? null : new GLib.VariantType('(b)'),
             Gio.DBusCallFlags.NONE,
             -1,
-            null,
+            this._cancellable,
             (connection, result) => {
                 try {
                     const reply = connection.call_finish(result);
                     callback?.(reply);
                 } catch (error) {
+                    if (!this._shellSettings || this._cancellable.is_cancelled())
+                        return;
                     console.error(`Luma Tiling: ${method} failed: ${error.message}`);
+                    callback?.(null);
                     this._syncFromSettings();
                 }
             });
@@ -282,7 +293,7 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
             null,
             Gio.DBusCallFlags.NONE,
             -1,
-            null,
+            this._cancellable,
             (connection, result) => {
                 try {
                     connection.call_finish(result);
@@ -299,13 +310,17 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
         }
 
         this._callExtensionService('EnableExtension', reply => {
-            const [success] = reply.deepUnpack();
+            const [success] = reply?.deepUnpack() ?? [false];
             if (!success) {
                 console.error('Luma Tiling: EnableExtension was rejected by GNOME Shell');
                 this._syncFromSettings();
                 return;
             }
 
+            if (!this._tilingSettings.set_boolean('enable-autotiling', true)) {
+                this._syncFromSettings();
+                return;
+            }
             this._syncFromSettings();
             callback();
         });
@@ -315,11 +330,18 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
         if (this._syncing)
             return;
 
-        const method = this.checked ? 'EnableExtension' : 'DisableExtension';
+        const enabled = this.checked;
+        const previous = this._tilingSettings.get_boolean('enable-autotiling');
+        if (!this._tilingSettings.set_boolean('enable-autotiling', enabled)) {
+            this._syncFromSettings();
+            return;
+        }
+        const method = enabled ? 'EnableExtension' : 'DisableExtension';
         this._callExtensionService(method, reply => {
-            const [success] = reply.deepUnpack();
+            const [success] = reply?.deepUnpack() ?? [false];
             if (!success) {
                 console.error(`Luma Tiling: ${method} was rejected by GNOME Shell`);
+                this._tilingSettings.set_boolean('enable-autotiling', previous);
                 this._syncFromSettings();
             }
         });
@@ -415,12 +437,17 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
     }
 
     destroy() {
+        this._cancellable.cancel();
         if (this._surfaceSyncId)
             GLib.source_remove(this._surfaceSyncId);
         this._surfaceSyncId = 0;
         Main.panel.statusArea.quickSettings?.menu?.box?.disconnectObject(this);
         if (this._settingsChangedId)
             this._shellSettings.disconnect(this._settingsChangedId);
+        if (this._disabledChangedId)
+            this._shellSettings.disconnect(this._disabledChangedId);
+        if (this._autoTilingChangedId)
+            this._tilingSettings.disconnect(this._autoTilingChangedId);
         if (this._layoutsChangedId)
             this._tilingSettings.disconnect(this._layoutsChangedId);
         if (this._selectionChangedId)

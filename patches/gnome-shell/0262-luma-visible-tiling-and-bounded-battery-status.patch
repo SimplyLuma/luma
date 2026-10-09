@@ -1,0 +1,137 @@
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1369,7 +1369,13 @@
+         this._pageSwitch = new St.Button({style_class: 'luma-options-page-switch', can_focus: true,
+             accessible_role: Atk.Role.TOGGLE_BUTTON,
+             child: new PopupMenu.Switch(false)});
+-        this._pageSwitch.connect('clicked', () => this._activeMenu?._studioRadio?.emit('clicked', 1));
++        this._pageSwitch.connect('clicked', () => {
++            const radio = this._activeMenu?._studioRadio;
++            if (radio?.constructor.name === 'TilingToggle')
++                radio.checked = !radio.checked;
++            else
++                radio?.emit('clicked', 1);
++        });
+         this._pageSwitch.connect('notify::checked', () => {
+             if (this._pageSwitch.checked) this._pageSwitch.child.add_style_pseudo_class('checked');
+             else this._pageSwitch.child.remove_style_pseudo_class('checked');
+@@ -1410,6 +1416,27 @@
+             if (this._activeMenu && focus && this._pageScroll.contains(focus))
+                 ensureActorVisibleInScrollView(this._pageScroll, focus);
+         }, this.actor);
++    }
++
++    _adoptStudioTiling(item) {
++        if (!this._studioUtilities || item.constructor.name !== 'TilingToggle' ||
++            item._lumaStudioRow)
++            return;
++        // External indicators may arrive before or after Studio is arranged.
++        // Keep the native toggle and its existing embedded layout page alive.
++        const row = new St.BoxLayout({style_class: 'luma-options-toggle-row', x_expand: true});
++        item.get_parent()?.remove_child(item);
++        item.add_style_class_name('luma-options-utility');
++        item.x_expand = true;
++        item.setPill(true);
++        item._menuButton.child.child.icon_name = 'lumaui-chevron-right-symbolic';
++        item.menu._studioTitle = _('Window layouts');
++        item.menu._studioRadio = item;
++        item.add_effect_with_name('luma-control-clip', new LumaRoundedClip(16));
++        row.add_child(item);
++        this._studioUtilities.add_child(row);
++        item._lumaStudioRow = row;
++        item.connect('destroy', () => row.destroy());
+     }
+ 
+     // The Studio page arrangement reuses GNOME's live indicator actors. No
+@@ -1443,6 +1470,7 @@
+             box.insert_child_below(item._valueLabel, item._menuSlot);
+             item._valueLabel.y_align = Clutter.ActorAlign.CENTER;
+             item._menuButton.add_style_class_name('luma-options-level-key');
++            item._menuButton.add_effect_with_name('luma-control-clip', new LumaRoundedClip(10));
+         }
+         volume.menu._studioTitle = _('Sound output');
+         volume._menuButton.child.child.icon_name = 'luma-headphones-symbolic';
+@@ -1460,6 +1488,7 @@
+         const auto = new St.Button({style_class: 'luma-options-level-key', label: _('Auto'),
+             can_focus: true, toggle_mode: true, accessible_name: _('Automatic brightness')});
+         powerSettings.bind('ambient-enabled', auto, 'checked', Gio.SettingsBindFlags.DEFAULT);
++        auto.add_effect_with_name('luma-control-clip', new LumaRoundedClip(10));
+         brightness._menuSlot.child = auto;
+         brightness._menuButton.hide();
+         auto.connect('destroy', () => powerSettings.run_dispose());
+@@ -1470,6 +1499,7 @@
+         for (const item of [indicators._network?._wirelessToggle, indicators._bluetooth?.quickSettingsItems[0]]) {
+             move(item, radios, 'luma-options-radio');
+             if (!item) continue;
++            item.add_effect_with_name('luma-control-clip', new LumaRoundedClip(16));
+             item.x_expand = true;
+             item.setPill(false);
+             item._menuButton.child.child.icon_name = 'lumaui-chevron-right-symbolic';
+@@ -1489,6 +1519,9 @@
+         }
+         const toggles = new St.BoxLayout({style_class: 'luma-options-toggles', orientation: Clutter.Orientation.VERTICAL});
+         this._mainPage.add_child(toggles);
++        this._studioUtilities = toggles;
++        for (const item of this._grid.get_children())
++            this._adoptStudioTiling(item);
+         const utilities = [indicators._doNotDisturb, indicators._nightLight,
+             indicators._powerProfiles, indicators._darkMode].map(i => i.quickSettingsItems[0]);
+         for (let i = 0; i < utilities.length; i += 2) {
+@@ -1661,6 +1694,7 @@
+                 if (this._activeMenu === item.menu) this._activeMenu = null;
+             });
+         }
++        this._adoptStudioTiling(item);
+     }
+ 
+     getFirstItem() {
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -21,6 +21,30 @@
+ 
+ const BUS_NAME = 'org.freedesktop.UPower';
+ const OBJECT_PATH = '/org/freedesktop/UPower/devices/DisplayDevice';
++
++export function lumaBatteryStatus(proxy) {
++    const state = proxy.State;
++    if (state === UPower.DeviceState.FULLY_CHARGED)
++        return _('Fully charged');
++    if (state === UPower.DeviceState.CHARGING)
++        return proxy.Percentage >= 99.5 ? _('Fully charged') : _('Charging');
++    if (state === UPower.DeviceState.PENDING_CHARGE)
++        return _('Plugged in');
++    if (state !== UPower.DeviceState.DISCHARGING || proxy.Percentage >= 100)
++        return '';
++    // Firmware sometimes reports stale or effectively infinite estimates.
++    // A percentage remains useful when no plausible discharge time exists.
++    const seconds = Number(proxy.TimeToEmpty);
++    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 48 * 60 * 60)
++        return '';
++    if (seconds < 60)
++        return _('Less than a minute left');
++    const hours = Math.floor(seconds / 3600);
++    const minutes = Math.floor(seconds % 3600 / 60);
++    return hours ? _('%d h %d min left').format(hours, minutes)
++        : _('%d min left').format(minutes);
++}
++
+ 
+ const DisplayDeviceInterface = loadInterfaceXML('org.freedesktop.UPower.Device');
+ const PowerManagerProxy = Gio.DBusProxy.makeProxyWrapper(DisplayDeviceInterface);
+@@ -458,12 +482,9 @@
+         key.connect('clicked', () => this._powerToggle.emit('clicked', 1));
+         const syncBattery = () => {
+             const proxy = this._powerToggle._proxy;
+-            const seconds = proxy.State === UPower.DeviceState.CHARGING ? proxy.TimeToFull : proxy.TimeToEmpty;
+-            const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
+-            const remaining = seconds > 0 ? (hours ? _('%d h %d min').format(hours, minutes) : _('%d min').format(minutes)) : '';
+             const percentage = GLib.markup_escape_text(this._powerToggle.title ?? '', -1);
+-            const suffix = remaining ? ` · ${remaining} ` +
+-                (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '';
++            const status = lumaBatteryStatus(proxy);
++            const suffix = status ? ` · ${status}` : '';
+             label.clutter_text.set_markup(`<span weight="650">${percentage}</span><span alpha="40632">${GLib.markup_escape_text(suffix, -1)}</span>`);
+             key.visible = this._powerToggle.visible;
+         };

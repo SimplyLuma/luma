@@ -1,0 +1,106 @@
+From: Project Luma
+Subject: [PATCH] Shell: align clock text in logical coordinates on fractional displays
+
+Pango returns baselines in text resource pixels, while Clutter allocates
+labels in logical pixels. Normalize each baseline by that label's resource
+scale so the login clock, period, date and shelf remain aligned at 125%.
+Keep the existing natural line metrics, text settings and direction.
+
+--- a/js/ui/lumaClockLayout.js
++++ b/js/ui/lumaClockLayout.js
+@@ -30,7 +30,11 @@
+             actor.ensure_style();
+             const [, width] = actor.get_preferred_width(-1);
+             const [, height] = actor.get_preferred_height(width);
+-            const baseline = actor.clutter_text.get_layout().get_baseline() / Pango.SCALE;
++            // Pango shapes in resource pixels; allocations use logical pixels.
++            // Fractional monitors render text at an integer backing scale.
++            const text = actor.clutter_text;
++            const resourceScale = Math.max(1, text.get_resource_scale());
++            const baseline = text.get_layout().get_baseline() / (Pango.SCALE * resourceScale);
+             return {actor, width, height, baseline};
+         });
+     }
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -150,7 +150,9 @@
+         const dateX = stacked ? 0 : dividerX + 17 * scale;
+         const dateWidth = Math.max(0, Math.min(naturalDateWidth, width - dateX));
+         const [, dateHeight] = this._date.get_preferred_height(dateWidth);
+-        const dateBaseline = this._date.clutter_text.get_layout().get_baseline() / Pango.SCALE;
++        const dateText = this._date.clutter_text;
++        const dateBaseline = dateText.get_layout().get_baseline() /
++            (Pango.SCALE * Math.max(1, dateText.get_resource_scale()));
+         place(this._date, dateX, stacked ? rowY + rowHeight + 8 * scale
+             : rowY + commonBaseline - dateBaseline, dateWidth, dateHeight);
+     }
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -667,3 +667,3 @@
+-.poster-weekday { font-family: "Figtree"; font-size: 148px; font-weight: 700; letter-spacing: -0.055em; }
++.poster-weekday { font-family: "Figtree"; font-size: 112px; font-weight: 700; letter-spacing: -0.055em; }
+ .poster-time-row { spacing: 14px; }
+ .poster-time { font-family: "Figtree"; font-size: 64px; font-weight: 250; letter-spacing: -0.04em; font-feature-settings: "tnum"; }
+@@ -675,1 +675,1 @@
+-.poster-day.compact .poster-weekday { font-size: 104px; }
++.poster-day.compact .poster-weekday { font-size: 80px; }
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4927,7 +4927,7 @@
+ 
+ .poster-weekday {
+   font-family: "Figtree";
+-  font-size: 148px;
++  font-size: 112px;
+   font-weight: 700;
+   letter-spacing: -0.055em; }
+ 
+@@ -4962,7 +4962,7 @@
+   color: rgba(255, 255, 255, 0.9); }
+ 
+ .poster-day.compact .poster-weekday {
+-  font-size: 104px; }
++  font-size: 80px; }
+ 
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4703,7 +4703,7 @@
+ 
+ .poster-weekday {
+   font-family: "Figtree";
+-  font-size: 148px;
++  font-size: 112px;
+   font-weight: 700;
+   letter-spacing: -0.055em; }
+ 
+@@ -4738,7 +4738,7 @@
+   color: rgba(255, 255, 255, 0.9); }
+ 
+ .poster-day.compact .poster-weekday {
+-  font-size: 104px; }
++  font-size: 80px; }
+ 
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4961,7 +4961,7 @@
+ 
+ .poster-weekday {
+   font-family: "Figtree";
+-  font-size: 148px;
++  font-size: 112px;
+   font-weight: 700;
+   letter-spacing: -0.055em; }
+ 
+@@ -4996,7 +4996,7 @@
+   color: rgba(255, 255, 255, 0.9); }
+ 
+ .poster-day.compact .poster-weekday {
+-  font-size: 104px; }
++  font-size: 80px; }
+ 
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
