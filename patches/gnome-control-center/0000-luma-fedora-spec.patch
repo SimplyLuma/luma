@@ -5,7 +5,7 @@
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.49.creator20261009.1%{?dist}
++Release:        1.luma.50.creator20261009.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0

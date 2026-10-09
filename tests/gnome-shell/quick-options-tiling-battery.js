@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // gjs -m quick-options-tiling-battery.js quickSettings.js system.js extension.js
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import UPower from 'gi://UPowerGlib';
 
 String.prototype.format = imports.format.format;
@@ -62,9 +63,26 @@ clickPage.call(header);
 equal(headerRadio.checked, false, 'momentary page button disables tiling');
 
 const register = klass => klass;
-const Toggle = new Function('GObject', 'QuickSettings', 'Extension',
+const endpointCalls = [];
+const endpointGio = {DBusCallFlags: Gio.DBusCallFlags, DBus: {session: {call(...args) {
+    endpointCalls.push(args);
+    args.at(-1)({call_finish: reply => reply}, new GLib.Variant('(b)', [true]));
+}}}};
+const Toggle = new Function('GObject', 'QuickSettings', 'Extension', 'Gio', 'GLib',
     script(extension) + '\nreturn TilingToggle;')(
-    {registerClass: register}, {QuickMenuToggle: class {}, SystemIndicator: class {}}, class {});
+    {registerClass: register}, {QuickMenuToggle: class {}, SystemIndicator: class {}}, class {}, endpointGio, GLib);
+const endpointOwner = Object.create(Toggle.prototype);
+endpointOwner._cancellable = new Gio.Cancellable();
+for (const method of ['EnableExtension', 'DisableExtension']) {
+    endpointOwner._callExtensionService(method);
+    const call = endpointCalls.at(-1);
+    equal(call[0], 'org.gnome.Shell', `${method} native manager bus`);
+    equal(call[1], '/org/gnome/Shell', `${method} native manager object`);
+    equal(call[2], 'org.gnome.Shell.Extensions', `${method} manager interface`);
+    equal(call[3], method, `${method} request method`);
+    equal(call[4].deepUnpack()[0], 'tilingshell@ferrarodomenico.com', `${method} managed extension`);
+}
+print('PASS two native extension-manager wire requests');
 const uuid = 'tilingshell@ferrarodomenico.com';
 function toggle({enabled = false, disabled = false, auto = false, accepted = true, writable = true} = {}) {
     const item = Object.create(Toggle.prototype);

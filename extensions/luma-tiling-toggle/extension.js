@@ -13,8 +13,8 @@ import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js'
 
 const TILING_SHELL_UUID = 'tilingshell@ferrarodomenico.com';
 const TILING_SCHEMA_ID = 'org.gnome.shell.extensions.tilingshell';
-const EXTENSIONS_BUS_NAME = 'org.gnome.Shell.Extensions';
-const EXTENSIONS_OBJECT_PATH = '/org/gnome/Shell/Extensions';
+const EXTENSIONS_BUS_NAME = 'org.gnome.Shell';
+const EXTENSIONS_OBJECT_PATH = '/org/gnome/Shell';
 const EXTENSIONS_INTERFACE = 'org.gnome.Shell.Extensions';
 const TILING_BUS_NAME = 'org.gnome.Shell';
 const TILING_OBJECT_PATH = '/org/gnome/Shell/Extensions/TilingShell';

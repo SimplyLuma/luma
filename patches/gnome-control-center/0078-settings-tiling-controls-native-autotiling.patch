@@ -83,7 +83,8 @@ diff --git a/shell/cc-luma-live-windows.c b/shell/cc-luma-live-windows.c
 +  request->shell = g_object_ref (self->shell);
 +  request->tiling = g_object_ref (self->tiling);
 +  request->enabled = json_node_get_boolean (value);
-   g_dbus_connection_call (bus, "org.gnome.Shell.Extensions", "/org/gnome/Shell/Extensions", "org.gnome.Shell.Extensions",
+-  g_dbus_connection_call (bus, "org.gnome.Shell.Extensions", "/org/gnome/Shell/Extensions", "org.gnome.Shell.Extensions",
++  g_dbus_connection_call (bus, "org.gnome.Shell", "/org/gnome/Shell", "org.gnome.Shell.Extensions",
                            json_node_get_boolean (value) ? "EnableExtension" : "DisableExtension",
                            g_variant_new ("(s)", TILING_UUID), G_VARIANT_TYPE ("(b)"),
 -                          G_DBUS_CALL_FLAGS_NO_AUTO_START, -1, self->cancel, extension_called, self);

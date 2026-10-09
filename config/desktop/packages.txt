@@ -13,12 +13,12 @@
 # deployment's rpmdb. Keep the shared pins in step with inputs.env.
 
 # Shell, window manager and settings (replace Fedora base packages)
-gnome-control-center-50.4-1.luma.49.creator20261009.1.fc44.x86_64
-gnome-control-center-filesystem-50.4-1.luma.49.creator20261009.1.fc44.noarch
+gnome-control-center-50.4-1.luma.50.creator20261009.1.fc44.x86_64
+gnome-control-center-filesystem-50.4-1.luma.50.creator20261009.1.fc44.noarch
 gnome-shell-50.3-1.luma.109.creator20261009.1.fc44.x86_64
 gnome-shell-common-50.3-1.luma.109.creator20261009.1.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
-gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.11.fc44.noarch
+gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.12.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.24.fc44.noarch
 luma-calculator-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-disks-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
