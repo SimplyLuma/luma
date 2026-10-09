@@ -2,6 +2,7 @@
 // gjs -m quick-options-tiling-battery.js quickSettings.js system.js extension.js
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import UPower from 'gi://UPowerGlib';
 
 String.prototype.format = imports.format.format;
@@ -135,4 +136,65 @@ for (const accepted of [true, false, null]) {
     equal(state.auto, false, 'turning off disables automatic placement');
     equal(state.calls[0], 'DisableExtension', 'turning off disables runtime');
 }
-print(JSON.stringify({syntax_modules: 3, battery_cases: cases.length, tiling_cases: 11, result: 'PASS'}));
+// Use real GObject notifications: a synchronous settings callback during a
+// checked notification can queue a second notification after _syncing clears.
+const NativeSwitch = GObject.registerClass({Properties: {
+    checked: GObject.ParamSpec.boolean('checked', 'checked', 'checked',
+        GObject.ParamFlags.READWRITE, false),
+}}, class NativeSwitch extends GObject.Object {});
+function nativeSwitch() {
+    const item = new NativeSwitch();
+    const state = {enabled: false, auto: false, calls: [], pending: []};
+    item._syncFromSettings = Toggle.prototype._syncFromSettings;
+    item._applyRuntimeState = Toggle.prototype._applyRuntimeState;
+    item._shellSettings = {get_strv: key => key === 'enabled-extensions' && state.enabled ? [uuid] : []};
+    item._tilingSettings = {get_boolean: () => state.auto, set_boolean: (_key, value) => {
+        state.auto = value;
+        item._syncFromSettings();
+        return true;
+    }};
+    item._callExtensionService = (method, callback) => {
+        state.calls.push(method);
+        state.pending.push(accepted => {
+            if (accepted) state.enabled = method === 'EnableExtension';
+            item._syncFromSettings();
+            callback({deepUnpack: () => [accepted]});
+        });
+    };
+    item.connect('notify::checked', () => item._applyRuntimeState());
+    return [item, state];
+}
+{
+    const [item, state] = nativeSwitch();
+    item.checked = true;
+    equal(state.calls.length, 1, 'synchronous setting change sends one enable');
+    equal(item.checked, true, 'requested state survives until asynchronous reply');
+    state.pending.shift()(true);
+    equal(item.checked, true, 'accepted native enable retained');
+    equal(state.auto, true, 'accepted automatic placement retained');
+    item.checked = false;
+    state.pending.shift()(true);
+    equal(state.calls.join(','), 'EnableExtension,DisableExtension', 'one request per actual toggle');
+    equal(item.checked, false, 'accepted native disable retained');
+}
+{
+    const [item, state] = nativeSwitch();
+    item.checked = true;
+    state.pending.shift()(false);
+    equal(item.checked, false, 'native refusal restores switch');
+    equal(state.auto, false, 'native refusal restores placement');
+    equal(state.calls.length, 1, 'native refusal sends no inverse request');
+}
+{
+    const [item, state] = nativeSwitch();
+    item.checked = true;
+    item.checked = false;
+    equal(state.calls.length, 1, 'second click waits for first request');
+    state.pending.shift()(true);
+    equal(state.calls.at(-1), 'DisableExtension', 'second click runs after first reply');
+    state.pending.shift()(true);
+    equal(item.checked, false, 'latest click retained');
+    equal(state.auto, false, 'latest click retains placement');
+}
+print(JSON.stringify({syntax_modules: 3, battery_cases: cases.length, tiling_cases: 11,
+    native_notification_cases: 3, result: 'PASS'}));

@@ -167,6 +167,7 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
         this._tilingSettings = createTilingSettings();
         this._cancellable = new Gio.Cancellable();
         this._syncing = false;
+        this._applying = false;
         this._settingsChangedId = this._shellSettings.connect(
             'changed::enabled-extensions', () => this._syncFromSettings());
         this._disabledChangedId = this._shellSettings.connect(
@@ -248,6 +249,11 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _syncFromSettings() {
+        // The automatic-placement setting changes before the asynchronous
+        // extension-manager reply. Preserve the requested switch state until
+        // both settings describe the completed operation.
+        if (this._applying)
+            return;
         const extensions = this._shellSettings.get_strv('enabled-extensions');
         const disabled = this._shellSettings.get_strv('disabled-extensions');
 
@@ -327,12 +333,14 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
     }
 
     _applyRuntimeState() {
-        if (this._syncing)
+        if (this._syncing || this._applying)
             return;
 
         const enabled = this.checked;
         const previous = this._tilingSettings.get_boolean('enable-autotiling');
+        this._applying = true;
         if (!this._tilingSettings.set_boolean('enable-autotiling', enabled)) {
+            this._applying = false;
             this._syncFromSettings();
             return;
         }
@@ -342,8 +350,15 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
             if (!success) {
                 console.error(`Luma Tiling: ${method} was rejected by GNOME Shell`);
                 this._tilingSettings.set_boolean('enable-autotiling', previous);
+                this._applying = false;
                 this._syncFromSettings();
+                return;
             }
+            this._applying = false;
+            if (this.checked !== enabled)
+                this._applyRuntimeState();
+            else
+                this._syncFromSettings();
         });
     }
 
