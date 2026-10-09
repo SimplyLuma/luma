@@ -56,13 +56,13 @@ def execute(arguments, timeout, input_text, cancelled):
         deadline = time.monotonic() + timeout
         while selector.get_map():
             if cancelled() or time.monotonic() >= deadline:
-                raise TimeoutError('Luma Cloud took too long to answer.')
+                raise TimeoutError('Luma Connect took too long to answer.')
             for key, _mask in selector.select(0.1):
                 block = os.read(key.fd, 65536)
                 if not block: selector.unregister(key.fileobj); continue
                 output[key.data].extend(block)
                 if sum(map(len, output.values())) > LIMIT:
-                    raise ValueError('Luma Cloud response exceeded its size bound.')
+                    raise ValueError('Luma Connect response exceeded its size bound.')
         code = process.wait(timeout=max(0.1, deadline-time.monotonic()))
         return code, *(bytes(output[key]).decode('utf-8', errors='replace') for key in ('stdout', 'stderr'))
     finally:
@@ -98,15 +98,15 @@ class ConnectUIBroker:
                     code, out, err = self.runner(*plan, lambda: self.closed)
                     # A status/profile response carries only the existing public
                     # CLI report, never device.json/enrollment bearer material.
-                    problem = None if code == 0 else ('This computer needs to be connected to Luma Cloud again.'
+                    problem = None if code == 0 else ('This computer needs to be connected to Luma Connect again.'
                         if code == 3 else (err or out).strip().splitlines()[-1:][0] if (err or out).strip()
-                        else 'Luma Cloud could not be reached. Try again.')
+                        else 'Luma Connect could not be reached. Try again.')
                     response = json.dumps({'code': code, 'problem': problem, 'output': out}, allow_nan=False)
                     if len(response.encode()) > LIMIT*2: raise ValueError()
                 GLib.idle_add(lambda: (invocation.return_value(GLib.Variant('(s)', (response,))), False)[1])
             except Exception:
                 GLib.idle_add(lambda: (invocation.return_dbus_error('org.projectluma.Connect1.UI.Unavailable',
-                    'Luma Cloud information is unavailable.'), False)[1])
+                    'Luma Connect information is unavailable.'), False)[1])
             finally: self.slots.release()
         try: self.pool.submit(run)
         except Exception:

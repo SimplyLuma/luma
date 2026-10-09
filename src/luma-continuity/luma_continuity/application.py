@@ -3,7 +3,7 @@
 A person has one Luma account. From this computer they see what it keeps in
 step, the devices on it, and the phones this computer works with:
 
-* Luma Cloud sync (calendar, notes, contacts, photos, clocks, weather, music
+* Luma Connect sync (calendar, notes, contacts, photos, clocks, weather, music
   servers, books, messages and call history) is run by `luma-connect-sync`
   through `cloud_sync`. Its account is the account the app is about.
 * Android phones pair with this computer directly (ADR-021); no account needed.
@@ -594,7 +594,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             self._refresh()
         self.proxy.call(method,GLib.Variant(signature,values),Gio.DBusCallFlags.NONE,5000,None,done)
 
-    # ── Luma Cloud ───────────────────────────────────────────────────────
+    # ── Luma Connect ───────────────────────────────────────────────────────
     def _cloud_tick(self):
         if self.closed:return GLib.SOURCE_REMOVE
         if self.is_visible() and not self.cloud_busy:self._refresh_cloud()
@@ -664,7 +664,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         phones.connect('clicked',lambda *_:(setattr(self,'phones_only',True),self._update()));buttons.append(phones)
         center.append(buttons)
         if not self.cloud_sync.available:
-            note=Gtk.Label(label='Luma Cloud sync isn’t installed on this computer.',wrap=True,justify=Gtk.Justification.CENTER)
+            note=Gtk.Label(label='Luma Connect sync isn’t installed on this computer.',wrap=True,justify=Gtk.Justification.CENTER)
             note.add_css_class('dim-label');note.add_css_class('caption');center.append(note);sign_in.set_sensitive(False)
         optional=Gtk.Label(label=OPTIONAL,wrap=True,justify=Gtk.Justification.CENTER,margin_top=26)
         optional.add_css_class('dim-label');optional.add_css_class('caption');center.append(optional)
@@ -720,7 +720,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
                 if problem:
                     code.set_sensitive(True);name.set_sensitive(True);back.set_sensitive(True);update()
                     status.set_text(problem);code.entry.grab_focus();return
-                handle.close();self._say('Signed in. The first sync is running.');self._refresh_cloud()
+                handle.close();self._say('Signed in.');self._refresh_cloud()
             self.cloud_sync.connect(value,name.entry.get_text().strip(),done)
         connect.connect('clicked',submit);code.entry.connect('activate',submit)
         def show_code(*_):
@@ -777,7 +777,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             last=self._last_sync()
             text=when_text(last,prefix='Synced ') if last else 'Waiting for the first sync'
             if not (self.cloud or {}).get('reachable',True):text='Offline · '+text.lower() if last else 'Offline'
-        elif self._relay_signed_in():text='Luma Cloud isn’t connected'
+        elif self._relay_signed_in():text='Luma Connect isn’t connected'
         else:text=''
         if self.sidebar_status.get_label()!=text:self.sidebar_status.set_label(text)
         self.sidebar_status.set_visible(bool(text))
@@ -857,7 +857,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         if self._cloud_connected():
             self._profile_groups(page)
         else:
-            about=Adw.PreferencesGroup(title='Luma Cloud');page.add(about)
+            about=Adw.PreferencesGroup(title='Luma Connect');page.add(about)
             row=self._row(about,'Not connected',self.cloud_problem or 'Connect this computer to keep your calendar, notes, contacts and photos in step.')
             row.add_suffix(self._suffix_button('Sign In…',self._sign_in_dialog,style='suggested-action'))
 
@@ -1030,7 +1030,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             suffix=refresh,back=self._back())
         if not self._cloud_connected():
             group=Adw.PreferencesGroup();page.add(group)
-            row=self._row(group,'Luma Cloud isn’t connected',self.cloud_problem or 'Sign in to keep your calendar, notes, contacts and photos in step.')
+            row=self._row(group,'Luma Connect isn’t connected',self.cloud_problem or 'Sign in to keep your calendar, notes, contacts and photos in step.')
             row.add_suffix(self._suffix_button('Sign In…',self._sign_in_dialog,style='suggested-action'))
         else:
             if self.cloud_problem:
@@ -1091,7 +1091,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         page=Page('Devices','Every device signed in to your Luma account.',back=self._back())
         if not self._cloud_connected():
             group=Adw.PreferencesGroup();page.add(group)
-            row=self._row(group,'Luma Cloud isn’t connected',self.cloud_problem or 'Sign in, and the devices on your account show up here.')
+            row=self._row(group,'Luma Connect isn’t connected',self.cloud_problem or 'Sign in, and the devices on your account show up here.')
             row.add_suffix(self._suffix_button('Sign In…',self._sign_in_dialog,style='suggested-action'))
             return page
         this=self._this_device().get('id')
@@ -1149,7 +1149,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
 
     def _confirm_cloud_signout(self,target,name):
         dialog=Adw.AlertDialog(heading=f'Remove {name} from your account?',
-            body=f'{name} stops syncing with Luma Cloud. Nothing on it is deleted, and it can join again with a new code.')
+            body=f'{name} stops syncing with Luma Connect. Nothing on it is deleted, and it can join again with a new code.')
         dialog.add_response('cancel','Cancel');dialog.add_response('signout','Remove')
         dialog.set_response_appearance('signout',Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_default_response('cancel');dialog.set_close_response('cancel')

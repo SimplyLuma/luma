@@ -1,8 +1,8 @@
-"""Luma Cloud sync, as the Connect app sees it.
+"""Luma Connect sync, as the Connect app sees it.
 
 The sync engine is `luma-connect-sync` (prairie-core-apps). This module runs it
 off the GTK thread and turns its exit codes into things a person can act on:
-0 done, 1 try again (network or Luma Cloud trouble), 3 connect this device
+0 done, 1 try again (network or Luma Connect trouble), 3 connect this device
 again. Everything shown about what a switch does comes from the engine's own
 status report, so the words on screen are the ones its code guarantees.
 """
@@ -21,6 +21,11 @@ DEFAULT_HUB = 'https://hub.simplyluma.com'
 HUB_CONNECT_PAGE = DEFAULT_HUB + '/connect'
 RETRY = 1
 RECONNECT = 3
+
+
+def connect_problem(problem):
+    """Keep older native broker replies consistent with the installed UI."""
+    return problem.replace('Luma Cloud', 'Luma Connect') if isinstance(problem, str) else problem
 
 
 def command():
@@ -89,7 +94,7 @@ class CloudSync:
             return
         executable = command()
         if executable is None:
-            GLib.idle_add(done, None, 'Luma Cloud sync is not installed on this computer.', None)
+            GLib.idle_add(done, None, 'Luma Connect sync is not installed on this computer.', None)
             return
 
         def worker():
@@ -99,15 +104,15 @@ class CloudSync:
                                               input=input_text)
                     code, out, err = finished.returncode, finished.stdout, finished.stderr
                 except subprocess.TimeoutExpired:
-                    code, out, err = RETRY, '', 'Luma Cloud took too long to answer.'
+                    code, out, err = RETRY, '', 'Luma Connect took too long to answer.'
                 except OSError as error:
                     code, out, err = RETRY, '', str(error)
             problem = None
             if code == RECONNECT:
-                problem = 'This computer needs to be connected to Luma Cloud again.'
+                problem = 'This computer needs to be connected to Luma Connect again.'
             elif code != 0:
                 last = (err or out).strip().splitlines()[-1:] or ['']
-                problem = last[0].removeprefix('luma-connect-sync: ') or 'Luma Cloud could not be reached. Try again.'
+                problem = last[0].removeprefix('luma-connect-sync: ') or 'Luma Connect could not be reached. Try again.'
             GLib.idle_add(done, code, problem, out)
 
         threading.Thread(target=worker, daemon=True, name='luma-cloud-sync').start()
@@ -127,7 +132,7 @@ class CloudSync:
                 request = {'operation':'sign-out','values':{'device':arguments[2] if len(arguments)==3 else ''}}
             elif arguments == ['profile','set','--stdin','--json']:
                 request = {'operation':'profile','values':json.loads(input_text)}
-            elif len(arguments)==7 and arguments[:3] == ['enrol','--hub',DEFAULT_HUB]:
+            elif (len(arguments)==7 or len(arguments)==8 and arguments[-1]=='--force') and arguments[:3] == ['enrol','--hub',DEFAULT_HUB] and arguments[3]=='--code' and arguments[5]=='--name':
                 request = {'operation':'connect','values':{'code':arguments[4],'name':arguments[6]}}
             else: raise ValueError('Unsupported cloud operation')
             from .connect_cloud_contract import command_plan
@@ -146,8 +151,8 @@ class CloudSync:
                             or not isinstance(response['output'],str)
                             or response['problem'] is not None and not isinstance(response['problem'],str)):
                         raise ValueError('Invalid Connect response')
-                    done(response['code'], response['problem'], response['output'])
-                except Exception: done(None, 'Luma Cloud could not be reached. Try again.', None)
+                    done(response['code'], connect_problem(response['problem']), response['output'])
+                except Exception: done(None, 'Luma Connect could not be reached. Try again.', None)
             connection.call('org.projectluma.Connect1','/org/projectluma/Connect',
                 'org.projectluma.Connect1','ConnectCloudRequest',
                 GLib.Variant('(s)',(json.dumps(request),)), GLib.VariantType.new('(s)'),
@@ -161,7 +166,7 @@ class CloudSync:
                 try:
                     report = json.loads(out)
                 except ValueError:
-                    problem = 'Luma Cloud sync gave an answer this app does not understand.'
+                    problem = 'Luma Connect sync gave an answer this app does not understand.'
             callback(report, problem)
             return False
         self._run(['status', '--json'], 45, done)
@@ -190,9 +195,9 @@ class CloudSync:
                 try:
                     profile = json.loads(out)
                 except ValueError:
-                    problem = 'Luma Cloud gave an answer this app does not understand.'
+                    problem = 'Luma Connect gave an answer this app does not understand.'
             if code == 0 and not isinstance(profile, dict):
-                profile, problem = None, problem or 'Luma Cloud gave an answer this app does not understand.'
+                profile, problem = None, problem or 'Luma Connect gave an answer this app does not understand.'
             callback(profile, problem)
             return False
         self._run(['profile', 'set', '--stdin', '--json'], 60, done, input_text=json.dumps(changes))
@@ -206,5 +211,5 @@ class CloudSync:
         self._run(['invite'], 60, done)
 
     def connect(self, code, name, callback):
-        arguments = ['enrol', '--hub', DEFAULT_HUB, '--code', re.sub(r'\s+', '', code).upper(), '--name', name or device_name()]
+        arguments = ['enrol', '--hub', DEFAULT_HUB, '--code', re.sub(r'\s+', '', code).upper(), '--name', name or device_name(), '--force']
         self._run(arguments, 60, lambda code_, problem, _out: (callback(problem), False)[1])

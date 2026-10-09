@@ -37,6 +37,7 @@ def command_plan(request):
                 or not isinstance(values['name'], str) or not 1 <= len(values['name']) <= 60
                 or any(ord(c) < 32 for c in values['name'])):
             raise ValueError('A bounded enrollment code and device name are required.')
-        return ['enrol', '--hub', 'https://hub.simplyluma.com', '--code', values['code'], '--name', values['name']], 60, None
+        # Submitting a new one-time code explicitly replaces the saved device
+        # registration. The CLI retains its idempotent default for other users.
+        return ['enrol', '--hub', 'https://hub.simplyluma.com', '--code', values['code'], '--name', values['name'], '--force'], 60, None
     raise ValueError('That Connect operation is unavailable.')
-

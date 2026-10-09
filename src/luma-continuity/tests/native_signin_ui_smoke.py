@@ -109,7 +109,7 @@ for dark,width in ((dark,width) for dark in (False,True) for width in (360,500,1
         window.set_default_size(1024,740);pump(.4)
     submit.emit('clicked');cloud.done(None);pump()
     assert handle.closed and window.layer_host.modal is None
-    assert observed==[('toast','Signed in. The first sync is running.'),('refresh',)]
+    assert observed==[('toast','Signed in.'),('refresh',)]
     # Dismissal preserves focus and a delayed transport completion cannot
     # mutate a dismissed modal or falsely report success to the window.
     handle=ConnectWindow._sign_in_dialog(window);pump(.3)

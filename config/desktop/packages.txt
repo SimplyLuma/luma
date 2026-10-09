@@ -92,7 +92,7 @@ prairie-icon-theme-0.1.0-1.luma.38.creator20261006.1.fc44.noarch
 # Luma Connect, messaging and accounts
 luma-calls-0.1.0-1.luma.3.fc44.noarch
 luma-charlie-0.2.14-1.luma.6.creator20261007.1.fc44.noarch
-luma-continuity-0.1.0-0.64.experiment.fc44.noarch
+luma-continuity-0.1.0-0.65.experiment.fc44.noarch
 luma-media-bridge-0.1.0-1.luma.2.fc44.noarch
 luma-portal-0.1.0-1.luma.9.fc44.noarch
 luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch

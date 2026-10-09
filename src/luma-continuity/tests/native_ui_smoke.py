@@ -74,8 +74,8 @@ for handheld,width in [(False,880),(False,560),(False,1024),(True,360),(True,500
         body=window.get_content()
         assert body.measure(Gtk.Orientation.HORIZONTAL,-1)[0]<=width,('page wider than the window',
             [(type(w).__name__,w.measure(Gtk.Orientation.HORIZONTAL,-1)[0]) for w in descendants(body) if w.measure(Gtk.Orientation.HORIZONTAL,-1)[0]>width][:5])
-        # A phone shows one page at a time, so Luma Cloud's state is said once.
-        assert labels(window).count('Luma Cloud isn’t connected')<=1
+        # A phone shows one page at a time, so Luma Connect's state is said once.
+        assert labels(window).count('Luma Connect isn’t connected')<=1
     else:
         window.select_panel('sync');pump()
         assert len([w for w in descendants(window) if isinstance(w,(Adw.SwitchRow,Gtk.Switch))])==0
@@ -88,7 +88,7 @@ for handheld,width in [(False,880),(False,560),(False,1024),(True,360),(True,500
     screenshot(window,('mobile' if handheld else 'desktop')+'-'+str(width))
     results.append({'handheld':handheld,'requested_width':width,'actual_width':window.get_width(),'compact':window.compact})
     window.destroy();pump()
-# Luma Cloud switches: each shows what turning it off does before it happens,
+# Luma Connect switches: each shows what turning it off does before it happens,
 # and cancelling leaves it as it was. The sync engine is replaced by a fake.
 class FakeCloud:
     available=True
