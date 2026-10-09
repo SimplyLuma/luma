@@ -309,10 +309,48 @@ class AfterRestart(EngineCase):
         booted.live_replaced = layered.checksum
         self.rig.backend.list.insert(0, layered)
         self.engine.refresh()
-        self.assertNotEqual(self.engine.status().state, "restart-required")
+        status = self.engine.status()
+        self.assertEqual((status.state, status.staged_version, status.staged_commit, status.staged_name),
+                         ("idle", "", "", ""))
+        from luma_update.notifier import decide, NotifierState
+        plan, _ = decide(status.to_json_dict(), NotifierState(), NOW)
+        self.assertFalse(plan.show_ready)
         booted.live_replaced = ""
         self.engine.refresh()
         self.assertEqual(self.engine.status().state, "restart-required")
+
+    def test_finalized_live_package_addition_is_not_a_rollback_or_os_update(self):
+        booted = self.rig.backend.list[0]
+        layered = fakes.FakeDeployment("f" * 64, booted.version, booted.origin,
+            base_checksum=booted.checksum, layered=True, requested_packages=("chatgpt",))
+        booted.live_replaced = layered.checksum
+        self.rig.backend.list.insert(0, layered)
+        status = self.engine.refresh()
+        self.assertEqual((status.state, status.staged_version, status.staged_commit), ("idle", "", ""))
+
+    def test_same_base_package_addition_that_is_not_live_keeps_restart_required(self):
+        booted = self.rig.backend.list[0]
+        for staged in (True, False):
+            with self.subTest(staged=staged):
+                layered = fakes.FakeDeployment("f" * 64, booted.version, booted.origin,
+                    staged=staged, base_checksum=booted.checksum, layered=True,
+                    requested_packages=("chatgpt",))
+                self.rig.backend.list = [layered, booted]
+                status = self.engine.refresh()
+                self.assertEqual((status.state, status.staged_version, status.staged_commit),
+                                 ("restart-required", "", ""))
+
+    def test_same_base_live_overlay_never_claims_a_stale_owned_release(self):
+        booted = self.rig.backend.list[0]
+        layered = fakes.FakeDeployment("f" * 64, booted.version, booted.origin,
+            staged=True, base_checksum=booted.checksum, layered=True)
+        booted.live_replaced = layered.checksum
+        self.rig.backend.list.insert(0, layered)
+        with self.engine.store.locked():
+            self.engine.store.data["pending"] = {"to_commit":booted.checksum,
+                "from_commit":commit(0), "to_version":booted.version}
+        status = self.engine.refresh()
+        self.assertEqual((status.state, status.staged_version, status.staged_commit), ("idle", "", ""))
 
     def test_manual_rollback_marks_booted_as_unwanted(self):
         self.rig.backend.list.append(fakes.FakeDeployment(commit(0), "0.9.0", "luma:luma/1/x86_64/stable"))

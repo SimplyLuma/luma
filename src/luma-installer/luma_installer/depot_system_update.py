@@ -223,10 +223,10 @@ class SystemUpdate:
 
     @property
     def staged(self) -> bool:
-        # luma-updated publishes StagedVersion for any staged deployment, also
-        # one it did not make (an app removal staged by Depot, ADR-031), and
-        # reports that as restart-required. Only its own is an update "ready".
-        return self.state == STAGED or (bool(self.staged_version) and self.state != RESTART_REQUIRED)
+        # State is authoritative. Older agents also publish StagedVersion for
+        # live-applied package overlays while idle: those are already running,
+        # so a residual version must not turn into an OS update/restart card.
+        return self.state == STAGED
 
     @property
     def downloading(self) -> bool:

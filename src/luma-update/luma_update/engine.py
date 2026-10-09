@@ -496,7 +496,8 @@ class Engine:
     def _ours_staged(self, view: SystemView, data: dict | None = None) -> bool:
         pending = (self.store.data if data is None else data).get("pending")
         return bool(view.staged and isinstance(pending, dict)
-                    and view.staged.base_commit == pending.get("to_commit"))
+                    and view.staged.base_commit == pending.get("to_commit")
+                    and view.staged.base_commit != view.booted.base_commit)
 
     @staticmethod
     def _live_applied(view: SystemView) -> bool:
@@ -505,6 +506,9 @@ class Engine:
         ``dnf install`` does). A restart would change nothing a person can
         see, so it is not a change waiting for a restart."""
         staged, booted = view.staged, view.booted
+        if staged is None and view.deployments and not view.deployments[0].booted:
+            # Package deployments can already be finalized for the next boot.
+            staged = view.deployments[0]
         return bool(staged is not None and booted is not None
                     and getattr(booted, "live_replaced", "") == staged.checksum
                     and staged.base_commit == booted.base_commit)
@@ -516,7 +520,8 @@ class Engine:
         first = view.deployments[0] if view.deployments else None
         return bool(view.staged is None and first is not None and not first.booted and isinstance(pending, dict)
                     and pending.get("to_commit") and first.base_commit == pending.get("to_commit")
-                    and view.booted.base_commit == pending.get("from_commit"))
+                    and view.booted.base_commit == pending.get("from_commit")
+                    and first.base_commit != view.booted.base_commit)
 
     def _ours_waiting(self, view: SystemView, data: dict | None = None) -> str:
         """The commit of our update waiting for a restart (staged or finalized), or ''."""
@@ -641,7 +646,7 @@ class Engine:
             state = current
         elif staged_ours:
             state = STAGED
-        elif view.default_is_rollback or (view.staged and not staged_ours and not self._live_applied(view)):
+        elif (view.default_is_rollback or (view.staged and not staged_ours)) and not self._live_applied(view):
             state = RESTART_REQUIRED
         elif available.get("version"):
             state = AVAILABLE
@@ -660,7 +665,12 @@ class Engine:
                     self.store.data["adopting"] = False
         else:
             adoptable, unmanaged_reason = adoption_state(self.paths, self.settings, view)
-        staged_version = pending.get("to_version", "") if staged_ours else (view.staged.version if view.staged else "")
+        # Staged release fields describe an OS base change, never a local
+        # package overlay. In particular apply-live may leave a pending
+        # deployment while all its package content is already running.
+        staged_release = view.staged if (view.staged and
+            view.staged.base_commit != view.booted.base_commit) else None
+        staged_version = pending.get("to_version", "") if staged_ours else (staged_release.version if staged_release else "")
         try:
             display = self._names(view, data, staged_version=staged_version,
                                   rolled_back_version=notice.get("from_version", ""))
@@ -674,7 +684,7 @@ class Engine:
             booted_version=view.booted.version,
             booted_commit=view.booted.base_commit,
             staged_version=staged_version,
-            staged_commit=waiting_commit or (view.staged.base_commit if view.staged else ""),
+            staged_commit=waiting_commit or (staged_release.base_commit if staged_release else ""),
             available_version=available.get("version", ""),
             available_commit=available.get("commit", ""),
             available_summary=available.get("summary", "") or (pending.get("summary", "") if staged_ours else ""),

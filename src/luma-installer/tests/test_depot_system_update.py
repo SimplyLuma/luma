@@ -42,6 +42,17 @@ class Reading(unittest.TestCase):
         self.assertEqual(state.staged_name, 'Luma (Version 1.0.1, Prairie)')
         self.assertEqual(su.display_version('Luma (Prairie, Beta 1)'), 'Luma (Prairie, Beta 1)')
 
+    def test_live_applied_legacy_agent_version_does_not_invent_an_os_update(self):
+        state = su.from_status_json(json.dumps({'state':'idle','booted_version':'1.0.0-beta.1',
+            'staged_version':'1.0.0-beta.1','booted_commit':'7105','staged_commit':'7105'}))
+        self.assertFalse(state.staged or state.restart_required or state.update_ready)
+
+    def test_package_restart_is_separate_from_a_ready_os_release(self):
+        state = su.from_values({'State':'restart-required','BootedVersion':'1.0.0-beta.1',
+            'StagedVersion':'1.0.0-beta.1'}, 'dbus')
+        self.assertTrue(state.restart_required and state.update_ready)
+        self.assertFalse(state.staged)
+
     def test_cli_json_uses_snake_case(self):
         state = su.from_status_json(json.dumps({
             'state': 'downloading', 'channel': 'beta', 'booted_version': '1.0.0-beta.3',
