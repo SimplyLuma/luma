@@ -130,7 +130,7 @@ class CloudSync:
             elif len(arguments)==7 and arguments[:3] == ['enrol','--hub',DEFAULT_HUB]:
                 request = {'operation':'connect','values':{'code':arguments[4],'name':arguments[6]}}
             else: raise ValueError('Unsupported cloud operation')
-            from .connect_ui_broker import command_plan
+            from .connect_cloud_contract import command_plan
             command_plan(request)  # same typed boundary, never a sandbox CLI fallback
         except Exception:
             GLib.idle_add(done, None, 'That Connect operation is unavailable.', None)
@@ -206,5 +206,5 @@ class CloudSync:
         self._run(['invite'], 60, done)
 
     def connect(self, code, name, callback):
-        arguments = ['enrol', '--hub', DEFAULT_HUB, '--code', code.strip().upper(), '--name', name or device_name()]
+        arguments = ['enrol', '--hub', DEFAULT_HUB, '--code', re.sub(r'\s+', '', code).upper(), '--name', name or device_name()]
         self._run(arguments, 60, lambda code_, problem, _out: (callback(problem), False)[1])

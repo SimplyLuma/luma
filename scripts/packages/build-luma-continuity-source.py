@@ -14,7 +14,9 @@ root = Path(__file__).resolve().parents[2]
 source = root / 'src/luma-continuity'
 files = [(p, 'luma-continuity/' + str(p.relative_to(source))) for p in source.rglob('*')
          if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc']
-files += [(root / 'LICENSE.md', 'luma-continuity/LICENSE.md')]
+files += [(root / 'LICENSE.md', 'luma-continuity/LICENSE.md'),
+          (root / 'packaging/flatpak/apps/org.projectluma.Connect/org.projectluma.Connect.yml',
+           'luma-continuity/tests/fixtures/org.projectluma.Connect.yml')]
 args.output.parent.mkdir(parents=True, exist_ok=True)
 with args.output.open('wb') as raw:
     with gzip.GzipFile(filename='', fileobj=raw, mode='wb', mtime=0) as compressed:

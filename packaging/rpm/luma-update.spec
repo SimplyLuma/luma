@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.17%{?dist}
+Release:        1.luma.18%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma

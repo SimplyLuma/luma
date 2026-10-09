@@ -15,6 +15,7 @@
   <url type="homepage">https://simplyluma.com/apps/connect</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.64.0" date="2026-10-09"><description><p>Fixed signing in with a device code.</p></description></release>
     <release version="0.63.0" date="2026-10-07" />
   </releases>
   <screenshots>

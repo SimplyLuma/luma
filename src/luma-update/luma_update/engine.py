@@ -815,6 +815,45 @@ class Engine:
                     active.discard(release.commit)
         return frozenset(active)
 
+    def _apply_initial_channel_policy(self, view: SystemView) -> None:
+        """Move early beta installs once, only after a usable signed nightly exists."""
+        policy = self.settings.initial_channel_policy
+        if policy != "early-test-nightly-20261009":
+            return
+        data = self.store.snapshot()
+        if data.get("channel_default_policy") == policy:
+            return
+        if data.get("channel_chosen_by_person") or data.get("requested_channel"):
+            with self.store.locked():
+                self.store.data["channel_default_policy"] = policy
+            return
+        if view.origin is None:
+            return
+        if view.origin.channel != "beta":
+            with self.store.locked():
+                self.store.data["channel_default_policy"] = policy
+            return
+        if view.staged is not None or data.get("pending"):
+            return  # Finish the recovery boot before requesting another channel.
+        try:
+            graph = self.fetch_graph("nightly", self._arch(view))
+            minimum = versions.parse("1.0.0-nightly.20261009.1")
+            usable = any(r.version >= minimum and not r.paused and not r.deadend
+                         for r in graph.releases)
+        except Exception as error:
+            log.info("early-test nightly is not ready; keeping beta: %s", error)
+            return
+        if not usable:
+            return
+        with self.store.locked():
+            # Keep the person's choice if another process wrote one while fetching.
+            if not self.store.data.get("channel_chosen_by_person") and not self.store.data.get("requested_channel"):
+                self.store.data["requested_channel"] = "nightly"
+                self.store.data["switch_now"] = False
+                self.store.data["available"] = None
+            self.store.data["channel_default_policy"] = policy
+        self._decision = None
+
     def check(self, *, automatic: bool = False) -> graphmod.Decision | None:
         self._begin()
         try:
@@ -845,6 +884,8 @@ class Engine:
             adopting = self._adopting(view)
             if view.origin is None and not adopting:
                 raise Unmanaged(f"booted origin {view.booted.origin!r} is not a Luma channel")
+            if view.origin is not None:
+                self._apply_initial_channel_policy(view)
             channel = self._channel(view) if view.origin is not None else adopting
             # Every channel is public (ADR-030 section 4, 2026-09-16): a preview channel
             # needs no enrollment. A computer that has a preview credential keeps using it.
@@ -1351,6 +1392,9 @@ class Engine:
         self._begin(wait=PERSON_WAIT_SECONDS)
         try:
             self._set_channel_locked(channel, switch_now=switch_now)
+            with self.store.locked():
+                self.store.data["channel_chosen_by_person"] = True
+                self.store.data["channel_default_policy"] = self.settings.initial_channel_policy
         finally:
             self._end()
 
@@ -1411,6 +1455,9 @@ class Engine:
             if view.origin is not None:
                 raise NothingToDo("this computer already follows a Luma channel")
             self._require_adoptable(view)
+            with self.store.locked():
+                self.store.data["channel_chosen_by_person"] = True
+                self.store.data["channel_default_policy"] = self.settings.initial_channel_policy
             self._adopt_locked(channel)
         finally:
             self._end()
@@ -1472,6 +1519,9 @@ class Engine:
                                            credential_id)
             except preview.PreviewError as error:
                 raise UpdateError(str(error), error.error_class) from None
+            with self.store.locked():
+                self.store.data["channel_chosen_by_person"] = True
+                self.store.data["channel_default_policy"] = self.settings.initial_channel_policy
             log.info("enrolled in early updates (%s) through Luma Hub", channel)
             try:
                 self.backend.reload(config=True)

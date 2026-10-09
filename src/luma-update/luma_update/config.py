@@ -104,6 +104,7 @@ class Settings:
     events_url: str = "https://hub.simplyluma.com/api/updates/events"
     preview_credentials_url: str = "https://hub.simplyluma.com/api/updates/preview-credentials"
     automatic_download: bool = True
+    initial_channel_policy: str = ""
     minimum_battery_percent: float = 30.0
     check_interval_seconds: int = 6 * 3600
     minimum_check_spacing_seconds: int = 3600

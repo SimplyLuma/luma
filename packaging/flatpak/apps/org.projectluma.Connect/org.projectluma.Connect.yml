@@ -24,6 +24,7 @@
         "install -Dm644 src/luma-continuity/luma_continuity/__init__.py /app/lib/python3.14/site-packages/luma_continuity/__init__.py",
         "install -Dm644 src/luma-continuity/luma_continuity/application.py /app/lib/python3.14/site-packages/luma_continuity/application.py",
         "install -Dm644 src/luma-continuity/luma_continuity/cloud_sync.py /app/lib/python3.14/site-packages/luma_continuity/cloud_sync.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/connect_cloud_contract.py /app/lib/python3.14/site-packages/luma_continuity/connect_cloud_contract.py",
         "install -Dm644 src/luma-continuity/luma_continuity/connect_view.py /app/lib/python3.14/site-packages/luma_continuity/connect_view.py",
         "install -Dm644 src/luma-continuity/luma_continuity/phone_contract.py /app/lib/python3.14/site-packages/luma_continuity/phone_contract.py",
         "install -Dm644 src/luma-continuity/luma_continuity/companion_contract.py /app/lib/python3.14/site-packages/luma_continuity/companion_contract.py",

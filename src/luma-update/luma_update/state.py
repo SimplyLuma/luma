@@ -50,6 +50,8 @@ DEFAULT_STATE = {
     "last_attempt": 0,             # epoch seconds of the last check attempt
     "last_error": "",
     "last_error_class": "",
+    "channel_chosen_by_person": False,
+    "channel_default_policy": "",
     "requested_channel": "",       # a channel the person asked for, until reached
     "switch_now": False,
     "pending": None,               # {from_version, from_commit, to_version, to_commit, channel, kind, staged_at}

@@ -2,13 +2,14 @@
 # Private experiment only. No composed pin or enabled service until Class D gates.
 Name:           luma-continuity
 Version:        0.1.0
-Release:        0.63.experiment%{?dist}
+Release:        0.64.experiment%{?dist}
 Summary:        Luma Connect experimental native device boundary
 License:        Apache-2.0
 BuildArch:      noarch
 Source0:        luma-continuity.tar.gz
 Source1:        org.project_luma.shell-state.gschema.xml
 BuildRequires:  python3-devel
+BuildRequires:  luma-application-installer >= 0.1.0-1.luma.55
 BuildRequires:  luma-developer-platform >= 0.1.0
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  xorg-x11-xauth
