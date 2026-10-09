@@ -14,7 +14,7 @@
 
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.49.creator20261009.1.fc44.x86_64
-gnome-control-center-filesystem-50.4-1.luma.48.creator20261006.1.fc44.noarch
+gnome-control-center-filesystem-50.4-1.luma.49.creator20261009.1.fc44.noarch
 gnome-shell-50.3-1.luma.109.creator20261009.1.fc44.x86_64
 gnome-shell-common-50.3-1.luma.109.creator20261009.1.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
