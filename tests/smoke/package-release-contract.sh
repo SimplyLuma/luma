@@ -70,13 +70,33 @@ for spec in sorted(spec_dir.glob("*.spec")):
     # the pins that use it are reported as unresolved rather than judged.
     if any("%" in field for field in (name, version, release)):
         continue
-    built[name] = (spec.name, version, release)
+    built[name] = ("packaging/rpm/" + spec.name, version, release)
     for explicit, suffix in subpackages:
         sub_name = explicit if explicit else f"{name}-{suffix}"
         sub_name = sub_name.replace("%{name}", name)
         if "%" in sub_name:
             continue
-        built[sub_name] = (spec.name, version, release)
+        built[sub_name] = ("packaging/rpm/" + spec.name, version, release)
+
+# The native desktop patch specs require these shared subpackages at exactly
+# the main package's release. Judge them here too: an otherwise current main
+# pin with yesterday's shared files cannot be installed by the image solver.
+for family, names in {
+    "mutter": ("mutter", "mutter-common"),
+    "gnome-control-center": ("gnome-control-center", "gnome-control-center-filesystem"),
+}.items():
+    patch = root / "patches" / family / "0000-luma-fedora-spec.patch"
+    if not patch.exists():
+        continue
+    text = patch.read_text()
+    version_match = re.search(r"^ Version:\s*(\S+)", text, re.M)
+    release_match = re.search(r"^\+Release:\s*(\S+)", text, re.M)
+    if not version_match or not release_match:
+        sys.exit(f"FAIL  package release contract: cannot resolve {patch.relative_to(root)}")
+    version = version_match.group(1)
+    release = release_match.group(1).replace("%{?dist}", "")
+    for name in names:
+        built[name] = (str(patch.relative_to(root)), version, release)
 
 # A pin: NAME-VERSION-RELEASE.ARCH, where RELEASE usually ends in the .fcNN
 # disttag.
@@ -229,7 +249,7 @@ if drift:
         entry = drift[(name, version, release)]
         print(f"  {name}")
         print(f"    pinned at   {version}-{release}")
-        print(f"    spec builds {entry['spec']}  (packaging/rpm/{entry['file']})")
+        print(f"    spec builds {entry['spec']}  ({entry['file']})")
         for where in entry["where"]:
             print(f"    pinned by   {where}")
     print(
