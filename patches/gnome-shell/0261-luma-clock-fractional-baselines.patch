@@ -41,9 +41,15 @@ Keep the existing natural line metrics, text settings and direction.
 +.poster-weekday { font-family: "Figtree"; font-size: 112px; font-weight: 700; letter-spacing: -0.055em; }
  .poster-time-row { spacing: 14px; }
  .poster-time { font-family: "Figtree"; font-size: 64px; font-weight: 250; letter-spacing: -0.04em; font-feature-settings: "tnum"; }
-@@ -675,1 +675,1 @@
+@@ -672,6 +672,6 @@
+ .poster-time-divider { width: 1px; height: 36px; margin: 0 6px; background-color: rgba(255, 255, 255, 0.35); }
+ .poster-date { font-family: "Figtree"; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.9); }
 -.poster-day.compact .poster-weekday { font-size: 104px; }
 +.poster-day.compact .poster-weekday { font-size: 80px; }
+ .poster-day.compact .poster-time { font-size: 48px; }
+ .poster-day.rtl .poster-weekday { font-size: 104px; }
+ .poster-day.rtl.compact .poster-weekday { font-size: 72px; }
+
 --- a/data/theme/gnome-shell-light.css
 +++ b/data/theme/gnome-shell-light.css
 @@ -4927,7 +4927,7 @@

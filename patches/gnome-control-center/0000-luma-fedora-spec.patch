@@ -160,7 +160,7 @@
 +glib-compile-schemas --strict "$task_runtime/schema"
 +export GSETTINGS_SCHEMA_DIR="$task_runtime/schema"
 +# LumaUI Settings model and adapter tests; display-bound tests run below.
-+%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard
++%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard luma-settings-display-preview
 +# Test the actual native network editor frame and Cancel with accessibility enabled.
 +xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-network-editor
 +# Native page actions must reach the owned BlueZ/Rfkill service on a private bus.

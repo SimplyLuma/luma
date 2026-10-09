@@ -3,6 +3,7 @@
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 import * as AppFavorites from 'resource:///org/gnome/shell/ui/appFavorites.js';
+import * as ParentalControlsManager from 'resource:///org/gnome/shell/misc/parentalControlsManager.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as Scripting from 'resource:///org/gnome/shell/ui/scripting.js';
 
@@ -12,7 +13,8 @@ export async function run() {
     const favorites = AppFavorites.getAppFavorites();
     const before = favorites._getIds();
     const app = Shell.AppSystem.get_default().get_installed()
-        .find(candidate => !before.includes(candidate.get_id()));
+        .find(candidate => !before.includes(candidate.get_id()) &&
+            ParentalControlsManager.getDefault().shouldShowApp(candidate.app_info));
     if (!app) throw new Error('An installed, unpinned application is required');
     const source = MessageTray.getSystemSource();
     let notifications = 0;
@@ -24,7 +26,7 @@ export async function run() {
         const expected = [...before];
         expected.splice(position, 0, app.get_id());
         if (JSON.stringify(favorites._getIds()) !== JSON.stringify(expected))
-            throw new Error('Pinning must preserve the requested position and favorite order');
+            throw new Error(`Pin order mismatch: ${JSON.stringify({expected, actual: favorites._getIds(), raw: global.settings.get_strv('favorite-apps')})}`);
         favorites.removeFavorite(app.get_id());
         await Scripting.sleep(200);
         if (JSON.stringify(favorites._getIds()) !== JSON.stringify(before))
