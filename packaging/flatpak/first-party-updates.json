@@ -444,7 +444,7 @@
       "qualification": "pending-installed-update-rollback-and-migration",
       "recipe": "packaging/flatpak/apps/io.luma.Monitor/io.luma.Monitor.yml",
       "minimum_host_packages": {
-        "luma-monitor": 16,
+        "luma-monitor": 17,
         "luma-application-installer": 57
       }
     },

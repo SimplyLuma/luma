@@ -12,7 +12,7 @@
     "--device=dri",
     "--talk-name=org.projectluma.MonitorHost1",
     "--env=LUMA_MONITOR_STYLE_PATH=/app/share/luma-monitor/monitor.css",
-    "--metadata=X-Luma=min-host-monitor=16",
+    "--metadata=X-Luma=min-host-monitor=17",
     "--metadata=X-Luma=min-host-installer=57"
   ],
   "modules": [
