@@ -32,13 +32,27 @@ available. Add coverage at the boundary the user actually encountered.
 
 - Reported: 2026-10-09, successive downloads after the Beta-to-Nightly move;
   an update label includes `20261008`.
-- Status: investigating the exact displayed update. The current Nightly's
-  build ID is `20261009.4`, while its display name uses the October 8 local
-  build date. A Beta recovery followed by Nightly is an expected migration.
+- Status: investigating the exact displayed update. Nightly
+  build `20261009.4` uses the October 8 local build date in its display name.
+  A Beta recovery followed by Nightly is an expected migration.
   Neither fact proves which update the user saw.
 - Follow-up: verify the installed and offered build identities before changing
   update selection or labels. Preserve a later explicit channel choice.
 - First shipped correction: not established.
+
+## TILE-001 — Tiling disappears from Quick Options after updating
+
+- Reported: 2026-10-10, with the installed OS reporting Nightly `20261009.6`.
+- Reproduction: the user previously saw Tiling in Quick Options; it is now
+  missing again. The extension's runtime state has not yet been established.
+- Status: investigating. The release ships Shell 109 and Tiling Toggle 12;
+  the desktop defaults enable the toggle. An installed package and a default
+  setting alone do not prove that the extension loaded in the user's session.
+- Required behavior: keep the Tiling control available when automatic window
+  tiling is off, and preserve its availability across OS updates and logins.
+- Follow-up: check the toggle's actual extension state, effective enabled list,
+  and global extension-disable setting before changing persistent preferences.
+- First shipped correction: pending.
 
 ## CONN-001 — Connect lists devices but Sync Now asks to reconnect
 
