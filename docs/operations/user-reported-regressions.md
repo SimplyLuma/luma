@@ -146,7 +146,14 @@ available. Add coverage at the boundary the user actually encountered.
 - Required behavior: show real measured activity when available and a clear
   unavailable state after a failed read, with a recoverable retry. Do not
   present a failed sample as an indefinitely pending measurement.
-- First shipped correction: pending.
+- First shipped OS correction: Nightly `20261010.1`, version
+  `1.0.0-nightly.20261010.1`, commit
+  `2365d712dba08e950abeff1d1d6d10cf0ac73dcec602b790051af44dfb5712d5`.
+  Published and verified 2026-10-10. The actual installed production service
+  serves signed Monitor samples and refuses wrong-app and unsigned callers.
+  The full 47-stage release gate and fresh canonical signed download passed.
+  Independent app-feed publication and the new ISO remain pending; a physical
+  XPS retest has not been reported.
 
 ## PHOTO-001 — Photos rejects an existing shared-library access grant
 
@@ -164,11 +171,16 @@ available. Add coverage at the boundary the user actually encountered.
   an explicit library mount, plus four adjacent Camera media tests. A
   committed installed-sandbox test checks both signed apps with the grant
   and a command-local revocation without opening SQLite or changing
-  persistent permissions. Its new-package execution remains pending.
+  persistent permissions. All four new-package installed-sandbox cases passed.
 - Count interpretation: two reported Photos alone does not establish how
   many items the user's library should contain; verify the accessible
   catalog before treating that number as a sync loss.
-- First shipped correction: pending.
+- First shipped OS correction: Nightly `20261010.1`, version
+  `1.0.0-nightly.20261010.1`, commit
+  `2365d712dba08e950abeff1d1d6d10cf0ac73dcec602b790051af44dfb5712d5`.
+  Published and verified 2026-10-10 with the corrected Photos and Camera
+  offline bundles and Core 102. Independent app-feed publication and the
+  new ISO remain pending; this does not establish the user's expected photo count.
 
 ## CONN-002 — Music Servers remains waiting after personal sync succeeds
 
