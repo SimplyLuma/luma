@@ -100,7 +100,7 @@ test("fetch handler proxies, sets cache policy and reports a counted pull", asyn
 
   const response = await worker.fetch(new Request(`https://dl.simplyluma.com/repo/deltas/${id.slice(0, 2)}/${id.slice(2)}/superblock`), env, ctx);
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get("Cache-Control"), "public, max-age=31536000");
+  assert.equal(response.headers.get("Cache-Control"), "public, max-age=60");
   await Promise.all(waits);
   const post = calls.find((c) => c.url.startsWith("https://hub.example"));
   assert.ok(post, "counter POSTed to Hub");
@@ -109,6 +109,10 @@ test("fetch handler proxies, sets cache policy and reports a counted pull", asyn
 
   const summary = await worker.fetch(new Request("https://dl.simplyluma.com/repo/summary"), env, ctx);
   assert.equal(summary.headers.get("Cache-Control"), "public, max-age=60");
+  const object = await worker.fetch(new Request(`https://dl.simplyluma.com/repo/objects/aa/${"a".repeat(62)}.filez`), env, ctx);
+  assert.equal(object.headers.get("Cache-Control"), "public, max-age=31536000");
+  const deltaIndex = await worker.fetch(new Request("https://dl.simplyluma.com/repo/delta-indexes/aa/fixture.index"), env, ctx);
+  assert.equal(deltaIndex.headers.get("Cache-Control"), "public, max-age=60");
   const refused = await worker.fetch(new Request("https://dl.simplyluma.com/repo/summary", { method: "PUT" }), env, ctx);
   assert.equal(refused.status, 405);
   const root = await worker.fetch(new Request("https://dl.simplyluma.com/"), env, ctx);

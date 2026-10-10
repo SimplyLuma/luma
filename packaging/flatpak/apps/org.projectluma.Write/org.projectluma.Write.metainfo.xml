@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf-8'?>
+<component type="desktop-application">
+  <id>org.projectluma.Write</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="simplyluma.com">
+    <name>Luma</name>
+  </developer>
+  <url type="homepage">https://github.com/SimplyLuma/Write</url>
+  <url type="bugtracker">https://github.com/SimplyLuma/Write/issues</url>
+  <name>Write</name>
+  <summary>A clear, native desktop word processor</summary>
+  <description>
+    <p>Write is a native Luma word processor focused on interoperable documents, visible structure, predictable layout, and saving with confidence.</p>
+    <p>It uses a Luma-owned GTK interface while delegating document compatibility and layout to the included LibreOfficeKit engine.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Write.desktop</launchable>
+  <provides>
+    <binary>luma-write</binary>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <categories>
+    <category>Office</category>
+    <category>WordProcessor</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-10-09">
+      <description>
+        <p>Initial release with document editing, image controls, comments and PDF export.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <caption>Edit documents with clear formatting tools.</caption>
+      <image type="source" width="1400" height="940">https://dl.simplyluma.com/media/org.projectluma.Write/62c368d3820c3bbb3ec3c344cf635329fde419cf78748122ed2f8ef16b1bbe05.png</image>
+    </screenshot>
+  </screenshots>
+</component>

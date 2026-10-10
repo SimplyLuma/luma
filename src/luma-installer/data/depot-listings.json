@@ -4695,6 +4695,33 @@
     }
    ]
   },
+  "write": {
+   "metadata_source": "luma",
+   "summary": "A clear place for letters, reports and ideas.",
+   "description": "Write is a calm word processor for letters, reports and everyday documents. Format text, add and arrange pictures, work with comments, and export finished documents as PDFs.\n\nOpen and edit DOCX and OpenDocument files, or import older Word documents. Its LibreOffice document engine, Luma interface and fonts install automatically. No account or separate office installation is needed.",
+   "developer_name": "Luma",
+   "license": "Apache-2.0 AND CC-BY-SA-4.0",
+   "support_url": "https://github.com/SimplyLuma/Write/issues",
+   "source_url": "https://github.com/SimplyLuma/Write",
+   "release": {
+    "version": "0.1.0",
+    "date": "2026-10-10"
+   },
+   "icon": {
+    "url": "https://dl.simplyluma.com/media/listings/write/icon-512-4024bbffb1d4302c.png",
+    "sha256": "4024bbffb1d4302ce2df52ac5fe13d39bde9bcc0d0a183541a28acbcf4d002c9",
+    "width": 512,
+    "height": 512
+   },
+   "screenshots": [
+    {
+     "url": "https://dl.simplyluma.com/media/listings/write/shot-3f4743b3788cacaa.webp",
+     "sha256": "3f4743b3788cacaaf2f8b51f894781aabd2d9a75ab56f53e32b0aa2451a1ff76",
+     "width": 1400,
+     "height": 940
+    }
+   ]
+  },
   "zen": {
    "metadata_source": "flathub",
    "name": "Zen",

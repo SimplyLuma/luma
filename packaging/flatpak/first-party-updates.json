@@ -723,8 +723,8 @@
     {
       "id": "org.projectluma.Write",
       "title": "Write",
-      "producer": "write",
-      "source_tree": "src/external/write",
+      "producer": "creative-external",
+      "source_tree": "packaging/flatpak/apps/org.projectluma.Write",
       "native_packages": [],
       "native_desktop_ids": [],
       "target_delivery": "signed-flatpak-app",
@@ -733,16 +733,14 @@
         "nightly"
       ],
       "default_channel": "beta",
-      "required_host_services": [
-        "org.projectluma.AppData1"
-      ],
+      "required_host_services": [],
       "host_interface_version": 1,
       "recipe": "packaging/flatpak/apps/org.projectluma.Write/org.projectluma.Write.yml",
       "qualification": "pending-installed-update-rollback-and-migration",
-      "minimum_host_packages": {
-        "luma-application-installer": 64
-      },
-      "data_schema": "write-preferences-v1"
+      "minimum_host_packages": {},
+      "data_schema": "write-preferences-v1",
+      "source_repository": "https://github.com/SimplyLuma/Write.git",
+      "source_commit": "0cc01c320916d294e28d32c04a5157232eaea376"
     },
     {
       "id": "org.projectluma.Grid",

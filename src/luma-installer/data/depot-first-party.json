@@ -6,12 +6,41 @@
     {"id": "studio", "name": "Studio", "summary": "Making music.", "applications": ["session"]}
   ],
   "applications": [
-    {"id": "write", "name": "Write", "app_id": "org.projectluma.Write", "source_id": "org.projectluma.Write",
-     "qualification_reason": "Private until its license statement and the Office extension are published.",
-     "categories": ["office"],
-     "sources": {"luma_system": {"package": "luma-write", "desktop_id": "org.projectluma.Write.desktop", "removable": true},
-                 "flatpak": {"repository": "luma", "source_id": "org.projectluma.Write", "branch": "stable"}},
-     "preinstalled_on_luma": false},
+    {
+      "id": "write",
+      "name": "Write",
+      "app_id": "org.projectluma.Write",
+      "source_id": "org.projectluma.Write",
+      "qualification_reason": "Write 0.1.0 includes its qualified Luma toolkit and automatically installs the LibreOffice runtime.",
+      "categories": [
+        "office"
+      ],
+      "sources": {
+        "luma_system": {
+          "package": "luma-write",
+          "desktop_id": "org.projectluma.Write.desktop",
+          "removable": true
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Write",
+          "branch": "stable"
+        }
+      },
+      "preinstalled_on_luma": false,
+      "visibility": "public",
+      "backend": "flatpak",
+      "repository": "luma",
+      "branch": "stable",
+      "license": "Apache-2.0 AND CC-BY-SA-4.0",
+      "qualification": "admitted",
+      "summary": "A clear place for letters, reports and ideas.",
+      "homepage": "https://github.com/SimplyLuma/Write",
+      "architectures": [
+        "x86_64"
+      ],
+      "sign_in": "none"
+    },
     {"id": "grid", "name": "Grid", "app_id": "org.projectluma.Grid", "source_id": "org.projectluma.Grid",
      "qualification_reason": "Private until its license is decided and the Office extension is published.",
      "categories": ["office"],

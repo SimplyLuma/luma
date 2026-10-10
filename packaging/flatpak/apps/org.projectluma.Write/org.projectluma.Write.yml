@@ -1,0 +1,102 @@
+{
+  "app-id": "org.projectluma.Write",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "luma-write",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--env=LUMA_LIBREOFFICE_PROGRAM=/app/lib/office/lib64/libreoffice/program",
+    "--env=LD_LIBRARY_PATH=/app/lib/office/lib64/libreoffice/program:/app/lib:/app/lib/office/lib64",
+    "--env=GSETTINGS_BACKEND=keyfile",
+    "--metadata=X-Luma=app-data-schema=write-preferences-v1"
+  ],
+  "add-extensions": {
+    "org.projectluma.Platform.Office": {
+      "directory": "lib/office",
+      "version": "44",
+      "add-ld-path": "lib64",
+      "no-autodownload": false,
+      "autodelete": false
+    }
+  },
+  "modules": [
+    {
+      "name": "luma-platform",
+      "buildsystem": "meson",
+      "subdir": "vendor/luma-platform",
+      "config-opts": [
+        "--buildtype=release"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/SimplyLuma/Write.git",
+          "commit": "0cc01c320916d294e28d32c04a5157232eaea376"
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "buildsystem": "meson",
+      "config-opts": [
+        "--buildtype=release",
+        "-Ddesktop=enabled",
+        "-Dlibreofficekit=enabled",
+        "-Ddeveloper_tools=false"
+      ],
+      "post-install": [
+        "install -d /app/lib/office /app/share/licenses/org.projectluma.Write",
+        "cp -r LICENSES /app/share/licenses/org.projectluma.Write/",
+        "install -m644 LICENSE.md THIRD_PARTY_NOTICES.md /app/share/licenses/org.projectluma.Write/"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/SimplyLuma/Write.git",
+          "commit": "0cc01c320916d294e28d32c04a5157232eaea376"
+        }
+      ]
+    },
+    {
+      "name": "luma-ui-icons",
+      "buildsystem": "simple",
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/SimplyLuma/Write/releases/download/v0.1.0/Write-0.1.0-lumaui-icons.tar.gz",
+          "sha256": "1d4ade487381ee7e3db15f1f3e387c203f49ec50409d05466298fc2b8c1d7dd8"
+        }
+      ],
+      "build-commands": [
+        "install -d /app/share/icons/hicolor/scalable/actions /app/share/licenses/lumaui-icons",
+        "install -m644 lumaui-*-symbolic.svg /app/share/icons/hicolor/scalable/actions/",
+        "install -m644 SOURCE-MANIFEST.json Lucide-ISC.txt /app/share/licenses/lumaui-icons/"
+      ]
+    },
+    {
+      "name": "release-media",
+      "buildsystem": "simple",
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://github.com/SimplyLuma/Write/releases/download/v0.1.0/Write-0.1.0-screenshot.png",
+          "sha256": "62c368d3820c3bbb3ec3c344cf635329fde419cf78748122ed2f8ef16b1bbe05",
+          "dest-filename": "62c368d3820c3bbb3ec3c344cf635329fde419cf78748122ed2f8ef16b1bbe05.png"
+        },
+        {
+          "type": "file",
+          "path": "org.projectluma.Write.metainfo.xml"
+        }
+      ],
+      "build-commands": [
+        "install -Dm644 62c368d3820c3bbb3ec3c344cf635329fde419cf78748122ed2f8ef16b1bbe05.png /app/share/luma-app-media/62c368d3820c3bbb3ec3c344cf635329fde419cf78748122ed2f8ef16b1bbe05.png",
+        "install -Dm644 org.projectluma.Write.metainfo.xml /app/share/metainfo/org.projectluma.Write.metainfo.xml"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}
