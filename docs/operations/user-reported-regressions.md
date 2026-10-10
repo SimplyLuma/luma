@@ -43,16 +43,25 @@ available. Add coverage at the boundary the user actually encountered.
 ## TILE-001 — Tiling disappears from Quick Options after updating
 
 - Reported: 2026-10-10, with the installed OS reporting Nightly `20261009.6`.
-- Reproduction: the user previously saw Tiling in Quick Options; it is now
-  missing again. The extension's runtime state has not yet been established.
-- Status: investigating. The release ships Shell 109 and Tiling Toggle 12;
-  the desktop defaults enable the toggle. An installed package and a default
-  setting alone do not prove that the extension loaded in the user's session.
-- Required behavior: keep the Tiling control available when automatic window
-  tiling is off, and preserve its availability across OS updates and logins.
-- Follow-up: check the toggle's actual extension state, effective enabled list,
-  and global extension-disable setting before changing persistent preferences.
-- First shipped correction: pending.
+- Confirmed session cause: the XPS reports `disable-user-extensions=true`.
+  Both Tiling Toggle and Tiling Shell are installed and listed as enabled,
+  but their runtime state is `INITIALIZED`, with `Enabled: No`. The per-extension
+  disabled list is empty. The global extension pause prevents the control loading.
+- Possible trigger: the shipped Shell has a conditional failure-recovery service
+  that sets this flag when extensions were marked as a likely cause of failure.
+  Its presence does not establish that it ran on the XPS; check that service's
+  user journal before attributing the change to a crash.
+- Immediate recovery offered: explicitly set `org.gnome.shell`
+  `disable-user-extensions` to `false`, then reopen Quick Options. This retains
+  the user's extension lists and tiling preferences. Await actual user confirmation.
+- Required behavior: keep the first-party Tiling control discoverable when
+  automatic window tiling is off or extensions are paused; Settings must reflect
+  actual runtime availability. Preserve deliberate third-party extension choices
+  and crash recovery rather than silently resetting all preferences.
+- Follow-up: verify control visibility after recovery and investigate a first-party
+  control that does not disappear with optional extensions. Do not rebuild the
+  frozen release merely on an assumed rendering failure.
+- First shipped correction: pending; no new package fix is claimed.
 
 ## CONN-001 — Connect lists devices but Sync Now asks to reconnect
 
