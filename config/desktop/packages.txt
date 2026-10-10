@@ -85,7 +85,7 @@ luma-search-0.1.0-1.luma.7.fc44.noarch
 luma-shell-state-0.2.0-1.luma.33.preview20260926.fc44.noarch
 luma-os-remote-1.0.0-1.luma.19.fc44.noarch
 luma-update-1.0.0-1.luma.19.fc44.noarch
-prairie-core-apps-0.1.0-1.luma.101.creator20261009.1.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.102.creator20261010.1.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.38.creator20261006.1.fc44.noarch
 

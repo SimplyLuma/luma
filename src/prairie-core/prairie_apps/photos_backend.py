@@ -72,12 +72,16 @@ def _shared_library_mounted(directory: Path, mounts: str | None = None) -> bool:
     """
     import re
     text = Path('/proc/self/mountinfo').read_text() if mounts is None else mounts
+    # Fedora's /home is a symlink to /var/home. Flatpak records the canonical
+    # bind target even when HOME uses the alias; both name the same granted
+    # library. Still require its own explicit mount, not a writable parent.
+    canonical_directory = directory.resolve()
     for line in text.splitlines():
         fields = line.split()
         if len(fields) < 6:
             continue
         target = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), fields[4])
-        if target == str(directory):
+        if Path(target).resolve() == canonical_directory:
             return True
     return False
 

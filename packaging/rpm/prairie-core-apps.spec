@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.101.creator20261009.1%{?dist}
+Release:        1.luma.102.creator20261010.1%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -220,6 +220,9 @@ install -D -m 0644 data/luma-user-dirs.dirs \
   %{buildroot}%{_sysconfdir}/skel/.config/user-dirs.dirs
 
 %check
+# Exercise shared-library grants and home aliases against the installed payload.
+env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=%{buildroot}%{python3_sitelib} \
+  python3 -B tests/test_prairie_photos_backend.py -v
 # Creator review: persisted setup city, real ZIP response boundaries, actual
 # GTK state transitions and widths/themes against the installed payload.
 env PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/creator_preview_unit.py
@@ -657,6 +660,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.102.creator20261010.1
+- Recognize the shared Photos library through the system home directory alias.
+
 * Thu Oct 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.100.creator20261008.1
 - Preserve verified Luma contacts without a telephone number in Phone.
 - Keep carrier actions unavailable without a number and run the reachable regression.

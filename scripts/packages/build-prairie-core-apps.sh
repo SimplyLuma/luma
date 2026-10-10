@@ -61,6 +61,8 @@ cp -R "$repo_root/src/prairie-core/prairie_apps" "$source_dir/"
 cp -R "$repo_root/src/prairie-core/bin" "$repo_root/src/prairie-core/data" \
   "$repo_root/src/prairie-core/style" "$source_dir/"
 cp -R "$repo_root/src/prairie-core/tests" "$source_dir/"
+install -m 0644 "$repo_root/tests/unit/test_prairie_photos_backend.py" \
+  "$source_dir/tests/test_prairie_photos_backend.py"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/prairie-core-apps.tar.gz" \
   prairie-core-apps
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"

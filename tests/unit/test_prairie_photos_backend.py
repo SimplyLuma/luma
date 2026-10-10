@@ -29,6 +29,31 @@ class PhotosBackendTests(unittest.TestCase):
         self.assertTrue(_shared_library_mounted(directory, home_only + family))
         self.assertFalse(_shared_library_mounted(directory / 'other', family))
 
+    def test_granted_canonical_library_mount_accepts_home_symlink_alias(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical_home = root / 'var-home'
+            library = canonical_home / '.local/share/luma-photos'
+            library.mkdir(parents=True)
+            alias_home = root / 'home'
+            alias_home.symlink_to(canonical_home, target_is_directory=True)
+            mounts = f'11 1 8:1 /luma-photos {library} rw - ext4 /dev/sda rw\n'
+            self.assertTrue(_shared_library_mounted(library, mounts))
+            self.assertTrue(_shared_library_mounted(alias_home / '.local/share/luma-photos', mounts))
+            self.assertFalse(_shared_library_mounted(alias_home / '.local/share/other-library', mounts))
+
+    def test_home_symlink_without_explicit_library_mount_remains_denied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical_home = root / 'var-home'
+            library = canonical_home / '.local/share/luma-photos'
+            library.mkdir(parents=True)
+            alias_home = root / 'home'
+            alias_home.symlink_to(canonical_home, target_is_directory=True)
+            mounts = f'10 1 0:1 / {canonical_home} rw - tmpfs tmpfs rw\n'
+            self.assertFalse(_shared_library_mounted(library, mounts))
+            self.assertFalse(_shared_library_mounted(alias_home / '.local/share/luma-photos', mounts))
+
     def test_camera_and_photos_sandboxes_share_host_catalog_not_private_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
