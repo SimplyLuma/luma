@@ -226,8 +226,9 @@ class Seed(unittest.TestCase):
         seed = depot_catalog.load_catalog(DATA / 'depot-catalog-4.json')
         first_party = [e for e in seed.applications if e.tier == 'luma']
         self.assertEqual(len(first_party), 23)
-        # Depot wave 1 is on the Luma remote's beta branch; the rest have no Flatpak yet.
-        wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks'}
+        # Published first-party apps retain native provenance and use their existing beta Flatpak identity.
+        wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
+                 'monitor', 'photos', 'camera', 'connect'}
         for entry in first_party:
             self.assertEqual(entry.app_id + '.desktop', entry.luma_system.desktop_id)
             if entry.id in wave1:

@@ -871,11 +871,10 @@
     {
       "app_id": "org.projectluma.Camera",
       "architectures": [
-        "x86_64",
-        "aarch64"
+        "x86_64"
       ],
-      "backend": "rpm",
-      "branch": "stable",
+      "backend": "flatpak",
+      "branch": "beta",
       "categories": [
         "media"
       ],
@@ -901,19 +900,63 @@
       "id": "camera",
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Camera",
+      "permissions": [
+        {
+          "key": "network",
+          "level": "standard"
+        },
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "files.pictures",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-pictures:rw"
+          ]
+        },
+        {
+          "key": "files.other",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-config/user-dirs.dirs:ro",
+            "xdg-data/luma-photos:rw"
+          ]
+        },
+        {
+          "key": "devices.microphone",
+          "level": "sensitive"
+        },
+        {
+          "key": "session.bus",
+          "level": "sensitive",
+          "names": [
+            "org.projectluma.AppData1",
+            "org.projectluma.ApplicationDirectory1"
+          ]
+        }
+      ],
       "preinstalled_on_luma": true,
       "qualification": "pending",
-      "qualification_reason": "Included with Luma.",
+      "qualification_reason": "Updates from Luma's signed app repository.",
       "reference_url": "https://simplyluma.com/apps/camera",
       "repository": "luma",
       "screenshots_pending": "Needs a camera; renders \"No camera found\" without one.",
       "sign_in": "none",
-      "source_id": "prairie-core-apps",
+      "source_id": "org.projectluma.Camera",
       "sources": {
         "luma_system": {
           "package": "prairie-core-apps",
           "desktop_id": "org.projectluma.Camera.desktop",
           "removable": true
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Camera",
+          "branch": "beta"
         }
       },
       "summary": "Take photos and videos.",
@@ -3220,11 +3263,10 @@
     {
       "app_id": "io.luma.Monitor",
       "architectures": [
-        "x86_64",
-        "aarch64"
+        "x86_64"
       ],
-      "backend": "rpm",
-      "branch": "stable",
+      "backend": "flatpak",
+      "branch": "beta",
       "categories": [
         "utilities"
       ],
@@ -3250,18 +3292,36 @@
       "id": "monitor",
       "license": "Apache-2.0",
       "name": "Monitor",
+      "permissions": [
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "session.bus",
+          "level": "sensitive",
+          "names": [
+            "org.projectluma.MonitorHost1"
+          ]
+        }
+      ],
       "preinstalled_on_luma": true,
       "qualification": "pending",
-      "qualification_reason": "Included with Luma.",
+      "qualification_reason": "Updates from Luma's signed app repository.",
       "reference_url": "https://simplyluma.com/apps/monitor",
       "repository": "luma",
       "sign_in": "none",
-      "source_id": "luma-monitor",
+      "source_id": "io.luma.Monitor",
       "sources": {
         "luma_system": {
           "package": "luma-monitor",
           "desktop_id": "io.luma.Monitor.desktop",
           "removable": false
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "io.luma.Monitor",
+          "branch": "beta"
         }
       },
       "summary": "See what this computer is doing.",
@@ -4080,11 +4140,10 @@
     {
       "app_id": "org.projectluma.Photos",
       "architectures": [
-        "x86_64",
-        "aarch64"
+        "x86_64"
       ],
-      "backend": "rpm",
-      "branch": "stable",
+      "backend": "flatpak",
+      "branch": "beta",
       "categories": [
         "media"
       ],
@@ -4110,9 +4169,44 @@
       "id": "photos",
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Photos",
+      "permissions": [
+        {
+          "key": "network",
+          "level": "standard"
+        },
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "files.pictures",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-pictures:rw"
+          ]
+        },
+        {
+          "key": "files.other",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-config/user-dirs.dirs:ro",
+            "xdg-data/luma-photos:rw"
+          ]
+        },
+        {
+          "key": "session.bus",
+          "level": "sensitive",
+          "names": [
+            "org.projectluma.AppData1",
+            "org.projectluma.ApplicationDirectory1"
+          ]
+        }
+      ],
       "preinstalled_on_luma": true,
       "qualification": "pending",
-      "qualification_reason": "Included with Luma.",
+      "qualification_reason": "Updates from Luma's signed app repository.",
       "reference_url": "https://simplyluma.com/apps/photos",
       "repository": "luma",
       "screenshots": [
@@ -4139,12 +4233,17 @@
         }
       ],
       "sign_in": "none",
-      "source_id": "prairie-core-apps",
+      "source_id": "org.projectluma.Photos",
       "sources": {
         "luma_system": {
           "package": "prairie-core-apps",
           "desktop_id": "org.projectluma.Photos.desktop",
           "removable": true
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Photos",
+          "branch": "beta"
         }
       },
       "summary": "Browse and view photos.",
