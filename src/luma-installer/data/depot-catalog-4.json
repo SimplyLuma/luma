@@ -6774,6 +6774,75 @@
       "visibility": "public"
     },
     {
+      "app_id": "org.projectluma.Write",
+      "architectures": [
+        "x86_64"
+      ],
+      "backend": "flatpak",
+      "branch": "stable",
+      "categories": [
+        "office"
+      ],
+      "channel": {
+        "kind": "luma",
+        "title": "Luma",
+        "publisher_verified": true
+      },
+      "description": "Write is a calm word processor for letters, reports and everyday documents. Format text, add and arrange pictures, work with comments, and export finished documents as PDFs.\n\nOpen and edit DOCX and OpenDocument files, or import older Word documents. Its LibreOffice document engine, Luma interface and fonts install automatically. No account or separate office installation is needed.",
+      "developer": {
+        "id": "dev_projectluma",
+        "name": "Project Luma",
+        "verified": "organization"
+      },
+      "distribution": "publisher",
+      "homepage": "https://github.com/SimplyLuma/Write",
+      "icon": {
+        "url": "https://dl.simplyluma.com/media/listings/write/icon-512-4024bbffb1d4302c.png",
+        "sha256": "4024bbffb1d4302ce2df52ac5fe13d39bde9bcc0d0a183541a28acbcf4d002c9",
+        "width": 512,
+        "height": 512
+      },
+      "id": "write",
+      "license": "Apache-2.0 AND CC-BY-SA-4.0",
+      "name": "Write",
+      "preinstalled_on_luma": false,
+      "qualification": "admitted",
+      "qualification_reason": "Write 0.1.0 includes its qualified Luma toolkit and automatically installs the LibreOffice runtime.",
+      "reference_url": "https://simplyluma.com/apps/write",
+      "release": {
+        "version": "0.1.0",
+        "date": "2026-10-10"
+      },
+      "repository": "luma",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/listings/write/shot-3f4743b3788cacaa.webp",
+          "sha256": "3f4743b3788cacaaf2f8b51f894781aabd2d9a75ab56f53e32b0aa2451a1ff76",
+          "width": 1400,
+          "height": 940
+        }
+      ],
+      "sign_in": "none",
+      "source_id": "org.projectluma.Write",
+      "source_url": "https://github.com/SimplyLuma/Write",
+      "sources": {
+        "luma_system": {
+          "package": "luma-write",
+          "desktop_id": "org.projectluma.Write.desktop",
+          "removable": true
+        },
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Write",
+          "branch": "stable"
+        }
+      },
+      "summary": "A clear place for letters, reports and ideas.",
+      "support_url": "https://github.com/SimplyLuma/Write/issues",
+      "tier": "luma",
+      "visibility": "public"
+    },
+    {
       "age_rating": "oars-1.1:none",
       "app_id": "app.zen_browser.zen",
       "architectures": [

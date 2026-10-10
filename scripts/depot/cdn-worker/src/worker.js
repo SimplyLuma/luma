@@ -5,7 +5,7 @@
 //
 // Serving. Every request is proxied to the object-storage origin (a public,
 // read-only bucket) and cached at the edge. Content-addressed files (OSTree
-// objects and static deltas) never change and are cached for a year; the
+// objects) never change and are cached for a year; regenerated deltas, the
 // summary, its signature, descriptor files and the catalog change on every
 // publication and are cached for a minute. Only GET and HEAD are accepted, so
 // the Worker can never write to the bucket.
@@ -25,7 +25,7 @@
 // No IP address, user agent, country, header value or request identifier is
 // read into the event or stored anywhere by this Worker.
 
-const IMMUTABLE = /^\/repo\/(objects|deltas)\//;
+const IMMUTABLE = /^\/repo\/objects\//;
 const INDEX_PATH = "/apps/index.json";
 const INDEX_TTL_SECONDS = 300;
 

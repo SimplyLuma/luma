@@ -718,6 +718,29 @@
    "metadata": {
     "icon": "https://gitlab.torproject.org/api/v4/projects/tpo%2Fapplications%2Ftor-browser/repository/files/browser%2Fbranding%2Ftb-release%2Fdefault256.png/raw?ref=tor-browser-140.3.0esr-15.0-1"
    }
+  },
+  "write": {
+   "architectures": [
+    "x86_64"
+   ],
+   "homepage": "https://github.com/SimplyLuma/Write",
+   "source_id": "org.projectluma.Write",
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Write.svg",
+     "summary": "A clear place for letters, reports and ideas.",
+     "description": "Write is a calm word processor for letters, reports and everyday documents. Format text, add and arrange pictures, work with comments, and export finished documents as PDFs.\n\nOpen and edit DOCX and OpenDocument files, or import older Word documents. Its LibreOffice document engine, Luma interface and fonts install automatically. No account or separate office installation is needed.",
+     "developer_name": "Luma",
+     "license": "Apache-2.0 AND CC-BY-SA-4.0",
+     "source_url": "https://github.com/SimplyLuma/Write",
+     "support_url": "https://github.com/SimplyLuma/Write/issues",
+     "release": {
+      "version": "0.1.0",
+      "date": "2026-10-10"
+     }
+    }
+   }
   }
  }
 }
