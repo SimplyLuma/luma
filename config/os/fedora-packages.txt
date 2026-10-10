@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: CC-BY-4.0
 # Fedora 44 packages the Luma desktop image adds by name, resolved from
-# Fedora's repositories at build time. The exact versions installed are
+# Fedora's repositories at build time unless pinned below. The exact versions installed are
 # recorded in every build's package inventory and SBOM.
 #
 # The shared and desktop application roles (config/shared/application-
@@ -30,3 +30,11 @@ greenboot
 # without vainfo neither Vitals nor a support conversation can say which
 # codecs a given machine actually has. It is a diagnostic, not a driver.
 libva-utils
+
+# Keep the shipped media dependencies stable for the targeted Shell/Settings
+# update. Exact NEVRAs use the verified build package pool and are checked
+# against their RPM header digests after installation.
+gstreamer1-1.28.7-1.fc44.x86_64
+gstreamer1-plugins-base-1.28.7-1.fc44.x86_64
+gstreamer1-plugin-openh264-1.28.7-1.fc44.x86_64
+gstreamer1-rtsp-server-1.28.7-1.fc44.x86_64

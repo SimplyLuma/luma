@@ -184,6 +184,9 @@ pool="$LUMA_OS_ROOT/rpms/pool"
 repo="$build_dir/packages"
 install -d -m 0755 "$repo/Packages"
 mapfile -t pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$source_dir/config/desktop/packages.txt")
+# Exact Fedora NEVRAs are verified pool inputs too; unpinned names remain
+# resolved by DNF inside the image build.
+mapfile -t -O "${#pins[@]}" pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$source_dir/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 : >"$build_dir/luma-packages.manifest"
 for nevra in "${pins[@]}"; do
   line=$(awk -v n="$nevra" '$1 == n' "$pool/pool.manifest" 2>/dev/null || true)

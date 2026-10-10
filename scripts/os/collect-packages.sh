@@ -64,6 +64,8 @@ fi
 
 mapfile -t pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
   "$luma_os_repo_root/config/desktop/packages.txt")
+mapfile -t -O "${#pins[@]}" pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
+  "$luma_os_repo_root/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 
 missing=0
 for nevra in "${pins[@]}"; do

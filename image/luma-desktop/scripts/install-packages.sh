@@ -33,6 +33,9 @@ fail() {
 
 mapfile -t pins < <(strip_list "$src/config/desktop/packages.txt")
 [ "${#pins[@]}" -gt 0 ] || fail 'the Luma pin list is empty'
+# Always include exact Fedora pins in the transaction, even when already
+# installed, so dependency resolution cannot silently upgrade them.
+mapfile -t -O "${#pins[@]}" pins < <(strip_list "$src/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 for nevra in "${pins[@]}"; do
   [ -f "$packages/Packages/$nevra.rpm" ] || fail "pinned package is not in the build repository: $nevra"
 done
@@ -75,7 +78,7 @@ contains() {
 # in the base stay as they are.
 requests=()
 while IFS= read -r name; do
-  if contains "$name" "${pin_names[@]}"; then
+  if contains "$name" "${pin_names[@]}" || contains "$name" "${pins[@]}"; then
     continue
   fi
   if contains "$name" "${removed[@]}"; then
@@ -100,7 +103,7 @@ if [ -L /opt ]; then
   install -d -m 0755 /var/opt
 fi
 
-printf 'Installing %d pinned Luma packages and %d Fedora packages\n' \
+printf 'Installing %d pinned packages and %d additional Fedora packages\n' \
   "${#pins[@]}" "${#requests[@]}"
 dnf5 -y --setopt=keepcache=False install "${pins[@]}" "${requests[@]}"
 
