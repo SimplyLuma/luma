@@ -319,6 +319,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0262-luma-visible-tiling-and-bou
 install -m 0644 "$repo_root/patches/gnome-shell/0263-luma-quiet-dock-pinning.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0264-settings-display-preview-ownership.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0265-settings-native-keyboard-selection.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0266-notifications-dismiss-on-client-click.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-corners/first-commit.js" "$rpmbuild_dir/SOURCES/window-corners-first-commit.js"

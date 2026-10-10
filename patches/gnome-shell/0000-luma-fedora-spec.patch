@@ -6,11 +6,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.110.creator20261010.1%{?dist}
++Release:        1.luma.111.creator20261010.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
  License:        GPL-2.0-or-later
-@@ -32,6 +32,255 @@
+@@ -32,6 +32,256 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -256,6 +256,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1257:      0263-luma-quiet-dock-pinning.patch
 +Patch1258:      0264-settings-display-preview-ownership.patch
 +Patch1259:      0265-settings-native-keyboard-selection.patch
++Patch1260:      0266-notifications-dismiss-on-client-click.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Exercise the callback shipped in the built Shell source, including a modal
 // grab that reports the tray as the event source for an outside click.
+// Native client-window routing is tested separately by notification-outside-native.js.
 // Run: gjs -m notification-lip-outside-click.js path/to/lumaNotificationBeacon.js
 import Gio from 'gi://Gio';
 
 const [loaded, bytes] = Gio.File.new_for_path(ARGV[0]).load_contents(null);
 if (!loaded) throw new Error('Cannot read the built notification lip source');
 const source = new TextDecoder().decode(bytes);
-// The narrow tray must not hold a modal grab: it would swallow input before
-// the stage listener can dismiss the tray on an outside click.
-const marker = "this._outsideId = global.stage.connect('captured-event', ";
+// The actor owns the grab and captures redirected application events. A
+// stage-only callback cannot observe a normal Wayland client's pointer input.
+const marker = "this._outsideId = this.connect('captured-event', ";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n        });', start);
-if (start < 0 || end < 0) throw new Error('Outside-click callback is missing');
-if (source.includes('this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});'))
-    throw new Error('Modal grab prevents the stage from seeing outside clicks');
-if (!source.includes('if (this._outsideId) global.stage.disconnect(this._outsideId);'))
-    throw new Error('Outside-click listener must be disconnected from the stage');
+if (start < 0 || end < 0) throw new Error('Grabbed actor outside-click callback is missing');
+if (!source.includes('this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});'))
+    throw new Error('Client-window input must be redirected to the notification actor');
+if (!source.includes('if (this._outsideId) this.disconnect(this._outsideId);') ||
+    !source.includes('if (this._grab) Main.popModal(this._grab);') ||
+    !source.includes('this._grab = null;'))
+    throw new Error('Closing must disconnect the actor listener and release its modal grab');
 const callback = source.slice(start + marker.length, end + '\n        }'.length);
 
 const Clutter = {

@@ -15,8 +15,8 @@
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.53.creator20261010.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.53.creator20261010.1.fc44.noarch
-gnome-shell-50.3-1.luma.110.creator20261010.1.fc44.x86_64
-gnome-shell-common-50.3-1.luma.110.creator20261010.1.fc44.noarch
+gnome-shell-50.3-1.luma.111.creator20261010.1.fc44.x86_64
+gnome-shell-common-50.3-1.luma.111.creator20261010.1.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.12.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.24.fc44.noarch

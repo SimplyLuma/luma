@@ -199,10 +199,12 @@ available. Add coverage at the boundary the user actually encountered.
   Do not report a skipped operation as synced or request a new registration.
 - First shipped correction: pending.
 
-## AUDIO-001 — Tiger Lake internal speakers are silent
+## AUDIO-001 — Tiger Lake speaker output is silent
 
-- Reported: 2026-10-10, exact computer/board model and Luma build unknown.
-  Headphones work; selecting speakers does not help. ALSA Mixer displays the
+- Reported: 2026-10-10. Reporter identifies an Alliwava Mini PC with Intel
+  Core i7-11390H, 32 GB DDR4 and 512 GB storage. Exact product/board identifier
+  and installed Luma build remain unknown. Headphones work; selecting speakers
+  does not help. ALSA Mixer displays the
   speaker control at `0–0%`. The reporter says audio works in Ubuntu, Debian
   and Kali on the same machine.
 - Status: hardware diagnosis pending. Tiger Lake alone does not identify the
@@ -211,8 +213,10 @@ available. Add coverage at the boundary the user actually encountered.
   `alsa-sof-firmware 2025.12.2`, `alsa-ucm 1.2.16.1`, kernel `7.2.8`,
   PipeWire `1.6.9` and WirePlumber `0.5.18`. This does not establish which
   version the reporter installed or prove a working speaker path.
-- Follow-up: request exact model, installed build, kernel version,
-  `/proc/asound/cards`, and `wpctl status`. Use the resulting card identity
+- Follow-up: confirm whether speakers are connected by 3.5 mm, HDMI/DisplayPort
+  or USB; a mini PC report does not establish an internal speaker path. Request
+  the exact product identifier, installed build, kernel version,
+  `/proc/asound/cards`, `wpctl status`, and HD-audio codec identity. Use the resulting card identity
   to collect its codec, mixer and audio-specific kernel diagnostics.
   Do not apply a global DSP-driver override on the processor-family report.
 - First shipped correction: not established.
@@ -262,3 +266,25 @@ available. Add coverage at the boundary the user actually encountered.
   See the audit for precise coverage and runtime qualification limits.
 - First complete shipped correction: pending. The microphone-specific source
   correction and test are tracked separately as AUDIO-002.
+
+## NOTIF-001 — Outside clicks in applications leave Notifications open
+
+- Reported: 2026-10-10. Clicking the desktop closes the expanded notification
+  panel, but clicking inside an application does not. Applies to both an empty
+  panel and one containing notifications.
+- Cause: the listener only captures stage events. Client-window input bypasses
+  that path without a Shell grab. The earlier callback test injected stage
+  events and did not exercise real application routing.
+- Correction: Shell111 routes input through the notification actor's modal
+  grab and handles outside coordinates on that actor. Closing disconnects
+  capture, releases the grab and restores focus. Closing does not dismiss
+  notification records; inside interactions remain available.
+- Verification: the current Shell110 fails the real Wayland application-click
+  regression. The candidate passes native mouse/touch routing for empty and
+  populated panels, right-click, desktop dismissal, Escape, listener/grab
+  cleanup and subsequent application input. Reopening through the nub is
+  checked using real mouse and touch input.
+- Regressions: `tests/gnome-shell/notification-lip-outside-click.js` and
+  `tests/gnome-shell/run-notification-outside-native.sh`. The native runner
+  requires an explicitly disposable environment with matching Shell/Mutter.
+- Publication: pending; an installed machine needs the matching OS update.

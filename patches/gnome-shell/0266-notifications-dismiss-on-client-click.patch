@@ -1,0 +1,39 @@
+Subject: [PATCH] Dismiss notifications on clicks outside, including client windows
+
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -502,10 +502,10 @@
+         this._setContent(column);
+         this._cards.clear();
+         this._syncTray(); this._render();
+-        // A modal grab swallows pointer input outside this narrow actor before
+-        // a stage listener can see it. Keep the tray focused for keyboard
+-        // navigation and intercept outside clicks at the stage instead.
+-        this._outsideId = global.stage.connect('captured-event', (_a, event) => {
++        // Client-window events bypass stage capture without a Shell grab.
++        // Capture on the grabbed actor itself: Clutter redirects outside
++        // pointer/touch events here, retaining their original coordinates.
++        this._outsideId = this.connect('captured-event', (_a, event) => {
+             if (event.type() !== Clutter.EventType.BUTTON_PRESS && event.type() !== Clutter.EventType.TOUCH_BEGIN)
+                 return Clutter.EVENT_PROPAGATE;
+             const [stageX, stageY] = event.get_coords();
+@@ -516,6 +516,7 @@
+             }
+             return Clutter.EVENT_PROPAGATE;
+         });
++        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+     }
+     _syncTray() {
+@@ -541,8 +542,10 @@
+     }
+     close() {
+         if (!this.isOpen) return;
+-        if (this._outsideId) global.stage.disconnect(this._outsideId);
++        if (this._outsideId) this.disconnect(this._outsideId);
+         this._outsideId = 0;
++        if (this._grab) Main.popModal(this._grab);
++        this._grab = null;
+         this._state = 'idle'; this._cards.clear(); this._render();
+     }
+ });
