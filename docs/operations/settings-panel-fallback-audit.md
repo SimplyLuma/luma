@@ -67,7 +67,8 @@ originally requested action. Delegating is not evidence that a change saved.
   This audit does not establish their behavior on every physical device.
 - Settings52 qualifies microphone selection and input volume. Its mapped
   picker test passed, including server readback, reopen and invalid-input
-  refusal. Packaging and publication are still pending.
+  refusal. This correction ships in Settings53 with Nightly `20261010.3`;
+  canonical signed update delivery was verified on 2026-10-10.
 - Wi-Fi enable/join/disconnect/forget and its qualified connection options,
   Bluetooth actions, Do Not Disturb and lock-screen notifications are not
   missing the approvals checked here.

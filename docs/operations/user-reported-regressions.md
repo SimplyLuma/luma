@@ -261,8 +261,8 @@ available. Add coverage at the boundary the user actually encountered.
   This verifies the Gvc protocol and UI boundary, not physical microphone
   capture or the separate Tiger Lake speaker issue.
 - Regression runner: `tests/gnome-control-center/sound-input/run.sh`.
-- Delivery: included in the Settings53 repair candidate; publication pending.
-  First shipped correction remains pending.
+- First shipped correction: Nightly `20261010.3`, with Settings53. The signed
+  update was verified through the canonical download address on 2026-10-10.
 
 ## SET-001 — Settings actions replace Luma panes with older native panels
 
@@ -282,7 +282,9 @@ available. Add coverage at the boundary the user actually encountered.
 - Verification: mapped pane-retention regression, native adapter readback and
   refusal checks, action/cancellation tests and full production compile/link.
   See the audit for precise coverage and runtime qualification limits.
-- First complete shipped correction: pending. The microphone-specific source
+- First shipped correction: Nightly `20261010.3`, with Settings53 and
+  Shell112. Qualification limits remain as documented in the audit; this is
+  not a physical-device test of every Settings control. The microphone-specific
   correction and test are tracked separately as AUDIO-002.
 
 ## SESSION-001 — Dell XPS loses the session while unattended
@@ -320,8 +322,11 @@ available. Add coverage at the boundary the user actually encountered.
   only in an explicitly disposable environment with matching Shell/Mutter and
   the actual packaged extensions. Preserve the old fatal and corrected evidence
   privately; do not put user core files or account data in source control.
-- First shipped correction: pending; built and qualified Shell112 has not yet
-  been published in the signed OS update feed.
+- First shipped correction: Nightly `20261010.3`, with Shell112. Signed
+  canonical delivery, fresh installation, updating and both rollback paths
+  passed before feed activation on 2026-10-10. Channel switching passed on a
+  recovered healthy update-test guest; the original fresh-install checks were
+  preserved. The physical XPS retest remains separate.
 
 ## NOTIF-001 — Outside clicks in applications leave Notifications open
 
@@ -343,4 +348,5 @@ available. Add coverage at the boundary the user actually encountered.
 - Regressions: `tests/gnome-shell/notification-lip-outside-click.js` and
   `tests/gnome-shell/run-notification-outside-native.sh`. The native runner
   requires an explicitly disposable environment with matching Shell/Mutter.
-- Publication: pending; an installed machine needs the matching OS update.
+- First shipped correction: Nightly `20261010.3`, with Shell112. An installed
+  machine must apply the OS update and restart to load the corrected Shell.
