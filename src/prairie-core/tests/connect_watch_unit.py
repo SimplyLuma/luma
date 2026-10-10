@@ -301,6 +301,16 @@ class SharingAccessTests(unittest.TestCase):
         self.assertEqual(sync._load_state(self.env)[self.scope+'|collaboration-revision'], 2)
         self.unchanged_local_data()
 
+    def test_unoffered_sharing_service_keeps_personal_sync_and_registration(self):
+        self.shared_status = 404
+        self.assertEqual(self.push(), 0)
+        self.assertEqual([path for path, _body in self.posts],
+            ['/api/hub/sync/contacts', '/api/hub/sync/notes'])
+        self.assertEqual(self.posts[1][1]['items'][0]['id'], self.note.id)
+        self.assertFalse(any(method == 'POST' and '/collaboration/' in path
+            for method, path in self.requests))
+        self.unchanged_local_data()
+
     def test_collaboration_only_failure_never_stamps_success_or_sends_personal_data(self):
         with self.assertRaises(sync.PartialSyncError):
             self.push(collaboration_only=True, observed_revision=5)

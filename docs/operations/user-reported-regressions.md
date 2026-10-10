@@ -45,8 +45,8 @@ available. Add coverage at the boundary the user actually encountered.
 - Reported: 2026-10-09, Connect `0.65.0`.
 - Reproduction: signed-in Connect shows XPS devices; click Sync Now and receive
   “This computer needs to be connected to Luma Connect again.”
-- Status: client isolation correction shipped; server sharing authorization
-  and live XPS confirmation remain pending.
+- Status: client isolation correction shipped; the Hub maintainer confirmed
+  the sharing service is absent. Live XPS confirmation remains pending.
   Device listing is not proof that sync is authenticated. The prior release
   did not claim a successful live-account sync test.
 - Confirmed client behavior: account status and sync reuse the same saved
@@ -55,8 +55,12 @@ available. Add coverage at the boundary the user actually encountered.
   The XPS's actual results are account/events/capabilities/notes/contacts/profile
   HTTP 200, but shared-document listing HTTP 401. This rejects a collaboration
   request while accepting the same device registration elsewhere. The client
-  currently aborts healthy personal sync and mislabels that failure as expired
-  registration; the server's reason for rejecting sharing remains unverified.
+  previously aborted healthy personal sync and mislabeled that failure as expired
+  registration. The Hub maintainer confirmed that the sharing route and its
+  storage/membership service were never implemented: unknown sync paths fell
+  through to browser-session authentication. On 2026-10-09 the maintainer changed
+  this fallback to authenticate the enrolled device, then return 404 for an
+  unoffered service; invalid or revoked credentials still receive 401.
   Preserve registration, report incomplete sharing honestly, and do not let
   that failure prevent healthy services from syncing.
 - Client fix: on a sharing 401, recheck account authentication using the same
@@ -73,7 +77,14 @@ available. Add coverage at the boundary the user actually encountered.
   remain authorization failures. Packaged delivery passed the normal native
   checks, all 47 OS gate stages, and trusted canonical download/signature,
   complete closure and filesystem checks. Live XPS confirmation remains
-  pending; the server's sharing refusal still needs investigation.
+  pending. A further real-HTTP regression confirms the existing client accepts
+  a sharing-list 404 as unsupported, completes personal Notes/Contacts sync,
+  and preserves registration and local notes; all 18 watch/service tests pass.
+- Remaining sharing work: implement the authenticated Hub document service and
+  validate it with separate accounts and a read-only member. The current client
+  skips an unsupported service but reports zero documents refreshed, and a
+  shared-only event can advance its sharing checkpoint despite that skip.
+  Correct this status/checkpoint distinction before claiming shared sync works.
 - Diagnostic: `scripts/diagnostics/connect-routing.py` checks fixed Hub routes
   using the local registration, without changing it or printing credentials,
   account details, or synced content.
