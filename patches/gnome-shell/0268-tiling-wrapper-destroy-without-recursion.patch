@@ -1,0 +1,18 @@
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1436,7 +1436,14 @@
+         row.add_child(item);
+         this._studioUtilities.add_child(row);
+         item._lumaStudioRow = row;
+-        item.connect('destroy', () => row.destroy());
++        item.connect('destroy', () => {
++            // The toggle is already being destroyed: detach it before destroying
++            // its wrapper, so Clutter never recurses into the same child.
++            if (item.get_parent() === row)
++                row.remove_child(item);
++            item._lumaStudioRow = null;
++            row.destroy();
++        });
+     }
+ 
+     // The Studio page arrangement reuses GNOME's live indicator actors. No

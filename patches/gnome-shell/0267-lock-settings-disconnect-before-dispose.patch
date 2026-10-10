@@ -1,0 +1,22 @@
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -379,7 +379,9 @@
+                 this._syncBattery();
+             });
+         this.connect('destroy', () => {
++            this._surfaceSettings?.disconnectObject(this);
+             this._surfaceSettings?.run_dispose();
++            this._a11ySettings.disconnectObject(this);
+             this._a11ySettings.run_dispose();
+         });
+     }
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -55,6 +55,7 @@
+             }
+             this._sources.clear();
+             this._pending.clear();
++            this._clockSettings.disconnectObject(this);
+             this._clockSettings.run_dispose();
+         });
+         this._rebuild();

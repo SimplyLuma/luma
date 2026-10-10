@@ -320,6 +320,9 @@ install -m 0644 "$repo_root/patches/gnome-shell/0263-luma-quiet-dock-pinning.pat
 install -m 0644 "$repo_root/patches/gnome-shell/0264-settings-display-preview-ownership.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0265-settings-native-keyboard-selection.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0266-notifications-dismiss-on-client-click.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0267-lock-settings-disconnect-before-dispose.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0268-tiling-wrapper-destroy-without-recursion.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-corners/first-commit.js" "$rpmbuild_dir/SOURCES/window-corners-first-commit.js"
@@ -528,6 +531,13 @@ install -m 0644 "$repo_root/config/shared/design-tokens.json" "$rpmbuild_dir/SOU
         usr/lib64/gnome-shell/libshell-18.so
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/unlockDialog.js >unlockDialog.js
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/prairieLogin.js >prairieLogin.js
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/misc/signalTracker.js >signalTracker.js
+      cp "$OLDPWD/SOURCES/settings-teardown.js" settings-teardown.js
+      GSETTINGS_BACKEND=memory G_DEBUG=fatal-warnings gjs -m settings-teardown.js prairieLogin.js card
+      GSETTINGS_BACKEND=memory G_DEBUG=fatal-warnings gjs -m settings-teardown.js unlockDialog.js notifications
       python3 "$OLDPWD/SOURCES/verify-shell-unlock.py" unlockDialog.js
       gjs "$OLDPWD/SOURCES/verify-shell-unlock.js" unlockDialog.js
       grep -aFq "this._posterUser.get_user_name()" \

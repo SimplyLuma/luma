@@ -202,23 +202,41 @@ available. Add coverage at the boundary the user actually encountered.
 ## AUDIO-001 — Tiger Lake speaker output is silent
 
 - Reported: 2026-10-10. Reporter identifies an Alliwava Mini PC with Intel
-  Core i7-11390H, 32 GB DDR4 and 512 GB storage. Exact product/board identifier
-  and installed Luma build remain unknown. Headphones work; selecting speakers
+  Core i7-11390H, 32 GB DDR4 and 512 GB storage. The later diagnostic identifies
+  `ALL-H90-Defaultstring`, kernel `7.2.8-200.fc44.x86_64`, and booted Nightly
+  `20261010.1` (`2365d712dba08e950abeff1d1d6d10cf0ac73dcec602b790051af44dfb5712d5`).
+  Headphones work; selecting speakers
   does not help. ALSA Mixer displays the
   speaker control at `0–0%`. The reporter says audio works in Ubuntu, Debian
   and Kali on the same machine.
 - Status: hardware diagnosis pending. Tiger Lake alone does not identify the
   speaker codec, amplifier, firmware topology or matching UCM profile.
+- Confirmed card and route: `sof-essx8336`; PipeWire 1.6.9 lists the analog
+  Speakers sink as selected at 100%. HDMI/DisplayPort outputs are separate,
+  including a Sony TV at 40%. No active audio stream is present in the supplied
+  snapshot. The HD-audio codec dump identifies Intel Tigerlake HDMI, not the
+  separate I2C ES8336 analog codec. This establishes card recognition and the
+  selected route, not successful analog playback.
+- Upstream source audit: the ES8336 machine driver exposes Speaker as a DAPM
+  pin switch; the ALSA UCM speaker profile uses Headphone Mixer and DAC for
+  volume. A `0–0%` Speaker display alone does not prove a missing gain control.
+  GPIO amplifier enable, jack detection, mixer state and actual output connection
+  remain to be checked before choosing a correction. Relevant primary sources:
+  [machine driver](https://github.com/torvalds/linux/blob/master/sound/soc/intel/boards/sof_es8336.c)
+  and [UCM profile](https://github.com/alsa-project/alsa-ucm-conf/blob/master/ucm2/Intel/sof-essx8336/HiFi.conf).
 - Package audit: the actual `20261010.1` image inventory includes
   `alsa-sof-firmware 2025.12.2`, `alsa-ucm 1.2.16.1`, kernel `7.2.8`,
   PipeWire `1.6.9` and WirePlumber `0.5.18`. This does not establish which
   version the reporter installed or prove a working speaker path.
-- Follow-up: confirm whether speakers are connected by 3.5 mm, HDMI/DisplayPort
-  or USB; a mini PC report does not establish an internal speaker path. Request
-  the exact product identifier, installed build, kernel version,
-  `/proc/asound/cards`, `wpctl status`, and HD-audio codec identity. Use the resulting card identity
-  to collect its codec, mixer and audio-specific kernel diagnostics.
-  Do not apply a global DSP-driver override on the processor-family report.
+- Exact-image audit: the linked UCM HiFi and BootSequence match upstream;
+  the actual ES8336 kernel module contains the expected delayed speaker-GPIO
+  path. Shipped module settings contain no Luma SOF override, and output policy
+  only sets default-route metadata. No applicable Alliwava/H90 upstream DMI
+  quirk or safe correction is established by this audit.
+- Follow-up: the user declined further reporter diagnostics. Keep the report
+  open without another command checklist. Actual speaker connection, amplifier
+  GPIO/jack polarity and persisted mixer state remain unknown. Do not apply a
+  global DSP-driver override or another machine's GPIO quirk.
 - First shipped correction: not established.
 
 ## AUDIO-002 — Microphone selection replaces Luma's Sound panel
@@ -266,6 +284,44 @@ available. Add coverage at the boundary the user actually encountered.
   See the audit for precise coverage and runtime qualification limits.
 - First complete shipped correction: pending. The microphone-specific source
   correction and test are tracked separately as AUDIO-002.
+
+## SESSION-001 — Dell XPS loses the session while unattended
+
+- Reported: 2026-10-10, Dell XPS DA14260. After walking away, the user
+  returns to the login screen; logging in starts a session without the
+  previously open applications. Frequency is described as every unattended
+  interval. This is not established to be an ordinary screen lock.
+- User confirmed that this also happens plugged in with the lid open; lid
+  closure is not required. Idle-triggered locking, blanking or sleep have not
+  been excluded by this detail alone.
+- Installed identity: Nightly `20261010.1`, Shell109 and Mutter13. The
+  supplied coredump list records repeated Shell SIGABRTs; Viola SIGTRAPs often
+  follow one second later. The fatal main-thread trace aborts in
+  `clutter_actor_destroy_all_children`, after two nested actor-destroy calls.
+- Confirmed cause: Studio's adopted Tiling toggle destroys its parent wrapper
+  from its own destroy callback while it is still attached. Clutter's recursive
+  child destruction then cannot remove that already-destroying child and aborts
+  on `n_children < prev_n_children`. Lock mode disables this extension, invoking
+  exactly that callback. This is separate from nonfatal disposed-Settings
+  warnings seen in the replacement greeter session.
+- Correction: Shell112 detaches the destroying toggle before destroying its
+  wrapper and clears its wrapper reference. Three lock/greeter Settings owners
+  also disconnect their tracked callbacks before disposing Settings.
+- Regression evidence: the original production callback, full adoption method,
+  actual packaged extension disable, and actual lock-mode extension disable all
+  reproduce the same fatal assertion under normal logging. The completed
+  Shell112 RPM passes 10 actual extension disable/re-enable cycles and 20
+  ScreenShield lock/unlock cycles with Tiling Shell24 and Tiling Toggle12.
+  Those packaged runs use no production UI module overlays. The isolated
+  headless fixture simulates GDM eligibility and unlock completion; it does not
+  claim a physical XPS authentication, GPU, suspend or idle-duration retest.
+  The normal package build and both native tracked-Settings regressions pass.
+- Regression runner: `tests/gnome-shell/run-studio-tiling-lifecycle.sh`. Run
+  only in an explicitly disposable environment with matching Shell/Mutter and
+  the actual packaged extensions. Preserve the old fatal and corrected evidence
+  privately; do not put user core files or account data in source control.
+- First shipped correction: pending; built and qualified Shell112 has not yet
+  been published in the signed OS update feed.
 
 ## NOTIF-001 — Outside clicks in applications leave Notifications open
 
