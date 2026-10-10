@@ -60,7 +60,10 @@ available. Add coverage at the boundary the user actually encountered.
 - Reproduction: signed-in Connect shows XPS devices; click Sync Now and receive
   “This computer needs to be connected to Luma Connect again.”
 - Status: client isolation correction shipped; the Hub maintainer confirmed
-  the sharing service is absent. Live XPS confirmation remains pending.
+  the sharing service is absent. The user subsequently reports 27 Notes and
+  Contacts synced on the XPS. This confirms personal progress, not shared
+  document collaboration. Earlier Hub retry notices require their normal
+  backoff; a Photos error must not erase another service's successful sync.
   Device listing is not proof that sync is authenticated. The prior release
   did not claim a successful live-account sync test.
 - Confirmed client behavior: account status and sync reuse the same saved
@@ -134,4 +137,39 @@ available. Add coverage at the boundary the user actually encountered.
 - Required behavior: show real measured activity when available and a clear
   unavailable state after a failed read, with a recoverable retry. Do not
   present a failed sample as an indefinitely pending measurement.
+- First shipped correction: pending.
+
+## PHOTO-001 — Photos rejects an existing shared-library access grant
+
+- Reported: 2026-10-10. Photos displays an unactionable access warning;
+  Connect reports two Photos while Notes and Contacts have synced.
+- Cause: the explicit-mount check compares the home alias and canonical home
+  path as different strings. The existing narrow Flatpak grant is present,
+  but its mount target uses the canonical path.
+- Correction prepared: resolve both paths before comparing their exact
+  library mount. A parent home mount alone still does not grant access.
+  Preserve the existing library and the shared Photos/Camera catalog.
+- Regression coverage: the installed signed Photos app reproduced the
+  warning with the grant present. The old code fails the granted-alias case;
+  the corrected backend passes all 19 unit tests, including denial without
+  an explicit library mount, plus four adjacent Camera media tests. A
+  committed installed-sandbox test checks both signed apps with the grant
+  and a command-local revocation without opening SQLite or changing
+  persistent permissions. Its new-package execution remains pending.
+- Count interpretation: two reported Photos alone does not establish how
+  many items the user's library should contain; verify the accessible
+  catalog before treating that number as a sync loss.
+- First shipped correction: pending.
+
+## CONN-002 — Music Servers remains waiting after personal sync succeeds
+
+- Reported: 2026-10-10 after Notes, Contacts and Photos report synced.
+- Confirmed code behavior: Music Servers explicitly skips Flatpak Tide in
+  the current client. A native Tide without a network-capable source library
+  is also skipped. Services execute independently; Photos is not a queue
+  that must finish before Music Servers starts.
+- Follow-up: verify the installed Tide identity and network-source support,
+  then expose an accurate unavailable or skipped state and implement the
+  supported synchronization path without bypassing Tide's model or keyring.
+  Do not report a skipped operation as synced or request a new registration.
 - First shipped correction: pending.
