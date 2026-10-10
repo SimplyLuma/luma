@@ -76,7 +76,7 @@ luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
 luma-developer-platform-0.1.0-1.luma.107.creator20261007.1.fc44.x86_64
 luma-developer-platform-sdk-0.1.0-1.luma.107.creator20261007.1.fc44.noarch
 luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
-luma-monitor-0.1.0-1.luma.16.creator20261007.1.fc44.noarch
+luma-monitor-0.1.0-1.luma.17.creator20261010.1.fc44.noarch
 luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
 luma-quick-view-46.0-1.luma.18.lumaui20260928.fc44.x86_64
 luma-rfkill-guard-0.1.0-1.luma.2.fc44.noarch

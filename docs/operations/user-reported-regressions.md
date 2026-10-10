@@ -98,8 +98,25 @@ available. Add coverage at the boundary the user actually encountered.
 - Reported: 2026-10-09 on a newly installed Dell XPS.
 - Reproduction: open Monitor; it says it couldn't read system activity while
   CPU activity continues showing Loading.
-- Status: investigating the sampler, host broker and error presentation.
-  No cause or successful physical-device test has been established.
+- Cause: the Monitor user service's `ProtectSystem`, `ProtectHome` and
+  `PrivateTmp` settings create a private user namespace. Its signed Flatpak
+  caller occupies a sibling namespace, so reading the caller's live
+  `/proc/PID/root/.flatpak-info` identity fails with permission denied before
+  any system activity is sampled. The same user outside that service can
+  verify the caller. The original UI leaves the failed read showing Loading.
+- Correction prepared: Monitor 17 retains unprivileged execution, process and
+  resource restrictions, and the complete signed deployment/lifecycle checks;
+  it omits those three namespace-creating filesystem options. The client shows
+  an unavailable or explicitly stale reading, retries and restores measured
+  activity when a sample succeeds, without repeated error toasts.
+- Evidence: a fresh installed Nightly `20261009.6` guest with SELinux enforcing,
+  Monitor 16, Installer 69 and SDK 107 reproduces the exact refusal on the
+  original service. Changing only its service configuration restores actual
+  signed Monitor CPU and memory samples; an actual signed wrong-app caller
+  with transport permission and an unsigned caller remain refused. All 88
+  headless unit tests pass against that installed SDK. The existing GTK
+  runtime lane repeats the error/recovery tests on actual labels. These guest
+  results do not claim a successful physical XPS retest.
 - Required behavior: show real measured activity when available and a clear
   unavailable state after a failed read, with a recoverable retry. Do not
   present a failed sample as an indefinitely pending measurement.

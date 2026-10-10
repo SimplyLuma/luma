@@ -9,8 +9,9 @@ CPUQuota=25%
 MemoryMax=256M
 TasksMax=16
 NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=read-only
-PrivateTmp=yes
+# A user-service mount sandbox creates a private user namespace. The broker
+# must stay in the host user namespace to verify the signed Flatpak proxy's
+# live /proc identity and lifecycle pipe; a sibling namespace cannot read it.
+# Keep this service unprivileged and retain process/resource restrictions.
 RestrictAddressFamilies=AF_UNIX
 RestrictSUIDSGID=yes

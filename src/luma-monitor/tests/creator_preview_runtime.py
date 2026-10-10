@@ -45,6 +45,13 @@ with tempfile.TemporaryDirectory(prefix='monitor-creator-') as temporary:
     window.confirm_dialog.handle.cancel()
     settle()
     assert tuple(a['id'] for a in window.source.visible_apps()) == before
+    # The normal unit lane stays headless; repeat sampler failure/recovery
+    # checks on actual GTK labels inside this existing private display lane.
+    import unittest
+    from test_initial_samples import InitialSampleTests
+    InitialSampleTests.label_factory=staticmethod(Gtk.Label)
+    result=unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(InitialSampleTests))
+    assert result.wasSuccessful() and not result.skipped
     window.close()
     settle()
     assert not app.get_windows()

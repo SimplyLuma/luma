@@ -16,7 +16,7 @@
 # not relicensed here.
 Name:           luma-monitor
 Version:        0.1.0
-Release:        1.luma.16.creator20261007.1%{?dist}
+Release:        1.luma.17.creator20261010.1%{?dist}
 Summary:        Native application activity monitor for Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/
@@ -91,7 +91,7 @@ grep -Fxq 'Exec=%{_bindir}/io.luma.Monitor' %{buildroot}%{_datadir}/dbus-1/servi
 test -f %{buildroot}%{_datadir}/%{name}/data/monitor.css
 test -f %{buildroot}%{_datadir}/%{name}/data/machine.css
 %{python3} counted-unittest.py --self-test
-PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 58
+PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 88
 # The installed tree imports as the launcher imports it, and the stylesheets
 # the app resolves from its own location are there.
 PYTHONPATH= %{python3} -c "
@@ -122,6 +122,11 @@ dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$
 %{_datadir}/dbus-1/services/org.projectluma.MonitorHost1.service
 
 %changelog
+* Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.17.creator20261010.1
+- Fix the host namespace needed to verify signed Monitor callers
+- Show unavailable activity, preserve stale readings and recover after errors
+- Verify real signed service admission and headless/GTK error recovery
+
 * Wed Oct 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.16.creator20261007.1
 - Supply the signed application host sampler and bounded process identity API
 - Qualify actual host D-Bus controls and the responsive production UI

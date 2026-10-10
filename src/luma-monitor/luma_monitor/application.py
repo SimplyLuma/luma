@@ -65,6 +65,7 @@ class MonitorWindow(AppWindow):
         self.closed=False;self.generation=0;self.working=False;self.timer=0;self._menu_widget=None
         self.apps=self.source.apps if self.fixture else [];self.groups=self.source.groups if self.fixture else []
         self.totals=fixture_totals(self.source) if self.fixture else {}
+        self.sample_failed=False
         self.histories={k:deque(maxlen=60) for k in RESOURCE_NAMES}
         if self.fixture:self._fixture_history()
         commands=CommandRegistry((CommandGroup(None,(
@@ -159,6 +160,9 @@ class MonitorWindow(AppWindow):
         t=self.totals;apps=sorted_apps(self._visible_apps(),self.resource)
         top=apps[0]['n'] if apps else None;r=self.resource
         if not self.fixture:
+            if self.sample_failed:
+                return ('Activity couldn’t refresh.' if t else 'System activity is unavailable.',
+                        'Showing the last reading. Retrying…' if t else 'Trying again…')
             if r=='cpu':
                 measured=t.get('cpu') is not None
                 busiest=top if apps and (apps[0].get('cpu') or 0)>0 else None
@@ -179,8 +183,8 @@ class MonitorWindow(AppWindow):
         # v71 retains the content gutter on phones; only the top spacing changes.
         for side in ('start','end'):getattr(self.page,'set_margin_'+side)(lumaui_tokens.MONITOR['content_gutter'])
         self.page.set_margin_top(18 if phone else 30);self.page.set_margin_bottom(0 if phone else 110)
-        title,sub=self._hero_text();self.hero.append(label(title,'monitor-story-phone' if phone else 'monitor-story',name='mn-title',wrap=True))
-        subtitle=label(sub,name='mn-subtitle',css='mn-hero-subtitle',wrap=True);subtitle.set_margin_top(4);subtitle.set_margin_bottom(18);self.hero.append(subtitle)
+        title,sub=self._hero_text();self.hero_title=label(title,'monitor-story-phone' if phone else 'monitor-story',name='mn-title',wrap=True);self.hero.append(self.hero_title)
+        self.hero_subtitle=label(sub,name='mn-subtitle',css='mn-hero-subtitle',wrap=True);self.hero_subtitle.set_margin_top(4);self.hero_subtitle.set_margin_bottom(18);self.hero.append(self.hero_subtitle)
         plot=Gtk.Overlay();self.chart=ResourceChart(self.histories[self.resource],self._chart_max(self.resource),stacked=self.resource in ('cpu','mem'),single=self.resource=='en',height=120 if phone else 150)
         self.chart.set_name('mn-chart');plot.set_child(self.chart)
         caption=label('60 s','caption',css='mn-chart-caption');caption.set_halign(Gtk.Align.START);caption.set_valign(Gtk.Align.END);caption.set_margin_start(12);caption.set_margin_bottom(8);plot.add_overlay(caption);self.hero.append(Card(plot,recessed=True,padded=False))
@@ -734,7 +738,13 @@ class MonitorWindow(AppWindow):
     def _sampled(self,generation,snapshot,error,complete=True):
         if complete:self.working=False
         if self.closed or generation!=self.generation:return GLib.SOURCE_REMOVE
-        if error:Toast.show(self.host,'Couldn’t read system activity',kind='error');return GLib.SOURCE_REMOVE
+        if error:
+            if not self.sample_failed:Toast.show(self.host,'Couldn’t read system activity',kind='error')
+            self.sample_failed=True
+            title,subtitle=self._hero_text()
+            self.hero_title.set_label(title);self.hero_subtitle.set_label(subtitle)
+            return GLib.SOURCE_REMOVE
+        self.sample_failed=False
         self.live_rows={};self.apps=[];self.live_processes=snapshot['processes']
         for row in snapshot['rows']:
             if row['background']:continue
@@ -766,6 +776,8 @@ class MonitorWindow(AppWindow):
             self.totals['session']=f'{max(0,received-self.network_start)/1e9:.1f} GB'
         self.cores=snapshot['cores']
         for k,pair in [('cpu',(snapshot['apps_cpu'],snapshot['system_cpu'])),('mem',(used,0)),('disk',(self.totals['read'],self.totals['write'])),('net',(self.totals['down'],self.totals['up'])),('en',(None,None))]:self.histories[k].append(pair)
+        title,subtitle=self._hero_text()
+        self.hero_title.set_label(title);self.hero_subtitle.set_label(subtitle)
         if self.selected and not self._subject()[0] and not self._subject()[1]:self.selected=None
         self._render_sidebar()
         self.chart.update(self.histories[self.resource],self._chart_max(self.resource))
