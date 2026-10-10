@@ -37,7 +37,8 @@
 #    and the stable luma-<channel>-latest.iso (a hard link to the newest
 #    medium) are served from $LUMA_OS_ROOT/publish/media/public/<channel> and
 #    uploaded (scripts/os/sync-to-cdn.sh --only media-tree). Retention:
-#    LUMA_MEDIA_KEEP, fewer when the origin budget cannot hold them. A failure
+#    at least seven days after replacement; count/budget cleanup applies only
+#    outside that protected window. A failure
 #    publishes nothing, the previous medium stays the latest, and the unit's
 #    OnFailure alert fires (scripts/os/alert.sh).
 #
@@ -358,9 +359,15 @@ json.dump({
 open(path, "a").write("\n")
 ENTRY
 
-# Retention: the newest LUMA_MEDIA_KEEP media, then fewer while the origin
-# budget cannot hold them: the repository generation, the served media and
-# the origin's other trees (LUMA_MEDIA_DL_OTHER_GIB).
+# A private host ledger protects every existing installer at first enrollment,
+# replaced current until its actual website switch is confirmed, then seven days.
+# Longer promises are preserved. Missing confirmation forbids retirement.
+# Public historical entries and notes stay unchanged while protected. This does
+# not remove R2 objects; R2 publication separately retains its signed prior entries.
+retireable="$LUMA_OS_ROOT/status/media-retireable-$channel.txt"
+python3 "$luma_os_repo_root/scripts/os/lib/media_retention.py" --tree "$tree" \
+  --ledger "$LUMA_OS_ROOT/status/media-retention-$channel.json" --current "$build_id" \
+  --days "${LUMA_MEDIA_RETENTION_DAYS:-7}" >"$retireable" || fail 'preparing protected installer retention failed'
 dl_max_gib=25
 [ -f "$LUMA_OS_SECRETS/dl-origin.env" ] &&
   dl_max_gib=$(sed -n 's/^DL_MAX_GIB=//p' "$LUMA_OS_SECRETS/dl-origin.env" | tail -n 1) && [ -n "$dl_max_gib" ] || dl_max_gib=25
@@ -379,7 +386,9 @@ entries_in() {
 # today. The entry is marked so nothing offers a link that would 404.
 drop_oldest() {
   local oldest
-  oldest=$(builds_in | head -n 1)
+  oldest=$(builds_in | while IFS= read -r item; do
+    if grep -Fxq -- "$item" "$retireable"; then printf '%s\n' "$item"; break; fi
+  done)
   [ -n "$oldest" ] && [ "$oldest" != "$build_id" ] || return 1
   luma_media_transport_retire "$tree/luma-$channel-$oldest.iso"
   python3 - "$tree/luma-$channel-$oldest.iso.json" <<'RETIRE' || true
@@ -396,20 +405,8 @@ open(path, "a").write("\n")
 RETIRE
   luma_os_log "media retention: $oldest is no longer downloadable; its entry and notes stay"
 }
-# One public nightly per day: a rerun replaces that day's medium.
-for other in $(builds_in); do
-  [ "$other" != "$build_id" ] || continue
-  same=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("nightly_date") == sys.argv[2])' \
-    "$tree/luma-$channel-$other.iso.json" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["nightly_date"])' "$tree/$name.json")" 2>/dev/null || echo False)
-  if [ "$same" = True ]; then
-    # A rerun replaces that day's medium outright: the build it replaces was
-    # never a nightly people were given, so its record goes with it.
-    luma_media_transport_retire "$tree/luma-$channel-$other.iso"
-    rm -f -- "$tree/luma-$channel-$other.iso.sha256" "$tree/luma-$channel-$other.iso.json" \
-      "$tree/notes/$other.json" "$tree/notes/$other.json.minisig"
-    luma_os_log "media: $build_id replaces $other as that day's nightly"
-  fi
-done
+# Same-day replacements are real previous versions too. Do not remove their
+# installer, index record or signed notes merely because the labelled day matches.
 while [ "$(builds_in | wc -l)" -gt "$LUMA_MEDIA_KEEP" ]; do drop_oldest || break; done
 origin_bytes() {
   local local_bytes
@@ -418,7 +415,7 @@ origin_bytes() {
 }
 while [ "$(origin_bytes)" -gt $((dl_max_gib * 1073741824)) ]; do drop_oldest || break; done
 [ "$(origin_bytes)" -le $((dl_max_gib * 1073741824)) ] ||
-  fail "the newest medium alone does not fit the origin budget of $dl_max_gib GiB"
+  fail "protected installer downloads do not fit the origin budget of $dl_max_gib GiB; none were retired before their deadline"
 set_status "served_builds=$(builds_in | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().split()))')" \
   "origin_bytes=$(origin_bytes)"
 
