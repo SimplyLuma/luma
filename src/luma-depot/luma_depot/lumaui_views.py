@@ -378,7 +378,7 @@ def _list_row(window, listing: Listing, *, wide: bool = False) -> Gtk.Widget:
 def _update_row(window, listing: Listing) -> Gtk.Widget:
     version = listing.update or "the latest version"
     version_label = _text(f"1.0.159 → {version} · {listing.size}", "caption")
-    detail_label = _text("Faster start-up and a fix for screen sharing", "caption")
+    detail_label = _text("General bug fixes.", "caption")
     for label in (version_label, detail_label):
         label.set_ellipsize(Pango.EllipsizeMode.END)
         label.set_max_width_chars(21)
