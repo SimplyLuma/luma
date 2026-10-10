@@ -40,6 +40,35 @@ available. Add coverage at the boundary the user actually encountered.
   update selection or labels. Preserve a later explicit channel choice.
 - First shipped correction: not established.
 
+## DEPOT-001 — A signed app index advertises an outdated download
+
+- Found: 2026-10-10 during fresh-installer verification for Nightly
+  `20261010.3`. Depot refuses restoring Notes with “Invalid checksum for
+  static delta.” The refusal protects the client; do not disable verification.
+- Cause: a private publication operator copied regenerated static deltas
+  with `--ignore-existing`. Unlike content-addressed objects, a delta's path
+  identifies the commit pair, and regenerating it can change its bytes.
+  The signed summary was replaced while the older superblock remained served.
+- Required correction: checksum-replace the exact delta superblocks and parts
+  named by the currently signed summary, preserving app heads and signatures.
+  Delta URLs must revalidate rather than inherit immutable object caching.
+  The maintained `scripts/depot/sync-remote.sh` already uses checksum-based
+  replacement; private release operators must follow the same rule.
+- Verification required: compare advertised superblock hashes with actual
+  canonical HTTPS bytes, verify each referenced part, and restore an app
+  through the normal signed Depot client. Preserve the original failed
+  installer evidence when repeating verification against the same ISO.
+- Public correction: the canonical app feed was repaired on 2026-10-10
+  without changing app versions or the signed summary. All 40 advertised
+  superblocks and 57 referenced parts matched their full HTTPS byte hashes
+  after replacement. The unchanged installer subsequently passed all six
+  Depot checks, including restoring Notes through the signed public remote.
+  This was a download-service repair, not another app or OS build.
+- Remaining server configuration: replace the canonical delta route's
+  inherited year-long immutable cache policy with `no-store, no-transform`.
+  Corrected R2 copies already use that policy; copying those files alone does
+  not qualify or activate a complete R2 app-feed migration.
+
 ## TILE-001 — Tiling disappears from Quick Options after updating
 
 - Reported: 2026-10-10, with the installed OS reporting Nightly `20261009.6`.

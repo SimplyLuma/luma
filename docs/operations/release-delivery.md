@@ -4,6 +4,24 @@ Luma delivers OS updates, application updates and installation media separately.
 A source commit or successful build does not publish a release. Each delivery
 must retain its source identity, actual qualification results and signatures.
 
+## Release cadence
+
+Collect ordinary OS fixes into one Nightly release at the end of the day's
+work, when the release owner closes the batch. Qualify changes during the day
+without publishing each intermediate candidate. Match that release with one
+installer ISO; reuse already qualified artifacts instead of rebuilding them
+just to change publication metadata.
+
+An additional same-day public OS release is an exception for an urgent issue,
+such as session crashes, data loss, or a security fix. Record the reason and
+retain its predecessor. Candidate suffixes identify build attempts, not a
+promise that every number was published. Show the exact offered build identity
+alongside its brief, concrete changes so users can distinguish releases.
+
+Independent app updates do not require another OS build or ISO. Refreshing a
+signed update graph likewise does not create a release. The legacy Nightly
+timer does not authorize publishing an unreviewed intermediate candidate.
+
 ## OS updates
 
 Build and export the candidate through the normal OS pipeline, then complete
