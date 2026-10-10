@@ -157,16 +157,16 @@ class SeedInputs(unittest.TestCase):
         first_party = json.loads((DATA / 'depot-first-party.json').read_text())
         private = {row['id'] for row in first_party['applications']
                    if {**first_party['defaults'], **row}['visibility'] not in ('public', 'unlisted')}
-        # Six held behind their public gate, plus Sticky Notes, withdrawn.
-        self.assertEqual(len(private), 7)
+        # Five held behind their public gate, plus Sticky Notes, withdrawn.
+        self.assertEqual(len(private), 6)
         self.assertIn('sticky-notes', private)
         shipped = {row['id'] for row in seed['applications']}
         self.assertFalse(private & shipped)
         self.assertTrue(all(row['visibility'] in ('public', 'unlisted') for row in seed['applications']))
         # 47 listed apps (7-Zip and Ollama are withdrawn from schema 4), the
-        # 23 public first-party identities (21 baseline and optional Darkroom/
-        # Imager; Sticky Notes is withdrawn), plus one verified developer.
-        self.assertEqual(len(shipped), 71)
+        # 24 public first-party identities (21 baseline and optional Darkroom/
+        # Imager/Write; Sticky Notes is withdrawn), plus one verified developer.
+        self.assertEqual(len(shipped), 72)
         self.assertEqual({c['id'] for c in seed['collections']}, {'office', 'creative', 'studio'})
 
     def test_first_party_entries_validate_once_public(self):
@@ -210,7 +210,7 @@ class Seed(unittest.TestCase):
     def test_the_seed_ships_no_private_entry(self):
         seed = json.loads((DATA / 'depot-catalog-4.json').read_text())
         self.assertTrue(all(row['visibility'] in ('public', 'unlisted') for row in seed['applications']))
-        self.assertFalse({'write', 'grid', 'stage', 'canvas', 'session', 'reel'}
+        self.assertFalse({'grid', 'stage', 'canvas', 'session', 'reel'}
                          & {row['id'] for row in seed['applications']})
         self.assertEqual({c['id'] for c in seed['collections']}, {'office', 'creative', 'studio'})
 
@@ -225,16 +225,17 @@ class Seed(unittest.TestCase):
     def test_first_party_native_identity_and_flatpak_fallback_are_preserved(self):
         seed = depot_catalog.load_catalog(DATA / 'depot-catalog-4.json')
         first_party = [e for e in seed.applications if e.tier == 'luma']
-        self.assertEqual(len(first_party), 23)
-        # Published first-party apps retain native provenance and use their existing beta Flatpak identity.
+        self.assertEqual(len(first_party), 24)
+        # Published first-party apps retain native provenance and their release branch.
         wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
-                 'monitor', 'photos', 'camera', 'connect'}
+                 'monitor', 'photos', 'camera', 'connect', 'write'}
         for entry in first_party:
             self.assertEqual(entry.app_id + '.desktop', entry.luma_system.desktop_id)
             if entry.id in wave1:
+                branch = 'stable' if entry.id == 'write' else 'beta'
                 self.assertEqual((entry.backend, entry.repository, entry.source_id, entry.branch),
-                                 ('flatpak', 'luma', entry.app_id, 'beta'), entry.id)
-                self.assertEqual(entry.flatpak, depot_catalog.FlatpakSource('luma', entry.app_id, 'beta'))
+                                 ('flatpak', 'luma', entry.app_id, branch), entry.id)
+                self.assertEqual(entry.flatpak, depot_catalog.FlatpakSource('luma', entry.app_id, branch))
             else:
                 self.assertEqual((entry.backend, entry.repository, entry.source_id),
                                  ('rpm', 'luma', entry.luma_system.package), entry.id)
