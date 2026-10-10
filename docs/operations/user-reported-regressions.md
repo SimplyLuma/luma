@@ -152,7 +152,9 @@ available. Add coverage at the boundary the user actually encountered.
   Published and verified 2026-10-10. The actual installed production service
   serves signed Monitor samples and refuses wrong-app and unsigned callers.
   The full 47-stage release gate and fresh canonical signed download passed.
-  Independent app-feed publication and the new ISO remain pending; a physical
+  The independent app feed and the new ISO were also published and verified
+  on 2026-10-10. The actual public app payload passed signature and filesystem
+  checks, and the website's primary download selects this ISO. A physical
   XPS retest has not been reported.
 
 ## PHOTO-001 — Photos rejects an existing shared-library access grant
@@ -179,8 +181,10 @@ available. Add coverage at the boundary the user actually encountered.
   `1.0.0-nightly.20261010.1`, commit
   `2365d712dba08e950abeff1d1d6d10cf0ac73dcec602b790051af44dfb5712d5`.
   Published and verified 2026-10-10 with the corrected Photos and Camera
-  offline bundles and Core 102. Independent app-feed publication and the
-  new ISO remain pending; this does not establish the user's expected photo count.
+  offline bundles and Core 102. The independent Photos and Camera app updates
+  and the new ISO were also published and verified on 2026-10-10. Actual
+  public payloads passed signature and filesystem checks; this does not
+  establish the user's expected photo count.
 
 ## CONN-002 — Music Servers remains waiting after personal sync succeeds
 
