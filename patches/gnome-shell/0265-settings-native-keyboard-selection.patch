@@ -1,0 +1,72 @@
+Subject: [PATCH] Select configured keyboard layouts from Luma Settings
+
+--- a/js/ui/shellDBus.js
++++ b/js/ui/shellDBus.js
+@@ -7,6 +7,7 @@
+ import * as ExtensionDownloader from './extensionDownloader.js';
+ import * as ExtensionUtils from '../misc/extensionUtils.js';
+ import * as Main from './main.js';
++import * as Keyboard from './status/keyboard.js';
+ import * as Screenshot from './screenshot.js';
+ 
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+@@ -31,6 +32,9 @@
+         ]);
+         this._applicationDragSenderChecker = new DBusSenderChecker([
+             'org.gnome.Nautilus',
++        ]);
++        this._inputSourceSenderChecker = new DBusSenderChecker([
++            'org.gnome.Settings',
+         ]);
+ 
+         this._extensionsService = new GnomeShellExtensions();
+@@ -204,6 +208,35 @@
+         invocation.return_value(null);
+     }
+ 
++    async SelectInputSourceAsync([type, id], invocation) {
++        try {
++            await this._inputSourceSenderChecker.checkInvocation(invocation);
++        } catch (e) {
++            invocation.return_gerror(e);
++            return;
++        }
++        if (Main.sessionMode.isLocked || Main.sessionMode.isGreeter) {
++            invocation.return_error_literal(Gio.DBusError,
++                Gio.DBusError.ACCESS_DENIED, 'Unlock the session to select a keyboard layout');
++            return;
++        }
++        const manager = Keyboard.getInputSourceManager();
++        const source = Object.values(manager.inputSources).find(
++            item => item.type === type && item.id === id);
++        if (!source) {
++            invocation.return_error_literal(Gio.DBusError,
++                Gio.DBusError.INVALID_ARGS, 'The keyboard layout is no longer configured');
++            return;
++        }
++        try {
++            manager.activateInputSource(source, true);
++            invocation.return_value(new GLib.Variant('(b)', [manager.currentSource === source]));
++        } catch (e) {
++            invocation.return_error_literal(Gio.DBusError,
++                Gio.DBusError.FAILED, 'The keyboard layout could not be selected');
++        }
++    }
++
+     async BeginApplicationDragAsync([id], invocation) {
+         try {
+             await this._applicationDragSenderChecker.checkInvocation(invocation);
+--- a/data/dbus-interfaces/org.gnome.Shell.xml
++++ b/data/dbus-interfaces/org.gnome.Shell.xml
+@@ -53,6 +53,11 @@
+       <arg type="au" direction="in" name="action"/>
+       <arg type="b" direction="out" name="success"/>
+     </method>
++    <method name="SelectInputSource">
++      <arg type="s" direction="in" name="type"/>
++      <arg type="s" direction="in" name="id"/>
++      <arg type="b" direction="out" name="selected"/>
++    </method>
+     <method name="ScreenTransition"/>
+     <signal name="AcceleratorActivated">
+       <arg name="action" type="u"/>

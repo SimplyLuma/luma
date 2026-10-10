@@ -239,5 +239,26 @@ available. Add coverage at the boundary the user actually encountered.
   This verifies the Gvc protocol and UI boundary, not physical microphone
   capture or the separate Tiger Lake speaker issue.
 - Regression runner: `tests/gnome-control-center/sound-input/run.sh`.
-- Delivery: Settings52 source candidate; not yet packaged or published.
+- Delivery: included in the Settings53 repair candidate; publication pending.
   First shipped correction remains pending.
+
+## SET-001 — Settings actions replace Luma panes with older native panels
+
+- Reported: 2026-10-10 after the Sound input-picker report; earlier reports
+  included Mouse/Touchpad and Displays.
+- Source audit: the issue extends beyond Sound. Explicit delegation callbacks
+  and the shared unqualified-write fallback still route multiple controls to
+  older native panes. These paths are recorded by control in
+  [the Settings audit](settings-panel-fallback-audit.md), with already qualified
+  controls and hidden/unowned controls excluded.
+- Scope of evidence: maintained Settings51 source plus the Settings52 input
+  correction; not a physical-device click-through of every pane.
+- Source correction: Settings53 retains the Luma pane on refused writes and
+  asynchronous errors, qualifies reviewed native bindings and replaces explicit
+  action delegation with native handlers. Shell110 supplies restricted input
+  source selection; Settings requires that matching package.
+- Verification: mapped pane-retention regression, native adapter readback and
+  refusal checks, action/cancellation tests and full production compile/link.
+  See the audit for precise coverage and runtime qualification limits.
+- First complete shipped correction: pending. The microphone-specific source
+  correction and test are tracked separately as AUDIO-002.

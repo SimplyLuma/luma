@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,108 @@
+@@ -28,14 +28,109 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.52.creator20261010.1%{?dist}
++Release:        1.luma.53.creator20261010.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -97,6 +97,7 @@
 +Patch1078:      0079-settings-display-apply-preview.patch
 +Patch1079:      0080-settings-retain-live-display-apply-bar.patch
 +Patch1080:      0081-settings-native-microphone-controls.patch
++Patch1081:      0082-settings-retain-native-pane-actions.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
@@ -110,11 +111,12 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +174,11 @@
+@@ -85,6 +180,12 @@
  %endif
  
  # Versioned library deps
 +Requires:       luma-shell-state >= 0.2.0-1.luma.21
++Requires:       gnome-shell >= 50.3-1.luma.110.creator20261010.1
 +Requires:       luma-developer-platform >= 0.1.0-1.luma.89.lumaui20260929.1
 +# Settings › Apps › Background Activity shows and changes what the Luma
 +# background service runs; without it the page says so and changes nothing.
@@ -122,7 +124,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +264,10 @@
+@@ -170,16 +271,10 @@
  
  %build
  %meson \
@@ -141,7 +143,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +288,48 @@
+@@ -200,6 +295,49 @@
  
  %find_lang %{name} --all-name --with-gnome
  
@@ -171,6 +173,7 @@
 +xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-live-pointer
 +# Native Wi-Fi confirmation, failure/readback and scan-refresh input preservation.
 +xvfb-run -a --server-args="-screen 0 1920x1080x24" env GSK_RENDERER=cairo GIO_USE_VFS=local meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-live-network
++xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GSETTINGS_BACKEND=memory LUMA_SETTINGS_TEST_FIXTURE=%{SOURCE1004} %{_vpath_builddir}/shell/test-luma-view --tap -p /settings/view/live-failure-keeps-pane
 +xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GSETTINGS_BACKEND=memory LUMA_SETTINGS_TEST_FIXTURE=%{SOURCE1004} %{_vpath_builddir}/shell/test-luma-view --tap -p /settings/view/scroll-speed
 +# Luma: the pointing stick page is called TrackPoint and says what it is (0021).
 +grep -Fq '>TrackPoint<' %{_vpath_builddir}/panels/mouse/cc-mouse-panel.ui

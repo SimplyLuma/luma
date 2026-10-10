@@ -1,0 +1,2453 @@
+Subject: [PATCH] Keep native Settings actions and failures inside Luma panes
+
+--- a/shell/cc-luma-discovery.c
++++ b/shell/cc-luma-discovery.c
+@@ -92,6 +92,11 @@
+     if (!*(char *) i->data || json_node_get_value_type (json_object_get_member (values, i->data)) != G_TYPE_BOOLEAN) return FALSE;
+   return TRUE;
+ }
++static JsonNode *deep_copy (JsonNode *node)
++{
++  g_autofree char *json = json_to_string (node, FALSE);
++  return json_from_string (json, NULL);
++}
+ static gint find_app (JsonArray *apps, const char *id)
+ {
+   if (!id) return -1;
+@@ -108,9 +113,9 @@
+   if (cc_luma_fixture_is_live (model))
+     {
+       /* The owner takes the whole list; the model follows what it reports. */
+-      g_autoptr (JsonNode) next = json_node_copy (cc_luma_fixture_get (model, "sa"));
++      g_autoptr (JsonNode) next = deep_copy (cc_luma_fixture_get (model, "sa"));
+       json_node_set_boolean (json_array_get_element (json_array_get_array_element (json_node_get_array (next), index), 1), enabled);
+-      if (!cc_luma_fixture_write (model, "sa", next, error)) return FALSE;
++      return cc_luma_fixture_write (model, "sa", next, error);
+     }
+   json_node_set_boolean (json_array_get_element (json_array_get_array_element (apps, index), 1), enabled);
+   return TRUE;
+@@ -137,7 +142,7 @@
+   if (cc_luma_fixture_is_live (model))
+     {
+       g_autoptr (JsonNode) next = json_node_init_array (json_node_alloc (), order);
+-      if (!cc_luma_fixture_write (model, "sa", next, error)) return FALSE;
++      return cc_luma_fixture_write (model, "sa", next, error);
+     }
+   while (json_array_get_length (apps)) json_array_remove_element (apps, 0);
+   for (guint i = 0; i < json_array_get_length (order); i++) json_array_add_element (apps, json_node_copy (json_array_get_element (order, i)));
+@@ -164,7 +169,7 @@
+ static gboolean place_write (CcLumaFixture *model, const char *uri, gboolean enabled, GError **error)
+ {
+   if (!cc_luma_fixture_is_live (model)) return TRUE;
+-  g_autoptr (JsonNode) next = json_node_copy (cc_luma_fixture_get (model, "sl"));
++  g_autoptr (JsonNode) next = deep_copy (cc_luma_fixture_get (model, "sl"));
+   json_object_set_boolean_member (json_node_get_object (next), uri, enabled);
+   return cc_luma_fixture_write (model, "sl", next, error);
+ }
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -20,7 +20,7 @@
+   gpointer ready_data;
+ };
+ G_DEFINE_TYPE (CcLumaFixture, cc_luma_fixture, G_TYPE_OBJECT)
+-enum { CHANGED, N_SIGNALS };
++enum { CHANGED, WRITE_ERROR, N_SIGNALS };
+ static guint fixture_signals[N_SIGNALS];
+ 
+ static void
+@@ -42,6 +42,8 @@
+   /* Coalesced: emitted once after a burst of live updates. */
+   fixture_signals[CHANGED] = g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+                                            0, NULL, NULL, NULL, G_TYPE_NONE, 0);
++  fixture_signals[WRITE_ERROR] = g_signal_new ("write-error", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
++                                             0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_ERROR);
+ }
+ static void cc_luma_fixture_init (CcLumaFixture *self) {}
+ 
+@@ -611,7 +613,7 @@
+   if (!self->live) return TRUE;
+   if (!cc_luma_fixture_key_verified (self, key))
+     {
+-      g_set_error (error, CC_LUMA_WRITE_DELEGATED, 0, "%s changes in its GNOME panel", key);
++      g_set_error (error, CC_LUMA_WRITE_DELEGATED, 0, "This setting is not supported yet: %s", key);
+       return FALSE;
+     }
+   if (!cc_luma_fixture_writable (self, key) || !self->writer)
+@@ -633,6 +635,11 @@
+ cc_luma_fixture_changed (CcLumaFixture *self)
+ {
+   if (!self->changed_idle) self->changed_idle = g_idle_add (emit_changed, self);
++}
++void cc_luma_fixture_report_write_error (CcLumaFixture *self, const GError *error)
++{
++  if (!self || !error || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  g_signal_emit (self, fixture_signals[WRITE_ERROR], 0, error);
+ }
+ /* Adapters publish what the system reports: no writer, no type check against
+  * a previous value (the first report creates the key). */
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -52,6 +52,9 @@
+ gboolean cc_luma_fixture_writable (CcLumaFixture *self, const char *key);
+ gboolean cc_luma_fixture_write (CcLumaFixture *self, const char *key, JsonNode *value, GError **error);
+ void cc_luma_fixture_changed (CcLumaFixture *self);
++/* Accepted asynchronous writes can fail later. Surface the service error
++ * in the existing view, without claiming success or switching panels. */
++void cc_luma_fixture_report_write_error (CcLumaFixture *self, const GError *error);
+ void cc_luma_fixture_publish (CcLumaFixture *self, const char *key, JsonNode *value);
+ void cc_luma_fixture_publish_data (CcLumaFixture *self, const char *name, JsonNode *value);
+ void cc_luma_fixture_publish_boolean (CcLumaFixture *self, const char *key, gboolean value);
+@@ -65,9 +68,8 @@
+ gboolean cc_luma_fixture_page_ready (CcLumaFixture *self, const char *page);
+ /* An image an owner reports (a wallpaper file) under the id pages ask for. */
+ void cc_luma_fixture_publish_asset (CcLumaFixture *self, const char *id, const char *path);
+-/* Live writes Luma hasn't proven against a real owner yet are handed to the
+- * page's GNOME panel instead: the writer fails with this domain and the view
+- * opens the panel for the page. */
++/* Unqualified live writes refuse with this legacy error domain. The view
++ * displays a normal unsupported-change error and keeps its own pane. */
+ #define CC_LUMA_WRITE_DELEGATED (g_quark_from_static_string ("cc-luma-write-delegated"))
+ void cc_luma_fixture_verify_key (CcLumaFixture *self, const char *key);
+ gboolean cc_luma_fixture_key_verified (CcLumaFixture *self, const char *key);
+--- a/shell/cc-luma-keyboard.c
++++ b/shell/cc-luma-keyboard.c
+@@ -59,11 +59,12 @@
+ {
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid Settings keyboard action"); return FALSE;
+ }
+-static gboolean replace_sources (CcLumaFixture *model, JsonNode *node)
++static gboolean replace_sources (CcLumaFixture *model, JsonNode *node, GError **error)
+ {
+   /* The generic fixture setter intentionally edits scalars only. This
+    * validated keyboard helper owns just the layout array, as provider
+    * reordering owns its own array; it cannot replace other preferences. */
++  if (cc_luma_fixture_is_live (model)) return cc_luma_fixture_write (model, "srcs", node, error);
+   JsonArray *current = json_node_get_array (cc_luma_fixture_get (model, "srcs"));
+   JsonArray *next = json_node_get_array (node);
+   while (json_array_get_length (current)) json_array_remove_element (current, json_array_get_length (current) - 1);
+@@ -93,6 +94,7 @@
+ {
+   if (!cc_luma_keyboard_validate (model) || index_of (model, layout) < 0) return invalid (error);
+   g_autoptr(JsonNode) node = json_node_init_string (json_node_alloc (), layout);
++  if (cc_luma_fixture_is_live (model)) return cc_luma_fixture_write (model, "src", node, error);
+   return cc_luma_fixture_set (model, "src", node, error);
+ }
+ gboolean cc_luma_keyboard_set_choice (CcLumaFixture *model, const char *key, const char *choice, GError **error)
+@@ -107,7 +109,7 @@
+   if (index_of (model, layout) >= 0) return TRUE;
+   g_autoptr(JsonNode) node = copy_sources (model);
+   json_array_add_string_element (json_node_get_array (node), layout);
+-  return replace_sources (model, node);
++  return replace_sources (model, node, error);
+ }
+ gboolean cc_luma_keyboard_remove (CcLumaFixture *model, const char *layout, GError **error)
+ {
+@@ -119,7 +121,8 @@
+   g_autoptr(JsonNode) node = copy_sources (model);
+   json_array_remove_element (json_node_get_array (node), index);
+   g_autoptr(JsonNode) next = was_selected ? json_node_copy (json_array_get_element (json_node_get_array (node), 0)) : NULL;
+-  replace_sources (model, node);
++  if (!replace_sources (model, node, error)) return FALSE;
++  if (cc_luma_fixture_is_live (model)) return TRUE;
+   return !was_selected || cc_luma_fixture_set (model, "src", next, error);
+ }
+ gboolean cc_luma_keyboard_move (CcLumaFixture *model, guint from, guint to, GError **error)
+@@ -134,5 +137,5 @@
+     guint original = i == to ? from : from < to && i >= from && i < to ? i + 1 : from > to && i > to && i <= from ? i - 1 : i;
+     json_array_add_element (result, json_node_copy (json_array_get_element (sources, original)));
+   }
+-  return replace_sources (model, node);
++  return replace_sources (model, node, error);
+ }
+--- a/shell/cc-luma-live-accounts.c
++++ b/shell/cc-luma-live-accounts.c
+@@ -1,9 +1,8 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ /* Live Online Accounts, read as panels/online-accounts reads them: the
+  * accounts goa-daemon reports (GoaClient) and the providers goabackend can
+- * add (goa_provider_get_all). The list is read-only here: opening an account,
+- * connecting one and removing one happen in GNOME's panel (the shell's
+- * delegation), which holds the sign-in flows. acct-fm and acct-nc (v70's two
++ * add (goa_provider_get_all). The view uses the provider's native account
++ * dialogs directly, retaining its own pane. acct-fm and acct-nc (v70's two
+  * sample accounts) have no live counterpart and stay on the panel. */
+ #include "cc-luma-live.h"
+ #define GOA_API_IS_SUBJECT_TO_CHANGE
+@@ -109,6 +108,7 @@
+       JsonArray *pair = json_array_new ();
+       json_array_add_string_element (pair, name ? name : goa_provider_get_provider_type (l->data));
+       json_array_add_string_element (pair, glyph_for (goa_provider_get_provider_type (l->data)));
++      json_array_add_string_element (pair, goa_provider_get_provider_type (l->data));
+       json_array_add_array_element (list, pair);
+     }
+   g_autoptr (JsonNode) node = json_node_init_array (json_node_alloc (), list);
+--- a/shell/cc-luma-live-airplane.c
++++ b/shell/cc-luma-live-airplane.c
+@@ -56,7 +56,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) g_warning ("Settings: could not change airplane mode: %s", error->message);
++  if (error) cc_luma_fixture_report_write_error (((Radio *) data)->model, error);
+   publish (data);
+ }
+ static gboolean
+@@ -94,6 +94,7 @@
+   r->model = model;
+   r->cancel = g_cancellable_new ();
+   cc_luma_fixture_own_key (model, "airplane");
++  cc_luma_fixture_verify_key (model, "airplane");
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, NULL,
+                             "org.gnome.SettingsDaemon.Rfkill", "/org/gnome/SettingsDaemon/Rfkill",
+                             "org.gnome.SettingsDaemon.Rfkill", r->cancel, proxy_ready, r);
+--- a/shell/cc-luma-live-app-options.c
++++ b/shell/cc-luma-live-app-options.c
+@@ -132,8 +132,16 @@
+       self->media = g_settings_new (MEDIA);
+       g_signal_connect_swapped (self->media, "changed", G_CALLBACK (publish), self);
+     }
+-  for (guint i = 0; i < G_N_ELEMENTS (defaults); i++) cc_luma_fixture_own_key (model, defaults[i].key);
+-  for (guint i = 0; self->media && i < G_N_ELEMENTS (media); i++) cc_luma_fixture_own_key (model, media[i].key);
++  for (guint i = 0; i < G_N_ELEMENTS (defaults); i++)
++    {
++      cc_luma_fixture_own_key (model, defaults[i].key);
++      cc_luma_fixture_verify_key (model, defaults[i].key);
++    }
++  for (guint i = 0; self->media && i < G_N_ELEMENTS (media); i++)
++    {
++      cc_luma_fixture_own_key (model, media[i].key);
++      cc_luma_fixture_verify_key (model, media[i].key);
++    }
+   self->monitor = g_app_info_monitor_get ();
+   g_signal_connect_swapped (self->monitor, "changed", G_CALLBACK (publish), self);
+   cc_luma_live_desk_dump_watch (model);
+--- a/shell/cc-luma-live-applications.c
++++ b/shell/cc-luma-live-applications.c
+@@ -12,8 +12,9 @@
+  *     bg     portal "background" (Flatpak/Snap apps)
+  *     wall, shot, cam, mic, loc  portal wallpaper, screenshot, devices and
+  *            location entries, when the store has one for the app
+- * Version, source, launch, clearing the cache and uninstalling have no owner
+- * here; the page leaves those out or hands them to GNOME's panel. */
++ * The page launches desktop apps directly, clears verified Flatpak caches,
++ * and opens Depot explicitly for package management. App identity and sizes
++ * are read from their owners; unsupported version/source fields stay hidden. */
+ #include "cc-luma-live.h"
+ #include "cc-luma-live-apps.h"
+ #include <gio/gdesktopappinfo.h>
+@@ -266,6 +267,7 @@
+           if (!table_value (self, portal[p].table, portal[p].entry) && !portal[p].always) continue;
+           g_autofree char *key = g_strconcat ("perm_", a->id, portal[p].perm, NULL);
+           cc_luma_fixture_own_key (self->model, key);
++          cc_luma_fixture_verify_key (self->model, key);
+           cc_luma_fixture_publish_boolean (self->model, key, !value || !value[0] || g_strcmp0 (value[0], portal[p].off) != 0);
+           json_array_add_string_element (allowed, portal[p].perm);
+         }
+@@ -409,6 +411,8 @@
+   g_autoptr (GSettingsSchema) search = source ? g_settings_schema_source_lookup (source, "org.gnome.desktop.search-providers", TRUE) : NULL;
+   g_autoptr (GSettingsSchema) notif = source ? g_settings_schema_source_lookup (source, NOTIF_SCHEMA, TRUE) : NULL;
+   self->model = g_object_ref (model);
++  g_object_set_data (G_OBJECT (model), "cc-luma-apps-refresh", read_apps);
++  g_object_set_data (G_OBJECT (model), "cc-luma-apps-state", self);
+   self->cancel = g_cancellable_new ();
+   self->by_id = g_hash_table_new (g_str_hash, g_str_equal);
+   self->notif = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
+@@ -473,7 +477,8 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
+   if (!reply && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    g_warning ("Settings live: the permission store did not take the change: %s", error->message);
++    cc_luma_fixture_report_write_error (data, error);
++  g_object_unref (data);
+ }
+ 
+ static gboolean
+@@ -510,7 +515,7 @@
+         g_dbus_connection_call (self->bus, STORE_NAME, STORE_PATH, STORE_NAME, "SetPermission",
+                                 g_variant_new ("(sbss^as)", portal[p].table, TRUE, portal[p].entry, a->portal_id,
+                                                g_str_equal (perm, "loc") ? location : simple),
+-                                NULL, G_DBUS_CALL_FLAGS_NONE, 5000, self->cancel, store_set, NULL);
++                                NULL, G_DBUS_CALL_FLAGS_NONE, 5000, self->cancel, store_set, g_object_ref (self->model));
+         return TRUE;
+       }
+   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "%s has no owner", key);
+@@ -522,6 +527,8 @@
+ {
+   Apps *self = state;
+   self->stopped = TRUE;
++  g_object_set_data (G_OBJECT (self->model), "cc-luma-apps-refresh", NULL);
++  g_object_set_data (G_OBJECT (self->model), "cc-luma-apps-state", NULL);
+   g_cancellable_cancel (self->cancel);
+   g_clear_handle_id (&self->rescan, g_source_remove);
+   if (self->store_signal) g_dbus_connection_signal_unsubscribe (self->bus, self->store_signal);
+--- a/shell/cc-luma-live-apps.c
++++ b/shell/cc-luma-live-apps.c
+@@ -61,14 +61,22 @@
+   JsonNode *known = batch ? batch : json_object_get_member (data, "CFAPPINFO");
+   JsonNode *entry = known && JSON_NODE_HOLDS_OBJECT (known) ? json_object_get_member (json_node_get_object (known), id) : NULL;
+   JsonNode *current = entry && JSON_NODE_HOLDS_OBJECT (entry) ? json_object_get_member (json_node_get_object (entry), "name") : NULL;
++  const char *desktop_id = g_app_info_get_id (info);
++  g_autofree char *flatpak_id = G_IS_DESKTOP_APP_INFO (info)
++    ? g_desktop_app_info_get_string (G_DESKTOP_APP_INFO (info), "X-Flatpak") : NULL;
+   const char *about = g_app_info_get_description (info);
+   if (about && !*about) about = NULL;
+   JsonNode *known_about = entry && JSON_NODE_HOLDS_OBJECT (entry) ? json_object_get_member (json_node_get_object (entry), "description") : NULL;
+   gboolean about_same = about ? known_about && JSON_NODE_HOLDS_VALUE (known_about) && g_strcmp0 (json_node_get_string (known_about), about) == 0 : !known_about;
+-  if (!current || json_node_get_value_type (current) != G_TYPE_STRING || !g_str_equal (json_node_get_string (current), name) || !about_same)
++  JsonObject *old = entry && JSON_NODE_HOLDS_OBJECT (entry) ? json_node_get_object (entry) : NULL;
++  gboolean identity_same = old && g_strcmp0 (json_object_get_string_member_with_default (old, "desktopId", NULL), desktop_id) == 0
++    && g_strcmp0 (json_object_get_string_member_with_default (old, "flatpakId", NULL), flatpak_id) == 0;
++  if (!current || json_node_get_value_type (current) != G_TYPE_STRING || !g_str_equal (json_node_get_string (current), name) || !about_same || !identity_same)
+     {
+       JsonObject *app = json_object_new ();
+       json_object_set_string_member (app, "name", name);
++      if (desktop_id) json_object_set_string_member (app, "desktopId", desktop_id);
++      if (flatpak_id && *flatpak_id) json_object_set_string_member (app, "flatpakId", flatpak_id);
+       if (about && *about) json_object_set_string_member (app, "description", about);
+       if (batch)
+         {
+--- a/shell/cc-luma-live-datetime.c
++++ b/shell/cc-luma-live-datetime.c
+@@ -111,7 +111,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) g_message ("Settings: could not change the time settings: %s", error->message);
++  if (error) cc_luma_fixture_report_write_error (((Clock *) data)->model, error);
+   publish (data);
+ }
+ 
+@@ -121,11 +121,24 @@
+   Clock *c = state;
+   GType type = value && JSON_NODE_HOLDS_VALUE (value) ? json_node_get_value_type (value) : G_TYPE_INVALID;
+   if (cc_luma_gs_table_covers (c->table, key)) return cc_luma_gs_table_write (c->table, key, value, error);
+-  if (!g_str_equal (key, "autoTime") && !g_str_equal (key, "zone")) return FALSE;
++  if (!g_str_equal (key, "autoTime") && !g_str_equal (key, "zone") && !g_str_equal (key, "manualTime")) return FALSE;
+   if (!c->timedated)
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED, "The time service isn’t available");
+       return FALSE;
++    }
++  if (g_str_equal (key, "manualTime"))
++    {
++      g_autoptr (GVariant) ntp = g_dbus_proxy_get_cached_property (c->timedated, "NTP");
++      if (type != G_TYPE_INT64 || json_node_get_int (value) < 0) goto invalid;
++      if (!ntp || g_variant_get_boolean (ntp))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Turn off automatic date and time before setting it manually");
++          return FALSE;
++        }
++      g_dbus_proxy_call (c->timedated, "SetTime", g_variant_new ("(xbb)", json_node_get_int (value), FALSE, TRUE),
++                        G_DBUS_CALL_FLAGS_ALLOW_INTERACTIVE_AUTHORIZATION, -1, c->cancel, set_done, c);
++      return TRUE;
+     }
+   /* cc-datetime-page.c: SetNTP / SetTimezone with user interaction. */
+   if (g_str_equal (key, "autoTime"))
+@@ -156,8 +169,14 @@
+   c->model = model;
+   c->cancel = g_cancellable_new ();
+   c->table = cc_luma_gs_table_new (model, rows, G_N_ELEMENTS (rows));
++  cc_luma_gs_table_verify (c->table, (const char * const[]) { "autoZone", "h24", "wday", "date", "secs", "wnum", NULL });
++  cc_luma_fixture_own_key (model, "manualTime");
++  cc_luma_fixture_verify_key (model, "manualTime");
+   cc_luma_fixture_own_key (model, "autoTime");
+   cc_luma_fixture_own_key (model, "zone");
++  /* These keys have native owners with value and permission checks. */
++  for (const char * const *k = (const char * const[]) { "autoTime", "zone", NULL }; *k; k++)
++    cc_luma_fixture_verify_key (model, *k);
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL, "org.freedesktop.timedate1",
+                             "/org/freedesktop/timedate1", "org.freedesktop.timedate1", c->cancel, proxy_ready, c);
+   return c;
+--- a/shell/cc-luma-live-gsettings.c
++++ b/shell/cc-luma-live-gsettings.c
+@@ -263,6 +263,14 @@
+   return table && key && g_hash_table_contains (table->keys, key);
+ }
+ 
++void
++cc_luma_gs_table_verify (CcLumaGsTable *table, const char * const *keys)
++{
++  for (guint i = 0; keys && keys[i]; i++)
++    if (cc_luma_gs_table_covers (table, keys[i]))
++      cc_luma_fixture_verify_key (table->model, keys[i]);
++}
++
+ gboolean
+ cc_luma_gs_table_write (CcLumaGsTable *table, const char *key, JsonNode *value, GError **error)
+ {
+@@ -280,6 +288,11 @@
+   if (!variant)
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s can’t take that value", key);
++      return FALSE;
++    }
++  if (!g_settings_range_check (b->settings, b->row->name, variant))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s is outside its supported range", key);
+       return FALSE;
+     }
+   if (!g_settings_set_value (b->settings, b->row->name, variant))
+@@ -485,6 +498,16 @@
+ gsettings_start (CcLumaFixture *model)
+ {
+   CcLumaGsTable *table = cc_luma_gs_table_new (model, rows, G_N_ELEMENTS (rows));
++  /* Reviewed native mappings only; unknown and unbound rows stay unqualified.
++   * The owner still enforces the schema range and policy locks on every write. */
++  cc_luma_gs_table_verify (table, (const char * const[]) {
++    "night", "nightWhen", "nightFrom", "nightTo", "nightT",
++    "autoBright", "dim", "autoSaver", "susBat", "susBatD", "susAc", "susAcD", "pbtn", "blank", "pct",
++    "acc", "overamp", "mBtn", "mSpeed", "mAccel", "mNat", "mScrollSpeed",
++    "tp", "tpType", "tSpeed", "tTap", "tNat", "tScrollSpeed", "tSec", "perWin", "rep",
++    "a11yMenu", "hc", "motion", "large", "cursor", "scrollbars", "soundKeys", "reader", "osk", "zoom",
++    "vAlert", "vAlertHow", "blink", "sticky", "slow", "bounce", "kbdA11y", "mkeys", "locate", "hold",
++    "hover", "cross", "invert", "zoomF", "zoomX", NULL });
+   /* Mouse & Touchpad's tab is the page's own state, not a setting. */
+   cc_luma_fixture_publish_string (model, "mtab", "mouse");
+   cc_luma_fixture_own_key (model, "mtab");
+--- a/shell/cc-luma-live-gsettings.h
++++ b/shell/cc-luma-live-gsettings.h
+@@ -38,6 +38,8 @@
+ gboolean cc_luma_gs_table_write (CcLumaGsTable *table, const char *key, JsonNode *value, GError **error);
+ gboolean cc_luma_gs_table_covers (CcLumaGsTable *table, const char *key);
+ void cc_luma_gs_table_free (CcLumaGsTable *table);
++/* Explicit qualification: missing schemas/keys remain unowned and unverified. */
++void cc_luma_gs_table_verify (CcLumaGsTable *table, const char * const *keys);
+ /* Model keys of the Mouse & Touchpad, Keyboard and Accessibility pages
+  * that no GSettings key means exactly (NULL-terminated). */
+ extern const char * const cc_luma_gs_unowned_keys[];
+--- a/shell/cc-luma-live-keyboard.c
++++ b/shell/cc-luma-live-keyboard.c
+@@ -3,8 +3,8 @@
+  * named as the keyboard panel names them through GnomeXkbInfo), the one in
+  * use (the Shell's most recently used), the accents and compose keys from
+  * xkb-options as the panel's special-character dialog sets them, and each
+- * layout's keycaps from its xkb keymap. Changing the list stays with GNOME's
+- * keyboard panel (delegated); the special keys write xkb-options. */
++ * layout's keycaps from its xkb keymap. Native list edits preserve source
++ * type/identity and special-key edits preserve unrelated xkb-options. */
+ #define GNOME_DESKTOP_USE_UNSTABLE_API
+ #include "cc-luma-live-gsettings.h"
+ #include "cc-luma-keyboard.h"
+@@ -115,6 +115,12 @@
+   g_auto (GStrv) options = g_settings_get_strv (self->settings, "xkb-options");
+   JsonArray *list = json_array_new ();
+   JsonObject *layouts = json_object_new ();
++  JsonObject *available = json_object_new ();
++  g_autoptr (GList) ids = gnome_xkb_info_get_all_layouts (self->xkb);
++  for (GList *l = ids; l; l = l->next) {
++    g_autofree char *name = source_name (self, "xkb", l->data);
++    if (!json_object_has_member (available, name)) json_object_set_string_member (available, name, l->data);
++  }
+   g_autofree char *current = NULL;
+   const char *mru_type = NULL, *mru_id = NULL;
+   if (g_variant_n_children (mru)) g_variant_get_child (mru, 0, "(&s&s)", &mru_type, &mru_id);
+@@ -137,6 +143,7 @@
+   json_object_set_member (kb, "codes", json_node_copy (json_object_get_member (structure, "codes")));
+   json_object_set_member (kb, "w", json_node_copy (json_object_get_member (structure, "w")));
+   json_object_set_object_member (kb, "L", layouts);
++  json_object_set_object_member (kb, "available", available);
+   g_autoptr (JsonNode) kb_node = json_node_init_object (json_node_alloc (), kb);
+   json_object_unref (kb);
+   g_autoptr (JsonNode) list_node = json_node_init_array (json_node_alloc (), list);
+@@ -168,19 +175,88 @@
+   self->xkb = gnome_xkb_info_new ();
+   self->context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
+   g_signal_connect (self->settings, "changed", G_CALLBACK (changed), self);
+-  cc_luma_fixture_own_key (model, "altKey");
+-  cc_luma_fixture_own_key (model, "compose");
++  const char *owned[] = { "altKey", "compose", "srcs", "src" };
++  for (guint i = 0; i < G_N_ELEMENTS (owned); i++) {
++    cc_luma_fixture_own_key (model, owned[i]);
++    cc_luma_fixture_verify_key (model, owned[i]);
++  }
+   publish (self);
+   self->gate = cc_luma_ready_gate_new (model, "keyboard", cc_luma_keyboard_validate);
+   return self;
+ }
+ 
++/* Resolve only sources already installed or layouts advertised by XKB. */
++static gboolean resolve_source (Keyboard *self, const char *name, char **type, char **id)
++{
++  g_autoptr (GVariant) current = g_settings_get_value (self->settings, "sources");
++  for (gsize i = 0; i < g_variant_n_children (current); i++) {
++    const char *t, *s; g_variant_get_child (current, i, "(&s&s)", &t, &s);
++    g_autofree char *label = source_name (self, t, s);
++    if (g_strcmp0 (label, name) == 0) { *type = g_strdup (t); *id = g_strdup (s); return TRUE; }
++  }
++  g_autoptr (GList) layouts = gnome_xkb_info_get_all_layouts (self->xkb);
++  for (GList *l = layouts; l; l = l->next) {
++    g_autofree char *label = source_name (self, "xkb", l->data);
++    if (g_strcmp0 (label, name) == 0) { *type = g_strdup ("xkb"); *id = g_strdup (l->data); return TRUE; }
++  }
++  return FALSE;
++}
++static gboolean write_sources (Keyboard *self, JsonNode *value, GError **error)
++{
++  if (!value || !JSON_NODE_HOLDS_ARRAY (value) || !json_array_get_length (json_node_get_array (value))) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "At least one valid keyboard layout is required"); return FALSE;
++  }
++  if (!g_settings_is_writable (self->settings, "sources")) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Keyboard layouts are locked by policy"); return FALSE;
++  }
++  GVariantBuilder sources; g_variant_builder_init (&sources, G_VARIANT_TYPE ("a(ss)"));
++  g_autoptr (GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++  JsonArray *list = json_node_get_array (value);
++  for (guint i = 0; i < json_array_get_length (list); i++) {
++    JsonNode *node = json_array_get_element (list, i);
++    const char *name = JSON_NODE_HOLDS_VALUE (node) && json_node_get_value_type (node) == G_TYPE_STRING ? json_node_get_string (node) : NULL;
++    g_autofree char *type = NULL, *id = NULL;
++    if (!name || !g_hash_table_add (seen, g_strdup (name)) || !resolve_source (self, name, &type, &id)) {
++      g_variant_builder_clear (&sources);
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown or duplicate keyboard layout"); return FALSE;
++    }
++    g_variant_builder_add (&sources, "(ss)", type, id);
++  }
++  g_autoptr (GVariant) next = g_variant_ref_sink (g_variant_builder_end (&sources));
++  if (!g_settings_set_value (self->settings, "sources", next)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Keyboard layouts could not be saved"); return FALSE;
++  }
++  g_autoptr (GVariant) saved = g_settings_get_value (self->settings, "sources");
++  if (!g_variant_equal (saved, next)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Keyboard layouts did not remain saved"); return FALSE;
++  }
++  publish (self); return TRUE;
++}
+ /* The special keys, as the panel's special-character dialog writes them:
+  * drop the key's own options from xkb-options and add the chosen one. */
+ static gboolean
+ keyboard_write (gpointer state, const char *key, JsonNode *value, GError **error)
+ {
+   Keyboard *self = state;
++  if (g_str_equal (key, "srcs")) return write_sources (self, value, error);
++  if (g_str_equal (key, "src")) {
++    const char *name = value && JSON_NODE_HOLDS_VALUE (value) && json_node_get_value_type (value) == G_TYPE_STRING ? json_node_get_string (value) : NULL;
++    g_autofree char *type = NULL, *id = NULL;
++    if (!name || !resolve_source (self, name, &type, &id)) {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown keyboard layout"); return FALSE;
++    }
++    g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, error);
++    if (!bus) return FALSE;
++    g_autoptr (GVariant) reply = g_dbus_connection_call_sync (bus, "org.gnome.Shell", "/org/gnome/Shell",
++      "org.gnome.Shell", "SelectInputSource", g_variant_new ("(ss)", type, id), G_VARIANT_TYPE ("(b)"),
++      G_DBUS_CALL_FLAGS_NONE, 3000, NULL, error);
++    if (!reply) return FALSE;
++    gboolean selected = FALSE; g_variant_get (reply, "(b)", &selected);
++    if (!selected) {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "The keyboard layout could not be selected"); return FALSE;
++    }
++    publish (self); return TRUE;
++  }
+   gboolean alt = g_str_equal (key, "altKey");
+   if (!alt && !g_str_equal (key, "compose")) return FALSE;
+   const char * const *table = alt ? alt_options : compose_options;
+@@ -193,6 +269,9 @@
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown key choice");
+       return FALSE;
+     }
++  if (!g_settings_is_writable (self->settings, "xkb-options")) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Special keyboard keys are locked by policy"); return FALSE;
++  }
+   g_auto (GStrv) current = g_settings_get_strv (self->settings, "xkb-options");
+   g_autoptr (GStrvBuilder) next = g_strv_builder_new ();
+   for (guint i = 0; current[i]; i++)
+@@ -203,7 +282,10 @@
+     }
+   if (option) g_strv_builder_add (next, option);
+   g_auto (GStrv) options = g_strv_builder_end (next);
+-  return g_settings_set_strv (self->settings, "xkb-options", (const char * const *) options);
++  if (!g_settings_set_strv (self->settings, "xkb-options", (const char * const *) options)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Special keyboard keys could not be saved"); return FALSE;
++  }
++  publish (self); return TRUE;
+ }
+ 
+ static void
+@@ -219,8 +301,7 @@
+   g_free (self);
+ }
+ 
+-/* The layout list's changes open GNOME's keyboard panel; the special keys
+- * write xkb-options (live only once VM-verified). */
++/* Native list edits and special-key writes keep the Luma keyboard pane. */
+ const CcLumaAdapter cc_luma_adapter_keyboard = {
+   "keyboard", (const char * const[]) { "keyboard", NULL }, keyboard_start, keyboard_write, keyboard_stop
+ };
+--- a/shell/cc-luma-live-network.c
++++ b/shell/cc-luma-live-network.c
+@@ -52,6 +52,7 @@
+ void cc_luma_live_verify_network_keys (CcLumaFixture *model)
+ {
+   const char *keys[] = { "wifi", "autoJoin", "allUsers", "metered",
++                        "hotspot", "hsName", "hsPass", "hsBand", "eth",
+                         "CFNETS.join", "CFNETS.disconnect", "CFKNOWN.forget", NULL };
+   for (guint i = 0; keys[i]; i++) cc_luma_fixture_verify_key (model, keys[i]);
+ }
+@@ -602,7 +603,8 @@
+ report (Net *n, GError *error)
+ {
+   if (n->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) notice (n, error->message, TRUE);
++  if (error)
++    { notice (n, error->message, TRUE); cc_luma_fixture_report_write_error (n->model, error); }
+   queue_refresh (n);
+ }
+ /* A one-shot scan follows adapter readiness and radio On. NM also scans on
+@@ -858,7 +860,13 @@
+   g_autofree char *password = g_strdup (n->hs_pass ? n->hs_pass : n->hs_password);
+   NMDeviceWifiCapabilities caps = nm_device_wifi_get_capabilities (dev);
+   NMSetting *s;
+-  if (!name || !*name) { g_object_unref (c); fail (error, "Give the hotspot a name"); return NULL; }
++  if (!name || !*name || strlen (name) > 32 || !g_utf8_validate (name, -1, NULL))
++    { g_object_unref (c); fail (error, "The hotspot name must contain 1 to 32 bytes of text"); return NULL; }
++  if (band && !g_str_equal (band, "auto") && !g_str_equal (band, "2") && !g_str_equal (band, "5"))
++    { g_object_unref (c); fail (error, "Choose an available hotspot band"); return NULL; }
++  if (!(caps & (NM_WIFI_DEVICE_CAP_AP | NM_WIFI_DEVICE_CAP_ADHOC)) ||
++      !(caps & (NM_WIFI_DEVICE_CAP_RSN | NM_WIFI_DEVICE_CAP_WPA)))
++    { g_object_unref (c); fail (error, "This Wi‑Fi adapter cannot create a password-protected hotspot"); return NULL; }
+   if (password && *password && !valid_password (password))
+     { g_object_unref (c); fail (error, "The password needs 8 to 63 characters"); return NULL; }
+   if (!password || !*password) { g_free (password); password = random_wpa_key (); }
+@@ -911,7 +919,7 @@
+   g_autoptr (GVariant) out = nm_remote_connection_update2_finish (NM_REMOTE_CONNECTION (source), result, &error);
+   if (!save->net->stopped && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+     {
+-      if (error) notice (save->net, error->message, TRUE);
++      if (error) report (save->net, error);
+       else if (save->activate)
+         nm_client_activate_connection_async (save->net->client, NM_CONNECTION (save->connection), NM_DEVICE (save->device),
+                                              NULL, save->net->cancel, activated, net_ref (save->net));
+@@ -958,7 +966,7 @@
+   g_autoptr (GError) error = NULL;
+   n->hs_save = 0;
+   if ((n->hs_name && !*n->hs_name) || (n->hs_pass && !valid_password (n->hs_pass))) return G_SOURCE_REMOVE;
+-  if (!apply_hotspot (n, FALSE, &error)) g_warning ("Settings: %s", error->message);
++  if (!apply_hotspot (n, FALSE, &error)) report (n, error);
+   return G_SOURCE_REMOVE;
+ }
+ static gboolean
+@@ -1007,7 +1015,18 @@
+                    json_object_get_string_member_with_default (o, "psk", NULL),
+                    json_object_get_boolean_member_with_default (o, "hidden", FALSE), error);
+     }
+-  if (!JSON_NODE_HOLDS_VALUE (value)) return fail (error, "Invalid value");
++  if (!value || !JSON_NODE_HOLDS_VALUE (value)) return fail (error, "Invalid value");
++  if ((g_str_equal (key, "hotspot") || g_str_equal (key, "eth")) &&
++      json_node_get_value_type (value) != G_TYPE_BOOLEAN)
++    return fail (error, "Choose On or Off");
++  if ((g_str_equal (key, "hsName") || g_str_equal (key, "hsPass") || g_str_equal (key, "hsBand")) &&
++      json_node_get_value_type (value) != G_TYPE_STRING)
++    return fail (error, "Enter a text value");
++  if (g_str_equal (key, "hsBand") &&
++      g_strcmp0 (json_node_get_string (value), "auto") != 0 &&
++      g_strcmp0 (json_node_get_string (value), "2") != 0 &&
++      g_strcmp0 (json_node_get_string (value), "5") != 0)
++    return fail (error, "Choose an available hotspot band");
+   if (g_str_equal (key, "wifi"))
+     {
+       if (!wifi_device (n) && json_node_get_boolean (value)) return fail (error, "This computer has no Wi‑Fi");
+--- a/shell/cc-luma-live-notifications.c
++++ b/shell/cc-luma-live-notifications.c
+@@ -69,6 +69,7 @@
+   g_hash_table_insert (self->apps, g_strdup (id), settings);
+   g_autofree char *key = g_strconcat ("na.", id, NULL);
+   cc_luma_fixture_own_key (self->model, key);
++  cc_luma_fixture_verify_key (self->model, key);
+ }
+ 
+ static int
+--- a/shell/cc-luma-live-power.c
++++ b/shell/cc-luma-live-power.c
+@@ -371,6 +371,9 @@
+   self->devices = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
+   cc_luma_fixture_own_key (model, "pmode");
+   cc_luma_fixture_own_key (model, "charge");
++  /* These keys have native owners with value and permission checks. */
++  for (const char * const *k = (const char * const[]) { "pmode", "charge", NULL }; *k; k++)
++    cc_luma_fixture_verify_key (model, *k);
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START, NULL, UPOWER,
+                             "/org/freedesktop/UPower/devices/DisplayDevice", DEVICE_IFACE, self->cancel, proxy_ready, self);
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START, NULL, UPOWER,
+@@ -389,7 +392,7 @@
+   if (!reply && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+     {
+       Power *self = data;
+-      g_warning ("Power: %s", error->message);
++      cc_luma_fixture_report_write_error (self->model, error);
+       schedule (self); /* show what the system kept */
+     }
+ }
+--- a/shell/cc-luma-live-printers.c
++++ b/shell/cc-luma-live-printers.c
+@@ -7,6 +7,7 @@
+  *   and print-color-mode-default, each only when the printer reports it. */
+ #include "cc-luma-live.h"
+ #include "cc-luma-live-printers.h"
++#include <luma-ui.h>
+ #include "cc-luma-live-admin.h"
+ #include "cc-luma-live-apps.h"
+ #include "panels/printers/pp-cups.h"
+@@ -227,7 +228,11 @@
+   self->cups = pp_cups_new ();
+   self->cancel = g_cancellable_new ();
+   const char *keys[] = { "prDef", "prPaper", "prDuplex", "prProf" };
+-  for (guint i = 0; i < G_N_ELEMENTS (keys); i++) cc_luma_fixture_own_key (model, keys[i]);
++  for (guint i = 0; i < G_N_ELEMENTS (keys); i++)
++    {
++      cc_luma_fixture_own_key (model, keys[i]);
++      cc_luma_fixture_verify_key (model, keys[i]);
++    }
+   g_object_set_data (G_OBJECT (model), "cc-luma-live-printers", self);
+   g_object_set_data (G_OBJECT (model), CC_LUMA_LIVE_PRINTER_COMMAND, printer_command);
+   cc_luma_live_desk_dump_watch (model);
+@@ -240,7 +245,11 @@
+ option_set (gboolean success, gpointer data)
+ {
+   Printers *self = data;
+-  if (!success) g_warning ("Settings live: the printer did not take the option");
++  if (!success)
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_FAILED, "The printer did not accept this option");
++      cc_luma_fixture_report_write_error (self->model, error);
++    }
+   refresh (self); /* show what CUPS has */
+   printers_unref (self);
+ }
+@@ -259,7 +268,11 @@
+ default_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   DefaultJob *job = g_task_get_task_data (G_TASK (result));
+-  if (!job->ok) g_warning ("Settings live: %s did not become the default printer", job->queue);
++  if (!job->ok)
++    {
++      g_autoptr (GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_FAILED, "%s did not become the default printer", job->queue);
++      cc_luma_fixture_report_write_error (job->self->model, error);
++    }
+   refresh (job->self);
+ }
+ 
+@@ -379,47 +392,80 @@
+ }
+ 
+ /* ── Commands ──────────────────────────────────────────────────────── */
+-static void
+-command_finished (Printers *self, gboolean ok, GError *error)
+-{
+-  if (!ok && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    g_warning ("Settings live: printer command failed: %s", error ? error->message : "refused");
+-  if (!self->stopped) refresh (self);
+-  printers_unref (self);
++typedef struct { Printers *self; GWeakRef parent; const char *success; } PrinterCommand;
++
++static PrinterCommand *command_new (Printers *self, GtkWidget *parent, const char *success)
++{
++  PrinterCommand *command = g_new0 (PrinterCommand, 1);
++  command->self = printers_ref (self);
++  g_weak_ref_init (&command->parent, parent);
++  command->success = success;
++  return command;
++}
++
++static void command_free (PrinterCommand *command)
++{
++  g_weak_ref_clear (&command->parent);
++  printers_unref (command->self);
++  g_free (command);
++}
++
++static void
++command_finished (PrinterCommand *command, gboolean ok, GError *error)
++{
++  g_autoptr (GtkWidget) parent = g_weak_ref_get (&command->parent);
++  if (parent && gtk_widget_get_root (parent) && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    luma_toast_show (parent, ok ? command->success : error ? error->message : "The printer refused this action", ok ? "done" : "error");
++  if (!command->self->stopped) refresh (command->self);
++  command_free (command);
+ }
+ 
+ static void
+ add_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+-  command_finished (data, pp_new_printer_add_finish (PP_NEW_PRINTER (source), result, &error), error);
++  gboolean ok = pp_new_printer_add_finish (PP_NEW_PRINTER (source), result, &error);
++  command_finished (data, ok, error);
+ }
+ 
+ static void
+ remove_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+-  command_finished (data, pp_printer_delete_finish (PP_PRINTER (source), result, &error), error);
++  gboolean ok = pp_printer_delete_finish (PP_PRINTER (source), result, &error);
++  command_finished (data, ok, error);
+ }
+ 
+ static void
+ test_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+-  command_finished (data, pp_printer_print_file_finish (PP_PRINTER (source), result, &error), error);
++  gboolean ok = pp_printer_print_file_finish (PP_PRINTER (source), result, &error);
++  command_finished (data, ok, error);
+ }
+ 
+ static void
+ added (GtkWindow *dialog, gint response, gpointer data)
+ {
+-  Printers *self = data;
+-  if (response == GTK_RESPONSE_OK && !self->stopped)
++  PrinterCommand *command = data;
++  if (response == GTK_RESPONSE_OK && !command->self->stopped)
+     {
+       g_autoptr (PpNewPrinter) printer = pp_new_printer_dialog_get_new_printer (PP_NEW_PRINTER_DIALOG (dialog));
+-      pp_new_printer_add_async (printer, self->cancel, add_done, printers_ref (self));
+-    }
++      pp_new_printer_add_async (printer, command->self->cancel, add_done, command);
++    }
++  else command_free (command);
+   gtk_window_destroy (dialog);
+-  printers_unref (self);
++}
++
++static void style_printer_dialog (GtkWidget *widget)
++{
++  if (GTK_IS_BUTTON (widget) && gtk_button_get_label (GTK_BUTTON (widget)))
++    {
++      gtk_widget_add_css_class (widget, "lumaui-text-button");
++      gtk_widget_add_css_class (widget, "fill");
++    }
++  for (GtkWidget *child = gtk_widget_get_first_child (widget); child; child = gtk_widget_get_next_sibling (child))
++    style_printer_dialog (child);
+ }
+ 
+ /* panels/printers pp-options-dialog: CUPS' own test page, else the
+@@ -449,9 +495,10 @@
+     }
+   if (g_strcmp0 (command, "add") == 0)
+     {
+-      PpNewPrinterDialog *dialog = pp_new_printer_dialog_new (NULL, added, printers_ref (self));
++      PpNewPrinterDialog *dialog = pp_new_printer_dialog_new (NULL, added, command_new (self, parent, "Printer added"));
+       GtkRoot *root = parent ? gtk_widget_get_root (parent) : NULL;
+       if (GTK_IS_WINDOW (root)) gtk_window_set_transient_for (GTK_WINDOW (dialog), GTK_WINDOW (root));
++      style_printer_dialog (GTK_WIDGET (dialog));
+       gtk_window_present (GTK_WINDOW (dialog));
+       return TRUE;
+     }
+@@ -463,7 +510,7 @@
+   g_autoptr (PpPrinter) printer = pp_printer_new (self->queue);
+   if (g_strcmp0 (command, "remove") == 0)
+     {
+-      pp_printer_delete_async (printer, self->cancel, remove_done, printers_ref (self));
++      pp_printer_delete_async (printer, self->cancel, remove_done, command_new (self, parent, "Printer removed"));
+       return TRUE;
+     }
+   if (g_strcmp0 (command, "test") == 0)
+@@ -474,7 +521,7 @@
+           g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "No test page is installed");
+           return FALSE;
+         }
+-      pp_printer_print_file_async (printer, file, "Test page", self->cancel, test_done, printers_ref (self));
++      pp_printer_print_file_async (printer, file, "Test page", self->cancel, test_done, command_new (self, parent, "Test page sent"));
+       return TRUE;
+     }
+   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Unknown printer command");
+--- a/shell/cc-luma-live-privacy.c
++++ b/shell/cc-luma-live-privacy.c
+@@ -46,8 +46,13 @@
+   GDBusConnection *bus;
+   GCancellable *cancel;
+   guint changed_signal;
+-  gboolean read[G_N_ELEMENTS (stores)], ready;
++  GHashTable *app_ids[G_N_ELEMENTS (stores)]; /* canonical id → real portal id */
++  gboolean read[G_N_ELEMENTS (stores)], ready, stopped;
++  guint refs;
+ } Privacy;
++
++static Privacy *privacy_ref (Privacy *p) { p->refs++; return p; }
++static void privacy_unref (Privacy *p);
+ 
+ static gboolean
+ covered (Privacy *p)
+@@ -98,11 +103,13 @@
+   Lookup *l = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_free (l); return; }
+   Privacy *p = l->p;
++  if (p->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    { privacy_unref (p); g_free (l); return; }
+   guint s = l->store;
+   g_free (l);
+   g_autoptr (JsonObject) apps = json_object_new ();
++  g_hash_table_remove_all (p->app_ids[s]);
+   if (reply)
+     {
+       g_autoptr (GVariant) perms = g_variant_get_child_value (reply, 0);
+@@ -122,6 +129,10 @@
+           /* Apps no longer installed have no row on GNOME's pages either. */
+           if (!info || !*id || !cc_luma_live_publish_app (p->model, id, G_APP_INFO (info))) continue;
+           json_object_set_boolean_member (apps, id, allowed);
++          g_hash_table_insert (p->app_ids[s], g_strdup (id), g_strdup (app));
++          g_autofree char *key = g_strconcat (stores[s].key, ".", id, NULL);
++          cc_luma_fixture_own_key (p->model, key);
++          cc_luma_fixture_verify_key (p->model, key);
+         }
+     }
+   else if (!g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN) &&
+@@ -132,13 +143,14 @@
+   cc_luma_fixture_publish (p->model, stores[s].key, node);
+   p->read[s] = TRUE;
+   check_ready (p);
++  privacy_unref (p);
+ }
+ 
+ static void
+ read_store (Privacy *p, guint s)
+ {
+   Lookup *l = g_new0 (Lookup, 1);
+-  l->p = p;
++  l->p = privacy_ref (p);
+   l->store = s;
+   g_dbus_connection_call (p->bus, "org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore",
+                           "org.freedesktop.impl.portal.PermissionStore", "Lookup",
+@@ -151,8 +163,10 @@
+                const char *signal, GVariant *params, gpointer data)
+ {
+   Privacy *p = data;
++  if (p->stopped) return;
+   const char *table, *id;
+-  g_variant_get (params, "(&s&s@b@v@a{sas})", &table, &id, NULL, NULL, NULL);
++  g_variant_get_child (params, 0, "&s", &table);
++  g_variant_get_child (params, 1, "&s", &id);
+   for (guint s = 0; s < G_N_ELEMENTS (stores); s++)
+     if (g_str_equal (table, stores[s].table) && g_str_equal (id, stores[s].id)) read_store (p, s);
+ }
+@@ -162,13 +176,30 @@
+ {
+   g_autoptr (GError) error = NULL;
+   GDBusConnection *bus = g_bus_get_finish (result, &error);
+-  if (!bus) return; /* cancelled or no session bus */
+   Privacy *p = data;
++  if (!bus || p->stopped) { g_clear_object (&bus); privacy_unref (p); return; }
+   p->bus = bus;
+   p->changed_signal = g_dbus_connection_signal_subscribe (bus, "org.freedesktop.impl.portal.PermissionStore",
+     "org.freedesktop.impl.portal.PermissionStore", "Changed", "/org/freedesktop/impl/portal/PermissionStore",
+     NULL, G_DBUS_SIGNAL_FLAGS_NONE, store_changed, p, NULL);
+   for (guint s = 0; s < G_N_ELEMENTS (stores); s++) read_store (p, s);
++  privacy_unref (p);
++}
++
++static void
++permission_set_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Lookup *request = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (!request->p->stopped && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    {
++      if (!reply) cc_luma_fixture_report_write_error (request->p->model, error);
++      /* Success and refusal both refresh from the service; never keep a guessed value. */
++      read_store (request->p, request->store);
++    }
++  privacy_unref (request->p);
++  g_free (request);
+ }
+ 
+ static gboolean
+@@ -199,7 +230,30 @@
+       return g_settings_set_uint (p->privacy, "old-files-age", (guint) number) ||
+              (g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "old-files-age is locked"), FALSE);
+     }
+-  /* App permissions change in GNOME's panel (the shell's delegation). */
++  for (guint s = 0; s < G_N_ELEMENTS (stores); s++)
++    {
++      g_autofree char *prefix = g_strconcat (stores[s].key, ".", NULL);
++      if (!g_str_has_prefix (key, prefix)) continue;
++      const char *app = g_hash_table_lookup (p->app_ids[s], key + strlen (prefix));
++      if (!p->bus || !app)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "That app no longer has a permission entry");
++          return FALSE;
++        }
++      if (type != G_TYPE_BOOLEAN) goto invalid;
++      gboolean on = json_node_get_boolean (value);
++      const char *location[] = { on ? "EXACT" : "NONE", "0", NULL };
++      const char *device[] = { on ? "yes" : "no", NULL };
++      Lookup *request = g_new0 (Lookup, 1);
++      request->p = privacy_ref (p);
++      request->store = s;
++      g_dbus_connection_call (p->bus, "org.freedesktop.impl.portal.PermissionStore",
++        "/org/freedesktop/impl/portal/PermissionStore", "org.freedesktop.impl.portal.PermissionStore", "SetPermission",
++        g_variant_new ("(sbss^as)", stores[s].table, TRUE, stores[s].id, app,
++                       g_str_equal (stores[s].table, "location") ? location : device),
++        NULL, G_DBUS_CALL_FLAGS_NONE, 5000, p->cancel, permission_set_done, request);
++      return TRUE;
++    }
+   return FALSE;
+ invalid:
+   g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "%s can’t take that value", key);
+@@ -218,8 +272,11 @@
+ privacy_start (CcLumaFixture *model)
+ {
+   Privacy *p = g_new0 (Privacy, 1);
+-  p->model = model;
++  p->model = g_object_ref (model);
++  p->refs = 1;
+   p->cancel = g_cancellable_new ();
++  for (guint s = 0; s < G_N_ELEMENTS (stores); s++)
++    p->app_ids[s] = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+   p->table = cc_luma_gs_table_new (model, rows, G_N_ELEMENTS (rows));
+   p->saver = installed (SAVER);
+   p->privacy = installed (PRIVACY);
+@@ -232,14 +289,14 @@
+       g_signal_connect_swapped (p->privacy, "changed::old-files-age", G_CALLBACK (publish_scales), p);
+     }
+   publish_scales (p);
+-  g_bus_get (G_BUS_TYPE_SESSION, p->cancel, bus_ready, p);
++  g_bus_get (G_BUS_TYPE_SESSION, p->cancel, bus_ready, privacy_ref (p));
+   return p;
+ }
+ 
+ static void
+-privacy_stop (gpointer state)
+-{
+-  Privacy *p = state;
++privacy_unref (Privacy *p)
++{
++  if (--p->refs) return;
+   g_cancellable_cancel (p->cancel);
+   g_clear_object (&p->cancel);
+   if (p->bus && p->changed_signal) g_dbus_connection_signal_unsubscribe (p->bus, p->changed_signal);
+@@ -249,7 +306,25 @@
+   g_clear_object (&p->saver);
+   g_clear_object (&p->privacy);
+   cc_luma_gs_table_free (p->table);
++  for (guint s = 0; s < G_N_ELEMENTS (stores); s++) g_hash_table_unref (p->app_ids[s]);
++  g_object_unref (p->model);
+   g_free (p);
+ }
+ 
++static void
++privacy_stop (gpointer state)
++{
++  Privacy *p = state;
++  p->stopped = TRUE;
++  g_cancellable_cancel (p->cancel);
++  if (p->bus && p->changed_signal)
++    {
++      g_dbus_connection_signal_unsubscribe (p->bus, p->changed_signal);
++      p->changed_signal = 0;
++    }
++  if (p->saver) g_signal_handlers_disconnect_by_data (p->saver, p);
++  if (p->privacy) g_signal_handlers_disconnect_by_data (p->privacy, p);
++  privacy_unref (p);
++}
++
+ const CcLumaAdapter cc_luma_adapter_privacy = { ADAPTER, pages, privacy_start, privacy_write, privacy_stop };
+--- a/shell/cc-luma-live-search.c
++++ b/shell/cc-luma-live-search.c
+@@ -176,6 +176,7 @@
+     {
+       self->search = g_settings_new ("org.gnome.desktop.search-providers");
+       cc_luma_fixture_own_key (model, "sa");
++      cc_luma_fixture_verify_key (model, "sa");
+       g_autoptr (GTask) task = g_task_new (NULL, self->cancel, discovered, self);
+       g_task_run_in_thread (task, discover);
+     }
+@@ -200,7 +201,14 @@
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Search results are locked by policy");
+       return FALSE;
+     }
+-  return g_settings_set_strv (self->search, key, (const char * const *) list->pdata);
++  if (!g_settings_set_strv (self->search, key, (const char * const *) list->pdata)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Search results could not be saved"); return FALSE;
++  }
++  g_auto (GStrv) saved = g_settings_get_strv (self->search, key);
++  if (!g_strv_equal ((const char * const *) saved, (const char * const *) list->pdata)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED, "Search results did not remain saved"); return FALSE;
++  }
++  return TRUE;
+ }
+ 
+ /* A new "sa": the providers in their new order, each on or off. */
+@@ -266,7 +274,7 @@
+   if (!cc_luma_search_locations_set_finish (G_SETTINGS (source), result, &error) &&
+       !g_cancellable_is_cancelled (write->cancel))
+     {
+-      g_warning ("Settings live: search folder not changed: %s", error->message);
++      cc_luma_fixture_report_write_error (write->self->model, error);
+       publish_places (write->self); /* show what Tracker has */
+     }
+   g_object_unref (write->cancel);
+--- a/shell/cc-luma-live-sharing.c
++++ b/shell/cc-luma-live-sharing.c
+@@ -193,7 +193,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) g_message ("Settings: sharing: %s", error->message);
++  if (error) cc_luma_fixture_report_write_error (((Share *) data)->model, error);
+   publish_sharing (data);
+ }
+ 
+@@ -267,6 +267,9 @@
+   s->media_ok = rygel != NULL;
+   const char *owned[] = { "rdTab", "fileShare", "media2", "fsPass", "rdCtl" };
+   for (guint i = 0; i < G_N_ELEMENTS (owned); i++) cc_luma_fixture_own_key (model, owned[i]);
++  /* These keys have native owners with value and permission checks. */
++  for (const char * const *k = (const char * const[]) { "rdTab", "fileShare", "media2", "fsPass", "rdCtl", NULL }; *k; k++)
++    cc_luma_fixture_verify_key (model, *k);
+   cc_luma_fixture_publish_string (model, "rdTab", "share");
+   if (s->files) g_signal_connect_swapped (s->files, "changed", G_CALLBACK (publish_sharing), s);
+   if (s->rdp) g_signal_connect_swapped (s->rdp, "changed", G_CALLBACK (publish_rdp), s);
+--- a/shell/cc-luma-live-shelf.c
++++ b/shell/cc-luma-live-shelf.c
+@@ -141,7 +141,11 @@
+       self->free_placement = has_key (self->schema, "shelf-free-placement");
+       self->arrangement = has_key (self->schema, "shelf-arrangement");
+       g_signal_connect_swapped (self->settings, "changed", G_CALLBACK (publish), self);
+-      for (guint i = 0; owned[i]; i++) cc_luma_fixture_own_key (model, owned[i]);
++      for (guint i = 0; owned[i]; i++)
++        {
++          cc_luma_fixture_own_key (model, owned[i]);
++          cc_luma_fixture_verify_key (model, owned[i]);
++        }
+       publish_catalog (self);
+       publish (self);
+     }
+--- a/shell/cc-luma-live-sound.c
++++ b/shell/cc-luma-live-sound.c
+@@ -234,6 +234,7 @@
+     {
+       g_autofree char *key = g_strconcat ("lv.", (char *) m->data, NULL);
+       cc_luma_fixture_own_key (self->model, key);
++      cc_luma_fixture_verify_key (self->model, key);
+     }
+   g_list_free (members);
+ 
+@@ -274,6 +275,8 @@
+    * of an input that is no longer offered. Do not delegate these writes. */
+   cc_luma_fixture_verify_key (model, "inDev");
+   cc_luma_fixture_verify_key (model, "inVol");
++  cc_luma_fixture_verify_key (model, "out");
++  cc_luma_fixture_verify_key (model, "cfg");
+   self->control = gvc_mixer_control_new ("Luma Settings");
+   g_signal_connect (self->control, "state-changed", G_CALLBACK (state_changed), self);
+   g_signal_connect (self->control, "output-added", G_CALLBACK (output_added), self);
+--- a/shell/cc-luma-live-system.c
++++ b/shell/cc-luma-live-system.c
+@@ -228,6 +228,8 @@
+ rename_denied (gpointer data)
+ {
+   NameJob *job = data;
++  g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "The computer name was not changed because permission was not granted");
++  cc_luma_fixture_report_write_error (job->a->model, error);
+   publish_host (job->a); /* show the name the system kept */
+ }
+ 
+@@ -266,6 +268,7 @@
+   a->cancel = g_cancellable_new ();
+   a->pending = 3; /* session, switcheroo, facts (hostnamed gates separately) */
+   cc_luma_fixture_own_key (model, "devName");
++  cc_luma_fixture_verify_key (model, "devName");
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL, "org.freedesktop.hostname1",
+                             "/org/freedesktop/hostname1", "org.freedesktop.hostname1", a->cancel, hostnamed_ready, a);
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START, NULL, "org.gnome.SessionManager",
+@@ -361,7 +364,7 @@
+   if (!g_task_propagate_boolean (G_TASK (result), &error))
+     {
+       if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-      g_warning ("Settings: Secure Shell: %s", error->message);
++      cc_luma_fixture_report_write_error (((Ssh *) data)->model, error);
+     }
+   ssh_read (data);
+ }
+@@ -381,7 +384,11 @@
+       g_task_run_in_thread (task, apply_thread);
+     }
+   else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    ssh_read (c->s); /* not authorised: show the unit's state again */
++    {
++      if (!error) g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Secure Shell permission was not granted");
++      cc_luma_fixture_report_write_error (c->s->model, error);
++      ssh_read (c->s); /* not authorised: show the unit's state again */
++    }
+   g_object_unref (source);
+   g_free (c);
+ }
+@@ -396,7 +403,7 @@
+     {
+       if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+         {
+-          g_warning ("Settings: %s: %s", SSH_PERMISSION, error->message);
++          cc_luma_fixture_report_write_error (c->s->model, error);
+           ssh_read (c->s);
+         }
+       g_free (c);
+@@ -430,6 +437,7 @@
+   s->model = model;
+   s->cancel = g_cancellable_new ();
+   cc_luma_fixture_own_key (model, "ssh");
++  cc_luma_fixture_verify_key (model, "ssh");
+   ssh_read (s);
+   s->poll = g_timeout_add_seconds (10, ssh_poll, s);
+   return s;
+--- a/shell/cc-luma-live-users.c
++++ b/shell/cc-luma-live-users.c
+@@ -25,7 +25,7 @@
+ } People;
+ 
+ typedef void (*AdminAction) (People *p, gpointer data);
+-typedef struct { People *p; AdminAction action; gpointer data; GDestroyNotify free; } Pending;
++typedef struct { People *p; CcLumaFixture *model; AdminAction action; gpointer data; GDestroyNotify free; } Pending;
+ 
+ static ActUser *
+ self_user (People *p)
+@@ -146,6 +146,7 @@
+ pending_free (Pending *pending)
+ {
+   if (pending->free) pending->free (pending->data);
++  g_object_unref (pending->model);
+   g_free (pending);
+ }
+ 
+@@ -158,7 +159,8 @@
+     {
+       if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+         {
+-          g_message ("Settings: users: not authorised%s%s", error ? ": " : "", error ? error->message : "");
++          if (!error) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "This change needs administrator permission");
++          cc_luma_fixture_report_write_error (pending->model, error);
+           publish (pending->p); /* redraw what the system still has */
+         }
+     }
+@@ -177,7 +179,7 @@
+   if (!permission)
+     {
+       if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-        g_warning ("Settings: users: %s: %s", USER_ACCOUNTS_PERMISSION, error->message);
++        cc_luma_fixture_report_write_error (pending->model, error);
+       pending_free (pending);
+       return;
+     }
+@@ -196,6 +198,7 @@
+ {
+   Pending *pending = g_new0 (Pending, 1);
+   pending->p = p;
++  pending->model = g_object_ref (p->model);
+   pending->action = action;
+   pending->data = data;
+   pending->free = free;
+@@ -265,10 +268,11 @@
+ static void
+ delete_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
++  g_autoptr (CcLumaFixture) model = data;
+   g_autoptr (GError) error = NULL;
+   if (!act_user_manager_delete_user_finish (ACT_USER_MANAGER (source), result, &error) &&
+-      !g_error_matches (error, ACT_USER_MANAGER_ERROR, ACT_USER_MANAGER_ERROR_PERMISSION_DENIED))
+-    g_warning ("Settings: could not remove the account: %s", error->message);
++      !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    cc_luma_fixture_report_write_error (model, error);
+ }
+ 
+ /* As cc-user-page.c remove_local_user_response. */
+@@ -279,7 +283,7 @@
+   ActUser *u = find_user (p, c->user);
+   if (!u) return;
+   if (act_user_get_automatic_login (u)) act_user_set_automatic_login (u, FALSE);
+-  act_user_manager_delete_user_async (p->manager, u, !c->flag, NULL, delete_done, NULL);
++  act_user_manager_delete_user_async (p->manager, u, !c->flag, p->cancel, delete_done, g_object_ref (p->model));
+ }
+ 
+ static void
+@@ -295,11 +299,12 @@
+ create_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
++  g_autoptr (CcLumaFixture) model = data;
+   ActUser *u = act_user_manager_create_user_finish (ACT_USER_MANAGER (source), result, &error);
+   if (!u)
+     {
+-      if (!g_error_matches (error, ACT_USER_MANAGER_ERROR, ACT_USER_MANAGER_ERROR_PERMISSION_DENIED))
+-        g_warning ("Settings: could not add the account: %s", error->message);
++      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        cc_luma_fixture_report_write_error (model, error);
+       return;
+     }
+   if (act_user_is_loaded (u)) added_loaded (u, NULL, NULL);
+@@ -311,7 +316,7 @@
+ {
+   Change *c = data;
+   act_user_manager_create_user_async (p->manager, c->user, c->name, ACT_USER_ACCOUNT_TYPE_STANDARD,
+-                                      p->cancel, create_done, NULL);
++                                      p->cancel, create_done, g_object_ref (p->model));
+ }
+ 
+ /* The users panel's username rule (user-utils.c is_valid_username, without
+@@ -341,7 +346,7 @@
+ {
+   People *p = state;
+   ActUser *me = self_user (p);
+-  if (!g_str_equal (key, "myName") && !g_str_equal (key, "autoLogin") && !g_str_equal (key, "pUser") &&
++  if (!g_str_equal (key, "myName") && !g_str_equal (key, "myPicture") && !g_str_equal (key, "autoLogin") && !g_str_equal (key, "pUser") &&
+       !g_str_equal (key, "pType") && !g_str_equal (key, "pAuto") && !g_str_equal (key, "users.reset") &&
+       !g_str_equal (key, "users.remove") && !g_str_equal (key, "users.add"))
+     return FALSE;
+@@ -360,6 +365,13 @@
+           return FALSE;
+         }
+       act_user_set_real_name (me, name);
++      return TRUE;
++    }
++  if (g_str_equal (key, "myPicture"))
++    {
++      const char *path = is_string (value) ? json_node_get_string (value) : NULL;
++      if (!path || !g_path_is_absolute (path) || !g_file_test (path, G_FILE_TEST_IS_REGULAR)) goto invalid;
++      act_user_set_icon_file (me, path);
+       return TRUE;
+     }
+   if (g_str_equal (key, "autoLogin"))
+@@ -441,8 +453,12 @@
+   p->model = model;
+   p->cancel = g_cancellable_new ();
+   p->manager = g_object_ref (act_user_manager_get_default ());
+-  const char *keys[] = { "myName", "autoLogin", "pUser", "pType", "pAuto", "users.reset", "users.remove", "users.add" };
+-  for (guint i = 0; i < G_N_ELEMENTS (keys); i++) cc_luma_fixture_own_key (model, keys[i]);
++  const char *keys[] = { "myName", "myPicture", "autoLogin", "pUser", "pType", "pAuto", "users.reset", "users.remove", "users.add" };
++  for (guint i = 0; i < G_N_ELEMENTS (keys); i++)
++    {
++      cc_luma_fixture_own_key (model, keys[i]);
++      cc_luma_fixture_verify_key (model, keys[i]);
++    }
+   g_signal_connect_swapped (p->manager, "notify::is-loaded", G_CALLBACK (manager_loaded), p);
+   g_signal_connect (p->manager, "user-added", G_CALLBACK (user_added), p);
+   g_signal_connect_swapped (p->manager, "user-removed", G_CALLBACK (publish), p);
+--- a/shell/cc-luma-live-windows.c
++++ b/shell/cc-luma-live-windows.c
+@@ -51,11 +51,21 @@
+ }
+ 
+ static gboolean
++extensions_paused (GSettings *shell)
++{
++  g_autoptr (GSettingsSchema) schema = NULL;
++  g_object_get (shell, "settings-schema", &schema, NULL);
++  return schema && g_settings_schema_has_key (schema, "disable-user-extensions") &&
++         g_settings_get_boolean (shell, "disable-user-extensions");
++}
++
++static gboolean
+ tiling_on (Windows *self)
+ {
+   g_auto (GStrv) enabled = g_settings_get_strv (self->shell, "enabled-extensions");
+   g_auto (GStrv) disabled = g_settings_get_strv (self->shell, "disabled-extensions");
+-  return g_strv_contains ((const char * const *) enabled, TILING_UUID) &&
++  return !extensions_paused (self->shell) &&
++         g_strv_contains ((const char * const *) enabled, TILING_UUID) &&
+          !g_strv_contains ((const char * const *) disabled, TILING_UUID) &&
+          g_settings_get_boolean (self->tiling, "enable-autotiling");
+ }
+@@ -78,6 +88,7 @@
+   self->model = g_object_ref (model);
+   self->cancel = g_cancellable_new ();
+   self->table = cc_luma_gs_table_new (model, rows, G_N_ELEMENTS (rows));
++  cc_luma_gs_table_verify (self->table, (const char * const[]) { "edges", "hot", "ws", "wsN", "wsMon", "swi", NULL });
+   if (shell && g_settings_schema_has_key (shell, "enabled-extensions") && g_settings_schema_has_key (shell, "disabled-extensions"))
+     self->tiling = tiling_settings ();
+   if (self->tiling)
+@@ -85,10 +96,15 @@
+       self->shell = g_settings_new ("org.gnome.shell");
+       g_signal_connect_swapped (self->shell, "changed::enabled-extensions", G_CALLBACK (publish_tiling), self);
+       g_signal_connect_swapped (self->shell, "changed::disabled-extensions", G_CALLBACK (publish_tiling), self);
++      if (g_settings_schema_has_key (shell, "disable-user-extensions"))
++        g_signal_connect_swapped (self->shell, "changed::disable-user-extensions", G_CALLBACK (publish_tiling), self);
+       g_signal_connect_swapped (self->tiling, "changed", G_CALLBACK (publish_tiling), self);
+       cc_luma_fixture_own_key (model, "tile");
+       cc_luma_fixture_own_key (model, "gap");
+       cc_luma_fixture_own_key (model, "edgeTile");
++      cc_luma_fixture_verify_key (model, "tile");
++      cc_luma_fixture_verify_key (model, "gap");
++      cc_luma_fixture_verify_key (model, "edgeTile");
+       publish_tiling (self);
+     }
+   cc_luma_live_publish_dock (model);
+@@ -117,10 +133,14 @@
+   if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+     {
+       if (!done)
+-        g_warning ("Settings live: GNOME Shell did not switch tiling: %s", error ? error->message : "refused");
++        {
++          if (!error) g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_FAILED, "Tiling could not be changed");
++          cc_luma_fixture_report_write_error (request->model, error);
++        }
+       g_auto (GStrv) enabled = g_settings_get_strv (request->shell, "enabled-extensions");
+       g_auto (GStrv) disabled = g_settings_get_strv (request->shell, "disabled-extensions");
+       cc_luma_fixture_publish_boolean (request->model, "tile",
++        !extensions_paused (request->shell) &&
+         g_strv_contains ((const char * const *) enabled, TILING_UUID) &&
+         !g_strv_contains ((const char * const *) disabled, TILING_UUID) &&
+         g_settings_get_boolean (request->tiling, "enable-autotiling"));
+@@ -172,6 +192,12 @@
+   if (!g_settings_is_writable (self->tiling, "enable-autotiling"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "tiling is locked by policy");
++      return FALSE;
++    }
++  if (json_node_get_boolean (value) && extensions_paused (self->shell))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                           "Extensions are paused. Resume extensions to use tiling");
+       return FALSE;
+     }
+   /* The same call the Quick Options tiling toggle makes. */
+--- a/shell/cc-luma-shell.c
++++ b/shell/cc-luma-shell.c
+@@ -4,6 +4,10 @@
+ #include "cc-luma-view.h"
+ #include "cc-panel-loader.h"
+ #include "cc-shell.h"
++#include "panels/system/users/cc-password-dialog.h"
++#include <act/act.h>
++#include <unistd.h>
++#include <luma-ui.h>
+ 
+ struct _CcLumaShell
+ {
+@@ -295,9 +299,38 @@
+   g_object_class_override_property (object_class, PROP_ACTIVE_PANEL, "active-panel");
+ }
+ 
++static void style_native_dialog (GtkWidget *widget)
++{
++  if (GTK_IS_BUTTON (widget) && gtk_button_get_label (GTK_BUTTON (widget))) {
++    gtk_widget_add_css_class (widget, "lumaui-text-button");
++    gtk_widget_add_css_class (widget, "fill");
++  }
++  for (GtkWidget *child = gtk_widget_get_first_child (widget); child; child = gtk_widget_get_next_sibling (child))
++    style_native_dialog (child);
++}
++
++static void password_action (GSimpleAction *action, GVariant *parameter, gpointer data)
++{
++  CcLumaShell *self = data;
++  if (!self->view || !gtk_widget_get_root (self->view)) return;
++  ActUser *user = act_user_manager_get_user_by_id (act_user_manager_get_default (), getuid ());
++  if (!user || !act_user_is_loaded (user)) {
++    luma_toast_show (self->view, "Your account is not available yet.", "error");
++    return;
++  }
++  CcPasswordDialog *dialog = cc_password_dialog_new (user);
++  style_native_dialog (GTK_WIDGET (dialog));
++  adw_dialog_present (ADW_DIALOG (dialog), self->view);
++}
++
+ static void
+ cc_luma_shell_init (CcLumaShell *self)
+ {
++  g_autoptr (GSimpleActionGroup) actions = g_simple_action_group_new ();
++  g_autoptr (GSimpleAction) password = g_simple_action_new ("password", NULL);
++  g_signal_connect (password, "activate", G_CALLBACK (password_action), self);
++  g_action_map_add_action (G_ACTION_MAP (actions), G_ACTION (password));
++  gtk_widget_insert_action_group (GTK_WIDGET (self), "luma-settings-native", G_ACTION_GROUP (actions));
+   static gsize hooked = 0;
+   if (g_once_init_enter (&hooked))
+     {
+--- a/shell/cc-luma-view-application-options.c
++++ b/shell/cc-luma-view-application-options.c
+@@ -1,5 +1,11 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-rows.h"
++#include <gio/gdesktopappinfo.h>
++#include <fcntl.h>
++#include <dirent.h>
++#include <errno.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ static gboolean system_app (const char *app)
+ {
+@@ -542,26 +548,163 @@
+   GtkWidget *c = gtk_widget_get_last_child (row);
+   return c ? gtk_widget_get_first_child (c) : NULL;
+ }
++/* Commands use the application's registered desktop identity, not the
++ * notification child's normalized id or a fixture application name. */
++static JsonObject *app_info (View *v)
++{
++  JsonNode *all = json_object_get_member (cc_luma_fixture_get_data (v->model), "CFAPPINFO");
++  JsonNode *entry = all && JSON_NODE_HOLDS_OBJECT (all) && g_str_has_prefix (v->page, "app:")
++    ? json_object_get_member (json_node_get_object (all), v->page + 4) : NULL;
++  return entry && JSON_NODE_HOLDS_OBJECT (entry) ? json_node_get_object (entry) : NULL;
++}
++
++static void app_open (GtkButton *button, View *v)
++{
++  JsonObject *entry = cc_luma_fixture_is_live (v->model) ? app_info (v) : NULL;
++  const char *id = entry ? json_object_get_string_member_with_default (entry, "desktopId", NULL) : NULL;
++  g_autoptr (GDesktopAppInfo) info = id ? g_desktop_app_info_new (id) : NULL;
++  g_autoptr (GError) error = NULL;
++  if (!info)
++    error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "This app is no longer installed");
++  else
++    {
++      g_autoptr (GdkAppLaunchContext) context = gdk_display_get_app_launch_context (gtk_widget_get_display (v->root));
++      g_app_info_launch (G_APP_INFO (info), NULL, G_APP_LAUNCH_CONTEXT (context), &error);
++    }
++  if (error) cc_luma_view_report_error (v, error);
++}
++
++/* Walk cache directories by directory descriptor. Every descendant opens
++ * without following symbolic links; links themselves are unlinked. Neither
++ * an app symlink nor a concurrent replacement can redirect deletion into
++ * the app's data directory or the person's documents. */
++static gboolean clear_cache_fd (int fd, GCancellable *cancel, GError **error)
++{
++  int scan = dup (fd);
++  if (scan < 0) goto failed;
++  DIR *dir = fdopendir (scan);
++  if (!dir) { int saved = errno; close (scan); errno = saved; goto failed; }
++  for (;;)
++    {
++      if (g_cancellable_set_error_if_cancelled (cancel, error)) { closedir (dir); return FALSE; }
++      errno = 0;
++      struct dirent *entry = readdir (dir);
++      if (!entry)
++        {
++          if (errno) { closedir (dir); goto failed; }
++          break;
++        }
++      if (g_str_equal (entry->d_name, ".") || g_str_equal (entry->d_name, "..")) continue;
++      struct stat st;
++      if (fstatat (fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) < 0)
++        { if (errno == ENOENT) continue; closedir (dir); goto failed; }
++      if (S_ISDIR (st.st_mode))
++        {
++          int child = openat (fd, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++          if (child < 0) { closedir (dir); goto failed; }
++          gboolean ok = clear_cache_fd (child, cancel, error);
++          close (child);
++          if (!ok) { closedir (dir); return FALSE; }
++          if (unlinkat (fd, entry->d_name, AT_REMOVEDIR) < 0 && errno != ENOENT)
++            { closedir (dir); goto failed; }
++        }
++      else if (unlinkat (fd, entry->d_name, 0) < 0 && errno != ENOENT)
++        { closedir (dir); goto failed; }
++    }
++  closedir (dir);
++  return TRUE;
++failed:
++  g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno), "Could not clear the app cache: %s", g_strerror (errno));
++  return FALSE;
++}
++
++static void cache_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  const char *id = data;
++  int fd = open (g_get_home_dir (), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
++  const char *parts[] = { ".var", "app", id, "cache" };
++  g_autoptr (GError) error = NULL;
++  for (guint i = 0; fd >= 0 && i < G_N_ELEMENTS (parts); i++)
++    {
++      int next = openat (fd, parts[i], O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++      int saved = errno;
++      close (fd);
++      fd = next;
++      errno = saved;
++    }
++  if (fd < 0)
++    {
++      if (errno == ENOENT) { g_task_return_boolean (task, TRUE); return; }
++      g_task_return_new_error (task, G_IO_ERROR, g_io_error_from_errno (errno),
++                              "Could not open the app cache: %s", g_strerror (errno));
++      return;
++    }
++  gboolean ok = clear_cache_fd (fd, cancel, &error);
++  close (fd);
++  if (ok) g_task_return_boolean (task, TRUE); else g_task_return_error (task, g_steal_pointer (&error));
++}
++
++static void cache_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  View *v = g_object_get_data (source, "cf-view");
++  g_autoptr (GError) error = NULL;
++  gboolean ok = g_task_propagate_boolean (G_TASK (result), &error);
++  if (!v || !gtk_widget_get_root (GTK_WIDGET (source))) return;
++  if (!ok) cc_luma_view_report_error (v, error);
++  else
++    {
++      luma_toast_show (GTK_WIDGET (source), "Cache cleared", "done");
++      void (*refresh_apps) (gpointer) = g_object_get_data (G_OBJECT (v->model), "cc-luma-apps-refresh");
++      gpointer apps = g_object_get_data (G_OBJECT (v->model), "cc-luma-apps-state");
++      if (refresh_apps && apps) refresh_apps (apps); /* resample actual storage; never manufacture a size */
++    }
++  cc_luma_view_queue_refresh (v);
++}
++
+ static void app_clear_cache (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Apps panel clears it */
+-  if (g_str_has_prefix (v->page, "app:")) luma_toast_show (v->root, "Cache cleared", "done");
+-  /* cfclearcache is fixture-only feedback: CFSZ is unchanged in v70. Live
+-   * cache/data deletion belongs to the actual app store, never this fixture. */
+-}
+-static void app_open (GtkButton *button, View *v)
+-{
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Apps panel opens it */
+-  g_autoptr(GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+-    "Native app launch is not connected for Settings page: %s", v->page);
+-  cc_luma_view_report_error (v, error);
++  if (!cc_luma_fixture_is_live (v->model)) { luma_toast_show (v->root, "Cache cleared", "done"); return; }
++  JsonObject *entry = app_info (v);
++  const char *id = entry ? json_object_get_string_member_with_default (entry, "flatpakId", NULL) : NULL;
++  gboolean valid = id && *id && strlen (id) <= 255 && strstr (id, "..") == NULL;
++  for (const char *c = id; valid && c && *c; c++)
++    valid = g_ascii_isalnum (*c) || *c == '.' || *c == '-' || *c == '_';
++  if (!valid)
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "This app does not expose a separate cache");
++      cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autoptr (GTask) task = g_task_new (v->root, NULL, cache_done, NULL);
++  g_task_set_task_data (task, g_strdup (id), g_free);
++  g_task_run_in_thread (task, cache_thread);
++}
++
++static void app_manage_in_depot (View *v)
++{
++  JsonObject *entry = app_info (v);
++  const char *id = entry ? json_object_get_string_member_with_default (entry, "flatpakId", NULL) : NULL;
++  if (!id && entry) id = json_object_get_string_member_with_default (entry, "desktopId", NULL);
++  g_autoptr (GDesktopAppInfo) depot = g_desktop_app_info_new ("org.projectluma.Depot.desktop");
++  g_autoptr (GError) error = NULL;
++  if (!id || !depot)
++    error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "Depot is not available to manage this app");
++  else
++    {
++      g_autofree char *escaped = g_uri_escape_string (id, NULL, FALSE);
++      g_autofree char *uri = g_strconcat ("luma-depot://app/", escaped, NULL);
++      GList uris = { .data = uri };
++      g_autoptr (GdkAppLaunchContext) context = gdk_display_get_app_launch_context (gtk_widget_get_display (v->root));
++      g_app_info_launch_uris (G_APP_INFO (depot), &uris, G_APP_LAUNCH_CONTEXT (context), &error);
++    }
++  if (error) cc_luma_view_report_error (v, error);
+ }
+ static void app_uninstall_confirmed (LumaDestructiveDialog *dialog, gboolean data, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   const char *page = g_object_get_data (G_OBJECT (dialog), "cf-app-page");
+   guint64 *generation = g_object_get_data (G_OBJECT (dialog), "cf-app-generation");
+-  if (!v || !generation || *generation != v->generation || !gtk_widget_get_root (root) ||
++  if (!v || cc_luma_fixture_is_live (v->model) || !generation || *generation != v->generation || !gtk_widget_get_root (root) ||
+       g_strcmp0 (v->page, page) || !g_str_has_prefix (page, "app:") || system_app (page + 4)) return;
+   const char *name = cc_luma_fixture_app_name (v->model, page + 4);
+   g_autofree char *message = g_strdup_printf ("%s uninstalled%s", name,
+@@ -573,7 +716,7 @@
+ }
+ static void app_uninstall (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Apps panel uninstalls */
++  if (cc_luma_fixture_is_live (v->model)) { app_manage_in_depot (v); return; }
+   if (!g_str_has_prefix (v->page, "app:") || system_app (v->page + 4)) return;
+   const char *name = cc_luma_fixture_app_name (v->model, v->page + 4);
+   g_autofree char *title = g_strdup_printf ("Uninstall %s?", name);
+@@ -656,7 +799,8 @@
+   else
+     {
+       g_autofree char *title = g_strdup_printf ("Uninstall %s", name);
+-      row = cf_bt (v, rows, title, "Keeps your documents unless you choose otherwise", "Uninstall…", TRUE, G_CALLBACK (app_uninstall));
++      row = cf_bt (v, rows, title, live ? "Depot confirms removal and whether to keep its data" : "Keeps your documents unless you choose otherwise",
++                   live ? "Open Depot…" : "Uninstall…", TRUE, G_CALLBACK (app_uninstall));
+       gtk_widget_set_name (row_button (row), "cf-app-uninstall");
+     }
+ }
+--- a/shell/cc-luma-view-discovery.c
++++ b/shell/cc-luma-view-discovery.c
+@@ -440,7 +440,10 @@
+ }
+ static void add_place (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Search panel adds folders (not yet proven here) */
++  if (cc_luma_fixture_is_live (v->model) && !v->search_locations) {
++    g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_INITIALIZED, "The search indexer is not available");
++    cc_luma_view_report_error (v, error); return;
++  }
+   GtkRoot *parent = gtk_widget_get_root (v->root);
+   if (!GTK_IS_WINDOW (parent)) {
+     g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_INITIALIZED, "Folder chooser needs a Settings window");
+@@ -471,6 +474,14 @@
+ }
+ void cc_luma_view_search_places_render (View *v)
+ {
++  if (cc_luma_fixture_is_live (v->model) && !v->search_locations) {
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GSettings) settings = cc_luma_search_locations_new (&error);
++    g_autofree char *backup = g_build_filename (g_get_user_data_dir (), "luma", "settings", "backups", NULL);
++    if (!settings || !cc_luma_view_bind_search_locations (v->root, settings, backup, &error)) {
++      cc_luma_view_report_error (v, error);
++    }
++  }
+   cf_header (v, "Folders to search", "Filer and search look inside these", NULL);
+   GtkBox *card = cf_group (v, NULL, NULL);
+   JsonObject *places = json_node_get_object (cc_luma_fixture_get (v->model, "sl"));
+--- a/shell/cc-luma-view-hardware.c
++++ b/shell/cc-luma-view-hardware.c
+@@ -38,14 +38,12 @@
+ 
+ static void add_printer (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Printers panel adds (not yet proven here) */
+   if (live_command (v, "add")) return;
+   luma_toast_show (v->root, "Looking for printers on Studio North…", "opening");
+ }
+ 
+ static void test_page (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Printers panel prints it */
+   JsonObject *p = printer (v);
+   g_autofree char *text = g_strdup_printf ("Test page sent to %s", p ? json_object_get_string_member (p, "n") : "");
+   if (cc_luma_fixture_is_live (v->model))
+@@ -53,7 +51,7 @@
+       g_autoptr (GError) error = NULL;
+       if (!cc_luma_live_printer_command (v->model, "test", v->root, &error)) { cc_luma_view_report_error (v, error); return; }
+     }
+-  luma_toast_show (v->root, text, "sent");
++  luma_toast_show (v->root, cc_luma_fixture_is_live (v->model) ? "Printing test page…" : text, "sent");
+ }
+ 
+ static void removed (GObject *dialog, gboolean option, GtkWidget *root)
+@@ -62,18 +60,29 @@
+   if (v && cc_luma_fixture_is_live (v->model))
+     {
+       g_autoptr (GError) error = NULL;
++      JsonObject *current = printer (v);
++      const char *queue = g_object_get_data (dialog, "cf-remove-queue");
++      if (!current || g_strcmp0 (queue, json_object_get_string_member_with_default (current, "queue", NULL)) != 0)
++        {
++          error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "The selected printer changed. Open its removal confirmation again.");
++          cc_luma_view_report_error (v, error);
++          return;
++        }
+       if (!cc_luma_live_printer_command (v->model, "remove", root, &error)) { cc_luma_view_report_error (v, error); return; }
+     }
+-  luma_toast_show (root, "Printer removed", "deleted");
++  luma_toast_show (root, v && cc_luma_fixture_is_live (v->model) ? "Removing printer…" : "Printer removed", "deleted");
+ }
+ 
+ static void remove_printer (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Printers panel removes */
+   JsonObject *p = printer (v);
+   g_autofree char *title = g_strdup_printf ("Remove %s?", p ? json_object_get_string_member (p, "n") : "");
+   GObject *dialog = G_OBJECT (luma_destructive_dialog_ask (v->root, title, "You can add it again later.", "Remove", "trash-2", NULL));
+-  if (dialog) g_signal_connect_object (dialog, "confirmed", G_CALLBACK (removed), v->root, 0);
++  if (dialog)
++    {
++      if (p) g_object_set_data_full (dialog, "cf-remove-queue", g_strdup (json_object_get_string_member_with_default (p, "queue", NULL)), g_free);
++      g_signal_connect_object (dialog, "confirmed", G_CALLBACK (removed), v->root, 0);
++    }
+ }
+ 
+ static void printers (View *v)
+--- a/shell/cc-luma-view-keyboard.c
++++ b/shell/cc-luma-view-keyboard.c
+@@ -5,7 +5,6 @@
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v || !g_str_equal (v->page, "keyboard")) return;
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's keyboard panel changes the list */
+   const char *layout = g_object_get_data (G_OBJECT (button), "cf-layout");
+   g_autoptr(GError) error = NULL;
+   gboolean done = g_object_get_data (G_OBJECT (button), "cf-remove") ?
+@@ -38,14 +37,19 @@
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return;
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's keyboard panel adds layouts */
+   GtkWidget *menu = luma_floating_menu_new ("Add a layout");
+   JsonObject *catalog = json_object_get_object_member (json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFKB"), "L");
+   g_autoptr(GList) labels = json_object_get_members (catalog);
+   const char *more[] = { "Español", "Italiano", "日本語", "한국어" };
++  JsonObject *kb = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFKB");
++  if (cc_luma_fixture_is_live (v->model) && json_object_has_member (kb, "available")) {
++    catalog = json_object_get_object_member (kb, "available");
++    g_clear_pointer (&labels, g_list_free); labels = json_object_get_members (catalog);
++  }
+   g_autoptr(GPtrArray) names = g_ptr_array_new ();
+   for (GList *p = labels; p; p = p->next) g_ptr_array_add (names, p->data);
+-  for (guint i = 0; i < G_N_ELEMENTS (more); i++) g_ptr_array_add (names, (gpointer) more[i]);
++  if (!cc_luma_fixture_is_live (v->model))
++    for (guint i = 0; i < G_N_ELEMENTS (more); i++) g_ptr_array_add (names, (gpointer) more[i]);
+   JsonArray *sources = json_node_get_array (cc_luma_fixture_get (v->model, "srcs"));
+   for (guint i = 0; i < names->len; i++) {
+     const char *name = g_ptr_array_index (names, i);
+@@ -66,7 +70,6 @@
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return FALSE;
+-  if (cc_luma_view_delegated (v)) return FALSE; /* live: GNOME's keyboard panel reorders */
+   JsonArray *sources = json_node_get_array (cc_luma_fixture_get (v->model, "srcs"));
+   const char *from_name = g_value_get_string (value);
+   const char *to_name = g_object_get_data (G_OBJECT (target), "cf-layout");
+--- a/shell/cc-luma-view-people.c
++++ b/shell/cc-luma-view-people.c
+@@ -2,6 +2,10 @@
+ /* Online Accounts and Wellbeing (You). v70 CFP, drawn with the row builders.
+  * Everything here is fixture-only: no account service, no screen-time daemon. */
+ #include "cc-luma-rows.h"
++#define GOA_API_IS_SUBJECT_TO_CHANGE
++#include <goa/goa.h>
++#define GOA_BACKEND_API_IS_SUBJECT_TO_CHANGE
++#include <goabackend/goabackend.h>
+ 
+ gboolean cc_luma_view_people_page (const char *page)
+ {
+@@ -42,8 +46,106 @@
+   g_autofree char *message = g_strdup_printf ("Opens %s sign-in", name ? name : "");
+   luma_toast_show (v->root, message, "done");
+ }
+-/* Live: goa-daemon's accounts and the providers it can add. Opening,
+- * connecting and removing are GNOME's panel's (the shell delegates). */
++/* Native provider dialogs retain this Settings pane. Requests refer weakly
++ * to the view, cancel when its root goes away, and ignore superseded results. */
++typedef struct {
++  GWeakRef root;
++  GCancellable *cancel;
++  GoaClient *client;
++  char *id;
++  gboolean add;
++} AccountRequest;
++
++static void account_request_free (AccountRequest *r)
++{
++  g_weak_ref_clear (&r->root);
++  g_clear_object (&r->cancel);
++  g_clear_object (&r->client);
++  g_free (r->id);
++  g_free (r);
++}
++
++static void account_request_done (AccountRequest *r, const GError *error)
++{
++  g_autoptr (GObject) root = g_weak_ref_get (&r->root);
++  View *v = root ? g_object_get_data (root, "cf-view") : NULL;
++  if (v && g_object_get_data (root, "cf-account-request") == r->cancel) {
++    g_object_set_data (root, "cf-account-request", NULL);
++    if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
++        !g_error_matches (error, GOA_ERROR, GOA_ERROR_DIALOG_DISMISSED))
++      cc_luma_view_report_error (v, error);
++    cc_luma_view_queue_refresh (v);
++  }
++  account_request_free (r);
++}
++
++static void account_provider_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  AccountRequest *r = data;
++  g_autoptr (GError) error = NULL;
++  if (r->add) {
++    g_autoptr (GoaObject) object = goa_provider_add_account_finish (GOA_PROVIDER (source), result, &error);
++  } else {
++    goa_provider_show_account_finish (GOA_PROVIDER (source), result, &error);
++  }
++  account_request_done (r, error);
++}
++
++static void account_client_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  AccountRequest *r = data;
++  g_autoptr (GError) error = NULL;
++  r->client = goa_client_new_finish (result, &error);
++  g_autoptr (GObject) root = g_weak_ref_get (&r->root);
++  GtkRoot *parent = root ? gtk_widget_get_root (GTK_WIDGET (root)) : NULL;
++  if (!r->client || !GTK_IS_WINDOW (parent) || g_cancellable_is_cancelled (r->cancel)) {
++    account_request_done (r, error); return;
++  }
++  g_autoptr (GoaObject) object = NULL;
++  if (!r->add) {
++    GList *accounts = goa_client_get_accounts (r->client);
++    for (GList *i = accounts; i; i = i->next) {
++      GoaAccount *account = goa_object_peek_account (i->data);
++      if (account && g_str_equal (goa_account_get_id (account), r->id)) {
++        object = g_object_ref (i->data); break;
++      }
++    }
++    g_list_free_full (accounts, g_object_unref);
++    if (!object) {
++      error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "This account is no longer connected.");
++      account_request_done (r, error); return;
++    }
++  }
++  const char *type = r->add ? r->id : goa_account_get_provider_type (goa_object_peek_account (object));
++  g_autoptr (GoaProvider) provider = goa_provider_get_for_provider_type (type);
++  if (!provider) {
++    error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "This account provider is not available.");
++    account_request_done (r, error); return;
++  }
++  if (r->add)
++    goa_provider_add_account (provider, r->client, GTK_WIDGET (parent), r->cancel, account_provider_done, r);
++  else
++    goa_provider_show_account (provider, r->client, object, GTK_WIDGET (parent), r->cancel, account_provider_done, r);
++}
++
++static void account_root_closed (GtkWidget *root, GCancellable *cancel)
++{
++  g_cancellable_cancel (cancel);
++}
++
++static void account_request (View *v, const char *id, gboolean add)
++{
++  if (!id || !*id) return;
++  GCancellable *previous = g_object_get_data (G_OBJECT (v->root), "cf-account-request");
++  if (previous) g_cancellable_cancel (previous);
++  AccountRequest *r = g_new0 (AccountRequest, 1);
++  g_weak_ref_init (&r->root, v->root);
++  r->id = g_strdup (id); r->add = add; r->cancel = g_cancellable_new ();
++  g_object_set_data_full (G_OBJECT (v->root), "cf-account-request", g_object_ref (r->cancel), g_object_unref);
++  g_signal_connect_object (v->root, "unrealize", G_CALLBACK (account_root_closed), r->cancel, 0);
++  goa_client_new (r->cancel, account_client_done, r);
++}
++
+ static gboolean live (View *v) { return v->model && cc_luma_fixture_is_live (v->model); }
+ static JsonArray *live_data (View *v, const char *name)
+ {
+@@ -53,9 +155,12 @@
+ static void live_open (GtkButton *button, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (v) cc_luma_view_delegated (v);
+-}
+-static void live_connect (GtkButton *button, View *v) { cc_luma_view_delegated (v); }
++  if (v) account_request (v, g_object_get_data (G_OBJECT (button), "cf-account-id"), FALSE);
++}
++static void live_connect (GtkButton *button, View *v)
++{
++  account_request (v, g_object_get_data (G_OBJECT (button), "cf-provider-id"), TRUE);
++}
+ static void live_accounts (View *v)
+ {
+   JsonArray *accts = live_data (v, "LIVEACCTS"), *providers = live_data (v, "LIVEPROVIDERS");
+@@ -78,6 +183,8 @@
+                                    json_object_get_string_member_with_default (o, "identity", ""), trail, TRUE);
+           g_autofree char *name = g_strdup_printf ("cf-go-acct-%u", i);
+           gtk_widget_set_name (row, name);
++          g_object_set_data_full (G_OBJECT (row), "cf-account-id",
++                                 g_strdup (json_object_get_string_member (o, "id")), g_free);
+           g_signal_connect_object (row, "clicked", G_CALLBACK (live_open), v->root, 0);
+           spill_subtitle (row);
+         }
+@@ -89,6 +196,9 @@
+     {
+       JsonArray *pair = json_array_get_array_element (providers, i);
+       GtkWidget *row = cf_bt (v, rows, json_array_get_string_element (pair, 0), NULL, "Connect…", FALSE, G_CALLBACK (live_connect));
++      if (json_array_get_length (pair) > 2)
++        g_object_set_data_full (G_OBJECT (row_button (row)), "cf-provider-id",
++                               g_strdup (json_array_get_string_element (pair, 2)), g_free);
+       g_autofree char *name = g_strdup_printf ("cf-connect-%u", i);
+       gtk_box_prepend (GTK_BOX (row), cf_lead_icon (json_array_get_string_element (pair, 1)));
+       gtk_widget_set_name (row_button (row), name);
+--- a/shell/cc-luma-view-privacy.c
++++ b/shell/cc-luma-view-privacy.c
+@@ -95,27 +95,78 @@
+         !live (v) && location && g_str_equal (id, "maps") ? "Last used today" : NULL, cf_lead_image (v, id));
+     }
+ }
++typedef struct { GWeakRef root; guint64 generation; char *method; char *message; } PrivacyCleanup;
++static void cleanup_free (PrivacyCleanup *cleanup)
++{
++  g_weak_ref_clear (&cleanup->root); g_free (cleanup->method); g_free (cleanup->message); g_free (cleanup);
++}
++static void cleanup_report (PrivacyCleanup *cleanup, GError *error)
++{
++  g_autoptr (GObject) root = g_weak_ref_get (&cleanup->root);
++  View *v = root ? g_object_get_data (root, "cf-view") : NULL;
++  if (!v || cleanup->generation != v->generation || !g_str_equal (v->page, "p-files")) return;
++  if (error) cc_luma_view_report_error (v, error);
++  else luma_toast_show (GTK_WIDGET (root), cleanup->message, "done");
++}
++static void cleanup_finished (GObject *source, GAsyncResult *result, gpointer data)
++{
++  PrivacyCleanup *cleanup = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  cleanup_report (cleanup, error); cleanup_free (cleanup);
++}
++static void cleanup_bus_ready (GObject *source, GAsyncResult *result, gpointer data)
++{
++  PrivacyCleanup *cleanup = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GDBusConnection) bus = g_bus_get_finish (result, &error);
++  if (!bus) { cleanup_report (cleanup, error); cleanup_free (cleanup); return; }
++  g_dbus_connection_call (bus, "org.gnome.SettingsDaemon.Housekeeping", "/org/gnome/SettingsDaemon/Housekeeping",
++                          "org.gnome.SettingsDaemon.Housekeeping", cleanup->method, NULL, NULL,
++                          G_DBUS_CALL_FLAGS_NONE, 60000, NULL, cleanup_finished, cleanup);
++}
+ static void confirmed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   guint64 *generation = g_object_get_data (G_OBJECT (dialog), "cf-privacy-generation");
+   if (!v || !generation || *generation != v->generation || !g_str_equal (v->page, "p-files") || !gtk_widget_get_root (root)) return;
+-  luma_toast_show (root, g_object_get_data (G_OBJECT (dialog), "cf-privacy-message"), "done");
+-}
+-static void clear_history (GtkButton *button, View *v);
+-static void empty_trash (GtkButton *button, View *v);
+-static void ask (View *v, const char *title, const char *body, const char *caption, const char *message)
++  const char *message = g_object_get_data (G_OBJECT (dialog), "cf-privacy-message");
++  const char *method = g_object_get_data (G_OBJECT (dialog), "cf-privacy-method");
++  if (!live (v)) { luma_toast_show (root, message, "done"); return; }
++  if (!method) {
++    g_autoptr (GError) error = NULL;
++    if (gtk_recent_manager_purge_items (gtk_recent_manager_get_default (), &error) < 0) cc_luma_view_report_error (v, error);
++    else luma_toast_show (root, message, "done");
++    return;
++  }
++  PrivacyCleanup *cleanup = g_new0 (PrivacyCleanup, 1);
++  g_weak_ref_init (&cleanup->root, root); cleanup->generation = v->generation;
++  cleanup->method = g_strdup (method); cleanup->message = g_strdup (message);
++  g_bus_get (G_BUS_TYPE_SESSION, NULL, cleanup_bus_ready, cleanup);
++}
++static void ask (View *v, const char *title, const char *body, const char *caption, const char *message, const char *method)
+ {
+   LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title, body, caption, "trash-2", NULL);
+   guint64 *generation = g_new (guint64, 1); *generation = v->generation;
+   g_object_set_data_full (G_OBJECT (dialog), "cf-privacy-generation", generation, g_free);
+   g_object_set_data_full (G_OBJECT (dialog), "cf-privacy-message", g_strdup (message), g_free);
++  g_object_set_data_full (G_OBJECT (dialog), "cf-privacy-method", g_strdup (method), g_free);
+   g_signal_connect_object (dialog, "confirmed", G_CALLBACK (confirmed), v->root, 0);
+ }
+-/* Live: clearing and emptying are done by GNOME's panel (not proven here). */
+-static void clear_history (GtkButton *button, View *v) { if (live (v) && cc_luma_view_delegated (v)) return; ask (v, "Clear recent files?", "The files stay where they are. Only the list is cleared.", "Clear", "Recent files cleared"); }
+-static void empty_trash (GtkButton *button, View *v) { if (live (v) && cc_luma_view_delegated (v)) return; ask (v, "Empty the trash?", "214 items, 1.2 GB. They can’t be brought back.", "Empty trash", "Trash emptied"); }
+-static void clear_temp (GtkButton *button, View *v) { if (live (v) && cc_luma_view_delegated (v)) return; luma_toast_show (v->root, "380 MB of temporary files deleted", "done"); }
++static void clear_history (GtkButton *button, View *v)
++{
++  ask (v, "Clear recent files?", "The files stay where they are. Only the list is cleared.", "Clear", "Recent files cleared", NULL);
++}
++static void empty_trash (GtkButton *button, View *v)
++{
++  ask (v, "Empty the trash?", live (v) ? "Items in the trash will be permanently deleted. They can’t be brought back." : "214 items, 1.2 GB. They can’t be brought back.",
++       "Empty trash", live (v) ? "Trash cleanup requested" : "Trash emptied", "EmptyTrash");
++}
++static void clear_temp (GtkButton *button, View *v)
++{
++  ask (v, "Delete temporary files?", "Temporary files eligible for cleanup will be deleted. Your documents and application data are kept.",
++       "Delete", live (v) ? "Temporary file cleanup requested" : "Temporary files deleted", "RemoveTempFiles");
++}
+ static void command (View *v, GtkBox *rows, const char *name, const char *title, const char *hint,
+                      const char *caption, gboolean danger, GCallback callback)
+ {
+@@ -137,8 +188,8 @@
+   if (cc_luma_view_flag (v, "trash") || cc_luma_view_flag (v, "temp")) cf_pk (v, rows, "trashAge", "After", NULL, age);
+   command (v, rows, "cf-emptytrash", "Empty the trash", live (v) ? NULL : "1.2 GB in 214 items", "Empty…", TRUE, G_CALLBACK (empty_trash));
+   command (v, rows, "cf-cleartemp", "Delete temporary files", live (v) ? NULL : "380 MB", "Delete…", FALSE, G_CALLBACK (clear_temp));
+-  /* Feedback follows the fixture exactly. This never opens Housekeeping,
+-   * RecentManager, a trash store or an installed application's data. */
++  /* Fixture mode remains isolated. Live cleanup follows the native usage
++   * panel APIs, after confirmation, without replacing the Luma pane. */
+ }
+ static void diagnostics (View *v)
+ {
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -160,5 +160,6 @@
+ GtkWidget *cc_luma_view_switch (View *v, const char *key);
+ GtkWidget *cc_luma_view_switch_full (View *v, const char *key, gboolean big);
+ void cc_luma_view_choose (View *v, const char *key, const char *value);
+-/* Live: TRUE when this page's actions go to its GNOME panel (and opens it). */
++/* Live: block a remaining fixture-only action and report it in this view.
++ * Native callbacks do not use this guard. Never switches Settings panels. */
+ gboolean cc_luma_view_delegated (View *v);
+--- a/shell/cc-luma-view-system.c
++++ b/shell/cc-luma-view-system.c
+@@ -1,6 +1,6 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ /* The account page and the System section. v70 CFP, drawn with the row builders.
+- * Everything here acts on the fixture only: sheets and dialogs end in a toast. */
++ * Live actions use their system owners; fixture feedback stays contained. */
+ #include "cc-luma-rows.h"
+ #include <gio/gdesktopappinfo.h>
+ 
+@@ -300,30 +300,112 @@
+   return a;
+ }
+ 
+-/* Hands a task to the GNOME panel that owns it (password, picture, a date
+- * typed by hand): the same dialogs and polkit checks as upstream. */
+-static void open_panel (View *v, const char *panel, const char *sub)
+-{
+-  /* The application's own "launch-panel" action (what search and the
+-   * shell use); with a parameter the shell shows the GNOME panel. */
+-  GVariantBuilder b;
+-  g_variant_builder_init (&b, G_VARIANT_TYPE ("av"));
+-  if (sub) g_variant_builder_add (&b, "v", g_variant_new_string (sub));
+-  if (!gtk_widget_activate_action (v->root, "app.launch-panel", "(s@av)", panel, g_variant_builder_end (&b)))
+-    {
+-      g_autoptr (GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "The %s panel isn’t available here", panel);
++static gboolean live_write (View *v, const char *key, JsonNode *value);
++
++/* The shell hosts the existing PAM/password/keyring dialog. Fixture
++ * view targets have no account service and never load a native user panel. */
++static void live_password_clicked (GtkButton *button, View *v)
++{
++  if (!gtk_widget_activate_action (v->root, "luma-settings-native.password", NULL))
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Password changes are not available in this Settings session");
+       cc_luma_view_report_error (v, error);
+     }
+ }
+ 
+-static void live_users_panel (GtkButton *b, View *v) { open_panel (v, "system", "users"); }
+-static void live_datetime_panel (GtkButton *b, View *v) { open_panel (v, "system", "datetime"); }
+-
+-/* Writes not yet proven on a real owner open the page's GNOME panel
+- * (cc-luma-live.c's verified list); TRUE when the panel took over. */
+-static gboolean live_delegated (View *v, const char *key)
+-{
+-  return !cc_luma_fixture_key_verified (v->model, key) && cc_luma_view_delegated (v);
++static void live_picture_chosen (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr (GtkWidget) root = data;
++  View *v = view_of (root);
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GFile) file = gtk_file_dialog_open_finish (GTK_FILE_DIALOG (source), result, &error);
++  if (!v || !gtk_widget_get_root (root)) return;
++  if (!file)
++    {
++      if (!g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED) &&
++          !g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_CANCELLED)) cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autofree char *path = g_file_get_path (file);
++  g_autoptr (GdkTexture) picture = path ? gdk_texture_new_from_file (file, &error) : NULL;
++  if (!picture)
++    {
++      if (!error) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Choose a picture stored on this computer");
++      cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autoptr (JsonNode) value = json_node_init_string (json_node_alloc (), path);
++  live_write (v, "myPicture", value);
++}
++
++static void live_picture_clicked (GtkButton *button, View *v)
++{
++  g_autoptr (GtkFileDialog) dialog = gtk_file_dialog_new ();
++  g_autoptr (GtkFileFilter) filter = gtk_file_filter_new ();
++  g_autoptr (GListStore) filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
++  gtk_file_filter_set_name (filter, "Pictures");
++  gtk_file_filter_add_pixbuf_formats (filter);
++  g_list_store_append (filters, filter);
++  gtk_file_dialog_set_title (dialog, "Choose your account picture");
++  gtk_file_dialog_set_filters (dialog, G_LIST_MODEL (filters));
++  GtkRoot *root = gtk_widget_get_root (v->root);
++  gtk_file_dialog_open (dialog, GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL, NULL,
++                        live_picture_chosen, g_object_ref (v->root));
++}
++
++static void live_time_done (LumaBarItem *item, GtkWidget *root)
++{
++  View *v = view_of (root);
++  GtkCalendar *calendar = g_object_get_data (G_OBJECT (item), "cf-calendar");
++  GtkSpinButton *hour = g_object_get_data (G_OBJECT (item), "cf-hour");
++  GtkSpinButton *minute = g_object_get_data (G_OBJECT (item), "cf-minute");
++  if (!v || !calendar || !hour || !minute) return;
++  g_autoptr (GDateTime) day = gtk_calendar_get_date (calendar);
++  g_autoptr (GTimeZone) zone = g_time_zone_new_identifier (cc_luma_view_text (v, "zone"));
++  g_autoptr (GDateTime) chosen = zone ? g_date_time_new (zone, g_date_time_get_year (day), g_date_time_get_month (day),
++    g_date_time_get_day_of_month (day), gtk_spin_button_get_value_as_int (hour), gtk_spin_button_get_value_as_int (minute), 0) : NULL;
++  if (!chosen || g_date_time_to_unix (chosen) < 0)
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Choose a valid date and time from 1970 onwards");
++      cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autoptr (JsonNode) value = json_node_init_int (json_node_alloc (), g_date_time_to_unix (chosen) * G_USEC_PER_SEC);
++  if (live_write (v, "manualTime", value)) luma_action_center_hide_bar (v->center);
++}
++
++static void live_datetime_panel (GtkButton *button, View *v)
++{
++  if (cc_luma_view_flag (v, "autoTime"))
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Turn off automatic date and time before setting it manually");
++      cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autoptr (GTimeZone) zone = g_time_zone_new_identifier (cc_luma_view_text (v, "zone"));
++  g_autoptr (GDateTime) now = zone ? g_date_time_new_now (zone) : g_date_time_new_now_local ();
++  LumaActionEditor *editor = LUMA_ACTION_EDITOR (luma_action_editor_new ("Set date and time", "clock"));
++  luma_action_editor_set_summary (editor, cc_luma_view_text (v, "zone"), NULL);
++  luma_action_editor_set_body (editor, gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
++  g_signal_connect_object (editor, "discarded", G_CALLBACK (editor_discarded), v->root, 0);
++  luma_action_center_set_editor (v->center, editor);
++  GtkWidget *calendar = gtk_calendar_new ();
++  GtkWidget *hour = gtk_spin_button_new_with_range (0, 23, 1);
++  GtkWidget *minute = gtk_spin_button_new_with_range (0, 59, 1);
++  gtk_calendar_select_day (GTK_CALENDAR (calendar), now);
++  gtk_spin_button_set_value (GTK_SPIN_BUTTON (hour), g_date_time_get_hour (now));
++  gtk_spin_button_set_value (GTK_SPIN_BUTTON (minute), g_date_time_get_minute (now));
++  luma_action_editor_add_field (editor, "Date", calendar);
++  luma_action_editor_add_field (editor, "Hour (0–23)", hour);
++  luma_action_editor_add_field (editor, "Minute", minute);
++  g_autoptr (LumaBarItem) primary = luma_bar_item_new_action ("check", "Save", NULL);
++  luma_bar_item_set_primary (primary, TRUE);
++  g_object_set_data (G_OBJECT (primary), "cf-calendar", calendar);
++  g_object_set_data (G_OBJECT (primary), "cf-hour", hour);
++  g_object_set_data (G_OBJECT (primary), "cf-minute", minute);
++  g_signal_connect_object (primary, "activated", G_CALLBACK (live_time_done), v->root, 0);
++  luma_action_editor_set_primary (editor, primary);
++  luma_action_center_grow (v->center);
+ }
+ 
+ static gboolean live_write (View *v, const char *key, JsonNode *value)
+@@ -520,7 +602,7 @@
+   GtkBox *g = cf_group (v, "Account", NULL);
+   tx (v, g, "myName", "Name", NULL);
+   cf_vl (v, g, "Username", at, NULL, FALSE, NULL, NULL);
+-  bt_lead (v, g, NULL, "Password", NULL, "Change…", FALSE, G_CALLBACK (live_users_panel), "cf-pw");
++  bt_lead (v, g, NULL, "Password", NULL, "Change…", FALSE, G_CALLBACK (live_password_clicked), "cf-pw");
+ }
+ 
+ static void live_person_clicked (GtkButton *row, GtkWidget *root)
+@@ -546,7 +628,7 @@
+ static void live_add_clicked (GtkButton *button, GtkWidget *root)
+ {
+   View *v = view_of (root);
+-  if (!v || live_delegated (v, "users.add")) return;
++  if (!v) return;
+   LumaActionEditor *editor = LUMA_ACTION_EDITOR (luma_action_editor_new ("Add someone", "user-plus"));
+   luma_action_editor_set_summary (editor, "They get their own files, settings and apps.", NULL);
+   luma_action_editor_set_body (editor, gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
+@@ -578,9 +660,9 @@
+   cf_header (v, "Users", meta, NULL);
+   cf_hero (v, identity (v, live_avatar (v, name, "me-picture", 64), "cf-id",
+                         id_words (name, admin ? "Administrator · signed in" : "Standard · signed in", NULL),
+-                        hero_button (v, "Change picture", G_CALLBACK (live_users_panel), "cf-pic")), "cf-users-id");
++                        hero_button (v, "Change picture", G_CALLBACK (live_picture_clicked), "cf-pic")), "cf-users-id");
+   GtkBox *g = cf_group (v, "Your account", NULL);
+-  bt_lead (v, g, "key-round", "Password", NULL, "Change…", FALSE, G_CALLBACK (live_users_panel), "cf-pw");
++  bt_lead (v, g, "key-round", "Password", NULL, "Change…", FALSE, G_CALLBACK (live_password_clicked), "cf-pw");
+   if (cc_luma_view_flag (v, "me.local"))
+     cf_sw (v, g, "autoLogin", "Sign in automatically", "Anyone who turns on this computer gets in", lead ("lock-open"));
+   cf_vl (v, g, "Account type", admin ? "Administrator" : "Standard", admin ? "Can install apps and change anything" : NULL,
+@@ -607,7 +689,10 @@
+ static void live_removed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
+ {
+   View *v = view_of (root);
+-  if (!v) return;
++  const char *user = g_object_get_data (G_OBJECT (dialog), "cf-remove-user");
++  guint64 *generation = g_object_get_data (G_OBJECT (dialog), "cf-remove-generation");
++  if (!v || !generation || *generation != v->generation || !g_str_equal (v->page, "user-priya") ||
++      g_strcmp0 (cc_luma_view_text (v, "pUser"), user) != 0) return;
+   g_autoptr (JsonNode) keep = json_node_init_boolean (json_node_alloc (), checked);
+   if (live_write (v, "users.remove", keep)) cc_luma_view_navigate (v, "users");
+ }
+@@ -615,10 +700,14 @@
+ static void live_remove_clicked (GtkButton *button, View *v)
+ {
+   JsonObject *o = live_person (v, cc_luma_view_text (v, "pUser"));
+-  if (!o || live_delegated (v, "users.remove")) return;
++  if (!o) return;
+   g_autofree char *title = g_strdup_printf ("Remove %s?", json_object_get_string_member_with_default (o, "name", ""));
+   LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title,
+     "Their account goes. Choose whether their files stay in /home.", "Remove", "user-minus", "Keep their files");
++  g_object_set_data_full (G_OBJECT (dialog), "cf-remove-user", g_strdup (cc_luma_view_text (v, "pUser")), g_free);
++  guint64 *generation = g_new (guint64, 1);
++  *generation = v->generation;
++  g_object_set_data_full (G_OBJECT (dialog), "cf-remove-generation", generation, g_free);
+   g_signal_connect_object (dialog, "confirmed", G_CALLBACK (live_removed), v->root, 0);
+ }
+ 
+@@ -626,9 +715,9 @@
+ {
+   JsonObject *o = live_person (v, cc_luma_view_text (v, "pUser"));
+   g_autoptr (JsonNode) go = json_node_init_boolean (json_node_alloc (), TRUE);
+-  if (!o || live_delegated (v, "users.reset") || !live_write (v, "users.reset", go)) return;
++  if (!o || !live_write (v, "users.reset", go)) return;
+   g_autofree char *first = first_name (json_object_get_string_member_with_default (o, "name", ""));
+-  g_autofree char *message = g_strdup_printf ("%s sets a new password at the next sign-in", first);
++  g_autofree char *message = g_strdup_printf ("Requesting a password reset for %s…", first);
+   toast (v, message, "done");
+ }
+ 
+@@ -636,7 +725,6 @@
+ {
+   /* cc-user-page.c spawn_malcontent_control. */
+   g_autoptr (GError) error = NULL;
+-  if (cc_luma_view_delegated (v)) return; /* the users panel opens Parental Controls */
+   const char *argv[] = { "malcontent-control", "--user", cc_luma_view_text (v, "pUser"), NULL };
+   if (!g_spawn_async (NULL, (char **) argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error))
+     cc_luma_view_report_error (v, error);
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -1548,6 +1548,7 @@
+ /* Phone width changes some pages' anatomy (v70 #w-settings.phone rules). */
+ static void phone_applied (View *v) { if (!v->phone) { v->phone = TRUE; cc_luma_view_queue_refresh (v); } }
+ static void phone_unapplied (View *v) { if (v->phone) { v->phone = FALSE; cc_luma_view_queue_refresh (v); } }
++static void live_write_error (CcLumaFixture *model, const GError *error, GtkWidget *root);
+ static GtkWidget *new_view (CcLumaFixture *model, const char *page, CcLumaLiveLock *live_lock, CcLumaLivePermission *live_permission, GError **error)
+ {
+   GtkWidget *scroll, *clamp;
+@@ -1634,7 +1635,10 @@
+   g_signal_connect_object (v->center, "state-changed", G_CALLBACK (center_changed), v->root, 0);
+   render (v);
+   if (v->model && cc_luma_fixture_is_live (v->model))
+-    v->model_changed = g_signal_connect_swapped (v->model, "changed", G_CALLBACK (cc_luma_view_queue_refresh), v);
++    {
++      v->model_changed = g_signal_connect_swapped (v->model, "changed", G_CALLBACK (cc_luma_view_queue_refresh), v);
++      g_signal_connect_object (v->model, "write-error", G_CALLBACK (live_write_error), v->root, 0);
++    }
+   if (v->live_lock) cc_luma_live_lock_start (v);
+   if (v->live_permission) cc_luma_live_permission_start (v);
+   if (v->image_error)
+@@ -1647,6 +1651,14 @@
+   if (g_str_equal (page, "bluetooth")) cc_luma_view_bluetooth_start (v);
+   return v->root;
+ }
++static void live_write_error (CcLumaFixture *model, const GError *error, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  cc_luma_view_report_error (v, error);
++  cc_luma_view_queue_refresh (v);
++}
++
+ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error)
+ {
+   return new_view (model, page, NULL, NULL, error);
+@@ -1742,14 +1754,14 @@
+   if (error && error->domain == CC_LUMA_WRITE_DELEGATED)
+     {
+       cc_luma_view_queue_refresh (v); /* put the control back */
+-      if (v->delegate) v->delegate (v->root, v->page, v->delegate_data);
+-      return;
+     }
+   g_clear_error (&v->image_error);
+-  v->image_error = g_error_copy (error);
++  v->image_error = error && error->domain == CC_LUMA_WRITE_DELEGATED ?
++    g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                         "This change is not supported yet.") : g_error_copy (error);
+   if (v->error_handler) v->error_handler (v->root, v->image_error, v->error_data);
+-  else if ((v->live_lock || v->live_permission) && gtk_widget_get_root (v->root))
+-    luma_toast_show (v->root, error->message, "error");
++  else if ((cc_luma_fixture_is_live (v->model) || v->live_lock || v->live_permission) && gtk_widget_get_root (v->root))
++    luma_toast_show (v->root, v->image_error->message, "error");
+ }
+ 
+ void cc_luma_view_set_page_handler (GtkWidget *root, CcLumaViewPageFunc handler, gpointer data)
+@@ -2030,6 +2042,11 @@
+ gboolean cc_luma_view_delegated (View *v)
+ {
+   if (!v->model || !cc_luma_fixture_is_live (v->model)) return FALSE;
+-  if (v->delegate) v->delegate (v->root, v->page, v->delegate_data);
++  /* Legacy guards stop fixture-only actions in a live view. They must never
++   * replace that view or let the fixture manufacture success. Native actions
++   * remove this guard only when their owning service is connected. */
++  g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                                                "This action is not available yet.");
++  cc_luma_view_report_error (v, error);
+   return TRUE;
+ }
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -373,6 +373,8 @@
+ fixture_view_sources += ['../panels/privacy/screen/cc-screen-page.c']
+ fixture_view_sources += ['../panels/privacy/camera/cc-camera-page.c', '../panels/privacy/location/cc-location-page.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1'), m_dep]
++fixture_view_deps += [goa_dep, dependency('goa-backend-1.0', version: goa_req_version)]
++fixture_view_deps += [dependency('gio-unix-2.0')]
+ live_pointer_test = executable('test-luma-live-pointer',
+   ['test-luma-live-pointer.c', 'cc-luma-live-gsettings.c'] + fixture_view_sources + generated_sources,
+   include_directories: top_inc, dependencies: fixture_view_deps)
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1358,8 +1358,10 @@
+     g_signal_emit_by_name (find_button_caption (dialog, "Empty trash"), "clicked"); wait_dialog_closed (window);
+     g_assert_true (has_text (window, "Trash emptied"));
+     GtkWidget *old_cleanup = g_object_ref (find_name (view, "cf-cleartemp"));
+-    g_signal_emit_by_name (old_cleanup, "clicked"); drain ();
+-    g_assert_true (has_text (window, "380 MB of temporary files deleted"));
++    g_signal_emit_by_name (old_cleanup, "clicked"); wait_ms (100);
++    dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++    g_signal_emit_by_name (find_button_caption (dialog, "Delete"), "clicked"); wait_dialog_closed (window);
++    g_assert_true (has_text (window, "Temporary files deleted"));
+     cc_luma_view_navigate (v, "p-dev"); wait_ms (100);
+     LumaToast *prior_toast = LUMA_TOAST (find_type (window, LUMA_TYPE_TOAST)); g_assert_nonnull (prior_toast);
+     g_signal_emit_by_name (old_cleanup, "clicked"); drain (); g_object_unref (old_cleanup);
+@@ -2196,12 +2198,75 @@
+   }
+ }
+ 
++typedef struct { guint delegates, errors, writes; GQuark domain; gint code; } RetainedFailure;
++static gboolean unexpected_delegate (GtkWidget *root, const char *page, gpointer data)
++{
++  ((RetainedFailure *) data)->delegates++; return TRUE;
++}
++static void retained_error (GtkWidget *root, const GError *error, gpointer data)
++{
++  RetainedFailure *r = data;
++  r->errors++; r->domain = error->domain; r->code = error->code;
++}
++static gboolean rejected_write (CcLumaFixture *model, const char *key, JsonNode *value, gpointer data, GError **error)
++{
++  ((RetainedFailure *) data)->writes++;
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "The setting is locked by policy.");
++  return FALSE;
++}
++static void live_failure_keeps_pane (void)
++{
++  g_autoptr (JsonParser) parser = json_parser_new ();
++  g_assert_true (json_parser_load_from_file (parser, g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL));
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_new_live (json_parser_get_root (parser));
++  RetainedFailure r = { 0 };
++  cc_luma_fixture_set_writer (model, rejected_write, &r);
++  cc_luma_fixture_set_page_ready_func (model, always_ready, NULL);
++  cc_luma_fixture_own_key (model, "devName");
++  g_autofree char *before = g_strdup (json_node_get_string (cc_luma_fixture_get (model, "devName")));
++  GtkWidget *window = gtk_window_new ();
++  GtkWidget *view = cc_luma_view_new (model, "sharing", NULL);
++  cc_luma_view_set_delegate (view, unexpected_delegate, &r);
++  cc_luma_view_set_error_handler (view, retained_error, &r);
++  gtk_window_set_child (GTK_WINDOW (window), view);
++  gtk_window_present (GTK_WINDOW (window)); wait_ms (100);
++  GtkWidget *field = find_name (view, "cf-devName");
++  g_assert_nonnull (field);
++  gtk_editable_set_text (GTK_EDITABLE (field), "Rejected change");
++  g_signal_emit_by_name (field, "activate"); drain ();
++  g_assert_cmpuint (r.errors, ==, 1);
++  g_assert_cmpint (r.code, ==, G_IO_ERROR_NOT_SUPPORTED);
++  g_assert_cmpuint (r.writes, ==, 0);
++  cc_luma_fixture_verify_key (model, "devName");
++  field = find_name (view, "cf-devName");
++  gtk_editable_set_text (GTK_EDITABLE (field), "Denied change");
++  g_signal_emit_by_name (field, "activate"); drain ();
++  g_assert_cmpuint (r.errors, ==, 2);
++  g_assert_cmpint (r.code, ==, G_IO_ERROR_PERMISSION_DENIED);
++  g_assert_cmpuint (r.writes, ==, 1);
++  View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++  g_assert_true (cc_luma_view_delegated (v)); /* a remaining fixture-only action is blocked */
++  g_assert_cmpuint (r.errors, ==, 3);
++  g_autoptr (GError) async_error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                                                      "The service refused the change.");
++  cc_luma_fixture_report_write_error (model, async_error);
++  drain ();
++  g_assert_cmpuint (r.errors, ==, 4);
++  g_assert_cmpint (r.code, ==, G_IO_ERROR_PERMISSION_DENIED);
++  g_assert_cmpuint (r.delegates, ==, 0);
++  g_assert_cmpstr (cc_luma_view_get_page (view), ==, "sharing");
++  g_assert_true (gtk_window_get_child (GTK_WINDOW (window)) == view);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "devName")), ==, before);
++  gtk_window_destroy (GTK_WINDOW (window)); drain ();
++}
++
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+   gtk_init ();
+   g_test_add_func ("/settings/view/radio-bindings", radio_bindings);
+   g_test_add_func ("/settings/view/live-text-commit", live_text_commit);
++  g_test_add_func ("/settings/view/live-failure-keeps-pane", live_failure_keeps_pane);
+   g_test_add_func ("/settings/view/adaptive-padding", adaptive_padding);
+   g_test_add_func ("/settings/view/device-options", device_options_view);
+   g_test_add_func ("/settings/view/keyboard", keyboard_view);

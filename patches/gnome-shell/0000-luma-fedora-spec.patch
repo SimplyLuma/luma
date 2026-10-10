@@ -6,11 +6,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.109.creator20261009.1%{?dist}
++Release:        1.luma.110.creator20261010.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
  License:        GPL-2.0-or-later
-@@ -32,6 +32,253 @@
+@@ -32,6 +32,255 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -255,16 +255,18 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1256:      0262-luma-visible-tiling-and-bounded-battery-status.patch
 +Patch1257:      0263-luma-quiet-dock-pinning.patch
 +Patch1258:      0264-settings-display-preview-ownership.patch
++Patch1259:      0265-settings-native-keyboard-selection.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
 +Source9003:     window-application-identity.py
 +Source9004:     clock-line-metrics.js
 +Source9005:     android-existing-activation.js
++Source9006:     settings-input-source.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +318,7 @@
+@@ -71,6 +319,7 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -272,7 +274,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +338,10 @@
+@@ -90,6 +339,10 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -283,7 +285,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -191,6 +443,8 @@
+@@ -191,6 +444,8 @@
  %autosetup -S git -n %{name}-%{tarball_version}
  
  %build
@@ -292,7 +294,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +462,24 @@
+@@ -208,9 +463,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -314,10 +316,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9002} js/ui/lumaWindowCorners.js
 +gjs -m %{SOURCE9004} js/ui/panel.js
 +gjs -m %{SOURCE9005} js/ui/lumaAndroidActivation.js
++gjs -m %{SOURCE9006} js/ui/shellDBus.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -250,6 +519,11 @@
+@@ -250,6 +520,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
