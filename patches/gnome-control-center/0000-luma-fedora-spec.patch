@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,107 @@
+@@ -28,14 +28,108 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.51.creator20261009.2%{?dist}
++Release:        1.luma.52.creator20261010.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -96,6 +96,7 @@
 +Patch1077:      0078-settings-tiling-controls-native-autotiling.patch
 +Patch1078:      0079-settings-display-apply-preview.patch
 +Patch1079:      0080-settings-retain-live-display-apply-bar.patch
++Patch1080:      0081-settings-native-microphone-controls.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1

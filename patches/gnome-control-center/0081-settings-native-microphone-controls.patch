@@ -1,0 +1,35 @@
+Subject: [PATCH] Settings: keep microphone selection and volume in Luma
+
+Qualify the existing Gvc input writes with a mapped Luma view against an
+isolated audio service. Keep input selection and volume in the Luma panel,
+and include the device origin in microphone labels so identical port names
+remain distinguishable. Other native-write qualifications are unchanged.
+
+--- a/shell/cc-luma-live-sound.c
++++ b/shell/cc-luma-live-sound.c
+@@ -149,7 +149,12 @@
+       JsonObject *item = json_object_new ();
+       g_autofree char *id = g_strdup_printf ("%u", gvc_mixer_ui_device_get_id (device));
+       json_object_set_string_member (item, "id", id);
+-      json_object_set_string_member (item, "n", description);
++      /* Input ports may all be named “Microphones”. Include their device
++       * origin so the picker identifies which physical input is selected. */
++      g_autofree char *input_name = !output && origin && *origin &&
++        g_strcmp0 (origin, description) != 0 ?
++        g_strdup_printf ("%s — %s", description, origin) : NULL;
++      json_object_set_string_member (item, "n", input_name ? input_name : description);
+       json_object_set_string_member (item, "s", origin && *origin ? origin : description);
+       json_object_set_string_member (item, "i", output ? output_icon (device) : "mic");
+       json_array_add_object_element (devices, item);
+@@ -264,6 +269,11 @@
+   g_signal_connect (self->sound, "changed", G_CALLBACK (sound_changed), self);
+   const char *keys[] = { "out", "vol", "bal", "cfg", "inDev", "inVol", "alert" };
+   for (guint i = 0; i < G_N_ELEMENTS (keys); i++) cc_luma_fixture_own_key (model, keys[i]);
++  /* The mapped input picker and volume control are qualified against a
++   * private mixer: selection, unmute, persistence on reopening, and refusal
++   * of an input that is no longer offered. Do not delegate these writes. */
++  cc_luma_fixture_verify_key (model, "inDev");
++  cc_luma_fixture_verify_key (model, "inVol");
+   self->control = gvc_mixer_control_new ("Luma Settings");
+   g_signal_connect (self->control, "state-changed", G_CALLBACK (state_changed), self);
+   g_signal_connect (self->control, "output-added", G_CALLBACK (output_added), self);

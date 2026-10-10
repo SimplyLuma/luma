@@ -198,3 +198,46 @@ available. Add coverage at the boundary the user actually encountered.
   supported synchronization path without bypassing Tide's model or keyring.
   Do not report a skipped operation as synced or request a new registration.
 - First shipped correction: pending.
+
+## AUDIO-001 — Tiger Lake internal speakers are silent
+
+- Reported: 2026-10-10, exact computer/board model and Luma build unknown.
+  Headphones work; selecting speakers does not help. ALSA Mixer displays the
+  speaker control at `0–0%`. The reporter says audio works in Ubuntu, Debian
+  and Kali on the same machine.
+- Status: hardware diagnosis pending. Tiger Lake alone does not identify the
+  speaker codec, amplifier, firmware topology or matching UCM profile.
+- Package audit: the actual `20261010.1` image inventory includes
+  `alsa-sof-firmware 2025.12.2`, `alsa-ucm 1.2.16.1`, kernel `7.2.8`,
+  PipeWire `1.6.9` and WirePlumber `0.5.18`. This does not establish which
+  version the reporter installed or prove a working speaker path.
+- Follow-up: request exact model, installed build, kernel version,
+  `/proc/asound/cards`, and `wpctl status`. Use the resulting card identity
+  to collect its codec, mixer and audio-specific kernel diagnostics.
+  Do not apply a global DSP-driver override on the processor-family report.
+- First shipped correction: not established.
+
+## AUDIO-002 — Microphone selection replaces Luma's Sound panel
+
+- Reported: 2026-10-10, Dell XPS DA14260. Selecting the input dropdown opens
+  the older native Sound panel. The user subsequently confirmed that the
+  microphone works, with low volume; no capture failure is claimed.
+- Cause: the live Gvc adapter owns microphone selection and volume, but the
+  verified-write gate does not approve those keys. A picker write returns
+  `CC_LUMA_WRITE_DELEGATED`, which deliberately replaces the Luma view.
+  Input labels also use only the port description, such as “Microphones”,
+  although the adapter already reads the hardware origin.
+- Source correction: qualify only input selection and volume in the existing
+  sound adapter; preserve disconnected-device refusal and readiness checks.
+  Include a distinct hardware origin in input names. Other unqualified
+  controls are not silently enabled.
+- Verification: the original adapter fails the mapped-picker assertion with
+  one delegation. The corrected adapter selects a second source on a private
+  real audio server without delegation, sets its volume to 42%, unmutes it,
+  retains selection and volume across adapter/view recreation, and rejects
+  an input not offered by the picker without changing the default source.
+  This verifies the Gvc protocol and UI boundary, not physical microphone
+  capture or the separate Tiger Lake speaker issue.
+- Regression runner: `tests/gnome-control-center/sound-input/run.sh`.
+- Delivery: Settings52 source candidate; not yet packaged or published.
+  First shipped correction remains pending.
