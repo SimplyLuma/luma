@@ -39,6 +39,15 @@ available. Add coverage at the boundary the user actually encountered.
 - Follow-up: verify the installed and offered build identities before changing
   update selection or labels. Preserve a later explicit channel choice.
 - First shipped correction: not established.
+- 2026-10-11 follow-up: upstream ES8336 history has no verified Alliwava/H90
+  correction. Recent headphone GPIO and DMI fixes are for Huawei boards; their
+  wiring does not establish this board's wiring. Existing UCM includes the
+  upstream 2023 HiFi fix. Do not claim that updating these files fixes this
+  report. `scripts/support/audio-report.py` collects the missing ALSA mixer,
+  jack controls, selected ALSA routes and audio kernel messages in one run,
+  without sudo, network access, recording, playback or configuration changes.
+  It writes a private local JSON file; sharing remains the owner's choice.
+  Actual sound confirmation on the affected PC is still required.
 
 ## DEPOT-001 — A signed app index advertises an outdated download
 
