@@ -9,24 +9,21 @@ root=/var/tmp/luma-tester-build/source
 install -Dm755 "$root/scripts/mobile/luma-shell-session" /usr/local/bin/luma-shell-session
 install -Dm644 "$root/config/mobile/fp6-physical/overlay/usr/lib/systemd/user/luma-shell-session.target" /usr/lib/systemd/user/luma-shell-session.target
 install -Dm644 "$root/config/desktop/dconf/profile/user" /etc/dconf/profile/user
-install -Dm644 "$root/config/desktop/dconf/db/luma.d/00-luma-desktop" /etc/dconf/db/luma.d/00-luma-desktop
-if [ "$target" = mobile ]; then
-  install -Dm644 "$root/config/mobile/luma-shell-handheld.dconf" /etc/dconf/db/luma.d/10-luma-handheld
-  install -d /usr/share/gnome-shell/extensions/handheld@project-luma.local
-  cp -a "$root/extensions/luma-handheld/." /usr/share/gnome-shell/extensions/handheld@project-luma.local/
-  if [ -d /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas ]; then
-    glib-compile-schemas /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas
-  fi
+install -Dm644 "$root/config/desktop/dconf/db/luma.d/00-luma-desktop" /usr/share/luma-tester/profiles/desktop.dconf
+install -Dm644 "$root/config/mobile/luma-shell-handheld.dconf" /usr/share/luma-tester/profiles/mobile.dconf
+install -d /usr/share/gnome-shell/extensions/handheld@project-luma.local
+cp -a "$root/extensions/luma-handheld/." /usr/share/gnome-shell/extensions/handheld@project-luma.local/
+if [ -d /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas ]; then
+  glib-compile-schemas /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas
 fi
-printf '%s\n' "$device_class" >/etc/luma-device-class
+install -Dm755 "$root/scripts/tester/apply-profile" /usr/libexec/luma-tester-apply-profile
+install -Dm644 "$root/config/tester/luma-tester-profile.service" /usr/lib/systemd/system/luma-tester-profile.service
 install -d /etc/environment.d /etc/luma /etc/greetd /etc/systemd/system/greetd.service.d
-cat >/etc/environment.d/90-luma-tester.conf <<ENV
-LUMA_DEVICE_CLASS=$device_class
-LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
-ENV
-cat >/usr/local/bin/luma-tester-session <<SESSION
+printf '%s\n' "$target" >/etc/luma-tester-target
+cat >/usr/local/bin/luma-tester-session <<'SESSION'
 #!/bin/sh
-export LUMA_DEVICE_CLASS=$device_class
+IFS= read -r LUMA_DEVICE_CLASS </etc/luma-device-class
+export LUMA_DEVICE_CLASS
 export LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
 exec /usr/local/bin/luma-shell-session
 SESSION
@@ -44,8 +41,9 @@ GREETD
 # The new seed must create/authorize luma before graphical autologin starts.
 cat >/etc/systemd/system/greetd.service.d/cloud-init.conf <<'UNIT'
 [Unit]
-After=cloud-final.service
+After=cloud-final.service luma-tester-profile.service
 Wants=cloud-final.service
+Requires=luma-tester-profile.service
 UNIT
 cat >/etc/luma/tester-image <<IDENTITY
 LUMA_TESTER_IMAGE_VERSION=1
@@ -55,6 +53,9 @@ LUMA_HARDWARE_BACKEND=virtual
 LUMA_PHYSICAL_DEVICE=false
 IDENTITY
 cp /var/tmp/luma-tester-build/source-identity.json /etc/luma/tester-source.json
+# An explicit developer identity; retain Fedora's vendor file and release RPM.
+sed "s/@BUILD_ID@/$build_id/g" "$root/config/tester/os-release.in" >/etc/os-release.luma-tester
+mv /etc/os-release.luma-tester /etc/os-release
 rpm -qa --qf '%{NEVRA}\n' | sort >/etc/luma/tester-packages.txt
 # The preview stays awake/unlocked; it contains only a disposable developer profile.
 cat >/etc/dconf/db/luma.d/90-luma-tester <<'DCONF'
@@ -65,9 +66,9 @@ lock-enabled=false
 [org/gnome/settings-daemon/plugins/power]
 sleep-inactive-ac-type='nothing'
 DCONF
-dconf update
+/usr/libexec/luma-tester-apply-profile "$target"
 systemctl disable gdm.service 2>/dev/null || true
-systemctl enable --force sshd.service greetd.service
+systemctl enable --force sshd.service greetd.service luma-tester-profile.service
 systemctl set-default graphical.target
 # Remove the obsolete cloud web console instead of exposing another admin service.
 systemctl disable cockpit.socket 2>/dev/null || true

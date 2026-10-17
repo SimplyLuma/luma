@@ -48,6 +48,7 @@ def launch(state=None):
             self.advanced = None
             self.viewer = None
             self.graphical_ready = False
+            self.display_failure = None
 
         def label(self, text, role='body', muted=False, centered=False):
             widget = Gtk.Label(label=text, wrap=True, xalign=0.5 if centered else 0)
@@ -206,7 +207,8 @@ def launch(state=None):
             if self.viewer or not self.session.display_path.is_socket():
                 return
             self.viewer = GuestDisplay(self.session.display_path)
-            self.viewer.connect('display-error', lambda _v, message: self.status_label.set_label(message))
+            self.viewer.connect('display-error', self.display_failed)
+            self.viewer.connect('connected', lambda _v: self.reveal_display(self.session) if self.graphical_ready else None)
             self.viewer_holder.append(self.viewer)
             self.viewer.open()
             self.live_title.set_label('Luma ' + self.target.title())
@@ -216,29 +218,31 @@ def launch(state=None):
             session = self.session
             def wait_for_graphics():
                 import time
-                check = ('display=$(systemctl --user show-environment | sed -n "s/^WAYLAND_DISPLAY=//p"); '
-                         'test -n "$display" && test -S "$XDG_RUNTIME_DIR/$display" && '
-                         'pgrep -u "$(id -u)" -x gnome-shell >/dev/null')
                 try:
-                    session.wait(180)
-                    for _ in range(90):
-                        if not self.child or self.child.poll() is not None:
-                            return
-                        if subprocess.call(session.ssh(['sh', '-c', check]),
-                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
-                            # Allow the compositor to publish its first complete frame.
-                            time.sleep(1)
-                            GLib.idle_add(self.reveal_display, session)
-                            return
-                        time.sleep(1)
-                    GLib.idle_add(self.status_label.set_label, 'The graphical session is taking longer than expected. Startup details are in the workspace log.')
+                    session.wait_graphical(180)
+                    time.sleep(1)
+                    GLib.idle_add(self.reveal_display, session)
                 except Exception as exc:
-                    GLib.idle_add(self.status_label.set_label, str(exc))
+                    GLib.idle_add(self.graphics_failed, session, str(exc))
             threading.Thread(target=wait_for_graphics, daemon=True).start()
 
+        def graphics_failed(self, session, message):
+            if self.session is session:
+                self.display_failure = message
+                self.status_label.set_label(message)
+            return False
+
+        def display_failed(self, _viewer, message):
+            if _viewer is not self.viewer:
+                return
+            self.display_failure = message
+            self.status_label.set_label(message)
+            self.stack.set_visible_child_name('session')
+
         def reveal_display(self, session):
-            if self.session is session and self.running() and self.viewer and self.viewer.ready:
+            if self.session is session and self.running():
                 self.graphical_ready = True
+            if self.session is session and self.running() and self.viewer and self.viewer.ready:
                 self.return_button.set_sensitive(True)
                 self.return_button.set_label('Show Luma')
                 self.stack.set_visible_child_name('live')
@@ -309,6 +313,7 @@ def launch(state=None):
                 self.viewer_holder.remove(self.viewer)
                 self.viewer = None
             self.graphical_ready = False
+            self.display_failure = None
             self.busy = True
             self.session_title.set_label('Luma ' + self.target.title())
             self.status_label.set_label('Getting your Luma workspace ready…')
@@ -370,8 +375,8 @@ def launch(state=None):
                 self.spinner.stop()
                 self.progress.set_visible(False)
                 self.controls.set_visible(True)
-                self.status_label.set_label('Luma is paused.' if self.session.status() == 'paused' else
-                                           ('Luma is open. Make yourself at home.' if self.graphical_ready else 'Opening your Luma workspace…'))
+                self.status_label.set_label(self.display_failure or ('Luma is paused.' if self.session.status() == 'paused' else
+                                           ('Luma is open. Make yourself at home.' if self.graphical_ready else 'Opening your Luma workspace…')))
                 self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
             return True
 
@@ -408,10 +413,11 @@ def launch(state=None):
                 self.developer_status.set_label('Open Luma and connect a project first.')
                 return
             self.developer_status.set_label('Syncing your project…')
+            session, project = self.session, self.project
             def worker():
                 try:
-                    self.session.wait()
-                    self.session.sync(self.project)
+                    session.wait()
+                    session.sync(project)
                     GLib.idle_add(self.developer_status.set_label, 'Project synced. Copy the development command to start your app.')
                 except Exception as exc:
                     GLib.idle_add(self.developer_status.set_label, str(exc))

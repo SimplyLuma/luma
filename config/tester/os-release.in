@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+NAME="Luma Developer Preview"
+PRETTY_NAME="Luma Developer Preview (@BUILD_ID@)"
+ID=luma
+ID_LIKE=fedora
+VERSION_ID=44
+VERSION="Developer Preview (Fedora 44)"
+BUILD_ID="@BUILD_ID@"
+IMAGE_ID=luma-tester
+IMAGE_VERSION="@BUILD_ID@"
+VARIANT="Developer Preview"
+VARIANT_ID=developer-preview
+HOME_URL="https://simplyluma.com"

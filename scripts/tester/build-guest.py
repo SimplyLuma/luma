@@ -60,18 +60,27 @@ def tar_file(archive, source, target):
     archive.add(source, arcname=target, recursive=False)
 
 
-def create_inputs(output, pool, target, build_id):
+def create_inputs(output, pool, target, build_id, parent=None):
     commit = subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip()
     run(['git', '-C', REPO, 'diff', '--exit-code', 'HEAD', '--'], stdout=subprocess.DEVNULL)
     pins, expected_apps = source_pins()
     inputs = []
-    for pin in pins:
+    for pin in ([] if parent else pins):
         path = pool / (pin + '.rpm')
         if not path.is_file():
             raise TesterError('Missing pinned RPM: ' + str(path))
         # Check the RPM container and bind the exact bytes in the source receipt.
         run(['rpm', '-K', path], stdout=subprocess.DEVNULL)
         inputs.append({'file': path.name, 'sha256': digest(path), 'bytes': path.stat().st_size})
+    if parent:
+        if parent.get('schema') != 1 or not re.fullmatch(r'[0-9a-f]{40}', parent.get('source_commit', '')):
+            raise TesterError('Parent receipt has an unsupported schema or source identity.')
+        if {p['file'] for p in parent['rpm_inputs']} != {p + '.rpm' for p in pins}:
+            raise TesterError('Parent RPM cohort differs from current source pins.')
+        source_paths = ['config/desktop/inputs.env', 'src/prairie-core', 'src/luma-platform',
+                        'src/luma-continuity', 'packaging/rpm/prairie-core-apps.spec']
+        run(['git', '-C', REPO, 'diff', '--quiet', parent['source_commit'], commit, '--', *source_paths])
+        inputs = parent['rpm_inputs']
     source_archive = output / 'source.tar'
     with source_archive.open('wb') as stream:
         run(['git', '-C', REPO, 'archive', commit], stdout=stream)
@@ -90,6 +99,10 @@ def create_inputs(output, pool, target, build_id):
     run([sys.executable, source / 'scripts/packages/build-luma-continuity-source.py', output / 'luma-continuity.tar.gz'])
     receipt = {'schema': 1, 'source_commit': commit, 'target': target, 'build': build_id,
                'architecture': 'x86_64', 'rpm_inputs': inputs, 'expected_apps': expected_apps}
+    receipt['profiles'] = ['mobile', 'desktop']
+    if parent:
+        receipt['parent'] = {'source_commit': parent['source_commit'], 'image': parent['image'],
+                             'package_log_sha256': parent['package_log_sha256']}
     (output / 'source-identity.json').write_text(json.dumps(receipt, indent=2) + '\n')
     (output / 'expected-apps').write_text(expected_apps + '\n')
     (output / 'target').write_text(target + '\n')
@@ -97,7 +110,7 @@ def create_inputs(output, pool, target, build_id):
     payload = output / 'guest-inputs.tar'
     with tarfile.open(payload, 'w') as archive:
         archive.add(source, arcname='source')
-        for item in inputs:
+        for item in ([] if parent else inputs):
             archive.add(pool / item['file'], arcname='rpms/' + item['file'])
         for name in ('source-identity.json', 'expected-apps', 'target', 'build-id',
                      'prairie-core-apps.tar.gz', 'luma-continuity.tar.gz'):
@@ -120,13 +133,14 @@ def build(args):
     if marker.exists() and json.loads(marker.read_text()) != identity:
         raise TesterError('Resume source/target/build differs from the saved builder state.')
     marker.write_text(json.dumps(identity, indent=2))
-    receipt, payload = create_inputs(output, args.rpm_pool.resolve(), args.target, args.build_id)
-    base = json.loads((REPO / 'config/tester/fedora-cloud.json').read_text())['x86_64']
+    parent = json.loads(args.parent_receipt.read_text()) if args.parent_receipt else None
+    receipt, payload = create_inputs(output, args.rpm_pool.resolve(), args.target, args.build_id, parent)
+    base = parent['image'] if parent else json.loads((REPO / 'config/tester/fedora-cloud.json').read_text())['x86_64']
     if args.base.stat().st_size != base['bytes'] or digest(args.base) != base['sha256']:
-        raise TesterError('Fedora base does not match the source-pinned image.')
+        raise TesterError('Base does not match its pinned image or parent build receipt.')
     manifest = {'schema': 1, 'id': 'builder-' + args.target + '-' + args.build_id,
                 'target': args.target, 'arch': 'x86_64', 'boot': 'bios', 'user': 'luma',
-                'cloud_init': True, 'build': 'Fedora 44 disposable Luma image builder',
+                'cloud_init': True, 'build': 'Disposable Luma image builder',
                 'image': {'url': args.base.resolve().as_uri(), 'sha256': base['sha256'], 'bytes': base['bytes']}}
     manifest_path = output / 'builder.json'
     manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -151,19 +165,28 @@ def build(args):
             guest(session, ['sudo', 'tar', '-xf', '-', '-C', '/var/tmp/luma-tester-build'], stdin=stream)
         print('Installing pinned Luma components and building shared apps from source…', flush=True)
         with (output / 'guest-package-build.log').open('a') as stream:
-            guest(session, ['sudo', 'bash', '/var/tmp/luma-tester-build/source/scripts/tester/guest-install.sh'],
-                  stdout=stream, stderr=subprocess.STDOUT, timeout=3600)
+            if parent:
+                pins, expected_apps = source_pins()
+                guest(session, ['rpm', '-q', *pins, expected_apps], stdout=stream, stderr=subprocess.STDOUT)
+                guest(session, ['sudo', 'bash', '/var/tmp/luma-tester-build/source/scripts/tester/guest-configure.sh',
+                                args.target, args.build_id], stdout=stream, stderr=subprocess.STDOUT)
+            else:
+                guest(session, ['sudo', 'bash', '/var/tmp/luma-tester-build/source/scripts/tester/guest-install.sh'],
+                      stdout=stream, stderr=subprocess.STDOUT, timeout=3600)
         guest(session, ['sudo', 'cp', '/etc/luma/tester-packages.txt', '/tmp/tester-packages.txt'])
         with (output / 'installed-packages.txt').open('wb') as stream:
             guest(session, ['cat', '/tmp/tester-packages.txt'], stdout=stream)
         # Retain normal package check output and the source-built RPM outside the image.
-        with (output / 'shared-apps-artifacts.tar').open('wb') as stream:
-            guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/app-rpmbuild',
-                            'RPMS', 'SRPMS'], stdout=stream)
+        if not parent:
+            with (output / 'shared-apps-artifacts.tar').open('wb') as stream:
+                guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/app-rpmbuild',
+                                'RPMS', 'SRPMS'], stdout=stream)
         cleanup = r'''set -eu
           test -f /etc/luma/tester-image
+          systemctl stop greetd.service
           cloud-init clean --logs --machine-id
           rm -f /etc/ssh/ssh_host_* /home/luma/.ssh/authorized_keys /home/luma/.bash_history /root/.bash_history
+          rm -rf /home/luma/.config /home/luma/.cache /home/luma/.local /home/luma/Projects
           rm -f /var/lib/systemd/random-seed
           rm -rf /var/tmp/luma-tester-build /var/log/journal/* /var/lib/cloud/seed
           fstrim -av || true
@@ -174,7 +197,7 @@ def build(args):
         child.wait(timeout=120)
         if child.returncode != 0:
             raise TesterError('Builder QEMU exited with status ' + str(child.returncode))
-        disk = output / ('luma-' + args.target + '-x86_64.qcow2')
+        disk = output / 'luma-preview-x86_64.qcow2'
         if disk.exists():
             raise TesterError('Refusing to overwrite exported guest disk.')
         run(['qemu-img', 'convert', '-c', '-O', 'qcow2', session.disk, disk])
@@ -183,6 +206,13 @@ def build(args):
                      build='Luma ' + args.target.title() + ' developer preview ' + args.build_id)
         final['image'] = {'url': disk.as_uri(), 'sha256': digest(disk), 'bytes': disk.stat().st_size}
         (output / 'image.json').write_text(json.dumps(final, indent=2) + '\n')
+        catalog = output / 'catalog'
+        catalog.mkdir(exist_ok=True)
+        for target in ('mobile', 'desktop'):
+            experience = dict(final)
+            experience.update(id='luma-' + target + '-x86-' + args.build_id, target=target,
+                              build='Luma ' + target.title() + ' developer preview ' + args.build_id)
+            (catalog / (target + '.json')).write_text(json.dumps(experience, indent=2) + '\n')
         receipt['image'] = final['image']
         receipt['package_log_sha256'] = digest(output / 'guest-package-build.log')
         receipt['qualification'] = 'built; fresh-session shell/app qualification still required'
@@ -206,6 +236,7 @@ def main():
     parser.add_argument('--target', choices=('mobile', 'desktop'), default='mobile')
     parser.add_argument('--build-id', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--parent-receipt', type=Path, help='Reuse an unchanged, previously built Luma package cohort')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--preflight', action='store_true')
     args = parser.parse_args()

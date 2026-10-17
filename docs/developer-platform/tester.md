@@ -19,7 +19,9 @@ Choose **Try Luma** or **Develop for Luma**, then **Mobile** or **Desktop**.
 Mobile starts selected. Click **Open Luma Mobile** (or Desktop). The launcher
 chooses a native architecture image from its catalog when available. On first use
 it downloads/verifies the disk and creates a private key and writable overlay;
-subsequent runs keep that workspace. The guest opens in QEMU's own window.
+subsequent runs keep that workspace. The guest appears inside the LumaUI window. Its live display uses a private Unix
+socket; pointer, keyboard and scrolling operate the actual guest. Ctrl+Alt
+returns focus to launcher controls.
 Mobile requests a 432×960 portrait output; the image's compositor must honor the
 virtual output and use the handheld device class. The image determines scaling.
 
@@ -45,7 +47,7 @@ luma-tester start /path/to/mobile.json --memory 4096 --cpus 4
 `start` stays in the foreground for the guest lifetime. In a second terminal:
 
 ```sh
-luma-tester wait /path/to/mobile.json --timeout 300
+luma-tester wait /path/to/mobile.json --graphical --timeout 300
 luma-tester ssh /path/to/mobile.json uname -m
 luma-tester status /path/to/mobile.json
 luma-tester pause /path/to/mobile.json
@@ -54,6 +56,8 @@ luma-tester screenshot /path/to/mobile.json /tmp/luma-screen.ppm
 luma-tester stop /path/to/mobile.json
 ```
 
+`--embedded` exposes a private Unix display socket for the LumaUI client.
+The ordinary CLI `start` still opens QEMU's own GTK window for diagnostics.
 `--headless` removes the window and keeps QMP screenshots and SSH available.
 No unauthenticated VNC server is started. `--software` forces TCG for diagnostics.
 For a custom firmware location use `start ... --firmware /absolute/path`.
@@ -74,7 +78,7 @@ luma-tester ssh /path/to/mobile.json ls Projects/app
 luma-tester dev /path/to/mobile.json ./my-app -- python3 -m my_app
 ```
 
-`dev` waits for SSH, syncs, then starts `luma-tester-app.service` in the guest user
+`dev` waits for SSH and the real Wayland session, syncs, then starts `luma-tester-app.service` in the guest user
 manager. It scans source metadata once per second and repeats sync/restart after
 changes. Ctrl+C stops the watcher; the guest and app stay available for inspection.
 This is a process restart, not in-process hot reload. Watcher sync does not remove

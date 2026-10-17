@@ -180,7 +180,9 @@ class Session:
             config = {'users': [{'name': user, 'groups': ['wheel'], 'shell': '/bin/bash',
                                  'lock_passwd': True, 'sudo': ['ALL=(ALL) NOPASSWD:ALL'],
                                  'ssh_authorized_keys': [Path(str(self.key) + '.pub').read_text().strip()]}],
-                      'ssh_pwauth': False, 'disable_root': True}
+                      'ssh_pwauth': False, 'disable_root': True,
+                      'write_files': [{'path': '/etc/luma-tester-target', 'permissions': '0644',
+                                       'content': self.manifest['target'] + '\n'}]}
             # cloud-init accepts JSON as a YAML subset.
             (self.directory / 'user-data').write_text('#cloud-config\n' + json.dumps(config))
             (self.directory / 'meta-data').write_text(json.dumps({'instance-id': self.manifest['id']}))
@@ -333,6 +335,20 @@ class Session:
             time.sleep(2)
         raise TesterError('Guest SSH was not ready; inspect console.log. Last result: ' + last_error)
 
+    def wait_graphical(self, timeout=180):
+        """Wait for the real graphical session, not merely an open SSH port."""
+        self.wait(timeout)
+        deadline = time.monotonic() + timeout
+        check = ('display=$(systemctl --user show-environment | sed -n "s/^WAYLAND_DISPLAY=//p"); '
+                 'test -n "$display" && test -S "$XDG_RUNTIME_DIR/$display" && '
+                 'pgrep -u "$(id -u)" -x gnome-shell >/dev/null')
+        while time.monotonic() < deadline:
+            if subprocess.call(self.ssh(['sh', '-c', check]), stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL) == 0:
+                return
+            time.sleep(1)
+        raise TesterError('Luma graphical session was not ready; inspect the guest greetd journal.')
+
     def dev(self, source, command, once=False):
         """Sync/restart a user app; graphical environment comes from guest systemd."""
         if not command:
@@ -340,7 +356,7 @@ class Session:
         source = Path(source).resolve()
         if not source.is_dir() or source in (Path('/'), Path.home()):
             raise TesterError('Choose an application source directory.')
-        self.wait()
+        self.wait_graphical()
         previous = None
         while True:
             snapshot = []

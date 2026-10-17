@@ -114,3 +114,19 @@ SSH host keys, instance identity and cloud-init state are cleaned before export.
 This is a developer image with passwordless guest sudo and graphical autologin;
 keep it separate from device installers and production OS releases. The build
 receipt explicitly remains unqualified until fresh-session shell/app tests pass.
+
+
+The shared image carries both presentation profiles. Its local catalog contains
+`mobile.json` and `desktop.json` pointing at the **same** qcow2 digest. The tester
+writes the selected target into the per-session cloud-init seed; a first-boot
+service applies that profile before greetd starts. Each experience keeps its own
+private writable disk and developer key while sharing the verified base cache.
+The guest identifies itself as **Luma Developer Preview**, with its actual build
+id, rather than claiming a production Nightly or device release.
+
+For a profile-only follow-up, `--parent-receipt /path/to/build-receipt.json` may
+reuse a prior producer image. The producer checks the parent image digest, exact
+RPM cohort, and unchanged shared app/platform source, then verifies installed
+NEVRAs inside the new builder. It records the parent image and normal package-log
+hash in the new receipt. Changes to app/platform source require a normal rebuild;
+profile-only derivation cannot silently substitute untested app code.

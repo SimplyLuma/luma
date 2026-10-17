@@ -198,6 +198,21 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(session.key.stat().st_mode & 0o777, 0o600)
         self.assertTrue((session.directory / 'seed.iso').exists())
 
+    def test_mobile_and_desktop_share_base_but_keep_separate_profiles(self):
+        mobile = self.fixture_disk()
+        mobile.prepare(lambda _: None)
+        self.m.update(id='desktop-test', target='desktop')
+        desktop = self.save()
+        desktop.prepare(lambda _: None)
+        self.assertEqual(mobile.base, desktop.base)
+        self.assertNotEqual(mobile.disk, desktop.disk)
+        self.assertNotEqual(mobile.key.read_bytes(), desktop.key.read_bytes())
+        for session, target in [(mobile, 'mobile'), (desktop, 'desktop')]:
+            text = (session.directory / 'user-data').read_text()
+            data = json.loads(text.split('\n', 1)[1])
+            marker = next(item for item in data['write_files'] if item['path'] == '/etc/luma-tester-target')
+            self.assertEqual(marker['content'], target + '\n')
+
     def test_prepare_refuses_silent_rebase(self):
         session = self.fixture_disk()
         session.prepare(lambda _: None)
@@ -237,7 +252,7 @@ class SessionTests(unittest.TestCase):
 
     def test_dev_once_restarts_guest_service(self):
         session = self.save()
-        with patch.object(session, 'wait'), patch.object(session, 'sync') as sync, patch.object(session, 'ssh', side_effect=lambda argv: ['ssh', *argv]), patch('subprocess.call'), patch('luma_tester.core.run') as run:
+        with patch.object(session, 'wait_graphical'), patch.object(session, 'sync') as sync, patch.object(session, 'ssh', side_effect=lambda argv: ['ssh', *argv]), patch('subprocess.call'), patch('luma_tester.core.run') as run:
             session.dev(self.root, ['python3', '-m', 'example'], once=True)
         sync.assert_called_once_with(self.root)
         argv = run.call_args.args[0]

@@ -109,3 +109,22 @@ used that source without altering shared refs or unrelated worktrees.
   transaction is running, followed by normal .104 app RPM build/checks. Only this
   owned disposable VM is active for the task. Do not mistake a builder boot for
   final-image graphical acceptance.
+
+- Embedded GTK4 display implemented using GVnc1.5 over a private QEMU Unix
+  socket (no TCP listener). Pixel-for-pixel parity with QMP's real screenshot,
+  coordinate mapping and input dispatch passed in
+  dev-luma-tester-live-display-39d2d2aa.service. The GUI now hosts this viewer in
+  the LumaUI frame; source sync example added under examples/tester-hello.
+  End-to-end full guest GUI qualification remains pending the actual image.
+
+- r3 completed normally (exit0, 12m35s, 4 GiB peak). Shared apps .104 built from
+  source with full normal RPM `%check`, then installed. Exported 1466236928-byte
+  mobile base SHA2564a2a394f87b167f5daa420d8e0f0dec671ffc81c4344a3690b8eb1ca973b069f.
+  Receipt /srv/dev/accounts/second/experiments/luma-tester-20261017/mobile-image-r3/build-receipt.json;
+  package log SHA256d6de30cac03f32843d489914dccefe3f4d63e6a9b9a374c07265e553e9114384.
+  No package checks skipped. The build alone is not graphical guest qualification.
+- Shared-image profile selection now implemented: mobile/desktop catalogs share
+  one base digest, target marker in per-instance NoCloud seed, profile service
+  runs before greetd. Profile-only derivation checks the parent image/cohort and
+  unchanged app/platform source. GUI/dev watcher now wait for a real Wayland
+  session before exposing the display or launching a graphical app.

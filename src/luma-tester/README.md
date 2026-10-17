@@ -6,13 +6,14 @@ matching host/guest architectures use KVM when accessible. Other combinations us
 QEMU TCG and can be much slower. macOS and Windows host packaging are future work.
 
 The launcher requires the shared LumaUI runtime: its AppWindow, islands, cards,
-type scale and icons. It does not offer a stock GTK fallback. The guest renders
-in QEMU's own GTK window, preserving real OS/app rendering and input.
-This initial version does not embed the guest display in the launcher.
+type scale and icons. It displays the real guest inside that LumaUI frame through
+GVnc and GTK4, over a private Unix socket. It does not use a stock GTK launcher,
+a GTK3 viewer, browser rendering, or screenshot polling. Pointer, keyboard and
+scroll input go to the real QEMU guest. Ctrl+Alt returns focus to the launcher.
 
 Install distribution packages for Python 3.11+, PyGObject, GTK >= 4.18, libadwaita >= 1.7,
 QEMU system emulation (including its GTK display backend), qemu-img, xorriso,
-OpenSSH and rsync, plus `luma-developer-platform` (including LumaUI and its Python
+OpenSSH, rsync, GVnc >= 1.5 (the `gvnc` package, including introspection data), plus `luma-developer-platform` (including LumaUI and its Python
 `luma_appkit` bindings). UEFI images also require edk2 firmware. Fedora splits ARM
 system emulation into a separate package. No root daemon or libvirt is required.
 
@@ -26,7 +27,8 @@ src/luma-tester/luma-tester start /path/to/mobile.json
 
 Or install with `python3 -m pip install ./src/luma-tester` in your chosen Python
 environment with access to distribution PyGObject. The package installs the
-`luma-tester` command and desktop entry. QEMU and GTK remain system dependencies.
+`luma-tester` command and desktop entry. QEMU, GVnc, GTK and LumaUI remain native
+runtime dependencies. See [runtime notices](THIRD-PARTY.md).
 
 ## Guest images
 
@@ -65,8 +67,8 @@ Use `--state` before the subcommand. Different simultaneous guests need differen
 is enabled. No host filesystem, microphone, camera or USB device is shared by default.
 
 `stop` requests an ACPI shutdown. Guest shutdown support is required; pause/resume
-are QMP controls. Closing QEMU's guest window terminates the VM, so shut down from
-the guest first to let apps save their work. The GUI stays open while its guest
+are QMP controls. The standalone CLI can still open QEMU's own GTK display; closing that window
+terminates its VM. Shut down from the guest first to let apps save their work. The GUI stays open while its guest
 or preparation process is active. No automatic overlay deletion is provided.
 
 For screenshots, headless sessions, source sync, hot fixes and local agents, see
@@ -91,3 +93,12 @@ PYTHONPATH=src/luma-tester:src/luma-platform/appkit xvfb-run -a python3 src/luma
 The flow test uses in-memory desktop settings. If ImageMagick and xdotool are
 available it also captures welcome, target selection and narrow/dark screenshots
 in `DEV_ARTIFACT_DIR` (otherwise a temporary directory).
+
+The embedded display check requires ImageMagick and the native runtime:
+
+```sh
+PYTHONPATH=src/luma-tester xvfb-run -a python3 src/luma-tester/tests/display_smoke.py
+```
+
+It connects to a real private QEMU socket and compares the GTK4 framebuffer pixels
+with QEMU's own screenshot, then checks coordinate mapping and input dispatch.

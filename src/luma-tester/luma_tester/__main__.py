@@ -45,6 +45,7 @@ def main():
             p.add_argument('command', nargs=argparse.REMAINDER)
         elif action == 'wait':
             p.add_argument('--timeout', type=int, default=180)
+            p.add_argument('--graphical', action='store_true')
     args = parser.parse_args()
     try:
         if args.action == 'gui':
@@ -101,7 +102,7 @@ def main():
             command = args.command[1:] if args.command[:1] == ['--'] else args.command
             session.dev(args.source, command, args.once)
         elif args.action == 'wait':
-            session.wait(args.timeout)
+            (session.wait_graphical if args.graphical else session.wait)(args.timeout)
     except KeyboardInterrupt:
         return 130
     except (TesterError, ImportError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:

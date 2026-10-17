@@ -215,6 +215,10 @@ class GuestDisplay(Gtk.Picture):
     def key_pressed(self, _controller, key, _code, state):
         if not self.ready:
             return False
+        if key in (Gdk.KEY_Control_L, Gdk.KEY_Control_R):
+            state |= Gdk.ModifierType.CONTROL_MASK
+        if key in (Gdk.KEY_Alt_L, Gdk.KEY_Alt_R):
+            state |= Gdk.ModifierType.ALT_MASK
         if state & Gdk.ModifierType.CONTROL_MASK and state & Gdk.ModifierType.ALT_MASK:
             self.release_input()
             self.get_root().child_focus(Gtk.DirectionType.TAB_FORWARD)

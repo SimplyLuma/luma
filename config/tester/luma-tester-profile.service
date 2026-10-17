@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Select Luma Tester presentation from the local session seed
+After=cloud-final.service
+Before=greetd.service
+ConditionPathExists=/etc/luma/tester-image
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-tester-apply-profile
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

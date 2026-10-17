@@ -20,3 +20,5 @@ luma_tester = ["tester.css"]
 
 [tool.setuptools.data-files]
 "share/applications" = ["io.luma.Tester.desktop"]
+
+"share/doc/luma-tester" = ["THIRD-PARTY.md"]
