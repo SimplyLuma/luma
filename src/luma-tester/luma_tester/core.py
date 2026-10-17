@@ -294,7 +294,7 @@ class Session:
         if self.status() == 'stopped':
             raise TesterError('Start the guest before connecting.')
         port = json.loads((self.directory / 'connection.json').read_text())['port']
-        argv = ['ssh', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
+        argv = ['ssh', '-F', '/dev/null', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
                 '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=5',
                 '-o', 'StrictHostKeyChecking=accept-new', '-o',
                 'UserKnownHostsFile=' + str(self.directory / 'known_hosts'),
@@ -315,14 +315,18 @@ class Session:
 
     def wait(self, timeout=180):
         deadline = time.monotonic() + timeout
+        last_error = 'guest is still booting'
         while time.monotonic() < deadline:
             try:
-                if subprocess.call(self.ssh(['true']), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                result = subprocess.run(self.ssh(['true']), stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE, text=True)
+                if result.returncode == 0:
                     return
-            except TesterError:
-                pass
+                last_error = result.stderr.strip()[-1024:] or 'SSH exited ' + str(result.returncode)
+            except TesterError as exc:
+                last_error = str(exc)
             time.sleep(2)
-        raise TesterError('Guest SSH was not ready within the timeout; inspect console.log.')
+        raise TesterError('Guest SSH was not ready; inspect console.log. Last result: ' + last_error)
 
     def dev(self, source, command, once=False):
         """Sync/restart a user app; graphical environment comes from guest systemd."""

@@ -87,3 +87,11 @@ used that source without altering shared refs or unrelated worktrees.
   checksum signature verified against the installed Fedora public key. Reusing
   existing pinned native RPMs; current shared apps .104 will be built from source.
   Guest builder/profile files and optional desktop session capability now in scope.
+
+- Builder r1 booted under KVM and cloud-init completed at 7.53 seconds. Direct
+  authenticated SSH succeeded, but the admitted job's inherited SSH config made
+  its client exit255 before network connect. An isolated `ssh -F /dev/null`
+  succeeded inside the same admission/sandbox policy. Corrected Session SSH to
+  ignore host-specific client config and retain an actionable last wait error.
+  Interrupted only this owned builder safely; r1 preserved, r2 will use the new
+  committed source identity rather than silently rebasing its build receipt.

@@ -145,6 +145,7 @@ class SessionTests(unittest.TestCase):
             argv = session.ssh(['echo', '$(do-not-run); spaces'])
         self.assertEqual(argv[-1], "echo '$(do-not-run); spaces'")
         self.assertIn('StrictHostKeyChecking=accept-new', argv)
+        self.assertEqual(argv[1:3], ['-F', '/dev/null'])
         self.assertIn('2229', argv)
         self.assertNotIn('StrictHostKeyChecking=no', argv)
 
