@@ -1,0 +1,339 @@
+# SPDX-License-Identifier: Apache-2.0
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+from luma_tester.core import Session, TesterError, digest, read_manifest
+from luma_tester.__main__ import main
+
+
+class SessionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='luma-tester-tests-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.runtime = self.root / 'runtime'
+        self.runtime.mkdir(mode=0o700)
+        env = patch.dict(os.environ, {'XDG_RUNTIME_DIR': str(self.runtime)})
+        env.start()
+        self.addCleanup(env.stop)
+        self.source = self.root / 'source.qcow2'
+        self.source.write_bytes(b'fixture')
+        self.m = {'schema': 1, 'id': 'mobile-test', 'target': 'mobile', 'arch': 'x86_64',
+                  'build': 'test-only-no-os', 'boot': 'bios', 'cloud_init': True, 'user': 'luma',
+                  'image': {'url': self.source.as_uri(), 'sha256': digest(self.source), 'bytes': self.source.stat().st_size}}
+        self.path = self.root / 'manifest.json'
+        self.save()
+
+    def save(self):
+        self.path.write_text(json.dumps(self.m))
+        return Session(self.path, self.root / 'state')
+
+    def fixture_disk(self):
+        if not shutil.which('qemu-img'):
+            self.skipTest('qemu-img not installed')
+        self.source.unlink()
+        subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', str(self.source), '32M'], check=True)
+        self.m['image'].update(sha256=digest(self.source), bytes=self.source.stat().st_size)
+        return self.save()
+
+    def test_https_redirect_cannot_downgrade(self):
+        from urllib.request import Request
+        from luma_tester.core import HTTPSRedirects
+        request = Request('https://example.org/guest.qcow2')
+        with self.assertRaises(TesterError):
+            HTTPSRedirects().redirect_request(request, None, 302, 'Found', {}, 'http://example.org/guest.qcow2')
+
+    def test_manifest_rejects_path_traversal(self):
+        self.m['id'] = '../../other'
+        with self.assertRaises(TesterError):
+            self.save()
+
+    def test_manifest_rejects_insecure_url(self):
+        self.m['image']['url'] = 'http://example.org/disk'
+        with self.assertRaises(TesterError):
+            self.save()
+
+    def test_manifest_rejects_incomplete_identity(self):
+        self.m['build'] = ''
+        with self.assertRaises(TesterError):
+            self.save()
+
+    def test_manifest_rejects_arm_bios(self):
+        self.m['arch'] = 'aarch64'
+        with self.assertRaises(TesterError):
+            self.save()
+
+    def test_manifest_rejects_size_and_digest(self):
+        for key, value in [('bytes', True), ('bytes', -1), ('sha256', 'not-a-hash')]:
+            with self.subTest(key=key, value=value):
+                old = self.m['image'][key]
+                self.m['image'][key] = value
+                with self.assertRaises(TesterError):
+                    self.save()
+                self.m['image'][key] = old
+
+    def test_runtime_must_be_private(self):
+        self.runtime.chmod(0o755)
+        with self.assertRaises(TesterError):
+            self.save()
+
+    def test_session_lock_excludes_second_owner(self):
+        session = self.save()
+        with session.lock():
+            with self.assertRaises(TesterError):
+                with self.save().lock():
+                    pass
+
+    def test_different_images_have_separate_locks(self):
+        first = self.save()
+        self.m['id'] = 'other'
+        second = self.save()
+        with first.lock(), second.lock():
+            self.assertNotEqual(first.qmp_path, second.qmp_path)
+
+    def test_portrait_and_desktop_modes(self):
+        command = self.save().command(software=True)
+        self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', command)
+        self.assertIn('tcg,thread=multi', command)
+        self.m['target'] = 'desktop'
+        self.assertIn('virtio-gpu-pci,edid=on,xres=1440,yres=900', self.save().command())
+
+    def test_cross_arch_never_uses_kvm(self):
+        self.m.update(arch='aarch64', boot='uefi')
+        with patch('platform.machine', return_value='x86_64'), patch('os.access', return_value=True):
+            argv = self.save().command(firmware=str(self.source))
+        self.assertIn('qemu-system-aarch64', argv)
+        self.assertIn('tcg,thread=multi', argv)
+        self.assertNotIn('kvm', argv)
+
+    def test_native_uses_kvm_if_accessible(self):
+        with patch('platform.machine', return_value='x86_64'), patch('os.access', return_value=True):
+            argv = self.save().command()
+        self.assertIn('kvm', argv)
+        self.assertEqual(argv[argv.index('-cpu') + 1], 'host')
+
+    def test_qemu_paths_are_json_not_drive_options(self):
+        session = Session(self.path, self.root / 'spaces,comma' / 'state')
+        command = session.command()
+        block = json.loads(command[command.index('-blockdev') + 1])
+        self.assertEqual(block['file']['filename'], str(session.disk))
+        self.assertIn('hostfwd=tcp:127.0.0.1:2228-:22', ' '.join(command))
+        self.assertNotIn('-virtfs', command)
+
+    def test_resource_bounds(self):
+        for options in [dict(port=22), dict(memory=12), dict(cpus=1024)]:
+            with self.assertRaises(TesterError):
+                self.save().command(**options)
+
+    def test_unprepared_status_is_stopped(self):
+        self.assertEqual(self.save().status(), 'stopped')
+
+    def test_ssh_quotes_guest_arguments_and_pins_hosts(self):
+        session = self.save()
+        session.directory.mkdir(parents=True)
+        (session.directory / 'connection.json').write_text('{"port":2229}')
+        with patch.object(session, 'status', return_value='running'):
+            argv = session.ssh(['echo', '$(do-not-run); spaces'])
+        self.assertEqual(argv[-1], "echo '$(do-not-run); spaces'")
+        self.assertIn('StrictHostKeyChecking=accept-new', argv)
+        self.assertIn('2229', argv)
+        self.assertNotIn('StrictHostKeyChecking=no', argv)
+
+    def test_sync_rejects_home_or_root(self):
+        session = self.save()
+        for source in [Path.home(), Path('/')]:
+            with self.assertRaises(TesterError):
+                session.sync(source)
+
+    def test_sync_never_deletes_guest_and_excludes_secrets(self):
+        session = self.save()
+        with patch.object(session, 'ssh', return_value=['ssh', '-p', '2228', 'luma@127.0.0.1']), patch('luma_tester.core.run') as run:
+            session.sync(self.root)
+        args = run.call_args_list[-1].args[0]
+        self.assertNotIn('--delete', args)
+        self.assertIn('--exclude=.env.*', args)
+        self.assertIn('--safe-links', args)
+
+    def test_prepare_rejects_changed_bytes(self):
+        session = self.fixture_disk()
+        self.m['image']['sha256'] = '0' * 64
+        session = self.save()
+        with self.assertRaisesRegex(TesterError, 'SHA-256 mismatch'):
+            session.prepare(lambda _: None)
+        self.assertFalse(session.disk.exists())
+        self.assertFalse(session.base.exists())
+        self.assertEqual(list(session.base.parent.iterdir()), [])
+
+    def test_prepare_rejects_oversized_download(self):
+        self.fixture_disk()
+        self.m['image']['bytes'] = 1
+        session = self.save()
+        with self.assertRaisesRegex(TesterError, 'exceeds declared'):
+            session.prepare(lambda _: None)
+        self.assertFalse(session.base.exists())
+
+    def test_prepare_persists_overlay_and_key(self):
+        session = self.fixture_disk()
+        original = digest(self.source)
+        session.prepare(lambda _: None)
+        overlay_inode = session.disk.stat().st_ino
+        key = session.key.read_bytes()
+        session.prepare(lambda _: None)
+        self.assertEqual(session.disk.stat().st_ino, overlay_inode)
+        self.assertEqual(session.key.read_bytes(), key)
+        self.assertEqual(digest(self.source), original)
+        info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(session.disk)]))
+        self.assertEqual(info['backing-filename'], str(session.base))
+        self.assertEqual(session.directory.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(session.key.stat().st_mode & 0o777, 0o600)
+        self.assertTrue((session.directory / 'seed.iso').exists())
+
+    def test_prepare_refuses_silent_rebase(self):
+        session = self.fixture_disk()
+        session.prepare(lambda _: None)
+        self.m['build'] = 'different-build'
+        with self.assertRaisesRegex(TesterError, 'another image'):
+            self.save().prepare(lambda _: None)
+
+    def test_corrupted_cache_is_rejected(self):
+        session = self.fixture_disk()
+        session.prepare(lambda _: None)
+        session.base.chmod(0o600)
+        session.base.write_bytes(b'corrupt')
+        with self.assertRaisesRegex(TesterError, 'Cached image changed'):
+            session.prepare(lambda _: None)
+
+    def test_backing_file_image_is_rejected(self):
+        self.fixture_disk()
+        backing = self.root / 'backed.qcow2'
+        subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2', '-b', str(self.source), str(backing)], check=True)
+        self.m['image'].update(url=backing.as_uri(), sha256=digest(backing), bytes=backing.stat().st_size)
+        with self.assertRaisesRegex(TesterError, 'standalone'):
+            self.save().prepare(lambda _: None)
+
+    def test_cli_manifest_and_dry_run(self):
+        self.fixture_disk()
+        output = self.root / 'export.json'
+        argv = ['luma-tester', 'manifest', str(self.source), '--output', str(output), '--id', 'desktop-test',
+                '--target', 'desktop', '--arch', 'x86_64', '--boot', 'bios', '--build', 'fixture']
+        with patch('sys.argv', argv), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(), 0)
+        self.assertEqual(read_manifest(output)['target'], 'desktop')
+        buffer = io.StringIO()
+        with patch('sys.argv', ['luma-tester', '--state', str(self.root / 'dry'), 'start', str(output), '--dry-run']), contextlib.redirect_stdout(buffer):
+            self.assertEqual(main(), 0)
+        self.assertIn('qemu-system-x86_64', json.loads(buffer.getvalue()))
+        self.assertFalse((self.root / 'dry').exists())
+
+    def test_dev_once_restarts_guest_service(self):
+        session = self.save()
+        with patch.object(session, 'wait'), patch.object(session, 'sync') as sync, patch.object(session, 'ssh', side_effect=lambda argv: ['ssh', *argv]), patch('subprocess.call'), patch('luma_tester.core.run') as run:
+            session.dev(self.root, ['python3', '-m', 'example'], once=True)
+        sync.assert_called_once_with(self.root)
+        argv = run.call_args.args[0]
+        self.assertIn('--property=WorkingDirectory=%h/Projects/app', argv)
+        self.assertEqual(argv[-3:], ['python3', '-m', 'example'])
+
+    def test_manifest_wrong_types_report_errors(self):
+        for value in [[], None, 42]:
+            self.path.write_text(json.dumps(value))
+            with self.assertRaises(TesterError):
+                read_manifest(self.path)
+        for name in ('id', 'user', 'arch', 'build'):
+            original = self.m[name]
+            self.m[name] = []
+            with self.assertRaises(TesterError):
+                self.save()
+            self.m[name] = original
+
+    def test_external_data_image_is_rejected(self):
+        self.fixture_disk()
+        external = self.root / 'external.qcow2'
+        subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-o',
+                        'data_file=' + str(self.root / 'data.raw'), str(external), '32M'], check=True)
+        self.m['image'].update(url=external.as_uri(), sha256=digest(external), bytes=external.stat().st_size)
+        with self.assertRaisesRegex(TesterError, 'standalone'):
+            self.save().prepare(lambda _: None)
+
+    def test_cli_start_holds_lock_and_exits_cleanly(self):
+        if not shutil.which('qemu-system-x86_64'):
+            self.skipTest('QEMU x86 system emulator not installed')
+        import socket
+        import sys
+        session = self.fixture_disk()
+        original = digest(self.source)
+        with socket.socket() as socket_for_port:
+            socket_for_port.bind(('127.0.0.1', 0))
+            port = socket_for_port.getsockname()[1]
+        log = open(self.root / 'cli.log', 'w')
+        self.addCleanup(log.close)
+        proc = subprocess.Popen([sys.executable, '-m', 'luma_tester', '--state', str(session.root),
+                                 'start', str(self.path), '--headless', '--software', '--cpus', '1',
+                                 '--memory', '1024', '--port', str(port)], stdout=log, stderr=log)
+        def finish():
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=10)
+        self.addCleanup(finish)
+        deadline = time.monotonic() + 10
+        while session.status() == 'stopped':
+            if proc.poll() is not None or time.monotonic() > deadline:
+                self.fail('CLI startup failed: ' + (self.root / 'cli.log').read_text())
+            time.sleep(0.05)
+        with self.assertRaises(TesterError):
+            with session.lock():
+                pass
+        # A terminated supervisor forwards termination and reaps its QEMU child.
+        proc.terminate()
+        proc.wait(timeout=10)
+        self.assertFalse(session.qmp_path.exists())
+        self.assertEqual(digest(self.source), original)
+        self.assertTrue(session.disk.exists())
+        with session.lock():
+            pass
+
+    def test_real_qemu_qmp_controls_and_screenshot(self):
+        if not shutil.which('qemu-system-x86_64'):
+            self.skipTest('QEMU x86 system emulator not installed')
+        session = self.fixture_disk()
+        session.prepare(lambda _: None)
+        argv = session.command(headless=True, software=True, memory=1024, cpus=1)
+        # No OS is installed: this tests the actual emulator/control path only.
+        argv += ['-S']
+        log = open(self.root / 'qemu.log', 'w')
+        self.addCleanup(log.close)
+        proc = subprocess.Popen(argv, stdout=log, stderr=log)
+        def finish():
+            if proc.poll() is None:
+                proc.terminate()
+            proc.wait(timeout=10)
+        self.addCleanup(finish)
+        deadline = time.monotonic() + 10
+        while not session.qmp_path.exists():
+            if proc.poll() is not None or time.monotonic() > deadline:
+                self.fail('QEMU startup failed: ' + (self.root / 'qemu.log').read_text())
+            time.sleep(0.05)
+        self.assertEqual(session.status(), 'prelaunch')
+        session.qmp('cont')
+        self.assertEqual(session.status(), 'running')
+        session.qmp('stop')
+        self.assertEqual(session.status(), 'paused')
+        path = session.screenshot(self.root / 'screen.ppm')
+        self.assertTrue(path.read_bytes().startswith(b'P6'))
+        with self.assertRaises(TesterError):
+            session.screenshot(path)
+        session.qmp('quit')
+        self.assertEqual(proc.wait(timeout=10), 0)
+
+
+if __name__ == '__main__':
+    unittest.main()

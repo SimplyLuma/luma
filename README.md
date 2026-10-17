@@ -34,6 +34,14 @@ Desktop, tablet and mobile development share one platform and application tree. 
 
 See [platforms and device profiles](docs/platforms.md) for navigation and support boundaries. Applications use GTK, libadwaita, standard Linux interfaces and portable packaging. Android compatibility is an optional isolated subsystem, based on Waydroid; host applications do not require it.
 
+## Preview and develop in a VM
+
+[Luma Tester](src/luma-tester/README.md) provides a Linux launcher for mobile and
+desktop QEMU developer images, with source sync and app restarts for local coding
+agents. It supports x86_64 and aarch64 guest profiles. This initial launcher
+requires an explicitly selected guest image manifest; public simulator images
+are a separate qualification milestone. See the [developer workflow](docs/developer-platform/tester.md).
+
 ## Build and contribute
 
 Start with [BUILDING.md](BUILDING.md). Components have individual build definitions; the complete OS also needs pinned upstream sources, package repositories and release infrastructure. This tree does not vendor a complete Chromium engine or a Fedora package mirror.

@@ -96,6 +96,15 @@ scripts/os/build-staff-media.sh --atlas-source YOUR_ATLAS_SOURCE \
 
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
+## QEMU preview launcher
+
+The Linux-first [Luma Tester](src/luma-tester/README.md) runs mobile or desktop
+developer guests without modifying the host OS. Its LumaUI launcher and Python CLI
+share one runtime. See [tester image requirements](docs/developer-platform/tester-images.md)
+for the separate guest producer contract and [app development](docs/developer-platform/tester.md)
+for source sync/restart commands. macOS and Windows host packaging is not included
+in this first version.
+
 ## Handheld profiles
 
 `config/mobile/` and `scripts/mobile/` contain device-specific native Linux integration. The Fairphone 6 rootfs entry point is `scripts/mobile/compose-fp6-rootfs.sh`, which requires root on a Fedora 44 AArch64 builder. It consumes the pinned shared packages plus handheld compositor, greeter, kernel, firmware, and device dependencies selected by the profile.
