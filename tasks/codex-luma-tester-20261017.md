@@ -178,3 +178,9 @@ used that source without altering shared refs or unrelated worktrees.
   QEMU firmware search directory, with package/license provenance. Native r9
   mobile pass remains valid; portable r1 is not accepted. QA now reports an
   early launcher exit immediately, rather than waiting for its full deadline.
+- Portable r2 exposed a relocation guard issue when reusing r1's unbooted
+  workspace: URL changes rejected even though digest/size/boot identity matched.
+  Guard now allows only URL relocation; all other identity fields remain pinned.
+  New meaningful relocation test retains the overlay inode/key; all33 checks
+  passed in dev-luma-tester-relocation-check-92596565. AppImage bootstrap uses
+  the original executable path for stable CLI commands/catalog identity.

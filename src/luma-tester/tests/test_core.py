@@ -222,6 +222,19 @@ class SessionTests(unittest.TestCase):
             marker = next(item for item in data['write_files'] if item['path'] == '/etc/luma-tester-target')
             self.assertEqual(marker['content'], target + '\n')
 
+    def test_same_verified_image_can_move_without_replacing_workspace(self):
+        session = self.fixture_disk()
+        session.prepare(lambda _: None)
+        key = session.key.read_bytes()
+        disk = session.disk.stat().st_ino
+        moved = self.root / 'relocated.qcow2'
+        shutil.copy2(self.source, moved)
+        self.m['image']['url'] = moved.as_uri()
+        session = self.save()
+        session.prepare(lambda _: None)
+        self.assertEqual(session.key.read_bytes(), key)
+        self.assertEqual(session.disk.stat().st_ino, disk)
+
     def test_prepare_refuses_silent_rebase(self):
         session = self.fixture_disk()
         session.prepare(lambda _: None)

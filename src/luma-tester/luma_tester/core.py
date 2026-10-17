@@ -131,8 +131,13 @@ class Session:
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.base.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         saved = self.directory / 'manifest.json'
-        if saved.exists() and json.loads(saved.read_text()) != self.manifest:
-            raise TesterError('This id already belongs to another image. Use a new manifest id.')
+        if saved.exists():
+            previous = json.loads(saved.read_text())
+            # A portable directory/AppImage can move; bytes and boot/profile
+            # identity stay pinned even when the verified image URL changes.
+            previous['image']['url'] = self.manifest['image']['url']
+            if previous != self.manifest:
+                raise TesterError('This id already belongs to another image. Use a new manifest id.')
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
         image = self.manifest['image']

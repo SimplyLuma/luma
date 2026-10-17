@@ -9,7 +9,7 @@ import sys
 
 base = Path(__file__).resolve().parent
 os.environ.update({
-    'LUMA_TESTER_EXECUTABLE': str(base / 'Luma Tester'),
+    'LUMA_TESTER_EXECUTABLE': os.environ.get('APPIMAGE', str(base / 'Luma Tester')),
     'GI_TYPELIB_PATH': str(base / 'usr/lib64/girepository-1.0'),
     'GSETTINGS_SCHEMA_DIR': str(base / 'usr/share/glib-2.0/schemas'),
     'GIO_EXTRA_MODULES': str(base / 'usr/lib64/gio/modules'),
@@ -24,7 +24,7 @@ if not os.environ.get('SSL_CERT_FILE'):
             break
 cache = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'luma-tester/portable'
 cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-key = hashlib.sha256(str(base).encode()).hexdigest()[:20]
+key = hashlib.sha256(os.environ.get('APPIMAGE', str(base)).encode()).hexdigest()[:20]
 loaders = cache / (key + '-pixbuf.cache')
 loaders.write_text((base / 'pixbuf-loaders.cache').read_text().replace('@TESTER_ROOT@', str(base)))
 os.environ['GDK_PIXBUF_MODULE_FILE'] = str(loaders)

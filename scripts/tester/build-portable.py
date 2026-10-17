@@ -148,6 +148,11 @@ if [ "$#" -eq 0 ]; then set -- gui; fi
 exec "$tester_dir/python" -m luma_tester "$@"
 ''')
 for name in ('python', 'Luma Tester'): (dest / name).chmod(0o755)
+# Public bundle content must be readable when AppImage stores root ownership.
+for path in dest.rglob('*'):
+    if not path.is_symlink():
+        path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+dest.chmod(0o755)
 receipt = {'schema': 1, 'host': 'linux-x86_64',
     'source_commit': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),
     'runtime_input': str(runtime), 'files': []}
