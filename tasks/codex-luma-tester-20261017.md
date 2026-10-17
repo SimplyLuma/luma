@@ -280,3 +280,28 @@ used that source without altering shared refs or unrelated worktrees.
 - Retired7 owned obsolete generated artifacts in
   dev-luma-tester-retire-obsolete-r2-caefe132 after process/backing checks;
   receipts, current r10 baseline and original AppImage review evidence retained.
+
+- r11 Desktop image built normally from r10's exact receipt/cohort in
+  dev-luma-tester-desktop-r11-5ab3e282; sourcea9a3c22a, image SHA256
+  85635f37e85459583e826759611950238e4c388b3e6a570af14411c899023180,
+  1438449664 bytes. Only Desktop catalog emitted. Producer removes the earlier
+  handheld prototype and forced blur. Retired stopped r10/r11 builder-state
+  copies after backing/process checks in dev-luma-tester-retire-builders-afb1368b.
+- Packaged accelerated desktop/app restart reached visible hot fix and verified
+  guest VirGL, but dev-luma-tester-packaged-accelerated-c8f9b00b failed because
+  QEMU's GL scanout has no QMP screendump surface. Added a GUI-independent GVnc
+  full-frame PPM fallback; exact fallback/QMP pixel parity and input passed
+  dev-luma-tester-rfb-capture-958668a0;39 core checks passed
+  dev-luma-tester-capture-core-8b70727a. Repackaging and complete qualification next.
+- Dell readonly command receipt confirms the user's original runs were fully
+  local: KVM, host CPU,4 vCPUs,4096MiB,2D virtio GPU for both targets. No streaming.
+  Server diagnostic frame counters are not Dell benchmarks; legacy viewer counts
+  include multiple intermediate texture copies per displayed frame and must not
+  be compared as visible frame rates.
+- Actual phone component build admitted as
+  dev-luma-tester-phone-components-138328bf (6GiB memory/5GiB disk; timeout1700s).
+  Separate owned experiment: /srv/dev/accounts/second/experiments/luma-tester-phone-20261017.
+  Immutable upstream tar and explicit x86/VM-runner adaptation receipt retained
+  outside Git. Normal payload/check code is preserved. Starts from verified
+  Fedora44 Cloud, never a user/phone disk. Qualified keyring3 x86 RPM/SRPM copies
+  matched retained receipt hashes; shell-state36/Phoc12/Phosh73 builds pending.

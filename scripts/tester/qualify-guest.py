@@ -83,13 +83,27 @@ def main():
             assert 'ID=luma' in command(session, ['cat', '/etc/os-release'])
             report['guest_profile'] = marker
             report['guest_source'] = json.loads(command(session, ['cat', '/etc/luma/tester-source.json']))
-            enabled = command(session, ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'])
-            assert ('handheld@project-luma.local' in enabled) == (target == 'mobile'), enabled
-            report['enabled_extensions'] = enabled
             if target == 'mobile':
-                info = command(session, ['gnome-extensions', 'info', 'handheld@project-luma.local'])
-                assert 'State: ACTIVE' in info, info
-                report['handheld_state'] = info
+                report['phone_process'] = command(session, ['pgrep', '-u', 'luma', '-f', '^/opt/luma/phosh/libexec/phosh( |$)'])
+                command(session, ['test', '-f', '/run/luma-display/home-ready'])
+            else:
+                enabled = command(session, ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'])
+                assert 'handheld@project-luma.local' not in enabled, enabled
+                report['enabled_extensions'] = enabled
+            report['graphics'] = json.loads((session.directory / 'graphics.json').read_text())
+            expected_graphics = os.environ.get('LUMA_TESTER_QA_GRAPHICS')
+            if expected_graphics:
+                assert report['graphics']['mode'] == expected_graphics, report['graphics']
+                # Diagnostics are installed only in the disposable QA overlay.
+                with (output / 'graphics-tools.log').open('w') as log:
+                    subprocess.run(session.ssh(['sudo', 'dnf', '-y', 'install', 'egl-utils']),
+                                   stdout=log, stderr=log, timeout=120, check=True)
+                renderer = subprocess.run(session.ssh(['env', 'EGL_PLATFORM=surfaceless', 'eglinfo', '-B']),
+                                          capture_output=True, text=True, timeout=30)
+                (output / 'guest-renderer.txt').write_text(renderer.stdout + renderer.stderr)
+                if expected_graphics == 'virgl':
+                    assert 'OpenGL core profile renderer: virgl ' in renderer.stdout, renderer.stdout
+                    report['guest_virgl_renderer_verified'] = True
             report['package_versions'] = command(session, ['rpm', '-q', 'gnome-shell', 'mutter',
                                                           'luma-developer-platform', 'prairie-core-apps'])
             report['sdk_version'] = command(session, ['luma', '--version'])

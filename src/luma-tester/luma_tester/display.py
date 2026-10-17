@@ -5,9 +5,6 @@ GVnc owns protocol decoding and damage tracking. GTK4 draws immutable copies of
 its framebuffer; no screenshot polling, web view, or GTK3 viewer is involved.
 """
 from __future__ import annotations
-import ctypes
-import ctypes.util
-import sys
 from pathlib import Path
 
 import gi
@@ -18,57 +15,10 @@ gi.require_version('GVnc', '1.0')
 from gi.repository import Gdk, Gio, GLib, GObject, Gtk, GVnc
 
 
-class PixelFormat(ctypes.Structure):
-    # Public VncPixelFormat layout, from gvnc's installed C API.
-    _fields_ = [('bits_per_pixel', ctypes.c_uint8), ('depth', ctypes.c_uint8),
-                ('byte_order', ctypes.c_uint16), ('true_color_flag', ctypes.c_uint8),
-                ('red_max', ctypes.c_uint16), ('green_max', ctypes.c_uint16),
-                ('blue_max', ctypes.c_uint16), ('red_shift', ctypes.c_uint8),
-                ('green_shift', ctypes.c_uint8), ('blue_shift', ctypes.c_uint8)]
+from .rfb import Framebuffer as BaseFramebuffer
 
 
-class Framebuffer:
-    """Own the mutable buffer explicitly: GI cannot set a gpointer property.
-
-    The bridge calls only public GVnc/GObject functions. Keeping the Python-owned
-    buffer alive until Connection replaces its framebuffer avoids temporary GI
-    array storage escaping a constructor call. GTK textures receive copies.
-    """
-    def __init__(self, connection, width, height):
-        if not 1 <= width <= 4096 or not 1 <= height <= 4096:
-            raise ValueError('Guest display exceeds supported 4096×4096 dimensions.')
-        self.width, self.height = width, height
-        self.buffer = ctypes.create_string_buffer(width * height * 4)
-        gvnc = ctypes.CDLL(ctypes.util.find_library('gvnc-1.0') or 'libgvnc-1.0.so.0')
-        objects = ctypes.CDLL(ctypes.util.find_library('gobject-2.0') or 'libgobject-2.0.so.0')
-        pointer = ctypes.pythonapi.PyCapsule_GetPointer
-        pointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
-        pointer.restype = ctypes.c_void_p
-        native = pointer(connection.__gpointer__, None)
-        gvnc.vnc_connection_get_pixel_format.argtypes = [ctypes.c_void_p]
-        gvnc.vnc_connection_get_pixel_format.restype = ctypes.c_void_p
-        gvnc.vnc_base_framebuffer_new.argtypes = [ctypes.c_void_p, ctypes.c_uint16,
-            ctypes.c_uint16, ctypes.c_int, ctypes.POINTER(PixelFormat), ctypes.c_void_p]
-        gvnc.vnc_base_framebuffer_new.restype = ctypes.c_void_p
-        gvnc.vnc_connection_set_framebuffer.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        gvnc.vnc_connection_set_framebuffer.restype = ctypes.c_int
-        objects.g_object_unref.argtypes = [ctypes.c_void_p]
-        objects.g_object_unref.restype = None
-        # RGBX byte order, independent of host byte order.
-        little = sys.byteorder == 'little'
-        format = PixelFormat(32, 24, 1234 if little else 4321, 1, 255, 255, 255,
-                             0 if little else 24, 8 if little else 16, 16 if little else 8)
-        framebuffer = gvnc.vnc_base_framebuffer_new(ctypes.addressof(self.buffer), width,
-            height, width * 4, ctypes.byref(format), gvnc.vnc_connection_get_pixel_format(native))
-        if not framebuffer:
-            raise RuntimeError('GVnc could not allocate the guest framebuffer.')
-        try:
-            if not gvnc.vnc_connection_set_framebuffer(native, framebuffer):
-                raise RuntimeError('GVnc rejected the guest framebuffer.')
-        finally:
-            # Connection retains its own reference; Python retains the backing bytes.
-            objects.g_object_unref(framebuffer)
-
+class Framebuffer(BaseFramebuffer):
     def texture(self):
         return Gdk.MemoryTexture.new(self.width, self.height, Gdk.MemoryFormat.R8G8B8X8,
                                      GLib.Bytes.new(self.buffer.raw), self.width * 4)

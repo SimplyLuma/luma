@@ -360,7 +360,13 @@ class Session:
         destination = Path(destination).resolve()
         if destination.exists():
             raise TesterError('Screenshot destination already exists.')
-        self.qmp('screendump', {'filename': str(destination)})
+        try:
+            self.qmp('screendump', {'filename': str(destination)})
+        except TesterError as exc:
+            if 'no surface' not in str(exc) or not self.display_path.is_socket():
+                raise
+            from .rfb import capture
+            capture(self.display_path, destination)
         return destination
 
     def ssh(self, command):

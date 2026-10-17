@@ -70,6 +70,11 @@ def main():
                     assert texture.get_height() == viewer.framebuffer.height
                     assert texture.save_to_png(str(output / 'live-frame.png'))
                     session.screenshot(output / 'qmp-frame.ppm')
+                    from luma_tester.rfb import capture
+                    capture(session.display_path, output / 'rfb-frame.ppm')
+                    subprocess.run(['compare', '-metric', 'AE', str(output / 'rfb-frame.ppm'),
+                                    str(output / 'qmp-frame.ppm'), 'null:'], check=True,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                     # Equal pixels verify channel order, stride and ownership against
                     # the emulator's own screenshot, beyond a mere successful handshake.
                     subprocess.run(['compare', '-metric', 'AE', str(output / 'live-frame.png'),

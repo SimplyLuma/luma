@@ -40,7 +40,7 @@ with (out / 'appimage.log').open('w') as log:
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=15)
-manifest = next((out / 'cache/luma-tester/portable').glob('*/mobile.json'))
+manifest = next((out / 'cache/luma-tester/portable').glob('*/desktop.json'))
 with (out / 'doctor.json').open('w') as log:
     subprocess.run([image, '--appimage-extract-and-run', 'doctor', manifest], env=env,
                    stdout=log, stderr=subprocess.PIPE, check=True, timeout=45)
