@@ -337,3 +337,21 @@ used that source without altering shared refs or unrelated worktrees.
   Resume dev-luma-tester-phone-components-r2-20d3bb70 validates all19 check
   results, exact x86 headers, retains QA/SRPM and continues normal Phosh73 build.
   This is component evidence only; native phone UI parity still unqualified.
+
+- Actual phone renderer component build completed successfully in
+  dev-luma-tester-phone-phosh-oracle-df2fc3e4. All13 required normal suites passed,
+  plus scale3 Library composition and all7 scale3 drawer traces, negative provider
+  control and installed source/payload assertions. RPM/SRPM/normal QA retained in
+  component-artifacts-r4.tar, outside Git. Phoc12's19 checks remain passed.
+  This does not yet qualify a booted phone image or the newer shared apps/SDK.
+- Touch foundation delivered genuine Linux EV_ABS multitouch positions, tracking
+  ID begin/end and BTN_TOUCH state in dev-luma-tester-kernel-touch-d9fa9e09.
+  Mobile viewer now maps press/drag/release/scroll to that API; native shell
+  gesture checks remain pending.39 source checks passed
+  dev-luma-tester-touch-source-checks-4dee468d; existing viewer/QMP/capture pixel
+  parity and input passed dev-luma-tester-touch-viewer-4175f787.
+- Dell transfer attempt initially hit the known system SSH config ownership
+  issue inside devctl; explicit own SSH config resolves that. Actual route then
+  timed out before creating/copying the new preview. Normal dell-preview status
+  also timed out, confirming delivery remains pending. No new app/VM launched
+  on Dell; wake/connect async access question remains pending.

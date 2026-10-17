@@ -141,3 +141,14 @@ RPM cohort, and unchanged shared app/platform source, then verifies installed
 NEVRAs inside the new builder. It records the parent image and normal package-log
 hash in the new receipt. Changes to app/platform source require a normal rebuild;
 profile-only derivation cannot silently substitute untested app code.
+
+## Mobile touch input
+
+Mobile guests use QEMU's `virtio-multitouch-pci` in addition to keyboard/tablet
+input. The viewer maps a primary press/drag/release to a real touch contact;
+scroll gestures become touch movement. Losing focus releases the contact.
+This uses the `input-send-event` multitouch API from
+[QEMU 10.2](https://github.com/qemu/qemu/blob/v10.2.2/qapi/ui.json), including
+tracking ID, slot, coordinates and touch-button state. The guest kernel must
+include `virtio_input`; a normal mouse-only path does not exercise touch-only
+Phosh gestures. Native shell gesture qualification is still required.

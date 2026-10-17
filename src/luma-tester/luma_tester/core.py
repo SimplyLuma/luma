@@ -247,6 +247,8 @@ class Session:
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
                 '-display', display]
+        if self.manifest['target'] == 'mobile':
+            argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
             argv += ['-vnc', 'unix:' + str(self.display_path)]
         for name, path, fmt, readonly in [('os', self.disk, 'qcow2', False),
@@ -338,6 +340,28 @@ class Session:
                 receive()
                 stream.write(json.dumps({'execute': execute, 'arguments': arguments or {}}).encode() + b'\n')
                 return receive()
+
+    def touch(self, phase, x, y, width, height):
+        """Deliver a real evdev touch contact through QEMU's multitouch device."""
+        if self.manifest['target'] != 'mobile' or phase not in ('begin', 'update', 'end', 'cancel'):
+            raise TesterError('Touch input requires a Mobile guest and a valid contact phase.')
+        if not 1 < width <= 4096 or not 1 < height <= 4096:
+            raise TesterError('Invalid touch viewport dimensions.')
+        px = int(max(0, min(width - 1, x)) * 32767 / (width - 1))
+        py = int(max(0, min(height - 1, y)) * 32767 / (height - 1))
+        releasing = phase in ('end', 'cancel')
+        def contact(kind, axis='x', value=0):
+            return {'type': 'mtt', 'data': {'type': kind, 'slot': 0,
+                    'tracking-id': -1 if releasing else 1, 'axis': axis, 'value': value}}
+        events = []
+        if phase == 'begin':
+            events.append({'type': 'btn', 'data': {'button': 'touch', 'down': True}})
+        events.append(contact(phase))
+        if not releasing:
+            events.extend((contact('data', 'x', px), contact('data', 'y', py)))
+        else:
+            events.append({'type': 'btn', 'data': {'button': 'touch', 'down': False}})
+        self.qmp('input-send-event', {'events': events})
 
     def status(self):
         try:

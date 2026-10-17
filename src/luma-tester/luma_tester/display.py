@@ -32,9 +32,14 @@ class GuestDisplay(Gtk.Picture):
         'display-error': (GObject.SignalFlags.RUN_LAST, None, (str,)),
     }
 
-    def __init__(self, socket_path):
+    def __init__(self, socket_path, touch=None):
         super().__init__(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN,
                          hexpand=True, vexpand=True, focusable=True)
+        self.touch = touch
+        self.touch_active = False
+        self.touch_point = (0, 0)
+        self.scroll_contact = False
+        self.scroll_source = 0
         self.socket_path = Path(socket_path)
         self.connection = GVnc.Connection.new()
         self.framebuffer = None
@@ -146,21 +151,62 @@ class GuestDisplay(Gtk.Picture):
         point = self.coordinates(x, y)
         if point:
             self.last_pointer = point
-            self.connection.pointer_event(self.button_mask, *point)
+            if self.touch:
+                if self.touch_active and not self.scroll_contact:
+                    self.send_touch('update', point)
+            else:
+                self.connection.pointer_event(self.button_mask, *point)
 
     def pressed(self, gesture, _count, x, y):
         point = self.coordinates(x, y)
         if point:
+            if self.touch and gesture.get_current_button() not in (0, 1):
+                return
             self.grab_focus()
             self.last_pointer = point
+            if self.touch:
+                self.release_touch()
+                self.touch_active = True
+                self.send_touch('begin', point)
+                return
             self.button_mask |= {1: 1, 2: 2, 3: 4}.get(gesture.get_current_button(), 0)
             self.connection.pointer_event(self.button_mask, *point)
 
     def released(self, gesture, _count, x, y):
+        if self.touch:
+            if self.touch_active and not self.scroll_contact:
+                self.send_touch('end', self.coordinates(x, y) or self.touch_point)
+                self.touch_active = False
+            return
         self.button_mask &= ~{1: 1, 2: 2, 3: 4}.get(gesture.get_current_button(), 0)
         if self.ready:
             self.last_pointer = self.coordinates(x, y) or self.last_pointer
             self.connection.pointer_event(self.button_mask, *self.last_pointer)
+
+    def send_touch(self, phase, point):
+        if not self.touch or not self.ready or not self.framebuffer:
+            return
+        self.touch_point = point
+        try:
+            self.touch(phase, *point, self.framebuffer.width, self.framebuffer.height)
+        except Exception as exc:
+            self.touch_active = False
+            self.emit('display-error', 'Guest touch input: ' + str(exc))
+
+    def release_touch(self):
+        if self.scroll_source:
+            GLib.source_remove(self.scroll_source)
+            self.scroll_source = 0
+        if self.touch_active:
+            self.send_touch('cancel', self.touch_point)
+        self.touch_active = self.scroll_contact = False
+
+    def finish_touch_scroll(self):
+        self.scroll_source = 0
+        if self.scroll_contact:
+            self.send_touch('end', self.touch_point)
+            self.touch_active = self.scroll_contact = False
+        return False
 
     def key_pressed(self, _controller, key, _code, state):
         if not self.ready:
@@ -184,6 +230,7 @@ class GuestDisplay(Gtk.Picture):
                 self.connection.key_event(False, key, 0)
 
     def release_input(self):
+        self.release_touch()
         if self.ready:
             for key in self.pressed_keys:
                 self.connection.key_event(False, key, 0)
@@ -194,6 +241,28 @@ class GuestDisplay(Gtk.Picture):
     def scroll(self, _controller, dx, dy):
         if not self.ready:
             return False
+        if self.touch:
+            if self.touch_active and not self.scroll_contact:
+                return True
+            width, height = self.framebuffer.width, self.framebuffer.height
+            if not self.scroll_contact:
+                point = self.last_pointer if self.last_pointer != (0, 0) else (width / 2, height / 2)
+                self.touch_active = self.scroll_contact = True
+                self.send_touch('begin', point)
+            unit = 1 if _controller and _controller.get_unit() == Gdk.ScrollUnit.SURFACE else 40
+            x, y = self.touch_point
+            if not 1 <= x - dx * unit <= width - 2 or not 1 <= y - dy * unit <= height - 2:
+                self.send_touch('end', (x, y))
+                x = width / 2 if dx else x
+                y = height / 2 if dy else y
+                self.send_touch('begin', (x, y))
+            point = (max(1, min(width - 2, x - dx * unit)),
+                     max(1, min(height - 2, y - dy * unit)))
+            self.send_touch('update', point)
+            if self.scroll_source:
+                GLib.source_remove(self.scroll_source)
+            self.scroll_source = GLib.timeout_add(120, self.finish_touch_scroll)
+            return True
         self.scroll_x += dx
         self.scroll_y += dy
         for attribute, negative, positive in [('scroll_y', 8, 16), ('scroll_x', 32, 64)]:
@@ -207,6 +276,7 @@ class GuestDisplay(Gtk.Picture):
         return True
 
     def disconnected(self, _connection):
+        self.release_touch()
         self.ready = False
         self.emit('disconnected')
 

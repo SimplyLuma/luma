@@ -219,7 +219,8 @@ def launch(state=None):
         def connect_display(self):
             if self.viewer or not self.session.display_path.is_socket():
                 return
-            self.viewer = GuestDisplay(self.session.display_path)
+            self.viewer = GuestDisplay(self.session.display_path,
+                touch=self.session.touch if self.session.manifest['target'] == 'mobile' else None)
             self.viewer.connect('display-error', self.display_failed)
             self.viewer.connect('connected', lambda _v: self.reveal_display(self.session) if self.graphical_ready else None)
             self.viewer_holder.append(self.viewer)
