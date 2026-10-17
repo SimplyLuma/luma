@@ -305,3 +305,21 @@ used that source without altering shared refs or unrelated worktrees.
   outside Git. Normal payload/check code is preserved. Starts from verified
   Fedora44 Cloud, never a user/phone disk. Qualified keyring3 x86 RPM/SRPM copies
   matched retained receipt hashes; shell-state36/Phoc12/Phosh73 builds pending.
+
+- Corrected GPU package passed the full launcher/guest/app workflow with no
+  errors in dev-luma-tester-accelerated-full-r2-b97212e1: VirGL mode and native
+  guest VirGL renderer verified, source edit changed app PID2559→2868, screenshot
+  fallback worked, graceful shutdown succeeded. Guest r11 digest unchanged.
+  Portable source603b4258, output Luma-Tester-graphics-r12. AppImage SHA256
+  b8c99359b0235ba39b124726399fcb084d228c51ab533396d15590108a975b8c;
+  actual AppImage entry PASS dev-luma-tester-appimage-graphics-entry-89e29000.
+  Not delivered: final availability UX polish selects Desktop and disables the
+  unavailable Mobile choice until a native phone image is imported. Existing
+  native flow/narrow/dark checks PASS dev-luma-tester-available-choice-ui-54262d4b.
+- Phone source component attempt built shell-state36 successfully and Phoc12
+  x86 RPM/SRPM with all19 normal Meson checks OK. Phoc wrapper exited1 on its
+  stale ARM filename expectation after successful rpmbuild, so the overall job
+  is not a pass. Source/check evidence retained in component-artifacts.tar.
+  Resume dev-luma-tester-phone-components-r2-20d3bb70 validates all19 check
+  results, exact x86 headers, retains QA/SRPM and continues normal Phosh73 build.
+  This is component evidence only; native phone UI parity still unqualified.

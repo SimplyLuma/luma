@@ -45,6 +45,14 @@ def launch(state=None):
                 self.imported = [Path(p) for p in paths if isinstance(p, str)]
             except (OSError, ValueError, AttributeError):
                 self.imported = []
+            self.catalog_targets = set()
+            for path in self.available_manifests():
+                try:
+                    self.catalog_targets.add(read_manifest(path)['target'])
+                except (OSError, TesterError, ValueError, TypeError):
+                    continue
+            if self.catalog_targets == {'desktop'}:
+                self.target = 'desktop'
             self.advanced = None
             self.viewer = None
             self.graphical_ready = False
@@ -143,10 +151,12 @@ def launch(state=None):
             back.add_css_class('flat')
             back.set_halign(Gtk.Align.START)
             page.append(back)
-            self.heading(page, 'Where would you like to start?', 'The same Luma, on a different screen.')
+            self.heading(page, 'Where would you like to start?',
+                         'Desktop is available in this preview.' if self.catalog_targets == {'desktop'}
+                         else 'The same Luma, on a different screen.')
             choices = Gtk.Box(spacing=18, homogeneous=True)
-            self.mobile_button = self.choice('Mobile', 'Luma in your hand.', 'smartphone', lambda: self.select_target('mobile'), True, toggle=True)
-            self.desktop_button = self.choice('Desktop', 'Space for everything.', 'monitor', lambda: self.select_target('desktop'), toggle=True)
+            self.mobile_button = self.choice('Mobile', 'Luma in your hand.', 'smartphone', lambda: self.select_target('mobile'), self.target == 'mobile', toggle=True)
+            self.desktop_button = self.choice('Desktop', 'Space for everything.', 'monitor', lambda: self.select_target('desktop'), self.target == 'desktop', toggle=True)
             self.desktop_button.set_group(self.mobile_button)
             choices.append(self.mobile_button)
             choices.append(self.desktop_button)
@@ -154,9 +164,11 @@ def launch(state=None):
             self.project_button = self.button('Connect a project…', self.choose_project)
             self.project_button.set_visible(False)
             page.append(self.project_button)
-            self.start_button = self.button('Open Luma Mobile', lambda: self.commands.invoke('tester.open'), True)
+            self.start_button = self.button('Open Luma ' + self.target.title(), lambda: self.commands.invoke('tester.open'), True)
             self.start_button.add_css_class('tester-primary')
             page.append(self.start_button)
+            self.mobile_button.set_sensitive(not self.catalog_targets or 'mobile' in self.catalog_targets)
+            self.desktop_button.set_sensitive(not self.catalog_targets or 'desktop' in self.catalog_targets)
             self.target_status = self.label('Your workspace will be here when you return.', muted=True, centered=True)
             page.append(self.target_status)
 
@@ -491,6 +503,9 @@ def launch(state=None):
                     self.preferences.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                     self.preferences.write_text(json.dumps({'images': [str(p) for p in self.imported[:16]]}))
                     self.preferences.chmod(0o600)
+                    self.catalog_targets.add(manifest['target'])
+                    self.mobile_button.set_sensitive('mobile' in self.catalog_targets)
+                    self.desktop_button.set_sensitive('desktop' in self.catalog_targets)
                     self.select_target(manifest['target'])
                     self.target_status.set_label('Your Luma image is ready to open.')
                     if self.advanced:
