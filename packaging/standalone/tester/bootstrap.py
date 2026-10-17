@@ -9,6 +9,7 @@ import sys
 
 base = Path(__file__).resolve().parent
 os.environ.update({
+    'LUMA_TESTER_EXECUTABLE': str(base / 'Luma Tester'),
     'GI_TYPELIB_PATH': str(base / 'usr/lib64/girepository-1.0'),
     'GSETTINGS_SCHEMA_DIR': str(base / 'usr/share/glib-2.0/schemas'),
     'GIO_EXTRA_MODULES': str(base / 'usr/lib64/gio/modules'),

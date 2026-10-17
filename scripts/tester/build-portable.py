@@ -22,6 +22,8 @@ REPO = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--runtime', type=Path, required=True)
 p.add_argument('--gvnc-prefix', type=Path, required=True)
+p.add_argument('--gvnc-source', type=Path, required=True, help='Matching Fedora gtk-vnc source RPM')
+p.add_argument('--gvnc-license', type=Path, required=True, help='Upstream COPYING.LIB')
 p.add_argument('--catalog', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 a = p.parse_args()
@@ -55,6 +57,9 @@ loaders = re.sub(r'@[A-Z_]+ROOT@', '@TESTER_ROOT@', loaders)
 for relative in ('lib64/libgvnc-1.0.so.0', 'lib64/girepository-1.0/GVnc-1.0.typelib'):
     copy(a.gvnc_prefix / relative, Path('usr') / relative)
 copy(REPO / 'packaging/standalone/tester/bootstrap.py', 'bootstrap.py')
+copy(REPO / 'packaging/standalone/tester/README.md', 'README.md')
+copy(a.gvnc_source, 'sources/gtk-vnc.src.rpm')
+copy(a.gvnc_license, 'usr/share/licenses/gvnc/COPYING.LIB')
 copy(REPO / 'src/luma-tester/THIRD-PARTY.md', 'THIRD-PARTY.md')
 copy(REPO / 'docs/developer-platform/tester.md', 'DEVELOPING.md')
 copy(REPO / 'examples/tester-hello', 'examples/Hello Luma')
@@ -95,6 +100,8 @@ exec "$tester_dir/tools/lib/ld-linux-x86-64.so.2" --inhibit-cache --library-path
     wrapper.chmod(0o755)
 for name in ('qemu', 'seabios', 'ipxe'):
     copy(Path('/usr/share') / name, Path('tools/share') / name)
+    if name != 'qemu':
+        copy(Path('/usr/share') / name, 'tools/share/qemu')
 # Retain the exact installed tool packages' upstream notices.
 for line in set(packages.values()):
     nevra = line.split('\t')[0]

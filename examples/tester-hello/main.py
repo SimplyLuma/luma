@@ -25,7 +25,8 @@ class Hello(Adw.Application):
         )),))
         window = AppWindow(application=self, app_id='io.luma.Tester.Hello',
                            title='Hello Luma', icon_name='applications-development-symbolic',
-                           commands=commands, default_width=640, default_height=480)
+                           commands=commands, default_width=640, default_height=480,
+                           minimum_width=280, minimum_height=320)
         island = Island()
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
                        halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,

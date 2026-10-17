@@ -447,7 +447,7 @@ def launch(state=None):
                 self.developer_status.set_label('Connect a project and open Luma first.')
                 return
             import shlex
-            command = ['luma-tester', '--state', str(self.session.root), 'dev', self.manifest_path, str(self.project), '--', 'YOUR_APP_COMMAND']
+            command = [os.environ.get('LUMA_TESTER_EXECUTABLE', 'luma-tester'), '--state', str(self.session.root), 'dev', self.manifest_path, str(self.project), '--', 'YOUR_APP_COMMAND']
             self.window.get_clipboard().set(shlex.join(command))
             self.developer_status.set_label('Copied. Replace YOUR_APP_COMMAND with the command that starts your app.')
 

@@ -165,3 +165,11 @@ used that source without altering shared refs or unrelated worktrees.
 - r8 stopped during SRPM extraction with SIGPIPE141 under pipefail. Switched
   rpm2cpio/cpio to the same intermediate payload-file pattern used by the normal
   repository dock builder. Retrying as r9. No r8 image exported.
+- r9 built successfully (sourceb1ec3ba,29 pinned RPMs + source-built dock14).
+  Mobile full launcher/guest/app edit/clean shutdown PASS in
+  dev-luma-tester-mobile-qualification-r9-78dc75cf (46.7s,739 live frames).
+  Actual screenshot inspected: handheld home grid/dock and restarted app text.
+  SDK CLI0.1.0 verified. Example minimum width460 exceeded the432 mobile viewport;
+  lowered its declared minimum to280 before final packaged qualification.
+  Added self-contained Linux directory producer, relocatable catalog/runtime,
+  bundled distribution tools and notices; packaging validation is next.

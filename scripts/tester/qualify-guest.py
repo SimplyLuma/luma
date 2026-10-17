@@ -17,7 +17,8 @@ import threading
 import time
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'src/luma-tester'))
+if not os.environ.get('LUMA_TESTER_QA_INSTALLED'):
+    sys.path.insert(0, str(REPO / 'src/luma-tester'))
 os.environ['GSETTINGS_BACKEND'] = 'memory'
 import gi
 
@@ -38,6 +39,9 @@ def main():
     (project / 'message.txt').write_text('First guest build.\n')
     report = {'target': target, 'tester_source': subprocess.check_output(
         ['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(), 'passed': False}
+    report['module_path'] = gui.__file__
+    if os.environ.get('LUMA_TESTER_QA_INSTALLED'):
+        assert Path(gui.__file__).is_relative_to(Path(os.environ['LUMA_TESTER_QA_INSTALLED']))
     phase = 0
     application = None
     watcher = None
@@ -88,6 +92,7 @@ def main():
                 report['handheld_state'] = info
             report['package_versions'] = command(session, ['rpm', '-q', 'gnome-shell', 'mutter',
                                                           'luma-developer-platform', 'prairie-core-apps'])
+            report['sdk_version'] = command(session, ['luma', '--version'])
             watcher = subprocess.Popen([sys.executable, '-m', 'luma_tester', '--state', str(session.root),
                 'dev', app.manifest_path, str(project), '--', 'python3', 'main.py'],
                 stdout=watcher_log, stderr=watcher_log)
