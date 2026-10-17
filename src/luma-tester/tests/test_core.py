@@ -156,7 +156,7 @@ class SessionTests(unittest.TestCase):
              patch('subprocess.run', return_value=subprocess.CompletedProcess([], 0, stderr='')):
             session.shutdown()
         qmp.assert_called_once_with('cont')
-        ssh.assert_called_once_with(['sudo', 'systemctl', 'poweroff'])
+        ssh.assert_called_once_with(['sudo', 'systemctl', '--no-block', 'poweroff'])
 
     def test_sync_rejects_home_or_root(self):
         session = self.save()

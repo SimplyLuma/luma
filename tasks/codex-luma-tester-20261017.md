@@ -134,3 +134,12 @@ used that source without altering shared refs or unrelated worktrees.
   Actual fresh-session shell/app qualification is next. Added an OS-aware
   shutdown request through authenticated guest systemd because the handheld
   session intentionally intercepts the virtual ACPI power button as sleep/wake.
+- Fresh r4 graphical diagnosis reached the actual shell, but showed landscape;
+  handheld activates only on portrait monitors. Initial GUI qualification failed
+  on unreadable source metadata (0600) and also exposed the VT too early.
+  Added tester-only first-paint/portrait extension, public metadata mode0644,
+  and nonblocking systemd poweroff to avoid racing SSH teardown. QA failure
+  cleanup now first requests graceful shutdown. 32 backend checks passed in
+  dev-luma-tester-first-frame-source-077505bd. Graphical fixes await fresh r5.
+  Diagnostic screenshots/logs: dev-luma-tester-mobile-diagnosis-fresh-b5189f0a;
+  that diagnostic exited1 on the old blocking poweroff transport race.

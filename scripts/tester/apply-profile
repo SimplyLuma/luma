@@ -26,5 +26,15 @@ LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
 ENV
 # Keep the build identity; update only this session's presentation field.
 sed -i "s/^LUMA_TESTER_TARGET=.*/LUMA_TESTER_TARGET=$profile/" /etc/luma/tester-image
+# Preserve the selected profile's extension set and add virtual-only readiness.
+python3 - "$profile" <<'PYTHON'
+import ast, pathlib, sys
+profile = pathlib.Path('/usr/share/luma-tester/profiles') / (sys.argv[1] + '.dconf')
+line = next(line for line in profile.read_text().splitlines() if line.startswith('enabled-extensions='))
+extensions = ast.literal_eval(line.split('=', 1)[1])
+extensions.append('tester@project-luma.local')
+pathlib.Path('/etc/dconf/db/luma.d/95-luma-tester-extensions').write_text(
+    '[org/gnome/shell]\nenabled-extensions=' + repr(extensions) + '\n')
+PYTHON
 dconf update
 printf 'Luma Tester profile selected: %s (%s)\n' "$profile" "$device_class"

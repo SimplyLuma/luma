@@ -295,7 +295,7 @@ class Session:
         # An ACPI button press is therefore not a reliable shutdown request.
         if self.status() in ('paused', 'prelaunch'):
             self.qmp('cont')
-        result = subprocess.run(self.ssh(['sudo', 'systemctl', 'poweroff']),
+        result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                 text=True, timeout=15)
         if result.returncode != 0:
@@ -350,11 +350,18 @@ class Session:
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
         deadline = time.monotonic() + timeout
-        check = ('display=$(systemctl --user show-environment | sed -n "s/^WAYLAND_DISPLAY=//p"); '
-                 'test -n "$display" && test -S "$XDG_RUNTIME_DIR/$display" && '
-                 'pgrep -u "$(id -u)" -x gnome-shell >/dev/null')
+        check = """import json, os
+from pathlib import Path
+runtime = Path(os.environ['XDG_RUNTIME_DIR'])
+ready = json.loads((runtime / 'luma-tester/ready.json').read_text())
+assert ready['boot_id'] == Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+assert ready['target'] == Path('/etc/luma-tester-target').read_text().strip()
+assert ready['width'] > 0 and ready['height'] > 0
+if ready['target'] == 'mobile':
+    assert ready['height'] > ready['width']
+"""
         while time.monotonic() < deadline:
-            if subprocess.call(self.ssh(['sh', '-c', check]), stdout=subprocess.DEVNULL,
+            if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL) == 0:
                 return
             time.sleep(1)

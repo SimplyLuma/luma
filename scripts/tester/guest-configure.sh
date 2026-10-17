@@ -16,6 +16,8 @@ cp -a "$root/extensions/luma-handheld/." /usr/share/gnome-shell/extensions/handh
 if [ -d /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas ]; then
   glib-compile-schemas /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas
 fi
+install -d /usr/share/gnome-shell/extensions/tester@project-luma.local
+cp -a "$root/extensions/luma-tester/." /usr/share/gnome-shell/extensions/tester@project-luma.local/
 install -Dm755 "$root/scripts/tester/apply-profile" /usr/libexec/luma-tester-apply-profile
 install -Dm644 "$root/config/tester/luma-tester-profile.service" /usr/lib/systemd/system/luma-tester-profile.service
 install -d /etc/environment.d /etc/luma /etc/greetd /etc/systemd/system/greetd.service.d
@@ -52,7 +54,7 @@ LUMA_TESTER_BUILD=$build_id
 LUMA_HARDWARE_BACKEND=virtual
 LUMA_PHYSICAL_DEVICE=false
 IDENTITY
-cp /var/tmp/luma-tester-build/source-identity.json /etc/luma/tester-source.json
+install -m644 /var/tmp/luma-tester-build/source-identity.json /etc/luma/tester-source.json
 # An explicit developer identity; retain Fedora's vendor file and release RPM.
 sed "s/@BUILD_ID@/$build_id/g" "$root/config/tester/os-release.in" >/etc/os-release.luma-tester
 mv /etc/os-release.luma-tester /etc/os-release

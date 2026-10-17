@@ -183,8 +183,12 @@ def main():
                 command(application.session, ['journalctl', '--user', '-u', 'luma-tester-app', '-n', '80', '--no-pager'])
             except Exception:
                 pass
-            application.child.terminate()
-            application.child.wait(timeout=15)
+            try:
+                application.session.shutdown()
+                application.child.wait(timeout=40)
+            except Exception:
+                application.child.terminate()
+                application.child.wait(timeout=15)
         report['errors'] = [str(exc) for exc in failures]
         (output / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
         watcher_log.close()
