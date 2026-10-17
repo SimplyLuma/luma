@@ -101,11 +101,64 @@ class SessionTests(unittest.TestCase):
             self.assertNotEqual(first.qmp_path, second.qmp_path)
 
     def test_portrait_and_desktop_modes(self):
-        command = self.save().command(software=True)
+        command = self.save().command(software=True, graphics='software')
         self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', command)
         self.assertIn('tcg,thread=multi', command)
         self.m['target'] = 'desktop'
-        self.assertIn('virtio-gpu-pci,edid=on,xres=1440,yres=900', self.save().command())
+        self.assertIn('virtio-gpu-pci,edid=on,xres=1440,yres=900', self.save().command(graphics='software'))
+
+    def test_embedded_gpu_uses_private_display_and_egl(self):
+        with patch.object(Session, 'render_device', return_value='/dev/dri/renderD128'):
+            argv = self.save().command(embedded=True)
+        self.assertIn('virtio-gpu-gl-pci,edid=on,xres=432,yres=960', argv)
+        self.assertIn('egl-headless,rendernode=/dev/dri/renderD128', argv)
+        self.assertTrue(argv[argv.index('-vnc') + 1].startswith('unix:'))
+
+    def test_no_gpu_and_explicit_software_work_without_render_device(self):
+        with patch.object(Session, 'render_device', return_value=None):
+            self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', self.save().command())
+            with self.assertRaisesRegex(TesterError, 'render device'):
+                self.save().command(graphics='virgl')
+        with patch.object(Session, 'render_device', side_effect=AssertionError('must not open GPU')):
+            self.save().command(graphics='software', embedded=True)
+
+    def test_headless_builder_remains_software_by_default(self):
+        with patch.object(Session, 'render_device', return_value='/dev/dri/renderD128'):
+            argv = self.save().command(headless=True)
+        self.assertIn('none', argv)
+        self.assertNotIn('virtio-gpu-gl-pci,edid=on,xres=432,yres=960', argv)
+
+    def test_cli_forwards_graphics_selection(self):
+        with patch.object(Session, 'start', return_value=0) as start, patch('sys.argv',
+                ['luma-tester', '--state', str(self.root / 'state'), 'start', str(self.path),
+                 '--graphics', 'software', '--render-node', '/dev/dri/renderD129']):
+            self.assertEqual(main(), 0)
+        self.assertEqual(start.call_args.kwargs['graphics'], 'software')
+        self.assertEqual(start.call_args.kwargs['render_node'], '/dev/dri/renderD129')
+
+    def test_auto_graphics_retries_software_when_egl_fails(self):
+        session = self.save()
+        session.directory.mkdir(parents=True)
+        with patch.object(session, '_prepare'), \
+             patch.object(session, 'render_device', return_value='/dev/dri/renderD128'), \
+             patch.object(session, 'probe_graphics', side_effect=TesterError('EGL failed')), \
+             patch('subprocess.Popen') as child:
+            child.return_value.wait.return_value = 0
+            child.return_value.poll.return_value = 0
+            self.assertEqual(session.start(embedded=True), 0)
+        argv = child.call_args.args[0]
+        self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', argv)
+        self.assertEqual(json.loads((session.directory / 'graphics.json').read_text())['reason'], 'EGL failed')
+
+    def test_explicit_virgl_failure_never_silently_uses_software(self):
+        session = self.save()
+        with patch.object(session, '_prepare'), \
+             patch.object(session, 'render_device', return_value='/dev/dri/renderD128'), \
+             patch.object(session, 'probe_graphics', side_effect=TesterError('EGL failed')), \
+             patch('subprocess.Popen') as child:
+            with self.assertRaisesRegex(TesterError, 'EGL failed'):
+                session.start(embedded=True, graphics='virgl')
+        child.assert_not_called()
 
     def test_cross_arch_never_uses_kvm(self):
         self.m.update(arch='aarch64', boot='uefi')

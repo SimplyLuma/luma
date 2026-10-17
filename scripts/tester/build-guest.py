@@ -228,7 +228,7 @@ def build(args):
         (output / 'image.json').write_text(json.dumps(final, indent=2) + '\n')
         catalog = output / 'catalog'
         catalog.mkdir(exist_ok=True)
-        for target in ('mobile', 'desktop'):
+        for target in ('desktop',):
             experience = dict(final)
             experience.update(id='luma-' + target + '-x86-' + args.build_id, target=target,
                               build='Luma ' + target.title() + ' developer preview ' + args.build_id)
@@ -256,7 +256,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base', type=Path, required=True)
     parser.add_argument('--rpm-pool', type=Path, required=True)
-    parser.add_argument('--target', choices=('mobile', 'desktop'), default='mobile')
+    parser.add_argument('--target', choices=('desktop',), default='desktop')
     parser.add_argument('--build-id', required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--parent-receipt', type=Path, help='Reuse an unchanged, previously built Luma package cohort')

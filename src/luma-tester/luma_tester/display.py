@@ -138,8 +138,8 @@ class GuestDisplay(Gtk.Picture):
             connection.shutdown()
 
     def initialized(self, connection):
-        connection.set_encodings([GVnc.ConnectionEncoding.ZRLE, GVnc.ConnectionEncoding.COPY_RECT,
-                                  GVnc.ConnectionEncoding.HEXTILE, GVnc.ConnectionEncoding.RAW,
+        connection.set_encodings([GVnc.ConnectionEncoding.COPY_RECT, GVnc.ConnectionEncoding.RAW,
+                                  GVnc.ConnectionEncoding.HEXTILE, GVnc.ConnectionEncoding.ZRLE,
                                   GVnc.ConnectionEncoding.DESKTOP_RESIZE])
         if self.resize_buffer(connection.get_width(), connection.get_height()):
             self.ready = True
@@ -167,9 +167,9 @@ class GuestDisplay(Gtk.Picture):
 
     def updated(self, _connection, _x, _y, _width, _height):
         if self.framebuffer and not self.pending_frame:
-            self.pending_frame = GLib.idle_add(self.paint_frame)
+            self.pending_frame = self.add_tick_callback(self.paint_frame)
 
-    def paint_frame(self):
+    def paint_frame(self, _widget, _clock):
         self.pending_frame = 0
         if not self.ready or not self.framebuffer:
             return False
@@ -263,6 +263,6 @@ class GuestDisplay(Gtk.Picture):
     def close(self):
         self.release_input()
         if self.pending_frame:
-            GLib.source_remove(self.pending_frame)
+            self.remove_tick_callback(self.pending_frame)
             self.pending_frame = 0
         self.connection.shutdown()

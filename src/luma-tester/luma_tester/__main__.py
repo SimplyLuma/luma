@@ -33,6 +33,8 @@ def main():
             p.add_argument('--headless', action='store_true')
             p.add_argument('--embedded', action='store_true', help='Private Unix display socket for the LumaUI viewer')
             p.add_argument('--software', action='store_true', help='Use TCG even when KVM is available')
+            p.add_argument('--graphics', choices=['auto', 'virgl', 'software'], default='auto')
+            p.add_argument('--render-node', help='GPU render node, e.g. /dev/dri/renderD128')
             p.add_argument('--firmware')
             p.add_argument('--dry-run', action='store_true')
         elif action in ('screenshot', 'sync'):
@@ -82,7 +84,7 @@ def main():
         if args.action == 'prepare':
             session.prepare()
         elif args.action == 'start':
-            options = {k: getattr(args, k) for k in ('port', 'memory', 'cpus', 'headless', 'firmware', 'software', 'embedded')}
+            options = {k: getattr(args, k) for k in ('port', 'memory', 'cpus', 'headless', 'firmware', 'software', 'embedded', 'graphics', 'render_node')}
             if args.dry_run:
                 print(json.dumps(session.command(**options), indent=2))
             else:

@@ -4,26 +4,26 @@ set -euo pipefail
 [ "$#" = 2 ]
 target=$1
 build_id=$2
-case "$target" in mobile) device_class=handheld ;; desktop) device_class=desktop ;; *) exit 2 ;; esac
+case "$target" in
+  desktop) device_class=desktop ;;
+  *) printf 'error: this producer is qualified for desktop only; Mobile requires the phone shell profile\n' >&2; exit 2 ;;
+esac
 root=/var/tmp/luma-tester-build/source
+# Retire the prototype from earlier tester images as well as fresh exports.
+rm -rf /usr/share/gnome-shell/extensions/handheld@project-luma.local
+rm -f /usr/share/luma-tester/profiles/mobile.dconf \
+  /usr/share/applications/org.project_luma.MobileInputSettings.desktop \
+  /usr/libexec/luma-mobile-input-settings \
+  /usr/share/glib-2.0/schemas/org.project_luma.handheld.gschema.xml
 install -Dm755 "$root/scripts/mobile/luma-shell-session" /usr/local/bin/luma-shell-session
 install -Dm644 "$root/config/mobile/fp6-physical/overlay/usr/lib/systemd/user/luma-shell-session.target" /usr/lib/systemd/user/luma-shell-session.target
 install -Dm644 "$root/config/desktop/dconf/profile/user" /etc/dconf/profile/user
 install -Dm644 "$root/config/desktop/dconf/db/luma.d/00-luma-desktop" /usr/share/luma-tester/profiles/desktop.dconf
-install -Dm644 "$root/config/mobile/luma-shell-handheld.dconf" /usr/share/luma-tester/profiles/mobile.dconf
-install -d /usr/share/gnome-shell/extensions/handheld@project-luma.local
-cp -a "$root/extensions/luma-handheld/." /usr/share/gnome-shell/extensions/handheld@project-luma.local/
-if [ -d /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas ]; then
-  glib-compile-schemas /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas
-fi
 install -d /usr/share/gnome-shell/extensions/tester@project-luma.local
 cp -a "$root/extensions/luma-tester/." /usr/share/gnome-shell/extensions/tester@project-luma.local/
 # Source archives are extracted under a private builder umask. Installed Shell
 # extensions must be traversable and readable by the graphical user.
-chmod -R a+rX /usr/share/gnome-shell/extensions/handheld@project-luma.local /usr/share/gnome-shell/extensions/tester@project-luma.local
-install -Dm644 "$root/extensions/luma-handheld/org.project_luma.handheld.gschema.xml" /usr/share/glib-2.0/schemas/org.project_luma.handheld.gschema.xml
-install -Dm755 "$root/extensions/luma-handheld/luma-mobile-input-settings.py" /usr/libexec/luma-mobile-input-settings
-install -Dm644 "$root/extensions/luma-handheld/org.project_luma.MobileInputSettings.desktop" /usr/share/applications/org.project_luma.MobileInputSettings.desktop
+chmod -R a+rX /usr/share/gnome-shell/extensions/tester@project-luma.local
 glib-compile-schemas /usr/share/glib-2.0/schemas
 install -Dm755 "$root/scripts/tester/apply-profile" /usr/libexec/luma-tester-apply-profile
 install -Dm644 "$root/config/tester/luma-tester-profile.service" /usr/lib/systemd/system/luma-tester-profile.service
@@ -33,7 +33,6 @@ cat >/usr/local/bin/luma-tester-session <<'SESSION'
 #!/bin/sh
 IFS= read -r LUMA_DEVICE_CLASS </etc/luma-device-class
 export LUMA_DEVICE_CLASS
-export LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
 # This disposable preview deliberately disables locking in its profile. Record
 # that configured state before Shell starts, avoiding its first-login GDM hint.
 preview_shell_data=${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell

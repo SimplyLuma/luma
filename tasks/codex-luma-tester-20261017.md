@@ -258,3 +258,25 @@ used that source without altering shared refs or unrelated worktrees.
   qualifies VirGL rendering plus a lighter nonaccelerated fallback. No updated
   candidate will be called Luma Mobile based only on portrait dimensions or an
   enabled extension. Existing Dell preview has exited; no replacement launched.
+
+- Graphics correction in progress: auto VirGL with a bounded EGL startup probe,
+  explicit software/required-VirGL controls, fallback receipt, and bundled Mesa
+  driver/module closure. Removed forced software blur. The embedded viewer now
+  batches texture copies on the GTK frame clock and prefers uncompressed local
+  transport. 39 backend checks passed dev-luma-tester-graphics-checks-73fef8a7;
+  exact viewer/QMP pixel parity and input passed
+  dev-luma-tester-viewer-clock-r2-54a6a592. Native guest EGL reported VirGL backed
+  by server RTX3090/NVK. Motion diagnostic observed375 frames/7.23s and visible
+  window movement, but that diagnostic's exit failed on expected shutdown
+  disconnect handling; do not call the full job a pass. Harness correction and
+  before/after measurements remain in progress. No new Dell candidate delivered.
+- Producer now exports Desktop only and refuses the rejected GNOME handheld
+  prototype. Mobile readiness requires the actual Phosh process/native frame
+  marker. Current phone source was located and pinned externally at branch
+  fp6-25, commit2bf0a1db172b47308b1439f5b73b3e6e20cf62c3 (Phosh73, Phoc12,
+  shared platform114, shell-state36). Private source stays outside public Git.
+  Qualified keyring3 x86 artifacts located; real phone stack still needs native
+  x86 component builds, complete normal checks and actual UI parity review.
+- Retired7 owned obsolete generated artifacts in
+  dev-luma-tester-retire-obsolete-r2-caefe132 after process/backing checks;
+  receipts, current r10 baseline and original AppImage review evidence retained.

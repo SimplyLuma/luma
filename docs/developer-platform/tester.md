@@ -7,6 +7,9 @@ rootfs tarball, Android APK, or desktop installer ISO. There is no public guest
 feed in this first implementation; image preparation is documented in
 [tester-images.md](tester-images.md).
 
+The currently composed preview is Desktop only. Mobile is being replaced with
+the actual phone shell; earlier GNOME handheld previews do not represent Luma Mobile.
+
 ## Portable Linux preview
 
 The portable directory includes LumaUI, Python, QEMU, SSH, rsync and its verified
@@ -73,7 +76,12 @@ luma-tester stop /path/to/mobile.json
 `--embedded` exposes a private Unix display socket for the LumaUI client.
 The ordinary CLI `start` still opens QEMU's own GTK window for diagnostics.
 `--headless` removes the window and keeps QMP screenshots and SSH available.
-No unauthenticated VNC server is started. `--software` forces TCG for diagnostics.
+The embedded display uses a private Unix VNC socket. GPU graphics uses VirGL
+through the host render device when initialization succeeds; unavailable GPUs
+fall back to software rendering. `--graphics virgl` requires acceleration,
+`--graphics software` selects the 2D GPU, and `--render-node` selects a GPU.
+The selected mode and fallback reason are recorded in the workspace's `graphics.json`.
+`--software` independently forces TCG CPU emulation for diagnostics.
 For a custom firmware location use `start ... --firmware /absolute/path`.
 `start ... --dry-run` prints the exact QEMU argv without downloading or starting
 anything; it still needs firmware for UEFI targets.

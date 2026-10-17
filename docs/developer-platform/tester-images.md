@@ -45,7 +45,9 @@ The guest must include:
   startup and a completed compositor paint it writes
   `$XDG_RUNTIME_DIR/luma-tester/ready.json`, containing `target`, `boot_id`,
   `width`, and `height`. The host checks the current boot and requires portrait
-  dimensions plus an active handheld extension for Mobile. An SSH port or a
+  dimensions. Mobile additionally requires `renderer: luma-phosh`, its actual
+  `/opt/luma/phosh/libexec/phosh` process and native first-frame marker at
+  `/run/luma-display/home-ready`. An SSH port or a
   Wayland socket alone is insufficient. Use this image contract for `wait
   --graphical` and the GUI; no arbitrary readiness hooks run from manifests.
 
@@ -94,15 +96,18 @@ Windows WHPX packaging and those host validations remain separate work.
 `scripts/tester/build-guest.py` composes the preview in a private QEMU builder
 using the pinned Fedora Cloud base and the source-selected local Luma RPM cohort.
 It builds the current shared apps from their normal RPM spec, including `%check`,
-then applies the selected desktop/handheld profile. It never installs those
+then applies the desktop profile. It never installs those
 packages on the host or uses an existing personal VM disk.
 
-The first producer target is x86_64, with Mobile as the default. ARM needs its
+The current producer exports x86_64 Desktop only. The earlier GNOME handheld
+prototype was rejected as inaccurate and is no longer composed as Luma Mobile.
+Mobile requires the actual phone Phosh/Phoc source and matching shared packages.
+ARM needs its
 own matching package cohort and a separately qualified producer path; selecting
 an ARM argument does not convert x86 RPMs into an ARM image.
 
 ```sh
-scripts/tester/build-guest.py --target mobile --build-id your-build-id \
+scripts/tester/build-guest.py --target desktop --build-id your-build-id \
   --base /path/to/verified/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2 \
   --rpm-pool /path/to/the/pinned/Luma/RPMs --output /path/to/private/output \
   --preflight
@@ -124,13 +129,11 @@ keep it separate from device installers and production OS releases. The build
 receipt explicitly remains unqualified until fresh-session shell/app tests pass.
 
 
-The shared image carries both presentation profiles. Its local catalog contains
-`mobile.json` and `desktop.json` pointing at the **same** qcow2 digest. The tester
-writes the selected target into the per-session cloud-init seed; a first-boot
-service applies that profile before greetd starts. Each experience keeps its own
-private writable disk and developer key while sharing the verified base cache.
-The guest identifies itself as **Luma Developer Preview**, with its actual build
-id, rather than claiming a production Nightly or device release.
+The current catalog contains `desktop.json`. A Mobile catalog entry must wait for
+qualification of the actual phone renderer, Home/Library/Now surfaces and app
+workflow. A portrait desktop is insufficient. Each image keeps a private writable
+disk and developer key while sharing verified base files when their digests match.
+The guest identifies itself as **Luma Developer Preview**, with its actual build id.
 
 For a profile-only follow-up, `--parent-receipt /path/to/build-receipt.json` may
 reuse a prior producer image. The producer checks the parent image digest, exact

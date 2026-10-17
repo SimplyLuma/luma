@@ -69,21 +69,46 @@ copy(REPO / 'examples/tester-hello', 'examples/Hello Luma')
 tools = ['qemu-system-x86_64', 'qemu-img', 'ssh', 'ssh-keygen', 'rsync', 'xorriso']
 seeds = [Path(shutil.which(name) or '/missing/' + name).resolve() for name in tools]
 modules = [Path('/usr/lib64/qemu') / name for name in
-           ('hw-display-virtio-gpu.so', 'hw-display-virtio-gpu-pci.so', 'ui-gtk.so', 'ui-opengl.so')]
+           ('hw-display-virtio-gpu.so', 'hw-display-virtio-gpu-pci.so',
+            'hw-display-virtio-gpu-gl.so', 'hw-display-virtio-gpu-pci-gl.so',
+            'ui-egl-headless.so', 'ui-gtk.so', 'ui-opengl.so')]
+# EGL/GBM loads its Mesa drivers dynamically, beyond ldd's dependency graph.
+# Keep these in the tools ABI, separate from the UI's qualified native runtime.
+graphics = [Path('/usr/lib64/libEGL_mesa.so.0'), Path('/usr/lib64/libvulkan.so.1')]
+graphics += list(Path('/usr/lib64').glob('libgallium-*.so'))
+for driver in ('intel', 'intel_hasvk', 'radeon', 'nouveau', 'lvp', 'virtio'):
+    graphics.append(Path('/usr/lib64/libvulkan_' + driver + '.so'))
+    metadata = Path('/usr/share/vulkan/icd.d') / (driver + '_icd.x86_64.json')
+    data = json.loads(metadata.read_text())
+    data['ICD']['library_path'] = Path(data['ICD']['library_path']).name
+    target = dest / 'tools/vulkan' / metadata.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(data) + '\n')
+for source in Path('/usr/lib64/dri').glob('*_dri.so'):
+    copy(source, Path('tools/dri') / source.name)
+    graphics.append(source)
+copy(Path('/usr/share/glvnd/egl_vendor.d/50_mesa.json'), 'tools/egl/50_mesa.json')
 packages = {}
-for source in seeds + modules:
+copied_dependencies = set()
+for source in seeds + modules + graphics:
     assert source.is_file(), source
     text = subprocess.check_output(['ldd', str(source)], text=True)
     if 'not found' in text: raise RuntimeError('Missing tool dependency: ' + text)
     dependencies = re.findall(r'(?:=>\s+|^\s*)(/[^\s]+)', text, flags=re.M)
     for name in dependencies:
         path = Path(name)
+        if path in copied_dependencies:
+            continue
+        copied_dependencies.add(path)
         copy(path, Path('tools/lib') / path.name)
         packages[str(path)] = subprocess.check_output(
             ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(path)], text=True).strip()
     packages[str(source)] = subprocess.check_output(
         ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(source)], text=True).strip()
-    if source in modules:
+    if source in graphics:
+        # DRI entry points also retain their conventional driver filenames.
+        copy(source, Path('tools/lib') / source.name)
+    elif source in modules:
         copy(source, Path('tools/modules') / source.name)
     else:
         copy(source, Path('tools/raw') / source.name)
@@ -96,6 +121,9 @@ for name in tools:
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 export QEMU_MODULE_DIR="$tester_dir/tools/modules"
+export __EGL_VENDOR_LIBRARY_FILENAMES="$tester_dir/tools/egl/50_mesa.json"
+export LIBGL_DRIVERS_PATH="$tester_dir/tools/dri"
+export VK_DRIVER_FILES=$(printf '%s:' "$tester_dir"/tools/vulkan/*.json)
 exec "$tester_dir/tools/lib/ld-linux-x86-64.so.2" --inhibit-cache --library-path "$tester_dir/tools/lib" "$tester_dir/tools/raw/''' + real + '"' + extra + ' "$@"\n')
     wrapper.chmod(0o755)
 for name in ('qemu', 'seabios', 'ipxe'):

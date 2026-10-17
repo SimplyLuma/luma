@@ -208,9 +208,31 @@ class Session:
                 return str(Path(candidate).resolve())
         raise TesterError('UEFI firmware missing; install edk2 or supply --firmware PATH.')
 
-    def command(self, port=2228, memory=4096, cpus=4, headless=False, firmware=None, software=False, embedded=False):
+    @staticmethod
+    def render_device(requested=None):
+        candidates = [Path(requested)] if requested else sorted(Path('/dev/dri').glob('renderD*'))
+        for path in candidates:
+            path = path.resolve()
+            if re.fullmatch(r'/dev/dri/renderD[0-9]+', str(path)) and path.is_char_device() and os.access(path, os.R_OK | os.W_OK):
+                return str(path)
+        if requested:
+            raise TesterError('The selected GPU render device is not accessible.')
+        return None
+
+    def command(self, port=2228, memory=4096, cpus=4, headless=False, firmware=None, software=False, embedded=False,
+                graphics='auto', render_node=None):
         if not 1024 <= memory <= 16384 or not 1 <= cpus <= 16 or not 1024 <= port <= 65535:
             raise TesterError('Use memory 1024–16384 MiB, CPUs 1–16, SSH port 1024–65535.')
+        if graphics not in ('auto', 'virgl', 'software'):
+            raise TesterError('Choose graphics auto, virgl or software.')
+        render = self.render_device(render_node) if graphics != 'software' else None
+        accelerated = graphics == 'virgl' or (graphics == 'auto' and not headless and render is not None)
+        if accelerated and render is None:
+            raise TesterError('Accelerated graphics needs an accessible GPU render device.')
+        display = ('egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
+                   'gtk,gl=on,zoom-to-fit=on' if accelerated else
+                   'none' if headless or embedded else 'gtk,zoom-to-fit=on')
+        gpu = 'virtio-gpu-gl-pci' if accelerated else 'virtio-gpu-pci'
         arch = self.manifest['arch']
         native = platform.machine() in ({'aarch64', 'arm64'} if arch == 'aarch64' else {'x86_64', 'AMD64'})
         kvm = native and not software and os.access('/dev/kvm', os.R_OK | os.W_OK)
@@ -220,11 +242,11 @@ class Session:
                 '-accel', 'kvm' if kvm else 'tcg,thread=multi', '-cpu', 'host' if kvm else 'max',
                 '-m', str(memory), '-smp', str(cpus), '-nic',
                 f'user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:22',
-                '-vga', 'none', '-device', f'virtio-gpu-pci,edid=on,xres={width},yres={height}',
+                '-vga', 'none', '-device', f'{gpu},edid=on,xres={width},yres={height}',
                 '-device', 'virtio-keyboard-pci', '-device', 'virtio-tablet-pci',
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
-                '-display', 'none' if headless or embedded else 'gtk,zoom-to-fit=on']
+                '-display', display]
         if embedded:
             argv += ['-vnc', 'unix:' + str(self.display_path)]
         for name, path, fmt, readonly in [('os', self.disk, 'qcow2', False),
@@ -237,12 +259,40 @@ class Session:
             argv += ['-bios', bios]
         return argv
 
+    def probe_graphics(self, command):
+        """Require QEMU to finish EGL initialization before selecting VirGL."""
+        display = command[command.index('-display') + 1]
+        if not display.startswith('egl-headless'):
+            render = self.render_device()
+            display = 'egl-headless,rendernode=' + render
+        probe = [command[0], '-machine', command[command.index('-machine') + 1],
+                 '-cpu', 'max', '-accel', 'tcg', '-m', '256', '-nodefaults', '-vga', 'none',
+                 '-device', 'virtio-gpu-gl-pci', '-display', display, '-S', '-qmp', 'stdio']
+        requests = ''.join(json.dumps({'execute': action}) + '\n' for action in
+                           ('qmp_capabilities', 'query-status', 'quit'))
+        result = subprocess.run(probe, input=requests, text=True, capture_output=True, timeout=10)
+        if result.returncode or '"status"' not in result.stdout:
+            raise TesterError('GPU initialization failed: ' + result.stderr.strip()[-1500:])
+
     def start(self, **options):
         if platform.system() != 'Linux':
             raise TesterError('This first launcher supports Linux hosts. macOS and Windows are planned.')
         with self.lock() as lease:
             self._prepare(print)
             command = self.command(**options)
+            graphics = {'mode': 'software', 'reason': 'GPU unavailable or software mode selected'}
+            if any(arg.startswith('virtio-gpu-gl-pci,') for arg in command):
+                try:
+                    self.probe_graphics(command)
+                    graphics = {'mode': 'virgl', 'render_node': self.render_device(options.get('render_node'))}
+                except (TesterError, subprocess.TimeoutExpired) as exc:
+                    if options.get('graphics', 'auto') == 'virgl':
+                        raise TesterError(str(exc)) from exc
+                    graphics['reason'] = str(exc)
+                    command = self.command(**dict(options, graphics='software'))
+                    print('Using software graphics: ' + str(exc), flush=True)
+            (self.directory / 'graphics.json').write_text(json.dumps(graphics, indent=2) + '\n')
+            print('Graphics: ' + graphics['mode'], flush=True)
             # The exclusive lock proves any old endpoint belongs to a stopped session.
             self.qmp_path.unlink(missing_ok=True)
             self.display_path.unlink(missing_ok=True)
@@ -365,8 +415,9 @@ assert ready['width'] > 0 and ready['height'] > 0
 if ready['target'] == 'mobile':
     assert ready['height'] > ready['width']
     import subprocess
-    info = subprocess.check_output(['env', 'LC_ALL=C', 'gnome-extensions', 'info', 'handheld@project-luma.local'], text=True)
-    assert 'State: ACTIVE' in info
+    assert ready.get('renderer') == 'luma-phosh'
+    assert Path('/run/luma-display/home-ready').is_file()
+    assert subprocess.check_output(['pgrep', '-u', str(os.getuid()), '-f', '^/opt/luma/phosh/libexec/phosh( |$)'], text=True).strip()
 """
         while time.monotonic() < deadline:
             if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,

@@ -33,7 +33,7 @@ def main():
             port = port_socket.getsockname()[1]
         log = open(output / 'display-qemu.log', 'w')
         child = subprocess.Popen([sys.executable, '-m', 'luma_tester', '--state', str(session.root),
-            'start', str(manifest), '--embedded', '--software', '--memory', '1024', '--cpus', '1',
+            'start', str(manifest), '--embedded', '--software', '--graphics', 'software', '--memory', '1024', '--cpus', '1',
             '--port', str(port)], stdout=log, stderr=log)
         errors = []
         viewer = None
@@ -57,7 +57,7 @@ def main():
                     window.present()
                     assert viewer.open()
                     phase = 1
-                elif phase == 1 and viewer.frames >= 2:
+                elif phase == 1 and viewer.frames >= 1:
                     session.qmp('stop')
                     last_frame = viewer.frames
                     viewer.connection.framebuffer_update_request(False, 0, 0,
