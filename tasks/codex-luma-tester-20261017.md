@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: ready for review — Linux x86_64 preview qualified; ARM and other hosts remain pending.
+- Status: active — prior Mobile qualification withdrawn after user review; correcting phone provenance and desktop graphics.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -248,3 +248,13 @@ used that source without altering shared refs or unrelated worktrees.
   automated app/UI tests ran; no production app/profile or phone was changed.
   Manual review feedback is pending. The launcher is left open; no guest was
   started automatically on the Dell.
+
+- User review rejected the displayed Mobile UI. Prior boot/app checks did not
+  establish product parity: the guest selected the GNOME handheld prototype
+  instead of the actual Luma Phosh/Phoc phone session. Prior Mobile acceptance
+  claims are withdrawn. The user also reported unusable desktop window dragging;
+  current QEMU uses the software-only 2D virtio GPU and forced software blur.
+  Corrective work traces the current phone source branch/package cohort and
+  qualifies VirGL rendering plus a lighter nonaccelerated fallback. No updated
+  candidate will be called Luma Mobile based only on portrait dimensions or an
+  enabled extension. Existing Dell preview has exited; no replacement launched.
