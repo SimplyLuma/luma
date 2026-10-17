@@ -66,7 +66,8 @@ lock-enabled=false
 sleep-inactive-ac-type='nothing'
 DCONF
 dconf update
-systemctl enable sshd.service greetd.service
+systemctl disable gdm.service 2>/dev/null || true
+systemctl enable --force sshd.service greetd.service
 systemctl set-default graphical.target
 # Remove the obsolete cloud web console instead of exposing another admin service.
 systemctl disable cockpit.socket 2>/dev/null || true

@@ -95,3 +95,9 @@ used that source without altering shared refs or unrelated worktrees.
   ignore host-specific client config and retain an actionable last wait error.
   Interrupted only this owned builder safely; r1 preserved, r2 will use the new
   committed source identity rather than silently rebasing its build receipt.
+
+- Builder r2 passed isolated SSH and cloud-init readiness, then exposed dnf5's
+  command-specific `--allowerasing` placement. Corrected the guest recipe to
+  `install --allowerasing`; also made the simulator's greetd selection explicit
+  if a package preset installed GDM. r2's failure and disk are retained. r3 will
+  use a fresh, separately identified builder rather than change prior receipts.

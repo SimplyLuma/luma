@@ -8,7 +8,7 @@ cd "$work"
 grep -qx 'ID=fedora' /etc/os-release
 [ -f source/scripts/tester/guest-install.sh ]
 # Exact local packages come from the producer's recorded input cohort.
-dnf -y --setopt=install_weak_deps=False --allowerasing install rpms/*.rpm \
+dnf -y --setopt=install_weak_deps=False install --allowerasing rpms/*.rpm \
   greetd gnome-session gnome-session-wayland-session dbus-daemon \
   mesa-dri-drivers mesa-libEGL mesa-libGL pipewire pipewire-pulseaudio wireplumber \
   gnome-keyring gnome-keyring-pam dconf rsync sudo openssh-server \
