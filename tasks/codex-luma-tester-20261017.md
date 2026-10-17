@@ -43,9 +43,13 @@ Final Desktop candidate:
 - Guest: desktop-image-r11; SHA25685635f37e85459583e826759611950238e4c388b3e6a570af14411c899023180.
 - Full native/packaged workflow PASS dev-luma-tester-desktop-final-graphics-233652f3;
   actual AppImage entry PASS dev-luma-tester-appimage-final-entry-75e45cae.
-- Dell delivery is pending: tunnel timed out before transfer. No replacement
-  launched and no Dell automated app/UI test ran. User asked to wake the Dell
-  through an async access question while Mobile work continues.
+- Dell delivery completed after the user reported it online. Exact candidate
+  checksum verified by dev-luma-tester-dell-graphics-delivery-r4-45557a0e.
+  Launcher active in the real graphical session as
+  luma-preview-tester-graphics-20261017-bd66b286.service, using isolated
+  /home/nick/.local/share/luma-previews/tester-graphics-20261017 storage.
+  No guest auto-started and no Dell automated app/UI tests ran. Manual review
+  of GPU acceleration/window dragging remains pending.
 
 Current phone component job is dev-luma-tester-phone-phosh-oracle-df2fc3e4 in the
 separate owned luma-tester-phone-20261017 experiment. Phoc12 passed19 normal
@@ -53,9 +57,22 @@ checks. Phosh73 compiled but its normal check found an obsolete hardcoded dark
 color oracle; it now reads the independent shared AppKit gradient-top reference,
 using shell-state's existing exact-one-declaration check mechanism. Palette and
 renderer payload source are unchanged. All other assertions/suites preserved.
-Normal Phosh build/check is running again. Phone UI, current shared app/platform
-cohort, real touch input, ARM execution and macOS/Windows remain unqualified.
+Normal Phosh build/check passed all13 suites, scale3 Library composition and
+all7 drawer traces; component-artifacts-r4.tar retains RPM/SRPM/QA. Kernel input
+checks verified real multitouch; actual phone shell gesture integration remains
+pending. Phone UI, current shared app/platform cohort, ARM execution and
+macOS/Windows remain unqualified.
 No phone was touched, and no release/push/publication occurred.
+
+Phone builder state moved offline to
+/mnt/luma-secondary/dev/luma-dev-2/luma-tester-phone-20261017/builder-state.
+File hashes and qemu-img guest-visible comparisons passed before removal of the
+old root-filesystem copy (dev-luma-tester-phone-state-migration-r2-8ab9b000;
+user worker luma-tester-user-dbe0a8be33). Existing drivers hardcode the old path:
+update them before reuse. Secondary-disk jobs require the bounded
+root-user-worker.py controller because ordinary devctl workers make that mount
+read-only. Next Mobile work: matched GTK4/libadwaita SDK, current shared
+platform/apps, native phone profile, then actual shell/app gesture QA.
 
 Historical r10 outputs (outside Git, retained review evidence):
 - AppImage: /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-final/Luma-Tester-0.1.0-linux-x86_64.AppImage
