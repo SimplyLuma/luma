@@ -34,6 +34,11 @@ cat >/usr/local/bin/luma-tester-session <<'SESSION'
 IFS= read -r LUMA_DEVICE_CLASS </etc/luma-device-class
 export LUMA_DEVICE_CLASS
 export LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
+# This disposable preview deliberately disables locking in its profile. Record
+# that configured state before Shell starts, avoiding its first-login GDM hint.
+preview_shell_data=${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell
+mkdir -p "$preview_shell_data"
+: >"$preview_shell_data/lock-warning-shown"
 exec /usr/local/bin/luma-shell-session
 SESSION
 chmod 755 /usr/local/bin/luma-tester-session

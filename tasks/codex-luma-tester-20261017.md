@@ -184,3 +184,10 @@ used that source without altering shared refs or unrelated worktrees.
   New meaningful relocation test retains the overlay inode/key; all33 checks
   passed in dev-luma-tester-relocation-check-92596565. AppImage bootstrap uses
   the original executable path for stable CLI commands/catalog identity.
+- Portable r3 mobile PASS: dev-luma-tester-packaged-mobile-r3-7c1a3f95, actual
+  bundled module path asserted, bundled QEMU/firmware/SSH/rsync booted guest,
+  app source edit restarted successfully, graceful shutdown saved overlay.
+  Screenshots inspected; example now fills portrait viewport. One first-login
+  GDM lock hint covered the home screen, despite this preview's explicit unlocked
+  profile. Session wrapper now records that configured preview state before
+  Shell starts, using upstream's one-time hint marker. Preparing final r10.
