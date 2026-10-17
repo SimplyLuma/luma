@@ -102,6 +102,12 @@ for name in ('qemu', 'seabios', 'ipxe'):
     copy(Path('/usr/share') / name, Path('tools/share') / name)
     if name != 'qemu':
         copy(Path('/usr/share') / name, 'tools/share/qemu')
+# Fedora keeps network ROM aliases in a separate search directory.
+# Dereference those aliases into QEMU's one relocatable firmware directory.
+for path in Path('/usr/share/ipxe/qemu').glob('*.rom'):
+    copy(path, Path('tools/share/qemu') / path.name)
+    packages[str(path.resolve())] = subprocess.check_output(
+        ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(path.resolve())], text=True).strip()
 # Retain the exact installed tool packages' upstream notices.
 for line in set(packages.values()):
     nevra = line.split('\t')[0]

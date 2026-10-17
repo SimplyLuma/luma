@@ -152,6 +152,9 @@ def main():
                 app.commands.invoke('tester.open')
                 phase = 1
             elif phase == 1:
+                if not app.busy and app.child is None and time.monotonic() - started > 10:
+                    log = app.session.directory / 'launcher.log'
+                    raise AssertionError(app.status_label.get_label() + '\n' + (log.read_text()[-2500:] if log.exists() else ''))
                 if app.display_failure:
                     raise AssertionError(app.display_failure)
                 if app.graphical_ready and app.viewer and app.viewer.frames > 1:

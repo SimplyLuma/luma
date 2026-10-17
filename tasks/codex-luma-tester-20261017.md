@@ -173,3 +173,8 @@ used that source without altering shared refs or unrelated worktrees.
   lowered its declared minimum to280 before final packaged qualification.
   Added self-contained Linux directory producer, relocatable catalog/runtime,
   bundled distribution tools and notices; packaging validation is next.
+- Portable r1 assembled (1.7GiB), but packaged QEMU boot failed before firmware:
+  omitted Fedora ipxe/qemu ROM aliases. Added dereferenced ROMs into the bundle's
+  QEMU firmware search directory, with package/license provenance. Native r9
+  mobile pass remains valid; portable r1 is not accepted. QA now reports an
+  early launcher exit immediately, rather than waiting for its full deadline.
