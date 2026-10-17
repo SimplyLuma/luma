@@ -265,7 +265,7 @@ class SessionTests(unittest.TestCase):
             session.dev(self.root, ['python3', '-m', 'example'], once=True)
         sync.assert_called_once_with(self.root)
         argv = run.call_args.args[0]
-        self.assertIn('--property=WorkingDirectory=%h/Projects/app', argv)
+        self.assertIn('--working-directory="$HOME/Projects/app"', argv[3])
         self.assertEqual(argv[-3:], ['python3', '-m', 'example'])
 
     def test_manifest_wrong_types_report_errors(self):

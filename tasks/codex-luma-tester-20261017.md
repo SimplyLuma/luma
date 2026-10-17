@@ -148,3 +148,12 @@ used that source without altering shared refs or unrelated worktrees.
   and private umask permissions on copied extension source directories. Fixed
   single GPU argv and installed extension permissions. r5 QA was stopped after
   requesting guest graceful poweroff; it is not a pass. Preparing r6.
+- r6 booted one portrait GPU; first-paint marker worked. Actual mobile QA found
+  handheld State ERROR: missing org.gnome.shell.extensions.dash-to-dock schema.
+  Completing the shared extension dependencies (pinned Luma dock built from its
+  checked upstream SRPM/patches, tiling toggle/shell) and SDK in r7. The app
+  watcher also exposed a systemd transient WorkingDirectory shorthand rejection;
+  now resolves HOME inside the authenticated guest shell with quoted argv.
+  32 backend checks passed dev-luma-tester-app-launch-check-bb7f77b9. r6 is not
+  accepted. Diagnostic reboot preserved its SSH host pin; graceful poweroff
+  succeeded in dev-luma-tester-handheld-errors-8128afe5.

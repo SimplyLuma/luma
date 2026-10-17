@@ -31,6 +31,7 @@ PIN_VARIABLES = (
     'PRAIRIE_ICON_THEME_NEVRA', 'FIGTREE_NEVRA', 'LUMA_APPLICATION_INSTALLER_NEVRA',
     'LUMA_APK_METADATA_X86_64_NEVRA', 'LUMA_MONITOR_NEVRA',
     'LUMA_CALCULATOR_NEVRA', 'LUMA_TERMINAL_NEVRA',
+    'LUMA_DEVELOPER_PLATFORM_SDK_NEVRA', 'LUMA_TILING_TOGGLE_NEVRA', 'TILING_SHELL_NEVRA',
 )
 EXTRA_PINS = (
     'mutter-50.4-1.luma.13.creator20261009.1.fc44.x86_64',
@@ -65,7 +66,8 @@ def create_inputs(output, pool, target, build_id, parent=None):
     run(['git', '-C', REPO, 'diff', '--exit-code', 'HEAD', '--'], stdout=subprocess.DEVNULL)
     pins, expected_apps = source_pins()
     inputs = []
-    for pin in ([] if parent else pins):
+    parent_files = {p['file'] for p in parent['rpm_inputs']} if parent else set()
+    for pin in [pin for pin in pins if pin + '.rpm' not in parent_files]:
         path = pool / (pin + '.rpm')
         if not path.is_file():
             raise TesterError('Missing pinned RPM: ' + str(path))
@@ -75,12 +77,12 @@ def create_inputs(output, pool, target, build_id, parent=None):
     if parent:
         if parent.get('schema') != 1 or not re.fullmatch(r'[0-9a-f]{40}', parent.get('source_commit', '')):
             raise TesterError('Parent receipt has an unsupported schema or source identity.')
-        if {p['file'] for p in parent['rpm_inputs']} != {p + '.rpm' for p in pins}:
+        if not parent_files <= {p + '.rpm' for p in pins}:
             raise TesterError('Parent RPM cohort differs from current source pins.')
         source_paths = ['config/desktop/inputs.env', 'src/prairie-core', 'src/luma-platform',
                         'src/luma-continuity', 'packaging/rpm/prairie-core-apps.spec']
         run(['git', '-C', REPO, 'diff', '--quiet', parent['source_commit'], commit, '--', *source_paths])
-        inputs = parent['rpm_inputs']
+        inputs = [*parent['rpm_inputs'], *inputs]
     source_archive = output / 'source.tar'
     with source_archive.open('wb') as stream:
         run(['git', '-C', REPO, 'archive', commit], stdout=stream)
@@ -107,10 +109,23 @@ def create_inputs(output, pool, target, build_id, parent=None):
     (output / 'expected-apps').write_text(expected_apps + '\n')
     (output / 'target').write_text(target + '\n')
     (output / 'build-id').write_text(build_id + '\n')
+    from urllib.request import urlopen
+    values = dict(line.split('=', 1) for line in (REPO / 'config/desktop/inputs.env').read_text().splitlines()
+                  if line.startswith('DASH_TO_DOCK_SRPM'))
+    srpm = output / values['DASH_TO_DOCK_SRPM']
+    if not srpm.exists():
+        with urlopen(values['DASH_TO_DOCK_SRPM_URL'], timeout=60) as response, srpm.open('wb') as stream:
+            import shutil
+            shutil.copyfileobj(response, stream)
+    if digest(srpm) != values['DASH_TO_DOCK_SRPM_SHA256']:
+        raise TesterError('Dock upstream source RPM checksum mismatch.')
+    receipt['dock_source_sha256'] = digest(srpm)
+    (output / 'source-identity.json').write_text(json.dumps(receipt, indent=2) + '\n')
     payload = output / 'guest-inputs.tar'
     with tarfile.open(payload, 'w') as archive:
         archive.add(source, arcname='source')
-        for item in ([] if parent else inputs):
+        archive.add(srpm, arcname=srpm.name)
+        for item in [item for item in inputs if item['file'] not in parent_files]:
             archive.add(pool / item['file'], arcname='rpms/' + item['file'])
         for name in ('source-identity.json', 'expected-apps', 'target', 'build-id',
                      'prairie-core-apps.tar.gz', 'luma-continuity.tar.gz'):
@@ -166,6 +181,7 @@ def build(args):
         print('Installing pinned Luma components and building shared apps from source…', flush=True)
         with (output / 'guest-package-build.log').open('a') as stream:
             if parent:
+                guest(session, ['sudo', 'bash', '/var/tmp/luma-tester-build/source/scripts/tester/guest-additions.sh'], stdout=stream, stderr=subprocess.STDOUT)
                 pins, expected_apps = source_pins()
                 guest(session, ['rpm', '-q', *pins, expected_apps], stdout=stream, stderr=subprocess.STDOUT)
                 guest(session, ['sudo', 'bash', '/var/tmp/luma-tester-build/source/scripts/tester/guest-configure.sh',
@@ -180,6 +196,10 @@ def build(args):
         if not parent:
             with (output / 'shared-apps-artifacts.tar').open('wb') as stream:
                 guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/app-rpmbuild',
+                                'RPMS', 'SRPMS'], stdout=stream)
+        if guest(session, ['test', '-d', '/var/tmp/luma-tester-build/dock-rpmbuild/RPMS'], check=False).returncode == 0:
+            with (output / 'dock-artifacts.tar').open('wb') as stream:
+                guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/dock-rpmbuild',
                                 'RPMS', 'SRPMS'], stdout=stream)
         cleanup = r'''set -eu
           test -f /etc/luma/tester-image

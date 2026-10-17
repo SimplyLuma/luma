@@ -82,6 +82,10 @@ def main():
             enabled = command(session, ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'])
             assert ('handheld@project-luma.local' in enabled) == (target == 'mobile'), enabled
             report['enabled_extensions'] = enabled
+            if target == 'mobile':
+                info = command(session, ['gnome-extensions', 'info', 'handheld@project-luma.local'])
+                assert 'State: ACTIVE' in info, info
+                report['handheld_state'] = info
             report['package_versions'] = command(session, ['rpm', '-q', 'gnome-shell', 'mutter',
                                                           'luma-developer-platform', 'prairie-core-apps'])
             watcher = subprocess.Popen([sys.executable, '-m', 'luma_tester', '--state', str(session.root),

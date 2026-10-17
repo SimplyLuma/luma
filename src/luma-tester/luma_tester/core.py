@@ -359,6 +359,9 @@ assert ready['target'] == Path('/etc/luma-tester-target').read_text().strip()
 assert ready['width'] > 0 and ready['height'] > 0
 if ready['target'] == 'mobile':
     assert ready['height'] > ready['width']
+    import subprocess
+    info = subprocess.check_output(['env', 'LC_ALL=C', 'gnome-extensions', 'info', 'handheld@project-luma.local'], text=True)
+    assert 'State: ACTIVE' in info
 """
         while time.monotonic() < deadline:
             if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
@@ -393,8 +396,9 @@ if ready['target'] == 'mobile':
             if snapshot != previous:
                 self.sync(source)
                 subprocess.call(self.ssh(['systemctl', '--user', 'stop', 'luma-tester-app.service']))
-                run(self.ssh(['systemd-run', '--user', '--collect', '--unit=luma-tester-app',
-                              '--property=WorkingDirectory=%h/Projects/app', '--', *command]))
+                launch = ('exec systemd-run --user --collect --unit=luma-tester-app '
+                          '--working-directory="$HOME/Projects/app" -- "$@"')
+                run(self.ssh(['sh', '-c', launch, 'luma-tester', *command]))
                 print('App restarted from Projects/app. Guest journal: journalctl --user -u luma-tester-app', flush=True)
                 previous = snapshot
             if once:

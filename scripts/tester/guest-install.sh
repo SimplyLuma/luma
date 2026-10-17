@@ -33,6 +33,7 @@ if ! rpm -q "$(cat expected-apps)" >/dev/null 2>&1; then
   dnf -y --setopt=install_weak_deps=False install "$build"/RPMS/noarch/prairie-core-apps-*.rpm
 fi
 rpm -q "$(cat expected-apps)"
+bash source/scripts/tester/guest-additions.sh
 # QEMU profile configuration happens after source/package validation succeeds.
 bash source/scripts/tester/guest-configure.sh "$(cat target)" "$(cat build-id)"
 dnf clean all
