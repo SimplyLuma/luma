@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: launcher milestone ready for review; complete Luma guest integration pending.
+- Status: active — building and qualifying real guest images.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -81,3 +81,9 @@ used that source without altering shared refs or unrelated worktrees.
 - 2026-10-17: user clarified final LumaUI and simple beautiful UX. Replaced generic
   GTK preferences UI with actual shared LumaUI and intent-first flow. Ran actual
   native flow and QEMU integration checks. Guest-image milestone remains explicit.
+
+- 2026-10-17 continuation: user authorized proceeding with guest images. Fedora44
+  x86_64 Cloud base downloaded (583729152 bytes), SHA-256 and Fedora44 cleartext
+  checksum signature verified against the installed Fedora public key. Reusing
+  existing pinned native RPMs; current shared apps .104 will be built from source.
+  Guest builder/profile files and optional desktop session capability now in scope.

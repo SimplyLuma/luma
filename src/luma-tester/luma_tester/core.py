@@ -219,7 +219,7 @@ class Session:
                 '-display', 'none' if headless else 'gtk,zoom-to-fit=on']
         for name, path, fmt, readonly in [('os', self.disk, 'qcow2', False),
                                            ('seed', self.directory / 'seed.iso', 'raw', True)]:
-            block = {'driver': fmt, 'node-name': name, 'read-only': readonly,
+            block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
                      'file': {'driver': 'file', 'filename': str(path)}}
             argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}']
         bios = self.firmware(firmware)

@@ -80,3 +80,37 @@ provenance with independently qualified downloads. This launcher currently reads
 only explicitly selected local manifests; it performs no automatic updates or
 publication. QEMU bundling, macOS HVF packaging, Windows WHPX packaging and those
 host validations remain separate work.
+
+## Source-owned guest producer
+
+`scripts/tester/build-guest.py` composes the preview in a private QEMU builder
+using the pinned Fedora Cloud base and the source-selected local Luma RPM cohort.
+It builds the current shared apps from their normal RPM spec, including `%check`,
+then applies the selected desktop/handheld profile. It never installs those
+packages on the host or uses an existing personal VM disk.
+
+The first producer target is x86_64, with Mobile as the default. ARM needs its
+own matching package cohort and a separately qualified producer path; selecting
+an ARM argument does not convert x86 RPMs into an ARM image.
+
+```sh
+scripts/tester/build-guest.py --target mobile --build-id your-build-id \
+  --base /path/to/verified/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2 \
+  --rpm-pool /path/to/the/pinned/Luma/RPMs --output /path/to/private/output \
+  --preflight
+```
+
+Remove `--preflight` to build, inside your normal admitted job with enough disk
+and memory for a 3 GiB guest and its package transaction. The producer pins the
+base hash in `config/tester/fedora-cloud.json`. Obtain the Fedora checksum file,
+verify its signature with Fedora44's official public key, and verify the base
+hash before supplying it. Builder SSH keys, writable disks and package logs stay
+in the private output directory. Use a new output/build id for a different source.
+`--resume` is restricted to the exact committed source/target/build identity.
+
+A successful build exports `image.json`, a standalone qcow2, source/RPM receipt,
+installed package list and the normal package build log. Builder authorization,
+SSH host keys, instance identity and cloud-init state are cleaned before export.
+This is a developer image with passwordless guest sudo and graphical autologin;
+keep it separate from device installers and production OS releases. The build
+receipt explicitly remains unqualified until fresh-session shell/app tests pass.

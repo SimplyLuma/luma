@@ -30,7 +30,8 @@ export XDG_SESSION_CLASS=user
 export XDG_SESSION_DESKTOP=luma
 export XDG_CURRENT_DESKTOP=Luma:GNOME
 export DESKTOP_SESSION=luma
-export LUMA_DEVICE_CLASS=handheld
+# Physical handhelds keep their default; generic VM profiles may select desktop.
+export LUMA_DEVICE_CLASS=${LUMA_DEVICE_CLASS:-handheld}
 export GDK_BACKEND=wayland
 export MOZ_ENABLE_WAYLAND=1
 
