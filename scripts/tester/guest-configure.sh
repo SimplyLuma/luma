@@ -18,6 +18,9 @@ if [ -d /usr/share/gnome-shell/extensions/handheld@project-luma.local/schemas ];
 fi
 install -d /usr/share/gnome-shell/extensions/tester@project-luma.local
 cp -a "$root/extensions/luma-tester/." /usr/share/gnome-shell/extensions/tester@project-luma.local/
+# Source archives are extracted under a private builder umask. Installed Shell
+# extensions must be traversable and readable by the graphical user.
+chmod -R a+rX /usr/share/gnome-shell/extensions/handheld@project-luma.local /usr/share/gnome-shell/extensions/tester@project-luma.local
 install -Dm755 "$root/scripts/tester/apply-profile" /usr/libexec/luma-tester-apply-profile
 install -Dm644 "$root/config/tester/luma-tester-profile.service" /usr/lib/systemd/system/luma-tester-profile.service
 install -d /etc/environment.d /etc/luma /etc/greetd /etc/systemd/system/greetd.service.d

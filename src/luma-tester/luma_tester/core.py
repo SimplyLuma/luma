@@ -215,7 +215,7 @@ class Session:
                 '-accel', 'kvm' if kvm else 'tcg,thread=multi', '-cpu', 'host' if kvm else 'max',
                 '-m', str(memory), '-smp', str(cpus), '-nic',
                 f'user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:22',
-                '-device', f'virtio-gpu-pci,edid=on,xres={width},yres={height}',
+                '-vga', 'none', '-device', f'virtio-gpu-pci,edid=on,xres={width},yres={height}',
                 '-device', 'virtio-keyboard-pci', '-device', 'virtio-tablet-pci',
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),

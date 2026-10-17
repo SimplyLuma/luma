@@ -143,3 +143,8 @@ used that source without altering shared refs or unrelated worktrees.
   dev-luma-tester-first-frame-source-077505bd. Graphical fixes await fresh r5.
   Diagnostic screenshots/logs: dev-luma-tester-mobile-diagnosis-fresh-b5189f0a;
   that diagnostic exited1 on the old blocking poweroff transport race.
+- r5 built successfully from source1db084a; mobile QA held loading as intended.
+  Diagnosis found QEMU's implicit VGA plus explicit virtio GPU (two monitors),
+  and private umask permissions on copied extension source directories. Fixed
+  single GPU argv and installed extension permissions. r5 QA was stopped after
+  requesting guest graceful poweroff; it is not a pass. Preparing r6.
