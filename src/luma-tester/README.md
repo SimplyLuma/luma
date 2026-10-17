@@ -66,7 +66,9 @@ Use `--state` before the subcommand. Different simultaneous guests need differen
 `start --port` values. SSH is forwarded on 127.0.0.1 only. Outbound guest networking
 is enabled. No host filesystem, microphone, camera or USB device is shared by default.
 
-`stop` requests an ACPI shutdown. Guest shutdown support is required; pause/resume
+`stop` requests guest shutdown through SSH and systemd (a paused VM is resumed
+first). Mobile treats the virtual power button as screen sleep/wake, so an ACPI
+button press is not used for the launcher’s Shut Down action; pause/resume
 are QMP controls. The standalone CLI can still open QEMU's own GTK display; closing that window
 terminates its VM. Shut down from the guest first to let apps save their work. The GUI stays open while its guest
 or preparation process is active. No automatic overlay deletion is provided.

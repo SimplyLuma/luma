@@ -128,3 +128,9 @@ used that source without altering shared refs or unrelated worktrees.
   runs before greetd. Profile-only derivation checks the parent image/cohort and
   unchanged app/platform source. GUI/dev watcher now wait for a real Wayland
   session before exposing the display or launching a graphical app.
+
+- Converged r4 build completed: sourcea97d1c6, both profiles in one standalone
+  image/catalog, all26 parent component NEVRAs verified inside its builder.
+  Actual fresh-session shell/app qualification is next. Added an OS-aware
+  shutdown request through authenticated guest systemd because the handheld
+  session intentionally intercepts the virtual ACPI power button as sleep/wake.

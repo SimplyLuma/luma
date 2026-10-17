@@ -290,6 +290,17 @@ class Session:
         except (OSError, TesterError):
             return 'stopped'
 
+    def shutdown(self):
+        # Luma Mobile owns the virtual power button as display sleep/wake.
+        # An ACPI button press is therefore not a reliable shutdown request.
+        if self.status() in ('paused', 'prelaunch'):
+            self.qmp('cont')
+        result = subprocess.run(self.ssh(['sudo', 'systemctl', 'poweroff']),
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                text=True, timeout=15)
+        if result.returncode != 0:
+            raise TesterError('Could not request guest shutdown: ' + result.stderr.strip()[-1024:])
+
     def screenshot(self, destination):
         destination = Path(destination).resolve()
         if destination.exists():

@@ -149,6 +149,15 @@ class SessionTests(unittest.TestCase):
         self.assertIn('2229', argv)
         self.assertNotIn('StrictHostKeyChecking=no', argv)
 
+    def test_shutdown_resumes_before_requesting_guest_poweroff(self):
+        session = self.save()
+        with patch.object(session, 'status', return_value='paused'), patch.object(session, 'qmp') as qmp, \
+             patch.object(session, 'ssh', return_value=['ssh', 'sudo systemctl poweroff']) as ssh, \
+             patch('subprocess.run', return_value=subprocess.CompletedProcess([], 0, stderr='')):
+            session.shutdown()
+        qmp.assert_called_once_with('cont')
+        ssh.assert_called_once_with(['sudo', 'systemctl', 'poweroff'])
+
     def test_sync_rejects_home_or_root(self):
         session = self.save()
         for source in [Path.home(), Path('/')]:

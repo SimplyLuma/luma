@@ -89,8 +89,10 @@ def main():
                 return session.start(**options)
         elif args.action == 'status':
             print(session.status())
-        elif args.action in ('stop', 'pause', 'resume'):
-            session.qmp({'stop': 'system_powerdown', 'pause': 'stop', 'resume': 'cont'}[args.action])
+        elif args.action == 'stop':
+            session.shutdown()
+        elif args.action in ('pause', 'resume'):
+            session.qmp({'pause': 'stop', 'resume': 'cont'}[args.action])
         elif args.action == 'screenshot':
             print(session.screenshot(args.path))
         elif args.action == 'ssh':
@@ -105,7 +107,7 @@ def main():
             (session.wait_graphical if args.graphical else session.wait)(args.timeout)
     except KeyboardInterrupt:
         return 130
-    except (TesterError, ImportError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+    except (TesterError, ImportError, OSError, ValueError, KeyError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         print('Luma Tester: ' + str(exc), file=sys.stderr)
         return 1
     return 0

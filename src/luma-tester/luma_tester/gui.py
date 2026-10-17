@@ -49,6 +49,7 @@ def launch(state=None):
             self.viewer = None
             self.graphical_ready = False
             self.display_failure = None
+            self.shutting_down = False
 
         def label(self, text, role='body', muted=False, centered=False):
             widget = Gtk.Label(label=text, wrap=True, xalign=0.5 if centered else 0)
@@ -314,6 +315,7 @@ def launch(state=None):
                 self.viewer = None
             self.graphical_ready = False
             self.display_failure = None
+            self.shutting_down = False
             self.busy = True
             self.session_title.set_label('Luma ' + self.target.title())
             self.status_label.set_label('Getting your Luma workspace ready…')
@@ -375,7 +377,7 @@ def launch(state=None):
                 self.spinner.stop()
                 self.progress.set_visible(False)
                 self.controls.set_visible(True)
-                self.status_label.set_label(self.display_failure or ('Luma is paused.' if self.session.status() == 'paused' else
+                self.status_label.set_label(('Shutting down Luma…' if self.shutting_down else self.display_failure) or ('Luma is paused.' if self.session.status() == 'paused' else
                                            ('Luma is open. Make yourself at home.' if self.graphical_ready else 'Opening your Luma workspace…')))
                 self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
             return True
@@ -385,8 +387,23 @@ def launch(state=None):
                 self.control('cont' if self.session.status() == 'paused' else 'stop')
 
         def stop(self):
-            if self.running():
-                self.control('system_powerdown')
+            if not self.running() or self.shutting_down:
+                return
+            self.shutting_down = True
+            session = self.session
+            def worker():
+                try:
+                    session.shutdown()
+                except Exception as exc:
+                    GLib.idle_add(self.shutdown_failed, session, str(exc))
+            threading.Thread(target=worker, daemon=True).start()
+
+        def shutdown_failed(self, session, message):
+            if self.session is session:
+                self.shutting_down = False
+                self.display_failure = message
+                self.status_label.set_label(message)
+            return False
 
         def control(self, command):
             try:
