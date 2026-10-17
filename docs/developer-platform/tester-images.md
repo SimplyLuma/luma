@@ -1,8 +1,8 @@
 # Luma Tester guest image contract
 
-The launcher and guest OS have separate builds. This first source milestone
-provides the launcher; it does not publish a Luma Mobile/desktop image or image
-feed. An existing installer or hardware rootfs must not be relabeled as a
+The launcher and guest OS have separate builds. The source includes a Linux
+launcher, an x86_64 shared-image producer and portable/AppImage packagers.
+There is no published guest feed. An existing installer or hardware rootfs must not be relabeled as a
 qualified QEMU image. The older `prepare-fp6-twin.sh` starts from Fedora Cloud,
 and `enable-fp6-twin-ui.sh` installs experimental Phosh. Those are useful lab
 building blocks, not the complete current Luma Mobile guest.
@@ -39,7 +39,15 @@ The guest must include:
   sudo; never distribute it as a hardened production installation.
 - A graphical user session that imports its display and D-Bus environment into
   the user systemd manager. App restarts use `systemd-run --user`, with no guessed
-  socket paths. Graceful ACPI shutdown must work.
+  socket paths. Authenticated `sudo systemctl --no-block poweroff` must work;
+  mobile uses the ACPI power button for display sleep/wake.
+- The tester readiness extension from `extensions/luma-tester`. After session
+  startup and a completed compositor paint it writes
+  `$XDG_RUNTIME_DIR/luma-tester/ready.json`, containing `target`, `boot_id`,
+  `width`, and `height`. The host checks the current boot and requires portrait
+  dimensions plus an active handheld extension for Mobile. An SSH port or a
+  Wayland socket alone is insufficient. Use this image contract for `wait
+  --graphical` and the GUI; no arbitrary readiness hooks run from manifests.
 
 Before exporting, stop the image, remove personal accounts/keys/secrets and logs,
 run `cloud-init clean --logs --machine-id` **inside the producer guest**, and shut
@@ -78,8 +86,8 @@ VM tests are separate evidence.
 A future public feed should supply authenticated manifests and verified build
 provenance with independently qualified downloads. This launcher currently reads
 only explicitly selected local manifests; it performs no automatic updates or
-publication. QEMU bundling, macOS HVF packaging, Windows WHPX packaging and those
-host validations remain separate work.
+publication. The Linux portable producer bundles QEMU. macOS HVF packaging,
+Windows WHPX packaging and those host validations remain separate work.
 
 ## Source-owned guest producer
 

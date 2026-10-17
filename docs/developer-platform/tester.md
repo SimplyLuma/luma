@@ -7,6 +7,20 @@ rootfs tarball, Android APK, or desktop installer ISO. There is no public guest
 feed in this first implementation; image preparation is documented in
 [tester-images.md](tester-images.md).
 
+## Portable Linux preview
+
+The portable directory includes LumaUI, Python, QEMU, SSH, rsync and its verified
+shared guest image. Open **Luma Tester** inside it. The AppImage packages the same
+directory as one executable; mark it executable before opening. Without FUSE,
+use `./Luma-Tester-0.1.0-linux-x86_64.AppImage --appimage-extract-and-run`.
+Use the included README for package-specific commands. These are Linux x86_64
+builds; ARM guest execution and macOS/Windows packages need separate qualification.
+
+The source packagers are `scripts/tester/build-portable.py` and
+`scripts/tester/build-appimage.py`; both accept `--help`. They run inside the
+normal admitted build lane, consume explicit runtime/catalog inputs, and write
+only their output directories. No public download is configured by building them.
+
 ## Start a session
 
 Install the [host requirements](../../src/luma-tester/README.md), then run:
@@ -22,7 +36,7 @@ it downloads/verifies the disk and creates a private key and writable overlay;
 subsequent runs keep that workspace. The guest appears inside the LumaUI window. Its live display uses a private Unix
 socket; pointer, keyboard and scrolling operate the actual guest. Ctrl+Alt
 returns focus to launcher controls.
-Mobile requests a 432×960 portrait output; the image's compositor must honor the
+Mobile requests a single 432×960 portrait output; the image's compositor must honor the
 virtual output and use the handheld device class. The image determines scaling.
 
 This developer milestone has no public image catalog. Use **Advanced → Add Image**
@@ -78,7 +92,7 @@ luma-tester ssh /path/to/mobile.json ls Projects/app
 luma-tester dev /path/to/mobile.json ./my-app -- python3 -m my_app
 ```
 
-`dev` waits for SSH and the real Wayland session, syncs, then starts `luma-tester-app.service` in the guest user
+`dev` waits for SSH and the painted graphical session, syncs, then starts `luma-tester-app.service` in the guest user
 manager. It scans source metadata once per second and repeats sync/restart after
 changes. Ctrl+C stops the watcher; the guest and app stay available for inspection.
 This is a process restart, not in-process hot reload. Watcher sync does not remove
@@ -95,6 +109,11 @@ do not guess a Wayland socket or run the app as root. Inspect app output with:
 luma-tester ssh /path/to/mobile.json journalctl --user -u luma-tester-app -n 80 --no-pager
 luma-tester ssh /path/to/mobile.json systemctl --user show-environment
 ```
+
+For the included `examples/tester-hello`, run `dev ... -- python3 main.py` and
+edit `message.txt`. Give mobile apps a declared minimum width that fits the
+432-pixel viewport; an oversized minimum can prevent the compositor from
+maximizing them. The guest includes the Luma SDK CLI (`luma --help`).
 
 For an app with its own file watcher, use `sync` plus that app's existing reload
 mechanism. Source synchronization does not rebuild RPMs, native code or Flatpaks.
