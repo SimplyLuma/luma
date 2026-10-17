@@ -38,7 +38,7 @@ Icon=io.luma.Tester
 Categories=Development;Emulator;
 Terminal=false
 ''')
-icon = app / 'usr/share/icons/Adwaita/scalable/devices/computer-symbolic.svg'
+icon = app / 'usr/share/icons/Prairie/scalable/devices/computer.svg'
 assert icon.is_file(), icon
 shutil.copy2(icon, app / 'io.luma.Tester.svg')
 (app / '.DirIcon').symlink_to('io.luma.Tester.svg')
