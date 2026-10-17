@@ -31,7 +31,7 @@ Linux x86_64 now has a qualified local offline preview: both target manifests
 share one standalone image, with separate private overlays/keys/seeds. Native
 host runtime and QEMU/tools are bundled, and an AppImage is assembled and its
 actual entry point tested. No public feed, publishing, signing, OS deployment or
-physical-device launch occurred. ARM definitions/TCG selection exist, but ARM
+phone operation occurred. A later user-requested Dell manual preview is recorded below. ARM definitions/TCG selection exist, but ARM
 execution and producer remain unqualified: the inspected available ARM package
 set lacks the current matching Shell/GTK4/LumaUI cohort. macOS and Windows remain
 later host stages per the user's Linux-first direction.
@@ -237,3 +237,14 @@ used that source without altering shared refs or unrelated worktrees.
   GDM lock hint covered the home screen, despite this preview's explicit unlocked
   profile. Session wrapper now records that configured preview state before
   Shell starts, using upstream's one-time hint marker. Preparing final r10.
+
+- 2026-10-17, later user request “Launch it here”: Dell desktop route verified
+  active (nick on nicks-xps, existing Wayland session). Copied the exact qualified
+  AppImage into /home/nick/.local/share/luma-previews/tester-20261017 and verified
+  SHA256SUMS successfully. Launched through the registered dell-preview helper
+  with separate config/data/cache/workspace directories, using extract-and-run.
+  Unit luma-preview-tester-hotfix-20261017-d04c82d2.service reports active/running.
+  This is the real logged-in Dell desktop, not a server virtual display. No Dell
+  automated app/UI tests ran; no production app/profile or phone was changed.
+  Manual review feedback is pending. The launcher is left open; no guest was
+  started automatically on the Dell.
