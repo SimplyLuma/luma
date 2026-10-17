@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — building and qualifying real guest images.
+- Status: ready for review — Linux x86_64 preview qualified; ARM and other hosts remain pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -27,15 +27,61 @@ chooses KVM or TCG, exposes localhost-only SSH, QMP controls/screenshots, source
 sync and a foreground app restart watcher. CLI remains independent of GTK/LumaUI.
 The wheel is a launcher package, not a self-contained QEMU/LumaUI/guest bundle.
 
-There is no qualified public simulator image/catalog in this source milestone.
-Existing FP6 twin starts from Fedora Cloud and experimental Phosh; it is not
-proof of current Luma Mobile parity. Full bootable Luma Mobile/desktop guests,
-real guest source-sync/restart qualification, image distribution, and portable
-host/runtime packaging remain. Next useful action: produce source-identified
-QEMU guest images using the documented contract, first mobile; boot/qualify them
-with actual Luma shell/apps before advertising a click-to-try download. ARM
-emulator is absent on this host: ARM argv selection is checked, ARM execution is
-unqualified. macOS/Windows hosts remain deferred per the Linux-first request.
+Linux x86_64 now has a qualified local offline preview: both target manifests
+share one standalone image, with separate private overlays/keys/seeds. Native
+host runtime and QEMU/tools are bundled, and an AppImage is assembled and its
+actual entry point tested. No public feed, publishing, signing, OS deployment or
+physical-device launch occurred. ARM definitions/TCG selection exist, but ARM
+execution and producer remain unqualified: the inspected available ARM package
+set lacks the current matching Shell/GTK4/LumaUI cohort. macOS and Windows remain
+later host stages per the user's Linux-first direction.
+
+Final source work is on this branch; host payload source4e89534, guest source
+67cf2b5, AppImage packager698dcf2, subsequent commits add qualification scripts
+and this factual record. All tests below ran on this server; full OS GUI runs
+used x86 KVM and software-rendered guest graphics. Cross-distro hosts, FUSE
+mounting, full OS TCG performance and physical phone hardware are not qualified.
+AppImage extract-and-run mode is verified. No tester VM/service remains running.
+
+Local outputs (outside Git):
+- AppImage: /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-final/Luma-Tester-0.1.0-linux-x86_64.AppImage
+- Size1558088184 bytes; SHA2569ff6c36c9c83e18c6816de6c2895a7e5f08eecce5c2c85aaf4ada59add9180eb.
+- SHA256SUMS and appimage-receipt.json are beside the AppImage.
+- Portable directory: /srv/dev/accounts/second/experiments/luma-tester-20261017/Luma-Tester-0.1.0-linux-x86_64.
+- Guest/catalog/receipt: /srv/dev/accounts/second/experiments/luma-tester-20261017/converged-image-r10.
+- Guest SHA25698191da5951d6006d7e9110c4df311cf623143b5ec880f22fc5432c2d750ba7a,
+  1440481280 bytes;29 pinned inputs plus source-built Luma dock14, shared apps104,
+  Shell112/Mutter13/platform107. Public build identity is readable in the guest.
+
+Final validation evidence:
+- 33 backend tests PASS, dev-luma-tester-relocation-check-92596565; covers real
+  QEMU/QMP fixture controls, identity/integrity, private sessions and URL relocation
+  preserving the original key/overlay. A fixture OS boot is not implied.
+- Final packaged Mobile PASS, dev-luma-tester-final-mobile-df04aef7,46.74s,
+  3409 live frames. Actual handheld extension ACTIVE, portrait home, SDK CLI,
+  source sync + two app PIDs after edit, visible hot-fix text, graceful poweroff.
+- Final packaged Desktop PASS, dev-luma-tester-final-desktop-4a6b3adc,42.78s,
+  1950 frames. Separate desktop profile, same base digest, native app edit/restart
+  and graceful poweroff. Home/hot-fix screenshots inspected for both targets.
+- Saved Mobile relaunch PASS, dev-luma-tester-final-reopen-ed2660e5: project text
+  and SSH key/host pin preserved, painted session ready, real guest pause/resume,
+  second graceful poweroff. Same final private state, no re-pairing bypass.
+- Final bundled LumaUI flow/narrow/dark check and AppImage assembly PASS,
+  dev-luma-tester-appimage-final-r2-db54d408. The first attempt used a test that
+  expects an empty catalog against the real bundled catalog; corrected the test
+  environment to explicitly supply its empty catalog, without a product change.
+- Actual AppImage entry PASS, dev-luma-tester-appimage-entry-9072aedd: extract/run,
+  real LumaUI welcome window, keyboard quit, CLI doctor finding all tools inside
+  the extracted bundle. Screenshot appimage-welcome.png in that job's artifacts.
+- Full original shared-app RPM checks passed in r3; later builds reuse the exact
+  unchanged cohort with receipt/image checks. Logs/source RPMs retained outside
+  Git. No generated guest/image/package/key is committed.
+
+Job evidence directories are /srv/dev/accounts/second/artifacts/UNIT_WITHOUT_SERVICE.
+Owned failed/disposable builder caches and obsolete test sessions were retired
+only after checking no process used them; logs/receipts were retained. Protected
+OS stores and unrelated agents' outputs were not changed. Root free was27GiB
+at final checks, above the20GiB reserve.
 
 Git fetch encountered a pre-existing missing object under a Codex turn-diff
 capture ref in the shared repository. Existing origin/main resolves to 925db44;
