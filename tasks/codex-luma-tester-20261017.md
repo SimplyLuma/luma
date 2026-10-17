@@ -27,23 +27,37 @@ chooses KVM or TCG, exposes localhost-only SSH, QMP controls/screenshots, source
 sync and a foreground app restart watcher. CLI remains independent of GTK/LumaUI.
 The wheel is a launcher package, not a self-contained QEMU/LumaUI/guest bundle.
 
-Linux x86_64 now has a qualified local offline preview: both target manifests
-share one standalone image, with separate private overlays/keys/seeds. Native
-host runtime and QEMU/tools are bundled, and an AppImage is assembled and its
-actual entry point tested. No public feed, publishing, signing, OS deployment or
-phone operation occurred. A later user-requested Dell manual preview is recorded below. ARM definitions/TCG selection exist, but ARM
-execution and producer remain unqualified: the inspected available ARM package
-set lacks the current matching Shell/GTK4/LumaUI cohort. macOS and Windows remain
-later host stages per the user's Linux-first direction.
+Current Linux x86_64 candidate is **Desktop only**, with automatic VirGL,
+software fallback, and a frame-clock-limited private Unix VNC viewer. Actual
+packaged guest checks verified VirGL, app source edit/restart, accelerated
+screenshot capture and graceful shutdown. Final AppImage entry passed as well.
+Source host5d6fc399; guest sourcea9a3c22a. Mobile selection is unavailable in this
+catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
+claims below are withdrawn; portrait GNOME is not product parity.
 
-Final source work is on this branch; host payload source4e89534, guest source
-67cf2b5, AppImage packager698dcf2, subsequent commits add qualification scripts
-and this factual record. All tests below ran on this server; full OS GUI runs
-used x86 KVM and software-rendered guest graphics. Cross-distro hosts, FUSE
-mounting, full OS TCG performance and physical phone hardware are not qualified.
-AppImage extract-and-run mode is verified. No tester VM/service remains running.
+Final Desktop candidate:
+- /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-graphics-r13/Luma-Tester-0.1.0-linux-x86_64.AppImage
+- SHA25672252cbb5d7275e8feadf60ff607afc6a0004bf379255604b3d051c802cfef0e;
+  1642953208 bytes. Receipt and checksum beside it.
+- Portable: /srv/dev/accounts/second/experiments/luma-tester-20261017/Luma-Tester-graphics-r13.
+- Guest: desktop-image-r11; SHA25685635f37e85459583e826759611950238e4c388b3e6a570af14411c899023180.
+- Full native/packaged workflow PASS dev-luma-tester-desktop-final-graphics-233652f3;
+  actual AppImage entry PASS dev-luma-tester-appimage-final-entry-75e45cae.
+- Dell delivery is pending: tunnel timed out before transfer. No replacement
+  launched and no Dell automated app/UI test ran. User asked to wake the Dell
+  through an async access question while Mobile work continues.
 
-Local outputs (outside Git):
+Current phone component job is dev-luma-tester-phone-phosh-oracle-df2fc3e4 in the
+separate owned luma-tester-phone-20261017 experiment. Phoc12 passed19 normal
+checks. Phosh73 compiled but its normal check found an obsolete hardcoded dark
+color oracle; it now reads the independent shared AppKit gradient-top reference,
+using shell-state's existing exact-one-declaration check mechanism. Palette and
+renderer payload source are unchanged. All other assertions/suites preserved.
+Normal Phosh build/check is running again. Phone UI, current shared app/platform
+cohort, real touch input, ARM execution and macOS/Windows remain unqualified.
+No phone was touched, and no release/push/publication occurred.
+
+Historical r10 outputs (outside Git, retained review evidence):
 - AppImage: /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-final/Luma-Tester-0.1.0-linux-x86_64.AppImage
 - Size1558088184 bytes; SHA2569ff6c36c9c83e18c6816de6c2895a7e5f08eecce5c2c85aaf4ada59add9180eb.
 - SHA256SUMS and appimage-receipt.json are beside the AppImage.
@@ -53,7 +67,7 @@ Local outputs (outside Git):
   1440481280 bytes;29 pinned inputs plus source-built Luma dock14, shared apps104,
   Shell112/Mutter13/platform107. Public build identity is readable in the guest.
 
-Final validation evidence:
+Historical r10 boot/workflow evidence (Mobile parity withdrawn):
 - 33 backend tests PASS, dev-luma-tester-relocation-check-92596565; covers real
   QEMU/QMP fixture controls, identity/integrity, private sessions and URL relocation
   preserving the original key/overlay. A fixture OS boot is not implied.

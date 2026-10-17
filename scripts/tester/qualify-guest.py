@@ -156,6 +156,11 @@ def main():
             if time.monotonic() - started > 210:
                 raise AssertionError('Qualification deadline exceeded: ' + app.status_label.get_label())
             if phase == 0:
+                if app.catalog_targets == {'desktop'}:
+                    assert app.target == 'desktop'
+                    assert app.desktop_button.get_active()
+                    assert not app.mobile_button.get_sensitive()
+                    report['available_target_selected'] = True
                 app.select_intent('develop')
                 app.select_target(target)
                 class FolderChoice:
