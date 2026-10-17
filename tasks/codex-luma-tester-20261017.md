@@ -157,3 +157,8 @@ used that source without altering shared refs or unrelated worktrees.
   32 backend checks passed dev-luma-tester-app-launch-check-bb7f77b9. r6 is not
   accepted. Diagnostic reboot preserved its SSH host pin; graceful poweroff
   succeeded in dev-luma-tester-handheld-errors-8128afe5.
+- r7 installed all29 pinned inputs and built/installed Luma dock14 normally.
+  Export failed on a producer-only duplicate subprocess `check` argument while
+  probing retained dock artifacts; corrected the probe to call subprocess
+  directly and improved builder error cleanup to request systemd poweroff.
+  No r7 image accepted/exported. Retrying from verified r6 as r8.

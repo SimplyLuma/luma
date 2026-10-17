@@ -197,7 +197,7 @@ def build(args):
             with (output / 'shared-apps-artifacts.tar').open('wb') as stream:
                 guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/app-rpmbuild',
                                 'RPMS', 'SRPMS'], stdout=stream)
-        if guest(session, ['test', '-d', '/var/tmp/luma-tester-build/dock-rpmbuild/RPMS'], check=False).returncode == 0:
+        if subprocess.run(session.ssh(['test', '-d', '/var/tmp/luma-tester-build/dock-rpmbuild/RPMS']), check=False).returncode == 0:
             with (output / 'dock-artifacts.tar').open('wb') as stream:
                 guest(session, ['sudo', 'tar', '-cf', '-', '-C', '/var/tmp/luma-tester-build/dock-rpmbuild',
                                 'RPMS', 'SRPMS'], stdout=stream)
@@ -241,7 +241,10 @@ def build(args):
     finally:
         if child.poll() is None:
             try:
-                session.qmp('system_powerdown')
+                try:
+                    session.shutdown()
+                except (OSError, TesterError, subprocess.TimeoutExpired):
+                    session.qmp('system_powerdown')
                 child.wait(timeout=30)
             except (OSError, TesterError, subprocess.TimeoutExpired):
                 child.terminate()
