@@ -14,7 +14,7 @@ if ! rpm -q "$DASH_TO_DOCK_NEVRA" >/dev/null 2>&1; then
   printf '%s  %s\n' "$DASH_TO_DOCK_SRPM_SHA256" "$DASH_TO_DOCK_SRPM" | sha256sum -c -
   top=$work/dock-rpmbuild
   mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$work/dock-extract"
-  (cd "$work/dock-extract"; rpm2cpio "$work/$DASH_TO_DOCK_SRPM" | cpio -idm --quiet)
+  (cd "$work/dock-extract"; rpm2cpio "$work/$DASH_TO_DOCK_SRPM" >payload.cpio; cpio -idm --quiet <payload.cpio; rm payload.cpio)
   mv "$work/dock-extract/gnome-shell-extension-dash-to-dock.spec" "$top/SPECS/"
   cp "$work/dock-extract/"* "$top/SOURCES/"
   cp source/patches/dash-to-dock/0001-luma-dock-material.patch "$top/SOURCES/"

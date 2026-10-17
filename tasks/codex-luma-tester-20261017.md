@@ -162,3 +162,6 @@ used that source without altering shared refs or unrelated worktrees.
   probing retained dock artifacts; corrected the probe to call subprocess
   directly and improved builder error cleanup to request systemd poweroff.
   No r7 image accepted/exported. Retrying from verified r6 as r8.
+- r8 stopped during SRPM extraction with SIGPIPE141 under pipefail. Switched
+  rpm2cpio/cpio to the same intermediate payload-file pattern used by the normal
+  repository dock builder. Retrying as r9. No r8 image exported.

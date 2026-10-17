@@ -246,6 +246,8 @@ def launch(state=None):
             if self.session is session and self.running() and self.viewer and self.viewer.ready:
                 self.return_button.set_sensitive(True)
                 self.return_button.set_label('Show Luma')
+                if self.stack.get_visible_child_name() != 'live':
+                    self.window.set_default_size(*( (520, 920) if self.target == 'mobile' else (1060, 780) ))
                 self.stack.set_visible_child_name('live')
             return False
 
