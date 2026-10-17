@@ -25,6 +25,7 @@ except (ImportError, ValueError) as exc:
     raise ImportError('Luma Tester requires the LumaUI runtime (luma-developer-platform).') from exc
 
 from .core import Session, TesterError, data_root, read_manifest
+from .display import GuestDisplay
 
 
 def launch(state=None):
@@ -45,6 +46,8 @@ def launch(state=None):
             except (OSError, ValueError, AttributeError):
                 self.imported = []
             self.advanced = None
+            self.viewer = None
+            self.graphical_ready = False
 
         def label(self, text, role='body', muted=False, centered=False):
             widget = Gtk.Label(label=text, wrap=True, xalign=0.5 if centered else 0)
@@ -83,6 +86,7 @@ def launch(state=None):
             self.build_welcome()
             self.build_targets()
             self.build_session()
+            self.build_live()
             self.stack.set_visible_child_name('welcome')
             self.window.connect('close-request', self.close_request)
             self.window.present()
@@ -177,8 +181,68 @@ def launch(state=None):
             self.developer_box.append(self.button('Copy Development Command', self.copy_development_command))
             page.append(Card(self.developer_box))
             self.developer_card = self.developer_box.get_parent()
-            self.return_button = self.button('Back to Luma', lambda: self.stack.set_visible_child_name('targets'))
+            self.return_button = self.button('Back to Luma', self.return_to_luma)
             page.append(self.return_button)
+
+        def build_live(self):
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                           margin_start=20, margin_end=20, margin_top=14, margin_bottom=14)
+            header = Gtk.Box(spacing=12)
+            self.live_title = self.label('Luma Mobile', 'title-2')
+            self.live_title.set_hexpand(True)
+            header.append(self.live_title)
+            self.tools_button = self.button('Project', lambda: self.stack.set_visible_child_name('session'))
+            header.append(self.tools_button)
+            page.append(header)
+            self.viewer_holder = Gtk.Box(hexpand=True, vexpand=True)
+            page.append(self.viewer_holder)
+            page.append(self.label('Click to interact · Ctrl+Alt returns to launcher controls', 'caption', muted=True, centered=True))
+            self.stack.add_named(page, 'live')
+
+        def return_to_luma(self):
+            self.stack.set_visible_child_name('live' if self.running() and self.graphical_ready else 'targets')
+
+        def connect_display(self):
+            if self.viewer or not self.session.display_path.is_socket():
+                return
+            self.viewer = GuestDisplay(self.session.display_path)
+            self.viewer.connect('display-error', lambda _v, message: self.status_label.set_label(message))
+            self.viewer_holder.append(self.viewer)
+            self.viewer.open()
+            self.live_title.set_label('Luma ' + self.target.title())
+            self.tools_button.set_label('Project' if self.intent == 'develop' else 'Controls')
+            # Keep first boot console text behind the native loading page. The
+            # actual Wayland session must exist before revealing the live display.
+            session = self.session
+            def wait_for_graphics():
+                import time
+                check = ('display=$(systemctl --user show-environment | sed -n "s/^WAYLAND_DISPLAY=//p"); '
+                         'test -n "$display" && test -S "$XDG_RUNTIME_DIR/$display" && '
+                         'pgrep -u "$(id -u)" -x gnome-shell >/dev/null')
+                try:
+                    session.wait(180)
+                    for _ in range(90):
+                        if not self.child or self.child.poll() is not None:
+                            return
+                        if subprocess.call(session.ssh(['sh', '-c', check]),
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                            # Allow the compositor to publish its first complete frame.
+                            time.sleep(1)
+                            GLib.idle_add(self.reveal_display, session)
+                            return
+                        time.sleep(1)
+                    GLib.idle_add(self.status_label.set_label, 'The graphical session is taking longer than expected. Startup details are in the workspace log.')
+                except Exception as exc:
+                    GLib.idle_add(self.status_label.set_label, str(exc))
+            threading.Thread(target=wait_for_graphics, daemon=True).start()
+
+        def reveal_display(self, session):
+            if self.session is session and self.running() and self.viewer and self.viewer.ready:
+                self.graphical_ready = True
+                self.return_button.set_sensitive(True)
+                self.return_button.set_label('Show Luma')
+                self.stack.set_visible_child_name('live')
+            return False
 
         def select_intent(self, intent):
             if self.active():
@@ -240,6 +304,11 @@ def launch(state=None):
                 self.target_status.set_label(str(exc))
                 return
             self.manifest_path = str(path.resolve())
+            if self.viewer:
+                self.viewer.close()
+                self.viewer_holder.remove(self.viewer)
+                self.viewer = None
+            self.graphical_ready = False
             self.busy = True
             self.session_title.set_label('Luma ' + self.target.title())
             self.status_label.set_label('Getting your Luma workspace ready…')
@@ -261,7 +330,7 @@ def launch(state=None):
         def spawn(self, session, manifest_path):
             try:
                 self.log = open(session.directory / 'launcher.log', 'a')
-                args = [sys.executable, '-m', 'luma_tester', '--state', str(session.root), 'start', manifest_path]
+                args = [sys.executable, '-m', 'luma_tester', '--state', str(session.root), 'start', manifest_path, '--embedded']
                 env = dict(os.environ)
                 env['PYTHONPATH'] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get('PYTHONPATH', '')
                 self.child = subprocess.Popen(args, stdout=self.log, stderr=subprocess.STDOUT, env=env)
@@ -297,10 +366,12 @@ def launch(state=None):
                 self.return_button.set_sensitive(True)
                 self.status_label.set_label('Your workspace is saved. See you soon.' if code == 0 else 'Luma could not open. Open the workspace from Advanced to view its startup log.')
             if running:
+                self.connect_display()
                 self.spinner.stop()
                 self.progress.set_visible(False)
                 self.controls.set_visible(True)
-                self.status_label.set_label('Luma is paused.' if self.session.status() == 'paused' else 'Luma is open. Make yourself at home.')
+                self.status_label.set_label('Luma is paused.' if self.session.status() == 'paused' else
+                                           ('Luma is open. Make yourself at home.' if self.graphical_ready else 'Opening your Luma workspace…'))
                 self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
             return True
 

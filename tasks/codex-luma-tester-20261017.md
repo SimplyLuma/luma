@@ -101,3 +101,11 @@ used that source without altering shared refs or unrelated worktrees.
   `install --allowerasing`; also made the simulator's greetd selection explicit
   if a package preset installed GDM. r2's failure and disk are retained. r3 will
   use a fresh, separately identified builder rather than change prior receipts.
+
+- Active builder r3: source1491e70, unit
+  dev-luma-tester-mobile-image-r3-ee9966d4.service, 6 GiB / 12 GiB admitted.
+  Output /srv/dev/accounts/second/experiments/luma-tester-20261017/mobile-image-r3.
+  Isolated SSH/cloud-init readiness passed; real 549-package Fedora/Luma install
+  transaction is running, followed by normal .104 app RPM build/checks. Only this
+  owned disposable VM is active for the task. Do not mistake a builder boot for
+  final-image graphical acceptance.

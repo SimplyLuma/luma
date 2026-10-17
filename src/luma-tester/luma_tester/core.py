@@ -102,6 +102,7 @@ class Session:
         if self.runtime.stat().st_uid != os.getuid() or self.runtime.stat().st_mode & 0o077:
             raise TesterError('Session runtime directory must be private and owned by this user.')
         self.qmp_path = self.runtime / 'qmp'
+        self.display_path = self.runtime / 'display'
         self.base = self.root / 'images' / (self.manifest['image']['sha256'] + '.qcow2')
         self.disk = self.directory / 'disk.qcow2'
         self.key = self.directory / 'developer-key'
@@ -200,7 +201,7 @@ class Session:
                 return str(Path(candidate).resolve())
         raise TesterError('UEFI firmware missing; install edk2 or supply --firmware PATH.')
 
-    def command(self, port=2228, memory=4096, cpus=4, headless=False, firmware=None, software=False):
+    def command(self, port=2228, memory=4096, cpus=4, headless=False, firmware=None, software=False, embedded=False):
         if not 1024 <= memory <= 16384 or not 1 <= cpus <= 16 or not 1024 <= port <= 65535:
             raise TesterError('Use memory 1024–16384 MiB, CPUs 1–16, SSH port 1024–65535.')
         arch = self.manifest['arch']
@@ -216,7 +217,9 @@ class Session:
                 '-device', 'virtio-keyboard-pci', '-device', 'virtio-tablet-pci',
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
-                '-display', 'none' if headless else 'gtk,zoom-to-fit=on']
+                '-display', 'none' if headless or embedded else 'gtk,zoom-to-fit=on']
+        if embedded:
+            argv += ['-vnc', 'unix:' + str(self.display_path)]
         for name, path, fmt, readonly in [('os', self.disk, 'qcow2', False),
                                            ('seed', self.directory / 'seed.iso', 'raw', True)]:
             block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
@@ -235,6 +238,7 @@ class Session:
             command = self.command(**options)
             # The exclusive lock proves any old endpoint belongs to a stopped session.
             self.qmp_path.unlink(missing_ok=True)
+            self.display_path.unlink(missing_ok=True)
             (self.directory / 'connection.json').write_text(json.dumps({'port': options.get('port', 2228)}))
             (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
             print('Starting ' + self.manifest['build'] + '; acceleration: ' + command[command.index('-accel') + 1], flush=True)
@@ -255,6 +259,7 @@ class Session:
                     child.terminate()
                     child.wait()
                 self.qmp_path.unlink(missing_ok=True)
+                self.display_path.unlink(missing_ok=True)
 
     def qmp(self, execute, arguments=None):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
