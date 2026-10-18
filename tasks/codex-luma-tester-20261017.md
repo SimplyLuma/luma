@@ -17,7 +17,7 @@
 The user explicitly rejected a generic GTK final interface. The revised GUI
 requires real LumaUI: AppWindow/frame, Island, Card, type roles, icons and shared
 palette. Flow: Try Luma / Develop for Luma → Mobile / Desktop → Open Luma.
-Mobile is first/default. Architecture is chosen automatically. Development
+An available target is selected automatically. Architecture is chosen automatically. Development
 controls appear only on Develop. Image import and workspace diagnostics live in
 Advanced. Imports persist locally; packaging may supply LUMA_TESTER_CATALOG.
 
@@ -31,25 +31,31 @@ Current Linux x86_64 candidate is **Desktop only**, with automatic VirGL,
 software fallback, and a frame-clock-limited private Unix VNC viewer. Actual
 packaged guest checks verified VirGL, app source edit/restart, accelerated
 screenshot capture and graceful shutdown. Final AppImage entry passed as well.
-Source host5d6fc399; guest sourcea9a3c22a. Mobile selection is unavailable in this
+Latest source host/guest1deb3d1b. Mobile selection is unavailable in this
 catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
 claims below are withdrawn; portrait GNOME is not product parity.
 
-Final Desktop candidate:
-- /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-graphics-r13/Luma-Tester-0.1.0-linux-x86_64.AppImage
-- SHA25672252cbb5d7275e8feadf60ff607afc6a0004bf379255604b3d051c802cfef0e;
-  1642953208 bytes. Receipt and checksum beside it.
-- Portable: /srv/dev/accounts/second/experiments/luma-tester-20261017/Luma-Tester-graphics-r13.
-- Guest: desktop-image-r11; SHA25685635f37e85459583e826759611950238e4c388b3e6a570af14411c899023180.
-- Full native/packaged workflow PASS dev-luma-tester-desktop-final-graphics-233652f3;
-  actual AppImage entry PASS dev-luma-tester-appimage-final-entry-75e45cae.
-- Dell delivery completed after the user reported it online. Exact candidate
+Latest Desktop candidate (display refinement):
+- /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-display-r15/Luma-Tester-0.1.0-linux-x86_64.AppImage
+- SHA256 b46a3ccf8c7e245e89144ed49e7d9bf901f3701ee8cbef16e8f31e277e79929d;
+  1688381944 bytes. Receipt and checksum beside it.
+- Portable: /srv/dev/accounts/second/experiments/luma-tester-20261017/Luma-Tester-display-r15.
+- Guest: desktop-image-r15; SHA25658526b0dc6041300379f7dac665efa5beb0104264012143839476eb135d571f0.
+- Actual compositor reports Luma Desktop, preferred/current1920x1080, scale1.0.
+  Uses a local LMA EDID firmware identity and guest-only hwdb entry; no physical
+  device profile, OS package cohort or QEMU implementation changed.
+- Full native/packaged workflow PASS dev-luma-tester-display-full-r15-1b08a476;
+  actual AppImage entry PASS dev-luma-tester-display-appimage-entry-r15b-73d156bd.
+  Core39 checks PASS dev-luma-tester-display-core-2bc8c978.
+- Dell display update delivery pending; connection timed out on recent checks.
+  Earlier graphics-r13 delivery completed after the user reported it online. Exact candidate
   checksum verified by dev-luma-tester-dell-graphics-delivery-r4-45557a0e.
   Launcher active in the real graphical session as
   luma-preview-tester-graphics-20261017-bd66b286.service, using isolated
   /home/nick/.local/share/luma-previews/tester-graphics-20261017 storage.
   No guest auto-started and no Dell automated app/UI tests ran. Manual review
-  of GPU acceleration/window dragging remains pending.
+  feedback: user says Desktop works great. New display candidate is separate;
+  do not interrupt any running guest or discard its writable state.
 
 Current phone component job is dev-luma-tester-phone-phosh-oracle-df2fc3e4 in the
 separate owned luma-tester-phone-20261017 experiment. Phoc12 passed19 normal
@@ -372,3 +378,23 @@ used that source without altering shared refs or unrelated worktrees.
   timed out before creating/copying the new preview. Normal dell-preview status
   also timed out, confirming delivery remains pending. No new app/VM launched
   on Dell; wake/connect async access question remains pending.
+
+- After successful r13 delivery, user confirmed Desktop works great and asked
+  to replace the Red Hat17-inch label and reduce the cramped default view.
+  r15 now has a proper virtual EDID, guest hwdb identity and1080p default.
+  r14's live check caught LMA Desktop rather than Luma Desktop: editing pnp.ids
+  alone does not populate GNOME's udev hardware database. Fixed that explicitly
+  with guest-only systemd-hwdb input; r15 passed the exact label/mode/scale check,
+  native VirGL, app sync/edit/restart, accelerated capture and shutdown.
+- AppImage entry first exceeded its unchanged45s startup bound under a2GiB
+  allocation while extracting into temporary memory-backed storage. The same
+  exact AppImage passed in12.7s with4GiB and a disk-backed task TMPDIR. No timeout
+  or assertion was weakened. Retained both results. Failed/obsolete r14 exports,
+  disposable builder disks, final disposable QA state and squashfs staging were
+  retired after process/backing checks; receipts, packaged images and check
+  screenshots/reports retained. Disk reserve was preserved.
+- dev-luma-tester-dell-display-delivery-r15-9ea583bc failed on SSH banner timeout
+  before remote mkdir/copy. No display update delivered or launched; r13 remains
+  the last delivered candidate. Retry /srv/dev/accounts/second/artifacts/luma-tester-deliver-display.py
+  when the tunnel returns, then use dell-preview with a separate
+  tester-display-20261017 workspace. Preserve any running r13 guest/user work.

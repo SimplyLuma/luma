@@ -33,12 +33,16 @@ src/luma-tester/luma-tester gui
 ```
 
 Choose **Try Luma** or **Develop for Luma**, then **Mobile** or **Desktop**.
-Mobile starts selected. Click **Open Luma Mobile** (or Desktop). The launcher
+An available target starts selected. Click **Open Luma Mobile** (or Desktop). The launcher
 chooses a native architecture image from its catalog when available. On first use
 it downloads/verifies the disk and creates a private key and writable overlay;
 subsequent runs keep that workspace. The guest appears inside the LumaUI window. Its live display uses a private Unix
 socket; pointer, keyboard and scrolling operate the actual guest. Ctrl+Alt
 returns focus to launcher controls.
+The composed Desktop image identifies its virtual monitor as **Luma Desktop**
+and defaults to **1920 × 1080 at 100% scale**. Its aspect-only display identity
+does not claim a physical monitor size. Change resolution or scaling in the
+guest's display settings; those preferences remain in that session's overlay.
 Mobile requests a single 432×960 portrait output; the image's compositor must honor the
 virtual output and use the handheld device class. The image determines scaling.
 
