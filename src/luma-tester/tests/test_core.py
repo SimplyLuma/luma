@@ -105,7 +105,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', command)
         self.assertIn('tcg,thread=multi', command)
         self.m['target'] = 'desktop'
-        self.assertIn('virtio-gpu-pci,edid=on,xres=1440,yres=900', self.save().command(graphics='software'))
+        self.assertIn('virtio-gpu-pci,edid=on,xres=1920,yres=1080', self.save().command(graphics='software'))
 
     def test_embedded_gpu_uses_private_display_and_egl(self):
         with patch.object(Session, 'render_device', return_value='/dev/dri/renderD128'):

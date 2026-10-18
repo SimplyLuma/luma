@@ -236,7 +236,7 @@ class Session:
         arch = self.manifest['arch']
         native = platform.machine() in ({'aarch64', 'arm64'} if arch == 'aarch64' else {'x86_64', 'AMD64'})
         kvm = native and not software and os.access('/dev/kvm', os.R_OK | os.W_OK)
-        width, height = (432, 960) if self.manifest['target'] == 'mobile' else (1440, 900)
+        width, height = (432, 960) if self.manifest['target'] == 'mobile' else (1920, 1080)
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + self.manifest['target'].title(),
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
                 '-accel', 'kvm' if kvm else 'tcg,thread=multi', '-cpu', 'host' if kvm else 'max',
