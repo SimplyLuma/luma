@@ -90,6 +90,23 @@ def main():
                 enabled = command(session, ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'])
                 assert 'handheld@project-luma.local' not in enabled, enabled
                 report['enabled_extensions'] = enabled
+                display_probe = '''import json
+from gi.repository import Gio
+proxy = Gio.DBusProxy.new_for_bus_sync(Gio.BusType.SESSION, 0, None,
+    'org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+    'org.gnome.Mutter.DisplayConfig', None)
+state = proxy.call_sync('GetCurrentState', None, 0, 5000, None).unpack()
+print(json.dumps(state))
+'''
+                display_state = json.loads(command(session, ['python3', '-c', display_probe]))
+                monitors, logical = display_state[1:3]
+                assert len(monitors) == len(logical) == 1, display_state
+                assert monitors[0][0][1:3] == ['LMA', 'Desktop'], monitors
+                assert monitors[0][2]['display-name'] == 'Luma Desktop', monitors
+                current_modes = [mode for mode in monitors[0][1] if mode[6].get('is-current')]
+                assert len(current_modes) == 1 and current_modes[0][1:3] == [1920, 1080], current_modes
+                assert logical[0][2] == 1.0, logical
+                report['desktop_display'] = display_state
             report['graphics'] = json.loads((session.directory / 'graphics.json').read_text())
             expected_graphics = os.environ.get('LUMA_TESTER_QA_GRAPHICS')
             if expected_graphics:
