@@ -3,7 +3,7 @@
 """Write the tester's virtual Desktop EDID (1080p60, sRGB, aspect-only size).
 
 LMA is a local virtual-device identifier, not a registered hardware vendor ID.
-The disposable guest supplies its matching hwdata name. No physical monitor
+The disposable guest supplies its matching hwdb name. No physical monitor
 identity or physical-device profile is changed.
 """
 from pathlib import Path

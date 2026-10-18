@@ -12,13 +12,14 @@ root=/var/tmp/luma-tester-build/source
 # Give this virtual display an honest, local Luma identity and a roomy default.
 # Kernel firmware override keeps the identity consistent in Settings and apps;
 # the physical OS profiles and the bundled QEMU implementation stay untouched.
-install -d /usr/lib/firmware/luma /etc/dracut.conf.d
+install -d /usr/lib/firmware/luma /etc/dracut.conf.d /etc/udev/hwdb.d
 python3 "$root/scripts/tester/desktop-edid.py" /usr/lib/firmware/luma/tester-desktop.bin
-if ! grep -q '^LMA[[:space:]]' /usr/share/hwdata/pnp.ids; then
-  printf 'LMA\tLuma\n' >>/usr/share/hwdata/pnp.ids
-else
-  grep -qx $'LMA\tLuma' /usr/share/hwdata/pnp.ids
-fi
+cat >/etc/udev/hwdb.d/90-luma-tester-display.hwdb <<'HWDB'
+# Local virtual-device identity, scoped to this disposable developer image.
+acpi:LMA:*
+ ID_VENDOR_FROM_DATABASE=Luma
+HWDB
+systemd-hwdb update
 printf '%s\n' 'install_items+=" /usr/lib/firmware/luma/tester-desktop.bin "' >/etc/dracut.conf.d/90-luma-tester-display.conf
 grubby --update-kernel=ALL --args='drm.edid_firmware=Virtual-1:luma/tester-desktop.bin'
 dracut --force --regenerate-all
