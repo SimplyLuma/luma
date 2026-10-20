@@ -47,6 +47,20 @@ class DesktopSharedPackagePins(unittest.TestCase):
         self.assertIn('mutter-common', result.stdout)
         self.assertIn('patches/mutter/0000-luma-fedora-spec.patch', result.stdout)
 
+    def test_previous_shell_is_rejected(self):
+        self.make_shared_pin_stale('gnome-shell')
+        result = self.run_contract()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('gnome-shell', result.stdout)
+        self.assertIn('patches/gnome-shell/0000-luma-fedora-spec.patch', result.stdout)
+
+    def test_previous_shell_common_is_rejected(self):
+        self.make_shared_pin_stale('gnome-shell-common')
+        result = self.run_contract()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('gnome-shell-common', result.stdout)
+        self.assertIn('patches/gnome-shell/0000-luma-fedora-spec.patch', result.stdout)
+
     def test_previous_settings_filesystem_is_rejected(self):
         self.make_shared_pin_stale('gnome-control-center-filesystem')
         result = self.run_contract()
