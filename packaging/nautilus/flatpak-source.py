@@ -57,8 +57,8 @@ def prepare(root):
     spec_patch = root / 'packaging/nautilus/filer-spec-complete.patch'
     names = re.findall(r'^\+Patch\d+:\s+(\S+)\s*$', spec_patch.read_text(), re.MULTILINE)
     maintained = sorted((root / 'patches/nautilus').glob('0[0-9][0-9][0-9]-*.patch'))
-    admitted = [path.name for path in maintained if 1 <= int(path.name[:4]) <= 156]
-    if not names or names != admitted or names[-1] != '0156-filer-applications-cache-and-columns.patch':
+    admitted = [path.name for path in maintained if 1 <= int(path.name[:4]) <= 157]
+    if not names or names != admitted or names[-1] != '0157-filer-asynchronous-themed-application-icons.patch':
         raise ValueError('Filer Flatpak and canonical RPM patch series disagree')
     target = root / 'nautilus-50.2.2'
     if target.exists():
