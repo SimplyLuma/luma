@@ -6,11 +6,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.115.creator20261019.1%{?dist}
++Release:        1.luma.116.creator20261020.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
  License:        GPL-2.0-or-later
-@@ -32,6 +32,265 @@
+@@ -32,6 +32,266 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -266,6 +266,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1267:      0273-live-installed-application-search.patch
 +Patch1268:      0274-dash-edges-and-grouped-search.patch
 +Patch1269:      0275-status-clock-well-and-options-polish.patch
++Patch1270:      0276-quick-options-device-row-geometry.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -276,7 +277,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +330,8 @@
+@@ -71,6 +331,8 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -285,7 +286,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +350,10 @@
+@@ -90,6 +351,10 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -296,7 +297,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -191,6 +455,8 @@
+@@ -191,6 +456,8 @@
  %autosetup -S git -n %{name}-%{tarball_version}
  
  %build
@@ -305,7 +306,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +474,25 @@
+@@ -208,9 +475,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -331,7 +332,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -250,6 +532,11 @@
+@@ -250,6 +533,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

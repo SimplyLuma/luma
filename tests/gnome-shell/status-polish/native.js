@@ -70,6 +70,18 @@ async function work() {
         const row=new QuickSettings.QuickSheetRow();row.setTitle(title);row.setState(i===0?'Connected':'Secured');row.setIcon('network-wireless-signal-excellent-symbolic');row.setCurrent(i===0);section.addMenuItem(row);rows.push(row);
     }
     radios[0].menu.addMenuItem(section);radios[0].menu.addMenuItem(new PopupMenu.PopupMenuItem('Wi-Fi settings'));
+    const bluetoothSection=new PopupMenu.PopupMenuSection();
+    const bluetoothRows=[];
+    for(const [i,title] of ['BT5.0 KB','MX Master 3S','Air75 BT3.0',"Nicholas’s Buds4 Pro",...Array.from({length:10},(_,i)=>`Device ${i+1}`)].entries()) {
+        // Device subclasses pass style_class; exercise that production call shape.
+        const row=new QuickSettings.QuickSheetRow({style_class:'bt-device-item'});
+        row.setTitle(title);row.setState(i<2?'Connected · 100%':'Not connected');
+        row.setIcon('bluetooth-active-symbolic');row.setCurrent(i<2);
+        bluetoothSection.addMenuItem(row);bluetoothRows.push(row);
+        check('Bluetooth rows retain shared style class',row.has_style_class_name('luma-sheet-row'));
+    }
+    radios[1].menu.addMenuItem(bluetoothSection);
+
     for(const theme of ['dark','light','frost','glass']) {
         appearance.set_string('surface-treatment',theme);await pause(300);
         q.menu.close();await pause();
@@ -87,11 +99,21 @@ async function work() {
             const button=control._menuButton,b=rect(button),card=rect(control);
             check(`${theme} disclosure inset`,card.right-b.right>=5,JSON.stringify({card,button:b}));
             check(`${theme} radio uses native rounded paint`,!control.get_effect('luma-control-clip'));
+            check(`${theme} radio has no dark bottom rim`,control.get_theme_node().get_border_width(St.Side.BOTTOM)===0);
         }
         radios[0]._menuButton.add_style_pseudo_class('hover');await pause();
         const hoverButton=rect(radios[0]._menuButton),hoverCard=rect(radios[0]);
         check(`${theme} hovered disclosure stays inside card`,hoverButton.right<=hoverCard.right-5);
         await shot(`quick-options-${theme}`,q.menu._boxPointer);
+        for(const control of radios) control._menuButton.add_style_pseudo_class('hover');
+        await pause();
+        for(const control of radios) {
+            const card=rect(control),button=rect(control._menuButton);
+            check(`${theme} hovered disclosure stays inset`,card.right-button.right>=7,JSON.stringify({card,button}));
+        }
+        await shot(`quick-options-hover-${theme}`,q.menu._boxPointer);
+        for(const control of radios) control._menuButton.remove_style_pseudo_class('hover');
+
         radios[0]._menuButton.remove_style_pseudo_class('hover');
         radios[0].menu.open();await pause(300);
         const scroll=rect(q.menu._pageScroll), first=rect(rows[0]);
@@ -101,7 +123,17 @@ async function work() {
             check(`${theme} network rows have breathing room`,b.y-a.bottom>=5,JSON.stringify({gap:b.y-a.bottom,height:a.h}));
         }
         await shot(`wifi-${theme}`,q.menu._boxPointer);
-        radios[0].menu.close();q.menu.close();await pause();
+        radios[0].menu.close();await pause();
+        radios[1].menu.open();await pause(250);
+        for(let i=1;i<bluetoothRows.length;i++) {
+            const a=rect(bluetoothRows[i-1]),b=rect(bluetoothRows[i]);
+            check(`${theme} Bluetooth rows have breathing room`,b.y-a.bottom>=7,JSON.stringify({gap:b.y-a.bottom}));
+            check(`${theme} Bluetooth rows keep two-line height`,a.h>=55,JSON.stringify(a));
+        }
+        check(`${theme} detail viewport uses no offscreen alpha mask`,!q.menu._pageScroll.get_effect('luma-page-clip'));
+        check(`${theme} Bluetooth section has no nested background`,bluetoothSection.box.get_theme_node().get_background_color().alpha===0);
+        await shot(`bluetooth-${theme}`,q.menu._boxPointer);
+        radios[1].menu.close();q.menu.close();await pause();
         well._togglePopover();await pause(250);
         const pop=well._popover;
         check(`${theme} background popover has no redundant count`,!pop.box.get_children()[0].get_children().some(a=>a.has_style_class_name?.('luma-well-popover-count')));
