@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """An image's native canonical launcher must not hide its Flatpak update."""
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -10,8 +11,15 @@ from luma_installer import depot_flatpak  # Load the real source registry before
 
 
 class NativeLauncherUpdates(unittest.TestCase):
+    app_id = 'com.rhyme.viola'
+    identifier = 'viola'
+
     def setUp(self):
-        self.app_id = 'com.rhyme.viola'
+        from luma_installer.depot_catalog import load_catalog
+        data = Path(__file__).resolve().parents[2] / 'luma-installer/data/depot-catalog-4.json'
+        with patch('luma_installer.depot_catalog.local_catalog', return_value=load_catalog(data)):
+            depot_flatpak._refresh()
+        self.addCleanup(depot_flatpak._refresh)
         self.assertIn(self.app_id, depot_flatpak.APPLICATION_SOURCES.values())
         self.info = Mock()
         self.info.get_string.return_value = None
@@ -30,7 +38,7 @@ class NativeLauncherUpdates(unittest.TestCase):
     def test_canonical_native_launcher_reports_real_installed_update(self):
         provider = native.NativeInstallation()
         catalog = SimpleNamespace(applications=[SimpleNamespace(
-            id='viola', backend='flatpak', source_id=self.app_id,
+            id=self.identifier, backend='flatpak', source_id=self.app_id,
             luma_system=None, name='Viola', summary='Browser')])
         pending = {'version': '0.2.10.36', 'bytes': 50, 'summary': 'New UI',
                    'changes': (), 'installed_commit': 'installed-commit',
@@ -53,7 +61,7 @@ class NativeLauncherUpdates(unittest.TestCase):
         self.assertTrue(results[0].ok)
         self.assertEqual(len(results[0].value), 1)
         installed = results[0].value[0]
-        self.assertEqual(installed.app_id, 'catalog:viola')
+        self.assertEqual(installed.app_id, 'catalog:' + self.identifier)
         self.assertTrue(installed.managed)
         self.assertEqual(installed.commit, 'installed-commit')
         self.assertEqual(installed.update_commit, 'published-commit')
@@ -70,6 +78,16 @@ class NativeLauncherUpdates(unittest.TestCase):
     def test_explicit_flatpak_identity_is_not_overridden(self):
         self.info.get_string.return_value = 'org.example.Other'
         self.assertEqual(native.installed_source(self.record, self.refs), 'org.example.Other')
+
+
+class FilerNativeLauncherUpdates(NativeLauncherUpdates):
+    app_id = 'org.gnome.Nautilus'
+    identifier = 'filer'
+
+
+class AriNativeLauncherUpdates(NativeLauncherUpdates):
+    app_id = 'org.projectluma.Ari'
+    identifier = 'ari'
 
 
 if __name__ == '__main__':

@@ -86,6 +86,13 @@ Before a bundled application migration or coordinated Nightly is accepted:
   network and a host prerequisite that is not yet installed; neither may be
   reported as a successful update or an up-to-date app.
 
+For a retained offline baseline, `tests/depot/qualify-existing-flatpaks.py
+--baseline BASELINE_DIRECTORY --output NEW_DIRECTORY` creates an isolated
+installation, verifies the retained bundle signatures with the shipped remote
+key, checks Filer/Ari update discovery, and exercises Filer update and rollback.
+Its report explicitly excludes app execution, runtime dependencies and Ari's
+host service; complete those checks in the OS VM before accepting the cohort.
+
 Keep pending migrations explicitly pending until those checks run. Document any
 OS-only application exception and its reason. Routine delivery must follow the
 component's declared owner, not an operator's choice on a particular release.

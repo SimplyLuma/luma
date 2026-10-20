@@ -280,7 +280,7 @@ class NativeCatalogue:
         from .native_metadata import cached_metadata
         arch = architecture()
         metadata = cached_metadata(arch)
-        from luma_installer.depot_flatpak import luma_remote_available
+        from luma_installer.depot_flatpak import BRANCHES, luma_remote_available
         catalog = self._catalog()
         remember_system_identities(catalog)
         try:
@@ -320,7 +320,17 @@ class NativeCatalogue:
             # Never offer the Flatpak of an app whose image package is here, was
             # removed (Restore brings it back), or is waiting for a restart:
             # the same app would appear twice in the app grid (ADR-031).
-            system_owned = state not in ('', 'absent')
+            # Older images also contain the native package. Once the same
+            # canonical Flatpak is installed, that ref owns app updates;
+            # the host package must not replace its controls with
+            # an OS-level Remove/Restore action. Keep native-only machines
+            # on their existing path until migration has been qualified.
+            installed_ref = refs.get(entry.source_id)
+            flatpak_owned = bool(
+                entry.backend == 'flatpak' and installed_ref is not None
+                and installed_ref[1].get_origin() == entry.repository
+                and installed_ref[1].get_branch() in BRANCHES)
+            system_owned = state not in ('', 'absent') and not flatpak_owned
             flatpak = (entry.backend == 'flatpak' and entry.repository in _SOURCE_TITLES
                        and not system_owned)
             if flatpak and entry.repository == 'luma' and luma_ready is None:

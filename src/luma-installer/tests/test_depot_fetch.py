@@ -153,7 +153,7 @@ class FallingBack(unittest.TestCase):
         with mock.patch.object(depot_catalog.urllib.request, 'urlopen', server):
             seeded = current_catalog(url=URL, cache=self.cache, seed=SEED, key=self.key, refresh=True)
         self.assertFalse(seeded.verified)
-        self.assertEqual(len(seeded.applications), 71)
+        self.assertEqual(seeded.applications, depot_catalog.load_catalog(SEED).applications)
 
     def test_a_fresh_copy_answers_without_the_network(self):
         server = Server(document())
