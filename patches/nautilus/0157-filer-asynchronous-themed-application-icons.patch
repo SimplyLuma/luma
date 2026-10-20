@@ -1,0 +1,143 @@
+From: Project Luma contributors
+Subject: [PATCH] Filer: decode themed application icons off the UI thread
+
+--- a/src/nautilus-file.c
++++ b/src/nautilus-file.c
+@@ -4945,7 +4945,9 @@
+     if (icon == NULL)
+     {
+         g_autoptr (GIcon) gicon = nautilus_file_get_gicon (file, flags);
+-        icon = nautilus_icon_info_lookup (gicon, size, scale);
++        icon = nautilus_file_is_in_applications (file)
++            ? nautilus_icon_info_lookup_application (gicon, size, scale)
++            : nautilus_icon_info_lookup (gicon, size, scale);
+     }
+ 
+     return icon;
+--- a/src/nautilus-icon-info.c
++++ b/src/nautilus-icon-info.c
+@@ -589,6 +589,29 @@
+     }
+ }
+ 
++/* GtkIconPaintable may decode a themed SVG synchronously during snapshot.
++ * Applications can expose many cold icons at once. Resolve the theme on GTK's
++ * thread, then use the same bounded asynchronous loader as absolute icons.
++ * Symbolic artwork stays with GTK so its foreground/palette remains correct. */
++NautilusIconInfo *
++nautilus_icon_info_lookup_application (GIcon *icon, int size, int scale)
++{
++    if (G_IS_THEMED_ICON (icon))
++    {
++        g_autoptr (GtkIconPaintable) themed = lookup_themed_icon (icon, size, scale);
++        if (themed != NULL && !gtk_icon_paintable_is_symbolic (themed))
++        {
++            g_autoptr (GFile) file = gtk_icon_paintable_get_file (themed);
++            if (file != NULL)
++            {
++                g_autoptr (GIcon) loadable = g_file_icon_new (file);
++                return nautilus_icon_info_lookup (loadable, size, scale);
++            }
++        }
++    }
++    return nautilus_icon_info_lookup (icon, size, scale);
++}
++
+ GdkPaintable *
+ nautilus_icon_info_get_paintable (NautilusIconInfo *icon)
+ {
+--- a/src/nautilus-icon-info.h
++++ b/src/nautilus-icon-info.h
+@@ -22,6 +22,7 @@
+ NautilusIconInfo *    nautilus_icon_info_lookup                       (GIcon             *icon,
+ 								       int                size,
+ 								       int                scale);
++NautilusIconInfo *    nautilus_icon_info_lookup_application           (GIcon *icon, int size, int scale);
+ GdkPaintable *        nautilus_icon_info_get_paintable                (NautilusIconInfo  *icon);
+ const char *          nautilus_icon_info_get_used_name                (NautilusIconInfo  *icon);
+ 
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -508,6 +508,74 @@
+     g_test_message("UI heartbeat continued (%u pulses); decoded artwork repainted the real NautilusImage",pulses);
+ }
+ 
++/* Snapshot a cold themed SVG with expensive morphology, the path which
++ * previously froze Applications even though its directory was already loaded. */
++static void themed_icon_responsiveness(void)
++{
++    /* Configure decoder discovery as for the existing real loadable-icon test. */
++    g_autofree char *loader_dir=g_build_filename(g_get_system_data_dirs()[0],"glycin-loaders","2+","conf.d",NULL);
++    g_assert_cmpint(g_mkdir_with_parents(loader_dir,0700),==,0);
++    g_autoptr(GDir) configs=g_dir_open("/usr/share/glycin-loaders/2+/conf.d",0,NULL);
++    g_assert_nonnull(configs);
++    const char *config_name;
++    while((config_name=g_dir_read_name(configs))!=NULL)
++    {
++        if(!g_str_has_suffix(config_name,".conf"))continue;
++        g_autofree char *from=g_build_filename("/usr/share/glycin-loaders/2+/conf.d",config_name,NULL);
++        g_autofree char *to=g_build_filename(loader_dir,config_name,NULL);
++        g_autofree char *contents=NULL;gsize length=0;
++        g_assert_true(g_file_get_contents(from,&contents,&length,NULL));
++        g_assert_true(g_file_set_contents(to,contents,length,NULL));
++    }
++    g_autofree char *root=g_dir_make_tmp("filer-cold-themed-icon-XXXXXX",NULL);
++    g_autofree char *theme=g_build_filename(root,"FilerColdIcon",NULL);
++    g_autofree char *apps=g_build_filename(theme,"scalable","apps",NULL);
++    g_assert_cmpint(g_mkdir_with_parents(apps,0700),==,0);
++    g_autofree char *index=g_build_filename(theme,"index.theme",NULL);
++    g_assert_true(g_file_set_contents(index,"[Icon Theme]\nName=FilerColdIcon\nInherits=Adwaita\nDirectories=scalable/apps\n[scalable/apps]\nSize=64\nType=Scalable\nMinSize=1\nMaxSize=1024\nContext=Applications\n",-1,NULL));
++    g_autofree char *svg=g_build_filename(apps,"filer-cold-morphology.svg",NULL);
++    g_assert_true(g_file_set_contents(svg,
++        "<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024'>"
++        "<defs><filter id='m'><feMorphology operator='erode' radius='15'/></filter></defs>"
++        "<g filter='url(#m)'><rect width='1024' height='1024' fill='#ff0000'/></g></svg>",-1,NULL));
++    GtkIconTheme *icons=gtk_icon_theme_get_for_display(gdk_display_get_default());
++    gtk_icon_theme_add_search_path(icons,root);
++    GtkSettings *settings=gtk_settings_get_default();
++    g_autofree char *previous=NULL;g_object_get(settings,"gtk-icon-theme-name",&previous,NULL);
++    g_object_set(settings,"gtk-icon-theme-name","FilerColdIcon",NULL);
++    g_autoptr(GIcon) icon=g_themed_icon_new("filer-cold-morphology");
++    g_autoptr(GtkIconPaintable) resolved=gtk_icon_theme_lookup_by_gicon(icons,icon,64,1,GTK_TEXT_DIR_NONE,0);
++    g_assert_cmpstr(gtk_icon_paintable_get_icon_name(resolved),==,"filer-cold-morphology");
++    guint pulses=0;guint source=g_timeout_add(10,pulse,&pulses);
++    gint64 begin=g_get_monotonic_time();
++    g_autoptr(NautilusIconInfo) info=nautilus_icon_info_lookup_application(icon,64,1);
++    g_autoptr(GdkPaintable) art=nautilus_icon_info_get_paintable(info);
++    gboolean ready=FALSE;g_signal_connect(art,"invalidate-contents",G_CALLBACK(invalidated),&ready);
++    g_autoptr(GtkSnapshot) first=gtk_snapshot_new();
++    gdk_paintable_snapshot(art,GDK_SNAPSHOT(first),64,64);
++    gint64 elapsed=g_get_monotonic_time()-begin;
++    g_test_message("Cold themed icon lookup plus first snapshot: %.2fms",elapsed/1000.0);
++    g_assert_cmpint(elapsed,<,100000);
++    for(guint i=0;i<500 && !ready;i++)spin(20);
++    g_source_remove(source);g_assert_true(ready);
++    g_autoptr(GtkSnapshot) snapshot=gtk_snapshot_new();
++    gdk_paintable_snapshot(art,GDK_SNAPSHOT(snapshot),64,64);
++    g_autoptr(GskRenderNode) node=gtk_snapshot_to_node(snapshot);
++    g_assert_nonnull(node);g_assert_cmpint(gsk_render_node_get_node_type(node),==,GSK_TEXTURE_NODE);
++    GdkTexture *texture=gsk_texture_node_get_texture(node);
++    g_assert_cmpint(gdk_texture_get_width(texture),==,64);
++    guint8 pixel[64*64*4];gdk_texture_download(texture,pixel,64*4);
++    guint8 *center=pixel+(32*64+32)*4;
++    g_assert_cmpuint(center[2],>,200);g_assert_cmpuint(center[3],==,255);
++    g_test_message("Cold themed artwork decoded at requested size; UI heartbeat: %u pulses",pulses);
++    g_signal_handlers_disconnect_by_data(art,&ready);
++    g_object_set(settings,"gtk-icon-theme-name",previous,NULL);
++    nautilus_icon_info_clear_caches();
++    g_remove(svg);g_remove(index);g_rmdir(apps);
++    g_autofree char *scalable=g_build_filename(theme,"scalable",NULL);
++    g_rmdir(scalable);g_rmdir(theme);g_rmdir(root);
++}
++
+ int main(int argc,char **argv)
+ {
+     g_setenv("GIO_USE_VFS", "local", TRUE);
+@@ -521,6 +589,7 @@
+     g_application_set_flags(G_APPLICATION(app),G_APPLICATION_NON_UNIQUE);
+     g_autoptr(GError) error=NULL;g_assert_true(g_application_register(G_APPLICATION(app),NULL,&error));
+     g_test_add_func("/luma/icons/responsiveness",icon_responsiveness);
++    g_test_add_func("/luma/icons/cold-themed-responsiveness",themed_icon_responsiveness);
+     g_test_add_func("/luma/review/navigation",review_navigation);
+     g_test_add_func("/luma/about/native-mutations",fixture);
+     g_test_add_func("/luma/navigation/system-warning",system_warning);

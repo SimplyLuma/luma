@@ -238,3 +238,5 @@ neither paused feature is included in Filer 50.
 This lets Developer Platform clear libadwaita's generated top-bar paint in
 Frost and Glass while preserving the nested sidebar and content toolbar views
 as independently painted islands.
+
+`0157-filer-asynchronous-themed-application-icons.patch` resolves themed application artwork on the GTK thread and decodes non-symbolic artwork through the bounded asynchronous icon cache. This prevents cold SVG decoding from blocking the first Applications frame. Symbolic icons retain GTK palette handling. The regression snapshots a real cold themed SVG, checks the first snapshot latency and verifies the decoded pixels.
