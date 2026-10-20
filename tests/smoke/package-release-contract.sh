@@ -82,6 +82,7 @@ for spec in sorted(spec_dir.glob("*.spec")):
 # the main package's release. Judge them here too: an otherwise current main
 # pin with yesterday's shared files cannot be installed by the image solver.
 for family, names in {
+    "gnome-shell": ("gnome-shell", "gnome-shell-common"),
     "mutter": ("mutter", "mutter-common"),
     "gnome-control-center": ("gnome-control-center", "gnome-control-center-filesystem"),
 }.items():
@@ -161,7 +162,11 @@ for where, token in pins():
     release = matched.group("release")
     # The disttag is applied by the builder, not written in the spec.
     release = release.rsplit(".fc", 1)[0]
-    if name not in built:
+    # The Shell patch recipe qualifies the x86_64 desktop and its shared files.
+    # The separately pinned aarch64 device preview has its own release recipe.
+    # Do not compare that device profile with the desktop spec's release.
+    desktop_shell = name in ("gnome-shell", "gnome-shell-common")
+    if name not in built or (desktop_shell and matched.group("arch") == "aarch64"):
         unresolved.setdefault(name, where)
         unresolved_pins.add((name, version, release))
         continue
