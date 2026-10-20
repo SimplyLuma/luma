@@ -152,6 +152,22 @@ class SeedInputs(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_filer_and_ari_have_one_flatpak_update_identity(self):
+        from unittest.mock import patch
+        from luma_installer import depot_flatpak
+        seed = validate_catalog(json.loads((DATA / 'depot-catalog-4.json').read_text()))
+        with patch('luma_installer.depot_catalog.local_catalog', return_value=seed):
+            sources = depot_flatpak._catalogued()
+        for identifier, app_id, package in [('filer', 'org.gnome.Nautilus', 'nautilus'),
+                                             ('ari', 'org.projectluma.Ari', 'luma-ari')]:
+            with self.subTest(app=identifier):
+                entry = seed.find(identifier)
+                self.assertEqual(sources[identifier], (app_id, 'luma', 'beta'))
+                self.assertEqual(entry.flatpak.source_id, app_id)
+                self.assertEqual(entry.luma_system.package, package)
+                self.assertEqual(entry.luma_system.desktop_id, app_id + '.desktop')
+                self.assertTrue(entry.preinstalled_on_luma)
+
     def test_the_first_party_input_is_private(self):
         seed = json.loads((DATA / 'depot-catalog-4.json').read_text())
         first_party = json.loads((DATA / 'depot-first-party.json').read_text())
@@ -228,7 +244,7 @@ class Seed(unittest.TestCase):
         self.assertEqual(len(first_party), 24)
         # Published first-party apps retain native provenance and their release branch.
         wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
-                 'monitor', 'photos', 'camera', 'connect', 'write'}
+                 'monitor', 'photos', 'camera', 'connect', 'write', 'filer', 'ari'}
         for entry in first_party:
             self.assertEqual(entry.app_id + '.desktop', entry.luma_system.desktop_id)
             if entry.id in wave1:

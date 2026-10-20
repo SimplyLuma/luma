@@ -90,12 +90,12 @@ class Snapshot(unittest.TestCase):
                         Record('org.gnome.Nautilus.desktop', 'Files'),
                         Record('org.projectluma.Darkroom.desktop', 'Darkroom'))
 
-    def snapshot(self, records=None, **env):
+    def snapshot(self, records=None, refs=None, **env):
         provider = self.native.NativeCatalogue()
         with mock.patch.dict(os.environ, {**self.env, **env}), \
                 mock.patch.object(self.native, 'inventory',
                                   return_value=self.records if records is None else records), \
-                mock.patch.object(self.native, 'installed_flatpak_refs', return_value={}), \
+                mock.patch.object(self.native, 'installed_flatpak_refs', return_value=refs or {}), \
                 mock.patch.object(self.native, 'architecture', return_value='x86_64'), \
                 mock.patch('luma_depot.native_metadata.cached_metadata', return_value={}), \
                 mock.patch('luma_installer.depot_flatpak.luma_remote_available', return_value=True), \
@@ -120,6 +120,38 @@ class Snapshot(unittest.TestCase):
         self.assertEqual(self.app(catalogue, 'leaf').system_state, 'removed')
         self.assertEqual(self.app(catalogue, 'imager').system_state, 'restore-pending')
         self.assertEqual(self.app(catalogue, 'darkroom').system_state, 'removal-pending')
+
+    def test_installed_flatpak_owns_controls_when_native_package_is_also_present(self):
+        ref = mock.Mock()
+        ref.get_origin.return_value = 'luma'
+        ref.get_branch.return_value = 'stable'
+        with mock.patch.object(self.native, 'local_permissions', return_value=()):
+            tide = self.app(self.snapshot(refs={'org.projectluma.Tide': (mock.Mock(), ref)}), 'tide')
+        self.assertEqual(tide.system_state, '')
+        self.assertFalse(tide.system_removable)
+        self.assertTrue(tide.installable)
+        self.assertEqual(tide.source_title, 'Luma')
+
+    def test_explicit_installed_channel_is_preserved(self):
+        for branch in ('beta', 'nightly'):
+            with self.subTest(branch=branch):
+                ref = mock.Mock()
+                ref.get_origin.return_value = 'luma'
+                ref.get_branch.return_value = branch
+                with mock.patch.object(self.native, 'local_permissions', return_value=()):
+                    tide = self.app(self.snapshot(refs={'org.projectluma.Tide': (mock.Mock(), ref)}), 'tide')
+                self.assertEqual(tide.system_state, '')
+                self.assertEqual(tide.source_title, 'Luma')
+
+    def test_other_remote_or_branch_does_not_take_over_native_controls(self):
+        for origin, branch in [('unknown', 'stable'), ('flathub', 'stable'), ('luma', 'unsupported')]:
+            with self.subTest(origin=origin, branch=branch):
+                ref = mock.Mock()
+                ref.get_origin.return_value = origin
+                ref.get_branch.return_value = branch
+                tide = self.app(self.snapshot(refs={'org.projectluma.Tide': (mock.Mock(), ref)}), 'tide')
+                self.assertEqual(tide.system_state, 'installed')
+                self.assertFalse(tide.installable)
 
     def test_installed_image_apps_appear_once(self):
         catalogue = self.snapshot()

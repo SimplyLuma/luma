@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -70,8 +71,10 @@ class Presentation(unittest.TestCase):
         present = Path(__file__)
         self.assertEqual(channels.available(entries['nordvpn'], 'x86_64', snap_path=present, helper=present),
                          (True, ''))
-        self.assertFalse(channels.available(entries['nordvpn'], 'x86_64', snap_path=Path('/nonexistent'),
-                                            helper=present)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertFalse(channels.available(entries['nordvpn'], 'x86_64',
+                                                snap_path=Path(directory) / 'missing-snap',
+                                                helper=present)[0])
         self.assertFalse(channels.available(entries['mega'], 'riscv64', rpm_ostree=present, helper=present)[0])
 
 
