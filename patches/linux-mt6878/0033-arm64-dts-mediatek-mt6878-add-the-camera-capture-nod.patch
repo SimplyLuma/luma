@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:05:59 -0400
+Subject: [PATCH 33/33] arm64: dts: mediatek: mt6878: add the camera capture
+ node
+
+Add the seninf + CAMSV raw capture block and link the Titan 2 Elite rear
+IMX766 to it.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts | 11 +++++++++++
+ arch/arm64/boot/dts/mediatek/mt6878.dtsi      | 19 +++++++++++++++++++
+ 2 files changed, 30 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index f6c5212eb..ef96351ba 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -491,6 +491,7 @@ camera@1a {
+ 
+ 		port {
+ 			rear_cam_out: endpoint {
++				remote-endpoint = <&camera_capture_in>;
+ 				bus-type = <1>;
+ 				data-lanes = <1 2 3>;
+ 				link-frequencies = /bits/ 64 <574000000>;
+@@ -499,6 +500,16 @@ rear_cam_out: endpoint {
+ 	};
+ };
+ 
++&camera_capture {
++	status = "okay";
++};
++
++&camera_capture_in {
++	remote-endpoint = <&rear_cam_out>;
++	bus-type = <1>;
++	data-lanes = <1 2 3>;
++};
++
+ &i2c11 {
+ 	#address-cells = <1>;
+ 	#size-cells = <0>;
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878.dtsi b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+index 86ddc5f4f..e4d166528 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+@@ -746,6 +746,25 @@ mtu3_drd_switch: endpoint {
+ 			};
+ 		};
+ 
++		camera_capture: camera-capture@1a00e000 {
++			compatible = "mediatek,mt6878-seninf-camsv";
++			reg = <0x1a00e000 0x18000>, <0x11c80000 0x30000>,
++			      <0x1a000000 0x1000>, <0x1a101000 0x9000>,
++			      <0x1a111000 0x9000>, <0x1a121000 0x1000>,
++			      <0x1a170000 0x1000>, <0x1b204000 0x1000>;
++			reg-names = "seninf", "csi", "camsys", "camsv", "camsv-dma",
++				    "camsv-cq", "camsys-mraw", "cam-vcore";
++			interrupts = <GIC_SPI 654 IRQ_TYPE_LEVEL_HIGH 0>;
++			power-domains = <&spm MT6878_POWER_DOMAIN_CAM_MAIN>,
++					<&spm MT6878_POWER_DOMAIN_CSI_RX>;
++			status = "disabled";
++
++			port {
++				camera_capture_in: endpoint {
++				};
++			};
++		};
++
+ 		scpsys: syscon@1c001000 {
+ 			compatible = "mediatek,mt6878-scpsys", "syscon", "simple-mfd";
+ 			reg = <0x1c001000 0x1000>;
+-- 
+2.55.0
+

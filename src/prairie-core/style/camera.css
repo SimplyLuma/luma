@@ -77,10 +77,14 @@
  * Black, the quick toggles along the top, the picture upright, zoom pills over its
  * foot, the modes as words, then last shot, the shutter and switch camera. The same
  * controls as the desk's bar, moved into these rows (CameraSurface.adapt). */
-/* The phone body is black edge to edge (the kit's phone frame squares the window and
- * island); on a phone device it keeps clear of the clock and the gesture chin. */
-.camera-phone-body { color: @luma_on_media; background: @luma_media_shadow; padding-bottom: 12px; }
-.camera-phone-body.device { padding: 44px 0 34px; }
+/* The picture fills the phone window edge to edge (black until it arrives); the rows
+ * float over it on media scrims, and on a phone device keep clear of the clock and the
+ * gesture chin. */
+.camera-phone-body { color: @luma_on_media; background: @luma_media_shadow; }
+.camera-phone-top { padding-bottom: 24px; background: linear-gradient(to bottom, alpha(@luma_media_shadow, .55), alpha(@luma_media_shadow, 0)); }
+.camera-phone-top.device { padding-top: 44px; }
+.camera-phone-controls { padding: 24px 0 12px; background: linear-gradient(to top, alpha(@luma_media_shadow, .6), alpha(@luma_media_shadow, 0)); }
+.camera-phone-controls.device { padding-bottom: 34px; }
 .camera-top-row { padding: 0 16px; }
 .camera-bottom-row { padding: 0 36px; }
 /* One control size along the top: 44 round discs; on = the yellow glyph on a brighter disc. */

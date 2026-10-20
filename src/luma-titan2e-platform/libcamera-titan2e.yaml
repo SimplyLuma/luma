@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Titan 2 Elite: the raw capture driver (mtk-seninf) has no hardware ISP;
+# the simple pipeline processes its Bayer frames with the software ISP.
+---
+version: 1
+configuration:
+  pipelines:
+    simple:
+      supported_devices:
+        - driver: mtk-seninf
+          software_isp: true

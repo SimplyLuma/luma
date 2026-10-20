@@ -1,0 +1,12 @@
+[Unit]
+Description=Grow the Titan 2 Elite microSD root to the whole card
+ConditionPathExists=!/var/lib/luma-titan2e/root-grown
+ConditionPathExists=/run/ostree-booted
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-titan2e-growfs
+
+[Install]
+WantedBy=multi-user.target

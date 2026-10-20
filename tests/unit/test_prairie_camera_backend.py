@@ -67,10 +67,30 @@ class CameraCapabilityTests(unittest.TestCase):
             ["camera@1a", "camera@36", "camera@3d"],
         )
 
+    def test_titan2e_labels_and_default_order_follow_sensor_identity(self) -> None:
+        listing = """Available cameras:
+1: Internal back camera (/base/soc@0/i2c@11e02000/camera@36)
+2: Internal front camera (/base/soc@0/i2c@11c23000/camera@10)
+3: Internal back camera (/base/soc@0/i2c@11e03000/camera@1a)
+"""
+        completed = mock.Mock(stdout=listing)
+        with mock.patch("shutil.which", return_value="/usr/bin/cam"), mock.patch(
+            "subprocess.run", return_value=completed
+        ), mock.patch(
+            "prairie_apps.camera_backend._pipewire_camera_rotations",
+            return_value={},
+        ):
+            devices = list_camera_devices()
+        self.assertEqual([device.label for device in devices], ["Main", "Tele", "Front"])
+        self.assertEqual(
+            [device.identifier.rsplit("/", 1)[-1] for device in devices],
+            ["camera@1a", "camera@36", "camera@10"],
+        )
+
     def test_display_point_maps_through_sensor_mount_rotation(self) -> None:
-        self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 0), (500, 750))
+        self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 0), (500, 250))
         self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 90), (750, 500))
-        self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 180), (500, 250))
+        self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 180), (500, 750))
         self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 270), (250, 500))
 
     def test_mobile_rotation_matches_sensor_and_display_orientation(self) -> None:
@@ -78,6 +98,8 @@ class CameraCapabilityTests(unittest.TestCase):
         self.assertEqual(image_rotation_from_mount(90), 270)
         self.assertEqual(image_rotation_from_mount(270, 90), 0)
         self.assertEqual(image_rotation_from_mount(90, 90, True), 0)
+        self.assertEqual(image_rotation_from_mount(0), 0)
+        self.assertEqual(image_rotation_from_mount(180), 180)
         self.assertEqual(
             sensor_point_from_display(25, 20, 100, 100, 270),
             (200, 750),

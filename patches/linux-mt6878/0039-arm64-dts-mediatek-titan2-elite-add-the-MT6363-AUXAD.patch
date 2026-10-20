@@ -1,0 +1,58 @@
+From 6c85ee15c70d5997e9eab92318f6d6f6074285e0 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:44:35 -0400
+Subject: [PATCH 39/39] arm64: dts: mediatek: titan2-elite: add the MT6363
+ AUXADC and the modem ADC channel
+
+The modem firmware reads the RF hardware ID from a divider on MT6363 VIN1
+(pull-up open) through CCCI and selects its RF parameter set from it. Add the
+AUXADC under the MT6363 node and the md-auxadc consumer the CCCI driver uses.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index b36f3fc3a..492b778cb 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -6,6 +6,7 @@
+ 
+ /dts-v1/;
+ #include "mt6878.dtsi"
++#include <dt-bindings/iio/adc/mediatek,mt6363-auxadc.h>
+ #include <dt-bindings/spmi/spmi.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/gpio/gpio.h>
+@@ -188,6 +189,11 @@ power {
+ 			home2 {
+ 				linux,keycodes = <KEY_LEFTSHIFT>;
+ 			};
++
++			pmic_adc: adc {
++				compatible = "mediatek,mt6363-auxadc";
++				#io-channel-cells = <1>;
++			};
+ 		};
+ 
+ 		mt6369: pmic@5 {
+@@ -526,3 +532,17 @@ fuel-gauge@55 {
+ };
+ 
+ #include "mt6878-unihertz-titan2-elite-connsys.dtsi"
++
++/ {
++	/*
++	 * RF hardware ID divider on MT6363 VIN1 (no pull-up), read by the modem
++	 * firmware through CCCI to pick its RF parameter set. md-adc-channel is
++	 * the channel number the modem expects (vendor AUXADC_VIN1).
++	 */
++	md_auxadc: md-auxadc {
++		compatible = "mediatek,md_auxadc";
++		io-channels = <&pmic_adc MT6363_AUXADC_VIN1_PU_OPEN>;
++		io-channel-names = "md-channel";
++		mediatek,md-adc-channel = <0x13>;
++	};
++};
+-- 
+2.55.0
+

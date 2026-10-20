@@ -1,0 +1,180 @@
+From 885a60e5d77317093139aa3e8554365cabd098c2 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:08:13 -0400
+Subject: [PATCH 34/36] drm/sysfb: simpledrm: optional vblank from the panel
+ driver or a timer
+
+Without vblank support every page flip completes as soon as the frame
+has been copied into the framebuffer, so a compositor renders as fast as
+the copy allows rather than at the panel refresh: frames land unevenly,
+several in one refresh and none in the next.
+
+With a "luma,panel-vblank" property, initialise vblank and arm flip
+events for the next vblank. A panel driver that knows the refresh
+registers as the vblank source, is told when vblank interrupts are
+wanted, and calls drm_crtc_handle_vblank(). Without a source the vblank
+timer runs at the mode refresh.
+---
+ drivers/gpu/drm/sysfb/simpledrm.c      | 85 ++++++++++++++++++++++++++
+ include/linux/platform_data/simplefb.h |  5 ++
+ 2 files changed, 90 insertions(+)
+
+diff --git a/drivers/gpu/drm/sysfb/simpledrm.c b/drivers/gpu/drm/sysfb/simpledrm.c
+index e8b9316bb..253aab447 100644
+--- a/drivers/gpu/drm/sysfb/simpledrm.c
++++ b/drivers/gpu/drm/sysfb/simpledrm.c
+@@ -30,6 +30,8 @@
+ #include <drm/drm_modeset_helper_vtables.h>
+ #include <drm/drm_print.h>
+ #include <drm/drm_probe_helper.h>
++#include <drm/drm_vblank.h>
++#include <drm/drm_vblank_helper.h>
+ 
+ #include "drm_sysfb_helper.h"
+ 
+@@ -251,6 +253,9 @@ struct simpledrm_device {
+ 	struct drm_crtc crtc;
+ 	struct drm_encoder encoder;
+ 	struct drm_connector connector;
++
++	/* vblank from a registered source (the panel's driver), not the timer */
++	bool vblank_external;
+ };
+ 
+ /*
+@@ -612,20 +617,91 @@ static const struct drm_plane_funcs simpledrm_primary_plane_funcs = {
+ 	.destroy = drm_plane_cleanup,
+ };
+ 
++/*
++ * VBLANK, when the device tree asks for it with "luma,panel-vblank": without
++ * it, every page flip completes as soon as the frame is copied, and user space
++ * renders as fast as the copy allows instead of at the panel's refresh. A
++ * panel driver that knows the refresh (a command-mode panel's TE) registers
++ * as the source and calls drm_crtc_handle_vblank(); until one does, a timer
++ * at the mode's refresh stands in. Sources are told when vblank interrupts
++ * are wanted; they are called in atomic context.
++ */
++static ATOMIC_NOTIFIER_HEAD(simpledrm_vblank_notifier);
++static atomic_t simpledrm_vblank_sources = ATOMIC_INIT(0);
++
++int simpledrm_register_vblank_source(struct notifier_block *nb)
++{
++	int ret = atomic_notifier_chain_register(&simpledrm_vblank_notifier, nb);
++
++	if (!ret)
++		atomic_inc(&simpledrm_vblank_sources);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(simpledrm_register_vblank_source);
++
++int simpledrm_unregister_vblank_source(struct notifier_block *nb)
++{
++	int ret = atomic_notifier_chain_unregister(&simpledrm_vblank_notifier, nb);
++
++	if (!ret)
++		atomic_dec(&simpledrm_vblank_sources);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(simpledrm_unregister_vblank_source);
++
++static int simpledrm_crtc_enable_vblank(struct drm_crtc *crtc)
++{
++	struct simpledrm_device *sdev = container_of(crtc, struct simpledrm_device, crtc);
++
++	sdev->vblank_external = atomic_read(&simpledrm_vblank_sources) > 0;
++	if (!sdev->vblank_external)
++		return drm_crtc_vblank_helper_enable_vblank_timer(crtc);
++	atomic_notifier_call_chain(&simpledrm_vblank_notifier, SIMPLEDRM_VBLANK_ON, crtc);
++	return 0;
++}
++
++static void simpledrm_crtc_disable_vblank(struct drm_crtc *crtc)
++{
++	struct simpledrm_device *sdev = container_of(crtc, struct simpledrm_device, crtc);
++
++	if (!sdev->vblank_external)
++		drm_crtc_vblank_helper_disable_vblank_timer(crtc);
++	else
++		atomic_notifier_call_chain(&simpledrm_vblank_notifier, SIMPLEDRM_VBLANK_OFF, crtc);
++}
++
++static bool simpledrm_crtc_get_vblank_timestamp(struct drm_crtc *crtc, int *max_error,
++						ktime_t *vblank_time, bool in_vblank_irq)
++{
++	struct simpledrm_device *sdev = container_of(crtc, struct simpledrm_device, crtc);
++
++	/* An external source reports from its interrupt: the core then uses "now". */
++	if (sdev->vblank_external)
++		return false;
++	return drm_crtc_vblank_helper_get_vblank_timestamp_from_timer(crtc, max_error, vblank_time,
++								      in_vblank_irq);
++}
++
+ static void simpledrm_crtc_helper_atomic_enable(struct drm_crtc *crtc,
+ 						struct drm_atomic_commit *state)
+ {
+ 	blocking_notifier_call_chain(&simpledrm_crtc_notifier, SIMPLEDRM_OUTPUT_ON, crtc);
++	if (drm_dev_has_vblank(crtc->dev))
++		drm_crtc_vblank_on(crtc);
+ }
+ 
+ static void simpledrm_crtc_helper_atomic_disable(struct drm_crtc *crtc,
+ 						 struct drm_atomic_commit *state)
+ {
++	if (drm_dev_has_vblank(crtc->dev))
++		drm_crtc_vblank_off(crtc);
+ 	blocking_notifier_call_chain(&simpledrm_crtc_notifier, SIMPLEDRM_OUTPUT_OFF, crtc);
+ }
+ 
+ static const struct drm_crtc_helper_funcs simpledrm_crtc_helper_funcs = {
+ 	DRM_SYSFB_CRTC_HELPER_FUNCS,
++	/* Without vblank this sends the event at once, as before. */
++	.atomic_flush = drm_crtc_vblank_atomic_flush,
+ 	.atomic_enable = simpledrm_crtc_helper_atomic_enable,
+ 	.atomic_disable = simpledrm_crtc_helper_atomic_disable,
+ };
+@@ -633,6 +709,9 @@ static const struct drm_crtc_helper_funcs simpledrm_crtc_helper_funcs = {
+ static const struct drm_crtc_funcs simpledrm_crtc_funcs = {
+ 	DRM_SYSFB_CRTC_FUNCS,
+ 	.destroy = drm_crtc_cleanup,
++	.enable_vblank = simpledrm_crtc_enable_vblank,
++	.disable_vblank = simpledrm_crtc_disable_vblank,
++	.get_vblank_timestamp = simpledrm_crtc_get_vblank_timestamp,
+ };
+ 
+ static const struct drm_encoder_funcs simpledrm_encoder_funcs = {
+@@ -849,6 +928,12 @@ static struct simpledrm_device *simpledrm_device_create(struct drm_driver *drv,
+ 		return ERR_PTR(ret);
+ 	drm_crtc_helper_add(crtc, &simpledrm_crtc_helper_funcs);
+ 
++	if (of_property_read_bool(pdev->dev.of_node, "luma,panel-vblank")) {
++		ret = drm_vblank_init(dev, 1);
++		if (ret)
++			return ERR_PTR(ret);
++	}
++
+ 	/* Encoder */
+ 
+ 	encoder = &sdev->encoder;
+diff --git a/include/linux/platform_data/simplefb.h b/include/linux/platform_data/simplefb.h
+index 1d8e9ea1f..ed433f406 100644
+--- a/include/linux/platform_data/simplefb.h
++++ b/include/linux/platform_data/simplefb.h
+@@ -67,8 +67,13 @@ enum simpledrm_event {
+ 	SIMPLEDRM_OUTPUT_ON,
+ 	SIMPLEDRM_FRAME_BEGIN,
+ 	SIMPLEDRM_FRAME_DONE,
++	/* to vblank sources, in atomic context; data is the struct drm_crtc */
++	SIMPLEDRM_VBLANK_OFF,
++	SIMPLEDRM_VBLANK_ON,
+ };
+ int simpledrm_register_crtc_notifier(struct notifier_block *nb);
+ int simpledrm_unregister_crtc_notifier(struct notifier_block *nb);
++int simpledrm_register_vblank_source(struct notifier_block *nb);
++int simpledrm_unregister_vblank_source(struct notifier_block *nb);
+ 
+ #endif /* __PLATFORM_DATA_SIMPLEFB_H__ */
+-- 
+2.55.0
+

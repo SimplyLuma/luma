@@ -1,0 +1,44 @@
+From f03d19cac131a83a4e62151cdf4a7bccce7b3a10 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 03:00:23 -0400
+Subject: [PATCH] ASoC: mediatek: common: no hardware pointer for hostless
+ front ends
+
+Hostless front-end DAIs have no memory interface. Return 0 instead of
+indexing past the memif array.
+---
+ sound/soc/mediatek/common/mtk-afe-platform-driver.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/mediatek/common/mtk-afe-platform-driver.c b/sound/soc/mediatek/common/mtk-afe-platform-driver.c
+index 477284e12..89d346ea4 100644
+--- a/sound/soc/mediatek/common/mtk-afe-platform-driver.c
++++ b/sound/soc/mediatek/common/mtk-afe-platform-driver.c
+@@ -83,8 +83,9 @@ snd_pcm_uframes_t mtk_afe_pcm_pointer(struct snd_soc_component *component,
+ {
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+ 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
+-	struct mtk_base_afe_memif *memif = &afe->memif[snd_soc_rtd_to_cpu(rtd, 0)->id];
+-	const struct mtk_base_memif_data *memif_data = memif->data;
++	int id = snd_soc_rtd_to_cpu(rtd, 0)->id;
++	struct mtk_base_afe_memif *memif;
++	const struct mtk_base_memif_data *memif_data;
+ 	struct regmap *regmap = afe->regmap;
+ 	struct device *dev = afe->dev;
+ 	unsigned int hw_ptr_lower32 = 0, hw_ptr_upper32 = 0;
+@@ -93,6 +94,12 @@ snd_pcm_uframes_t mtk_afe_pcm_pointer(struct snd_soc_component *component,
+ 	int ret;
+ 	unsigned long long pcm_ptr_bytes = 0;
+ 
++	/* hostless front ends have no memory interface */
++	if (id >= afe->memif_size)
++		return 0;
++	memif = &afe->memif[id];
++	memif_data = memif->data;
++
+ 	ret = regmap_read(regmap, memif_data->reg_ofs_cur, &hw_ptr_lower32);
+ 	if (ret) {
+ 		dev_err(dev, "%s hw_ptr_lower32 err\n", __func__);
+-- 
+2.55.0
+

@@ -1,0 +1,223 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 22:17:41 -0400
+Subject: [PATCH 47/47] arm64: dts: mediatek: mt6878-titan2-elite: add the
+ front and second rear cameras
+
+Add the OmniVision OV32B40 front camera on I2C4 (CSI port 0, CAMTG5 on
+CMMCLK4) and the OmniVision OV50D40 second rear camera on I2C7 (CSI
+port 1, CAMTG2 on CMMCLK1), both on four D-PHY lanes, with their
+GPIO-switched supplies from the stock device tree. The capture node
+gets one port per CSI port; the IMX766 moves to port 2.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts | 141 +++++++++++++++++-
+ arch/arm64/boot/dts/mediatek/mt6878.dtsi      |  16 +-
+ 2 files changed, 150 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index 492b778cb..6b751167a 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -77,6 +77,42 @@ rear_dvdd: regulator-rear-dvdd {
+ 		enable-active-high;
+ 	};
+ 
++	wide_avdd: regulator-wide-avdd {
++		compatible = "regulator-fixed";
++		regulator-name = "wide_avdd";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		gpio = <&pio 188 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	wide_dvdd: regulator-wide-dvdd {
++		compatible = "regulator-fixed";
++		regulator-name = "wide_dvdd";
++		regulator-min-microvolt = <1200000>;
++		regulator-max-microvolt = <1200000>;
++		gpio = <&pio 39 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	front_avdd: regulator-front-avdd {
++		compatible = "regulator-fixed";
++		regulator-name = "front_avdd";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		gpio = <&pio 192 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	front_dvdd: regulator-front-dvdd {
++		compatible = "regulator-fixed";
++		regulator-name = "front_dvdd";
++		regulator-min-microvolt = <1100000>;
++		regulator-max-microvolt = <1100000>;
++		gpio = <&pio 191 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
+ 	gpio-keys {
+ 		compatible = "gpio-keys";
+ 
+@@ -379,6 +415,20 @@ pins-mclk {
+ 		};
+ 	};
+ 
++	wide_cam_pins: wide-cam-pins {
++		pins-mclk {
++			pinmux = <PINMUX_GPIO93__FUNC_CMMCLK1>;
++			drive-strength = <8>;
++		};
++	};
++
++	front_cam_pins: front-cam-pins {
++		pins-mclk {
++			pinmux = <PINMUX_GPIO96__FUNC_CMMCLK4>;
++			drive-strength = <8>;
++		};
++	};
++
+ 	mmc1_default: mmc1-default {
+ 		pins-cmd-dat {
+ 			pinmux = <0x4f01 0x5001 0x5101 0x5201 0x4e01>;
+@@ -499,7 +549,7 @@ camera@1a {
+ 
+ 		port {
+ 			rear_cam_out: endpoint {
+-				remote-endpoint = <&camera_capture_in>;
++				remote-endpoint = <&camera_capture_csi2>;
+ 				bus-type = <1>;
+ 				data-lanes = <1 2 3>;
+ 				link-frequencies = /bits/ 64 <574000000>;
+@@ -508,14 +558,95 @@ rear_cam_out: endpoint {
+ 	};
+ };
+ 
++&i2c4 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	clock-frequency = <400000>;
++	status = "okay";
++
++	/* Front camera */
++	camera@10 {
++		compatible = "ovti,ov32b40";
++		reg = <0x10>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&front_cam_pins>;
++		clocks = <&topckgen CLK_TOP_CAMTG5_SEL>;
++		dovdd-supply = <&cam_dovdd>;
++		avdd-supply = <&front_avdd>;
++		dvdd-supply = <&front_dvdd>;
++		reset-gpios = <&pio 24 GPIO_ACTIVE_LOW>;
++		orientation = <0>;
++		rotation = <90>;
++
++		port {
++			front_cam_out: endpoint {
++				remote-endpoint = <&camera_capture_csi0>;
++				bus-type = <4>;
++				data-lanes = <1 2 3 4>;
++				link-frequencies = /bits/ 64 <426000000>;
++			};
++		};
++	};
++};
++
++&i2c7 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	clock-frequency = <400000>;
++	status = "okay";
++
++	/* Rear second camera */
++	camera@36 {
++		compatible = "ovti,ov50d40";
++		reg = <0x36>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&wide_cam_pins>;
++		clocks = <&topckgen CLK_TOP_CAMTG2_SEL>;
++		dovdd-supply = <&cam_dovdd>;
++		avdd-supply = <&wide_avdd>;
++		dvdd-supply = <&wide_dvdd>;
++		reset-gpios = <&pio 25 GPIO_ACTIVE_LOW>;
++		powerdown-gpios = <&pio 189 GPIO_ACTIVE_LOW>;
++		orientation = <1>;
++		rotation = <270>;
++
++		port {
++			wide_cam_out: endpoint {
++				remote-endpoint = <&camera_capture_csi1>;
++				bus-type = <4>;
++				data-lanes = <1 2 3 4>;
++				link-frequencies = /bits/ 64 <951000000>;
++			};
++		};
++	};
++};
++
+ &camera_capture {
+ 	status = "okay";
+ };
+ 
+-&camera_capture_in {
+-	remote-endpoint = <&rear_cam_out>;
+-	bus-type = <1>;
+-	data-lanes = <1 2 3>;
++&camera_capture_port0 {
++	camera_capture_csi0: endpoint {
++		remote-endpoint = <&front_cam_out>;
++		bus-type = <4>;
++		data-lanes = <1 2 3 4>;
++	};
++};
++
++&camera_capture_port1 {
++	camera_capture_csi1: endpoint {
++		remote-endpoint = <&wide_cam_out>;
++		bus-type = <4>;
++		data-lanes = <1 2 3 4>;
++	};
++};
++
++&camera_capture_port2 {
++	camera_capture_csi2: endpoint {
++		remote-endpoint = <&rear_cam_out>;
++		bus-type = <1>;
++		data-lanes = <1 2 3>;
++	};
+ };
+ 
+ &i2c11 {
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878.dtsi b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+index e4d166528..5887d307d 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+@@ -759,8 +759,20 @@ camera_capture: camera-capture@1a00e000 {
+ 					<&spm MT6878_POWER_DOMAIN_CSI_RX>;
+ 			status = "disabled";
+ 
+-			port {
+-				camera_capture_in: endpoint {
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				camera_capture_port0: port@0 {
++					reg = <0>;
++				};
++
++				camera_capture_port1: port@1 {
++					reg = <1>;
++				};
++
++				camera_capture_port2: port@2 {
++					reg = <2>;
+ 				};
+ 			};
+ 		};
+-- 
+2.55.0
+

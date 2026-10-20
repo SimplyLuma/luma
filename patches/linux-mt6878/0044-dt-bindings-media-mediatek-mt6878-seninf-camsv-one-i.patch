@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 22:17:31 -0400
+Subject: [PATCH 44/47] dt-bindings: media: mediatek: mt6878-seninf-camsv: one
+ input per CSI port
+
+Replace the single port with ports: port@N is CSI port N, used as a 4D1C
+port with a three-trio C-PHY or a four-lane D-PHY sensor.
+---
+ .../mediatek,mt6878-seninf-camsv.yaml         | 71 +++++++++++++------
+ 1 file changed, 48 insertions(+), 23 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/media/mediatek/mediatek,mt6878-seninf-camsv.yaml b/Documentation/devicetree/bindings/media/mediatek/mediatek,mt6878-seninf-camsv.yaml
+index 1e3983851..692bc0f4b 100644
+--- a/Documentation/devicetree/bindings/media/mediatek/mediatek,mt6878-seninf-camsv.yaml
++++ b/Documentation/devicetree/bindings/media/mediatek/mediatek,mt6878-seninf-camsv.yaml
+@@ -48,26 +48,34 @@ properties:
+       - description: CAM_MAIN
+       - description: CSI_RX
+ 
+-  port:
+-    $ref: /schemas/graph.yaml#/$defs/port-base
+-    unevaluatedProperties: false
+-    description: CSI-2 input
+-
+-    properties:
+-      endpoint:
+-        $ref: /schemas/media/video-interfaces.yaml#
++  ports:
++    $ref: /schemas/graph.yaml#/properties/ports
++    description:
++      One CSI-2 input per CSI port; port@N is CSI port N, used as a 4D1C
++      port (PHY A and B together). One sensor streams at a time.
++
++    patternProperties:
++      "^port@[0-2]$":
++        $ref: /schemas/graph.yaml#/$defs/port-base
+         unevaluatedProperties: false
+ 
+         properties:
+-          bus-type:
+-            const: 1
+-          data-lanes:
+-            minItems: 1
+-            maxItems: 3
+-
+-        required:
+-          - bus-type
+-          - data-lanes
++          endpoint:
++            $ref: /schemas/media/video-interfaces.yaml#
++            unevaluatedProperties: false
++
++            properties:
++              bus-type:
++                enum:
++                  - 1  # MEDIA_BUS_TYPE_CSI2_CPHY, three trios
++                  - 4  # MEDIA_BUS_TYPE_CSI2_DPHY, four data lanes
++              data-lanes:
++                minItems: 3
++                maxItems: 4
++
++            required:
++              - bus-type
++              - data-lanes
+ 
+ required:
+   - compatible
+@@ -75,7 +83,7 @@ required:
+   - reg-names
+   - interrupts
+   - power-domains
+-  - port
++  - ports
+ 
+ additionalProperties: false
+ 
+@@ -96,11 +104,28 @@ examples:
+         power-domains = <&spm MT6878_POWER_DOMAIN_CAM_MAIN>,
+                         <&spm MT6878_POWER_DOMAIN_CSI_RX>;
+ 
+-        port {
+-            endpoint {
+-                remote-endpoint = <&sensor_out>;
+-                bus-type = <1>;
+-                data-lanes = <1 2 3>;
++        ports {
++            #address-cells = <1>;
++            #size-cells = <0>;
++
++            port@0 {
++                reg = <0>;
++
++                endpoint {
++                    remote-endpoint = <&front_sensor_out>;
++                    bus-type = <4>;
++                    data-lanes = <1 2 3 4>;
++                };
++            };
++
++            port@2 {
++                reg = <2>;
++
++                endpoint {
++                    remote-endpoint = <&rear_sensor_out>;
++                    bus-type = <1>;
++                    data-lanes = <1 2 3>;
++                };
+             };
+         };
+     };
+-- 
+2.55.0
+

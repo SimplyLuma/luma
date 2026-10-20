@@ -1,0 +1,116 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] software_isp: scale 8-bit Bayer before CPU debayer
+
+Raw capture paths that deliver unpacked 8-bit Bayer still get the centre
+crop for a smaller output, so a 2048x1536 stream from a 4096x3072 sensor
+shows only the middle quarter of the field of view.
+
+Use the same Bayer-phase-preserving nearest-neighbour input that packed
+RAW10 already gets, copying one byte per pixel.
+
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 27dbe83..182ccb1 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -703,8 +703,11 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 	downscaledInput_.clear();
+ 
+ 	const BayerFormat bayer = BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
+-	if (bayer.bitDepth == 10 &&
+-	    bayer.packing == BayerFormat::Packing::CSI2 &&
++	downscalePacked_ = bayer.bitDepth == 10 &&
++			   bayer.packing == BayerFormat::Packing::CSI2;
++	const bool unpacked8 = bayer.bitDepth == 8 &&
++			       bayer.packing == BayerFormat::Packing::None;
++	if ((downscalePacked_ || unpacked8) &&
+ 	    outputCfg.size.width >= 4 && outputCfg.size.height >= 2 &&
+ 	    (outputCfg.size.width < inputCfg.size.width ||
+ 	     outputCfg.size.height < inputCfg.size.height)) {
+@@ -727,10 +730,10 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 					  cropWidth, cropHeight);
+ 
+ 		/*
+-		 * Keep a complete packed Bayer group on each horizontal edge for
+-		 * the existing interpolation code. The output size and the border
+-		 * are both multiples of four pixels, so every line is whole RAW10
+-		 * groups with no partial tail.
++		 * Keep a complete Bayer group on each horizontal edge for the
++		 * existing interpolation code. For RAW10 the output size and the
++		 * border are both multiples of four pixels, so every line is whole
++		 * packed groups with no partial tail.
+ 		 */
+ 		const unsigned int border = inputConfig_.patternSize.width;
+ 		const unsigned int bufferWidth = outputCfg.size.width + 2 * border;
+@@ -754,7 +757,8 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 				static_cast<uint64_t>(outputCell) * sourceCells / outputCells;
+ 			const unsigned int sourceX = sourceRegion_.x +
+ 						     2 * sourceCell + (x & 1);
+-			downscaleXOffsets_[x] = (sourceX / 4) * 5 + sourceX % 4;
++			downscaleXOffsets_[x] = downscalePacked_ ?
++						(sourceX / 4) * 5 + sourceX % 4 : sourceX;
+ 		}
+ 
+ 		const unsigned int outputRows = outputCfg.size.height / 2;
+@@ -770,7 +774,9 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 		window_ = Rectangle(border, 0, outputCfg.size.width,
+ 				    outputCfg.size.height);
+ 		downscaleInput_ = true;
+-		LOG(Debayer, Info) << "Scaling RAW10 " << sourceRegion_.toString()
++		LOG(Debayer, Info) << "Scaling RAW"
++				   << static_cast<unsigned int>(bayer.bitDepth) << " "
++				   << sourceRegion_.toString()
+ 				   << " to " << outputCfg.size.toString();
+ 	} else {
+ 		window_.x = ((inputCfg.size.width - outputCfg.size.width) / 2) &
+@@ -865,7 +871,7 @@ DebayerCpu::strideAndFrameSize(const PixelFormat &outputFormat, const Size &size
+ 	return std::make_tuple(stride, stride * size.height);
+ }
+ 
+-void DebayerCpu::downscaleRaw10(const uint8_t *src)
++void DebayerCpu::downscaleRaw(const uint8_t *src)
+ {
+ 	const unsigned int bufferWidth = downscaleXOffsets_.size();
+ 
+@@ -873,6 +879,12 @@ void DebayerCpu::downscaleRaw10(const uint8_t *src)
+ 		const uint8_t *sourceLine = src + downscaleYOffsets_[y];
+ 		uint8_t *destination = downscaledInput_.data() + y * inputConfig_.stride;
+ 
++		if (!downscalePacked_) {
++			for (unsigned int x = 0; x < bufferWidth; ++x)
++				destination[x] = sourceLine[downscaleXOffsets_[x]];
++			continue;
++		}
++
+ 		/*
+ 		 * CSI-2 RAW10 stores four eight-bit MSB samples followed by one
+ 		 * byte containing their two-bit tails. The existing CPU debayer
+@@ -1194,7 +1206,7 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output
+ 
+ 	const uint8_t *inputData = in.planes()[0].data();
+ 	if (downscaleInput_) {
+-		downscaleRaw10(inputData);
++		downscaleRaw(inputData);
+ 		inputData = downscaledInput_.data();
+ 	}
+ 
+diff --git a/src/libcamera/software_isp/debayer_cpu.h b/src/libcamera/software_isp/debayer_cpu.h
+index 2bf35ad..1dde643 100644
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -126,7 +126,7 @@ private:
+ 	int setDebayerFunctions(PixelFormat inputFormat,
+ 				PixelFormat outputFormat,
+ 				bool ccmEnabled);
+-	void downscaleRaw10(const uint8_t *src);
++	void downscaleRaw(const uint8_t *src);
+ 	void updateGammaTable(const DebayerParams &params);
+ 	void updateLookupTables(const DebayerParams &params);
+ 
+@@ -158,6 +158,7 @@ private:
+ 	Rectangle sourceRegion_;
+ 	unsigned int sourceStride_;
+ 	bool downscaleInput_;
++	bool downscalePacked_;
+ 	std::vector<unsigned int> downscaleXOffsets_;
+ 	std::vector<unsigned int> downscaleYOffsets_;
+ 	std::vector<uint8_t> downscaledInput_;

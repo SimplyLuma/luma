@@ -1,0 +1,47 @@
+From 4fda5a6f192b2baa2c8573a744743eebc0fc7aa3 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:44:19 -0400
+Subject: [PATCH 38/39] Input: mt6363-keys: populate the PMIC child nodes
+
+The keys device owns the MT6363 SPMI regmap. Populate its child nodes so
+other PMIC functions, such as the AUXADC, can be described under the same
+node and reach the PMIC through the parent regmap.
+---
+ drivers/input/misc/mt6363-keys.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/input/misc/mt6363-keys.c b/drivers/input/misc/mt6363-keys.c
+index a9acac3e6..60f64ecec 100644
+--- a/drivers/input/misc/mt6363-keys.c
++++ b/drivers/input/misc/mt6363-keys.c
+@@ -6,6 +6,9 @@
+  * the key is held: power on bit 1, home on bit 3, home2 on bit 4. Each key
+  * is a child node named after it with its linux,keycodes; boards remap the
+  * home keys (the Titan 2 Elite's left shift is home2).
++ *
++ * Other PMIC functions described as child nodes (the AUXADC) are populated
++ * here and use this device's regmap.
+  */
+ 
+ #include <linux/bits.h>
+@@ -13,6 +16,7 @@
+ #include <linux/jiffies.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_platform.h>
+ #include <linux/property.h>
+ #include <linux/regmap.h>
+ #include <linux/spmi.h>
+@@ -143,7 +147,8 @@ static int mt6363_keys_probe(struct spmi_device *sdev)
+ 	if (ret)
+ 		return ret;
+ 	device_init_wakeup(dev, true);
+-	return 0;
++
++	return devm_of_platform_populate(dev);
+ }
+ 
+ static const struct of_device_id mt6363_keys_of_match[] = {
+-- 
+2.55.0
+

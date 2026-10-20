@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:05:57 -0400
+Subject: [PATCH 29/33] arm64: dts: mediatek: mt6878-titan2-elite: add rear
+ camera
+
+Describe the Sony IMX766 rear camera on I2C8 with its GPIO-switched
+supplies, the CAMTG3 master clock on CMMCLK2, and its three-trio C-PHY
+output. The CSI-2 receiver is not described yet, so the endpoint has no
+remote.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts | 66 +++++++++++++++++++
+ 1 file changed, 66 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index 391a30079..f6c5212eb 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -48,6 +48,34 @@ sound {
+ 		mediatek,audio-codec = <&mt6369_codec>;
+ 	};
+ 
++	/* Camera rails: GPIO-switched load switches */
++	cam_dovdd: regulator-cam-dovdd {
++		compatible = "regulator-fixed";
++		regulator-name = "cam_dovdd";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		gpio = <&pio 194 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	rear_avdd: regulator-rear-avdd {
++		compatible = "regulator-fixed";
++		regulator-name = "rear_avdd";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		gpio = <&pio 195 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
++	rear_dvdd: regulator-rear-dvdd {
++		compatible = "regulator-fixed";
++		regulator-name = "rear_dvdd";
++		regulator-min-microvolt = <1100000>;
++		regulator-max-microvolt = <1100000>;
++		gpio = <&pio 37 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
+ 	gpio-keys {
+ 		compatible = "gpio-keys";
+ 
+@@ -336,6 +364,13 @@ pins-bus {
+ 		};
+ 	};
+ 
++	rear_cam_pins: rear-cam-pins {
++		pins-mclk {
++			pinmux = <PINMUX_GPIO94__FUNC_CMMCLK2>;
++			drive-strength = <8>;
++		};
++	};
++
+ 	mmc1_default: mmc1-default {
+ 		pins-cmd-dat {
+ 			pinmux = <0x4f01 0x5001 0x5101 0x5201 0x4e01>;
+@@ -433,6 +468,37 @@ MATRIX_KEY(8, 4, 134) MATRIX_KEY(8, 5, 135) MATRIX_KEY(8, 6, 136)
+ };
+ 
+ /* Battery fuel gauge (Sinowealth SH366100 @0x55), charger and PMIC side channel. */
++&i2c8 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	clock-frequency = <400000>;
++	status = "okay";
++
++	/* Rear main camera */
++	camera@1a {
++		compatible = "sony,imx766";
++		reg = <0x1a>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&rear_cam_pins>;
++		clocks = <&topckgen CLK_TOP_CAMTG3_SEL>;
++		dovdd-supply = <&cam_dovdd>;
++		avdd-supply = <&rear_avdd>;
++		dvdd-supply = <&rear_dvdd>;
++		reset-gpios = <&pio 26 GPIO_ACTIVE_LOW>;
++		powerdown-gpios = <&pio 28 GPIO_ACTIVE_LOW>;
++		orientation = <1>;
++		rotation = <270>;
++
++		port {
++			rear_cam_out: endpoint {
++				bus-type = <1>;
++				data-lanes = <1 2 3>;
++				link-frequencies = /bits/ 64 <574000000>;
++			};
++		};
++	};
++};
++
+ &i2c11 {
+ 	#address-cells = <1>;
+ 	#size-cells = <0>;
+-- 
+2.55.0
+

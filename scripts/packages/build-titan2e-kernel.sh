@@ -21,6 +21,8 @@ eval "$(python3 - "$repo_root/config/mobile/titan2e-kernel-source.json" <<'PY'
 import json, shlex, sys
 c = json.load(open(sys.argv[1]))
 v = {k: c[k] for k in ('repository', 'commit', 'patches', 'config', 'dtb', 'boot_partition_size')}
+# Bumped when only the config changes: the patch series sets the release date.
+v['config_release'] = c.get('config_release', 1)
 bb = c['initramfs']['busybox']
 v.update(initramfs_init=c['initramfs']['init'], busybox_url=bb['url'],
          busybox_sha256=bb['sha256'], busybox_path=bb['path'])
@@ -66,7 +68,6 @@ dir /sys 0755 0 0
 dir /run 0755 0 0
 dir /tmp 1777 0 0
 dir /sysroot 0755 0 0
-dir /newroot 0755 0 0
 EOF
 
 src=$work/linux obj=$work/obj
@@ -119,7 +120,7 @@ install -m 0644 "$repo_root/packaging/rpm/titan2e-kernel-modules.spec" "$work/rp
 set -euo pipefail
 dnf5 -y install rpm-build
 rpmbuild -bb --target aarch64 --define \"_topdir \$PWD\" --define 'krel $krel' \
-	--define 'kver ${krel%%-*}' --define 'krelease 1.luma.$(date -u -d "@$ts" +%Y%m%d%H%M)' SPECS/package.spec
+	--define 'kver ${krel%%-*}' --define 'krelease 1.luma.$(date -u -d "@$ts" +%Y%m%d%H%M).$config_release' SPECS/package.spec
 "
 cp -a "$work/rpmbuild/RPMS" "$out/"
 (cd "$out"; find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs sha256sum >SHA256SUMS)

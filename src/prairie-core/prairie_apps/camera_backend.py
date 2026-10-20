@@ -55,6 +55,10 @@ _FP6_CAMERA_PRESENTATION = {
     "/base/soc@0/cci@ac15000/i2c-bus@0/camera@1a": ("Main", 0),
     "/base/soc@0/cci@ac15000/i2c-bus@1/camera@36": ("Wide", 1),
     "/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d": ("Front", 2),
+    # Titan 2 Elite rear IMX766, rear OV50D40 telephoto, front OV32B40
+    "/base/soc@0/i2c@11e03000/camera@1a": ("Main", 0),
+    "/base/soc@0/i2c@11e02000/camera@36": ("Tele", 1),
+    "/base/soc@0/i2c@11c23000/camera@10": ("Front", 2),
 }
 
 # OV13B10's smaller 1364x768 mode caps exposure at 8.245 ms.  This request
@@ -66,6 +70,11 @@ _PREVIEW_SOURCE_SIZES = {
     # Preserve OV13B10's native processed mode. Scaling it down to 1080p and
     # then back up to fill the tall FP6 panel compounded visible stair-stepping.
     "/base/soc@0/cci@ac15000/i2c-bus@1/camera@36": (2080, 1170),
+    # Titan 2 Elite IMX766: the sensor's full 4:3 field, so the phone viewfinder's
+    # centre crop is exactly the still's crop.
+    "/base/soc@0/i2c@11e03000/camera@1a": (2048, 1536),
+    "/base/soc@0/i2c@11e02000/camera@36": (2048, 1536),
+    "/base/soc@0/i2c@11c23000/camera@10": (1632, 1224),
 }
 
 # The FP6 Adreno A810 currently has an unresolved GMU recovery defect. Keep
@@ -95,6 +104,9 @@ _STILL_CAPTURE_PROFILES: dict[str, tuple[int, int, float | None]] = {
     "/base/soc@0/cci@ac15000/i2c-bus@1/camera@36": (2560, 1920, 29.0),
     "/base/soc@0/cci@ac15000/i2c-bus@0/camera@1a": (2560, 1920, 35.0),
     "/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d": (2560, 1920, None),
+    "/base/soc@0/i2c@11e03000/camera@1a": (2560, 1920, None),
+    "/base/soc@0/i2c@11e02000/camera@36": (2560, 1920, None),
+    "/base/soc@0/i2c@11c23000/camera@10": (2560, 1920, None),
 }
 
 
@@ -141,17 +153,17 @@ def image_rotation_from_mount(
     display_rotation: int = 0,
     front_facing: bool = False,
 ) -> int:
-    """Return Android-compatible clockwise image rotation in degrees."""
+    """Return the clockwise image rotation in degrees.
+
+    libcamera's Rotation property is the counter-clockwise correction the
+    captured image needs, so the clockwise rotation is its complement.
+    """
 
     sensor = mount_rotation % 360
     display = display_rotation % 360
     if front_facing:
-        rotation = (sensor + display) % 360
-    else:
-        rotation = (sensor - display + 360) % 360
-    # Physical FP6 acceptance found every mount-derived preview exactly
-    # upside down. Keep this correction shared by preview, stills, and taps.
-    return (rotation + 180) % 360
+        return (360 - sensor + display) % 360
+    return (720 - sensor - display) % 360
 
 
 def video_direction_for_transform(

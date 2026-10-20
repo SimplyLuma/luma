@@ -4,9 +4,8 @@
   "commit": "12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422",
   "patches": "patches/linux-mt6878",
   "config": "config/mobile/titan2e-kernel.config",
-  "release": "7.2.0-luma-titan2e-m2-g3a50c30a53fd",
-  "build": "scripts/packages/build-titan2e-kernel.sh",
-  "builtin_dtb": "Build the dtb first and copy it to CONFIG_TITAN2E_BUILTIN_DTB_PATH, then make Image modules (the .incbin is not dependency-tracked).",
+  "release": "7.2.0-luma-titan2e-m2-g7035a815908b",
+  "config_release": 3,
   "initramfs": {
     "init": "config/mobile/titan2e-initramfs/init",
     "busybox": {
@@ -15,6 +14,8 @@
       "path": "usr/bin/busybox"
     }
   },
+  "build": "scripts/packages/build-titan2e-kernel.sh",
+  "builtin_dtb": "Build the dtb first and copy it to CONFIG_TITAN2E_BUILTIN_DTB_PATH, then make Image modules (the .incbin is not dependency-tracked).",
   "boot_image": "Image.lz4 in an Android v4 boot image with an AVB hash footer for the boot partition (boot_a)",
   "dtb": "mediatek/mt6878-unihertz-titan2-elite.dtb",
   "boot_partition_size": 67108864,

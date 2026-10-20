@@ -1,0 +1,374 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:05:58 -0400
+Subject: [PATCH 31/33] media: mediatek: camsv: add the MT6878 MM M4U camera
+ client
+
+The MT6878 MM M4U runs under the vendor hypervisor's hyp-mmu type2: the
+hypervisor shadows the kernel's ARMv7s table, the PT base register reads
+back the hypervisor's table, and every change to the table has to be
+followed by HYP_PMM_HYPMMU_TYPE2_INV. The camera larbs boot with MMU_EN=1
+and CAMSV issues no memory transactions until the M4U is set up.
+
+Set the M4U up the way the stock mtk_iommu and iommu_secure modules do:
+hw_init including the TF-A secure bank init call (MTK_SIP 0x514, MM
+IOMMU 0, bank 4), the PT base once per boot, then per map or unmap a
+type2 invalidate and a range TLB flush. No global invalidate is issued.
+Bank 0 is shared with the display, whose larbs must stay in bypass; this
+is checked before first use.
+
+A second PT base write in the same boot hangs the MM bus, so the table
+lives until reboot and the module cannot be unloaded.
+---
+ drivers/media/platform/mediatek/Kconfig       |   1 +
+ drivers/media/platform/mediatek/Makefile      |   1 +
+ drivers/media/platform/mediatek/camsv/Kconfig |   5 +
+ .../media/platform/mediatek/camsv/Makefile    |   2 +
+ .../platform/mediatek/camsv/mt6878-cam-m4u.c  | 273 ++++++++++++++++++
+ .../platform/mediatek/camsv/mt6878-cam-m4u.h  |  12 +
+ 6 files changed, 294 insertions(+)
+ create mode 100644 drivers/media/platform/mediatek/camsv/Kconfig
+ create mode 100644 drivers/media/platform/mediatek/camsv/Makefile
+ create mode 100644 drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.c
+ create mode 100644 drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.h
+
+diff --git a/drivers/media/platform/mediatek/Kconfig b/drivers/media/platform/mediatek/Kconfig
+index 84104e2cd..17f5c6231 100644
+--- a/drivers/media/platform/mediatek/Kconfig
++++ b/drivers/media/platform/mediatek/Kconfig
+@@ -2,6 +2,7 @@
+ 
+ comment "Mediatek media platform drivers"
+ 
++source "drivers/media/platform/mediatek/camsv/Kconfig"
+ source "drivers/media/platform/mediatek/jpeg/Kconfig"
+ source "drivers/media/platform/mediatek/mdp/Kconfig"
+ source "drivers/media/platform/mediatek/vcodec/Kconfig"
+diff --git a/drivers/media/platform/mediatek/Makefile b/drivers/media/platform/mediatek/Makefile
+index 38e6ba917..bd406b642 100644
+--- a/drivers/media/platform/mediatek/Makefile
++++ b/drivers/media/platform/mediatek/Makefile
+@@ -4,3 +4,4 @@ obj-y += mdp/
+ obj-y += vcodec/
+ obj-y += vpu/
+ obj-y += mdp3/
++obj-y += camsv/
+diff --git a/drivers/media/platform/mediatek/camsv/Kconfig b/drivers/media/platform/mediatek/camsv/Kconfig
+new file mode 100644
+index 000000000..12c860413
+--- /dev/null
++++ b/drivers/media/platform/mediatek/camsv/Kconfig
+@@ -0,0 +1,5 @@
++# SPDX-License-Identifier: GPL-2.0-only
++config VIDEO_MT6878_CAM_M4U
++	tristate
++	depends on ARCH_MEDIATEK || COMPILE_TEST
++	depends on ARM64 && IOMMU_IO_PGTABLE_ARMV7S
+diff --git a/drivers/media/platform/mediatek/camsv/Makefile b/drivers/media/platform/mediatek/camsv/Makefile
+new file mode 100644
+index 000000000..e47f01ab0
+--- /dev/null
++++ b/drivers/media/platform/mediatek/camsv/Makefile
+@@ -0,0 +1,2 @@
++# SPDX-License-Identifier: GPL-2.0-only
++obj-$(CONFIG_VIDEO_MT6878_CAM_M4U) += mt6878-cam-m4u.o
+diff --git a/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.c b/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.c
+new file mode 100644
+index 000000000..a2df3ae1f
+--- /dev/null
++++ b/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.c
+@@ -0,0 +1,273 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * MT6878 MM M4U, camera client.
++ *
++ * The MM M4U (bank 0 at 0x1e802000) runs under the vendor hypervisor's
++ * "hyp-mmu type2": the hypervisor shadows the kernel's ARMv7s table, the PT
++ * base register reads back the hypervisor's own table, and every map or unmap
++ * is followed by HYP_PMM_HYPMMU_TYPE2_INV so the shadow picks up the change.
++ * The sequence follows the stock mtk_iommu/iommu_secure modules:
++ * hw_init (with the TF-A secure bank init call), PT base, then per mapping a
++ * type2 invalidate and a range TLB flush. No global invalidate is issued.
++ *
++ * The PT base may be written once per boot (a second write hangs the MM bus),
++ * so the table lives as long as the kernel: this module has no exit.
++ *
++ * Bank 0 is shared with the display; display larbs must stay in bypass
++ * (MMU_EN=0), which is checked before the first use.
++ */
++
++#include <linux/arm-smccc.h>
++#include <linux/bits.h>
++#include <linux/dma-mapping.h>
++#include <linux/io.h>
++#include <linux/io-pgtable.h>
++#include <linux/iommu.h>
++#include <linux/iopoll.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/platform_device.h>
++#include <linux/scatterlist.h>
++#include <linux/slab.h>
++
++#include "mt6878-cam-m4u.h"
++
++#define M4U_BASE			0x1e802000
++#define LARB0_BASE			0x1401e000	/* display */
++
++#define REG_MMU_PT_BASE_ADDR		0x000
++#define REG_MMU_INVALIDATE		0x020
++#define F_MMU_INV_RANGE			BIT(0)
++#define REG_MMU_INVLD_START_A		0x024
++#define REG_MMU_INVLD_END_A		0x028
++#define REG_MMU_INV_SEL			0x02c
++#define F_INVLD_EN0			BIT(0)
++#define F_INVLD_EN1			BIT(1)
++#define REG_MMU_MISC_CTRL		0x048
++#define F_MMU_IN_ORDER_WR_EN_MASK	(BIT(1) | BIT(17))
++#define F_MMU_STANDARD_AXI_MODE_MASK	(BIT(3) | BIT(19))
++#define REG_MMU_DCM_DIS			0x050
++#define REG_MMU_CTRL_REG		0x110
++#define F_MMU_MON_EN			BIT(1)
++#define F_MMU_SYNC_INVLDT_EN		BIT(3)
++#define REG_MMU_IVRP_PADDR		0x114
++#define REG_MMU_INT_CONTROL0		0x120
++#define REG_MMU_INT_MAIN_CONTROL	0x124
++#define REG_MMU_CPE_DONE		0x12c
++
++/* values read back from stock after mtk_iommu_hw_init */
++#define INT_CONTROL0_EN			0x63
++#define INT_MAIN_CONTROL_EN		0x1fbf
++#define CTRL_BOOT			0x1000
++#define MISC_BOOT			0x000a000a
++#define PT_BASE_BOOT			0xc0000007	/* LK placeholder */
++
++#define MTK_IOMMU_SECURE_CONTROL	0xc2000514	/* MTK_SIP_SMC_CMD(0x514) */
++#define SEC_BK_INIT_MM_DISP		0x400		/* MM IOMMU, DISP id 0, bank 4, SECURE_BANK_INIT */
++#define HYP_PMM_GET_HYPMMU_TYPE2_EN	0xbb00ffa4
++#define HYP_PMM_IOVA_TO_PHYS		0xbb00ffa6
++#define HYP_PMM_HYPMMU_TYPE2_INV	0xbb00ffa7
++#define MM_TABLE			0
++
++#define TLB_ADDR(a)			(((u32)(a) & GENMASK(31, 12)) | upper_32_bits(a))
++
++static DEFINE_MUTEX(m4u_lock);
++static void __iomem *base;
++static struct platform_device *m4u_pdev;
++static struct io_pgtable_ops *iop;
++static struct io_pgtable_cfg cfg;
++static bool type2;
++
++static unsigned long smc(unsigned long fn, unsigned long a1, unsigned long a2,
++			 unsigned long a3)
++{
++	struct arm_smccc_res res;
++
++	arm_smccc_smc(fn, a1, a2, a3, 0, 0, 0, 0, &res);
++	return res.a0;
++}
++
++static int display_bypassed(void)
++{
++	void __iomem *larb0 = ioremap(LARB0_BASE, SZ_4K);
++	int p, ret = 0;
++
++	if (!larb0)
++		return -ENOMEM;
++	for (p = 0; p < 5; p++)
++		if (readl(larb0 + 0x380 + 4 * p) & BIT(0))
++			ret = -EBUSY;
++	iounmap(larb0);
++	return ret;
++}
++
++/* stock mtk_iommu_hw_init for the disp/MM M4U, IOMMU_SEC_EN set */
++static int hw_init(void)
++{
++	phys_addr_t pb;
++	unsigned long r;
++	void *protect;
++
++	if (readl(base + REG_MMU_CTRL_REG) == (CTRL_BOOT | F_MMU_SYNC_INVLDT_EN | F_MMU_MON_EN) &&
++	    readl(base + REG_MMU_MISC_CTRL) == 0 &&
++	    readl(base + REG_MMU_INT_CONTROL0) == INT_CONTROL0_EN)
++		return 0;	/* already initialized this boot */
++	if (readl(base + REG_MMU_CTRL_REG) != CTRL_BOOT ||
++	    readl(base + REG_MMU_MISC_CTRL) != MISC_BOOT)
++		return -EBUSY;
++
++	/* translation-fault target, 256-byte aligned; referenced until reboot */
++	protect = kzalloc(512, GFP_KERNEL);
++	if (!protect)
++		return -ENOMEM;
++	pb = ALIGN(virt_to_phys(protect), 256);
++
++	writel(readl(base + REG_MMU_CTRL_REG) | F_MMU_SYNC_INVLDT_EN | F_MMU_MON_EN,
++	       base + REG_MMU_CTRL_REG);
++	writel(0, base + REG_MMU_DCM_DIS);
++	writel(readl(base + REG_MMU_MISC_CTRL) &
++	       ~(F_MMU_IN_ORDER_WR_EN_MASK | F_MMU_STANDARD_AXI_MODE_MASK),
++	       base + REG_MMU_MISC_CTRL);
++	writel(INT_CONTROL0_EN, base + REG_MMU_INT_CONTROL0);
++	writel(INT_MAIN_CONTROL_EN, base + REG_MMU_INT_MAIN_CONTROL);
++	writel(lower_32_bits(pb) | upper_32_bits(pb), base + REG_MMU_IVRP_PADDR);
++
++	r = smc(MTK_IOMMU_SECURE_CONTROL, SEC_BK_INIT_MM_DISP, 0, 0);
++	if (r) {
++		pr_err("mt6878-cam-m4u: secure bank init failed: %ld\n", (long)r);
++		return -EIO;
++	}
++	return 0;
++}
++
++/* stock mtk_iommu_sync_map / iotlb_sync */
++static int sync_range(unsigned long iova, size_t size)
++{
++	unsigned long r;
++	u32 tmp;
++	int ret;
++
++	if (type2) {
++		r = smc(HYP_PMM_HYPMMU_TYPE2_INV, TLB_ADDR(iova), TLB_ADDR(iova + size - 1),
++			MM_TABLE);
++		if (r) {
++			pr_err("mt6878-cam-m4u: type2 inv 0x%lx+0x%zx: %ld\n", iova, size, (long)r);
++			return -EIO;
++		}
++	}
++	writel(F_INVLD_EN1 | F_INVLD_EN0, base + REG_MMU_INV_SEL);
++	writel(TLB_ADDR(iova), base + REG_MMU_INVLD_START_A);
++	writel(TLB_ADDR(iova + size - 1), base + REG_MMU_INVLD_END_A);
++	writel(F_MMU_INV_RANGE, base + REG_MMU_INVALIDATE);
++	ret = readl_poll_timeout_atomic(base + REG_MMU_CPE_DONE, tmp, tmp, 10, 1000);
++	writel(0, base + REG_MMU_CPE_DONE);
++	if (ret)
++		pr_warn("mt6878-cam-m4u: range flush timeout 0x%lx+0x%zx\n", iova, size);
++	return 0;
++}
++
++static int setup(void)
++{
++	int ret;
++
++	if (iop)
++		return 0;
++	if (readl(base + REG_MMU_PT_BASE_ADDR) != PT_BASE_BOOT)
++		return -EBUSY;	/* someone else owns the table this boot */
++	ret = display_bypassed();
++	if (ret)
++		return ret;
++
++	type2 = smc(HYP_PMM_GET_HYPMMU_TYPE2_EN, 0, 0, 0) == 1;
++	ret = hw_init();
++	if (ret)
++		return ret;
++
++	cfg = (struct io_pgtable_cfg) {
++		.quirks = IO_PGTABLE_QUIRK_ARM_NS | IO_PGTABLE_QUIRK_NO_PERMS |
++			  IO_PGTABLE_QUIRK_ARM_MTK_EXT | IO_PGTABLE_QUIRK_ARM_MTK_TTBR_EXT,
++		.pgsize_bitmap = SZ_4K | SZ_64K | SZ_1M | SZ_16M,
++		.ias = 34,
++		.oas = 35,
++		.coherent_walk = type2,
++		.iommu_dev = &m4u_pdev->dev,
++	};
++	iop = alloc_io_pgtable_ops(ARM_V7S, &cfg, NULL);
++	if (!iop)
++		return -ENOMEM;
++	writel(cfg.arm_v7s_cfg.ttbr, base + REG_MMU_PT_BASE_ADDR);
++	pr_info("mt6878-cam-m4u: type2 %d, table 0x%08x, PT base reads 0x%08x\n", type2,
++		(u32)cfg.arm_v7s_cfg.ttbr, readl(base + REG_MMU_PT_BASE_ADDR));
++	return 0;
++}
++
++int mt6878_cam_m4u_map_sg(unsigned long iova, struct sg_table *sgt, size_t *size)
++{
++	struct scatterlist *sg;
++	unsigned long cur = iova;
++	size_t mapped;
++	int i, ret;
++
++	mutex_lock(&m4u_lock);
++	ret = setup();
++	if (ret)
++		goto out;
++	for_each_sgtable_sg(sgt, sg, i) {
++		size_t len = sg->offset + sg->length;
++
++		mapped = 0;
++		ret = iop->map_pages(iop, cur, sg_phys(sg) - sg->offset, SZ_4K,
++				     PAGE_ALIGN(len) / SZ_4K, IOMMU_READ | IOMMU_WRITE,
++				     GFP_KERNEL, &mapped);
++		cur += mapped;
++		if (ret)
++			break;
++	}
++	*size = cur - iova;
++	if (cur != iova)
++		sync_range(iova, cur - iova);
++out:
++	mutex_unlock(&m4u_lock);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(mt6878_cam_m4u_map_sg);
++
++void mt6878_cam_m4u_unmap(unsigned long iova, size_t size)
++{
++	mutex_lock(&m4u_lock);
++	if (iop && size) {
++		iop->unmap_pages(iop, iova, SZ_4K, size / SZ_4K, NULL);
++		sync_range(iova, size);
++	}
++	mutex_unlock(&m4u_lock);
++}
++EXPORT_SYMBOL_GPL(mt6878_cam_m4u_unmap);
++
++phys_addr_t mt6878_cam_m4u_iova_to_phys(unsigned long iova)
++{
++	unsigned long r;
++
++	if (!type2)
++		return iop ? iop->iova_to_phys(iop, iova) : 0;
++	r = smc(HYP_PMM_IOVA_TO_PHYS, lower_32_bits(iova), upper_32_bits(iova), MM_TABLE);
++	return ((u64)(r & 0x7) << 32) | (r & 0xfffff000);
++}
++EXPORT_SYMBOL_GPL(mt6878_cam_m4u_iova_to_phys);
++
++static int __init mt6878_cam_m4u_init(void)
++{
++	base = ioremap(M4U_BASE, SZ_4K);
++	if (!base)
++		return -ENOMEM;
++	/* device for the page-table walker, only used when the table is not shadowed */
++	m4u_pdev = platform_device_register_simple("mt6878-cam-m4u", -1, NULL, 0);
++	if (IS_ERR(m4u_pdev)) {
++		iounmap(base);
++		return PTR_ERR(m4u_pdev);
++	}
++	return dma_coerce_mask_and_coherent(&m4u_pdev->dev, DMA_BIT_MASK(35));
++}
++module_init(mt6878_cam_m4u_init);
++
++MODULE_DESCRIPTION("MediaTek MT6878 MM M4U camera client");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.h b/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.h
+new file mode 100644
+index 000000000..55d5f7130
+--- /dev/null
++++ b/drivers/media/platform/mediatek/camsv/mt6878-cam-m4u.h
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __MT6878_CAM_M4U_H__
++#define __MT6878_CAM_M4U_H__
++
++#include <linux/scatterlist.h>
++#include <linux/types.h>
++
++int mt6878_cam_m4u_map_sg(unsigned long iova, struct sg_table *sgt, size_t *size);
++void mt6878_cam_m4u_unmap(unsigned long iova, size_t size);
++phys_addr_t mt6878_cam_m4u_iova_to_phys(unsigned long iova);
++
++#endif
+-- 
+2.55.0
+

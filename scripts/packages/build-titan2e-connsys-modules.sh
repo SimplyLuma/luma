@@ -19,6 +19,7 @@ VENDOR_REV=1c51f57c78be8acb3c51bc1911fffcd7b5c90184
 KDM_URL=https://github.com/motorola-mt6878/kernel_device_modules.git
 KDM_REV=6586afaa0622648a6e740fb4a83f4b8057346bc2
 
+mkdir -p "$(dirname "$out")"
 work=$(mktemp -d "${out}.work.XXXXXX")
 fetch() { # fetch <url> <rev> <dir> <paths...>
 	local url=$1 rev=$2 dir=$3; shift 3

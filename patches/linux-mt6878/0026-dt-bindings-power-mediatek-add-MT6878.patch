@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:05:57 -0400
+Subject: [PATCH 26/33] dt-bindings: power: mediatek: add MT6878
+
+Add the MT6878 power controller and SCPSYS compatibles, the infracfg_ao
+syscon used for bus protection, and the MT6878 power domain indices.
+---
+ .../bindings/mfd/mediatek,mt8195-scpsys.yaml  |  1 +
+ .../devicetree/bindings/mfd/syscon.yaml       |  4 ++-
+ .../power/mediatek,power-controller.yaml      |  1 +
+ .../dt-bindings/power/mediatek,mt6878-power.h | 29 +++++++++++++++++++
+ 4 files changed, 34 insertions(+), 1 deletion(-)
+ create mode 100644 include/dt-bindings/power/mediatek,mt6878-power.h
+
+diff --git a/Documentation/devicetree/bindings/mfd/mediatek,mt8195-scpsys.yaml b/Documentation/devicetree/bindings/mfd/mediatek,mt8195-scpsys.yaml
+index 4cafa3819..bbe5ff6be 100644
+--- a/Documentation/devicetree/bindings/mfd/mediatek,mt8195-scpsys.yaml
++++ b/Documentation/devicetree/bindings/mfd/mediatek,mt8195-scpsys.yaml
+@@ -21,6 +21,7 @@ properties:
+       - enum:
+           - mediatek,mt6795-scpsys
+           - mediatek,mt6893-scpsys
++          - mediatek,mt6878-scpsys
+           - mediatek,mt8167-scpsys
+           - mediatek,mt8173-scpsys
+           - mediatek,mt8183-scpsys
+diff --git a/Documentation/devicetree/bindings/mfd/syscon.yaml b/Documentation/devicetree/bindings/mfd/syscon.yaml
+index e22867088..e1d8ebfa5 100644
+--- a/Documentation/devicetree/bindings/mfd/syscon.yaml
++++ b/Documentation/devicetree/bindings/mfd/syscon.yaml
+@@ -88,6 +88,7 @@ select:
+           - mediatek,mt6397-pctl-pmic-syscfg
+           - mediatek,mt7981-topmisc
+           - mediatek,mt7988-topmisc
++          - mediatek,mt6878-infracfg_ao
+           - mediatek,mt8135-pctl-a-syscfg
+           - mediatek,mt8135-pctl-b-syscfg
+           - mediatek,mt8173-pctl-a-syscfg
+@@ -201,7 +202,8 @@ properties:
+               - mediatek,mt6397-pctl-pmic-syscfg
+               - mediatek,mt7981-topmisc
+               - mediatek,mt7988-topmisc
+-              - mediatek,mt8135-pctl-a-syscfg
++              - mediatek,mt6878-infracfg_ao
++          - mediatek,mt8135-pctl-a-syscfg
+               - mediatek,mt8135-pctl-b-syscfg
+               - mediatek,mt8173-pctl-a-syscfg
+               - mediatek,mt8365-infracfg-nao
+diff --git a/Documentation/devicetree/bindings/power/mediatek,power-controller.yaml b/Documentation/devicetree/bindings/power/mediatek,power-controller.yaml
+index 07f046277..944794fd5 100644
+--- a/Documentation/devicetree/bindings/power/mediatek,power-controller.yaml
++++ b/Documentation/devicetree/bindings/power/mediatek,power-controller.yaml
+@@ -25,6 +25,7 @@ properties:
+     enum:
+       - mediatek,mt6735-power-controller
+       - mediatek,mt6795-power-controller
++      - mediatek,mt6878-power-controller
+       - mediatek,mt6893-power-controller
+       - mediatek,mt8167-power-controller
+       - mediatek,mt8173-power-controller
+diff --git a/include/dt-bindings/power/mediatek,mt6878-power.h b/include/dt-bindings/power/mediatek,mt6878-power.h
+new file mode 100644
+index 000000000..619d29edc
+--- /dev/null
++++ b/include/dt-bindings/power/mediatek,mt6878-power.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++
++#ifndef _DT_BINDINGS_POWER_MT6878_POWER_H
++#define _DT_BINDINGS_POWER_MT6878_POWER_H
++
++#define MT6878_POWER_DOMAIN_MD			0
++#define MT6878_POWER_DOMAIN_CONN		1
++#define MT6878_POWER_DOMAIN_AUDIO		2
++#define MT6878_POWER_DOMAIN_CSI_RX		3
++#define MT6878_POWER_DOMAIN_SSR			4
++#define MT6878_POWER_DOMAIN_SSUSB		5
++#define MT6878_POWER_DOMAIN_MFG0_SHUTDOWN	6
++#define MT6878_POWER_DOMAIN_MM_INFRA		7
++#define MT6878_POWER_DOMAIN_DISP		8
++#define MT6878_POWER_DOMAIN_VEN0		9
++#define MT6878_POWER_DOMAIN_CAM_VCORE		10
++#define MT6878_POWER_DOMAIN_CAM_CCU		11
++#define MT6878_POWER_DOMAIN_CAM_CCU_AO		12
++#define MT6878_POWER_DOMAIN_CAM_MAIN		13
++#define MT6878_POWER_DOMAIN_CAM_SUBA		14
++#define MT6878_POWER_DOMAIN_CAM_SUBB		15
++#define MT6878_POWER_DOMAIN_ISP_VCORE		16
++#define MT6878_POWER_DOMAIN_ISP_MAIN		17
++#define MT6878_POWER_DOMAIN_ISP_DIP1		18
++#define MT6878_POWER_DOMAIN_VDE0		19
++#define MT6878_POWER_DOMAIN_MM_PROC_DORMANT	20
++#define MT6878_POWER_DOMAIN_APU			21
++
++#endif /* _DT_BINDINGS_POWER_MT6878_POWER_H */
+-- 
+2.55.0
+

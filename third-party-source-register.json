@@ -2889,13 +2889,13 @@
         "12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422"
       ],
       "recorded_versions": [
-        "7.2.0-luma-titan2e-m2-g3a50c30a53fd"
+        "7.2.0-luma-titan2e-m2-g7035a815908b"
       ],
       "license_identifiers": [
         "GPL-2.0-only"
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
-      "origin_line": 30
+      "origin_line": 33
     },
     {
       "component": "MEDIATEK-MT6878-KERNEL-DEVICE-MODULES-TITAN2-ELITE",
@@ -2914,7 +2914,7 @@
         "GPL-2.0-or-later"
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
-      "origin_line": 30
+      "origin_line": 33
     },
     {
       "component": "MEDIATEK-MT6878-CONNECTIVITY-TITAN2-ELITE",
@@ -2993,6 +2993,57 @@
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
       "origin_line": 32
+    },
+    {
+      "component": "MT6878-CAMERA-SENSOR-SETTINGS-TITAN2-ELITE",
+      "upstream": [
+        {
+          "name": "MotorolaMobilityLLC/vendor-mediatek-kernel_modules-mtkcam",
+          "url": "https://github.com/MotorolaMobilityLLC/vendor-mediatek-kernel_modules-mtkcam"
+        },
+        {
+          "name": "rockchip-linux/kernel",
+          "url": "https://github.com/rockchip-linux/kernel"
+        },
+        {
+          "name": "HelloVolla/android_kernel_modules_volla_mt6878",
+          "url": "https://github.com/HelloVolla/android_kernel_modules_volla_mt6878"
+        },
+        {
+          "name": "motorola-mt6878/vendor_mediatek_kernel_modules",
+          "url": "https://github.com/motorola-mt6878/vendor_mediatek_kernel_modules"
+        }
+      ],
+      "recorded_revisions": [
+        "android-14-release-u3uc34.63-31-6",
+        "develop-6.1",
+        "volla-15.0",
+        "1c51f57c78be8acb3c51bc1911fffcd7b5c90184"
+      ],
+      "recorded_versions": [],
+      "license_identifiers": [
+        "GPL-2.0-only"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 19
+    },
+    {
+      "component": "LIBCAMERA-TITAN2-ELITE-PATCHES",
+      "upstream": [
+        {
+          "name": "libcamera",
+          "url": "https://git.libcamera.org/libcamera/libcamera.git"
+        }
+      ],
+      "recorded_revisions": [
+        "191e202178f02430b5942397c70d215cdd2056fa"
+      ],
+      "recorded_versions": [],
+      "license_identifiers": [
+        "LGPL-2.1-or-later"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 38
     }
   ],
   "spdx_license_ids_observed": [

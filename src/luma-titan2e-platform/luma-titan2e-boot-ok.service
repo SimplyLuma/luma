@@ -1,10 +1,14 @@
 [Unit]
 Description=Mark the Titan 2 Elite boot slot successful
-After=local-fs.target
+# Only after greenboot's health check (the graphical session included) has
+# passed: a boot that never gets there leaves slot a unmarked, and LK falls
+# back to slot b once its tries are spent.
+Requires=greenboot-healthcheck.service
+After=greenboot-healthcheck.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/libexec/luma-titan2e-boot-ok
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=greenboot-success.target

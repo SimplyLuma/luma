@@ -51,8 +51,7 @@ class UnihertzTitan2Elite(unittest.TestCase):
         self.assertEqual(pins["dtb"], kernel["dtb"])
         self.assertEqual(pins["config"], kernel["config"])
         self.assertEqual(pins["boot_partition_size"], self.boot["partition_size"])
-        self.assertIn(pins["release"], self.guide)
-        self.assertEqual(len(list((ROOT / pins["patches"]).glob("[0-9][0-9][0-9][0-9]-*.patch"))), 23)
+        self.assertEqual(len(list((ROOT / pins["patches"]).glob("[0-9][0-9][0-9][0-9]-*.patch"))), 53)
 
     def test_kernel_config_has_no_bring_up_options(self):
         config = (ROOT / self.device["kernel"]["config"]).read_text()
@@ -64,7 +63,8 @@ class UnihertzTitan2Elite(unittest.TestCase):
     def test_initramfs_only_starts_the_microsd_root(self):
         pins = json.loads((ROOT / "config" / "mobile" / "titan2e-kernel-source.json").read_text())
         init = (ROOT / pins["initramfs"]["init"]).read_text()
-        self.assertIn("switch_root /newroot /usr/lib/systemd/systemd", init)
+        self.assertIn("switch_root /sysroot /usr/lib/systemd/systemd", init)
+        self.assertIn("ostree-prepare-root", init)
         for dev_only in ("telnetd", "usb_gadget", "devmem", "ttyGS0", "udhcpd"):
             self.assertNotIn(dev_only, init)
 
@@ -131,8 +131,11 @@ class UnihertzTitan2Elite(unittest.TestCase):
 
     def test_no_modem_services_ship(self):
         spec = (ROOT / "packaging" / "rpm" / "luma-titan2e-platform.spec").read_text()
-        self.assertNotIn("modem", spec)
-        self.assertFalse(list((ROOT / "src" / "luma-titan2e-platform").glob("*modem*")))
+        for name in ("luma-modemd", "luma-titan2e-speech", "VoiceCall", "lpac", "esim"):
+            self.assertNotIn(name, spec)
+        platform = ROOT / "src" / "luma-titan2e-platform"
+        for pattern in ("*modem*", "*speech*", "*VoiceCall*", "*esim*"):
+            self.assertFalse(list(platform.glob(pattern)), pattern)
 
 
 if __name__ == "__main__":

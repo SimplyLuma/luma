@@ -1,0 +1,35 @@
+From 1ca1f869e40250203ec2e7ca6ec9a0a4efd5c611 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 03:00:23 -0400
+Subject: [PATCH] ASoC: codecs: mt6369: keep the regmap across card rebinds
+
+The component regmap is the PMIC regmap the driver gets at probe and does
+not own. Exiting it on component removal freed it, and the next card bind
+crashed in regmap_debugfs_exit().
+---
+ sound/soc/codecs/mt6369.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/sound/soc/codecs/mt6369.c b/sound/soc/codecs/mt6369.c
+index b2d180f2d..0c438c541 100644
+--- a/sound/soc/codecs/mt6369.c
++++ b/sound/soc/codecs/mt6369.c
+@@ -5954,15 +5954,9 @@ static int mt6369_codec_probe(struct snd_soc_component *cmpnt)
+ 	return mt6369_codec_init_reg(cmpnt);
+ }
+ 
+-static void mt6369_codec_remove(struct snd_soc_component *cmpnt)
+-{
+-	snd_soc_component_exit_regmap(cmpnt);
+-}
+-
+ static const struct snd_soc_component_driver mt6369_soc_component_driver = {
+ 	.name = CODEC_MT6369_NAME,
+ 	.probe = mt6369_codec_probe,
+-	.remove = mt6369_codec_remove,
+ 	.controls = mt6369_snd_controls,
+ 	.num_controls = ARRAY_SIZE(mt6369_snd_controls),
+ 	.dapm_widgets = mt6369_dapm_widgets,
+-- 
+2.55.0
+

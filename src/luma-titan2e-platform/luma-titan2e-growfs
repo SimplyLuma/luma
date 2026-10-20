@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# First boot: grow partition 1 of the microSD card and its ext4 root to the
+# whole card (the image is 8 GiB).
+set -eu
+dev=/dev/mmcblk0
+part=${dev}p1
+echo ', +' | sfdisk --quiet --no-reread --no-tell-kernel -N 1 "$dev"
+partx -u "$dev"
+resize2fs "$part"
+mkdir -p /var/lib/luma-titan2e
+touch /var/lib/luma-titan2e/root-grown

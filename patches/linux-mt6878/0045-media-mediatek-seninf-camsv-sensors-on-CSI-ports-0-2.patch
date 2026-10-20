@@ -1,0 +1,728 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 22:17:31 -0400
+Subject: [PATCH 45/47] media: mediatek: seninf-camsv: sensors on CSI ports
+ 0-2, D-PHY
+
+Give the seninf subdev one sink pad per CSI port. The sensor whose link
+is enabled streams; only one sink link can be enabled at a time, which
+is how the libcamera simple pipeline sets the links up. The route from
+the CSI port to CAMSV2 tag 2 is unchanged.
+
+CSI port N uses PHY A/B at +0x8000 * N, SENINF_(2N+1) and its own efuse
+word. Add the 4D1C D-PHY setup of the isp7sp seninf driver: four data
+lanes with the clock on PHY A lane 2, a 100 ns settle at the 312 MHz
+seninf clock, HS prepare, deskew, and the equaliser setting for lane
+rates up to 2.5 Gbps, chosen from the sensor link frequency.
+---
+ .../mediatek/camsv/mtk-seninf-sv-hw.c         | 267 ++++++++++++------
+ .../platform/mediatek/camsv/mtk-seninf-sv.c   | 159 ++++++++---
+ .../platform/mediatek/camsv/mtk-seninf-sv.h   |  19 +-
+ 3 files changed, 322 insertions(+), 123 deletions(-)
+
+diff --git a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv-hw.c b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv-hw.c
+index 573239ec8..01dbe0a69 100644
+--- a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv-hw.c
++++ b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv-hw.c
+@@ -2,11 +2,12 @@
+ /*
+  * MT6878 seninf (CSI PHY 3.1) and CAMSV register programming.
+  *
+- * Fixed route, as stock uses it for the rear sensor: CSI port 2 (C-PHY,
+- * 3 trios, PHY A+B) -> SENINF_5 -> seninf mux 0 (MUX1) -> cammux 10 ->
+- * CAMSV2 (camsv_b) tag 2 IMGO. Register sequences from the isp7sp seninf
+- * driver (csi phy 3.1) and libccd camsys_sv_compose; FIFO thresholds and
+- * the PHY efuse word read back on stock.
++ * Route: CSI port N (PHY A+B as one 4D1C port: 4-lane D-PHY or 3-trio
++ * C-PHY) -> SENINF_(2N+1) -> seninf mux 0 (MUX1) -> cammux 10 -> CAMSV2
++ * (camsv_b) tag 2 IMGO, as stock uses it for the rear sensor. Register
++ * sequences from the isp7sp seninf driver (csi phy 3.1) and libccd
++ * camsys_sv_compose; FIFO thresholds and the PHY efuse words read back on
++ * stock.
+  *
+  * IMGO runs in UNPACK_MODE, which stores the 8 MSBs of each RAW10 pixel.
+  * Addresses are M4U IOVAs (larb13 ports run with MMU_EN=1).
+@@ -20,8 +21,11 @@
+ #include <linux/pm_domain.h>
+ #include "mtk-seninf-sv.h"
+ 
+-#define EFUSE_PORT2		0x7bdce70e	/* csi-port-2 efuse word, stock dmesg */
+-#define SETTLE			23		/* ceil(312 MHz * 73 ns) */
++/* csi-port-N efuse words (rg_csi), stock dmesg */
++static const u32 csi_efuse[MTK_SV_NUM_PORTS] = { 0x7b9ee70c, 0x7b9ce68b, 0x7bdce70e };
++
++#define CPHY_SETTLE		23		/* ceil(312 MHz * 73 ns) */
++#define DPHY_SETTLE		26		/* ceil(312 MHz * 100 ns) - 6 */
+ #define PIX_MODE		3		/* 8 pixels per cycle, as on stock */
+ #define CAMMUX			10		/* camsv2: cammux base 8 + tag 2 */
+ #define TAG			2
+@@ -51,8 +55,8 @@
+ #define SV_FBC0_RCNT_INC	BIT(7)
+ 
+ enum {
+-	R_SENINF,	/* 0x1a00e000: top, SENINF_5 (+0x4000), MUX1 (+0xd00), cammux (+0x17000) */
+-	R_CSI,		/* 0x11c80000: PHY A/B, D-PHY, C-PHY, MAC top/A/B */
++	R_SENINF,	/* 0x1a00e000: top, SENINF_n (+0x1000 * (n - 1)), MUX1, cammux */
++	R_CSI,		/* 0x11c80000: per port (+0x8000 * N) PHY A/B, D-PHY, C-PHY, MAC top/A/B */
+ 	R_CAMSYS,	/* 0x1a000000 */
+ 	R_SV,		/* 0x1a101000, outer + inner */
+ 	R_SVDMA,	/* 0x1a111000, outer + inner */
+@@ -68,20 +72,23 @@ static const char * const reg_names[R_NR] = {
+ 
+ /* offsets of the sub-blocks inside the "seninf" and "csi" regions */
+ #define SENTOP			0x0000
+-#define SEN5			0x4000
+ #define MUX1			0x0000	/* +0xd00 inside top */
+ #define CAMMUXB			0x17000
+-#define PHYA			0x10000
+-#define PHYB			0x11000
+-#define DPHY			0x12000
+-#define CPHY			0x13000
+-#define MACTOP			0x14000
+-#define MACA			0x15000
+-#define MACB			0x16000
++/* CSI port N feeds SENINF_(2N+1); MUX1_SRC_SEL takes the 0-based index */
++#define SEN			(0x2000 * hw->port)
++#define SENIDX			(2 * hw->port)
++#define PHYA			(0x8000 * hw->port)
++#define PHYB			(PHYA + 0x1000)
++#define DPHY			(PHYA + 0x2000)
++#define CPHY			(PHYA + 0x3000)
++#define MACTOP			(PHYA + 0x4000)
++#define MACA			(PHYA + 0x5000)
++#define MACB			(PHYA + 0x6000)
+ 
+ struct mtk_sv_hw {
+ 	void __iomem *r[R_NR];
+ 	void __iomem *spm;
++	unsigned int port;	/* CSI port of the running stream */
+ };
+ 
+ static void wr(struct mtk_sv_hw *hw, int r, u32 o, u32 v)
+@@ -150,7 +157,7 @@ static void gates_on(struct mtk_sv_hw *hw)
+ /* analog PHY init with efuse trim, port A or B */
+ static void phya_init(struct mtk_sv_hw *hw, u32 p, bool is_a)
+ {
+-	u32 e = EFUSE_PORT2, t2, t3, t4;
++	u32 e = csi_efuse[hw->port], t2, t3, t4;
+ 	const int C = R_CSI;
+ 
+ 	fld(hw, C, p + 0x04, GENMASK(2, 0), 4);
+@@ -200,11 +207,28 @@ static void phya_init(struct mtk_sv_hw *hw, u32 p, bool is_a)
+ 	fld(hw, C, p + 0x10, GENMASK(12, 8), t4);
+ }
+ 
++/* analog PHY power on */
++static void phya_power_on(struct mtk_sv_hw *hw, u32 p)
++{
++	const int C = R_CSI;
++	int i;
++
++	fld(hw, C, p + 0x20, GENMASK(21, 16), 0);
++	fld(hw, C, p + 0x00, BIT(1) | BIT(0), 0);
++	udelay(200);
++	fld(hw, C, p + 0x00, BIT(0), 1);
++	udelay(30);
++	fld(hw, C, p + 0x00, BIT(1), 1);
++	udelay(1);
++	for (i = 16; i <= 21; i++)
++		fld(hw, C, p + 0x20, BIT(i), 1);
++	udelay(1);
++}
++
+ /* C-PHY analog setting for rates below 1.5 Gsps, then power on */
+ static void phya_setting(struct mtk_sv_hw *hw, u32 p)
+ {
+ 	const int C = R_CSI;
+-	int i;
+ 
+ 	fld(hw, C, p + 0x00, BIT(20), 1);
+ 	fld(hw, C, p + 0x00, BIT(6) | BIT(7), 3);
+@@ -218,26 +242,18 @@ static void phya_setting(struct mtk_sv_hw *hw, u32 p)
+ 	fld(hw, C, p + 0x18, GENMASK(28, 24), 0x14);
+ 	fld(hw, C, p + 0x1c, GENMASK(28, 24), 0x14);
+ 	fld(hw, C, p + 0x38, BIT(8), 1);
+-
+-	fld(hw, C, p + 0x20, GENMASK(21, 16), 0);
+-	fld(hw, C, p + 0x00, BIT(1) | BIT(0), 0);
+-	udelay(200);
+-	fld(hw, C, p + 0x00, BIT(0), 1);
+-	udelay(30);
+-	fld(hw, C, p + 0x00, BIT(1), 1);
+-	udelay(1);
+-	for (i = 16; i <= 21; i++)
+-		fld(hw, C, p + 0x20, BIT(i), 1);
+-	udelay(1);
++	phya_power_on(hw, p);
+ }
+ 
+-static void mac_fixed(struct mtk_sv_hw *hw, u32 m)
++/* MAC CSI2: lanes, C/D-PHY select, ECC/B2P/image packets, size checkers */
++static void mac_fixed(struct mtk_sv_hw *hw, u32 m, bool cphy, unsigned int lanes)
+ {
+ 	const int C = R_CSI;
+ 
+-	wr(hw, C, m + 0x00, 0x7);		/* 3 trios */
+-	wr(hw, C, m + 0x04, 0xb7);
+-	wr(hw, C, m + 0x08, 0x402);
++	wr(hw, C, m + 0x00, GENMASK(lanes - 1, 0));
++	wr(hw, C, m + 0x04, 0xb6 | cphy);
++	/* C-PHY header mode 2 with the trio header length, D-PHY none */
++	wr(hw, C, m + 0x08, cphy ? 0x402 : 0);
+ 	wr(hw, C, m + 0x10, 0x11f);
+ 	fld(hw, C, m + 0x14, BIT(24) | BIT(25), 0);
+ 	wr(hw, C, m + 0xb8, 0xf);
+@@ -251,58 +267,37 @@ static void mac_fixed(struct mtk_sv_hw *hw, u32 m)
+ 	wr(hw, C, m + 0x340, 0x002d0011);
+ }
+ 
+-int mtk_sv_hw_seninf_start(struct mtk_sv *sv, const struct v4l2_mbus_framefmt *fmt)
++/* lane timing in the D-PHY top (its TRIO fields are the C-PHY settle) */
++static void dphy_timing(struct mtk_sv_hw *hw, bool cphy)
+ {
+-	struct mtk_sv_hw *hw = sv->hw;
+-	const int S = R_SENINF, C = R_CSI;
++	const int C = R_CSI;
+ 	u32 o;
+-	int i;
+-
+-	if (!sv->cphy || sv->num_lanes != 3)
+-		return -EINVAL;	/* only the 3-trio C-PHY port is wired up */
+-	if (!powered(hw))
+-		return -EIO;
+ 
+-	/* reset */
+-	fld(hw, S, SEN5 + 0x210, BIT(4), 1);
+-	udelay(1);
+-	fld(hw, S, SEN5 + 0x210, BIT(4), 0);
+-	fld(hw, C, MACTOP + 0x00, BIT(0), 1);
+-	udelay(1);
+-	fld(hw, C, MACTOP + 0x00, BIT(0), 0);
+-
+-	/* VC/DT filter on SENINF_5 csi2: VC 0, DT 0x2b (RAW10) */
+-	for (o = 0x20; o <= 0x3c; o += 4)
+-		wr(hw, S, SEN5 + 0xa00 + o, 0);
+-	for (o = 0x60; o <= 0x6c; o += 4)
+-		wr(hw, S, SEN5 + 0xa00 + o, 0);
+-	wr(hw, S, SEN5 + 0xa20, 0x002b0011);
+-	wr(hw, S, SEN5 + 0xa60, 0x100);
+-
+-	/* PHY init */
+-	phya_init(hw, PHYA, true);
+-	phya_init(hw, PHYB, false);
+-	for (o = 0x20; o <= 0x2c; o += 4)
+-		wr(hw, C, DPHY + o, SETTLE << 18);
+-	for (o = 0x10; o <= 0x14; o += 4) {
+-		fld(hw, C, DPHY + o, GENMASK(23, 16), SETTLE);
+-		fld(hw, C, DPHY + o, BIT(28), 0);
++	if (cphy) {
++		for (o = 0x20; o <= 0x2c; o += 4)
++			wr(hw, C, DPHY + o, CPHY_SETTLE << 18);
++		for (o = 0x10; o <= 0x14; o += 4) {
++			fld(hw, C, DPHY + o, GENMASK(23, 16), CPHY_SETTLE);
++			fld(hw, C, DPHY + o, BIT(28), 0);
++		}
++		return;
+ 	}
+-	fld(hw, C, CPHY + 0x18, BIT(4), 1);
+ 
+-	/* MAC top, MAC CSI2 */
+-	fld(hw, C, MACTOP + 0x00, BIT(16), 0);
+-	wr(hw, C, MACTOP + 0x40, 0x2);
+-	mac_fixed(hw, MACA);
+-	mac_fixed(hw, MACB);
+-	fld(hw, C, CPHY + 0x130, BIT(1), 0);	/* no LRTE */
++	/* data lanes: settle, HS prepare on, no trail; clock lanes: prepare on */
++	for (o = 0x20; o <= 0x2c; o += 4)
++		wr(hw, C, DPHY + o, DPHY_SETTLE << 18 | BIT(28));
++	for (o = 0x10; o <= 0x14; o += 4)
++		wr(hw, C, DPHY + o, BIT(28));
++	fld(hw, C, DPHY + 0x50, BIT(8), 1);		/* deskew on */
++	for (o = 0x60; o <= 0x6c; o += 4)
++		fld(hw, C, DPHY + o, BIT(0), 0);	/* no deskew delay */
++}
+ 
+-	/* SENINF_5 */
+-	fld(hw, S, SENTOP + 0x004, BIT(2), 1);
+-	fld(hw, S, SEN5 + 0x210, BIT(0), 1);
+-	fld(hw, S, SEN5 + 0x200, BIT(0), 1);
++/* PHY A/B as one 4D1C C-PHY port, 3 trios */
++static void cphy_setting(struct mtk_sv_hw *hw)
++{
++	const int C = R_CSI;
+ 
+-	/* PHY A/B C-PHY setting + power on, port 2 as 3 trios */
+ 	phya_setting(hw, PHYA);
+ 	phya_setting(hw, PHYB);
+ 	fld(hw, C, PHYA + 0xf4, GENMASK(7, 4), 0xc);
+@@ -327,8 +322,114 @@ int mtk_sv_hw_seninf_start(struct mtk_sv *sv, const struct v4l2_mbus_framefmt *f
+ 	wr(hw, C, DPHY + 0xf0, 0xf1);
+ 	wr(hw, C, CPHY + 0xf0, 0xf);
+ 	wr(hw, C, CPHY + 0xf4, 0x00ff0000);
++}
++
++/*
++ * PHY A/B as one 4D1C D-PHY port, 4 data lanes up to 2.5 Gbps: data lanes
++ * on A0/A1/B0/B1, clock on A2. The equaliser setting follows the lane rate.
++ */
++static void dphy_setting(struct mtk_sv_hw *hw, s64 link_freq)
++{
++	const int C = R_CSI;
++	bool fast = link_freq * 2 >= 1500000000LL;
++	u32 p;
++	int i;
++
++	for (i = 0; i < 2; i++) {
++		p = i ? PHYB : PHYA;
++		fld(hw, C, p + 0x00, BIT(20), 0);			/* CPHY_EN */
++		fld(hw, C, p + 0x00, GENMASK(14, 12), i ? 0 : 4);	/* CKMODE: A L2 */
++		fld(hw, C, p + 0x00, GENMASK(10, 8), 7);		/* CKSEL */
++		fld(hw, C, p + 0x00, BIT(6) | BIT(7), 3);		/* HSMODE */
++		fld(hw, C, p + 0x14, GENMASK(1, 0), 1);			/* EQ_BW */
++		fld(hw, C, p + 0x14, BIT(4), fast);			/* EQ_DG0_EN */
++		fld(hw, C, p + 0x14, GENMASK(11, 8), 0);		/* EQ_SR0 */
++		fld(hw, C, p + 0x14, GENMASK(3, 2), 2);			/* EQ_IS */
++		fld(hw, C, p + 0x38, BIT(8), 1);			/* EQ_OS_IS */
++		fld(hw, C, p + 0xf4, GENMASK(23, 20), 3);		/* AFIFO dummy valid num */
++	}
++	fld(hw, C, PHYA + 0xf4, GENMASK(7, 4), 4);		/* ASYNC_OPTION, no PN swap */
++	fld(hw, C, PHYA + 0xf4, BIT(2), 1);			/* AFIFO dummy valid on */
++	fld(hw, C, PHYA + 0xf4, GENMASK(19, 16), 4);
++	fld(hw, C, PHYA + 0xf4, GENMASK(29, 24), 4);
++	fld(hw, C, PHYA + 0xf0, GENMASK(7, 4), 2);		/* async FIFO gating */
++	phya_power_on(hw, PHYA);
++	phya_power_on(hw, PHYB);
++
++	fld(hw, C, DPHY + 0x204, GENMASK(3, 0), 0xf);		/* lane flush */
++	fld(hw, C, PHYA + 0x20, BIT(0), 1);
++	for (i = 0; i < 2; i++) {
++		p = i ? PHYB : PHYA;
++		fld(hw, C, p + 0xf4, GENMASK(29, 24), 3);	/* gap */
++		fld(hw, C, p + 0xf4, GENMASK(19, 16), 0);	/* prepare */
++		fld(hw, C, p + 0xf4, BIT(30), 1);		/* deskew */
++		fld(hw, C, p + 0x100, BIT(0) | BIT(8), 3);	/* L0/L1 AFIFO flush */
++	}
++	fld(hw, C, PHYA + 0xf4, BIT(3), 0);			/* no split */
++	/* LC0, LD0-3 on; LC0 = A2, LD0 = A1, LD1 = B0, LD2 = A0, LD3 = B1 */
++	wr(hw, C, DPHY + 0x00, BIT(0) | GENMASK(11, 8));
++	wr(hw, C, DPHY + 0x04, 2 | 1 << 8 | 3 << 12 | 0 << 16 | 4 << 20 | BIT(31));
++	fld(hw, C, DPHY + 0x08, GENMASK(17, 12), 0);		/* no PN swap */
++	fld(hw, C, DPHY + 0x180, BIT(3), 1);			/* sync method */
++	wr(hw, C, DPHY + 0xf0, 0xf1);
++	wr(hw, C, DPHY + 0x94, 0xf);
++}
++
++int mtk_sv_hw_seninf_start(struct mtk_sv *sv, const struct v4l2_mbus_framefmt *fmt)
++{
++	struct mtk_sv_hw *hw = sv->hw;
++	const int S = R_SENINF, C = R_CSI;
++	u32 o;
++	int i;
++
++	if (sv->port >= MTK_SV_NUM_PORTS ||
++	    (sv->cphy && sv->num_lanes != 3) || (!sv->cphy && sv->num_lanes != 4) ||
++	    (!sv->cphy && sv->link_freq * 2 > 2500000000LL))
++		return -EINVAL;	/* 4D1C ports only: 3 trios, or 4 lanes up to 2.5 Gbps */
++	if (!powered(hw))
++		return -EIO;
++	hw->port = sv->port;
++
++	/* reset */
++	fld(hw, S, SEN + 0x210, BIT(4), 1);
++	udelay(1);
++	fld(hw, S, SEN + 0x210, BIT(4), 0);
++	fld(hw, C, MACTOP + 0x00, BIT(0), 1);
++	udelay(1);
++	fld(hw, C, MACTOP + 0x00, BIT(0), 0);
++
++	/* VC/DT filter on the SENINF csi2: VC 0, DT 0x2b (RAW10) */
++	for (o = 0x20; o <= 0x3c; o += 4)
++		wr(hw, S, SEN + 0xa00 + o, 0);
++	for (o = 0x60; o <= 0x6c; o += 4)
++		wr(hw, S, SEN + 0xa00 + o, 0);
++	wr(hw, S, SEN + 0xa20, 0x002b0011);
++	wr(hw, S, SEN + 0xa60, 0x100);
++
++	/* PHY init */
++	phya_init(hw, PHYA, true);
++	phya_init(hw, PHYB, false);
++	dphy_timing(hw, sv->cphy);
++	fld(hw, C, CPHY + 0x18, BIT(4), 1);
++
++	/* MAC top (D-PHY or C-PHY, non-split), MAC CSI2 */
++	fld(hw, C, MACTOP + 0x00, BIT(16), 0);
++	wr(hw, C, MACTOP + 0x40, sv->cphy ? 0x2 : 0x1);
++	mac_fixed(hw, MACA, sv->cphy, sv->num_lanes);
++	mac_fixed(hw, MACB, sv->cphy, sv->num_lanes);
++	fld(hw, C, CPHY + 0x130, BIT(1), 0);	/* no LRTE */
++
++	/* SENINF: afifo pop 1T to 2T for this port, CSI2 + SENINF on */
++	fld(hw, S, SENTOP + 0x004, BIT(hw->port), 1);
++	fld(hw, S, SEN + 0x210, BIT(0), 1);
++	fld(hw, S, SEN + 0x200, BIT(0), 1);
++
++	if (sv->cphy)
++		cphy_setting(hw);
++	else
++		dphy_setting(hw, sv->link_freq);
+ 
+-	/* seninf mux 0 (MUX1), source SENINF_5 */
++	/* seninf mux 0 (MUX1), source this SENINF */
+ 	fld(hw, S, MUX1 + 0xd00, BIT(0), 1);
+ 	fld(hw, S, MUX1 + 0xd04, GENMASK(3, 0), 8);
+ 	fld(hw, S, MUX1 + 0xd04, GENMASK(10, 8), PIX_MODE);
+@@ -336,7 +437,7 @@ int mtk_sv_hw_seninf_start(struct mtk_sv *sv, const struct v4l2_mbus_framefmt *f
+ 	fld(hw, S, MUX1 + 0xd08, BIT(16) | BIT(17), 0);
+ 	wr(hw, S, MUX1 + 0xd00, rd(hw, S, MUX1 + 0xd00) | 0x6);
+ 	wr(hw, S, MUX1 + 0xd00, rd(hw, S, MUX1 + 0xd00) & ~0x6);
+-	fld(hw, S, SENTOP + 0x010, GENMASK(4, 0), 4);
++	fld(hw, S, SENTOP + 0x010, GENMASK(4, 0), SENIDX);
+ 	wr(hw, S, MUX1 + 0xe00, 0x80);
+ 
+ 	/* cammux 10: outer page, then inner page */
+@@ -365,8 +466,8 @@ void mtk_sv_hw_seninf_stop(struct mtk_sv *sv)
+ 		return;
+ 	fld(hw, R_SENINF, CAMMUXB + CAMMUX * 0x40, BIT(7), 0);
+ 	fld(hw, R_SENINF, MUX1 + 0xd00, BIT(0), 0);
+-	fld(hw, R_SENINF, SEN5 + 0x200, BIT(0), 0);
+-	fld(hw, R_SENINF, SEN5 + 0x210, BIT(0), 0);
++	fld(hw, R_SENINF, SEN + 0x200, BIT(0), 0);
++	fld(hw, R_SENINF, SEN + 0x210, BIT(0), 0);
+ }
+ 
+ int mtk_sv_hw_camsv_start(struct mtk_sv *sv, const struct v4l2_pix_format *pix)
+diff --git a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.c b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.c
+index aa6c0a75f..56193acbf 100644
+--- a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.c
++++ b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.c
+@@ -3,9 +3,10 @@
+  * MediaTek MT6878 raw capture: CSI-2 receiver (seninf) feeding a CAMSV
+  * DMA engine, without the ISP.
+  *
+- * Media graph: sensor -> seninf subdev -> camsv video node. The platform
+- * driver is named "mtk-seninf" so the libcamera simple pipeline handler
+- * picks it up.
++ * Media graph: sensors -> seninf subdev (one sink pad per CSI port) ->
++ * camsv video node. One sensor streams at a time, the one whose link to
++ * the seninf is enabled. The platform driver is named "mtk-seninf" so the
++ * libcamera simple pipeline handler picks it up.
+  *
+  * Buffers are scatter-gather pages mapped into the MM M4U (larb13 runs
+  * translated), one fixed IOVA slot per vb2 buffer index.
+@@ -30,8 +31,9 @@
+ #include "mt6878-cam-m4u.h"
+ #include "mtk-seninf-sv.h"
+ 
+-#define SENINF_PAD_SINK		0
+-#define SENINF_PAD_SOURCE	1
++/* sink pad N = CSI port N, then the source pad */
++#define SENINF_PAD_SOURCE	MTK_SV_NUM_PORTS
++#define SENINF_NUM_PADS		(MTK_SV_NUM_PORTS + 1)
+ 
+ #define MTK_SV_IOVA_BASE	0x40000000UL
+ #define MTK_SV_IOVA_SLOT	SZ_64M
+@@ -75,7 +77,7 @@ static int mtk_seninf_init_state(struct v4l2_subdev *sd, struct v4l2_subdev_stat
+ 	struct v4l2_mbus_framefmt *fmt;
+ 	unsigned int pad;
+ 
+-	for (pad = 0; pad < 2; pad++) {
++	for (pad = 0; pad < SENINF_NUM_PADS; pad++) {
+ 		fmt = v4l2_subdev_state_get_format(state, pad);
+ 		fmt->width = 4096;
+ 		fmt->height = 3072;
+@@ -93,12 +95,12 @@ static int mtk_seninf_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_state *
+ 		fmt->format.code = mtk_sv_formats[0].code;
+ 	fmt->format.field = V4L2_FIELD_NONE;
+ 
+-	/* The source pad always mirrors the sink pad. */
++	/* The source pad mirrors the sink pad set last. */
+ 	if (fmt->pad == SENINF_PAD_SOURCE) {
+-		fmt->format = *v4l2_subdev_state_get_format(state, SENINF_PAD_SINK);
++		fmt->format = *v4l2_subdev_state_get_format(state, SENINF_PAD_SOURCE);
+ 		return 0;
+ 	}
+-	*v4l2_subdev_state_get_format(state, SENINF_PAD_SINK) = fmt->format;
++	*v4l2_subdev_state_get_format(state, fmt->pad) = fmt->format;
+ 	*v4l2_subdev_state_get_format(state, SENINF_PAD_SOURCE) = fmt->format;
+ 	return 0;
+ }
+@@ -112,17 +114,44 @@ static int mtk_seninf_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_
+ 	return 0;
+ }
+ 
++/* the sensor pad linked to the one enabled sink, and its CSI port */
++static struct media_pad *mtk_seninf_active_sink(struct mtk_sv *sv, unsigned int *port)
++{
++	struct media_pad *remote;
++	unsigned int i;
++
++	for (i = 0; i < MTK_SV_NUM_PORTS; i++) {
++		if (!sv->sensors[i].sd)
++			continue;
++		remote = media_pad_remote_pad_first(&sv->seninf_pads[i]);
++		if (remote) {
++			*port = i;
++			return remote;
++		}
++	}
++	return NULL;
++}
++
+ static int mtk_seninf_enable_streams(struct v4l2_subdev *sd, struct v4l2_subdev_state *state,
+ 				     u32 pad, u64 streams_mask)
+ {
+ 	struct mtk_sv *sv = container_of(sd, struct mtk_sv, seninf_sd);
+-	const struct v4l2_mbus_framefmt *fmt = v4l2_subdev_state_get_format(state, SENINF_PAD_SINK);
++	const struct v4l2_mbus_framefmt *fmt;
+ 	struct media_pad *remote;
++	unsigned int port;
+ 	int ret;
+ 
+-	remote = media_pad_remote_pad_unique(&sv->seninf_pads[SENINF_PAD_SINK]);
+-	if (IS_ERR(remote))
+-		return PTR_ERR(remote);
++	remote = mtk_seninf_active_sink(sv, &port);
++	if (!remote)
++		return -ENOLINK;
++	sv->sensor = sv->sensors[port].sd;
++	sv->port = port;
++	sv->cphy = sv->sensors[port].cphy;
++	sv->num_lanes = sv->sensors[port].num_lanes;
++	sv->link_freq = v4l2_get_link_freq(remote, 0, 0);
++	if (sv->link_freq < 0)
++		return sv->link_freq;
++	fmt = v4l2_subdev_state_get_format(state, port);
+ 
+ 	ret = mtk_sv_hw_seninf_start(sv, fmt);
+ 	if (ret)
+@@ -139,9 +168,10 @@ static int mtk_seninf_disable_streams(struct v4l2_subdev *sd, struct v4l2_subdev
+ {
+ 	struct mtk_sv *sv = container_of(sd, struct mtk_sv, seninf_sd);
+ 	struct media_pad *remote;
++	unsigned int port;
+ 
+-	remote = media_pad_remote_pad_unique(&sv->seninf_pads[SENINF_PAD_SINK]);
+-	if (!IS_ERR(remote))
++	remote = mtk_seninf_active_sink(sv, &port);
++	if (remote && sv->sensor == sv->sensors[port].sd)
+ 		v4l2_subdev_disable_streams(sv->sensor, remote->index, BIT(0));
+ 	mtk_sv_hw_seninf_stop(sv);
+ 	return 0;
+@@ -169,7 +199,26 @@ static const struct v4l2_subdev_internal_ops mtk_seninf_internal_ops = {
+ 	.init_state = mtk_seninf_init_state,
+ };
+ 
++/* Only one sensor link may be enabled; it selects the CSI port. */
++static int mtk_seninf_link_setup(struct media_entity *entity, const struct media_pad *local,
++				 const struct media_pad *remote, u32 flags)
++{
++	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
++	struct mtk_sv *sv = container_of(sd, struct mtk_sv, seninf_sd);
++	unsigned int i;
++
++	if (!(local->flags & MEDIA_PAD_FL_SINK) || !(flags & MEDIA_LNK_FL_ENABLED))
++		return 0;
++	if (sv->streaming)
++		return -EBUSY;
++	for (i = 0; i < MTK_SV_NUM_PORTS; i++)
++		if (i != local->index && media_pad_remote_pad_first(&sv->seninf_pads[i]))
++			return -EBUSY;
++	return 0;
++}
++
+ static const struct media_entity_operations mtk_seninf_entity_ops = {
++	.link_setup = mtk_seninf_link_setup,
+ 	.link_validate = v4l2_subdev_link_validate,
+ };
+ 
+@@ -488,15 +537,30 @@ static int mtk_sv_notify_bound(struct v4l2_async_notifier *notifier, struct v4l2
+ 			       struct v4l2_async_connection *asc)
+ {
+ 	struct mtk_sv *sv = container_of(notifier, struct mtk_sv, notifier);
++	unsigned int port = container_of(asc, struct mtk_sv_asc, base)->port;
++	bool first = true;
++	unsigned int i;
+ 	int pad;
+ 
+ 	pad = media_entity_get_fwnode_pad(&sd->entity, asc->match.fwnode, MEDIA_PAD_FL_SOURCE);
+ 	if (pad < 0)
+ 		return pad;
+ 
+-	sv->sensor = sd;
+-	return media_create_pad_link(&sd->entity, pad, &sv->seninf_sd.entity, SENINF_PAD_SINK,
+-				     MEDIA_LNK_FL_ENABLED | MEDIA_LNK_FL_IMMUTABLE);
++	for (i = 0; i < MTK_SV_NUM_PORTS; i++)
++		if (sv->sensors[i].sd)
++			first = false;
++	sv->sensors[port].sd = sd;
++	/* the first sensor bound starts out selected */
++	return media_create_pad_link(&sd->entity, pad, &sv->seninf_sd.entity, port,
++				     first ? MEDIA_LNK_FL_ENABLED : 0);
++}
++
++static void mtk_sv_notify_unbind(struct v4l2_async_notifier *notifier, struct v4l2_subdev *sd,
++				 struct v4l2_async_connection *asc)
++{
++	struct mtk_sv *sv = container_of(notifier, struct mtk_sv, notifier);
++
++	sv->sensors[container_of(asc, struct mtk_sv_asc, base)->port].sd = NULL;
+ }
+ 
+ static int mtk_sv_notify_complete(struct v4l2_async_notifier *notifier)
+@@ -508,31 +572,44 @@ static int mtk_sv_notify_complete(struct v4l2_async_notifier *notifier)
+ 
+ static const struct v4l2_async_notifier_operations mtk_sv_notify_ops = {
+ 	.bound = mtk_sv_notify_bound,
++	.unbind = mtk_sv_notify_unbind,
+ 	.complete = mtk_sv_notify_complete,
+ };
+ 
+-static int mtk_sv_parse_endpoint(struct mtk_sv *sv)
++/* port@N (N = CSI port 0-2): one sensor endpoint per CSI port */
++static int mtk_sv_parse_endpoints(struct mtk_sv *sv)
+ {
+-	struct v4l2_fwnode_endpoint ep = { .bus_type = V4L2_MBUS_UNKNOWN };
+-	struct v4l2_async_connection *asc;
++	struct mtk_sv_asc *asc;
+ 	struct fwnode_handle *fwnode;
++	unsigned int port, n = 0;
+ 	int ret;
+ 
+-	fwnode = fwnode_graph_get_endpoint_by_id(dev_fwnode(sv->dev), 0, 0, 0);
+-	if (!fwnode)
+-		return dev_err_probe(sv->dev, -EINVAL, "no sensor endpoint\n");
++	for (port = 0; port < MTK_SV_NUM_PORTS; port++) {
++		struct v4l2_fwnode_endpoint ep = { .bus_type = V4L2_MBUS_UNKNOWN };
+ 
+-	ret = v4l2_fwnode_endpoint_parse(fwnode, &ep);
+-	if (ret) {
++		fwnode = fwnode_graph_get_endpoint_by_id(dev_fwnode(sv->dev), port, 0, 0);
++		if (!fwnode)
++			continue;
++
++		ret = v4l2_fwnode_endpoint_parse(fwnode, &ep);
++		if (ret) {
++			fwnode_handle_put(fwnode);
++			return dev_err_probe(sv->dev, ret, "bad endpoint on port %u\n", port);
++		}
++		sv->sensors[port].present = true;
++		sv->sensors[port].cphy = ep.bus_type == V4L2_MBUS_CSI2_CPHY;
++		sv->sensors[port].num_lanes = ep.bus.mipi_csi2.num_data_lanes;
++
++		asc = v4l2_async_nf_add_fwnode_remote(&sv->notifier, fwnode, struct mtk_sv_asc);
+ 		fwnode_handle_put(fwnode);
+-		return dev_err_probe(sv->dev, ret, "bad endpoint\n");
++		if (IS_ERR(asc))
++			return PTR_ERR(asc);
++		asc->port = port;
++		n++;
+ 	}
+-	sv->cphy = ep.bus_type == V4L2_MBUS_CSI2_CPHY;
+-	sv->num_lanes = ep.bus.mipi_csi2.num_data_lanes;
+-
+-	asc = v4l2_async_nf_add_fwnode_remote(&sv->notifier, fwnode, struct v4l2_async_connection);
+-	fwnode_handle_put(fwnode);
+-	return PTR_ERR_OR_ZERO(asc);
++	if (!n)
++		return dev_err_probe(sv->dev, -EINVAL, "no sensor endpoint\n");
++	return 0;
+ }
+ 
+ static int mtk_sv_probe(struct platform_device *pdev)
+@@ -540,7 +617,7 @@ static int mtk_sv_probe(struct platform_device *pdev)
+ 	struct device *dev = &pdev->dev;
+ 	struct mtk_sv *sv;
+ 	struct vb2_queue *q;
+-	int ret, irq;
++	int ret, irq, i;
+ 
+ 	sv = devm_kzalloc(dev, sizeof(*sv), GFP_KERNEL);
+ 	if (!sv)
+@@ -599,9 +676,10 @@ static int mtk_sv_probe(struct platform_device *pdev)
+ 	sv->seninf_sd.owner = THIS_MODULE;
+ 	sv->seninf_sd.fwnode = dev_fwnode(dev);
+ 	strscpy(sv->seninf_sd.name, "mtk-seninf", sizeof(sv->seninf_sd.name));
+-	sv->seninf_pads[SENINF_PAD_SINK].flags = MEDIA_PAD_FL_SINK | MEDIA_PAD_FL_MUST_CONNECT;
++	for (i = 0; i < MTK_SV_NUM_PORTS; i++)
++		sv->seninf_pads[i].flags = MEDIA_PAD_FL_SINK;
+ 	sv->seninf_pads[SENINF_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
+-	ret = media_entity_pads_init(&sv->seninf_sd.entity, 2, sv->seninf_pads);
++	ret = media_entity_pads_init(&sv->seninf_sd.entity, SENINF_NUM_PADS, sv->seninf_pads);
+ 	if (ret)
+ 		goto err_v4l2;
+ 	ret = v4l2_subdev_init_finalize(&sv->seninf_sd);
+@@ -653,7 +731,7 @@ static int mtk_sv_probe(struct platform_device *pdev)
+ 
+ 	v4l2_async_nf_init(&sv->notifier, &sv->v4l2_dev);
+ 	sv->notifier.ops = &mtk_sv_notify_ops;
+-	ret = mtk_sv_parse_endpoint(sv);
++	ret = mtk_sv_parse_endpoints(sv);
+ 	if (ret)
+ 		goto err_nf;
+ 	ret = v4l2_async_nf_register(&sv->notifier);
+@@ -664,8 +742,11 @@ static int mtk_sv_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		goto err_nf_unreg;
+ 
+-	dev_info(dev, "seninf + camsv ready (%s, %u lanes)\n",
+-		 sv->cphy ? "C-PHY" : "D-PHY", sv->num_lanes);
++	for (i = 0; i < MTK_SV_NUM_PORTS; i++)
++		if (sv->sensors[i].present)
++			dev_info(dev, "CSI port %d: %s, %u lanes\n", i,
++				 sv->sensors[i].cphy ? "C-PHY" : "D-PHY",
++				 sv->sensors[i].num_lanes);
+ 	return 0;
+ 
+ err_nf_unreg:
+diff --git a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.h b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.h
+index a462d418a..438d8ed2f 100644
+--- a/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.h
++++ b/drivers/media/platform/mediatek/camsv/mtk-seninf-sv.h
+@@ -16,6 +16,7 @@
+ #define MTK_SV_MAX_HEIGHT	6144
+ #define MTK_SV_STRIDE_ALIGN	16
+ #define MTK_SV_IRQ_FRAME_DONE	BIT(0)
++#define MTK_SV_NUM_PORTS	3	/* CSI ports 0-2, one sink pad each */
+ 
+ struct mtk_sv_format {
+ 	u32 fourcc;
+@@ -30,6 +31,18 @@ struct mtk_sv_buffer {
+ 	size_t mapped;
+ };
+ 
++struct mtk_sv_sensor {
++	struct v4l2_subdev *sd;
++	bool present;
++	bool cphy;
++	unsigned int num_lanes;
++};
++
++struct mtk_sv_asc {
++	struct v4l2_async_connection base;
++	unsigned int port;
++};
++
+ struct mtk_sv_hw;
+ 
+ struct mtk_sv {
+@@ -37,12 +50,16 @@ struct mtk_sv {
+ 	struct media_device mdev;
+ 	struct v4l2_device v4l2_dev;
+ 	struct v4l2_async_notifier notifier;
++	struct mtk_sv_sensor sensors[MTK_SV_NUM_PORTS];
++	/* the sensor being streamed */
+ 	struct v4l2_subdev *sensor;
++	unsigned int port;
+ 	bool cphy;
+ 	unsigned int num_lanes;
++	s64 link_freq;
+ 
+ 	struct v4l2_subdev seninf_sd;
+-	struct media_pad seninf_pads[2];
++	struct media_pad seninf_pads[MTK_SV_NUM_PORTS + 1];
+ 
+ 	struct video_device vdev;
+ 	struct media_pad vdev_pad;
+-- 
+2.55.0
+

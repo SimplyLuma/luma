@@ -1,0 +1,27 @@
+From 73eb3eacafc5340580eebcc1ed95ed367918b26d Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:08:14 -0400
+Subject: [PATCH 36/36] arm64: dts: mediatek: titan2-elite: pace page flips at
+ the panel refresh
+
+Ask simpledrm for vblank; titan2e-dsi-kick provides it from the panel TE.
+---
+ arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index ef96351ba..b38bf290d 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -105,6 +105,8 @@ chosen {
+ 		simplefb@ff0cf000 {
+ 			compatible = "simple-framebuffer";
+ 			connector-type = "dsi";
++			/* page flips at the panel refresh, from titan2e-dsi-kick */
++			luma,panel-vblank;
+ 			reg = <0x0 0xff0cf000 0x0 0xf30000>;
+ 			width = <1080>;
+ 			height = <1200>;
+-- 
+2.55.0
+

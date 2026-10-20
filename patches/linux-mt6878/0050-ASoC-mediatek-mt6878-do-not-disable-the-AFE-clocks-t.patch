@@ -1,0 +1,45 @@
+From 8652d10e17f767e5d1194efdce0979ffeec07fad Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 03:00:23 -0400
+Subject: [PATCH] ASoC: mediatek: mt6878: do not disable the AFE clocks twice
+ on remove
+
+Runtime suspend already turns off the main and register clocks; disabling
+them again on remove underflowed the clock counts.
+---
+ sound/soc/mediatek/mt6878/mt6878-afe-pcm.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/mediatek/mt6878/mt6878-afe-pcm.c b/sound/soc/mediatek/mt6878/mt6878-afe-pcm.c
+index 45605e7a0..2e2a10f2b 100644
+--- a/sound/soc/mediatek/mt6878/mt6878-afe-pcm.c
++++ b/sound/soc/mediatek/mt6878/mt6878-afe-pcm.c
+@@ -1716,6 +1716,8 @@ typedef int (*dai_register_cb)(struct mtk_base_afe *);
+ static const dai_register_cb dai_register_cbs[] = {
+ 	mt6878_dai_adda_register,
+ 	mt6878_dai_i2s_register,
++	mt6878_dai_pcm_register,
++	mt6878_dai_hostless_register,
+ 	mt6878_dai_memif_register,
+ };
+ 
+@@ -1895,15 +1897,11 @@ static int mt6878_afe_pcm_dev_probe(struct platform_device *pdev)
+ 
+ static void mt6878_afe_pcm_dev_remove(struct platform_device *pdev)
+ {
+-	struct mtk_base_afe *afe = platform_get_drvdata(pdev);
+ 	struct device *dev = &pdev->dev;
+ 
++	/* runtime suspend turns off the main and register clocks */
+ 	if (!pm_runtime_status_suspended(dev))
+ 		mt6878_afe_runtime_suspend(dev);
+-
+-	mt6878_afe_disable_main_clock(afe);
+-	/* disable afe clock */
+-	mt6878_afe_disable_reg_rw_clk(afe);
+ }
+ 
+ static const struct of_device_id mt6878_afe_pcm_dt_match[] = {
+-- 
+2.55.0
+

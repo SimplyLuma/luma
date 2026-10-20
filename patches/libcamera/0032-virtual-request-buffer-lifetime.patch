@@ -1,0 +1,23 @@
+Subject: [PATCH] virtual: retain buffer iteration across request completion
+
+The final buffer completion can release the request on the consumer thread.
+Snapshot its buffer map before emitting completion, so advancing the last
+iterator does not dereference a destroyed Request. This maintained downstream
+fix preserves the original31 FP6 patches unchanged. Derived from libcamera
+191e202178f02430b5942397c70d215cdd2056fa; upstream LGPL-2.1-or-later.
+Observed baseline: full upstream multi_stream_test SIGSEGV11 at virtual.cpp133.
+With the fix: all 4 GStreamer tests pass over 10 repetitions.
+No hardware qualification is implied.
+
+--- a/src/libcamera/pipeline/virtual/virtual.cpp
++++ b/src/libcamera/pipeline/virtual/virtual.cpp
+@@ -130,7 +130,8 @@
+ 
+ void VirtualCameraData::processRequest(Request *request)
+ {
+-	for (const auto &[stream, buffer] : request->buffers()) {
++	const auto buffers = request->buffers();
++	for (const auto &[stream, buffer] : buffers) {
+ 		bool found = false;
+ 		/* map buffer and fill test patterns */
+ 		for (auto &streamConfig : streamConfigs_) {

@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# greenboot health check for the Titan 2 Elite. greenboot's A/B backend here is
+# the FP6 qbootctl one, which needs an OSTree deployment; the Titan marks its
+# boot slot with luma-titan2e-boot-ok once this passes. Confirm the boot reached
+# the graphical session.
+set -u
+log() { echo "titan2e-health: $*"; }
+fail=0
+# The required checks guard OSTree updates (luma-updated runs only there).
+if [ -e /run/ostree-booted ]; then
+	for d in /usr/lib/greenboot/check/required.d /etc/greenboot/check/required.d; do
+		for s in "$d"/*.sh; do
+			[ -e "$s" ] || continue
+			if bash "$s"; then log "ok: ${s##*/}"; else log "failed: ${s##*/}"; fail=1; fi
+		done
+	done
+else
+	log "not an OSTree deployment: update health checks skipped"
+fi
+# The display manager must be greetd and its session compositor (phoc for the
+# presence greeter and the phone session) must run;
+# luma-titan2e-boot-ok marks the LK slot only after this passes.
+dm=$(systemctl show -P Id display-manager.service 2>/dev/null)
+if [ "$dm" = greetd.service ]; then log "display manager: greetd"; else log "display manager: ${dm:-none}"; fail=1; fi
+for i in $(seq 1 120); do
+	systemctl -q is-active graphical.target && systemctl -q is-active greetd.service &&
+		pgrep -x phoc >/dev/null && break
+	sleep 1
+done
+if systemctl -q is-active graphical.target; then log "graphical.target reached"; else log "graphical.target not reached"; fail=1; fi
+if systemctl -q is-active greetd.service; then log "greetd active"; else log "greetd not active"; fail=1; fi
+if pgrep -x phoc >/dev/null; then log "phoc running"; else log "phoc not running"; fail=1; fi
+exit $fail

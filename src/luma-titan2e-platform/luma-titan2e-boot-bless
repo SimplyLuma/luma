@@ -1,0 +1,17 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Bless this OSTree deployment for the initramfs boot counter once greenboot
+# has passed: /boot/luma-boot-ok names it and the attempt count is cleared.
+set -eu
+t=
+for w in $(cat /proc/cmdline); do case "$w" in ostree=*) t=${w#ostree=} ;; esac; done
+[ -n "$t" ] || { echo "no ostree= on the command line"; exit 0; }
+# /sysroot is read-only in the booted system; write from a private mount.
+exec unshare -m sh -ec '
+	mount -o remount,rw /sysroot
+	printf "%s\n" "$1" >/sysroot/boot/luma-boot-ok.new
+	mv /sysroot/boot/luma-boot-ok.new /sysroot/boot/luma-boot-ok
+	rm -f /sysroot/boot/luma-boot-attempt
+	sync
+	echo "blessed $1"
+' sh "$t"

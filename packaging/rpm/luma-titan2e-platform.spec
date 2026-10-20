@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 Name: luma-titan2e-platform
 Version: 0.1.0
-Release: 1.luma.7%{?dist}
+Release: 1.luma.21%{?dist}
 Summary: Unihertz Titan 2 Elite platform adapters
 License: Apache-2.0
 Source0: luma-titan2e-boot-ok
 Source1: luma-titan2e-boot-ok.service
-Source2: 60-luma-titan2e-platform.preset
+Source2: 50-luma-titan2e-platform.preset
 Source3: 50-titan2e.env
 Source4: phoc-titan2e.ini
 Source5: luma-titan2e-phoc-config
@@ -22,7 +22,16 @@ Source14: luma-titan2e-audio.service
 Source15: ucm2-Titan2Elite.conf
 Source16: ucm2-Titan2Elite-HiFi.conf
 Source17: 52-luma-titan2e-audio.conf
-Source18: luma-titan2e-boot-android
+Source18: libcamera-titan2e.yaml
+Source19: 53-luma-titan2e-camera.conf
+Source20: luma-titan2e-healthcheck
+Source21: 50-luma-titan2e-greenboot.conf
+Source22: luma-titan2e-boot-bless
+Source23: luma-titan2e-boot-bless.service
+Source24: luma-titan2e-growfs
+Source25: luma-titan2e-growfs.service
+Source26: luma-titan2e-boot-android
+Source27: luma-titan2e-session-env
 BuildArch: noarch
 BuildRequires: systemd-rpm-macros
 Requires: python3
@@ -33,11 +42,16 @@ Requires: kmod
 Requires: linux-firmware >= 20260309
 Requires: alsa-ucm
 Requires: wireplumber
+Requires: libcamera-ipa
+Requires: libcamera-tools
+Requires: pipewire-plugin-libcamera
 
 %description
-Boot-slot confirmation and switching back to Android, hardware watchdog, compositor environment, output
-scale, the GPU and Wi-Fi/Bluetooth loaders, and the audio profile and
-speaker amplifier firmware for the Unihertz Titan 2 Elite (MediaTek MT6878).
+Boot-slot confirmation and health check, switching back to Android, hardware
+watchdog, compositor environment, output
+scale, the GPU and Wi-Fi/Bluetooth loaders, the audio profile and
+speaker amplifier firmware, and the camera's libcamera and WirePlumber
+configuration for the Unihertz Titan 2 Elite (MediaTek MT6878).
 
 %prep
 
@@ -46,7 +60,7 @@ speaker amplifier firmware for the Unihertz Titan 2 Elite (MediaTek MT6878).
 %install
 install -D -m 0755 %{SOURCE0} %{buildroot}%{_libexecdir}/luma-titan2e-boot-ok
 install -D -m 0644 %{SOURCE1} %{buildroot}%{_unitdir}/luma-titan2e-boot-ok.service
-install -D -m 0644 %{SOURCE2} %{buildroot}%{_presetdir}/60-luma-titan2e-platform.preset
+install -D -m 0644 %{SOURCE2} %{buildroot}%{_presetdir}/50-luma-titan2e-platform.preset
 install -D -m 0644 %{SOURCE3} %{buildroot}%{_prefix}/lib/luma/session.d/50-titan2e.env
 install -D -m 0644 %{SOURCE4} %{buildroot}%{_datadir}/luma-titan2e/phoc-titan2e.ini
 install -D -m 0755 %{SOURCE5} %{buildroot}%{_libexecdir}/luma-titan2e-phoc-config
@@ -64,10 +78,19 @@ install -D -m 0644 %{SOURCE16} %{buildroot}%{_datadir}/alsa/ucm2/Titan2Elite/HiF
 install -d %{buildroot}%{_datadir}/alsa/ucm2/conf.d/Titan2Elite
 ln -s ../../Titan2Elite/Titan2Elite.conf %{buildroot}%{_datadir}/alsa/ucm2/conf.d/Titan2Elite/Titan2Elite.conf
 install -D -m 0644 %{SOURCE17} %{buildroot}%{_datadir}/wireplumber/wireplumber.conf.d/52-luma-titan2e-audio.conf
-install -D -m 0755 %{SOURCE18} %{buildroot}%{_sbindir}/luma-titan2e-boot-android
+install -D -m 0644 %{SOURCE18} %{buildroot}%{_datadir}/libcamera/configuration.yaml
+install -D -m 0644 %{SOURCE19} %{buildroot}%{_datadir}/wireplumber/wireplumber.conf.d/53-luma-titan2e-camera.conf
+install -D -m 0755 %{SOURCE20} %{buildroot}%{_libexecdir}/luma-titan2e-healthcheck
+install -D -m 0644 %{SOURCE21} %{buildroot}%{_unitdir}/greenboot-healthcheck.service.d/50-luma-titan2e-greenboot.conf
+install -D -m 0755 %{SOURCE22} %{buildroot}%{_libexecdir}/luma-titan2e-boot-bless
+install -D -m 0644 %{SOURCE23} %{buildroot}%{_unitdir}/luma-titan2e-boot-bless.service
+install -D -m 0755 %{SOURCE24} %{buildroot}%{_libexecdir}/luma-titan2e-growfs
+install -D -m 0644 %{SOURCE25} %{buildroot}%{_unitdir}/luma-titan2e-growfs.service
+install -D -m 0755 %{SOURCE26} %{buildroot}%{_sbindir}/luma-titan2e-boot-android
+install -D -m 0755 %{SOURCE27} %{buildroot}%{_libexecdir}/luma-titan2e-session-env
 
 %post
-%systemd_post luma-titan2e-boot-ok.service luma-titan2e-connsys.service luma-titan2e-gpu.service luma-titan2e-audio.service
+%systemd_post luma-titan2e-boot-ok.service luma-titan2e-boot-bless.service luma-titan2e-growfs.service luma-titan2e-connsys.service luma-titan2e-gpu.service luma-titan2e-audio.service
 %{_libexecdir}/luma-titan2e-phoc-config || :
 
 %preun
@@ -82,22 +105,45 @@ if [ "$1" -eq 0 ]; then
   rm -f /etc/luma/session.d/60-titan2e-renderer.env
 fi
 
+%triggerpostun -- luma-titan2e-platform < 0.1.0-1.luma.16
+# Units added to the preset in an update, where %%systemd_post does not apply
+# presets: luma-titan2e-audio.service (luma.8) copies the amplifier firmware;
+# the FP6 carrier and modem units (luma.9, luma.11) are Qualcomm-only and a
+# second AP-side IMS client must not register beside the modem's own.
+# luma.16: boot blessing and the first-boot grow (both OSTree only), and
+# greenboot's rollback trigger stays off.
+systemctl --no-reload preset luma-titan2e-audio.service luma-fp6-carrier-pdc.service luma-fp6-primary-gw-session.service luma-fp6-imsd.service luma-fp6-cellular-link.service luma-fp6-modem-quiesce.service luma-titan2e-boot-bless.service luma-titan2e-growfs.service greenboot-set-rollback-trigger.service >/dev/null 2>&1 || :
+
+%triggerpostun -- luma-titan2e-platform < 0.1.0-1.luma.21
+# luma.21: luma-titan2e-boot-ok moved from multi-user.target to
+# greenboot-success.target; move its enablement link with it.
+systemctl --no-reload reenable luma-titan2e-boot-ok.service >/dev/null 2>&1 || :
+systemctl --no-reload preset greenboot-healthcheck.service >/dev/null 2>&1 || :
+
 %triggerin -- luma-phosh
 %{_libexecdir}/luma-titan2e-phoc-config || :
 
 %files
-%{_sbindir}/luma-titan2e-boot-android
 %{_libexecdir}/luma-titan2e-boot-ok
+%{_sbindir}/luma-titan2e-boot-android
 %{_libexecdir}/luma-titan2e-phoc-config
 %{_libexecdir}/luma-titan2e-connsys-up
 %{_libexecdir}/luma-titan2e-connsys-fw
 %{_libexecdir}/luma-titan2e-gpu-up
 %{_libexecdir}/luma-titan2e-audio-up
+%{_libexecdir}/luma-titan2e-healthcheck
+%{_libexecdir}/luma-titan2e-boot-bless
+%{_libexecdir}/luma-titan2e-growfs
+%{_libexecdir}/luma-titan2e-session-env
 %{_unitdir}/luma-titan2e-boot-ok.service
 %{_unitdir}/luma-titan2e-connsys.service
 %{_unitdir}/luma-titan2e-gpu.service
 %{_unitdir}/luma-titan2e-audio.service
-%{_presetdir}/60-luma-titan2e-platform.preset
+%{_unitdir}/luma-titan2e-boot-bless.service
+%{_unitdir}/luma-titan2e-growfs.service
+%dir %{_unitdir}/greenboot-healthcheck.service.d
+%{_unitdir}/greenboot-healthcheck.service.d/50-luma-titan2e-greenboot.conf
+%{_presetdir}/50-luma-titan2e-platform.preset
 %{_prefix}/lib/systemd/system.conf.d/50-titan2e-watchdog.conf
 %{_prefix}/lib/modprobe.d/luma-titan2e-panthor.conf
 %dir %{_prefix}/lib/luma/session.d
@@ -110,11 +156,60 @@ fi
 %dir %{_datadir}/alsa/ucm2/conf.d/Titan2Elite
 %{_datadir}/alsa/ucm2/conf.d/Titan2Elite/Titan2Elite.conf
 %{_datadir}/wireplumber/wireplumber.conf.d/52-luma-titan2e-audio.conf
+%{_datadir}/wireplumber/wireplumber.conf.d/53-luma-titan2e-camera.conf
+%{_datadir}/libcamera/configuration.yaml
 
 %changelog
-* Mon Oct 19 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.7
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.21
+- luma-titan2e-boot-ok marks the LK slot only after greenboot's health check
+  passes (greenboot-success.target), so a boot without a working graphical
+  session falls back to slot b.
+- Health check: greetd is the display manager and active, phoc runs; no longer
+  waits for luma-titan2e-boot-ok.
+- Preset enables greenboot-healthcheck.service, which nothing enabled on the
+  Titan: without it neither the slot mark nor the OSTree bless ran.
+- luma-titan2e-session-env: greetd session commands get the session.d device
+  variables (renderer, render node) that only luma-phosh-session read.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.20
+- Earpiece and speaker are ports of one sink (DL0 feeds both), so media
+  defaults to the speaker; drop the WirePlumber earpiece priority rule.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.19
 - luma-titan2e-boot-android: make the bootloader start Android on slot b
-  next, then restart.
+  next (the AOSP boot-control block in misc), then restart.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.16
+- Boot counting with the release initramfs: bless the booted deployment once
+  greenboot passes. Grow the microSD root to the whole card on first boot.
+  greenboot's rollback trigger stays off (no qbootctl A/B on the Titan).
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.13
+- Run the required update health checks only on an OSTree deployment.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.12
+- greenboot health check for the Titan: the boot slot marked, graphical.target
+  and phoc (plus the required update checks on an OSTree deployment), instead
+  of the FP6 qbootctl backend that needs one.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.11
+- Disable the FP6 IMS, cellular-link and modem-quiesce units; the MT6878
+  modem runs IMS itself.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.10
+- Order the preset before 60-luma-fp6-platform.preset so its entries win.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.9
+- Disable the FP6 carrier provisioning units, which fail on this hardware.
+
+* Tue Oct 20 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.8
+- Enable luma-titan2e-audio.service when updating from a release that did not
+  have it, so the speaker amplifier firmware is copied.
+
+* Mon Oct 19 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.7
+- Camera: libcamera simple pipeline with the software ISP for the mtk-seninf
+  raw capture driver, the raw V4L2 node hidden from WirePlumber, and the
+  libcamera tools and PipeWire plugin the Camera app needs.
 
 * Mon Oct 19 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.6
 - Audio: ALSA UCM profile for the Titan2Elite card (speaker, earpiece, main

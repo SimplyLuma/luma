@@ -1,0 +1,68 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] pipeline: simple: complete in-flight requests on stop
+
+With the software ISP a request completes only once its buffers are done
+and the IPA has delivered its metadata. Frames still in flight when the
+camera stops may never get that metadata: stopDevice() dropped their
+frame info and left the requests queued, and Camera::stop() then hit the
+queuedRequests_ assertion and aborted. Switching cameras in a GStreamer
+application triggered it as soon as debayering took long enough for
+frames to overlap the stop.
+
+After cancelling the conversion queue, complete every request still
+tracked in the frame info, cancelling any buffer that is still pending.
+
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 0095ea7..362db2e 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -211,6 +211,7 @@ public:
+ 	void clear();
+ 
+ 	SimpleFrameInfo *find(uint32_t frame);
++	std::vector<Request *> requests() const;
+ 
+ private:
+ 	std::map<uint32_t, SimpleFrameInfo> frameInfo_;
+@@ -233,6 +234,16 @@ void SimpleFrames::clear()
+ 	frameInfo_.clear();
+ }
+ 
++std::vector<Request *> SimpleFrames::requests() const
++{
++	std::vector<Request *> requests;
++
++	for (const auto &[frame, info] : frameInfo_)
++		requests.push_back(info.request);
++
++	return requests;
++}
++
+ SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
+ {
+ 	auto info = frameInfo_.find(frame);
+@@ -1745,8 +1756,23 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
+ 
+ 	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
+ 
+-	data->frameInfo_.clear();
+ 	data->clearIncompleteRequests();
++
++	/*
++	 * Frames still in flight when the pipeline stops may never get their
++	 * metadata from the IPA. Complete their requests here, cancelling any
++	 * buffer still outstanding, or Camera::stop() finds them queued.
++	 */
++	for (Request *request : data->frameInfo_.requests()) {
++		if (request->status() != Request::RequestPending)
++			continue;
++		if (request->hasPendingBuffers())
++			cancelRequest(request);
++		else
++			completeRequest(request);
++	}
++
++	data->frameInfo_.clear();
+ 	data->conversionBuffers_.clear();
+ 
+ 	releasePipeline(data);

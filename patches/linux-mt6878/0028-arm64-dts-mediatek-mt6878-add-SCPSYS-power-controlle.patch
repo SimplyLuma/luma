@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:05:57 -0400
+Subject: [PATCH 28/33] arm64: dts: mediatek: mt6878: add SCPSYS power
+ controller
+
+Add the infracfg_ao syscon and the SCPSYS node with the camera power
+domains: CSI_RX, and CAM_MAIN under CAM_VCORE.
+---
+ arch/arm64/boot/dts/mediatek/mt6878.dtsi | 37 ++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878.dtsi b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+index ab298d2b3..86ddc5f4f 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt6878.dtsi
+@@ -9,6 +9,7 @@
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/interrupt-controller/irq.h>
+ #include <dt-bindings/phy/phy.h>
++#include <dt-bindings/power/mediatek,mt6878-power.h>
+ #include <dt-bindings/reset/ti-syscon.h>
+ #include "mt6878-pinfunc.h"
+ 
+@@ -348,6 +349,11 @@ pio: pinctrl {
+ 			interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH 0>;
+ 		};
+ 
++		infracfg_ao: syscon@10001000 {
++			compatible = "mediatek,mt6878-infracfg_ao", "syscon";
++			reg = <0x10001000 0x1000>;
++		};
++
+ 		apmixedsys: syscon@1000c000 {
+ 			compatible = "mediatek,mt6878-apmixedsys", "syscon";
+ 			reg = <0x1000c000 0x1000>;
+@@ -740,6 +746,37 @@ mtu3_drd_switch: endpoint {
+ 			};
+ 		};
+ 
++		scpsys: syscon@1c001000 {
++			compatible = "mediatek,mt6878-scpsys", "syscon", "simple-mfd";
++			reg = <0x1c001000 0x1000>;
++
++			/* System Power Manager; only the camera domains so far */
++			spm: power-controller {
++				compatible = "mediatek,mt6878-power-controller";
++				#address-cells = <1>;
++				#size-cells = <0>;
++				#power-domain-cells = <1>;
++				access-controllers = <&infracfg_ao>;
++
++				power-domain@MT6878_POWER_DOMAIN_CSI_RX {
++					reg = <MT6878_POWER_DOMAIN_CSI_RX>;
++					#power-domain-cells = <0>;
++				};
++
++				power-domain@MT6878_POWER_DOMAIN_CAM_VCORE {
++					reg = <MT6878_POWER_DOMAIN_CAM_VCORE>;
++					#address-cells = <1>;
++					#size-cells = <0>;
++					#power-domain-cells = <1>;
++
++					power-domain@MT6878_POWER_DOMAIN_CAM_MAIN {
++						reg = <MT6878_POWER_DOMAIN_CAM_MAIN>;
++						#power-domain-cells = <0>;
++					};
++				};
++			};
++		};
++
+ 		watchdog: watchdog@1c00a000 {
+ 			compatible = "mediatek,mt6878-wdt",
+ 				     "mediatek,mt6589-wdt",
+-- 
+2.55.0
+

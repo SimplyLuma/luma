@@ -12,9 +12,10 @@
     "commit": "12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422",
     "patches": "patches/linux-mt6878",
     "config": "config/mobile/titan2e-kernel.config",
-    "release": "7.2.0-luma-titan2e-m2-g3a50c30a53fd",
+    "release": "7.2.0-luma-titan2e-m2-g7035a815908b",
     "build": "scripts/packages/build-titan2e-kernel.sh",
-    "pins": "config/mobile/titan2e-kernel-source.json"
+    "pins": "config/mobile/titan2e-kernel-source.json",
+    "config_release": 3
   },
   "initramfs": {
     "init": "config/mobile/titan2e-initramfs/init",
@@ -22,14 +23,15 @@
       "package": "busybox-1.37.0-7.fc44.aarch64",
       "url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/aarch64/os/Packages/b/busybox-1.37.0-7.fc44.aarch64.rpm",
       "sha256": "11aee899410a6b301ee332a0f2937c912454d9ccdc52290cfc19ad8e3d92a655"
-    }
+    },
+    "boots": "newest OSTree deployment from /boot/loader/entries, with boot counting"
   },
   "vendor_gpl_sources": [
     {
       "repository": "https://github.com/motorola-mt6878/kernel_device_modules",
       "commit": "6586afaa0622648a6e740fb4a83f4b8057346bc2",
       "used_for": [
-        "patches/linux-mt6878 0019-0021 (AFE, MT6369 codec, FourSemi amplifier)",
+        "patches/linux-mt6878 0019-0021, 0052 (AFE, MT6369 codec, FourSemi amplifier, modem PCM)",
         "packaging/titan2e-connsys (connadp)"
       ]
     },
@@ -37,7 +39,29 @@
       "repository": "https://github.com/motorola-mt6878/vendor_mediatek_kernel_modules",
       "commit": "1c51f57c78be8acb3c51bc1911fffcd7b5c90184",
       "used_for": [
-        "packaging/titan2e-connsys (conninfra, gen4m Wi-Fi, Bluetooth)"
+        "packaging/titan2e-connsys (conninfra, gen4m Wi-Fi, Bluetooth)",
+        "patches/linux-mt6878 0025 (IMX766 register settings, mtkcam/imgsensor imx766_mipi_raw)"
+      ]
+    },
+    {
+      "repository": "https://github.com/MotorolaMobilityLLC/vendor-mediatek-kernel_modules-mtkcam",
+      "ref": "android-14-release-u3uc34.63-31-6",
+      "used_for": [
+        "patches/linux-mt6878 0041 (OV32B40 register settings, imgsensor mot_aito_ov32b_mipi_raw)"
+      ]
+    },
+    {
+      "repository": "https://github.com/rockchip-linux/kernel",
+      "ref": "develop-6.1",
+      "used_for": [
+        "patches/linux-mt6878 0041 (OV32B40 global table, drivers/media/i2c/ov32b40.c)"
+      ]
+    },
+    {
+      "repository": "https://github.com/HelloVolla/android_kernel_modules_volla_mt6878",
+      "ref": "volla-15.0",
+      "used_for": [
+        "patches/linux-mt6878 0043 (OV50D40 register settings, imgsensor ov50d40_mipi_raw)"
       ]
     }
   ],
@@ -47,11 +71,6 @@
     "patches": "patches/mesa",
     "inputs": "config/mobile/mesa-source.env"
   },
-  "system_base": {
-    "image": "luma-mobile-alpha1-fp6-userdata.sparse.zst",
-    "sha256": "75ab6f59c6013017a4fe32d68768f20996b4c57aaf3bbc7a7e5da13c67ba251f",
-    "partition": "pmOS_root"
-  },
   "firmware": {
     "source": "the phone's own vendor and nvdata partitions, copied on first boot",
     "manifest": "devices/unihertz/titan2elite/firmware.manifest",
@@ -59,5 +78,14 @@
   },
   "public_boot_image_published": false,
   "modem_supported": false,
-  "cameras_supported": false
+  "cameras_supported": true,
+  "camera": {
+    "libcamera_patches": "patches/libcamera (0032-0034 added for this device)",
+    "app": "src/prairie-core/prairie_apps/camera_backend.py"
+  },
+  "release_files": [
+    "luma-titan2e.img.zst",
+    "luma-titan2e-boot.img",
+    "SHA256SUMS"
+  ]
 }

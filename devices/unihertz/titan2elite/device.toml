@@ -14,7 +14,7 @@ maintainers = ["@nmcmil"]
 # No kernel tag yet: MT6878-mainline/linux 12f2e9f0 plus patches/linux-mt6878
 # and the config, as pinned in the source file.
 source = "config/mobile/titan2e-kernel-source.json"
-release = "7.2.0-luma-titan2e-m2-g3a50c30a53fd"
+release = "7.2.0-luma-titan2e-m2-g7035a815908b"
 config = "config/mobile/titan2e-kernel.config"
 dtb = "mediatek/mt6878-unihertz-titan2-elite.dtb"
 

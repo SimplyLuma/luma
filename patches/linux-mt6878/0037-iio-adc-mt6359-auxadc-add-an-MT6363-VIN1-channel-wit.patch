@@ -1,0 +1,61 @@
+From 3328b6bf8d447b01b2888e7add3772beae2f23a9 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 21:44:01 -0400
+Subject: [PATCH 37/39] iio: adc: mt6359-auxadc: add an MT6363 VIN1 channel
+ without pull-up
+
+The MT6363 VIN channels are read with the 100K pull-up enabled. Boards that
+measure an external divider on VIN1 (for example a hardware ID read by the
+modem firmware) need the pull-up disconnected. Add VIN1 with the pull-up
+open as its own channel, MT6363_AUXADC_VIN1_PU_OPEN.
+---
+ drivers/iio/adc/mt6359-auxadc.c                      | 7 +++++++
+ include/dt-bindings/iio/adc/mediatek,mt6363-auxadc.h | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/iio/adc/mt6359-auxadc.c b/drivers/iio/adc/mt6359-auxadc.c
+index 88b0e2630..4f9057b1b 100644
+--- a/drivers/iio/adc/mt6359-auxadc.c
++++ b/drivers/iio/adc/mt6359-auxadc.c
+@@ -93,6 +93,7 @@ enum mtk_pmic_auxadc_channels {
+ 	PMIC_AUXADC_CHAN_VIN5,
+ 	PMIC_AUXADC_CHAN_VIN6,
+ 	PMIC_AUXADC_CHAN_VIN7,
++	PMIC_AUXADC_CHAN_VIN1_PU_OPEN,
+ 	PMIC_AUXADC_CHAN_IBAT,
+ 	PMIC_AUXADC_CHAN_VBAT,
+ 	PMIC_AUXADC_CHAN_MAX
+@@ -367,6 +368,9 @@ static const struct iio_chan_spec mt6363_auxadc_channels[] = {
+ 	MTK_PMIC_IIO_CHAN(MT6363, in5_v, VIN5, 45, 15, IIO_VOLTAGE),
+ 	MTK_PMIC_IIO_CHAN(MT6363, in6_v, VIN6, 45, 15, IIO_VOLTAGE),
+ 	MTK_PMIC_IIO_CHAN(MT6363, in7_v, VIN7, 45, 15, IIO_VOLTAGE),
++
++	/* VIN1 without pull-up, for an external divider such as a board ID */
++	MTK_PMIC_IIO_CHAN(MT6363, in1_pu_open_v, VIN1_PU_OPEN, 45, 15, IIO_VOLTAGE),
+ };
+ 
+ static const struct mtk_pmic_auxadc_chan mt6363_auxadc_ch_desc[] = {
+@@ -401,6 +405,9 @@ static const struct mtk_pmic_auxadc_chan mt6363_auxadc_ch_desc[] = {
+ 	MTK_PMIC_ADC_EXT_CHAN(VIN7,
+ 			      PMIC_AUXADC_RQST1, 4, PMIC_AUXADC_ADC0, 15,
+ 			      PMIC_AUXADC_SDMADC_CON0, 7, MT6363_PULLUP_RES_100K, 32, 1, 1),
++	MTK_PMIC_ADC_EXT_CHAN(VIN1_PU_OPEN,
++			      PMIC_AUXADC_RQST1, 4, PMIC_AUXADC_ADC0, 15,
++			      PMIC_AUXADC_SDMADC_CON0, 1, MT6363_PULLUP_RES_OPEN, 32, 1, 1),
+ };
+ 
+ static const u16 mt6363_auxadc_regs[] = {
+diff --git a/include/dt-bindings/iio/adc/mediatek,mt6363-auxadc.h b/include/dt-bindings/iio/adc/mediatek,mt6363-auxadc.h
+index 92d135477..4bcdfd676 100644
+--- a/include/dt-bindings/iio/adc/mediatek,mt6363-auxadc.h
++++ b/include/dt-bindings/iio/adc/mediatek,mt6363-auxadc.h
+@@ -20,5 +20,6 @@
+ #define MT6363_AUXADC_VIN5		13
+ #define MT6363_AUXADC_VIN6		14
+ #define MT6363_AUXADC_VIN7		15
++#define MT6363_AUXADC_VIN1_PU_OPEN	16
+ 
+ #endif
+-- 
+2.55.0
+

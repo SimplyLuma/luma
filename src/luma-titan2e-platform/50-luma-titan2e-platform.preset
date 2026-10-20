@@ -1,0 +1,14 @@
+enable luma-titan2e-boot-ok.service
+# The health check gates luma-titan2e-boot-ok and luma-titan2e-boot-bless.
+enable greenboot-healthcheck.service
+enable luma-titan2e-connsys.service
+enable luma-titan2e-gpu.service
+enable luma-titan2e-audio.service
+enable luma-titan2e-boot-bless.service
+enable luma-titan2e-growfs.service
+disable greenboot-set-rollback-trigger.service
+disable luma-fp6-carrier-pdc.service
+disable luma-fp6-primary-gw-session.service
+disable luma-fp6-imsd.service
+disable luma-fp6-cellular-link.service
+disable luma-fp6-modem-quiesce.service

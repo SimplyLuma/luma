@@ -7,9 +7,9 @@ the simulator. Colours come from kit media tokens.
 There is no device access or persistent state in this composition module.
 
 On a phone (a window under the kit's phone width) Camera is laid out like the
-phone cameras people know: black, the quick toggles along the top, the
-picture upright, zoom pills over its foot, the modes as a strip of words, then
-last shot, the shutter and switch camera. The same controls move between the
+phone cameras people know: the picture upright and filling the window, the
+quick toggles floating along the top, zoom pills, the modes as a strip of
+words, then last shot, the shutter and switch camera floating over its foot. The same controls move between the
 desktop bar and the phone rows, so each keeps one name and one behaviour.
 """
 from __future__ import annotations
@@ -319,9 +319,8 @@ def squircle(cr, cx, cy, half_width, half_height, radius, steps=24):
 
 
 class PhoneFrame(Gtk.Widget):
-    """v71 .cmvf2 .cmframe: the picture as wide as the phone, as tall as its shape asks,
-    and never taller than the room between the rows (then it simply fills that room).
-    Square-cornered; a shorter frame sits low in the room, near the controls."""
+    """The phone viewfinder: the picture fills the whole window (cover, centred) and the
+    rows float over it, so the saved photo is the window's framing."""
     __gtype_name__ = "LumaCameraPhoneFrame"
 
     def __init__(self, ratio):
@@ -345,14 +344,8 @@ class PhoneFrame(Gtk.Widget):
         return 0, 0, -1, -1
 
     def do_size_allocate(self, width, height, baseline):
-        if self.child is None:
-            return
-        frame_height = min(height, round(width / self.ratio))
-        # As v71 lays it out (the frame is the last of three grid rows that share the
-        # spare room, centred in its own): five sixths of the spare room above it.
-        top = round((height - frame_height) * 5 / 6)
-        self.child.allocate(width, frame_height, -1,
-                            Gsk.Transform().translate(Graphene.Point().init(0, top)))
+        if self.child is not None:
+            self.child.allocate(width, height, -1, None)
 
     def do_dispose(self):
         self.set_child(None)
@@ -683,12 +676,13 @@ class CameraSurface:
         return aspect
 
     def capture_aspect(self, device):
-        """The still's crop, in the sensor's own orientation, so the saved photo is the
-        shape the viewfinder shows: upright on a phone (the mount's rotation turns a
-        sensor-wide crop upright), the chosen shape on a desk."""
+        """The still's crop, in the sensor's own orientation, so the saved photo is what
+        the viewfinder shows: on a phone the window's framing (the preview covers it,
+        centred), the chosen shape on a desk."""
         if not self.phone:
             return self.values["aspect"]
-        ratio = portrait(self.values["aspect"])
+        width, height = self.overlay.get_width(), self.overlay.get_height()
+        ratio = width / height if width > 0 and height > 0 else portrait(self.values["aspect"])
         rotation = 0 if device.desktop_uvc else image_rotation_from_mount(
             device.rotation, front_facing=device.location == "front")
         return 1 / ratio if rotation in (90, 270) else ratio
@@ -701,12 +695,9 @@ class CameraSurface:
         """The phone rows (v71 cmRenderPhone). Built once; adapt() moves the controls in."""
         w = self.window
         self.phone_device = mobile_form_factor() or not w._desktop
-        self.phone_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
+        self.phone_box = Gtk.Overlay(hexpand=True, vexpand=True)
         self.phone_box.set_name("cm-phone")
         self.phone_box.add_css_class("camera-phone-body")
-        # The status bar above and the gesture chin below are the phone's (v71 .cmphone 44 / 34);
-        # the black runs under both.
-        set_css_class(self.phone_box, "device", self.phone_device)
         self.top_row = Gtk.Box(height_request=56)
         self.top_row.set_name("cm-top-row")
         self.top_row.add_css_class("camera-top-row")
@@ -730,11 +721,20 @@ class CameraSurface:
         self.bottom_row.add_css_class("camera-bottom-row")
         self.flip.set_valign(Gtk.Align.CENTER)
         self.bottom_row.set_end_widget(self.flip)
-        self.phone_controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.phone_controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.END)
+        self.phone_controls.add_css_class("camera-phone-controls")
         self.phone_controls.append(self.mode_strip)
         self.phone_controls.append(self.bottom_row)
-        for part in (self.top_row, self.phone_frame, self.phone_controls):
-            self.phone_box.append(part)
+        self.phone_top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.START)
+        self.phone_top.add_css_class("camera-phone-top")
+        self.phone_top.append(self.top_row)
+        # The rows float over the picture; on a phone device they keep clear of the
+        # status bar above and the gesture chin below (v71 .cmphone 44 / 34).
+        for part in (self.phone_top, self.phone_controls):
+            set_css_class(part, "device", self.phone_device)
+        self.phone_box.set_child(self.phone_frame)
+        self.phone_box.add_overlay(self.phone_top)
+        self.phone_box.add_overlay(self.phone_controls)
         # Camera has no action bar: on a phone its panels (Settings, Shape) rise in the kit's
         # bar frame (16 gutter, 34 up, 26 corners, as v71's phone shell draws .cmpop), opaque so
         # the shutter never shows through, and its toasts hang in the black band under the top
@@ -1302,8 +1302,9 @@ class CameraSurface:
         self.shape.update_property([Gtk.AccessibleProperty.LABEL], [shape_label])
         self.shape.set_tooltip_text(shape_label)
         self.shape.set_sensitive(not video)
-        # Recording on a phone: the red timecode pill takes the shape's place in the top row.
-        self.shape.set_visible(not (self.phone and recording))
+        # On a phone a photo is the window's framing, so there is no shape to pick; the
+        # video format stays, and while recording the red timecode pill takes its place.
+        self.shape.set_visible(not self.phone or (video and not recording))
         self.record_pill.set_visible(self.phone and recording)
         self.set_action(self.flash, "Flash: " + self.values["flash"],
             "zap-off" if self.values["flash"] == "off" else "zap",

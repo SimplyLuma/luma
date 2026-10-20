@@ -11,8 +11,8 @@
   },
   {
     "path": "THIRD-PARTY-SOURCES.md",
-    "sha256": "17a2e5b0bf47873d6cc0d778d858841b3ed41b8090179565dd0ecd3c9db930b7",
-    "bytes": 45672
+    "sha256": "f2e7be3c85450ecc083842501518b9c95f710060d4fecd0d61fd93e5e3c13642",
+    "bytes": 46671
   },
   {
     "path": "config/mobile/fp6-audio.env",
@@ -36,18 +36,18 @@
   },
   {
     "path": "config/mobile/titan2e-initramfs/init",
-    "sha256": "ea297241da4c8704126494de8da45cf0d91d16ff960eabab4731fafc878658a5",
-    "bytes": 1185
+    "sha256": "b8d1dc32cbfa4e75071a1fc7383f804b756b6be2189dfd74c16d2f7ec9680b79",
+    "bytes": 2843
   },
   {
     "path": "config/mobile/titan2e-kernel-source.json",
-    "sha256": "e5d806162544504975280f459eb2afdbdb9e8bcf7dfac99f66a09c736ce7a85b",
-    "bytes": 2240
+    "sha256": "8eee56b2798585d423e492511d4589d53b168237c56648117e36ec555f3c6822",
+    "bytes": 2263
   },
   {
     "path": "config/mobile/titan2e-kernel.config",
-    "sha256": "18b49a2bdaf755ea9af2dca0928eddb6d3071a8dfb811085ed0a8c55c4bbc057",
-    "bytes": 219626
+    "sha256": "ca1b32016eeb7100b8156c65cef9170c5104912c7b44221e2f4d7790782b7d82",
+    "bytes": 219991
   },
   {
     "path": "devices/README.md",
@@ -61,13 +61,13 @@
   },
   {
     "path": "devices/unihertz/titan2elite/INSTALL.md",
-    "sha256": "e30c27bb61e86367a6fb0bfba472029bfb2a0508c0f36a068512062f1b2e41e1",
-    "bytes": 6651
+    "sha256": "387f62c13a03ddfdae7974ed24ad318d251d4c122c02d9c7c55c1f967178299b",
+    "bytes": 4243
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "88810c9476156fbc415e4f3071e92b3eb607dcbe2870536a85a54581221e2bec",
-    "bytes": 3620
+    "sha256": "3291f9911e493431eb5d66d562aaffdc7fbeabf096c2d2943bcfc2f5bec60c7a",
+    "bytes": 4619
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -76,7 +76,7 @@
   },
   {
     "path": "devices/unihertz/titan2elite/device.toml",
-    "sha256": "384b43ff8d0a153fcc3a4678edc7fb99cabc6cb9c524e29ab51dea4929478085",
+    "sha256": "881bc540c307dd4f200ddc9f6ba8542cf5dd33d690270591bc37491bc432e5f1",
     "bytes": 1705
   },
   {
@@ -86,13 +86,13 @@
   },
   {
     "path": "devices/unihertz/titan2elite/source-pins.json",
-    "sha256": "79adccf8603b10a7446149898eec59542e0b6b463e9a120fc9d34aaa9c002282",
-    "bytes": 2283
+    "sha256": "b3a4cc8f2669dec06015b441e56cf118a6bc3d9324b94c64b28c11be7dc24a70",
+    "bytes": 3335
   },
   {
     "path": "devices/unihertz/titan2elite/tests/test_unihertz_titan2elite.py",
-    "sha256": "0d1fdc2ead82b443ac2ffc80a052c8066a2d2fe6aa9c27573dd6837331ea3a77",
-    "bytes": 6667
+    "sha256": "cf9c9b2eb58dba7f69ce9f6a43765c66717b05b27b30ab947c5929242f205579",
+    "bytes": 6867
   },
   {
     "path": "docs/devices.md",
@@ -111,8 +111,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "3b01b1a9653f58488610e2c19b69fa0daf6bfb6692a25af81d48d76f31576df2",
-    "bytes": 6162
+    "sha256": "a49f42d0e6a28ce921207a73aef8aab2b5b619c8a8c9322e8d793265c3f53209",
+    "bytes": 11775
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -133,6 +133,21 @@
     "path": "packaging/titan2e-connsys/titan2e-connsys.patch",
     "sha256": "2480c90780211a809541bb58b449075a177dfebb7c84bebeabdb0c8336a673b3",
     "bytes": 81649
+  },
+  {
+    "path": "patches/libcamera/0032-virtual-request-buffer-lifetime.patch",
+    "sha256": "1e4b379baa5ba657e2e9b69b93fe933c9bdd83a66bafdcaeebac2522ac432ac1",
+    "bytes": 1077
+  },
+  {
+    "path": "patches/libcamera/0033-software-isp-scale-8-bit-bayer-before-cpu-debayer.patch",
+    "sha256": "7de56d89ec2a46e493971a3bd9dbb75a6e9dc6a9bab9f7e57ffa992904a1c1d6",
+    "bytes": 5060
+  },
+  {
+    "path": "patches/libcamera/0034-pipeline-simple-complete-in-flight-requests-on-stop.patch",
+    "sha256": "85c44c50a72ae74d678e3d3548f322c0c4bbfed0a2adee409c58597b4422ac64",
+    "bytes": 2267
   },
   {
     "path": "patches/linux-mt6878/0001-pinctrl-mediatek-mt6878-complete-the-EINT-map.patch",
@@ -250,8 +265,158 @@
     "bytes": 4327
   },
   {
+    "path": "patches/linux-mt6878/0024-dt-bindings-media-i2c-add-Sony-IMX766.patch",
+    "sha256": "498bb7fd096723d738ee943d504042eece02051cc8f4f9a7e327a0600be77ee8",
+    "bytes": 3386
+  },
+  {
+    "path": "patches/linux-mt6878/0025-media-i2c-add-Sony-IMX766-image-sensor-driver.patch",
+    "sha256": "666ecab101830b3d5a5135475f1422fe6511e8ab5c90de3c4347c970d6d11ef6",
+    "bytes": 32143
+  },
+  {
+    "path": "patches/linux-mt6878/0026-dt-bindings-power-mediatek-add-MT6878.patch",
+    "sha256": "ccaf01e50cfb64ad6c19328ce10bbe0d23043c84fd5b3c5299e8c5167008dcad",
+    "bytes": 4318
+  },
+  {
+    "path": "patches/linux-mt6878/0027-pmdomain-mediatek-add-MT6878-camera-power-domains.patch",
+    "sha256": "27b6f1a5b3f6b77d6f3ed7bfc4311bbb39e03c8470d0b9ffbf70b95fa980d206",
+    "bytes": 5287
+  },
+  {
+    "path": "patches/linux-mt6878/0028-arm64-dts-mediatek-mt6878-add-SCPSYS-power-controlle.patch",
+    "sha256": "d9db09e37a4118d54616eec2a5807821a28c1c4f7adc39914c7fcab163e1dd4d",
+    "bytes": 2383
+  },
+  {
+    "path": "patches/linux-mt6878/0029-arm64-dts-mediatek-mt6878-titan2-elite-add-rear-came.patch",
+    "sha256": "1ed6474cf97e86dc82729e286a440fed3cf1e86695e8919bfd3d65bf0c62ce27",
+    "bytes": 3016
+  },
+  {
+    "path": "patches/linux-mt6878/0030-dt-bindings-media-mediatek-add-MT6878-seninf-CAMSV.patch",
+    "sha256": "1c5a106854c6c8714dcb26501a880cff0f87bbd6089e3a547e34761c23de78b7",
+    "bytes": 3827
+  },
+  {
+    "path": "patches/linux-mt6878/0031-media-mediatek-camsv-add-the-MT6878-MM-M4U-camera-cl.patch",
+    "sha256": "30b4ba7344ca8de541154220ad4bb6ec4a6f9de433dd777a1a45ba26bdf22974",
+    "bytes": 12722
+  },
+  {
+    "path": "patches/linux-mt6878/0032-media-mediatek-add-MT6878-seninf-CAMSV-raw-capture.patch",
+    "sha256": "a2415049456e87f36f67457baf71af86bf1c3daad735a56df769c4e484ef5898",
+    "bytes": 42778
+  },
+  {
+    "path": "patches/linux-mt6878/0033-arm64-dts-mediatek-mt6878-add-the-camera-capture-nod.patch",
+    "sha256": "f6f51dcd1e0ca9d81636c4e1b81616f2141422e15c687f0dc0b3c13efaa90e7e",
+    "bytes": 2381
+  },
+  {
+    "path": "patches/linux-mt6878/0034-drm-sysfb-simpledrm-optional-vblank-from-the-panel-d.patch",
+    "sha256": "6c77c50f8a57e3fe3defd844e0a9216da62f142c9475d97e2c297cfbd939475c",
+    "bytes": 6705
+  },
+  {
+    "path": "patches/linux-mt6878/0035-soc-mediatek-titan2e-dsi-kick-report-vblank-on-the-f.patch",
+    "sha256": "ff51a8ec8a3acd92ef2f5dd6e5f1ecc7d0a6c3f4309694497d2662d601257a90",
+    "bytes": 6444
+  },
+  {
+    "path": "patches/linux-mt6878/0036-arm64-dts-mediatek-titan2-elite-pace-page-flips-at-t.patch",
+    "sha256": "a82a6979b06f50ba57f5693eaf91c1868587b8795967e9b6e3126bd0d982e39a",
+    "bytes": 1046
+  },
+  {
+    "path": "patches/linux-mt6878/0037-iio-adc-mt6359-auxadc-add-an-MT6363-VIN1-channel-wit.patch",
+    "sha256": "fb7eda6b55719a0864410fe841b6a472eb1010b909093afbf5ac666fc0315b93",
+    "bytes": 2521
+  },
+  {
+    "path": "patches/linux-mt6878/0038-Input-mt6363-keys-populate-the-PMIC-child-nodes.patch",
+    "sha256": "f7944ef665bf6623d359c2b48d8f39436cacc3e36f571124445af0d0feff4dfc",
+    "bytes": 1575
+  },
+  {
+    "path": "patches/linux-mt6878/0039-arm64-dts-mediatek-titan2-elite-add-the-MT6363-AUXAD.patch",
+    "sha256": "4fc70300e0190742f371e16c0d7cd0530fb7c82266469e0629c861d20db34037",
+    "bytes": 1913
+  },
+  {
+    "path": "patches/linux-mt6878/0040-dt-bindings-media-i2c-add-OmniVision-OV32B40.patch",
+    "sha256": "4cdfc96a6a9ec5a9b103b52464d965e58cfb9fcccd819885912663289f98331e",
+    "bytes": 3283
+  },
+  {
+    "path": "patches/linux-mt6878/0041-media-i2c-add-OmniVision-OV32B40-image-sensor-driver.patch",
+    "sha256": "a954ad67faf4ad74e24461056088f145a22a147126d1a5056ca4a2267d32bf7e",
+    "bytes": 41491
+  },
+  {
+    "path": "patches/linux-mt6878/0042-dt-bindings-media-i2c-add-OmniVision-OV50D40.patch",
+    "sha256": "58e05e5c3d1aebfebfa8669bfc054f1c9f87e86b7f0eb064a7708477e95d9fdd",
+    "bytes": 3431
+  },
+  {
+    "path": "patches/linux-mt6878/0043-media-i2c-add-OmniVision-OV50D40-image-sensor-driver.patch",
+    "sha256": "1cdb510042527f1c7b31abeec641a0c8470f7c1458e42494faa028d0eec881c2",
+    "bytes": 73024
+  },
+  {
+    "path": "patches/linux-mt6878/0044-dt-bindings-media-mediatek-mt6878-seninf-camsv-one-i.patch",
+    "sha256": "33c2a062cdd5870557b3574dd105d22149743e370815038d3518b9fa2c34fec8",
+    "bytes": 3375
+  },
+  {
+    "path": "patches/linux-mt6878/0045-media-mediatek-seninf-camsv-sensors-on-CSI-ports-0-2.patch",
+    "sha256": "8f0dcac44c4ddd496d973f4a6d7ade7fb70501fa9034840c2851b9bf6a01ee3c",
+    "bytes": 26322
+  },
+  {
+    "path": "patches/linux-mt6878/0046-arm64-dts-mediatek-mt6878-titan2-elite-leave-the-cam.patch",
+    "sha256": "e1448b3ff721c223d70d26399920e3ac606b55452b308bdd39935530cb065a23",
+    "bytes": 1780
+  },
+  {
+    "path": "patches/linux-mt6878/0047-arm64-dts-mediatek-mt6878-titan2-elite-add-the-front.patch",
+    "sha256": "1e382763b263d00dfd4c9c6decf424a5ce29cdb206d904779f5e7600b9c4c7a6",
+    "bytes": 5677
+  },
+  {
+    "path": "patches/linux-mt6878/0048-iio-adc-mt6359-auxadc-fix-the-MT6363-MT6373-VIN-and-.patch",
+    "sha256": "015ab34bf189d8cbccd9ed198b1e481b91baf868cb389be219b9f1697997983d",
+    "bytes": 4343
+  },
+  {
+    "path": "patches/linux-mt6878/0049-ASoC-codecs-mt6369-keep-the-regmap-across-card-rebin.patch",
+    "sha256": "165ca5c73565a774afd7bc358ac582cec1dd1a894d8609266b7f7e375f5febe3",
+    "bytes": 1206
+  },
+  {
+    "path": "patches/linux-mt6878/0050-ASoC-mediatek-mt6878-do-not-disable-the-AFE-clocks-t.patch",
+    "sha256": "f40554ef053298fde2ade6dfd66bd86c32ffd9b4f0e6c9b1f9e3ab2c1b5c613d",
+    "bytes": 1576
+  },
+  {
+    "path": "patches/linux-mt6878/0051-ASoC-mediatek-common-no-hardware-pointer-for-hostles.patch",
+    "sha256": "38ca920fa7f0355f3bb73dd12a15e97ebbbf80a6d53b5e0e953290b745ea6e6c",
+    "bytes": 1824
+  },
+  {
+    "path": "patches/linux-mt6878/0052-ASoC-mediatek-mt6878-add-the-modem-PCM-interface-and.patch",
+    "sha256": "6a9f6ec18517621b1b3fe01ed1ad5c8e8c6c437a8813d0d188d675508650cf39",
+    "bytes": 12471
+  },
+  {
+    "path": "patches/linux-mt6878/0053-ASoC-mediatek-mt6878-titan2e-add-the-speech-links.patch",
+    "sha256": "dee808d1311541dc2b576fa826ce79dc7232219cf1077f618bbf4e7968da230a",
+    "bytes": 2011
+  },
+  {
     "path": "patches/linux-mt6878/README.md",
-    "sha256": "c842647970679a5ed247a9fce17f6261ff67988f1fbcfe052439b27cde6304c5",
+    "sha256": "5d522268c678b4c5a837c0cca3a8edbf109adead976b67cff7d65f5426495611",
     "bytes": 1814
   },
   {
@@ -281,13 +446,13 @@
   },
   {
     "path": "scripts/packages/build-titan2e-connsys-modules.sh",
-    "sha256": "bfdb6a6e8e872136f689c6bf2ffe7bea5ed5ed74010bd064bdab125d8df6dab0",
-    "bytes": 3581
+    "sha256": "1e6ef124a0b73e1ee8bb6df26ef340a95fb3a0c48805f9056f16f9c7a9bc9284",
+    "bytes": 3610
   },
   {
     "path": "scripts/packages/build-titan2e-kernel.sh",
-    "sha256": "73efa8cae72108d3ad4a9c0d14bf5cf1151f6ada78d70ef734e7798749e23ff8",
-    "bytes": 6687
+    "sha256": "87fa954a40d7792cc876462a3cdc791fe5c82ef40f2e406046aacf2af1d771c5",
+    "bytes": 6809
   },
   {
     "path": "socs/mediatek/mt6878/soc.toml",
@@ -298,6 +463,16 @@
     "path": "src/luma-greeter/luma-presence-compositor.c",
     "sha256": "c1f0904be6e6eb59788f9c31dbb6be604b50ec2b9f23c938ec651e18c7449914",
     "bytes": 1020
+  },
+  {
+    "path": "src/luma-titan2e-platform/50-luma-titan2e-greenboot.conf",
+    "sha256": "dbb84bcfe988cf0122abdc506bfb7edc671bb0c9bf077675239d5c92bfc9cace",
+    "bytes": 339
+  },
+  {
+    "path": "src/luma-titan2e-platform/50-luma-titan2e-platform.preset",
+    "sha256": "118309ff47f35bc72578bb8b8fc9c733c775fa160c497332eee4c6f8512d7620",
+    "bytes": 560
   },
   {
     "path": "src/luma-titan2e-platform/50-titan2e-watchdog.conf",
@@ -311,13 +486,18 @@
   },
   {
     "path": "src/luma-titan2e-platform/52-luma-titan2e-audio.conf",
-    "sha256": "2117bdd48c8ffd6322a4eaca29a1402231054b84402760bb55402e264cdb5a9d",
-    "bytes": 588
+    "sha256": "f8d69909488045b716eb292bd10435509b91c9d31d9a16a381f3e2779c4f2be9",
+    "bytes": 414
   },
   {
-    "path": "src/luma-titan2e-platform/60-luma-titan2e-platform.preset",
-    "sha256": "e3a3fb8c328a35894bea7f86d5bf40256daaf83d19772eaf9c2bfd41dfae713f",
-    "bytes": 138
+    "path": "src/luma-titan2e-platform/53-luma-titan2e-camera.conf",
+    "sha256": "32c14ffecbeb39e458ed18e738746d7dba10235869f1a8a2f067a2811dca4ebc",
+    "bytes": 351
+  },
+  {
+    "path": "src/luma-titan2e-platform/libcamera-titan2e.yaml",
+    "sha256": "475294da6fc99518419adf73bcc9b70219f631eb5c35c84bebe2cb6f49ee0ea4",
+    "bytes": 322
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-audio-up",
@@ -335,14 +515,24 @@
     "bytes": 2715
   },
   {
+    "path": "src/luma-titan2e-platform/luma-titan2e-boot-bless",
+    "sha256": "3628c748d52a92fc75f5b13d65b63b10a797b8b6b043e6f397eceff84903023b",
+    "bytes": 681
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-boot-bless.service",
+    "sha256": "88eeb9cbffa1ff7096013c055686dd999067de6f17bce52c14fcc7b9ecdd7af3",
+    "bytes": 291
+  },
+  {
     "path": "src/luma-titan2e-platform/luma-titan2e-boot-ok",
     "sha256": "d6a7d0570989f6ed701467c9ad53aeb88a834abd4690e16cd827f293c0d96137",
     "bytes": 1428
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-boot-ok.service",
-    "sha256": "c67bb7fc46d83f2b41ac3426c22f7bbd053d2a4b03df16b53c5a23c93dc7e00a",
-    "bytes": 191
+    "sha256": "41f4dd9201f571325b0a7f1c472e7ffcc7afdaa1e47da16e76338334180518cd",
+    "bytes": 445
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-connsys-fw",
@@ -370,6 +560,21 @@
     "bytes": 300
   },
   {
+    "path": "src/luma-titan2e-platform/luma-titan2e-growfs",
+    "sha256": "f3f1775d706ce38bb3ae101c2b87c6580bd4956052a1886f731065d15e7f4dd7",
+    "bytes": 371
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-growfs.service",
+    "sha256": "0255de6e39d43920db6361eae39ae4d89e7bf0c07f763a3bb089eca545b2a018",
+    "bytes": 293
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-healthcheck",
+    "sha256": "22264acfcbff404f3eaaca8583f38314cbbc0c7694f6209212622228fd86d926",
+    "bytes": 1657
+  },
+  {
     "path": "src/luma-titan2e-platform/luma-titan2e-panthor.conf",
     "sha256": "8cb9af19e01378937416b06bae6012ed1ad30ff3f03ef3b847e1edb1a6f23a0c",
     "bytes": 88
@@ -380,19 +585,39 @@
     "bytes": 739
   },
   {
+    "path": "src/luma-titan2e-platform/luma-titan2e-session-env",
+    "sha256": "cf1302e61eaea99fa2c5fff0ea68046b71ccc2604c8e245cfbeb1f64b156e5c0",
+    "bytes": 488
+  },
+  {
     "path": "src/luma-titan2e-platform/phoc-titan2e.ini",
     "sha256": "98a622078dc0c2cbfe42203d69e20868657a68d183da0d572a4d76a4d083e3d2",
     "bytes": 89
   },
   {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-HiFi.conf",
-    "sha256": "b3df31e30c8fd1e245da14a555e4ee98ed91f460cc67ed9377e3adf53af0f176",
-    "bytes": 1602
+    "sha256": "34d1ddd9d80ccf1f641d234f1e6a5ace582450f8727879a08458ec2bb44b3890",
+    "bytes": 1720
   },
   {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite.conf",
     "sha256": "72f880598f6c083eb1fd136b1efdac5d3912f76ca8c94a0f68f8e479edc0cdd3",
     "bytes": 102
+  },
+  {
+    "path": "src/prairie-core/prairie_apps/camera_backend.py",
+    "sha256": "5fec233644ce66e677c2d920ff5d2cf185238c8d50dc4d59585f393a1d32efd8",
+    "bytes": 17625
+  },
+  {
+    "path": "src/prairie-core/prairie_apps/camera_surface.py",
+    "sha256": "e4d82f99a911611b4f58e4bc3bfbbd8f6d550a92b44bd7dce021533365e54e84",
+    "bytes": 76519
+  },
+  {
+    "path": "src/prairie-core/style/camera.css",
+    "sha256": "52f007b75891bcf9229786351930842624b3f00122e628b0c57c72913d20ffe3",
+    "bytes": 10460
   },
   {
     "path": "tests/smoke/mobile-fp6-audio.sh",
@@ -405,9 +630,14 @@
     "bytes": 7313
   },
   {
+    "path": "tests/unit/test_prairie_camera_backend.py",
+    "sha256": "860529d33e14c9724d0b36d0e8a466ea5778cc930a028a8b0b4049575f20d1ce",
+    "bytes": 12170
+  },
+  {
     "path": "third-party-source-register.json",
-    "sha256": "97560e58aa2186d09f1507167d5cad53b7339ec0a85500b444569051a38084b0",
-    "bytes": 391035
+    "sha256": "af3de5f0f9a76fa526f6d3a598f1e002be23ac5a9c50f0aefd5bb5e383d76f57",
+    "bytes": 392669
   },
   {
     "path": "tools/check-devices.py",

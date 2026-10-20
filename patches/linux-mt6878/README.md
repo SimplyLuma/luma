@@ -5,7 +5,7 @@ commit `12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422` with
 `git am --committer-date-is-author-date`, committing as the patch author, and
 build with `config/mobile/titan2e-kernel.config` and `LLVM=1`.
 `scripts/packages/build-titan2e-kernel.sh` does all of this; the kernel release
-is then `7.2.0-luma-titan2e-m2-g3a50c30a53fd` on every build.
+is then `7.2.0-luma-titan2e-m2-g7035a815908b` on every build.
 
 | Patches | What |
 | --- | --- |

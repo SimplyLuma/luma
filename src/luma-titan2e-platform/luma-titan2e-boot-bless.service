@@ -1,0 +1,12 @@
+[Unit]
+Description=Bless the booted Titan 2 Elite deployment
+Requires=greenboot-healthcheck.service
+After=greenboot-healthcheck.service
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-titan2e-boot-bless
+
+[Install]
+WantedBy=greenboot-success.target

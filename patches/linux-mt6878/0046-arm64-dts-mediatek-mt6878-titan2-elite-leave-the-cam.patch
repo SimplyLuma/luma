@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 19 Oct 2026 22:56:35 -0400
+Subject: [PATCH 46/47] arm64: dts: mediatek: mt6878-titan2-elite: leave the
+ camera power pins to the cameras
+
+The front-end pin groups come from the stock base device tree, which
+covers several FEM variants. On this board GPIO37, 39, 189, 191 and 192
+belong to the cameras instead: the stock camera device tree switches the
+rear and wide DVDD, the wide power-down and the front DVDD and AVDD with
+them. Drop them from the Wi-Fi front-end pins. GPIO38, 40, 41 and 190
+stay: without them 2.4 GHz association times out.
+---
+ .../dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi  | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
+index 333c0732e..64d43accb 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
+@@ -15,15 +15,15 @@
+ &pio {
+ 	connsys_fem_pins: connsys-fem-pins {
+ 		/* wlan7207h (2.4 GHz) and wlan7207c (5 GHz) front-end control */
++		/* GPIO37, 39, 189, 191 and 192 are camera power GPIOs on this board. */
+ 		pins-wf0 {
+ 			pinmux = <0x2101>, <0x2201>, <0x2301>, <0x2401>,
+-				 <0x2501>, <0xbf03>, <0x2701>, <0x2801>;
++				 <0x2801>;
+ 		};
+ 		/* GPIO42/43 stay off this list: stock leaves them in GPIO mode
+ 		 * with Wi-Fi on, and they are the speaker amp I2S4 BCK/LRCK. */
+ 		pins-wf1 {
+-			pinmux = <0x2906>,
+-				 <0xbd03>, <0xc003>, <0xbe03>, <0x2601>;
++			pinmux = <0x2906>, <0xbe03>, <0x2601>;
+ 		};
+ 	};
+ };
+-- 
+2.55.0
+

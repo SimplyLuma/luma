@@ -1,4 +1,0 @@
-enable luma-titan2e-boot-ok.service
-enable luma-titan2e-connsys.service
-enable luma-titan2e-gpu.service
-enable luma-titan2e-audio.service
