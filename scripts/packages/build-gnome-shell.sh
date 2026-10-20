@@ -329,6 +329,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0272-dash-arrangement-carrier-or
 install -m 0644 "$repo_root/patches/gnome-shell/0273-live-installed-application-search.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0274-dash-edges-and-grouped-search.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0275-status-clock-well-and-options-polish.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0276-quick-options-device-row-geometry.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"

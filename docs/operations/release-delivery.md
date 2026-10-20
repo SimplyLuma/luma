@@ -51,6 +51,45 @@ release inputs; see [approved OS graph refresh](approved-os-graph-refresh.md)
 for admission and activation. Refreshing an approved graph does not admit a
 new release or build another image.
 
+## Delivery ownership and bundled applications
+
+Each user-facing application has one authoritative installed identity and update
+path. The first-party application target is the signed Flatpak ref managed by
+Depot. Shell, drivers, shared libraries, runtimes and privileged host services
+belong to the OS update. An application requiring a newer host service declares
+that requirement; Depot must explain the required OS update rather than hide
+the application update or describe it as current.
+
+Offline application bundles in an OS image are an installation baseline, not a
+third update channel. Once installed, those applications use the same signed
+refs and Depot update path as applications installed later. A native package
+needed for integration does not make its version the version of an independently
+installed app. Launchers and update inventory must identify the app actually run.
+
+The migration to this model is not complete. A published Flatpak combined with
+an RPM-only catalogue entry is an inconsistent delivery state, not a qualified
+migration. Do not broaden update authority to arbitrary installed applications
+or change remote trust to work around a mismatched catalogue. Preserve existing
+identities, user data, explicit channel choices and permission review.
+
+Before a bundled application migration or coordinated Nightly is accepted:
+
+- Pin the host requirements, app refs and commits, offline baseline and signed
+  catalogue entries in the same reviewed release evidence.
+- Verify the catalogue identifies the published application backend, canonical
+  source and branch, and that Depot lists an older installed app as updatable.
+- Test upgrades from an existing installation, including apps older than the
+  immediately preceding release; a fresh install alone is insufficient.
+- Confirm the launched app is the qualified app commit, rather than a newer
+  native counterpart hiding an older Flatpak. Exercise its reported fix.
+- Check app update, restart, data preservation and rollback. Test unavailable
+  network and a host prerequisite that is not yet installed; neither may be
+  reported as a successful update or an up-to-date app.
+
+Keep pending migrations explicitly pending until those checks run. Document any
+OS-only application exception and its reason. Routine delivery must follow the
+component's declared owner, not an operator's choice on a particular release.
+
 ## Application updates
 
 The signed application feed has its own publication and compatibility checks.

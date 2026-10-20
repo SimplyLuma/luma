@@ -1,0 +1,76 @@
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -16,7 +16,6 @@
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import {Slider} from './slider.js';
+-import {LumaRoundedClip} from './iconMask.js';
+ 
+ import {PopupAnimation} from './boxpointer.js';
+ 
+@@ -592,7 +591,9 @@
+ export const QuickSheetRow = GObject.registerClass(
+ class QuickSheetRow extends PopupMenu.PopupBaseMenuItem {
+     _init(params = {}) {
+-        super._init({style_class: 'luma-sheet-row', ...params});
++        super._init(params);
++        // Bluetooth supplies its own class; keep the shared row geometry too.
++        this.add_style_class_name('luma-sheet-row');
+ 
+         this._icon = new St.Icon({
+             style_class: 'luma-sheet-row-icon',
+@@ -1391,8 +1392,8 @@
+             vscrollbar_policy: St.PolicyType.AUTOMATIC});
+         this._pages = new St.BoxLayout({style_class: 'luma-options-pages', orientation: Clutter.Orientation.VERTICAL});
+         this._pageScroll.set_child(this._pages);
+-        this._pageClip = new LumaRoundedClip(16);
+-        this._pageScroll.add_effect_with_name('luma-page-clip', this._pageClip);
++        // The transparent viewport needs only ScrollView's allocation clip.
++        // An offscreen rounded mask also clips rows and the overlay scrollbar.
+         this._pagePan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
+         this._pagePan.set_begin_threshold(10);
+         this._pagePan.connect('may-recognize', () => {
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3230,3 +3230,41 @@
+ .luma-well-popover-title { font-size: 12px; font-weight: 650; letter-spacing: 0; }
+ .luma-well-tile-plate { width: 32px; height: 32px; background-color: transparent; }
+ .luma-well-tile-plate .luma-well-glyph { width: 24px; height: 24px; }
++
++/* One native frame per radio tile, with no dark lower-border rim. */
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked:active,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked:active,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:checked:active,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:checked:active {
++  height: auto; min-height: 56px; border: none; border-radius: 16px;
++  box-shadow: none; background-gradient-direction: none;
++}
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle {
++  height: auto; min-height: 32px; padding: 10px 2px 10px 10px;
++}
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button {
++  width: 32px; min-width: 32px; min-height: 32px;
++  margin: 6px 8px 6px 4px; padding: 0; border-radius: 10px;
++}
++.quick-settings.luma-studio-options .luma-options-detail .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-detail .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-detail .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-detail .luma-options-list {
++  spacing: 8px; padding: 0; background-color: transparent; border: none; box-shadow: none;
++}
