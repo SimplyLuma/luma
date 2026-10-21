@@ -1,6 +1,6 @@
 # Desktop updates — 2026-10-21
 
-Status: source qualified; release pending drawer review. Owner: luma-dev-2. Source task: desktop-polish-20261021.
+Status: source qualified and drawer appearance approved; Nightly release preparation active. Owner: luma-dev-2. Source task: desktop-polish-20261021.
 
 Nightly 20261020.1 is published. This is a separate update batch; no new image
 has been published from these changes.
@@ -55,8 +55,8 @@ or ISO is not established by these tests.
 
 ## Remaining release gates
 
-The Applications drawer still requires the user's screenshot appearance
-confirmation. Retained WebKit RPMs were recovered and all four engine payloads match the
+The user approved the installed drawer appearance on 2026-10-21 and authorized
+the next Nightly. Retained WebKit RPMs were recovered and all four engine payloads match the
 GPG-verified published runtime exactly. The normal exact-input collector passes with the pinned runtime and development
 packages. Normal Platform109 and SDK builds, private maintained-key signing and
 installed Filer qualification passed. Every assembled engine payload matches the
@@ -78,5 +78,4 @@ final screenshot qualification passed. The final normal RPM build passed all
 package checks, and its installed native fixture passed 47 checks in both
 appearances. Actual 1280×800 desktop captures show all 28 installed apps,
 including the final row labels. The RPM contains the artwork license and its
-correct license expression. Updated appearance still awaits
-the owner's confirmation before release.
+correct license expression. The owner approved this appearance before Nightly preparation.
