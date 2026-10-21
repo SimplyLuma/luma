@@ -89,3 +89,9 @@ installers explain that Luma must be updated first, while a missing or older
 Terminal keeps the existing app. The host regression reproduces the missing
 registry entry before the fix and passes afterwards; the signed manifest's
 matching service declarations have a separate cross-component check.
+
+Installer71 passed its normal RPM checks, including 809 unit tests with nine
+expected skips and the native Depot/widget checks. The normal Filer Flatpak
+build and maintained-key signing passed. Its actual signed metadata is held by
+the published host70 implementation, and by host71 with missing/old Terminal;
+host71 with Terminal7 accepts it. The full OS VM upgrade remains a release gate.
