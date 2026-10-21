@@ -1,6 +1,6 @@
 # Desktop updates — 2026-10-21
 
-Status: active. Owner: luma-dev-2. Source task: desktop-polish-20261021.
+Status: source qualified; release pending drawer review. Owner: luma-dev-2. Source task: desktop-polish-20261021.
 
 Nightly 20261020.1 is published. This is a separate update batch; no new image
 has been published from these changes.
@@ -33,9 +33,11 @@ or ISO is not established by these tests.
   stopping an already-unloaded transient unit; cleanup is now idempotent.
 - Filer74 and Terminal7: hover Open/Open With menus, directory-aware Terminal
   actions and D-Bus activation. Normal RPM/Flatpak builds and native actions
-  passed. Installed Filer populated Applications in 1.733 seconds including
-  observation overhead, showed only Name, and survived three focused-search
-  navigations. The private runtime used for this test is diagnostic only.
+  passed. Installed Filer with the normally assembled and maintained-key-signed runtime
+  populated Applications in 0.952 seconds including observation overhead, showed
+  only Name, and survived all three focused-search navigations. Platform and
+  Locale signatures were independently checked with the maintained remote key
+  before normal offline installation; both retained the maintained origin.
 - Platform109: disconnect search-control callbacks when their retired item is
   finalized. The native regression fails before and passes after the fix;
   normal platform checks passed. Runtime publishing also copies metadata before
@@ -55,9 +57,11 @@ or ISO is not established by these tests.
 
 The Applications drawer still requires the user's screenshot appearance
 confirmation. Retained WebKit RPMs were recovered and all four engine payloads match the
-GPG-verified published runtime exactly. The normal exact-input collector now
-passes with the pinned runtime and development packages; Platform109 and SDK
-assembly and delivery qualification are in progress. The earlier diagnostic
-runtime is not release eligible. Reusing the published engine does not establish
-qualification of the separate pending native-touch source changes. Final OS/app
-update and image qualification remain separate from source/package validation.
+GPG-verified published runtime exactly. The normal exact-input collector passes with the pinned runtime and development
+packages. Normal Platform109 and SDK builds, private maintained-key signing and
+installed Filer qualification passed. Every assembled engine payload matches the
+signed baseline, with no pin override. The earlier diagnostic runtime remains
+ineligible; the new passing candidate uses the normal producer and publisher.
+Reusing the published engine does not establish qualification of the separate
+pending native-touch source changes. Final public OS/app update and image
+qualification remain separate from source/package validation.
