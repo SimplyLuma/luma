@@ -54,7 +54,10 @@ or ISO is not established by these tests.
 ## Remaining release gates
 
 The Applications drawer still requires the user's screenshot appearance
-confirmation. Shared runtime109 delivery must reconcile the source's unproduced
-owner WebKit tuple with the published runtime cohort before public release.
-The diagnostic runtime is not release eligible. Final OS/app update and image
-qualification remain separate from source/package validation.
+confirmation. Retained WebKit RPMs were recovered and all four engine payloads match the
+GPG-verified published runtime exactly. The normal exact-input collector now
+passes with the pinned runtime and development packages; Platform109 and SDK
+assembly and delivery qualification are in progress. The earlier diagnostic
+runtime is not release eligible. Reusing the published engine does not establish
+qualification of the separate pending native-touch source changes. Final OS/app
+update and image qualification remain separate from source/package validation.
