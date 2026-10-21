@@ -8,7 +8,9 @@
 #   nightly-media.sh [--channel nightly] [--no-publish] [--rebuild] [--interim]
 #
 # --verify-existing SHA256 with --candidate --no-publish retries every check on
-# the exact already-built ISO, preserving previous failed verification evidence.
+# the exact retained image. --checks-revision COMMIT selects reviewed descendant
+# release checks without changing the image's product-source identity. The
+# selected revision is recorded, and previous failed evidence is preserved.
 #
 # --interim (owner request 2026-09-16, for a release that predates the
 # out-of-box checks): the medium is verified for what it already ships (no
@@ -59,6 +61,7 @@ rebuild=0
 interim=0
 candidate=
 verify_existing=
+checks_revision=
 publish_verified=
 notes=
 nightly_date_arg=
@@ -70,10 +73,11 @@ while [ "$#" -gt 0 ]; do
     --interim) interim=1; shift ;;
     --candidate) candidate=${2:?}; shift 2 ;;
     --verify-existing) verify_existing=${2:?}; shift 2 ;;
+    --checks-revision) checks_revision=${2:?}; shift 2 ;;
     --publish-verified) publish_verified=${2:?}; shift 2 ;;
     --notes) notes=$(realpath "${2:?}"); shift 2 ;;
     --nightly-date) nightly_date_arg=${2:?}; shift 2 ;;
-    *) printf 'usage: %s [--channel nightly] [--no-publish] [--rebuild] [--interim] [--candidate BUILD_ID [--no-publish] [--verify-existing SHA256] | --publish-verified BUILD_ID --notes FILE --nightly-date YYYY-MM-DD]\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s [--channel nightly] [--no-publish] [--rebuild] [--interim] [--candidate BUILD_ID [--no-publish] [--verify-existing SHA256 [--checks-revision COMMIT]] | --publish-verified BUILD_ID --notes FILE --nightly-date YYYY-MM-DD]\n' "$0" >&2; exit 2 ;;
   esac
 done
 # A retry reuses only explicitly identified bytes; every verification still runs.
@@ -81,6 +85,12 @@ if [ -n "$verify_existing" ]; then
   [ -n "$candidate" ] && [ "$publish" -eq 0 ] && [ "$interim" -eq 0 ] &&
     [ "$rebuild" -eq 0 ] && [ -z "$publish_verified" ] ||
     luma_os_die '--verify-existing SHA256 requires --candidate and --no-publish, without --interim or --rebuild'
+fi
+if [ -n "$checks_revision" ]; then
+  [ -n "$verify_existing" ] && [[ "$checks_revision" =~ ^[0-9a-f]{40}$ ]] ||
+    luma_os_die '--checks-revision requires --verify-existing and a full committed source revision'
+  git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" cat-file -e "$checks_revision^{commit}" ||
+    luma_os_die 'the verification revision is not available in this source checkout'
 fi
 case " $LUMA_MEDIA_CHANNELS " in *" $channel "*) ;; *) luma_os_die "no media are made for channel $channel (config/os/media.env)" ;; esac
 
@@ -240,6 +250,11 @@ else
   source_revision=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$repo/luma/releases/$version/manifest.json") ||
     fail "no published release manifest for $version"
 fi
+if [ -n "$checks_revision" ]; then
+  git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" merge-base --is-ancestor "$source_revision" "$checks_revision" ||
+    fail 'verification checks must descend from the candidate source'
+  set_status "checks_source_revision=$(jstr "$checks_revision")"
+fi
 
 iso="$dir/luma-$channel-$build_id.iso"
 step build
@@ -257,6 +272,7 @@ failures_of() { grep '^FAIL' "$1" | cut -c7- | paste -sd';' - | cut -c1-600; }
 
 step verify_install
 scope_args=(--expect-enrollment none "${check_args[@]}")
+[ -z "$checks_revision" ] || scope_args+=(--checks-revision "$checks_revision")
 [ "$interim" -eq 1 ] && scope_args=(--skip-release-checks)
 set_status "interim=$([ "$interim" -eq 1 ] && echo true || echo false)"
 "$luma_os_repo_root/scripts/os/verify-media.sh" --iso "$iso" "${forbid_args[@]}" \
