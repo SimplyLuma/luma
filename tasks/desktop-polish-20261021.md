@@ -18,7 +18,7 @@ or ISO is not established by these tests.
 
 ## Desktop implementation and evidence
 
-- Shell119: solid login surfaces and even power-menu spacing; respect dock
+- Shell120 (including the Shell119 fixes): solid login surfaces and even power-menu spacing; respect dock
   battery percentage; one-percent brightness keys and lock/idle input; Apps and
   Downloads shortcuts with a searchable drawer. Normal package checks and
   native Shell fixtures passed. Actual login, drawer and Downloads screenshots
@@ -65,3 +65,18 @@ ineligible; the new passing candidate uses the normal producer and publisher.
 Reusing the published engine does not establish qualification of the separate
 pending native-touch source changes. Final public OS/app update and image
 qualification remain separate from source/package validation.
+
+## Drawer review revision
+
+Shell120 replaces the Applications and XDG Downloads shortcut marks with authored
+blue artwork derived from Filer's plate, with raised grid and download symbols.
+The Applications header uses one title line and more space before search. Equal
+cell and spacer dimensions keep partial rows aligned. Custom folder icons and
+keyboard/search behavior remain covered. The installed Shell119 regression
+reproduced the header, artwork and partial-row failures; revised packaging and
+final screenshot qualification passed. The final normal RPM build passed all
+package checks, and its installed native fixture passed 47 checks in both
+appearances. Actual 1280×800 desktop captures show all 28 installed apps,
+including the final row labels. The RPM contains the artwork license and its
+correct license expression. Updated appearance still awaits
+the owner's confirmation before release.

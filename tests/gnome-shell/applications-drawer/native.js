@@ -23,6 +23,16 @@ async function work(){
  const model=folders._models.get('applications:///');
  const policy=ParentalControlsManager.getDefault();
  await until(()=>model?.loaded&&policy.initialized);
+ const initial=model.items.length, columns=folders.applicationMetrics().columns;
+ // Real private desktop entries force a partial last row and exercise long names.
+ // They are never installed in the owner's desktop or used for review screenshots.
+ const extra=3*columns+(Math.min(3,columns-1)-initial%columns+columns)%columns;
+ for(let i=0;i<extra;i++){
+  const path=`${GLib.get_user_data_dir()}/applications/org.projectluma.LayoutCheck${i}.desktop`;
+  GLib.file_set_contents(path,`[Desktop Entry]\nType=Application\nName=Z Layout Check ${i} with a longer application name\nExec=/usr/bin/true\nIcon=utilities-terminal\nTerminal=false\n`);
+ }
+ await until(()=>model.items.length===initial+extra);
+ check('fixture exercises multiple rows and an incomplete final row',model.items.length>columns&&model.items.length%columns!==0);
  const expected=Shell.AppSystem.get_default().get_installed().filter(info=>info.should_show()&&policy.shouldShowApp(info));
  check('drawer uses the actual installed visible applications',model.items.length===expected.length,`${model.items.length}`);
  check('application identities remain unique',new Set(model.items.map(item=>item.app.get_id())).size===model.items.length);
@@ -39,6 +49,26 @@ async function work(){
   const surface=rect(folders._surface),monitor=Main.layoutManager.primaryMonitor;
   check(`${treatment} drawer fits the monitor`,surface.x>=monitor.x&&surface.y>=monitor.y&&surface.x+surface.w<=monitor.x+monitor.width+1&&surface.y+surface.h<=monitor.y+monitor.height+1,JSON.stringify(surface));
   check(`${treatment} grid renders real app buttons`,folders._itemActors().length===model.items.length);
+  const header=rect(folders._surface._header), search=rect(folders._surface.search);
+  check(`${treatment} app count does not add a second header line`,!folders._surface._meta.visible);
+  check(`${treatment} search has space below the header`,search.y-header.y-header.h>=3,JSON.stringify({header,search}));
+  const columns=folders.gridColumns(), cells=folders._itemActors();
+  const positions=cells.map(rect), reference=positions.slice(0,columns);
+  check(`${treatment} app tiles use consistent column widths`,positions.every(p=>Math.abs(p.w-reference[0].w)<=1));
+  check(`${treatment} every row aligns with the first row`,positions.every((p,i)=>Math.abs(p.x-reference[i%columns].x)<=1),JSON.stringify(positions));
+  check(`${treatment} all app rows have the same height`,positions.every(p=>Math.abs(p.h-reference[0].h)<=1));
+  const viewport=rect(folders._surface.scroll);
+  check(`${treatment} four rows fit without hiding the final row labels`,cells.every(cell=>{
+   const label=rect(cell.child.get_children()[1]);
+   return label.y>=viewport.y&&label.y+label.h<=viewport.y+viewport.h;
+  }));
+  check(`${treatment} two-line app names fit inside their tiles`,cells.every(cell=>{
+   const bounds=rect(cell),label=rect(cell.child.get_children()[1]);
+   return label.y>=bounds.y&&label.y+label.h<=bounds.y+bounds.h;
+  }));
+  check(`${treatment} Applications shortcut loads full-colour resource artwork`,folders._tiles.get(model.uri)._mark.gicon.to_string().includes('luma-dock-applications.svg'));
+  const downloadTile=folders._tiles.get(Gio.File.new_for_path(downloads).get_uri());
+  check(`${treatment} Downloads shortcut uses matching resource artwork`,downloadTile._mark.gicon.to_string().includes('luma-dock-downloads.svg'));
   await shot(`applications-drawer-${treatment}`);
   folders._surface.search.set_text('no-such-application-qualification');await pause();
   check(`${treatment} search filters without stale icons`,folders._itemActors().length===0);

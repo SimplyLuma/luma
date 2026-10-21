@@ -1,16 +1,20 @@
 diff --git a/gnome-shell.spec b/gnome-shell.spec
 --- a/gnome-shell.spec
 +++ b/gnome-shell.spec
-@@ -19,7 +19,7 @@
+@@ -19,10 +19,10 @@
  
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.119.creator20261021.1%{?dist}
++Release:        1.luma.120.creator20261021.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
- License:        GPL-2.0-or-later
-@@ -32,6 +32,269 @@
+-License:        GPL-2.0-or-later
++License:        GPL-2.0-or-later AND CC-BY-SA-4.0
+ URL:            https://wiki.gnome.org/Projects/GnomeShell
+ Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
+ 
+@@ -32,6 +32,271 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -270,6 +274,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1271:      0277-login-surfaces-and-dock-battery-percentage.patch
 +Patch1272:      0278-brightness-one-percent-and-idle-input.patch
 +Patch1273:      0279-applications-and-downloads-drawer.patch
++Patch1274:      0280-drawer-artwork-and-grid-alignment.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -277,10 +282,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9004:     clock-line-metrics.js
 +Source9005:     android-existing-activation.js
 +Source9006:     settings-input-source.js
++Source9007:     CC-BY-SA-4.0.txt
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +331,8 @@
+@@ -71,6 +336,8 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -289,7 +295,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +351,10 @@
+@@ -90,6 +357,10 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -300,8 +306,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -191,6 +456,8 @@
+@@ -189,8 +460,11 @@
+ 
+ %prep
  %autosetup -S git -n %{name}-%{tarball_version}
++cp %{SOURCE9007} CC-BY-SA-4.0.txt
  
  %build
 +sh data/theme/luma-notifications/verify-generated.sh
@@ -309,7 +318,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +475,25 @@
+@@ -208,9 +482,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -335,7 +344,16 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -250,6 +533,11 @@
+@@ -218,7 +508,7 @@
+ %endif
+ 
+ %files -f %{name}.lang
+-%license COPYING
++%license COPYING CC-BY-SA-4.0.txt
+ %doc NEWS README.md
+ %{_bindir}/gnome-shell
+ %{_bindir}/gnome-extensions
+@@ -250,6 +540,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
