@@ -44,6 +44,8 @@
 #    medium), boot it, roll back to the medium's release, return to Official.
 #
 # Evidence: $LUMA_OS_ROOT/media/verify-<UTC time>/.
+# --resolve-codec-endpoint IPv4 is a recorded, disposable-VM DNS fixture for
+# an unhealthy official upstream mirror node. It leaves all trust checks on.
 
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
@@ -59,6 +61,7 @@ expect_enrollment=
 expect_packages=()
 require_checks=()
 checks_revision=
+codec_address=
 update_to=
 skip_release_checks=0
 while [ "$#" -gt 0 ]; do
@@ -74,6 +77,7 @@ while [ "$#" -gt 0 ]; do
     --expect-enrollment) expect_enrollment=${2:?}; shift 2 ;;
     --require-check) require_checks+=("${2:?}"); shift 2 ;;
     --checks-revision) checks_revision=${2:?}; shift 2 ;;
+    --resolve-codec-endpoint) codec_address=${2:?}; shift 2 ;;
     --update-from-origin-to) update_to=${2:?}; shift 2 ;;
     --skip-release-checks) skip_release_checks=1; shift ;;
     *) printf 'usage: %s --iso ISO [--account person|none] [--update-channel-from-local] [--keep-vm] [--preview-credential-file FILE] [--forbid-credential-file FILE] [--expect-build-id ID] [--expect-package NAME]... [--expect-enrollment enrolled|none] [--require-check NAME[:ARGS]]... [--checks-revision REV] [--update-from-origin-to VERSION] [--skip-release-checks]\n' "$0" >&2; exit 2 ;;
@@ -194,6 +198,26 @@ fi
 sed -e "s#@SSH_PUBLIC_KEY@#$(cat "$key_dir/ssh-key.pub")#" \
   -e "s|@ACCOUNT@|$account_lines|" \
   "$luma_os_repo_root/tests/os/gate/atlas-media.ks.in" >"$vm/atlas-media.ks"
+if [ -n "$codec_address" ]; then
+  # A test-network fixture, never part of the ISO or the production image.
+  python3 - "$luma_os_repo_root" "$codec_address" "$vm/atlas-media.ks" "$out/codec-dns-fixture.json" <<'PY'
+import datetime, json, socket, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / 'scripts/os/lib'))
+from media_reuse import codec_endpoint
+official = 'codecs.fedoraproject.org'
+resolved = sorted({row[4][0] for row in socket.getaddrinfo(official, 443, type=socket.SOCK_STREAM)})
+host, address = codec_endpoint(sys.argv[2], resolved)
+with Path(sys.argv[3]).open('a') as ks:
+    ks.write("\n%post --interpreter=/usr/bin/bash\nprintf '%s %s\\n' '" + address + "' '" + host + "' >> /etc/hosts\n%end\n")
+Path(sys.argv[4]).write_text(json.dumps(dict(
+    schema='org.projectluma.media-upstream-dns-fixture/v1', hostname=host, address=address,
+    observed_public_addresses=resolved, temporary_verification_vm_only=True,
+    iso_or_product_configuration_changed=False, repository_and_signature_policy_changed=False,
+    observed_utc=datetime.datetime.now(datetime.timezone.utc).isoformat()), indent=2) + '\n')
+PY
+  printf 'info  disposable VM routes the official codec hostname to %s; TLS and RPM trust unchanged\n' "$codec_address"
+fi
 qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "installing $MEDIA_VERSION from $(basename "$iso") ($volid), account: $account"
 started=$SECONDS
@@ -214,6 +238,10 @@ cp "/var/log/libvirt/qemu/$domain-serial.log" "$out/install-serial.log" 2>/dev/n
 luma_os_log "installed in $((SECONDS - started))s"
 virsh start "$domain" >/dev/null
 wait_ssh 900 || luma_os_die 'installed system did not come up'
+if [ -n "$codec_address" ]; then
+  check 'the recorded official upstream DNS fixture is active' guest \
+    "python3 -c 'import socket; assert {row[4][0] for row in socket.getaddrinfo(\"codecs.fedoraproject.org\",443,type=socket.SOCK_STREAM)} == {\"$codec_address\"}'"
+fi
 
 verdict=$(greenboot_state)
 guest 'rpm-ostree status --json' >"$out/rpm-ostree-status.json"

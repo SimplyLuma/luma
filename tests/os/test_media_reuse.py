@@ -63,6 +63,18 @@ class MediaReuse(unittest.TestCase):
         self.iso.symlink_to(original)
         with self.assertRaises(ValueError): self.admit()
 
+    def test_codec_route_requires_the_current_official_public_address(self):
+        self.assertEqual(module.codec_endpoint('38.145.32.20', ['38.145.32.20']),
+                         ('codecs.fedoraproject.org', '38.145.32.20'))
+        with self.assertRaises(ValueError):
+            module.codec_endpoint('38.145.32.20', ['38.145.32.21'])
+
+    def test_codec_route_refuses_private_reserved_and_shell_input(self):
+        for value in ('127.0.0.1', '10.0.0.1', '0.0.0.0', '169.254.1.1',
+                      '192.0.2.1', '224.0.0.1', '::1', '38.145.32.20;id'):
+            with self.subTest(address=value), self.assertRaises(ValueError):
+                module.codec_endpoint(value, [value])
+
 
 if __name__ == '__main__':
     unittest.main()

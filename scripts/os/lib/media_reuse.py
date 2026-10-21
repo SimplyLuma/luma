@@ -3,8 +3,22 @@
 """Admit exact existing candidate media for a full verification retry."""
 from pathlib import Path
 import hashlib
+import ipaddress
 import re
 import sys
+
+
+def codec_endpoint(address, resolved_addresses):
+    """Admit a public IPv4 address currently owned by the fixed upstream name.
+
+    This only routes disposable verification VMs around an unhealthy official
+    mirror node. It does not select another repository or relax TLS/RPM trust.
+    """
+    value = ipaddress.IPv4Address(address)
+    if (not value.is_global or value.is_multicast or value.is_reserved
+            or str(value) != address or address not in set(resolved_addresses)):
+        raise ValueError('codec fixture must use a current public address of the official hostname')
+    return 'codecs.fedoraproject.org', address
 
 
 def admit(iso, checksum, channel, ref, commit, version, build, atlas, key):
