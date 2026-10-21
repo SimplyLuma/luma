@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.70.creator20261020.1%{?dist}
+Release:        1.luma.71.creator20261021.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications

@@ -8,7 +8,7 @@ import configparser
 import re
 import subprocess
 
-SUPPORTED_INSTALLER_RELEASE = 70
+SUPPORTED_INSTALLER_RELEASE = 71
 # Fixed maintained host owners, never an executable/package supplied by app
 # metadata. Existing OS deployments stay compatible until a real host API is
 # needed; a newer app is held before its installed commit changes.
@@ -16,7 +16,7 @@ HOST_PACKAGES = {
     'core': 'prairie-core-apps', 'continuity': 'luma-continuity',
     'background': 'luma-background', 'monitor': 'luma-monitor',
     'ari': 'luma-ari', 'mods': 'luma-mods', 'charlie': 'luma-charlie',
-    'viola': 'viola-browser-stable',
+    'viola': 'viola-browser-stable', 'terminal': 'luma-terminal',
 }
 
 

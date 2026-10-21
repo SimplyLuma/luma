@@ -79,3 +79,13 @@ package checks, and its installed native fixture passed 47 checks in both
 appearances. Actual 1280×800 desktop captures show all 28 installed apps,
 including the final row labels. The RPM contains the artwork license and its
 correct license expression. The owner approved this appearance before Nightly preparation.
+
+## Coordinated app compatibility
+
+Release admission found Filer's new Terminal action lacked a signed native-host
+requirement. Its Flatpak metadata now requires Terminal7 and installer71. The
+maintained compatibility registry maps Terminal to its fixed RPM owner; older
+installers explain that Luma must be updated first, while a missing or older
+Terminal keeps the existing app. The host regression reproduces the missing
+registry entry before the fix and passes afterwards; the signed manifest's
+matching service declarations have a separate cross-component check.

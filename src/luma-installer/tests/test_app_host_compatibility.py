@@ -73,3 +73,13 @@ class HostCompatibility(unittest.TestCase):
         for text in ('','garbage','0.1.0-1.luma.93.creator.fc44\n0.1.0-1.luma.94.creator.fc44\n'):
             self.assertEqual(installed_host_release('core',lambda *_a,**_k:SimpleNamespace(returncode=0,stdout=text)),0)
         self.assertEqual(installed_host_release('continuity',lambda *_a,**_k:SimpleNamespace(returncode=0,stdout='0.1.0-0.63.experiment.fc44\n')),63)
+
+    def test_filer_terminal_upgrade_waits_for_both_host_services(self):
+        from luma_installer.app_host_compatibility import HOST_PACKAGES
+        self.assertEqual(HOST_PACKAGES['terminal'], 'luma-terminal')
+        metadata = '[X-Luma]\nmin-host-installer=71\nmin-host-terminal=7\n'
+        with self.assertRaisesRegex(SourceUnavailable, 'update Luma first'):
+            require_host_compatibility(metadata, supported=70, host_release=lambda _: 7)
+        with self.assertRaisesRegex(SourceUnavailable, 'update Luma first'):
+            require_host_compatibility(metadata, host_release=lambda _: 6)
+        require_host_compatibility(metadata, host_release=lambda component: 7 if component == 'terminal' else 0)
