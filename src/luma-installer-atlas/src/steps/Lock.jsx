@@ -55,8 +55,9 @@ export const usePasswordQuality = (secret) => {
 };
 
 /** Apply the current plan and return { errors, warnings }. */
-export const applyPlan = ({ keepBootOrder, luks, partitioning }) => new Promise((resolve, reject) => {
+export const applyPlan = ({ devices, keepBootOrder, luks, partitioning }) => new Promise((resolve, reject) => {
     applyStorage({
+        devices,
         keepBootOrder,
         luks,
         onFail: reject,

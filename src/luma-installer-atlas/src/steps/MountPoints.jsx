@@ -139,7 +139,7 @@ export const MountPoints = ({ answers, back, continueRef, index, invalidateAfter
         setFailure(null);
         try {
             await setManualPartitioningRequests({ partitioning, requests: requestsToDbus(requests) });
-            const result = await applyPlan({ keepBootOrder: reusedEfi && keepBootOrder, partitioning });
+            const result = await applyPlan({ devices, keepBootOrder: reusedEfi && keepBootOrder, partitioning });
             setReport(result);
             if (!result.errors.length) {
                 setAnswers(current => ({
