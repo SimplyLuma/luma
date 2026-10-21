@@ -149,11 +149,12 @@ if problems:
 PY
 py_check depot-sources-system-wide remotes.py
 
-# --- 3. Viola is Luma's own browser, not a Flatpak to install -------------------------------
+# --- 3. Viola is already installed through its actual native or signed app owner -----------
 cat >"$work/viola.py" <<'PY'
 import json, urllib.request
-from luma_installer import depot_catalog
-from luma_depot.native import NativeCatalogue
+from luma_installer import depot_catalog, depot_flatpak
+from luma_depot.native import (NativeCatalogue, installed_flatpak_refs, inventory,
+                              identity_for_installed, installed_source)
 
 catalog = depot_catalog.fetch_catalog()
 entry = next((a for a in catalog.applications if a.id == 'viola'), None)
@@ -167,13 +168,34 @@ if entry.luma_system is None:
         raise SystemExit('the installed luma-application-installer predates e29fb914: it ignores '
                          "Viola's sources.luma_system (viola-browser-stable) and would offer the Flatpak")
     raise SystemExit('the Viola listing names no image package')
-app = next((a for a in NativeCatalogue().snapshot().apps if a.slug == 'viola'), None)
-if app is None:
-    raise SystemExit('Depot does not show Viola')
+apps = [a for a in NativeCatalogue().snapshot().apps if a.slug == 'viola']
+if len(apps) != 1:
+    raise SystemExit(f'Depot must show exactly one Viola listing, found {len(apps)}')
+app = apps[0]
 state = (app.system_state, app.installable, app.availability, app.source_title)
 print(f'Viola: system_state={app.system_state} installable={app.installable} '
       f'availability={app.availability!r} source={app.source_title!r} package={entry.luma_system.package}')
-if app.system_state != 'installed' or app.installable or app.source_title != 'Luma':
+refs = installed_flatpak_refs()
+pair = refs.get(entry.source_id)
+if pair is not None:
+    installation, ref = pair
+    # A bundled canonical app owns its updates even when the protected native
+    # engine is also present. Prove the actual signed owner and launch identity;
+    # installable describes backend support, not whether the UI offers Get.
+    if entry.repository != 'luma' or ref.get_origin() != 'luma':
+        raise SystemExit('Installed Viola is not owned by the Luma app source')
+    depot_flatpak.validate_remote(installation.get_remote_by_name('luma', None), 'luma')
+    source = depot_flatpak.resolve(installation, entry.source_id, ref.get_arch(),
+                                  branch=ref.get_branch())
+    if (ref.format_ref(), ref.get_commit()) != (source.ref, source.commit):
+        raise SystemExit('Installed Viola differs from the authenticated app source')
+    if app.system_state or not app.installable or app.source_title != 'Luma':
+        raise SystemExit(f'Depot did not retain the installed app owner: {state}')
+    if not any(identity_for_installed(record) == app.app_id
+               and installed_source(record, refs) == entry.source_id for record in inventory()):
+        raise SystemExit('Depot does not associate the installed Viola launcher with its app owner')
+    print(f'Already installed from Luma: {source.ref} {source.commit}; canonical launcher retained')
+elif app.system_state != 'installed' or app.installable or app.source_title != 'Luma':
     raise SystemExit(f'Viola is not shown as included with Luma: {state}')
 PY
 py_check depot-viola-included-with-luma viola.py
