@@ -2,7 +2,7 @@
 
 Name:           luma-installer-atlas
 Version:        0.1.0
-Release:        1.luma.19.creator20261019.1%{?dist}
+Release:        1.luma.20.creator20261021.1%{?dist}
 Summary:        Atlas, Luma's installer front end for Anaconda
 # Atlas and the reused anaconda-webui 68 code: LGPL-2.1-or-later.
 # Bundled React and React DOM: MIT. Bundled Figtree font: OFL-1.1.
