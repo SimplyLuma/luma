@@ -1,0 +1,314 @@
+From: Luma Developers
+Subject: [PATCH] Applications and Downloads folders with a searchable app drawer
+
+diff --git a/js/ui/lumaDockFolders.js b/js/ui/lumaDockFolders.js
+--- a/js/ui/lumaDockFolders.js
++++ b/js/ui/lumaDockFolders.js
+@@ -33,6 +33,7 @@
+ import St from 'gi://St';
+ 
+ import * as Signals from '../misc/signals.js';
++import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+@@ -67,6 +68,7 @@
+ const STACK_BODY_MAX = 288;      // eight rows
+ const GRID_BODY_MAX = 352;       // eight cells, so switching does not move it
+ const GRID_COLUMNS = 4;
++const APPLICATIONS_URI = 'applications:///';
+ const ISLAND_PADDING = 8;        // the island's own padding around a tile
+ const BAR_LENGTH = 18;           // the dock's own open indicator
+ const BAR_THICKNESS = 3;
+@@ -113,6 +115,7 @@
+     constructor(uri) {
+         super();
+         this.uri = uri;
++        this.isApplications = uri === APPLICATIONS_URI;
+         this.file = Gio.File.new_for_uri(uri);
+         this.name = this.file.get_basename() ?? uri;
+         this.gicon = null;
+@@ -144,6 +147,14 @@
+     }
+ 
+     start() {
++        if (this.isApplications) {
++            this._appSystem = Shell.AppSystem.get_default();
++            this._appsChanged = this._appSystem.connect('installed-changed', () => this.reload());
++            this._parentalControls = ParentalControlsManager.getDefault();
++            this._filterChanged = this._parentalControls.connect('app-filter-changed', () => this.reload());
++            this.reload();
++            return;
++        }
+         if (this._monitor)
+             return;
+         try {
+@@ -170,6 +181,33 @@
+     }
+ 
+     async reload() {
++        if (this.isApplications) {
++            this.name = _('Applications');
++            this.gicon = new Gio.ThemedIcon({name: 'view-app-grid-symbolic'});
++            const apps = Shell.AppSystem.get_default();
++            const items = [];
++            for (const info of apps.get_installed()) {
++                try {
++                    if (!info.should_show() || !this._parentalControls.shouldShowApp(info)) continue;
++                    const app = apps.lookup_app(info.get_id());
++                    const filename = info.get_filename();
++                    if (!app || !filename) continue;
++                    const file = Gio.File.new_for_path(filename);
++                    items.push({app, name: app.get_name(), file, uri: file.get_uri(),
++                        gicon: info.get_icon() ?? new Gio.ThemedIcon({name: 'application-x-executable'}),
++                        contentType: '', isDirectory: false, size: -1,
++                        modified: null, created: null, sortTime: 0, thumbnail: null, modifiedUnix: 0});
++                } catch (error) {
++                    // One invalid desktop entry must not hide the other apps.
++                    logError(error, 'Cannot show application in the dock folder');
++                }
++            }
++            this.items = items.sort((a, b) => a.name.localeCompare(b.name));
++            this.count = this.items.length;
++            this.loaded = true;
++            this.emit('changed');
++            return;
++        }
+         this._cancellable?.cancel();
+         const cancellable = this._cancellable = new Gio.Cancellable();
+         await this._readDisplayName();
+@@ -258,6 +296,10 @@
+     }
+ 
+     destroy() {
++        if (this._appsChanged) this._appSystem.disconnect(this._appsChanged);
++        this._appsChanged = 0;
++        if (this._filterChanged) this._parentalControls.disconnect(this._filterChanged);
++        this._filterChanged = 0;
+         this._cancellable?.cancel();
+         this._cancellable = null;
+         if (this._queuedId)
+@@ -325,6 +367,8 @@
+ // The right side of a Stack row, and the line under a Grid cell: the size and
+ // the age, in Filer's words and the platform's own relative time.
+ function metaFor(item) {
++    if (item.app)
++        return '';
+     if (item.isDirectory) {
+         const count = item.childCount;
+         if (count === undefined || count < 0)
+@@ -617,6 +661,18 @@
+             this._actions.set(id, button);
+         }
+ 
++        this.search = new St.Entry({style_class: 'search-entry luma-dockf-search',
++            hint_text: _('Search applications'), can_focus: true, visible: false});
++        this.search.set_primary_icon(new St.Icon({icon_name: 'edit-find-symbolic', icon_size: 16}));
++        this.search.clutter_text.connect('text-changed', () => {
++            this._controller._keyed = false;
++            this._controller._render();
++        });
++        this.search.clutter_text.connect('activate', () => {
++            const item = this._controller._itemActors()[0]?.item;
++            if (item) this._controller._activate(item);
++        });
++        this._surface.add_child(this.search);
+         this._scroll = new St.ScrollView({style_class: 'luma-dockf-scroll',
+             hscrollbar_policy: St.PolicyType.NEVER,
+             vscrollbar_policy: St.PolicyType.AUTOMATIC,
+@@ -678,8 +734,14 @@
+             else
+                 button.remove_accessible_state(Atk.StateType.CHECKED);
+         }
+-        this._surface.width = (view === 'grid' ? GRID_WIDTH : STACK_WIDTH) * scaleFactor();
+-        this._scroll.style = `max-height: ${view === 'grid' ? GRID_BODY_MAX : STACK_BODY_MAX}px;`;
++        const apps = Boolean(this._controller.openFolder?.isApplications);
++        const metrics = this._controller.applicationMetrics();
++        this._views.visible = !apps;
++        this.search.visible = apps;
++        if (apps) this.add_style_class_name('luma-dockf-applications');
++        else this.remove_style_class_name('luma-dockf-applications');
++        this._surface.width = apps ? metrics.width : (view === 'grid' ? GRID_WIDTH : STACK_WIDTH) * scaleFactor();
++        this._scroll.style = `max-height: ${apps ? metrics.height : view === 'grid' ? GRID_BODY_MAX : STACK_BODY_MAX}px;`;
+         this._body.layout_manager.orientation = Clutter.Orientation.VERTICAL;
+         if (view === 'grid')
+             this._body.add_style_class_name('luma-dockf-grid');
+@@ -695,7 +757,7 @@
+             ? `${count} · ${ngettext('%d new', '%d new', newCount).format(newCount)}`
+             : count;
+         // The folder's path is the header's tooltip, not a line of chrome.
+-        this._header.accessible_name = model.file.get_path() ?? model.uri;
++        this._header.accessible_name = model.isApplications ? model.name : model.file.get_path() ?? model.uri;
+         this.accessible_name = model.name;
+     }
+ 
+@@ -871,7 +933,29 @@
+     // ── Settings ────────────────────────────────────────────────────────────
+ 
+     get uris() {
+-        return this._settings.get_strv('dock-folders');
++        const pinned = this._settings.get_strv('dock-folders');
++        // Preserve explicit choices (including an empty list) and managed
++        // policy. Only untouched desktop defaults gain the two shortcuts.
++        if (pinned.length || this._settings.get_user_value('dock-folders') !== null ||
++            !this._settings.is_writable('dock-folders'))
++            return pinned;
++        const downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
++        return [APPLICATIONS_URI, ...(downloads && downloads !== GLib.get_home_dir()
++            ? [Gio.File.new_for_path(downloads).get_uri()] : [])];
++    }
++
++    applicationMetrics() {
++        const tile = this.openFolder ? this._tiles.get(this.openFolder.uri) : null;
++        const monitor = tile ? Main.layoutManager.findMonitorForActor(tile) : Main.layoutManager.primaryMonitor;
++        const area = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : {width: 1024, height: 768};
++        const scale = scaleFactor();
++        const width = Math.max(120 * scale, Math.min(900 * scale, area.width - 32 * scale));
++        return {width, columns: Math.max(1, Math.floor((width - 32 * scale) / (104 * scale))),
++            height: Math.max(40, Math.min(560, area.height / scale - 160))};
++    }
++
++    gridColumns() {
++        return this.openFolder?.isApplications ? this.applicationMetrics().columns : GRID_COLUMNS;
+     }
+ 
+     get separate() {
+@@ -911,6 +995,8 @@
+     viewFor(model) {
+         if (!model)
+             return 'stack';
++        if (model.isApplications)
++            return 'grid';
+         const views = this._settings.get_value('dock-folders-views').deep_unpack();
+         return views[model.uri] === 'grid' ? 'grid' : 'stack';
+     }
+@@ -1067,6 +1153,7 @@
+         this._surface.setDetached(this.detached);
+         // Read it again as it opens: a folder on a mount that cannot be
+         // watched is then still right at the moment it is looked at.
++        this._surface.search.set_text('');
+         model.reload();
+         this._render();
+         this._surface.show();
+@@ -1080,7 +1167,8 @@
+         // until the person selects it. The first arrow key moves focus into
+         // the list, which is when a ring is meant.
+         this._keyed = false;
+-        this._surface.grab_key_focus();
++        if (model.isApplications) this._surface.search.grab_key_focus();
++        else this._surface.grab_key_focus();
+     }
+ 
+     close() {
+@@ -1158,24 +1246,31 @@
+         body.destroy_all_children();
+         // Every item, in both arrangements: the body's height is capped, not
+         // the folder. A folder of ninety-two scrolls to all ninety-two.
+-        const items = model.items;
++        const query = model.isApplications ? this._surface.search.get_text().trim().toLocaleLowerCase() : '';
++        const items = query ? model.items.filter(item => item.name.toLocaleLowerCase().includes(query)) : model.items;
++        const columns = this.gridColumns();
++        if (model.isApplications) {
++            this._surface._meta.text = ngettext('%d application', '%d applications', model.count).format(model.count);
++            if (!items.length) body.add_child(new St.Label({text: query ? _('No applications match your search') : _('No applications installed'),
++                style_class: 'luma-dockf-empty'}));
++        }
+         if (view === 'grid') {
+             let row = null;
+             items.forEach((item, index) => {
+-                if (index % GRID_COLUMNS === 0) {
++                if (index % columns === 0) {
+                     row = new St.BoxLayout({style_class: 'luma-dockf-grid-row', x_expand: true});
+                     body.add_child(row);
+                 }
+                 const cell = new FolderCell(item);
+                 cell.x_expand = true;
+                 cell.connect('clicked', () => this._activate(item));
+-                this._hookItemMenu(cell, item);
++                if (!item.app) this._hookItemMenu(cell, item);
+                 row.add_child(cell);
+             });
+             // A short last row keeps the columns, rather than stretching.
+-            const remainder = items.length % GRID_COLUMNS;
++            const remainder = items.length % columns;
+             if (row && remainder) {
+-                for (let i = remainder; i < GRID_COLUMNS; i++)
++                for (let i = remainder; i < columns; i++)
+                     row.add_child(new St.Widget({x_expand: true}));
+             }
+         } else {
+@@ -1240,6 +1335,7 @@
+     // loop's back: one idle does a few at a time and yields. A scroll or a
+     // close cancels what is left.
+     _queueThumbnails() {
++        if (this.openFolder?.isApplications) return;
+         if (this._thumbLater)
+             return;
+         this._thumbLater = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+@@ -1296,6 +1392,10 @@
+ 
+     _activate(item) {
+         this.close();
++        if (item.app) {
++            item.app.activate();
++            return;
++        }
+         Gio.AppInfo.launch_default_for_uri_async(item.uri,
+             global.create_app_launch_context(0, -1), null, null);
+     }
+@@ -1627,7 +1727,11 @@
+             this.close();
+             return Clutter.EVENT_STOP;
+         }
++        const focus = global.stage.get_key_focus();
++        if (this.openFolder.isApplications && focus && this._surface.search.contains(focus) && symbol !== Clutter.KEY_Down)
++            return Clutter.EVENT_PROPAGATE;
+         const grid = this.viewFor(this.openFolder) === 'grid';
++        const columns = this.gridColumns();
+         // The first arrow key is what puts focus on an item.
+         if (!this._keyed) {
+             const first = this._itemActors()[0];
+@@ -1638,15 +1742,14 @@
+             }
+         }
+         const step = {
+-            [Clutter.KEY_Up]: grid ? -GRID_COLUMNS : -1,
+-            [Clutter.KEY_Down]: grid ? GRID_COLUMNS : 1,
++            [Clutter.KEY_Up]: grid ? -columns : -1,
++            [Clutter.KEY_Down]: grid ? columns : 1,
+             [Clutter.KEY_Left]: grid ? -1 : 0,
+             [Clutter.KEY_Right]: grid ? 1 : 0,
+         }[symbol];
+         if (!step)
+             return Clutter.EVENT_PROPAGATE;
+         const items = this._itemActors();
+-        const focus = global.stage.get_key_focus();
+         const at = items.indexOf(focus);
+         const next = items[clamp(at + step, 0, items.length - 1)];
+         next?.grab_key_focus();
+@@ -1717,7 +1820,7 @@
+         title.add_style_class_name('luma-menu-title');
+         menu.addMenuItem(title);
+         const view = this.viewFor(tile.model);
+-        for (const [id, label] of [['stack', _('Stack')], ['grid', _('Grid')]]) {
++        for (const [id, label] of (tile.model.isApplications ? [] : [['stack', _('Stack')], ['grid', _('Grid')]])) {
+             const item = menu.addAction(label, () => {
+                 this._setViewFor(tile.model, id);
+                 if (this.openFolder === tile.model)
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3268,3 +3268,13 @@
+ .quick-settings.luma-studio-options.luma-surface-glass .luma-options-detail .luma-options-list {
+   spacing: 8px; padding: 0; background-color: transparent; border: none; box-shadow: none;
+ }
++
++/* Application folders use the same drawer, with space for app artwork. */
++.luma-dockf-search { margin: 0 16px 12px; padding: 8px 12px; font-size: 14px; }
++.luma-dockf-search { color: #e7e9e8; background-color: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
++.luma-surface-light .luma-dockf-search { color: #16191d; background-color: rgba(22,25,29,.05); border-color: rgba(22,25,29,.18); }
++.luma-surface-light .luma-dockf-search .hint-text { color: rgba(22,25,29,.56); }
++.luma-dockf-search:focus { border-color: #72a7ed; }
++.luma-dockf-applications .luma-dockf-thumb-large { background-color: transparent; border-width: 0; }
++.luma-dockf-applications .luma-dockf-cell-meta { height: 0; padding: 0; margin: 0; }
++.luma-dockf-empty { padding: 32px 16px; text-align: center; }

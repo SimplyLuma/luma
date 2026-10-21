@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import sys
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -139,12 +140,13 @@ def session_rows(model: TerminalModel, home: str, *, phone: bool, on_activate, o
 
 
 class TerminalWindow(AppWindow):
-    def __init__(self, application: Adw.Application, fixture: dict | None = None) -> None:
+    def __init__(self, application: Adw.Application, fixture: dict | None = None,
+                 initial_directory: str | None = None) -> None:
         self.fixture = fixture
         self.profile = read_default_profile() if fixture is None else None
         first = fixture["sessions"][0] if fixture and fixture["sessions"] else {}
         self.display_home = fixture.get("home", first.get("cwd", "")) if fixture else str(Path.home())
-        self.model = TerminalModel(first.get("cwd") or str(Path.home()), home=self.display_home)
+        self.model = TerminalModel(initial_directory or first.get("cwd") or str(Path.home()), home=self.display_home)
         if first.get("name"):
             self.model.rename_session(self.model.current_id, first["name"])
         self.history: list[str] = list(fixture.get("history", [])) if fixture else []
@@ -931,9 +933,9 @@ class TerminalWindow(AppWindow):
             if terminal is not None:
                 terminal.unselect_all()
 
-    def new_session(self) -> None:
+    def new_session(self, directory: str | None = None) -> None:
         self._reset_selection()
-        self.model.new_session(self.model.active.cwd)
+        self.model.new_session(directory if directory is not None else self.model.active.cwd)
         self._render_stage()
         self._show_prompt()
         self._focus_active_terminal()
@@ -1083,8 +1085,9 @@ class TerminalWindow(AppWindow):
 class TerminalApplication(Adw.Application):
     def __init__(self) -> None:
         # A fresh preview can coexist with the prior preview's live shells.
-        flags = (Gio.ApplicationFlags.NON_UNIQUE if os.environ.get("LUMA_TERM_PREVIEW_FRESH") == "1"
-                 else Gio.ApplicationFlags.FLAGS_NONE)
+        flags = Gio.ApplicationFlags.HANDLES_OPEN
+        if os.environ.get("LUMA_TERM_PREVIEW_FRESH") == "1":
+            flags |= Gio.ApplicationFlags.NON_UNIQUE
         super().__init__(application_id=APP_ID, flags=flags)
 
     def do_startup(self) -> None:
@@ -1096,9 +1099,24 @@ class TerminalApplication(Adw.Application):
     def do_activate(self) -> None:
         (self.props.active_window or TerminalWindow(self, fixture_from_environment())).present()
 
+    def do_open(self, files, _count, _hint) -> None:
+        for file in files:
+            directory = file.get_path() if file.is_native() else None
+            if not directory or not Path(directory).is_dir():
+                self.do_activate()
+                Toast.show(self.props.active_window.host,
+                           "Terminal can only open folders on this computer", kind="error")
+                continue
+            window = self.props.active_window
+            if window is None:
+                window = TerminalWindow(self, fixture_from_environment(), initial_directory=directory)
+            else:
+                window.new_session(directory)
+            window.present()
 
-def main() -> int:
-    return TerminalApplication().run([])
+
+def main(argv: list[str] | None = None) -> int:
+    return TerminalApplication().run(sys.argv if argv is None else argv)
 
 
 if __name__ == "__main__":

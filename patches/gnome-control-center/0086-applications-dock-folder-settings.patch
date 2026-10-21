@@ -1,0 +1,253 @@
+From: Luma Developers
+Subject: [PATCH] Keep dock folder settings aligned with the Applications drawer
+
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -31,6 +31,7 @@
+ 
+ CC_PANEL_REGISTER (CcDashPanel, cc_dash_panel)
+ static const char *edges[] = { "bottom", "top", "left", "right" };
++#define APPLICATIONS_URI "applications:///"
+ static const char * const folder_views[] = { "stack", "grid", NULL };
+ 
+ /* A key the installed shell state does not have is simply absent: the row
+@@ -43,12 +44,35 @@
+   return schema && g_settings_schema_has_key (schema, key);
+ }
+ 
++/* Match the Shell's untouched-profile defaults without overwriting an explicit
++ * empty list, custom pins or administrator policy. Mutations persist this
++ * effective list so removing one default keeps the other. */
++static char **
++folder_uris (CcDashPanel *self)
++{
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_autoptr(GVariant) user = g_settings_get_user_value (self->settings, "dock-folders");
++  const char *downloads;
++  g_autoptr(GPtrArray) defaults = NULL;
++
++  if (uris[0] || user || !g_settings_is_writable (self->settings, "dock-folders"))
++    return g_steal_pointer (&uris);
++
++  defaults = g_ptr_array_new_with_free_func (g_free);
++  g_ptr_array_add (defaults, g_strdup (APPLICATIONS_URI));
++  downloads = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
++  if (downloads && !g_str_equal (downloads, g_get_home_dir ()))
++    g_ptr_array_add (defaults, g_filename_to_uri (downloads, NULL, NULL));
++  g_ptr_array_add (defaults, NULL);
++  return (char **) g_ptr_array_free (g_steal_pointer (&defaults), FALSE);
++}
++
+ static gboolean
+ folders_pinned (CcDashPanel *self)
+ {
+   if (!has_key (self, "dock-folders"))
+     return FALSE;
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_auto(GStrv) uris = folder_uris (self);
+   return uris != NULL && uris[0] != NULL;
+ }
+ 
+@@ -292,6 +316,8 @@
+ folder_view_for (CcDashPanel *self, const char *uri)
+ {
+   const char *view = NULL;
++  if (g_str_equal (uri, APPLICATIONS_URI))
++    return folder_views[1];
+   g_autoptr(GVariant) stored = NULL;
+   if (!has_key (self, "dock-folders-views"))
+     return folder_views[0];
+@@ -367,14 +393,18 @@
+   guint selected = gtk_drop_down_get_selected (drop);
+   if (self->syncing_folders || !uri || selected >= G_N_ELEMENTS (folder_views) - 1)
+     return;
+-  folder_set_view (self, uri, folder_views[selected]);
++  if (g_settings_is_writable (self->settings, "dock-folders-views"))
++    folder_set_view (self, uri, folder_views[selected]);
+ }
+ 
+ static void
+ folder_remove_clicked (GtkButton *button, CcDashPanel *self)
+ {
+-  const char *uri = g_object_get_data (G_OBJECT (button), "folder-uri");
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  /* Writing the list rebuilds these rows synchronously. Keep our own URI. */
++  g_autofree char *uri = g_strdup (g_object_get_data (G_OBJECT (button), "folder-uri"));
++  if (!g_settings_is_writable (self->settings, "dock-folders"))
++    return;
++  g_auto(GStrv) uris = folder_uris (self);
+   g_autoptr(GPtrArray) kept = g_ptr_array_new ();
+   for (guint i = 0; uris[i]; i++)
+     if (!g_str_equal (uris[i], uri))
+@@ -390,8 +420,10 @@
+ folder_move_clicked (GtkButton *button, CcDashPanel *self)
+ {
+   const char *uri = g_object_get_data (G_OBJECT (button), "folder-uri");
++  if (!g_settings_is_writable (self->settings, "dock-folders"))
++    return;
+   int delta = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "folder-delta"));
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_auto(GStrv) uris = folder_uris (self);
+   guint count = g_strv_length (uris);
+   for (guint i = 0; i < count; i++)
+     {
+@@ -414,10 +446,10 @@
+   CcDashPanel *self = data;
+   g_autoptr(GError) error = NULL;
+   g_autoptr(GFile) folder = gtk_file_dialog_select_folder_finish (GTK_FILE_DIALOG (source), result, &error);
+-  if (!folder)
++  if (!folder || !g_settings_is_writable (self->settings, "dock-folders"))
+     return;
+   g_autofree char *uri = g_file_get_uri (folder);
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_auto(GStrv) uris = folder_uris (self);
+   guint count = g_strv_length (uris);
+   for (guint i = 0; i < count; i++)
+     if (g_str_equal (uris[i], uri))
+@@ -437,6 +469,25 @@
+   gtk_file_dialog_set_title (dialog, _("Add a folder to the dock"));
+   gtk_file_dialog_select_folder (dialog, GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL,
+                                  NULL, folder_chosen, self);
++}
++
++static void
++applications_add_activated (AdwButtonRow *row, CcDashPanel *self)
++{
++  g_auto(GStrv) uris = folder_uris (self);
++  guint count = g_strv_length (uris);
++  g_autofree const char **next = NULL;
++
++  if (!g_settings_is_writable (self->settings, "dock-folders"))
++    return;
++  for (guint i = 0; i < count; i++)
++    if (g_str_equal (uris[i], APPLICATIONS_URI))
++      return;
++  next = g_new0 (const char *, count + 2);
++  for (guint i = 0; i < count; i++)
++    next[i] = uris[i];
++  next[count] = APPLICATIONS_URI;
++  g_settings_set_strv (self->settings, "dock-folders", (const char * const *) next);
+ }
+ 
+ static void
+@@ -483,9 +534,13 @@
+   if (!self->folders_group)
+     return;
+ 
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_auto(GStrv) uris = folder_uris (self);
+   guint count = g_strv_length (uris);
+   gboolean pinned = count > 0;
++  gboolean writable = g_settings_is_writable (self->settings, "dock-folders");
++  gboolean views_writable = has_key (self, "dock-folders-views") &&
++    g_settings_is_writable (self->settings, "dock-folders-views");
++  gboolean has_applications = FALSE;
+   gboolean shown = folders_shown (self);
+ 
+   if (self->folders_show_row)
+@@ -505,6 +560,7 @@
+     }
+ 
+   g_autoptr(GString) key = g_string_new (NULL);
++  g_string_append_printf (key, "%d:%d\n", writable, views_writable);
+   for (guint i = 0; i < count; i++)
+     g_string_append_printf (key, "%s\t%s\n", uris[i], folder_view_for (self, uris[i]));
+   if (g_strcmp0 (key->str, self->folders_key) == 0)
+@@ -519,6 +575,8 @@
+   self->syncing_folders = TRUE;
+   for (guint i = 0; i < count; i++)
+     {
++      gboolean applications = g_str_equal (uris[i], APPLICATIONS_URI);
++      has_applications |= applications;
+       g_autoptr(GFile) file = g_file_new_for_uri (uris[i]);
+       g_autofree char *path = g_file_get_path (file);
+       g_autofree char *name = g_file_get_basename (file);
+@@ -529,24 +587,35 @@
+       const char *icons[] = { "go-up-symbolic", "go-down-symbolic" };
+       const char *moves[] = { N_("Move up"), N_("Move down") };
+ 
+-      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), name ? name : uris[i]);
++      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), applications ? _("Applications") : (name ? name : uris[i]));
+       /* The folder's path is its second line, written the way Files writes
+        * it, so a folder is told apart from another of the same name. */
+       if (path && home && g_str_has_prefix (path, home))
+         shortened = g_strconcat ("~", path + strlen (home), NULL);
+       adw_action_row_set_subtitle (ADW_ACTION_ROW (row),
+-                                   shortened ? shortened : (path ? path : uris[i]));
+-      adw_action_row_add_prefix (row, gtk_image_new_from_icon_name ("folder-symbolic"));
+-
+-      views = gtk_drop_down_new_from_strings ((const char * const *) (const char *[]) { _("Stack"), _("Grid"), NULL });
+-      gtk_widget_set_valign (views, GTK_ALIGN_CENTER);
+-      gtk_drop_down_set_selected (GTK_DROP_DOWN (views),
+-        g_str_equal (folder_view_for (self, uris[i]), folder_views[1]) ? 1 : 0);
+-      gtk_accessible_update_property (GTK_ACCESSIBLE (views),
+-                                      GTK_ACCESSIBLE_PROPERTY_LABEL, _("Opens as"), -1);
+-      g_object_set_data_full (G_OBJECT (views), "folder-uri", g_strdup (uris[i]), g_free);
+-      g_signal_connect_object (views, "notify::selected", G_CALLBACK (folder_view_changed), self, 0);
+-      adw_action_row_add_suffix (row, views);
++                                   applications ? _("Installed apps") :
++                                   (shortened ? shortened : (path ? path : uris[i])));
++      adw_action_row_add_prefix (row, gtk_image_new_from_icon_name (applications ? "view-app-grid-symbolic" : "folder-symbolic"));
++
++      if (applications)
++        {
++          views = gtk_label_new (_("App grid"));
++          gtk_widget_add_css_class (views, "dim-label");
++          adw_action_row_add_suffix (row, views);
++        }
++      else
++        {
++          views = gtk_drop_down_new_from_strings ((const char * const *) (const char *[]) { _("Stack"), _("Grid"), NULL });
++          gtk_widget_set_valign (views, GTK_ALIGN_CENTER);
++          gtk_drop_down_set_selected (GTK_DROP_DOWN (views),
++            g_str_equal (folder_view_for (self, uris[i]), folder_views[1]) ? 1 : 0);
++          gtk_accessible_update_property (GTK_ACCESSIBLE (views),
++                                          GTK_ACCESSIBLE_PROPERTY_LABEL, _("Opens as"), -1);
++          g_object_set_data_full (G_OBJECT (views), "folder-uri", g_strdup (uris[i]), g_free);
++          g_signal_connect_object (views, "notify::selected", G_CALLBACK (folder_view_changed), self, 0);
++          adw_action_row_add_suffix (row, views);
++          gtk_widget_set_sensitive (views, views_writable);
++        }
+ 
+       buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+       gtk_widget_add_css_class (buttons, "linked");
+@@ -558,7 +627,7 @@
+           gtk_widget_set_tooltip_text (button, _(moves[b]));
+           gtk_accessible_update_property (GTK_ACCESSIBLE (button),
+                                           GTK_ACCESSIBLE_PROPERTY_LABEL, _(moves[b]), -1);
+-          gtk_widget_set_sensitive (button, b == 0 ? i > 0 : i + 1 < count);
++          gtk_widget_set_sensitive (button, writable && (b == 0 ? i > 0 : i + 1 < count));
+           g_object_set_data_full (G_OBJECT (button), "folder-uri", g_strdup (uris[i]), g_free);
+           g_object_set_data (G_OBJECT (button), "folder-delta", GINT_TO_POINTER (b == 0 ? -1 : 1));
+           g_signal_connect_object (button, "clicked", G_CALLBACK (folder_move_clicked), self, 0);
+@@ -566,6 +635,7 @@
+         }
+       remove = gtk_button_new_from_icon_name ("list-remove-symbolic");
+       gtk_widget_add_css_class (remove, "flat");
++      gtk_widget_set_sensitive (remove, writable);
+       gtk_widget_set_tooltip_text (remove, _("Remove from the dock"));
+       gtk_accessible_update_property (GTK_ACCESSIBLE (remove),
+                                       GTK_ACCESSIBLE_PROPERTY_LABEL, _("Remove from the dock"), -1);
+@@ -579,10 +649,22 @@
+     }
+   self->syncing_folders = FALSE;
+ 
++  if (!has_applications)
++    {
++      AdwButtonRow *add = ADW_BUTTON_ROW (adw_button_row_new ());
++      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (add), _("Add Applications"));
++      adw_button_row_set_start_icon_name (add, "view-app-grid-symbolic");
++      gtk_widget_set_sensitive (GTK_WIDGET (add), writable);
++      g_signal_connect_object (add, "activated", G_CALLBACK (applications_add_activated), self, 0);
++      adw_preferences_group_add (self->folders_group, GTK_WIDGET (add));
++      g_ptr_array_add (self->folder_rows, add);
++    }
++
+   {
+     AdwButtonRow *add = ADW_BUTTON_ROW (adw_button_row_new ());
+     adw_preferences_row_set_title (ADW_PREFERENCES_ROW (add), _("Add folder…"));
+     adw_button_row_set_start_icon_name (add, "list-add-symbolic");
++    gtk_widget_set_sensitive (GTK_WIDGET (add), writable);
+     g_signal_connect_object (add, "activated", G_CALLBACK (folder_add_activated), self, 0);
+     adw_preferences_group_add (self->folders_group, GTK_WIDGET (add));
+     g_ptr_array_add (self->folder_rows, add);

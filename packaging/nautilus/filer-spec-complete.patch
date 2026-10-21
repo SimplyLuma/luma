@@ -5,13 +5,13 @@
  Name:           nautilus
  Version:        50.2.2
 -Release:        %autorelease
-+Release:        1.luma.72.creator20261020.1%{?dist}
++Release:        1.luma.74.creator20261021.1%{?dist}
 +Requires:       prairie-icon-theme >= 0.1.0-1.luma.21
 +Requires:       luma-application-installer >= 0.1.0-1.luma.60
  Summary:        File manager for GNOME
  
  # Sources are GPL-3.0-or-later and Appdata is CC0-1.0.
-@@ -29,7 +31,178 @@
+@@ -29,7 +31,179 @@
  Source0:        https://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 +Source9004:     org.project_luma.shell-state.gschema.xml
  # https://pagure.io/fedora-workstation/issue/442
@@ -175,6 +175,7 @@
 +Patch1155:      0155-filer-save-dialog-and-compact-details.patch
 +Patch1156:      0156-filer-applications-cache-and-columns.patch
 +Patch1157:      0157-filer-asynchronous-themed-application-icons.patch
++Patch1158:      0158-filer-terminal-and-hover-open-menus.patch
 +
 +BuildRequires:  luma-ui-reorder-feedback >= 1
 +Requires:       luma-ui-reorder-feedback >= 1

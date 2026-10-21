@@ -1,0 +1,60 @@
+From: Luma Developers
+Subject: [PATCH] Brightness keys use one percent and wake idle dimming
+
+diff --git a/js/misc/brightnessManager.js b/js/misc/brightnessManager.js
+--- a/js/misc/brightnessManager.js
++++ b/js/misc/brightnessManager.js
+@@ -5,7 +5,7 @@
+ 
+ import * as Main from '../ui/main.js';
+ 
+-const SCALE_VALUE_N_STEPS = 20;
++const SCALE_VALUE_N_STEPS = 100;
+ const SCALE_VALUE_CHANGE_EPSILON = 0.001;
+ 
+ const KEYBINDING_SCHEMA = 'org.gnome.shell.keybindings';
+@@ -105,31 +105,38 @@
+         return [...this._monitorScales.values()];
+     }
+ 
++    _adjustBrightness(scale, operation) {
++        if (!scale)
++            return;
++        this._dimmingEnabled = false;
++        scale[operation]();
++    }
++
+     _screenBrightnessUp() {
+-        this._globalScale?.stepUp();
++        this._adjustBrightness(this._globalScale, 'stepUp');
+     }
+ 
+     _screenBrightnessUpCurrentMonitor() {
+         const monitor = global.backend.get_current_logical_monitor();
+-        this._monitorScales.get(monitor)?.stepUp();
++        this._adjustBrightness(this._monitorScales.get(monitor), 'stepUp');
+     }
+ 
+     _screenBrightnessDown() {
+-        this._globalScale?.stepDown();
++        this._adjustBrightness(this._globalScale, 'stepDown');
+     }
+ 
+     _screenBrightnessDownCurrentMonitor() {
+         const monitor = global.backend.get_current_logical_monitor();
+-        this._monitorScales.get(monitor)?.stepDown();
++        this._adjustBrightness(this._monitorScales.get(monitor), 'stepDown');
+     }
+ 
+     _screenBrightnessCycle() {
+-        this._globalScale?.cycleUp();
++        this._adjustBrightness(this._globalScale, 'cycleUp');
+     }
+ 
+     _screenBrightnessCycleCurrentMonitor() {
+         const monitor = global.backend.get_current_logical_monitor();
+-        this._monitorScales.get(monitor)?.cycleUp();
++        this._adjustBrightness(this._monitorScales.get(monitor), 'cycleUp');
+     }
+ 
+     _monitorsChanged() {

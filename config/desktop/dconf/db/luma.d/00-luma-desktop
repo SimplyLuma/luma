@@ -122,9 +122,8 @@ toggle-tiled-right=@as []
 # Ari's quick popover: Super+J, and the Copilot key laptops now ship with
 # (it sends Shift+Super+F23). Unlocked; a person's own shortcuts replace these.
 custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari-assistant-key/']
-# Volume keys and knobs move 2% a press (GNOME's 6% jumps past quiet levels):
-# fifty steps from silent to full instead of seventeen.
-volume-step=2
+# Volume keys and knobs move 1% per press. Key repeat retains rapid adjustment.
+volume-step=1
 
 [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari]
 name='Ask Ari'

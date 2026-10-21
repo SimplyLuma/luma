@@ -44,7 +44,8 @@ for component in "${components[@]}"; do
       depot_in_signer rm -rf "$work"
       depot_in_signer install -d "$work"
       depot_log "checking out $ref"
-      depot_in_signer ostree checkout --repo="$result/ostree" -U "$ref" "$work/runtime"
+      depot_in_signer ostree checkout --repo="$result/ostree" -U --force-copy --disable-cache "$ref" "$work/runtime"
+      depot_in_signer python3 -B "$depot_repo_root/scripts/depot/runtime/normalize-publish-metadata.py" "$work/runtime"
       if [ "$component" = Platform ]; then
         locale="$work/locale"
         depot_in_signer install -d "$locale/files"
@@ -58,6 +59,7 @@ sdk=org.projectluma.Sdk/$DEPOT_ARCH/$DEPOT_RUNTIME_BRANCH
 [ExtensionOf]
 ref=runtime/org.projectluma.Platform/$DEPOT_ARCH/$DEPOT_RUNTIME_BRANCH
 META
+        depot_in_signer python3 -B "$depot_repo_root/scripts/depot/runtime/normalize-publish-metadata.py" "$locale"
         depot_log "exporting org.projectluma.Platform.Locale"
         export_tree "$locale" "org.projectluma.Platform.Locale $DEPOT_RUNTIME_BRANCH build $build_id"
       else

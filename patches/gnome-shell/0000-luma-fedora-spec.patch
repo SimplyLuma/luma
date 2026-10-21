@@ -6,11 +6,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.116.creator20261020.1%{?dist}
++Release:        1.luma.119.creator20261021.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
  License:        GPL-2.0-or-later
-@@ -32,6 +32,266 @@
+@@ -32,6 +32,269 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -267,6 +267,9 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1268:      0274-dash-edges-and-grouped-search.patch
 +Patch1269:      0275-status-clock-well-and-options-polish.patch
 +Patch1270:      0276-quick-options-device-row-geometry.patch
++Patch1271:      0277-login-surfaces-and-dock-battery-percentage.patch
++Patch1272:      0278-brightness-one-percent-and-idle-input.patch
++Patch1273:      0279-applications-and-downloads-drawer.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

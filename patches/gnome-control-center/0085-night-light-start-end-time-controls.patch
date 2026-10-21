@@ -1,0 +1,355 @@
+From: Luma Developers
+Subject: [PATCH] Night Light accepts local times to the minute with native editors
+
+diff --git a/shell/cc-luma-displays.c b/shell/cc-luma-displays.c
+--- a/shell/cc-luma-displays.c
++++ b/shell/cc-luma-displays.c
+@@ -238,8 +238,18 @@
+ void cc_luma_display_draft_free (CcLumaDisplayDraft *draft) { if (!draft) return; g_object_unref (draft->model); g_hash_table_unref (draft->original); g_free (draft); }
+ 
+ static const char * const schedules[] = { "sun", "manual", NULL };
+-static const char * const from_times[] = { "19:00", "20:00", "21:00", "22:00", "23:00", NULL };
+-static const char * const to_times[] = { "05:30", "06:00", "06:30", "07:00", "08:00", NULL };
++/* The owner stores local wall-clock hours. Accept every minute, including
++ * existing preferences outside the old five-item evening/morning presets. */
++static gboolean night_time_valid (JsonNode *node)
++{
++  if (!node || json_node_get_value_type (node) != G_TYPE_STRING) return FALSE;
++  const char *text = json_node_get_string (node);
++  return text && strlen (text) == 5 && text[2] == ':' &&
++    g_ascii_isdigit (text[0]) && g_ascii_isdigit (text[1]) &&
++    g_ascii_isdigit (text[3]) && g_ascii_isdigit (text[4]) &&
++    (text[0] - '0') * 10 + text[1] - '0' < 24 &&
++    (text[3] - '0') * 10 + text[4] - '0' < 60;
++}
+ gboolean cc_luma_night_validate (CcLumaFixture *model)
+ {
+   JsonNode *enabled = cc_luma_fixture_get (model, "night"), *temperature = cc_luma_fixture_get (model, "nightT");
+@@ -247,16 +257,16 @@
+     temperature && json_node_get_value_type (temperature) == G_TYPE_INT64 &&
+     json_node_get_int (temperature) >= 0 && json_node_get_int (temperature) <= 100 &&
+     string_in (cc_luma_fixture_get (model, "nightWhen"), schedules) &&
+-    string_in (cc_luma_fixture_get (model, "nightFrom"), from_times) &&
+-    string_in (cc_luma_fixture_get (model, "nightTo"), to_times);
++    night_time_valid (cc_luma_fixture_get (model, "nightFrom")) &&
++    night_time_valid (cc_luma_fixture_get (model, "nightTo"));
+ }
+ gboolean cc_luma_night_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error)
+ {
+   if (!cc_luma_night_validate (model) || !key || !value) return invalid (error);
+-  const char * const *choices = g_str_equal (key, "nightWhen") ? schedules :
+-    g_str_equal (key, "nightFrom") ? from_times : g_str_equal (key, "nightTo") ? to_times : NULL;
+   g_autoptr (JsonNode) node = json_node_init_string (json_node_alloc (), value);
+-  if (!choices || !string_in (node, choices)) return invalid (error);
++  gboolean valid = g_str_equal (key, "nightWhen") ? string_in (node, schedules) :
++    (g_str_equal (key, "nightFrom") || g_str_equal (key, "nightTo")) && night_time_valid (node);
++  if (!valid) return invalid (error);
+   return cc_luma_fixture_set (model, key, node, error);
+ }
+ gboolean cc_luma_night_set_temperature (CcLumaFixture *model, gint64 value, GError **error)
+diff --git a/shell/cc-luma-view-nightlight.c b/shell/cc-luma-view-nightlight.c
+--- a/shell/cc-luma-view-nightlight.c
++++ b/shell/cc-luma-view-nightlight.c
+@@ -8,17 +8,6 @@
+   if (g_str_equal (key, "nightT"))
+     return cc_luma_night_set_temperature (v->model, json_node_get_int (value), error);
+   return cc_luma_night_set_choice (v->model, key, json_node_get_string (value), error);
+-}
+-
+-static void until_tomorrow (GtkButton *button, View *v)
+-{
+-  g_autoptr (GError) error = NULL;
+-  if (cc_luma_fixture_set_flag (v->model, "night", FALSE, &error))
+-    {
+-      cc_luma_view_queue_refresh (v);
+-      luma_toast_show (v->root, "Night Light is off until tomorrow", "done");
+-    }
+-  else cc_luma_view_report_error (v, error);
+ }
+ 
+ /* Children placed by fraction of the width: spans ("cf-wf" > 0) fill the
+@@ -82,8 +71,8 @@
+ static GtkWidget *night_hero (View *v)
+ {
+   gboolean sun = g_str_equal (cc_luma_view_text (v, "nightWhen"), "sun");
+-  double a = sun ? 18.87 : hours (cc_luma_view_text (v, "nightFrom"));
+-  double b = sun ? 6.97 : hours (cc_luma_view_text (v, "nightTo"));
++  double a = hours (cc_luma_view_text (v, "nightFrom"));
++  double b = hours (cc_luma_view_text (v, "nightTo"));
+   const char *labels[] = { "Midnight", "6 AM", "Noon", "6 PM", "Midnight", NULL };
+   g_autoptr (GDateTime) now = g_date_time_new_now_local ();
+   GtkWidget *hero = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+@@ -100,32 +89,152 @@
+   else placed (day, a / 24, (b - a) / 24, "cf-night");
+   placed (day, (g_date_time_get_hour (now) + g_date_time_get_minute (now) / 60.0) / 24, 0, "cf-now-mark");
+   gtk_box_append (GTK_BOX (hero), temp);
+-  gtk_box_append (GTK_BOX (hero), day);
+-  gtk_box_append (GTK_BOX (hero), cc_luma_dev_day_labels (labels));
++  if (!sun)
++    {
++      gtk_box_append (GTK_BOX (hero), day);
++      gtk_box_append (GTK_BOX (hero), cc_luma_dev_day_labels (labels));
++    }
++  else
++    {
++      g_object_ref_sink (day);
++      g_object_unref (day);
++    }
+   return hero;
+ }
+ 
++static char *night_time_caption (const char *value, gboolean twelve_hour)
++{
++  int hour = (int) hours (value), minute = (int) g_ascii_strtoll (value + 3, NULL, 10);
++  g_autoptr (GDateTime) time = g_date_time_new_utc (2000, 1, 1, hour, minute, 0);
++  g_autofree char *caption = g_date_time_format (time, twelve_hour ? "%I:%M %p" : "%H:%M");
++  return g_strdup (twelve_hour && g_str_has_prefix (caption, "0") ? caption + 1 : caption);
++}
++
++/* Draft in a native popover; commit once, rather than rebuilding the page
++ * after each digit. Dismissing the popover leaves the schedule unchanged. */
++typedef struct {
++  View *view;
++  const char *key;
++  GtkPopover *popover;
++  GtkSpinButton *hour;
++  GtkSpinButton *minute;
++  GtkDropDown *period;
++  gboolean twelve_hour;
++} NightTime;
++
++static gboolean minute_output (GtkSpinButton *spin, gpointer data)
++{
++  g_autofree char *text = g_strdup_printf ("%02d", gtk_spin_button_get_value_as_int (spin));
++  gtk_editable_set_text (GTK_EDITABLE (spin), text);
++  return TRUE;
++}
++
++static void night_time_save (GtkButton *button, NightTime *edit)
++{
++  g_autoptr (GError) error = NULL;
++  gtk_spin_button_update (edit->hour);
++  gtk_spin_button_update (edit->minute);
++  int hour = gtk_spin_button_get_value_as_int (edit->hour);
++  int minute = gtk_spin_button_get_value_as_int (edit->minute);
++  if (edit->twelve_hour)
++    hour = hour % 12 + 12 * gtk_drop_down_get_selected (edit->period);
++  g_autofree char *value = g_strdup_printf ("%02d:%02d", hour, minute);
++  if (!cc_luma_night_set_choice (edit->view->model, edit->key, value, &error))
++    {
++      cc_luma_view_report_error (edit->view, error);
++      return;
++    }
++  gtk_popover_popdown (edit->popover);
++  cc_luma_view_queue_refresh (edit->view);
++}
++
++static void night_time_row (View *v, GtkBox *card, const char *key,
++                            const char *title, gboolean manual)
++{
++  const char *current = cc_luma_view_text (v, key);
++  int hour = (int) hours (current), minute = (int) g_ascii_strtoll (current + 3, NULL, 10);
++  g_autoptr (GSettings) iface = g_settings_new ("org.gnome.desktop.interface");
++  g_autofree char *clock_format = g_settings_get_string (iface, "clock-format");
++  gboolean twelve_hour = g_str_equal (clock_format, "12h");
++  g_autofree char *caption = night_time_caption (current, twelve_hour);
++  GtkWidget *button = gtk_menu_button_new ();
++  gtk_menu_button_set_label (GTK_MENU_BUTTON (button), caption);
++  gtk_widget_add_css_class (button, "cf-pk");
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (button, name);
++  g_autofree char *accessible = g_strdup_printf ("%s, %s", title, caption);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
++  gtk_widget_set_sensitive (button, manual);
++
++  GtkWidget *popover = gtk_popover_new ();
++  GtkWidget *body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
++  GtkWidget *fields = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++  GtkWidget *save = gtk_button_new_with_label ("Done");
++  gtk_widget_add_css_class (save, "suggested-action");
++  gtk_widget_set_margin_top (body, 12);
++  gtk_widget_set_margin_bottom (body, 12);
++  gtk_widget_set_margin_start (body, 12);
++  gtk_widget_set_margin_end (body, 12);
++  NightTime *edit = g_new0 (NightTime, 1);
++  edit->view = v; edit->key = key; edit->popover = GTK_POPOVER (popover); edit->twelve_hour = twelve_hour;
++  edit->hour = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (twelve_hour ? 1 : 0, twelve_hour ? 12 : 23, 1));
++  edit->minute = GTK_SPIN_BUTTON (gtk_spin_button_new_with_range (0, 59, 1));
++  for (guint i = 0; i < 2; i++)
++    {
++      GtkSpinButton *spin = i ? edit->minute : edit->hour;
++      gtk_spin_button_set_numeric (spin, TRUE);
++      gtk_spin_button_set_wrap (spin, TRUE);
++      gtk_spin_button_set_update_policy (spin, GTK_UPDATE_IF_VALID);
++      gtk_editable_set_width_chars (GTK_EDITABLE (spin), 2);
++      gtk_editable_set_max_width_chars (GTK_EDITABLE (spin), 2);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (spin), GTK_ACCESSIBLE_PROPERTY_LABEL, i ? "Minute" : "Hour", -1);
++      if (i || !twelve_hour) g_signal_connect (spin, "output", G_CALLBACK (minute_output), NULL);
++    }
++  gtk_spin_button_set_value (edit->hour, twelve_hour ? ((hour + 11) % 12 + 1) : hour);
++  gtk_spin_button_set_value (edit->minute, minute);
++  gtk_box_append (GTK_BOX (fields), GTK_WIDGET (edit->hour));
++  gtk_box_append (GTK_BOX (fields), gtk_label_new (":"));
++  gtk_box_append (GTK_BOX (fields), GTK_WIDGET (edit->minute));
++  if (twelve_hour)
++    {
++      g_autoptr (GDateTime) morning = g_date_time_new_utc (2000, 1, 1, 0, 0, 0);
++      g_autoptr (GDateTime) evening = g_date_time_new_utc (2000, 1, 1, 12, 0, 0);
++      g_autofree char *am = g_date_time_format (morning, "%p");
++      g_autofree char *pm = g_date_time_format (evening, "%p");
++      const char *periods[] = {am, pm, NULL};
++      edit->period = GTK_DROP_DOWN (gtk_drop_down_new_from_strings (periods));
++      gtk_drop_down_set_selected (edit->period, hour >= 12);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (edit->period), GTK_ACCESSIBLE_PROPERTY_LABEL, "AM or PM", -1);
++      gtk_box_append (GTK_BOX (fields), GTK_WIDGET (edit->period));
++    }
++  gtk_box_append (GTK_BOX (body), cc_luma_view_label (title, "body", FALSE));
++  gtk_box_append (GTK_BOX (body), fields);
++  gtk_box_append (GTK_BOX (body), save);
++  gtk_popover_set_child (GTK_POPOVER (popover), body);
++  gtk_menu_button_set_popover (GTK_MENU_BUTTON (button), popover);
++  g_object_set_data_full (G_OBJECT (popover), "night-time-editor", edit, g_free);
++  g_signal_connect (save, "clicked", G_CALLBACK (night_time_save), edit);
++  cf_row (card, NULL, title, NULL, button, FALSE);
++}
++
+ void cc_luma_view_nightlight_render (View *v)
+ {
+   gboolean manual = g_str_equal (cc_luma_view_text (v, "nightWhen"), "manual");
++  g_autoptr (GSettings) iface = g_settings_new ("org.gnome.desktop.interface");
++  g_autofree char *clock_format = g_settings_get_string (iface, "clock-format");
++  gboolean twelve_hour = g_str_equal (clock_format, "12h");
++  g_autofree char *from = night_time_caption (cc_luma_view_text (v, "nightFrom"), twelve_hour);
++  g_autofree char *to = night_time_caption (cc_luma_view_text (v, "nightTo"), twelve_hour);
+   g_autofree char *meta = !cc_luma_view_flag (v, "night") ? g_strdup ("Off") :
+     !manual ? g_strdup ("From sunset to sunrise") :
+-    g_strdup_printf ("From %s to %s", cc_luma_view_text (v, "nightFrom"), cc_luma_view_text (v, "nightTo"));
++    g_strdup_printf ("From %s to %s", from, to);
+   cf_header (v, "Night Light", meta, cf_top_switch (v, "night"));
+   cf_hero (v, night_hero (v), "cf-nightlight");
+   GtkBox *card = cf_group (v, NULL, NULL);
+   cc_luma_dev_rd (v, card, "nightWhen", "sun", "Sunset to sunrise", "Follows the sun where you are", night_set);
+   cc_luma_dev_rd (v, card, "nightWhen", "manual", "Set times", NULL, night_set);
+-  if (manual)
+-    {
+-      const char * const from[] = { "19:00", "19:00", "20:00", "20:00", "21:00", "21:00", "22:00", "22:00", "23:00", "23:00", NULL };
+-      const char * const to[] = { "05:30", "05:30", "06:00", "06:00", "06:30", "06:30", "07:00", "07:00", "08:00", "08:00", NULL };
+-      cf_pk (v, card, "nightFrom", "From", NULL, from);
+-      cf_pk (v, card, "nightTo", "To", NULL, to);
+-    }
++  night_time_row (v, card, "nightFrom", "Starts at", manual);
++  night_time_row (v, card, "nightTo", "Ends at", manual);
+   card = cf_group (v, NULL, NULL);
+   cc_luma_dev_rg (v, card, "nightT", "Color temperature", NULL, 0, 100, 1, "Cooler", "Warmer", NULL, night_set);
+-  card = cf_group (v, NULL, NULL);
+-  GtkWidget *row = cf_bt (v, card, "Turn off until tomorrow", NULL, "Turn off", FALSE, G_CALLBACK (until_tomorrow));
+-  gtk_widget_set_name (gtk_widget_get_last_child (gtk_widget_get_last_child (row)), "cf-nightoff");
+-}
++}
+diff --git a/shell/test-luma-live-gsettings.c b/shell/test-luma-live-gsettings.c
+--- a/shell/test-luma-live-gsettings.c
++++ b/shell/test-luma-live-gsettings.c
+@@ -75,11 +75,11 @@
+   g_settings_set_double (color, "night-light-schedule-to", 7.0);
+   spin ();
+   g_assert_cmpstr (text (model, "nightTo"), ==, "07:00");
+-  /* A time the model can't show becomes null, not a sample. */
++  /* Any valid minute from the owner remains editable. */
+   g_settings_set_double (color, "night-light-schedule-to", 6.25);
+   spin ();
+   g_assert_cmpstr (text (model, "nightTo"), ==, "06:15");
+-  g_assert_false (cc_luma_night_validate (model));
++  g_assert_true (cc_luma_night_validate (model));
+   cc_luma_adapter_gsettings.stop (state);
+ }
+ 
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -407,6 +407,20 @@
+   g_assert_true (cc_luma_night_set_temperature (model, 100, NULL));
+   g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "nightFrom")), ==, "22:00");
++  for (int minute = 0; minute < 24 * 60; minute++)
++    {
++      g_autofree char *time = g_strdup_printf ("%02d:%02d", minute / 60, minute % 60);
++      g_assert_true (cc_luma_night_set_choice (model, "nightFrom", time, NULL));
++      g_assert_true (cc_luma_night_set_choice (model, "nightTo", time, NULL));
++      g_assert_true (cc_luma_night_validate (model));
++    }
++  const char *invalid_times[] = { "", "24:00", "23:60", "-1:00", "1:00", "01:1", "01:00x", "ab:cd", NULL };
++  for (guint i = 0; invalid_times[i]; i++)
++    {
++      g_assert_false (cc_luma_night_set_choice (model, "nightFrom", invalid_times[i], NULL));
++      g_assert_false (cc_luma_night_set_choice (model, "nightTo", invalid_times[i], NULL));
++    }
++
+ }
+ static void search_folder_model (void)
+ {
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -967,8 +967,30 @@
+   for (guint i = 0; i < G_N_ELEMENTS (ids); i++) { g_autofree char *p = cc_luma_fixture_asset_path (model, ids[i], NULL); g_assert_cmpint (g_remove (p), ==, 0); }
+   remove_asset_fixture (dir);
+ }
++static void nightlight_edit_time (GtkWidget *view, const char *key, int hour, int minute, int period, gboolean save)
++{
++  GtkMenuButton *button = GTK_MENU_BUTTON (find_name (view, key));
++  g_assert_true (GTK_IS_MENU_BUTTON (button));
++  gtk_menu_button_popup (button); wait_ms (100);
++  GtkPopover *popover = gtk_menu_button_get_popover (button);
++  GtkWidget *body = gtk_popover_get_child (popover);
++  GtkWidget *fields = gtk_widget_get_next_sibling (gtk_widget_get_first_child (body));
++  GtkWidget *hours = gtk_widget_get_first_child (fields);
++  GtkWidget *minutes = gtk_widget_get_next_sibling (gtk_widget_get_next_sibling (hours));
++  g_assert_true (GTK_IS_SPIN_BUTTON (hours)); g_assert_true (GTK_IS_SPIN_BUTTON (minutes));
++  gtk_spin_button_set_value (GTK_SPIN_BUTTON (hours), hour);
++  gtk_spin_button_set_value (GTK_SPIN_BUTTON (minutes), minute);
++  GtkWidget *ampm = gtk_widget_get_next_sibling (minutes);
++  if (period >= 0) { g_assert_true (GTK_IS_DROP_DOWN (ampm)); gtk_drop_down_set_selected (GTK_DROP_DOWN (ampm), period); }
++  if (save) g_signal_emit_by_name (gtk_widget_get_next_sibling (fields), "clicked");
++  else gtk_popover_popdown (popover);
++  drain ();
++}
++
+ static void nightlight_view (void)
+ {
++  g_autoptr (GSettings) iface = g_settings_new ("org.gnome.desktop.interface");
++  g_settings_set_string (iface, "clock-format", "24h");
+   g_autoptr(CcLumaFixture) model = load ();
+   g_autoptr(CcLumaFixture) other = load ();
+   GtkWidget *window = gtk_window_new ();
+@@ -976,26 +998,26 @@
+   gtk_window_set_child (GTK_WINDOW (window), view); gtk_window_set_default_size (GTK_WINDOW (window), 390, 740);
+   gtk_window_present (GTK_WINDOW (window)); wait_ms (100);
+   g_assert_true (has_text (view, "From sunset to sunrise"));
+-  g_assert_null (find_name (view, "cf-nightFrom"));
++  g_assert_false (gtk_widget_get_sensitive (find_name (view, "cf-nightFrom")));
+   choose (find_name (view, "cf-nightWhen-manual")); drain ();
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "nightWhen")), ==, "manual");
+   g_assert_nonnull (find_name (view, "cf-nightFrom"));
+-  gtk_widget_activate_action (view, "cf.pick", "(ss)", "nightFrom", "23:00"); drain ();
+-  gtk_widget_activate_action (view, "cf.pick", "(ss)", "nightTo", "05:30"); drain ();
++  nightlight_edit_time (view, "cf-nightFrom", 23, 0, -1, TRUE);
++  nightlight_edit_time (view, "cf-nightTo", 5, 30, -1, TRUE);
+   g_assert_true (has_text (view, "From 23:00 to 05:30"));
+   GtkWidget *range = find_name (view, "cf-nightT");
+   gtk_range_set_value (GTK_RANGE (range), 91); drain ();
+   g_assert_true (range == find_name (view, "cf-nightT"));
+   g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "nightT")), ==, 91);
+   g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (other, "nightT")), ==, 55);
+-  g_signal_emit_by_name (find_name (view, "cf-nightoff"), "clicked"); drain ();
++  set_switch (find_name (view, "cf-night"), FALSE); drain ();
+   g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "night")));
+   g_assert_true (has_text (view, "Off"));
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "nightFrom")), ==, "23:00");
+   g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "nightT")), ==, 91);
+   set_switch (find_name (view, "cf-night"), TRUE); drain ();
+   choose (find_name (view, "cf-nightWhen-sun")); drain ();
+-  g_assert_null (find_name (view, "cf-nightFrom"));
++  g_assert_false (gtk_widget_get_sensitive (find_name (view, "cf-nightFrom")));
+   g_assert_true (has_text (view, "From sunset to sunrise"));
+   g_assert_cmpint (gtk_widget_get_width (window), ==, 390);
+   g_assert_null (cc_luma_view_get_error (view));

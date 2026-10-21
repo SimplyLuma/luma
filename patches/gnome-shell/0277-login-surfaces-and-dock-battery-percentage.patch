@@ -1,0 +1,353 @@
+From: Luma Developers
+Subject: [PATCH] Honor dock battery percentage and simplify login surfaces
+
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1215,6 +1215,21 @@
+         return St.ThemeContext.get_for_stage(global.stage).scale_factor;
+     }
+ 
++    // Text such as a battery percentage must participate in measurement.
++    // Keep columns shared down a side dock and mirror the complete cells in RTL.
++    _cellSizes(container) {
++        const columns = this._columns(container);
++        const widths = Array(columns).fill(STATUS_GLYPH * this._scale());
++        const heights = Array(this._rows(container)).fill(STATUS_GLYPH * this._scale());
++        this._visibleChildren(container).forEach((child, index) => {
++            const [, width] = child.get_preferred_width(-1);
++            const [, height] = child.get_preferred_height(width);
++            widths[index % columns] = Math.max(widths[index % columns], width);
++            heights[Math.floor(index / columns)] = Math.max(heights[Math.floor(index / columns)], height);
++        });
++        return {widths, heights};
++    }
++
+     vfunc_get_preferred_width(container, forHeight) {
+         if (!this._shelfPresentation) {
+             let minWidth = 0;
+@@ -1232,9 +1247,10 @@
+         }
+ 
+         const scale = this._scale();
+-        const columns = this._columns(container);
+-        const glyphs = columns * STATUS_GLYPH + (columns - 1) * STATUS_COLUMN_GAP;
+-        return [glyphs * scale, Math.max(DASH_TILE_SIZE, 12 + glyphs) * scale];
++        const {widths} = this._cellSizes(container);
++        const width = widths.reduce((sum, value) => sum + value, 0) +
++            (widths.length - 1) * STATUS_COLUMN_GAP * scale;
++        return [width, Math.max(DASH_TILE_SIZE * scale, 12 * scale + width)];
+     }
+ 
+     vfunc_get_preferred_height(container, forWidth) {
+@@ -1249,9 +1265,10 @@
+             return [minHeight, natHeight];
+         }
+ 
+-        const rows = this._rows(container);
+-        const glyphs = rows * STATUS_GLYPH + (rows - 1) * STATUS_ROW_GAP;
+-        return [glyphs * this._scale(), Math.max(DASH_TILE_SIZE, glyphs) * this._scale()];
++        const {heights} = this._cellSizes(container);
++        const height = heights.reduce((sum, value) => sum + value, 0) +
++            (heights.length - 1) * STATUS_ROW_GAP * this._scale();
++        return [height, Math.max(DASH_TILE_SIZE * this._scale(), height)];
+     }
+ 
+     vfunc_allocate(container, box) {
+@@ -1277,28 +1294,24 @@
+         }
+ 
+         const scale = this._scale();
+-        const columns = this._columns(container);
+-        const rows = this._rows(container);
+-        const cell = STATUS_GLYPH * scale;
++        const {widths, heights} = this._cellSizes(container);
+         const columnGap = STATUS_COLUMN_GAP * scale;
+         const rowGap = STATUS_ROW_GAP * scale;
+-        const contentWidth = columns * cell + (columns - 1) * columnGap;
+-        const width = box.x2 - box.x1;
+-        const height = box.y2 - box.y1;
++        const contentWidth = widths.reduce((sum, value) => sum + value, 0) + (widths.length - 1) * columnGap;
++        const contentHeight = heights.reduce((sum, value) => sum + value, 0) + (heights.length - 1) * rowGap;
++        const width = box.get_width();
+         const startX = Math.floor((width - contentWidth) / 2);
+-        const startY = Math.floor((height - (rows * cell + (rows - 1) * rowGap)) / 2);
+-
++        const startY = Math.floor((box.get_height() - contentHeight) / 2);
+         children.forEach((child, index) => {
+-            const logicalColumn = index % columns;
+-            const column = container.get_text_direction() === Clutter.TextDirection.RTL
+-                ? columns - 1 - logicalColumn : logicalColumn;
+-            const row = Math.floor(index / columns);
+-            const childBox = new Clutter.ActorBox({
+-                x1: startX + column * (cell + columnGap),
+-                y1: startY + row * (cell + rowGap),
+-                x2: startX + column * (cell + columnGap) + cell,
+-                y2: startY + row * (cell + rowGap) + cell,
+-            });
++            const column = index % widths.length;
++            const row = Math.floor(index / widths.length);
++            const offsetX = widths.slice(0, column).reduce((sum, value) => sum + value, 0) + column * columnGap;
++            const offsetY = heights.slice(0, row).reduce((sum, value) => sum + value, 0) + row * rowGap;
++            const x = container.get_text_direction() === Clutter.TextDirection.RTL
++                ? width - startX - offsetX - widths[column] : startX + offsetX;
++            const childBox = new Clutter.ActorBox();
++            childBox.set_origin(x, startY + offsetY);
++            childBox.set_size(widths[column], heights[row]);
+             child.allocate(childBox);
+         });
+     }
+@@ -1478,15 +1491,26 @@
+             layout_manager: layout});
+         this._slots = {};
+         for (const name of ['mic', 'wifi', 'bluetooth', 'volume', 'power', 'battery']) {
+-            const slot = new St.Widget({layout_manager: new Clutter.BinLayout(), style_class: 'luma-status-slot'});
++            const slot = new St.BoxLayout({style_class: 'luma-status-slot',
++                y_align: Clutter.ActorAlign.CENTER});
+             slot.icon = new St.Icon({style_class: 'system-status-icon', icon_size: STATUS_GLYPH,
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+             slot.add_child(slot.icon);
++            if (name === 'battery') {
++                slot.percentage = new St.Label({style_class: 'luma-secondary-status-text',
++                    y_align: Clutter.ActorAlign.CENTER, visible: false});
++                slot.percentage.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++                slot.add_child(slot.percentage);
++            }
+             if (name === 'mic') {
+                 slot.dot = new St.Widget({style_class: 'luma-status-recording', visible: false,
+                     x_expand: true, y_expand: true,
+                     x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
+-                slot.add_child(slot.dot);
++                const glyph = new St.Widget({layout_manager: new Clutter.BinLayout()});
++                slot.remove_child(slot.icon);
++                glyph.add_child(slot.icon);
++                glyph.add_child(slot.dot);
++                slot.add_child(glyph);
+             }
+             slot.connectObject('notify::visible', () => this._syncStatusControlWidth(), this);
+             this._slots[name] = slot;
+@@ -1504,6 +1528,9 @@
+             this._volumeInput?._indicator, this._powerProfiles?._indicator, this._system?._indicator];
+         for (const actor of actors.filter(Boolean))
+             actor.connectObject('notify::icon-name', sync, 'notify::visible', sync, this);
++        const percentage = this._system?._percentageLabel;
++        percentage?.connectObject('notify::text', sync, 'notify::visible', sync, this);
++        this._system?._systemItem?.powerToggle?.connectObject('notify::visible', sync, this);
+         this._volumeInput?._input?.connectObject('stream-updated', sync, this);
+         this._volumeInput?._control?.connectObject('stream-added', sync, 'stream-removed', sync, this);
+     }
+@@ -1542,6 +1569,12 @@
+         set('volume', 'luma-volume-2-symbolic', !volume.includes('muted'));
+         set('power', 'luma-gauge-symbolic', Boolean(this._powerProfiles?._indicator));
+         const battery = this._system?._indicator;
++        const batterySlot = this._slots.battery;
++        const percentage = this._system?._percentageLabel;
++        batterySlot.visible = Boolean(this._system?._systemItem?.powerToggle?.visible);
++        batterySlot.percentage.text = percentage?.text ?? '';
++        batterySlot.percentage.visible = batterySlot.visible && Boolean(percentage?.visible);
++        batterySlot.set_style(batterySlot.percentage.visible ? 'spacing: 4px;' : null);
+         set('battery', 'luma-battery-medium-symbolic', Boolean(battery?.visible));
+         const stream = this._volumeInput?._input?.stream;
+         const muted = Boolean(stream?.is_muted);
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -187,7 +187,6 @@
+             'sleep', _('Sleeping…'), () => this._systemActions.activateSuspend());
+         this._addSystemAction(_('Restart'), 'can-restart', 'view-refresh-symbolic',
+             'restart', _('Restarting…'), () => this._systemActions.activateRestart());
+-        this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+         this._addSystemAction(_('Shut down'), 'can-power-off', 'system-shutdown-symbolic',
+             'shutdown', _('Shutting down…'), () => this._systemActions.activatePowerOff());
+ 
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -887,6 +887,9 @@
+         };
+ 
+         this.connect('destroy', () => {
++            this._destroyed = true;
++            if (this._widthLaterId) GLib.source_remove(this._widthLaterId);
++            this._widthLaterId = 0;
+             this._focusVisible?.destroy();
+             this._focusVisible = null;
+             this._mediaGuard?.destroy();
+@@ -3026,7 +3029,7 @@
+     }
+ 
+     _queueIndicatorLayout() {
+-        if (this._indicatorLaterId)
++        if (this._destroyed || this._indicatorLaterId)
+             return;
+         // Adjustment/allocation signals can arrive during parent allocation.
+         // Coalesce the notification instead of invalidating that layout pass.
+@@ -3038,7 +3041,7 @@
+     }
+ 
+     _queueDockWidth() {
+-        if (this._widthLaterId)
++        if (this._destroyed || this._widthLaterId)
+             return;
+         this._widthLaterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+             this._widthLaterId = 0;
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -750,3 +750,33 @@
+ .poster-card.compact .prairie-password-field { width: 220px; }
+ 
+ .poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }
++
++/* The login card is a single, solid surface. */
++.poster-card, .poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26282e;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
++}
++/* BoxPointer owns the rounded outline; do not stack a second square surface. */
++.prairie-login-power-menu {
++  -arrow-border-radius: 16px;
++  -arrow-background-color: #2c2c32;
++  -arrow-border-color: rgba(255, 255, 255, 0.12);
++  -arrow-border-width: 1px;
++}
++.prairie-login-power-menu .popup-menu-content {
++  padding: 6px;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++}
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 32px;
++  margin: 0;
++  padding: 0 10px;
++  border: 0;
++  box-shadow: none;
++  border-radius: 10px;
++}
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5085,6 +5085,37 @@
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
+ 
+ .quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
++
++
++/* The login card is a single, solid surface. */
++.poster-card, .poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26282e;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
++}
++/* BoxPointer owns the rounded outline; do not stack a second square surface. */
++.prairie-login-power-menu {
++  -arrow-border-radius: 16px;
++  -arrow-background-color: #2c2c32;
++  -arrow-border-color: rgba(255, 255, 255, 0.12);
++  -arrow-border-width: 1px;
++}
++.prairie-login-power-menu .popup-menu-content {
++  padding: 6px;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++}
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 32px;
++  margin: 0;
++  padding: 0 10px;
++  border: 0;
++  box-shadow: none;
++  border-radius: 10px;
++}
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5309,6 +5309,37 @@
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
+ 
+ .quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
++
++
++/* The login card is a single, solid surface. */
++.poster-card, .poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26282e;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
++}
++/* BoxPointer owns the rounded outline; do not stack a second square surface. */
++.prairie-login-power-menu {
++  -arrow-border-radius: 16px;
++  -arrow-background-color: #2c2c32;
++  -arrow-border-color: rgba(255, 255, 255, 0.12);
++  -arrow-border-width: 1px;
++}
++.prairie-login-power-menu .popup-menu-content {
++  padding: 6px;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++}
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 32px;
++  margin: 0;
++  padding: 0 10px;
++  border: 0;
++  box-shadow: none;
++  border-radius: 10px;
++}
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5284,6 +5284,37 @@
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
+ 
+ .quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
++
++
++/* The login card is a single, solid surface. */
++.poster-card, .poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26282e;
++  border: 1px solid rgba(255, 255, 255, 0.12);
++  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
++}
++/* BoxPointer owns the rounded outline; do not stack a second square surface. */
++.prairie-login-power-menu {
++  -arrow-border-radius: 16px;
++  -arrow-background-color: #2c2c32;
++  -arrow-border-color: rgba(255, 255, 255, 0.12);
++  -arrow-border-width: 1px;
++}
++.prairie-login-power-menu .popup-menu-content {
++  padding: 6px;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++}
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 32px;
++  margin: 0;
++  padding: 0 10px;
++  border: 0;
++  box-shadow: none;
++  border-radius: 10px;
++}
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {

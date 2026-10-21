@@ -128,6 +128,37 @@ static void test_search_and_modes(void) {
   search_changes = search_activations = 0;
 }
 
+/* GTK may retain the focused entry until the next frame after a bar swap.
+ * Retiring its model must disconnect callbacks even while that widget survives. */
+static void test_retired_search(void) {
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_default_size(GTK_WINDOW(window), 1000, 700);
+  GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_window_set_child(GTK_WINDOW(window), content);
+  LumaActionCenter *center = LUMA_ACTION_CENTER(luma_action_center_new(NULL));
+  luma_action_center_attach(center, content);
+  LumaBarItem *search = luma_bar_item_new_search("Search files");
+  LumaBarItem *weak_search = search;
+  g_object_add_weak_pointer(G_OBJECT(search), (gpointer *)&weak_search);
+  LumaBarItem *items[] = {search};
+  luma_action_center_show_bar(center, items, 1, NULL);
+  gtk_window_present(GTK_WINDOW(window));
+  spin();
+  luma_bar_item_search_focus(search);
+  GtkWidget *entry = g_object_ref(luma_bar_item_search_get_entry(search));
+  g_assert_true(GTK_IS_SEARCH_ENTRY(entry));
+  g_object_unref(search);
+  luma_action_center_show_bar(center, NULL, 0, NULL);
+  spin();
+  g_assert_null(weak_search);
+  /* A retained widget must be harmless after its model is gone. */
+  gtk_editable_set_text(GTK_EDITABLE(entry), "retired widget");
+  g_signal_emit_by_name(entry, "activate");
+  g_object_unref(entry);
+  gtk_window_destroy(GTK_WINDOW(window));
+  spin();
+}
+
 static void test_search_phone_fold(void) {
   GtkWidget *window = gtk_window_new();
   gtk_window_set_default_size(GTK_WINDOW(window), 390, 700);
@@ -1124,6 +1155,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/lumaui/action-center/words-alone", test_words_alone);
   g_test_add_func("/lumaui/action-center/search-modes", test_search_and_modes);
   g_test_add_func("/lumaui/action-center/search-phone", test_search_phone_fold);
+  g_test_add_func("/lumaui/action-center/retired-search", test_retired_search);
   g_test_add_func("/lumaui/action-center/form", test_form);
   g_test_add_func("/lumaui/action-center/grow", test_grow);
   g_test_add_func("/lumaui/action-center/panel-close", test_panel_close);

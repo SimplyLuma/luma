@@ -21,5 +21,5 @@
     <screenshot><caption>Browse files on a compact display</caption><image width="500" height="828">https://dl.simplyluma.com/media/org.gnome.Nautilus/75964861f9fed91d26e2c5580574cfd1a185e7acdf9bbf079d9e46b63293b2cc.png</image></screenshot>
   </screenshots>
   <content_rating type="oars-1.1"/>
-  <releases><release version="50.2.2.67" date="2026-10-07"/></releases>
+  <releases><release version="50.2.2.74" date="2026-10-21"><description><p>Add Open in Terminal and hover menus for files and folders.</p></description></release><release version="50.2.2.67" date="2026-10-07"/></releases>
 </component>

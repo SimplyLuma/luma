@@ -1889,13 +1889,15 @@ static GtkWidget *center_make_hosted(LumaBarItem *item) {
     luma_ui_set_accessible_label(entry, item->label);
     item->search_entry = entry;
     gtk_editable_set_text(GTK_EDITABLE(entry), item->search_text);
-    g_signal_connect(entry, "changed", G_CALLBACK(bar_search_changed), item);
-    g_signal_connect(entry, "activate", G_CALLBACK(bar_search_activated), item);
+    /* GTK can retain the focused control after a bar swap retires its item.
+     * Weak object closures disconnect before the model is finalized. */
+    g_signal_connect_object(entry, "changed", G_CALLBACK(bar_search_changed), item, 0);
+    g_signal_connect_object(entry, "activate", G_CALLBACK(bar_search_activated), item, 0);
     GtkEventController *keys = gtk_event_controller_key_new();
-    g_signal_connect(keys, "key-pressed", G_CALLBACK(bar_search_key), item);
+    g_signal_connect_object(keys, "key-pressed", G_CALLBACK(bar_search_key), item, 0);
     gtk_widget_add_controller(entry, keys);
     GtkEventController *focus = gtk_event_controller_focus_new();
-    g_signal_connect(focus, "leave", G_CALLBACK(bar_search_focus_left), item);
+    g_signal_connect_object(focus, "leave", G_CALLBACK(bar_search_focus_left), item, 0);
     gtk_widget_add_controller(entry, focus);
     GtkWidget *button = gtk_button_new();
     gtk_widget_set_name(button, "lumaui-bar-search-folded");
@@ -1904,7 +1906,7 @@ static GtkWidget *center_make_hosted(LumaBarItem *item) {
     gtk_widget_add_css_class(button, "bar");
     gtk_button_set_child(GTK_BUTTON(button), luma_ui_icon_image("search", 0));
     luma_ui_set_accessible_label(button, item->label);
-    g_signal_connect(button, "clicked", G_CALLBACK(bar_search_folded_clicked), item);
+    g_signal_connect_object(button, "clicked", G_CALLBACK(bar_search_folded_clicked), item, 0);
     item->folded_button = button;
     gtk_stack_add_child(GTK_STACK(host), entry);
     gtk_stack_add_child(GTK_STACK(host), button);
