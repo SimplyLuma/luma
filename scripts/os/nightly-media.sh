@@ -11,6 +11,8 @@
 # the exact retained image. --checks-revision COMMIT selects reviewed descendant
 # release checks without changing the image's product-source identity. The
 # selected revision is recorded, and previous failed evidence is preserved.
+# --resolve-codec-endpoint selects a current official public IPv4 address only
+# in the disposable retry VM; the ISO, repository and TLS/RPM trust stay intact.
 #
 # --interim (owner request 2026-09-16, for a release that predates the
 # out-of-box checks): the medium is verified for what it already ships (no
@@ -62,6 +64,7 @@ interim=0
 candidate=
 verify_existing=
 checks_revision=
+codec_address=
 publish_verified=
 notes=
 nightly_date_arg=
@@ -74,6 +77,7 @@ while [ "$#" -gt 0 ]; do
     --candidate) candidate=${2:?}; shift 2 ;;
     --verify-existing) verify_existing=${2:?}; shift 2 ;;
     --checks-revision) checks_revision=${2:?}; shift 2 ;;
+    --resolve-codec-endpoint) codec_address=${2:?}; shift 2 ;;
     --publish-verified) publish_verified=${2:?}; shift 2 ;;
     --notes) notes=$(realpath "${2:?}"); shift 2 ;;
     --nightly-date) nightly_date_arg=${2:?}; shift 2 ;;
@@ -91,6 +95,9 @@ if [ -n "$checks_revision" ]; then
     luma_os_die '--checks-revision requires --verify-existing and a full committed source revision'
   git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" cat-file -e "$checks_revision^{commit}" ||
     luma_os_die 'the verification revision is not available in this source checkout'
+fi
+if [ -n "$codec_address" ]; then
+  [ -n "$verify_existing" ] || luma_os_die '--resolve-codec-endpoint is only for an explicit candidate verification retry'
 fi
 case " $LUMA_MEDIA_CHANNELS " in *" $channel "*) ;; *) luma_os_die "no media are made for channel $channel (config/os/media.env)" ;; esac
 
@@ -273,6 +280,8 @@ failures_of() { grep '^FAIL' "$1" | cut -c7- | paste -sd';' - | cut -c1-600; }
 step verify_install
 scope_args=(--expect-enrollment none "${check_args[@]}")
 [ -z "$checks_revision" ] || scope_args+=(--checks-revision "$checks_revision")
+[ -z "$codec_address" ] || scope_args+=(--resolve-codec-endpoint "$codec_address")
+[ -z "$codec_address" ] || set_status "codec_repository_dns_fixture=$(jstr "$codec_address")"
 [ "$interim" -eq 1 ] && scope_args=(--skip-release-checks)
 set_status "interim=$([ "$interim" -eq 1 ] && echo true || echo false)"
 "$luma_os_repo_root/scripts/os/verify-media.sh" --iso "$iso" "${forbid_args[@]}" \
