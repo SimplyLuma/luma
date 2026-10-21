@@ -238,6 +238,10 @@ cp "/var/log/libvirt/qemu/$domain-serial.log" "$out/install-serial.log" 2>/dev/n
 luma_os_log "installed in $((SECONDS - started))s"
 virsh start "$domain" >/dev/null
 wait_ssh 900 || luma_os_die 'installed system did not come up'
+if [ -n "$codec_address" ]; then
+  check 'the recorded official upstream DNS fixture is active' guest \
+    "python3 -c 'import socket; assert {row[4][0] for row in socket.getaddrinfo(\"codecs.fedoraproject.org\",443,type=socket.SOCK_STREAM)} == {\"$codec_address\"}'"
+fi
 
 verdict=$(greenboot_state)
 guest 'rpm-ostree status --json' >"$out/rpm-ostree-status.json"
