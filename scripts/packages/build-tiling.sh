@@ -65,6 +65,7 @@ install -m 0644 "$repo_root/extensions/luma-tiling-toggle/verify-ink.py" \
   "$rpmbuild_dir/SOURCES/verify-ink.py"
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
 install -m 0644 "$repo_root/patches/tiling-shell/0018-independent-window-spacing-and-resize.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/tiling-shell/0019-rebuild-selection-after-monitor-reentry.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/tiling-shell/90_luma-tiling-shell.gschema.override" \
   "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/packaging/rpm/gnome-shell-extension-tiling-shell.spec" \

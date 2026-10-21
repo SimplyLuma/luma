@@ -1,0 +1,16 @@
+From: Luma Developers
+Subject: [PATCH] Rebuild the drag selection when returning to a monitor
+
+--- a/components/tilingsystem/tilingManager.js
++++ b/components/tilingsystem/tilingManager.js
+@@ -752,6 +752,10 @@
+     if (!tilingLayout) return GLib.SOURCE_REMOVE;
+     this._edgeTilingManager.workspaceIndex = currentWs.index();
+     if (!window.allows_resize() || !window.allows_move() || !this._isPointerInsideThisMonitor(window)) {
++      // Closing the preview invalidates the cached selection. Re-entering at
++      // the same coordinates must rebuild it, even without modifier changes.
++      this._lastCursorPos = null;
++      this._wasTilingSystemActivated = false;
+       tilingLayout.close();
+       this._selectedTilesPreview.close(true);
+       this._snapAssist.close(true);

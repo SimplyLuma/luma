@@ -27,7 +27,7 @@
     "--talk-name=org.gnome.Mutter.ServiceChannel",
     "--talk-name=org.projectluma.ApplicationInstaller2",
     "--talk-name=org.project_luma.shell",
-    "--talk-name=org.gnome.Ptyxis",
+    "--talk-name=org.projectluma.Terminal",
     "--talk-name=org.gnome.NautilusPreviewer",
     "--own-name=org.freedesktop.FileManager1",
     "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Audio",

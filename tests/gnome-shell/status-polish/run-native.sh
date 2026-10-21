@@ -20,7 +20,25 @@ experimental-features=['scale-monitor-framebuffer']
 clock-format='12h'
 enable-animations=false
 SETTINGS
-cp "$polish_repo/tests/gnome-shell/status-polish/native.js" "$polish_out/native.js"
+case ${LUMA_POLISH_SCENARIO:-status-polish} in
+ status-polish) polish_min_checks=89 ;;
+ applications-drawer)
+  polish_min_checks=28
+  mkdir -p "$polish_out/Downloads"
+  printf 'A real fixture download\n' > "$polish_out/Downloads/notes.txt"
+  printf 'XDG_DOWNLOAD_DIR="%s/Downloads"\n' "$polish_out" > "$polish_out/config/user-dirs.dirs"
+  cat > "$polish_out/data/applications/org.projectluma.DrawerProbe.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Luma Drawer Probe
+Exec=python3 $polish_repo/tests/gnome-shell/shelf-presentation/app.py org.projectluma.DrawerProbe
+Icon=utilities-terminal
+Terminal=false
+EOF
+  ;;
+ *) echo 'Unknown native polish scenario' >&2; exit 2 ;;
+esac
+cp "$polish_repo/tests/gnome-shell/${LUMA_POLISH_SCENARIO:-status-polish}/native.js" "$polish_out/native.js"
 chown -R 1000:1000 "$polish_out"
 # Podman can create an empty seats directory without supplying logind.
 # Refuse a populated seat tree: this fixture has no physical seat to use.
@@ -40,12 +58,12 @@ runuser -u luma-media-test -- env \
  LUMA_POLISH_OUTPUT="$polish_out" dbus-run-session -- \
  timeout 120 gnome-shell --headless --no-x11 --virtual-monitor=1440x1000 \
  --automation-script="$polish_out/native.js" > "$polish_out/shell.log" 2>&1
-python3 - "$polish_out/result.json" <<'PY'
+python3 - "$polish_out/result.json" "$polish_min_checks" <<'PY'
 import json, sys
 result = json.load(open(sys.argv[1]))
 for check in result['results']:
     if not check['ok']:
         print(check)
-assert result['pass'] and len(result['results']) >= 89
+assert result['pass'] and len(result['results']) >= int(sys.argv[2])
 print('Native status polish: PASS', len(result['results']), 'checks')
 PY

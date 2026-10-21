@@ -2,8 +2,9 @@
 Type=Application
 Name=Terminal
 Comment=Run commands and work in a shell
-Exec=python3 -m luma_terminal
+Exec=python3 -m luma_terminal %U
 Icon=org.projectluma.Terminal
 Terminal=false
 Categories=System;TerminalEmulator;
 StartupNotify=true
+DBusActivatable=true

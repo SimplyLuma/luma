@@ -1,0 +1,278 @@
+From: Luma Developers
+Subject: [PATCH] Manage dock shortcuts in the live Luma Settings page
+
+--- /dev/null
++++ b/shell/cc-dock-folders.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <gio/gio.h>
++
++/* Match Shell defaults while preserving explicit empty/custom pins and policy. */
++static inline char **
++cc_dock_folder_uris (GSettings *settings)
++{
++  g_auto(GStrv) uris = g_settings_get_strv (settings, "dock-folders");
++  g_autoptr(GVariant) user = g_settings_get_user_value (settings, "dock-folders");
++  g_autoptr(GPtrArray) defaults = NULL;
++  const char *downloads;
++  if (uris[0] || user || !g_settings_is_writable (settings, "dock-folders"))
++    return g_steal_pointer (&uris);
++  defaults = g_ptr_array_new_with_free_func (g_free);
++  g_ptr_array_add (defaults, g_strdup ("applications:///"));
++  downloads = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
++  if (downloads && !g_str_equal (downloads, g_get_home_dir ()))
++    g_ptr_array_add (defaults, g_filename_to_uri (downloads, NULL, NULL));
++  g_ptr_array_add (defaults, NULL);
++  return (char **) g_ptr_array_free (g_steal_pointer (&defaults), FALSE);
++}
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -7,6 +7,7 @@
+ #include <stdlib.h>
+ #include <glib/gi18n.h>
+ #include <shell/cc-panel.h>
++#include "shell/cc-dock-folders.h"
+ 
+ #define CC_TYPE_DASH_PANEL (cc_dash_panel_get_type ())
+ G_DECLARE_FINAL_TYPE (CcDashPanel, cc_dash_panel, CC, DASH_PANEL, CcPanel)
+@@ -50,21 +51,7 @@
+ static char **
+ folder_uris (CcDashPanel *self)
+ {
+-  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
+-  g_autoptr(GVariant) user = g_settings_get_user_value (self->settings, "dock-folders");
+-  const char *downloads;
+-  g_autoptr(GPtrArray) defaults = NULL;
+-
+-  if (uris[0] || user || !g_settings_is_writable (self->settings, "dock-folders"))
+-    return g_steal_pointer (&uris);
+-
+-  defaults = g_ptr_array_new_with_free_func (g_free);
+-  g_ptr_array_add (defaults, g_strdup (APPLICATIONS_URI));
+-  downloads = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
+-  if (downloads && !g_str_equal (downloads, g_get_home_dir ()))
+-    g_ptr_array_add (defaults, g_filename_to_uri (downloads, NULL, NULL));
+-  g_ptr_array_add (defaults, NULL);
+-  return (char **) g_ptr_array_free (g_steal_pointer (&defaults), FALSE);
++  return cc_dock_folder_uris (self->settings);
+ }
+ 
+ static gboolean
+--- a/shell/cc-luma-live-shelf.c
++++ b/shell/cc-luma-live-shelf.c
+@@ -15,6 +15,7 @@
+ #include "cc-luma-live-gsettings.h"
+ #include "cc-luma-live-apps.h"
+ #include "cc-luma-desktop.h"
++#include "cc-dock-folders.h"
+ 
+ #define SCHEMA "org.project_luma.shell-state"
+ 
+@@ -27,7 +28,7 @@
+   gboolean arrangement;     /* the schema has shelf-arrangement */
+ } Shelf;
+ 
+-static const char * const owned[] = { "edge", "spread", "joined", "float", "preset", NULL };
++static const char * const owned[] = { "edge", "spread", "joined", "float", "preset", "dockApplications", "dockDownloads", "dockFoldersVisible", NULL };
+ 
+ static gboolean
+ has_key (GSettingsSchema *schema, const char *key)
+@@ -77,9 +78,34 @@
+   return n && JSON_NODE_HOLDS_ARRAY (n) ? json_node_get_array (n) : NULL;
+ }
+ 
++static char *
++downloads_uri (void)
++{
++  const char *path = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
++  return path && !g_str_equal (path, g_get_home_dir ()) ? g_filename_to_uri (path, NULL, NULL) : NULL;
++}
++
++static void
++publish_folders (Shelf *self)
++{
++  if (!has_key (self->schema, "dock-folders")) return;
++  g_auto(GStrv) uris = cc_dock_folder_uris (self->settings);
++  g_autofree char *downloads = downloads_uri ();
++  cc_luma_fixture_publish_boolean (self->model, "dockApplications", g_strv_contains ((const char * const *) uris, "applications:///"));
++  cc_luma_fixture_publish_boolean (self->model, "dockDownloads", downloads && g_strv_contains ((const char * const *) uris, downloads));
++  cc_luma_fixture_publish_boolean (self->model, "dockFoldersWritable", g_settings_is_writable (self->settings, "dock-folders"));
++  cc_luma_fixture_publish_boolean (self->model, "dockDownloadsAvailable", downloads != NULL);
++  if (has_key (self->schema, "dock-folders-visible"))
++    {
++      cc_luma_fixture_publish_boolean (self->model, "dockFoldersVisible", g_settings_get_boolean (self->settings, "dock-folders-visible"));
++      cc_luma_fixture_publish_boolean (self->model, "dockFoldersVisibilityWritable", g_settings_is_writable (self->settings, "dock-folders-visible"));
++    }
++}
++
+ static void
+ publish (Shelf *self)
+ {
++  publish_folders (self);
+   g_autofree char *edge = g_settings_get_string (self->settings, "shelf-edge");
+   g_autofree char *surface = g_settings_get_string (self->settings, "shelf-surface-mode");
+   g_autofree char *mode = g_settings_get_string (self->settings, "shelf-edge-mode");
+@@ -141,6 +167,7 @@
+       self->free_placement = has_key (self->schema, "shelf-free-placement");
+       self->arrangement = has_key (self->schema, "shelf-arrangement");
+       g_signal_connect_swapped (self->settings, "changed", G_CALLBACK (publish), self);
++      g_signal_connect_swapped (self->settings, "writable-changed", G_CALLBACK (publish), self);
+       for (guint i = 0; owned[i]; i++)
+         {
+           cc_luma_fixture_own_key (model, owned[i]);
+@@ -174,10 +201,46 @@
+ }
+ 
+ static gboolean
++write_folder (Shelf *self, const char *key, JsonNode *value, GError **error)
++{
++  if (!JSON_NODE_HOLDS_VALUE (value) || json_node_get_value_type (value) != G_TYPE_BOOLEAN)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Choose whether to show this shortcut");
++      return FALSE;
++    }
++  gboolean enabled = json_node_get_boolean (value);
++  const char *setting = g_str_equal (key, "dockFoldersVisible") ? "dock-folders-visible" : "dock-folders";
++  if (!has_key (self->schema, setting) || !g_settings_is_writable (self->settings, setting))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dock shortcuts are locked by policy");
++      return FALSE;
++    }
++  if (g_str_equal (key, "dockFoldersVisible"))
++    return g_settings_set_boolean (self->settings, setting, enabled);
++  g_autofree char *downloads = downloads_uri ();
++  const char *uri = g_str_equal (key, "dockApplications") ? "applications:///" : downloads;
++  if (!uri)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "The Downloads folder is disabled");
++      return FALSE;
++    }
++  g_auto(GStrv) uris = cc_dock_folder_uris (self->settings);
++  g_autoptr(GPtrArray) next = g_ptr_array_new ();
++  for (guint i = 0; uris[i]; i++)
++    if (!g_str_equal (uris[i], uri)) g_ptr_array_add (next, uris[i]);
++  if (enabled) g_ptr_array_add (next, (gpointer) uri);
++  /* Preserve the order when it is already pinned. */
++  if (enabled && g_strv_contains ((const char * const *) uris, uri)) return TRUE;
++  g_ptr_array_add (next, NULL);
++  return g_settings_set_strv (self->settings, setting, (const char * const *) next->pdata);
++}
++
++static gboolean
+ shelf_write (gpointer state, const char *key, JsonNode *value, GError **error)
+ {
+   Shelf *self = state;
+   if (!self->settings || !g_strv_contains (owned, key)) return FALSE;
++  if (g_str_has_prefix (key, "dock")) return write_folder (self, key, value, error);
+   const char *text = JSON_NODE_HOLDS_VALUE (value) && json_node_get_value_type (value) == G_TYPE_STRING ? json_node_get_string (value) : NULL;
+   if (!text)
+     {
+--- a/shell/cc-luma-view-shelf.c
++++ b/shell/cc-luma-view-shelf.c
+@@ -329,6 +329,22 @@
+       if (hiding) cf_pk (v, card, "hide", "Hide the dash", NULL, hide_choices);
+       if (sizing) size_row (v, card);
+     }
++  if (cc_luma_fixture_get (v->model, "dockApplications"))
++    {
++      card = cf_group (v, "Shortcuts", NULL);
++      if (cc_luma_fixture_get (v->model, "dockFoldersVisible"))
++        {
++          GtkWidget *show = cf_sw (v, card, "dockFoldersVisible", "Show shortcuts", "Keep your folders beside your apps", NULL);
++          gtk_widget_set_sensitive (show, cc_luma_view_flag (v, "dockFoldersVisibilityWritable"));
++        }
++      GtkWidget *apps = cf_sw (v, card, "dockApplications", "Applications", "A searchable drawer of your installed apps", NULL);
++      gtk_widget_set_sensitive (apps, cc_luma_view_flag (v, "dockFoldersWritable"));
++      if (cc_luma_view_flag (v, "dockDownloadsAvailable"))
++        {
++          GtkWidget *downloads = cf_sw (v, card, "dockDownloads", "Downloads", "Quick access to downloaded files", NULL);
++          gtk_widget_set_sensitive (downloads, cc_luma_view_flag (v, "dockFoldersWritable"));
++        }
++    }
+   card = cf_group (v, "Status island", NULL);
+   cf_nv (v, card, "datetime", "Clock", "Format, weekday and seconds", NULL, NULL);
+   cf_nv (v, card, "power", "Battery percentage", NULL, cc_luma_view_flag (v, "pct") ? "Shown" : "Hidden", NULL);
+--- a/shell/test-luma-live-desk.c
++++ b/shell/test-luma-live-desk.c
+@@ -115,6 +115,55 @@
+ }
+ 
+ static void
++test_dock_shortcuts (void)
++{
++  g_assert_true (has_key ("org.project_luma.shell-state", "dock-folders"));
++  g_autoptr (GSettings) settings = g_settings_new ("org.project_luma.shell-state");
++  g_settings_reset (settings, "dock-folders");
++  Running r;
++  g_autoptr (CcLumaFixture) model = model_new (&cc_luma_adapter_shelf, &r);
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "dockApplications")));
++  g_assert_null (g_settings_get_user_value (settings, "dock-folders"));
++  g_autoptr (GError) error = NULL;
++  g_assert_true (cc_luma_fixture_set_flag (model, "dockApplications", FALSE, &error));
++  g_assert_no_error (error);
++  spin ();
++  g_auto (GStrv) remaining = g_settings_get_strv (settings, "dock-folders");
++  g_assert_false (g_strv_contains ((const char * const *) remaining, "applications:///"));
++  const char *downloads = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
++  if (downloads && !g_str_equal (downloads, g_get_home_dir ()))
++    {
++      g_autofree char *uri = g_filename_to_uri (downloads, NULL, NULL);
++      g_assert_true (g_strv_contains ((const char * const *) remaining, uri));
++    }
++  const char *empty[] = { NULL };
++  g_settings_set_strv (settings, "dock-folders", empty);
++  spin ();
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "dockApplications")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "dockDownloads")));
++  const char *custom[] = { "file:///tmp/my-project", "file:///tmp/my-photos", NULL };
++  g_settings_set_strv (settings, "dock-folders", custom);
++  spin ();
++  g_assert_true (cc_luma_fixture_set_flag (model, "dockApplications", TRUE, &error));
++  spin ();
++  g_auto (GStrv) added = g_settings_get_strv (settings, "dock-folders");
++  g_assert_cmpuint (g_strv_length (added), ==, 3);
++  g_assert_cmpstr (added[0], ==, custom[0]);
++  g_assert_cmpstr (added[1], ==, custom[1]);
++  g_assert_cmpstr (added[2], ==, "applications:///");
++  g_assert_true (cc_luma_fixture_set_flag (model, "dockApplications", FALSE, &error));
++  spin ();
++  g_auto (GStrv) removed = g_settings_get_strv (settings, "dock-folders");
++  g_assert_cmpstrv ((const char * const *) removed, custom);
++  g_assert_true (cc_luma_fixture_set_flag (model, "dockFoldersVisible", FALSE, &error));
++  g_assert_false (g_settings_get_boolean (settings, "dock-folders-visible"));
++  g_assert_true (cc_luma_fixture_set_flag (model, "dockFoldersVisible", TRUE, &error));
++  g_assert_true (g_settings_get_boolean (settings, "dock-folders-visible"));
++  g_assert_no_error (error);
++  cc_luma_adapter_shelf.stop (r.state);
++}
++
++static void
+ test_windows (void)
+ {
+   if (!has_key ("org.gnome.mutter", "dynamic-workspaces") || !has_key ("org.gnome.shell.app-switcher", NULL) ||
+@@ -174,6 +223,7 @@
+ {
+   g_test_init (&argc, &argv, NULL);
+   g_test_add_func ("/luma-live/shelf", test_shelf);
++  g_test_add_func ("/luma-live/dock-shortcuts", test_dock_shortcuts);
+   g_test_add_func ("/luma-live/windows", test_windows);
+   g_test_add_func ("/luma-live/notifications", test_notifications);
+   return g_test_run ();
+--- a/shell/test-fixture-schemas/luma-test.gschema.xml
++++ b/shell/test-fixture-schemas/luma-test.gschema.xml
+@@ -32,4 +32,14 @@
+       <default>[]</default>
+       <summary>Where each group of Shelf islands is placed</summary>
+     </key>
++    <key name="dock-folders" type="as">
++      <default>[]</default>
++      <summary>Folders pinned to the Dock</summary>
++      <description>Folder URIs, in the order they are shown. Each one gets a tile after the applications, behind the Dash's divider, that opens the folder in place.</description>
++    </key>
++    <key name="dock-folders-visible" type="b">
++      <default>true</default>
++      <summary>Show the pinned folders in the Dash</summary>
++      <description>Off hides the folders rail without unpinning anything: the folders keep their places, their arrangements and their counts, and come back as they were.</description>
++    </key>
+ </schema></schemalist>

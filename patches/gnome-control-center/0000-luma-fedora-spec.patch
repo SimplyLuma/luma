@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,111 @@
+@@ -28,14 +28,114 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.55.creator20261012.1%{?dist}
++Release:        1.luma.58.creator20261021.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -100,6 +100,9 @@
 +Patch1081:      0082-settings-retain-native-pane-actions.patch
 +Patch1082:      0083-maximized-window-border-settings.patch
 +Patch1083:      0084-live-window-spacing-controls.patch
++Patch1084:      0085-night-light-start-end-time-controls.patch
++Patch1085:      0086-applications-dock-folder-settings.patch
++Patch1086:      0087-live-dock-shortcut-controls.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
@@ -118,7 +121,7 @@
  
  # Versioned library deps
 +Requires:       luma-shell-state >= 0.2.0-1.luma.34
-+Requires:       gnome-shell >= 50.3-1.luma.114.creator20261012.1
++Requires:       gnome-shell >= 50.3-1.luma.119.creator20261021.1
 +Requires:       luma-developer-platform >= 0.1.0-1.luma.89.lumaui20260929.1
 +# Settings › Apps › Background Activity shows and changes what the Luma
 +# background service runs; without it the page says so and changes nothing.

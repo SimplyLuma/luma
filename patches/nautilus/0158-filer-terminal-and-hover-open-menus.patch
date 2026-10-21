@@ -1,0 +1,232 @@
+From: Luma Developers
+Subject: [PATCH] Open directories in Luma Terminal and reveal native Open submenus
+
+diff --git a/src/nautilus-dbus-launcher.c b/src/nautilus-dbus-launcher.c
+--- a/src/nautilus-dbus-launcher.c
++++ b/src/nautilus-dbus-launcher.c
+@@ -285,6 +285,6 @@
+                                          "org.gtk.Application");
+ 
+     nautilus_dbus_launcher_create_proxy (self->data[NAUTILUS_DBUS_LAUNCHER_CONSOLE],
+-                                         "org.gnome.Ptyxis", "/org/gnome/Ptyxis",
++                                         "org.projectluma.Terminal", "/org/projectluma/Terminal",
+                                          "org.freedesktop.Application");
+ }
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -2509,6 +2509,25 @@
+     nautilus_files_view_new_folder (NAUTILUS_FILES_VIEW (user_data), TRUE);
+ }
+ 
++/* A terminal opens a local directory, never a document or a remote URI. */
++static GFile *
++terminal_directory (NautilusFile *file)
++{
++    if (file == NULL)
++        return NULL;
++    g_autoptr (GFile) location = nautilus_file_get_location (file);
++    if (!g_file_is_native (location) || nautilus_file_is_in_trash (file))
++        return NULL;
++    return nautilus_file_is_directory (file) ? g_steal_pointer (&location) : g_file_get_parent (location);
++}
++
++static gboolean
++can_open_terminal (NautilusFile *file)
++{
++    g_autoptr (GFile) directory = terminal_directory (file);
++    return directory != NULL;
++}
++
+ static void
+ real_open_console (NautilusFile      *file,
+                    NautilusFilesView *view)
+@@ -2517,7 +2536,10 @@
+     GVariant *parameters;
+     g_autofree gchar *uri = NULL;
+ 
+-    uri = nautilus_file_get_uri (file);
++    g_autoptr (GFile) directory = terminal_directory (file);
++    if (directory == NULL)
++        return;
++    uri = g_file_get_uri (directory);
+     parameters = g_variant_new_parsed ("([%s], @a{sv} {})", uri);
+     nautilus_dbus_launcher_call (nautilus_dbus_launcher_get (),
+                                  NAUTILUS_DBUS_LAUNCHER_CONSOLE,
+@@ -7966,13 +7988,13 @@
+                                          "console");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+                                  mode == NAUTILUS_MODE_BROWSE &&
+-                                 list_len_is_one (selection) && nautilus_file_is_directory (selection->data) &&
++                                 list_len_is_one (selection) && can_open_terminal (selection->data) &&
+                                  nautilus_dbus_launcher_is_available (nautilus_dbus_launcher_get (),
+                                                                       NAUTILUS_DBUS_LAUNCHER_CONSOLE));
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
+                                          "current-directory-console");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+-                                 mode == NAUTILUS_MODE_BROWSE &&
++                                 mode == NAUTILUS_MODE_BROWSE && can_open_terminal (self->directory_as_file) &&
+                                  nautilus_dbus_launcher_is_available (nautilus_dbus_launcher_get (),
+                                                                       NAUTILUS_DBUS_LAUNCHER_CONSOLE));
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
+@@ -8288,40 +8310,26 @@
+             item_label = g_strdup (_("Open"));
+         }
+ 
+-        /* The action already exists in the submenu if item opens in view */
+-        if (!item_opens_in_view)
+-        {
+-            menu_item = g_menu_item_new (item_label, "view.open-with-default-application");
+-            if (app_icon != NULL)
+-            {
+-                g_menu_item_set_icon (menu_item, app_icon);
+-            }
+-
+-            object = gtk_builder_get_object (builder, "open-with-application-section");
+-            g_menu_prepend_item (G_MENU (object), menu_item);
+-
+-            g_object_unref (menu_item);
+-        }
+-        else
+-        {
+-            object = gtk_builder_get_object (builder, "open-with-application-section");
+-            i = nautilus_g_menu_model_find_by_string (G_MENU_MODEL (object),
+-                                                      "nautilus-menu-item",
+-                                                      "open_with_in_main_menu");
+-            g_menu_remove (G_MENU (object), i);
+-        }
++        /* One Open submenu for folders and files. Native nested popovers
++         * reveal it on hover and retain keyboard/touch activation. */
++        object = gtk_builder_get_object (builder, "open-actions-section");
++        i = nautilus_g_menu_model_find_by_string (G_MENU_MODEL (object),
++                                                 "nautilus-menu-item", "open_default_in_submenu");
++        nautilus_g_menu_replace_string_in_item (G_MENU (object), i, "label", item_label);
+ 
+         g_free (item_label);
+     }
+ 
+-    /* The "Open" submenu should be hidden if the item doesn't open in the view. */
++    /* File tabs/windows remain hidden when those actions are inapplicable. */
+     object = gtk_builder_get_object (builder, "open-with-application-section");
+     i = nautilus_g_menu_model_find_by_string (G_MENU_MODEL (object),
+                                               "nautilus-menu-item",
+                                               "open_in_view_submenu");
+     nautilus_g_menu_replace_string_in_item (G_MENU (object), i,
+                                             "hidden-when",
+-                                            !item_opens_in_view ? "action-missing" : NULL);
++                                            NULL);
++    nautilus_g_menu_replace_string_in_item (G_MENU (object), i, "label",
++                                            item_opens_in_view ? _("Open") : _("Open With"));
+ 
+     /* Drives */
+     for (l = selection; l != NULL && (show_mount || show_unmount
+@@ -8619,7 +8627,7 @@
+      * and showing old model temporarily. We don't do this when popover is
+      * closed because it wouldn't activate the actions then. */
+     g_clear_pointer (&self->selection_menu, gtk_widget_unparent);
+-    self->selection_menu = gtk_popover_menu_new_from_model (NULL);
++    self->selection_menu = gtk_popover_menu_new_from_model_full (NULL, GTK_POPOVER_MENU_NESTED);
+ 
+     /* There's something related to NautilusFilesView that isn't grabbing the
+      * focus back when the popover is closed. Let's force it as a workaround. */
+@@ -8668,7 +8676,7 @@
+      * and showing old model temporarily. We don't do this when popover is
+      * closed because it wouldn't activate the actions then. */
+     g_clear_pointer (&self->background_menu, gtk_widget_unparent);
+-    self->background_menu = gtk_popover_menu_new_from_model (NULL);
++    self->background_menu = gtk_popover_menu_new_from_model_full (NULL, GTK_POPOVER_MENU_NESTED);
+ 
+     /* There's something related to NautilusFilesView that isn't grabbing the
+      * focus back when the popover is closed. Let's force it as a workaround. */
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -424,7 +424,7 @@
+         g_error ("Failed to add pathbar-context-menu.ui: %s", error->message);
+     }
+     self->button_menu = g_object_ref_sink (G_MENU (gtk_builder_get_object (builder, "button-menu")));
+-    self->button_menu_popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (self->button_menu));
++    self->button_menu_popover = gtk_popover_menu_new_from_model_full (G_MENU_MODEL (self->button_menu), GTK_POPOVER_MENU_NESTED);
+     gtk_widget_set_parent (self->button_menu_popover, GTK_WIDGET (self));
+     gtk_popover_set_has_arrow (GTK_POPOVER (self->button_menu_popover), FALSE);
+     gtk_widget_set_halign (self->button_menu_popover, GTK_ALIGN_START);
+@@ -433,7 +433,7 @@
+     self->current_view_menu = g_object_ref_sink (G_MENU (gtk_builder_get_object (builder, "current-view-menu")));
+     self->extensions_section = g_object_ref (G_MENU (gtk_builder_get_object (builder, "background-extensions-section")));
+     self->templates_submenu = g_object_ref (G_MENU (gtk_builder_get_object (builder, "templates-submenu")));
+-    self->current_view_menu_popover = g_object_ref_sink (GTK_POPOVER_MENU (gtk_popover_menu_new_from_model (NULL)));
++    self->current_view_menu_popover = g_object_ref_sink (GTK_POPOVER_MENU (gtk_popover_menu_new_from_model_full (NULL, GTK_POPOVER_MENU_NESTED)));
+ 
+     g_object_unref (builder);
+ 
+diff --git a/src/resources/menu/nautilus-files-view-context-menus.ui b/src/resources/menu/nautilus-files-view-context-menus.ui
+--- a/src/resources/menu/nautilus-files-view-context-menus.ui
++++ b/src/resources/menu/nautilus-files-view-context-menus.ui
+@@ -55,7 +55,7 @@
+       <attribute name="show-in-mode">browse</attribute>
+     </item>
+     <item>
+-      <attribute name="label" translatable="yes">Open in Consol_e</attribute>
++      <attribute name="label" translatable="yes">Open in _Terminal</attribute>
+       <attribute name="action">view.current-directory-console</attribute>
+       <attribute name="hidden-when">action-disabled</attribute>
+     </item>
+@@ -115,12 +115,6 @@
+         <attribute name="hidden-when">action-disabled</attribute>
+       </item>
+       <item>
+-        <attribute name="label" translatable="yes">Open _With…</attribute>
+-        <attribute name="action">view.open-with-other-application</attribute>
+-        <attribute name="hidden-when">action-disabled</attribute>
+-        <attribute name="nautilus-menu-item">open_with_in_main_menu</attribute>
+-      </item>
+-      <item>
+         <attribute name="label" translatable="yes">_Run as a Program</attribute>
+         <attribute name="action">view.run-in-terminal</attribute>
+         <attribute name="hidden-when">action-disabled</attribute>
+@@ -129,10 +123,11 @@
+         <attribute name="label" translatable="yes">_Open</attribute>
+         <attribute name="nautilus-menu-item">open_in_view_submenu</attribute>
+         <attribute name="show-in-mode">browse</attribute>
+-        <link name="submenu">
+-          <section>
++        <link name="submenu" id="open-actions-submenu">
++          <section id="open-actions-section">
+             <item>
+               <attribute name="label" translatable="yes">Open</attribute>
++              <attribute name="nautilus-menu-item">open_default_in_submenu</attribute>
+               <attribute name="action">view.open-with-default-application</attribute>
+               <attribute name="hidden-when">action-disabled</attribute>
+             </item>
+@@ -149,13 +144,13 @@
+           </section>
+           <section>
+             <item>
+-              <attribute name="label" translatable="yes">Open _With…</attribute>
++              <attribute name="label" translatable="yes">Open in _Terminal</attribute>
++              <attribute name="action">view.console</attribute>
++              <attribute name="hidden-when">action-disabled</attribute>
++            </item>
++            <item>
++              <attribute name="label" translatable="yes">Choose _Application…</attribute>
+               <attribute name="action">view.open-with-other-application</attribute>
+-              <attribute name="hidden-when">action-disabled</attribute>
+-            </item>
+-            <item>
+-              <attribute name="label" translatable="yes">Open in Consol_e</attribute>
+-              <attribute name="action">view.console</attribute>
+               <attribute name="hidden-when">action-disabled</attribute>
+             </item>
+           </section>
+diff --git a/src/resources/menu/nautilus-pathbar-context-menu.ui b/src/resources/menu/nautilus-pathbar-context-menu.ui
+--- a/src/resources/menu/nautilus-pathbar-context-menu.ui
++++ b/src/resources/menu/nautilus-pathbar-context-menu.ui
+@@ -31,7 +31,7 @@
+       <attribute name="action">view.open-current-directory-with-other-application</attribute>
+     </item>
+     <item>
+-      <attribute name="label" translatable="yes">Open in Consol_e</attribute>
++      <attribute name="label" translatable="yes">Open in _Terminal</attribute>
+       <attribute name="action">view.current-directory-console</attribute>
+       <attribute name="hidden-when">action-disabled</attribute>
+     </item>

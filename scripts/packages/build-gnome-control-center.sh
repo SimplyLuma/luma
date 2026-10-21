@@ -75,6 +75,8 @@ install -m 0644 "$repo_root/src/luma-shell-state/org.project_luma.shell-state.gs
 install -m 0644 "$repo_root/patches/mutter/0019-input-Adjustable-scroll-speed-for-mice-and-touchpads.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-control-center/scroll-speed/extract-scroll-schema.py" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/fixtures/settings-v70.json" "$rpmbuild_dir/SOURCES/"
+install -m 0755 "$repo_root/scripts/packages/check-gnome-control-center-rpm.sh" \
+  "$rpmbuild_dir/SOURCES/luma-settings-package-check.sh"
 
 # Settings builds against the Luma platform release this tree's inputs.env
 # names (LUMA_DEVELOPER_PLATFORM_RELEASE); its LumaUI pages need that kit. The
@@ -117,44 +119,8 @@ luma_assert_patch_series gnome-control-center "$rpmbuild_dir/SPECS/gnome-control
       SOURCES/luma-developer-platform-devel-0.1.0-*.rpm
     dnf5 -y builddep SPECS/gnome-control-center.spec
     rpmbuild -ba --noclean --define "_topdir $PWD" SPECS/gnome-control-center.spec
-    # Name any failed packaged-content assertion in the build log.
-    set -x
     gcc_rpm=$(find RPMS -type f -name "gnome-control-center-50.4-*.rpm" -print -quit)
-    check_dir=$(mktemp -d)
-    rpm2cpio "$gcc_rpm" | cpio -i --quiet --to-stdout \
-      ./usr/share/applications/gnome-dash-panel.desktop >"$check_dir/gnome-dash-panel.desktop"
-    test -s "$check_dir/gnome-dash-panel.desktop"
-    desktop-file-validate "$check_dir/gnome-dash-panel.desktop"
-    grep -Fxq "Exec=gnome-control-center dash" "$check_dir/gnome-dash-panel.desktop"
-    # Allow free placement in Dash settings; the dead status-order switch gone (0022).
-    rpm2cpio "$gcc_rpm" | cpio -i --quiet --to-stdout ./usr/bin/gnome-control-center >"$check_dir/gcc-bin"
-    grep -aFq "shelf-free-placement" "$check_dir/gcc-bin"
-    grep -aFq "Allow free placement" "$check_dir/gcc-bin"
-    ! grep -aFq "Swap the clock and quick controls" "$check_dir/gcc-bin"
-    # Span and Float follow Use islands (0023).
-    grep -aFq "Always on when islands are off" "$check_dir/gcc-bin"
-    # Dock folders (0024): the section, its two switches, the per-folder
-    # arrangement, and the ways on and off the dock.
-    grep -aFq "Dock folders" "$check_dir/gcc-bin"
-    grep -aFq "Show the pinned folders in the Dash" "$check_dir/gcc-bin"
-    grep -aFq "Pin a folder to show it" "$check_dir/gcc-bin"
-    grep -aFq "Give the folders a surface of their own beside the dock" "$check_dir/gcc-bin"
-    grep -aFq "Add folder" "$check_dir/gcc-bin"
-    grep -aFq "Remove from the dock" "$check_dir/gcc-bin"
-    grep -aFq "Opens as" "$check_dir/gcc-bin"
-    grep -aFq "dock-folders-visible" "$check_dir/gcc-bin"
-    grep -aFq "dock-folders-separate" "$check_dir/gcc-bin"
-    grep -aFq "dock-folders-views" "$check_dir/gcc-bin"
-    grep -aFq "dock-folders-seen" "$check_dir/gcc-bin"
-    grep -aFq "dock-folders-detached" "$check_dir/gcc-bin"
-    # Saved passwords follow a password change (0025): the keyring is asked
-    # rather than assumed, and the person is told when it stayed behind.
-    grep -aFq "Saved passwords still use your old password" "$check_dir/gcc-bin"
-    grep -aFq "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface" "$check_dir/gcc-bin"
-    # Scroll Speed on Mouse and Touchpad (0026).
-    grep -aFq "org.projectluma.peripherals.touchpad" "$check_dir/gcc-bin"
-    grep -aFq "Reset Scroll Speed" "$check_dir/gcc-bin"
-    rm -rf "$check_dir"
+    bash SOURCES/luma-settings-package-check.sh "$gcc_rpm"
   '
 
 find "$rpmbuild_dir/RPMS" "$rpmbuild_dir/SRPMS" -type f -name '*.rpm' \

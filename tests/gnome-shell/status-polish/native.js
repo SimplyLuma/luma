@@ -7,8 +7,10 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {BrightnessScale} from 'resource:///org/gnome/shell/misc/brightnessManager.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as PrairieLogin from 'resource:///org/gnome/shell/ui/prairieLogin.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import * as Scripting from 'resource:///org/gnome/shell/ui/scripting.js';
 const results=[];
@@ -25,6 +27,121 @@ async function shot(name,a) {
 const Notifier=GObject.registerClass({Signals:{status:{},label:{},ready:{},icon:{}}},class Notifier extends GObject.Object {
     _init(id,title){super._init();this.id=id;this.uniqueId=id;this.title=title;this.status='Active';this.icon={name:'web-browser-symbolic'};}
 });
+async function checkBattery(q, appearance, iface, suffix) {
+    const power = q._system._systemItem.powerToggle;
+    const old = {visible: power.visible, title: power.title,
+        percent: iface.get_boolean('show-battery-percentage'), edge: appearance.get_string('shelf-edge')};
+    try {
+        // Synthetic battery availability; the actual indicator/settings binding,
+        // dock measurement and rendered text are production actors.
+        power.visible = true;
+        power.title = '42%';
+        for (const edge of ['bottom', 'left', 'right', 'top']) {
+            appearance.set_string('shelf-edge', edge);
+            Main.shelf._sync();
+            for (const direction of [Clutter.TextDirection.LTR, Clutter.TextDirection.RTL]) {
+                q._statusSlots.text_direction = direction;
+                iface.set_boolean('show-battery-percentage', true);
+                await pause(200);
+                const slot = q._slots.battery;
+                const label = slot.percentage;
+                const r = rect(label), cell = rect(slot), grid = rect(q._statusSlots);
+                check(`${suffix} ${edge} ${direction} battery percent follows Settings`, label.visible && label.text === '42%');
+                check(`${suffix} ${edge} ${direction} percent fits cell`, r.x >= cell.x - 1 && r.right <= cell.right + 1 && r.bottom <= cell.bottom + 1);
+                check(`${suffix} ${edge} ${direction} battery fits grid`, cell.x >= grid.x - 1 && cell.right <= grid.right + 1 && cell.bottom <= grid.bottom + 1);
+                if (direction === Clutter.TextDirection.LTR)
+                    await shot(`battery-${suffix}-${edge}`, q._statusControls);
+                iface.set_boolean('show-battery-percentage', false);
+                await pause();
+                check(`${suffix} ${edge} ${direction} percent hides live`, !label.visible);
+            }
+        }
+        power.visible = false;
+        await pause();
+        check(`${suffix} no battery hides dock battery slot`, !q._slots.battery.visible);
+    } finally {
+        power.title = old.title; power.visible = old.visible;
+        iface.set_boolean('show-battery-percentage', old.percent);
+        appearance.set_string('shelf-edge', old.edge);
+        q._statusSlots.text_direction = Clutter.TextDirection.LTR;
+        Main.shelf._sync();
+    }
+}
+async function checkLogin() {
+    const button = new PrairieLogin.PowerButton();
+    const card = new St.BoxLayout({style_class: 'poster-card', x: 200, y: 150,
+        width: 460, height: 400});
+    card.add_child(button);
+    Main.uiGroup.add_child(card);
+    try {
+        button._items.forEach(item => item.show());
+        button._menu.open(); await pause(300);
+        const rows = button._items.map(rect);
+        check('login menu has exactly three actions', button._menu.box.get_children().length === 3);
+        for (let i = 1; i < rows.length; i++)
+            check(`login action ${i} has no spacer gap`, rows[i].y - rows[i - 1].bottom <= 8, JSON.stringify(rows));
+        const color = card.get_theme_node().get_background_color();
+        check('login card surface is solid', color.alpha === 255);
+        check('login card has no background image', !card.get_theme_node().get_background_image());
+        await shot('login-power-menu', button._menu.actor);
+        button._menu.close(); await pause();
+        await shot('login-card-surface', card);
+    } finally {card.destroy();}
+}
+async function checkBrightness() {
+    const manager = Main.brightnessManager;
+    const originalScale = manager._globalScale;
+    let modalGrab = null;
+    const modal = new St.Widget({reactive: true, can_focus: true, width: 10, height: 10});
+    Main.uiGroup.add_child(modal);
+    const originalDimming = manager._dimmingEnabled;
+    const scale = new BrightnessScale('Fixture brightness', 0.50);
+    const keyboard = Clutter.get_default_backend().get_default_seat()
+        .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const key = async (value, duration = 100) => {
+        keyboard.notify_keyval(GLib.get_monotonic_time(), value, Clutter.KeyState.PRESSED);
+        await pause(duration);
+        keyboard.notify_keyval(GLib.get_monotonic_time(), value, Clutter.KeyState.RELEASED);
+        await pause(100);
+    };
+    try {
+        manager._globalScale = scale;
+        for (const [name, mode] of [['desktop', Shell.ActionMode.NORMAL], ['locked', Shell.ActionMode.LOCK_SCREEN]]) {
+            if (modalGrab) Main.popModal(modalGrab);
+            modalGrab = Main.pushModal(modal, {actionMode: mode});
+            scale.value = .50;
+            manager._dimmingEnabled = true;
+            await key(Clutter.KEY_MonBrightnessUp);
+            check(`${name} brightness key advances one percent`, Math.abs(scale.value - .51) < .00001, `${scale.value}`);
+            check(`${name} brightness key clears idle dimming`, !manager.dimming);
+            await key(Clutter.KEY_MonBrightnessDown);
+            check(`${name} brightness down advances one percent`, Math.abs(scale.value - .50) < .00001, `${scale.value}`);
+        }
+        scale.value = .50;
+        let changes = 0, previous = scale.value, deltas = [];
+        const id = scale.connect('notify::value', () => {
+            changes++; deltas.push(scale.value - previous); previous = scale.value;
+        });
+        await key(Clutter.KEY_MonBrightnessUp, 900);
+        scale.disconnect(id);
+        check('held brightness key repeats', changes > 1, `${changes} changes`);
+        check('each repeated brightness key uses one percent', deltas.every(delta => Math.abs(delta - .01) < .00001));
+        scale.value = .01; scale.stepDown(); scale.stepDown();
+        check('brightness lower bound stays at zero', scale.value === 0);
+        scale.value = .99; scale.stepUp(); scale.stepUp();
+        check('brightness upper bound stays at one hundred', scale.value === 1);
+        const coarse = new BrightnessScale('Coarse hardware', .5, 10);
+        coarse.stepDown();
+        check('coarse backlight retains real hardware granularity', Math.abs(coarse.value - .4) < .00001);
+        check('brightness keys registered while locked',
+            Boolean(Main.wm._allowedKeybindings['screen-brightness-up'] & Shell.ActionMode.LOCK_SCREEN));
+    } finally {
+        manager._globalScale = originalScale;
+        manager._dimmingEnabled = originalDimming;
+        if (modalGrab) Main.popModal(modalGrab);
+        modal.destroy();
+    }
+}
 async function work() {
     const appearance=new Gio.Settings({schema_id:'org.project_luma.shell-state'});
     const iface=new Gio.Settings({schema_id:'org.gnome.desktop.interface'});
@@ -139,6 +256,9 @@ async function work() {
         check(`${theme} background popover has no redundant count`,!pop.box.get_children()[0].get_children().some(a=>a.has_style_class_name?.('luma-well-popover-count')));
         await shot(`background-apps-${theme}`,pop.actor);pop.close();await pause();
     }
+    await checkBattery(q, appearance, iface, '100');
+    await checkLogin();
+    await checkBrightness();
     const bus=Gio.DBus.session;
     const call=(method,args)=>new Promise((resolve,reject)=>bus.call(
         'org.gnome.Mutter.DisplayConfig','/org/gnome/Mutter/DisplayConfig',
@@ -164,6 +284,7 @@ async function work() {
         }
     }
     await shot('clock-fractional',q._statusClock);
+    await checkBattery(q, appearance, iface, '125');
     for(const control of radios) control.destroy();
     for(const tray of trays) tray.destroy();
 }

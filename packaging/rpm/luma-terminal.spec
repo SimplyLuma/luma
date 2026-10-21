@@ -7,7 +7,7 @@
 # (org.projectluma.Terminal) and desktop file, and no Obsoletes or Conflicts.
 Name:           luma-terminal
 Version:        0.1.0
-Release:        1.luma.6.creator20261019.1%{?dist}
+Release:        1.luma.7.creator20261021.1%{?dist}
 Summary:        Terminal for Luma
 License:        MPL-2.0
 URL:            https://projectluma.org/
@@ -59,10 +59,12 @@ install -D -m 0644 $app/data/icons/hicolor/scalable/apps/org.projectluma.Termina
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
 # The checkout's entry runs `python3 -m luma_terminal` from the tree; the
 # installed one runs the launcher, which finds the package where it lives.
-sed 's|^Exec=.*|Exec=%{name}|' $app/data/applications/org.projectluma.Terminal.desktop \
+sed 's|^Exec=.*|Exec=%{name} %U|' $app/data/applications/org.projectluma.Terminal.desktop \
   >org.projectluma.Terminal.desktop
-grep -Fxq 'Exec=%{name}' org.projectluma.Terminal.desktop
+grep -Fxq 'Exec=%{name} %U' org.projectluma.Terminal.desktop
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications org.projectluma.Terminal.desktop
+install -D -m 0644 $app/data/dbus-1/services/org.projectluma.Terminal.service \
+  %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.Terminal.service
 %py_byte_compile %{python3} %{buildroot}%{_datadir}/%{name}/luma_terminal
 
 %check
@@ -80,12 +82,21 @@ SHELL=/bin/bash dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x80
   env GSK_RENDERER=cairo PYTHONPATH=$PWD %{python3} tests/smoke_vte.py
 SHELL=/bin/bash dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" \
   env GSK_RENDERER=cairo PYTHONPATH=$PWD %{python3} tests/smoke_lifecycle.py
+# A cold standard Application.Open call reaches this source with exact directory
+# URIs; the test verifies real child-shell working folders and rejects documents.
+open_data=$(mktemp -d "$PWD/terminal-open.XXXXXX")
+mkdir -p "$open_data/dbus-1/services"
+printf '[D-BUS Service]\nName=org.projectluma.Terminal\nExec=%{python3} %s/tests/smoke_open.py --service\n' "$PWD" \
+  > "$open_data/dbus-1/services/org.projectluma.Terminal.service"
+SHELL=/bin/bash XDG_DATA_HOME="$open_data" PYTHONPATH=$PWD GSK_RENDERER=cairo xvfb-run -a --server-args="-screen 0 1280x800x24" dbus-run-session -- \
+  %{python3} tests/smoke_open.py
 
 %files
 %license MPL-2.0.txt
 %{_bindir}/%{name}
 %{_datadir}/%{name}/
 %{_datadir}/applications/org.projectluma.Terminal.desktop
+%{_datadir}/dbus-1/services/org.projectluma.Terminal.service
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
 
 %changelog

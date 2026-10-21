@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.Terminal
+Exec=/usr/bin/luma-terminal --gapplication-service
