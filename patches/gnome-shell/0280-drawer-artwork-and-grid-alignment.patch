@@ -1,0 +1,118 @@
+From: Luma Developers
+Subject: [PATCH] Align application drawer cells and use matching blue shortcut artwork
+
+diff --git a/js/ui/lumaDockFolders.js b/js/ui/lumaDockFolders.js
+--- a/js/ui/lumaDockFolders.js
++++ b/js/ui/lumaDockFolders.js
+@@ -404,7 +404,11 @@
+     }
+ 
+     setFolder(model) {
+-        const gicon = model?.gicon ?? null;
++        const downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
++        const artwork = model?.isApplications ? 'applications'
++            : downloads && model?.file?.get_path() === downloads ? 'downloads' : null;
++        const gicon = artwork ? new Gio.FileIcon({file: Gio.File.new_for_uri(
++            `resource:///org/gnome/shell/theme/luma-dock-${artwork}.svg`)}) : model?.gicon ?? null;
+         const key = gicon ? gicon.to_string() : 'folder';
+         if (this._key === key)
+             return;
+@@ -737,6 +741,7 @@
+         const apps = Boolean(this._controller.openFolder?.isApplications);
+         const metrics = this._controller.applicationMetrics();
+         this._views.visible = !apps;
++        this._meta.visible = !apps;
+         this.search.visible = apps;
+         if (apps) this.add_style_class_name('luma-dockf-applications');
+         else this.remove_style_class_name('luma-dockf-applications');
+@@ -818,7 +823,7 @@
+             line_alignment: Pango.Alignment.CENTER});
+         box.add_child(name);
+         const meta = metaFor(item);
+-        const caption = new St.Label({style_class: 'luma-dockf-cell-meta', text: meta,
++        const caption = new St.Label({style_class: 'luma-dockf-cell-meta', text: meta, visible: !item.app,
+             x_align: Clutter.ActorAlign.FILL});
+         caption.clutter_text.set({ellipsize: Pango.EllipsizeMode.END,
+             line_wrap: true, line_wrap_mode: Pango.WrapMode.WORD_CHAR,
+@@ -1249,6 +1254,9 @@
+         const query = model.isApplications ? this._surface.search.get_text().trim().toLocaleLowerCase() : '';
+         const items = query ? model.items.filter(item => item.name.toLocaleLowerCase().includes(query)) : model.items;
+         const columns = this.gridColumns();
++        const cellWidth = model.isApplications
++            ? Math.floor((this.applicationMetrics().width - (24 + 8 * (columns - 1)) * scaleFactor()) / columns)
++            : null;
+         if (model.isApplications) {
+             this._surface._meta.text = ngettext('%d application', '%d applications', model.count).format(model.count);
+             if (!items.length) body.add_child(new St.Label({text: query ? _('No applications match your search') : _('No applications installed'),
+@@ -1263,6 +1271,10 @@
+                 }
+                 const cell = new FolderCell(item);
+                 cell.x_expand = true;
++                if (cellWidth !== null) {
++                    cell.width = cellWidth;
++                    cell.height = 132 * scaleFactor();
++                }
+                 cell.connect('clicked', () => this._activate(item));
+                 if (!item.app) this._hookItemMenu(cell, item);
+                 row.add_child(cell);
+@@ -1271,7 +1283,8 @@
+             const remainder = items.length % columns;
+             if (row && remainder) {
+                 for (let i = remainder; i < columns; i++)
+-                    row.add_child(new St.Widget({x_expand: true}));
++                    row.add_child(new St.Widget({x_expand: true,
++                        ...(cellWidth !== null ? {width: cellWidth, height: 132 * scaleFactor()} : {})}));
+             }
+         } else {
+             for (const item of items) {
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3274,3 +3274,13 @@
+ .luma-dockf-applications .luma-dockf-thumb-large { background-color: transparent; border-width: 0; }
+ .luma-dockf-applications .luma-dockf-cell-meta { height: 0; padding: 0; margin: 0; }
+ .luma-dockf-empty { padding: 32px 16px; text-align: center; }
++
++/* A single title line and a quiet gap before search; app counts remain in the model. */
++.luma-dockf-applications .luma-dockf-head {
++  height: 48px; padding: 8px 12px 4px 16px; spacing: 10px; border-bottom-width: 0;
++}
++.luma-dockf-applications .luma-dockf-head-name { font-size: 16px; }
++.luma-dockf-applications .luma-dockf-search { margin: 4px 16px 16px; }
++.luma-dockf-applications .luma-dockf-cell-name { height: 34px; }
++
++.luma-dockf-applications .luma-dockf-grid { padding: 12px; spacing: 8px; }
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -13,6 +13,8 @@
+     <file>luma-share.css</file>
+     <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
++    <file>luma-dock-applications.svg</file>
++    <file>luma-dock-downloads.svg</file>
+     <file>gnome-shell-start.svg</file>
+     <file>pad-osd.css</file>
+     <file>prairie-daybreak.svg</file>
+diff --git a/data/theme/luma-dock-applications.svg b/data/theme/luma-dock-applications.svg
+new file mode 100644
+--- /dev/null
++++ b/data/theme/luma-dock-applications.svg
+@@ -0,0 +1,6 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
++<!-- SPDX-License-Identifier: CC-BY-SA-4.0
++     Blue plate adapted from the original Luma Prairie Filer artwork.
++     Copyright original Project Luma contributors. -->
++<defs><linearGradient id="fla-pl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#4d93ff" /><stop offset="1" stop-color="#2257e2" /></linearGradient><radialGradient id="fla-plh" cx="0.26" cy="0.12" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.2" /><stop offset="0.55" stop-color="#fff" stop-opacity="0.05" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></radialGradient><clipPath id="fla-clip"><rect x="82" y="82" width="860" height="860" rx="202" /></clipPath><filter id="fla-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="56" /></filter><linearGradient id="fla-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdfeff" /><stop offset="0.55" stop-color="#f1f5fc" /><stop offset="1" stop-color="#e1e9f7" /></linearGradient><filter id="fla-sd" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB"><feDropShadow dx="3" dy="8" stdDeviation="9" flood-color="#0b2a86" flood-opacity="0.22" /></filter></defs><g id="dock-size" transform="translate(512 512) scale(1.12) translate(-512 -512)">
++<g id="plate"><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#fla-pl)" /><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#fla-plh)" /></g><g id="ambient-shadow" clip-path="url(#fla-clip)"><ellipse cx="530" cy="780" rx="330" ry="120" fill="#0b2a86" opacity="0.55" filter="url(#fla-amb)" /></g><g filter="url(#fla-sd)"><rect x="270" y="282" width="128" height="128" rx="30" fill="#a7badf" /><rect x="270" y="270" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="448" y="282" width="128" height="128" rx="30" fill="#a7badf" /><rect x="448" y="270" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="626" y="282" width="128" height="128" rx="30" fill="#a7badf" /><rect x="626" y="270" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="270" y="460" width="128" height="128" rx="30" fill="#a7badf" /><rect x="270" y="448" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="448" y="460" width="128" height="128" rx="30" fill="#a7badf" /><rect x="448" y="448" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="626" y="460" width="128" height="128" rx="30" fill="#a7badf" /><rect x="626" y="448" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="270" y="638" width="128" height="128" rx="30" fill="#a7badf" /><rect x="270" y="626" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="448" y="638" width="128" height="128" rx="30" fill="#a7badf" /><rect x="448" y="626" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /><rect x="626" y="638" width="128" height="128" rx="30" fill="#a7badf" /><rect x="626" y="626" width="128" height="128" rx="30" fill="url(#fla-front)" stroke="#fff" stroke-opacity=".35" stroke-width="2" /></g></g></svg>
+diff --git a/data/theme/luma-dock-downloads.svg b/data/theme/luma-dock-downloads.svg
+new file mode 100644
+--- /dev/null
++++ b/data/theme/luma-dock-downloads.svg
+@@ -0,0 +1,6 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
++<!-- SPDX-License-Identifier: CC-BY-SA-4.0
++     Blue plate adapted from the original Luma Prairie Filer artwork.
++     Copyright original Project Luma contributors. -->
++<defs><linearGradient id="fla-pl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#4d93ff" /><stop offset="1" stop-color="#2257e2" /></linearGradient><radialGradient id="fla-plh" cx="0.26" cy="0.12" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.2" /><stop offset="0.55" stop-color="#fff" stop-opacity="0.05" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></radialGradient><clipPath id="fla-clip"><rect x="82" y="82" width="860" height="860" rx="202" /></clipPath><filter id="fla-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="56" /></filter><linearGradient id="fla-front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdfeff" /><stop offset="0.55" stop-color="#f1f5fc" /><stop offset="1" stop-color="#e1e9f7" /></linearGradient><filter id="fla-sd" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB"><feDropShadow dx="3" dy="8" stdDeviation="9" flood-color="#0b2a86" flood-opacity="0.22" /></filter></defs><g id="dock-size" transform="translate(512 512) scale(1.12) translate(-512 -512)">
++<g id="plate"><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#fla-pl)" /><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#fla-plh)" /></g><g id="ambient-shadow" clip-path="url(#fla-clip)"><ellipse cx="530" cy="780" rx="330" ry="120" fill="#0b2a86" opacity="0.55" filter="url(#fla-amb)" /></g><g filter="url(#fla-sd)"><path d="M484 258 Q472 258 472 270 V482 H382 Q363 482 377 498 L498 628 Q512 643 526 628 L647 498 Q661 482 642 482 H552 V270 Q552 258 540 258 Z" transform="translate(0 12)" fill="#a7badf" /><path d="M484 258 Q472 258 472 270 V482 H382 Q363 482 377 498 L498 628 Q512 643 526 628 L647 498 Q661 482 642 482 H552 V270 Q552 258 540 258 Z" fill="url(#fla-front)" /><path d="M292 630 V712 Q292 746 326 746 H698 Q732 746 732 712 V630" transform="translate(0 12)" fill="none" stroke="#a7badf" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" /><path d="M292 630 V712 Q292 746 326 746 H698 Q732 746 732 712 V630" transform="translate(0 0)" fill="none" stroke="url(#fla-front)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" /></g></g></svg>

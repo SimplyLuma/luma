@@ -11,6 +11,9 @@ bash tests/gnome-shell/applications-drawer/run-native.sh
 
 This checks the real AppSystem catalogue, keyboard opening/search/launch,
 light/dark search contrast, monitor bounds and preservation of custom or empty
-folder lists. Its small fixture catalogue is not a substitute for reviewing
+folder lists. Real private desktop entries exercise long names, multiple rows
+and an incomplete final row; checks cover equal tile dimensions, column
+alignment, label bounds, header spacing and both packaged shortcut icons.
+Its small fixture catalogue is not a substitute for reviewing
 screenshots with the full desktop app collection. Generated images stay outside
 Git. Applications drawer release requires the owner's screenshot approval.

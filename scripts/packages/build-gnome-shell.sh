@@ -333,6 +333,8 @@ install -m 0644 "$repo_root/patches/gnome-shell/0276-quick-options-device-row-ge
 install -m 0644 "$repo_root/patches/gnome-shell/0277-login-surfaces-and-dock-battery-percentage.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0278-brightness-one-percent-and-idle-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0279-applications-and-downloads-drawer.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0280-drawer-artwork-and-grid-alignment.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"

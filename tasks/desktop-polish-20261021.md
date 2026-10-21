@@ -65,3 +65,14 @@ ineligible; the new passing candidate uses the normal producer and publisher.
 Reusing the published engine does not establish qualification of the separate
 pending native-touch source changes. Final public OS/app update and image
 qualification remain separate from source/package validation.
+
+## Drawer review revision
+
+Shell120 replaces the Applications and XDG Downloads shortcut marks with authored
+blue artwork derived from Filer's plate, with raised grid and download symbols.
+The Applications header uses one title line and more space before search. Equal
+cell and spacer dimensions keep partial rows aligned. Custom folder icons and
+keyboard/search behavior remain covered. The installed Shell119 regression
+reproduced the header, artwork and partial-row failures; revised packaging and
+final screenshot qualification are in progress. Updated appearance still awaits
+the owner's confirmation before release.
