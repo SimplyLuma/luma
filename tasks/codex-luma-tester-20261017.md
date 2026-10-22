@@ -855,3 +855,21 @@ used that source without altering shared refs or unrelated worktrees.
   managed SSH and confirmed Force Stop. Full OS installation not tested.
   Final9c3f02e7 PASSED70 checks; compatibility27287f4c PASSED71 incl old settings.
   Build/packaged regression and Dell delivery are next. No source edits during tests.
+- Tester0.4.0/83efa578 built6b75c01c via full portable producer, with verified
+  matching ARM emulator, libfdt, native tool closure, UEFI code/variables and notices.
+  AppImage a33c792e6645959f54127d8a30f87b9783979fdbb49d4d9e324b6b60ec2c54e5,
+  294857208 bytes, owned HDD appimage-arm-r25. Existing Desktop r15/Mobile r10
+  sidecars unchanged; no bundled ARM OS until the other task qualifies its build.
+- Packaged768ac5c0 PASSED actual AppImage startup, full genuine Mobile SDK workflow
+  (touch/OSK/Home, shared folders, SSH revocation, visible hotfix, clean captures,
+  graceful shutdown), and actual ARM64 EFI optical fixture using bundled QEMU,
+  modules/libfdt/firmware. Fixture verifies persistent UEFI/disk and disk-first
+  boot ordering; it is not a Luma ARM OS install or Raspberry Pi qualification.
+  Evidence root-jobs/luma-tester-user-e99f776cb7/qualification.json.
+- Dell route timed out during SSH banner twice after qualification;0.4.0 has NOT
+  been transferred or launched. Last delivered candidate remains0.3.1/r24. Ready
+  transfer helper /srv/dev/accounts/second/artifacts/tester-arm-r25-deliver.py.
+  On reconnect, verify/transfer app and unchanged sidecars, preserve any running
+  QEMU guest, register and launch using the same tester-display-20261017 isolation.
+  No automatic retry daemon, publication, signing, OS interface flags or physical
+  device changes were performed. Source clean after this evidence note commit.
