@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
       - id: matrix
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
         run: |
           if [ -n "$BASE" ]; then
             matrix=$(python3 scripts/os/desktop-package-matrix.py --base "$BASE")

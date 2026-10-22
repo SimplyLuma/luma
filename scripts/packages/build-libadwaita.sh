@@ -175,11 +175,27 @@ install -m 0644 "$repo_root/tests/toolkit-native/generic-client.py" "$rpmbuild_d
 luma_assert_spec_release "$rpmbuild_dir/SPECS/libadwaita.spec" \
   "$LIBADWAITA_LUMA_RELEASE" || exit 1
 
+# Match the shared toolkit provider to this target and release. A stock
+# builder GTK would make the generic-client surface checks measure another UI.
+gtk_nevra=${GTK4_NEVRA%.x86_64}.$architecture
+gtk_dir="$repo_root/build/packages/gtk4/RPMS/$architecture"
+[ -f "$gtk_dir/$gtk_nevra.rpm" ] || {
+  printf 'error: build the matching GTK4 provider first: %s\n' "$gtk_nevra" >&2
+  exit 1
+}
+install -d -m 0755 "$rpmbuild_dir/luma-toolkit"
+for built in "$gtk_dir"/gtk4-*.rpm; do
+  [ -f "$built" ] || continue
+  case "$(basename "$built")" in *-debuginfo-*|*-debugsource-*) continue ;; esac
+  install -m 0644 "$built" "$rpmbuild_dir/luma-toolkit/"
+done
+
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
   "$builder_container" '
     set -euo pipefail
     dnf5 -y install rpm-build dnf5-plugins
+    dnf5 -y install ./luma-toolkit/gtk4-*.rpm
     dnf5 -y builddep SPECS/libadwaita.spec
     rpmbuild -ba --noclean --define "_smp_build_ncpus 4" --define "_topdir $PWD" SPECS/libadwaita.spec
 

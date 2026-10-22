@@ -190,6 +190,12 @@ install -d -m 0755 "$stable_rpms" "$stable_srpms"
 install -m 0644 \
   "$rpmbuild_dir/RPMS/$architecture/$package_nevra.rpm" \
   "$stable_rpms/"
+# Dependents must use the headers from this build as well as its library.
+for built in "$rpmbuild_dir/RPMS/$architecture"/gtk4-*.rpm; do
+  [ -f "$built" ] || continue
+  case "$(basename "$built")" in *-debuginfo-*|*-debugsource-*) continue ;; esac
+  install -m 0644 "$built" "$stable_rpms/"
+done
 install -m 0644 \
   "$rpmbuild_dir/SRPMS/gtk4-4.22.4-${GTK4_LUMA_RELEASE}.fc44.src.rpm" \
   "$stable_srpms/"
