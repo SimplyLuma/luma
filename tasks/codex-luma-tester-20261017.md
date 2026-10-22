@@ -524,3 +524,16 @@ used that source without altering shared refs or unrelated worktrees.
   uses3GiB and verifies any existing copy before replacing a source with a
   symlink. Stopped r18 AppImage QA extraction retired in f2eb4c41; root reserve
   preserved. Never move live guest backings.
+- R6 composecff60807 passed with keyboard default in its system profile. Native
+  touch typing filters Library to Notes and presents LatinIME suggestions;
+  screenshot visually inspected (345135b8 failed only on case-sensitive OCR).
+  Keyboard/Home return still exposes a native fold/state issue; added explicit
+  Home API/CLI/toolbar using Phosh's real overview property and keyboard bindings.
+  This preserves the phone renderer and provides a recovery/navigation action.
+  Startup uses the same native action before showing Mobile. Qualification
+  pending; do not claim Home issue fixed from syntax checks.
+- Architecture selection/real LumaUI navigation b9453626 passed including
+  Windows-style ARM64 spelling; desktop native preference and ARM phone
+  preference/fallback checked. Source remains Linux host only. Old immutable
+  phone exports successfully archived with exact SHA checks in fd1042cc; failed
+  1GiB archival attempt remains recorded. Root26GiB/secondary22GiB at last check.

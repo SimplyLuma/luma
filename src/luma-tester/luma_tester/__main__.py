@@ -25,7 +25,7 @@ def main():
     publish.add_argument('--boot', choices=['bios', 'uefi'], required=True)
     publish.add_argument('--user', default='luma')
     publish.add_argument('--url', help='Published HTTPS disk URL; defaults to the local disk')
-    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'screenshot', 'ssh', 'sync', 'wait', 'dev']:
+    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev']:
         p = sub.add_parser(action)
         p.add_argument('manifest', type=Path)
         if action == 'start':
@@ -101,6 +101,9 @@ def main():
             session.shutdown()
         elif args.action in ('pause', 'resume'):
             session.qmp({'pause': 'stop', 'resume': 'cont'}[args.action])
+        elif args.action == 'home':
+            session.wait_graphical()
+            session.home()
         elif args.action == 'screenshot':
             print(session.screenshot(args.path))
         elif args.action == 'ssh':

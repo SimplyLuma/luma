@@ -370,6 +370,31 @@ class Session:
         except (OSError, TesterError):
             return 'stopped'
 
+    def home(self):
+        """Show native phone Home through its existing overview/key bindings."""
+        if self.manifest['target'] != 'mobile':
+            raise TesterError('Home navigation requires a Mobile guest.')
+        def overview_active():
+            result = subprocess.check_output(self.ssh(['gdbus', 'call', '--session',
+                '--dest', 'org.gnome.Shell', '--object-path', '/org/gnome/Shell',
+                '--method', 'org.freedesktop.DBus.Properties.Get',
+                'org.gnome.Shell', 'OverviewActive']), text=True, timeout=10)
+            return 'true' in result
+        def key(code):
+            self.qmp('send-key', {'keys': [{'type': 'qcode', 'data': code}]})
+            time.sleep(0.3)
+        # Opening overview from a folded launcher uses the real global binding;
+        # Escape returns Library/search/activity view to the native Home page.
+        # IME dismissal can finish a pending fold, so observe the real shell
+        # state again rather than assuming one key has completed the transition.
+        for _ in range(3):
+            if not overview_active():
+                key('meta_l')
+            key('esc')
+            if overview_active():
+                return
+        raise TesterError('The phone shell did not open Home.')
+
     def shutdown(self):
         # Luma Mobile owns the virtual power button as display sleep/wake.
         # An ACPI button press is therefore not a reliable shutdown request.

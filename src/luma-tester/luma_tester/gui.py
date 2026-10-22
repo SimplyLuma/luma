@@ -64,6 +64,7 @@ def launch(state=None):
             self.graphical_ready = False
             self.display_failure = None
             self.shutting_down = False
+            self.home_busy = False
             self.selected_images = {}
 
         def label(self, text, role='body', muted=False, centered=False):
@@ -191,7 +192,9 @@ def launch(state=None):
             self.run_button = self.button('Start', self.start, True)
             self.pause_button = self.button('Pause', self.pause)
             self.shutdown_button = self.button('Shut Down', self.stop)
-            for button in (self.run_button, self.pause_button, self.shutdown_button):
+            self.home_button = self.button('Home', self.home)
+            self.home_button.set_visible(False)
+            for button in (self.home_button, self.run_button, self.pause_button, self.shutdown_button):
                 self.toolbar.append(button)
             self.island.append(self.toolbar)
 
@@ -413,6 +416,8 @@ def launch(state=None):
                 import time
                 try:
                     session.wait_graphical(180)
+                    if session.manifest['target'] == 'mobile':
+                        session.home()
                     time.sleep(1)
                     GLib.idle_add(self.reveal_display, session)
                 except Exception as exc:
@@ -486,7 +491,7 @@ def launch(state=None):
                         return selected
                 except (OSError, TesterError, ValueError, TypeError):
                     pass
-            native = 'aarch64' if platform.machine() in ('aarch64', 'arm64') else 'x86_64'
+            native = 'aarch64' if platform.machine().lower() in ('aarch64', 'arm64') else 'x86_64'
             preferred = 'aarch64' if self.target == 'mobile' else native
             candidates = []
             for priority, path in enumerate(self.available_manifests()):
@@ -596,6 +601,11 @@ def launch(state=None):
                 self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
             active = self.active()
             self.run_button.set_sensitive(not active and self.select_image() is not None)
+            self.run_button.set_visible(not active)
+            self.pause_button.set_visible(running)
+            self.shutdown_button.set_visible(running)
+            self.home_button.set_visible(running and self.target == 'mobile')
+            self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
             self.pause_button.set_label('Resume' if running and self.session.status() == 'paused' else 'Pause')
@@ -605,6 +615,24 @@ def launch(state=None):
                 row.set_sensitive(not active and name in ('desktop', 'mobile') and
                                   (not self.catalog_targets or name in self.catalog_targets))
             return True
+
+        def home(self):
+            if not self.running() or not self.graphical_ready or self.shutting_down or self.home_busy:
+                return
+            session = self.session
+            self.home_busy = True
+            self.home_button.set_sensitive(False)
+            def finished():
+                self.home_busy = False
+                return False
+            def worker():
+                try:
+                    session.home()
+                except Exception as exc:
+                    GLib.idle_add(self.display_failed, self.viewer, str(exc))
+                finally:
+                    GLib.idle_add(finished)
+            threading.Thread(target=worker, daemon=True).start()
 
         def pause(self):
             if self.running():

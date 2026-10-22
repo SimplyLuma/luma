@@ -48,7 +48,8 @@ src/luma-tester/luma-tester gui
 
 Choose **Try Luma** or **Develop for Luma**. Both open the same workspace:
 choose **Mobile** or **Desktop** in the sidebar, choose an image, then **Start**.
-The toolbar provides **Pause**, **Resume**, and graceful **Shut Down**. Stop the
+The toolbar provides **Pause**, **Resume**, and graceful **Shut Down**. Mobile
+also provides **Home**, which opens the actual phone Home surface. Stop the
 current session before changing its device experience or image. On narrow
 windows the sidebar opens over the content using the toolbar's navigation button.
 The launcher
@@ -91,6 +92,7 @@ luma-tester ssh /path/to/mobile.json uname -m
 luma-tester status /path/to/mobile.json
 luma-tester pause /path/to/mobile.json
 luma-tester resume /path/to/mobile.json
+luma-tester home /path/to/mobile.json
 luma-tester screenshot /path/to/mobile.json /tmp/luma-screen.ppm
 luma-tester stop /path/to/mobile.json
 ```
