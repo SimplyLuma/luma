@@ -16,9 +16,10 @@ luma-tester = "luma_tester.__main__:main"
 include = ["luma_tester*"]
 
 [tool.setuptools.package-data]
-luma_tester = ["tester.css"]
+luma_tester = ["tester.css", "io.luma.Tester.svg"]
 
 [tool.setuptools.data-files]
 "share/applications" = ["io.luma.Tester.desktop"]
+"share/icons/hicolor/scalable/apps" = ["luma_tester/io.luma.Tester.svg"]
 
 "share/doc/luma-tester" = ["THIRD-PARTY.md"]

@@ -12,7 +12,7 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 # The finished interface requires the real shared toolkit. No stock GTK fallback.
 try:
@@ -84,8 +84,9 @@ def launch(state=None):
                 Command('tester.shutdown', 'Shut down', self.stop, 'power', enabled=lambda: self.running()),
                 Command('tester.quit', 'Quit', self.window_close, 'log-out', shortcut=('Ctrl', 'Q')),
             )),))
+            Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(Path(__file__).parent))
             self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Luma Tester',
-                                    icon_name='computer-symbolic', commands=self.commands,
+                                    icon_name='io.luma.Tester', commands=self.commands,
                                     default_width=780, default_height=650,
                                     minimum_width=480, minimum_height=480)
             add_style_sheet(str(Path(__file__).with_name('tester.css')))
@@ -104,15 +105,17 @@ def launch(state=None):
 
         def page(self, name):
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=26,
-                              margin_start=40, margin_end=40, margin_top=36, margin_bottom=28)
-            clamp = Adw.Clamp(maximum_size=580, child=content)
+                              margin_start=40, margin_end=40, margin_top=32, margin_bottom=32,
+                              valign=Gtk.Align.CENTER)
+            clamp = Adw.Clamp(maximum_size=580, child=content, vexpand=True)
             self.stack.add_named(ScrollView(clamp, fade_top=False, fade_bottom=False), name)
             return content
 
         def heading(self, page, title, subtitle):
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_bottom=10)
             box.append(self.label(title, 'hero', centered=True))
-            box.append(self.label(subtitle, muted=True, centered=True))
+            if subtitle:
+                box.append(self.label(subtitle, muted=True, centered=True))
             page.append(box)
 
         def choice(self, title, description, icon, callback, selected=False, toggle=False):
@@ -124,26 +127,26 @@ def launch(state=None):
                 button.add_css_class('selected')
             column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
                              halign=Gtk.Align.FILL, margin_start=12, margin_end=12,
-                             margin_top=24, margin_bottom=24)
+                             margin_top=24, margin_bottom=24, valign=Gtk.Align.CENTER)
             graphic = icons.image(icon, pixel_size=56)
             graphic.add_css_class('tester-choice-icon')
             column.append(graphic)
             column.append(self.label(title, 'title-2', centered=True))
-            column.append(self.label(description, muted=True, centered=True))
+            if description:
+                column.append(self.label(description, muted=True, centered=True))
             button.set_child(Card(column, padded=False))
             button.connect('clicked', lambda _button: callback())
             return button
 
         def build_welcome(self):
             page = self.page('welcome')
-            self.heading(page, 'Hello, Luma.', 'What would you like to do?')
+            self.heading(page, 'Hello, Luma.', None)
             choices = Gtk.Box(spacing=18, homogeneous=True)
-            choices.append(self.choice('Try Luma', 'Take a look around.', 'play',
+            choices.append(self.choice('Try Luma', None, 'play',
                                        lambda: self.commands.invoke('tester.try')))
-            choices.append(self.choice('Develop for Luma', 'Build and test your app.', 'code',
+            choices.append(self.choice('Develop for Luma', None, 'code',
                                        lambda: self.commands.invoke('tester.develop')))
             page.append(choices)
-            page.append(self.label('A space to explore. Right on your computer.', muted=True, centered=True))
 
         def build_targets(self):
             page = self.page('targets')

@@ -49,6 +49,8 @@ for name in ('prairie_apps', 'luma_appkit', 'sitecustomize.py'):
     elif path.exists(): path.unlink()
 copy(REPO / 'src/luma-platform/appkit/luma_appkit', site.relative_to(dest) / 'luma_appkit')
 copy(REPO / 'src/luma-tester/luma_tester', site.relative_to(dest) / 'luma_tester')
+copy(REPO / 'src/luma-tester/luma_tester/io.luma.Tester.svg', 'usr/share/icons/hicolor/scalable/apps/io.luma.Tester.svg')
+copy(REPO / 'src/luma-tester/io.luma.Tester.desktop', 'usr/share/applications/io.luma.Tester.desktop')
 copy(runtime / 'fonts.conf', 'fonts.conf')
 loaders = (runtime / 'pixbuf-loaders.cache').read_text()
 # Existing standalone runtime producers use an application-specific path token.
