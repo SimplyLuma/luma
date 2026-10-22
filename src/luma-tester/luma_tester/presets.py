@@ -15,13 +15,13 @@ def load(path):
             return [item for item in data[:32] if isinstance(item, dict) and
                     isinstance(item.get('name'), str) and isinstance(item.get('manifest'), str) and
                     item.get('intent') in ('try', 'develop') and
-                    item.get('target') in ('desktop', 'mobile') and isinstance(item.get('image'), dict)]
+                    item.get('target') in ('desktop','mobile','tablet','tv','smart-device') and isinstance(item.get('image'), dict)]
     except (OSError, ValueError):
         pass
     return []
 
 
-def save(path, name, manifest_path, intent, settings=None):
+def save(path, name, manifest_path, intent, settings=None, experience=None):
     name = name.strip()
     if not 1 <= len(name) <= 80 or any(ord(char) < 32 for char in name):
         raise TesterError('Name the preset using 1–80 characters.')
@@ -29,12 +29,15 @@ def save(path, name, manifest_path, intent, settings=None):
         raise TesterError('Unknown workspace mode.')
     manifest_path = Path(manifest_path).resolve()
     manifest = read_manifest(manifest_path)
-    item = dict(name=name, manifest=str(manifest_path), target=manifest['target'],
+    from .experiences import compatible
+    experience=experience or manifest['target']
+    if not compatible(experience,manifest):raise TesterError('This image does not match the preset experience.')
+    item = dict(name=name, manifest=str(manifest_path), target=experience,
                 intent=intent, arch=manifest['arch'], image=manifest['image'])
     if settings is not None:
-        from .vm import validate
+        from .vm import validate, DEFAULTS
         from copy import deepcopy
-        item['vm'] = validate(deepcopy(settings))
+        item['vm'] = validate(dict(DEFAULTS,**deepcopy(settings)))
     items = [item] + [old for old in load(path) if old['name'] != name]
     path = Path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -56,7 +59,8 @@ def resolve(item):
     manifest = read_manifest(path)
     # Moving a catalog or silently replacing a named nightly must not select
     # different bytes under an existing preset's architecture/profile identity.
-    if (manifest['target'] != item['target'] or manifest['arch'] != item['arch'] or
+    from .experiences import compatible
+    if (not compatible(item['target'],manifest) or manifest['arch'] != item['arch'] or
             {key: manifest['image'][key] for key in ('sha256', 'bytes')} !=
             {key: item['image'].get(key) for key in ('sha256', 'bytes')}):
         raise TesterError('This preset’s image has changed. Choose the build again and save a new preset.')

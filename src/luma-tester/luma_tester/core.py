@@ -51,8 +51,10 @@ def read_manifest(path):
         raise TesterError('The guest build identity is required.')
     if m.get('boot') not in ('bios', 'uefi') or (m['arch'] == 'aarch64' and m['boot'] != 'uefi'):
         raise TesterError('ARM guests require UEFI; x86 guests accept bios or uefi.')
-    if m.get('cloud_init') is not True:
-        raise TesterError('This version requires a cloud-init enabled developer image.')
+    if m.get('media','disk') not in ('disk','iso'):
+        raise TesterError('Choose a developer disk or installation ISO.')
+    if m.get('cloud_init') is not (m.get('media','disk') == 'disk'):
+        raise TesterError('Developer disks require cloud-init; installation ISOs do not.')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', m.get('user', '')):
         raise TesterError('Invalid guest user.')
     image = m.get('image', {})
@@ -93,6 +95,7 @@ class HTTPSRedirects(HTTPRedirectHandler):
 class Session:
     def __init__(self, manifest, state=None):
         self.manifest = read_manifest(manifest)
+        self.experience = self.manifest['target']
         self.root = data_root(state)
         self.directory = self.root / 'sessions' / self.manifest['id']
         # UNIX socket paths have a small platform limit. Keep them outside the data path.
@@ -107,7 +110,7 @@ class Session:
             raise TesterError('Session runtime directory must be private and owned by this user.')
         self.qmp_path = self.runtime / 'qmp'
         self.display_path = self.runtime / 'display'
-        self.base = self.root / 'images' / (self.manifest['image']['sha256'] + '.qcow2')
+        self.base = self.root / 'images' / (self.manifest['image']['sha256'] + ('.iso' if self.manifest.get('media') == 'iso' else '.qcow2'))
         self.disk = self.directory / 'disk.qcow2'
         self.key = self.directory / 'developer-key'
 
@@ -145,6 +148,7 @@ class Session:
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
         image = self.manifest['image']
+        verified=False
         # Only published, explicitly associated artifacts contact the Hub.
         # Private/local images never create attribution tickets.
         if (not self.base.exists() and self.manifest.get('artifact_id')
@@ -165,13 +169,14 @@ class Session:
                         break
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
-            download(artifact, self.base, experience=self.manifest['target'], purpose=purpose, report=report)
+            download(artifact, self.base, experience={'smart-device':'home'}.get(self.experience,self.experience), purpose=purpose, report=report)
             try:
-                self.validate_disk(self.base)
+                self.validate_image(self.base)
             except Exception:
                 self.base.unlink(missing_ok=True)
                 raise
             self.base.chmod(0o444)
+            verified=True
         if not self.base.exists():
             if shutil.disk_usage(self.root).free < image['bytes'] + 2 * 1024**3:
                 raise TesterError('Insufficient space for image plus 2 GiB working reserve.')
@@ -184,30 +189,39 @@ class Session:
                         if urlparse(image['url']).scheme == 'https' and urlparse(source.url).scheme != 'https':
                             raise TesterError('Refusing a download redirected away from HTTPS.')
                         count = 0
+                        checksum=hashlib.sha256()
                         while chunk := source.read(1024 * 1024):
                             count += len(chunk)
                             if count > image['bytes']:
                                 raise TesterError('Download exceeds declared image size.')
                             output.write(chunk)
+                            checksum.update(chunk)
                     output.flush()
-                    if count != image['bytes'] or digest(partial) != image['sha256']:
+                    if count != image['bytes'] or checksum.hexdigest() != image['sha256']:
                         raise TesterError('Guest image size or SHA-256 mismatch.')
-                    self.validate_disk(partial)
+                    self.validate_image(partial)
                     partial.chmod(0o444)
                     partial.replace(self.base)
+                    verified=True
                 finally:
                     partial.unlink(missing_ok=True)
         # Verify cached inputs too. Do not run a different image under a trusted build label.
-        if self.base.stat().st_size != image['bytes'] or digest(self.base) != image['sha256']:
+        if self.base.stat().st_size != image['bytes'] or (not verified and digest(self.base) != image['sha256']):
             raise TesterError('Cached image changed; remove only that cache file and prepare again.')
-        if not self.disk.exists():
-            run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2', '-b', self.base, self.disk])
         from . import vm
         capacity = vm.load(self.root)['disk_gib'] * 1024**3
+        if not self.disk.exists():
+            if self.manifest.get('media') == 'iso':
+                run(['qemu-img','create','-q','-f','qcow2',self.disk,str(capacity)])
+            else:
+                run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2', '-b', self.base, self.disk])
         info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(self.disk)]))
         if info['virtual-size'] < capacity:
             run(['qemu-img', 'resize', '-q', str(self.disk), str(capacity)])
         self.disk_capacity = max(info['virtual-size'], capacity)
+        if not self.manifest['cloud_init']:
+            report('Installation media and persistent disk are ready.')
+            return
         if not self.key.exists():
             run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', self.key])
         if not (self.directory / 'seed.iso').exists():
@@ -226,6 +240,13 @@ class Session:
             (self.directory / 'seed.iso.new').replace(self.directory / 'seed.iso')
         report('Guest image and private developer session are ready.')
 
+    def validate_image(self, path):
+        if self.manifest.get('media') == 'iso':
+            from .experiences import validate_iso
+            validate_iso(path)
+            return
+        self.validate_disk(path)
+
     @staticmethod
     def validate_disk(path):
         info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(path)]))
@@ -240,7 +261,8 @@ class Session:
     def firmware(self, override=None):
         if self.manifest['boot'] == 'bios':
             return None
-        choices = ([override] if override else []) + (
+        bundled=Path(os.environ.get('LUMA_TESTER_FIRMWARE_DIR','/nonexistent'))
+        choices = ([override] if override else []) + [str(bundled / ('aarch64/QEMU_EFI.fd' if self.manifest['arch']=='aarch64' else 'ovmf/OVMF_CODE.fd'))] + (
             ['/usr/share/edk2/aarch64/QEMU_EFI.fd', '/usr/share/AAVMF/AAVMF_CODE.fd']
             if self.manifest['arch'] == 'aarch64' else
             ['/usr/share/edk2/ovmf/OVMF_CODE.fd', '/usr/share/OVMF/OVMF_CODE.fd'])
@@ -261,8 +283,12 @@ class Session:
         return None
 
     def command(self, port=2228, memory=None, cpus=None, headless=False, firmware=None, software=False, embedded=False,
-                graphics=None, render_node=None):
+                graphics=None, render_node=None, experience=None):
         from . import vm
+        from . import experiences
+        experience = experience or self.manifest['target']
+        if not experiences.compatible(experience,self.manifest):
+            raise TesterError('This image cannot boot the selected experience.')
         settings = vm.load(self.root)
         memory = settings['memory'] if memory is None else memory
         cpus = settings['cpus'] if cpus is None else cpus
@@ -282,8 +308,8 @@ class Session:
         arch = self.manifest['arch']
         native = platform.machine() in ({'aarch64', 'arm64'} if arch == 'aarch64' else {'x86_64', 'AMD64'})
         kvm = native and not software and os.access('/dev/kvm', os.R_OK | os.W_OK)
-        width, height = (432, 960) if self.manifest['target'] == 'mobile' else (1920, 1080)
-        argv = ['qemu-system-' + arch, '-name', 'Luma ' + self.manifest['target'].title(),
+        width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
+        argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
                 '-accel', 'kvm' if kvm else 'tcg,thread=multi', '-cpu', 'host' if kvm else 'max',
                 '-m', str(memory), '-smp', str(cpus), '-nic',
@@ -293,17 +319,40 @@ class Session:
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
                 '-display', display]
+        if arch=='aarch64':
+            position=argv.index('-nic')
+            argv[position:position+2]=['-netdev',f'user,id=network0,hostfwd=tcp:127.0.0.1:{port}-:22','-device','virtio-net-pci,netdev=network0,romfile=']
+        argv += ['-fw_cfg','name=opt/luma/experience,string='+experiences.FLAGS.get(experience,experience)]
         if self.manifest['target'] == 'mobile':
             argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
             argv += ['-vnc', 'unix:' + str(self.display_path)]
-        for name, path, fmt, readonly in [('os', self.disk, 'qcow2', False),
-                                           ('seed', self.directory / 'seed.iso', 'raw', True)]:
+        disks=[('os',self.disk,'qcow2',False)]
+        if self.manifest['cloud_init']:
+            disks.append(('seed',self.directory/'seed.iso','raw',True))
+        for name, path, fmt, readonly in disks:
             block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
                      'file': {'driver': 'file', 'filename': str(path)}}
-            argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}']
+            boot=(',bootindex='+('2' if settings['boot_iso'] else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
+            argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}'+boot]
+        if self.manifest.get('media') == 'iso':
+            block={'driver':'raw','node-name':'installer','read-only':True,'file':{'driver':'file','filename':str(self.base)}}
+            argv += ['-blockdev',json.dumps(block),'-device','virtio-scsi-pci,id=scsi','-device','scsi-cd,drive=installer,bootindex='+('1' if settings['boot_iso'] else '2')]
         bios = self.firmware(firmware)
-        if bios:
+        if bios and self.manifest.get('media') == 'iso':
+            code=Path(bios).with_name('QEMU_EFI-pflash.raw') if arch=='aarch64' else Path(bios)
+            template=code.with_name('vars-template-pflash.raw' if arch=='aarch64' else 'OVMF_VARS.fd')
+            variables=self.directory/'firmware-vars.raw'
+            if not code.is_file() or not template.is_file():
+                raise TesterError('This installer needs matching UEFI code and variable templates.')
+            self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+            if not variables.exists():
+                with template.open('rb') as source, variables.open('xb') as target:
+                    variables.chmod(0o600);shutil.copyfileobj(source,target)
+            for name,path,readonly in [('fwcode',code,True),('fwvars',variables,False)]:
+                argv += ['-blockdev',json.dumps({'driver':'raw','node-name':name,'read-only':readonly,'file':{'driver':'file','filename':str(path)}})]
+            argv[argv.index('-machine')+1]+=',pflash0=fwcode,pflash1=fwvars'
+        elif bios:
             argv += ['-bios', bios]
         if not headless:
             argv += vm.devices(settings)
@@ -329,8 +378,11 @@ class Session:
         if platform.system() != 'Linux':
             raise TesterError('This first launcher supports Linux hosts. macOS and Windows are planned.')
         with self.lock() as lease:
+            self.experience=options.get('experience') or self.manifest['target']
             self._prepare(print)
             command = self.command(**options)
+            self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
+            (self.directory/'experience.json').write_text(json.dumps({'experience':options.get('experience') or self.manifest['target'],'arch':self.manifest['arch']})+'\n')
             graphics = {'mode': 'software', 'reason': 'GPU unavailable or software mode selected'}
             if any(arg.startswith('virtio-gpu-gl-pci,') for arg in command):
                 try:
@@ -428,6 +480,10 @@ class Session:
             'org.project_luma.Tester1.ShowHome']), stdout=subprocess.DEVNULL, timeout=15)
 
     def shutdown(self):
+        if not self.manifest['cloud_init']:
+            if self.status() in ('paused','prelaunch'):self.qmp('cont')
+            self.qmp('system_powerdown')
+            return
         # Luma Mobile owns the virtual power button as display sleep/wake.
         # An ACPI button press is therefore not a reliable shutdown request.
         if self.status() in ('paused', 'prelaunch'):

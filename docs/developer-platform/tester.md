@@ -271,3 +271,54 @@ an explicit checksummed component/keyboard bundle and a verified common OS base,
 installs the native phone shell in a disposable VM, and exports a separate Mobile
 disk. Its build receipt deliberately sets `qualified: false`; run the actual
 phone boot, input, and app workflow qualification before cataloging that image.
+
+### TV, Tablet and Smart Home development
+
+These experiences prefer ARM64 even on an x86 host. Desktop prefers the host
+architecture. Mobile still requires a genuine Mobile image; a Desktop image
+is never substituted for it. TV, Tablet and Smart Home reuse a shared generic
+Desktop ARM image while their OS interface modes are developed. An explicitly
+selected x86 image is permitted for development; it is never selected silently
+for these ARM experiences. ARM on x86 uses QEMU CPU emulation.
+
+Use **Add Image** to select a developer JSON manifest or a local `.iso`. For an
+ISO, select the architecture of the media (ARM64 is preselected for these
+experiences). Use a generic UEFI installer compatible with QEMU `virt` for ARM
+or `q35` for x86. Raspberry Pi disk images require a separate physical hardware
+profile; generic VM boot does not qualify Pi firmware, GPU or peripherals.
+The ISO gets its own persistent installation disk and UEFI variable store. In
+Virtual Machine settings, turn **Boot from ISO** off after installation. The
+ISO remains attached read-only; the saved disk becomes the first boot choice.
+Installer/live media has no Tester-managed SSH account or readiness service.
+The display is available during firmware and installer startup. Use a prepared
+developer image for the managed SSH, agent prompt and automatic folder mounts.
+If the guest ignores an ACPI shutdown, Force Stop becomes available with a
+confirmation; this can lose unsaved guest changes. Disk snapshots cover the
+guest disk, not UEFI variables or host shared folders.
+
+The CLI supports the same workflow:
+
+```sh
+luma-tester import-iso ./luma-arm64.iso --arch aarch64
+luma-tester start /path/printed/by/import-iso.json --experience tv
+```
+
+#### Proposed OS experience hint
+
+The Tester passes a QEMU fw_cfg string named `opt/luma/experience` with one of
+`desktop`, `mobile`, `tablet`, `tv` or `home` (Smart Home). A Linux guest can read
+`/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw` when fw_cfg sysfs is
+available. This is a requested interface, independent of CPU architecture,
+physical-device identity and image checksum. The Tester does not change
+`/etc/luma-device-class`, patch the ISO or claim the OS already implements these
+modes. The OS can later use the hint for initial setup, with an installed user
+choice or Quick Settings override taking precedence. That OS policy and its
+physical-device persistence are separate work. Presets retain the experience
+while multiple experiences may reference the same installation disk.
+
+Linux x86-64 portable builders can include ARM guest support using an installed
+`qemu-system-aarch64` and `edk2-aarch64`, or pass `--arm-qemu`, `--arm-rpm`,
+`--arm-firmware` and `--arm-firmware-rpm` to `build-portable.py` for privately
+extracted matching packages. The producer checks extracted files against RPM
+digests and keeps the QEMU loader, modules, dependencies and firmware together.
+This adds ARM guests; macOS/Windows host packaging remains separately qualified.

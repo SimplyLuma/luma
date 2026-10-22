@@ -35,7 +35,7 @@ except (ImportError, ValueError) as exc:
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets, vm
+from . import presets, vm, experiences
 
 
 def launch(state=None):
@@ -71,11 +71,13 @@ def launch(state=None):
                     continue
             if 'desktop' in self.catalog_targets:
                 self.target = 'desktop'
+            self.catalog_targets.update(('tv','smart-device','tablet'))
             self.advanced = None
             self.viewer = None
             self.graphical_ready = False
             self.display_failure = None
             self.shutting_down = False
+            self.force_stop_available = False
             self.home_busy = False
             self.ssh_busy = False
             self.selected_images = {}
@@ -83,7 +85,7 @@ def launch(state=None):
                 saved=json.loads(self.preferences.read_text()).get('selected_images',{})
                 for target,path in saved.items():
                     path=Path(path)
-                    if target in ('desktop','mobile') and read_manifest(path)['target']==target:
+                    if target in experiences.CHOICES and experiences.compatible(target,read_manifest(path)):
                         self.selected_images[target]=path
                         self.catalog_targets.add(target)
                         if path not in self.imported:self.imported.append(path)
@@ -133,7 +135,7 @@ def launch(state=None):
             chosen=self.select_image() if self.session else None
             if (self.session and chosen and read_manifest(chosen)['id']==self.session.manifest['id']
                     and (self.session.directory/'manifest.json').is_file()):
-                selected[self.session.manifest['target']]=self.session.directory/'manifest.json'
+                selected[self.target]=self.session.directory/'manifest.json'
             vm.atomic_json(self.preferences, dict(images=[str(p) for p in self.imported[:16]],
                 selected_images={target:str(path) for target,path in selected.items()},
                 intent=self.intent, target=self.target, workspace=True))
@@ -215,13 +217,10 @@ def launch(state=None):
             self.device_rows = {}
             for target, title, icon in [('desktop', 'Desktop', 'monitor'), ('tablet', 'Tablet', 'smartphone'),
                                         ('mobile', 'Mobile', 'smartphone'), ('tv', 'TV', 'monitor'),
-                                        ('smart-device', 'Smart Device', 'cpu')]:
+                                        ('smart-device', 'Smart Home', 'house')]:
                 row = SidebarRow(title, lead=RowLead.icon(icon))
                 row.target = target
-                supported = target in ('desktop', 'mobile')
                 row.set_sensitive(True)
-                if not supported:
-                    row.set_tooltip_text('A dedicated Luma image profile is required.')
                 self.sidebar.append_row(row)
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
@@ -336,7 +335,7 @@ def launch(state=None):
             self.sidebar.set_visible(shown)
             self.last_workspace_size = None
             if shown:
-                self.workspace_title.set_label('Luma ' + self.target.replace('-', ' ').title())
+                self.workspace_title.set_label('Luma ' + experiences.LABELS[self.target])
                 self.sidebar.list.select_row(self.device_rows[self.target])
                 self.update_images()
 
@@ -363,8 +362,8 @@ def launch(state=None):
                 Toast.show(self.island, 'Shut down Luma to switch devices.', kind='warning')
                 return
             self.select_target(row.target)
-            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
-            self.workspace_title.set_label('Luma ' + self.target.replace('-', ' ').title())
+            self.session_title.set_label('Luma ' + experiences.LABELS[self.target])
+            self.workspace_title.set_label('Luma ' + experiences.LABELS[self.target])
             self.status_label.set_label('Ready to start')
             self.stack.set_visible_child_name('session')
             self.update_images()
@@ -375,9 +374,9 @@ def launch(state=None):
             for path in self.available_manifests():
                 try:
                     manifest = read_manifest(path)
-                    if manifest['target'] == self.target:
+                    if experiences.compatible(self.target,manifest):
                         self.image_paths.append(path)
-                        names.append(manifest.get('build') or manifest['id'])
+                        names.append((manifest.get('build') or manifest['id'])+' · '+('ARM64' if manifest['arch']=='aarch64' else 'x86-64'))
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
             selected = self.select_image()
@@ -389,11 +388,16 @@ def launch(state=None):
             self.image_selector.set_sensitive(not self.active() and bool(names))
             self.update_build_menu(names)
             architectures = {read_manifest(path)['arch'] for path in self.image_paths}
-            self.arch_notice.set_label(architecture_notice(architectures))
+            notice=architecture_notice(architectures)
+            if selected and read_manifest(selected)['arch']!=host_arch():
+                notice=('ARM64' if read_manifest(selected)['arch']=='aarch64' else 'x86-64')+' runs with emulation on this computer.'
+            if self.target in ('tablet','tv','smart-device'):
+                notice=(notice+' ' if notice else '')+'Uses the shared image’s current interface until OS mode support is available.'
+            self.arch_notice.set_label(notice)
             self.arch_notice.set_visible(bool(names) and bool(self.arch_notice.get_label()))
             if not self.active():
-                title = self.target.replace('-', ' ').title()
-                self.status_label.set_label('Choose an image, then start exploring.' if names else f'{title} is coming soon.')
+                title = experiences.LABELS[self.target]
+                self.status_label.set_label('Choose an image, then start exploring.' if selected else 'Add an ARM64 ISO or developer image.' if self.target in ('tablet','tv','smart-device') else f'{title} is coming soon.')
 
             self.refresh_preset_rows()
 
@@ -401,7 +405,7 @@ def launch(state=None):
             from urllib.parse import urlparse, unquote
             manifest=read_manifest(path)
             image=manifest['image']
-            cached=data_root(state)/'images'/(image['sha256']+'.qcow2')
+            cached=data_root(state)/'images'/(image['sha256']+('.iso' if manifest.get('media')=='iso' else '.qcow2'))
             local=urlparse(image['url'])
             return cached.is_file() or (local.scheme=='file' and Path(unquote(local.path)).is_file())
 
@@ -412,6 +416,8 @@ def launch(state=None):
                 names=[read_manifest(path).get('build') or path.stem for path in self.image_paths]
             groups=[]
             included=[p for p in self.image_paths if p not in self.imported]
+            if self.target in ('tablet','tv','smart-device'):
+                included=[p for p in included if read_manifest(p)['arch']=='aarch64']
             if included:
                 latest=included[0]
                 groups.append(CommandGroup('Latest qualified', (Command('build.latest',
@@ -465,7 +471,7 @@ def launch(state=None):
                 vm.atomic_json(pinned,manifest)
                 path=pinned
                 if path not in self.imported:self.imported.append(path)
-                self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent, self.settings)
+                self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent, self.settings, experience=self.target)
                 self.preset_selector.set_model(Gtk.StringList.new(
                     ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
                 self.close_preset()
@@ -598,7 +604,7 @@ def launch(state=None):
             self.viewer.connect('connected', lambda _v: self.reveal_display(self.session) if self.graphical_ready else None)
             self.viewer_holder.append(self.viewer)
             self.viewer.open()
-            self.live_title.set_label('Luma ' + self.target.replace('-', ' ').title())
+            self.live_title.set_label('Luma ' + experiences.LABELS[self.target])
 
             # Keep first boot console text behind the native loading page. The
             # actual Wayland session must exist before revealing the live display.
@@ -606,6 +612,14 @@ def launch(state=None):
             def wait_for_graphics():
                 import time
                 try:
+                    if not session.manifest['cloud_init']:
+                        deadline=time.monotonic()+60
+                        while time.monotonic()<deadline and self.running():
+                            if self.viewer and self.viewer.ready:
+                                GLib.idle_add(self.reveal_display,session)
+                                return
+                            time.sleep(.2)
+                        raise TesterError('The installation media did not provide a display.')
                     session.wait_graphical(180)
                     GLib.idle_add(self.status_label.set_label,'Preparing your saved workspace…')
                     vm.repair_legacy_renderer(session)
@@ -659,9 +673,9 @@ def launch(state=None):
             if self.active():
                 return
             self.target = target
-            self.empty_graphic.set_from_icon_name(icons.icon_name('smartphone' if target in ('mobile','tablet') else 'monitor'))
-            self.session_title.set_label('Luma ' + target.replace('-', ' ').title())
-            self.workspace_title.set_label('Luma ' + target.replace('-', ' ').title())
+            self.empty_graphic.set_from_icon_name(icons.icon_name('smartphone' if target in ('mobile','tablet') else 'house' if target=='smart-device' else 'monitor'))
+            self.session_title.set_label('Luma ' + experiences.LABELS[target])
+            self.workspace_title.set_label('Luma ' + experiences.LABELS[target])
             self.sidebar.list.select_row(self.device_rows[target])
             self.update_images()
             self.remember()
@@ -677,24 +691,16 @@ def launch(state=None):
             selected = self.selected_images.get(self.target)
             if selected in self.available_manifests():
                 try:
-                    if read_manifest(selected)['target'] == self.target:
+                    if experiences.compatible(self.target,read_manifest(selected)):
                         return selected
                 except (OSError, TesterError, ValueError, TypeError):
                     pass
-            native = 'aarch64' if platform.machine().lower() in ('aarch64', 'arm64') else 'x86_64'
-            preferred = 'aarch64' if self.target == 'mobile' else native
-            candidates = []
-            for priority, path in enumerate(self.available_manifests()):
-                try:
-                    manifest = read_manifest(path)
-                    if manifest['target'] == self.target:
-                        candidates.append((manifest['arch'] != preferred, priority, str(path)))
-                except (OSError, TesterError, ValueError, TypeError):
-                    continue
-            if not candidates:
-                return None
-            candidates.sort()
-            return Path(candidates[0][2])
+            native = 'aarch64' if platform.machine().lower() in ('aarch64','arm64') else 'x86_64'
+            candidates=[]
+            for path in self.available_manifests():
+                try:candidates.append((path,read_manifest(path)))
+                except (OSError,TesterError,ValueError,TypeError):continue
+            return experiences.select(self.target,candidates,native)
 
         def active(self):
             return self.busy or bool(self.child and self.child.poll() is None) or self.running()
@@ -712,6 +718,7 @@ def launch(state=None):
                 return
             try:
                 self.session = Session(path, state)
+                self.session.experience=self.target
             except Exception as exc:
                 self.status_label.set_label(str(exc))
                 return
@@ -723,8 +730,9 @@ def launch(state=None):
             self.graphical_ready = False
             self.display_failure = None
             self.shutting_down = False
+            self.force_stop_available = False
             self.busy = True
-            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
+            self.session_title.set_label('Luma ' + experiences.LABELS[self.target])
             self.status_label.set_label('Getting your Luma workspace ready…')
             self.spinner.set_visible(True)
             self.spinner.start()
@@ -736,7 +744,11 @@ def launch(state=None):
             session, manifest_path = self.session, self.manifest_path
             def worker():
                 try:
-                    session.prepare(lambda message: GLib.idle_add(self.status_label.set_label, message))
+                    if session.manifest['cloud_init']:
+                        session.prepare(lambda message: GLib.idle_add(self.status_label.set_label, message))
+                    else:
+                        # The supervisor verifies large ISO media once before boot.
+                        session.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
                     GLib.idle_add(self.spawn, session, manifest_path)
                 except Exception as exc:
                     GLib.idle_add(self.failed, str(exc))
@@ -749,7 +761,7 @@ def launch(state=None):
                 return False
             try:
                 self.log = open(session.directory / 'launcher.log', 'a')
-                args = [sys.executable, '-m', 'luma_tester', '--state', str(session.root), 'start', manifest_path, '--embedded']
+                args = [sys.executable, '-m', 'luma_tester', '--state', str(session.root), 'start', manifest_path, '--embedded', '--experience',self.target]
                 env = dict(os.environ)
                 env['PYTHONPATH'] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get('PYTHONPATH', '')
                 self.child = subprocess.Popen(args, stdout=self.log, stderr=subprocess.STDOUT, env=env)
@@ -822,11 +834,13 @@ def launch(state=None):
                 row.set_sensitive(not active and hasattr(row, 'preset_index'))
             for name, row in self.device_rows.items():
                 row.set_sensitive(True)
-                row.set_trailing('Soon' if name not in self.catalog_targets else '')
+                row.set_trailing('ARM' if name in ('tablet','tv','smart-device') else 'Soon' if name not in self.catalog_targets else '')
             for row in self.developer_rows:
                 row.set_visible(self.intent == 'develop')
             self.ssh_switch.set_active(self.settings['agent_ssh'])
             self.refresh_ssh_details()
+            self.ssh_row.set_sensitive(not self.ssh_busy and self.managed_guest())
+            self.words(self.shutdown_button,'Force Stop' if self.force_stop_available else 'Shut Down')
             self.refresh_snapshots()
             if self.closing and not self.active():
                 self.window.close()
@@ -857,15 +871,35 @@ def launch(state=None):
         def stop(self):
             if not self.running() or self.shutting_down:
                 return
+            if self.force_stop_available:
+                body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+                body.append(self.label('The guest has not shut down. Force Stop cuts its power; unsaved changes may be lost.'))
+                handle=[None]
+                def force():
+                    self.control('quit');self.force_stop_available=False;handle[0].cancel()
+                body.append(self.button('Force Stop',force,primary=True,icon='power'))
+                handle[0]=self.sheet('Force Stop',body)
+                return
             self.shutting_down = True
             session = self.session
             def worker():
                 try:
-                    session.wait(180)
+                    if session.manifest['cloud_init']:session.wait(180)
                     session.shutdown()
+                    if not session.manifest['cloud_init']:
+                        import time
+                        deadline=time.monotonic()+30
+                        while time.monotonic()<deadline and session.status()!='stopped':time.sleep(.5)
+                        if session.status()!='stopped':GLib.idle_add(self.offer_force_stop)
                 except Exception as exc:
                     GLib.idle_add(self.shutdown_failed, session, str(exc))
             threading.Thread(target=worker, daemon=True).start()
+
+        def offer_force_stop(self):
+            if self.running():
+                self.shutting_down=False;self.closing=False;self.force_stop_available=True
+                self.notify('Use the guest power menu, or Force Stop if it is unresponsive.')
+            return False
 
         def shutdown_failed(self, session, message):
             if self.session is session:
@@ -920,6 +954,9 @@ def launch(state=None):
         def toggle_ssh(self, enabled=None):
             if self.ssh_busy:
                 return
+            if not self.managed_guest():
+                self.notify('Managed SSH requires a developer image.')
+                return
             enabled = not self.settings['agent_ssh'] if enabled is None else enabled
             if enabled == self.settings['agent_ssh']:
                 return
@@ -955,10 +992,18 @@ def launch(state=None):
             self.refresh_ssh_details()
             return False
 
+        def managed_guest(self):
+            if self.running():return self.session.manifest['cloud_init']
+            path=self.select_image()
+            return not path or read_manifest(path)['cloud_init']
+
         def refresh_ssh_details(self):
             self.ssh_details.set_visible(self.intent == 'develop' and self.settings['agent_ssh'])
             self.ssh_values.set_visible(False)
             self.ssh_copy.set_sensitive(False)
+            if not self.managed_guest():
+                self.ssh_status.set_label('Managed SSH requires a developer image.')
+                return
             if self.ssh_busy:
                 self.ssh_status.set_label('Enabling SSH access…')
                 return
@@ -1151,6 +1196,12 @@ def launch(state=None):
             graphics=ModeSwitch([('auto','Auto'),('virgl','Hardware'),('software','Software')],
                 current=self.settings['graphics'],labels_only=True,fill=True,label='Graphics rendering')
             body.append(self.label('Graphics','group-heading'));body.append(graphics)
+            selected=self.select_image()
+            if selected and read_manifest(selected).get('media')=='iso':
+                body.append(self.label('Installation media','group-heading'))
+                body.append(Switch(active=self.settings['boot_iso'],label='Boot from ISO',
+                    on_toggle=lambda enabled:self.save_settings(boot_iso=enabled)))
+                body.append(self.label('Turn off Boot from ISO after installation to start the saved disk.',muted=True))
             body.append(self.button('Devices & Folders…',self.show_hardware,icon='usb'))
             body.append(self.button('Open Workspace',self.workspace,icon='folder'))
             handle=[None]
@@ -1183,29 +1234,62 @@ def launch(state=None):
         def choose_image(self):
             if self.active():
                 return
-            dialog = Gtk.FileDialog(title='Add a developer image')
+            dialog = Gtk.FileDialog(title='Add an ISO or developer image')
             dialog.open(self.advanced or self.window, None, self.image_chosen)
 
         def image_chosen(self, dialog, result):
             try:
                 path = dialog.open_finish(result).get_path()
                 if path:
-                    manifest = read_manifest(path)
-                    self.imported = [Path(path)] + [p for p in self.imported if p != Path(path)]
-                    self.preferences.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    self.remember()
-                    self.preferences.chmod(0o600)
-                    self.catalog_targets.add(manifest['target'])
-                    self.select_target(manifest['target'])
-                    self.selected_images[manifest['target']] = Path(path)
-                    self.update_images()
-                    self.status_label.set_label('Choose an image, then start exploring.')
-                    if self.advanced:
-                        self.advanced.close()
+                    if Path(path).suffix.lower()=='.iso':
+                        self.choose_iso_arch(Path(path));return
+                    self.add_manifest(Path(path))
             except GLib.Error:
                 pass
             except Exception as exc:
                 self.status_label.set_label(str(exc))
+
+        def add_manifest(self,path):
+            if path:
+                manifest = read_manifest(path)
+                self.imported = [Path(path)] + [p for p in self.imported if p != Path(path)]
+                self.preferences.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                self.remember()
+                self.preferences.chmod(0o600)
+                self.catalog_targets.add(manifest['target'])
+                target=self.target if experiences.compatible(self.target,manifest) else manifest['target']
+                self.selected_images[target] = Path(path)
+                self.select_target(target)
+                self.update_images()
+                self.status_label.set_label('Choose an image, then start exploring.')
+                if self.advanced:
+                    self.advanced.close()
+
+        def choose_iso_arch(self,path):
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            body.append(self.label(path.name,'group-heading'))
+            body.append(self.label('Choose the CPU architecture of this ISO.',muted=True))
+            arch=ModeSwitch([('aarch64','ARM64'),('x86_64','x86-64')],
+                current=experiences.preferred_arch(self.target,host_arch()),labels_only=True,fill=True,label='ISO architecture')
+            body.append(arch)
+            body.append(self.label('Use a generic UEFI image. Raspberry Pi-specific disk images require their own hardware profile.',muted=True))
+            handle=[None]
+            def add():
+                architecture=arch.current;handle[0].cancel();self.busy=True
+                self.status_label.set_label('Verifying local ISO…')
+                def worker():
+                    try:
+                        path_manifest=experiences.import_iso(path,data_root(state),architecture)
+                        GLib.idle_add(finished,path_manifest,None)
+                    except Exception as exc:GLib.idle_add(finished,None,str(exc))
+                def finished(manifest,error):
+                    self.busy=False
+                    if error:self.notify(error)
+                    else:self.add_manifest(manifest)
+                    self.refresh();return False
+                threading.Thread(target=worker,daemon=True).start()
+            body.append(self.button('Add ISO',add,primary=True,icon='plus'))
+            handle[0]=self.sheet('Add ISO',body)
 
         def workspace(self):
             if self.session and self.session.directory.exists():

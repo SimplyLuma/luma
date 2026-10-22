@@ -20,7 +20,7 @@ def resolve_asset(manifest, portable, appimage=None):
             raise TesterError('Bundled image must remain inside the portable directory.')
         result['image']['url'] = image.as_uri()
     if external:
-        expected = 'images/' + result['image']['sha256'] + '.qcow2'
+        expected = 'images/' + result['image']['sha256'] + ('.iso' if result.get('media')=='iso' else '.qcow2')
         if external != expected:
             raise TesterError('External images must use their checksum filename in images/.')
         roots = [Path(appimage).resolve().parent] if appimage else [base, base.parent]

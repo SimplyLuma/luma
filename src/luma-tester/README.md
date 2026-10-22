@@ -113,3 +113,8 @@ PYTHONPATH=src/luma-tester xvfb-run -a python3 src/luma-tester/tests/display_smo
 
 It connects to a real private QEMU socket and compares the GTK4 framebuffer pixels
 with QEMU's own screenshot, then checks coordinate mapping and input dispatch.
+
+TV, Tablet and Smart Home prefer ARM64 and can reuse the same generic image.
+Add a generic UEFI ISO to install into a persistent disk, or import a prepared
+developer manifest for managed SSH and agent access. The requested experience
+is passed separately through fw_cfg; OS interface support remains separate work.

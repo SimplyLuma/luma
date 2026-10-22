@@ -23,6 +23,9 @@ def main():
     fetch.add_argument('--output', required=True, type=Path)
     fetch.add_argument('--experience', choices=['desktop', 'tablet', 'mobile', 'tv', 'home', 'watch', 'other'], default='desktop')
     fetch.add_argument('--purpose', choices=['first_download', 'update', 'explicit_redownload'], default='first_download')
+    iso=sub.add_parser('import-iso',help='Register a local generic UEFI installation ISO')
+    iso.add_argument('path',type=Path)
+    iso.add_argument('--arch',choices=['aarch64','x86_64'],required=True)
     integration = sub.add_parser('install-desktop', help='Add this portable build to Applications and the dock')
     integration.add_argument('--data-home', type=Path, help='Desktop session data directory')
     publish = sub.add_parser('manifest', help='Describe a prepared cloud-init enabled Luma VM disk')
@@ -49,6 +52,7 @@ def main():
             p.add_argument('--graphics', choices=['auto', 'virgl', 'software'])
             p.add_argument('--render-node', help='GPU render node, e.g. /dev/dri/renderD128')
             p.add_argument('--firmware')
+            p.add_argument('--experience',choices=['desktop','mobile','tablet','tv','smart-device'])
             p.add_argument('--dry-run', action='store_true')
         elif action in ('screenshot', 'sync'):
             p.add_argument('path', type=Path)
@@ -88,6 +92,11 @@ def main():
         if args.action == 'gui':
             from .gui import launch
             return launch(args.state)
+        if args.action == 'import-iso':
+            from .experiences import import_iso
+            from .core import data_root
+            print(import_iso(args.path,data_root(args.state),args.arch))
+            return 0
         if args.action == 'install-desktop':
             from .desktop import install
             print(install(data_home=args.data_home))
@@ -133,7 +142,7 @@ def main():
             else:
                 vm.restore(session, args.name)
         elif args.action == 'start':
-            options = {k: getattr(args, k) for k in ('port', 'memory', 'cpus', 'headless', 'firmware', 'software', 'embedded', 'graphics', 'render_node')}
+            options = {k: getattr(args, k) for k in ('port', 'memory', 'cpus', 'headless', 'firmware', 'software', 'embedded', 'graphics', 'render_node', 'experience')}
             if args.dry_run:
                 print(json.dumps(session.command(**options), indent=2))
             else:

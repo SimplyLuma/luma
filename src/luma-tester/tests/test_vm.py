@@ -65,6 +65,11 @@ class VMTests(unittest.TestCase):
         self.assertNotIn('private-key-fixture',details['command'])
         self.assertIn(details['command'],vm.agent_prompt(session,self.root/'manifest.json'))
 
+    def test_old_settings_gain_iso_boot_default(self):
+        settings=vm.load(self.root);del settings['boot_iso']
+        vm.save(self.root,settings)
+        self.assertTrue(vm.load(self.root)['boot_iso'])
+
     def test_invalid_resources_rejected(self):
         for key,value in [('memory',128),('cpus',0),('disk_gib',1),('agent_ssh','yes')]:
             with self.subTest(key=key),self.assertRaises(TesterError):

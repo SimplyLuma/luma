@@ -25,6 +25,10 @@ p.add_argument('--runtime', type=Path, required=True)
 p.add_argument('--gvnc-prefix', type=Path, required=True)
 p.add_argument('--gvnc-source', type=Path, required=True, help='Matching Fedora gtk-vnc source RPM')
 p.add_argument('--gvnc-license', type=Path, required=True, help='Upstream COPYING.LIB')
+p.add_argument('--arm-qemu',type=Path,help='Optional extracted x86_64-host qemu-system-aarch64 binary')
+p.add_argument('--arm-rpm',type=Path,help='Exact RPM containing --arm-qemu')
+p.add_argument('--arm-firmware',type=Path,help='Directory containing matching ARM UEFI firmware')
+p.add_argument('--arm-firmware-rpm',type=Path,help='Exact RPM containing --arm-firmware')
 p.add_argument('--catalog', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--release', action='store_true', help='Count published downloads as Tester; private previews default to test')
@@ -32,6 +36,12 @@ mode = p.add_mutually_exclusive_group()
 mode.add_argument('--offline', action='store_true', help='Embed verified guest images in the AppImage')
 mode.add_argument('--sidecar-images', action='store_true', help='Keep private preview images beside the AppImage')
 a = p.parse_args()
+if a.arm_qemu:
+    assert a.arm_rpm, '--arm-qemu requires its matching --arm-rpm'
+    version=subprocess.check_output(['rpm','-qp','--qf','%{VERSION}-%{RELEASE}',str(a.arm_rpm)],text=True)
+    native_version=subprocess.check_output(['rpm','-qf','--qf','%{VERSION}-%{RELEASE}',str(Path(shutil.which('qemu-system-x86_64')).resolve())],text=True)
+    assert version==native_version, 'ARM QEMU and native QEMU modules must have the same version/release.'
+if a.arm_firmware:assert a.arm_firmware_rpm, '--arm-firmware requires its matching --arm-firmware-rpm'
 assert platform.machine() == 'x86_64', 'This producer currently assembles x86_64 Linux hosts.'
 runtime, dest = a.runtime.resolve(), a.output.resolve()
 dest.mkdir(parents=True, exist_ok=False)
@@ -79,7 +89,20 @@ copy(REPO / 'examples/tester-hello', 'examples/Hello Luma')
 # Keep the tool ABI/loader independent of the LumaUI ABI. ldd operates only on
 # the explicitly selected installed distribution binaries/modules.
 tools = ['qemu-system-x86_64', 'qemu-img', 'ssh', 'ssh-keygen', 'rsync', 'xorriso']
-seeds = [Path(shutil.which(name) or '/missing/' + name).resolve() for name in tools]
+arm_qemu=a.arm_qemu or (Path(shutil.which('qemu-system-aarch64')) if shutil.which('qemu-system-aarch64') else None)
+if arm_qemu:tools.append('qemu-system-aarch64')
+seeds = [Path(arm_qemu if name=='qemu-system-aarch64' else shutil.which(name) or '/missing/'+name).resolve() for name in tools]
+external_packages={}
+def package_info(source,rpm=None,member=None):
+    if rpm:
+        assert member
+        entries=subprocess.check_output(['rpm','-qp','--dump',str(rpm)],text=True).splitlines()
+        entry=next(line.split() for line in entries if line.split()[0]==member)
+        assert hashlib.file_digest(Path(source).open('rb'),'sha256').hexdigest()==entry[3],source
+        info=subprocess.check_output(['rpm','-qp','--qf','%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n',str(rpm)],text=True).strip()
+        external_packages[info.split('\t')[0]]=str(rpm)
+        return info
+    return subprocess.check_output(['rpm','-qf','--qf','%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n',str(source)],text=True).strip()
 modules = [Path('/usr/lib64/qemu') / name for name in
            ('hw-display-virtio-gpu.so', 'hw-display-virtio-gpu-pci.so',
             'hw-display-virtio-gpu-gl.so', 'hw-display-virtio-gpu-pci-gl.so',
@@ -120,8 +143,7 @@ for source in seeds + modules + graphics + audio_plugins:
         copy(path, Path('tools/lib') / path.name)
         packages[str(path)] = subprocess.check_output(
             ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(path)], text=True).strip()
-    packages[str(source)] = subprocess.check_output(
-        ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(source)], text=True).strip()
+    packages[str(source)] = package_info(source,a.arm_rpm if a.arm_qemu and source==a.arm_qemu.resolve() else None,'/usr/bin/qemu-system-aarch64' if source==arm_qemu else None)
     if source in audio_plugins:
         if source.is_relative_to('/usr/lib64/pipewire-0.3'):
             copy(source, Path('tools/pipewire') / source.name)
@@ -135,7 +157,7 @@ for source in seeds + modules + graphics + audio_plugins:
     else:
         copy(source, Path('tools/raw') / source.name)
 for name in tools:
-    real = Path(shutil.which(name)).resolve().name
+    real = Path(arm_qemu if name=='qemu-system-aarch64' else shutil.which(name)).resolve().name
     extra = ' -L "$tester_dir/tools/share/qemu"' if name.startswith('qemu-system-') else ''
     wrapper = dest / 'tools/bin' / name
     wrapper.parent.mkdir(parents=True, exist_ok=True)
@@ -161,9 +183,22 @@ for path in Path('/usr/share/ipxe/qemu').glob('*.rom'):
     copy(path, Path('tools/share/qemu') / path.name)
     packages[str(path.resolve())] = subprocess.check_output(
         ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(path.resolve())], text=True).strip()
+# Firmware lives in the tool closure, with private per-workspace variable stores.
+firmware_roots=[('ovmf',Path('/usr/share/edk2/ovmf'),('OVMF_CODE.fd','OVMF_VARS.fd'))]
+if arm_qemu:firmware_roots.append(('aarch64',a.arm_firmware or Path('/usr/share/edk2/aarch64'),('QEMU_EFI.fd','QEMU_EFI-pflash.raw','vars-template-pflash.raw')))
+for arch,folder,names in firmware_roots:
+    for name in names:
+        source=folder/name
+        assert source.is_file(),source
+        copy(source,Path('tools/firmware')/arch/name)
+        packages[str(source)]=package_info(source,a.arm_firmware_rpm if arch=='aarch64' and a.arm_firmware else None,'/usr/share/edk2/'+arch+'/'+name)
+    if arch=='aarch64' and a.arm_firmware:
+        notices=folder.parent.parent/'licenses'
+        if notices.is_dir():copy(notices,'tools/licenses/arm-firmware')
 # Retain the exact installed tool packages' upstream notices.
 for line in set(packages.values()):
     nevra = line.split('\t')[0]
+    if nevra in external_packages:continue
     files = subprocess.check_output(['rpm', '-ql', nevra], text=True).splitlines()
     for name in files:
         path = Path(name)
@@ -176,13 +211,13 @@ sys.path.insert(0, str(REPO / 'src/luma-tester'))
 from luma_tester.core import digest, read_manifest
 for path in sorted(a.catalog.glob('*.json')):
     manifest = read_manifest(path)
-    assert manifest['arch'] == 'x86_64', 'Host package currently contains x86_64 guests.'
+    assert manifest['arch'] in ('x86_64','aarch64') and (manifest['arch']=='x86_64' or arm_qemu), 'ARM guests require the optional ARM tool closure.'
     if a.offline or a.sidecar_images:
         url = urlparse(manifest['image']['url'])
         assert url.scheme == 'file' and not url.netloc, 'Offline and preview images require qualified local disks.'
         source = Path(unquote(url.path))
         assert source.stat().st_size == manifest['image']['bytes'] and digest(source) == manifest['image']['sha256']
-        relative = 'images/' + manifest['image']['sha256'] + '.qcow2'
+        relative = 'images/' + manifest['image']['sha256'] + ('.iso' if manifest.get('media')=='iso' else '.qcow2')
         if not (dest / relative).exists(): copy(source, relative)
         manifest['image']['url'] = ''
         manifest['bundled_image' if a.offline else 'external_image'] = relative

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from .core import TesterError, run
 
 DEFAULTS = dict(memory=4096, cpus=4, disk_gib=32, graphics='auto', audio=True,
-                microphone=False, agent_ssh=False, folders=[], usb=[])
+                microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[])
 
 
 def load(root):
@@ -31,7 +31,7 @@ def validate(settings):
             raise TesterError(f'Invalid VM {key}: choose {low}–{high}.')
     if result.get('graphics') not in ('auto', 'virgl', 'software'):
         raise TesterError('Unknown graphics setting.')
-    for key in ('audio', 'microphone', 'agent_ssh'):
+    for key in ('audio', 'microphone', 'agent_ssh', 'boot_iso'):
         if type(result.get(key)) is not bool:
             raise TesterError('Invalid ' + key + ' switch.')
     for key in ('folders', 'usb'):
@@ -66,7 +66,7 @@ def atomic_json(path, value):
 
 
 def save(root, settings):
-    result = validate(settings)
+    result = validate(dict(DEFAULTS, **settings))
     atomic_json(Path(root) / 'vm-settings.json', result)
     return result
 
@@ -235,6 +235,8 @@ print('true')
 
 def ssh_connection(session):
     """Connection details for the optional user key; never expose key contents."""
+    if not session.manifest.get('cloud_init',True):
+        raise TesterError('Installation media has no managed SSH account. Use a developer image for SSH access.')
     if not load(session.root)['agent_ssh'] or not (session.directory / 'agent-key').exists():
         raise TesterError('Enable SSH access and start Luma to connect.')
     port = json.loads((session.directory / 'connection.json').read_text())['port']
@@ -264,6 +266,12 @@ documentation for app builds. For native apps, run them in the guest user's
 graphical session using `systemd-run --user --collect --unit=app-preview COMMAND`.
 Use the app's own development watcher or restart its preview service after edits.
 '''
+    try:
+        requested=json.loads((session.directory/'experience.json').read_text())['experience']
+    except (OSError,ValueError,KeyError,TypeError):requested=session.manifest['target']
+    if requested in ('tablet','tv','smart-device'):
+        from .experiences import LABELS
+        text+='\nRequested interface: '+LABELS[requested]+'. The OS may still use its current Desktop interface while mode support is developed.\nThe request is available in /sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw when fw_cfg sysfs is enabled.\n'
     for i, folder in enumerate(settings['folders']):
         text += f'\nShared folder {i+1}: {folder["path"]} → /mnt/shared/{i+1} ({"read/write" if folder["writable"] else "read only"}).'
     launcher = [executable] + (['--appimage-extract-and-run'] if executable.endswith('.AppImage') else [])

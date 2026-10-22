@@ -28,7 +28,7 @@ for path in (a.portable_dir / 'catalog').glob('*.json'):
     manifest = json.loads(path.read_text())
     relative = manifest.get('external_image')
     if relative:
-        expected = 'images/' + manifest['image']['sha256'] + '.qcow2'
+        expected = 'images/' + manifest['image']['sha256'] + ('.iso' if manifest.get('media')=='iso' else '.qcow2')
         assert relative == expected, 'External images require checksum filenames.'
         source = a.portable_dir / relative
         assert source.stat().st_size == manifest['image']['bytes']

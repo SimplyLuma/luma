@@ -821,3 +821,37 @@ used that source without altering shared refs or unrelated worktrees.
   running at fresh prelaunch checks. Launched0.3.1 via
   luma-preview-tester-ssh-20261022-7b8ef18e.service; registration030b96be.
   Same isolated workspace/config/data/cache retained; no automated Dell app tests.
+- 2026-10-22 TV/Smart Home ARM iteration0.4.0: experience is independent of image
+  target/CPU; TV, Tablet and Smart Home prefer ARM and never silently choose x86.
+  Explicit x86 selection remains possible. Shared Desktop manifests/installation
+  disks serve these experiments; genuine Mobile remains a separate required image.
+  Sidebar Smart Home label replaces Smart Device. Presets retain experience.
+- Added local generic UEFI ISO import (GUI ARM-default architecture sheet and CLI
+  import-iso), persistent blank install disk and private UEFI variables, disk-first
+  Boot from ISO switch, early embedded installer display without fake SSH/readiness,
+  ACPI shutdown and confirmed Force Stop for unresponsive guests. Streamed downloads
+  hash during copying; ISO supervisor verifies once instead of duplicate GUI checks.
+- Proposed hint opt/luma/experience uses desktop/mobile/tablet/tv/home. OS interface
+  implementation/installer/Quick Settings are deliberately unchanged. Public Tester
+  guide documents fw_cfg and generic-VM vs Pi hardware qualification. Agent prompt
+  includes requested experimental interface. ARM Desktop image remains other task.
+- Matching QEMU10.2.2-1.fc44 ARM host tool and edk2-aarch6420260812-8 privately
+  extracted under owned HDD arm-tools-10.2.2; no host package install. Portable
+  producer gains optional ARM binary/firmware with RPM file digest and version
+  checks, matching loader/modules/dependencies, relocated firmware and notices.
+- Source checks: initialfc272a3f hit a mocked-start directory assumption, fixed.
+  ARM fixturec092bb2b exposed unneeded PXE ROM lookup, disabled ARM network ROM.
+  Private-prefix trials1a3c79be/7b6ca252 lacked module/data search paths; wrapper
+  corrected. Trial14b42859 visibly booted EFI fixture but OCR read ARM64 as ARNG4;
+  predicate now checks fixture message and actual QEMU architecture independently.
+  Suitede7abd7f unit fixture required a nonexecuted emulator path; corrected fixture.
+  Retry d64bea5d PASSED70 units, native profile/import UI and actual ARM64 optical
+  EFI fixture, persistent variables/disk and disk-first configuration. This is
+  emulator mechanics evidence, not a Luma ARM guest or Pi hardware qualification.
+- Real cached Luma Nightly20261021.1 ISO58e6ee50 timed out during repeated large
+  media hashing. Single-passb7949845 reached QEMU but exposed hidden widget frame
+  wait; ISO reveal now waits for VNC initialization so mapping can paint frames.
+  Retry0d1d4422 PASSED actual visible Luma ISO boot in native embedded UI, no fake
+  managed SSH and confirmed Force Stop. Full OS installation not tested.
+  Final9c3f02e7 PASSED70 checks; compatibility27287f4c PASSED71 incl old settings.
+  Build/packaged regression and Dell delivery are next. No source edits during tests.
