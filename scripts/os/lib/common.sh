@@ -43,6 +43,24 @@ luma_os_load_env() {
 
 luma_os_load_env "$luma_os_repo_root/config/os/release.env"
 
+# The default remains x86_64 for existing callers. A selected target changes
+# package/base/update identities together; it never changes source releases.
+luma_os_select_architecture() {
+  local architecture=$1 contract
+  contract=$(python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
+    --arch "$architecture" contract) || luma_os_die 'invalid desktop target'
+  luma_os_load_env <(printf '%s\n' "$contract")
+  export LUMA_TARGET_ARCHITECTURE=$architecture
+}
+if [ -n "${LUMA_TARGET_ARCHITECTURE:-}" ]; then
+  luma_os_select_architecture "$LUMA_TARGET_ARCHITECTURE"
+fi
+
+luma_os_desktop_packages() {
+  python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
+    --root "${1:-$luma_os_repo_root}" --arch "$LUMA_OS_ARCH" "${2:-pins}"
+}
+
 luma_os_require_root() {
   [ "$(id -u)" -eq 0 ] || luma_os_die "$(basename "$0") must run as root on the build host"
 }

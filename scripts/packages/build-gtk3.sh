@@ -7,19 +7,19 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-for tool in cpio mktemp patch podman rpm2cpio sha256sum; do
+for tool in cpio curl mktemp patch podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required GTK 3 build tool is missing: %s\n' "$tool" >&2
     exit 1
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma GTK 3 RPM on the canonical Linux/x86_64 host\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the Luma GTK 3 RPM on a Linux builder\n' >&2
   exit 1
 fi
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER
@@ -27,7 +27,7 @@ case "$architecture" in
     ;;
   aarch64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    package_nevra=$GTK3_AARCH64_NEVRA
+    package_nevra=${GTK3_NEVRA%.x86_64}.aarch64
     ;;
   *)
     printf 'error: unsupported GTK 3 target architecture: %s\n' "$architecture" >&2
@@ -42,8 +42,9 @@ mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$GTK3_SRPM"
 if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null || { printf "error: dnf5 is required to download the uncached GTK 3 SRPM\n" >&2; exit 1; }
-  dnf5 download --source --destdir "$cache_dir" gtk3-3.24.52-2.fc44
+  curl --fail --location --retry 3 --output "$srpm.partial" \
+    "https://kojipkgs.fedoraproject.org/packages/gtk3/3.24.52/2.fc44/src/$GTK3_SRPM"
+  mv "$srpm.partial" "$srpm"
 fi
 
 printf '%s  %s\n' "$GTK3_SRPM_SHA256" "$srpm" |

@@ -60,6 +60,7 @@ def build(args):
     payload = {
         "schema": "org.projectluma.os-build-provenance/v1",
         "build_id": args.build_id,
+        "architecture": getattr(args, "architecture", "x86_64"),
         "version": args.version,
         "channel": args.channel,
         "source": {"revision": args.source_revision, "dirty": args.source_dirty == "true"},
@@ -116,6 +117,7 @@ def manifest(args):
         "parent": args.parent or None,
         "root_dirtree": args.root_dirtree,
         "build_id": provenance["build_id"],
+        "architecture": provenance.get("architecture", "x86_64"),
         "build_version": provenance["version"],
         "source_revision": provenance["source"]["revision"],
         "recipe_digest": provenance["recipe"]["digest"],
@@ -168,6 +170,7 @@ def main():
                  "sbom", "started", "completed", "build-seconds", "podman-version"):
         b.add_argument("--" + name, required=True)
     b.set_defaults(func=build)
+    b.add_argument('--architecture', choices=('x86_64', 'aarch64'), default='x86_64')
     b.add_argument('--app-baseline-input')
     b.add_argument('--source-snapshot-sha256', default='')
     b.add_argument('--release-checks-sha256', default='')

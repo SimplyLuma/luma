@@ -87,6 +87,20 @@ class Handoff(unittest.TestCase):
         self.assertEqual(admitted['bundles'],self.rows)
         self.assertEqual(admitted['bundle_bytes'],sum(r['bytes'] for r in self.rows))
         self.assertEqual(admitted['manifest_sha256'],baseline.digest(self.root/'manifest.json'))
+    def test_cross_host_arm_input_requires_arm_target(self):
+        for row in self.rows:
+            (self.root/row['file']).unlink()
+            row['ref']=row['ref'].replace('/x86_64/','/aarch64/')
+            body=row['ref'].encode();h=hashlib.sha256(body).hexdigest()
+            row.update(commit=h,sha256=h,bytes=len(body),file=h+'.flatpak')
+            (self.root/row['file']).write_bytes(body)
+        self.manifest['architecture']='aarch64'
+        self.write('manifest.json',self.manifest)
+        result=baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json','aarch64')
+        self.assertEqual(result['architecture'],'aarch64')
+        with self.assertRaises(ValueError):
+            baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json','x86_64')
+
     def test_os_input_refuses_a_different_source_selection(self):
         other=self.home/'other-shipping.json';other.write_text('{"schema":"different"}')
         with self.assertRaises(ValueError):baseline_input.admit(self.root,other)

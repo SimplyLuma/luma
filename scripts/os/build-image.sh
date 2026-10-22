@@ -16,7 +16,7 @@
 # an OCI layout the OSTree export consumes. The image is tagged
 # localhost/luma-os/desktop:<build-id> in the pipeline's own container storage.
 #
-# --base latest resolves the newest Fedora Silverblue 44 x86_64 tag and records
+# --base latest resolves the newest Fedora Silverblue tag for the target and records
 # its digest (nightly automation); the default uses the digest pinned in
 # config/os/release.env. --allow-dirty is for development: such a build is
 # marked dirty and every publication step refuses it.
@@ -34,6 +34,7 @@ source_snapshot=
 app_baseline=${LUMA_OS_APP_BASELINE:-}
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
     --build-id) build_id=${2:?}; shift 2 ;;
     --channel) channel=${2:?}; shift 2 ;;
     --base) base_policy=${2:?}; shift 2 ;;
@@ -42,7 +43,7 @@ while [ "$#" -gt 0 ]; do
     --allow-dirty) allow_dirty=1; shift ;;
     --source-snapshot) source_snapshot=$(realpath "${2:?}"); shift 2 ;;
     --app-baseline) app_baseline=$(realpath "${2:?}"); shift 2 ;;
-    *) printf 'usage: %s [--build-id ID] [--channel C] [--base pinned|latest] [--source DIR] [--cache] [--allow-dirty] [--source-snapshot FILE] --app-baseline DIR\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s [--arch x86_64|aarch64] [--build-id ID] [--channel C] [--base pinned|latest] [--source DIR] [--cache] [--allow-dirty] [--source-snapshot FILE] --app-baseline DIR\n' "$0" >&2; exit 2 ;;
   esac
 done
 
@@ -54,7 +55,7 @@ luma_os_channel_ref "$channel" >/dev/null
 [ -n "$app_baseline" ] || luma_os_die 'a signed offline OS application baseline is required (--app-baseline DIR)'
 app_baseline=$(realpath "$app_baseline")
 app_baseline_admission=$(python3 "$source_dir/scripts/os/lib/app_baseline.py" "$app_baseline" \
-  --shipping "$source_dir/config/os/first-party-app-baseline.json") || \
+  --shipping "$source_dir/config/os/first-party-app-baseline.json" --arch "$LUMA_OS_ARCH") || \
   luma_os_die 'the offline application input fails this OS shipping contract'
 app_baseline_sha=$(printf '%s' "$app_baseline_admission" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manifest_sha256"])')
 
@@ -175,18 +176,22 @@ esac
 base_ref="$LUMA_OS_BASE_IMAGE_REPOSITORY@$base_digest"
 if ! luma_os_podman image exists "$base_ref"; then
   luma_os_log "pulling $base_ref ($base_tag)"
-  luma_os_podman pull --quiet "$base_ref" >>"$build_log" 2>&1
+  luma_os_podman pull --quiet --arch "$LUMA_OS_ARCH" "$base_ref" >>"$build_log" 2>&1
 fi
 base_labels=$(luma_os_podman image inspect --format '{{json .Labels}}' "$base_ref")
+base_arch=$(luma_os_podman image inspect --format '{{.Architecture}}' "$base_ref")
+case "$base_arch" in amd64) base_arch=x86_64 ;; arm64) base_arch=aarch64 ;; esac
+[ "$base_arch" = "$LUMA_OS_ARCH" ] || luma_os_die 'base image architecture differs from selected target'
+
 
 # Package repository from the verified pool.
 pool="$LUMA_OS_ROOT/rpms/pool"
 repo="$build_dir/packages"
 install -d -m 0755 "$repo/Packages"
-mapfile -t pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$source_dir/config/desktop/packages.txt")
+mapfile -t pins < <(luma_os_desktop_packages "$source_dir")
 # Exact Fedora NEVRAs are verified pool inputs too; unpinned names remain
 # resolved by DNF inside the image build.
-mapfile -t -O "${#pins[@]}" pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$source_dir/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t -O "${#pins[@]}" pins < <(luma_os_desktop_packages "$source_dir" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 : >"$build_dir/luma-packages.manifest"
 for nevra in "${pins[@]}"; do
   line=$(awk -v n="$nevra" '$1 == n' "$pool/pool.manifest" 2>/dev/null || true)
@@ -211,12 +216,14 @@ if ! luma_os_podman build \
     --security-opt label=disable \
     --cap-add=SYS_ADMIN \
     --pull=never \
+    --arch "$LUMA_OS_ARCH" \
     "${cache_args[@]}" \
     --build-context "source=$source_dir" \
     --build-context "packages=$repo" \
     --build-context "app-baseline=$app_baseline" \
     --build-arg "LUMA_APP_BASELINE_SHA256=$app_baseline_sha" \
     --build-arg "BASE_IMAGE=$base_ref" \
+    --build-arg "LUMA_TARGET_ARCHITECTURE=$LUMA_OS_ARCH" \
     --build-arg "LUMA_BUILD_ID=$build_id" \
     --build-arg "LUMA_OS_VERSION=$version" \
     --build-arg "LUMA_OS_CHANNEL=$channel" \
@@ -240,7 +247,7 @@ if [ -n "$source_snapshot_sha" ]; then
     luma_os_die 'private source input changed during composition'
 fi
 app_baseline_post=$(python3 "$source_dir/scripts/os/lib/app_baseline.py" "$app_baseline" \
-  --shipping "$source_dir/config/os/first-party-app-baseline.json") || \
+  --shipping "$source_dir/config/os/first-party-app-baseline.json" --arch "$LUMA_OS_ARCH") || \
   luma_os_die 'the offline application input changed during composition'
 [ "$app_baseline_post" = "$app_baseline_admission" ] || luma_os_die 'application baseline identity changed during composition'
 printf '%s\n' "$app_baseline_admission" >"$build_dir/app-baseline-input.json"
@@ -279,6 +286,7 @@ recipe_digest=$(cd "$source_dir" && {
   find image/luma-desktop config/os -type f -print0
   printf '%s\0' config/desktop/packages.txt config/shared/application-packages.txt \
     config/desktop/application-packages.txt config/shared/excluded-background-packages.txt \
+    scripts/os/lib/desktop_target.py \
     config/desktop/dconf/profile/user config/desktop/dconf/db/luma.d/00-luma-desktop \
     config/desktop/dconf/db/gdm.d/00-prairie-login config/desktop/useradd \
     config/boot/plymouthd.conf config/desktop/fprintd-no-idle-exit.conf \
@@ -288,7 +296,7 @@ recipe_digest=$(cd "$source_dir" && {
 
 python3 "$luma_os_repo_root/scripts/os/lib/provenance.py" build \
   --output "$build_dir/provenance.json" \
-  --build-id "$build_id" --version "$version" --channel "$channel" \
+  --build-id "$build_id" --version "$version" --channel "$channel" --architecture "$LUMA_OS_ARCH" \
   --source-revision "$source_revision" --source-dirty "$dirty" \
   --source-snapshot-sha256 "$source_snapshot_sha" --release-checks-sha256 "$release_checks_sha" \
   --recipe-digest "$recipe_digest" \
@@ -305,6 +313,8 @@ python3 "$luma_os_repo_root/scripts/os/lib/provenance.py" build \
 
 cat >"$build_dir/build.env" <<EOF
 LUMA_BUILD_ID=$build_id
+LUMA_OS_ARCH=$LUMA_OS_ARCH
+LUMA_OS_REF_PREFIX=$LUMA_OS_REF_PREFIX
 LUMA_OS_VERSION=$version
 LUMA_OS_CHANNEL=$channel
 LUMA_NIGHTLY_DATE=$nightly_date

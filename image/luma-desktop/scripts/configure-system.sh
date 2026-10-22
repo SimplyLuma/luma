@@ -39,6 +39,31 @@ dconf update
   install -D -m "$mode" "$rootfs/$file" "/$file"
 done
 
+# Retain the selected build contract for diagnostics. The update service uses
+# its machine architecture to select refs and verifies graph architecture.
+python3 "$src/scripts/os/lib/desktop_target.py" \
+  --arch "${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}" contract >/tmp/luma-target-contract
+install -D -m 0644 /tmp/luma-target-contract /usr/share/luma/os-build-contract.env
+# Graphs contain one architecture. Keep the legacy x86 URL stable and place
+# ARM graphs in a distinct directory; the client's signature/arch checks stay on.
+python3 - "$src" "${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}" <<'PYGRAPH'
+import configparser, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / 'scripts/os/lib'))
+from desktop_target import contract
+values = contract(Path(sys.argv[1]), sys.argv[2])
+path = Path('/usr/lib/luma/update.conf')
+if not path.is_file():
+    raise SystemExit('The update policy package has no vendor configuration')
+config = configparser.ConfigParser(interpolation=None)
+config.read(path)
+base = values['LUMA_OS_PUBLIC_BASE_URL'].removesuffix('/os')
+config['update']['graph_url'] = base + '/' + values['LUMA_OS_GRAPH_PREFIX'] + '/{channel}.json'
+with path.open('w') as stream:
+    config.write(stream)
+PYGRAPH
+
+
 # The immutable OS contains only public, signed app bundles. Flatpak deploys
 # missing apps into persistent /var at first handoff; later OS updates and
 # rollbacks preserve independent app updates and deliberate removals.

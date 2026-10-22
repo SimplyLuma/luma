@@ -31,11 +31,14 @@ fail() {
 
 [ -f "$packages/repodata/repomd.xml" ] || fail 'the Luma package repository has no metadata'
 
-mapfile -t pins < <(strip_list "$src/config/desktop/packages.txt")
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$(rpm --eval '%{_arch}')" = "$architecture" ] || fail 'package transaction architecture differs from target'
+python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" plan >/tmp/luma-desktop-target.json || fail 'invalid desktop target'
+mapfile -t pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" pins)
 [ "${#pins[@]}" -gt 0 ] || fail 'the Luma pin list is empty'
 # Always include exact Fedora pins in the transaction, even when already
 # installed, so dependency resolution cannot silently upgrade them.
-mapfile -t -O "${#pins[@]}" pins < <(strip_list "$src/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t -O "${#pins[@]}" pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 for nevra in "${pins[@]}"; do
   [ -f "$packages/Packages/$nevra.rpm" ] || fail "pinned package is not in the build repository: $nevra"
 done
@@ -90,7 +93,7 @@ while IFS= read -r name; do
   fi
   contains "$name" "${requests[@]}" || requests+=("$name")
 done < <(
-  strip_list "$src/config/os/fedora-packages.txt"
+  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" fedora
   strip_list "$src/config/shared/application-packages.txt"
   strip_list "$src/config/desktop/application-packages.txt"
 )

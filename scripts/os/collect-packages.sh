@@ -27,6 +27,7 @@ verify_drops=1
 dirs=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
     --reference) reference=${2:?}; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
     --allow-unverified-drop) verify_drops=0; shift ;;
@@ -62,10 +63,8 @@ if [ -n "$reference" ]; then
   done <"$reference"
 fi
 
-mapfile -t pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
-  "$luma_os_repo_root/config/desktop/packages.txt")
-mapfile -t -O "${#pins[@]}" pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
-  "$luma_os_repo_root/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t pins < <(luma_os_desktop_packages)
+mapfile -t -O "${#pins[@]}" pins < <(luma_os_desktop_packages "$luma_os_repo_root" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 
 missing=0
 for nevra in "${pins[@]}"; do

@@ -96,6 +96,25 @@ scripts/os/build-staff-media.sh --atlas-source YOUR_ATLAS_SOURCE \
 
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
+## Desktop architectures
+
+Desktop source changes target both `x86_64` and `aarch64`. The ARM desktop
+bring-up uses the same source versions and release requirements as x86;
+existing phone preview pins do not establish desktop ARM parity.
+
+```sh
+python3 scripts/os/lib/desktop_target.py --arch aarch64 plan
+python3 scripts/os/preflight-desktop.py --arch aarch64 --package-dir YOUR_RPM_DIRECTORY
+```
+
+The normal image and package-pool entry points accept `--arch x86_64|aarch64`.
+Offline app inputs must match the selected architecture. A complete ARM image
+also needs every resolved native package, a signed ARM app baseline, installer
+media and actual boot/install/update qualification; the first architecture
+checks and package matrix do not establish those results. See
+[ARM desktop and device integration](docs/design/arm-desktop.md) for the
+shared-source rules, upstream kernel policy and Imager handoff requirements.
+
 ## Handheld profiles
 
 `config/mobile/` and `scripts/mobile/` contain device-specific native Linux integration. The Fairphone 6 rootfs entry point is `scripts/mobile/compose-fp6-rootfs.sh`, which requires root on a Fedora 44 AArch64 builder. It consumes the pinned shared packages plus handheld compositor, greeter, kernel, firmware, and device dependencies selected by the profile.

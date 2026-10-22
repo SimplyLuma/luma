@@ -52,6 +52,19 @@ esac
 
 container_workdir="/build/${host_workdir#"$build_root"/}"
 
+# Native CI workers already run inside the pinned Fedora job container. The
+# architecture check is mandatory: a label cannot turn an x86 compiler into ARM.
+if [ "${LUMA_RPM_BUILDER_DIRECT:-0}" = 1 ]; then
+  actual_architecture=$(rpm --eval '%{_arch}')
+  expected_architecture=${builder_architecture:-$(uname -m)}
+  [ "$actual_architecture" = "$expected_architecture" ] || {
+    printf 'error: direct builder architecture %s differs from %s\n' "$actual_architecture" "$expected_architecture" >&2
+    exit 1
+  }
+  (cd "$host_workdir" && /bin/bash -lc "$builder_command")
+  exit
+fi
+
 # Local package validation can use an existing Fedora development container
 # when nested image-loader sandboxes are unavailable in the pinned builder.
 if [ -n "${LUMA_RPM_BUILDER_EXISTING:-}" ]; then

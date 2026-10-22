@@ -20,7 +20,8 @@ curl --fail --silent --show-error --max-time 60 \
 python3 -c '
 import json, re, sys
 release = sys.argv[1]
-pattern = re.compile(rf"^{release}\.(\d{{8}})\.(\d+)-x86_64$")
+architecture = sys.argv[2]
+pattern = re.compile(rf"^{release}\.(\d{{8}})\.(\d+)-{re.escape(architecture)}$")
 best = None
 for tag in json.load(sys.stdin).get("tags", []):
     match = pattern.match(tag.get("name", ""))
@@ -30,6 +31,6 @@ for tag in json.load(sys.stdin).get("tags", []):
         if best is None or key > best[0]:
             best = (key, tag["name"], digest)
 if best is None:
-    sys.exit("no x86_64 tag found for Fedora " + release)
+    sys.exit("no " + architecture + " tag found for Fedora " + release)
 print(best[1], best[2])
-' "$LUMA_OS_FEDORA_RELEASE"
+' "$LUMA_OS_FEDORA_RELEASE" "$LUMA_OS_ARCH"
