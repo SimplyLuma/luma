@@ -10,27 +10,16 @@ permissions:
   contents: read
 
 jobs:
-  application-contracts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Notes storage contracts
-        run: python3 -B -m unittest tests.unit.test_luma_notes_store
-      - name: Application kit contracts
-        run: python3 -B -m unittest tests.unit.test_luma_appkit
-
-  device-tree:
+  public-source-contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install the schema validator
         run: |
-          python3 -m venv "$RUNNER_TEMP/devices"
-          "$RUNNER_TEMP/devices/bin/pip" install --quiet jsonschema==4.23.0
-      - name: Validate every device and SoC manifest, then run device tests
-        run: '"$RUNNER_TEMP/devices/bin/python" -B tools/check-devices.py'
-      - name: Device checker contracts
-        run: '"$RUNNER_TEMP/devices/bin/python" -B -m unittest tests.unit.test_device_tree'
+          python3 -m venv "$RUNNER_TEMP/source-checks"
+          "$RUNNER_TEMP/source-checks/bin/pip" install --quiet jsonschema==4.23.0
+      - name: Check the public repository and source contracts
+        run: 'PATH="$RUNNER_TEMP/source-checks/bin:$PATH" bash tools/check-repository.sh'
   gradle-wrapper:
     runs-on: ubuntu-latest
     steps:

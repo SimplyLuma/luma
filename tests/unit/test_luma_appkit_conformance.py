@@ -52,6 +52,7 @@ ANY_COLOUR_LITERAL = re.compile(r"(?<![\w-])#[0-9a-fA-F]{3,8}\b|\brgba?\(", re.I
 
 # Applications in this repository. Each is added here as it is brought across
 # to the kit; an application not listed is not yet claimed to conform.
+# Layouts and Reel belong to the separate Creative product, not this tree.
 APPLICATION_SHEETS: tuple[str, ...] = (
     "src/luma-tide/data/tide.css",
     "src/prairie-core/style/prairie.css",
@@ -60,9 +61,7 @@ APPLICATION_SHEETS: tuple[str, ...] = (
     "src/prairie-core/style/calendar.css",
     "src/prairie-core/style/messages.css",
     "src/prairie-core/style/phone.css",
-    "src/luma-layouts/style/layouts.css",
     "src/luma-darkroom/style/darkroom.css",
-    "src/luma-reel/style/reel.css",
     "src/prairie-core/style/camera.css",
     "src/prairie-core/style/photos.css",
 )

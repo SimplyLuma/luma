@@ -127,12 +127,6 @@ if [ -n "$actual" ] && [ "$actual" != "$revision" ]; then
   exit 2
 fi
 
-[ -f "$source_dir/tools/check-repository.sh" ] || {
-  printf 'error: %s has no tools/check-repository.sh; is it a source tree?\n' \
-    "$source_dir" >&2
-  exit 2
-}
-
 # Each check: a label, the path whose absence means "not present at this
 # revision", and the command. In a normal run a missing path is a failure.
 checker_files="tools/check-repository.sh tools/check-unreached-tests.py tools/ungated-tests.txt"

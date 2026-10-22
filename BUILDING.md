@@ -109,3 +109,18 @@ A rootfs archive alone is not a flashable universal mobile image. Bootloader, ke
 ## Checks and contributions
 
 Run component tests for the code you change, then the applicable package/source and image gates. Hardware-dependent checks require the named real environment; keep skipped or failed checks visible. Preserve third-party license texts, copyright notices, and patch author headers when rebasing. Separate app updates and OS releases must retain their own source/package identity and signature verification.
+
+## Checking a public source checkout
+
+Run `bash tools/check-repository.sh` for the public documentation/source contract,
+Notes and application-kit contracts, and device manifests/tests. Install Python's
+`jsonschema` package as required by the device validator. This checks the public
+OS/application tree; separate Creative and Office repositories are not required.
+
+For a source drop, run `scripts/os/check-source-before-drop.sh SOURCE_DIR DROP_DIR
+REVISION` from a Git checkout at that full revision. It also runs the complete
+`tests/unit` and `tests/depot` suites and records evidence only on success.
+Use the script's documented Fedora dependencies, a D-Bus session, and a display
+(or `xvfb-run` on a headless builder) for the GTK tests. A successful source check
+is not package, device, installer or release qualification. `--backfill` records
+missing historical checks as unavailable; it is not the normal public workflow.
