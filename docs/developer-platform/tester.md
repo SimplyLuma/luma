@@ -19,6 +19,20 @@ use `./Luma-Tester-0.1.0-linux-x86_64.AppImage --appimage-extract-and-run`.
 Use the included README for package-specific commands. These are Linux x86_64
 builds; ARM guest execution and macOS/Windows packages need separate qualification.
 
+Device type and CPU architecture are independent. Desktop selection prefers the
+host architecture: ARM64 on Apple Silicon or other ARM64 hosts, x86_64 on Intel
+and AMD. Mobile prefers an available ARM64 phone image. A qualified x86_64
+Mobile simulator can run the same phone shell and responsive apps for faster
+development; it does not qualify ARM64 app binaries or physical phone hardware.
+If only one qualified image is available, the launcher uses it. Cross-architecture
+execution requires emulation and can be slower. The CLI accepts a particular
+manifest when you need an explicit simulator or reference image.
+
+For a portable Linux build, run `"/path/to/Luma Tester" install-desktop` to add
+its persistent executable and icon to your user Applications menu and dock.
+For an AppImage without FUSE, insert `--appimage-extract-and-run` before
+`install-desktop`. Register it again after moving the executable.
+
 The source packagers are `scripts/tester/build-portable.py` and
 `scripts/tester/build-appimage.py`; both accept `--help`. They run inside the
 normal admitted build lane, consume explicit runtime/catalog inputs, and write

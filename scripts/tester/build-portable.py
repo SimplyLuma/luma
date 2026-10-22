@@ -48,6 +48,8 @@ for name in ('prairie_apps', 'luma_appkit', 'sitecustomize.py'):
     if path.is_dir(): shutil.rmtree(path)
     elif path.exists(): path.unlink()
 copy(REPO / 'src/luma-platform/appkit/luma_appkit', site.relative_to(dest) / 'luma_appkit')
+for glyph in (REPO / 'assets/icon-theme/Prairie/symbolic/actions').glob('lumaui-*.svg'):
+    copy(glyph, site.relative_to(dest) / 'luma_appkit/icons' / glyph.name)
 copy(REPO / 'src/luma-tester/luma_tester', site.relative_to(dest) / 'luma_tester')
 copy(REPO / 'src/luma-tester/luma_tester/io.luma.Tester.svg', 'usr/share/icons/hicolor/scalable/apps/io.luma.Tester.svg')
 copy(REPO / 'src/luma-tester/io.luma.Tester.desktop', 'usr/share/applications/io.luma.Tester.desktop')

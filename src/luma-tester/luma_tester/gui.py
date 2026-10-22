@@ -78,15 +78,16 @@ def launch(state=None):
             if self.get_active_window():
                 self.get_active_window().present()
                 return
+            icons.ensure_icons(Gdk.Display.get_default())
             self.commands = CommandRegistry((CommandGroup(None, (
-                Command('tester.try', 'Try Luma', lambda: self.select_intent('try'), 'play'),
-                Command('tester.develop', 'Develop for Luma', lambda: self.select_intent('develop'), 'code'),
-                Command('tester.back', 'Back', lambda: self.stack.set_visible_child_name('welcome'), 'arrow-left', shortcut=('Alt', 'Left')),
-                Command('tester.open', 'Open Luma', self.start, 'play', enabled=lambda: not self.active()),
-                Command('tester.advanced', 'Advanced…', self.show_advanced, 'settings'),
-                Command('tester.pause', 'Pause or resume', self.pause, 'pause', enabled=lambda: self.running()),
-                Command('tester.shutdown', 'Shut down', self.stop, 'power', enabled=lambda: self.running()),
-                Command('tester.quit', 'Quit', self.window_close, 'log-out', shortcut=('Ctrl', 'Q')),
+                Command('tester.try', 'Try Luma', lambda: self.select_intent('try'), icons.icon_name('play')),
+                Command('tester.develop', 'Develop for Luma', lambda: self.select_intent('develop'), icons.icon_name('code')),
+                Command('tester.back', 'Back', lambda: self.stack.set_visible_child_name('welcome'), icons.icon_name('chevron-left'), shortcut=('Alt', 'Left')),
+                Command('tester.open', 'Open Luma', self.start, icons.icon_name('play'), enabled=lambda: not self.active()),
+                Command('tester.advanced', 'Advanced…', self.show_advanced, icons.icon_name('settings')),
+                Command('tester.pause', 'Pause or resume', self.pause, icons.icon_name('pause'), enabled=lambda: self.running()),
+                Command('tester.shutdown', 'Shut down', self.stop, icons.icon_name('power'), enabled=lambda: self.running()),
+                Command('tester.quit', 'Quit', self.window_close, icons.icon_name('log-out'), shortcut=('Ctrl', 'Q')),
             )),))
             Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(Path(__file__).parent))
             self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Luma Tester',
@@ -116,7 +117,7 @@ def launch(state=None):
             if back:
                 frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
                 navigation = Gtk.Box(margin_start=16, margin_end=16, margin_top=12)
-                button = IconButton('go-previous-symbolic', 'Back', context=self.window.context, quiet=True)
+                button = IconButton(icons.icon_name('chevron-left'), 'Back', context=self.window.context, quiet=True)
                 button.connect('clicked', lambda _button: self.commands.invoke('tester.back'))
                 navigation.append(button)
                 frame.append(navigation)
@@ -308,12 +309,13 @@ def launch(state=None):
 
         def select_image(self):
             native = 'aarch64' if platform.machine() in ('aarch64', 'arm64') else 'x86_64'
+            preferred = 'aarch64' if self.target == 'mobile' else native
             candidates = []
             for priority, path in enumerate(self.available_manifests()):
                 try:
                     manifest = read_manifest(path)
                     if manifest['target'] == self.target:
-                        candidates.append((manifest['arch'] != native, priority, str(path)))
+                        candidates.append((manifest['arch'] != preferred, priority, str(path)))
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
             if not candidates:
