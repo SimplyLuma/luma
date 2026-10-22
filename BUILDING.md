@@ -141,3 +141,10 @@ fixtures. GTK geometry tests need a display large enough for their desktop
 windows, for example `xvfb-run -a -s '-screen 0 2560x1600x24'`, with
 `GDK_SCALE=1`. These are builder-fixture requirements, not changes to the
 installed product's filesystem or display settings.
+
+For filesystem boundary tests in a layered container, bind-mount the private
+scratch directory from one real filesystem and remove inherited default ACLs
+from that fixture directory only. Overlay layers can expose different device
+IDs for directories and files; the safety checks intentionally reject
+cross-device traversal. Keep those guards enabled rather than changing
+expected results to fit the container's overlay or shared-drive permissions.

@@ -20,6 +20,18 @@ jobs:
           "$RUNNER_TEMP/source-checks/bin/pip" install --quiet jsonschema==4.23.0
       - name: Check the public repository and source contracts
         run: 'PATH="$RUNNER_TEMP/source-checks/bin:$PATH" bash tools/check-repository.sh'
+  shared-search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install native Gio bindings
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y python3-gi gir1.2-glib-2.0
+      - name: Require the real desktop application binding
+        run: /usr/bin/python3 -B -c 'from gi.repository import Gio; assert Gio.DesktopAppInfo'
+      - name: Search contracts and missing-application regressions
+        run: |
+          /usr/bin/python3 -B -m unittest tests.unit.test_luma_search
+          /usr/bin/python3 -B -m unittest discover -s tests/search -p 'test_*.py'
   gradle-wrapper:
     runs-on: ubuntu-latest
     steps:
