@@ -55,7 +55,7 @@ was running before launch; no guest auto-started. All automated tests remain on
 this64GiB server; QEMU runs locally on Dell when Nick starts a guest there.
 No Dell automated testing. Tablet/TV/smart-device images remain unavailable.
 
-Hub ticket integration now being implemented for0.2.0 from the supplied Hub
+Hub ticket integration is implemented and live-qualified in0.2.0 from the supplied Hub
 handoff and the exact API.md on nmcmil/luma-website work/download-tickets. The
 live catalog currently offers installer ISOs, not ready-to-run developer disks.
 Do not use those ISOs as cloud-init qcow2 inputs or attribute private disks to an
