@@ -2,6 +2,7 @@
 """Architecture selection must preserve releases and isolate update identities."""
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -69,3 +70,23 @@ class DesktopTargets(unittest.TestCase):
             path.write_text(json.dumps(registry))
             with self.assertRaises(ValueError):
                 target.target(root, 'aarch64')
+
+    def test_runtime_requires_current_desktop_and_owner_webkit_for_both_arches(self):
+        def requirements(architecture):
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / 'must-not-be-created'
+                result = subprocess.run(
+                    ['bash', 'scripts/depot/collect-luma-rpms.sh', '--print-required'],
+                    cwd=ROOT, env={**os.environ, 'DEPOT_ARCH': architecture, 'DEPOT_ROOT': str(output)},
+                    capture_output=True, text=True, check=True)
+                self.assertFalse(output.exists())
+                return result.stdout.splitlines()
+        x86, arm = requirements('x86_64'), requirements('aarch64')
+        self.assertEqual(arm, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p for p in x86])
+        desktop = set(target.packages(ROOT, 'aarch64'))
+        for name in ('gtk4-', 'libadwaita-', 'luma-developer-platform-'):
+            main = next(p for p in arm if p.startswith(name) and '-devel-' not in p)
+            self.assertIn(main, desktop)
+        for name in ('webkitgtk6.0', 'webkit2gtk4.1', 'javascriptcoregtk6.0', 'javascriptcoregtk4.1'):
+            self.assertTrue(any(p.startswith(name + '-') and '-devel-' not in p for p in arm))
+            self.assertTrue(any(p.startswith(name + '-devel-') for p in arm))

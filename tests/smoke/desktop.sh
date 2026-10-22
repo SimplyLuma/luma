@@ -14,8 +14,20 @@ if [ -r "$inputs_file" ]; then
   # shellcheck disable=SC1090
   . "$inputs_file"
 fi
+# This immutable source pin set names the same releases for both CPUs. The
+# machine's architecture selects the RPM suffix; old handheld preview aliases
+# must not replace the current desktop source selection.
+architecture=$(uname -m)
+case "$architecture" in x86_64|aarch64) ;; *) printf 'Unsupported desktop architecture\n' >&2; exit 2 ;; esac
+while IFS= read -r pin; do
+  case "$pin" in *_AARCH64_NEVRA|*_X86_64_NEVRA) continue ;; *_NEVRA) ;; *) continue ;; esac
+  value=${!pin}
+  case "$value" in *.x86_64|*.aarch64) printf -v "$pin" '%s' "${value%.*}.$architecture" ;; esac
+done < <(compgen -A variable)
+LUMA_DEVELOPER_PLATFORM_NEVRA=${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.x86_64}.$architecture
+
 : "${PRAIRIE_CORE_APPS_NEVRA:?desktop smoke requires the pinned desktop inputs}"
-: "${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA:?desktop smoke requires the pinned desktop inputs}"
+: "${LUMA_DEVELOPER_PLATFORM_NEVRA:?desktop smoke requires the pinned desktop inputs}"
 
 failures=0
 check() {
@@ -30,7 +42,7 @@ check() {
 }
 
 check 'Luma GNOME Control Center package' \
-  rpm -q "gnome-control-center-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.x86_64"
+  rpm -q "gnome-control-center-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.${architecture}"
 check 'Luma GNOME Control Center filesystem package' \
   rpm -q "gnome-control-center-filesystem-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.noarch"
 check 'Luma GNOME Shell package' \
@@ -119,7 +131,7 @@ check 'Prairie core apps replace GNOME Calendar' \
 check 'Luma Relay package' \
   rpm -q "$LUMA_RELAY_NEVRA"
 check 'Relay Wine Explorer integration' \
-  rpm -q wine-luma-relay-explorer-11.0-3.luma.2.fc44.x86_64
+  rpm -q "$WINE_RELAY_EXPLORER_NEVRA"
 check 'Relay Windows engine' rpm -q wine
 check 'Relay NTSYNC loader' rpm -q ntsync-autoload
 check 'Relay Direct3D translation' rpm -q wine-dxvk
