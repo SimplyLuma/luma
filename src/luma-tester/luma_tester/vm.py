@@ -233,20 +233,26 @@ print('true')
     raise TesterError('The saved simulator did not restart after its display update.')
 
 
-def agent_prompt(session, manifest_path, executable='luma-tester'):
-    settings = load(session.root)
-    if not settings['agent_ssh'] or not (session.directory / 'agent-key').exists():
-        raise TesterError('Enable SSH access and start Luma before copying the agent prompt.')
+def ssh_connection(session):
+    """Connection details for the optional user key; never expose key contents."""
+    if not load(session.root)['agent_ssh'] or not (session.directory / 'agent-key').exists():
+        raise TesterError('Enable SSH access and start Luma to connect.')
     port = json.loads((session.directory / 'connection.json').read_text())['port']
     command = ['ssh', '-F', '/dev/null', '-i', str(session.directory / 'agent-key'), '-p', str(port),
                '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
                '-o', 'UserKnownHostsFile=' + str(session.directory / 'known_hosts'),
                session.manifest['user'] + '@127.0.0.1']
+    return dict(host='127.0.0.1', port=port, user=session.manifest['user'], command=shlex.join(command))
+
+
+def agent_prompt(session, manifest_path, executable='luma-tester'):
+    settings = load(session.root)
+    connection = ssh_connection(session)
     text = f'''Work in this Luma Tester {session.manifest['target']} guest.
 Build: {session.manifest['build']}
 Guest architecture: {session.manifest['arch']}. Host architecture and guest architecture are independent.
 Connect locally using this existing private key (never print or copy its contents):
-{shlex.join(command)}
+{connection['command']}
 
 The guest disk persists across shutdown and reopening. Use the Tester sidebar to
 save a named disk snapshot before risky changes. Keep application work in the

@@ -804,3 +804,11 @@ used that source without altering shared refs or unrelated worktrees.
   catalog/update feed (Hub currently publishes installer ISOs); Mac/Windows/ARM
   host qualification. Other task owns generic ARM Desktop. Tablet/TV/Smart Device
   profiles remain explicitly unavailable until qualified; never fake their guest.
+- 2026-10-22 SSH disclosure follow-up0.3.1: enabled SSH now expands inline with
+  selectable host, forwarded port, username and native Copy SSH Command button.
+  Shows managed-key/no-password authentication, pending enable and start-to-connect
+  states; collapses when disabled or in Try mode. Shared connection helper feeds
+  both clipboard command and agent prompt without reading private key contents.
+  Checks2ffa2c4e PASSED68 units and dark native UI disclosure/state checks.
+  Actual guest33c17d4d PASSED restored workspace, clipboard command authenticated
+  against native Mobile, same SSH identity and graceful window-close shutdown.

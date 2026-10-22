@@ -90,6 +90,9 @@ VM and its disk stay the same. Developer reveals **SSH access**, **Copy Agent
 Prompt**, **Shared Folders** and **Devices**. Enable SSH, start Luma, then copy
 the prompt into your local coding agent. Its separate private key can be revoked
 by turning SSH access off; internal launcher control has a different key.
+The enabled SSH section expands inline with the host, forwarded port, username
+and a Copy SSH Command button. Connections use the managed SSH key; no password
+is needed. Start the guest before copying its connection command.
 
 Shared folders default to read only; **Allow changes** opts into edits on the
 host. Selected folders appear at `/mnt/shared/1`, `/mnt/shared/2`, etc. Ownership

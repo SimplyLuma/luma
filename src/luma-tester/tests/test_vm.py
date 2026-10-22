@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
+from types import SimpleNamespace
 import subprocess
 import tempfile
 import unittest
@@ -45,6 +47,23 @@ class VMTests(unittest.TestCase):
         args=vm.devices(vm.load(self.root))
         self.assertIn('hda-output,audiodev=sound0',args)
         self.assertFalse(any('hda-duplex' in arg or 'usb-host' in arg for arg in args))
+
+    def test_connection_command_uses_actual_identity_and_quoted_key(self):
+        directory=self.root/'VM with spaces';directory.mkdir()
+        session=SimpleNamespace(root=self.root,directory=directory,
+            manifest=dict(user='developer',target='mobile',build='Test build',arch='x86_64'))
+        (directory/'connection.json').write_text(json.dumps(dict(port=2299)))
+        (directory/'agent-key').write_text('private-key-fixture')
+        with self.assertRaises(TesterError):vm.ssh_connection(session)
+        vm.save(self.root,dict(vm.load(self.root),agent_ssh=True))
+        details=vm.ssh_connection(session)
+        self.assertEqual((details['host'],details['port'],details['user']),('127.0.0.1',2299,'developer'))
+        args=shlex.split(details['command'])
+        self.assertEqual(args[args.index('-i')+1],str(directory/'agent-key'))
+        self.assertEqual(args[-1],'developer@127.0.0.1')
+        self.assertIn('StrictHostKeyChecking=yes',args)
+        self.assertNotIn('private-key-fixture',details['command'])
+        self.assertIn(details['command'],vm.agent_prompt(session,self.root/'manifest.json'))
 
     def test_invalid_resources_rejected(self):
         for key,value in [('memory',128),('cpus',0),('disk_gib',1),('agent_ssh','yes')]:

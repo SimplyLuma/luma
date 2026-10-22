@@ -235,6 +235,24 @@ def launch(state=None):
             self.ssh_row.set_trail(self.ssh_switch)
             self.sidebar.append_row(self.ssh_row)
             self.developer_rows.append(self.ssh_row)
+            self.ssh_details = Gtk.ListBoxRow(selectable=False, activatable=False)
+            details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                margin_start=24, margin_end=16, margin_top=4, margin_bottom=12)
+            self.ssh_status = self.label('', 'caption', muted=True)
+            details.append(self.ssh_status)
+            self.ssh_values = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            self.ssh_fields = {}
+            for title in ('Host', 'Port', 'Username'):
+                line = Gtk.Box(spacing=12)
+                label = self.label(title, 'caption', muted=True);label.set_hexpand(True)
+                value = self.label('', 'caption');value.set_selectable(True)
+                line.append(label);line.append(value);self.ssh_values.append(line)
+                self.ssh_fields[title] = value
+            details.append(self.ssh_values)
+            self.ssh_copy = self.button('Copy SSH Command', self.copy_ssh_command, icon='copy')
+            details.append(self.ssh_copy)
+            self.ssh_details.set_child(details)
+            self.sidebar.list.append(self.ssh_details)
             for title, icon, callback in [('Copy Agent Prompt', 'clipboard', self.copy_agent_prompt),
                     ('Shared Folders…', 'folder', self.show_hardware), ('Devices…', 'usb', self.show_hardware)]:
                 row = SidebarRow(title, lead=RowLead.icon(icon));row.callback = callback
@@ -808,6 +826,7 @@ def launch(state=None):
             for row in self.developer_rows:
                 row.set_visible(self.intent == 'develop')
             self.ssh_switch.set_active(self.settings['agent_ssh'])
+            self.refresh_ssh_details()
             self.refresh_snapshots()
             if self.closing and not self.active():
                 self.window.close()
@@ -910,6 +929,7 @@ def launch(state=None):
                 session = self.session
                 self.ssh_busy=True
                 self.ssh_row.set_sensitive(False)
+                self.refresh_ssh_details()
                 def worker():
                     try:
                         vm.configure_guest(session, self.settings, mount_folders=False)
@@ -920,6 +940,7 @@ def launch(state=None):
                         GLib.idle_add(self.ssh_finished)
                 threading.Thread(target=worker, daemon=True).start()
             else:
+                self.refresh_ssh_details()
                 self.notify('SSH access will be enabled on start.' if self.settings['agent_ssh'] else 'SSH access disabled.')
 
         def ssh_failed(self, previous, message):
@@ -931,7 +952,37 @@ def launch(state=None):
         def ssh_finished(self):
             self.ssh_busy=False
             self.ssh_row.set_sensitive(True)
+            self.refresh_ssh_details()
             return False
+
+        def refresh_ssh_details(self):
+            self.ssh_details.set_visible(self.intent == 'develop' and self.settings['agent_ssh'])
+            self.ssh_values.set_visible(False)
+            self.ssh_copy.set_sensitive(False)
+            if self.ssh_busy:
+                self.ssh_status.set_label('Enabling SSH access…')
+                return
+            if not self.running() or not self.graphical_ready or self.shutting_down:
+                self.ssh_status.set_label('Start Luma to connect.')
+                return
+            try:
+                connection = vm.ssh_connection(self.session)
+                for title, key in [('Host', 'host'), ('Port', 'port'), ('Username', 'user')]:
+                    self.ssh_fields[title].set_label(str(connection[key]))
+                self.ssh_values.set_visible(True)
+                self.ssh_status.set_label('SSH key · No password needed')
+                self.ssh_copy.set_sensitive(True)
+            except (OSError, ValueError, TypeError, TesterError):
+                self.ssh_status.set_label('Preparing your connection…')
+
+        def copy_ssh_command(self):
+            try:
+                if self.ssh_busy or not self.running() or not self.graphical_ready or self.shutting_down:
+                    raise TesterError('Start Luma and enable SSH access first.')
+                self.window.get_clipboard().set(vm.ssh_connection(self.session)['command'])
+                self.notify('SSH command copied.')
+            except Exception as exc:
+                self.notify(str(exc))
 
         def copy_agent_prompt(self):
             try:
