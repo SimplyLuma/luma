@@ -775,3 +775,32 @@ used that source without altering shared refs or unrelated worktrees.
   actual window-close graceful shutdown (30.1 seconds total). Source final
   checks3f64f26a PASSED67 units, compileall, shell syntax and public native UI
   smoke. New portable audio/USB closure and packaged0.3.0/Dell delivery pending.
+- Tester0.3.0/e5abd564 built61722fb8 using the public portable producer and
+  qualified r22 native runtime; includes PipeWire/SPA client closure, USB host
+  module and exact bindfs corresponding source RPM. Owned HDD output
+  appimage-workspace-r23/Luma-Tester-0.3.0-linux-x86_64.AppImage,
+  SHA256 f472e4cf079beedb69035659dce822894cf0f642c8ebb2b26bd58bb659dd7ede,
+  283511288 bytes. Sidecars: Desktop r15 unchanged; Mobile r10 above. Private
+  source:test attribution retained. No public signing/publication or ARM build.
+- Packaged qualification06fa8c3a: actual AppImage entry PASSED; actual bundled
+  Python/UI/QEMU full Mobile workflow PASSED including live mode switch, clean
+  Home/returned-Home captures, SSH revocation, shares and visible hotfix. Aggregate
+  job failed only on the separate audio QA fixture's >108-byte Unix socket path.
+  Audio fixture retrye1b05b90 then lacked optional host pw-dump; final18caca8c
+  PASSED packaged PipeWire module loading and QMP readiness against an isolated
+  PipeWire server. Physical speakers/microphones/cameras remain untested.
+  Evidence root-jobs/luma-tester-user-410c93e7c0/{entry,mobile}/qualification.json
+  and root-jobs/luma-tester-user-9df6000911/audio-qualification.json.
+- Deliverydff81185 PASSED app and both guest SHA checks on Dell. Desktop asset
+  reused by verified hardlink; new Mobile copied separately. Candidate folder
+  /home/nick/.local/share/luma-previews/tester-workspace-r23-20261022.
+  Confirmed no running QEMU immediately before launch; old r22 app already stopped.
+  Launched luma-preview-tester-workspace-20261022-2d620868.service using unchanged
+  tester-display-20261017/{workspace,config,data,cache}; read-only metadata confirms
+  active/running, ExecMainStatus0. Desktop registration7340a8ed exited0. This is
+  manual Dell review, not an automated Dell app test or user acceptance.
+- Linux iteration delivered for review. Still open: real Dell hardware audio/USB
+  review and earlier Desktop graphics fallback diagnosis; public signed ready-VM
+  catalog/update feed (Hub currently publishes installer ISOs); Mac/Windows/ARM
+  host qualification. Other task owns generic ARM Desktop. Tablet/TV/Smart Device
+  profiles remain explicitly unavailable until qualified; never fake their guest.
