@@ -1,24 +1,22 @@
 # Luma Tester — Linux developer preview
 
-Open **Luma Tester**. Choose **Try Luma** or **Develop for Luma**, then **Mobile**
-or **Desktop**. The preview includes its LumaUI runtime, QEMU, developer tools
-and one verified guest disk containing both profiles. No host package installation
-or root daemon is required. First launch creates a private writable workspace.
+Open **Luma Tester**, choose **Try Luma** or **Develop for Luma**, then select a
+device and **Build**. Start, Pause, Home and Shut Down live in the floating bottom
+action bar. Devices without a build are marked Soon.
 
-For development, connect an app folder and copy the development command from
-Project. Replace `YOUR_APP_COMMAND` with your app's command. The watcher syncs
-source and restarts the guest app after edits. Try the included `examples/Hello
-Luma` with `python3 main.py`; edit `message.txt` to see a change in the guest.
-Keep app minimum widths suitable for the 432-pixel mobile viewport.
+The app includes LumaUI, QEMU and developer tools. Lightweight packages download
+checksum-verified guest disks from their configured HTTPS image URLs on first
+use. Private previews may supply a separate images directory beside the AppImage;
+offline packages embed their disks. Desktop and native Mobile use separate
+qualified image profiles. Replacing Tester preserves cached images and writable
+workspaces. Automatic latest-build prompts require a published image feed.
 
-`DEVELOPING.md` describes the CLI and agent workflow. In this portable package,
-use `"/absolute/path/to/Luma Tester"` wherever it says `luma-tester`. **Shut Down**
-saves the workspace. The host app and guest have separate lifetimes.
+For development, connect an app folder in Project and copy its development
+command. The watcher syncs changes and restarts the app. Try examples/Hello Luma
+with python3 main.py; edit message.txt to see the change in the guest.
+DEVELOPING.md includes the CLI and local agent workflow.
 
-This package targets Linux x86_64. KVM gives the fastest preview; QEMU can fall
-back to software emulation. The guest uses actual Luma shell/apps and software
-graphics. It does not reproduce Fairphone radios, cameras, sensors, GPU timing,
-battery behavior or Android integration. ARM guests and other host operating
-systems require separately qualified packages. Read the build receipt and
-runtime notices before redistribution; this local developer build is not a
-published OS release.
+This preview targets Linux x86_64. Native Mobile runs the real phone shell and
+keyboard; it does not reproduce Fairphone-specific hardware or qualify ARM
+binaries. GPU acceleration is selected when available. Read the exact build and
+qualification receipts before redistribution; this is not a published OS release.

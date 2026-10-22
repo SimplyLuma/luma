@@ -175,7 +175,7 @@ print(json.dumps(state))
             if phase == 0:
                 if app.catalog_targets == {'desktop'}:
                     assert app.target == 'desktop'
-                    assert not app.device_rows['mobile'].get_sensitive()
+                    assert app.device_rows['mobile'].get_sensitive()
                     report['available_target_selected'] = True
                 app.select_intent('develop')
                 app.select_target(target)

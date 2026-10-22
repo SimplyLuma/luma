@@ -26,6 +26,9 @@ p.add_argument('--gvnc-source', type=Path, required=True, help='Matching Fedora 
 p.add_argument('--gvnc-license', type=Path, required=True, help='Upstream COPYING.LIB')
 p.add_argument('--catalog', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
+mode = p.add_mutually_exclusive_group()
+mode.add_argument('--offline', action='store_true', help='Embed verified guest images in the AppImage')
+mode.add_argument('--sidecar-images', action='store_true', help='Keep private preview images beside the AppImage')
 a = p.parse_args()
 assert platform.machine() == 'x86_64', 'This producer currently assembles x86_64 Linux hosts.'
 runtime, dest = a.runtime.resolve(), a.output.resolve()
@@ -150,20 +153,23 @@ for line in set(packages.values()):
             copy(path, Path('tools/licenses') / path.relative_to('/usr/share/licenses'))
 (dest / 'tool-packages.json').write_text(json.dumps(packages, indent=2) + '\n')
 
-# Embed one verified common disk, with relocatable target manifests.
+# Keep download manifests small, with explicit offline/sidecar options.
 sys.path.insert(0, str(REPO / 'src/luma-tester'))
 from luma_tester.core import digest, read_manifest
 for path in sorted(a.catalog.glob('*.json')):
     manifest = read_manifest(path)
     assert manifest['arch'] == 'x86_64', 'Host package currently contains x86_64 guests.'
-    url = urlparse(manifest['image']['url'])
-    assert url.scheme == 'file' and not url.netloc, 'This preview producer embeds local qualified disks.'
-    source = Path(unquote(url.path))
-    assert source.stat().st_size == manifest['image']['bytes'] and digest(source) == manifest['image']['sha256']
-    relative = 'images/' + manifest['image']['sha256'] + '.qcow2'
-    if not (dest / relative).exists(): copy(source, relative)
-    manifest['image']['url'] = ''
-    manifest['bundled_image'] = relative
+    if a.offline or a.sidecar_images:
+        url = urlparse(manifest['image']['url'])
+        assert url.scheme == 'file' and not url.netloc, 'Offline and preview images require qualified local disks.'
+        source = Path(unquote(url.path))
+        assert source.stat().st_size == manifest['image']['bytes'] and digest(source) == manifest['image']['sha256']
+        relative = 'images/' + manifest['image']['sha256'] + '.qcow2'
+        if not (dest / relative).exists(): copy(source, relative)
+        manifest['image']['url'] = ''
+        manifest['bundled_image' if a.offline else 'external_image'] = relative
+    else:
+        assert urlparse(manifest['image']['url']).scheme == 'https', 'A download build requires published HTTPS image URLs; use --sidecar-images for a private preview.'
     (dest / 'catalog').mkdir(exist_ok=True)
     (dest / 'catalog' / path.name).write_text(json.dumps(manifest, indent=2) + '\n')
 
@@ -187,7 +193,7 @@ for path in dest.rglob('*'):
 dest.chmod(0o755)
 receipt = {'schema': 1, 'host': 'linux-x86_64',
     'source_commit': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),
-    'runtime_input': str(runtime), 'files': []}
+    'runtime_input': str(runtime), 'image_mode': 'offline' if a.offline else 'sidecar' if a.sidecar_images else 'download', 'files': []}
 for path in sorted(dest.rglob('*')):
     if path.is_file() and not path.is_symlink():
         receipt['files'].append({'path': str(path.relative_to(dest)), 'sha256': digest(path), 'bytes': path.stat().st_size})

@@ -12,7 +12,9 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
 gi.require_version('GVnc', '1.0')
-from gi.repository import Gdk, Gio, GLib, GObject, Gtk, GVnc
+gi.require_version('Gsk', '4.0')
+gi.require_version('Graphene', '1.0')
+from gi.repository import Gdk, Gio, GLib, GObject, Gtk, GVnc, Gsk, Graphene
 
 
 from .rfb import Framebuffer as BaseFramebuffer
@@ -77,6 +79,24 @@ class GuestDisplay(Gtk.Picture):
         scroll.connect('scroll', self.scroll)
         self.add_controller(scroll)
         self.update_property([Gtk.AccessibleProperty.LABEL], ['Luma guest display. Click to use the guest. Control Alt returns to launcher controls.'])
+
+    def do_snapshot(self, snapshot):
+        if self.framebuffer and self.get_paintable():
+            scale = min(self.get_width() / self.framebuffer.width,
+                        self.get_height() / self.framebuffer.height)
+            width, height = self.framebuffer.width * scale, self.framebuffer.height * scale
+            rect = Graphene.Rect().init((self.get_width() - width) / 2,
+                (self.get_height() - height) / 2, width, height)
+            outline = Gsk.RoundedRect()
+            outline.init_from_rect(rect, 4)
+            # Draw only the screen silhouette: the changing framebuffer itself
+            # is never blurred. The shared colours also handle high contrast.
+            for token, offset, blur in [('luma_float_shadow', 10, 24),
+                                        ('luma_float_shadow_near', 2, 6)]:
+                found, colour = self.get_style_context().lookup_color(token)
+                if found:
+                    snapshot.append_outset_shadow(outline, colour, 0, offset, 0, blur)
+        Gtk.Picture.do_snapshot(self, snapshot)
 
     def open(self):
         if not self.socket_path.is_socket():

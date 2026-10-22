@@ -37,6 +37,12 @@ The source packagers are `scripts/tester/build-portable.py` and
 `scripts/tester/build-appimage.py`; both accept `--help`. They run inside the
 normal admitted build lane, consume explicit runtime/catalog inputs, and write
 only their output directories. No public download is configured by building them.
+The default lightweight mode retains published HTTPS image URLs and downloads a
+verified image on first use. `--sidecar-images` keeps private preview images in
+an `images/` directory beside the AppImage; replacing the app does not replace
+those assets or existing writable workspaces. `--offline` embeds the disks for
+a full offline bundle. Automatic latest-build discovery and update prompts need
+a published versioned image feed; this private preview does not configure one.
 
 ## Start a session
 
@@ -51,7 +57,7 @@ choose **Mobile** or **Desktop** in the sidebar, choose a **Build** from the too
 The sidebar uses compact LumaUI destination rows. Unavailable devices are marked
 **Soon** and open an explicit no-build state. Presets appear as sidebar items;
 the section’s **+** opens a native modal for saving the current configuration.
-The toolbar provides **Pause**, **Resume**, and graceful **Shut Down**. Mobile
+The floating bottom action bar provides **Pause**, **Resume**, and graceful **Shut Down**. Mobile
 also provides **Home**, which opens the actual phone Home surface. Stop the
 current session before changing its device experience or image. On narrow
 windows the sidebar opens over the content using the toolbar's navigation button.

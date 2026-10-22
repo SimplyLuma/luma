@@ -618,3 +618,19 @@ used that source without altering shared refs or unrelated worktrees.
 - Combined Desktop+native Mobile r21 packaging now planned, with exact native
   corresponding sources, interaction/persistence receipt bindings and explicit
   software-host qualification metadata. r20 Desktop disk/graphics remain unchanged.
+
+- Bottom ActionCenter and framebuffer silhouette shadow implemented at user request.
+  Shared native bar controls are hosted in a ToastHost beside the sidebar; guest
+  area reserves the bar's space. Shadow uses LumaUI float-shadow colours around
+  the actual contained screen bounds; framebuffer contents are never blurred.
+  Actual native Mobile workflow e488cff8 PASSED again with the new host UI,
+  including keyboard/Home and visible app hotfix. Source compact UI464dc11b
+  PASSED after final modal/focus/nowrap composition; native controls remain used.
+- Lightweight packaging defaults to HTTPS image downloads, with explicit
+  --offline and --sidecar-images producers. Sidecars use checksum filenames and
+  stay outside the AppImage; source cache/workspaces keep their existing identity.
+  Asset checks8066a390 and47 core/preset/asset tests6644ed0c PASSED, including
+  download fallback, metadata immutability and path/symlink containment.
+  No published image feed or automatic latest-version prompt is configured;
+  do not present that future service as implemented. Private r21 uses separately
+  delivered qualified images; no public image upload or release authorization.

@@ -32,13 +32,8 @@ if not os.environ.get('LUMA_TESTER_CATALOG'):
     catalog = cache / key
     catalog.mkdir(mode=0o700, exist_ok=True)
     for path in (base / 'catalog').glob('*.json'):
-        manifest = json.loads(path.read_text())
-        local = manifest.pop('bundled_image', None)
-        if local:
-            image = (base / local).resolve()
-            if not image.is_relative_to(base):
-                raise ValueError('Bundled image must remain inside the portable directory.')
-            manifest['image']['url'] = image.as_uri()
+        from luma_tester.catalog import resolve_asset
+        manifest = resolve_asset(json.loads(path.read_text()), base, os.environ.get('APPIMAGE'))
         temporary = catalog / (path.name + '.' + str(os.getpid()))
         temporary.write_text(json.dumps(manifest, indent=2) + '\n')
         temporary.replace(catalog / path.name)

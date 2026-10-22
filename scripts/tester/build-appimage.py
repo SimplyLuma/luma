@@ -22,7 +22,26 @@ out.mkdir(parents=True, exist_ok=False)
 app = out / 'AppDir'
 # The source is a task-owned immutable build result; hard links avoid duplicating
 # the large guest disk during staging. No source file is edited through a link.
-shutil.copytree(a.portable_dir, app, symlinks=True, copy_function=os.link)
+external = {}
+for path in (a.portable_dir / 'catalog').glob('*.json'):
+    manifest = json.loads(path.read_text())
+    relative = manifest.get('external_image')
+    if relative:
+        expected = 'images/' + manifest['image']['sha256'] + '.qcow2'
+        assert relative == expected, 'External images require checksum filenames.'
+        source = a.portable_dir / relative
+        assert source.stat().st_size == manifest['image']['bytes']
+        assert hashlib.file_digest(source.open('rb'), 'sha256').hexdigest() == manifest['image']['sha256']
+        external[Path(relative).name] = relative
+
+def omit_external(folder, names):
+    return list(external) if Path(folder).resolve() == (a.portable_dir / 'images').resolve() else []
+
+shutil.copytree(a.portable_dir, app, symlinks=True, copy_function=os.link, ignore=omit_external)
+for relative in external.values():
+    target = out / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.link(a.portable_dir / relative, target)
 (app / 'AppRun').write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

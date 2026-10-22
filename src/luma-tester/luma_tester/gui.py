@@ -22,7 +22,8 @@ try:
     from luma_appkit.content_type import apply_type
     from luma_appkit.rows_navigation import SidebarRow, SidebarSection, RowLead, sidebar_width
     from luma_appkit.menus import Menu
-    from luma_appkit.action_toast import Toast
+    from luma_appkit.action_toast import Toast, ToastHost
+    from luma_appkit.action_center import ActionCenter, BarAction, BarWidget, SEPARATOR, make_control
     from luma_appkit.structure_layers import LayerHost
     from luma_appkit.widgets import AppWindow, IconButton, Island, IslandOverlaySplitView, NavigationSidebar, ScrollView, add_style_sheet
 except (ImportError, ValueError) as exc:
@@ -117,7 +118,8 @@ def launch(state=None):
             add_style_sheet(str(Path(__file__).with_name('tester.css')))
             self.island = Island()
             self.build_sidebar()
-            self.layout = IslandOverlaySplitView(sidebar=self.sidebar, content=self.island,
+            self.content_host = ToastHost(self.island)
+            self.layout = IslandOverlaySplitView(sidebar=self.sidebar, content=self.content_host,
                 min_sidebar_width=sidebar_width('destinations', 'narrow'), max_sidebar_width=sidebar_width('destinations', 'narrow'), sidebar_width_unit=Adw.LengthUnit.PX)
             self.window.set_body(self.layout)
             self.last_workspace_size = None
@@ -202,25 +204,28 @@ def launch(state=None):
                 self.preset_rows.append(row)
 
         def build_toolbar(self):
-            self.toolbar = Gtk.Box(spacing=8, margin_start=16, margin_end=16, margin_top=12, margin_bottom=8)
-            self.toolbar.set_visible(False)
-            self.sidebar_toggle = IconButton(icons.icon_name('menu'), 'Show or hide sidebar', context=self.window.context, quiet=True)
-            self.sidebar_toggle.connect('clicked', lambda _b: self.layout.set_show_sidebar(not self.layout.get_show_sidebar()))
-            self.toolbar.append(self.sidebar_toggle)
-            self.workspace_title = self.label('Luma Desktop', 'title-2')
-            self.workspace_title.set_hexpand(True)
-            self.toolbar.append(self.workspace_title)
+            self.toolbar = ActionCenter()
+            self.toolbar.attach(self.content_host, safe_area=False)
+            self.sidebar_toggle = make_control(BarAction('menu', tooltip='Show or hide sidebar',
+                on_activate=lambda: self.layout.set_show_sidebar(not self.layout.get_show_sidebar())))
+            self.workspace_title = self.label('Luma Desktop', 'label')
+            self.workspace_title.set_wrap(False)
             self.build_menu = Gtk.MenuButton(label='Build', tooltip_text='Choose a build')
-            self.build_menu.add_css_class('flat')
-            self.toolbar.append(self.build_menu)
-            self.run_button = self.button('Start', self.start, True)
-            self.pause_button = self.button('Pause', self.pause)
-            self.shutdown_button = self.button('Shut Down', self.stop)
-            self.home_button = self.button('Home', self.home)
+            self.build_menu.get_first_child().add_css_class('lumaui-bar-button')
+            self.build_menu.get_first_child().add_css_class('text')
+            self.run_button = make_control(BarAction('', 'Start', on_activate=self.start, primary=True))
+            self.pause_button = make_control(BarAction('', 'Pause', on_activate=self.pause))
+            self.shutdown_button = make_control(BarAction('', 'Shut Down', on_activate=self.stop))
+            self.home_button = make_control(BarAction('', 'Home', on_activate=self.home))
             self.home_button.set_visible(False)
-            for button in (self.home_button, self.run_button, self.pause_button, self.shutdown_button):
-                self.toolbar.append(button)
-            self.island.append(self.toolbar)
+            self.tools_button = make_control(BarAction('', 'Project',
+                on_activate=lambda: self.stack.set_visible_child_name('session')))
+            self.tools_button.set_visible(False)
+            self.toolbar.show_bar([BarWidget(self.sidebar_toggle), BarWidget(self.workspace_title),
+                SEPARATOR, BarWidget(self.build_menu), BarWidget(self.home_button),
+                BarWidget(self.run_button), BarWidget(self.pause_button), BarWidget(self.shutdown_button),
+                BarWidget(self.tools_button)])
+            self.toolbar.set_visible(False)
 
         def workspace_changed(self, *_args):
             shown = self.stack.get_visible_child_name() in ('session', 'live')
@@ -310,7 +315,7 @@ def launch(state=None):
                 self.status_label.set_label('Choose an image before saving a preset.')
                 return
             self.preset_name.set_text(self.target.title())
-            self.preset_handle = LayerHost.for_widget(self.island).present_modal(
+            self.preset_handle = LayerHost.window_host(self.island).present_modal(
                 self.preset_editor, initial_focus=self.preset_name)
             self.preset_name.grab_focus()
             self.preset_name.select_region(0, -1)
@@ -438,15 +443,12 @@ def launch(state=None):
 
         def build_live(self):
             page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
-                           margin_start=20, margin_end=20, margin_top=14, margin_bottom=14)
+                           margin_start=24, margin_end=24, margin_top=24, margin_bottom=104)
             self.live_title = self.label('Luma Mobile', 'title-2')
             self.live_title.set_hexpand(True)
-            self.tools_button = self.button('Project', lambda: self.stack.set_visible_child_name('session'))
-            self.tools_button.set_visible(False)
-            self.toolbar.append(self.tools_button)
             self.viewer_holder = Gtk.Box(hexpand=True, vexpand=True)
             page.append(self.viewer_holder)
-            page.append(self.label('Click to interact · Ctrl+Alt returns to launcher controls', 'caption', muted=True, centered=True))
+            self.viewer_holder.set_tooltip_text('Click to interact. Ctrl+Alt returns to launcher controls.')
             self.stack.add_named(page, 'live')
 
         def return_to_luma(self):
