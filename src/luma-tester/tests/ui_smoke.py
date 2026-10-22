@@ -43,18 +43,19 @@ def main():
                     screenshot(app, 'welcome.png')
                     app.commands.invoke('tester.try')
                     assert app.target == 'mobile'
-                    assert not app.project_button.get_visible()
+                    assert app.stack.get_visible_child_name() == 'session'
+                    assert not app.developer_card.get_visible()
                     phase = 1
                 elif phase == 1:
                     screenshot(app, 'mobile-desktop.png')
                     app.start()
-                    assert 'does not have a Luma image' in app.target_status.get_label()
+                    assert 'Add a Luma image' in app.status_label.get_label()
                     app.commands.invoke('tester.develop')
-                    assert app.project_button.get_visible()
+                    assert app.developer_card.get_visible()
                     app.select_target('desktop')
-                    assert app.start_button.get_label() == 'Open Luma Desktop'
-                    assert app.desktop_button.get_active()
-                    assert not app.mobile_button.get_active()
+                    assert app.workspace_title.get_label() == 'Luma Desktop'
+                    assert app.sidebar.list.get_selected_row() is app.device_rows['desktop']
+                    assert not app.device_rows['tv'].get_sensitive()
                     app.commands.invoke('tester.advanced')
                     assert isinstance(app.advanced, AppWindow)
                     app.advanced.close()
@@ -65,9 +66,9 @@ def main():
                     phase = 2
                 elif phase == 2:
                     screenshot(app, 'narrow-dark.png')
-                    assert app.start_button.get_allocated_width() > 0
-                    assert app.mobile_button.get_focusable()
-                    app.mobile_button.grab_focus()
+                    assert app.run_button.get_allocated_width() > 0
+                    assert app.layout.get_collapsed()
+                    app.sidebar_toggle.grab_focus()
                     assert app.window.get_focus() is not None
                     app.quit()
                     return False

@@ -448,3 +448,37 @@ used that source without altering shared refs or unrelated worktrees.
   previous tester launcher (no QEMU running), reopened r17b with existing private
   config/data/workspace. New manual preview unit58e1db70, above. No automated
   app/UI tests ran on Dell and no guest/app work was interrupted.
+
+- 2026-10-22 target-page/menu/dock follow-up: source8ce5a6f0 passed39 core
+  checks, native flow/selection matrix/menu/hover checks and actual AppImage
+  entry. r18 AppImage SHA256
+  081eae9be76443b5c0de73335f5131b0f0ef06659b610f0a60ff57e24c57850b
+  delivered with verified remote hash. Registered io.luma.Tester.desktop and
+  canonical icon using install-desktop (registration unit524372b4, launcher
+  unit082fa5d0). Guest remains qualified Desktop r15. No Dell automated tests.
+- Native phone component progression: GTK21 normal build/checks passed in
+  dev-luma-tester-phone-gtk4-r2-a90db9d5. Adwaita55 normal build/checks passed
+  in21790213; that combined job failed afterward on missing platform git
+  dependency. Platform/SDK114 full normal check passed in2ed65fa8. Native
+  Stevia/LatinIME x86 keyboard r3c48cecc1 passed all9 normal suites. Native
+  archives/receipts live under the owned phone experiment and secondary task
+  subtree. Core117 exact normal-qualified noarch RPM/SRPM reused from retained
+  native build, copied with receipts. Actual native phone guest not yet booted
+  or qualified. Mobile profile scripts in working tree are unfinished.
+- During UI QA, an initial one-off hover script set a server dconf value before
+  activating memory backend; corrected the script. Prior server preference
+  unknown, so no blind reset. Dell preferences were not changed by this script.
+- User expanded workspace direction: persistent device sidebar shared by Try
+  and Develop, compact run/pause/shutdown, image selection, future presets and
+  hardware controls. Workspace implementation in progress; initial native
+  welcome/navigation regression4ab44b1a passed. Tablet/TV/Smart Device must
+  remain unavailable until dedicated real profiles exist. No fake phone or
+  architecture equivalence. Actual Mobile boot remains the next required gate.
+- Workspace UI now uses shared NavigationSidebar and IslandOverlaySplitView.
+  A narrow-window allocation failure in initial49f84b90 was fixed by the kit's
+  overlay split; inspected dark screenshots now have the proper frame surface.
+  Final native flow3ca47bd8 and actual no-OS QEMU workspace controls/image
+  choice/Try-Develop/narrow-overlay checka3cd9a3c passed.39 core checks passed
+  b854d363. Native phone producer/configuration added as a candidate; syntax
+  checks passed but composition/boot still pending. Keyboard corresponding
+  modified source/notices collected at exact pinned commits in07fa6fd0.

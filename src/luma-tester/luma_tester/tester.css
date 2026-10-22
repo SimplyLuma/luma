@@ -10,3 +10,4 @@
 .tester-choice:focus-visible .lumaui-card { outline: 3px solid @luma_accent; outline-offset: 2px; }
 .tester-choice-icon { color: @luma_accent; }
 .tester-primary { min-height: 42px; }
+.tester-image-select, .tester-image-select label { color: @luma_ink; }

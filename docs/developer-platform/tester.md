@@ -46,8 +46,12 @@ Install the [host requirements](../../src/luma-tester/README.md), then run:
 src/luma-tester/luma-tester gui
 ```
 
-Choose **Try Luma** or **Develop for Luma**, then **Mobile** or **Desktop**.
-An available target starts selected. Click **Open Luma Mobile** (or Desktop). The launcher
+Choose **Try Luma** or **Develop for Luma**. Both open the same workspace:
+choose **Mobile** or **Desktop** in the sidebar, choose an image, then **Start**.
+The toolbar provides **Pause**, **Resume**, and graceful **Shut Down**. Stop the
+current session before changing its device experience or image. On narrow
+windows the sidebar opens over the content using the toolbar's navigation button.
+The launcher
 chooses a native architecture image from its catalog when available. On first use
 it downloads/verifies the disk and creates a private key and writable overlay;
 subsequent runs keep that workspace. The guest appears inside the LumaUI window. Its live display uses a private Unix
@@ -187,3 +191,33 @@ requires removing just that stopped image's cache file and preparing again.
 QEMU reference: [system invocation](https://www.qemu.org/docs/master/system/invocation.html),
 [ARM virt board](https://www.qemu.org/docs/master/system/arm/virt.html), and
 [virtio GPU](https://www.qemu.org/docs/master/system/devices/virtio/virtio-gpu.html).
+
+
+### Device experience and architecture
+
+The workspace keeps two independent choices: an experience profile and a guest
+CPU architecture. The existing OS/AppKit contract uses `LUMA_DEVICE_CLASS`
+(`desktop`, `tablet`, `handheld`), `LUMA_PRESENTATION_MODE` (`windowed` or
+`fullscreen-mobile`), and `LUMA_INPUT_MODE` (`pointer` or `touch`). The native
+phone simulator sets `handheld`, `fullscreen-mobile`, and `touch`; it starts
+Phosh/Phoc from the phone source, including its actual Home and keyboard.
+Application layout still responds to its available logical window size.
+
+Tablet, TV, and Smart Device entries reserve navigation destinations and stay
+unavailable until their dedicated images and runtime profiles are implemented.
+TV/Smart Device and foldable/dual-screen topology are not yet added to the OS
+capability contract. Changing a viewport must not silently change CPU architecture
+or stand in for a real shell profile. Fold/hinge posture and multiple displays
+need explicit topology capabilities rather than a single width threshold.
+
+The image picker accepts the existing checksummed manifests. Raw ISO installation,
+preset editing, camera/USB passthrough, Mac/Windows host packaging, and ARM image
+qualification remain separate implementation work. A visible sidebar destination
+does not mean that device has been qualified. Keyboard and pointer interaction
+already reach the guest through the embedded display.
+
+The native x86 phone producer is `scripts/tester/build-phone-guest.py`. It consumes
+an explicit checksummed component/keyboard bundle and a verified common OS base,
+installs the native phone shell in a disposable VM, and exports a separate Mobile
+disk. Its build receipt deliberately sets `qualified: false`; run the actual
+phone boot, input, and app workflow qualification before cataloging that image.

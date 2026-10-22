@@ -9,7 +9,22 @@ if [ -z "$profile" ] && [ -r /etc/luma-tester-target ]; then
   IFS= read -r profile </etc/luma-tester-target || true
 fi
 case "$profile" in
-  mobile) printf 'error: Mobile requires the native phone shell profile; the GNOME handheld prototype is not supported\n' >&2; exit 2 ;;
+  mobile)
+    [ -x /opt/luma/phosh/libexec/phosh ] && grep -qx 'LUMA_TESTER_MOBILE_RENDERER=luma-phosh' /etc/luma/tester-image || {
+      printf 'error: Mobile requires the native phone shell image\n' >&2; exit 2;
+    }
+    install -Dm644 /usr/share/luma-tester/profiles/mobile.dconf /etc/dconf/db/luma.d/00-luma-desktop
+    rm -f /etc/dconf/db/luma.d/10-luma-handheld /etc/dconf/db/luma.d/95-luma-tester-extensions
+    printf '%s\n' handheld >/etc/luma-device-class
+    cat >/etc/environment.d/90-luma-tester.conf <<'ENV'
+LUMA_DEVICE_CLASS=handheld
+LUMA_PRESENTATION_MODE=fullscreen-mobile
+LUMA_INPUT_MODE=touch
+ENV
+    sed -i 's/^LUMA_TESTER_TARGET=.*/LUMA_TESTER_TARGET=mobile/' /etc/luma/tester-image
+    dconf update
+    exit 0
+    ;;
   desktop) device_class=desktop ;;
   *) printf 'error: tester target must be mobile or desktop\n' >&2; exit 2 ;;
 esac
