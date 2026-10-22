@@ -40,7 +40,7 @@ ln -sf ../luma-tester-mobile-ready.service /etc/systemd/user/graphical-session.t
 cat >/etc/systemd/user/mobi.phosh.Shell.service.d/99-luma-tester.conf <<'UNIT'
 [Service]
 ExecStart=
-ExecStart=/opt/luma/phosh/libexec/phosh
+ExecStart=/opt/luma/phosh/libexec/phosh --unlocked
 UNIT
 install -Dm755 "$root/keyboard/luma-stevia-x86_64/luma-phosh-osk-stevia" /usr/libexec/luma-phosh-osk-stevia
 install -Dm755 "$root/keyboard/luma-keyboard-x86_64/luma-latinime-decoder" /usr/libexec/luma-latinime-decoder

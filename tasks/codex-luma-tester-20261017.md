@@ -492,3 +492,10 @@ used that source without altering shared refs or unrelated worktrees.
   Screenshot review caught missing shared/handheld defaults (empty black Home).
   Correcting input cohort to include exact phone source presentation profiles;
   r2 is not a finished Mobile candidate. Gestures/keyboard still pending.
+- r3 exact phone profiles compose14d11307 passed, but stricter Home/Library
+  touch qualification61ea3b06 failed before gestures: a real native lockscreen
+  still covered Home. Diagnostics89188ab4/629d9e8b confirmed matching defaults,
+  wallpaper and native /opt library/session. Exact pinned upstream main.c shows
+  unlocked is an explicit flag: omitting --locked does not start an unrecognized
+  display manager unlocked. Preview override corrected to --unlocked; physical
+  --locked service unchanged. No Mobile candidate delivered yet.
