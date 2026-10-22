@@ -2,6 +2,7 @@
 """Read-only Depot catalogue search using the existing catalogue trust policy."""
 from urllib.parse import quote
 from . import ranking
+from .providers import desktop_app_info
 
 PATH = '/org/projectluma/Search/Depot'
 INTERFACE = 'org.gnome.Shell.SearchProvider2'
@@ -83,7 +84,7 @@ class Provider:
             return GLib.Variant('(aa{sv})', (result,))
         if method not in ('ActivateResult', 'LaunchSearch'):
             raise ValueError('Unknown Depot search method')
-        app = Gio.DesktopAppInfo.new('org.projectluma.Depot.desktop')
+        app = desktop_app_info('org.projectluma.Depot.desktop')
         if app is None:
             raise ValueError('Depot is unavailable')
         if method == 'ActivateResult':

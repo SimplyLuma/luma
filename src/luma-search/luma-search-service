@@ -24,7 +24,7 @@ from luma_search.contract import (  # noqa: E402
 )
 from luma_search.files import FileIndex, path_to_uri, uri_to_path  # noqa: E402
 from luma_search import depot, places, ranking  # noqa: E402
-from luma_search.providers import Provider, discover_providers, kind_from_categories  # noqa: E402
+from luma_search.providers import Provider, desktop_app_info, discover_providers, kind_from_categories  # noqa: E402
 
 
 BUS_NAME = "org.projectluma.Search"
@@ -173,7 +173,7 @@ class SearchService:
         }
         installed = []
         for provider in discover_providers():
-            app = Gio.DesktopAppInfo.new(provider.desktop_id)
+            app = desktop_app_info(provider.desktop_id)
             if app is None:
                 continue
             if provider.kind == "app":
@@ -349,8 +349,8 @@ class SearchService:
             return tuple(
                 page for page in pages
                 if page.get("id") and page.get("title") and (
-                    Gio.DesktopAppInfo.new(f"gnome-{page['panel']}-panel.desktop")
-                    if page.get("panel") else Gio.DesktopAppInfo.new(page.get("desktop", ""))
+                    desktop_app_info(f"gnome-{page['panel']}-panel.desktop")
+                    if page.get("panel") else desktop_app_info(page.get("desktop", ""))
                 ) is not None
             )
         return ()
@@ -377,7 +377,7 @@ class SearchService:
 
     def _places(self) -> list[dict]:
         # Filer's places are Filer's: without Filer there is nothing to open.
-        if Gio.DesktopAppInfo.new(FILER_DESKTOP_ID) is None:
+        if desktop_app_info(FILER_DESKTOP_ID) is None:
             return []
         return places.resolve_places(self._places_table, places.system_environment())
 
@@ -525,7 +525,9 @@ class SearchService:
             if page is None:
                 raise ValueError("unknown settings page")
             if not page.get("panel"):
-                app = Gio.DesktopAppInfo.new(page["desktop"])
+                app = desktop_app_info(page["desktop"])
+                if app is None:
+                    raise ValueError("settings application is unavailable")
                 if page.get("action"):
                     app.launch_action(page["action"], None)
                 else:
@@ -547,14 +549,17 @@ class SearchService:
                 raise ValueError("unknown Filer place")
             # The same location Filer's own sidebar opens (applications:///,
             # trash:///, a folder); Filer handles its own schemes.
-            Gio.DesktopAppInfo.new(FILER_DESKTOP_ID).launch_uris([place["uri"]], None)
+            app = desktop_app_info(FILER_DESKTOP_ID)
+            if app is None:
+                raise ValueError("Filer is unavailable")
+            app.launch_uris([place["uri"]], None)
             return
         if provider_id == FILES_PROVIDER_ID:
             self._files.record_pick(uri_to_path(result_id))
             Gio.AppInfo.launch_default_for_uri(result_id, None)
             return
         if provider_id == "applications":
-            app = Gio.DesktopAppInfo.new(result_id)
+            app = desktop_app_info(result_id)
             if app is None:
                 raise ValueError("unknown application result")
             app.launch([], None)

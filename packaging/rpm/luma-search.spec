@@ -2,7 +2,7 @@
 
 Name:           luma-search
 Version:        0.1.0
-Release:        1.luma.8%{?dist}
+Release:        1.luma.9%{?dist}
 Summary:        Shared Project Luma system Search service
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -33,6 +33,7 @@ Source23:       test_depot_results.py
 BuildArch:      noarch
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  python3
+BuildRequires:  python3-gobject-base
 Requires:       glib2
 Requires:       python3-gobject-base
 Requires:       gtk4
