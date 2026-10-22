@@ -31,19 +31,19 @@ Current Linux x86_64 candidate is **Desktop only**, with automatic VirGL,
 software fallback, and a frame-clock-limited private Unix VNC viewer. Actual
 packaged guest checks verified VirGL, app source edit/restart, accelerated
 screenshot capture and graceful shutdown. Final AppImage entry passed as well.
-Latest source hostb3a3b5c1, guest1deb3d1b. Mobile selection is unavailable in this
+Latest source hostb36bd64e, guest1deb3d1b. Mobile selection is unavailable in this
 catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
 claims below are withdrawn; portrait GNOME is not product parity.
 
-Latest host UI candidate: appimage-welcome-r16/Luma-Tester-0.1.0-linux-x86_64.AppImage
+Latest host UI candidate: appimage-spacing-r17b/Luma-Tester-0.1.0-linux-x86_64.AppImage
 under /srv/dev/accounts/second/experiments/luma-tester-20261017.
-SHA256853f82ed6ea576136704a865e637bf98d335e1a883ca0024cf85822ea6f09cdf.
-Native LumaUI flow/light/narrow/dark PASS dev-luma-tester-welcome-polish-772895f8;
-actual AppImage entry PASS dev-luma-tester-welcome-entry-be679813. Host-only
+SHA25647e6d009f75aa33c5d44cc17fe3e94a31063a12098d6d79f87e3cf827c349c49.
+Native LumaUI flow/light/narrow/dark PASS dev-luma-tester-spacing-review-4f66018b;
+actual AppImage entry PASS dev-luma-tester-spacing-entry-5c90a1fd. Host-only
 refresh of the immutable r15 portable closure; parent receipt and full file
 hashes retained. Guest disk, GPU tools and VM behavior unchanged.
-Delivered with exact checksum (dev-luma-tester-dell-welcome-delivery-0b95282a),
-launched as luma-preview-tester-welcome-20261022-66efd78e.service. Uses existing
+Delivered with exact checksum (dev-luma-tester-dell-spacing-delivery-df970533),
+launched as luma-preview-tester-spacing-20261022-58e1db70.service. Uses existing
 tester-display-20261017 config/data/cache/workspace; older launcher stopped only
 after confirming no QEMU running. No Dell automated tests ran.
 
@@ -431,3 +431,20 @@ used that source without altering shared refs or unrelated worktrees.
   portable/AppImage icon paths. Native screenshots inspected and packaged
   screenshot text confirmed only the greeting and two choices. New launcher
   delivered/opened for manual review; no guest or other app interrupted.
+
+- 2026-10-22 spacing follow-up: card child lacked vertical expansion, leaving
+  extra space below its content. Actual GTK allocations now show46px above and
+  below the84px icon/label group in each176px card; icon/label gap16px. Horizontal
+  insets24px, inter-card gap16px, heading gap32px. Native screenshots inspected,
+  keyboard/navigation/narrow/dark checks passed. Replaced the earlier device
+  artwork with a simple orange dot in the canonical wordmark's #FE6819.
+- Packaging at2GiB was killed by systemd-oomd; retry with admitted4GiB completed
+  in10.8s. Actual AppImage entry passed15.2s. Removed stopped QA extraction and
+  the superseded r15 AppImage to preserve disk reserve; r15 portable, guest,
+  receipts, checksums and Dell copy retained, as is the complete r16 AppImage.
+  Failed/completed intermediate squashfs files removed after worker exit.
+- User saw the old Dell launcher while packaging was still in progress; stated
+  that explicitly. After exact r17b checksum verification, stopped only the
+  previous tester launcher (no QEMU running), reopened r17b with existing private
+  config/data/workspace. New manual preview unit58e1db70, above. No automated
+  app/UI tests ran on Dell and no guest/app work was interrupted.
