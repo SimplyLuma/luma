@@ -13,8 +13,10 @@ case "$profile" in
     [ -x /opt/luma/phosh/libexec/phosh ] && grep -qx 'LUMA_TESTER_MOBILE_RENDERER=luma-phosh' /etc/luma/tester-image || {
       printf 'error: Mobile requires the native phone shell image\n' >&2; exit 2;
     }
-    install -Dm644 /usr/share/luma-tester/profiles/mobile.dconf /etc/dconf/db/luma.d/00-luma-desktop
-    rm -f /etc/dconf/db/luma.d/10-luma-handheld /etc/dconf/db/luma.d/95-luma-tester-extensions
+    install -Dm644 /usr/share/luma-tester/profiles/mobile-base.dconf /etc/dconf/db/luma.d/00-luma-desktop
+    install -Dm644 /usr/share/luma-tester/profiles/mobile-handheld.dconf /etc/dconf/db/luma.d/10-luma-handheld
+    install -Dm644 /usr/share/luma-tester/profiles/mobile.dconf /etc/dconf/db/luma.d/90-luma-tester
+    rm -f /etc/dconf/db/luma.d/95-luma-tester-extensions
     printf '%s\n' handheld >/etc/luma-device-class
     cat >/etc/environment.d/90-luma-tester.conf <<'ENV'
 LUMA_DEVICE_CLASS=handheld

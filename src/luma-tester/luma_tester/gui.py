@@ -26,6 +26,7 @@ except (ImportError, ValueError) as exc:
 
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
+from . import presets
 
 
 def launch(state=None):
@@ -43,6 +44,8 @@ def launch(state=None):
             self.target = 'mobile'
             self.project = None
             self.preferences = data_root(state) / 'preferences.json'
+            self.preset_path = data_root(state) / 'presets.json'
+            self.saved_presets = presets.load(self.preset_path)
             try:
                 paths = json.loads(self.preferences.read_text()).get('images', [])
                 self.imported = [Path(p) for p in paths if isinstance(p, str)]
@@ -142,6 +145,24 @@ def launch(state=None):
             row.set_child(self.image_selector)
             self.sidebar.list.append(row)
             self.image_paths = []
+            self.sidebar.append_section('Presets')
+            preset_row = Gtk.ListBoxRow(selectable=False, activatable=False)
+            preset_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
+                margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
+            self.preset_selector = Gtk.DropDown(model=Gtk.StringList.new(
+                ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
+            self.preset_selector.add_css_class('tester-image-select')
+            self.preset_selector.connect('notify::selected', self.preset_selected)
+            preset_box.append(self.preset_selector)
+            preset_box.append(self.button('Save Preset…', self.name_preset))
+            self.preset_editor = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False)
+            self.preset_name = Gtk.Entry(placeholder_text='Preset name', max_length=80)
+            self.preset_name.connect('activate', lambda _entry: self.save_preset())
+            self.preset_editor.append(self.preset_name)
+            self.preset_editor.append(self.button('Save', self.save_preset, True))
+            preset_box.append(self.preset_editor)
+            preset_row.set_child(preset_box)
+            self.sidebar.list.append(preset_row)
             self.sidebar.append_footer(self.button('Add Image…', self.choose_image))
             self.sidebar.append_footer(self.button('Advanced…', self.show_advanced))
 
@@ -219,6 +240,47 @@ def launch(state=None):
             index = self.image_selector.get_selected()
             if index < len(self.image_paths):
                 self.selected_images[self.target] = self.image_paths[index]
+
+        def name_preset(self):
+            if not self.select_image():
+                self.status_label.set_label('Choose an image before saving a preset.')
+                return
+            self.preset_name.set_text(self.target.title())
+            self.preset_editor.set_visible(not self.preset_editor.get_visible())
+            self.preset_name.grab_focus()
+            self.preset_name.select_region(0, -1)
+
+        def save_preset(self):
+            try:
+                path = self.select_image()
+                if path is None:
+                    raise TesterError('Choose an image before saving a preset.')
+                self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent)
+                self.preset_selector.set_model(Gtk.StringList.new(
+                    ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
+                self.preset_editor.set_visible(False)
+            except (OSError, ValueError, TesterError) as exc:
+                self.status_label.set_label(str(exc))
+
+        def preset_selected(self, *_args):
+            index = self.preset_selector.get_selected()
+            if index == 0 or index > len(self.saved_presets):
+                return
+            try:
+                if self.active():
+                    raise TesterError('Shut down this session before loading a preset.')
+                item = self.saved_presets[index - 1]
+                path = presets.resolve(item)
+                if path not in self.available_manifests():
+                    raise TesterError('Add this preset’s image manifest again before loading it.')
+                self.selected_images[item['target']] = path
+                self.select_intent(item['intent'])
+                self.select_target(item['target'])
+                if self.layout.get_collapsed():
+                    self.layout.set_show_sidebar(False)
+            except (OSError, ValueError, KeyError, TesterError) as exc:
+                self.status_label.set_label(str(exc))
+            self.preset_selector.set_selected(0)
 
         def page(self, name, back=False):
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
@@ -525,6 +587,7 @@ def launch(state=None):
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
             self.pause_button.set_label('Resume' if running and self.session.status() == 'paused' else 'Pause')
             self.image_selector.set_sensitive(not active and bool(self.image_paths))
+            self.preset_selector.set_sensitive(not active and bool(self.saved_presets))
             for name, row in self.device_rows.items():
                 row.set_sensitive(not active and name in ('desktop', 'mobile') and
                                   (not self.catalog_targets or name in self.catalog_targets))

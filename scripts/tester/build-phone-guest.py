@@ -39,9 +39,10 @@ def build(args):
         files.append((path, entry['path']))
     required = {'keyboard/luma-keyboard-x86_64/luma-latinime-decoder',
                 'keyboard/luma-keyboard-x86_64/main_en.dict',
-                'keyboard/luma-stevia-x86_64/luma-phosh-osk-stevia'}
+                'keyboard/luma-stevia-x86_64/luma-phosh-osk-stevia',
+                'profiles/desktop.dconf', 'profiles/handheld.dconf'}
     if not required <= {name for _, name in files}:
-        raise TesterError('The actual native keyboard bundle is required.')
+        raise TesterError('The native keyboard and matching phone presentation profiles are required.')
     base = read_manifest(args.base_manifest)
     if base['target'] != 'desktop' or base['arch'] != 'x86_64':
         raise TesterError('This producer requires a verified x86_64 common OS base.')

@@ -482,3 +482,13 @@ used that source without altering shared refs or unrelated worktrees.
   b854d363. Native phone producer/configuration added as a candidate; syntax
   checks passed but composition/boot still pending. Keyboard corresponding
   modified source/notices collected at exact pinned commits in07fa6fd0.
+- Named image/profile/mode presets added. Actual native UI save/restore plus
+  QEMU controls passed7fd34a05;3 persistence/stale-nightly/name-integrity cases
+  passed7b45ca19. Native phone r2 compositionb16afd2c passed after the first
+  attempt correctly rejected a missing exact Fedora Phosh0.55 provider. Pinned
+  stock Phosh/libphosh downloaded from official Koji with RPM digest checks.
+  Native UI→real Phosh→app edit/PID restart→shutdown passedd5f2e5f7 in45s.
+  ImageSHA b3915990578cfb7d4226f94b9e3abf280fa991b545f2303e62af903c59a2aa51.
+  Screenshot review caught missing shared/handheld defaults (empty black Home).
+  Correcting input cohort to include exact phone source presentation profiles;
+  r2 is not a finished Mobile candidate. Gestures/keyboard still pending.

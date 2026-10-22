@@ -30,6 +30,8 @@ install -Dm755 "$root/scripts/tester/mobile-session" /usr/libexec/luma-tester-mo
 install -Dm755 "$root/scripts/tester/mobile-ready.py" /usr/libexec/luma-tester-mobile-ready
 install -Dm755 "$root/scripts/tester/apply-profile" /usr/libexec/luma-tester-apply-profile
 install -Dm644 "$root/config/tester/mobile.dconf" /usr/share/luma-tester/profiles/mobile.dconf
+install -Dm644 "$root/profiles/desktop.dconf" /usr/share/luma-tester/profiles/mobile-base.dconf
+install -Dm644 "$root/profiles/handheld.dconf" /usr/share/luma-tester/profiles/mobile-handheld.dconf
 install -Dm644 "$root/config/tester/mobile-ready.service" /etc/systemd/user/luma-tester-mobile-ready.service
 install -d /etc/systemd/user/graphical-session.target.wants /etc/systemd/user/mobi.phosh.Shell.service.d /etc/systemd/user/mobi.phosh.OSK.service.d
 ln -sf ../luma-tester-mobile-ready.service /etc/systemd/user/graphical-session.target.wants/luma-tester-mobile-ready.service

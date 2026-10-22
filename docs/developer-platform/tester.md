@@ -210,8 +210,11 @@ capability contract. Changing a viewport must not silently change CPU architectu
 or stand in for a real shell profile. Fold/hinge posture and multiple displays
 need explicit topology capabilities rather than a single width threshold.
 
-The image picker accepts the existing checksummed manifests. Raw ISO installation,
-preset editing, camera/USB passthrough, Mac/Windows host packaging, and ARM image
+The image picker accepts the existing checksummed manifests. Named presets save
+the experience, workspace mode, and exact image identity. Loading a preset
+requires its manifest to remain available; a changed nightly requires choosing
+the build again. Stop the running session before loading another preset. Raw ISO installation,
+camera/USB passthrough, Mac/Windows host packaging, and ARM image
 qualification remain separate implementation work. A visible sidebar destination
 does not mean that device has been qualified. Keyboard and pointer interaction
 already reach the guest through the embedded display.
