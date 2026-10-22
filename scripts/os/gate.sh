@@ -9,6 +9,10 @@
 # --skip-rollback and --skip-fresh are for diagnosing one stage; a gate run
 # with either can never publish.
 #
+# --checks-revision COMMIT admits a reviewed fixture-only correction without
+# rebuilding an unchanged candidate. The gate runs every stage, records both
+# revisions and rejects changes outside its explicit fixture path list.
+#
 # --update-from COMMIT runs the update and rollback stages from an older
 # retained release instead of the channel head (for example across a
 # migration rule such as the kargs.d transition). It is additional evidence:
@@ -54,6 +58,7 @@ keep_vms=0
 skip_rollback=0
 skip_fresh=0
 update_from=
+checks_revision=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --skip-fresh) skip_fresh=1; shift ;;
@@ -61,7 +66,8 @@ while [ "$#" -gt 0 ]; do
     --keep-vms) keep_vms=1; shift ;;
     --skip-rollback) skip_rollback=1; shift ;;
     --update-from) update_from=${2:?}; shift 2 ;;
-    *) printf 'usage: %s --build-id ID [--keep-vms] [--skip-rollback] [--skip-fresh] [--update-from COMMIT]\n' "$0" >&2; exit 2 ;;
+    --checks-revision) checks_revision=${2:?}; shift 2 ;;
+    *) printf 'usage: %s --build-id ID [--keep-vms] [--skip-rollback] [--skip-fresh] [--update-from COMMIT] [--checks-revision COMMIT]\n' "$0" >&2; exit 2 ;;
   esac
 done
 
@@ -110,8 +116,18 @@ flock -n 7 || luma_os_die 'another gate is running'
 
 # The candidate is judged by the checks committed with its own source.
 release_files="$gate_dir/release-checks"
-luma_os_release_files "$LUMA_SOURCE_REVISION" "$release_files" "$build_dir"
-printf '%s\n' "$LUMA_SOURCE_REVISION" >"$gate_dir/release-checks-revision"
+if [ -n "$checks_revision" ]; then
+  [ "${LUMA_SOURCE_DIRTY:-false}" = false ] &&
+    [ -z "${LUMA_SOURCE_SNAPSHOT_SHA256:-}${LUMA_RELEASE_CHECKS_SHA256:-}" ] ||
+    luma_os_die 'fixture revision override requires clean, committed candidate source'
+  python3 "$luma_os_repo_root/scripts/os/lib/gate_checks_revision.py" \
+    --repo "$luma_os_repo_root" --source "$LUMA_SOURCE_REVISION" --checks "$checks_revision" \
+    >"$gate_dir/checks-revision-admission.json"
+else
+  checks_revision=$LUMA_SOURCE_REVISION
+fi
+luma_os_release_files "$checks_revision" "$release_files" "$build_dir"
+printf '%s\n' "$checks_revision" >"$gate_dir/release-checks-revision"
 printf '%s\n' "${LUMA_SOURCE_SNAPSHOT_SHA256:-}" >"$gate_dir/release-checks-snapshot-sha256"
 
 results="$gate_dir/stages.jsonl"
@@ -1257,6 +1273,8 @@ result = {
     "channel": "$channel",
     "ref": "$ref",
     "commit": "$candidate",
+    "source_revision": "$LUMA_SOURCE_REVISION",
+    "checks_revision": "$checks_revision",
     "previous_commit": "$previous" or None,
     "result": "$overall",
     "fresh": "skipped" if any(s["stage"] == "fresh" and s["result"] == "skipped" for s in stages)
