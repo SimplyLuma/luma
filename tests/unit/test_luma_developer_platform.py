@@ -222,8 +222,9 @@ class ContractTests(unittest.TestCase):
             flatpak = json.loads(flatpak_path.read_text(encoding="utf-8"))
             self.assertEqual(flatpak["modules"][0]["subdir"], "src/luma-platform")
             platform_source = flatpak["modules"][0]["sources"][0]
-            self.assertTrue("tag" in platform_source or "commit" in platform_source)
+            self.assertEqual(platform_source["type"], "git")
             platform_source.pop("tag", None)
+            platform_source.pop("branch", None)
             platform_source["commit"] = "a" * 40
             flatpak_path.write_text(json.dumps(flatpak), encoding="utf-8")
             (destination / "verification/sbom.spdx.json").write_text("{}", encoding="utf-8")

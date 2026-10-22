@@ -215,7 +215,7 @@ run_check "tools/check-repository.sh" tools/check-repository.sh \
 # and its failure is fatal. Move the date deliberately if the triage has not
 # happened; do not delete this block.
 tests_unit_excluded_until=${LUMA_TESTS_UNIT_EXCLUDED_UNTIL:-2026-10-04}
-PYTHONPATH=${PYTHONPATH:-$source_dir/src/luma-android:$source_dir/src/luma-platform/appkit:$source_dir/src/luma-platform/sdk:$source_dir/src/luma-platform/broker:$source_dir/src/luma-relay:$source_dir/src/luma-mods:$source_dir/src/luma-shell-state:$source_dir/src/prairie-core}
+PYTHONPATH=${PYTHONPATH:-$source_dir/src/luma-android:$source_dir/src/luma-platform/appkit:$source_dir/src/luma-platform/sdk:$source_dir/src/luma-platform/broker:$source_dir/src/luma-relay:$source_dir/src/luma-mods:$source_dir/src/luma-disks:$source_dir/src/luma-installer:$source_dir/src/luma-shell-state:$source_dir/src/prairie-core}
 export PYTHONPATH PYTHONDONTWRITEBYTECODE=1
 if [ "$(date -u +%Y-%m-%d)" \< "$tests_unit_excluded_until" ]; then
   unavailable="${unavailable}unittest discover tests/unit (excluded until $tests_unit_excluded_until: suite is red on work/os-release-pipeline, see the block above)
