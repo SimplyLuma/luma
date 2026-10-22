@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -179,6 +180,57 @@ temp=p.with_suffix('.tester-new');temp.write_text('\\n'.join(lines)+'\\n');temp.
                 '--perms=u+rwX', '--create-as-mounter', '-o', 'allow_other' + ('' if folder['writable'] else ',ro'), raw, target]
         run(session.ssh(['sudo', 'sh', '-c', 'mountpoint -q "$1" || { shift; exec "$@"; }',
                         'bind-shared', target, *bind]), timeout=20)
+
+
+def repair_legacy_renderer(session):
+    """Upgrade only the known old simulator launcher, before exposing its screen.
+
+    New images select by negotiated VirtIO features themselves. A dedicated
+    greetd drop-in repairs existing disks without replacing them or user code.
+    """
+    if session.manifest['target'] != 'mobile':
+        return False
+    mode=json.loads((session.directory/'graphics.json').read_text())['mode']
+    legacy='cbe4b7a2ef3918f997beaa2d9fd9eedabb4c010fd0020231b9872961e5ddfdca'
+    script='''import hashlib,json,sys
+from pathlib import Path
+identity=Path('/etc/luma/tester-image')
+if not identity.exists() or 'LUMA_PHYSICAL_DEVICE=false' not in identity.read_text():
+ print('false');raise SystemExit()
+launcher=Path('/usr/libexec/luma-tester-mobile-session')
+if not launcher.exists():print('false');raise SystemExit()
+body=launcher.read_bytes()
+current=b'VIRTIO_GPU_F_VIRGL' in body
+if not current and hashlib.sha256(body).hexdigest()!=sys.argv[2]:
+ print('false');raise SystemExit()
+p=Path('/etc/systemd/system/greetd.service.d/60-luma-tester-renderer.conf')
+prefix='# Managed by Luma Tester\\n'
+expected=prefix+'[Service]\\nEnvironment=WLR_RENDERER=pixman\\n' if sys.argv[1]=='software' and not current else None
+previous=p.read_text() if p.exists() else None
+if previous and not previous.startswith(prefix):print('false');raise SystemExit()
+if previous==expected:print('false');raise SystemExit()
+if expected is None:p.unlink(missing_ok=True)
+else:
+ p.parent.mkdir(parents=True,exist_ok=True);p.write_text(expected);p.chmod(0o644)
+print('true')
+'''
+    changed=subprocess.check_output(session.ssh(['sudo','python3','-c',script,mode,legacy]),text=True,timeout=20).strip()
+    if changed!='true':
+        return False
+    old=subprocess.check_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
+    # SSH may disconnect before systemctl returns. Verify a new boot below.
+    result=subprocess.run(session.ssh(['sudo','systemctl','--no-block','reboot']),
+                          capture_output=True,text=True,timeout=15)
+    if result.returncode not in (0,255):
+        raise TesterError('The simulator could not restart: '+result.stderr.strip())
+    deadline=time.monotonic()+120
+    while time.monotonic()<deadline:
+        time.sleep(2)
+        value=subprocess.run(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
+        if value.returncode==0 and value.stdout.strip()!=old:
+            session.wait_graphical(120)
+            return True
+    raise TesterError('The saved simulator did not restart after its display update.')
 
 
 def agent_prompt(session, manifest_path, executable='luma-tester'):

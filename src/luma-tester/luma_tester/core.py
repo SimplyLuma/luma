@@ -207,6 +207,7 @@ class Session:
         info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(self.disk)]))
         if info['virtual-size'] < capacity:
             run(['qemu-img', 'resize', '-q', str(self.disk), str(capacity)])
+        self.disk_capacity = max(info['virtual-size'], capacity)
         if not self.key.exists():
             run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', self.key])
         if not (self.directory / 'seed.iso').exists():

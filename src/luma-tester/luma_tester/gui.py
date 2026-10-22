@@ -88,6 +88,29 @@ def launch(state=None):
                         self.catalog_targets.add(target)
                         if path not in self.imported:self.imported.append(path)
             except (OSError,ValueError,TypeError,TesterError,AttributeError):pass
+            self.restore_workspace=False
+            self.restored_target=None
+            allowed=set()
+            for path in self.available_manifests():
+                try:
+                    image=read_manifest(path)
+                    identity=(image['target'],image['arch'])
+                    allowed.add((*identity,image['image']['sha256']))
+                    allowed.update((*identity,value) for value in image.get('preserves_sessions',[]) if isinstance(value,str))
+                except (OSError,ValueError,TesterError,TypeError):pass
+            previous=list((data_root(state)/'sessions').glob('*/manifest.json'))
+            previous.sort(key=lambda p:p.stat().st_mtime_ns,reverse=True)
+            for path in previous:
+                try:
+                    image=read_manifest(path)
+                    if (image['target'],image['arch'],image['image']['sha256']) not in allowed:continue
+                    if image['target'] not in self.selected_images:
+                        self.selected_images[image['target']]=path
+                        self.imported.append(path)
+                        self.catalog_targets.add(image['target'])
+                    self.restore_workspace=True
+                    if self.restored_target is None:self.restored_target=image['target']
+                except (OSError,ValueError,TesterError,TypeError):pass
 
         def label(self, text, role='body', muted=False, centered=False):
             widget = Gtk.Label(label=text, wrap=True, xalign=0.5 if centered else 0)
@@ -164,14 +187,13 @@ def launch(state=None):
             self.stack.connect('notify::visible-child-name', self.workspace_changed)
             self.stack.set_visible_child_name('welcome')
             self.window.connect('close-request', self.close_request)
-            try:
-                saved = json.loads(self.preferences.read_text())
-                if saved.get('workspace'):
-                    self.select_intent(saved.get('intent', 'try'))
-                    if saved.get('target') in self.catalog_targets:
-                        self.select_target(saved['target'])
-            except (OSError, ValueError, TypeError):
-                pass
+            try:saved=json.loads(self.preferences.read_text())
+            except (OSError,ValueError,TypeError):saved={}
+            if not isinstance(saved,dict):saved={}
+            if saved.get('workspace') or self.restore_workspace:
+                self.select_intent(saved.get('intent','try'))
+                restored=saved.get('target',self.restored_target)
+                if restored in self.catalog_targets:self.select_target(restored)
             self.window.present()
             GLib.timeout_add_seconds(2, self.refresh)
 
@@ -567,6 +589,8 @@ def launch(state=None):
                 import time
                 try:
                     session.wait_graphical(180)
+                    GLib.idle_add(self.status_label.set_label,'Preparing your saved workspace…')
+                    vm.repair_legacy_renderer(session)
                     vm.configure_guest(session, vm.load(session.root))
                     if session.manifest['target'] == 'mobile':
                         session.home()
@@ -701,6 +725,10 @@ def launch(state=None):
             threading.Thread(target=worker, daemon=True).start()
 
         def spawn(self, session, manifest_path):
+            if self.closing:
+                self.busy=False
+                self.window.close()
+                return False
             try:
                 self.log = open(session.directory / 'launcher.log', 'a')
                 args = [sys.executable, '-m', 'luma_tester', '--state', str(session.root), 'start', manifest_path, '--embedded']
@@ -1080,11 +1108,16 @@ def launch(state=None):
                     values={key:int(control.text) for key,control in controls.items()}
                     values['memory']*=1024
                     try:
-                        disk=self.selected_session().disk
-                        if disk.exists():
+                        selected=self.select_image()
+                        disk=Session(selected,state).disk if selected else None
+                        current=0
+                        if disk and self.running():
+                            current=getattr(self.session,'disk_capacity',self.settings['disk_gib']*1024**3)
+                        elif disk and disk.exists():
                             info=json.loads(subprocess.check_output(['qemu-img','info','--output=json',str(disk)],timeout=5))
-                            if values['disk_gib']*1024**3 < info['virtual-size']:
-                                raise TesterError('Virtual disks can grow. Shrinking this workspace is unavailable.')
+                            current=info['virtual-size']
+                        if values['disk_gib']*1024**3 < current:
+                            raise TesterError('Virtual disks can grow. Shrinking this workspace is unavailable.')
                     except FileNotFoundError:pass
                     self.save_settings(**values,graphics=graphics.current)
                     handle[0].cancel();self.notify('Virtual machine settings saved.')

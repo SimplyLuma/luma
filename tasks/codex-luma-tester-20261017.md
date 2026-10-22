@@ -756,3 +756,22 @@ used that source without altering shared refs or unrelated worktrees.
   producer; actual portable/audio packaging validation remains pending. Camera
   passthrough requires explicit selection/host permission; real camera and speaker
   hardware have not been tested on the server. Existing Dell guest must be kept.
+- 2026-10-22 workspace follow-up: discover only existing qualified or explicitly
+  preserved predecessor workspaces, scoped by target/architecture/checksum;
+  retain project disks and SSH identities across app upgrades. Known r9 virtual
+  phone launchers receive an owned software-renderer drop-in and a verified full
+  reboot; custom launchers and physical-device profiles are excluded. First
+  upgrade08ae0e42 failed on SSH disconnect during reboot; retry1a7aeff6 PASSED
+  actual workflow with clean Home/returned-Home captures (0 black pixels each).
+- Mobile r10 exportd4a061f2 completed: SHA256
+  bd88d4af0c5e1749cf30ef87f98551d2697bfca60f9a42130211a6853faa54e9,
+  1898708992 bytes; bindfs included offline; renderer policy follows VirtIO VIRGL
+  feature. Native source qualificationee1f58dd PASSED touch/library/OSK/typed
+  Notes/Home, verified actual pixman, clean Home captures, live Try/Developer
+  switching without replacing QEMU, bidirectional shares, SSH key revocation,
+  visible SDK hotfix and graceful shutdown. CPU rendering changes GPU effects;
+  no claim of VirGL/ARM/physical-phone parity.
+- GUI reopenf00d462f PASSED restored existing workspace/project/SSH identity and
+  actual window-close graceful shutdown (30.1 seconds total). Source final
+  checks3f64f26a PASSED67 units, compileall, shell syntax and public native UI
+  smoke. New portable audio/USB closure and packaged0.3.0/Dell delivery pending.
