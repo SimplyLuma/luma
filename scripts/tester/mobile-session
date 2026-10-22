@@ -9,4 +9,18 @@ export GI_TYPELIB_PATH=/opt/luma/phosh/lib64/girepository-1.0
 # Phosh's text-input surface uses the compositor's native input method. The
 # common desktop base also carries IBus; don't route phone fields through it.
 export GTK_IM_MODULE=wayland
+# A two-dimensional VirtIO GPU has no VirGL command stream. GLES buffer damage
+# through that scanout can leave black tiles even while compositor screenshots
+# are clean. Use the compositor's native CPU renderer for this virtual hardware;
+# retain its normal accelerated renderer when VIRTIO_GPU_F_VIRGL (bit 0) exists.
+# Linux exposes negotiated VirtIO features as a bitstring, least-significant first.
+if [ -z "${WLR_RENDERER:-}" ]; then
+    for device in /sys/bus/virtio/devices/virtio*; do
+        [ -r "$device/device" ] && [ -r "$device/features" ] || continue
+        [ "$(cat "$device/device")" = 0x0010 ] || continue
+        case "$(cat "$device/features")" in
+            0*) export WLR_RENDERER=pixman ;;
+        esac
+    done
+fi
 exec /opt/luma/phosh/bin/phosh-session

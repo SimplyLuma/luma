@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Persistent VM preferences, disk checkpoints and explicit host integrations."""
+from __future__ import annotations
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import uuid
+from datetime import datetime, timezone
+
+from .core import TesterError, run
+
+DEFAULTS = dict(memory=4096, cpus=4, disk_gib=32, graphics='auto', audio=True,
+                microphone=False, agent_ssh=False, folders=[], usb=[])
+
+
+def load(root):
+    try:
+        value = json.loads((Path(root) / 'vm-settings.json').read_text())
+        return validate(dict(DEFAULTS, **value))
+    except (OSError, ValueError, TypeError, TesterError):
+        return dict(DEFAULTS, folders=[], usb=[])
+
+
+def validate(settings):
+    result = dict(settings)
+    for key, low, high in [('memory', 1024, 65536), ('cpus', 1, 32), ('disk_gib', 8, 256)]:
+        if type(result.get(key)) is not int or not low <= result[key] <= high:
+            raise TesterError(f'Invalid VM {key}: choose {low}–{high}.')
+    if result.get('graphics') not in ('auto', 'virgl', 'software'):
+        raise TesterError('Unknown graphics setting.')
+    for key in ('audio', 'microphone', 'agent_ssh'):
+        if type(result.get(key)) is not bool:
+            raise TesterError('Invalid ' + key + ' switch.')
+    for key in ('folders', 'usb'):
+        if not isinstance(result.get(key), list) or len(result[key]) > 8:
+            raise TesterError('Choose at most eight ' + key + '.')
+    for folder in result['folders']:
+        if (not isinstance(folder, dict) or set(folder) != {'path', 'writable'}
+                or not isinstance(folder['path'], str) or type(folder['writable']) is not bool):
+            raise TesterError('Invalid shared folder.')
+        path = Path(folder['path']).expanduser().resolve()
+        if path in (Path('/'), Path.home()):
+            raise TesterError('Choose a specific folder, rather than your home or root.')
+        folder['path'] = str(path)
+    for device in result['usb']:
+        if (not isinstance(device, dict) or set(device) != {'bus', 'address', 'name'}
+                or not isinstance(device['name'], str)
+                or any(type(device.get(k)) is not int or not 1 <= device[k] <= 255 for k in ('bus', 'address'))):
+            raise TesterError('Invalid USB device.')
+    return result
+
+
+def atomic_json(path, value):
+    path = Path(path);path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex)
+    try:
+        with temporary.open('x') as stream:
+            temporary.chmod(0o600)
+            json.dump(value, stream, indent=2);stream.write('\n');stream.flush();os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def save(root, settings):
+    result = validate(settings)
+    atomic_json(Path(root) / 'vm-settings.json', result)
+    return result
+
+
+def devices(settings):
+    """QEMU options, never shell fragments. Folder paths use QEMU's comma escaping."""
+    args = []
+    if settings['audio']:
+        runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
+        backend = 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
+        args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
+                 '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
+    for i, folder in enumerate(settings['folders']):
+        path = Path(folder['path']).resolve()
+        if not path.is_dir():
+            raise TesterError('Shared folder is no longer available: ' + str(path))
+        value = f'local,id=shared{i},path={str(path).replace(",", ",,")},security_model=mapped-xattr'
+        if not folder['writable']:
+            value += ',readonly=on'
+        args += ['-fsdev', value, '-device', f'virtio-9p-pci,fsdev=shared{i},mount_tag=luma{i}']
+    if settings['usb']:
+        args += ['-device', 'qemu-xhci,id=usb']
+    for i, device in enumerate(settings['usb']):
+        node = Path(f'/dev/bus/usb/{device["bus"]:03}/{device["address"]:03}')
+        matching = any((d['bus'],d['address'],d['name']) == (device['bus'],device['address'],device['name'])
+                       for d in cameras())
+        if not matching or not os.access(node, os.R_OK | os.W_OK):
+            raise TesterError('USB device is disconnected or needs host permission: ' + device['name'])
+        args += ['-device', f'usb-host,hostbus={device["bus"]},hostaddr={device["address"]},id=hostusb{i}']
+    return args
+
+
+def cameras():
+    found = []
+    base = Path('/sys/bus/usb/devices')
+    for path in base.glob('*'):
+        try:
+            if not any((p / 'bInterfaceClass').read_text().strip() == '0e'
+                       for p in base.glob(path.name + ':*') if (p / 'bInterfaceClass').is_file()):
+                continue
+            bus, address = int((path / 'busnum').read_text()), int((path / 'devnum').read_text())
+            node = Path(f'/dev/bus/usb/{bus:03}/{address:03}')
+            found.append(dict(bus=bus, address=address, name=(path / 'product').read_text().strip(),
+                              accessible=os.access(node, os.R_OK | os.W_OK)))
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def checkpoints(session):
+    if not session.disk.exists() or session.status() != 'stopped':
+        return []
+    info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(session.disk)]))
+    return info.get('snapshots', [])
+
+
+def checkpoint(session, name):
+    name = name.strip()
+    if not 1 <= len(name) <= 80 or any(ord(c) < 32 for c in name):
+        raise TesterError('Name the snapshot using 1–80 characters.')
+    with session.lock():
+        if session.status() != 'stopped' or not session.disk.exists():
+            raise TesterError('Shut down the guest before creating a disk snapshot.')
+        if any(item['name'] == name for item in checkpoints(session)):
+            raise TesterError('A snapshot with that name already exists.')
+        run(['qemu-img', 'snapshot', '-c', name, str(session.disk)], timeout=120)
+    return checkpoints(session)
+
+
+def restore(session, name):
+    with session.lock():
+        if session.status() != 'stopped':
+            raise TesterError('Shut down the guest before restoring a snapshot.')
+        if not any(item['name'] == name for item in checkpoints(session)):
+            raise TesterError('This snapshot is no longer available.')
+        run(['qemu-img', 'snapshot', '-a', name, str(session.disk)], timeout=120)
+
+
+def configure_guest(session, settings, mount_folders=True):
+    """Host control SSH stays private; the optional agent gets a separate revocable key."""
+    key = session.directory / 'agent-key'
+    if settings['agent_ssh'] and not key.exists():
+        run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)], timeout=15)
+    if key.exists():
+        public = Path(str(key) + '.pub').read_text().strip()
+        script = '''import os,sys
+from pathlib import Path
+key=sys.stdin.read().strip()
+p=Path.home()/'.ssh/authorized_keys'
+lines=p.read_text().splitlines()
+identity=' '.join(key.split()[:2])
+lines=[line for line in lines if ' '.join(line.split()[:2])!=identity]
+if sys.argv[1]=='on':lines.append(key)
+temp=p.with_suffix('.tester-new');temp.write_text('\\n'.join(lines)+'\\n');temp.chmod(0o600);temp.replace(p)
+'''
+        run(session.ssh(['python3', '-c', script, 'on' if settings['agent_ssh'] else 'off']),
+            input=public, text=True, timeout=15, stdout=subprocess.DEVNULL)
+    for i, folder in enumerate(settings['folders'] if mount_folders else []):
+        target = '/mnt/shared/' + str(i + 1)
+        raw = '/mnt/luma-shared-raw/' + str(i + 1)
+        # Translate ownership inside the guest, without chmod/chown on the
+        # host's project. Host and guest user IDs need not match.
+        install = 'command -v bindfs >/dev/null || dnf5 -y --setopt=install_weak_deps=False install bindfs'
+        run(session.ssh(['sudo', 'sh', '-c', install]), timeout=120, stdout=subprocess.DEVNULL)
+        run(session.ssh(['sudo', 'mkdir', '-p', raw, target]), timeout=15)
+        # mountpoint makes repeated configuration idempotent.
+        script = 'mountpoint -q "$1" || mount -t 9p -o "$2" "$3" "$1"'
+        options = 'trans=virtio,version=9p2000.L,msize=262144' + ('' if folder['writable'] else ',ro')
+        run(session.ssh(['sudo', 'sh', '-c', script, 'mount-shared', raw, options, 'luma' + str(i)]), timeout=15)
+        bind = ['bindfs', '--force-user=' + session.manifest['user'], '--force-group=' + session.manifest['user'],
+                '--perms=u+rwX', '--create-as-mounter', '-o', 'allow_other' + ('' if folder['writable'] else ',ro'), raw, target]
+        run(session.ssh(['sudo', 'sh', '-c', 'mountpoint -q "$1" || { shift; exec "$@"; }',
+                        'bind-shared', target, *bind]), timeout=20)
+
+
+def agent_prompt(session, manifest_path, executable='luma-tester'):
+    settings = load(session.root)
+    if not settings['agent_ssh'] or not (session.directory / 'agent-key').exists():
+        raise TesterError('Enable SSH access and start Luma before copying the agent prompt.')
+    port = json.loads((session.directory / 'connection.json').read_text())['port']
+    command = ['ssh', '-F', '/dev/null', '-i', str(session.directory / 'agent-key'), '-p', str(port),
+               '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+               '-o', 'UserKnownHostsFile=' + str(session.directory / 'known_hosts'),
+               session.manifest['user'] + '@127.0.0.1']
+    text = f'''Work in this Luma Tester {session.manifest['target']} guest.
+Build: {session.manifest['build']}
+Guest architecture: {session.manifest['arch']}. Host architecture and guest architecture are independent.
+Connect locally using this existing private key (never print or copy its contents):
+{shlex.join(command)}
+
+The guest disk persists across shutdown and reopening. Use the Tester sidebar to
+save a named disk snapshot before risky changes. Keep application work in the
+guest user's home or an explicitly shared folder. Do not replace the OS image.
+Snapshots cover the guest disk, not shared host folders. Use version control
+for shared host projects.
+The guest includes luma-sdk; inspect `luma-sdk --help` and the installed platform
+documentation for app builds. For native apps, run them in the guest user's
+graphical session using `systemd-run --user --collect --unit=app-preview COMMAND`.
+Use the app's own development watcher or restart its preview service after edits.
+'''
+    for i, folder in enumerate(settings['folders']):
+        text += f'\nShared folder {i+1}: {folder["path"]} → /mnt/shared/{i+1} ({"read/write" if folder["writable"] else "read only"}).'
+    launcher = [executable] + (['--appimage-extract-and-run'] if executable.endswith('.AppImage') else [])
+    text += '\n\nCLI for status and screenshots:\n' + shlex.join(launcher + ['--state', str(session.root)])
+    text += '\nManifest: ' + shlex.quote(str(manifest_path)) + '\n'
+    return text

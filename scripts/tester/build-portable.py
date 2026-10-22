@@ -83,7 +83,12 @@ seeds = [Path(shutil.which(name) or '/missing/' + name).resolve() for name in to
 modules = [Path('/usr/lib64/qemu') / name for name in
            ('hw-display-virtio-gpu.so', 'hw-display-virtio-gpu-pci.so',
             'hw-display-virtio-gpu-gl.so', 'hw-display-virtio-gpu-pci-gl.so',
-            'ui-egl-headless.so', 'ui-gtk.so', 'ui-opengl.so')]
+            'ui-egl-headless.so', 'ui-gtk.so', 'ui-opengl.so', 'audio-pipewire.so', 'hw-usb-host.so')]
+audio_plugins = [Path('/usr/lib64/pipewire-0.3') / ('libpipewire-module-' + name + '.so')
+                 for name in ('rt', 'protocol-native', 'client-node', 'client-device', 'adapter', 'metadata', 'session-manager')]
+audio_plugins += [Path('/usr/lib64/spa-0.2') / name for name in
+                  ('support/libspa-support.so', 'audioconvert/libspa-audioconvert.so')]
+copy(Path('/usr/share/pipewire/client.conf'), 'tools/pipewire-config/client.conf')
 # EGL/GBM loads its Mesa drivers dynamically, beyond ldd's dependency graph.
 # Keep these in the tools ABI, separate from the UI's qualified native runtime.
 graphics = [Path('/usr/lib64/libEGL_mesa.so.0'), Path('/usr/lib64/libvulkan.so.1')]
@@ -102,7 +107,7 @@ for source in Path('/usr/lib64/dri').glob('*_dri.so'):
 copy(Path('/usr/share/glvnd/egl_vendor.d/50_mesa.json'), 'tools/egl/50_mesa.json')
 packages = {}
 copied_dependencies = set()
-for source in seeds + modules + graphics:
+for source in seeds + modules + graphics + audio_plugins:
     assert source.is_file(), source
     text = subprocess.check_output(['ldd', str(source)], text=True)
     if 'not found' in text: raise RuntimeError('Missing tool dependency: ' + text)
@@ -117,7 +122,12 @@ for source in seeds + modules + graphics:
             ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(path)], text=True).strip()
     packages[str(source)] = subprocess.check_output(
         ['rpm', '-qf', '--qf', '%{NEVRA}\t%{SOURCERPM}\t%{LICENSE}\n', str(source)], text=True).strip()
-    if source in graphics:
+    if source in audio_plugins:
+        if source.is_relative_to('/usr/lib64/pipewire-0.3'):
+            copy(source, Path('tools/pipewire') / source.name)
+        else:
+            copy(source, Path('tools/spa') / source.relative_to('/usr/lib64/spa-0.2'))
+    elif source in graphics:
         # DRI entry points also retain their conventional driver filenames.
         copy(source, Path('tools/lib') / source.name)
     elif source in modules:
@@ -133,6 +143,9 @@ for name in tools:
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 export QEMU_MODULE_DIR="$tester_dir/tools/modules"
+export PIPEWIRE_MODULE_DIR="$tester_dir/tools/pipewire"
+export SPA_PLUGIN_DIR="$tester_dir/tools/spa"
+export PIPEWIRE_CONFIG_DIR="$tester_dir/tools/pipewire-config"
 export __EGL_VENDOR_LIBRARY_FILENAMES="$tester_dir/tools/egl/50_mesa.json"
 export LIBGL_DRIVERS_PATH="$tester_dir/tools/dri"
 export VK_DRIVER_FILES=$(printf '%s:' "$tester_dir"/tools/vulkan/*.json)

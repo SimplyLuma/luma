@@ -36,17 +36,17 @@ def main():
     publish.add_argument('--user', default='luma')
     publish.add_argument('--url', help='Published HTTPS disk URL; defaults to the local disk')
     publish.add_argument('--artifact-id', help='Exact matching Hub catalog artifact, when published')
-    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev']:
+    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev', 'snapshots', 'snapshot', 'restore']:
         p = sub.add_parser(action)
         p.add_argument('manifest', type=Path)
         if action == 'start':
             p.add_argument('--port', type=int, default=2228)
-            p.add_argument('--memory', type=int, default=4096, help='MiB')
-            p.add_argument('--cpus', type=int, default=4)
+            p.add_argument('--memory', type=int, help='MiB (defaults to saved VM settings)')
+            p.add_argument('--cpus', type=int, help='Defaults to saved VM settings')
             p.add_argument('--headless', action='store_true')
             p.add_argument('--embedded', action='store_true', help='Private Unix display socket for the LumaUI viewer')
             p.add_argument('--software', action='store_true', help='Use TCG even when KVM is available')
-            p.add_argument('--graphics', choices=['auto', 'virgl', 'software'], default='auto')
+            p.add_argument('--graphics', choices=['auto', 'virgl', 'software'])
             p.add_argument('--render-node', help='GPU render node, e.g. /dev/dri/renderD128')
             p.add_argument('--firmware')
             p.add_argument('--dry-run', action='store_true')
@@ -61,6 +61,8 @@ def main():
         elif action == 'wait':
             p.add_argument('--timeout', type=int, default=180)
             p.add_argument('--graphical', action='store_true')
+        elif action in ('snapshot', 'restore'):
+            p.add_argument('name', help='Named disk snapshot; guest must be shut down')
     args = parser.parse_args()
     try:
         if args.action == 'version':
@@ -122,6 +124,14 @@ def main():
             return int(not all(tools.values()))
         if args.action == 'prepare':
             session.prepare()
+        elif args.action in ('snapshots', 'snapshot', 'restore'):
+            from . import vm
+            if args.action == 'snapshots':
+                print(json.dumps(vm.checkpoints(session), indent=2))
+            elif args.action == 'snapshot':
+                print(json.dumps(vm.checkpoint(session, args.name), indent=2))
+            else:
+                vm.restore(session, args.name)
         elif args.action == 'start':
             options = {k: getattr(args, k) for k in ('port', 'memory', 'cpus', 'headless', 'firmware', 'software', 'embedded', 'graphics', 'render_node')}
             if args.dry_run:

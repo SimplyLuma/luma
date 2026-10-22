@@ -17,7 +17,7 @@ own qualification.
 The portable directory includes LumaUI, Python, QEMU, SSH and rsync. Guest images
 can be downloaded, delivered separately, or embedded for offline use. Open
 **Luma Tester** inside it. Mark the AppImage executable before opening. Without
-FUSE, use `./Luma-Tester-0.2.0-linux-x86_64.AppImage --appimage-extract-and-run`.
+FUSE, use `./Luma-Tester-0.3.0-linux-x86_64.AppImage --appimage-extract-and-run`.
 Use the included README for package-specific commands. These are Linux x86_64
 builds; ARM guest execution and macOS/Windows packages need separate qualification.
 
@@ -57,7 +57,7 @@ src/luma-tester/luma-tester gui
 ```
 
 Choose **Try Luma** or **Develop for Luma**. Both open the same workspace:
-choose **Mobile** or **Desktop** in the sidebar, choose a **Build** from the toolbar menu, then **Start**.
+choose **Mobile** or **Desktop** in the sidebar, choose an image from the **Images** menu, then **Start**.
 The sidebar uses compact LumaUI destination rows. Unavailable devices are marked
 **Soon** and open an explicit no-build state. Presets appear as sidebar items;
 the section’s **+** opens a native modal for saving the current configuration.
@@ -78,16 +78,42 @@ guest's display settings; those preferences remain in that session's overlay.
 Mobile requests a single 432×960 portrait output; the image's compositor must honor the
 virtual output and use the handheld device class. The image determines scaling.
 
-This developer milestone has no public image catalog. Use **Advanced → Add Image**
-in the Luma Tester menu to add a trusted manifest, or set `LUMA_TESTER_CATALOG`
-to a directory of qualified manifests. Imports are remembered. Architecture,
-firmware and other QEMU overrides remain in the CLI. The launcher requires real
-LumaUI; a stock GTK interface is not a substitute when its runtime is missing.
+Use **Add Image** to import a trusted developer manifest, or set
+`LUMA_TESTER_CATALOG` to a directory of qualified manifests. The image picker
+separates the latest qualified included image, installed/local images and
+images available to download. It does not substitute an installer ISO for a
+ready-to-run developer disk. A public developer-disk feed remains separate from
+Hub's current installer catalog.
 
-On the Develop path, **Connect a project** chooses your local app directory.
-Once Luma is open, **Sync Project** copies it to the guest and **Copy Development
-Command** gives you the watcher command for your terminal or coding agent.
-Replace its explicit `YOUR_APP_COMMAND` argument with your app's launch command.
+Switch **Try / Developer** at the top of the sidebar at any time. The running
+VM and its disk stay the same. Developer reveals **SSH access**, **Copy Agent
+Prompt**, **Shared Folders** and **Devices**. Enable SSH, start Luma, then copy
+the prompt into your local coding agent. Its separate private key can be revoked
+by turning SSH access off; internal launcher control has a different key.
+
+Shared folders default to read only; **Allow changes** opts into edits on the
+host. Selected folders appear at `/mnt/shared/1`, `/mnt/shared/2`, etc. Ownership
+is translated inside the guest so host/guest UIDs need not match. A legacy guest
+may install the small bindfs helper on first use; new phone images include it.
+Audio output defaults on when a host PipeWire service is available. Microphone
+and accessible USB cameras are opt-in. Hardware and folder changes apply on the
+next start; mouse and keyboard input already forward through the display.
+
+The settings icon at the top left opens memory, CPU, virtual disk and graphics
+settings. Virtual disks grow sparsely and cannot be shrunk through this UI.
+The guest filesystem may need expansion after increasing an existing disk.
+
+Closing Tester requests a graceful guest shutdown and preserves its disk, key,
+selected build and workspace mode. Reopening returns to that workspace. **Snapshots
+→ +** saves a named disk checkpoint after shutting down; choose it to restore
+while stopped. Snapshots save disk contents, not RAM or shared host folders.
+Keep host projects in their own version control. Restoring a checkpoint replaces
+guest-disk changes since that checkpoint and requires an explicit Restore action.
+
+The real Mobile compositor uses its native CPU renderer on two-dimensional
+VirtIO hardware to avoid corrupt software scanout tiles; VirGL-capable guests
+retain the normal accelerated renderer. GPU-only visual effects may differ in
+the CPU fallback. Physical phone timing and GPU behavior still need device tests.
 
 From a terminal, use an alias or installed `luma-tester` command:
 

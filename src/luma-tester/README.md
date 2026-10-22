@@ -38,12 +38,12 @@ shared simulator workspace. Choose an experience and build in its sidebar;
 initially selected when available and prefers the host CPU architecture.
 Mobile prefers a qualified ARM64 image, with an explicitly identified x86_64
 simulator available for the same native phone shell. Develop adds project
-connection, source sync and a command to start the app watcher. Named presets
-retain an exact image, experience and workspace mode. Tablet, TV and Smart Device
+SSH access, a copyable local-agent prompt, shared folders and device controls. Named presets
+retain an exact image, experience, workspace mode and VM settings. Named disk snapshots preserve guest changes, and closing the app gracefully shuts down the guest. Tablet, TV and Smart Device
 require dedicated future profiles and remain unavailable. Imports and presets
 are remembered locally; release catalogs remain an image qualification milestone.
 
-Tester 0.2.0 supports anonymous [Hub download attribution](../../docs/developer-platform/tester-downloads.md).
+Tester 0.3.0 supports anonymous [Hub download attribution](../../docs/developer-platform/tester-downloads.md).
 Private previews use `source: test`. Catalog lookup and cached launches create no
 tickets. Published file downloads retain a ticket across retries and report
 completion only after size/SHA-256 verification. Installer ISOs in the public

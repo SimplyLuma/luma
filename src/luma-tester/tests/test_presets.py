@@ -49,6 +49,17 @@ class PresetTests(unittest.TestCase):
                 presets.save(self.path, name, self.manifest_path, 'try')
         self.assertEqual(self.path.read_bytes(), original)
 
+    def test_vm_settings_are_pinned_with_preset(self):
+        from luma_tester import vm
+        settings=vm.load(self.root)
+        settings.update(memory=8192,cpus=6,agent_ssh=True)
+        presets.save(self.path,'Development',self.manifest_path,'develop',settings)
+        settings['memory']=4096
+        saved=presets.load(self.path)[0]['vm']
+        self.assertEqual(saved['memory'],8192)
+        self.assertEqual(saved['cpus'],6)
+        self.assertTrue(saved['agent_ssh'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -202,6 +202,11 @@ class Session:
             raise TesterError('Cached image changed; remove only that cache file and prepare again.')
         if not self.disk.exists():
             run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2', '-b', self.base, self.disk])
+        from . import vm
+        capacity = vm.load(self.root)['disk_gib'] * 1024**3
+        info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(self.disk)]))
+        if info['virtual-size'] < capacity:
+            run(['qemu-img', 'resize', '-q', str(self.disk), str(capacity)])
         if not self.key.exists():
             run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', self.key])
         if not (self.directory / 'seed.iso').exists():
@@ -254,10 +259,15 @@ class Session:
             raise TesterError('The selected GPU render device is not accessible.')
         return None
 
-    def command(self, port=2228, memory=4096, cpus=4, headless=False, firmware=None, software=False, embedded=False,
-                graphics='auto', render_node=None):
-        if not 1024 <= memory <= 16384 or not 1 <= cpus <= 16 or not 1024 <= port <= 65535:
-            raise TesterError('Use memory 1024–16384 MiB, CPUs 1–16, SSH port 1024–65535.')
+    def command(self, port=2228, memory=None, cpus=None, headless=False, firmware=None, software=False, embedded=False,
+                graphics=None, render_node=None):
+        from . import vm
+        settings = vm.load(self.root)
+        memory = settings['memory'] if memory is None else memory
+        cpus = settings['cpus'] if cpus is None else cpus
+        graphics = settings['graphics'] if graphics is None else graphics
+        if not 1024 <= memory <= 65536 or not 1 <= cpus <= 32 or not 1024 <= port <= 65535:
+            raise TesterError('Use memory 1024–65536 MiB, CPUs 1–32, SSH port 1024–65535.')
         if graphics not in ('auto', 'virgl', 'software'):
             raise TesterError('Choose graphics auto, virgl or software.')
         render = self.render_device(render_node) if graphics != 'software' else None
@@ -294,6 +304,8 @@ class Session:
         bios = self.firmware(firmware)
         if bios:
             argv += ['-bios', bios]
+        if not headless:
+            argv += vm.devices(settings)
         return argv
 
     def probe_graphics(self, command):
@@ -309,7 +321,8 @@ class Session:
                            ('qmp_capabilities', 'query-status', 'quit'))
         result = subprocess.run(probe, input=requests, text=True, capture_output=True, timeout=10)
         if result.returncode or '"status"' not in result.stdout:
-            raise TesterError('GPU initialization failed: ' + result.stderr.strip()[-1500:])
+            detail = result.stderr.strip()[-1500:] or f'QEMU exited {result.returncode} without confirming graphics readiness.'
+            raise TesterError('GPU initialization failed: ' + detail)
 
     def start(self, **options):
         if platform.system() != 'Linux':
@@ -323,7 +336,8 @@ class Session:
                     self.probe_graphics(command)
                     graphics = {'mode': 'virgl', 'render_node': self.render_device(options.get('render_node'))}
                 except (TesterError, subprocess.TimeoutExpired) as exc:
-                    if options.get('graphics', 'auto') == 'virgl':
+                    from . import vm
+                    if (options.get('graphics') or vm.load(self.root)['graphics']) == 'virgl':
                         raise TesterError(str(exc)) from exc
                     graphics['reason'] = str(exc)
                     command = self.command(**dict(options, graphics='software'))

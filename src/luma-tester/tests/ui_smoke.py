@@ -22,6 +22,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix='luma-tester-ui-') as temporary:
         root = Path(temporary)
         output = Path(os.environ.get('DEV_ARTIFACT_DIR', temporary))
+        (root / 'catalog').mkdir()
+        os.environ['LUMA_TESTER_CATALOG'] = str(root / 'catalog')
         phase = 0
         failures = []
         settings = Gio.Settings.new('org.gnome.desktop.interface')
@@ -44,21 +46,21 @@ def main():
                     app.commands.invoke('tester.try')
                     assert app.target == 'mobile'
                     assert app.stack.get_visible_child_name() == 'session'
-                    assert not app.developer_card.get_visible()
+                    assert not app.developer_heading.get_visible()
                     phase = 1
                 elif phase == 1:
                     screenshot(app, 'mobile-desktop.png')
                     app.start()
                     assert 'Add a Luma image' in app.status_label.get_label()
                     app.commands.invoke('tester.develop')
-                    assert app.developer_card.get_visible()
+                    assert app.developer_heading.get_visible()
                     app.select_target('desktop')
                     assert app.workspace_title.get_label() == 'Luma Desktop'
                     assert app.sidebar.list.get_selected_row() is app.device_rows['desktop']
-                    assert not app.device_rows['tv'].get_sensitive()
+                    assert app.device_rows['tv'].get_sensitive()
                     app.commands.invoke('tester.advanced')
-                    assert isinstance(app.advanced, AppWindow)
-                    app.advanced.close()
+                    assert app.sheet_handle.card.get_visible()
+                    app.sheet_handle.close()
                     # Force real narrow allocation without changing the kit's opening policy.
                     app.window.set_size_request(480, 480)
                     app.window.set_default_size(480, 560)

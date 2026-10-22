@@ -19,6 +19,9 @@ try:
     from luma_appkit import Command, CommandGroup, CommandRegistry
     from luma_appkit import icons
     from luma_appkit.content_cards import Card
+    from luma_appkit.content_controls import TextButton, Switch, IconOnlyButton
+    from luma_appkit.content_field import TextField
+    from luma_appkit.structure_placement import ModeSwitch
     from luma_appkit.content_type import apply_type
     from luma_appkit.rows_navigation import SidebarRow, SidebarSection, RowLead, sidebar_width
     from luma_appkit.menus import Menu
@@ -32,7 +35,7 @@ except (ImportError, ValueError) as exc:
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets
+from . import presets, vm
 
 
 def launch(state=None):
@@ -49,6 +52,9 @@ def launch(state=None):
             self.intent = 'try'
             self.target = 'mobile'
             self.project = None
+            self.closing = False
+            self.settings = vm.load(data_root(state))
+            self.developer_rows = []
             self.preferences = data_root(state) / 'preferences.json'
             self.preset_path = data_root(state) / 'presets.json'
             self.saved_presets = presets.load(self.preset_path)
@@ -71,19 +77,43 @@ def launch(state=None):
             self.display_failure = None
             self.shutting_down = False
             self.home_busy = False
+            self.ssh_busy = False
             self.selected_images = {}
+            try:
+                saved=json.loads(self.preferences.read_text()).get('selected_images',{})
+                for target,path in saved.items():
+                    path=Path(path)
+                    if target in ('desktop','mobile') and read_manifest(path)['target']==target:
+                        self.selected_images[target]=path
+                        self.catalog_targets.add(target)
+                        if path not in self.imported:self.imported.append(path)
+            except (OSError,ValueError,TypeError,TesterError,AttributeError):pass
 
         def label(self, text, role='body', muted=False, centered=False):
             widget = Gtk.Label(label=text, wrap=True, xalign=0.5 if centered else 0)
             apply_type(widget, role, muted=muted)
             return widget
 
-        def button(self, text, callback, primary=False):
-            button = Gtk.Button(label=text)
-            button.connect('clicked', lambda _button: callback())
-            if primary:
-                button.add_css_class('suggested-action')
+        def button(self, text, callback, primary=False, icon=None):
+            button = TextButton(text, icon=icon, style='key' if primary else 'fill', on_click=callback)
             return button
+
+        def words(self, button, text):
+            if hasattr(button, 'label_widget'):
+                button.label_widget.set_label(text)
+                button.update_property([Gtk.AccessibleProperty.LABEL], [text])
+            else:
+                button.set_label(text)
+
+        def remember(self):
+            selected=dict(self.selected_images)
+            chosen=self.select_image() if self.session else None
+            if (self.session and chosen and read_manifest(chosen)['id']==self.session.manifest['id']
+                    and (self.session.directory/'manifest.json').is_file()):
+                selected[self.session.manifest['target']]=self.session.directory/'manifest.json'
+            vm.atomic_json(self.preferences, dict(images=[str(p) for p in self.imported[:16]],
+                selected_images={target:str(path) for target,path in selected.items()},
+                intent=self.intent, target=self.target, workspace=True))
 
         def fit_selector(self, selector):
             factory = Gtk.SignalListItemFactory()
@@ -134,12 +164,31 @@ def launch(state=None):
             self.stack.connect('notify::visible-child-name', self.workspace_changed)
             self.stack.set_visible_child_name('welcome')
             self.window.connect('close-request', self.close_request)
+            try:
+                saved = json.loads(self.preferences.read_text())
+                if saved.get('workspace'):
+                    self.select_intent(saved.get('intent', 'try'))
+                    if saved.get('target') in self.catalog_targets:
+                        self.select_target(saved['target'])
+            except (OSError, ValueError, TypeError):
+                pass
             self.window.present()
             GLib.timeout_add_seconds(2, self.refresh)
 
         def build_sidebar(self):
             self.sidebar = NavigationSidebar(variant='destinations', width='narrow')
             self.sidebar.set_visible(False)
+            header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                margin_start=16, margin_end=16, margin_top=12, margin_bottom=12)
+            top = Gtk.Box()
+            top.append(self.label('Workspace', 'group-heading'))
+            top.get_first_child().set_hexpand(True)
+            top.append(IconOnlyButton('settings-2', 'Virtual machine settings', size='small', on_click=self.show_advanced))
+            header.append(top)
+            self.mode_switch = ModeSwitch([('try', 'Try'), ('develop', 'Developer')],
+                current=self.intent, on_change=self.select_intent, labels_only=True, fill=True, label='Workspace mode')
+            header.append(self.mode_switch)
+            self.sidebar.prepend(header)
             self.sidebar.append_section('Experiences')
             self.device_rows = {}
             for target, title, icon in [('desktop', 'Desktop', 'monitor'), ('tablet', 'Tablet', 'smartphone'),
@@ -154,6 +203,25 @@ def launch(state=None):
                 self.sidebar.append_row(row)
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
+            self.developer_heading = SidebarSection('Developer', ruled=True)
+            self.sidebar.list.append(self.developer_heading)
+            self.developer_rows.append(self.developer_heading)
+            self.ssh_row = SidebarRow('SSH access', lead=RowLead.icon('terminal'))
+            self.ssh_row.callback = self.toggle_ssh
+            self.ssh_switch = Switch(active=self.settings['agent_ssh'], label='SSH access',
+                on_toggle=lambda enabled: self.toggle_ssh(enabled))
+            self.ssh_row.set_trail(self.ssh_switch)
+            self.sidebar.append_row(self.ssh_row)
+            self.developer_rows.append(self.ssh_row)
+            for title, icon, callback in [('Copy Agent Prompt', 'clipboard', self.copy_agent_prompt),
+                    ('Shared Folders…', 'folder', self.show_hardware), ('Devices…', 'usb', self.show_hardware)]:
+                row = SidebarRow(title, lead=RowLead.icon(icon));row.callback = callback
+                self.sidebar.append_row(row);self.developer_rows.append(row)
+            self.snapshot_heading = SidebarSection('Snapshots', action=('plus', 'Save snapshot', self.save_snapshot))
+            self.sidebar.list.append(self.snapshot_heading)
+            self.snapshot_rows = []
+            self.snapshot_signature = None
+            self.pending_snapshot = None
             # Detailed selectors live in Advanced; the workspace exposes builds
             # through the toolkit menu and presets as destination rows.
             self.image_paths = []
@@ -181,8 +249,7 @@ def launch(state=None):
             self.preset_editor = Card(form)
             foot = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             foot.add_css_class('luma-navigation-list')
-            for title, icon, callback in [('Add Image…', 'plus', self.choose_image),
-                                           ('Advanced…', 'settings', self.show_advanced)]:
+            for title, icon, callback in [('Add Image…', 'plus', self.choose_image)]:
                 row = SidebarRow(title, lead=RowLead.icon(icon))
                 row.callback = callback
                 foot.append(row)
@@ -207,25 +274,20 @@ def launch(state=None):
         def build_toolbar(self):
             self.toolbar = ActionCenter()
             self.toolbar.attach(self.content_host, safe_area=False)
-            self.sidebar_toggle = make_control(BarAction('menu', tooltip='Show or hide sidebar',
+            self.sidebar_toggle = make_control(BarAction('panel-left', tooltip='Show or hide sidebar',
                 on_activate=lambda: self.layout.set_show_sidebar(not self.layout.get_show_sidebar())))
-            self.workspace_title = self.label('Luma Desktop', 'label')
-            self.workspace_title.set_wrap(False)
-            self.build_menu = Gtk.MenuButton(label='Build', tooltip_text='Choose a build')
+            self.workspace_title = self.label('')  # not displayed; title belongs in the workspace
+            self.build_menu = Gtk.MenuButton(label='Images', tooltip_text='Choose an image')
             self.build_menu.get_first_child().add_css_class('lumaui-bar-button')
-            self.build_menu.get_first_child().add_css_class('text')
-            self.run_button = make_control(BarAction('', 'Start', on_activate=self.start, primary=True))
-            self.pause_button = make_control(BarAction('', 'Pause', on_activate=self.pause))
-            self.shutdown_button = make_control(BarAction('', 'Shut Down', on_activate=self.stop))
-            self.home_button = make_control(BarAction('', 'Home', on_activate=self.home))
+            self.build_menu.get_first_child().add_css_class('dropdown')
+            self.run_button = self.button('Start', self.start, primary=True, icon='play')
+            self.pause_button = self.button('Pause', self.pause, icon='pause')
+            self.shutdown_button = self.button('Shut Down', self.stop, icon='power')
+            self.home_button = self.button('Home', self.home, icon='house')
             self.home_button.set_visible(False)
-            self.tools_button = make_control(BarAction('', 'Project',
-                on_activate=lambda: self.stack.set_visible_child_name('session')))
-            self.tools_button.set_visible(False)
-            self.toolbar.show_bar([BarWidget(self.sidebar_toggle), BarWidget(self.workspace_title),
-                SEPARATOR, BarWidget(self.build_menu), BarWidget(self.home_button),
-                BarWidget(self.run_button), BarWidget(self.pause_button), BarWidget(self.shutdown_button),
-                BarWidget(self.tools_button)])
+            self.toolbar.show_bar([BarWidget(self.sidebar_toggle), SEPARATOR, BarWidget(self.build_menu),
+                SEPARATOR, BarWidget(self.home_button), BarWidget(self.run_button),
+                BarWidget(self.pause_button), BarWidget(self.shutdown_button)])
             self.toolbar.set_visible(False)
 
         def workspace_changed(self, *_args):
@@ -248,6 +310,9 @@ def launch(state=None):
             return True
 
         def device_activated(self, _list, row):
+            if hasattr(row, 'callback'):
+                row.callback()
+                return
             if hasattr(row, 'preset_index'):
                 self.preset_selector.set_selected(row.preset_index)
                 return
@@ -288,23 +353,43 @@ def launch(state=None):
             self.arch_notice.set_visible(bool(names) and bool(self.arch_notice.get_label()))
             if not self.active():
                 title = self.target.replace('-', ' ').title()
-                self.status_label.set_label('Ready to start' if names else f'No {title} builds available yet.')
-                self.developer_card.set_visible(self.intent == 'develop' and bool(names))
+                self.status_label.set_label('Choose an image, then start exploring.' if names else f'{title} is coming soon.')
+
             self.refresh_preset_rows()
+
+        def image_available(self, path):
+            from urllib.parse import urlparse, unquote
+            manifest=read_manifest(path)
+            image=manifest['image']
+            cached=data_root(state)/'images'/(image['sha256']+'.qcow2')
+            local=urlparse(image['url'])
+            return cached.is_file() or (local.scheme=='file' and Path(unquote(local.path)).is_file())
 
         def update_build_menu(self, names=None):
             if not hasattr(self, 'build_menu'):
                 return
             if names is None:
-                names = [read_manifest(path).get('build') or path.stem for path in self.image_paths]
-            choices = tuple(Command('build.' + str(index), name,
-                lambda selected=index: self.image_selector.set_selected(selected),
-                checked=lambda path=path: self.select_image() == path,
-                enabled=lambda: not self.active()) for index, (path, name) in enumerate(zip(self.image_paths, names)))
-            registry = CommandRegistry((CommandGroup(None, choices), CommandGroup(None, (
-                Command('build.import', 'Add Image…', self.choose_image, icons.icon_name('plus'), enabled=lambda: not self.active()),
-            ))))
-            self.build_menu.set_popover(Menu(registry, variant='compact'))
+                names=[read_manifest(path).get('build') or path.stem for path in self.image_paths]
+            groups=[]
+            included=[p for p in self.image_paths if p not in self.imported]
+            if included:
+                latest=included[0]
+                groups.append(CommandGroup('Latest qualified', (Command('build.latest',
+                    read_manifest(latest)['build'], lambda: self.image_selector.set_selected(self.image_paths.index(latest)),
+                    icons.icon_name('sparkles'), checked=lambda: self.select_image()==latest,
+                    enabled=lambda: not self.active()),)))
+            for installed,heading in [(True,'Installed or Local'),(False,'Available to Download')]:
+                choices=[]
+                for index,(path,name) in enumerate(zip(self.image_paths,names)):
+                    if self.image_available(path)!=installed:continue
+                    choices.append(Command('build.'+str(index),name,
+                        lambda selected=index:self.image_selector.set_selected(selected),
+                        icons.icon_name('hard-drive' if installed else 'download'),
+                        checked=lambda p=path:self.select_image()==p,enabled=lambda:not self.active()))
+                if choices:groups.append(CommandGroup(heading,tuple(choices)))
+            groups.append(CommandGroup(None, (Command('build.import','Add Image…',self.choose_image,
+                icons.icon_name('plus'),enabled=lambda:not self.active()),)))
+            self.build_menu.set_popover(Menu(CommandRegistry(tuple(groups)), variant='compact'))
 
         def image_selected(self, *_args):
             if getattr(self, 'updating_images', False) or self.active():
@@ -313,6 +398,7 @@ def launch(state=None):
             if index < len(self.image_paths):
                 self.selected_images[self.target] = self.image_paths[index]
                 self.update_build_menu()
+                self.remember()
 
         def name_preset(self):
             if not self.select_image():
@@ -334,7 +420,12 @@ def launch(state=None):
                 path = self.select_image()
                 if path is None:
                     raise TesterError('Choose an image before saving a preset.')
-                self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent)
+                manifest=read_manifest(path)
+                pinned=data_root(state)/'preset-images'/(manifest['id']+'-'+manifest['image']['sha256'][:12]+'.json')
+                vm.atomic_json(pinned,manifest)
+                path=pinned
+                if path not in self.imported:self.imported.append(path)
+                self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent, self.settings)
                 self.preset_selector.set_model(Gtk.StringList.new(
                     ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
                 self.close_preset()
@@ -352,8 +443,10 @@ def launch(state=None):
                 item = self.saved_presets[index - 1]
                 path = presets.resolve(item)
                 if path not in self.available_manifests():
-                    raise TesterError('Add this preset’s image manifest again before loading it.')
+                    self.imported.append(path)
                 self.selected_images[item['target']] = path
+                if 'vm' in item:
+                    self.settings = vm.save(data_root(state), item['vm'])
                 self.select_intent(item['intent'])
                 self.select_target(item['target'])
                 if self.layout.get_collapsed():
@@ -421,30 +514,25 @@ def launch(state=None):
 
         def build_session(self):
             page = self.page('session')
-            self.session_title = self.label('Luma Mobile', 'title-1', centered=True)
+            graphic = icons.image('monitor', pixel_size=56)
+            self.empty_graphic = graphic
+            graphic.add_css_class('tester-choice-icon')
+            graphic.set_halign(Gtk.Align.CENTER)
+            page.append(graphic)
+            self.session_title = self.label('Your Luma workspace', 'title-1', centered=True)
             page.append(self.session_title)
-            loading = Gtk.Box(spacing=12, halign=Gtk.Align.CENTER)
-            self.spinner = Gtk.Spinner(valign=Gtk.Align.CENTER, width_request=20, height_request=20)
-            loading.append(self.spinner)
-            self.status_label = self.label('Getting Luma ready…', centered=True)
-            loading.append(self.status_label)
-            page.append(loading)
+            self.spinner = Gtk.Spinner(halign=Gtk.Align.CENTER, width_request=24, height_request=24)
+            self.spinner.set_visible(False)
+            page.append(self.spinner)
+            self.status_label = self.label('Choose an image, then start exploring.', centered=True, muted=True)
+            page.append(self.status_label)
             self.arch_notice = self.label('', muted=True, centered=True)
             self.arch_notice.set_visible(False)
             page.append(self.arch_notice)
-            self.progress = Gtk.ProgressBar()
+            self.progress = Gtk.ProgressBar(visible=False)
             page.append(self.progress)
-            self.controls = Gtk.Box(spacing=12, homogeneous=True)
-            self.developer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-            self.developer_box.append(self.label('Your project, on Luma.', 'title-2'))
-            self.developer_status = self.label('Connect a project to get started.', muted=True)
-            self.developer_box.append(self.developer_status)
-            self.developer_box.append(self.button('Connect a project…', self.choose_project))
-            self.developer_box.append(self.button('Sync Project', self.sync_project))
-            self.developer_box.append(self.button('Copy Development Command', self.copy_development_command))
-            page.append(Card(self.developer_box))
-            self.developer_card = self.developer_box.get_parent()
-            self.return_button = self.button('Back to Luma', self.return_to_luma)
+            self.controls = Gtk.Box()  # lifecycle state; controls themselves live in the action bar
+            self.return_button = self.button('Show Luma', self.return_to_luma, icon='monitor')
             self.return_button.set_visible(False)
             page.append(self.return_button)
 
@@ -455,7 +543,7 @@ def launch(state=None):
             self.live_title.set_hexpand(True)
             self.viewer_holder = Gtk.Box(hexpand=True, vexpand=True)
             page.append(self.viewer_holder)
-            self.viewer_holder.set_tooltip_text('Click to interact. Ctrl+Alt returns to launcher controls.')
+            self.viewer_holder.set_overflow(Gtk.Overflow.VISIBLE)
             self.stack.add_named(page, 'live')
 
         def return_to_luma(self):
@@ -471,8 +559,7 @@ def launch(state=None):
             self.viewer_holder.append(self.viewer)
             self.viewer.open()
             self.live_title.set_label('Luma ' + self.target.replace('-', ' ').title())
-            self.tools_button.set_label('Project' if self.intent == 'develop' else 'Controls')
-            self.tools_button.set_visible(self.intent == 'develop')
+
             # Keep first boot console text behind the native loading page. The
             # actual Wayland session must exist before revealing the live display.
             session = self.session
@@ -480,6 +567,7 @@ def launch(state=None):
                 import time
                 try:
                     session.wait_graphical(180)
+                    vm.configure_guest(session, vm.load(session.root))
                     if session.manifest['target'] == 'mobile':
                         session.home()
                     time.sleep(1)
@@ -506,7 +594,7 @@ def launch(state=None):
                 self.graphical_ready = True
             if self.session is session and self.running() and self.viewer and self.viewer.ready:
                 self.return_button.set_sensitive(True)
-                self.return_button.set_label('Show Luma')
+                self.words(self.return_button, 'Show Luma')
                 self.return_button.set_visible(True)
                 if self.stack.get_visible_child_name() != 'live':
                     self.window.set_default_size(*( (1000, 920) if self.target == 'mobile' else (1280, 820) ))
@@ -514,31 +602,27 @@ def launch(state=None):
             return False
 
         def select_intent(self, intent):
-            if self.active():
-                self.intent = intent
-                self.developer_card.set_visible(intent == 'develop')
-                self.tools_button.set_visible(intent == 'develop')
-                self.stack.set_visible_child_name('session' if intent == 'develop' else 'live' if self.graphical_ready else 'session')
-                return
             self.intent = intent
-            self.developer_card.set_visible(intent == 'develop')
-            self.tools_button.set_visible(intent == 'develop')
-            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
-            self.status_label.set_label('Ready to start')
-            self.spinner.stop()
-            self.progress.set_visible(False)
-            self.stack.set_visible_child_name('session')
-            self.window.set_default_size(1100, 760)
+            if self.mode_switch.current != intent:
+                self.mode_switch.set_current(intent)
+            for row in self.developer_rows:
+                row.set_visible(intent == 'develop')
+            if self.stack.get_visible_child_name() == 'welcome':
+                self.stack.set_visible_child_name('live' if self.graphical_ready else 'session')
+                self.window.set_default_size(1100, 760)
+            self.remember()
             self.refresh()
 
         def select_target(self, target):
             if self.active():
                 return
             self.target = target
+            self.empty_graphic.set_from_icon_name(icons.icon_name('smartphone' if target in ('mobile','tablet') else 'monitor'))
             self.session_title.set_label('Luma ' + target.replace('-', ' ').title())
             self.workspace_title.set_label('Luma ' + target.replace('-', ' ').title())
             self.sidebar.list.select_row(self.device_rows[target])
             self.update_images()
+            self.remember()
 
         def available_manifests(self):
             directory = os.environ.get('LUMA_TESTER_CATALOG')
@@ -600,11 +684,12 @@ def launch(state=None):
             self.busy = True
             self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
             self.status_label.set_label('Getting your Luma workspace ready…')
+            self.spinner.set_visible(True)
             self.spinner.start()
             self.progress.set_visible(True)
             self.controls.set_visible(False)
             self.return_button.set_sensitive(False)
-            self.developer_card.set_visible(self.intent == 'develop')
+
             self.stack.set_visible_child_name('session')
             session, manifest_path = self.session, self.manifest_path
             def worker():
@@ -631,6 +716,7 @@ def launch(state=None):
         def failed(self, message):
             self.busy = False
             self.spinner.stop()
+            self.spinner.set_visible(False)
             self.progress.set_visible(False)
             self.return_button.set_sensitive(True)
             self.status_label.set_label(message)
@@ -649,25 +735,31 @@ def launch(state=None):
                     self.log.close()
                     self.log = None
                 self.spinner.stop()
+                self.spinner.set_visible(False)
                 self.progress.set_visible(False)
                 self.controls.set_visible(False)
                 self.return_button.set_sensitive(True)
                 self.return_button.set_visible(False)
                 self.stack.set_visible_child_name('session')
-                self.status_label.set_label('Stopped' if code == 0 else 'Luma could not open. Open Advanced to view its startup log.')
+                self.status_label.set_label('Your workspace is saved.' if code == 0 else 'Luma could not open. View startup details in Settings.')
             if running:
                 self.connect_display()
                 self.spinner.set_spinning(not self.graphical_ready and not self.display_failure)
+                self.spinner.set_visible(not self.graphical_ready and not self.display_failure)
                 self.progress.set_visible(False)
                 self.controls.set_visible(True)
                 self.status_label.set_label(('Shutting down Luma…' if self.shutting_down else self.display_failure) or ('Luma is paused.' if self.session.status() == 'paused' else
                                            ('Running' if self.graphical_ready else 'Starting Luma…')))
-                self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
+
+            if self.closing and running and not self.shutting_down:
+                self.stop()
+            if self.pending_snapshot and not self.active():
+                name=self.pending_snapshot;self.pending_snapshot=None;self.create_snapshot(name)
             active = self.active()
             self.run_button.set_sensitive(not active and self.select_image() is not None)
             selected = self.select_image()
             emulated = bool(selected and read_manifest(selected)['arch'] != host_arch())
-            self.run_button.set_label('Start with Emulation' if emulated else 'Start')
+            self.words(self.run_button, 'Start with Emulation' if emulated else 'Start')
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
@@ -675,7 +767,7 @@ def launch(state=None):
             self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
-            self.pause_button.set_label('Resume' if running and self.session.status() == 'paused' else 'Pause')
+            self.words(self.pause_button, 'Resume' if running and self.session.status() == 'paused' else 'Pause')
             self.image_selector.set_sensitive(not active and bool(self.image_paths))
             self.preset_selector.set_sensitive(not active and bool(self.saved_presets))
             self.build_menu.set_sensitive(not active)
@@ -685,6 +777,12 @@ def launch(state=None):
             for name, row in self.device_rows.items():
                 row.set_sensitive(True)
                 row.set_trailing('Soon' if name not in self.catalog_targets else '')
+            for row in self.developer_rows:
+                row.set_visible(self.intent == 'develop')
+            self.ssh_switch.set_active(self.settings['agent_ssh'])
+            self.refresh_snapshots()
+            if self.closing and not self.active():
+                self.window.close()
             return True
 
         def home(self):
@@ -716,6 +814,7 @@ def launch(state=None):
             session = self.session
             def worker():
                 try:
+                    session.wait(180)
                     session.shutdown()
                 except Exception as exc:
                     GLib.idle_add(self.shutdown_failed, session, str(exc))
@@ -725,6 +824,7 @@ def launch(state=None):
             if self.session is session:
                 self.shutting_down = False
                 self.display_failure = message
+                self.closing = False
                 self.status_label.set_label(message)
             return False
 
@@ -734,72 +834,263 @@ def launch(state=None):
             except Exception as exc:
                 self.status_label.set_label(str(exc))
 
-        def choose_project(self):
-            dialog = Gtk.FileDialog(title='Connect your project')
-            dialog.select_folder(self.window, None, self.project_chosen)
+        def notify(self, text):
+            Toast.show(self.island, text)
 
-        def project_chosen(self, dialog, result):
-            try:
-                path = dialog.select_folder_finish(result).get_path()
-                if path:
-                    self.project = Path(path)
-                    self.developer_status.set_label(str(self.project))
-            except GLib.Error:
-                pass
+        def selected_session(self):
+            path = self.select_image()
+            if path is None:
+                raise TesterError('Choose an image first.')
+            return Session(path, state)
 
-        def sync_project(self):
-            if not self.project or not self.running():
-                self.developer_status.set_label('Open Luma and connect a project first.')
+        def sheet(self, title, body):
+            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16,
+                width_request=360, margin_start=24, margin_end=24, margin_top=24, margin_bottom=24)
+            header = Gtk.Box(spacing=12)
+            heading = self.label(title, 'title-2');heading.set_hexpand(True)
+            header.append(heading)
+            handle = [None]
+            close = IconOnlyButton('x', 'Close', size='small', on_click=lambda: handle[0].cancel())
+            header.append(close);column.append(header)
+            footer=body.get_last_child()
+            if footer is not None and footer.has_css_class('key'):
+                body.remove(footer)
+            else:
+                footer=None
+            scroll = ScrollView(body)
+            scroll.set_max_content_height(min(440,max(160,self.window.get_height()-260)))
+            scroll.set_propagate_natural_height(True)
+            column.append(scroll)
+            if footer is not None:column.append(footer)
+            handle[0] = LayerHost.window_host(self.island).present_modal(Card(column, padded=False))
+            self.sheet_handle = handle[0]
+            return handle[0]
+
+        def save_settings(self, **changes):
+            self.settings = vm.save(data_root(state), dict(self.settings, **changes))
+            return self.settings
+
+        def toggle_ssh(self, enabled=None):
+            if self.ssh_busy:
                 return
-            self.developer_status.set_label('Syncing your project…')
-            session, project = self.session, self.project
+            enabled = not self.settings['agent_ssh'] if enabled is None else enabled
+            if enabled == self.settings['agent_ssh']:
+                return
+            self.save_settings(agent_ssh=enabled)
+            self.ssh_switch.set_active(enabled)
+            if self.running() and self.graphical_ready:
+                session = self.session
+                self.ssh_busy=True
+                self.ssh_row.set_sensitive(False)
+                def worker():
+                    try:
+                        vm.configure_guest(session, self.settings, mount_folders=False)
+                        GLib.idle_add(self.notify, 'SSH access enabled.' if self.settings['agent_ssh'] else 'SSH access disabled.')
+                    except Exception as exc:
+                        GLib.idle_add(self.ssh_failed, not enabled, str(exc))
+                    finally:
+                        GLib.idle_add(self.ssh_finished)
+                threading.Thread(target=worker, daemon=True).start()
+            else:
+                self.notify('SSH access will be enabled on start.' if self.settings['agent_ssh'] else 'SSH access disabled.')
+
+        def ssh_failed(self, previous, message):
+            self.save_settings(agent_ssh=previous)
+            self.ssh_switch.set_active(previous)
+            self.notify(message)
+            return False
+
+        def ssh_finished(self):
+            self.ssh_busy=False
+            self.ssh_row.set_sensitive(True)
+            return False
+
+        def copy_agent_prompt(self):
+            try:
+                if not self.running() or not self.graphical_ready:
+                    raise TesterError('Start Luma and enable SSH access first.')
+                text = vm.agent_prompt(self.session, self.manifest_path,
+                    os.environ.get('LUMA_TESTER_EXECUTABLE', 'luma-tester'))
+                self.window.get_clipboard().set(text)
+                self.notify('Agent prompt copied.')
+            except Exception as exc:
+                self.notify(str(exc))
+
+        def show_hardware(self):
+            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+            body.append(self.label('Changes take effect on the next start.', muted=True))
+            def option(label, key):
+                line = Gtk.Box(spacing=16)
+                words = self.label(label);words.set_hexpand(True);line.append(words)
+                line.append(Switch(active=self.settings[key], label=label,
+                    on_toggle=lambda enabled: self.save_settings(**{key: enabled})))
+                body.append(line)
+            option('Audio output', 'audio')
+            option('Microphone', 'microphone')
+            body.append(self.label('Shared folders', 'group-heading'))
+            for index, folder in enumerate(self.settings['folders']):
+                line = Gtk.Box(spacing=8)
+                label = self.label(Path(folder['path']).name + (' · Read/write' if folder['writable'] else ' · Read only'))
+                label.set_hexpand(True);line.append(label)
+                def remove(path=folder['path'], row=line):
+                    self.save_settings(folders=[f for f in self.settings['folders'] if f['path'] != path])
+                    row.set_visible(False)
+                    self.notify('Folder removed for the next start.')
+                line.append(IconOnlyButton('x', 'Remove shared folder', size='small', on_click=remove))
+                body.append(line)
+            body.append(self.button('Add Shared Folder…', self.choose_shared_folder, icon='folder-plus'))
+            body.append(self.label('Cameras', 'group-heading'))
+            cameras = vm.cameras()
+            for saved in self.settings['usb']:
+                if any((d['bus'],d['address'],d['name'])==(saved['bus'],saved['address'],saved['name']) for d in cameras):
+                    continue
+                line=Gtk.Box(spacing=8)
+                label=self.label(saved['name']+' · Disconnected');label.set_hexpand(True);line.append(label)
+                def forget(device=saved, row=line):
+                    self.save_settings(usb=[d for d in self.settings['usb'] if d!=device]);row.set_visible(False)
+                line.append(IconOnlyButton('x','Remove disconnected camera',size='small',on_click=forget))
+                body.append(line)
+            if not cameras:
+                body.append(self.label('No USB cameras available.', muted=True))
+            for device in cameras:
+                line = Gtk.Box(spacing=8)
+                label = self.label(device['name']);label.set_hexpand(True);line.append(label)
+                active = any(d['bus']==device['bus'] and d['address']==device['address'] for d in self.settings['usb'])
+                def select(enabled, d=device):
+                    selected = [v for v in self.settings['usb'] if (v['bus'],v['address']) != (d['bus'],d['address'])]
+                    if enabled:selected.append({k:d[k] for k in ('name','bus','address')})
+                    self.save_settings(usb=selected)
+                toggle = Switch(active=active, label=device['name'], on_toggle=select)
+                toggle.set_sensitive(device['accessible'] or active);line.append(toggle);body.append(line)
+                if not device['accessible']:body.append(self.label('Host access permission is needed.', muted=True))
+            self.sheet('Devices & Folders', body)
+
+        def choose_shared_folder(self):
+            dialog = Gtk.FileDialog(title='Choose a shared folder')
+            def chosen(dialog, result):
+                try:
+                    path = dialog.select_folder_finish(result).get_path()
+                    if path:
+                        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+                        body.append(self.label(Path(path).name, 'group-heading'))
+                        writable = Switch(active=False, label='Allow changes')
+                        line = Gtk.Box(spacing=12);label=self.label('Allow changes');label.set_hexpand(True)
+                        line.append(label);line.append(writable);body.append(line)
+                        handle = [None]
+                        def add():
+                            folders=[f for f in self.settings['folders'] if f['path']!=str(Path(path).resolve())]
+                            self.save_settings(folders=folders + [dict(path=path, writable=writable.get_active())])
+                            handle[0].cancel();self.notify('Folder will be shared on the next start.')
+                        body.append(self.button('Share Folder', add, primary=True, icon='folder'))
+                        handle[0] = self.sheet('Share a Folder', body)
+                except GLib.Error:pass
+                except Exception as exc:self.notify(str(exc))
+            dialog.select_folder(self.window, None, chosen)
+
+        def refresh_snapshots(self):
+            self.snapshot_heading.action_button.set_sensitive(bool(self.select_image()) and not self.busy)
+            if self.active():
+                return
+            try:
+                session = self.selected_session()
+                signature = (str(session.disk), session.disk.stat().st_mtime_ns if session.disk.exists() else 0)
+                if signature == self.snapshot_signature:return
+                self.snapshot_signature = signature
+                def worker():
+                    try:
+                        items = vm.checkpoints(session)
+                        GLib.idle_add(self.render_snapshots, items)
+                    except Exception as exc:GLib.idle_add(self.notify, str(exc))
+                threading.Thread(target=worker, daemon=True).start()
+            except TesterError:pass
+
+        def render_snapshots(self, items):
+            for row in self.snapshot_rows:self.sidebar.list.remove(row)
+            self.snapshot_rows=[]
+            for item in items:
+                row=SidebarRow(item['name'], lead=RowLead.icon('history'))
+                row.callback=lambda name=item['name']: self.restore_snapshot(name)
+                self.sidebar.list.insert(row, self.snapshot_heading.get_index()+1+len(self.snapshot_rows));self.snapshot_rows.append(row)
+            return False
+
+        def save_snapshot(self):
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+            body.append(self.label('Saves the guest disk. Shared host folders are not included. Running apps close when Luma shuts down.', muted=True))
+            name=TextField('Snapshot name',value='Before changes')
+            body.append(name);handle=[None]
+            def save():
+                label=name.text.strip()
+                if not label:self.notify('Name the snapshot first.');return
+                handle[0].cancel()
+                if self.active():
+                    self.pending_snapshot=label;self.stop()
+                else:self.create_snapshot(label)
+            body.append(self.button('Save and Shut Down' if self.active() else 'Save Snapshot',save,primary=True,icon='camera'))
+            handle[0]=self.sheet('Save Snapshot',body)
+
+        def create_snapshot(self, name):
+            self.busy=True
+            session=self.selected_session()
             def worker():
                 try:
-                    session.wait()
-                    session.sync(project)
-                    GLib.idle_add(self.developer_status.set_label, 'Project synced. Copy the development command to start your app.')
-                except Exception as exc:
-                    GLib.idle_add(self.developer_status.set_label, str(exc))
-            threading.Thread(target=worker, daemon=True).start()
+                    vm.checkpoint(session,name)
+                    GLib.idle_add(self.notify,'Snapshot saved.')
+                except Exception as exc:GLib.idle_add(self.notify,str(exc))
+                finally:GLib.idle_add(self.snapshot_finished)
+            threading.Thread(target=worker,daemon=True).start()
 
-        def copy_development_command(self):
-            if not self.project or not self.session:
-                self.developer_status.set_label('Connect a project and open Luma first.')
-                return
-            import shlex
-            command = [os.environ.get('LUMA_TESTER_EXECUTABLE', 'luma-tester'), '--state', str(self.session.root), 'dev', self.manifest_path, str(self.project), '--', 'YOUR_APP_COMMAND']
-            self.window.get_clipboard().set(shlex.join(command))
-            self.developer_status.set_label('Copied. Replace YOUR_APP_COMMAND with the command that starts your app.')
+        def snapshot_finished(self):
+            self.busy=False;self.snapshot_signature=None
+            self.refresh();return False
+
+        def restore_snapshot(self, name):
+            if self.active():self.notify('Shut down Luma before restoring a snapshot.');return
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14)
+            body.append(self.label('Restore “'+name+'”? Changes made since this snapshot will be replaced.',muted=True))
+            handle=[None]
+            def restore():
+                handle[0].cancel();self.busy=True;session=self.selected_session()
+                def worker():
+                    try:
+                        vm.restore(session,name);GLib.idle_add(self.notify,'Snapshot restored. Start Luma to continue.')
+                    except Exception as exc:GLib.idle_add(self.notify,str(exc))
+                    finally:GLib.idle_add(self.snapshot_finished)
+                threading.Thread(target=worker,daemon=True).start()
+            body.append(self.button('Restore Snapshot',restore,primary=True,icon='history'))
+            handle[0]=self.sheet('Restore Snapshot',body)
 
         def show_advanced(self):
-            if self.advanced:
-                self.advanced.present()
-                return
-            self.advanced = AppWindow(application=self, app_id='io.luma.Tester.Advanced',
-                                      title='Advanced', icon_name='settings-symbolic', commands=CommandRegistry(),
-                                      default_width=560, default_height=440, minimum_width=440, minimum_height=360)
-            self.advanced.set_transient_for(self.window)
-            island = Island()
-            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18,
-                           margin_start=28, margin_end=28, margin_top=28, margin_bottom=28)
-            body.append(self.label('Developer images', 'title-1'))
-            body.append(self.label('Architecture is chosen automatically. Add a trusted image manifest to use a local build or a verified download.', muted=True))
-            body.append(self.label('Build', 'group-heading'))
-            if self.image_selector.get_parent():
-                self.image_selector.get_parent().remove(self.image_selector)
-            body.append(self.image_selector)
-            if self.saved_presets:
-                body.append(self.label('Preset', 'group-heading'))
-                if self.preset_selector.get_parent():
-                    self.preset_selector.get_parent().remove(self.preset_selector)
-                body.append(self.preset_selector)
-            body.append(self.button('Add Image…', self.choose_image))
-            body.append(self.button('Open Workspace', self.workspace))
-            body.append(self.label('For architecture overrides, firmware, memory, and headless sessions, use the CLI. Images are virtual environments; device hardware needs separate tests.', muted=True))
-            island.append(body)
-            self.advanced.set_body(island)
-            self.advanced.connect('close-request', self.advanced_closed)
-            self.advanced.present()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            body.append(self.label('Applies on the next start. Your existing disk stays intact.',muted=True))
+            controls={}
+            for key,title,value,low,high,step in [('memory','Memory (GiB)',self.settings['memory']//1024,1,64,1),
+                    ('cpus','Processors',self.settings['cpus'],1,32,1),
+                    ('disk_gib','Virtual disk (GiB)',self.settings['disk_gib'],8,256,8)]:
+                control=TextField(title,value=str(value),purpose='number')
+                body.append(control);controls[key]=control
+            body.append(self.label('Disk space grows as used. Existing guest volumes may need filesystem expansion.',muted=True))
+            graphics=ModeSwitch([('auto','Auto'),('virgl','Hardware'),('software','Software')],
+                current=self.settings['graphics'],labels_only=True,fill=True,label='Graphics rendering')
+            body.append(self.label('Graphics','group-heading'));body.append(graphics)
+            body.append(self.button('Devices & Folders…',self.show_hardware,icon='usb'))
+            body.append(self.button('Open Workspace',self.workspace,icon='folder'))
+            handle=[None]
+            def apply():
+                try:
+                    values={key:int(control.text) for key,control in controls.items()}
+                    values['memory']*=1024
+                    try:
+                        disk=self.selected_session().disk
+                        if disk.exists():
+                            info=json.loads(subprocess.check_output(['qemu-img','info','--output=json',str(disk)],timeout=5))
+                            if values['disk_gib']*1024**3 < info['virtual-size']:
+                                raise TesterError('Virtual disks can grow. Shrinking this workspace is unavailable.')
+                    except FileNotFoundError:pass
+                    self.save_settings(**values,graphics=graphics.current)
+                    handle[0].cancel();self.notify('Virtual machine settings saved.')
+                except Exception as exc:self.notify(str(exc))
+            body.append(self.button('Save Settings',apply,primary=True,icon='check'))
+            handle[0]=self.sheet('Virtual Machine',body)
 
         def advanced_closed(self, _window):
             self.advanced = None
@@ -818,13 +1109,13 @@ def launch(state=None):
                     manifest = read_manifest(path)
                     self.imported = [Path(path)] + [p for p in self.imported if p != Path(path)]
                     self.preferences.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    self.preferences.write_text(json.dumps({'images': [str(p) for p in self.imported[:16]]}))
+                    self.remember()
                     self.preferences.chmod(0o600)
                     self.catalog_targets.add(manifest['target'])
                     self.select_target(manifest['target'])
                     self.selected_images[manifest['target']] = Path(path)
                     self.update_images()
-                    self.status_label.set_label('Ready to start')
+                    self.status_label.set_label('Choose an image, then start exploring.')
                     if self.advanced:
                         self.advanced.close()
             except GLib.Error:
@@ -840,9 +1131,13 @@ def launch(state=None):
             self.window.close()
 
         def close_request(self, _window):
+            self.remember()
             if self.active():
-                self.status_label.set_label('Shut down Luma before closing. Your workspace will be saved.')
+                self.closing = True
+                self.status_label.set_label('Saving your workspace and closing…')
                 self.stack.set_visible_child_name('session')
+                if self.running() and not self.shutting_down:
+                    self.stop()
                 return True
             if self.advanced:
                 self.advanced.close()

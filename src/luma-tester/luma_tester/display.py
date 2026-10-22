@@ -82,8 +82,9 @@ class GuestDisplay(Gtk.Picture):
 
     def do_snapshot(self, snapshot):
         if self.framebuffer and self.get_paintable():
-            scale = min(self.get_width() / self.framebuffer.width,
-                        self.get_height() / self.framebuffer.height)
+            inset = 28
+            scale = min(max(1, self.get_width() - inset * 2) / self.framebuffer.width,
+                        max(1, self.get_height() - inset * 2) / self.framebuffer.height)
             width, height = self.framebuffer.width * scale, self.framebuffer.height * scale
             rect = Graphene.Rect().init((self.get_width() - width) / 2,
                 (self.get_height() - height) / 2, width, height)
@@ -91,12 +92,16 @@ class GuestDisplay(Gtk.Picture):
             outline.init_from_rect(rect, 4)
             # Draw only the screen silhouette: the changing framebuffer itself
             # is never blurred. The shared colours also handle high contrast.
-            for token, offset, blur in [('luma_float_shadow', 10, 24),
-                                        ('luma_float_shadow_near', 2, 6)]:
+            for token, offset, blur in [('luma_float_shadow', 3, 16),
+                                        ('luma_float_shadow_near', 1, 4)]:
                 found, colour = self.get_style_context().lookup_color(token)
                 if found:
+                    colour.alpha *= 0.65
                     snapshot.append_outset_shadow(outline, colour, 0, offset, 0, blur)
-        Gtk.Picture.do_snapshot(self, snapshot)
+            snapshot.save()
+            snapshot.translate(Graphene.Point().init(rect.get_x(), rect.get_y()))
+            self.get_paintable().snapshot(snapshot, width, height)
+            snapshot.restore()
 
     def open(self):
         if not self.socket_path.is_socket():
@@ -158,7 +163,7 @@ class GuestDisplay(Gtk.Picture):
         if not self.ready or not self.framebuffer:
             return None
         width, height = self.framebuffer.width, self.framebuffer.height
-        scale = min(self.get_width() / width, self.get_height() / height)
+        scale = min(max(1, self.get_width() - 56) / width, max(1, self.get_height() - 56) / height)
         if scale <= 0:
             return None
         x = (x - (self.get_width() - width * scale) / 2) / scale

@@ -69,7 +69,9 @@ def build(args):
     manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
     session = Session(manifest_path, output / 'builder-state')
     session.prepare()
-    subprocess.run(['qemu-img', 'resize', str(session.disk), '24G'], check=True)
+    info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(session.disk)]))
+    if info['virtual-size'] < 24 * 1024**3:
+        subprocess.run(['qemu-img', 'resize', str(session.disk), '24G'], check=True)
     with socket.socket() as port:
         port.bind(('127.0.0.1', 0))
         number = port.getsockname()[1]
@@ -90,7 +92,7 @@ def build(args):
             install = '''set -eu
 cd /var/tmp/luma-tester-phone-image
 [ "$(systemd-detect-virt --vm)" = kvm ]
-dnf5 -y --setopt=install_weak_deps=False install ./rpms/*.rpm wlr-randr stevia-phosh-osk-provider hunspell-en-US
+dnf5 -y --setopt=install_weak_deps=False install ./rpms/*.rpm wlr-randr stevia-phosh-osk-provider hunspell-en-US bindfs
 bash scripts/tester/guest-phone-configure.sh "$1"
 '''
             with (output / 'compose.log').open('a') as stream:

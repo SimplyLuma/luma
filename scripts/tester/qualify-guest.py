@@ -179,11 +179,7 @@ print(json.dumps(state))
                     report['available_target_selected'] = True
                 app.select_intent('develop')
                 app.select_target(target)
-                class FolderChoice:
-                    def select_folder_finish(self, _result):
-                        return Gio.File.new_for_path(str(project))
-                app.project_chosen(FolderChoice(), None)
-                assert app.project == project
+                app.save_settings(agent_ssh=True, folders=[dict(path=str(project), writable=True)])
                 app.commands.invoke('tester.open')
                 phase = 1
             elif phase == 1:

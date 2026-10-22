@@ -710,3 +710,49 @@ used that source without altering shared refs or unrelated worktrees.
   Automatic update prompts, signed public developer/release feed and non-Linux
   host qualification remain open. Next work: graphics fallback diagnosis and
   qualified developer-disk publication through the authorized integrator.
+
+- 2026-10-22 next UX iteration IN PROGRESS, uncommitted source: user requests
+  live Try/Developer sidebar toggle; remove central Project card; expose SSH,
+  copy-agent prompt, folders/audio/mic/camera; real disk snapshots and graceful
+  close/reopen; align empty state, unclipped softer shadows, remove hover tooltip,
+  icon-labelled native controls, top-left VM resources/settings and image states.
+  Owned additions luma_tester/vm.py and tests/test_vm.py. Native UI firstbbffbb20
+  failed because QA used programmatic ModeSwitch.set_current (intentionally silent);
+  actual toggle retry6ccf9169 PASSED. Screenshot review found collapsed settings
+  scroll height; fixed propagate-natural-height, pending repeat. Added SSH Switch.
+  Backend66 checks f043446e PASSED, including actual qemu-io mutation/snapshot/restore.
+- Rendering diagnosis17276534 and direct QMP comparebfb280a0 completed: native
+  compositor grim screenshots have0 black pixels; direct QMP/VNC output has black
+  tile regions (QMP capture confirmed works directly). This is software virtual
+  scanout/damage corruption, not an ARM guest: private preview Mobile is x86_64.
+  Scoped Phoc PHOC_DEBUG=damage-whole trial currently running in existing disposable
+  phone-qa-r9 overlay, job pending. It does not change base disk or physical phones.
+  Source Phoc flags confirmed from exact retained0.55.1 SRPM. Do not ship debug
+  setting or claim rendering fixed until repeated capture evidence is clean.
+- Retired only stopped/passed r22 qualification entry/tmp extraction to restore
+  reserve; packages, native corresponding sources, screenshots/reports retained.
+  Dell r22 Desktop guest running at last check; preserve it during delivery.
+
+- UX0.3.0 source now implemented; final checks747dc27d PASSED67 unit checks,
+  compile/shell checks and public native UI smoke (mode disclosure, no-image,
+  keyboard focus, settings sheet and narrow/dark allocation). Detailed UI1e6e195c
+  PASSED real8GiB setting application, fixed visible Save footer and device sheet.
+- Source actual Mobile/share runf3165e94 failed reading a share because host/guest
+  UIDs differ. Added guest-only bindfs identity bridge; retry1d1ecf50 PASSED genuine
+  touch/OSK/Home, shared edits both ways, agent SSH key enable/revoke/re-enable,
+  real SDK hotfix visible and graceful shutdown. Guest helper install does not
+  chmod/chown host projects. New phone image will include bindfs for offline use.
+- Repaint trial9e21c47a failed after restarting greetd (autologin only once per
+  boot); cold retryf008f88a functional workflow passed but black tiles remained.
+  Pixman trial11efd511 hit the same restart gate. Cold renderer diagnosticddf78308
+  confirmed actual WLR_RENDERER=pixman and0 black pixels in direct QMP output.
+  QA overlay startup script restored after that diagnostic. Exported r9 unchanged.
+- New mobile-session selects native pixman only when negotiated VirtIO GPU bit0
+  (VIRGL) is absent; normal renderer remains on3D hardware. Linux bitstring order
+  and GPU feature0 verified from upstream virtio.c and installed virtio_gpu.h.
+  Full new-image export/repeated visual qualification remains pending; do not
+  claim GPU-only effects or Mobile VirGL/ARM/physical-device qualification.
+- Current source adds PipeWire/SPA client closure and USB host module to portable
+  producer; actual portable/audio packaging validation remains pending. Camera
+  passthrough requires explicit selection/host permission; real camera and speaker
+  hardware have not been tested on the server. Existing Dell guest must be kept.

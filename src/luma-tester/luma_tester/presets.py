@@ -21,7 +21,7 @@ def load(path):
     return []
 
 
-def save(path, name, manifest_path, intent):
+def save(path, name, manifest_path, intent, settings=None):
     name = name.strip()
     if not 1 <= len(name) <= 80 or any(ord(char) < 32 for char in name):
         raise TesterError('Name the preset using 1–80 characters.')
@@ -31,6 +31,10 @@ def save(path, name, manifest_path, intent):
     manifest = read_manifest(manifest_path)
     item = dict(name=name, manifest=str(manifest_path), target=manifest['target'],
                 intent=intent, arch=manifest['arch'], image=manifest['image'])
+    if settings is not None:
+        from .vm import validate
+        from copy import deepcopy
+        item['vm'] = validate(deepcopy(settings))
     items = [item] + [old for old in load(path) if old['name'] != name]
     path = Path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
