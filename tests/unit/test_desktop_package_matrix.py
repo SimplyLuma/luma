@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -27,3 +28,20 @@ class NativeMatrix(unittest.TestCase):
             self.assertTrue((ROOT / row['recipe']).is_file())
             self.assertIn('@sha256:', row['image'])
             self.assertEqual(row['runner'].endswith('-arm'), row['architecture'] == 'aarch64')
+
+    def test_adding_a_group_does_not_rebuild_unchanged_groups(self):
+        previous = json.loads((ROOT / matrix.REGISTRY).read_text())
+        previous['groups'].pop('apk-metadata')
+        rows = matrix.matrix(ROOT, {matrix.REGISTRY}, previous)['include']
+        self.assertEqual({row['component'] for row in rows}, {'apk-metadata'})
+        self.assertEqual({row['architecture'] for row in rows}, {'x86_64', 'aarch64'})
+
+    def test_changing_a_group_rechecks_only_that_group(self):
+        previous = json.loads((ROOT / matrix.REGISTRY).read_text())
+        previous['groups']['fwupd']['paths'] = []
+        rows = matrix.matrix(ROOT, {matrix.REGISTRY}, previous)['include']
+        self.assertEqual({row['component'] for row in rows}, {'fwupd'})
+        self.assertEqual(len(rows), 2)
+
+    def test_unknown_previous_registry_checks_all_groups(self):
+        self.assertEqual(matrix.matrix(ROOT, {matrix.REGISTRY}), matrix.matrix(ROOT))

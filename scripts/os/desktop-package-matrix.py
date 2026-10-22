@@ -7,20 +7,23 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SHARED = {'config/desktop/inputs.env', 'config/os/desktop-build-groups.json',
+REGISTRY = 'config/os/desktop-build-groups.json'
+SHARED = {'config/desktop/inputs.env',
           'scripts/packages/run-in-rpm-builder.sh', 'scripts/packages/spec-release.sh',
-          'scripts/os/desktop-package-matrix.py', '.github/workflows/desktop-components.yml'}
+          '.github/workflows/desktop-components.yml'}
 
 
-def matrix(root, changed=None):
-    registry = json.loads((root / 'config/os/desktop-build-groups.json').read_text())
+def matrix(root, changed=None, previous_registry=None):
+    registry = json.loads((root / REGISTRY).read_text())
     if registry.get('schema') != 'org.projectluma.desktop-build-groups/v1':
         raise ValueError('Unknown native build group schema')
     values = dict(line.split('=', 1) for line in (root / 'config/desktop/inputs.env').read_text().splitlines()
                   if line and not line.startswith('#') and '=' in line)
     result = []
     for group, row in registry['groups'].items():
-        affected = changed is None or bool(SHARED.intersection(changed)) or any(
+        registry_changed = changed is not None and REGISTRY in changed and (
+            previous_registry is None or previous_registry.get('groups', {}).get(group) != row)
+        affected = changed is None or registry_changed or bool(SHARED.intersection(changed)) or any(
             path == row['recipe'] or any(path.startswith(prefix) for prefix in row['paths']) for path in changed)
         if not affected:
             continue
@@ -38,11 +41,19 @@ def main():
     parser.add_argument('--head', default='HEAD')
     args = parser.parse_args()
     changed = None
+    previous_registry = None
     if args.base:
         data = subprocess.check_output(['git', '-C', str(ROOT), 'diff', '--name-only', '-z',
                                         args.base, args.head], text=True)
         changed = set(filter(None, data.split('\0')))
-    print(json.dumps(matrix(ROOT, changed), separators=(',', ':')))
+        if REGISTRY in changed:
+            old = subprocess.run(['git', '-C', str(ROOT), 'show', f'{args.base}:{REGISTRY}'],
+                                 text=True, capture_output=True)
+            if old.returncode == 0:
+                previous_registry = json.loads(old.stdout)
+                if previous_registry.get('schema') != 'org.projectluma.desktop-build-groups/v1':
+                    raise ValueError('Unknown previous native build group schema')
+    print(json.dumps(matrix(ROOT, changed, previous_registry), separators=(',', ':')))
 
 
 if __name__ == '__main__':

@@ -1,11 +1,77 @@
 {
   "schema": "org.projectluma.desktop-build-groups/v1",
   "groups": {
-    "libhandy": {"recipe": "scripts/packages/build-libhandy.sh", "paths": ["patches/libhandy/"]},
-    "ibus": {"recipe": "scripts/packages/build-ibus.sh", "paths": ["patches/ibus/"]},
-    "fwupd": {"recipe": "scripts/packages/build-fwupd.sh", "paths": ["patches/fwupd/"]},
-    "plymouth": {"recipe": "scripts/packages/build-plymouth.sh", "paths": ["patches/plymouth/"]},
-    "mutter": {"recipe": "scripts/packages/build-mutter.sh", "paths": ["patches/mutter/"]},
-    "gnome-settings-daemon": {"recipe": "scripts/packages/build-gnome-settings-daemon.sh", "paths": ["patches/gnome-settings-daemon/"]}
+    "libhandy": {
+      "recipe": "scripts/packages/build-libhandy.sh",
+      "paths": [
+        "patches/libhandy/"
+      ]
+    },
+    "ibus": {
+      "recipe": "scripts/packages/build-ibus.sh",
+      "paths": [
+        "patches/ibus/"
+      ]
+    },
+    "fwupd": {
+      "recipe": "scripts/packages/build-fwupd.sh",
+      "paths": [
+        "patches/fwupd/"
+      ]
+    },
+    "plymouth": {
+      "recipe": "scripts/packages/build-plymouth.sh",
+      "paths": [
+        "patches/plymouth/"
+      ]
+    },
+    "mutter": {
+      "recipe": "scripts/packages/build-mutter.sh",
+      "paths": [
+        "patches/mutter/"
+      ]
+    },
+    "gnome-settings-daemon": {
+      "recipe": "scripts/packages/build-gnome-settings-daemon.sh",
+      "paths": [
+        "patches/gnome-settings-daemon/"
+      ]
+    },
+    "quick-view": {
+      "recipe": "scripts/packages/build-luma-quick-view.sh",
+      "paths": [
+        "patches/sushi/",
+        "tests/quick-view/",
+        "packaging/rpm/luma-quick-view.spec"
+      ]
+    },
+    "apk-metadata": {
+      "recipe": "scripts/packages/build-luma-apk-metadata.sh",
+      "paths": [
+        "src/luma-installer/apk-metadata/",
+        "packaging/rpm/luma-apk-metadata.spec"
+      ]
+    },
+    "appimage": {
+      "recipe": "scripts/packages/build-luma-appimage-compat.sh",
+      "paths": [
+        "src/luma-appimage-compat/",
+        "packaging/rpm/luma-appimage-compat.spec"
+      ]
+    },
+    "ari-runtime": {
+      "recipe": "scripts/packages/build-luma-ari-runtime.sh",
+      "paths": [
+        "packaging/rpm/luma-ari-runtime.spec"
+      ]
+    },
+    "messages-e2ee": {
+      "recipe": "scripts/packages/build-luma-messages-e2ee.sh",
+      "paths": [
+        "src/luma-messages-e2ee/",
+        "packaging/rpm/luma-messages-e2ee.spec",
+        "scripts/packages/build-luma-messages-e2ee-source.sh"
+      ]
+    }
   }
 }
