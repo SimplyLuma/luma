@@ -10,4 +10,4 @@
 # expiry, so remove the line when the pin moves or the source lands.
 #
 # NAME  VERSION-RELEASE  OWNER  EXPIRES  REASON
-luma-phosh  0.55.0-1.luma.51  mobile-lane  -  The aarch64 Phosh for the FP6. The shipped 1.luma.51 is on no pushed ref (the highest anywhere is 1.luma.58, this tree's spec is 1.luma.46); escalated to Nick on 2026-09-16. Not in the x86_64 desktop image.
+luma-phosh  0.55.0-1.luma.51  mobile-lane  -  Retained physical FP6 pin; its 1.luma.51 source is not on a pushed ref. This tree now builds 1.luma.59 with the four-favorite dock and GTK3 CSS fixes; ARM package/device qualification is required before replacing the retained pin. Not in the x86_64 desktop image.

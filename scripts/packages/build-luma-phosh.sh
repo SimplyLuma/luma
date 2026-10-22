@@ -108,6 +108,10 @@ install -m 0644 \
 install -m 0644 \
   "$repo_root/patches/phosh/0018-luma-single-owner-touch-drawers.patch" \
   "$rpmbuild_dir/SOURCES/"
+install -m 0644 \
+  "$repo_root/patches/phosh/0019-luma-bound-favorite-dock.patch" \
+  "$repo_root/patches/phosh/0020-luma-gtk3-font-weights.patch" \
+  "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/packaging/systemd/90-luma-phosh.conf" \
   "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/packaging/rpm/luma-phosh.spec" \

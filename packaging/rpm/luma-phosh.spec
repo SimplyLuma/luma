@@ -2,7 +2,7 @@
 
 Name:           luma-phosh
 Version:        0.55.0
-Release:        1.luma.46%{?dist}
+Release:        1.luma.59%{?dist}
 Summary:        Luma native handheld renderer based on Phosh
 License:        GPL-3.0-or-later
 URL:            https://gitlab.gnome.org/World/Phosh/phosh
@@ -28,10 +28,14 @@ Patch14:        0015-luma-notification-lifecycle.patch
 Patch15:        0016-luma-shared-search-client.patch
 Patch16:        0017-luma-physical-lock-carousel.patch
 Patch17:        0018-luma-single-owner-touch-drawers.patch
+Patch18:        0019-luma-bound-favorite-dock.patch
+Patch19:        0020-luma-gtk3-font-weights.patch
 
 ExclusiveArch:  aarch64
 
 BuildRequires:  gcc
+BuildRequires:  dbus-daemon
+BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  meson
 BuildRequires:  pam-devel
 BuildRequires:  pkgconfig(alsa)
@@ -109,6 +113,7 @@ install -D -m 0644 %{SOURCE3} \
   %{buildroot}%{_userunitdir}/mobi.phosh.Shell.service.d/90-luma-phosh.conf
 
 %check
+xvfb-run -a dbus-run-session -- meson test -C _build css app-grid-dock --print-errorlogs
 test -x %{buildroot}/opt/luma/phosh/libexec/phosh
 test -x %{buildroot}/opt/luma/phosh/bin/phosh-session
 test "$(%{buildroot}/opt/luma/phosh/libexec/phosh --version)" = \

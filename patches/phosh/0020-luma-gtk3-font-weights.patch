@@ -1,0 +1,29 @@
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -565,7 +565,7 @@
+ 
+ .luma-search-result:active,
+ .luma-search-result:focus { background: rgba(255, 255, 255, 0.12); }
+-.luma-search-result-title { color: @phosh_fg_color; font-size: 15px; font-weight: 650; }
++.luma-search-result-title { color: @phosh_fg_color; font-size: 15px; font-weight: 600; }
+ .luma-search-result-subtitle,
+ .luma-search-empty { color: alpha(@phosh_fg_color, .66); font-size: 13px; }
+ 
+@@ -981,7 +981,7 @@
+   box-shadow: none;
+   font-family: "Figtree";
+   font-size: 10px;
+-  font-weight: 650;
++  font-weight: 600;
+ }
+ 
+ #phosh-notifications-clear-all-btn:hover,
+@@ -1034,7 +1034,7 @@
+   box-shadow: none;
+   font-family: "Figtree";
+   font-size: 9.5px;
+-  font-weight: 650;
++  font-weight: 600;
+ }
+ 
+ phosh-notification-content .actions-area button:only-child {
