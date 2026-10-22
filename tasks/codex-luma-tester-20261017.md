@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — native Mobile/Desktop r21 delivered to Dell; integrating anonymous Hub download tickets.
+- Status: active — native Mobile/Desktop and Hub tickets qualified; Tester0.2.0 delivered and launched on Dell.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -27,6 +27,14 @@ qcow2 files, checks SHA-256/size, maintains private overlays/keys/seeds and lock
 chooses KVM or TCG, exposes localhost-only SSH, QMP controls/screenshots, source
 sync and a foreground app restart watcher. CLI remains independent of GTK/LumaUI.
 The wheel is a launcher package, not a self-contained QEMU/LumaUI/guest bundle.
+
+Latest delivered app is **Tester0.2.0 r22**, source8a8bee7d, with anonymous Hub
+attribution. AppImage283728376 bytes, SHA256
+005dee354faca7512513be2c008a2167a94bdb068e44625a44a88440ef59b9dd.
+Artifact: owned HDD appimage-tickets-r22; server packaged QA7a0cffba and live Hub
+21d9f1d7 passed. Dell delivery95f663b6 verified; launcher aa71da66 is the latest.
+See final history and docs/developer-platform/tester-hub-handoff.md. The following
+r21 milestone describes the unchanged genuine Mobile/Desktop guest assets.
 
 Current delivered Linux x86_64 candidate is combined **Desktop + genuine native
 Mobile r21**, with a bottom LumaUI ActionCenter and framebuffer silhouette shadow.
@@ -669,3 +677,36 @@ used that source without altering shared refs or unrelated worktrees.
   (Cloudflare1010). Added honest Luma-Tester/version UA; same anonymous test
   ticket retained. Full live retry21d9f1d7 downloading actual published7GB ISO;
   completion/failure verification pending. Production source never used in QA.
+
+- Tester0.2.0 source8a8bee7d built in6f63b51b; first build attemptd5694db8
+  exited75 on the shared artifact-path lease while live analytics QA ran. Retry
+  used this source worktree's lease, with no source edits during the build.
+  AppImage005dee354faca7512513be2c008a2167a94bdb068e44625a44a88440ef59b9dd,
+  283728376 bytes, owned HDD appimage-tickets-r22. Guest assets unchanged.
+- Live Hub retry21d9f1d7 PASSED: actual7,198,212,096-byte published ISO download,
+  exactSHA/size, completion, idempotent second report counted:false, cached reuse
+  issued no ticket, separate forced network failure retained as incomplete.
+  All source:test. Same ticket from real403 failure recovered successfully.
+  Private evidence root-jobs/luma-tester-user-7d1f4b7843/qualification.json.
+- Packaged0.2.0 QA7a0cffba PASSED actual AppImage entry/tool discovery and full
+  genuine native Mobile workflow including touch, OSK typing, populated Home
+  return, visible app source hotfix and graceful shutdown; software-host QA.
+  Evidence root-jobs/luma-tester-user-de63b71795/qualification.json.
+- Delivered95f663b6 verified app plus both existing sidecars. Initially preserved
+  the running Dell Desktop guest. When metadata showed that guest and r21 app had
+  stopped, launched0.2.0 via luma-preview-tester-tickets-20261022-aa71da66.service.
+  Registrationluma-preview-tester-tickets-register-20261022-c1d23768.service
+  exited0. Candidate tester-tickets-r22-20261022, existing isolated workspace kept.
+  No Dell automated tests. No production analytics, public upload or signing.
+- Read-only Dell runtime metadata before its Desktop guest stopped showed
+  software fallback with an empty GPU initialization failure detail. Do not claim
+  that running session was VirGL. Server QMP-stdio probe fee2a635 returned valid
+  status5/5; it does not reproduce that Dell GPU failure. GPU fallback diagnosis
+  remains open; no speculative fix or Dell automated graphics probe performed.
+- Hub handoff docs/developer-platform/tester-hub-handoff.md records concrete
+  integration and remaining catalog agreement. Public IDs currently name ISOs;
+  instant-start developer disks need distinct experience/architecture artifacts.
+  Current manifests cannot honestly attribute private qcow2 disks to those ISOs.
+  Automatic update prompts, signed public developer/release feed and non-Linux
+  host qualification remain open. Next work: graphics fallback diagnosis and
+  qualified developer-disk publication through the authorized integrator.
