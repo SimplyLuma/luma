@@ -7,3 +7,4 @@ Icon=io.luma.Tester
 Terminal=false
 Categories=Development;Emulator;
 StartupNotify=true
+StartupWMClass=io.luma.Tester

@@ -20,7 +20,7 @@ try:
     from luma_appkit import icons
     from luma_appkit.content_cards import Card
     from luma_appkit.content_type import apply_type
-    from luma_appkit.widgets import AppWindow, Island, ScrollView, add_style_sheet
+    from luma_appkit.widgets import AppWindow, IconButton, Island, ScrollView, add_style_sheet
 except (ImportError, ValueError) as exc:
     raise ImportError('Luma Tester requires the LumaUI runtime (luma-developer-platform).') from exc
 
@@ -29,6 +29,9 @@ from .display import GuestDisplay
 
 
 def launch(state=None):
+    GLib.set_prgname('io.luma.Tester')
+    GLib.set_application_name('Luma Tester')
+    Gtk.Window.set_default_icon_name('io.luma.Tester')
     class Application(Adw.Application):
         def __init__(self):
             super().__init__(application_id='io.luma.Tester')
@@ -78,6 +81,7 @@ def launch(state=None):
             self.commands = CommandRegistry((CommandGroup(None, (
                 Command('tester.try', 'Try Luma', lambda: self.select_intent('try'), 'play'),
                 Command('tester.develop', 'Develop for Luma', lambda: self.select_intent('develop'), 'code'),
+                Command('tester.back', 'Back', lambda: self.stack.set_visible_child_name('welcome'), 'arrow-left', shortcut=('Alt', 'Left')),
                 Command('tester.open', 'Open Luma', self.start, 'play', enabled=lambda: not self.active()),
                 Command('tester.advanced', 'Advanced…', self.show_advanced, 'settings'),
                 Command('tester.pause', 'Pause or resume', self.pause, 'pause', enabled=lambda: self.running()),
@@ -103,12 +107,23 @@ def launch(state=None):
             self.window.present()
             GLib.timeout_add_seconds(2, self.refresh)
 
-        def page(self, name):
+        def page(self, name, back=False):
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
                               margin_start=40, margin_end=40, margin_top=32, margin_bottom=32,
                               valign=Gtk.Align.CENTER)
             clamp = Adw.Clamp(maximum_size=580, child=content, vexpand=True)
-            self.stack.add_named(ScrollView(clamp, fade_top=False, fade_bottom=False), name)
+            scroll = ScrollView(clamp, fade_top=False, fade_bottom=False)
+            if back:
+                frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+                navigation = Gtk.Box(margin_start=16, margin_end=16, margin_top=12)
+                button = IconButton('go-previous-symbolic', 'Back', context=self.window.context, quiet=True)
+                button.connect('clicked', lambda _button: self.commands.invoke('tester.back'))
+                navigation.append(button)
+                frame.append(navigation)
+                frame.append(scroll)
+                self.stack.add_named(frame, name)
+            else:
+                self.stack.add_named(scroll, name)
             return content
 
         def heading(self, page, title, subtitle):
@@ -150,17 +165,11 @@ def launch(state=None):
             page.append(choices)
 
         def build_targets(self):
-            page = self.page('targets')
-            back = self.button('Back', lambda: self.stack.set_visible_child_name('welcome'))
-            back.add_css_class('flat')
-            back.set_halign(Gtk.Align.START)
-            page.append(back)
-            self.heading(page, 'Where would you like to start?',
-                         'Desktop is available in this preview.' if self.catalog_targets == {'desktop'}
-                         else 'The same Luma, on a different screen.')
+            page = self.page('targets', back=True)
+            self.heading(page, 'Where would you like to start?', None)
             choices = Gtk.Box(spacing=16, homogeneous=True)
-            self.mobile_button = self.choice('Mobile', 'Luma in your hand.', 'smartphone', lambda: self.select_target('mobile'), self.target == 'mobile', toggle=True)
-            self.desktop_button = self.choice('Desktop', 'Space for everything.', 'monitor', lambda: self.select_target('desktop'), self.target == 'desktop', toggle=True)
+            self.mobile_button = self.choice('Mobile', None, 'smartphone', lambda: self.select_target('mobile'), self.target == 'mobile', toggle=True)
+            self.desktop_button = self.choice('Desktop', None, 'monitor', lambda: self.select_target('desktop'), self.target == 'desktop', toggle=True)
             self.desktop_button.set_group(self.mobile_button)
             choices.append(self.mobile_button)
             choices.append(self.desktop_button)
@@ -173,7 +182,9 @@ def launch(state=None):
             page.append(self.start_button)
             self.mobile_button.set_sensitive(not self.catalog_targets or 'mobile' in self.catalog_targets)
             self.desktop_button.set_sensitive(not self.catalog_targets or 'desktop' in self.catalog_targets)
-            self.target_status = self.label('Your workspace will be here when you return.', muted=True, centered=True)
+            self.target_status = self.label('', muted=True, centered=True)
+            self.target_status.set_visible(False)
+            self.target_status.connect('notify::label', lambda label, _property: label.set_visible(bool(label.get_label())))
             page.append(self.target_status)
 
         def build_session(self):
@@ -273,6 +284,7 @@ def launch(state=None):
                 self.stack.set_visible_child_name('session')
                 return
             self.intent = intent
+            self.target_status.set_label('')
             self.project_button.set_visible(intent == 'develop')
             self.developer_card.set_visible(intent == 'develop')
             self.stack.set_visible_child_name('targets')
@@ -281,6 +293,7 @@ def launch(state=None):
             if self.active():
                 return
             self.target = target
+            self.target_status.set_label('')
             for button, name in [(self.mobile_button, 'mobile'), (self.desktop_button, 'desktop')]:
                 (button.add_css_class if name == target else button.remove_css_class)('selected')
                 button.set_active(name == target)
@@ -512,7 +525,7 @@ def launch(state=None):
                     self.mobile_button.set_sensitive('mobile' in self.catalog_targets)
                     self.desktop_button.set_sensitive('desktop' in self.catalog_targets)
                     self.select_target(manifest['target'])
-                    self.target_status.set_label('Your Luma image is ready to open.')
+                    self.target_status.set_label('')
                     if self.advanced:
                         self.advanced.close()
             except GLib.Error:

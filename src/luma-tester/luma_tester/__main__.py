@@ -13,6 +13,8 @@ def main():
     parser.add_argument('--state', help='Private data directory (or LUMA_TESTER_HOME)')
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('gui', help='Open the native launcher')
+    integration = sub.add_parser('install-desktop', help='Add this portable build to Applications and the dock')
+    integration.add_argument('--data-home', type=Path, help='Desktop session data directory')
     publish = sub.add_parser('manifest', help='Describe a prepared cloud-init enabled Luma VM disk')
     publish.add_argument('disk', type=Path)
     publish.add_argument('--output', required=True, type=Path)
@@ -53,6 +55,10 @@ def main():
         if args.action == 'gui':
             from .gui import launch
             return launch(args.state)
+        if args.action == 'install-desktop':
+            from .desktop import install
+            print(install(data_home=args.data_home))
+            return 0
         if args.action == 'manifest':
             disk = args.disk.resolve()
             # Materialize overlays with `qemu-img convert` before making a shareable manifest.
