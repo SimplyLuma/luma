@@ -205,6 +205,9 @@ grep -Fq '<property name="animation-duration">280</property>' src/ui/lockscreen.
 %{_userunitdir}/mobi.phosh.Shell.service.d/90-luma-phosh.conf
 
 %changelog
+* Thu Oct 22 2026 Luma contributors - 0.55.0-1.luma.59
+- Limit the dock to four favorites and use GTK3-compatible font weights.
+
 * Tue Sep 01 2026 Project Luma <maintainers@projectluma.org> - 0.55.0-1.luma.46
 - Remove the capture-phase panel swipe and lockscreen brightness swipe that
   competed with the two continuously tracked physical drawer gestures.

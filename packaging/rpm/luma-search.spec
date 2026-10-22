@@ -110,6 +110,9 @@ install -D -m 0644 %{SOURCE10} \
 glib-compile-schemas %{_datadir}/glib-2.0/schemas &>/dev/null || :
 
 %changelog
+* Thu Oct 22 2026 Luma contributors - 0.1.0-1.luma.9
+- Keep Search available when optional applications or Settings panels are missing.
+
 * Tue Sep 22 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.7
 - Offer Filer's places (Applications, Home, Trash, the standard folders,
   Network, bookmarks) by name and everyday words, in Filer's labels, and

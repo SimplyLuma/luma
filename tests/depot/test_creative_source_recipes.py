@@ -31,8 +31,8 @@ class CreativeRecipes(unittest.TestCase):
             'creative_source_sealer', ROOT / 'scripts/depot/seal-first-party-source.py')
         sealer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(sealer)
-        if not any((ROOT / "packaging/flatpak/apps" / f"org.projectluma.{app}" /
-                    f"org.projectluma.{app}.yml").is_file() for app in APPS):
+        if not any((ROOT / sealer.APPS[app]['source_tree']).is_dir()
+                   for app in APPS if app in sealer.APPS):
             raise unittest.SkipTest("Creative/Office source recipes are maintained outside the OS tree")
         cls.sealer = sealer
         cls.packets = {}

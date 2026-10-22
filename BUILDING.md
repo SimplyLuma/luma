@@ -133,3 +133,11 @@ Creative/Office/standalone Imager producers are separate products: their absent
 source trees are not required by the OS source check. Their remaining shared
 catalogue/update metadata checks still run; external engine suites report an
 explicit product-scope skip when those sources are not present.
+
+Use a private, root-owned scratch directory outside the builder's home for
+`TMPDIR` when running publisher custody tests. On container images where
+`/root` is a symlink, provide a real root home for those filesystem-boundary
+fixtures. GTK geometry tests need a display large enough for their desktop
+windows, for example `xvfb-run -a -s '-screen 0 2560x1600x24'`, with
+`GDK_SCALE=1`. These are builder-fixture requirements, not changes to the
+installed product's filesystem or display settings.
