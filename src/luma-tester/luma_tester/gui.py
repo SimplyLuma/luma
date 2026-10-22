@@ -81,6 +81,19 @@ def launch(state=None):
             self.home_busy = False
             self.ssh_busy = False
             self.selected_images = {}
+            self.architectures = {}
+            self.selected_variants = {}
+            try:
+                preferences=json.loads(self.preferences.read_text())
+                self.architectures={key:value for key,value in preferences.get("architectures",{}).items()
+                    if key in experiences.CHOICES and value in ("auto","x86_64","aarch64")}
+                for key,value in preferences.get("selected_variants",{}).items():
+                    target,architecture=key.split(":")
+                    image=read_manifest(value)
+                    if experiences.compatible(target,image) and image["arch"]==architecture:
+                        self.selected_variants[key]=Path(value)
+                        if Path(value) not in self.imported:self.imported.append(Path(value))
+            except (OSError,ValueError,TypeError,TesterError,AttributeError):pass
             try:
                 saved=json.loads(self.preferences.read_text()).get('selected_images',{})
                 for target,path in saved.items():
@@ -132,12 +145,15 @@ def launch(state=None):
 
         def remember(self):
             selected=dict(self.selected_images)
+            variants=dict(self.selected_variants)
             chosen=self.select_image() if self.session else None
             if (self.session and chosen and read_manifest(chosen)['id']==self.session.manifest['id']
                     and (self.session.directory/'manifest.json').is_file()):
                 selected[self.target]=self.session.directory/'manifest.json'
+                variants[self.target+':'+self.session.manifest['arch']]=selected[self.target]
             vm.atomic_json(self.preferences, dict(images=[str(p) for p in self.imported[:16]],
                 selected_images={target:str(path) for target,path in selected.items()},
+                architectures=self.architectures, selected_variants={key:str(path) for key,path in variants.items()},
                 intent=self.intent, target=self.target, workspace=True))
 
         def fit_selector(self, selector):
@@ -319,12 +335,15 @@ def launch(state=None):
             self.build_menu = Gtk.MenuButton(label='Images', tooltip_text='Choose an image')
             self.build_menu.get_first_child().add_css_class('lumaui-bar-button')
             self.build_menu.get_first_child().add_css_class('dropdown')
+            self.arch_menu = Gtk.MenuButton(label='Automatic', tooltip_text='Guest CPU architecture')
+            self.arch_menu.get_first_child().add_css_class('lumaui-bar-button')
+            self.arch_menu.get_first_child().add_css_class('dropdown')
             self.run_button = self.button('Start', self.start, primary=True, icon='play')
             self.pause_button = self.button('Pause', self.pause, icon='pause')
             self.shutdown_button = self.button('Shut Down', self.stop, icon='power')
             self.home_button = self.button('Home', self.home, icon='house')
             self.home_button.set_visible(False)
-            self.toolbar.show_bar([BarWidget(self.sidebar_toggle), SEPARATOR, BarWidget(self.build_menu),
+            self.toolbar.show_bar([BarWidget(self.sidebar_toggle), SEPARATOR, BarWidget(self.arch_menu), BarWidget(self.build_menu),
                 SEPARATOR, BarWidget(self.home_button), BarWidget(self.run_button),
                 BarWidget(self.pause_button), BarWidget(self.shutdown_button)])
             self.toolbar.set_visible(False)
@@ -368,13 +387,34 @@ def launch(state=None):
             self.stack.set_visible_child_name('session')
             self.update_images()
 
+        def select_architecture(self, architecture):
+            if self.active():
+                Toast.show(self.island, 'Shut down Luma to change architecture.', kind='warning')
+                return
+            if architecture not in ('auto','x86_64','aarch64'):
+                return
+            self.architectures[self.target]=architecture
+            self.update_images()
+            self.remember()
+
+        def remember_image(self, target, path):
+            self.selected_images[target]=Path(path)
+            self.selected_variants[target+':'+read_manifest(path)['arch']]=Path(path)
+
         def update_images(self):
+            architecture=self.architectures.get(self.target,'auto')
+            labels={'auto':'Automatic','x86_64':'x86-64','aarch64':'ARM64'}
+            self.arch_menu.set_label(labels[architecture])
+            choices=tuple(Command('arch.'+key, label, lambda value=key:self.select_architecture(value),
+                checked=lambda value=key:self.architectures.get(self.target,'auto')==value,
+                enabled=lambda:not self.active()) for key,label in labels.items())
+            self.arch_menu.set_popover(Menu(CommandRegistry((CommandGroup('Architecture',choices),)), variant='compact'))
             self.image_paths = []
             names = []
             for path in self.available_manifests():
                 try:
                     manifest = read_manifest(path)
-                    if experiences.compatible(self.target,manifest):
+                    if experiences.compatible(self.target,manifest) and (architecture=='auto' or manifest['arch']==architecture):
                         self.image_paths.append(path)
                         names.append((manifest.get('build') or manifest['id'])+' · '+('ARM64' if manifest['arch']=='aarch64' else 'x86-64'))
                 except (OSError, TesterError, ValueError, TypeError):
@@ -397,7 +437,10 @@ def launch(state=None):
             self.arch_notice.set_visible(bool(names) and bool(self.arch_notice.get_label()))
             if not self.active():
                 title = experiences.LABELS[self.target]
-                self.status_label.set_label('Choose an image, then start exploring.' if selected else 'Add an ARM64 ISO or developer image.' if self.target in ('tablet','tv','smart-device') else f'{title} is coming soon.')
+                missing=(f'Add an {labels[architecture]} Luma {title} image.' if architecture!='auto' else
+                    'Add an ARM64 ISO or developer image.' if self.target in ('tablet','tv','smart-device') else f'Add a Luma {title} image.')
+                self.status_label.set_label('Choose an image, then start exploring.' if selected else missing)
+                self.run_button.set_sensitive(bool(selected))
 
             self.refresh_preset_rows()
 
@@ -416,7 +459,7 @@ def launch(state=None):
                 names=[read_manifest(path).get('build') or path.stem for path in self.image_paths]
             groups=[]
             included=[p for p in self.image_paths if p not in self.imported]
-            if self.target in ('tablet','tv','smart-device'):
+            if self.target in ('tablet','tv','smart-device') and self.architectures.get(self.target,'auto')=='auto':
                 included=[p for p in included if read_manifest(p)['arch']=='aarch64']
             if included:
                 latest=included[0]
@@ -442,8 +485,8 @@ def launch(state=None):
                 return
             index = self.image_selector.get_selected()
             if index < len(self.image_paths):
-                self.selected_images[self.target] = self.image_paths[index]
-                self.update_build_menu()
+                self.remember_image(self.target, self.image_paths[index])
+                self.update_images()
                 self.remember()
 
         def name_preset(self):
@@ -490,7 +533,8 @@ def launch(state=None):
                 path = presets.resolve(item)
                 if path not in self.available_manifests():
                     self.imported.append(path)
-                self.selected_images[item['target']] = path
+                self.remember_image(item['target'],path)
+                self.architectures[item['target']]=read_manifest(path)['arch']
                 if 'vm' in item:
                     self.settings = vm.save(data_root(state), item['vm'])
                 self.select_intent(item['intent'])
@@ -688,10 +732,12 @@ def launch(state=None):
             return paths
 
         def select_image(self):
-            selected = self.selected_images.get(self.target)
+            architecture=self.architectures.get(self.target,'auto')
+            selected = self.selected_variants.get(self.target+':'+architecture, self.selected_images.get(self.target))
             if selected in self.available_manifests():
                 try:
-                    if experiences.compatible(self.target,read_manifest(selected)):
+                    image=read_manifest(selected)
+                    if experiences.compatible(self.target,image) and (architecture=='auto' or image['arch']==architecture):
                         return selected
                 except (OSError, TesterError, ValueError, TypeError):
                     pass
@@ -700,7 +746,7 @@ def launch(state=None):
             for path in self.available_manifests():
                 try:candidates.append((path,read_manifest(path)))
                 except (OSError,TesterError,ValueError,TypeError):continue
-            return experiences.select(self.target,candidates,native)
+            return experiences.select(self.target,candidates,native,architecture)
 
         def active(self):
             return self.busy or bool(self.child and self.child.poll() is None) or self.running()
@@ -829,6 +875,7 @@ def launch(state=None):
             self.image_selector.set_sensitive(not active and bool(self.image_paths))
             self.preset_selector.set_sensitive(not active and bool(self.saved_presets))
             self.build_menu.set_sensitive(not active)
+            self.arch_menu.set_sensitive(not active)
             self.preset_heading.action_button.set_sensitive(not active and bool(self.image_paths))
             for row in self.preset_rows:
                 row.set_sensitive(not active and hasattr(row, 'preset_index'))
@@ -1258,7 +1305,8 @@ def launch(state=None):
                 self.preferences.chmod(0o600)
                 self.catalog_targets.add(manifest['target'])
                 target=self.target if experiences.compatible(self.target,manifest) else manifest['target']
-                self.selected_images[target] = Path(path)
+                self.remember_image(target,path)
+                self.architectures[target]=manifest['arch']
                 self.select_target(target)
                 self.update_images()
                 self.status_label.set_label('Choose an image, then start exploring.')
@@ -1270,7 +1318,7 @@ def launch(state=None):
             body.append(self.label(path.name,'group-heading'))
             body.append(self.label('Choose the CPU architecture of this ISO.',muted=True))
             arch=ModeSwitch([('aarch64','ARM64'),('x86_64','x86-64')],
-                current=experiences.preferred_arch(self.target,host_arch()),labels_only=True,fill=True,label='ISO architecture')
+                current=self.architectures.get(self.target) if self.architectures.get(self.target) in ('x86_64','aarch64') else experiences.preferred_arch(self.target,host_arch()),labels_only=True,fill=True,label='ISO architecture')
             body.append(arch)
             body.append(self.label('Use a generic UEFI image. Raspberry Pi-specific disk images require their own hardware profile.',muted=True))
             handle=[None]

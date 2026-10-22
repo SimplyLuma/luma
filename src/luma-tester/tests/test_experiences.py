@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from luma_tester import experiences, presets, vm
-from luma_tester.core import Session, read_manifest
+from luma_tester.core import Session, read_manifest, TesterError
 
 
 class ExperienceTests(unittest.TestCase):
@@ -22,6 +22,19 @@ class ExperienceTests(unittest.TestCase):
         self.assertEqual(experiences.select('desktop',[x,arm],'aarch64'),'arm')
         self.assertIsNone(experiences.select('mobile',[arm,x],'aarch64'))
         self.assertEqual(experiences.select('mobile',[phone,x],'x86_64'),'phone')
+
+    def test_explicit_architecture_overrides_policy_without_target_fallback(self):
+        images=[('desktop-x86',dict(target='desktop',arch='x86_64')),
+                ('phone-x86',dict(target='mobile',arch='x86_64')),
+                ('desktop-arm',dict(target='desktop',arch='aarch64'))]
+        self.assertEqual(experiences.select('mobile',images,'x86_64','x86_64'),'phone-x86')
+        self.assertIsNone(experiences.select('mobile',images,'x86_64','aarch64'))
+        for mode in ('tablet','tv','smart-device'):
+            self.assertEqual(experiences.select(mode,images,'x86_64','x86_64'),'desktop-x86')
+            self.assertEqual(experiences.select(mode,images,'x86_64','auto'),'desktop-arm')
+        self.assertEqual(experiences.select('desktop',images,'aarch64','x86_64'),'desktop-x86')
+        with self.assertRaises(TesterError):
+            experiences.select('mobile',images,'x86_64','invalid')
 
     def test_iso_disk_firmware_presets_and_guest_controls(self):
         if not all(shutil.which(x) for x in ('qemu-img','xorriso','ssh-keygen')):self.skipTest('QEMU tools required')

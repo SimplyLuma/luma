@@ -322,3 +322,18 @@ Linux x86-64 portable builders can include ARM guest support using an installed
 extracted matching packages. The producer checks extracted files against RPM
 digests and keeps the QEMU loader, modules, dependencies and firmware together.
 This adds ARM guests; macOS/Windows host packaging remains separately qualified.
+
+### Choose a guest architecture
+
+Use the architecture menu beside **Images** to choose **Automatic**, **x86-64**
+or **ARM64** independently for each experience. Automatic prefers the host CPU for
+Desktop and ARM for Mobile, with the qualified x86 Mobile image as a fallback.
+Tablet, TV and Smart Home default to ARM. An explicit CPU choice only lists images
+for that CPU; it never substitutes a Desktop image for Mobile.
+
+On an x86 host, x86 Mobile supports faster UI iteration; switch to ARM64 when a
+compatible ARM Mobile developer image is available to test the target build.
+Cross-architecture guests use emulation and can be slower. Stop the guest before
+changing architecture. Each image retains its own disk, snapshots and firmware
+state; changing CPUs does not convert an existing workspace. Presets pin the exact
+image and restore its architecture. The choice is remembered per experience.

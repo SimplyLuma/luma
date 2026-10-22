@@ -17,8 +17,12 @@ def preferred_arch(experience, host):
     return 'aarch64' if experience in ARM_FIRST else host
 
 
-def select(experience, images, host):
+def select(experience, images, host, architecture='auto'):
     choices = [p for p in images if compatible(experience, p[1])]
+    if architecture not in ('auto', 'x86_64', 'aarch64'):
+        raise TesterError('Choose Automatic, x86-64 or ARM64.')
+    if architecture != 'auto':
+        return next((path for path, image in choices if image['arch'] == architecture), None)
     preferred = preferred_arch(experience, host)
     # A TV/home choice must not silently become an x86 machine on an x86 host.
     if experience in ('tv','smart-device','tablet'):

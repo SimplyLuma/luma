@@ -873,3 +873,16 @@ used that source without altering shared refs or unrelated worktrees.
   QEMU guest, register and launch using the same tester-display-20261017 isolation.
   No automatic retry daemon, publication, signing, OS interface flags or physical
   device changes were performed. Source clean after this evidence note commit.
+
+- 2026-10-22 architecture picker: native LumaUI menu beside Images exposes
+  Automatic/x86-64/ARM64, per-experience CPU and per-CPU remembered image selection.
+  Explicit selections filter images with no cross-CPU or Mobile/Desktop fallback;
+  changing CPU while running is blocked. Presets restore their image's CPU and
+  existing image-specific disks/snapshots remain separate. Generic TV/Home/Tablet
+  still default to ARM, but explicit x86 is now available for iteration.
+- Source check43877e04 passed72 units, UI exposed startup initialization order;
+  fixed. Retry2a1739de passed72 units and actual native GUI architecture choices,
+  missing ARM Mobile state, per-CPU selection, running guard, per-experience
+  preference and reconstructed application preferences. No ARM Mobile OS image
+  exists in the qualified catalog. Dell reachable; no running QEMU guest observed.
+  Next: package0.4.1/r26, server qualification, then requested manual Dell launch.
