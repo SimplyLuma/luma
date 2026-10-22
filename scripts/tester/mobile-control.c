@@ -16,6 +16,21 @@ typedef struct {
   guint attempts;
 } PendingHome;
 
+static void
+suppress_pointer_tooltips (GtkWidget *widget, gpointer unused)
+{
+  (void) unused;
+  /* The phone uses touch. A parked emulated pointer can otherwise open a
+   * tooltip after its parent folds; Wayland promotes that orphan surface to
+   * an app window and the phone correctly folds Home to reveal the new app.
+   * Remove pointer-only hints from the simulator shell, leaving app processes
+   * and the native Home/Library renderer unchanged. */
+  gtk_widget_set_tooltip_text (widget, NULL);
+  gtk_widget_set_has_tooltip (widget, FALSE);
+  if (GTK_IS_CONTAINER (widget))
+    gtk_container_forall (GTK_CONTAINER (widget), suppress_pointer_tooltips, NULL);
+}
+
 static gboolean
 activate_home (GtkWidget *home)
 {
@@ -84,6 +99,7 @@ method_call (GDBusConnection *connection, const char *sender, const char *path,
   }
   GType type = g_type_from_name ("PhoshHome");
   GList *windows = gtk_window_list_toplevels ();
+  g_list_foreach (windows, (GFunc) suppress_pointer_tooltips, NULL);
   GtkWidget *home = NULL;
   for (GList *item = windows; item; item = item->next) {
     if (type && G_TYPE_CHECK_INSTANCE_TYPE (item->data, type)) {
