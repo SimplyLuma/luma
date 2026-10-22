@@ -13,6 +13,7 @@ static GDBusNodeInfo *info;
 typedef struct {
   GtkWidget *home;
   GDBusMethodInvocation *invocation;
+  guint attempts;
 } PendingHome;
 
 static gboolean
@@ -48,6 +49,27 @@ finish_home (gpointer data)
   return G_SOURCE_REMOVE;
 }
 
+static gboolean
+wait_folded (gpointer data)
+{
+  PendingHome *pending = data;
+  gint state = 0;
+  GParamSpec *spec = g_object_class_find_property (G_OBJECT_GET_CLASS (pending->home), "drag-state");
+  if (spec && G_IS_PARAM_SPEC_ENUM (spec)) {
+    g_object_get (pending->home, "drag-state", &state, NULL);
+    GEnumValue *value = g_enum_get_value (G_PARAM_SPEC_ENUM (spec)->enum_class, state);
+    if (value && !g_str_equal (value->value_nick, "folded") && pending->attempts++ < 30)
+      return G_SOURCE_CONTINUE;
+  }
+  /* Synchronize the public Home state with the compositor's completed fold
+   * before requesting its native unfold. A keyboard resize can otherwise
+   * leave the two cached states disagreeing and make ShowHome a no-op. */
+  g_object_notify (G_OBJECT (pending->home), "drag-state");
+  activate_home (pending->home);
+  g_timeout_add (200, finish_home, pending);
+  return G_SOURCE_REMOVE;
+}
+
 static void
 method_call (GDBusConnection *connection, const char *sender, const char *path,
              const char *interface, const char *method, GVariant *parameters,
@@ -70,7 +92,10 @@ method_call (GDBusConnection *connection, const char *sender, const char *path,
     }
   }
   g_list_free (windows);
-  if (!home || !activate_home (home)) {
+  GParamSpec *state_spec = home ? g_object_class_find_property (G_OBJECT_GET_CLASS (home), "state") : NULL;
+  GEnumValue *folded = state_spec && G_IS_PARAM_SPEC_ENUM (state_spec) ?
+    g_enum_get_value_by_nick (G_PARAM_SPEC_ENUM (state_spec)->enum_class, "folded") : NULL;
+  if (!home || !folded) {
     g_clear_object (&home);
     g_dbus_method_invocation_return_dbus_error (invocation,
       "org.project_luma.Tester1.NotReady", "The pinned native Home action is unavailable.");
@@ -79,7 +104,8 @@ method_call (GDBusConnection *connection, const char *sender, const char *path,
   PendingHome *pending = g_new0 (PendingHome, 1);
   pending->home = home;
   pending->invocation = g_object_ref (invocation);
-  g_timeout_add (150, finish_home, pending);
+  g_object_set (home, "state", folded->value, NULL);
+  g_timeout_add (50, wait_folded, pending);
 }
 
 static const GDBusInterfaceVTable vtable = { .method_call = method_call };
@@ -103,7 +129,8 @@ G_MODULE_EXPORT void
 gtk_module_init (gint *argc, gchar ***argv)
 {
   (void) argc; (void) argv;
-  if (g_strcmp0 (g_getenv ("LUMA_TESTER_CONTROL"), "1") == 0)
+  if (g_strcmp0 (g_getenv ("LUMA_TESTER_CONTROL"), "1") == 0 &&
+      g_strcmp0 (g_get_prgname (), "phosh") == 0)
     g_bus_own_name (G_BUS_TYPE_SESSION, "org.project_luma.Tester",
       G_BUS_NAME_OWNER_FLAGS_NONE, bus_acquired, NULL, NULL, NULL, NULL);
 }

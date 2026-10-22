@@ -11,6 +11,10 @@ root=/var/tmp/luma-tester-phone-image
 [ -x /opt/luma/phosh/bin/phosh-session ]
 [ -x /usr/bin/phoc ]
 install -d /etc/ld.so.conf.d /etc/systemd/user /etc/phosh
+install -d /etc/cloud/cloud.cfg.d
+# Export removes all host keys. Keep the first boot-generated identity stable
+# when cloud-init rechecks its NoCloud seed; runtime host-key pinning stays strict.
+printf '%s\n' 'ssh_deletekeys: false' >/etc/cloud/cloud.cfg.d/99-luma-tester-ssh.cfg
 printf '%s\n' /opt/luma/phosh/lib64 >/etc/ld.so.conf.d/luma-tester-phosh.conf
 ldconfig
 glib-compile-schemas --strict /opt/luma/phosh/share/glib-2.0/schemas
