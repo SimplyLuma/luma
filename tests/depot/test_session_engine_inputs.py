@@ -12,6 +12,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / 'packaging/flatpak/apps/org.projectluma.Session/prepare-engine-inputs.py'
+if not HELPER.is_file():
+    raise unittest.SkipTest("Session engine sources belong to the separate Creative product")
 spec = importlib.util.spec_from_file_location('session_engine_inputs', HELPER)
 engine = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(engine)

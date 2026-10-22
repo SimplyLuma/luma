@@ -843,7 +843,7 @@ class EngineTests(unittest.TestCase):
             engine, "wait_for_application_service"
         ) as wait, mock.patch.object(
             engine, "_run"
-        ) as run, mock.patch.object(
+        ) as run, mock.patch("luma_android.engine.surface_treatment", return_value="light"), mock.patch.object(
             engine, "_run_as_android_package_manager"
         ) as policy:
             engine.ensure_ready(multi_window=True, timeout=2, detached=True)

@@ -51,7 +51,7 @@
 #
 #   dnf install bash git-core python3 python3-gobject python3-pyyaml \
 #               dbus-daemon gnupg2 ostree rsync util-linux
-#   PYTHONPATH=src/luma-android:src/luma-platform/sdk:src/luma-platform/broker:\
+#   PYTHONPATH=src/luma-android:src/luma-platform/appkit:src/luma-platform/sdk:src/luma-platform/broker:\
 #              src/luma-relay:src/luma-mods:src/luma-shell-state:src/prairie-core
 #   run under dbus-run-session
 #
@@ -215,7 +215,7 @@ run_check "tools/check-repository.sh" tools/check-repository.sh \
 # and its failure is fatal. Move the date deliberately if the triage has not
 # happened; do not delete this block.
 tests_unit_excluded_until=${LUMA_TESTS_UNIT_EXCLUDED_UNTIL:-2026-10-04}
-PYTHONPATH=${PYTHONPATH:-src/luma-android:src/luma-platform/sdk:src/luma-platform/broker:src/luma-relay:src/luma-mods:src/luma-shell-state:src/prairie-core}
+PYTHONPATH=${PYTHONPATH:-src/luma-android:src/luma-platform/appkit:src/luma-platform/sdk:src/luma-platform/broker:src/luma-relay:src/luma-mods:src/luma-shell-state:src/prairie-core}
 export PYTHONPATH PYTHONDONTWRITEBYTECODE=1
 if [ "$(date -u +%Y-%m-%d)" \< "$tests_unit_excluded_until" ]; then
   unavailable="${unavailable}unittest discover tests/unit (excluded until $tests_unit_excluded_until: suite is red on work/os-release-pipeline, see the block above)

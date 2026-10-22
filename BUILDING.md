@@ -124,3 +124,12 @@ Use the script's documented Fedora dependencies, a D-Bus session, and a display
 (or `xvfb-run` on a headless builder) for the GTK tests. A successful source check
 is not package, device, installer or release qualification. `--backfill` records
 missing historical checks as unavailable; it is not the normal public workflow.
+
+The complete source-drop suites also include GTK/EDS/LumaAppearance integration
+and root-owned publisher boundary tests. Run them in the isolated native builder
+with the Luma libraries installed, as root inside that builder; a stock host's
+missing typelibs or unprivileged account cannot qualify those boundaries.
+Creative/Office/standalone Imager producers are separate products: their absent
+source trees are not required by the OS source check. Their remaining shared
+catalogue/update metadata checks still run; external engine suites report an
+explicit product-scope skip when those sources are not present.
