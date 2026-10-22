@@ -427,7 +427,7 @@ def launch(state=None):
                 self.return_button.set_label('Show Luma')
                 self.return_button.set_visible(True)
                 if self.stack.get_visible_child_name() != 'live':
-                    self.window.set_default_size(*( (840, 920) if self.target == 'mobile' else (1280, 820) ))
+                    self.window.set_default_size(*( (1000, 920) if self.target == 'mobile' else (1280, 820) ))
                 self.stack.set_visible_child_name('live')
             return False
 
