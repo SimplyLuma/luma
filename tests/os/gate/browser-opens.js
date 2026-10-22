@@ -6,6 +6,7 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
 Gio._promisify(Gio.Subprocess.prototype, 'wait_async', 'wait_finish');
+Gio._promisify(Gio.DBusConnection.prototype, 'call', 'call_finish');
 
 const OUT = GLib.getenv('BROWSER_GATE_OUT');
 const URL = GLib.getenv('BROWSER_GATE_URL');
@@ -65,11 +66,15 @@ async function launch(url, requirePage) {
         throw new Error(`graphical QA session did not start: ${session.stderr}`);
     const target=await capture(launcher.spawnv(['/usr/bin/systemctl','--user','is-active','graphical-session.target']));
     if (!target.ok || target.stdout.trim() !== 'active') throw new Error('QA graphical-session target is not active');
-    const portal=await capture(launcher.spawnv(['/usr/bin/timeout','-k','5','90',
-        '/usr/bin/gdbus','call','--session','--dest','org.freedesktop.portal.Desktop',
-        '--object-path','/org/freedesktop/portal/desktop',
-        '--method','org.freedesktop.portal.Settings.ReadAll','[]']));
-    if (!portal.ok) throw new Error(`QA desktop portal did not become ready: ${portal.stderr}`);
+    // Supply the signature explicitly: command-line introspection can race the
+    // first portal activation and interpret the empty array as a string.
+    // Keep this asynchronous so the QA compositor can service portal requests.
+    const portal=await Gio.DBus.session.call('org.freedesktop.portal.Desktop',
+        '/org/freedesktop/portal/desktop','org.freedesktop.portal.Settings','ReadAll',
+        new GLib.Variant('(as)',[[]]),new GLib.VariantType('(a{sa{sv}})'),
+        Gio.DBusCallFlags.NONE,90000,null);
+    if (portal.get_type_string() !== '(a{sa{sv}})')
+        throw new Error('unexpected desktop portal readiness reply');
     // A graphical app may inherit xdg-open's output descriptors after the
     // launcher exits. Wait for the launcher, not for the app to close its pipes.
     const opener=new Gio.SubprocessLauncher({flags:Gio.SubprocessFlags.NONE});
