@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -69,7 +70,10 @@ subprocess.run(['desktop-file-validate', str(app / 'io.luma.Tester.desktop')], c
 payload = out / 'payload.squashfs'
 subprocess.run(['mksquashfs', str(app), str(payload), '-noappend', '-no-xattrs',
                 '-all-root', '-comp', 'zstd', '-Xcompression-level', '6', '-processors', '2', '-mem', '1G'], check=True)
-image = out / 'Luma-Tester-0.1.0-linux-x86_64.AppImage'
+receipt = json.loads((a.portable_dir / 'build-receipt.json').read_text())
+version = receipt.get('app_version', '0.1.0')
+assert isinstance(version, str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[.-][A-Za-z0-9.-]+)?', version)
+image = out / ('Luma-Tester-' + version + '-linux-x86_64.AppImage')
 with image.open('wb') as target:
     for source in (a.runtime, payload):
         with source.open('rb') as stream:

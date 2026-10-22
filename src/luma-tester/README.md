@@ -1,7 +1,7 @@
 # Luma Tester
 
 A Linux host launcher for Luma Mobile and Desktop QEMU developer images. Mobile
-is the default experience. Both x86_64 and aarch64 guest definitions are supported;
+is available alongside Desktop. Both x86_64 and aarch64 guest definitions are supported;
 matching host/guest architectures use KVM when accessible. Other combinations use
 QEMU TCG and can be much slower. macOS and Windows host packaging are future work.
 
@@ -34,7 +34,7 @@ runtime dependencies. See [runtime notices](THIRD-PARTY.md).
 
 The interface starts with **Try Luma** or **Develop for Luma**, then opens a
 shared simulator workspace. Choose an experience and build in its sidebar;
-**Start**, **Pause/Resume**, and **Shut Down** stay in the toolbar. Desktop is
+**Start**, **Pause/Resume**, and **Shut Down** stay in the bottom action bar. Desktop is
 initially selected when available and prefers the host CPU architecture.
 Mobile prefers a qualified ARM64 image, with an explicitly identified x86_64
 simulator available for the same native phone shell. Develop adds project
@@ -42,6 +42,12 @@ connection, source sync and a command to start the app watcher. Named presets
 retain an exact image, experience and workspace mode. Tablet, TV and Smart Device
 require dedicated future profiles and remain unavailable. Imports and presets
 are remembered locally; release catalogs remain an image qualification milestone.
+
+Tester 0.2.0 supports anonymous [Hub download attribution](../../docs/developer-platform/tester-downloads.md).
+Private previews use `source: test`. Catalog lookup and cached launches create no
+tickets. Published file downloads retain a ticket across retries and report
+completion only after size/SHA-256 verification. Installer ISOs in the public
+catalog are separate from ready-to-run developer session disks.
 
 There is no default public image feed yet. For this developer milestone, add a
 local image manifest using **Add Image…** in the workspace sidebar. A packaged image catalog can be supplied through

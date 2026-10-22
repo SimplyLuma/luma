@@ -260,6 +260,30 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(session.key.stat().st_mode & 0o777, 0o600)
         self.assertTrue((session.directory / 'seed.iso').exists())
 
+    def test_published_disk_uses_tickets_once_and_keeps_disk_validation(self):
+        self.fixture_disk()
+        self.m['image']['url'] = 'https://media.simplyluma.com/developer.qcow2'
+        self.m['artifact_id'] = 'os/nightly/test/x86_64'
+        session = self.save()
+        with patch('luma_tester.downloads.download', side_effect=lambda artifact, path, **kw:
+                   shutil.copy2(self.source, path)) as fetch:
+            session.prepare(lambda _: None)
+            session.prepare(lambda _: None)
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(fetch.call_args.kwargs['experience'], 'mobile')
+        self.assertEqual(fetch.call_args.args[0]['sha256'], self.m['image']['sha256'])
+        self.assertTrue(session.disk.exists())
+
+    def test_hub_file_is_not_automatically_a_bootable_developer_disk(self):
+        self.m['image']['url'] = 'https://media.simplyluma.com/installer.iso'
+        self.m['artifact_id'] = 'os/nightly/test/x86_64'
+        session = self.save()
+        with patch('luma_tester.downloads.download', side_effect=lambda artifact, path, **kw:
+                   shutil.copy2(self.source, path)), self.assertRaisesRegex(TesterError, 'qcow2'):
+            session.prepare(lambda _: None)
+        self.assertFalse(session.base.exists())
+        self.assertFalse(session.disk.exists())
+
     def test_mobile_and_desktop_share_base_but_keep_separate_profiles(self):
         mobile = self.fixture_disk()
         mobile.prepare(lambda _: None)

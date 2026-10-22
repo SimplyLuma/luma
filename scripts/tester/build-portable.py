@@ -6,6 +6,7 @@ Run under devctl. All tools and libraries go into the output; no host install.
 The runtime input must be an existing qualified portable LumaUI directory.
 """
 import argparse
+import tomllib
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ p.add_argument('--gvnc-source', type=Path, required=True, help='Matching Fedora 
 p.add_argument('--gvnc-license', type=Path, required=True, help='Upstream COPYING.LIB')
 p.add_argument('--catalog', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--release', action='store_true', help='Count published downloads as Tester; private previews default to test')
 mode = p.add_mutually_exclusive_group()
 mode.add_argument('--offline', action='store_true', help='Embed verified guest images in the AppImage')
 mode.add_argument('--sidecar-images', action='store_true', help='Keep private preview images beside the AppImage')
@@ -54,6 +56,9 @@ copy(REPO / 'src/luma-platform/appkit/luma_appkit', site.relative_to(dest) / 'lu
 for glyph in (REPO / 'assets/icon-theme/Prairie/symbolic/actions').glob('lumaui-*.svg'):
     copy(glyph, site.relative_to(dest) / 'luma_appkit/icons' / glyph.name)
 copy(REPO / 'src/luma-tester/luma_tester', site.relative_to(dest) / 'luma_tester')
+if a.release:
+    identity = site / 'luma_tester/__init__.py'
+    identity.write_text(identity.read_text().replace("DOWNLOAD_SOURCE = 'test'", "DOWNLOAD_SOURCE = 'tester'"))
 copy(REPO / 'src/luma-tester/luma_tester/io.luma.Tester.svg', 'usr/share/icons/hicolor/scalable/apps/io.luma.Tester.svg')
 copy(REPO / 'src/luma-tester/io.luma.Tester.desktop', 'usr/share/applications/io.luma.Tester.desktop')
 copy(runtime / 'fonts.conf', 'fonts.conf')
@@ -192,6 +197,8 @@ for path in dest.rglob('*'):
         path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
 dest.chmod(0o755)
 receipt = {'schema': 1, 'host': 'linux-x86_64',
+    'app_version': tomllib.loads((REPO / 'src/luma-tester/pyproject.toml').read_text())['project']['version'],
+    'download_source': 'tester' if a.release else 'test',
     'source_commit': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),
     'runtime_input': str(runtime), 'image_mode': 'offline' if a.offline else 'sidecar' if a.sidecar_images else 'download', 'files': []}
 for path in sorted(dest.rglob('*')):

@@ -72,6 +72,9 @@ def read_manifest(path):
             raise TesterError('Local image URLs must be file:///absolute/path.')
     elif parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
         raise TesterError('Images require HTTPS or a local file URL.')
+    if 'artifact_id' in m and (not isinstance(m['artifact_id'], str) or
+            not re.fullmatch(r'os/(nightly|beta|stable)/[A-Za-z0-9._-]+/(x86_64|aarch64)', m['artifact_id'])):
+        raise TesterError('Invalid Hub artifact identity.')
     return m
 
 
@@ -142,6 +145,33 @@ class Session:
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
         image = self.manifest['image']
+        # Only published, explicitly associated artifacts contact the Hub.
+        # Private/local images never create attribution tickets.
+        if (not self.base.exists() and self.manifest.get('artifact_id')
+                and urlparse(image['url']).scheme == 'https'):
+            from .downloads import download
+            artifact = {'artifact_id': self.manifest['artifact_id'], 'url': image['url'],
+                        'sha256': image['sha256'], 'size_bytes': image['bytes']}
+            if shutil.disk_usage(self.root).free < image['bytes'] + 2 * 1024**3:
+                raise TesterError('Insufficient space for image plus 2 GiB working reserve.')
+            purpose = 'first_download'
+            for previous_path in (self.root / 'sessions').glob('*/manifest.json'):
+                try:
+                    previous = json.loads(previous_path.read_text())
+                    if (previous.get('target') == self.manifest['target']
+                            and previous.get('arch') == self.manifest['arch']
+                            and previous['image']['sha256'] != image['sha256']):
+                        purpose = 'update'
+                        break
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
+            download(artifact, self.base, experience=self.manifest['target'], purpose=purpose, report=report)
+            try:
+                self.validate_disk(self.base)
+            except Exception:
+                self.base.unlink(missing_ok=True)
+                raise
+            self.base.chmod(0o444)
         if not self.base.exists():
             if shutil.disk_usage(self.root).free < image['bytes'] + 2 * 1024**3:
                 raise TesterError('Insufficient space for image plus 2 GiB working reserve.')
@@ -162,14 +192,7 @@ class Session:
                     output.flush()
                     if count != image['bytes'] or digest(partial) != image['sha256']:
                         raise TesterError('Guest image size or SHA-256 mismatch.')
-                    info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(partial)]))
-                    details = info.get('format-specific', {}).get('data', {})
-                    if (info['format'] != 'qcow2' or info.get('backing-filename') or
-                            info.get('data-file') or details.get('data-file') or
-                            info.get('encrypted') or details.get('encrypt')):
-                        raise TesterError('Image must be a standalone, unencrypted qcow2 disk.')
-                    if info.get('virtual-size', 0) > 256 * 1024**3:
-                        raise TesterError('Guest virtual disk exceeds 256 GiB.')
+                    self.validate_disk(partial)
                     partial.chmod(0o444)
                     partial.replace(self.base)
                 finally:
@@ -196,6 +219,17 @@ class Session:
                  '-V', 'cidata', '-J', '-r', self.directory / 'user-data', self.directory / 'meta-data'])
             (self.directory / 'seed.iso.new').replace(self.directory / 'seed.iso')
         report('Guest image and private developer session are ready.')
+
+    @staticmethod
+    def validate_disk(path):
+        info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(path)]))
+        details = info.get('format-specific', {}).get('data', {})
+        if (info['format'] != 'qcow2' or info.get('backing-filename') or
+                info.get('data-file') or details.get('data-file') or
+                info.get('encrypted') or details.get('encrypt')):
+            raise TesterError('Image must be a standalone, unencrypted qcow2 disk.')
+        if info.get('virtual-size', 0) > 256 * 1024**3:
+            raise TesterError('Guest virtual disk exceeds 256 GiB.')
 
     def firmware(self, override=None):
         if self.manifest['boot'] == 'bios':

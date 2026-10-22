@@ -31,6 +31,7 @@ except (ImportError, ValueError) as exc:
 
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
+from .downloads import architecture_notice, host_arch
 from . import presets
 
 
@@ -282,6 +283,9 @@ def launch(state=None):
             self.updating_images = False
             self.image_selector.set_sensitive(not self.active() and bool(names))
             self.update_build_menu(names)
+            architectures = {read_manifest(path)['arch'] for path in self.image_paths}
+            self.arch_notice.set_label(architecture_notice(architectures))
+            self.arch_notice.set_visible(bool(names) and bool(self.arch_notice.get_label()))
             if not self.active():
                 title = self.target.replace('-', ' ').title()
                 self.status_label.set_label('Ready to start' if names else f'No {title} builds available yet.')
@@ -425,6 +429,9 @@ def launch(state=None):
             self.status_label = self.label('Getting Luma ready…', centered=True)
             loading.append(self.status_label)
             page.append(loading)
+            self.arch_notice = self.label('', muted=True, centered=True)
+            self.arch_notice.set_visible(False)
+            page.append(self.arch_notice)
             self.progress = Gtk.ProgressBar()
             page.append(self.progress)
             self.controls = Gtk.Box(spacing=12, homogeneous=True)
@@ -658,6 +665,9 @@ def launch(state=None):
                 self.developer_status.set_label(str(self.project) if self.project else 'Connect a project, then sync your changes.')
             active = self.active()
             self.run_button.set_sensitive(not active and self.select_image() is not None)
+            selected = self.select_image()
+            emulated = bool(selected and read_manifest(selected)['arch'] != host_arch())
+            self.run_button.set_label('Start with Emulation' if emulated else 'Start')
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)

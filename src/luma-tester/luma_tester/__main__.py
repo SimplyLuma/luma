@@ -13,6 +13,16 @@ def main():
     parser.add_argument('--state', help='Private data directory (or LUMA_TESTER_HOME)')
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('gui', help='Open the native launcher')
+    sub.add_parser('version', help='Show the application version and download attribution mode')
+    catalog = sub.add_parser('catalog', help='List published Hub artifacts; this does not start a download')
+    catalog.add_argument('--channel', choices=['nightly', 'beta', 'stable'])
+    catalog.add_argument('--arch', choices=['x86_64', 'aarch64'])
+    catalog.add_argument('--kind', choices=['os_image', 'tester_app'])
+    fetch = sub.add_parser('download', help='Download and verify a published file (does not install or boot it)')
+    fetch.add_argument('artifact_id')
+    fetch.add_argument('--output', required=True, type=Path)
+    fetch.add_argument('--experience', choices=['desktop', 'tablet', 'mobile', 'tv', 'home', 'watch', 'other'], default='desktop')
+    fetch.add_argument('--purpose', choices=['first_download', 'update', 'explicit_redownload'], default='first_download')
     integration = sub.add_parser('install-desktop', help='Add this portable build to Applications and the dock')
     integration.add_argument('--data-home', type=Path, help='Desktop session data directory')
     publish = sub.add_parser('manifest', help='Describe a prepared cloud-init enabled Luma VM disk')
@@ -25,6 +35,7 @@ def main():
     publish.add_argument('--boot', choices=['bios', 'uefi'], required=True)
     publish.add_argument('--user', default='luma')
     publish.add_argument('--url', help='Published HTTPS disk URL; defaults to the local disk')
+    publish.add_argument('--artifact-id', help='Exact matching Hub catalog artifact, when published')
     for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev']:
         p = sub.add_parser(action)
         p.add_argument('manifest', type=Path)
@@ -52,6 +63,26 @@ def main():
             p.add_argument('--graphical', action='store_true')
     args = parser.parse_args()
     try:
+        if args.action == 'version':
+            from . import __version__, DOWNLOAD_SOURCE
+            print(json.dumps({'version': __version__, 'download_source': DOWNLOAD_SOURCE}))
+            return 0
+        if args.action in ('catalog', 'download'):
+            from .downloads import HubClient, download, architecture_notice
+            client = HubClient()
+            filters = {name: getattr(args, name) for name in ('channel', 'arch', 'kind')
+                       if getattr(args, name, None)}
+            artifacts = client.catalog(**filters)
+            if args.action == 'catalog':
+                print(json.dumps({'artifacts': artifacts, 'notice': architecture_notice(
+                    {a.get('arch') for a in artifacts if a.get('kind') == 'os_image'})}, indent=2))
+            else:
+                artifact = next((a for a in artifacts if a['artifact_id'] == args.artifact_id), None)
+                if artifact is None:
+                    raise TesterError('This artifact is not available in the verified Hub catalog.')
+                print(download(artifact, args.output, experience=args.experience,
+                               purpose=args.purpose, client=client, report=print))
+            return 0
         if args.action == 'gui':
             from .gui import launch
             return launch(args.state)
@@ -72,6 +103,8 @@ def main():
             m = {'schema': 1, 'id': args.id, 'target': args.target, 'arch': args.arch,
                  'boot': args.boot, 'build': args.build, 'user': args.user, 'cloud_init': True,
                  'image': {'url': args.url or disk.as_uri(), 'sha256': digest(disk), 'bytes': disk.stat().st_size}}
+            if args.artifact_id:
+                m['artifact_id'] = args.artifact_id
             # Validate before exposing a manifest to the launcher.
             import tempfile
             from .core import read_manifest

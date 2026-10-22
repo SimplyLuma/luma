@@ -7,15 +7,17 @@ rootfs tarball, Android APK, or desktop installer ISO. There is no public guest
 feed in this first implementation; image preparation is documented in
 [tester-images.md](tester-images.md).
 
-The currently composed preview is Desktop only. Mobile is being replaced with
-the actual phone shell; earlier GNOME handheld previews do not represent Luma Mobile.
+The current private preview includes Desktop and the genuine native Mobile
+shell. Mobile touch, keyboard, Home and app hotfix workflows have been exercised
+on an x86_64 simulator. Physical phone hardware and ARM binaries require their
+own qualification.
 
 ## Portable Linux preview
 
-The portable directory includes LumaUI, Python, QEMU, SSH, rsync and its verified
-shared guest image. Open **Luma Tester** inside it. The AppImage packages the same
-directory as one executable; mark it executable before opening. Without FUSE,
-use `./Luma-Tester-0.1.0-linux-x86_64.AppImage --appimage-extract-and-run`.
+The portable directory includes LumaUI, Python, QEMU, SSH and rsync. Guest images
+can be downloaded, delivered separately, or embedded for offline use. Open
+**Luma Tester** inside it. Mark the AppImage executable before opening. Without
+FUSE, use `./Luma-Tester-0.2.0-linux-x86_64.AppImage --appimage-extract-and-run`.
 Use the included README for package-specific commands. These are Linux x86_64
 builds; ARM guest execution and macOS/Windows packages need separate qualification.
 
@@ -43,6 +45,8 @@ an `images/` directory beside the AppImage; replacing the app does not replace
 those assets or existing writable workspaces. `--offline` embeds the disks for
 a full offline bundle. Automatic latest-build discovery and update prompts need
 a published versioned image feed; this private preview does not configure one.
+Anonymous [Hub download tickets](tester-downloads.md) distinguish published
+downloads from cached launches. Private previews and QA use test attribution.
 
 ## Start a session
 

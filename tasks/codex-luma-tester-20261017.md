@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — prior Mobile qualification withdrawn after user review; correcting phone provenance and desktop graphics.
+- Status: active — native Mobile/Desktop r21 delivered to Dell; integrating anonymous Hub download tickets.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -28,23 +28,32 @@ chooses KVM or TCG, exposes localhost-only SSH, QMP controls/screenshots, source
 sync and a foreground app restart watcher. CLI remains independent of GTK/LumaUI.
 The wheel is a launcher package, not a self-contained QEMU/LumaUI/guest bundle.
 
-Current Linux x86_64 candidate is **Desktop only**, with automatic VirGL,
-software fallback, and a frame-clock-limited private Unix VNC viewer. Actual
-packaged guest checks verified VirGL, app source edit/restart, accelerated
-screenshot capture and graceful shutdown. Final AppImage entry passed as well.
-Latest source hostb36bd64e, guest1deb3d1b. Mobile selection is unavailable in this
-catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
-claims below are withdrawn; portrait GNOME is not product parity.
+Current delivered Linux x86_64 candidate is combined **Desktop + genuine native
+Mobile r21**, with a bottom LumaUI ActionCenter and framebuffer silhouette shadow.
+AppImage is283720184 bytes; images are separate sidecars. Exact AppImage SHA256
+is e235a784e939504e7fc8acda5a2b1fea4c61e8b13aa35b2c8540a21c9c9582fc;
+source5240249d. Artifact: owned HDD appimage-native-light-r21. AppImage entry
+cdae71ad and full packaged native Mobile18344c7b PASSED. The latter exercised
+Home/Library touch, native OSK search, Home return, visible app hotfix and graceful
+shutdown. Mobile QA used software graphics; Mobile GPU and physical phone/ARM
+qualification are not claimed. Desktop uses the unchanged qualified r15 disk.
 
-Latest delivered host UI: owned HDD appimage-workspace-compact-r20, source
-c3aff3c3. SHA25652d912f1eb85cea2dbede7d3d1d719b03c6fca2674a0e20175fd9cdb2f924da0,
-1688427000 bytes. Actual AppImage entry f401d84d and packaged compact UI8515ff0c
-passed. Delivered exact checksum328f287b. Dell launcher
-luma-preview-tester-compact-20261022-4b1d959f.service active; registration0b2f5dc5
-exited0. Existing tester-display-20261017 config/data/cache/workspace preserved.
-No Dell automated testing. Desktop only until combined r21 is qualified.
-Native phone r9 now passed interaction, visible hotfix and persistence checks;
-see latest history below. Mobile GPU acceleration on this candidate is unqualified.
+Deliveryfa42204d verified the app and both image checksums on Dell. The new app
+is in tester-native-light-r21-20261022. Launcher
+luma-preview-tester-native-light-20261022-bcefd27e.service was active; registration
+luma-preview-tester-native-light-register-20261022-59f80fef.service exited0.
+Existing tester-display-20261017 config/data/cache/workspace preserved. No guest
+was running before launch; no guest auto-started. All automated tests remain on
+this64GiB server; QEMU runs locally on Dell when Nick starts a guest there.
+No Dell automated testing. Tablet/TV/smart-device images remain unavailable.
+
+Hub ticket integration now being implemented for0.2.0 from the supplied Hub
+handoff and the exact API.md on nmcmil/luma-website work/download-tickets. The
+live catalog currently offers installer ISOs, not ready-to-run developer disks.
+Do not use those ISOs as cloud-init qcow2 inputs or attribute private disks to an
+unrelated public ISO. Source/private previews use source:test; only the release
+producer opt-in changes staged attribution to tester. Automatic update prompts,
+ISO installation, public developer-disk/release indexes remain separate work.
 
 Qualified Desktop guest / earlier display candidate:
 - /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-display-r15/Luma-Tester-0.1.0-linux-x86_64.AppImage
@@ -634,3 +643,29 @@ used that source without altering shared refs or unrelated worktrees.
   No published image feed or automatic latest-version prompt is configured;
   do not present that future service as implemented. Private r21 uses separately
   delivered qualified images; no public image upload or release authorization.
+
+- r21 build827a8915, actual AppImage entrycdae71ad and packaged native Mobile
+  18344c7b PASSED; verified deliveryfa42204d and Dell GUI launchbcefd27e.
+  AppImage283720184 bytes, SHA e235a784e939504e7fc8acda5a2b1fea4c61e8b13aa35b2c8540a21c9c9582fc.
+  Mobile is actual native phone source2bf0a1db with qualified r9 disk; hardware
+  GPU qualification remains open. New host UI and both guest sidecars delivered.
+- Initial Hub/core/preset/asset58 checks b54c47f5 PASSED. Resumable anonymous
+  downloads, source:test default, native-arch catalog sorting, ARM emulation notice,
+  and exact published artifact associations implemented; final checks pending.
+- Disk admission refused scratch cleanup estimates; manual bounded removal only
+  retired verified passed/stopped owned AppImage extraction TMP forcb51e3e1ae,
+  dcda5d907a and1bf80d616a. Logs, screenshots, packages and receipts retained.
+  r18 archival firstc5ff4207 failed because ordinary runner makes HDD read-only;
+  retry39ac8a94 uses the owned HDD storage helper. Full live7GB ISO analytics
+  qualification still subject to ordinary reserve/admission, no bypass requested.
+
+- Final60 component checks, packager compile checks and native workspace/no-OS
+  QEMU lifecycle0898fed4 PASSED. Simulated ARM-host UIbc3c9ebb PASSED: absent
+  ARM gives a coming-soon notice plus explicit Start with Emulation; adding an
+  ARM profile selects it automatically. This is selection/UI evidence, not ARM
+  execution qualification. r18 archive39ac8a94 PASSED with every file SHA and
+  symlink target verified; original artifact path preserved as a symlink.
+- Live ticket f75f75ff recorded a real403 failure: CDN rejects Python-urllib UA
+  (Cloudflare1010). Added honest Luma-Tester/version UA; same anonymous test
+  ticket retained. Full live retry21d9f1d7 downloading actual published7GB ISO;
+  completion/failure verification pending. Production source never used in QA.
