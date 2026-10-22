@@ -195,6 +195,9 @@ QEMU reference: [system invocation](https://www.qemu.org/docs/master/system/invo
 
 ### Device experience and architecture
 
+Desktop is initially selected when its image is available, including on ARM
+hosts. Mobile remains an explicit experience choice.
+
 The workspace keeps two independent choices: an experience profile and a guest
 CPU architecture. The existing OS/AppKit contract uses `LUMA_DEVICE_CLASS`
 (`desktop`, `tablet`, `handheld`), `LUMA_PRESENTATION_MODE` (`windowed` or

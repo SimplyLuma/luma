@@ -57,7 +57,7 @@ def launch(state=None):
                     self.catalog_targets.add(read_manifest(path)['target'])
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
-            if self.catalog_targets == {'desktop'}:
+            if 'desktop' in self.catalog_targets:
                 self.target = 'desktop'
             self.advanced = None
             self.viewer = None
