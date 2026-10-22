@@ -32,16 +32,19 @@ runtime dependencies. See [runtime notices](THIRD-PARTY.md).
 
 ## Guest images
 
-The interface starts with **Try Luma** or **Develop for Luma**, then **Mobile**
-or **Desktop**. Mobile is selected first. The launcher chooses the matching
-native guest architecture automatically. Develop reveals project connection,
-source sync and a command to start the app watcher. The Try path contains none
-of those development controls. Advanced image imports are remembered locally;
-release catalogs remain an image qualification/distribution milestone.
+The interface starts with **Try Luma** or **Develop for Luma**, then opens a
+shared simulator workspace. Choose an experience and build in its sidebar;
+**Start**, **Pause/Resume**, and **Shut Down** stay in the toolbar. Desktop is
+initially selected when available and prefers the host CPU architecture.
+Mobile prefers a qualified ARM64 image, with an explicitly identified x86_64
+simulator available for the same native phone shell. Develop adds project
+connection, source sync and a command to start the app watcher. Named presets
+retain an exact image, experience and workspace mode. Tablet, TV and Smart Device
+require dedicated future profiles and remain unavailable. Imports and presets
+are remembered locally; release catalogs remain an image qualification milestone.
 
 There is no default public image feed yet. For this developer milestone, add a
-local image manifest from **Advanced** in
-the Luma Tester menu. A packaged image catalog can be supplied through
+local image manifest using **Add Image…** in the workspace sidebar. A packaged image catalog can be supplied through
 `LUMA_TESTER_CATALOG=/path/to/manifests`. A manifest can refer to a local
 standalone qcow2 or an HTTPS image;
 the launcher downloads on first use and verifies both byte count and SHA-256.

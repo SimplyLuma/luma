@@ -15,6 +15,7 @@ import signal
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from urllib.parse import urlparse
@@ -389,8 +390,12 @@ class Session:
         except TesterError as exc:
             if 'no surface' not in str(exc) or not self.display_path.is_socket():
                 raise
-            from .rfb import capture
-            capture(self.display_path, destination)
+            # GVnc owns a GLib coroutine context. A capture requested from a
+            # worker must never enter the embedded viewer's main context.
+            env = dict(os.environ)
+            env['PYTHONPATH'] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get('PYTHONPATH', '')
+            run([sys.executable, '-m', 'luma_tester.rfb', self.display_path, destination],
+                env=env, timeout=25)
         return destination
 
     def ssh(self, command):

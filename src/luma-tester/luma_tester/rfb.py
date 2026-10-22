@@ -138,5 +138,16 @@ def capture(socket_path, destination, timeout=15):
             stream.write(f'P6\n{framebuffer.width} {framebuffer.height}\n255\n'.encode())
             stream.write(pixels)
     finally:
-        GLib.source_remove(deadline)
+        source = GLib.MainContext.default().find_source_by_id(deadline)
+        if source:
+            source.destroy()
         connection.shutdown()
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Capture a private QEMU display as PPM.')
+    parser.add_argument('socket', type=Path)
+    parser.add_argument('destination', type=Path)
+    args = parser.parse_args()
+    capture(args.socket, args.destination)

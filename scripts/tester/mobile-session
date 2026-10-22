@@ -6,4 +6,7 @@ export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh XDG_SESSION_TYPE=wayl
 export XDG_DATA_DIRS=/opt/luma/phosh/share:/usr/local/share:/usr/share
 export XDG_CONFIG_DIRS=/etc/xdg:/opt/luma/phosh/etc/xdg
 export GI_TYPELIB_PATH=/opt/luma/phosh/lib64/girepository-1.0
+# Phosh's text-input surface uses the compositor's native input method. The
+# common desktop base also carries IBus; don't route phone fields through it.
+export GTK_IM_MODULE=wayland
 exec /opt/luma/phosh/bin/phosh-session

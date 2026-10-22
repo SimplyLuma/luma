@@ -499,3 +499,13 @@ used that source without altering shared refs or unrelated worktrees.
   unlocked is an explicit flag: omitting --locked does not start an unrecognized
   display manager unlocked. Preview override corrected to --unlocked; physical
   --locked service unchanged. No Mobile candidate delivered yet.
+- Explicit --unlocked r4 boots genuine populated phone Home and real Library;
+  guest VirGL verified. Strict touch QA initially expected a literal Library
+  heading, but actual source UI uses an alphabetic list and Search apps; that
+  oracle was corrected without changing payload. Downward Library drag also
+  folds the outer launcher; the actual Home bar is the source-defined Home
+  action and will be checked explicitly. Search tap focuses its entry but OSK
+  remains hidden in0f9c07a7. Phone native IM routing now being corrected from
+  desktop-base IBus selection to Wayland. Separate real issue found: fallback
+  screenshot GVnc entered the GUI's GLib context from a worker, causing coroutine
+  warnings. Capture now isolated in a subprocess; native qualification pending.

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""LumaUI launcher. Intent first; VM mechanics stay in Advanced and the CLI."""
+"""LumaUI simulator workspace with shared navigation and a native guest display."""
 import os
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 # The finished interface requires the real shared toolkit. No stock GTK fallback.
 try:
@@ -78,6 +78,17 @@ def launch(state=None):
                 button.add_css_class('suggested-action')
             return button
 
+        def fit_selector(self, selector):
+            factory = Gtk.SignalListItemFactory()
+            factory.connect('setup', lambda _factory, item: item.set_child(
+                Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=22)))
+            def bind(_factory, item):
+                text = item.get_item().get_string()
+                item.get_child().set_label(text)
+                item.get_child().set_tooltip_text(text)
+            factory.connect('bind', bind)
+            selector.set_factory(factory)
+
         def do_activate(self):
             if self.get_active_window():
                 self.get_active_window().present()
@@ -141,6 +152,7 @@ def launch(state=None):
                                                margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
             self.image_selector.set_tooltip_text('Choose a verified build for this experience')
             self.image_selector.add_css_class('tester-image-select')
+            self.fit_selector(self.image_selector)
             self.image_selector.connect('notify::selected', self.image_selected)
             row.set_child(self.image_selector)
             self.sidebar.list.append(row)
@@ -152,6 +164,7 @@ def launch(state=None):
             self.preset_selector = Gtk.DropDown(model=Gtk.StringList.new(
                 ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
             self.preset_selector.add_css_class('tester-image-select')
+            self.fit_selector(self.preset_selector)
             self.preset_selector.connect('notify::selected', self.preset_selected)
             preset_box.append(self.preset_selector)
             preset_box.append(self.button('Save Preset…', self.name_preset))

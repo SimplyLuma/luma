@@ -44,7 +44,7 @@ def build(args):
     if not required <= {name for _, name in files}:
         raise TesterError('The native keyboard and matching phone presentation profiles are required.')
     base = read_manifest(args.base_manifest)
-    if base['target'] != 'desktop' or base['arch'] != 'x86_64':
+    if base['target'] not in ('desktop', 'mobile') or base['arch'] != 'x86_64':
         raise TesterError('This producer requires a verified x86_64 common OS base.')
     output = args.output.resolve()
     output.mkdir(mode=0o700, parents=True, exist_ok=True)
