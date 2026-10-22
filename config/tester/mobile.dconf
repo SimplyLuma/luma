@@ -15,3 +15,8 @@ sleep-inactive-ac-type='nothing'
 
 [sm/puri/phosh]
 automatic-high-contrast=false
+
+[mobi/phosh/osk]
+# A simulator always has a host keyboard. Keep the real phone keyboard visible
+# on field focus so touch input can still be developed and tested.
+ignore-hw-keyboards=true

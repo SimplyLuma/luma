@@ -509,3 +509,18 @@ used that source without altering shared refs or unrelated worktrees.
   desktop-base IBus selection to Wayland. Separate real issue found: fallback
   screenshot GVnc entered the GUI's GLib context from a worker, causing coroutine
   warnings. Capture now isolated in a subprocess; native qualification pending.
+- R5 native IM image composea5607f07 passed.42 core/preset checks passed
+  bb706b75, including isolated capture entry. Keyboard suppression identified
+  from exact Stevia schema: ignore-hw-keyboards defaults false, and QEMU has
+  hardware keyboards. Actual0212398d shows native OSK visible after enabling
+  that scoped setting in QA. Added the same simulator-only default to source.
+  Native Home bar return after OSK still folds the launcher; keyboard navigation
+  and typing now under qualification. Graphics probe moved after UI actions to
+  avoid contaminating the navigation state. Earlier failed Home assertions and
+  screenshots retained. No Mobile image delivered yet.
+- Corresponding source collectionc331ab42 passed,71MiB under owned HDD artifacts.
+  Archive worker0783d104 hit its1GiB memory limit while moving immutable old
+  phone exports; originals retained until exact verification. Retryfd1042cc
+  uses3GiB and verifies any existing copy before replacing a source with a
+  symlink. Stopped r18 AppImage QA extraction retired in f2eb4c41; root reserve
+  preserved. Never move live guest backings.
