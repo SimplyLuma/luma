@@ -47,7 +47,10 @@ src/luma-tester/luma-tester gui
 ```
 
 Choose **Try Luma** or **Develop for Luma**. Both open the same workspace:
-choose **Mobile** or **Desktop** in the sidebar, choose an image, then **Start**.
+choose **Mobile** or **Desktop** in the sidebar, choose a **Build** from the toolbar menu, then **Start**.
+The sidebar uses compact LumaUI destination rows. Unavailable devices are marked
+**Soon** and open an explicit no-build state. Presets appear as sidebar items;
+the section’s **+** opens a native modal for saving the current configuration.
 The toolbar provides **Pause**, **Resume**, and graceful **Shut Down**. Mobile
 also provides **Home**, which opens the actual phone Home surface. Stop the
 current session before changing its device experience or image. On narrow

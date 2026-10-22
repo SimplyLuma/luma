@@ -14,12 +14,13 @@
 
 ## Current handoff
 
-The user explicitly rejected a generic GTK final interface. The revised GUI
-requires real LumaUI: AppWindow/frame, Island, Card, type roles, icons and shared
-palette. Flow: Try Luma / Develop for Luma → Mobile / Desktop → Open Luma.
-An available target is selected automatically. Architecture is chosen automatically. Development
-controls appear only on Develop. Image import and workspace diagnostics live in
-Advanced. Imports persist locally; packaging may supply LUMA_TESTER_CATALOG.
+The interface requires real LumaUI. Current source uses compact SB1 SidebarRow
+with RowLead.icon in the destinations NavigationSidebar, the shared toolbar
+Menu for build choices, and Card + LayerHost for saving presets. Welcome leads
+to Try/Develop's shared simulator workspace. All device destinations can be
+selected; unavailable ones show Soon and an explicit no-build state. Running
+sessions show a LumaUI Toast when a different device is requested. No device
+switch is silently represented by a different renderer or CPU architecture.
 
 Backend accepts trusted local manifests referencing HTTPS or local standalone
 qcow2 files, checks SHA-256/size, maintains private overlays/keys/seeds and locks,
@@ -571,3 +572,27 @@ used that source without altering shared refs or unrelated worktrees.
 - Preparing a Desktop-only sidebar preview for Dell while genuine Mobile stays
   gated. New bundle must not claim phone qualification. Bound mksquashfs memory
   to1GiB in addition to two CPUs, instead of its host-relative default.
+
+- Desktop sidebar r19 built886f19db, actual AppImage entry692652dd and packaged
+  QEMU/no-OS control UIce20d968 passed. Delivered0a655b06 with exact checksum
+  e58651276a3297167293937560ef377b5340ebd7fd2060e10c6f0dc98a273a67;
+  launched on Dell as luma-preview-tester-workspace-20261022-e5e74cd3.service.
+  Register4c8b3984 exited0. User rejected large legacy rows as non-LumaUI and
+  reported inert device destinations. Correcting source now; r19 is superseded
+  visually, not an approved final design.
+- Native trace5c5e319b definitively identifies the phantom window as
+  GtkTooltipWindow (real Gdk owner and stack evidence), not GL or a real app.
+  Deprecated gtk-enable-tooltips setting was ineffective. New module11229180
+  clears pointer tooltips recursively in the touch simulator shell. Normal
+  compile950baa93 passed. Three repeated actual native Home actions643ffcc8
+  now retain the populated real Home; screenshot inspected. Keyboard return
+  and an exported image with this module still need full qualification.
+- Corrected UI uses actual SB1 destination glyphs/36px rows, shared Menu build
+  picker and native LayerHost/Card preset modal; removed sidebar form stacks
+  and full-width footer buttons. Unavailable device selection and live-session
+  Toast feedback implemented. Native menu, preset, row metrics, empty-device
+  state, real no-OS QEMU lifecycle and narrow sidebar passed b81dfe4d. Earlier
+ 665346aa exposed an invalid type role and e00c392a exposed a capture helper
+  selecting a destroyed popup XID; both corrected and retained as failures.
+- Older immutable phone exports r5–r7 archived with exact manifest SHA and
+  standalone/backing checks in d2f42178; original paths retained as symlinks.

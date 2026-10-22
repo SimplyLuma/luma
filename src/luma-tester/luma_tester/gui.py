@@ -20,7 +20,11 @@ try:
     from luma_appkit import icons
     from luma_appkit.content_cards import Card
     from luma_appkit.content_type import apply_type
-    from luma_appkit.widgets import AppWindow, IconButton, Island, IslandOverlaySplitView, NavigationRow, NavigationSidebar, ScrollView, add_style_sheet
+    from luma_appkit.rows_navigation import SidebarRow, SidebarSection, RowLead, sidebar_width
+    from luma_appkit.menus import Menu
+    from luma_appkit.action_toast import Toast
+    from luma_appkit.structure_layers import LayerHost
+    from luma_appkit.widgets import AppWindow, IconButton, Island, IslandOverlaySplitView, NavigationSidebar, ScrollView, add_style_sheet
 except (ImportError, ValueError) as exc:
     raise ImportError('Luma Tester requires the LumaUI runtime (luma-developer-platform).') from exc
 
@@ -114,7 +118,7 @@ def launch(state=None):
             self.island = Island()
             self.build_sidebar()
             self.layout = IslandOverlaySplitView(sidebar=self.sidebar, content=self.island,
-                min_sidebar_width=240, max_sidebar_width=240, sidebar_width_unit=Adw.LengthUnit.PX)
+                min_sidebar_width=sidebar_width('destinations', 'narrow'), max_sidebar_width=sidebar_width('destinations', 'narrow'), sidebar_width_unit=Adw.LengthUnit.PX)
             self.window.set_body(self.layout)
             self.last_workspace_size = None
             self.window.add_tick_callback(self.adapt_workspace)
@@ -138,47 +142,64 @@ def launch(state=None):
             for target, title, icon in [('desktop', 'Desktop', 'monitor'), ('tablet', 'Tablet', 'smartphone'),
                                         ('mobile', 'Mobile', 'smartphone'), ('tv', 'TV', 'monitor'),
                                         ('smart-device', 'Smart Device', 'cpu')]:
-                row = NavigationRow(title, icon_name=icons.icon_name(icon))
+                row = SidebarRow(title, lead=RowLead.icon(icon))
                 row.target = target
                 supported = target in ('desktop', 'mobile')
-                row.set_sensitive(supported and (not self.catalog_targets or target in self.catalog_targets))
+                row.set_sensitive(True)
                 if not supported:
                     row.set_tooltip_text('A dedicated Luma image profile is required.')
                 self.sidebar.append_row(row)
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
-            self.sidebar.append_section('Image')
-            row = Gtk.ListBoxRow(selectable=False, activatable=False)
-            self.image_selector = Gtk.DropDown(model=Gtk.StringList.new([]), hexpand=True,
-                                               margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
-            self.image_selector.set_tooltip_text('Choose a verified build for this experience')
-            self.image_selector.add_css_class('tester-image-select')
+            # Detailed selectors live in Advanced; the workspace exposes builds
+            # through the toolkit menu and presets as destination rows.
+            self.image_paths = []
+            self.image_selector = Gtk.DropDown(model=Gtk.StringList.new([]), hexpand=True)
             self.fit_selector(self.image_selector)
             self.image_selector.connect('notify::selected', self.image_selected)
-            row.set_child(self.image_selector)
-            self.sidebar.list.append(row)
-            self.image_paths = []
-            self.sidebar.append_section('Presets')
-            preset_row = Gtk.ListBoxRow(selectable=False, activatable=False)
-            preset_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
-                margin_start=12, margin_end=12, margin_top=8, margin_bottom=8)
             self.preset_selector = Gtk.DropDown(model=Gtk.StringList.new(
                 ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
-            self.preset_selector.add_css_class('tester-image-select')
             self.fit_selector(self.preset_selector)
             self.preset_selector.connect('notify::selected', self.preset_selected)
-            preset_box.append(self.preset_selector)
-            preset_box.append(self.button('Save Preset…', self.name_preset))
-            self.preset_editor = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False)
+            self.preset_heading = SidebarSection('Presets', action=('plus', 'Save preset', self.name_preset))
+            self.sidebar.list.append(self.preset_heading)
+            self.preset_rows = []
+            self.refresh_preset_rows()
+            self.preset_handle = None
+            form = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, width_request=280)
+            form.append(self.label('Save preset', 'group-heading'))
             self.preset_name = Gtk.Entry(placeholder_text='Preset name', max_length=80)
             self.preset_name.connect('activate', lambda _entry: self.save_preset())
-            self.preset_editor.append(self.preset_name)
-            self.preset_editor.append(self.button('Save', self.save_preset, True))
-            preset_box.append(self.preset_editor)
-            preset_row.set_child(preset_box)
-            self.sidebar.list.append(preset_row)
-            self.sidebar.append_footer(self.button('Add Image…', self.choose_image))
-            self.sidebar.append_footer(self.button('Advanced…', self.show_advanced))
+            form.append(self.preset_name)
+            actions = Gtk.Box(spacing=8, homogeneous=True)
+            actions.append(self.button('Cancel', self.close_preset))
+            actions.append(self.button('Save', self.save_preset, True))
+            form.append(actions)
+            self.preset_editor = Card(form)
+            foot = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            foot.add_css_class('luma-navigation-list')
+            for title, icon, callback in [('Add Image…', 'plus', self.choose_image),
+                                           ('Advanced…', 'settings', self.show_advanced)]:
+                row = SidebarRow(title, lead=RowLead.icon(icon))
+                row.callback = callback
+                foot.append(row)
+            foot.connect('row-activated', lambda _list, row: row.callback())
+            self.sidebar.append_footer(foot)
+
+        def refresh_preset_rows(self):
+            for row in self.preset_rows:
+                self.sidebar.list.remove(row)
+            self.preset_rows = []
+            for index, item in enumerate(self.saved_presets, 1):
+                row = SidebarRow(item['name'], lead=RowLead.icon('bookmark'))
+                row.preset_index = index
+                self.sidebar.list.append(row)
+                self.preset_rows.append(row)
+            if not self.saved_presets:
+                row = SidebarRow('No presets', missing=True)
+                row.set_sensitive(False)
+                self.sidebar.list.append(row)
+                self.preset_rows.append(row)
 
         def build_toolbar(self):
             self.toolbar = Gtk.Box(spacing=8, margin_start=16, margin_end=16, margin_top=12, margin_bottom=8)
@@ -189,6 +210,9 @@ def launch(state=None):
             self.workspace_title = self.label('Luma Desktop', 'title-2')
             self.workspace_title.set_hexpand(True)
             self.toolbar.append(self.workspace_title)
+            self.build_menu = Gtk.MenuButton(label='Build', tooltip_text='Choose a build')
+            self.build_menu.add_css_class('flat')
+            self.toolbar.append(self.build_menu)
             self.run_button = self.button('Start', self.start, True)
             self.pause_button = self.button('Pause', self.pause)
             self.shutdown_button = self.button('Shut Down', self.stop)
@@ -204,7 +228,7 @@ def launch(state=None):
             self.sidebar.set_visible(shown)
             self.last_workspace_size = None
             if shown:
-                self.workspace_title.set_label('Luma ' + self.target.title())
+                self.workspace_title.set_label('Luma ' + self.target.replace('-', ' ').title())
                 self.sidebar.list.select_row(self.device_rows[self.target])
                 self.update_images()
 
@@ -218,15 +242,18 @@ def launch(state=None):
             return True
 
         def device_activated(self, _list, row):
+            if hasattr(row, 'preset_index'):
+                self.preset_selector.set_selected(row.preset_index)
+                return
             if not hasattr(row, 'target'):
                 return
             if self.active():
                 self.sidebar.list.select_row(self.device_rows[self.target])
-                self.status_label.set_label('Shut down this session before changing experiences.')
+                Toast.show(self.island, 'Shut down Luma to switch devices.', kind='warning')
                 return
             self.select_target(row.target)
-            self.session_title.set_label('Luma ' + self.target.title())
-            self.workspace_title.set_label('Luma ' + self.target.title())
+            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
+            self.workspace_title.set_label('Luma ' + self.target.replace('-', ' ').title())
             self.status_label.set_label('Ready to start')
             self.stack.set_visible_child_name('session')
             self.update_images()
@@ -249,6 +276,26 @@ def launch(state=None):
                 self.image_selector.set_selected(self.image_paths.index(selected))
             self.updating_images = False
             self.image_selector.set_sensitive(not self.active() and bool(names))
+            self.update_build_menu(names)
+            if not self.active():
+                title = self.target.replace('-', ' ').title()
+                self.status_label.set_label('Ready to start' if names else f'No {title} builds available yet.')
+                self.developer_card.set_visible(self.intent == 'develop' and bool(names))
+            self.refresh_preset_rows()
+
+        def update_build_menu(self, names=None):
+            if not hasattr(self, 'build_menu'):
+                return
+            if names is None:
+                names = [read_manifest(path).get('build') or path.stem for path in self.image_paths]
+            choices = tuple(Command('build.' + str(index), name,
+                lambda selected=index: self.image_selector.set_selected(selected),
+                checked=lambda path=path: self.select_image() == path,
+                enabled=lambda: not self.active()) for index, (path, name) in enumerate(zip(self.image_paths, names)))
+            registry = CommandRegistry((CommandGroup(None, choices), CommandGroup(None, (
+                Command('build.import', 'Add Image…', self.choose_image, icons.icon_name('plus'), enabled=lambda: not self.active()),
+            ))))
+            self.build_menu.set_popover(Menu(registry, variant='compact'))
 
         def image_selected(self, *_args):
             if getattr(self, 'updating_images', False) or self.active():
@@ -256,15 +303,22 @@ def launch(state=None):
             index = self.image_selector.get_selected()
             if index < len(self.image_paths):
                 self.selected_images[self.target] = self.image_paths[index]
+                self.update_build_menu()
 
         def name_preset(self):
             if not self.select_image():
                 self.status_label.set_label('Choose an image before saving a preset.')
                 return
             self.preset_name.set_text(self.target.title())
-            self.preset_editor.set_visible(not self.preset_editor.get_visible())
+            self.preset_handle = LayerHost.for_widget(self.island).present_modal(
+                self.preset_editor, initial_focus=self.preset_name)
             self.preset_name.grab_focus()
             self.preset_name.select_region(0, -1)
+
+        def close_preset(self):
+            if self.preset_handle:
+                self.preset_handle.close()
+                self.preset_handle = None
 
         def save_preset(self):
             try:
@@ -274,7 +328,8 @@ def launch(state=None):
                 self.saved_presets = presets.save(self.preset_path, self.preset_name.get_text(), path, self.intent)
                 self.preset_selector.set_model(Gtk.StringList.new(
                     ['Choose a preset…'] + [item['name'] for item in self.saved_presets]))
-                self.preset_editor.set_visible(False)
+                self.close_preset()
+                self.refresh_preset_rows()
             except (OSError, ValueError, TesterError) as exc:
                 self.status_label.set_label(str(exc))
 
@@ -406,7 +461,7 @@ def launch(state=None):
             self.viewer.connect('connected', lambda _v: self.reveal_display(self.session) if self.graphical_ready else None)
             self.viewer_holder.append(self.viewer)
             self.viewer.open()
-            self.live_title.set_label('Luma ' + self.target.title())
+            self.live_title.set_label('Luma ' + self.target.replace('-', ' ').title())
             self.tools_button.set_label('Project' if self.intent == 'develop' else 'Controls')
             self.tools_button.set_visible(self.intent == 'develop')
             # Keep first boot console text behind the native loading page. The
@@ -459,7 +514,7 @@ def launch(state=None):
             self.intent = intent
             self.developer_card.set_visible(intent == 'develop')
             self.tools_button.set_visible(intent == 'develop')
-            self.session_title.set_label('Luma ' + self.target.title())
+            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
             self.status_label.set_label('Ready to start')
             self.spinner.stop()
             self.progress.set_visible(False)
@@ -471,8 +526,8 @@ def launch(state=None):
             if self.active():
                 return
             self.target = target
-            self.session_title.set_label('Luma ' + target.title())
-            self.workspace_title.set_label('Luma ' + target.title())
+            self.session_title.set_label('Luma ' + target.replace('-', ' ').title())
+            self.workspace_title.set_label('Luma ' + target.replace('-', ' ').title())
             self.sidebar.list.select_row(self.device_rows[target])
             self.update_images()
 
@@ -534,7 +589,7 @@ def launch(state=None):
             self.display_failure = None
             self.shutting_down = False
             self.busy = True
-            self.session_title.set_label('Luma ' + self.target.title())
+            self.session_title.set_label('Luma ' + self.target.replace('-', ' ').title())
             self.status_label.set_label('Getting your Luma workspace ready…')
             self.spinner.start()
             self.progress.set_visible(True)
@@ -611,9 +666,13 @@ def launch(state=None):
             self.pause_button.set_label('Resume' if running and self.session.status() == 'paused' else 'Pause')
             self.image_selector.set_sensitive(not active and bool(self.image_paths))
             self.preset_selector.set_sensitive(not active and bool(self.saved_presets))
+            self.build_menu.set_sensitive(not active)
+            self.preset_heading.action_button.set_sensitive(not active and bool(self.image_paths))
+            for row in self.preset_rows:
+                row.set_sensitive(not active and hasattr(row, 'preset_index'))
             for name, row in self.device_rows.items():
-                row.set_sensitive(not active and name in ('desktop', 'mobile') and
-                                  (not self.catalog_targets or name in self.catalog_targets))
+                row.set_sensitive(True)
+                row.set_trailing('Soon' if name not in self.catalog_targets else '')
             return True
 
         def home(self):
@@ -713,6 +772,15 @@ def launch(state=None):
                            margin_start=28, margin_end=28, margin_top=28, margin_bottom=28)
             body.append(self.label('Developer images', 'title-1'))
             body.append(self.label('Architecture is chosen automatically. Add a trusted image manifest to use a local build or a verified download.', muted=True))
+            body.append(self.label('Build', 'group-heading'))
+            if self.image_selector.get_parent():
+                self.image_selector.get_parent().remove(self.image_selector)
+            body.append(self.image_selector)
+            if self.saved_presets:
+                body.append(self.label('Preset', 'group-heading'))
+                if self.preset_selector.get_parent():
+                    self.preset_selector.get_parent().remove(self.preset_selector)
+                body.append(self.preset_selector)
             body.append(self.button('Add Image…', self.choose_image))
             body.append(self.button('Open Workspace', self.workspace))
             body.append(self.label('For architecture overrides, firmware, memory, and headless sessions, use the CLI. Images are virtual environments; device hardware needs separate tests.', muted=True))
