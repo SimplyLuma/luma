@@ -812,3 +812,12 @@ used that source without altering shared refs or unrelated worktrees.
   Checks2ffa2c4e PASSED68 units and dark native UI disclosure/state checks.
   Actual guest33c17d4d PASSED restored workspace, clipboard command authenticated
   against native Mobile, same SSH identity and graceful window-close shutdown.
+- SSH0.3.1 source09440941 packageda0359812 reusing unchanged qualified0.3.0
+  native/tool/guest closure. AppImage c475c1a9b6dc34055e0388a4d4e9b30577db679468f4d1363c160dc7fef99cf4,
+  283511288 bytes, owned HDD appimage-ssh-r24. Packaged0607a2ed PASSED real
+  AppImage entry and actual bundled UI inline expansion/connection fields/collapse.
+  Delivery6cffac1a verified app and unchanged Desktop/Mobile assets on Dell.
+  Previous0.3.0 launcher already closed (stop returned unit-not-loaded); no QEMU
+  running at fresh prelaunch checks. Launched0.3.1 via
+  luma-preview-tester-ssh-20261022-7b8ef18e.service; registration030b96be.
+  Same isolated workspace/config/data/cache retained; no automated Dell app tests.
