@@ -78,15 +78,18 @@ PY
     session=$(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$user" '$3 == u { print $1 }' | while read -r s; do
       [ "$(loginctl show-session "$s" -p Type --value)" = wayland ] && [ "$(loginctl show-session "$s" -p State --value)" = active ] && echo "$s"; done | head -n 1)
     if [ -n "$session" ]; then
-      # polkit 127 logs no agent registration, so the session's own Shell is
-      # the evidence that an agent can exist; the prompt cases below prove it
-      # answers (without one, polkit refuses with no dialog and they fail).
+      # Wait for the actual user instance's READY notification. Merely seeing
+      # a process races startup; the prompt check also waits for async agents.
       # polkit answers a request from outside a session by looking up the
       # person's display session, so that must be this one.
       [ "$(loginctl show-user "$user" -p Display --value 2>/dev/null)" = "$session" ] || { sleep 3; continue; }
-      shell=$(as_user_systemctl is-active org.gnome.Shell@wayland.service 2>/dev/null)
-      [ "$shell" = active ] || shell=$(pgrep -a -f 'gnome-shell --mode=user' | head -n 1)
-      [ -n "$shell" ] && break
+      shell=$(as_user_systemctl show org.gnome.Shell@user.service -p ActiveState -p Type -p MainPID 2>/dev/null)
+      if grep -Fxq 'ActiveState=active' <<<"$shell" &&
+         grep -Fxq 'Type=notify' <<<"$shell" &&
+         grep -Eq '^MainPID=[1-9][0-9]*$' <<<"$shell"; then
+        break
+      fi
+      shell=
     fi
     sleep 3
   done
@@ -200,13 +203,32 @@ start)
   esac
   # Transient service in the person's user manager: polkit finds their
   # graphical session for it, as for an app the Shell started.
-  systemd-run --user -M "$user@" --quiet --collect --unit="$(unit "$case_name")" \
-    -p StandardOutput=journal -p StandardError=journal "${cmd[@]}" || { echo start-failed; exit 1; }
+  start_request() {
+    systemd-run --user -M "$user@" --quiet --collect --unit="$(unit "$case_name")" \
+      -p StandardOutput=journal -p StandardError=journal "${cmd[@]}"
+  }
+  start_request || { echo start-failed; exit 1; }
   wait=90; [ "$case_name" = flatpak-system ] && wait=300
   deadline=$((SECONDS + ${3:-$wait}))
   while [ "$SECONDS" -lt "$deadline" ]; do
     if [ "$(helpers)" -gt 0 ]; then echo prompt; exit 0; fi
-    if ! as_user_systemctl is-active --quiet "$(unit "$case_name").service"; then echo done; exit 0; fi
+    if ! as_user_systemctl is-active --quiet "$(unit "$case_name").service"; then
+      # Shell components load asynchronously. Retry only pkexec's known
+      # no-agent startup error, within the original prompt deadline. Every
+      # successful run must still show PAM and reject the wrong password.
+      if [ "$case_name" = pkexec ]; then
+        output=$(journalctl -q --no-pager -o cat --since "@$since" \
+          _SYSTEMD_USER_UNIT="$(unit "$case_name").service" 2>/dev/null | tail -n 12)
+        last_exit=$(grep '^pkexec exit=' <<<"$output" | tail -n 1)
+        if [ "$last_exit" = 'pkexec exit=127' ] &&
+           grep -Fq 'Error creating textual authentication agent' <<<"$output"; then
+          sleep 1
+          start_request || { echo start-failed; exit 1; }
+          continue
+        fi
+      fi
+      echo done; exit 0
+    fi
     sleep 1
   done
   echo none

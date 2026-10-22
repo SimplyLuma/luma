@@ -3,6 +3,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
 Gio._promisify(Gio.Subprocess.prototype, 'wait_async', 'wait_finish');
 
@@ -54,6 +55,21 @@ async function launch(url, requirePage) {
         new GLib.Variant('(as)',[names.map(name=>`${name}=${activation[name]}`)]),
         null,Gio.DBusCallFlags.NONE,5000,null);
     if (managerReply.get_type_string() !== '()') throw new Error('unexpected user-manager environment reply');
+    // A real graphical user session owns this target. The isolated QA Shell
+    // needs an explicit session lifetime so installed portal services can start.
+    const session=await capture(launcher.spawnv(['/usr/bin/systemd-run','--user','--quiet',
+        '--unit=luma-gate-browser-graphical-session','--service-type=exec',
+        '--property=BindsTo=graphical-session.target','--property=After=graphical-session.target',
+        '/usr/bin/sleep','infinity']));
+    if (!session.ok && !await capture(launcher.spawnv(['/usr/bin/systemctl','--user','is-active','--quiet','luma-gate-browser-graphical-session.service'])).then(r=>r.ok))
+        throw new Error(`graphical QA session did not start: ${session.stderr}`);
+    const target=await capture(launcher.spawnv(['/usr/bin/systemctl','--user','is-active','graphical-session.target']));
+    if (!target.ok || target.stdout.trim() !== 'active') throw new Error('QA graphical-session target is not active');
+    const portal=await capture(launcher.spawnv(['/usr/bin/timeout','-k','5','90',
+        '/usr/bin/gdbus','call','--session','--dest','org.freedesktop.portal.Desktop',
+        '--object-path','/org/freedesktop/portal/desktop',
+        '--method','org.freedesktop.portal.Settings.ReadAll','[]']));
+    if (!portal.ok) throw new Error(`QA desktop portal did not become ready: ${portal.stderr}`);
     // A graphical app may inherit xdg-open's output descriptors after the
     // launcher exits. Wait for the launcher, not for the app to close its pipes.
     const opener=new Gio.SubprocessLauncher({flags:Gio.SubprocessFlags.NONE});
@@ -76,7 +92,7 @@ async function launch(url, requirePage) {
         const mapped=global.get_window_actors().map(actor=>{
             const w=actor.meta_window;
             return {class:w.get_wm_class(),app_id:tracker.get_window_app(w)?.get_id()??null,
-                title:w.get_title(),pid:w.get_pid(),frame:w.get_frame_rect(),
+                title:w.get_title(),pid:w.get_pid(),frame:{x:w.get_frame_rect().x,y:w.get_frame_rect().y,width:w.get_frame_rect().width,height:w.get_frame_rect().height}, canonicalWindows:browser()?.get_windows().map(v=>({id:v.get_stable_sequence(),pid:v.get_pid(),width:v.get_frame_rect().width,height:v.get_frame_rect().height,visible:v.showing_on_its_workspace(),compositor:!!v.get_compositor_private()})),
                 visible:w.showing_on_its_workspace(),compositor:!!w.get_compositor_private()};
         });
         throw new Error(`xdg-open produced no real canonical browser window: ${JSON.stringify({opened,mapped})}`);
@@ -103,7 +119,12 @@ async function launch(url, requirePage) {
 }
 export function init() {
     GLib.timeout_add(GLib.PRIORITY_DEFAULT,5000,()=>{
-        launch(URL,true).then(()=>launch(HTTPS,false)).catch(error=>check('signed-browser-graphical-launch',false,`${error}\n${error.stack}`))
+        (async()=>{
+            if (!await until(()=>Main.layoutManager?.primaryMonitor && !Main.layoutManager._startingUp,90000))
+                throw new Error('QA compositor did not finish startup');
+            await launch(URL,true);
+            await launch(HTTPS,false);
+        })().catch(error=>check('signed-browser-graphical-launch',false,`${error}\n${error.stack}`))
             .finally(()=>{GLib.file_set_contents(`${OUT}/results.json`,JSON.stringify(results,null,2)); global.context.terminate();});
         return GLib.SOURCE_REMOVE;
     });
