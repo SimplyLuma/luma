@@ -4,6 +4,13 @@ This register preserves public upstream identities and recorded source reference
 
 Creative, Office, and Imager records may remain here for historical attribution; their source is outside the initial OS monorepo scope.
 
+The GTK4 4.22.4-1.fc44 and libadwaita 1.9.3-1.fc44 source RPMs named by
+`config/desktop/inputs.env` are also retained under content-addressed
+`media.simplyluma.com/sources/srpm/` URLs. These are byte-identical Fedora
+source RPMs, including their original signatures, upstream source and license
+notices. The existing SHA-256 pins remain unchanged. This mirror preserves
+rebuild inputs after Fedora's rolling repositories retire those versions.
+
 ## Upstream references
 
 - **FED-FLATPAK-RUNTIME-F44** — [flatpaks/flatpak-runtime](https://src.fedoraproject.org/flatpaks/flatpak-runtime). Recorded revision: `0e52d4ebed5be1a50118f348146870c21ce0168c`. License: MIT.

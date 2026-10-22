@@ -11,9 +11,10 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 architecture=${LUMA_TARGET_ARCHITECTURE:?select x86_64 or aarch64}
 case "$architecture" in x86_64|aarch64) ;; *) exit 2 ;; esac
 [ "$(rpm --eval '%{_arch}')" = "$architecture" ]
+export SOURCE_DATE_EPOCH=$(git -c safe.directory="$root" -C "$root" log -1 --format=%ct HEAD)
 bash "$root/scripts/packages/build-figtree-fonts.sh"
 dnf5 -y install "$root"/build/packages/figtree-fonts/RPMS/noarch/google-figtree-fonts-*.rpm
 bash "$root/scripts/packages/build-gtk4.sh"
 bash "$root/scripts/packages/build-libadwaita.sh"
 bash "$root/scripts/packages/build-luma-developer-platform.sh"
-git -C "$root" rev-parse HEAD >"$root/build/SOURCE-REVISION"
+git -c safe.directory="$root" -C "$root" rev-parse HEAD >"$root/build/SOURCE-REVISION"

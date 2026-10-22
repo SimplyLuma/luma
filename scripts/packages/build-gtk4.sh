@@ -7,7 +7,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-for tool in cpio mktemp podman rpm2cpio sha256sum; do
+for tool in cpio curl mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required RPM build tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -41,13 +41,8 @@ output_dir="$repo_root/build/packages/gtk4"
 mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$GTK4_SRPM"
-if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null 2>&1 || {
-    printf 'error: %s is not cached and dnf5 is not available to download it\n' "$GTK4_SRPM" >&2
-    exit 1
-  }
-  dnf5 download --source --destdir "$cache_dir" "gtk4-4.22.4-1.fc44"
-fi
+bash "$repo_root/scripts/packages/fetch-source-rpm.sh" \
+  "$srpm" "$GTK4_SRPM_SHA256" "$GTK4_SRPM_URL"
 
 printf '%s  %s\n' "$GTK4_SRPM_SHA256" "$srpm" |
   sha256sum --check --status || {

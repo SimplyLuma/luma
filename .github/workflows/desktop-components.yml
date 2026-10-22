@@ -59,8 +59,9 @@ jobs:
           RECIPE: ${{ matrix.recipe }}
         run: |
           test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
+          mkdir -p build
+          git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
           bash "$RECIPE"
-          git rev-parse HEAD > build/SOURCE-REVISION
       - name: Retain checked RPMs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
