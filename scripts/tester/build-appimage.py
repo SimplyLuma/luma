@@ -49,7 +49,7 @@ app.chmod(0o755)
 subprocess.run(['desktop-file-validate', str(app / 'io.luma.Tester.desktop')], check=True)
 payload = out / 'payload.squashfs'
 subprocess.run(['mksquashfs', str(app), str(payload), '-noappend', '-no-xattrs',
-                '-all-root', '-comp', 'zstd', '-Xcompression-level', '6', '-processors', '2'], check=True)
+                '-all-root', '-comp', 'zstd', '-Xcompression-level', '6', '-processors', '2', '-mem', '1G'], check=True)
 image = out / 'Luma-Tester-0.1.0-linux-x86_64.AppImage'
 with image.open('wb') as target:
     for source in (a.runtime, payload):

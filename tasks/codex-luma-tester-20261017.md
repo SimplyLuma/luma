@@ -548,3 +548,26 @@ used that source without altering shared refs or unrelated worktrees.
   test D-Bus and exited before qualification; isolated each task UI run with
   dbus-run-session in the owned external wrapper. It did not pass. Host control
   layout/actual QEMU lifecycle check aa21afd4 passed.
+
+- 2026-10-22: r7 native control module compiled39ebcaa3 and image70440a9c
+  composed;8eebf3d8 and paired host/viewer587ed1fd still show blank Home after
+  keyboard dismissal. Repeated-state48c19f50 rejected changed SSH host key;
+  retained pin/evidence. Scoped cloud-init ssh_deletekeys:false added to prevent
+  regenerating an established preview identity; no host-key checking weakened.
+- r8 module synchronization compile8d64571c and image8a17fe35 passed, source
+  ff34ca84, imageSHA d05c666504252d598cc0f3e9975896299a801309a85fbe2d496f45d275d04c1e.
+  Native8d8167cb hit a real Nouveau/Zink MMU fault and VK_ERROR_DEVICE_LOST;
+  worker shutdown terminated stuck QEMU. No completed native qualification.
+  Software-host retryaa2bd6dd reached genuine phone but initial Home remained
+  blank. Do not describe r8 as qualified or deliver it as finished Mobile.
+- Native debug probes9d7e1ff2/fbebf949/af3682b0/1ebf6e6d/f0d50a21/d49d6bf0
+  trace a transient phosh toplevel created after Home unfolds; its arrival folds
+  Home, then it disappears. GTK reports an unmapped subsurface parent. Disabling
+  tooltips or GDK GL did not resolve it. Debug modules/settings only in retired
+  QA overlay; public renderer and exported image unchanged. Home issue remains.
+- Immutable old final/r13 AppImages archived to owned HDD with exact existing
+  SHA256SUMS verified in0123524d; original paths preserved as symlinks. Temporary
+  root-space pressure during stuck renderer cleared with worker shutdown.
+- Preparing a Desktop-only sidebar preview for Dell while genuine Mobile stays
+  gated. New bundle must not claim phone qualification. Bound mksquashfs memory
+  to1GiB in addition to two CPUs, instead of its host-relative default.
