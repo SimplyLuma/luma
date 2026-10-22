@@ -109,3 +109,42 @@ A rootfs archive alone is not a flashable universal mobile image. Bootloader, ke
 ## Checks and contributions
 
 Run component tests for the code you change, then the applicable package/source and image gates. Hardware-dependent checks require the named real environment; keep skipped or failed checks visible. Preserve third-party license texts, copyright notices, and patch author headers when rebasing. Separate app updates and OS releases must retain their own source/package identity and signature verification.
+
+## Checking a public source checkout
+
+Run `bash tools/check-repository.sh` for the public documentation/source contract,
+Notes and application-kit contracts, and device manifests/tests. Install Python's
+`jsonschema` package as required by the device validator. This checks the public
+OS/application tree; separate Creative and Office repositories are not required.
+
+For a source drop, run `scripts/os/check-source-before-drop.sh SOURCE_DIR DROP_DIR
+REVISION` from a Git checkout at that full revision. It also runs the complete
+`tests/unit` and `tests/depot` suites and records evidence only on success.
+Use the script's documented Fedora dependencies, a D-Bus session, and a display
+(or `xvfb-run` on a headless builder) for the GTK tests. A successful source check
+is not package, device, installer or release qualification. `--backfill` records
+missing historical checks as unavailable; it is not the normal public workflow.
+
+The complete source-drop suites also include GTK/EDS/LumaAppearance integration
+and root-owned publisher boundary tests. Run them in the isolated native builder
+with the Luma libraries installed, as root inside that builder; a stock host's
+missing typelibs or unprivileged account cannot qualify those boundaries.
+Creative/Office/standalone Imager producers are separate products: their absent
+source trees are not required by the OS source check. Their remaining shared
+catalogue/update metadata checks still run; external engine suites report an
+explicit product-scope skip when those sources are not present.
+
+Use a private, root-owned scratch directory outside the builder's home for
+`TMPDIR` when running publisher custody tests. On container images where
+`/root` is a symlink, provide a real root home for those filesystem-boundary
+fixtures. GTK geometry tests need a display large enough for their desktop
+windows, for example `xvfb-run -a -s '-screen 0 2560x1600x24'`, with
+`GDK_SCALE=1`. These are builder-fixture requirements, not changes to the
+installed product's filesystem or display settings.
+
+For filesystem boundary tests in a layered container, bind-mount the private
+scratch directory from one real filesystem and remove inherited default ACLs
+from that fixture directory only. Overlay layers can expose different device
+IDs for directories and files; the safety checks intentionally reject
+cross-device traversal. Keep those guards enabled rather than changing
+expected results to fit the container's overlay or shared-drive permissions.

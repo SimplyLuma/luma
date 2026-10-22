@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 import unittest
 ROOT=Path(__file__).parents[2]
+# Available in Depot, but their producers live in the separate product trees.
+EXTERNAL_PRODUCTS = {'org.projectluma.Imager', 'org.projectluma.Grid',
+                     'org.projectluma.Stage', 'org.projectluma.Session', 'org.projectluma.Reel'}
 class Registry(unittest.TestCase):
     def test_connect_published_beta_remains_eligible_for_independent_updates(self):
         catalog=json.loads((ROOT/'src/luma-installer/data/depot-catalog-4.json').read_text())
@@ -30,9 +33,11 @@ class Registry(unittest.TestCase):
         shipped={a['app_id'] for a in catalog['applications'] if a.get('sources',{}).get('luma_system')}
         self.assertTrue(shipped <= set(ids))
         for app in apps:
-            self.assertTrue((ROOT/app['source_tree']).exists(), app['id'])
+            if app['id'] not in EXTERNAL_PRODUCTS:
+                self.assertTrue((ROOT/app['source_tree']).exists(), app['id'])
             self.assertEqual(app['default_channel'],'beta')
             self.assertEqual(app['channels'],['beta','nightly'])
             self.assertEqual(app['qualification'],'pending-installed-update-rollback-and-migration')
-            if app['recipe']: self.assertTrue((ROOT/app['recipe']).is_file(), app['id'])
+            if app['recipe'] and app['id'] not in EXTERNAL_PRODUCTS:
+                self.assertTrue((ROOT/app['recipe']).is_file(), app['id'])
 if __name__=='__main__': unittest.main()

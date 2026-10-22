@@ -7,6 +7,8 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
+if not (ROOT / 'packaging/flatpak/apps/org.projectluma.Session/prepare-instrument-data.py').is_file():
+    raise unittest.SkipTest("Session instrument sources belong to the separate Creative product")
 spec = importlib.util.spec_from_file_location('session_instrument_data', ROOT / 'packaging/flatpak/apps/org.projectluma.Session/prepare-instrument-data.py')
 api = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(api)

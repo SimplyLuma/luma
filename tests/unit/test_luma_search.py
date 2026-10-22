@@ -339,5 +339,83 @@ class FilerPlacesTests(unittest.TestCase):
         self.assertIn("not in place_uris", source)
 
 
+class MissingDesktopAppsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import importlib.machinery
+        import importlib.util
+        try:
+            import gi
+            gi.require_version("Gio", "2.0")
+            from gi.repository import Gio
+        except (ImportError, ValueError) as error:
+            raise unittest.SkipTest(f"Gio bindings unavailable: {error}")
+        loader = importlib.machinery.SourceFileLoader(
+            "luma_search_missing_app_service", str(ROOT / "src/luma-search/luma-search-service"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cls.service_module = importlib.util.module_from_spec(spec)
+        loader.exec_module(cls.service_module)
+        cls.Gio = Gio
+
+    def test_real_unknown_desktop_id_is_absent(self):
+        from luma_search.providers import desktop_app_info
+        self.assertIsNone(desktop_app_info("org.projectluma.Issue36.NotInstalled.desktop"))
+        self.assertIsNone(desktop_app_info(""))
+
+    def test_existing_desktop_app_is_returned(self):
+        from unittest.mock import patch
+        from luma_search.providers import desktop_app_info
+        app = object()
+        with patch.object(self.Gio.DesktopAppInfo, "new", return_value=app):
+            self.assertIs(desktop_app_info("installed.desktop"), app)
+
+    def test_missing_settings_panel_and_app_are_skipped(self):
+        import json
+        from unittest.mock import patch
+        pages = [dict(id="missing-panel", title="Missing panel", panel="absent"),
+                 dict(id="missing-app", title="Missing app", desktop="missing.desktop"),
+                 dict(id="installed", title="Installed", desktop="present.desktop")]
+        def lookup(identifier):
+            if identifier == "present.desktop":
+                return object()
+            raise TypeError("constructor returned NULL")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(json.dumps({"pages": pages}))
+            with patch.object(self.service_module, "SETTINGS_PAGES_PATHS", (path,)), \
+                 patch.object(self.Gio.DesktopAppInfo, "new", side_effect=lookup):
+                self.assertEqual(self.service_module.SearchService._load_settings_pages(), (pages[2],))
+
+    def test_places_without_filer_are_empty(self):
+        from unittest.mock import patch
+        service = self.service_module.SearchService.__new__(self.service_module.SearchService)
+        with patch.object(self.Gio.DesktopAppInfo, "new", side_effect=TypeError("constructor returned NULL")):
+            self.assertEqual(service._places(), [])
+
+    def test_depot_activation_reports_unavailable(self):
+        from unittest.mock import patch
+        from luma_search import depot
+        provider = depot.Provider.__new__(depot.Provider)
+        with patch.object(depot, "entries", return_value=()), \
+             patch.object(self.Gio.DesktopAppInfo, "new", side_effect=TypeError("constructor returned NULL")):
+            with self.assertRaisesRegex(ValueError, "Depot is unavailable"):
+                provider.execute("LaunchSearch", (["notes"], 0))
+
+    def test_app_removed_after_query_reports_unavailable(self):
+        from unittest.mock import patch
+        service = self.service_module.SearchService.__new__(self.service_module.SearchService)
+        with patch.object(self.Gio.DesktopAppInfo, "new", side_effect=TypeError("constructor returned NULL")):
+            with self.assertRaisesRegex(ValueError, "unknown application result"):
+                service._activate("applications", "removed.desktop", [], 0)
+
+    def test_settings_app_removed_after_query_reports_unavailable(self):
+        from unittest.mock import patch
+        service = self.service_module.SearchService.__new__(self.service_module.SearchService)
+        service._settings_pages = ({"id": "removed", "desktop": "removed.desktop"},)
+        with patch.object(self.Gio.DesktopAppInfo, "new", side_effect=TypeError("constructor returned NULL")):
+            with self.assertRaisesRegex(ValueError, "settings application is unavailable"):
+                service._activate(self.service_module.SETTINGS_PAGES_PROVIDER_ID, "removed", [], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

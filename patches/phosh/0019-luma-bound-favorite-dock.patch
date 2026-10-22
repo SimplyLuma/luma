@@ -1,0 +1,214 @@
+--- a/src/app-grid.c
++++ b/src/app-grid.c
+@@ -44,6 +44,7 @@
+ struct _PhoshAppGridPrivate {
+   GtkFilterListModel *model;
+   GListStore *home_model;
++  GtkFilterListModel *dock_model;
+ 
+   GtkWidget *deck;
+   GtkWidget *search;
+@@ -448,6 +449,24 @@
+ }
+ 
+ 
++/* A bound GtkFlowBox ignores widget filters. Limit the source model instead.
++ * Favorite items are reconstructed per lookup, so compare app identity. */
++static gboolean
++is_dock_favorite (gpointer item, gpointer user_data)
++{
++  GListModel *favorites = G_LIST_MODEL (user_data);
++  guint count = MIN (4, g_list_model_get_n_items (favorites));
++
++  for (guint i = 0; i < count; i++) {
++    g_autoptr (GAppInfo) favorite = g_list_model_get_item (favorites, i);
++
++    if (g_app_info_equal (G_APP_INFO (item), favorite))
++      return TRUE;
++  }
++  return FALSE;
++}
++
++
+ static void
+ favorites_changed (GListModel *list, guint pos, guint removed, guint added, PhoshAppGrid *self)
+ {
+@@ -458,6 +477,9 @@
+ 
+   if (!home_apps[0])
+     rebuild_home_model (self);
++
++  /* A removal/reorder can change membership outside its changed range. */
++  gtk_filter_list_model_refilter (priv->dock_model);
+ 
+   /* We don't show favorites in the main list, filter them out */
+   gtk_filter_list_model_refilter (priv->model);
+@@ -514,8 +536,10 @@
+                            create_home_launcher,
+                            self,
+                            NULL);
++  priv->dock_model = gtk_filter_list_model_new (G_LIST_MODEL (favorites),
++                                                 is_dock_favorite, favorites, NULL);
+   gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->dock),
+-                           G_LIST_MODEL (favorites),
++                           G_LIST_MODEL (priv->dock_model),
+                            create_favorite_launcher,
+                            self,
+                            NULL);
+@@ -570,6 +594,7 @@
+   g_clear_object (&priv->model);
+   g_clear_object (&priv->search_proxy);
+   g_clear_object (&priv->home_model);
++  g_clear_object (&priv->dock_model);
+   g_clear_object (&priv->settings);
+   g_clear_object (&priv->luma_settings);
+   g_clear_handle_id (&priv->debounce, g_source_remove);
+--- a/tests/test-app-grid-dock.c
++++ b/tests/test-app-grid-dock.c
+@@ -0,0 +1,69 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include "app-grid.h"
++#include "app-grid-button.h"
++#include "metainfo-cache.h"
++
++static void
++assert_dock (GtkWidget *dock, const char **ids, guint count)
++{
++  g_autoptr (GList) children = gtk_container_get_children (GTK_CONTAINER (dock));
++
++  g_assert_cmpuint (g_list_length (children), ==, count);
++  for (guint i = 0; i < count; i++) {
++    GtkWidget *button = GTK_WIDGET (g_list_nth_data (children, i));
++    GAppInfo *info = phosh_app_grid_button_get_app_info (PHOSH_APP_GRID_BUTTON (button));
++
++    g_assert_cmpstr (g_app_info_get_id (info), ==, ids[i]);
++  }
++}
++
++static void
++test_dock_favorite_limit (void)
++{
++  const char *six[] = { "demo.app.First.desktop", "demo.app.Second.desktop",
++                       "demo.app.Third.desktop", "demo.app.Fourth.desktop",
++                       "demo.app.Fifth.desktop", "demo.app.Sixth.desktop", NULL };
++  const char *three[] = { "demo.app.First.desktop", "demo.app.Second.desktop",
++                         "demo.app.Third.desktop", NULL };
++  const char *reordered[] = { "demo.app.Sixth.desktop", "demo.app.Fifth.desktop",
++                             "demo.app.First.desktop", "demo.app.Second.desktop",
++                             "demo.app.Third.desktop", "demo.app.Fourth.desktop", NULL };
++  const char *missing[] = { "not-installed.desktop", "demo.app.First.desktop",
++                           "demo.app.Second.desktop", "demo.app.Third.desktop",
++                           "demo.app.Fourth.desktop", "demo.app.Fifth.desktop", NULL };
++  g_autoptr (GSettings) favorites = g_settings_new ("sm.puri.phosh");
++  g_autoptr (GSettings) state = g_settings_new ("org.project_luma.shell-state");
++  GtkWidget *grid, *dock, *home;
++  g_autoptr (GList) home_children = NULL;
++
++  g_settings_set_strv (state, "home-apps", NULL);
++  g_settings_set_strv (favorites, "favorites", six);
++  grid = phosh_app_grid_new ();
++  dock = GTK_WIDGET (gtk_widget_get_template_child (grid, PHOSH_TYPE_APP_GRID, "dock"));
++  home = GTK_WIDGET (gtk_widget_get_template_child (grid, PHOSH_TYPE_APP_GRID, "favs"));
++  g_assert_nonnull (dock);
++  g_assert_nonnull (home);
++  assert_dock (dock, six, 4);
++  /* Overflow stays in Home; limiting the dock must not change saved favorites. */
++  home_children = gtk_container_get_children (GTK_CONTAINER (home));
++  g_assert_cmpuint (g_list_length (home_children), ==, 6);
++  g_settings_set_strv (favorites, "favorites", three);
++  assert_dock (dock, three, 3);
++  g_settings_set_strv (favorites, "favorites", reordered);
++  assert_dock (dock, reordered, 4);
++  g_settings_set_strv (favorites, "favorites", missing);
++  assert_dock (dock, six, 4);
++  g_settings_set_strv (favorites, "favorites", NULL);
++  assert_dock (dock, NULL, 0);
++  gtk_widget_destroy (grid);
++}
++
++int
++main (int argc, char *argv[])
++{
++  g_autoptr (PhoshMetainfoCache) cache = phosh_metainfo_cache_get_default ();
++
++  gtk_test_init (&argc, &argv, NULL);
++  g_test_add_func ("/phosh/app-grid/dock-limit-order", test_dock_favorite_limit);
++  return g_test_run ();
++}
+--- a/tests/org.project_luma.shell-state.gschema.xml
++++ b/tests/org.project_luma.shell-state.gschema.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Unit-test fixture for the shared setting read by app-grid; not installed. -->
++<schemalist>
++  <schema id="org.project_luma.shell-state" path="/org/project_luma/shell-state/">
++    <key name="home-apps" type="as"><default>[]</default></key>
++  </schema>
++</schemalist>
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -45,8 +45,15 @@
+ # Useful when running locally and glib hits an assertion:
+ #test_env_common.set('ASAN_OPTIONS', 'fast_unwind_on_malloc=0:disable_coredump=0:unmap_shadow_on_exit=1:abort_on_error=1')
+ 
++# The Luma setting is owned by luma-shell-state, outside the upstream build.
++# Compile only the key app-grid consumes as a test fixture, not an install input.
++dock_test_schemas = gnome.compile_schemas(
++  depend_files: files('org.project_luma.shell-state.gschema.xml'),
++)
++
+ # xdg setup for the app-grid:
+ test_env_unit = test_env_common
++test_env_unit.prepend('GSETTINGS_SCHEMA_DIR', meson.current_build_dir())
+ test_env_unit.set(
+   'XDG_CONFIG_HOME',
+   '@0@/user/config/'.format(meson.current_source_dir()),
+@@ -111,6 +118,7 @@
+ tests_unit = [
+   'activity',
+   'app-grid-button',
++  'app-grid-dock',
+   'app-grid-folder-button',
+   'app-list-model',
+   'auto-brightness-bucket',
+@@ -177,7 +185,7 @@
+     link_args: test_link_args,
+     dependencies: [testlib_dep, test_stubs_dep],
+   )
+-  test(test, t, env: test_env_unit, depends: compiled_schemas, suite: ['unit'])
++  test(test, t, env: test_env_unit, depends: [compiled_schemas, dock_test_schemas], suite: ['unit'])
+ endforeach
+ 
+ foreach test : tests_searchd
+--- a/tests/user/share/applications/demo.app.Third.desktop
++++ b/tests/user/share/applications/demo.app.Third.desktop
+@@ -0,0 +1,5 @@
++[Desktop Entry]
++Type=Application
++Name=Dock test Third
++Exec=true
++Icon=application-x-executable
+--- a/tests/user/share/applications/demo.app.Fourth.desktop
++++ b/tests/user/share/applications/demo.app.Fourth.desktop
+@@ -0,0 +1,5 @@
++[Desktop Entry]
++Type=Application
++Name=Dock test Fourth
++Exec=true
++Icon=application-x-executable
+--- a/tests/user/share/applications/demo.app.Fifth.desktop
++++ b/tests/user/share/applications/demo.app.Fifth.desktop
+@@ -0,0 +1,5 @@
++[Desktop Entry]
++Type=Application
++Name=Dock test Fifth
++Exec=true
++Icon=application-x-executable
+--- a/tests/user/share/applications/demo.app.Sixth.desktop
++++ b/tests/user/share/applications/demo.app.Sixth.desktop
+@@ -0,0 +1,5 @@
++[Desktop Entry]
++Type=Application
++Name=Dock test Sixth
++Exec=true
++Icon=application-x-executable

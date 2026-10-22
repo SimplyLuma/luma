@@ -2079,6 +2079,7 @@ class SystemHostProfileTests(unittest.TestCase):
                 "capability_providers": {},
                 "effect_owners": {},
             }), encoding="utf-8")
+            profile_path.chmod(0o644)
             dmi = root / "dmi"
             dmi.mkdir()
             (dmi / "sys_vendor").write_text("LENOVO\n", encoding="utf-8")
@@ -2106,10 +2107,12 @@ class SystemHostProfileTests(unittest.TestCase):
                 "hardware": ["dmi:Forged:Machine"],
             }
             path.write_text(json.dumps(value), encoding="utf-8")
+            path.chmod(0o644)
             with self.assertRaisesRegex(TransactionError, "invalid shape"):
                 SystemHostProfile.from_file(path, require_root=False)
             del value["hardware"]
             path.write_text(json.dumps(value), encoding="utf-8")
+            path.chmod(0o644)
             path.chmod(0o666)
             with self.assertRaisesRegex(TransactionError, "non-writable"):
                 SystemHostProfile.from_file(path, require_root=False)

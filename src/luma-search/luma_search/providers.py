@@ -10,6 +10,18 @@ from pathlib import Path
 from typing import Iterable
 
 
+def desktop_app_info(desktop_id: str):
+    """Return an installed desktop app, including on NULL-raising GI bindings."""
+    if not desktop_id:
+        return None
+    from gi.repository import Gio
+    try:
+        return Gio.DesktopAppInfo.new(desktop_id)
+    except TypeError:
+        # DesktopAppInfo.new() is nullable in C; PyGObject can raise instead.
+        return None
+
+
 GROUP = "Shell Search Provider"
 
 

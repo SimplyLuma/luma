@@ -51,7 +51,7 @@
 #
 #   dnf install bash git-core python3 python3-gobject python3-pyyaml \
 #               dbus-daemon gnupg2 ostree rsync util-linux
-#   PYTHONPATH=src/luma-android:src/luma-platform/sdk:src/luma-platform/broker:\
+#   PYTHONPATH=src/luma-android:src/luma-platform/appkit:src/luma-platform/sdk:src/luma-platform/broker:\
 #              src/luma-relay:src/luma-mods:src/luma-shell-state:src/prairie-core
 #   run under dbus-run-session
 #
@@ -126,12 +126,6 @@ if [ -n "$actual" ] && [ "$actual" != "$revision" ]; then
   printf 'checking one revision and recording another is the failure this gate exists to stop.\n' >&2
   exit 2
 fi
-
-[ -f "$source_dir/tools/check-repository.sh" ] || {
-  printf 'error: %s has no tools/check-repository.sh; is it a source tree?\n' \
-    "$source_dir" >&2
-  exit 2
-}
 
 # Each check: a label, the path whose absence means "not present at this
 # revision", and the command. In a normal run a missing path is a failure.
@@ -221,7 +215,7 @@ run_check "tools/check-repository.sh" tools/check-repository.sh \
 # and its failure is fatal. Move the date deliberately if the triage has not
 # happened; do not delete this block.
 tests_unit_excluded_until=${LUMA_TESTS_UNIT_EXCLUDED_UNTIL:-2026-10-04}
-PYTHONPATH=${PYTHONPATH:-src/luma-android:src/luma-platform/sdk:src/luma-platform/broker:src/luma-relay:src/luma-mods:src/luma-shell-state:src/prairie-core}
+PYTHONPATH=${PYTHONPATH:-$source_dir/src/luma-android:$source_dir/src/luma-platform/appkit:$source_dir/src/luma-platform/sdk:$source_dir/src/luma-platform/broker:$source_dir/src/luma-relay:$source_dir/src/luma-mods:$source_dir/src/luma-disks:$source_dir/src/luma-installer:$source_dir/src/luma-shell-state:$source_dir/src/prairie-core}
 export PYTHONPATH PYTHONDONTWRITEBYTECODE=1
 if [ "$(date -u +%Y-%m-%d)" \< "$tests_unit_excluded_until" ]; then
   unavailable="${unavailable}unittest discover tests/unit (excluded until $tests_unit_excluded_until: suite is red on work/os-release-pipeline, see the block above)

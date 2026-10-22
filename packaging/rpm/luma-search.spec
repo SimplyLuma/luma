@@ -2,7 +2,7 @@
 
 Name:           luma-search
 Version:        0.1.0
-Release:        1.luma.8%{?dist}
+Release:        1.luma.9%{?dist}
 Summary:        Shared Project Luma system Search service
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -33,6 +33,7 @@ Source23:       test_depot_results.py
 BuildArch:      noarch
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  python3
+BuildRequires:  python3-gobject-base
 Requires:       glib2
 Requires:       python3-gobject-base
 Requires:       gtk4
@@ -109,6 +110,9 @@ install -D -m 0644 %{SOURCE10} \
 glib-compile-schemas %{_datadir}/glib-2.0/schemas &>/dev/null || :
 
 %changelog
+* Thu Oct 22 2026 Luma contributors - 0.1.0-1.luma.9
+- Keep Search available when optional applications or Settings panels are missing.
+
 * Tue Sep 22 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.7
 - Offer Filer's places (Applications, Home, Trash, the standard folders,
   Network, bookmarks) by name and everyday words, in Filer's labels, and
