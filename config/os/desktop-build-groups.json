@@ -1,0 +1,11 @@
+{
+  "schema": "org.projectluma.desktop-build-groups/v1",
+  "groups": {
+    "libhandy": {"recipe": "scripts/packages/build-libhandy.sh", "paths": ["patches/libhandy/"]},
+    "ibus": {"recipe": "scripts/packages/build-ibus.sh", "paths": ["patches/ibus/"]},
+    "fwupd": {"recipe": "scripts/packages/build-fwupd.sh", "paths": ["patches/fwupd/"]},
+    "plymouth": {"recipe": "scripts/packages/build-plymouth.sh", "paths": ["patches/plymouth/"]},
+    "mutter": {"recipe": "scripts/packages/build-mutter.sh", "paths": ["patches/mutter/"]},
+    "gnome-settings-daemon": {"recipe": "scripts/packages/build-gnome-settings-daemon.sh", "paths": ["patches/gnome-settings-daemon/"]}
+  }
+}

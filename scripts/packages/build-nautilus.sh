@@ -35,7 +35,7 @@ done
   exit 1
 }
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
   aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;

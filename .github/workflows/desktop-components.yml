@@ -1,0 +1,74 @@
+name: Native desktop components
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-components.yml'
+      - 'config/os/desktop-build-groups.json'
+      - 'config/desktop/inputs.env'
+      - 'scripts/os/desktop-package-matrix.py'
+      - 'scripts/packages/**'
+      - 'patches/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: matrix
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            matrix=$(python3 scripts/os/desktop-package-matrix.py --base "$BASE")
+          else
+            matrix=$(python3 scripts/os/desktop-package-matrix.py)
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$(printf '%s' "$matrix" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["include"]))')" >> "$GITHUB_OUTPUT"
+  build:
+    needs: select
+    if: needs.select.outputs.count != '0'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+      RPM_BUILD_NCPUS: '2'
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build and check the selected component
+        env:
+          RECIPE: ${{ matrix.recipe }}
+        run: |
+          test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
+          bash "$RECIPE"
+          git rev-parse HEAD > build/SOURCE-REVISION
+      - name: Retain checked RPMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.component }}-${{ matrix.architecture }}
+          path: |
+            build/packages/**/RPMS/
+            build/packages/**/SRPMS/
+            build/packages/**/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14

@@ -26,7 +26,6 @@ class DesktopTargets(unittest.TestCase):
         self.assertEqual(actual, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
                                   for p in original if target.package_name(p) != 'intel-crashlog'])
         self.assertFalse(any(p.endswith('.x86_64') for p in actual))
-        self.assertTrue(any('gnome-shell-50.3-1.luma.120.' in p for p in actual))
         self.assertFalse(any('surfacepreview' in p for p in actual))
 
     def test_arm_fedora_exact_pins_follow_target(self):

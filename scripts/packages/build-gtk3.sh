@@ -43,7 +43,7 @@ mkdir -p "$cache_dir" "$output_dir"
 srpm="$cache_dir/$GTK3_SRPM"
 if [ ! -f "$srpm" ]; then
   curl --fail --location --retry 3 --output "$srpm.partial" \
-    "https://kojipkgs.fedoraproject.org/packages/gtk3/3.24.52/2.fc44/src/$GTK3_SRPM"
+    "https://dl.fedoraproject.org/pub/fedora/linux/updates/44/Everything/source/tree/Packages/g/$GTK3_SRPM"
   mv "$srpm.partial" "$srpm"
 fi
 
