@@ -40,6 +40,7 @@ def build(args):
     required = {'keyboard/luma-keyboard-x86_64/luma-latinime-decoder',
                 'keyboard/luma-keyboard-x86_64/main_en.dict',
                 'keyboard/luma-stevia-x86_64/luma-phosh-osk-stevia',
+                'control/libluma-tester-control.so',
                 'profiles/desktop.dconf', 'profiles/handheld.dconf'}
     if not required <= {name for _, name in files}:
         raise TesterError('The native keyboard and matching phone presentation profiles are required.')

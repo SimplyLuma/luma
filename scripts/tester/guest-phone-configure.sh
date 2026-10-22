@@ -33,12 +33,15 @@ install -Dm644 "$root/config/tester/mobile.dconf" /usr/share/luma-tester/profile
 install -Dm644 "$root/profiles/desktop.dconf" /usr/share/luma-tester/profiles/mobile-base.dconf
 install -Dm644 "$root/profiles/handheld.dconf" /usr/share/luma-tester/profiles/mobile-handheld.dconf
 install -Dm644 "$root/config/tester/mobile-ready.service" /etc/systemd/user/luma-tester-mobile-ready.service
+install -Dm755 "$root/control/libluma-tester-control.so" /usr/lib64/gtk-3.0/modules/libluma-tester-control.so
 install -d /etc/systemd/user/graphical-session.target.wants /etc/systemd/user/mobi.phosh.Shell.service.d /etc/systemd/user/mobi.phosh.OSK.service.d
 ln -sf ../luma-tester-mobile-ready.service /etc/systemd/user/graphical-session.target.wants/luma-tester-mobile-ready.service
 # The physical phone keeps its normal lock policy. This disposable developer VM
 # intentionally starts unlocked and authorizes SSH only with its per-session key.
 cat >/etc/systemd/user/mobi.phosh.Shell.service.d/99-luma-tester.conf <<'UNIT'
 [Service]
+Environment=LUMA_TESTER_CONTROL=1
+Environment=GTK_MODULES=/usr/lib64/gtk-3.0/modules/libluma-tester-control.so
 ExecStart=
 ExecStart=/opt/luma/phosh/libexec/phosh --unlocked
 UNIT

@@ -537,3 +537,14 @@ used that source without altering shared refs or unrelated worktrees.
   preference/fallback checked. Source remains Linux host only. Old immutable
   phone exports successfully archived with exact SHA checks in fd1042cc; failed
   1GiB archival attempt remains recorded. Root26GiB/secondary22GiB at last check.
+- Home keyboard-binding qualification73934907 still failed returning from OSK:
+  OverviewActive alone does not prove the Home page is visible. Replacing that
+  approximation with an optional GTK3 automation module loaded solely into
+  the tester's actual Phosh process. It dispatches the existing native Home
+  action (including after IME layout settles); no alternative phone UI or
+  private renderer source is copied into public Git. Module compile/native
+  qualification pending. Prior Phosh RPM and its full normal checks unchanged.
+- First concurrent Home API attempt17adefe3 hit same Application ID on a shared
+  test D-Bus and exited before qualification; isolated each task UI run with
+  dbus-run-session in the owned external wrapper. It did not pass. Host control
+  layout/actual QEMU lifecycle check aa21afd4 passed.
