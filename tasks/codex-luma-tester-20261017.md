@@ -47,7 +47,11 @@ Latest Desktop candidate (display refinement):
 - Full native/packaged workflow PASS dev-luma-tester-display-full-r15-1b08a476;
   actual AppImage entry PASS dev-luma-tester-display-appimage-entry-r15b-73d156bd.
   Core39 checks PASS dev-luma-tester-display-core-2bc8c978.
-- Dell display update delivery pending; connection timed out on recent checks.
+- Dell display update delivered on2026-10-22, exact checksum verified by
+  dev-luma-tester-dell-display-delivery-1022-f8a613c2. Launched through the real
+  graphical session as luma-preview-tester-display-20261022-a4654df3.service,
+  with isolated tester-display-20261017 config/data/cache/workspace. No existing
+  tester/QEMU process was running before launch. No Dell automated tests ran.
   Earlier graphics-r13 delivery completed after the user reported it online. Exact candidate
   checksum verified by dev-luma-tester-dell-graphics-delivery-r4-45557a0e.
   Launcher active in the real graphical session as
@@ -398,3 +402,12 @@ used that source without altering shared refs or unrelated worktrees.
   the last delivered candidate. Retry /srv/dev/accounts/second/artifacts/luma-tester-deliver-display.py
   when the tunnel returns, then use dell-preview with a separate
   tester-display-20261017 workspace. Preserve any running r13 guest/user work.
+
+- 2026-10-22: user requested latest tester launch. Dell graphical session2
+  available, no tester/QEMU process running. Delivered the previously qualified
+  r15 AppImage with SHA256b46a3ccf8c7e245e89144ed49e7d9bf901f3701ee8cbef16e8f31e277e79929d,
+  verified remote checksum and launched the launcher using the registered helper.
+  Unit luma-preview-tester-display-20261022-a4654df3.service; workspace
+  /home/nick/.local/share/luma-previews/tester-display-20261017/workspace.
+  Existing older preview data preserved. This is delivery for manual review,
+  not a new automated qualification or an OS release.
