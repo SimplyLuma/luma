@@ -104,7 +104,7 @@ def launch(state=None):
             GLib.timeout_add_seconds(2, self.refresh)
 
         def page(self, name):
-            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=26,
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
                               margin_start=40, margin_end=40, margin_top=32, margin_bottom=32,
                               valign=Gtk.Align.CENTER)
             clamp = Adw.Clamp(maximum_size=580, child=content, vexpand=True)
@@ -112,7 +112,7 @@ def launch(state=None):
             return content
 
         def heading(self, page, title, subtitle):
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_bottom=10)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_bottom=8)
             box.append(self.label(title, 'hero', centered=True))
             if subtitle:
                 box.append(self.label(subtitle, muted=True, centered=True))
@@ -125,10 +125,11 @@ def launch(state=None):
             button.add_css_class('flat')
             if selected:
                 button.add_css_class('selected')
-            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
-                             halign=Gtk.Align.FILL, margin_start=12, margin_end=12,
-                             margin_top=24, margin_bottom=24, valign=Gtk.Align.CENTER)
-            graphic = icons.image(icon, pixel_size=56)
+            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16,
+                             halign=Gtk.Align.FILL, margin_start=24, margin_end=24,
+                             margin_top=24, margin_bottom=24, valign=Gtk.Align.CENTER,
+                             vexpand=True)
+            graphic = icons.image(icon, pixel_size=48)
             graphic.add_css_class('tester-choice-icon')
             column.append(graphic)
             column.append(self.label(title, 'title-2', centered=True))
@@ -141,7 +142,7 @@ def launch(state=None):
         def build_welcome(self):
             page = self.page('welcome')
             self.heading(page, 'Hello, Luma.', None)
-            choices = Gtk.Box(spacing=18, homogeneous=True)
+            choices = Gtk.Box(spacing=16, homogeneous=True)
             choices.append(self.choice('Try Luma', None, 'play',
                                        lambda: self.commands.invoke('tester.try')))
             choices.append(self.choice('Develop for Luma', None, 'code',
@@ -157,7 +158,7 @@ def launch(state=None):
             self.heading(page, 'Where would you like to start?',
                          'Desktop is available in this preview.' if self.catalog_targets == {'desktop'}
                          else 'The same Luma, on a different screen.')
-            choices = Gtk.Box(spacing=18, homogeneous=True)
+            choices = Gtk.Box(spacing=16, homogeneous=True)
             self.mobile_button = self.choice('Mobile', 'Luma in your hand.', 'smartphone', lambda: self.select_target('mobile'), self.target == 'mobile', toggle=True)
             self.desktop_button = self.choice('Desktop', 'Space for everything.', 'monitor', lambda: self.select_target('desktop'), self.target == 'desktop', toggle=True)
             self.desktop_button.set_group(self.mobile_button)

@@ -1,26 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <title>Luma Tester</title>
-  <defs>
-    <linearGradient id="base" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#83b6db"/><stop offset=".5" stop-color="#527cbb"/><stop offset="1" stop-color="#434d8c"/></linearGradient>
-    <radialGradient id="bloom" cx=".18" cy=".02" r=".9"><stop stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="metal" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#e5ecf2"/><stop offset="1" stop-color="#b6c5d6"/></linearGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e0f1fa"/><stop offset=".5" stop-color="#b0cee9"/><stop offset="1" stop-color="#849dcc"/></linearGradient>
-    <filter id="depth" x="-30%" y="-30%" width="170%" height="180%"><feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#172f59" flood-opacity=".3"/></filter>
-    <clipPath id="tile"><rect width="1024" height="1024" rx="240"/></clipPath>
-  </defs>
-  <g clip-path="url(#tile)">
-    <rect width="1024" height="1024" fill="url(#base)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
-    <g filter="url(#depth)">
-      <path d="M429 613 H527 L544 730 H412 Z" fill="url(#metal)"/>
-      <rect x="330" y="722" width="294" height="34" rx="17" fill="url(#metal)"/>
-      <rect x="168" y="256" width="620" height="404" rx="44" fill="url(#metal)"/>
-      <rect x="193" y="281" width="570" height="331" rx="23" fill="url(#glass)"/>
-      <path d="M421 367 Q421 352 436 361 L546 430 Q560 440 546 450 L436 519 Q421 528 421 513 Z" fill="#fff"/>
-      <rect x="650" y="424" width="208" height="358" rx="40" fill="url(#metal)"/>
-      <rect x="665" y="439" width="178" height="328" rx="28" fill="url(#glass)"/>
-      <rect x="722" y="450" width="64" height="12" rx="6" fill="#576b95"/>
-      <path d="M706 544 L687 565 L706 586 M801 544 L820 565 L801 586" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="726" y="744" width="56" height="6" rx="3" fill="#fff"/>
-    </g>
-  </g>
+  <!-- The orange full stop from Luma's canonical wordmark (#FE6819). -->
+  <circle cx="64" cy="64" r="44" fill="#FE6819"/>
 </svg>
