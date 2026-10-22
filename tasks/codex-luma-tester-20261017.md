@@ -31,11 +31,23 @@ Current Linux x86_64 candidate is **Desktop only**, with automatic VirGL,
 software fallback, and a frame-clock-limited private Unix VNC viewer. Actual
 packaged guest checks verified VirGL, app source edit/restart, accelerated
 screenshot capture and graceful shutdown. Final AppImage entry passed as well.
-Latest source host/guest1deb3d1b. Mobile selection is unavailable in this
+Latest source hostb3a3b5c1, guest1deb3d1b. Mobile selection is unavailable in this
 catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
 claims below are withdrawn; portrait GNOME is not product parity.
 
-Latest Desktop candidate (display refinement):
+Latest host UI candidate: appimage-welcome-r16/Luma-Tester-0.1.0-linux-x86_64.AppImage
+under /srv/dev/accounts/second/experiments/luma-tester-20261017.
+SHA256853f82ed6ea576136704a865e637bf98d335e1a883ca0024cf85822ea6f09cdf.
+Native LumaUI flow/light/narrow/dark PASS dev-luma-tester-welcome-polish-772895f8;
+actual AppImage entry PASS dev-luma-tester-welcome-entry-be679813. Host-only
+refresh of the immutable r15 portable closure; parent receipt and full file
+hashes retained. Guest disk, GPU tools and VM behavior unchanged.
+Delivered with exact checksum (dev-luma-tester-dell-welcome-delivery-0b95282a),
+launched as luma-preview-tester-welcome-20261022-66efd78e.service. Uses existing
+tester-display-20261017 config/data/cache/workspace; older launcher stopped only
+after confirming no QEMU running. No Dell automated tests ran.
+
+Qualified Desktop guest / earlier display candidate:
 - /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-display-r15/Luma-Tester-0.1.0-linux-x86_64.AppImage
 - SHA256 b46a3ccf8c7e245e89144ed49e7d9bf901f3701ee8cbef16e8f31e277e79929d;
   1688381944 bytes. Receipt and checksum beside it.
@@ -411,3 +423,11 @@ used that source without altering shared refs or unrelated worktrees.
   /home/nick/.local/share/luma-previews/tester-display-20261017/workspace.
   Existing older preview data preserved. This is delivery for manual review,
   not a new automated qualification or an OS release.
+
+- 2026-10-22: removed welcome subtitle, footer and both choice descriptions per
+  user feedback. Menu content centers vertically, retaining scrolling at narrow
+  sizes. Added an original vector icon using existing Prairie gradient/metal
+  styling, desktop/phone motif, wired through frame, desktop entry, wheel and
+  portable/AppImage icon paths. Native screenshots inspected and packaged
+  screenshot text confirmed only the greeting and two choices. New launcher
+  delivered/opened for manual review; no guest or other app interrupted.
