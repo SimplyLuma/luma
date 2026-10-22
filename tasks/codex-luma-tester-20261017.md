@@ -36,17 +36,15 @@ Latest source hostb36bd64e, guest1deb3d1b. Mobile selection is unavailable in th
 catalog until its actual phone shell/profile is qualified. Earlier r10 Mobile
 claims below are withdrawn; portrait GNOME is not product parity.
 
-Latest host UI candidate: appimage-spacing-r17b/Luma-Tester-0.1.0-linux-x86_64.AppImage
-under /srv/dev/accounts/second/experiments/luma-tester-20261017.
-SHA25647e6d009f75aa33c5d44cc17fe3e94a31063a12098d6d79f87e3cf827c349c49.
-Native LumaUI flow/light/narrow/dark PASS dev-luma-tester-spacing-review-4f66018b;
-actual AppImage entry PASS dev-luma-tester-spacing-entry-5c90a1fd. Host-only
-refresh of the immutable r15 portable closure; parent receipt and full file
-hashes retained. Guest disk, GPU tools and VM behavior unchanged.
-Delivered with exact checksum (dev-luma-tester-dell-spacing-delivery-df970533),
-launched as luma-preview-tester-spacing-20261022-58e1db70.service. Uses existing
-tester-display-20261017 config/data/cache/workspace; older launcher stopped only
-after confirming no QEMU running. No Dell automated tests ran.
+Latest delivered host UI: owned HDD appimage-workspace-compact-r20, source
+c3aff3c3. SHA25652d912f1eb85cea2dbede7d3d1d719b03c6fca2674a0e20175fd9cdb2f924da0,
+1688427000 bytes. Actual AppImage entry f401d84d and packaged compact UI8515ff0c
+passed. Delivered exact checksum328f287b. Dell launcher
+luma-preview-tester-compact-20261022-4b1d959f.service active; registration0b2f5dc5
+exited0. Existing tester-display-20261017 config/data/cache/workspace preserved.
+No Dell automated testing. Desktop only until combined r21 is qualified.
+Native phone r9 now passed interaction, visible hotfix and persistence checks;
+see latest history below. Mobile GPU acceleration on this candidate is unqualified.
 
 Qualified Desktop guest / earlier display candidate:
 - /srv/dev/accounts/second/experiments/luma-tester-20261017/appimage-display-r15/Luma-Tester-0.1.0-linux-x86_64.AppImage
@@ -596,3 +594,27 @@ used that source without altering shared refs or unrelated worktrees.
   selecting a destroyed popup XID; both corrected and retained as failures.
 - Older immutable phone exports r5–r7 archived with exact manifest SHA and
   standalone/backing checks in d2f42178; original paths retained as symlinks.
+
+- Compact r20 sourcec3aff3c3 built737a9342, actual AppImage entryf401d84d passed.
+  Packaged UI0dfb5714 collided with concurrent Mobile QA on localhost2228;
+  it did not pass. Sequential retry8515ff0c passed menu, modal, row metrics,
+  no-build state, busy-session notice, real no-OS QEMU controls and narrow view.
+  Desktop and Mobile GUI guest tests must be serialized even with isolated D-Bus.
+  Delivered328f287b and launched on Dell4b1d959f; normal icon registration0b2f5dc5
+  exited0, no QEMU was running before launch. User preview remains Desktop only.
+- Phone r9 image3d931df7 built from exact native input bundle and tooltip module;
+  imageSHA e4403e122bff15084d7b63c06209a9b88cf1d71a960c9f4eb9c19a74b1558dab.
+  Initialefbe9a33 Home passed but synthetic swipe was held too long on the
+  software renderer and did not open Library. Bounded eight-update quick swipe
+  uses the real native gesture; sparse UI OCR11 reads actual labels more reliably.
+  Native workflow323f85cc PASSED: genuine Home, touch Library, native Stevia OSK,
+  on-screen Notes typing/filtering, Home after keyboard dismissal, actual app
+  source sync/PID restart, visibly rendered Hot fix is live, graceful shutdown.
+  This QA used software graphics because host Nouveau had faulted; do not set
+  guest_virgl_renderer_verified or claim Mobile GPU/physical Fairphone qualification.
+- Persistence6d45d783 PASSED on the same r9 overlay: project and SSH key/host pin
+  preserved, real pause/resume and second graceful shutdown. Exported r9 has no
+  debug module or runtime debug settings from the old r8 QA overlay.
+- Combined Desktop+native Mobile r21 packaging now planned, with exact native
+  corresponding sources, interaction/persistence receipt bindings and explicit
+  software-host qualification metadata. r20 Desktop disk/graphics remain unchanged.
