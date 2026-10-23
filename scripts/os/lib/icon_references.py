@@ -502,7 +502,7 @@ def unavailable_preview_wine_stubs(root: Path, sources: list[Path]) -> list[tupl
             desktop = dict(parser["Desktop Entry"])
             if (desktop.get("Type") != "Application" or desktop.get("NoDisplay") != "true"
                     or desktop.get("Icon") != icon or desktop.get("Exec") != command
-                    or any(k == "MimeType" or k.startswith("MimeType[") or k == "Actions"
+                    or any(k == "MimeType" or k.startswith("MimeType[") or k in ("Actions", "DBusActivatable")
                            or k.startswith(("NoDisplay[", "Icon[", "Exec[")) for k in desktop)):
                 return []
             for base in source_roots:

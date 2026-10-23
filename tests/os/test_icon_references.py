@@ -134,6 +134,11 @@ class IconReferenceTest(unittest.TestCase):
         self.change_preview_stub("Exec=notepad", "Exec=notepad\nActions=Open;")
         self.assertEqual(self.run_check("--installed")[0], 1)
 
+    def test_preview_dbus_activation_is_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("Exec=notepad", "Exec=notepad\nDBusActivatable=true")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
     def test_preview_changed_icon_is_not_exempt(self):
         self.preview_wine_stubs()
         self.change_preview_stub("Icon=notepad", "Icon=other-missing-icon")
