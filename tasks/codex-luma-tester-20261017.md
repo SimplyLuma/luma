@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — Tester0.4.1 architecture picker qualified and launched on Dell; ARM OS images remain external work.
+- Status: active —0.5 Device controls implemented; compositor build/validation queued through normal admission. Dell remains verified0.4.1.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -949,3 +949,31 @@ used that source without altering shared refs or unrelated worktrees.
   Respect reserve; do not stop other jobs or bypass admission. Three immutable
   own input tars moved to owned HDD retained-mobile-inputs with full SHA comparison
   and original-path symlinks; relocation receipt retained. Dell still0.4.1.
+
+- Source follow-up committed f52782bc. Fully bounded one-shot pipeline is RUNNING
+  as exec session4930 (not a recurring automation), waiting for normal admission:
+  /srv/dev/accounts/second/artifacts/tester-device-r27-pipeline.py.
+  Log: tester-device-r27-pipeline.log; live outcome: tester-device-r27-pipeline-result.json
+  under same artifacts directory. Overall deadline7000s; individual jobs have
+  bounded memory/runtime and normal devctl leases. It retries only admission75,
+  never a failed test, never stops another task. Previous build-only queue5656
+  was terminated while still waiting, with no build service started.
+- Pipeline dependencies: build scoped Phoc RPM+SRPM/all19 normal checks; stage
+  mobile-display.json via tester-device-stage-update.py; run current source checks;
+  native tester-device-live-worker.py tests11 real geometry/input transitions,
+  preserved existing Projects/app/main.py, same QEMU PID and hinge touch exclusion;
+  build tester-device-r27-build.py from immutable r26 native closure; packaged
+  entry/device/complete Mobile hotfix regression via tester-device-r27-qualify.py.
+  Entry extraction is on HDD to keep root reserve; no extra root VM/image copies.
+- Only on complete qualification success, pipeline transfers checksum-verified
+  0.5.0/r27 to Dell tester-device-r27-20261022, reuses r24 sidecars (Desktopr15 and
+  genuine Mobiler10), preserves tester-display-20261017 state and registers/launches.
+  The new host bundles the small checksummed compositor update and its source RPM;
+  recognized r9/r10 private workspaces upgrade before startup reveal, preserving
+  user projects. No new whole r11 image is needed. Live resizing never reboots.
+  Launch defers if QEMU or another manually launched Tester is active; only known
+  old r26 launcher unit may be stopped. Read pipeline outcome before any retry.
+- As of2026-10-23 01:12UTC pipeline is waiting; no normal compositor build/Device
+  validation has passed yet, and no0.5.0 was delivered/launched. Dell remains0.4.1.
+  ARM Mobile download is verified to exist; generic virtual boot adaptation is
+  still outstanding. No physical phone operation, public release or signing.
