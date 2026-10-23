@@ -190,6 +190,7 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
             LORAX.verify_iso(root, 'aarch64')
             with self.assertRaises(FileNotFoundError):
                 LORAX.verify_iso(root, 'x86_64')
+
             (root / 'grub2').mkdir()
             (root / 'grub2/grub.cfg').write_text(menu)
             LORAX.verify_iso(root, 'x86_64')
@@ -202,6 +203,17 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
                 with self.assertRaisesRegex(ValueError, 'theme missing'):
                     LORAX.verify_iso(root, 'x86_64')
                 path.write_text(menu)
+
+    def test_real_grub_grammar_rejects_compound_if_even_with_zero_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = 'set theme=/boot/grub2/themes/luma/theme.txt\n'
+            (root / 'efi-grub.cfg').write_text(prefix + LORAX.THEME)
+            LORAX.verify_iso(root, 'aarch64')
+            broken = 'if loadfont /font.pf2 && [ x != y ]; then\n terminal_output gfxterm\nfi\n'
+            (root / 'efi-grub.cfg').write_text(prefix + broken)
+            with self.assertRaisesRegex(ValueError, 'invalid GRUB script'):
+                LORAX.verify_iso(root, 'aarch64')
 
     def test_runtime_handoff_preserves_tui_and_refuses_unknown_owner(self):
         with tempfile.TemporaryDirectory() as temporary:

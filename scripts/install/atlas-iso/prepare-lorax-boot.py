@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Adapt the installed, pinned Lorax templates at their native build boundary."""
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,8 +12,10 @@ insmod gfxterm
 insmod gfxmenu
 loadfont /boot/grub2/themes/luma/prairie-12.pf2
 loadfont /boot/grub2/themes/luma/prairie-22.pf2
-if loadfont /boot/grub2/themes/luma/prairie.pf2 && [ "${timeout_style}" != "hidden" ]; then
-  terminal_output gfxterm
+if loadfont /boot/grub2/themes/luma/prairie.pf2; then
+  if [ "${timeout_style}" != "hidden" ]; then
+    terminal_output gfxterm
+  fi
 fi
 set theme=/boot/grub2/themes/luma/theme.txt
 '''
@@ -34,6 +37,12 @@ def verify_iso(root, architecture):
             raise ValueError(f'{path}: installer GRUB theme missing')
         if '@ROOT@' in text:
             raise ValueError(f'{path}: unresolved GRUB boot root')
+        grammar = subprocess.run(['grub2-script-check', str(path)],
+                                 capture_output=True, text=True)
+        diagnostics = grammar.stdout + grammar.stderr
+        # GRUB2.12 can return0 even when its lexer prints a syntax error.
+        if grammar.returncode or 'error:' in diagnostics.lower() or 'syntax error' in diagnostics.lower():
+            raise ValueError(f'{path}: invalid GRUB script: {diagnostics.strip()}')
 
 def prepare(source, destination, architecture='x86_64'):
     if architecture not in ('x86_64', 'aarch64'):
