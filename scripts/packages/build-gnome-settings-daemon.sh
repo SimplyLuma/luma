@@ -105,6 +105,10 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/gnome-settings-daemon.spec" \
       need "io.luma.Monitor" ./usr/libexec/gsd-housekeeping
       # ...instead of the anonymous upstream text.
       refuse "An application was using a lot of memory" ./usr/libexec/gsd-housekeeping
+      # The campaign producer must not return on any session or architecture.
+      refuse "Support GNOME" ./usr/libexec/gsd-housekeeping
+      refuse "GNOME needs your help" ./usr/libexec/gsd-housekeeping
+      refuse "donate.gnome.org" ./usr/libexec/gsd-housekeeping
     )
     rm -rf "$verify_dir"
     printf "Packaged gnome-settings-daemon volume sound removal and memory notice: PASS\n"
