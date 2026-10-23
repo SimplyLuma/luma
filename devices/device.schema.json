@@ -71,6 +71,27 @@
       "type": "object", "additionalProperties": false, "required": ["ostree_ref"],
       "properties": {"ostree_ref": {"type": "string", "pattern": "^luma/[0-9]+/[a-z0-9_]+/[a-z0-9-]+/[a-z0-9-]+$"}}
     },
+    "imager": {
+      "description": "What Luma Imager lists for this device (imager/catalog.schema.json, docs/imager-catalog.md).",
+      "type": "object", "additionalProperties": false, "required": ["status", "method", "summary"],
+      "properties": {
+        "status": {"enum": ["available", "coming_soon", "unavailable"]},
+        "method": {"enum": ["fastboot_bundle", "sd_card", "none"]},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 300},
+        "picture": {"$ref": "#/$defs/url"},
+        "needs": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "guide": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["title", "body"],
+            "properties": {
+              "title": {"type": "string", "minLength": 1, "maxLength": 80},
+              "body": {"type": "string", "minLength": 1, "maxLength": 2000}
+            }
+          }
+        }
+      }
+    },
     "releases": {
       "type": "array",
       "items": {
@@ -81,10 +102,15 @@
           "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
           "boot_image": {"$ref": "#/$defs/url"},
           "boot_image_sha256": {"$ref": "#/$defs/sha256"},
+          "boot_image_size_bytes": {"type": "integer", "minimum": 1},
           "system_image": {"$ref": "#/$defs/url"},
-          "system_image_sha256": {"$ref": "#/$defs/sha256"}
+          "system_image_sha256": {"$ref": "#/$defs/sha256"},
+          "system_image_size_bytes": {"type": "integer", "minimum": 1},
+          "checksums": {"$ref": "#/$defs/url", "description": "The release's SHA256SUMS file."},
+          "checksums_sha256": {"$ref": "#/$defs/sha256"},
+          "checksums_size_bytes": {"type": "integer", "minimum": 1}
         },
-        "dependentRequired": {"system_image": ["system_image_sha256"]}
+        "dependentRequired": {"system_image": ["system_image_sha256"], "checksums": ["checksums_sha256"]}
       }
     }
   },

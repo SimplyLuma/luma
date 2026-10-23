@@ -268,6 +268,43 @@ class Checker:
             if pattern.search(text):
                 self.error(path, f"writes or erases preserved partition {partition!r}")
 
+    def check_imager(self, device_dir: Path, device: dict) -> None:
+        """The [imager] table must describe something Imager can actually do safely."""
+        imager = device.get("imager")
+        if not imager:
+            return
+        where = device_dir / "device.toml"
+        method = imager.get("method")
+        install = device.get("install", {})
+        releases = device.get("releases", [])
+        if imager.get("status") == "available":
+            if method == "none":
+                self.error(where, "imager.status 'available' needs an install method other than 'none'")
+            if not releases:
+                self.error(where, "imager.status 'available' needs a [[releases]] entry")
+            if not imager.get("guide"):
+                self.error(where, "imager.status 'available' needs imager.guide steps")
+        if method == "fastboot_bundle":
+            if install.get("method") != "fastboot":
+                self.error(where, "imager.method 'fastboot_bundle' needs install.method 'fastboot'")
+            if not device.get("fastboot_product"):
+                self.error(where, "imager.method 'fastboot_bundle' needs fastboot_product")
+        for release in releases:
+            for key in ("boot_image", "system_image", "checksums"):
+                if key in release and f"{key}_size_bytes" not in release and imager.get("status") == "available":
+                    self.error(where, f"release {release.get('name')!r}: {key}_size_bytes is needed as the "
+                                      "catalog's fallback size")
+        texts = [imager.get("summary", "")] + list(imager.get("needs", []))
+        for step in imager.get("guide", []):
+            texts += [step.get("title", ""), step.get("body", "")]
+        for text in texts:
+            if "!" in text:
+                self.error(where, f"imager text must not use exclamation marks: {text[:40]!r}")
+            for partition in install.get("preserve", []):
+                pattern = re.compile(rf"fastboot\s+(flash|erase|format)(:\S+)?\s+{re.escape(partition)}\b")
+                if pattern.search(text):
+                    self.error(where, f"imager.guide writes or erases preserved partition {partition!r}")
+
     def check_tests(self, device_dir: Path, vendor: str, codename: str) -> list[Path]:
         tests = device_dir / "tests"
         found = sorted(tests.glob("test_*.py")) if tests.is_dir() else []
@@ -328,6 +365,7 @@ class Checker:
                 self.check_boot(device_dir, boot, soc, device.get("tier", ""))
                 if (device_dir / "INSTALL.md").is_file():
                     self.check_install_guide(device_dir, device.get("install", {}))
+                self.check_imager(device_dir, device)
                 test_files += self.check_tests(device_dir, vendor.name, device_dir.name)
                 owned.append((device_dir, device.get("maintainers", [])))
         return test_files, owned

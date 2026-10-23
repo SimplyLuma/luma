@@ -51,10 +51,58 @@ preserve = ["modemst1", "modemst2", "fsg", "fsc", "persist"]
 [updates]
 ostree_ref = "luma/1/aarch64/fairphone-fp6/nightly"
 
+[imager]
+# What Luma Imager shows and does for this phone (docs/imager-catalog.md).
+# never_write comes from [install].preserve; the release from [[releases]].
+status = "available"
+method = "fastboot_bundle"
+summary = "Alpha 1, an early release. Installing it erases everything on the phone."
+needs = [
+  "A USB-C data cable",
+  "Android platform tools (fastboot) 35 or newer",
+  "About 20 GB of free space on the computer",
+  "A backup of everything on the phone",
+  "A physical SIM card; eSIM setup isn't available in Alpha 1",
+  "The newest Fairphone 6 factory package from Fairphone",
+]
+
+[[imager.guide]]
+title = "Back up the phone"
+body = "Installing Luma erases everything on the phone. Back up anything you want to keep first."
+
+[[imager.guide]]
+title = "Unlock the bootloader"
+body = "Follow Fairphone's unlocking instructions: turn on Developer options and OEM unlocking, get your unlock code from Fairphone, then run fastboot flashing unlock and fastboot flashing unlock_critical. Unlocking erases the phone."
+
+[[imager.guide]]
+title = "Install Fairphone's firmware"
+body = "Unzip the newest Fairphone 6 factory package. Before you run its flash script, remove the script's two erase modemst lines, and the script's own line in SHA256SUMS. Those lines erase the modem settings, where the phone's IMEI lives. Then run the script as Fairphone describes."
+
+[[imager.guide]]
+title = "Let Android save the modem settings"
+body = "When Android starts, finish its setup, connect to Wi-Fi and turn on your SIM. Wait for signal, use mobile data for a couple of minutes, restart Android once, then turn the phone off. Without this, calls and mobile data won't work in Luma."
+
+[[imager.guide]]
+title = "Open the Fastboot screen"
+body = "Hold Volume Down, then press Power, and keep holding until the Fastboot screen appears. Connect the phone to the computer with the data cable."
+
+[[imager.guide]]
+title = "Install Luma"
+body = "Imager checks that the phone reports FP6 and slot a, then writes Luma to userdata, boot_a and boot_b and blanks dtbo_a and dtbo_b. Writing userdata takes about ten minutes. Don't unplug the phone. Imager never writes modemst1, modemst2, fsg, fsc or persist."
+
+[[imager.guide]]
+title = "First start"
+body = "Imager starts Luma's first boot with fastboot boot, never fastboot reboot: a normal first restart lets the bootloader erase the modem settings and the IMEI. The first start takes a minute or two. Sign in as luma with the password 1234, then change the password in Settings."
+
 [[releases]]
 name = "alpha1"
 date = "2026-10-16"
 boot_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6-boot.bin"
 boot_image_sha256 = "6b93fa901d85152efb29e9a58874d040e86fcad597c4dae0c9b11c897cf1051b"
+boot_image_size_bytes = 100663296
 system_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6-userdata.sparse.zst"
 system_image_sha256 = "75ab6f59c6013017a4fe32d68768f20996b4c57aaf3bbc7a7e5da13c67ba251f"
+system_image_size_bytes = 1104575926
+checksums = "https://dl.simplyluma.com/mobile/fp6/alpha1/SHA256SUMS"
+checksums_sha256 = "4a7c85e83f1100b3ba103abe3ca99d30e78305f907b0490d687ac302916f76b2"
+checksums_size_bytes = 207

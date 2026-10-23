@@ -127,6 +127,26 @@ class DeviceTree(unittest.TestCase):
         self.edit(self.root / ".github" / "CODEOWNERS", "/devices/fairphone/fp6/ @nmcmil", "")
         self.assertRejected("no entry for /devices/fairphone/fp6/")
 
+    def test_imager_method_must_be_known(self):
+        self.edit(self.fp6 / "device.toml", 'method = "fastboot_bundle"', 'method = "usb"')
+        self.assertRejected("is not one of")
+
+    def test_imager_fastboot_bundle_needs_a_fastboot_product(self):
+        self.edit(self.fp6 / "device.toml", 'fastboot_product = "FP6"\n', '')
+        self.assertRejected("'fastboot_bundle' needs fastboot_product")
+
+    def test_imager_available_needs_fallback_sizes(self):
+        self.edit(self.fp6 / "device.toml", "boot_image_size_bytes = ", "# boot_image_size_bytes = ")
+        self.assertRejected("boot_image_size_bytes is needed")
+
+    def test_imager_guide_may_not_erase_the_modem_store(self):
+        self.edit(self.fp6 / "device.toml", 'body = "Installing Luma erases', 'body = "Run fastboot erase modemst2. Installing Luma erases')
+        self.assertRejected("imager.guide writes or erases preserved partition 'modemst2'")
+
+    def test_imager_text_has_no_exclamation_marks(self):
+        self.edit(self.fp6 / "device.toml", 'title = "Back up the phone"', 'title = "Back up the phone!"')
+        self.assertRejected("exclamation marks")
+
     def test_device_needs_tests(self):
         shutil.rmtree(self.fp6 / "tests")
         self.assertRejected("missing ['tests']")

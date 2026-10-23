@@ -73,7 +73,9 @@ drops to `experimental` until someone takes it over.
 6. Write device tests for anything the shared checks cannot see: install
    guide commands that must match the manifests, partitions that must never
    be written, and so on.
-7. Run the checks, then open a pull request with tier `experimental` or
+7. To list the device in Luma Imager, add an `[imager]` table to
+   `device.toml` ([imager-catalog.md](imager-catalog.md)).
+8. Run the checks, then open a pull request with tier `experimental` or
    `community`:
 
 ```sh
@@ -97,6 +99,9 @@ python3 -m venv /tmp/devices && /tmp/devices/bin/pip install jsonschema==4.23.0
 - the kernel command line drops `enforcing=1` (outside `experimental`) or
   contains a forbidden argument such as `selinux=0`;
 - the install guide flashes or erases a partition the device must preserve;
+- the `[imager]` table promises an install it cannot do: `available` without
+  a release, guide or stated file sizes, or `fastboot_bundle` without
+  `fastboot_product`; or its guide writes a preserved partition;
 - a device or SoC directory has no owner in `.github/CODEOWNERS`.
 
 It then runs every device's own tests.
