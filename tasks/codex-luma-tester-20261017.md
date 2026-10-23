@@ -1179,3 +1179,27 @@ used that source without altering shared refs or unrelated worktrees.
 - Next: mounted-DMG check+Mac delivery, Linuxr32 package and active/externally
   created snapshot sidebar regression; deliver Linux update without disturbing
   Nick's currently running Mobiler10 guest. Mac Intel host remains unbuilt.
+- Native Mac delivery completed by ordinary artifact copy/checksum readback:
+  /Users/nick/Downloads/Luma-Tester-0.7.0-macos-arm64.dmg,64860702bytes,
+  SHA2562c08f6715a3a0df4752a0c991492fd56aab5d05635e3e2aa9402d9bd781fefb5.
+  Actual bundle minimum macOS27.0. Native app/firmware/checkpoint qualification
+  passed as above; optional mounted-DMG full-inventory recheck is still queued.
+  Package remains ad-hoc signed/not notarized, Intel host unbuilt, actual Luma
+  OS image boot on Mac unqualified. No app/UI tests ran outside admitted jobs.
+- dd1df3cd additionally fixes Linux desktop registration to pass --state and pin
+  the same resolved workspace. CLI forwards its custom state to registration.
+  New regression launches a real GLib desktop entry through paths containing
+  spaces/percent/quotes/backticks/dollar/backslash and checks exact argv. This
+  new regression has not run yet: normal1GiB admission refused while all16GiB
+  account job budget is held by the ARM/Surface lanes. Prior88 tests passed.
+- Bounded finish controller private artifacts/tester-mac-live-finish.py is ready
+  to run unit suite, optional mounted Mac DMG verification, Linuxr32 build, real
+  running/externally-created snapshot sidebar regression, then verified Dell
+  delivery/desktop registration with explicit existing workspace. Each stage
+  uses normal admission. No guest/application process will be stopped; GUI
+  reopening is deferred to the user while their VM is active. Failure/report:
+  private artifacts/tester-mac-live-finish.json. No success claimed before it runs.
+- Linuxr32 output does not exist yet (both attempted jobs were refused before
+  actual build). Private testers-live-r32 helpers retain genuine r15/r10 sidecars;
+  no hardware-specific workaround or guest payload change. Next controller run
+  starts only after this checkpoint commit; read its result before repeating it.
