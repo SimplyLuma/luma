@@ -557,7 +557,8 @@ class Session:
         argv = ['ssh', '-F', '/dev/null', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
                 '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=5',
                 '-o', 'StrictHostKeyChecking=accept-new', '-o',
-                'UserKnownHostsFile=' + str(self.directory / 'known_hosts'),
+                'UserKnownHostsFile="' + str(self.directory / 'known_hosts').replace(
+                    '%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"',
                 self.manifest['user'] + '@127.0.0.1']
         # OpenSSH joins arguments into a shell command: quote every guest argument.
         return argv + ([shlex.join(command)] if command else [])
