@@ -86,16 +86,42 @@ luma_os_releases_path() { luma_os_arch_path "$1/luma/releases"; }
 # used by already deployed per-channel publishers. Pruning uses this boundary
 # too because it can replace the signed repository summary.
 luma_os_publication_lock() {
+  [ "${luma_os_publication_lock_initialized:-0}" != 1 ] ||
+    luma_os_die 'publication locks are already acquired in this shell'
   install -d -m 0700 "$LUMA_OS_ROOT/locks"
   legacy_publication_fds=()
-  local legacy_channel legacy_fd
+  local legacy_channel legacy_fd inherited_map inherited_key inherited_fd repository_fd
+  local -A inherited_publication_fds=()
+  if [ -n "${LUMA_OS_PUBLICATION_LOCK_FDS:-}" ]; then
+    inherited_map=$(python3 "$luma_os_repo_root/scripts/os/lib/publication_lock_fds.py" \
+      --root "$LUMA_OS_ROOT" --channels $LUMA_OS_CHANNELS) ||
+      luma_os_die 'inherited publication lock validation failed'
+    while read -r inherited_key inherited_fd; do
+      [ -z "$inherited_key" ] || inherited_publication_fds[$inherited_key]=$inherited_fd
+    done <<<"$inherited_map"
+  fi
   for legacy_channel in $LUMA_OS_CHANNELS; do
-    exec {legacy_fd}>"$LUMA_OS_ROOT/locks/publish-$legacy_channel.lock"
+    if [ -n "${inherited_publication_fds[$legacy_channel]:-}" ]; then
+      legacy_fd=${inherited_publication_fds[$legacy_channel]}
+    else
+      exec {legacy_fd}>"$LUMA_OS_ROOT/locks/publish-$legacy_channel.lock"
+    fi
     flock -n "$legacy_fd" || luma_os_die "a legacy $legacy_channel publication is running"
     legacy_publication_fds+=("$legacy_fd")
   done
-  exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
-  flock -n 6 || luma_os_die 'another shared-repository publication is running'
+  if [ -n "${inherited_publication_fds[repository]:-}" ]; then
+    repository_fd=${inherited_publication_fds[repository]}
+  elif [ -n "${LUMA_OS_PUBLICATION_LOCK_FDS:-}" ]; then
+    # An inherited channel may itself use FD6. Never overwrite it while
+    # acquiring the missing shared repository lock in a partial map.
+    exec {repository_fd}>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+  else
+    exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+    repository_fd=6
+  fi
+  flock -n "$repository_fd" || luma_os_die 'another shared-repository publication is running'
+  luma_os_repository_publication_fd=$repository_fd
+  luma_os_publication_lock_initialized=1
 }
 
 luma_os_require_root() {

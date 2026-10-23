@@ -76,6 +76,20 @@ new wrappers with this configuration and the preservation checks before their
 next publication. Until both operators are configured and independently checked,
 this source change does not establish live publication serialization.
 
+OS repository publishers can also inherit locks from an outer operator through
+`LUMA_OS_PUBLICATION_LOCK_FDS`, a JSON object mapping configured channel names
+(`nightly`, `beta`, `stable`) and optionally `repository` to distinct open integer
+descriptors of at least 3. Every supplied descriptor must name the same regular
+file device/inode as `LUMA_OS_ROOT/locks/publish-<key>.lock`; validation locks the
+inherited open file description rather than reopening its path. Unknown or
+duplicate keys, repeated descriptors and mismatched or closed descriptors fail.
+Missing entries retain normal lock acquisition. Without a map, the existing
+publisher behavior is unchanged. Acquire all channel and repository locks in
+the normal order in an outer operator when holding them across publication,
+graph signing and origin sync. Pass the descriptors explicitly to child
+processes. A second initialization in one shell fails rather than reopening
+locks whose file descriptions that shell already holds.
+
 The protected operator must apply `check_other_architectures()` and `check_prior()`
 to its freshly verified remote prior and final candidate while holding that same
 lock. The guard is also available as `media_aggregate.py check-preservation`.
