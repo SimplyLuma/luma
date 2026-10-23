@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from .core import TesterError, run
 
 DEFAULTS = dict(memory=4096, cpus=4, disk_gib=32, graphics='auto', audio=True,
-                microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[])
+                microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[], device=None)
 
 
 def load(root):
@@ -34,6 +34,9 @@ def validate(settings):
     for key in ('audio', 'microphone', 'agent_ssh', 'boot_iso'):
         if type(result.get(key)) is not bool:
             raise TesterError('Invalid ' + key + ' switch.')
+    if result.get('device') is not None:
+        from .device_profiles import validate as validate_device
+        result['device']=validate_device(result['device'])
     for key in ('folders', 'usb'):
         if not isinstance(result.get(key), list) or len(result[key]) > 8:
             raise TesterError('Choose at most eight ' + key + '.')
@@ -272,6 +275,8 @@ Use the app's own development watcher or restart its preview service after edits
     if requested in ('tablet','tv','smart-device'):
         from .experiences import LABELS
         text+='\nRequested interface: '+LABELS[requested]+'. The OS may still use its current Desktop interface while mode support is developed.\nThe request is available in /sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw when fw_cfg sysfs is enabled.\n'
+    if session.manifest['target']=='mobile':
+        text+='\nDevice state: /run/user/$(id -u)/luma-tester/device.json (pixels, UI scale, orientation, posture, hinge, regions and keyboard). Watch this file for live transitions. Hinge-aware app layouts must consume its regions; the guest does not yet supply a standard fold sensor API.\n'
     for i, folder in enumerate(settings['folders']):
         text += f'\nShared folder {i+1}: {folder["path"]} → /mnt/shared/{i+1} ({"read/write" if folder["writable"] else "read only"}).'
     launcher = [executable] + (['--appimage-extract-and-run'] if executable.endswith('.AppImage') else [])

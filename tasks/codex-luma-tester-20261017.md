@@ -905,3 +905,27 @@ used that source without altering shared refs or unrelated worktrees.
   Dell manual preview only; all automated checks ran on server. No ARM OS yet in
   qualified catalog (other ARM task record still says no built image). No release
   publication/signing, Mac/Windows qualification, or physical device changes.
+
+- 2026-10-22 device controls in progress: Device sheet and CLI support screen
+  profiles (Pixel Pro/XL, Fold, Duo, Titan, Custom), UI scale, rotation and posture.
+  Guest transactions validate actual compositor geometry before acknowledging,
+  publish device.json + live signal, mask only simulator-owned Titan OSK state,
+  restore prior screen on failure. Viewer excludes the Duo hinge from touch.
+  75 source units passed f83bd5a4. Native live probe showed phoc12 silently ignores
+  custom modes despite wlr-randr success. It correctly fails the acknowledgement;
+  controls are NOT shipped yet. New scripts/tester/patches/phoc-dynamic-virtual-modes.patch
+  opts into bounded custom virtual modes using LUMA_TESTER_DYNAMIC_MODES=1. Build
+  scoped simulator compositor and new r11 Mobile image, retain normal19 checks.
+- Website inspected directly: /download/mobile publishes Alpha1 FP6 system plus
+  separate FP6 boot image. Direct system prefix confirms Android sparse16GiB,
+  public compressed file1104575926 bytes; no full hash/boot verification claimed.
+  Generic ARM boot adapter remains required; existing ARM userspace is published.
+  Primary source: QEMU virt is a virtual board, not FP6 hardware. No need for user
+  to supply an image. Preserve same Mobile apps/userspace when adapting it.
+- Native tests97105e88 stopped due missing private catalog; fixed harness.
+  980f1f5a and9677af52 exposed the compositor behavior above. RAM/CPU/SSH tests
+  unchanged. Root free25GiB with other ARM media job5GiB reservation: small UI job
+  uses existing secondary guest, no new root images, disk estimate0; heavy writes
+  must stay HDD. Retired only stopped AppImage extraction scratch in root jobs
+  e99f776cb7/2f33299c37/410c93e7c0/4d2fc61ca5 with per-entry receipts; original
+  immutable packages and all test evidence retained. No other task data touched.

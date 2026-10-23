@@ -35,7 +35,7 @@ except (ImportError, ValueError) as exc:
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets, vm, experiences
+from . import presets, vm, experiences, device_profiles
 
 
 def launch(state=None):
@@ -80,6 +80,7 @@ def launch(state=None):
             self.force_stop_available = False
             self.home_busy = False
             self.ssh_busy = False
+            self.device_busy = False
             self.selected_images = {}
             self.architectures = {}
             self.selected_variants = {}
@@ -341,10 +342,11 @@ def launch(state=None):
             self.run_button = self.button('Start', self.start, primary=True, icon='play')
             self.pause_button = self.button('Pause', self.pause, icon='pause')
             self.shutdown_button = self.button('Shut Down', self.stop, icon='power')
+            self.device_button = self.button('Device', self.show_device, icon='smartphone')
             self.home_button = self.button('Home', self.home, icon='house')
             self.home_button.set_visible(False)
             self.toolbar.show_bar([BarWidget(self.sidebar_toggle), SEPARATOR, BarWidget(self.arch_menu), BarWidget(self.build_menu),
-                SEPARATOR, BarWidget(self.home_button), BarWidget(self.run_button),
+                SEPARATOR, BarWidget(self.device_button), BarWidget(self.home_button), BarWidget(self.run_button),
                 BarWidget(self.pause_button), BarWidget(self.shutdown_button)])
             self.toolbar.set_visible(False)
 
@@ -670,6 +672,8 @@ def launch(state=None):
                     vm.configure_guest(session, vm.load(session.root))
                     if session.manifest['target'] == 'mobile':
                         session.home()
+                        configured=vm.load(session.root).get('device')
+                        if configured:device_profiles.apply(session,configured)
                     time.sleep(1)
                     GLib.idle_add(self.reveal_display, session)
                 except Exception as exc:
@@ -693,6 +697,8 @@ def launch(state=None):
             if self.session is session and self.running():
                 self.graphical_ready = True
             if self.session is session and self.running() and self.viewer and self.viewer.ready:
+                try:self.viewer.set_device(json.loads((session.directory/'device.json').read_text()) if self.settings.get('device') else None)
+                except (OSError,ValueError):self.viewer.set_device(None)
                 self.return_button.set_sensitive(True)
                 self.words(self.return_button, 'Show Luma')
                 self.return_button.set_visible(True)
@@ -867,6 +873,9 @@ def launch(state=None):
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
+            self.device_button.set_visible(self.target=='mobile')
+            self.device_button.set_sensitive(not self.busy and not self.device_busy and not self.shutting_down and
+                (not running or (self.graphical_ready and self.session.status()=='running')))
             self.home_button.set_visible(running and self.target == 'mobile')
             self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
@@ -892,6 +901,67 @@ def launch(state=None):
             if self.closing and not self.active():
                 self.window.close()
             return True
+
+        def show_device(self):
+            config=dict(device_profiles.DEFAULT,**(self.settings.get('device') or {}))
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            labels=[('phone','Luma Phone'),('pixel-pro','Pixel 10 Pro'),('pixel-xl','Pixel 10 Pro XL'),
+                ('fold','Pixel 10 Pro Fold'),('duo','Surface Duo'),('titan','Unihertz Titan'),('custom','Custom')]
+            picker=Gtk.DropDown(model=Gtk.StringList.new([label for _,label in labels]))
+            picker.set_selected(next(i for i,(key,_) in enumerate(labels) if key==config['profile']))
+            picker.update_property([Gtk.AccessibleProperty.LABEL],['Screen profile'])
+            body.append(self.label('Screen','group-heading'));body.append(picker)
+            custom=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+            width=TextField(label='Width in pixels',value=str(config['width']))
+            height=TextField(label='Height in pixels',value=str(config['height']))
+            scale=TextField(label='UI scale',value=str(config['scale']))
+            for field in (width,height,scale):custom.append(field)
+            body.append(custom)
+            posture=ModeSwitch([('folded','Folded'),('book','Book'),('flat','Open')],
+                current=config['posture'],labels_only=True,fill=True,label='Posture')
+            body.append(posture)
+            rotation=ModeSwitch([('0','Portrait'),('90','Landscape')],
+                current=str(config['rotation'] if config['rotation'] in (0,90) else 0),labels_only=True,fill=True,label='Orientation')
+            body.append(rotation)
+            detail=self.label('',muted=True);body.append(detail)
+            def changed(*_args):
+                key=labels[picker.get_selected()][0]
+                custom.set_visible(key=='custom');posture.set_visible(key in ('fold','duo'))
+                if key!='custom':
+                    preview=device_profiles.describe(dict(config,profile=key,posture=posture.current,rotation=int(rotation.current)))
+                    detail.set_label(str(preview['pixels']['width'])+' × '+str(preview['pixels']['height'])+' px · '+str(preview['scale'])+'× UI scale')
+                else:detail.set_label('The guest screen resizes; applications keep running.')
+            posture.on_change=lambda _value:changed()
+            rotation.on_change=lambda _value:changed()
+            picker.connect('notify::selected',changed);changed()
+            handle=[None]
+            def apply():
+                try:
+                    value=device_profiles.validate(dict(profile=labels[picker.get_selected()][0],posture=posture.current,
+                        rotation=int(rotation.current),width=int(width.text),height=int(height.text),scale=float(scale.text)))
+                except (ValueError,TesterError) as exc:
+                    detail.set_label(str(exc));return
+                handle[0].cancel();self.change_device(value)
+            body.append(self.button('Apply',apply,primary=True))
+            handle[0]=self.sheet('Device',body)
+
+        def change_device(self, value):
+            if self.device_busy or self.busy or self.shutting_down:return
+            if not self.running():
+                self.save_settings(device=value);return
+            if not self.graphical_ready or self.session.status()!='running':return
+            self.device_busy=True;session=self.session
+            def finished(actual,error):
+                self.device_busy=False
+                if error:self.notify(str(error));return False
+                self.save_settings(device=value)
+                if self.viewer:self.viewer.set_device(actual)
+                return False
+            def worker():
+                try:actual=device_profiles.apply(session,value);error=None
+                except Exception as exc:actual=None;error=exc
+                GLib.idle_add(finished,actual,error)
+            threading.Thread(target=worker,daemon=True).start()
 
         def home(self):
             if not self.running() or not self.graphical_ready or self.shutting_down or self.home_busy:

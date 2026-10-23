@@ -337,3 +337,71 @@ Cross-architecture guests use emulation and can be slower. Stop the guest before
 changing architecture. Each image retains its own disk, snapshots and firmware
 state; changing CPUs does not convert an existing workspace. Presets pin the exact
 image and restore its architecture. The choice is remembered per experience.
+
+### Mobile screens and posture
+
+The Mobile action bar's **Device** control chooses a panel profile independently
+of the image and CPU. Pixel 10 Pro and Pro XL cover different screen sizes;
+Pixel 10 Pro Fold exposes Folded, Book and Open; Surface Duo also describes two
+screen regions and an occluded hinge. Titan selects a nearly square screen and
+physical keyboard, suppressing the guest's virtual keyboard until leaving that
+profile. Custom accepts pixel width, height and UI scale. Orientation changes the
+actual guest output. These are display/input development profiles, not ports to
+those phones or emulations of their cameras, modems or vendor kernels.
+
+Panel dimensions come from the [Pixel Pro specifications](https://store.google.com/product/pixel_10_pro_specs),
+[Pixel Fold specifications](https://store.google.com/gb/product/pixel_10_pro_fold_specs),
+[Surface Duo dimensions](https://learn.microsoft.com/en-us/previous-versions/dual-screen/android/surface-duo-dimensions)
+and [Titan specifications](https://www.unihertz.com/en-jp/products/titan).
+Tester UI scale is explicit and adjustable for Custom; it does not promise Android
+DPI, refresh rate, cutouts, colour calibration or identical physical font size.
+
+The guest compositor must support Tester virtual modes. The scoped
+`scripts/tester/patches/phoc-dynamic-virtual-modes.patch` enables them only with
+`LUMA_TESTER_DYNAMIC_MODES=1`. The virtual Mobile session opts in; physical phone
+sessions retain their normal panel mode whitelist. A transition verifies actual
+Wayland output geometry, then saves configuration; failed modes restore the
+previous output and do not claim success. Applications and the VM keep running.
+Configurations are included in saved presets and reapplied after the next boot.
+
+For automation:
+
+```sh
+luma-tester --state ./workspace device ./mobile.json --profile pixel-xl
+luma-tester --state ./workspace device ./mobile.json --profile fold --posture folded
+luma-tester --state ./workspace device ./mobile.json --profile duo --rotation 90
+luma-tester --state ./workspace device ./mobile.json --profile custom --width 900 --height 1200 --scale 2
+```
+
+In the guest, watch `$XDG_RUNTIME_DIR/luma-tester/device.json` for atomic changes.
+It contains schema1, profile, pixel and logical dimensions, UI scale, rotation,
+posture, hinge angle, keyboard type, visible regions and the optional occluded
+hinge rectangle. Regions/hinge use output pixels in the rotated coordinate space;
+divide by scale for logical coordinates. The session bus also broadcasts
+`org.project_luma.Tester.Device1.Changed` on `/org/project_luma/Tester/Device` with
+the JSON state. Subscribe before reading the file to avoid missing a transition.
+
+The viewer masks Duo's hinge and excludes it from touch. Existing apps reflow to
+the real output size. Hinge-aware layouts must read the region contract; current
+Luma does not yet expose this simulator state through a standard OS fold sensor
+API. Book changes the hinge-angle/posture contract without inventing an occluded
+strip on a continuous folding panel. It does not emulate the physical sensor.
+
+### Published ARM Mobile and virtual boot
+
+The [Mobile download](https://simplyluma.com/download/mobile) already supplies the
+ARM64 Luma system. Alpha1's `luma-mobile-alpha1-fp6-userdata.sparse.zst` expands to
+a16GiB Android sparse userdata image, paired with a Fairphone6 boot image and
+vendor firmware. It is a physical-device distribution rather than a generic UEFI
+VM disk. QEMU's `virt` platform has its own virtual device tree, PCI/VirtIO devices
+and boot requirements; supplying the Fairphone DTB does not turn it into that
+phone. See [QEMU virt documentation](https://www.qemu.org/docs/master/system/arm/virt.html).
+
+The virtual ARM variant should retain the published Mobile userspace and apps,
+with a generic VirtIO-capable kernel/initramfs, virtual input/display configuration,
+private developer access and readiness checks. Physical modem/camera services
+must be scoped to their actual hardware. The existing `scripts/mobile/*fp6-twin*`
+work documents that distinction; its Fedora base alone is not a qualified Mobile
+image. A virtual ARM boot/interaction pass is required before adding that variant
+to Tester's qualified catalog. No new system design or user-provided rootfs is
+needed. The current x86 Mobile simulator remains available for native iteration.

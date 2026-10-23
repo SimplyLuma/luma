@@ -39,10 +39,18 @@ def main():
     publish.add_argument('--user', default='luma')
     publish.add_argument('--url', help='Published HTTPS disk URL; defaults to the local disk')
     publish.add_argument('--artifact-id', help='Exact matching Hub catalog artifact, when published')
-    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev', 'snapshots', 'snapshot', 'restore']:
+    for action in ['doctor', 'prepare', 'start', 'status', 'stop', 'pause', 'resume', 'home', 'screenshot', 'ssh', 'sync', 'wait', 'dev', 'snapshots', 'snapshot', 'restore', 'device']:
         p = sub.add_parser(action)
         p.add_argument('manifest', type=Path)
-        if action == 'start':
+        if action == 'device':
+            from .device_profiles import PROFILES
+            p.add_argument('--profile',choices=[*PROFILES,'custom'],default='phone')
+            p.add_argument('--posture',choices=['flat','folded','book'],default='flat')
+            p.add_argument('--rotation',type=int,choices=[0,90,180,270],default=0)
+            p.add_argument('--width',type=int,default=432)
+            p.add_argument('--height',type=int,default=960)
+            p.add_argument('--scale',type=float,default=1)
+        elif action == 'start':
             p.add_argument('--port', type=int, default=2228)
             p.add_argument('--memory', type=int, help='MiB (defaults to saved VM settings)')
             p.add_argument('--cpus', type=int, help='Defaults to saved VM settings')
@@ -133,6 +141,11 @@ def main():
             return int(not all(tools.values()))
         if args.action == 'prepare':
             session.prepare()
+        elif args.action == 'device':
+            from . import device_profiles,vm
+            value=device_profiles.validate({key:getattr(args,key) for key in ('profile','posture','rotation','width','height','scale')})
+            print(json.dumps(device_profiles.apply(session,value),indent=2))
+            vm.save(session.root,dict(vm.load(session.root),device=value))
         elif args.action in ('snapshots', 'snapshot', 'restore'):
             from . import vm
             if args.action == 'snapshots':

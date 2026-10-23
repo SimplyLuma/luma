@@ -1,0 +1,23 @@
+SPDX-License-Identifier: GPL-3.0-or-later
+From: Luma Tester developers
+Subject: [PATCH] output: allow explicit simulator modes on virtual displays
+
+The normal panel mode whitelist remains the default. The simulator sets this
+opt-in only in its virtual Mobile session so output-management can exercise
+arbitrary screen sizes without restarting the compositor.
+
+--- a/src/output.c
++++ b/src/output.c
+@@ -829,6 +829,12 @@ phoc_output_state_set_mode (PhocOutput *self, struct wlr_output_state *pending, PhocOutputConfig *oc)
+   }
+   if (!best) {
++    if (g_strcmp0 (g_getenv ("LUMA_TESTER_DYNAMIC_MODES"), "1") == 0 &&
++        oc->mode.width >= 320 && oc->mode.width <= 4096 &&
++        oc->mode.height >= 320 && oc->mode.height <= 4096) {
++      wlr_output_state_set_custom_mode (pending, oc->mode.width, oc->mode.height, mhz);
++      return;
++    }
+     g_warning ("Configured mode for %s not available", self->wlr_output->name);
+   } else {
+     g_debug ("Assigning configured mode to %s", self->wlr_output->name);
+     wlr_output_state_set_mode (pending, best);

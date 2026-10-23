@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 set -eu
+export LUMA_TESTER_DYNAMIC_MODES=1
 export LUMA_DEVICE_CLASS=handheld LUMA_PRESENTATION_MODE=fullscreen-mobile LUMA_INPUT_MODE=touch
 export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh XDG_SESSION_TYPE=wayland
 export XDG_DATA_DIRS=/opt/luma/phosh/share:/usr/local/share:/usr/share

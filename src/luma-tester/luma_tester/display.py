@@ -38,6 +38,7 @@ class GuestDisplay(Gtk.Picture):
         super().__init__(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN,
                          hexpand=True, vexpand=True, focusable=True)
         self.touch = touch
+        self.device = None
         self.touch_active = False
         self.touch_point = (0, 0)
         self.scroll_contact = False
@@ -80,6 +81,17 @@ class GuestDisplay(Gtk.Picture):
         self.add_controller(scroll)
         self.update_property([Gtk.AccessibleProperty.LABEL], ['Luma guest display. Click to use the guest. Control Alt returns to launcher controls.'])
 
+    def set_device(self, description):
+        self.release_input()
+        self.device=description
+        self.queue_draw()
+
+    def hinge(self):
+        if not self.device or not self.framebuffer:return None
+        expected=self.device.get('pixels',{})
+        if (expected.get('width'),expected.get('height'))!=(self.framebuffer.width,self.framebuffer.height):return None
+        return self.device.get('hinge')
+
     def do_snapshot(self, snapshot):
         if self.framebuffer and self.get_paintable():
             inset = 28
@@ -101,6 +113,11 @@ class GuestDisplay(Gtk.Picture):
             snapshot.save()
             snapshot.translate(Graphene.Point().init(rect.get_x(), rect.get_y()))
             self.get_paintable().snapshot(snapshot, width, height)
+            hinge=self.hinge()
+            if hinge:
+                colour=Gdk.RGBA();colour.parse('#111214')
+                gap=Graphene.Rect().init(hinge['x']*scale,hinge['y']*scale,hinge['width']*scale,hinge['height']*scale)
+                snapshot.append_color(colour,gap)
             snapshot.restore()
 
     def open(self):
@@ -168,6 +185,9 @@ class GuestDisplay(Gtk.Picture):
             return None
         x = (x - (self.get_width() - width * scale) / 2) / scale
         y = (y - (self.get_height() - height * scale) / 2) / scale
+        hinge=self.hinge()
+        if hinge and hinge['x']<=x<hinge['x']+hinge['width'] and hinge['y']<=y<hinge['y']+hinge['height']:
+            return None
         if 0 <= x < width and 0 <= y < height:
             return int(x), int(y)
         return None
