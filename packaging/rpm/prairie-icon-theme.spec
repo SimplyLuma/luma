@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.38.creator20261006.1%{?dist}
+Release:        1.luma.39%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
