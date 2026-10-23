@@ -372,6 +372,7 @@ podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_
         --add-template-var luma_atlas_release_key=/w/keys/release.gpg \
         --add-template-var luma_atlas_pull_key=/w/keys/pull.gpg \
         --add-template-var luma_atlas_clock_epoch=$clock_epoch \
+        --add-template-var luma_atlas_runtime_kernel=$ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH \
         --add-template-var luma_atlas_preview_credential=$credential_var \
         --cachedir /w/runtime-rpm-cache --tmp /w/tmp --logfile /w/logs/lorax.log \
         /w/lorax-out
