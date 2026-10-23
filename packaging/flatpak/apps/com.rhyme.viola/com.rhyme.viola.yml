@@ -61,7 +61,8 @@
         "install -Dm644 depot-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png /app/share/luma-app-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png"
       ],
       "only-arches": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ]
     }
   ],

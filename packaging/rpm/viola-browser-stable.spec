@@ -10,10 +10,16 @@
 %global viola_version 0.2.10
 %global viola_build 8210
 %global native_release 36
-# Native release 30's own engine (released already stripped).
+# Retain each architecture's previously built engine; the native host is shared.
+%ifarch aarch64
+%global engine_release 31
+%global approved_release development-native31-arm64-mobile-20261006
+%global engine_sha256 4a0667c2551e8daaefa312e154732676fea9de84fb7689529c16509b45943137
+%else
 %global engine_release 30
 %global approved_release 20260921-native-30
 %global engine_sha256 d6a87f43aff38963678dcfd0f89223fdc798193745dac99df4882c03938feff1
+%endif
 %global source_commit %{?viola_commit}%{!?viola_commit:unknown}
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -33,7 +39,7 @@ Release:        14.viola%{viola_build}.native%{native_release}.creator20261008.1
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
-ExclusiveArch:  x86_64
+ExclusiveArch:  x86_64 aarch64
 
 Source0:        viola-native-engine-%{viola_version}-native%{engine_release}.tar.zst
 Source1:        viola-luma-host-%{viola_version}-native%{native_release}.tar.gz
