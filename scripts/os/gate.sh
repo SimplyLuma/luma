@@ -99,7 +99,20 @@ if [ -n "$update_from" ]; then
   previous=$update_from
 fi
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
-iso=${LUMA_OS_GATE_ISO:-$LUMA_OS_ROOT/vm/media/Fedora-Silverblue-ostree-x86_64-44-1.7.iso}
+case "$LUMA_OS_ARCH" in
+  x86_64) gate_machine=q35; gate_console=ttyS0 ;;
+  aarch64) gate_machine=virt; gate_console=ttyAMA0 ;;
+  *) luma_os_die "unsupported gate architecture: $LUMA_OS_ARCH" ;;
+esac
+# KVM host CPU passthrough applies only to matching native targets. Explicit
+# emulation supports an ARM qualification host without pretending it is KVM.
+gate_cpu=host-passthrough
+gate_virt=kvm
+if [ "$(uname -m)" != "$LUMA_OS_ARCH" ]; then
+  gate_cpu=max
+  gate_virt=qemu
+fi
+iso=${LUMA_OS_GATE_ISO:-$LUMA_OS_ROOT/vm/media/Fedora-Silverblue-ostree-$LUMA_OS_ARCH-44-1.7.iso}
 [ -f "$iso" ] || luma_os_die "installer ISO is missing: $iso"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -454,12 +467,13 @@ install_vm() {
   local started=$SECONDS
   virt-install --connect qemu:///system \
     --name "$domain" \
-    --memory 6144 --vcpus 4 --cpu host-passthrough \
-    --machine q35 --boot uefi \
+    --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
+    --memory 6144 --vcpus 4 --cpu "$gate_cpu" \
+    --machine "$gate_machine" --boot uefi \
     --disk "path=$vm_dir/$domain.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
     --location "$iso,kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img" \
     --initrd-inject "$vm_dir/luma-gate.ks" \
-    --extra-args "inst.ks=file:/luma-gate.ks inst.text console=ttyS0 inst.notmux" \
+    --extra-args "inst.ks=file:/luma-gate.ks inst.text console=$gate_console inst.notmux" \
     --network "passt,portForward0.proto=tcp,portForward0.range0.start=$port,portForward0.range0.to=22" \
     --graphics vnc,listen=127.0.0.1 --video virtio \
     --rng /dev/urandom \

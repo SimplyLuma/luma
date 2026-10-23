@@ -22,16 +22,19 @@ ASSETS = '''mkdir ${GRUB2DIR}/themes/luma
 install usr/share/luma/boot/grub-theme/* ${GRUB2DIR}/themes/luma/
 '''
 
-def prepare(source, destination):
+def prepare(source, destination, architecture='x86_64'):
+    if architecture not in ('x86_64', 'aarch64'):
+        raise ValueError(f'unsupported installer architecture: {architecture}')
     generic = source / 'templates.d/99-generic'
     changes = {}
-    for kind in ('bios', 'efi'):
-        path = generic / f'config_files/x86/grub2-{kind}.cfg'
+    directory = 'x86' if architecture == 'x86_64' else 'aarch64'
+    for kind in (('bios', 'efi') if architecture == 'x86_64' else ('efi',)):
+        path = generic / f'config_files/{directory}/grub2-{kind}.cfg'
         text = path.read_text()
         for marker in (SEARCH, 'set default="1"', 'set timeout=60'):
             if text.count(marker) != 1:
                 raise ValueError(f'{path}: unsupported Lorax boot layout: {marker}')
-        if 'inst.rescue quiet' not in text or 'nomodeset quiet' not in text:
+        if 'inst.rescue' not in text or 'nomodeset' not in text:
             raise ValueError(f'{path}: missing recovery/basic-graphics choices')
         text = text.replace(SEARCH, SEARCH + '\n' + THEME)
         # GRUB's native hidden countdown draws no menu on normal USB startup.
@@ -43,15 +46,34 @@ def prepare(source, destination):
         # keep their original diagnostic behavior, and Esc can expose details.
         text = text.replace('@ROOT@ quiet', '@ROOT@ rhgb quiet')
         text = text.replace('rd.live.check quiet', 'rd.live.check rhgb quiet')
+        if architecture == 'aarch64':
+            # Fedora's ARM menu has no quiet flags. Preserve its diagnostic
+            # entries and enable the same normal Plymouth handoff as x86.
+            text = text.replace('@ROOT@ ro', '@ROOT@ ro rhgb quiet').replace(
+                '@ROOT@ rd.live.check\n', '@ROOT@ rd.live.check rhgb quiet\n')
         changes[path.relative_to(source)] = text
-    path = generic / 'x86.tmpl'
+    path = generic / f'{directory}.tmpl'
     text = path.read_text()
-    if text.count(ARCH) != 1 or text.count('## make boot.iso') != 1:
-        raise ValueError('unsupported Lorax x86 template layout')
-    changes[path.relative_to(source)] = text.replace(ARCH, ARCH + ASSETS)
+    if text.count('## make boot.iso') != 1:
+        raise ValueError('unsupported Lorax boot template layout')
+    if architecture == 'x86_64':
+        if text.count(ARCH) != 1:
+            raise ValueError('unsupported Lorax x86 template layout')
+        text = text.replace(ARCH, ARCH + ASSETS)
+    else:
+        # ARM's native template builds only UEFI media and grafts selected
+        # directories, unlike x86's whole-output-tree graft. Carry the theme
+        # explicitly, retaining Fedora's shim/GRUB AA64 boot chain.
+        if text.count("efiarch64 = 'AA64'") != 1 or '${efigraft} ${filegraft}' not in text:
+            raise ValueError('unsupported Lorax aarch64 template layout')
+        text = text.replace('## make boot.iso', '''mkdir boot/grub2/themes/luma
+install usr/share/luma/boot/grub-theme/* boot/grub2/themes/luma/
+<% filegraft += " boot/grub2={0}/boot/grub2".format(outroot) %>
+## make boot.iso''')
+    changes[path.relative_to(source)] = text
     shutil.copytree(source, destination)
     for relative, text in changes.items():
         (destination / relative).write_text(text)
 
 if __name__ == '__main__':
-    prepare(Path(sys.argv[1]), Path(sys.argv[2]))
+    prepare(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else 'x86_64')

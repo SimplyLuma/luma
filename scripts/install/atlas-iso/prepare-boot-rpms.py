@@ -13,7 +13,9 @@ KEYS = ('LUMA_BOOT_THEME_NEVRA', 'FIGTREE_NEVRA', 'PLYMOUTH_NEVRA',
         'PLYMOUTH_PLUGIN_LABEL_NEVRA', 'PLYMOUTH_PLUGIN_TWO_STEP_NEVRA',
         'PLYMOUTH_SYSTEM_THEME_NEVRA', 'PLYMOUTH_THEME_SPINNER_NEVRA')
 
-def prepare(inputs, manifest, pool, output):
+def prepare(inputs, manifest, pool, output, architecture='x86_64'):
+    if architecture not in ('x86_64', 'aarch64'):
+        raise ValueError(f'unsupported installer architecture: {architecture}')
     pins = dict(re.findall(r'^([A-Z_]+)=([^\s]+)$', inputs.read_text(), re.M))
     entries = {}
     for line in manifest.read_text().splitlines():
@@ -23,7 +25,7 @@ def prepare(inputs, manifest, pool, output):
         entries[nevra] = digest, header
     selected = []
     for key in KEYS:
-        nevra = pins[key]
+        nevra = re.sub(r'\.(x86_64|aarch64)$', '.' + architecture, pins[key])
         digest, header = entries[nevra]
         path = pool / f'{nevra}.rpm'
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
@@ -41,5 +43,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     for key in ('inputs', 'manifest', 'pool', 'output'):
         parser.add_argument('--' + key, type=Path, required=True)
+    parser.add_argument('--arch', choices=('x86_64', 'aarch64'), default='x86_64')
     args = parser.parse_args()
-    prepare(args.inputs, args.manifest, args.pool, args.output)
+    prepare(args.inputs, args.manifest, args.pool, args.output, args.arch)

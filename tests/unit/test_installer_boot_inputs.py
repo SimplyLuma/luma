@@ -85,6 +85,65 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue quiet }
                 self.assertFalse((root / f'rejected-{kind}').exists())
                 path.write_text(menu)
 
+    def test_arm_boot_inputs_use_current_releases_and_reject_x86_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pool = root / 'pool'; pool.mkdir()
+            pins, entries = [], []
+            for index, key in enumerate(RPM.KEYS):
+                arch = 'noarch' if index < 2 else 'x86_64'
+                pin = f'boot{index}-1-23.creator.fc44.{arch}'
+                selected = pin.replace('.x86_64', '.aarch64')
+                data = selected.encode()
+                (pool / f'{selected}.rpm').write_bytes(data)
+                pins.append(f'{key}={pin}')
+                entries.append(f'{selected} {hashlib.sha256(data).hexdigest()} {index:064x}')
+            inputs = root / 'inputs'; inputs.write_text('\n'.join(pins))
+            manifest = root / 'manifest'; manifest.write_text('\n'.join(entries))
+            result = RPM.prepare(inputs, manifest, pool, root / 'good/rpms', 'aarch64')
+            self.assertTrue(all('.x86_64' not in str(row[0]) for row in result))
+            manifest.write_text('\n'.join(entries).replace('.aarch64', '.x86_64'))
+            with self.assertRaises(KeyError):
+                RPM.prepare(inputs, manifest, pool, root / 'bad/rpms', 'aarch64')
+            self.assertFalse((root / 'bad').exists())
+
+    def test_arm_native_uefi_menu_and_iso_theme_graft(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            generic = root / 'source/templates.d/99-generic'
+            config = generic / 'config_files/aarch64'; config.mkdir(parents=True)
+            # Native Lorax44.6 ARM choices omit quiet and use a single EFI menu.
+            menu = ("""set default="1"
+set timeout=60
+search --no-floppy --set=root -l '@ISOLABEL@'
+menuentry 'Install' { linux @KERNELPATH@ @ROOT@ ro
+}
+menuentry 'Test' { linux @KERNELPATH@ @ROOT@ rd.live.check
+}
+menuentry 'Basic graphics' { linux @KERNELPATH@ @ROOT@ nomodeset
+}
+menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
+}
+""")
+            (config / 'grub2-efi.cfg').write_text(menu)
+            template = "efiarch64 = 'AA64'\n## make boot.iso\n${efigraft} ${filegraft}\n"
+            (generic / 'aarch64.tmpl').write_text(template)
+            LORAX.prepare(root / 'source', root / 'good', 'aarch64')
+            result = (root / 'good/templates.d/99-generic/config_files/aarch64/grub2-efi.cfg').read_text()
+            self.assertIn('@ROOT@ ro rhgb quiet', result)
+            self.assertIn('@ROOT@ rd.live.check rhgb quiet', result)
+            self.assertIn('@ROOT@ nomodeset\n', result)
+            self.assertIn('@ROOT@ inst.rescue\n', result)
+            self.assertEqual(result.count('menuentry'), 4)
+            self.assertIn('set timeout_style=hidden\nset timeout=1', result)
+            iso = (root / 'good/templates.d/99-generic/aarch64.tmpl').read_text()
+            self.assertIn('boot/grub2={0}/boot/grub2', iso)
+            self.assertIn("efiarch64 = 'AA64'", iso)
+            (generic / 'aarch64.tmpl').write_text(template.replace('AA64', 'X64'))
+            with self.assertRaisesRegex(ValueError, 'unsupported Lorax aarch64'):
+                LORAX.prepare(root / 'source', root / 'bad', 'aarch64')
+            self.assertFalse((root / 'bad').exists())
+
     def test_runtime_handoff_preserves_tui_and_refuses_unknown_owner(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

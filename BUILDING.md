@@ -107,7 +107,11 @@ python3 scripts/os/lib/desktop_target.py --arch aarch64 plan
 python3 scripts/os/preflight-desktop.py --arch aarch64 --package-dir YOUR_RPM_DIRECTORY
 ```
 
-The normal image and package-pool entry points accept `--arch x86_64|aarch64`.
+The normal image, package-pool and Atlas media entry points accept
+`--arch x86_64|aarch64`. Atlas uses Fedora’s architecture-specific UEFI boot
+chain and an unmodified, checksum-pinned Fedora kernel matching the payload.
+Its build host must execute the selected architecture natively or through
+registered binfmt emulation; x86 remains the default.
 Offline app inputs must match the selected architecture. A complete ARM image
 also needs every resolved native package, a signed ARM app baseline, installer
 media and actual boot/install/update qualification; the first architecture

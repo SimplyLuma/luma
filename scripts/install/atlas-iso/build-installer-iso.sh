@@ -35,8 +35,9 @@
 #     checked to appear nowhere else in the medium, its sidecars or the logs.
 #     Without the option no credential is on a medium.
 #
-# Usage (as root, on the Linux/x86_64 build host):
+# Usage (as root, on a Linux native or binfmt-enabled build host):
 #   build-installer-iso.sh --rpms DIR --boot-rpms DIR --boot-manifest FILE --work DIR --output ISO
+#       [--arch x86_64|aarch64]
 #       [--channel stable|beta|nightly]   (default nightly: staff media)
 #       [--payload-repo DIR]              OSTree repository to carry on the medium
 #       [--release-key PATH]              default /etc/pki/ostree/luma-release.gpg
@@ -78,15 +79,17 @@ payload_repo=""
 release_key=$LUMA_OS_RELEASE_KEY
 test_url="" test_ref="" test_key=""
 credential_file=""
+architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
 # The installer runtime's product version is the OS major version the medium
 # installs (luma/<major>/x86_64); release names come from --display-name.
 product="Luma" version=$(printf '%s' "$LUMA_OS_REF_PREFIX" | cut -d/ -f2)
 volid="" display_name=""
-release_repo="https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/"
+release_repo=""
 tools_image="localhost/luma-atlas-iso-tools:44"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) architecture=$2; shift 2 ;;
     --rpms) rpms=$2; shift 2 ;;
     --boot-rpms) boot_rpms=$2; shift 2 ;;
     --boot-manifest) boot_manifest=$2; shift 2 ;;
@@ -110,6 +113,14 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "$architecture" in x86_64|aarch64) ;; *) fail "unsupported architecture: $architecture" ;; esac
+LUMA_OS_REF_PREFIX="${LUMA_OS_REF_PREFIX%/*}/$architecture"
+[ -n "$release_repo" ] || release_repo="https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/$architecture/os/"
+# Separate tool images prevent one architecture silently replacing another.
+[ "$architecture" = x86_64 ] || tools_image="$tools_image-$architecture"
+kernel_config="$repo_root/config/install/atlas/runtime-kernel.env"
+[ "$architecture" = x86_64 ] || kernel_config="$repo_root/config/install/atlas/runtime-kernel-$architecture.env"
+
 for value in rpms work output boot_rpms boot_manifest; do
   [ -n "${!value}" ] || fail "--$value is required"
 done
@@ -129,10 +140,10 @@ if [ -z "$volid" ] && [ -n "$display_name" ]; then
   # Luma (Version 1, Prairie)                -> Luma-1-Prairie-x86_64
   volid=$(printf '%s\n' "$display_name" | tr -cs 'A-Za-z0-9' '\n' |
     grep -vx -e '' -e Nightly -e Version | paste -sd- -)
-  [ "${#volid}" -le 25 ] && volid="$volid-x86_64"
+  [ "${#volid}" -le 25 ] && volid="$volid-$architecture"
   while [ "${#volid}" -gt 32 ]; do volid=${volid%-*}; done
 fi
-[ -n "$volid" ] || volid="$product-$version-Install-x86_64"
+[ -n "$volid" ] || volid="$product-$version-Install-$architecture"
 [ "${#volid}" -le 32 ] || fail "volume label $volid is longer than 32 characters"
 case "$volid" in *[!A-Za-z0-9_-]*) fail "volume label $volid may only use letters, digits, _ and -" ;; esac
 ls "$rpms"/luma-installer-atlas-*.noarch.rpm >/dev/null 2>&1 || fail "no luma-installer-atlas RPM in $rpms"
@@ -194,16 +205,22 @@ if [ -n "$credential_file" ]; then
   trap 'rm -rf "$work/secret"' EXIT
 fi
 
-podman build --tag "$tools_image" --file "$here/Containerfile" "$here"
+# Use the same pinned Fedora builder input as native component builds.
+. "$repo_root/config/desktop/inputs.env"
+tools_base=$FEDORA_RPM_BUILD_CONTAINER
+[ "$architecture" = x86_64 ] || tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
+podman build --arch "$architecture" --build-arg "BASE_IMAGE=$tools_base" \
+  --build-arg "TARGET_ARCH=$architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
 
 cp "$rpms"/luma-installer-atlas-*.noarch.rpm "$work/luma-rpms/"
 python3 "$here/prepare-boot-rpms.py" --inputs "$repo_root/config/desktop/inputs.env" \
-  --manifest "$boot_manifest" --pool "$boot_rpms" --output "$work/luma-rpms"
+  --manifest "$boot_manifest" --pool "$boot_rpms" --output "$work/luma-rpms" --arch "$architecture"
 
 # The installer runtime's kernel: the one the installed system runs, not
 # Fedora 44's frozen GA kernel (see config/install/atlas/runtime-kernel.env).
 # shellcheck disable=SC1091
-. "$repo_root/config/install/atlas/runtime-kernel.env"
+. "$kernel_config"
+[ "$ATLAS_RUNTIME_KERNEL_ARCH" = "$architecture" ] || fail "runtime kernel architecture differs from target"
 kernel_cache=${ATLAS_RUNTIME_KERNEL_CACHE:-$work/kernel-cache}
 mkdir -p "$kernel_cache"
 for package in $ATLAS_RUNTIME_KERNEL_PACKAGES; do
@@ -242,6 +259,7 @@ fi
 clock_epoch=$(date -u +%s)
 {
   printf '# Written by build-installer-iso.sh; read by the installer kickstart.\n'
+  printf 'architecture=%s\n' "$architecture"
   printf 'clock_epoch=%s\n' "$clock_epoch"
   printf 'channel=%s\n' "$channel"
   printf 'channels=%s\n' "$LUMA_OS_CHANNELS"
@@ -283,9 +301,10 @@ fi
 # xattrs into dracut's staging tree, which silently drops files from the
 # initramfs (the first build lacked systemd-sysroot-fstab-check and could not
 # mount its root). /dev is shared so lorax sees loop devices it creates.
-podman run --rm --privileged --network host --env DRACUT_NO_XATTR=1 \
+podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$tools_image" bash -euo pipefail -c "
   trap 'echo \"error: build step failed at line \$LINENO of the container script\" >&2' ERR
+  [ \"\$(rpm --eval '%{_arch}')\" = '$architecture' ] || { echo 'error: wrong installer builder architecture' >&2; exit 1; }
   # Dracut normalizes mtimes when SOURCE_DATE_EPOCH is set. Use this medium's
   # epoch so normalization cannot erase the native clock floor.
   export SOURCE_DATE_EPOCH='$clock_epoch'
@@ -327,7 +346,7 @@ podman run --rm --privileged --network host --env DRACUT_NO_XATTR=1 \
     actual=\$(rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SHA256HEADER}' /w/luma-rpms/\$nevra.rpm)
     [ \"\$actual\" = \"\$nevra \$header\" ] || { echo \"error: boot RPM header mismatch: \$nevra\" >&2; exit 1; }
   done < /w/boot-packages.manifest
-  python3 /s/prepare-lorax-boot.py /usr/share/lorax /w/lorax-templates
+  python3 /s/prepare-lorax-boot.py /usr/share/lorax /w/lorax-templates '$architecture'
   createrepo_c --quiet /w/luma-rpms
   boot_install_args=()
   while read -r nevra digest header; do
@@ -473,6 +492,7 @@ podman run --rm --privileged --network host --env DRACUT_NO_XATTR=1 \
 
 mv "$work/output.iso.partial" "$output"
 {
+  printf 'architecture=%s\n' "$architecture"
   printf 'channel=%s\nref=%s\nremote=%s\nurl=%s\nremote_url=mirrorlist=file://%s\nmirrorlist=%s\n' \
     "$channel" "$ref" "$LUMA_OS_REMOTE" "$LUMA_OS_URL" "$LUMA_OS_MIRRORLIST" "$LUMA_OS_MIRRORLIST"
   printf 'payload=%s\n' "$( [ -n "$payload_repo" ] && echo medium || { [ "$test_media" = 1 ] && echo "test $test_ref"; } || echo online)"
