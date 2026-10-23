@@ -1,9 +1,10 @@
 # ARM desktop and device integration
 
 The desktop targets are `x86_64` and `aarch64`. ARM is a general desktop
-architecture, not a simulator product. Virtual machines are one qualification
-environment. A particular Snapdragon laptop or tablet still needs its boot,
-kernel, device-tree and firmware support checked on that model.
+architecture, not a simulator product. A compatible ARM virtual machine can use
+the same desktop artifact. A Snapdragon laptop or tablet still needs its own
+boot, kernel, device-tree and firmware qualification; an ARM CPU alone does not
+establish compatibility.
 
 ## One operating system
 
@@ -22,77 +23,138 @@ that qualification state must not become a permanent copy of the application
 sources or an independent release process. Bring reusable mobile work into the
 shared implementation and test the affected profiles.
 
+## Architecture, capability profile and device profile
+
+These selections answer different questions:
+
+| Selection | Meaning | Current source contract |
+| --- | --- | --- |
+| Architecture | CPU ABI, Fedora base and UEFI loader | `desktop-targets.json`: `x86_64` or `aarch64` |
+| Desktop capability profile | Which desktop capabilities this image contains | `desktop-profiles.json`: default `full`; explicit ARM-only `arm-preview` |
+| Session | Shell and input/layout presentation | Shared GNOME desktop or existing handheld session/profile inputs |
+| Device profile | A particular board's boot, kernel, DTB and firmware requirements | Existing device infrastructure; a desktop external-provider extension still needs implementation and qualification |
+
+The `arm-preview` capability profile declares Android applications, Windows
+applications and casting unavailable. Their engine/provider RPMs are excluded;
+Relay, the application installer, APK metadata support and the shared application
+baseline remain selected. This does not create a device-specific kernel profile
+or weaken signed app-bundle admission. The image records its actual profile and
+capabilities under `/usr/share/luma/desktop-capabilities.json`.
+
+The default remains `full` on both architectures. A future device profile may
+need the same capability profile, or a different explicitly declared selection;
+it must never infer an unavailable engine is available from the presence of its
+launcher or from a working VM.
+
 ## Shared build inputs
 
 `config/os/desktop-targets.json` selects the immutable Fedora base and EFI
-loader for each architecture. `scripts/os/lib/desktop_target.py` resolves
-both package selections from the existing desktop pin list. It changes only
-the architecture suffix, preserving the exact version and release. Noarch
-packages stay shared. Explicit hardware scope excludes Intel crash logging
-from ARM. An unavailable ARM package is an unmet requirement, not permission
-to substitute an older handheld preview or silently remove an application.
+loader for each architecture. `scripts/os/lib/desktop_target.py` resolves package
+selections from the common desktop pins, preserving versions and releases while
+selecting the architecture suffix. Noarch packages stay shared. Hardware scope
+excludes Intel crash logging from ARM; the explicit capability profile handles
+preview exclusions. Other missing inputs remain unmet build requirements.
 
-Inspect the requirements without composing an image:
+Inspect a target before composition:
 
 ```sh
-python3 scripts/os/lib/desktop_target.py --arch aarch64 plan
-python3 scripts/os/preflight-desktop.py --arch aarch64 --package-dir /path/to/rpms
+python3 scripts/os/lib/desktop_target.py --arch aarch64 --profile arm-preview plan
+python3 scripts/os/preflight-desktop.py --arch aarch64 --profile arm-preview --package-dir /path/to/rpms
 ```
 
-Preflight verifies RPM headers and records file hashes. It exits unsuccessfully
-for missing inputs or conflicting builds. It does not qualify boot or updates.
-The normal verified package pool and offline app baseline remain mandatory.
-`build-image.sh --arch aarch64` and `collect-packages.sh --arch aarch64` select
-the ARM requirements. A cross-architecture build needs actual ARM execution
-(native Linux builder or explicitly configured emulation); changing a label
-does not provide a compiler or make an x86 binary into ARM.
+The normal package collector, image builder and Atlas media builder accept the
+selected architecture. Use `--profile arm-preview` or `LUMA_OS_PROFILE` where a
+capability profile is selected. Package headers, hashes, normal component checks,
+the signed offline application baseline and release gates remain mandatory.
+Native CI can reuse checked toolkit artifacts only when their source closure,
+complete archive digest, RPM identities and output hashes match the dependent
+build. A changed label never turns an x86 binary into ARM.
 
-Native source checks run on both architectures. The initial native package
-matrix builds Search and GTK3 on both, with normal RPM checks. This is the
-first package group, not coverage of every desktop component. The remaining
-toolkit, shell, application, compatibility and browser inputs must be brought
-through native package checks before admitting an ARM desktop release. In
-particular, the current Viola builder is x86-only. ARM app bundles must carry
-ARM refs and signatures; x86 offline bundles are refused.
+## Kernel and installer boot cohort
 
-## Kernels and profiles
+The generic desktop consumes Fedora's kernel. Luma does not maintain a desktop
+kernel fork. The installed payload's kernel provider and the Atlas installer's
+boot/runtime provider are related inputs with different packaging roles.
 
-The generic image uses Fedora's kernel. Luma will consume an upstream or
-device project's kernel and firmware when a device requires them, preserving
-that provider's updates, notices and redistribution rules. This work does not
-create a Luma desktop kernel fork.
+Atlas's runtime must admit a coherent, checksum-pinned upstream Fedora cohort:
+its selected kernel or UKI provider, matching module packages, firmware and the
+architecture's EFI chain. Fedora's ARM Lorax path may require a UKI/DTB-loader
+provider rather than the ordinary `kernel-core` packaging used by a different
+boot path. Select the compatible provider variant at the pinned kernel release;
+do not install both conflicting variants or let dependency resolution pull a
+second kernel from the rolling repository. Required extra/internal modules are
+part of the pinned cohort when the selected runtime requires them.
 
-Extend the existing device/profile infrastructure for desktop devices. Its
-phone-specific kernel-tag assumptions must be extended to represent a pinned
-external kernel provider; do not invent a Luma kernel tag for an upstream
-binary. Existing Fairphone kernel, firmware and boot contracts remain intact.
-Each device's release record must bind the userspace image to the exact
-provider packages, modules, DTBs, firmware policy and recovery instructions
-used for qualification. Modules and initramfs must match the selected kernel.
+The source contracts are `config/install/atlas/runtime-kernel.env` and its ARM
+counterpart `runtime-kernel-aarch64.env`, consumed through the shared media
+helpers. The final artifact's qualification record must state the actual provider
+RPMs, hashes, kernel release, module set and EFI files. A matching NVR or successful
+RPM transaction alone does not prove that its installer boots, installs, updates
+or rolls back. Secure Boot support needs separate evidence.
 
-## Imager handoff contract
+For hardware requiring another provider, consume that upstream/device project's
+kernel and firmware with its updates, notices and redistribution rules. Extend
+the existing device infrastructure to describe the external provider, compatible
+userspace release, DTBs, firmware acquisition and recovery procedure. Do not
+invent Luma kernel tags for upstream binaries. Existing Fairphone contracts must
+remain intact; they do not automatically qualify a desktop Snapdragon device.
 
-Imager should select a verified image/profile combination. It must not patch
-files into a signed ISO and continue presenting the original image's digest
-or signature as proof of the modified bytes. Where different kernels require
-different boot media, compose a separately verifiable image from the shared
-desktop source. Keep the architecture and device's update stream explicit.
+## Imager and website handoff
 
-The future Imager handoff must include:
+Imager should select a verified artifact and a compatible device/boot profile.
+It must not insert a kernel into a signed ISO while continuing to present the
+original image's digest or signature. A different boot provider may require a
+separately composed, verifiable artifact from the same shared desktop source.
+An additive device bootstrap is valid only when its own trust, compatibility and
+recovery contract is explicitly supported by that provider and by Imager.
 
-- Image URL, byte size, SHA-256, signature/trust issuer and source revision.
-- Architecture, firmware/boot requirements and actual tested environments.
-- Compatible profiles, exact kernel provider and firmware acquisition terms.
-- Installation method, preserved partitions, recovery and rollback procedure.
-- Update ref and signed graph endpoint for this architecture/profile.
-- Known unsupported features and the evidence needed to raise support tier.
+The artifact handoff needs:
 
-Apple Silicon **VMs** use ARM virtual hardware and do not need Asahi. Installing
-directly on Apple hardware needs Asahi's boot provisioning and model support;
-writing the generic ISO to USB is not an equivalent installation method. See
-[Asahi's distribution guidelines](https://asahilinux.org/docs/alt/branding/)
-and [installation FAQ](https://asahilinux.org/docs/project/faq/).
+- Architecture, capability profile, source revision and immutable build/version identity.
+- Published image URL, exact byte size, SHA-256, signature and pinned trust issuer.
+- Actual tested VM or device models, firmware mode, storage requirements and support limits.
+- Exact payload and installer kernel/UKI provider cohort, modules, DTBs, firmware terms and notices.
+- Installation method, partition-preservation rules, recovery and rollback procedure.
+- OSTree ref and signed graph endpoint for the selected architecture.
+- Any device bootstrap/provider artifact's independent identity and compatibility constraints.
 
-No ARM desktop download, bare-metal compatibility, Secure Boot qualification,
+Use the published, signed per-architecture media index as the download discovery
+input. Existing x86 paths remain `/media/<channel>/latest.json`; ARM indexes use
+`/media/aarch64/<channel>/latest.json`. Each selected entry must match the requested
+architecture, be public and currently downloadable, and retain its own verified
+hash, size and signature evidence. An absent or unavailable ARM entry means ARM
+is unavailable; never offer the x86 image as a fallback. Artifact identity must
+include architecture, not merely a build ID or filename shared by two targets.
+Website redirects and Imager must resolve the selected entry's actual URL.
+
+Both architectures share the canonical signed OSTree repository. Their refs are
+`luma/1/x86_64/<channel>` and `luma/1/aarch64/<channel>`; ARM graph URLs are under
+`/os/graph/aarch64/`, while x86 graph URLs remain under `/os/graph/`. The architecture
+of the graph, its signed trusted comment and the selected update ref must agree.
+Use the release's actual configured host and channel; this document supplies no
+live ARM download or signature.
+
+The website's download page already exposes an ARM64 choice in its presentation.
+It must remain unavailable until a qualified ARM artifact is actually published
+and admitted to its architecture-specific download metadata. The website frontend
+and standalone Imager are separate products; this repository's `website/` contains
+branding, not their download-selector implementations.
+
+## Qualification boundaries
+
+An Apple Silicon VM presents virtual ARM hardware; it does not require Asahi's
+bare-metal boot provisioning. A successful M4 VM test would qualify that VM
+configuration and artifact, not a native M4 installation. Bare-metal Apple support
+requires Asahi-compatible provisioning and model-specific support; a generic USB
+ISO does not replace that process. Follow the upstream
+[distribution guidelines](https://asahilinux.org/docs/alt/policy/),
+[boot-process guide](https://asahilinux.org/docs/alt/boot-process-guide/) and
+[installation FAQ](https://asahilinux.org/docs/project/faq/).
+
+Surface and Snapdragon ThinkPad compatibility likewise require model-specific
+boot, storage, display, input, wireless, power and recovery tests. Do not advertise
+a model as supported based on the CPU name or a generic VM result.
+
+No ARM desktop download, physical-device compatibility, Secure Boot qualification,
 or update delivery is established by this design document. Those claims belong
-to the exact image's completed qualification and release records.
+to the exact artifact's completed qualification and public release records.
