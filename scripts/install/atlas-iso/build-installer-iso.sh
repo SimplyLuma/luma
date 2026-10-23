@@ -220,7 +220,9 @@ if [ "$tools_architecture" != "$architecture" ]; then
   # native builds keep their normal container label.
   builder_security=(--security-opt label=disable)
 fi
-podman build "${builder_security[@]}" --arch "$tools_architecture" --build-arg "BASE_IMAGE=$tools_base" \
+# Reuse unchanged pinned-base tool layers across media builds. Source/runtime
+# inputs are copied and verified separately below on every compose.
+podman build --layers "${builder_security[@]}" --arch "$tools_architecture" --build-arg "BASE_IMAGE=$tools_base" \
   --build-arg "TARGET_ARCH=$tools_architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
 
 cp "$rpms"/luma-installer-atlas-*.noarch.rpm "$work/luma-rpms/"
