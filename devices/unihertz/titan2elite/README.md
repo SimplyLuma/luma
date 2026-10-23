@@ -20,11 +20,12 @@ b and on its internal storage, untouched.
 | Battery and charging | Charge level from the fuel gauge; MT6375 charger with USB charger detection (BC1.2). |
 | Vibration | Vibration motor on the MT6369 VIBR supply. |
 | USB | Peripheral mode. |
-| Cellular | MediaTek modem over CCCI, run by `luma-modemd` with ModemManager: SIM, registration, mobile data (with 464XLAT on IPv6-only networks) and calls, with in-call audio on the earpiece and speaker. |
+| Cellular | MediaTek modem over CCCI, run by `luma-modemd` with ModemManager: SIM and eSIM, registration, SMS, mobile data (with 464XLAT on IPv6-only networks) and VoLTE calls with earpiece audio. |
 | Storage | Luma runs from a microSD card, grown to the whole card on first start; internal storage keeps Android. |
 | Updates | OSTree deployments with boot counting: an update that fails to start twice falls back to the previous one. |
 
-Not supported yet: USB-C analog headsets and Bluetooth call audio. The boot
+Not supported yet: switching to the speaker during a call, USB-C analog headsets,
+Bluetooth call audio, and GPS (location is Wi-Fi only). The boot
 image is signed with the AOSP test key, which the unlocked bootloader accepts.
 
 ## Sources
@@ -38,6 +39,7 @@ image is signed with the AOSP test key, which the unlocked bootloader accepts.
 | Platform package | [`src/luma-titan2e-platform`](../../../src/luma-titan2e-platform) and [`packaging/rpm/luma-titan2e-platform.spec`](../../../packaging/rpm/luma-titan2e-platform.spec): boot-slot confirmation after the health check, deployment blessing, first-boot root grow, switching to Android, watchdog, GPU, Wi-Fi/Bluetooth and audio services, UCM profile, WirePlumber policy, camera configuration and output scale. |
 | Camera | [`patches/libcamera`](../../../patches/libcamera) 0032-0034 (request lifetime, 8-bit Bayer scaling, in-flight requests on stop) and the Camera app in [`src/prairie-core`](../../../src/prairie-core). |
 | Modem | [`packaging/titan2e-ccci`](../../../packaging/titan2e-ccci) (MediaTek's GPL CCCI drivers ported to 7.2, built by [`scripts/packages/build-titan2e-ccci-modules.sh`](../../../scripts/packages/build-titan2e-ccci-modules.sh)), `luma-modemd`, `luma-titan2e-speech` and the UCM Voice Call verb in the platform package, and [`patches/modemmanager-fp6`](../../../patches/modemmanager-fp6) 0004-0011. Where the modem protocols come from: [`PROVENANCE.md`](../../../src/luma-titan2e-platform/PROVENANCE.md). |
+| eSIM | [`src/luma-esim-broker`](../../../src/luma-esim-broker) and `lpac-titan2e`: [lpac](https://github.com/estkme-group/lpac) `3ff35594` with [`patches/lpac`](../../../patches/lpac) 0001-0005. |
 | Mesa | [`packaging/rpm/mesa.spec`](../../../packaging/rpm/mesa.spec) with [`patches/mesa`](../../../patches/mesa) and the inputs pinned in [`config/mobile/mesa-source.env`](../../../config/mobile/mesa-source.env). |
 
 [`source-pins.json`](source-pins.json) lists every upstream input with its

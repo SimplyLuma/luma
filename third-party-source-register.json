@@ -3044,6 +3044,47 @@
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
       "origin_line": 38
+    },
+    {
+      "component": "LPAC-TITAN2-ELITE",
+      "upstream": [
+        {
+          "name": "estkme-group/lpac",
+          "url": "https://github.com/estkme-group/lpac"
+        }
+      ],
+      "recorded_revisions": [
+        "3ff35594ec15062a3ed10c3da1c26eb0a13390b8"
+      ],
+      "recorded_versions": [
+        "2.3.0-6.luma1"
+      ],
+      "license_identifiers": [
+        "AGPL-3.0-only",
+        "LGPL-2.1-only",
+        "MIT",
+        "CC0-1.0"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 42
+    },
+    {
+      "component": "MODEMMANAGER-ESIM-BROKER-TITAN2-ELITE",
+      "upstream": [
+        {
+          "name": "ModemManager",
+          "url": "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
+        }
+      ],
+      "recorded_revisions": [
+        "d776ea38d29ca472a12323c1d45002ee19a66f57"
+      ],
+      "recorded_versions": [],
+      "license_identifiers": [
+        "GPL-2.0-or-later"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 42
     }
   ],
   "spdx_license_ids_observed": [

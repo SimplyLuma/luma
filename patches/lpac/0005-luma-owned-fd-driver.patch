@@ -1,0 +1,24 @@
+--- a/driver/CMakeLists.txt
++++ b/driver/CMakeLists.txt
+@@ -1,3 +1,4 @@
++option(LPAC_WITH_APDU_LUMA_MM_FD "Build authenticated ModemManager owned-FD backend (Linux only)" OFF)
+ option(LPAC_WITH_APDU_PCSC "Build APDU PCSC Backend (requires PCSC libraries)" ON)
+ option(LPAC_WITH_APDU_AT "Build APDU AT Backend" OFF)
+ option(LPAC_WITH_APDU_GBINDER "Build APDU Gbinder backend for libhybris devices (requires gbinder headers)" OFF)
+@@ -48,6 +49,16 @@
+ set_target_properties(driver_apdu_stdio PROPERTIES PREFIX "")
+ install(TARGETS driver_apdu_stdio LIBRARY DESTINATION ${DRIVER_INSTALL_PATH})
+ 
++if(LPAC_WITH_APDU_LUMA_MM_FD)
++    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
++        message(FATAL_ERROR "The Luma ModemManager owned-FD backend requires Linux")
++    endif()
++    add_library(driver_apdu_luma_mm_fd SHARED apdu/luma_mm_fd.c)
++    target_link_libraries(driver_apdu_luma_mm_fd PRIVATE euicc euicc-drivers lpac-utils)
++    set_target_properties(driver_apdu_luma_mm_fd PROPERTIES PREFIX "")
++    install(TARGETS driver_apdu_luma_mm_fd LIBRARY DESTINATION ${DRIVER_INSTALL_PATH})
++endif()
++
+ add_library(driver_http_stdio SHARED http/stdio.c)
+ target_link_libraries(driver_http_stdio PRIVATE euicc euicc-drivers lpac-utils)
+ set_target_properties(driver_http_stdio PROPERTIES PREFIX "")

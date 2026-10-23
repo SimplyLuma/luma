@@ -1,0 +1,256 @@
+From: Project Luma
+Subject: [PATCH] profile: protect all management selectors on stdin
+
+Shared bounded locked and cleared selector input for all management operations.
+Reject embedded NUL, overlong input and lock failure before eUICC mutation.
+The protected activation path receives the same bounded binary-safe handling.
+Existing upstream argument forms remain available.
+
+--- a/src/applet/profile/enable.c
++++ b/src/applet/profile/enable.c
+@@ -12,57 +12,7 @@
+ #include <string.h>
+ #include <sys/mman.h>
+ 
+-static const size_t profile_id_max = 32;
+-
+-static void secure_profile_id_free(char **id) {
+-    if (id == NULL || *id == NULL)
+-        return;
+-    explicit_bzero(*id, profile_id_max + 2);
+-    (void)munlock(*id, profile_id_max + 2);
+-    free(*id);
+-    *id = NULL;
+-}
+-
+-static char *read_profile_id(void) {
+-    char *id = calloc(profile_id_max + 2, 1);
+-    if (id == NULL)
+-        return NULL;
+-
+-    (void)mlock(id, profile_id_max + 2);
+-    if (fgets(id, (int)profile_id_max + 2, stdin) == NULL) {
+-        secure_profile_id_free(&id);
+-        return NULL;
+-    }
+-
+-    size_t length = strlen(id);
+-    if (length == 0 || (length > profile_id_max && id[length - 1] != '\n')) {
+-        secure_profile_id_free(&id);
+-        return NULL;
+-    }
+-    id[strcspn(id, "\r\n")] = '\0';
+-    length = strlen(id);
+-
+-    if (length == 19 || length == 20) {
+-        for (size_t i = 0; i < length; i++) {
+-            if (!isdigit((unsigned char)id[i])) {
+-                secure_profile_id_free(&id);
+-                return NULL;
+-            }
+-        }
+-    } else if (length == 32) {
+-        for (size_t i = 0; i < length; i++) {
+-            if (!isxdigit((unsigned char)id[i])) {
+-                secure_profile_id_free(&id);
+-                return NULL;
+-            }
+-        }
+-    } else {
+-        secure_profile_id_free(&id);
+-        return NULL;
+-    }
+-
+-    return id;
+-}
++#include "secure-input.h"
+ 
+ static int applet_main(int argc, char **argv) {
+     int ret;
+--- a/src/applet/profile/disable.c
++++ b/src/applet/profile/disable.c
+@@ -8,8 +8,11 @@
+ #include <stdbool.h>
+ #include <stdio.h>
+ 
++#include "secure-input.h"
++
+ static int applet_main(int argc, char **argv) {
+     int ret;
++    char *profile_id_stdin = NULL;
+     const char *param;
+     bool refreshflag = false;
+ 
+@@ -20,11 +23,20 @@
+     }
+ 
+     param = argv[1];
++    if (strcmp(param, "-") == 0) {
++        profile_id_stdin = read_profile_id();
++        if (profile_id_stdin == NULL) {
++            jprint_error("read_profile_id", "expected one ICCID or AID on standard input");
++            return -1;
++        }
++        param = profile_id_stdin;
++    }
+ 
+     if (argc > 2)
+         refreshflag = str_to_bool(argv[2]) == true;
+ 
+     ret = es10c_disable_profile(&euicc_ctx, param, refreshflag);
++    secure_profile_id_free(&profile_id_stdin);
+ 
+     if (ret) {
+         const char *reason;
+--- a/src/applet/profile/delete.c
++++ b/src/applet/profile/delete.c
+@@ -8,8 +8,11 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
++#include "secure-input.h"
++
+ static int applet_main(int argc, char **argv) {
+     int ret;
++    char *profile_id_stdin = NULL;
+     const char *param;
+ 
+     if (argc < 2) {
+@@ -18,8 +21,17 @@
+     }
+ 
+     param = argv[1];
++    if (strcmp(param, "-") == 0) {
++        profile_id_stdin = read_profile_id();
++        if (profile_id_stdin == NULL) {
++            jprint_error("read_profile_id", "expected one ICCID or AID on standard input");
++            return -1;
++        }
++        param = profile_id_stdin;
++    }
+ 
+     ret = es10c_delete_profile(&euicc_ctx, param);
++    secure_profile_id_free(&profile_id_stdin);
+ 
+     if (ret) {
+         const char *reason;
+--- a/src/applet/profile/nickname.c
++++ b/src/applet/profile/nickname.c
+@@ -8,8 +8,11 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
++#include "secure-input.h"
++
+ static int applet_main(int argc, char **argv) {
+     int ret;
++    char *profile_id_stdin = NULL;
+     const char *iccid;
+     const char *new_name;
+ 
+@@ -20,13 +23,23 @@
+     }
+ 
+     iccid = argv[1];
++    if (strcmp(iccid, "-") == 0) {
++        profile_id_stdin = read_profile_id();
++        if (profile_id_stdin == NULL) {
++            jprint_error("read_profile_id", "expected one ICCID or AID on standard input");
++            return -1;
++        }
++        iccid = profile_id_stdin;
++    }
+     if (argc > 2) {
+         new_name = argv[2];
+     } else {
+         new_name = "";
+     }
+ 
+-    if ((ret = es10c_set_nickname(&euicc_ctx, iccid, new_name))) {
++    ret = es10c_set_nickname(&euicc_ctx, iccid, new_name);
++    secure_profile_id_free(&profile_id_stdin);
++    if (ret) {
+         const char *reason;
+         switch (ret) {
+         case 1:
+--- a/src/applet/profile/download.c
++++ b/src/applet/profile/download.c
+@@ -67,18 +67,29 @@
+     if (line == NULL)
+         return NULL;
+ 
+-    /* Best effort: avoid copying a bearer secret into swap or crash dumps. */
+-    (void)mlock(line, activation_code_max + 2);
+-    if (fgets(line, (int)activation_code_max + 2, stdin) == NULL) {
++    if (mlock(line, activation_code_max + 2) != 0) {
+         secure_activation_code_free(&line);
+         return NULL;
+     }
+-    const size_t length = strlen(line);
+-    if (length == 0 || (length > activation_code_max && line[length - 1] != '\n')) {
++    size_t length = 0;
++    int ch;
++    while ((ch = fgetc(stdin)) != EOF && ch != '\n') {
++        if (ch == 0 || length > activation_code_max) {
++            secure_activation_code_free(&line);
++            return NULL;
++        }
++        line[length++] = (char)ch;
++    }
++    if (ferror(stdin)) {
+         secure_activation_code_free(&line);
+         return NULL;
+     }
+-    line[strcspn(line, "\r\n")] = '\0';
++    if (length && line[length - 1] == '\r') line[--length] = 0;
++    if (length == 0 || length > activation_code_max ||
++        memchr(line, '\r', length) != NULL) {
++        secure_activation_code_free(&line);
++        return NULL;
++    }
+     return line;
+ }
+ 
+--- /dev/null
++++ b/src/applet/profile/secure-input.h
+@@ -0,0 +1,40 @@
++/* Luma protected profile-selector input. SPDX-License-Identifier: AGPL-3.0-only */
++#pragma once
++#include <ctype.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/mman.h>
++
++static void secure_profile_id_free(char **id) {
++    if (id == NULL || *id == NULL) return;
++    explicit_bzero(*id, 34);
++    (void)munlock(*id, 34);
++    free(*id);
++    *id = NULL;
++}
++
++/* Never include supplied bytes in errors. Fail closed if memory cannot lock.
++ * Read the whole bounded line bytewise so embedded NUL cannot hide a suffix. */
++static char *read_profile_id(void) {
++    char *id = calloc(34, 1);
++    if (id == NULL) return NULL;
++    if (mlock(id, 34) != 0) { secure_profile_id_free(&id); return NULL; }
++    size_t length = 0;
++    int ch;
++    while ((ch = fgetc(stdin)) != EOF && ch != '\n') {
++        if (ch == 0 || length == 33) { secure_profile_id_free(&id); return NULL; }
++        id[length++] = (char)ch;
++    }
++    if (ferror(stdin)) { secure_profile_id_free(&id); return NULL; }
++    if (length && id[length - 1] == '\r') id[--length] = 0;
++    if (length != 19 && length != 20 && length != 32) {
++        secure_profile_id_free(&id); return NULL;
++    }
++    for (size_t i = 0; i < length; i++) {
++        if (!(length == 32 ? isxdigit((unsigned char)id[i]) : isdigit((unsigned char)id[i]))) {
++            secure_profile_id_free(&id); return NULL;
++        }
++    }
++    return id;
++}

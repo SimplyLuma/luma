@@ -1,0 +1,30 @@
+[Unit]
+Description=Luma native eSIM profile management
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.projectluma.ESim1
+ExecStart=/usr/libexec/luma-esim-service
+User=root
+Group=root
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_QIPCRTR
+LimitCORE=0
+UMask=0077
+MemoryMax=128M
+MemorySwapMax=0
+TasksMax=8
+TimeoutStopSec=5s

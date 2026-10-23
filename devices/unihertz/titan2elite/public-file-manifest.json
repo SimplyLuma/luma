@@ -11,8 +11,8 @@
   },
   {
     "path": "THIRD-PARTY-SOURCES.md",
-    "sha256": "6991c371f6ca04e7f33bc8a9b6c2ee4c07846891c09d7c620fcb652bd88c9121",
-    "bytes": 46722
+    "sha256": "4641557f40fb181a24ec2c3698af6fbb8e7d72f74bb01f2eabd270a5ff58d888",
+    "bytes": 47249
   },
   {
     "path": "config/mobile/fp6-audio.env",
@@ -71,8 +71,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "3a6d6b32210d2f99b72eac7e983be8d1194b516a98abc3741a0dd97d71ca768f",
-    "bytes": 5481
+    "sha256": "1b2c86cc3bdac65ed600f62c2155f18b49d56b3d4dd4f80150fa59cfa06e4b82",
+    "bytes": 5743
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -91,8 +91,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/source-pins.json",
-    "sha256": "0ea65b4cdc52821623459c3e56dee3942654fa3e5b6806c62d3d394ac7cddaa8",
-    "bytes": 3683
+    "sha256": "2b56516fc4601395cd8e3feadaf602b7b0af438d67f9174fcdf0b38f5ae666fe",
+    "bytes": 4184
   },
   {
     "path": "devices/unihertz/titan2elite/tests/test_unihertz_titan2elite.py",
@@ -108,6 +108,16 @@
     "path": "packaging/mesa/Mesa-MLAA-License-Clarification-Email.txt",
     "sha256": "68e7be52203a4457ea97d9c4744661a07fc3d78edb44a86b43349fb66f09147a",
     "bytes": 3682
+  },
+  {
+    "path": "packaging/rpm/lpac-titan2e.spec",
+    "sha256": "69db005e7005592b864dd3c1108289ac6b874ab80aa895777dd5e6e497058bfa",
+    "bytes": 3159
+  },
+  {
+    "path": "packaging/rpm/luma-esim-broker.spec",
+    "sha256": "33f6b784e03ccd8edf6e6b60a27a64946711968c360bfdbbbdedcb4d4e14e501",
+    "bytes": 4261
   },
   {
     "path": "packaging/rpm/luma-greeter.spec",
@@ -500,6 +510,26 @@
     "bytes": 2612
   },
   {
+    "path": "patches/lpac/0004-profile-management-protected-selectors.patch",
+    "sha256": "ebdfda3f1be79264ee966c8c49b0bb4100b2a0445fcc918c65f1c69572df9835",
+    "bytes": 7488
+  },
+  {
+    "path": "patches/lpac/0005-luma-owned-fd-driver.patch",
+    "sha256": "0dd73e22514ccb83bb3a008c6aae93eaed7f885a3236adc04a1cc81082a9d7e7",
+    "bytes": 1293
+  },
+  {
+    "path": "patches/lpac/luma-owned-apdu-wire.h",
+    "sha256": "fd28913b4a5a716b8791c44cb0641d92e5b1517b8a313a3121c2c10dc77226f5",
+    "bytes": 1077
+  },
+  {
+    "path": "patches/lpac/luma_mm_fd.c",
+    "sha256": "55ccd38f7624ca20896ec61ea0b19235188ab4b10ad136b629a4bb3ee7450273",
+    "bytes": 6490
+  },
+  {
     "path": "patches/mesa/0001-gallivm-propagate-aarch64-host-features.patch",
     "sha256": "f95b823ed1470e1f17392fffd780c82d2d37765c4ea5301890491e73b5032988",
     "bytes": 1325
@@ -560,6 +590,16 @@
     "bytes": 969
   },
   {
+    "path": "scripts/packages/build-lpac-titan2e.sh",
+    "sha256": "aaa30bb82c33f7443f73f5ec248fbf28c0f626a976fb406064cc428d7d18013e",
+    "bytes": 2246
+  },
+  {
+    "path": "scripts/packages/build-luma-esim-broker.sh",
+    "sha256": "f2622bb97a7d0849fb5485f54a8849a00568cc1898312c7170495bdf236b71dd",
+    "bytes": 3674
+  },
+  {
     "path": "scripts/packages/build-luma-titan2e-platform.sh",
     "sha256": "4053d0010c4f07100cbfe3e84ff7646edeabf1d84bca3154680e8732c44b5e43",
     "bytes": 1250
@@ -593,6 +633,226 @@
     "path": "socs/mediatek/mt6878/soc.toml",
     "sha256": "135d94fa666cde1a7f70efa21bd5081d938f35c0196d8729f205d01090fe4f09",
     "bytes": 825
+  },
+  {
+    "path": "src/luma-esim-broker/COPYING.MM-tests",
+    "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+    "bytes": 18092
+  },
+  {
+    "path": "src/luma-esim-broker/LICENSE.md",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "bytes": 11358
+  },
+  {
+    "path": "src/luma-esim-broker/NOTICE.MM-tests",
+    "sha256": "166fef2776cb2b1e6a033fb9202dc81fb2c27b506b046aec52a05fe6116dcd12",
+    "bytes": 1028
+  },
+  {
+    "path": "src/luma-esim-broker/README.md",
+    "sha256": "940b9b618aaf1913780d8dec18d7824a2de7f959212db121eec34ad3d1e0f052",
+    "bytes": 1694
+  },
+  {
+    "path": "src/luma-esim-broker/data/luma-esim.service",
+    "sha256": "50fe999aed01a8137af5849820e0b01423c7b913503c625753095651a7ce89a6",
+    "bytes": 616
+  },
+  {
+    "path": "src/luma-esim-broker/data/luma_esim.cil",
+    "sha256": "992569c9a07b65cec9756e83a9a9f63f3cc112fe7caf8941820fc5ba549fd196",
+    "bytes": 690
+  },
+  {
+    "path": "src/luma-esim-broker/data/org.projectluma.ESim1.conf",
+    "sha256": "25c4790118cb010b97c26f11ef93f3309f55c62f07df65b4dd14b505674e851a",
+    "bytes": 324
+  },
+  {
+    "path": "src/luma-esim-broker/data/org.projectluma.ESim1.service",
+    "sha256": "68e8c78a25e5898109e5ee774c6ebfd71b5872cee656607e446fc552c4271b20",
+    "bytes": 122
+  },
+  {
+    "path": "src/luma-esim-broker/data/org.projectluma.esim.policy",
+    "sha256": "80b0c6d007df9b3e29ea08b99d555aa785fef8b365519c7553f0dec7f6efdb60",
+    "bytes": 848
+  },
+  {
+    "path": "src/luma-esim-broker/lpac-client.c",
+    "sha256": "aae854d0d518c488c2dc7ec729c50fb969d10ce52d90c4002045c3f6c7618974",
+    "bytes": 5428
+  },
+  {
+    "path": "src/luma-esim-broker/lpac-client.h",
+    "sha256": "b4068dfa7060e1a7270435eb003b287d4bd34770841101085e14f51c1b7a6c4f",
+    "bytes": 764
+  },
+  {
+    "path": "src/luma-esim-broker/luma-native-candidate-evidence.h",
+    "sha256": "0590047cc5ad74875dc773ff51aea8de8d3b64bb56538af976227e0f056ac77f",
+    "bytes": 4319
+  },
+  {
+    "path": "src/luma-esim-broker/luma-native-operation-epoch.h",
+    "sha256": "2f8174325531a8dbf6e103d309c9d61c40519da63742b97983cf18967ca81315",
+    "bytes": 4331
+  },
+  {
+    "path": "src/luma-esim-broker/luma-owned-apdu-wire.h",
+    "sha256": "fd28913b4a5a716b8791c44cb0641d92e5b1517b8a313a3121c2c10dc77226f5",
+    "bytes": 1077
+  },
+  {
+    "path": "src/luma-esim-broker/luma-profile-terminal-registry-DRAFT.h",
+    "sha256": "9768daa9ed9faa0bcb7b9b236521239de0c0d02d9e395acd567d3c8d44824b8a",
+    "bytes": 4321
+  },
+  {
+    "path": "src/luma-esim-broker/meson.build",
+    "sha256": "2de786f39190b5fc2cf62db64fae006413517e660d69da459555986f5f990717",
+    "bytes": 8541
+  },
+  {
+    "path": "src/luma-esim-broker/native-terminal-client.c",
+    "sha256": "2e8ed2efdb0b1abed1a11c71f54d3a3f09098b89fd366181cb3b3cf931905735",
+    "bytes": 26335
+  },
+  {
+    "path": "src/luma-esim-broker/native-terminal-client.h",
+    "sha256": "d093cd730ee9eabac2a0ce3e532983d0503a7781a913fb4f577e55ae38f0ac8d",
+    "bytes": 1923
+  },
+  {
+    "path": "src/luma-esim-broker/org.projectluma.ESim1.xml",
+    "sha256": "189161e649dc50439b478adba45ec071038b17d0f2f71c16c05bfeb57ba09bc4",
+    "bytes": 2128
+  },
+  {
+    "path": "src/luma-esim-broker/profile-cache.c",
+    "sha256": "b136f12f53fd1dcee63b9973737b7cd5b3337fef05bbc62d768b3d7bdd6a8261",
+    "bytes": 2529
+  },
+  {
+    "path": "src/luma-esim-broker/profile-cache.h",
+    "sha256": "93288a6834b3bfedf3cbfc762338ea50cc90b22a2df732fd052143b3bbc24929",
+    "bytes": 1078
+  },
+  {
+    "path": "src/luma-esim-broker/profile-native-binding.h",
+    "sha256": "115f9490d034e4464bbc4012e121f623e2633132e49909c4a5a9e9bc1043b2bf",
+    "bytes": 2617
+  },
+  {
+    "path": "src/luma-esim-broker/profile-store.c",
+    "sha256": "a7009933007558ef732150395a73a9ca998adab8de4e9b28fde2a9831e08c3ec",
+    "bytes": 9651
+  },
+  {
+    "path": "src/luma-esim-broker/profile-store.h",
+    "sha256": "201e7408d86e51e3a5dfc74c693c17e2d4672b21565fdb530f38d7a833dbd424",
+    "bytes": 988
+  },
+  {
+    "path": "src/luma-esim-broker/service.c",
+    "sha256": "868f2290e08b913571afd00275ac97c62804bada9415f9a2695626d3452d8a96",
+    "bytes": 35774
+  },
+  {
+    "path": "src/luma-esim-broker/test-bound-enable.c",
+    "sha256": "811296d2d62eaaadcb7f77dcfc92f5501a864b578180a6a9e0fc5521f1eab89f",
+    "bytes": 10148
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-direct-sim-discovery.c",
+    "sha256": "e49caca9f2237505c9170607a8ec2033310528600be8181eb0edb5a8c5dcad1d",
+    "bytes": 7796
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-evidence.c",
+    "sha256": "84c49e92db3e31801b9c64818807845fb32dfd1a1acd68579d32f0fdee316a03",
+    "bytes": 2641
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-operation-epoch.c",
+    "sha256": "cea6126fb7b661a741491df9d444d9a49bec8a38accd8621011a7669e7772c31",
+    "bytes": 1952
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-reservation-release.c",
+    "sha256": "6adddd2da01e6ac5048f90d8d238168709427498f61eae45f5f2055b97414dc8",
+    "bytes": 3038
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-retained-owner-cancellation.c",
+    "sha256": "3b96d58e140fd5ccfd05d9b3ff38027110ee995dcea5511f8de453cc067a007a",
+    "bytes": 11176
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-slot-refresh-extracted.c",
+    "sha256": "b9e642f8526fdc98036115231082a7b0f15f4849caeeecb3fdc1000887bfaa6a",
+    "bytes": 21442
+  },
+  {
+    "path": "src/luma-esim-broker/test-native-terminal-registry.c",
+    "sha256": "0211fb743a93cea58900347a455a2a5900cb95d0d16a776158f60540753db4e5",
+    "bytes": 1858
+  },
+  {
+    "path": "src/luma-esim-broker/test-notifications.c",
+    "sha256": "bc77da2a4a0a68dde3dd25537e62c2a92c5656dfbcb13d2622943ebf64492bdd",
+    "bytes": 2508
+  },
+  {
+    "path": "src/luma-esim-broker/test-private-bus.conf",
+    "sha256": "64707e4712610e776458317f5dab7e7c7dff60084e6af0135ef068dda57514d3",
+    "bytes": 503
+  },
+  {
+    "path": "src/luma-esim-broker/test-profile-cache.c",
+    "sha256": "414ec84c5e98ba6652d31a5f33d2a825dba161b869ce7392cb93092aa9a306cc",
+    "bytes": 3617
+  },
+  {
+    "path": "src/luma-esim-broker/test-profile-store.c",
+    "sha256": "c6fb9a538a639fdb99c4c8fc68b00982eb8b9c51b68e3c735c9bb020f6131bcb",
+    "bytes": 4576
+  },
+  {
+    "path": "src/luma-esim-broker/test-queued-open-guard.c",
+    "sha256": "0895d3f7e95da85747bc1655d7fa2bae3878db99cc5ede42dc04d82c725e62c7",
+    "bytes": 1202
+  },
+  {
+    "path": "src/luma-esim-broker/test-recovery-method-refusal.c",
+    "sha256": "ca190baf7f234ee5f1dbfce4600a3a4c6b0e6348e161e7bf9af3d04f611aef44",
+    "bytes": 2904
+  },
+  {
+    "path": "src/luma-esim-broker/test-service-candidate-lifecycle.c",
+    "sha256": "efb6bfc9214c1051e25cf7b5b3d710694fd891cddcfcb01ca9e3aa5ca5f1cdf0",
+    "bytes": 12114
+  },
+  {
+    "path": "src/luma-esim-broker/test-service-lifecycle.c",
+    "sha256": "d64de406b6ceb0ad47dc5038376e3975fc8e93b3a3fab2981a1473ab32d51cd4",
+    "bytes": 13869
+  },
+  {
+    "path": "src/luma-esim-broker/test-service-main-startup.c",
+    "sha256": "4b4074bcb1da4b15795254fe38838576e4e64b53b3d4fde5a7826bd4b0d1a3aa",
+    "bytes": 2949
+  },
+  {
+    "path": "src/luma-esim-broker/test-service-production-lifecycle.c",
+    "sha256": "61ce049e65a0f3dbff054aa2d8744ea2caab41ab46c31a3b896205507b7dba67",
+    "bytes": 24474
+  },
+  {
+    "path": "src/luma-esim-broker/test-service-rules.c",
+    "sha256": "79e895a0d68b6663ec6a7cf63cf62ad05b2cf7b995f02d8e72676221027dcfd8",
+    "bytes": 5711
   },
   {
     "path": "src/luma-greeter/luma-presence-compositor.c",
@@ -831,8 +1091,8 @@
   },
   {
     "path": "third-party-source-register.json",
-    "sha256": "6584e1d31f91393a772daef458419bb8d37613450c5581d4aa76a3e2065866ed",
-    "bytes": 392669
+    "sha256": "f56087776c84d446f77140148cbac691258c9245aa2a1eace85bd7b7b12fd33e",
+    "bytes": 393747
   },
   {
     "path": "tools/check-devices.py",

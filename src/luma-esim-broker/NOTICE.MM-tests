@@ -1,0 +1,11 @@
+The source-only native evidence, terminal registry and queued OPEN guard tests
+include Luma-maintained GPL-2.0-or-later ModemManager integration code.
+Upstream ModemManager source is pinned at d776ea38d29ca472a12323c1d45002ee19a66f57.
+Preserve the SPDX notices in luma-native-candidate-evidence.h,
+luma-profile-terminal-registry-DRAFT.h and test-queued-open-guard.c.
+COPYING.MM-tests is the unmodified ModemManager COPYING text from that source.
+These tests are not installed as broker runtime components.
+
+Normal production controls additionally carry the exact MM-owned operation epoch header and verbatim native slot/constructor functions from this same source cohort, licensed GPL-2.0-or-later. Controlled bus/QMI/GObject surfaces in tests are not hardware proof.
+
+The retained-owner cancellation test carries verbatim GPL-2.0-or-later MM descriptor owner callbacks from this maintained cohort, with controlled close/release boundaries and actual GLib cancellable/reference/idle lifetimes. It does not qualify QMI hardware.

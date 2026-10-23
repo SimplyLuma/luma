@@ -93,5 +93,18 @@
     "userspace": "src/luma-titan2e-platform (luma-modemd, luma-titan2e-speech, luma-titan2e-esim)",
     "provenance": "src/luma-titan2e-platform/PROVENANCE.md",
     "modemmanager_patches": "patches/modemmanager-fp6 0004-0011"
+  },
+  "esim": {
+    "broker": "src/luma-esim-broker (packaging/rpm/luma-esim-broker.spec)",
+    "lpac": {
+      "repository": "https://github.com/estkme-group/lpac",
+      "commit": "3ff35594ec15062a3ed10c3da1c26eb0a13390b8",
+      "patches": "patches/lpac 0001-0005",
+      "spec": "packaging/rpm/lpac-titan2e.spec"
+    },
+    "modemmanager_code": {
+      "repository": "https://gitlab.freedesktop.org/mobile-broadband/ModemManager",
+      "commit": "d776ea38d29ca472a12323c1d45002ee19a66f57"
+    }
   }
 }
