@@ -26,7 +26,7 @@ mkdir -p "$check"
 export FLATPAK_USER_DIR="$check/flatpak"
 sed "s#^Url=.*#Url=$url#" "$site/luma.flatpakrepo" >"$check/luma.flatpakrepo"
 flatpak remote-add --user --if-not-exists luma "$check/luma.flatpakrepo"
-flatpak remote-ls --user --all --columns=ref luma | sort >"$check/refs"
+flatpak remote-ls --user --all --arch='*' --columns=ref luma | sort >"$check/refs"
 test -s "$check/refs"
 cat "$check/refs"
 
