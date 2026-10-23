@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# Apple Silicon Macs: installed from macOS next to it, not written to a drive.
+# The id is the file name.
+name = "Apple Silicon Macs"
+summary = "Luma for Macs with Apple M-series chips, installed from macOS alongside it."
+arch = ["aarch64"]
+status = "coming_soon"
+kind = "macos_installer"
+note = "Installs from macOS"

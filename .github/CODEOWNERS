@@ -8,6 +8,11 @@
 /tools/check-devices.py @nmcmil
 /docs/devices.md        @nmcmil
 
+# Imager catalog sources, schema and generator
+/imager/                       @nmcmil
+/tools/build-imager-catalog.py @nmcmil
+/docs/imager-catalog.md        @nmcmil
+
 # SoC families
 /socs/qcom/milos/       @nmcmil
 

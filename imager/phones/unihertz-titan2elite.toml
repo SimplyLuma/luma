@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Overlay for a device whose directory is not on this branch
+# (devices/titan2elite: devices/unihertz/titan2elite). Remove it once that
+# device.toml carries its own [imager] table here.
+vendor = "unihertz"
+codename = "titan2elite"
+name = "Unihertz Titan 2 Elite"
+tier = "experimental"
+# [install].preserve in that branch's device.toml.
+never_write = [
+  "nvram", "nvdata", "nvcfg", "protect1", "protect2", "proinfo",
+  "md_sec", "sec1", "seccfg", "otp", "frp", "modem_a", "modem_b",
+  "connsys_wifi_a", "connsys_wifi_b", "connsys_bt_a", "connsys_bt_b",
+  "connsys_gnss_a", "connsys_gnss_b", "dtbo_a", "dtbo_b", "vbmeta_a", "vbmeta_b",
+  "vendor_boot_a", "vendor_boot_b", "lk_a", "lk_b", "super", "gpt",
+]
+
+[imager]
+status = "coming_soon"
+method = "sd_card"
+summary = "Runs from a microSD card. Android stays on the phone."
+needs = [
+  "A microSD card of 16 GB or more; everything on it is erased",
+  "A USB-C data cable",
+]

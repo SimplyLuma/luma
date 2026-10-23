@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Microsoft Surface: the nightly with the linux-surface kernel, as its own
+# update channel (luma/1/x86_64/<channel>-surface). The id is the file name.
+name = "Microsoft Surface"
+summary = "Luma with the kernel and touch support Surface devices need, kept on its own update channel."
+arch = ["x86_64"]
+status = "coming_soon"
+kind = "derived_channel"
+
+[suggest_when]
+dmi_sys_vendor = "Microsoft Corporation"

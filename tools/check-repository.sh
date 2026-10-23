@@ -19,3 +19,5 @@ python3 -B -m unittest tests.unit.test_luma_notes_store tests.unit.test_luma_app
   tests.unit.test_luma_appkit_conformance tests.unit.test_luma_appkit_families.KitGuard
 python3 -B tools/check-devices.py
 python3 -B -m unittest tests.unit.test_device_tree
+python3 -B tools/build-imager-catalog.py --check
+python3 -B -m unittest tests.unit.test_imager_catalog

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# Overlay for a device whose directory is not on this branch
+# (devices/pixel9: devices/google/tokay). It has no persistent install yet.
+vendor = "google"
+codename = "tokay"
+name = "Google Pixel 9"
+tier = "experimental"
+
+[imager]
+status = "coming_soon"
+method = "none"
+summary = "In development. It can't be installed yet."

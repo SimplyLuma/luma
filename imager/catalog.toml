@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma Imager catalog: everything that is not a phone or an add-on.
+# tools/build-imager-catalog.py turns this, imager/mods/*.toml, the [imager]
+# tables in devices/**/device.toml and imager/phones/*.toml into catalog.json.
+# See docs/imager-catalog.md.
+
+[imager]
+# Oldest Imager that understands this catalog.
+min_version = "1.0.0"
+
+[desktop]
+# Desktop images are not listed here: Imager reads them from the Hub catalog
+# API, and from each channel's signed index when the Hub is unreachable.
+hub_catalog_url = "https://hub.simplyluma.com/api/hub/downloads/catalog"
+
+# An architecture with `status_from_index` is "available" only while that
+# channel's index lists an image for it; `status` is used when the index cannot
+# be read (offline builds).
+[[desktop.architectures]]
+id = "x86_64"
+name = "Intel or AMD"
+status = "available"
+
+[[desktop.architectures]]
+id = "aarch64"
+name = "ARM"
+status = "coming_soon"
+status_from_index = "nightly"
+
+[[desktop.channels]]
+id = "nightly"
+name = "Nightly"
+default = true
+status = "available"
+index_url = "https://media.simplyluma.com/media/nightly/latest.json"
+
+[[desktop.channels]]
+id = "beta"
+name = "Beta"
+status = "available"
+index_url = "https://media.simplyluma.com/media/beta/latest.json"
+
+[[desktop.channels]]
+id = "stable"
+name = "Stable"
+status = "unavailable"
+
+[[desktop.guide]]
+title = "Write the drive"
+body = "Imager downloads the image, checks it and writes it to the USB drive you choose. Everything on that drive is erased."
+
+[[desktop.guide]]
+title = "Restart from the drive"
+body = "Restart the computer with the drive plugged in and open its boot menu, usually with F12, F11, F2 or Esc as it starts. Choose the USB drive."
+
+[[desktop.guide]]
+title = "Install Luma"
+body = "Luma's installer starts from the drive. Follow its steps; when it finishes, remove the drive and restart."
