@@ -50,3 +50,9 @@ class DeviceTests(unittest.TestCase):
                 with self.assertRaisesRegex(TesterError,'mode rejected'):
                     devices.apply(session,dict(profile='duo'))
             self.assertEqual(json.loads((root/'device.json').read_text()),previous)
+
+    def test_guest_update_does_not_touch_custom_or_arm_images(self):
+        with patch.dict('os.environ',LUMA_TESTER_GUEST_UPDATES='/not-a-real-update'):
+            for target,arch,sha in [('desktop','x86_64','unknown'),('mobile','aarch64','unknown'),('mobile','x86_64','custom')]:
+                session=SimpleNamespace(manifest=dict(target=target,arch=arch,image=dict(sha256=sha)))
+                self.assertFalse(vm.ensure_mobile_display(session))

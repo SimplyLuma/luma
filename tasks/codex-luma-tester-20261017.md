@@ -929,3 +929,23 @@ used that source without altering shared refs or unrelated worktrees.
   must stay HDD. Retired only stopped AppImage extraction scratch in root jobs
   e99f776cb7/2f33299c37/410c93e7c0/4d2fc61ca5 with per-entry receipts; original
   immutable packages and all test evidence retained. No other task data touched.
+
+- Follow-up source b5bab3cf adds Device controls, geometry CLI/state contract and
+  virtual-mode patch. Current uncommitted follow-up adds a checksummed, known
+  r9/r10-only startup compositor update, optional package+SRPM staging in portable
+  producer and a verified shutdown-disconnect race check. Not qualified/shipped.
+- Full bootprobe938effb4f8 returned wlr-randr0 but mode stayed432x960; shutdown SSH
+  raced the poweroff. New host ack correctly refused the fake resize. The physical
+  whitelist fallback in phoc_output_state_set_mode explains this. Scoped patch
+  selects custom mode only with simulator environment opt-in and bounded geometry.
+- Build worker ready: /srv/dev/accounts/second/artifacts/tester-device-build-phoc.py.
+  It clones existing stopped component-builder disk into an HDD overlay, rebuilds
+  matching source RPM plus scoped patch and retains all normal19 Meson checks and
+  corresponding source. No compiler/dependency install on host. Output planned
+  owned HDD device-phoc-r11-<rootjob>/artifacts.tar. Then stage guest-updates-device-r11
+  and run tester-device-live-worker.py with LUMA_TESTER_GUEST_UPDATES pointing there.
+- Resource gate now shared disk reservations5+20GiB from other ARM jobs, with
+  root25.1GiB free. Even disk0 is refused; no build is running for this task.
+  Respect reserve; do not stop other jobs or bypass admission. Three immutable
+  own input tars moved to owned HDD retained-mobile-inputs with full SHA comparison
+  and original-path symlinks; relocation receipt retained. Dell still0.4.1.

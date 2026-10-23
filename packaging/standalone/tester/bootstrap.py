@@ -16,6 +16,7 @@ os.environ.update({
     'FONTCONFIG_FILE': str(base / 'fonts.conf'),
     'XDG_DATA_DIRS': str(base / 'usr/share') + ':' + os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share'),
     'LUMA_TESTER_FIRMWARE_DIR': str(base / 'tools/firmware'),
+    'LUMA_TESTER_GUEST_UPDATES': str(base / 'guest-updates'),
     'PATH': str(base / 'tools/bin') + ':' + os.environ.get('PATH', '/usr/bin:/bin'),
 })
 if not os.environ.get('SSL_CERT_FILE'):

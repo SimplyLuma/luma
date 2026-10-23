@@ -491,6 +491,12 @@ class Session:
         result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                 text=True, timeout=15)
+        if result.returncode == 255:
+            # The guest can close SSH before the non-blocking poweroff reply.
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline:
+                if self.status()=='stopped':return
+                time.sleep(.25)
         if result.returncode != 0:
             raise TesterError('Could not request guest shutdown: ' + result.stderr.strip()[-1024:])
 

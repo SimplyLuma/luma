@@ -283,3 +283,65 @@ Use the app's own development watcher or restart its preview service after edits
     text += '\n\nCLI for status and screenshots:\n' + shlex.join(launcher + ['--state', str(session.root)])
     text += '\nManifest: ' + shlex.quote(str(manifest_path)) + '\n'
     return text
+
+
+def ensure_mobile_display(session):
+    """Install a checksummed simulator update before revealing a fresh boot.
+
+    This never runs in response to a live resize, nor against physical/custom
+    images. Existing private disks and developer projects remain in place.
+    """
+    from .core import digest
+    directory=os.environ.get('LUMA_TESTER_GUEST_UPDATES')
+    if not directory or session.manifest['target']!='mobile' or session.manifest['arch']!='x86_64':
+        return False
+    known={'bd88d4af0c5e1749cf30ef87f98551d2697bfca60f9a42130211a6853faa54e9',
+           'e4403e122bff15084d7b63c06209a9b88cf1d71a960c9f4eb9c19a74b1558dab'}
+    if session.manifest['image']['sha256'] not in known:return False
+    metadata=Path(directory)/'mobile-display.json'
+    if not metadata.is_file():return False
+    manifest=json.loads(metadata.read_text())
+    if manifest.get('schema')!=1 or manifest.get('arch')!='x86_64':
+        raise TesterError('Invalid simulator display update.')
+    filename=manifest['file']
+    if Path(filename).name!=filename:raise TesterError('Invalid simulator update path.')
+    package=Path(directory)/filename
+    if package.stat().st_size!=manifest['bytes'] or digest(package)!=manifest['sha256']:
+        raise TesterError('Simulator display update checksum mismatch.')
+    probe="""from pathlib import Path
+p=Path('/etc/luma/tester-image')
+assert p.is_file() and 'LUMA_PHYSICAL_DEVICE=false' in p.read_text()
+p=Path('/etc/luma/tester-display-modes')
+print(p.read_text().strip() if p.exists() else '')
+"""
+    previous=subprocess.check_output(session.ssh(['python3','-c',probe]),text=True,timeout=15).strip()
+    if previous==manifest['sha256']:return False
+    script="""import hashlib,os,subprocess,sys,tempfile
+from pathlib import Path
+payload=sys.stdin.buffer.read()
+assert hashlib.sha256(payload).hexdigest()==sys.argv[1]
+path=Path('/etc/systemd/system/greetd.service.d/70-luma-tester-device.conf')
+prefix='# Managed by Luma Tester\\n'
+assert not path.exists() or path.read_text().startswith(prefix)
+with tempfile.NamedTemporaryFile(prefix='luma-tester-display-',suffix='.rpm',delete=False) as f:
+ name=f.name;f.write(payload)
+try:
+ header=subprocess.check_output(['rpm','-qp','--qf','%{NAME}|%{ARCH}',name],text=True)
+ assert header=='phoc|x86_64'
+ subprocess.run(['dnf5','-y','--disablerepo=*','install',name],check=True,timeout=120)
+finally:os.unlink(name)
+path.parent.mkdir(parents=True,exist_ok=True)
+path.write_text(prefix+'[Service]\\nEnvironment=LUMA_TESTER_DYNAMIC_MODES=1\\n')
+Path('/etc/luma/tester-display-modes').write_text(sys.argv[1]+'\\n')
+"""
+    run(session.ssh(['sudo','python3','-c',script,manifest['sha256']]),input=package.read_bytes(),timeout=150,stdout=subprocess.DEVNULL)
+    old=subprocess.check_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
+    result=subprocess.run(session.ssh(['sudo','systemctl','--no-block','reboot']),capture_output=True,text=True,timeout=15)
+    if result.returncode not in (0,255):raise TesterError('Could not restart the simulator after its display update.')
+    deadline=time.monotonic()+120
+    while time.monotonic()<deadline:
+        time.sleep(2)
+        result=subprocess.run(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
+        if result.returncode==0 and result.stdout.strip()!=old:
+            session.wait_graphical(120);return True
+    raise TesterError('Simulator display update was installed; the guest has not restarted yet.')

@@ -30,6 +30,7 @@ p.add_argument('--arm-rpm',type=Path,help='Exact RPM containing --arm-qemu')
 p.add_argument('--arm-firmware',type=Path,help='Directory containing matching ARM UEFI firmware')
 p.add_argument('--arm-firmware-rpm',type=Path,help='Exact RPM containing --arm-firmware')
 p.add_argument('--catalog', type=Path, required=True)
+p.add_argument('--mobile-display-update',type=Path,help='Checked Mobile display update manifest, RPM and matching source RPM')
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--release', action='store_true', help='Count published downloads as Tester; private previews default to test')
 mode = p.add_mutually_exclusive_group()
@@ -79,6 +80,18 @@ loaders = re.sub(r'@[A-Z_]+ROOT@', '@TESTER_ROOT@', loaders)
 for relative in ('lib64/libgvnc-1.0.so.0', 'lib64/girepository-1.0/GVnc-1.0.typelib'):
     copy(a.gvnc_prefix / relative, Path('usr') / relative)
 copy(REPO / 'packaging/standalone/tester/bootstrap.py', 'bootstrap.py')
+if a.mobile_display_update:
+    metadata=json.loads(a.mobile_display_update.read_text())
+    assert metadata['schema']==1 and metadata['arch']=='x86_64'
+    for item in (metadata,metadata['source_rpm']):
+        assert Path(item['file']).name==item['file']
+        source=a.mobile_display_update.parent/item['file']
+        assert source.stat().st_size==item['bytes']
+        assert hashlib.file_digest(source.open('rb'),'sha256').hexdigest()==item['sha256']
+        copy(source,Path('guest-updates')/item['file'])
+    copy(a.mobile_display_update,'guest-updates/mobile-display.json')
+    (dest/'guest-updates/NOTICE').write_text('Phoc: GPL-3.0-or-later. Matching corresponding source is included in the source RPM beside this update.\n')
+
 copy(REPO / 'packaging/standalone/tester/README.md', 'README.md')
 copy(a.gvnc_source, 'sources/gtk-vnc.src.rpm')
 copy(a.gvnc_license, 'usr/share/licenses/gvnc/COPYING.LIB')

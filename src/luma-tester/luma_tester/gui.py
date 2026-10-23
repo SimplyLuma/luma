@@ -669,6 +669,7 @@ def launch(state=None):
                     session.wait_graphical(180)
                     GLib.idle_add(self.status_label.set_label,'Preparing your saved workspace…')
                     vm.repair_legacy_renderer(session)
+                    vm.ensure_mobile_display(session)
                     vm.configure_guest(session, vm.load(session.root))
                     if session.manifest['target'] == 'mobile':
                         session.home()
