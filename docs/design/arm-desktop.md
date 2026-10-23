@@ -115,6 +115,18 @@ hashes; libvirt creates separate writable NVRAM for every VM. The operator must
 retain provider/package provenance and arrange normal libvirt access and SELinux
 labels. These tool selections do not waive release checks or qualify hardware.
 
+When using passt networking under TCG, verify that the host's SELinux policy
+permits the `svirt_tcg_t` emulator domain to connect to passt's `passt_t` Unix
+stream socket. A host can allow KVM's `svirt_t` connection while omitting TCG.
+Check actual AVCs and socket labels, then perform a bounded guest connection
+check before starting a long gate. Prefer a distribution-maintained policy fix.
+If a reviewed local compatibility rule is necessary, scope it to the host's
+TCG-to-passt socket connection and record its identity and rollback procedure.
+Keep SELinux enforcing; verify that unrelated image-write and protected-file
+permissions remain unchanged. Socket connection permission alone does not prove
+isolation between guests with different MCS labels. This host provisioning is
+separate from the desktop image and does not establish device support.
+
 ## Imager and website handoff
 
 Imager should select a verified artifact and a compatible device/boot profile.
