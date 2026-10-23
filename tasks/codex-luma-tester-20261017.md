@@ -1365,3 +1365,48 @@ used that source without altering shared refs or unrelated worktrees.
   base checksum, preserves previous preferences, installs ~/Applications/Luma
   Tester.app and registers Mobile image in normal imported-images state. It
   refuses active app/guest collisions. Helpers are private artifacts only.
+- ARM export-r5 fixed first-boot presets and private SSH directory ownership via
+  virtual bootstrap service. Native Mac GUI tests1cefbdee and7f554c20 passed
+  functional fresh NoCloud, agent key, live snapshot same boot, shutdown and
+  persistence. Visual inspection after reopen still showed folded/hidden Home;
+  do NOT treat those functional reports alone as full visual qualification.
+  Removing pointer hardware in b534a2b0 did not resolve it; production input
+  profile unchanged. Same shared native Home bridge as x86 is now ARM-built.
+- Cross-compiled scripts/tester/mobile-control.c using a private ARM header SDK
+  from signature-verified official Fedora44 RPMs. SDK fa0832c9 initially lacked
+  shared-mime-info.pc;9ec835ae reused target metadata for that dependency and
+  compiled/installed ELF AArch64 module successfully. No build SDK packages
+  installed into the OS. Receipt mobile-arm-alpha1/control-sdk-receipt.json.
+  Export-r6 d02f9ae8 includes module+Phosh environment; Home capability true,
+  dynamic display still false. Fixed864x1920/scale2 profile. Actual module/Home
+  UI proof pending Mac local-gui-r10 ace30e3d (1GiB controller hard cap); source
+  platform unchanged while this artifact-only job runs.
+- User requested real download progress after a stalled-looking transfer.
+  f37306a43 adds shared measured TransferProgress/TransferReporter callbacks,
+  percentage/byte counts and separate chunked verification to network, local
+  image preparation and GUI; e38abdafb uses read1/64KiB chunks and shows Waiting
+  for data after5seconds.99 tests passed f7fc8cd5 and6ad64e0c, including resume
+  counts, intermediate progress and no ready state after failed SHA. Subsequent
+  Macr8 build7cc644ff also ran99 checks successfully.
+- cc18fcd0f labels prepared images Ready to run and ISOs Installer ISO, separates
+  their menu groups and uses Start Installer for ISO selection. Compact Menu
+  hides group headings, so captions carry the distinction. Native packaged
+  LumaUI UI test030b806f passed measured bar fractions, visible progress, actual
+  waiting interval, verification, completion cleanup and installer label. First
+  UI harness a3bb74ca expected hidden headings; corrected to inspect visible
+  captions. Screenshot/qualification in root-jobs/luma-tester-user-421157bd74.
+- Linuxr33 c6d53123 built progress candidate; final r34 834e5024 includes installer
+  labels. AppImage SHA available in appimage-progress-r34/SHA256SUMS on owned HDD.
+  Delivery/registration f8fbcb59 passed: Dell tester-progress-r34-20261023,
+  version0.7.1, pinned existing tester-display workspace. Guest preserved true,
+  gui_reopened false, registration97b7179c. Current Dell still runs oldr31 GUI
+  and an active guest; do not stop it to activate the update. Partial ISO was
+  147849216 of7198212096bytes, unchanged between read-only checks around21:00UTC.
+  Retained partial/metadata for resumption; no user ISO removed or modified.
+- Macr7 397099f47 fixes expected display EOF during normal shutdown. r7 package
+  check0b24b57f passed and delivered, now superseded by r8 sourcecc18fcd0f with
+  progress/installer labels. r8 built7cc644ff; final package validation, stable
+  install and real ARM image registration pending r10 native outcome. Owned
+  failed QA bases/overlaysr2..r6 removed only after checking no normal registered
+  references/active processes; server exports/evidence retained. This reclaimed
+  Mac space without deleting personal files or the final image.
