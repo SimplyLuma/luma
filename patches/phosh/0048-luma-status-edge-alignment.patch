@@ -1,0 +1,64 @@
+--- a/src/top-panel.c
++++ b/src/top-panel.c
+@@ -142,6 +142,7 @@
+     self->on_lockscreen = g_value_get_boolean (value);
+     phosh_util_toggle_style_class (GTK_WIDGET (self), "luma-presence", self->on_lockscreen);
+     phosh_status_icon_set_presence_style (PHOSH_STATUS_ICON (self->batteryinfo), self->on_lockscreen);
++    gtk_widget_set_margin_end (self->batteryinfo, self->on_lockscreen ? 0 : 1);
+     phosh_status_icon_set_presence_style (PHOSH_STATUS_ICON (self->top_wifi), self->on_lockscreen);
+     phosh_status_icon_set_presence_style (PHOSH_STATUS_ICON (self->wwaninfo), self->on_lockscreen);
+     phosh_status_icon_set_pixel_size (PHOSH_STATUS_ICON (self->batteryinfo), self->on_lockscreen ? 17 : 13);
+@@ -758,6 +759,21 @@
+ };
+ 
+ 
++/* The wall clock pads single-digit hours for centered presentation. Edge
++ * placement uses the visible time as its anchor, without leading whitespace. */
++static gboolean
++clock_label_transform (GBinding *binding, const GValue *from, GValue *to, gpointer data)
++{
++  const char *text = g_value_get_string (from);
++
++  if (text)
++    while (*text && g_unichar_isspace (g_utf8_get_char (text)))
++      text = g_utf8_next_char (text);
++  g_value_set_string (to, text);
++  return TRUE;
++}
++
++
+ static void
+ phosh_top_panel_constructed (GObject *object)
+ {
+@@ -775,9 +791,10 @@
+                           self, "on-lockscreen",
+                           G_BINDING_SYNC_CREATE);
+ 
+-  g_object_bind_property (wall_clock, "date-time",
+-                          self->lbl_clock, "label",
+-                          G_BINDING_SYNC_CREATE);
++  g_object_bind_property_full (wall_clock, "date-time",
++                               self->lbl_clock, "label",
++                               G_BINDING_SYNC_CREATE,
++                               clock_label_transform, NULL, NULL, NULL);
+   g_object_bind_property (self, "on-lockscreen",
+                           self->lbl_clock,
+                           "visible",
+@@ -1086,6 +1103,8 @@
+ 
+   /* Top-bar clock */
+   pos = phosh_layout_manager_get_clock_pos (layout_manager);
++  if (pos == PHOSH_LAYOUT_CLOCK_POS_CENTER)
++    pos = PHOSH_LAYOUT_CLOCK_POS_LEFT;
+   gtk_container_remove (GTK_CONTAINER (self->box_top_bar), self->lbl_clock);
+   phosh_util_toggle_style_class (self->lbl_clock, "left", FALSE);
+   phosh_util_toggle_style_class (self->lbl_clock, "right", FALSE);
+@@ -1138,7 +1157,7 @@
+                          "#settings-gear {"
+                          "  padding-right: %dpx;"
+                          "}",
+-                         MAX (network_box_shift, 20u), MAX (indicators_box_shift, 20u),
++                         MAX (network_box_shift, 18u), MAX (indicators_box_shift, 20u),
+                          launch_settings_revealer_shift);
+   gtk_css_provider_load_from_data (provider, css, -1, NULL);
+   gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
