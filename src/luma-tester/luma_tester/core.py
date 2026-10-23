@@ -37,7 +37,11 @@ def digest(path):
 
 def read_manifest(path):
     """Manifests are data, never QEMU arguments or executable setup hooks."""
-    m = json.loads(Path(path).read_text())
+    return validate_manifest(json.loads(Path(path).read_text()))
+
+
+def validate_manifest(m):
+    """Validate local and catalog profiles using the same boot contract."""
     if not isinstance(m, dict):
         raise TesterError('Manifest must be a JSON object.')
     for name in ('id', 'target', 'arch', 'boot', 'build', 'user'):
@@ -57,6 +61,21 @@ def read_manifest(path):
         raise TesterError('Developer disks require cloud-init; installation ISOs do not.')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', m.get('user', '')):
         raise TesterError('Invalid guest user.')
+    if 'display' in m:
+        display = m['display']
+        if (m['target'] != 'mobile' or not isinstance(display, dict)
+                or set(display) != {'width', 'height', 'scale'}
+                or any(type(display.get(key)) is not int or not 320 <= display[key] <= 2160
+                       for key in ('width', 'height'))
+                or type(display.get('scale')) not in (int, float)
+                or not 1 <= display['scale'] <= 4):
+            raise TesterError('Mobile display requires bounded dimensions and UI scale.')
+    if 'capabilities' in m:
+        capabilities = m['capabilities']
+        if (not isinstance(capabilities, dict)
+                or set(capabilities) - {'home', 'dynamic_display'}
+                or any(type(value) is not bool for value in capabilities.values())):
+            raise TesterError('Invalid guest control capabilities.')
     image = m.get('image', {})
     if not isinstance(image, dict):
         raise TesterError('Image definition must be an object.')
@@ -315,6 +334,8 @@ class Session:
         hvf = native and not software and platform.system() == 'Darwin'
         accelerator = 'hvf' if hvf else 'kvm' if kvm else 'tcg,thread=multi'
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
+        if experience == 'mobile' and self.manifest.get('display'):
+            width, height = (self.manifest['display'][key] for key in ('width', 'height'))
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
                 '-accel', accelerator, '-cpu', 'host' if kvm or hvf else 'max',
@@ -484,6 +505,8 @@ class Session:
         """Invoke the pinned phone renderer's native Home action."""
         if self.manifest['target'] != 'mobile':
             raise TesterError('Home navigation requires a Mobile guest.')
+        if not self.manifest.get('capabilities', {}).get('home', True):
+            raise TesterError('Use the phone gesture bar to return Home in this image.')
         run(self.ssh(['gdbus', 'call', '--session', '--dest', 'org.project_luma.Tester',
             '--object-path', '/org/project_luma/Tester', '--method',
             'org.project_luma.Tester1.ShowHome']), stdout=subprocess.DEVNULL, timeout=15)

@@ -85,6 +85,8 @@ def apply(session, value):
     from .vm import atomic_json
     if session.manifest['target']!='mobile' or not session.manifest['cloud_init']:
         raise TesterError('Device controls require a Mobile developer image.')
+    if not session.manifest.get('capabilities', {}).get('dynamic_display', True):
+        raise TesterError('This image uses a fixed phone display.')
     description=describe(value)
     script=Path(__file__).with_name('device_guest.py').read_text()
     result=subprocess.run(session.ssh(['python3','-c',script]),input=json.dumps(description),

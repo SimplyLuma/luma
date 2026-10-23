@@ -52,6 +52,25 @@ as a runnable Tester image yet. No Dell guest or physical phone was touched.
 Earlier delivery milestones below are historical; the current ones above and
 the final dated history supersede their versions and pending-stage statements.
 
+Follow-up: generic initrd and configuration stages passed. Native M4 test r1
+stopped at EDK2's narrow432-pixel graphics-console assertion. r2 used864×1920
+at scale2 and reached genuine ARM Luma20261015.21, SSH and Phosh. r3 additionally
+waited for full Home rendering (actual screenshot inspected) and verified a
+graceful guest shutdown. Native unit `tester-arm-mobile-native-r3-f47c19ec`,
+private HDD `mobile-arm-alpha1/native-r3`, all passed. Disk was temporarily served
+over encrypted NBD10851; guest CPU ran on M4/HVF. No final local-disk or Tester
+GUI qualification is claimed yet. All scoped QEMU/NBD/tunnel processes exited.
+
+Tester0.7.1 source now supports catalog `tester_image` qcow2 entries with validated
+boot profiles, matching experience/CPU selection and authoritative artifact
+bytes. Phone flashing packages remain excluded. Optional bounded boot display
+and control capabilities prevent older images receiving unsupported Home or
+resize commands. Public Hub schema/artifact agreement remains separate; the
+current endpoint has no virtual Mobile entry.94 source tests PASS in
+`tester-mobile-profile-checks-7d0f356e` / root7422c2efea (journal confirms94/OK).
+Next: finish self-booting private ARM image and per-session bootstrap, then build
+and qualify the Mac app with that local image. No generated package is in Git.
+
 The interface requires real LumaUI. Current source uses compact SB1 SidebarRow
 with RowLead.icon in the destinations NavigationSidebar, the shared toolbar
 Menu for build choices, and Card + LayerHost for saving presets. Welcome leads

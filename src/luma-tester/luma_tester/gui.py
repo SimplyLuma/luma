@@ -478,11 +478,12 @@ def launch(state=None):
                 except (OSError,ValueError,TypeError,TesterError):continue
             if local:groups.append(CommandGroup('On this computer',tuple(local)))
             architecture=self.architectures.get(self.target,'auto')
-            published=[] if self.target=='mobile' else [item for item in self.library_items
-                if architecture=='auto' or item.get('arch')==architecture]
+            published=[item for item in self.library_items
+                if image_library.target(item)==('mobile' if self.target=='mobile' else 'desktop')
+                and (architecture=='auto' or item.get('arch')==architecture)]
             commands=[]
             for index,item in enumerate(published):
-                downloaded=(data_root(state)/'images'/(item['sha256']+'.iso')).is_file()
+                downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if item.get('kind')=='tester_image' else '.iso'))).is_file()
                 detail=('Latest · ' if index==0 else '')+('Downloaded' if downloaded else f"{item['size_bytes']/1024**3:.1f} GB · Download")
                 commands.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
@@ -696,9 +697,10 @@ def launch(state=None):
                     vm.ensure_mobile_display(session)
                     vm.configure_guest(session, vm.load(session.root))
                     if session.manifest['target'] == 'mobile':
-                        session.home()
+                        capabilities = session.manifest.get('capabilities', {})
+                        if capabilities.get('home', True):session.home()
                         configured=vm.load(session.root).get('device')
-                        if configured:device_profiles.apply(session,configured)
+                        if configured and capabilities.get('dynamic_display', True):device_profiles.apply(session,configured)
                     time.sleep(1)
                     GLib.idle_add(self.reveal_display, session)
                 except Exception as exc:
@@ -901,9 +903,13 @@ def launch(state=None):
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
             self.device_button.set_visible(self.target=='mobile')
+            capabilities = self.session.manifest.get('capabilities', {}) if self.session else {}
+            if not running and selected:capabilities = read_manifest(selected).get('capabilities', {})
             self.device_button.set_sensitive(not self.busy and not self.device_busy and not self.shutting_down and
+                capabilities.get('dynamic_display', True) and
                 (not running or (self.graphical_ready and self.session.status()=='running')))
-            self.home_button.set_visible(running and self.target == 'mobile')
+            self.device_button.set_tooltip_text(None if capabilities.get('dynamic_display', True) else 'This image uses a fixed phone display.')
+            self.home_button.set_visible(running and self.target == 'mobile' and capabilities.get('home', True))
             self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)

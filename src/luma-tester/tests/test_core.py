@@ -85,6 +85,29 @@ class SessionTests(unittest.TestCase):
         with self.assertRaises(TesterError):
             self.save()
 
+    def test_mobile_image_can_declare_its_firmware_display_and_controls(self):
+        self.m.update(arch='aarch64', boot='uefi',
+            display=dict(width=864, height=1920, scale=2),
+            capabilities=dict(home=False, dynamic_display=False))
+        session=self.save()
+        with patch.object(session,'firmware',return_value='/test/uefi.fd'):
+            command=session.command(headless=True,graphics='software')
+        self.assertIn('virtio-gpu-pci,edid=on,xres=864,yres=1920',command)
+        with self.assertRaisesRegex(TesterError,'gesture bar'):session.home()
+        from luma_tester import device_profiles
+        with self.assertRaisesRegex(TesterError,'fixed phone display'):
+            device_profiles.apply(session,device_profiles.DEFAULT)
+
+    def test_manifest_rejects_unsafe_display_or_control_metadata(self):
+        for field,value in [('display',dict(width=True,height=1920,scale=2)),
+                ('display',dict(width=864,height=9000,scale=2)),
+                ('display',dict(width=864,height=1920,scale=float('nan'))),
+                ('capabilities',dict(home='false')),('capabilities',dict(command=True))]:
+            with self.subTest(field=field,value=value):
+                self.m[field]=value
+                with self.assertRaises(TesterError):self.save()
+                del self.m[field]
+
     def test_manifest_rejects_size_and_digest(self):
         for key, value in [('bytes', True), ('bytes', -1), ('sha256', 'not-a-hash')]:
             with self.subTest(key=key, value=value):
