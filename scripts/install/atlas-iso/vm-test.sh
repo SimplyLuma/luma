@@ -26,8 +26,12 @@
 #   vm-test.sh serial WORK "CMD"       send one line to the serial console
 #   vm-test.sh stop WORK               power the VM off through its monitor
 #
-# The ISO is attached as removable USB storage, so ejecting it from inside the
-# guest is the real code path. Runs inside the atlas-iso tools image with
+# Select the shared target with ATLAS_ARCH=x86_64|aarch64 (default x86_64).
+# ATLAS_ACCEL=tcg explicitly selects emulation when testing an ARM tools
+# container on an x86 host. Native Linux hosts use KVM when available.
+# x86 media use removable USB; native ARM Lorax media use an EFI optical drive.
+# These cover ejection through their actual guest devices; an ARM optical boot
+# does not establish a hardware-specific USB flashing path. Runs inside the atlas-iso tools image with
 # /dev/kvm and host networking (see docs/build/atlas-installer-iso.md).
 
 set -euo pipefail
@@ -37,8 +41,37 @@ work=${2:?work directory required}
 mkdir -p "$work/vm"
 cd "$work/vm"
 
-ovmf_code=/usr/share/edk2/ovmf/OVMF_CODE.fd
-ovmf_vars=/usr/share/edk2/ovmf/OVMF_VARS.fd
+architecture=${ATLAS_ARCH:-${LUMA_TARGET_ARCHITECTURE:-x86_64}}
+case "$architecture" in
+  x86_64)
+    machine=q35
+    console=ttyS0
+    ovmf_code=${ATLAS_UEFI_CODE:-/usr/share/edk2/ovmf/OVMF_CODE.fd}
+    ovmf_vars=${ATLAS_UEFI_VARS:-/usr/share/edk2/ovmf/OVMF_VARS.fd}
+    display_defaults='-vga std -display none'
+    ;;
+  aarch64)
+    # The same virt/GIC3/virtio configuration as the shared FP6 behavioral
+    # twin; upstream Fedora firmware supplies the AA64 UEFI boot chain.
+    machine=virt,gic-version=3
+    console=ttyAMA0
+    ovmf_code=${ATLAS_UEFI_CODE:-/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw}
+    ovmf_vars=${ATLAS_UEFI_VARS:-/usr/share/edk2/aarch64/vars-template-pflash.raw}
+    display_defaults='-device virtio-gpu-pci -device virtio-keyboard-pci -device virtio-tablet-pci -display none'
+    ;;
+  *) printf 'error: unsupported Atlas VM architecture: %s\n' "$architecture" >&2; exit 2 ;;
+esac
+qemu=qemu-system-$architecture
+accelerator=${ATLAS_ACCEL:-}
+if [ -z "$accelerator" ]; then
+    accelerator=tcg
+    [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || accelerator=kvm
+fi
+case "$accelerator" in
+    kvm) cpu=host ;;
+    tcg) cpu=max ;;
+    *) printf 'error: ATLAS_ACCEL must be kvm or tcg\n' >&2; exit 2 ;;
+esac
 
 monitor() {
     python3 - "$work/vm/monitor.sock" "$@" <<'PY'
@@ -76,20 +109,28 @@ partitioned_disk() {
 
 common_args() {
     local iso=$1
+    local -a media
+    if [ "$architecture" = x86_64 ]; then
+        media=(-device qemu-xhci,id=xhci
+            -drive "if=none,id=stick,file=$iso,format=raw,readonly=on"
+            -device usb-storage,bus=xhci.0,drive=stick,removable=on,bootindex=1)
+    else
+        media=(-device virtio-scsi-pci,id=scsi
+            -drive "if=none,id=stick,file=$iso,format=raw,media=cdrom,readonly=on"
+            -device scsi-cd,bus=scsi.0,drive=stick,bootindex=1)
+    fi
     printf '%s\n' \
-        -machine q35,accel=kvm -cpu host -smp 4 -m 6144 \
+        -machine "$machine,accel=$accelerator" -cpu "$cpu" -smp 4 -m 6144 \
         -drive "if=pflash,format=raw,readonly=on,file=$ovmf_code" \
         -drive "if=pflash,format=raw,file=$work/vm/vars.fd" \
-        -device qemu-xhci,id=xhci \
-        -drive "if=none,id=stick,file=$iso,format=raw,readonly=on" \
-        -device usb-storage,bus=xhci.0,drive=stick,removable=on,bootindex=1 \
+        "${media[@]}" \
         -drive "if=none,id=target,file=$work/vm/target.raw,format=raw,cache=unsafe" \
         -device nvme,drive=target,serial=ATLASTARGET01,bootindex=2 \
         -drive "if=none,id=other,file=$work/vm/other.raw,format=raw,cache=unsafe" \
         -device virtio-blk-pci,drive=other \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:18080-:80,hostfwd=tcp:127.0.0.1:12222-:22" \
         -device virtio-net-pci,netdev=net0 \
-        ${ATLAS_DISPLAY_ARGS:--vga std -display none} \
+        ${ATLAS_DISPLAY_ARGS:-$display_defaults} \
         -monitor "unix:$work/vm/monitor.sock,server,nowait" \
         -chardev "socket,id=ser0,path=$work/vm/serial.sock,server=on,wait=off,logfile=$work/vm/serial.log" \
         -serial chardev:ser0
@@ -111,19 +152,19 @@ remote)
     volid=$(blkid -o value -s LABEL "$iso")
     xorriso -osirrox on -indev "$iso" -extract /images/pxeboot/vmlinuz vmlinuz -extract /images/pxeboot/initrd.img initrd.img >/dev/null 2>&1
     mapfile -t args < <(common_args "$iso")
-    qemu-system-x86_64 "${args[@]}" -kernel vmlinuz -initrd initrd.img \
-        -append "inst.stage2=hd:LABEL=$volid ${ATLAS_RAM-rd.live.ram=1} inst.graphical ${ATLAS_REMOTE-webui.remote=1} inst.sshd ${ATLAS_CONSOLE-console=tty0 console=ttyS0,115200} ${ATLAS_APPEND:-}" \
+    "$qemu" "${args[@]}" -kernel vmlinuz -initrd initrd.img \
+        -append "inst.stage2=hd:LABEL=$volid ${ATLAS_RAM-rd.live.ram=1} inst.graphical ${ATLAS_REMOTE-webui.remote=1} inst.sshd ${ATLAS_CONSOLE-console=tty0 console=$console,115200} ${ATLAS_APPEND:-}" \
         -daemonize -pidfile "$work/vm/qemu.pid"
     echo "VM started (pid $(cat "$work/vm/qemu.pid")); Atlas on 127.0.0.1:18080 once Anaconda is ready"
     ;;
 screen)
     iso=${3:?ISO required}
     mapfile -t args < <(common_args "$iso")
-    qemu-system-x86_64 "${args[@]}" -daemonize -pidfile "$work/vm/qemu.pid"
+    "$qemu" "${args[@]}" -daemonize -pidfile "$work/vm/qemu.pid"
     echo "VM started through firmware (pid $(cat "$work/vm/qemu.pid"))"
     ;;
 installed)
-    qemu-system-x86_64 -machine q35,accel=kvm -cpu host -smp 4 -m 4096 \
+    "$qemu" -machine "$machine,accel=$accelerator" -cpu "$cpu" -smp 4 -m 4096 \
         -drive "if=pflash,format=raw,readonly=on,file=$ovmf_code" \
         -drive "if=pflash,format=raw,file=$work/vm/vars.fd" \
         -drive "if=none,id=target,file=$work/vm/target.raw,format=raw,cache=unsafe" \
@@ -131,7 +172,7 @@ installed)
         -drive "if=none,id=other,file=$work/vm/other.raw,format=raw,cache=unsafe" \
         -device virtio-blk-pci,drive=other \
         -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:12223-:22" -device virtio-net-pci,netdev=net0 \
-        ${ATLAS_DISPLAY_ARGS:--vga std -display none} \
+        ${ATLAS_DISPLAY_ARGS:-$display_defaults} \
         -monitor "unix:$work/vm/monitor.sock,server,nowait" \
         -serial "file:$work/vm/serial-installed.log" \
         -daemonize -pidfile "$work/vm/qemu.pid"
