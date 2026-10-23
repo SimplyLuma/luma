@@ -19,18 +19,21 @@ import json
 import os
 import sys
 
+from desktop_paths import architecture, releases_path, manifest_architecture
+
 
 NOTES_BASE = "https://dl.simplyluma.com/media"
 
 
 def notes_of(repo, manifest):
     """The release's signed notes (luma/releases/<version>/notes.json), if any."""
-    path = os.path.join(repo, "luma", "releases", manifest["version"], "notes.json")
+    path = str(releases_path(repo, manifest_architecture(manifest)) / manifest["version"] / "notes.json")
     if not os.path.exists(path):
         return None, ""
     with open(path, encoding="utf-8") as stream:
         notes = json.load(stream)
-    return f"{NOTES_BASE}/{manifest['channel']}/notes/{manifest['build_id']}.json", " ".join(notes.get("summary", "").split())[:500]
+    base = NOTES_BASE + ("" if manifest_architecture(manifest) == "x86_64" else "/" + manifest_architecture(manifest))
+    return f"{base}/{manifest['channel']}/notes/{manifest['build_id']}.json", " ".join(notes.get("summary", "").split())[:500]
 
 
 def display_name_of(repo, manifest):
@@ -40,7 +43,7 @@ def display_name_of(repo, manifest):
     every one of them was a Prairie Beta 0 nightly, named for its nightly date
     (from its notes, or its build id's day).
     """
-    release_dir = os.path.join(repo, "luma", "releases", manifest["version"])
+    release_dir = str(releases_path(repo, manifest_architecture(manifest)) / manifest["version"])
     fields = {}
     try:
         with open(os.path.join(release_dir, "os-release"), encoding="utf-8") as stream:
@@ -65,7 +68,7 @@ def display_name_of(repo, manifest):
 def superseded_summary(repo, channel, releases, manifest):
     """Releases published before notes existed point at the newest noted one."""
     for newer in sorted(releases, key=lambda m: m["published_utc"], reverse=True):
-        path = os.path.join(repo, "luma", "releases", newer["version"], "notes.json")
+        path = str(releases_path(repo, manifest_architecture(newer)) / newer["version"] / "notes.json")
         if os.path.exists(path):
             with open(path, encoding="utf-8") as stream:
                 day = json.load(stream).get("nightly_date", "")
@@ -82,12 +85,13 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     repo, channel, arch = argv[1:]
+    architecture(arch)
     releases = []
-    for path in glob.glob(os.path.join(repo, "luma", "releases", "*", "manifest.json")):
+    for path in glob.glob(str(releases_path(repo, arch) / "*" / "manifest.json")):
         with open(path, encoding="utf-8") as stream:
             manifest = json.load(stream)
         commit = manifest["commit"]
-        if manifest.get("channel") != channel:
+        if manifest.get("channel") != channel or manifest_architecture(manifest) != arch:
             continue
         if not os.path.exists(os.path.join(repo, "objects", commit[:2], commit[2:] + ".commit")):
             continue

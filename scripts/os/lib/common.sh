@@ -63,6 +63,25 @@ luma_os_desktop_packages() {
     --root "${1:-$luma_os_repo_root}" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" "${2:-pins}"
 }
 
+# A build record selects its architecture/profile before any path or ref is
+# derived. Older records without an explicit profile retain the full desktop.
+luma_os_load_build_env() {
+  export LUMA_OS_PROFILE=full
+  luma_os_load_env "$1"
+  luma_os_select_architecture "$LUMA_OS_ARCH"
+}
+
+# Metadata/media namespaces differ; OSTree objects, refs and signed summaries
+# continue to share the canonical channel repository.
+luma_os_arch_path() {
+  case "$LUMA_OS_ARCH" in
+    x86_64) printf '%s\n' "$1" ;;
+    aarch64) printf '%s/aarch64\n' "${1%/}" ;;
+    *) luma_os_die 'unsupported desktop architecture namespace' ;;
+  esac
+}
+luma_os_releases_path() { luma_os_arch_path "$1/luma/releases"; }
+
 luma_os_require_root() {
   [ "$(id -u)" -eq 0 ] || luma_os_die "$(basename "$0") must run as root on the build host"
 }

@@ -38,7 +38,7 @@ luma_os_check_space 20
 
 build_dir="$LUMA_OS_ROOT/builds/$build_id"
 [ -s "$build_dir/build.env" ] || luma_os_die "build is not complete: $build_dir"
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 channel=$LUMA_OS_CHANNEL
 ref=$(luma_os_channel_ref "$channel")
 if [ ! -d "$build_dir/oci" ]; then

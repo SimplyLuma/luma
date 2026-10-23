@@ -31,15 +31,20 @@ def main():
     seal.verify(control,digest)
     checks=load_module(control/'scripts/os/lib/approved_graph.py','admission_checks')
     cfg=json.loads(config.read_text())
+    paths=load_module(control/'scripts/os/lib/desktop_paths.py','desktop_paths')
+    architecture=paths.architecture(cfg.get('architecture','x86_64'))
+    profile=cfg.get('profile','full')
+    targets=load_module(control/'scripts/os/lib/desktop_target.py','desktop_target')
+    targets.profile(control,architecture,profile)
     selected=cfg['channels'][channel]
     repo=Path(selected['repository_path']);runner.protected(repo)
     graph_path=graphs/(channel+'.json');runner.protected(graph_path)
     signature=graphs/(channel+'.json.minisig');runner.protected(signature)
     graph=json.loads(graph_path.read_text())
-    if graph['channel']!=channel or graph['arch']!='x86_64':raise ValueError('Wrong publication graph')
+    if graph['channel']!=channel or graph['arch']!=architecture:raise ValueError('Wrong publication graph')
     records={}
     for release in graph['releases']:
-        path=repo/'luma/releases'/release['version']/'manifest.json';runner.protected(path)
+        path=paths.releases_path(repo,architecture)/release['version']/'manifest.json';runner.protected(path)
         manifest=json.loads(path.read_text())
         if manifest['channel']!=channel:raise ValueError('Wrong genuine publication channel')
         record={'manifest_sha256':runner.digest(path)};evidence={}
@@ -53,7 +58,7 @@ def main():
                 raise ValueError('Gate evidence differs from the signed publication manifest')
             if record['provenance_sha256']!=manifest['provenance_sha256']:
                 raise ValueError('Source provenance differs from the signed publication manifest')
-        checks.admitted_release(release,manifest,public_repository_url=selected['public_repository_url'],**evidence)
+        checks.admitted_release(release,manifest,architecture=architecture,public_repository_url=selected['public_repository_url'],**evidence)
         records[release['commit']]=record
     if target.exists():raise ValueError('Refusing to alter an existing approval snapshot')
     target.mkdir(mode=0o700);(target/'graphs').mkdir(mode=0o700)

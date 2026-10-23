@@ -40,10 +40,11 @@ build_dir="$LUMA_OS_ROOT/builds/$build_id"
 for file in build.env export.env gate-result.json provenance.json sbom.spdx.json packages-installed.tsv os-release; do
   [ -s "$build_dir/$file" ] || luma_os_die "build is missing $file: $build_dir"
 done
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 luma_os_load_env "$build_dir/export.env"
 channel=$LUMA_OS_CHANNEL
 ref=$LUMA_EXPORT_REF
+[ "$ref" = "$(luma_os_channel_ref "$channel")" ] || luma_os_die 'exported ref differs from the selected build architecture/channel'
 candidate=$LUMA_EXPORT_CANDIDATE
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
 repo=$(luma_os_channel_repo "$channel")
@@ -51,9 +52,17 @@ repo=$(luma_os_channel_repo "$channel")
 [ "$LUMA_SOURCE_DIRTY" = false ] || luma_os_die 'refusing to publish a build from a dirty source checkout'
 [ -z "${LUMA_SOURCE_SNAPSHOT_SHA256:-}" ] && [ -z "${LUMA_RELEASE_CHECKS_SHA256:-}" ] || luma_os_die 'refusing to publish a private source snapshot'
 
-exec 6>"$LUMA_OS_ROOT/locks/publish-$channel.lock"
-flock -n 6 || luma_os_die "another publication to $channel is running"
+# The public summary covers every architecture/channel in this repository.
+exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+flock -n 6 || luma_os_die "another shared-repository publication is running"
 luma_os_init_channel_repo "$repo"
+if [ "$LUMA_OS_ARCH" = aarch64 ]; then
+  ostree refs --repo="$repo" | grep -q "^luma/$LUMA_OS_MAJOR/x86_64/" ||
+    luma_os_die 'ARM publication requires the canonical shared repository with its existing x86 refs; import the candidate into that workflow'
+fi
+protected_refs=$(ostree refs --repo="$repo" | while IFS= read -r other; do
+  [ "$other" = "$ref" ] || printf '%s %s\n' "$other" "$(ostree rev-parse --repo="$repo" "$other")"
+done)
 head=$(luma_os_channel_head "$repo" "$ref")
 
 python3 - "$build_dir/gate-result.json" "$candidate" "${head:-}" <<'PY' || luma_os_die 'the gate result does not allow publication'
@@ -89,7 +98,7 @@ parent=$(ostree rev-parse --repo="$candidate_repo" "$candidate^" 2>/dev/null || 
   luma_os_die "candidate parent ${parent:-none} is not the channel head ${head:-none}; re-export and re-gate"
 
 version=$LUMA_OS_VERSION
-release_dir="$repo/luma/releases/$version"
+release_dir="$(luma_os_releases_path "$repo")/$version"
 [ ! -e "$release_dir" ] || luma_os_die "release metadata already exists: $release_dir"
 
 if [ "$dry_run" -eq 1 ]; then
@@ -106,6 +115,11 @@ trap luma_os_gpg_lock EXIT
 luma_os_log "copying $candidate into $repo"
 ostree pull-local --repo="$repo" --untrusted "$candidate_repo" "$candidate" >/dev/null
 deltas=$(luma_os_advance_channel "$repo" "$ref" "$candidate" | tail -n 1)
+
+while read -r other expected; do
+  [ -z "$other" ] || [ "$(ostree rev-parse --repo="$repo" "$other")" = "$expected" ] ||
+    luma_os_die 'publication changed another architecture/channel ref'
+done <<<"$protected_refs"
 
 published=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 install -d -m 0755 "$release_dir"
@@ -125,9 +139,10 @@ for file in manifest.json provenance.json sbom.spdx.json gate-result.json; do
   luma_os_sign_file "$release_dir/$file"
 done
 # The channel's latest release metadata, for installers and Switchboard.
-install -d -m 0755 "$repo/luma/channels"
-cp "$release_dir/manifest.json" "$repo/luma/channels/$channel.json"
-luma_os_sign_file "$repo/luma/channels/$channel.json"
+channel_metadata="$(luma_os_arch_path "$repo/luma/channels")"
+install -d -m 0755 "$channel_metadata"
+cp "$release_dir/manifest.json" "$channel_metadata/$channel.json"
+luma_os_sign_file "$channel_metadata/$channel.json"
 install -D -m 0644 "$LUMA_OS_KEYS/luma-os-release.gpg" "$repo/luma/keys/luma-os-release.gpg"
 install -D -m 0644 "$LUMA_OS_KEYS/luma-os-release.asc" "$repo/luma/keys/luma-os-release.asc"
 

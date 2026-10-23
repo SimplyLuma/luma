@@ -36,19 +36,21 @@ done
 luma_os_require_root
 luma_os_load_env "$luma_os_repo_root/config/os/media.env"
 build_dir="$LUMA_OS_ROOT/builds/$build_id"
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
+channel=$LUMA_OS_CHANNEL
 repo=$(luma_os_channel_repo "$channel")
-release_dir="$repo/luma/releases/$LUMA_OS_VERSION"
+releases_root=$(luma_os_releases_path "$repo")
+release_dir="$releases_root/$LUMA_OS_VERSION"
 [ -s "$release_dir/manifest.json" ] || luma_os_die "$LUMA_OS_VERSION is not published on $channel"
-tree="$LUMA_OS_ROOT/publish/media/public/$channel"
+tree="$(luma_os_arch_path "$LUMA_OS_ROOT/publish/media/public")/$channel"
 entry="$tree/luma-$channel-$build_id.iso.json"
 [ -s "$entry" ] || luma_os_die "no published medium entry for $build_id"
 nightly_date=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["nightly_date"])' "$entry")
-previous_build=$(python3 - "$repo" "$channel" "$LUMA_OS_VERSION" <<'PY'
+previous_build=$(python3 - "$releases_root" "$channel" "$LUMA_OS_VERSION" <<'PY'
 import glob, json, os, sys
-repo, channel, version = sys.argv[1:]
+releases_root, channel, version = sys.argv[1:]
 releases = []
-for path in glob.glob(os.path.join(repo, "luma", "releases", "*", "manifest.json")):
+for path in glob.glob(os.path.join(releases_root, "*", "manifest.json")):
     m = json.load(open(path))
     if m.get("channel") == channel:
         releases.append(m)
@@ -59,7 +61,7 @@ print(releases[i - 1]["build_id"] if i > 0 else "")
 PY
 )
 [ -n "$previous_manifest" ] ||
-  for candidate in "$repo/luma/releases/1.0.0-$channel.$previous_build/luma-packages.manifest" "$LUMA_OS_ROOT/builds/$previous_build/luma-packages.manifest"; do
+  for candidate in "$releases_root/1.0.0-$channel.$previous_build/luma-packages.manifest" "$LUMA_OS_ROOT/builds/$previous_build/luma-packages.manifest"; do
     [ -s "$candidate" ] && previous_manifest=$candidate && break
   done
 [ -n "$previous_manifest" ] || luma_os_die "the previous release's package set ($previous_build) is gone"
@@ -91,7 +93,7 @@ install -m 0644 "$work/notes.json" "$release_dir/notes.json"
 cp "$work/notes.json" "$build_dir/release-notes.json"
 graph_source="$work/graph.json"
 python3 "$luma_os_repo_root/scripts/os/lib/graph_from_releases.py" "$repo" "$channel" "$LUMA_OS_ARCH" >"$graph_source"
-"$luma_os_repo_root/scripts/os/sign-update-graph.sh" --channel "$channel" --source "$graph_source" --no-sync
+"$luma_os_repo_root/scripts/os/sign-update-graph.sh" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --channel "$channel" --source "$graph_source" --no-sync
 
 # 3. Media tree: notes, entry summary, index.
 generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generated_utc"])' "$work/notes.json")
@@ -121,7 +123,9 @@ json.dump(index, open(path + ".new", "w"), indent=2, sort_keys=True)
 open(path + ".new", "a").write("\n")
 PY
 index_generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generated_utc"])' "$tree/latest.json.new")
-minisign_sign "$tree/latest.json.new" "luma-media-index channel=$channel generated_utc=$index_generated"
+signature_arch=
+[ "$LUMA_OS_ARCH" = x86_64 ] || signature_arch=" arch=$LUMA_OS_ARCH"
+minisign_sign "$tree/latest.json.new" "luma-media-index channel=$channel$signature_arch generated_utc=$index_generated"
 mv -f "$tree/notes/$build_id.json.new.minisig" "$tree/notes/$build_id.json.minisig"
 mv -f "$tree/notes/$build_id.json.new" "$tree/notes/$build_id.json"
 mv -f "$tree/latest.json.new.minisig" "$tree/latest.json.minisig"

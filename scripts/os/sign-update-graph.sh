@@ -35,10 +35,12 @@ channel=
 dry_run=0
 token_file="$LUMA_OS_SECRETS/hub-graph-service-token"
 source_file=
-graph_dir="$LUMA_OS_ROOT/publish/graph"
+graph_dir=
 sync=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
+    --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
     --channel) channel=${2:?}; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
     --token-file) token_file=${2:?}; shift 2 ;;
@@ -46,9 +48,11 @@ while [ "$#" -gt 0 ]; do
     --graph-dir) graph_dir=${2:?}; shift 2 ;;
     --no-sync) sync=0; shift ;;
     --sync) sync=1; shift ;;
-    *) printf 'usage: %s --channel C [--dry-run] [--token-file F] [--source FILE] [--graph-dir DIR] [--no-sync | --sync]\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s --channel C [--arch x86_64|aarch64] [--profile full|arm-preview] [--dry-run] [--token-file F] [--source FILE] [--graph-dir DIR] [--no-sync | --sync]\n' "$0" >&2; exit 2 ;;
   esac
 done
+luma_os_select_architecture "$LUMA_OS_ARCH"
+graph_dir=${graph_dir:-$(luma_os_arch_path "$LUMA_OS_ROOT/publish/graph")}
 ref=$(luma_os_channel_ref "$channel")
 luma_os_require_tools curl python3 install flock
 minisign_dir="$LUMA_OS_KEYS/update-graph-minisign"
@@ -113,8 +117,8 @@ luma_os_graph_tools() {
 
 # Validation and the previous-generation comparison belong to one transaction.
 # Never let two timers validate against the same head and replace one another.
-install -d -m 0755 "$LUMA_OS_ROOT/locks"
-exec 8>"$LUMA_OS_ROOT/locks/sign-graph-$channel.lock"
+install -d -m 0755 "$(luma_os_arch_path "$LUMA_OS_ROOT/locks")"
+exec 8>"$(luma_os_arch_path "$LUMA_OS_ROOT/locks")/sign-graph-$channel.lock"
 flock -w 60 8 || luma_os_die "another $channel graph signer holds the lock"
 
 # 1. Fetch.
@@ -153,22 +157,30 @@ luma_os_log "$channel graph fetched (Hub generated_at ${hub_generated:-missing})
 
 # 2. Validate against what is actually published.
 repo=$(luma_os_channel_repo "$channel")
-python3 - "$repo" "$channel" >"$work/releases.json" <<'PY'
+python3 - "$repo" "$channel" "$LUMA_OS_ARCH" "$luma_os_repo_root/scripts/os/lib" >"$work/releases.json" <<'PY'
 import glob, json, os, sys
-repo, channel = sys.argv[1:3]
+repo, channel, architecture, lib = sys.argv[1:5]
+sys.path.insert(0, lib)
+from desktop_paths import manifest_architecture, releases_path
+releases_root = str(releases_path(repo, architecture))
 releases = {}
-for path in glob.glob(os.path.join(repo, "luma", "releases", "*", "manifest.json")):
+for path in glob.glob(os.path.join(releases_root, "*", "manifest.json")):
     manifest = json.load(open(path, encoding="utf-8"))
     commit = manifest["commit"]
     # Retention may have pruned an old release's commit: a graph must not
     # offer what the repository no longer serves.
     present = os.path.exists(os.path.join(repo, "objects", commit[:2], commit[2:] + ".commit"))
-    if manifest.get("channel") == channel and present:
+    if manifest.get("channel") == channel and manifest_architecture(manifest) == architecture and present:
         releases[commit] = manifest["version"]
 json.dump(releases, sys.stdout)
 PY
 previous_args=()
 if [ -s "$graph_dir/$channel.json" ]; then
+  python3 - "$graph_dir/$channel.json" "$channel" "$LUMA_OS_ARCH" <<'PYPREVIOUS' || luma_os_die 'previous graph belongs to another channel/architecture'
+import json, sys
+value = json.load(open(sys.argv[1]))
+assert value['channel'] == sys.argv[2] and value['arch'] == sys.argv[3]
+PYPREVIOUS
   # A recent unsigned or altered staging file cannot suppress a refresh. Verify
   # the actual previous bytes before trusting their timestamp or comparison.
   [ -s "$graph_dir/$channel.json.minisig" ] || luma_os_die 'previous graph has no signature'

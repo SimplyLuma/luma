@@ -185,3 +185,17 @@ that default or bypasses first-party bundle admission or image signing. Every
 new image records `/usr/share/luma/desktop-capabilities.json` and its profile;
 composition and desktop smoke checks reject excluded providers that reappear
 through dependency resolution.
+
+Desktop delivery shares one canonical OSTree repository, object store and signed
+summary for both architectures. The normal publication workflow must import ARM
+candidates into that shared repository; ARM publication refuses a repository
+without its existing x86 desktop refs, and publication serializes shared summary
+updates. Other channel/architecture refs are checked for changes afterward.
+
+Architecture-specific metadata uses `luma/releases/aarch64/<version>` and
+`luma/channels/aarch64/<channel>.json` inside that repository. ARM media and indexes
+use `/media/aarch64/<channel>/`, and signed graphs use `/os/graph/aarch64/`.
+Existing x86 metadata, media and graph paths stay unchanged. Graph signing accepts
+`--arch`; sealed approved-refresh configurations may declare `architecture` and
+`profile` (their defaults remain `x86_64` and `full`). A new sealed state and normal
+publication approval are required before deploying any refresh configuration.
