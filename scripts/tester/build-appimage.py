@@ -43,6 +43,10 @@ for relative in external.values():
     target = out / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     os.link(a.portable_dir / relative, target)
+# Generated launcher/metadata must not mutate their hard-linked portable inputs.
+for relative in ('AppRun','io.luma.Tester.desktop','io.luma.Tester.svg',
+                 'usr/share/licenses/appimage-runtime/LICENSE'):
+    (app / relative).unlink(missing_ok=True)
 (app / 'AppRun').write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
