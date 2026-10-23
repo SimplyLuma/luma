@@ -68,7 +68,10 @@ nightly publication lock when the qualified wrapper already holds that lock, and
 pass its inherited descriptor into the media producer. Do not acquire the same
 lock through a second file description: that can deadlock the wrapper. A
 build-specific owner lock is additional protection, not a substitute for the
-shared canonical lock. Preserve sealed historical operators; generate and seal
+shared canonical lock. The generic nightly wrapper holds descriptor 4; a protected
+publication wrapper may instead hold descriptor 8. Pass whichever descriptor
+actually owns the configured inode, rather than relying on a fixed number.
+Preserve sealed historical operators; generate and seal
 new wrappers with this configuration and the preservation checks before their
 next publication. Until both operators are configured and independently checked,
 this source change does not establish live publication serialization.
