@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -13,6 +12,8 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--architecture', required=True, choices=['x86_64', 'aarch64'])
 p.add_argument('--output', type=Path, default=Path('build'))
 a = p.parse_args()
+# Temporary bring-up bootstrap: expired artifacts fail closed and require a
+# new successful matching toolkit cohort with refreshed run/archive receipts.
 # Whole-archive digests are GitHub's retained upload identities, not rebuild hashes.
 artifacts = {
     'aarch64': (12461641598, '2177ba2b825afca9848ae0c4db58b3c74030ea0668f38e018f83304c872fe168'),
@@ -32,11 +33,15 @@ paths = ['config/desktop/inputs.env', 'scripts/os/build-desktop-toolkit.sh',
          'scripts/packages/build-luma-developer-platform.sh', 'scripts/packages/build-figtree-fonts.sh',
          'scripts/packages/run-in-rpm-builder.sh', 'scripts/packages/fetch-source-rpm.sh',
          'patches/gtk4', 'patches/libadwaita', 'src/luma-platform',
-         'packaging/rpm/luma-developer-platform.spec']
+         'packaging/rpm/luma-developer-platform.spec', 'scripts/fonts',
+         'packaging/fontconfig', 'packaging/rpm/google-figtree-fonts.spec',
+         'assets/icon-theme/Prairie', 'LICENSE.md', 'scripts/packages/spec-release.sh',
+         'tests/toolkit-native']
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
 artifact_id, digest = artifacts[a.architecture]
 metadata = api(f'actions/artifacts/{artifact_id}')
-assert not metadata['expired'] and metadata['name'] == f'desktop-toolkit-{a.architecture}'
+assert not metadata['expired'], 'bootstrap toolkit expired; build/check a new toolkit cohort and refresh its pinned receipts'
+assert metadata['name'] == f'desktop-toolkit-{a.architecture}'
 assert metadata['workflow_run']['id'] == run and metadata['digest'] == f'sha256:{digest}'
 a.output.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryFile() as archive:
@@ -49,7 +54,11 @@ with tempfile.TemporaryFile() as archive:
             path = Path(entry.filename)
             assert not path.is_absolute() and '..' not in path.parts, 'unsafe archive member'
             assert ((entry.external_attr >> 16) & 0o170000) != 0o120000, 'archive symlink refused'
-        z.extractall(a.output)
+        # The original upload glob also retained build work directories. These
+        # are covered by the archive digest but are not admitted providers.
+        for entry in z.infolist():
+            if not any(part.startswith('work.') for part in Path(entry.filename).parts):
+                z.extract(entry, a.output)
 assert (a.output / 'SOURCE-REVISION').read_text().strip() == merge, 'toolkit source receipt mismatch'
 covered = set()
 for manifest in a.output.glob('packages/**/SHA256SUMS'):
