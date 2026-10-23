@@ -6,12 +6,37 @@ on:
       - '.github/workflows/desktop-ui.yml'
       - 'scripts/os/build-desktop-ui.sh'
       - 'scripts/os/admit-desktop-toolkit.py'
+      - 'scripts/os/desktop-ui-matrix.py'
+      - 'tests/os/test_desktop_ui_matrix.py'
       - 'scripts/packages/build-gnome-control-center.sh'
       - 'scripts/packages/build-nautilus.sh'
       - 'scripts/packages/build-gnome-shell.sh'
       - 'patches/gnome-control-center/**'
       - 'patches/nautilus/**'
       - 'patches/gnome-shell/**'
+      - 'tests/gnome-control-center/**'
+      - 'tests/nautilus/**'
+      - 'tests/gnome-shell/**'
+      - 'config/desktop/inputs.env'
+      - 'scripts/packages/run-in-rpm-builder.sh'
+      - 'scripts/packages/spec-release.sh'
+      - 'scripts/packages/patch-series.sh'
+      - 'scripts/packages/fetch-source-rpm.sh'
+      - 'scripts/packages/build-gtk4.sh'
+      - 'scripts/packages/build-libadwaita.sh'
+      - 'scripts/packages/build-luma-developer-platform.sh'
+      - 'scripts/packages/build-figtree-fonts.sh'
+      - 'scripts/packages/check-gnome-control-center-rpm.sh'
+      - 'patches/gtk4/**'
+      - 'patches/libadwaita/**'
+      - 'src/luma-platform/**'
+      - 'scripts/fonts/**'
+      - 'packaging/fontconfig/**'
+      - 'assets/icon-theme/Prairie/**'
+      - 'tests/toolkit-native/**'
+      - 'packaging/rpm/luma-developer-platform.spec'
+      - 'packaging/rpm/google-figtree-fonts.spec'
+      - 'LICENSE.md'
   workflow_dispatch:
 
 permissions:
@@ -19,12 +44,35 @@ permissions:
   actions: read
 
 jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      components: ${{ steps.matrix.outputs.components }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: matrix
+        env:
+          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+        run: |
+          python3 tests/os/test_desktop_ui_matrix.py
+          if [ -n "$BASE" ]; then
+            components=$(python3 scripts/os/desktop-ui-matrix.py --base "$BASE")
+          else
+            components=$(python3 scripts/os/desktop-ui-matrix.py)
+          fi
+          echo "components=$components" >> "$GITHUB_OUTPUT"
+          echo "count=$(printf '%s' "$components" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
   build:
+    needs: select
+    if: needs.select.outputs.count != '0'
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        component: [gnome-control-center, nautilus, gnome-shell]
+        component: ${{ fromJSON(needs.select.outputs.components) }}
         target:
           - runner: ubuntu-24.04
             architecture: x86_64
