@@ -1,0 +1,40 @@
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -45,17 +45,16 @@
+ }
+ 
+ /* Luma: an edge-to-edge app draws under the status and gesture bars and keeps
+- * its content clear of them. A scrim in the session's own background colour
+- * keeps the clock legible over any content; an app declaring a deep or
+- * immersive surface gets light ink on a dark scrim. */
++ * its content clear of them. The app owns its background through both bars;
++ * deep and immersive surfaces retain their light status ink. */
+ phosh-top-panel #top-bar-bin.luma-surface-edge:not(.p-solid):not(.luma-surface-deep):not(.luma-surface-immersive) {
+   background-color: transparent;
+-  background-image: linear-gradient(to bottom, alpha(@phosh_bg_color, .62), alpha(@phosh_bg_color, 0));
++  background-image: none;
+ }
+ phosh-top-panel #top-bar-bin.luma-surface-edge.luma-surface-deep,
+ phosh-top-panel #top-bar-bin.luma-surface-edge.luma-surface-immersive {
+   background-color: transparent;
+-  background-image: linear-gradient(to bottom, rgba(0, 0, 0, .5), rgba(0, 0, 0, 0));
++  background-image: none;
+ }
+ #top-bar-bin.luma-surface-edge.luma-surface-deep #top-bar label,
+ #top-bar-bin.luma-surface-edge.luma-surface-immersive #top-bar label,
+--- a/src/home.c
++++ b/src/home.c
+@@ -98,6 +98,13 @@
+ {
+   gboolean solid = TRUE;
+   PhoshDragSurfaceState drag_state = phosh_drag_surface_get_drag_state (PHOSH_DRAG_SURFACE (self));
++
++  /* A folded surface exposes only its gesture bar. Do not let off-screen
++   * overview shadows paint over the active app. Opacity retains allocation
++   * for native unfold and drag transitions. */
++  gtk_widget_set_opacity (self->overview,
++                          self->state == PHOSH_HOME_STATE_FOLDED &&
++                          drag_state == PHOSH_DRAG_SURFACE_STATE_FOLDED ? 0.0 : 1.0);
+ 
+   /* Keep the real input target available on Home and Library. A folded,
+    * bottom-anchored surface exposes its top 15px; an unfolded surface needs
