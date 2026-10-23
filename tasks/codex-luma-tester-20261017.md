@@ -1091,3 +1091,26 @@ used that source without altering shared refs or unrelated worktrees.
 - Final one-shot outcome: private artifacts/tester-library-r30-pipeline-result.json
   passed=true, stage Dell preview launched. Next: Nick's manual review; finish
   generic ARM Mobile boot adapter and integrated-camera stream bridge separately.
+
+### 2026-10-23 — Images dropdown and architecture preference migration
+- Source864a7775 restores Images in the bottom action bar as the shared LumaUI
+  Menu component, with local workspaces, current-image check, latest3 server
+  builds/older submenu, file import and refresh. Removed the duplicate sidebar
+  footer and the card-based Images modal. Catalog refresh begins at startup;
+  open menus are replaced only after closing, preserving native popup ownership.
+- Dell preference metadata confirmed desktop=aarch64/tablet=x86_64/mobile=aarch64.
+  Earlier previews stored defaults indistinguishably from explicit choices.
+  General migration now resets unmarked legacy choices to host CPU for Desktop
+  and Tablet, ARM for Mobile. Explicit architecture/image/preset choices carry
+  provenance and persist thereafter. No Dell model-specific condition introduced.
+-86 source tests passed dev-tester-dropdown-source-09b7534a. Native source UI
+  luma-tester-user-b3aab8707e passed5 image dropdown selections, live9-item catalog,
+  migration and explicit-choice persistence. Generated screenshot retained there.
+- Immutable0.6.1/r31 candidate built: owned HDD appimage-dropdown-r31/
+  Luma-Tester-0.6.1-linux-x86_64.AppImage, SHA256
+  c7d8bbcb5d80acb1863b787bd6ed160d809609457ada7d37be0f25f58c8cfc5b.
+  Build unit dev-tester-dropdown-r31-build-2a8394d9 passed, rooteb2ddb8b10.
+- Packaged X11/Wayland/entry checks are queued behind normal memory admission;
+  bounded driver owns no admitted worker yet. No Dell replacement launch yet.
+  Next: finish packaged checks, verify hashes, serial desktop registration then
+  reopen on Dell only if no guest is running; preserve existing workspace.
