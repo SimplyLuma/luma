@@ -72,6 +72,14 @@
         "packaging/rpm/luma-messages-e2ee.spec",
         "scripts/packages/build-luma-messages-e2ee-source.sh"
       ]
+    },
+    "messages-bridges": {
+      "recipe": "scripts/packages/build-luma-messages-bridges.sh",
+      "paths": [
+        "src/luma-messages-bridges/",
+        "packaging/rpm/luma-messages-bridges.spec",
+        "scripts/packages/build-luma-messages-bridges-source.sh"
+      ]
     }
   }
 }
