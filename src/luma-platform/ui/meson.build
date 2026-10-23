@@ -62,20 +62,30 @@ ui_part_headers = files(
   'luma-timeline.h',
 )
 
-wayland_scanner = find_program('wayland-scanner')
-background_effect_protocol = files('../protocols/ext-background-effect-v1.xml')
-background_effect_client_header = custom_target(
-  'ext-background-effect-v1-client-header',
-  input: background_effect_protocol,
-  output: 'ext-background-effect-v1-client-protocol.h',
-  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
-)
-background_effect_client_code = custom_target(
-  'ext-background-effect-v1-client-code',
-  input: background_effect_protocol,
-  output: 'ext-background-effect-v1-client-protocol.c',
-  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
-)
+ui_c_args = []
+# GDesktopAppInfo is freedesktop-only (not on macOS, Windows or Android).
+if gio_unix_dep.found() and meson.get_compiler('c').has_header('gio/gdesktopappinfo.h', dependencies: gio_unix_dep)
+  ui_c_args += '-DLUMA_HAVE_DESKTOP_APP_INFO'
+endif
+background_effect_sources = []
+if wayland_client_dep.found()
+  ui_c_args += '-DLUMA_HAVE_WAYLAND'
+  wayland_scanner = find_program('wayland-scanner')
+  background_effect_protocol = files('../protocols/ext-background-effect-v1.xml')
+  background_effect_client_header = custom_target(
+    'ext-background-effect-v1-client-header',
+    input: background_effect_protocol,
+    output: 'ext-background-effect-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  )
+  background_effect_client_code = custom_target(
+    'ext-background-effect-v1-client-code',
+    input: background_effect_protocol,
+    output: 'ext-background-effect-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  )
+  background_effect_sources = [background_effect_client_header, background_effect_client_code]
+endif
 
 ui_sources = files(
   'luma-reorder-hint.c',
@@ -125,12 +135,12 @@ ui_inc = include_directories('.', '../semantics')
 ui_lib = library(
   'luma-ui-1',
   ui_sources,
-  background_effect_client_header,
-  background_effect_client_code,
+  background_effect_sources,
   ui_resources,
   version: '0.1.0',
   soversion: '0',
-  dependencies: [glib_dep, gobject_dep, gio_dep, dependency('gio-unix-2.0'), gtk_dep, adw_dep, wayland_client_dep,
+  c_args: ui_c_args,
+  dependencies: [glib_dep, gobject_dep, gio_dep, gio_unix_dep, gtk_dep, adw_dep, wayland_client_dep,
                  semantics_dep, appearance_dep,
                  meson.get_compiler('c').find_library('m', required: false)],
   include_directories: ui_inc,
@@ -154,15 +164,17 @@ pkg.generate(
   requires: ['gtk4', 'libadwaita-1', 'luma-semantics-1'],
 )
 
-ui_gir = gnome.generate_gir(
-  ui_lib,
-  sources: ui_sources + ui_headers + ui_part_gir_headers,
-  namespace: 'LumaUI',
-  nsversion: '1',
-  identifier_prefix: 'Luma',
-  symbol_prefix: 'luma',
-  includes: ['Gtk-4.0', 'Adw-1', semantics_gir[0]],
-  header: 'luma-ui.h',
-  dependencies: semantics_dep,
-  install: true,
-)
+if build_introspection
+  ui_gir = gnome.generate_gir(
+    ui_lib,
+    sources: ui_sources + ui_headers + ui_part_gir_headers,
+    namespace: 'LumaUI',
+    nsversion: '1',
+    identifier_prefix: 'Luma',
+    symbol_prefix: 'luma',
+    includes: ['Gtk-4.0', 'Adw-1', semantics_gir[0]],
+    header: 'luma-ui.h',
+    dependencies: semantics_dep,
+    install: true,
+  )
+endif

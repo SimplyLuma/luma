@@ -11,8 +11,10 @@ pkg.generate(appearance_lib, name: 'Luma Appearance',
   description: 'Shared native surface tokens and accessibility/capability policy',
   filebase: 'luma-appearance-1', subdirs: 'luma-1/luma-appearance',
   requires: ['glib-2.0', 'gobject-2.0', 'gio-2.0'])
-appearance_gir = gnome.generate_gir(appearance_lib,
-  sources: appearance_sources + appearance_headers,
-  namespace: 'LumaAppearance', nsversion: '1', identifier_prefix: 'Luma',
-  symbol_prefix: 'luma', includes: ['GObject-2.0', 'Gio-2.0'],
-  header: 'luma-appearance.h', install: true)
+if build_introspection
+  appearance_gir = gnome.generate_gir(appearance_lib,
+    sources: appearance_sources + appearance_headers,
+    namespace: 'LumaAppearance', nsversion: '1', identifier_prefix: 'Luma',
+    symbol_prefix: 'luma', includes: ['GObject-2.0', 'Gio-2.0'],
+    header: 'luma-appearance.h', install: true)
+endif

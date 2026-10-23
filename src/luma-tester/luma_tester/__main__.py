@@ -9,7 +9,7 @@ from .core import Session, TesterError, digest, run
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Luma Tester — Linux QEMU mobile and desktop previews')
+    parser = argparse.ArgumentParser(description='Luma Tester — QEMU mobile and desktop previews')
     parser.add_argument('--state', help='Private data directory (or LUMA_TESTER_HOME)')
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('gui', help='Open the native launcher')

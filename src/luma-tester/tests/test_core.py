@@ -45,6 +45,19 @@ class SessionTests(unittest.TestCase):
         self.m['image'].update(sha256=digest(self.source), bytes=self.source.stat().st_size)
         return self.save()
 
+    def test_mac_native_acceleration_and_cross_arch_emulation(self):
+        with patch('luma_tester.core.platform.system',return_value='Darwin'),patch('luma_tester.core.platform.machine',return_value='arm64'):
+            session=self.save();command=session.command(headless=True,graphics='software')
+            self.assertEqual(command[command.index('-accel')+1],'tcg,thread=multi')
+            self.m.update(arch='aarch64',boot='uefi')
+            session=self.save()
+            with patch.object(session,'firmware',return_value='/test/firmware.fd'):
+                command=session.command(headless=True,graphics='software')
+                self.assertEqual(command[command.index('-accel')+1],'hvf')
+                self.assertEqual(command[command.index('-cpu')+1],'host')
+                command=session.command(headless=True,graphics='software',software=True)
+                self.assertEqual(command[command.index('-accel')+1],'tcg,thread=multi')
+
     def test_https_redirect_cannot_downgrade(self):
         from urllib.request import Request
         from luma_tester.core import HTTPSRedirects

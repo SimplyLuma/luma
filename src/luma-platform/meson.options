@@ -1,0 +1,5 @@
+option('wayland', type: 'feature', value: 'enabled',
+       description: 'Wayland surface effects (disable for luma port to macOS/Windows/Android)')
+option('introspection', type: 'feature', value: 'auto',
+       description: 'Generate GIR/typelibs (cross builds take typelibs from a native build)')
+option('tests', type: 'boolean', value: true)

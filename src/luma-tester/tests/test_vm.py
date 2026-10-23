@@ -7,6 +7,7 @@ import shlex
 from types import SimpleNamespace
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -85,6 +86,34 @@ class VMTests(unittest.TestCase):
         for key,value in [('memory',128),('cpus',0),('disk_gib',1),('agent_ssh','yes')]:
             with self.subTest(key=key),self.assertRaises(TesterError):
                 vm.save(self.root,dict(vm.load(self.root),**{key:value}))
+
+    def test_live_snapshot_keeps_process_running_and_restores_disk(self):
+        if not all(shutil.which(x) for x in ('qemu-system-x86_64','qemu-img','qemu-io')):
+            self.skipTest('QEMU required')
+        source=self.root/'source.qcow2';subprocess.run(['qemu-img','create','-q','-f','qcow2',str(source),'32M'],check=True)
+        path=self.root/'manifest.json'
+        path.write_text(json.dumps(dict(schema=1,id='live-snapshot',target='desktop',arch='x86_64',boot='bios',cloud_init=True,user='luma',build='No OS fixture',image=dict(url=source.as_uri(),sha256=digest(source),bytes=source.stat().st_size))))
+        session=Session(path,self.root/'state');session.directory.mkdir(parents=True)
+        shutil.copy2(source,session.disk)
+        def io(command):subprocess.run(['qemu-io','-f','qcow2','-c',command,str(session.disk)],check=True,stdout=subprocess.DEVNULL)
+        io('write -P 0x11 0 4096')
+        child=subprocess.Popen(['qemu-system-x86_64','-machine','q35','-accel','tcg','-m','64','-nodefaults','-display','none',
+            '-blockdev',json.dumps({'driver':'qcow2','node-name':'os','file':{'driver':'file','filename':str(session.disk)}}),
+            '-device','virtio-blk-pci,drive=os','-qmp','unix:'+str(session.qmp_path)+',server=on,wait=off'],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        try:
+            deadline=time.monotonic()+10
+            while session.status()=='stopped' and time.monotonic()<deadline:time.sleep(.05)
+            self.assertEqual(session.status(),'running')
+            self.assertIn('While running',[x['name'] for x in vm.checkpoint(session,'While running')])
+            self.assertIsNone(child.poll());self.assertEqual(session.status(),'running')
+            session.qmp('stop');vm.checkpoint(session,'While paused');self.assertEqual(session.status(),'paused')
+            with self.assertRaisesRegex(TesterError,'already exists'):vm.checkpoint(session,'While running')
+            self.assertEqual(session.status(),'paused')
+            session.qmp('quit');self.assertEqual(child.wait(timeout=10),0)
+        finally:
+            if child.poll() is None:child.terminate();child.wait(timeout=10)
+            child.stderr.close()
+        io('write -P 0x22 0 4096');vm.restore(session,'While running');io('read -P 0x11 0 4096')
 
     def test_offline_snapshot_really_restores_disk_bytes(self):
         if not all(shutil.which(x) for x in ('qemu-img','qemu-io','xorriso','ssh-keygen')):

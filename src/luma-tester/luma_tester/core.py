@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Linux runtime. No GTK dependency; the CLI and GUI share this implementation."""
+"""Local QEMU runtime. No GTK dependency; the CLI and GUI share this implementation."""
 from __future__ import annotations
 
 import contextlib
@@ -81,6 +81,8 @@ def read_manifest(path):
 
 
 def data_root(state=None):
+    if not state and not os.environ.get('LUMA_TESTER_HOME') and platform.system() == 'Darwin':
+        return (Path.home() / 'Library/Application Support/Luma Tester').resolve()
     return Path(state or os.environ.get('LUMA_TESTER_HOME') or
                 Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'luma-tester').resolve()
 
@@ -305,15 +307,17 @@ class Session:
             raise TesterError('Accelerated graphics needs an accessible GPU render device.')
         display = ('egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
                    'gtk,gl=on,zoom-to-fit=on' if accelerated else
-                   'none' if headless or embedded else 'gtk,zoom-to-fit=on')
+                   'none' if headless or embedded else 'cocoa' if platform.system() == 'Darwin' else 'gtk,zoom-to-fit=on')
         gpu = 'virtio-gpu-gl-pci' if accelerated else 'virtio-gpu-pci'
         arch = self.manifest['arch']
         native = platform.machine() in ({'aarch64', 'arm64'} if arch == 'aarch64' else {'x86_64', 'AMD64'})
-        kvm = native and not software and os.access('/dev/kvm', os.R_OK | os.W_OK)
+        kvm = native and not software and platform.system() == 'Linux' and os.access('/dev/kvm', os.R_OK | os.W_OK)
+        hvf = native and not software and platform.system() == 'Darwin'
+        accelerator = 'hvf' if hvf else 'kvm' if kvm else 'tcg,thread=multi'
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
-                '-accel', 'kvm' if kvm else 'tcg,thread=multi', '-cpu', 'host' if kvm else 'max',
+                '-accel', accelerator, '-cpu', 'host' if kvm or hvf else 'max',
                 '-m', str(memory), '-smp', str(cpus), '-nic',
                 f'user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:22',
                 '-vga', 'none', '-device', f'{gpu},edid=on,xres={width},yres={height}',
@@ -321,6 +325,8 @@ class Session:
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
                 '-display', display]
+        if os.environ.get('LUMA_TESTER_QEMU_DATA_DIR'):
+            argv += ['-L', os.environ['LUMA_TESTER_QEMU_DATA_DIR']]
         if arch=='aarch64':
             position=argv.index('-nic')
             argv[position:position+2]=['-netdev',f'user,id=network0,hostfwd=tcp:127.0.0.1:{port}-:22','-device','virtio-net-pci,netdev=network0,romfile=']
@@ -377,8 +383,8 @@ class Session:
             raise TesterError('GPU initialization failed: ' + detail)
 
     def start(self, **options):
-        if platform.system() != 'Linux':
-            raise TesterError('This first launcher supports Linux hosts. macOS and Windows are planned.')
+        if platform.system() not in ('Linux', 'Darwin'):
+            raise TesterError('This launcher supports Linux and macOS hosts.')
         with self.lock() as lease:
             self.experience=options.get('experience') or self.manifest['target']
             self._prepare(print)
@@ -424,9 +430,9 @@ class Session:
                 self.qmp_path.unlink(missing_ok=True)
                 self.display_path.unlink(missing_ok=True)
 
-    def qmp(self, execute, arguments=None):
+    def qmp(self, execute, arguments=None, timeout=5):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(5)
+            sock.settimeout(timeout)
             sock.connect(str(self.qmp_path))
             with sock.makefile('rwb', buffering=0) as stream:
                 def receive():

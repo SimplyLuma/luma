@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 import os
+import platform
 from pathlib import Path
 import shlex
 import subprocess
@@ -81,7 +82,7 @@ def devices(settings):
     args = []
     if settings['audio'] or settings['microphone']:
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
-        backend = 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
+        backend = 'coreaudio' if platform.system() == 'Darwin' else 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
         args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
                  '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
     for i, folder in enumerate(settings['folders']):
@@ -116,7 +117,13 @@ def cameras():
 
 
 def checkpoints(session):
-    if not session.disk.exists() or session.status() != 'stopped':
+    if not session.disk.exists():
+        return []
+    if session.status() != 'stopped':
+        for block in session.qmp('query-block'):
+            inserted=block.get('inserted',{})
+            if inserted.get('node-name')=='os':
+                return inserted.get('image',{}).get('snapshots',[])
         return []
     info = json.loads(subprocess.check_output(['qemu-img', 'info', '--output=json', str(session.disk)]))
     return info.get('snapshots', [])
@@ -126,9 +133,21 @@ def checkpoint(session, name):
     name = name.strip()
     if not 1 <= len(name) <= 80 or any(ord(c) < 32 for c in name):
         raise TesterError('Name the snapshot using 1–80 characters.')
+    status=session.status()
+    if status in ('running','paused'):
+        if any(item['name']==name for item in checkpoints(session)):
+            raise TesterError('A snapshot with that name already exists.')
+        # Disk checkpoint: a brief pause gives the atomic disk operation a
+        # stable boundary. RAM and shared host folders are not captured.
+        if status=='running':session.qmp('stop')
+        try:
+            session.qmp('blockdev-snapshot-internal-sync', {'device':'os','name':name}, timeout=120)
+        finally:
+            if status=='running':session.qmp('cont')
+        return checkpoints(session)
     with session.lock():
         if session.status() != 'stopped' or not session.disk.exists():
-            raise TesterError('Shut down the guest before creating a disk snapshot.')
+            raise TesterError('This workspace is not ready for a disk snapshot.')
         if any(item['name'] == name for item in checkpoints(session)):
             raise TesterError('A snapshot with that name already exists.')
         run(['qemu-img', 'snapshot', '-c', name, str(session.disk)], timeout=120)

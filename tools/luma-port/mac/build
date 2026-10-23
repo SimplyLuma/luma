@@ -1,0 +1,963 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+"""luma port, macOS backend: <app.json> <out-dir> [--run]
+
+Builds <Name>.app and <Name>-<version>-macos-arm64.dmg from a Luma app manifest
+(written by tools/luma-port/luma-port). The bundle carries its whole runtime and
+loads nothing from Homebrew at run time:
+
+  Contents/MacOS/<Name>              launcher (sh): sets the environment, runs python
+  Contents/MacOS/python3             CPython 3.14 (Homebrew's framework build, relocated)
+  Contents/Frameworks/*.dylib        libpython, GTK 4, libadwaita, the LumaUI C kit and every
+                                     transitive dylib, rewritten to @rpath and ad-hoc signed
+  Contents/Resources/python/         the stdlib (pruned), lib-dynload, site-packages/{gi,cairo}
+  Contents/Resources/lib/            typelibs, gdk-pixbuf loaders (+ loaders.cache template)
+  Contents/Resources/share/          icons (Prairie, Adwaita, hicolor + the app's), schemas, fonts
+  Contents/Resources/appkit/         luma_appkit, the kit CSS, fonts and icons
+  Contents/Resources/app/            the app's packages and data/
+  Contents/Helpers/<name>            native helper programs ([[port.helpers]], common/helpers.py);
+                                     a manifest env value names their folder as {helpers}
+
+Inputs come from Homebrew (gtk4, libadwaita, pygobject3, python@3.14, webp-pixbuf-loader)
+and the ProjectLuma checkout (the C kit is built here with meson). Run with --run to
+launch the built app. Environment knobs:
+  LUMA_PORT_BREW        Homebrew prefix (default /opt/homebrew)
+  LUMA_PORT_KIT_BUILD   reuse an existing meson build of src/luma-platform
+  LUMA_PORT_CACHE       where fetched extras live (default ~/Library/Caches/luma-port)
+  LUMA_PORT_NO_DMG=1    stop after the .app
+  LUMA_PORT_MAC_EXTRA   name=path[,name=path] copied to Resources/extra/<name>; a manifest env
+                        value can point at it as {resources}/extra/<name> (e.g. fixture photos).
+                        LUMA_PORT_EXTRA is the same list for every platform.
+"""
+from __future__ import annotations
+
+import json
+import os
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import components  # noqa: E402  (optional shared runtime components: [port] runtime)
+BREW = Path(os.environ.get("LUMA_PORT_BREW", "/opt/homebrew"))
+PY_VERSION = "3.14"
+CACHE = Path(os.environ.get("LUMA_PORT_CACHE", Path.home() / "Library/Caches/luma-port"))
+
+# Typelibs a Luma app can ask for (plus the kit's own); each one's libraries are bundled.
+TYPELIBS = ["Adw-1", "GLib-2.0", "GLibUnix-2.0", "GModule-2.0", "GObject-2.0", "Gio-2.0", "GioUnix-2.0",
+            "Gdk-4.0", "GdkMacos-4.0", "GdkPixbuf-2.0", "Graphene-1.0", "Gsk-4.0", "Gtk-4.0", "HarfBuzz-0.0",
+            "Pango-1.0", "PangoCairo-1.0", "cairo-1.0", "freetype2-2.0", "GIRepository-3.0"]
+KIT_TYPELIBS = {"ui": "LumaUI-1", "appearance": "LumaAppearance-1", "semantics": "LumaSemantics-1"}
+LOADERS = ["png", "jpeg", "gif", "webp", "svg", "tiff", "bmp", "ico", "icns"]
+STDLIB_DROP = ["test", "idlelib", "tkinter", "turtledemo", "ensurepip", "lib2to3", "pydoc_data",
+               "venv", "turtle.py", "sitecustomize.py", "_pyrepl/__pycache__"]
+DYNLOAD_DROP = re.compile(r"^(_tkinter|_test|xx|_ctypes_test|_testcapi|_testinternalcapi|_testbuffer|"
+                          r"_testimportmultiple|_testmultiphase|_testsinglephase|_testclinic|_testexternalinspection|"
+                          r"_xxtestfuzz|_testlimitedcapi)")
+# App data the kit and app expect beside their package, by app id (as the Windows backend carries it).
+CARRIED_ENV = {"org.projectluma.Charlie": {"CHARLIE_RESOURCE_DIR": "{app}/data"}}
+
+
+def log(message: str) -> None:
+    print(f"luma port mac: {message}", flush=True)
+
+
+def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=True, **kw)
+
+
+def out(cmd: list[str]) -> str:
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+
+
+# ── Mach-O closure ───────────────────────────────────────────────────────────
+
+def is_macho(path: Path) -> bool:
+    try:
+        with open(path, "rb") as fh:
+            magic = fh.read(4)
+    except OSError:
+        return False
+    return magic in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xce\xfa\xed\xfe")
+
+
+def load_commands(path: Path) -> tuple[str | None, list[str], list[str]]:
+    """(install id, dependencies, rpaths) of a Mach-O file."""
+    text = out(["otool", "-l", str(path)])
+    ident, deps, rpaths = None, [], []
+    cmd = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("cmd "):
+            cmd = line.split()[1]
+        elif line.startswith("name ") and cmd in ("LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                                                  "LC_ID_DYLIB", "LC_LOAD_UPWARD_DYLIB"):
+            name = line[5:].rsplit(" (offset", 1)[0].strip()
+            if cmd == "LC_ID_DYLIB":
+                ident = name
+            else:
+                deps.append(name)
+        elif line.startswith("path ") and cmd == "LC_RPATH":
+            rpaths.append(line[5:].rsplit(" (offset", 1)[0].strip())
+    return ident, deps, rpaths
+
+
+def system_lib(name: str) -> bool:
+    return name.startswith(("/usr/lib/", "/System/"))
+
+
+class Bundler:
+    def __init__(self, contents: Path, search: list[Path]) -> None:
+        self.contents = contents
+        self.frameworks = contents / "Frameworks"
+        self.frameworks.mkdir(parents=True, exist_ok=True)
+        self.search = search                     # dirs to resolve bare / @rpath names
+        self.copied: dict[str, Path] = {}        # leaf name -> bundled path
+        self.origin: dict[Path, Path] = {}       # bundled file -> source file (for @loader_path)
+
+    def resolve(self, name: str, referrer_src: Path, rpaths: list[str]) -> Path | None:
+        if name.startswith("@rpath/"):
+            leaf = name[len("@rpath/"):]
+            for rp in rpaths:
+                rp = rp.replace("@loader_path", str(referrer_src.parent)).replace(
+                    "@executable_path", str(referrer_src.parent))
+                if (Path(rp) / leaf).exists():
+                    return (Path(rp) / leaf).resolve()
+            for d in self.search:
+                if (d / leaf).exists():
+                    return (d / leaf).resolve()
+            return None
+        if name.startswith("@loader_path/"):
+            p = referrer_src.parent / name[len("@loader_path/"):]
+            return p.resolve() if p.exists() else None
+        if name.startswith("@executable_path/"):
+            return None
+        if name.startswith("/"):
+            return Path(name).resolve() if Path(name).exists() else None
+        for d in self.search:
+            if (d / name).exists():
+                return (d / name).resolve()
+        return None
+
+    def add_library(self, src: Path, leaf: str | None = None) -> Path:
+        """Copy a dylib (and, recursively, what it loads) into Frameworks/."""
+        leaf = leaf or src.name
+        if leaf in self.copied:
+            return self.copied[leaf]
+        dest = self.frameworks / leaf
+        shutil.copy2(src, dest)
+        dest.chmod(0o755)
+        self.copied[leaf] = dest
+        self.origin[dest] = src
+        self.walk(dest)
+        return dest
+
+    def walk(self, path: Path) -> None:
+        """Bundle every non-system dependency of `path` (a file already inside the bundle)."""
+        src = self.origin.get(path, path)
+        _ident, deps, rpaths = load_commands(path)
+        for dep in deps:
+            if system_lib(dep):
+                continue
+            target = self.resolve(dep, src, rpaths)
+            if target is None:
+                raise SystemExit(f"luma port mac: {path.name} needs {dep}, which was not found")
+            leaf = Path(dep).name if not dep.startswith("@") else Path(dep.split("/", 1)[1]).name
+            self.add_library(target, leaf)
+
+    def track(self, path: Path, src: Path) -> None:
+        self.origin[path] = src
+
+    def rewrite_all(self) -> list[Path]:
+        """Point every bundled Mach-O at @rpath/<leaf>, give it an rpath into Frameworks, re-sign."""
+        machos = [p for p in self.contents.rglob("*") if p.is_file() and not p.is_symlink() and is_macho(p)]
+        for path in machos:
+            ident, deps, rpaths = load_commands(path)
+            args: list[str] = []
+            if ident is not None:
+                args += ["-id", f"@rpath/{path.name}"]
+            for dep in deps:
+                if system_lib(dep):
+                    continue
+                leaf = Path(dep).name
+                if leaf not in self.copied:
+                    raise SystemExit(f"luma port mac: {path} still needs {dep}")
+                new = f"@rpath/{leaf}"
+                if dep != new:
+                    args += ["-change", dep, new]
+            for rp in rpaths:
+                args += ["-delete_rpath", rp]
+            rel = os.path.relpath(self.frameworks, path.parent)
+            anchor = "@executable_path" if path.parent.name == "MacOS" else "@loader_path"
+            new_rpath = anchor if rel == "." else f"{anchor}/{rel}"
+            # Only files that load bundled libraries need the rpath (some wheels' extensions have
+            # no header room for a new load command, and need none: they link only the system).
+            if any(not system_lib(dep) for dep in deps) or path.parent.name == "MacOS":
+                args += ["-add_rpath", new_rpath]
+            # -delete_rpath of a path we then add again is fine; duplicates are rejected by dyld.
+            if args:
+                run(["install_name_tool", *args, str(path)], stderr=subprocess.DEVNULL)
+        for path in machos:
+            subprocess.run(["strip", "-x", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for path in machos:
+            run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(path)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return machos
+
+
+# ── Steps ────────────────────────────────────────────────────────────────────
+
+def build_kit(manifest: dict, work: Path) -> Path:
+    preset = os.environ.get("LUMA_PORT_KIT_BUILD")
+    if preset:
+        return Path(preset)
+    build = work / "kit-build"
+    source = Path(manifest["repo_root"]) / "src/luma-platform"
+    if not (build / "build.ninja").exists():
+        run(["meson", "setup", str(build), str(source), "-Dwayland=disabled", "-Dtests=false",
+             "-Dwerror=false", "-Dintrospection=enabled", "--buildtype=release"], stdout=subprocess.DEVNULL)
+    run(["ninja", "-C", str(build), "-j2"], stdout=subprocess.DEVNULL)
+    return build
+
+
+def copy_tree(src: Path, dest: Path, ignore=None) -> None:
+    shutil.copytree(src, dest, symlinks=False, dirs_exist_ok=True,
+                    ignore=ignore or shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store"))
+
+
+def stage_python(contents: Path, bundler: Bundler, manifest: dict) -> None:
+    fw = BREW / f"opt/python@{PY_VERSION}/Frameworks/Python.framework/Versions/{PY_VERSION}"
+    if not fw.exists():
+        raise SystemExit(f"luma port mac: no Homebrew python@{PY_VERSION} at {fw}")
+    exe = contents / "MacOS/python3"
+    shutil.copy2(fw / "Resources/Python.app/Contents/MacOS/Python", exe)
+    exe.chmod(0o755)
+    bundler.track(exe, (fw / "Resources/Python.app/Contents/MacOS/Python").resolve())
+    lib = contents / f"Resources/python/lib/python{PY_VERSION}"
+    copy_tree(fw / f"lib/python{PY_VERSION}", lib,
+              ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "site-packages", "config-*", ".DS_Store"))
+    for name in STDLIB_DROP:
+        target = lib / name
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+    for so in (lib / "lib-dynload").iterdir():
+        if DYNLOAD_DROP.match(so.name):
+            so.unlink()
+    site = lib / "site-packages"
+    site.mkdir(exist_ok=True)
+    brew_site = BREW / f"lib/python{PY_VERSION}/site-packages"
+    for pkg in ("gi", "cairo"):
+        copy_tree(brew_site / pkg, site / pkg)
+        for junk in list((site / pkg).rglob("include")) + list((site / pkg).rglob("*.h")) + \
+                list((site / pkg).rglob("*.pyi")):
+            if junk.is_dir():
+                shutil.rmtree(junk)
+            elif junk.exists():
+                junk.unlink()
+    for package in manifest.get("python_packages", []):
+        package = Path(package)
+        if not package.is_dir() or any(package.rglob("*.so")) or any(package.rglob("*.pyd")):
+            raise SystemExit(f"Expected a pure Python package: {package.name}")
+        copy_tree(package, site / package.name)
+    for so in list(lib.rglob("*.so")):
+        src = (fw / f"lib/python{PY_VERSION}" / so.relative_to(lib))
+        if not src.exists():
+            src = brew_site / so.relative_to(site) if site in so.parents else so
+        bundler.track(so, src.resolve() if src.exists() else so)
+    bundler.walk(exe)
+    for so in lib.rglob("*.so"):
+        bundler.walk(so)
+
+
+def stage_kit(manifest: dict, contents: Path, bundler: Bundler, kit_build: Path) -> Path:
+    appkit_src = Path(manifest["kit_dir"]).parent
+    appkit = contents / "Resources/appkit"
+    copy_tree(appkit_src, appkit)
+    typelibs = contents / "Resources/lib/girepository-1.0"
+    typelibs.mkdir(parents=True, exist_ok=True)
+    for sub, ns in KIT_TYPELIBS.items():
+        shutil.copy2(kit_build / sub / f"{ns}.typelib", typelibs)
+        for dylib in (kit_build / sub).glob("lib*.dylib"):
+            if dylib.is_symlink():
+                continue
+            bundler.add_library(dylib.resolve(), dylib.name)
+    return typelibs
+
+
+def stage_typelibs(typelibs: Path, bundler: Bundler, manifest: dict) -> None:
+    gir = BREW / "lib/girepository-1.0"
+    for ns in TYPELIBS + manifest.get("extra_typelibs", []):
+        src = gir / f"{ns}.typelib"
+        for prefix in manifest.get("native_prefixes", []):
+            candidate = Path(prefix) / "lib/girepository-1.0" / f"{ns}.typelib"
+            if candidate.exists(): src = candidate; break
+        if ns in manifest.get("extra_typelibs", []) and not src.exists():
+            raise SystemExit(f"Missing required typelib: {ns}")
+        if src.exists():
+            shutil.copy2(src, typelibs)
+    for typelib in typelibs.glob("*.typelib"):
+        for name in set(re.findall(rb"lib[\w.+-]+\.dylib", typelib.read_bytes())):
+            leaf = name.decode()
+            src = bundler.resolve(leaf, typelib, [])
+            if src is None:
+                raise SystemExit(f"luma port mac: {typelib.name} names {leaf}, which was not found")
+            bundler.add_library(src, leaf)
+
+
+INTL_SHIM = r"""
+/* luma port (macOS): GTK, libadwaita and glib bind their gettext domains to the Homebrew prefix they
+   were built for. Rebind every such directory to the bundle's share/locale (LUMA_PORT_LOCALEDIR), so a
+   bundle never reads Homebrew's files, even on a Mac that has Homebrew. Loaded with
+   DYLD_INSERT_LIBRARIES by the launcher; interposes libintl_bindtextdomain. */
+#include <stdlib.h>
+#include <string.h>
+extern char *libintl_bindtextdomain(const char *domain, const char *dirname);
+static char *luma_port_bindtextdomain(const char *domain, const char *dirname) {
+    const char *bundle = getenv("LUMA_PORT_LOCALEDIR");
+    if (bundle && dirname && strncmp(dirname, BREW_PREFIX, sizeof(BREW_PREFIX) - 1) == 0)
+        dirname = bundle;
+    return libintl_bindtextdomain(domain, dirname);
+}
+__attribute__((used)) static struct { const void *replacement, *replacee; } luma_port_interpose[]
+    __attribute__((section("__DATA,__interpose"))) = {
+    { (const void *)luma_port_bindtextdomain, (const void *)libintl_bindtextdomain },
+};
+__attribute__((constructor)) static void luma_port_intl_init(void) {
+    /* Children (browsers, helpers) don't inherit the insert. */
+    unsetenv("DYLD_INSERT_LIBRARIES");
+}
+"""
+
+
+def stage_intl(contents: Path, bundler: Bundler, work: Path) -> None:
+    """libluma-port-intl.dylib (see INTL_SHIM) and, if LUMA_PORT_MAC_LOCALES=de,fr,... asks, those
+    languages' GTK and libadwaita catalogs in Resources/share/locale (default: none, English UI)."""
+    src = work / "luma-port-intl.c"
+    src.write_text(INTL_SHIM)
+    dylib = work / "libluma-port-intl.dylib"
+    gettext = BREW / "opt/gettext"
+    run(["clang", "-dynamiclib", "-O2", f"-DBREW_PREFIX=\"{BREW}\"", "-o", str(dylib), str(src),
+         f"-L{gettext / 'lib'}", "-lintl", "-install_name", "@rpath/libluma-port-intl.dylib",
+         "-mmacosx-version-min=11.0"])
+    bundler.add_library(dylib, dylib.name)
+    locale = contents / "Resources/share/locale"
+    locale.mkdir(parents=True, exist_ok=True)
+    for lang in filter(None, os.environ.get("LUMA_PORT_MAC_LOCALES", "").split(",")):
+        for domain in ("gtk40", "libadwaita", "glib20"):
+            mo = BREW / "share/locale" / lang / "LC_MESSAGES" / f"{domain}.mo"
+            if mo.exists():
+                (locale / lang / "LC_MESSAGES").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(mo, locale / lang / "LC_MESSAGES" / mo.name)
+
+
+def stage_loaders(contents: Path, bundler: Bundler) -> None:
+    src_dir = BREW / "lib/gdk-pixbuf-2.0/2.10.0/loaders"
+    dest_dir = contents / "Resources/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    picked = []
+    for kind in LOADERS:
+        for cand in (f"libpixbufloader-{kind}.so", f"libpixbufloader_{kind}.so"):
+            if (src_dir / cand).exists():
+                shutil.copy2(src_dir / cand, dest_dir / cand)
+                bundler.track(dest_dir / cand, (src_dir / cand).resolve())
+                picked.append(dest_dir / cand)
+                break
+    for loader in picked:
+        bundler.walk(loader)
+    # loaders.cache wants absolute paths: keep a template the launcher fills in for wherever the app is.
+    # Homebrew's own loaders are queried (a copy inside the bundle can fail to load beside Homebrew's
+    # libraries, which silently dropped the SVG loader), then named by their bundled path.
+    sources = [(src_dir / p.name) for p in picked]
+    cache = out([str(BREW / "bin/gdk-pixbuf-query-loaders"), *map(str, sources)])
+    for src, dest in zip(sources, picked):
+        cache = cache.replace(f'"{src}"', f'"{dest}"')
+    cache = cache.replace(str(contents / "Resources"), "@RESOURCES@")
+    cache = "\n".join(l for l in cache.splitlines() if not l.startswith("# LoaderDir") and "Created by" not in l)
+    (contents / "Resources/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in").write_text(cache + "\n")
+    log(f"pixbuf loaders: {', '.join(p.name for p in picked)}")
+
+
+def fetch_adwaita() -> Path | None:
+    brew = BREW / "share/icons/Adwaita"
+    if (brew / "index.theme").exists():
+        return brew
+    cached = CACHE / "icons/Adwaita"
+    if (cached / "index.theme").exists():
+        return cached
+    host = os.environ.get("LUMA_PORT_ADWAITA_HOST", "luma-build")
+    cached.mkdir(parents=True, exist_ok=True)
+    try:
+        for part in ("index.theme", "symbolic", "scalable"):
+            run(["scp", "-qr", f"{host}:/usr/share/icons/Adwaita/{part}", str(cached)], timeout=120)
+        return cached
+    except (subprocess.SubprocessError, OSError):
+        shutil.rmtree(cached, ignore_errors=True)
+        log("Adwaita icons not found (no Homebrew adwaita-icon-theme, no cache, no luma-build); GTK's own fallbacks only")
+        return None
+
+
+def stage_share(manifest: dict, contents: Path) -> None:
+    share = contents / "Resources/share"
+    icons = share / "icons"
+    repo = Path(manifest["repo_root"])
+    prairie = repo / "assets/icon-theme/Prairie"
+    if prairie.exists():
+        dest = icons / "Prairie"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(prairie / "index.theme", dest)
+        for sub in ("scalable", "symbolic"):
+            copy_tree(prairie / sub, dest / sub)
+    adwaita = fetch_adwaita()
+    if adwaita is not None:
+        dest = icons / "Adwaita"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(adwaita / "index.theme", dest)
+        for sub in ("symbolic", "scalable"):
+            if (adwaita / sub).exists():
+                copy_tree(adwaita / sub, dest / sub)
+    hicolor = icons / "hicolor"
+    hicolor.mkdir(parents=True, exist_ok=True)
+    hicolor_index = BREW / "share/icons/hicolor/index.theme"
+    if hicolor_index.exists():
+        shutil.copy2(hicolor_index, hicolor)
+    app_icons = Path(manifest["app_dir"]) / "data/icons/hicolor"
+    if app_icons.exists():
+        copy_tree(app_icons, hicolor)
+    for theme in icons.iterdir():
+        if (theme / "index.theme").exists():
+            subprocess.run([str(BREW / "bin/gtk4-update-icon-cache"), "-q", "-f", "-t", str(theme)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    schemas = share / "glib-2.0/schemas"
+    schemas.mkdir(parents=True, exist_ok=True)
+    for xml in (BREW / "share/glib-2.0/schemas").glob("org.gtk.gtk4.*.gschema.xml"):
+        shutil.copy2(xml, schemas)
+    for xml in Path(manifest["app_dir"]).glob("data/**/*.gschema.xml"):
+        shutil.copy2(xml, schemas)
+    run([str(BREW / "bin/glib-compile-schemas"), str(schemas)])
+    for xml in schemas.glob("*.xml"):
+        xml.unlink()
+    fonts = share / "fonts/luma"
+    fonts.mkdir(parents=True, exist_ok=True)
+    for face in (HERE / "fonts").glob("*"):
+        shutil.copy2(face, fonts)
+
+
+def stage_app(manifest: dict, contents: Path) -> None:
+    app_dir = Path(manifest["app_dir"])
+    dest = contents / "Resources/app"
+    for pkg in manifest["packages"]:
+        copy_tree(app_dir / pkg, dest / pkg)
+    for extra in manifest.get("include", []):  # [port] include: more folders the app reads beside its code
+        if (app_dir / extra).is_dir():
+            copy_tree(app_dir / extra, dest / extra)
+    if (app_dir / "data").is_dir():
+        copy_tree(app_dir / "data", dest / "data",
+                  ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", "*.in", "*.service",
+                                                "*.desktop", "*.metainfo.xml", "*.ini"))
+
+
+def stage_extras(contents: Path) -> None:
+    extras = os.environ.get("LUMA_PORT_EXTRA", "") + "," + os.environ.get("LUMA_PORT_MAC_EXTRA", "")
+    for item in filter(None, extras.split(",")):
+        name, _, path = item.partition("=")
+        src = Path(path).expanduser()
+        if not re.fullmatch(r"[\w.-]+", name) or not src.exists():
+            raise SystemExit(f"luma port mac: bad LUMA_PORT_MAC_EXTRA entry {item!r}")
+        dest = contents / "Resources/extra" / name
+        copy_tree(src, dest) if src.is_dir() else (dest.parent.mkdir(parents=True, exist_ok=True),
+                                                   shutil.copy2(src, dest))
+
+
+def make_icns(manifest: dict, contents: Path, work: Path) -> str | None:
+    icon = manifest.get("icon")
+    svg = Path(manifest["app_dir"]) / icon if icon else None
+    if svg is None or not svg.exists():
+        return None
+    iconset = work / "app.iconset"
+    shutil.rmtree(iconset, ignore_errors=True)
+    iconset.mkdir(parents=True)
+    for size in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            px = size * scale
+            name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+            run([str(BREW / "bin/rsvg-convert"), "-w", str(px), "-h", str(px), "-o", str(iconset / name), str(svg)])
+    target = contents / "Resources" / f"{manifest['name']}.icns"
+    run(["iconutil", "-c", "icns", "-o", str(target), str(iconset)])
+    shutil.rmtree(iconset)
+    return target.name
+
+
+def min_macos(machos: list[Path]) -> str:
+    best = (11, 0)
+    for path in machos:
+        m = re.search(r"minos (\d+)\.(\d+)", out(["otool", "-l", str(path)]))
+        if m:
+            best = max(best, (int(m.group(1)), int(m.group(2))))
+    return f"{best[0]}.{best[1]}"
+
+
+def write_plist(manifest: dict, contents: Path, icon: str | None, minimum: str) -> None:
+    info = {
+        "CFBundleIdentifier": manifest["app_id"],
+        "CFBundleName": manifest["name"],
+        "CFBundleDisplayName": manifest["name"],
+        "CFBundleExecutable": manifest["name"],
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": manifest["version"],
+        "CFBundleVersion": manifest["version"],
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "CFBundleDevelopmentRegion": "en",
+        "LSMinimumSystemVersion": minimum,
+        "NSHighResolutionCapable": True,
+        "NSSupportsAutomaticGraphicsSwitching": True,
+        "LSApplicationCategoryType": "public.app-category.productivity",
+        "NSHumanReadableCopyright": "Project Luma. Built by luma port.",
+    }
+    if icon:
+        info["CFBundleIconFile"] = icon
+    with open(contents / "Info.plist", "wb") as fh:
+        plistlib.dump(info, fh)
+    (contents / "PkgInfo").write_text("APPL????")
+
+
+LAUNCHER = """#!/bin/sh
+# {name} {version}, built by `luma port mac`. Sets up the bundled runtime, then runs
+# python -m luma_appkit.platform_boot {module} (fonts, GTK settings, then the app).
+CONTENTS="$(cd "$(dirname "$0")/.." && pwd -P)"
+R="$CONTENTS/Resources"
+STATE="${{HOME}}/Library/Caches/{app_id}"
+mkdir -p "$STATE"
+
+# gdk-pixbuf wants absolute loader paths: fill the template in for wherever the app lives now.
+CACHE="$STATE/loaders.cache"
+if [ ! -f "$CACHE" ] || [ "$(cat "$STATE/loaders.root" 2>/dev/null)" != "$R" ] || \
+   [ "$R/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in" -nt "$CACHE" ]; then
+  sed "s|@RESOURCES@|$R|g" "$R/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in" > "$CACHE"
+  printf '%s' "$R" > "$STATE/loaders.root"
+fi
+
+export PYTHONHOME="$R/python"
+export PYTHONPATH="$R/app:$R/appkit"
+export PYTHONNOUSERSITE=1
+export PYTHONPYCACHEPREFIX="$STATE/pycache"
+export DYLD_FALLBACK_LIBRARY_PATH="$CONTENTS/Frameworks"
+# gettext: GTK/Adw/glib catalogs from the bundle, never the Homebrew prefix they were built for.
+export LUMA_PORT_LOCALEDIR="$R/share/locale"
+export DYLD_INSERT_LIBRARIES="$CONTENTS/Frameworks/libluma-port-intl.dylib"
+export GI_TYPELIB_PATH="$R/lib/girepository-1.0"
+export GDK_PIXBUF_MODULE_FILE="$CACHE"
+export GDK_PIXBUF_MODULEDIR="$R/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+export XDG_DATA_DIRS="$R/share"
+export GSETTINGS_SCHEMA_DIR="$R/share/glib-2.0/schemas"
+export LUMA_FONT_DIRS="$R/share/fonts/luma"
+# /bin/sh drops DYLD_* on entry (SIP); LUMA_PORT_DYLD_PRINT=1 traces the app's own loads.
+[ -n "$LUMA_PORT_DYLD_PRINT" ] && export DYLD_PRINT_LIBRARIES=1
+# TLS (IMAP, SMTP, OAuth, avatars): the bundled OpenSSL's compiled-in CA paths are Homebrew's.
+# Use macOS's own root store (/etc/ssl/cert.pem, maintained by the OS) instead.
+[ -z "$SSL_CERT_FILE" ] && [ -f /etc/ssl/cert.pem ] && export SSL_CERT_FILE=/etc/ssl/cert.pem
+[ -z "$SSL_CERT_DIR" ] && export SSL_CERT_DIR=/etc/ssl/certs
+{env}
+# Started from Finder/Dock there is no terminal: keep the app's output in ~/Library/Logs.
+if [ ! -t 2 ]; then
+  mkdir -p "$HOME/Library/Logs"
+  exec >>"$HOME/Library/Logs/{app_id}.log" 2>&1
+  echo "--- {name} {version} started $(date)"
+fi
+# Finder may pass a process serial number; the app never wants it.
+for arg do
+  shift
+  case "$arg" in -psn_*) ;; *) set -- "$@" "$arg" ;; esac
+done
+cd "$HOME"
+exec "$CONTENTS/MacOS/python3" -m luma_appkit.platform_boot {module} "$@"
+"""
+
+
+def write_launcher(manifest: dict, contents: Path) -> None:
+    env = dict(CARRIED_ENV.get(manifest["app_id"], {}))
+    env.update(manifest.get("env", {}))
+    lines = []
+    for key, value in env.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        value = value.replace("{extra}", "{resources}/extra")   # LUMA_PORT_EXTRA, same token everywhere
+        value = value.replace("{app}", "@APP@").replace("{resources}", "@RES@").replace("{helpers}", "@HLP@")
+        value = value.replace("{state}", "@ST@")  # the app's cache folder ($STATE)
+        quoted = "'" + value.replace("'", "'\\''") + "'"
+        quoted = quoted.replace("@APP@", "'\"$R/app\"'").replace("@RES@", "'\"$R\"'")
+        quoted = quoted.replace("@HLP@", "'\"$CONTENTS/Helpers\"'")
+        quoted = quoted.replace("@ST@", "'\"$STATE\"'")
+        lines.append(f'[ -z "${{{key}+set}}" ] && export {key}={quoted}')
+    launcher = contents / "MacOS" / manifest["name"]
+    launcher.write_text(LAUNCHER.format(name=manifest["name"], version=manifest["version"],
+                                        module=manifest["module"], app_id=manifest["app_id"],
+                                        env="\n".join(lines)))
+    launcher.chmod(0o755)
+
+
+def strip_bundle(contents: Path) -> None:
+    for pattern in ("__pycache__",):
+        for d in list(contents.rglob(pattern)):
+            shutil.rmtree(d, ignore_errors=True)
+    for pattern in ("*.pyc", "*.pyo", "*.a", "*.la", "*.h", ".DS_Store", "*.md", "*.gir"):
+        for f in contents.rglob(pattern):
+            if f.is_file() and "Resources/app" not in str(f):
+                f.unlink()
+    for d in list(contents.rglob("tests")):
+        if d.is_dir() and "python/lib" in str(d):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def stage_helpers(manifest: dict, contents: Path) -> None:
+    """[[port.helpers]] built for darwin-arm64 (on luma-build when this Mac has no Go), signed."""
+    if not manifest.get("helpers"):
+        return
+    sys.path.insert(0, str(HERE.parent / "common"))
+    import helpers
+
+    dest = contents / "Helpers"
+    dest.mkdir(exist_ok=True)
+    for spec in manifest["helpers"]:
+        built = helpers.build(spec, "darwin-arm64", CACHE)
+        target = dest / spec["name"]
+        shutil.copy2(built, target)
+        target.chmod(0o755)
+        run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(target)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log(f"helper {spec['name']}: Contents/Helpers/{spec['name']} ({size_of(target)})")
+
+
+def stage_web_signin(contents: Path) -> None:
+    """luma-web-signin (mac/web-signin, Swift): a site's own sign-in page in a WKWebView, for
+    luma_appkit.browser.capture_cookies. Every app gets it (~140 KB); cached by source digest."""
+    src = HERE / "web-signin" / "main.swift"
+    if not src.exists() or not shutil.which("swiftc"):
+        log("web sign-in helper: skipped (no swiftc)")
+        return
+    import hashlib
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()[:16]
+    built = CACHE / "helpers" / f"luma-web-signin-{digest}"
+    if not built.exists():
+        built.parent.mkdir(parents=True, exist_ok=True)
+        run(["swiftc", "-O", "-target", "arm64-apple-macos13.0", "-o", str(built) + ".tmp", str(src)])
+        os.replace(str(built) + ".tmp", built)
+        for old in built.parent.glob("luma-web-signin-*"):
+            if old != built:
+                old.unlink()
+    dest = contents / "Helpers"
+    dest.mkdir(exist_ok=True)
+    target = dest / "luma-web-signin"
+    shutil.copy2(built, target)
+    target.chmod(0o755)
+    run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(target)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    log(f"web sign-in helper: Contents/Helpers/luma-web-signin ({size_of(target)})")
+
+
+def stage_shared_components(manifest: dict, contents: Path, bundler: Bundler) -> None:
+    """[port] runtime names with one recipe for every platform in tools/luma-port/components/<name>/
+    (e.g. gstreamer): its stage.py stages it and returns launcher env ({resources}, {state})."""
+    import importlib.util
+
+    for name in manifest.get("runtime") or []:
+        recipe = HERE.parent / "components" / name / "stage.py"
+        if not recipe.exists():
+            continue
+        spec = importlib.util.spec_from_file_location(f"luma_port_component_{name}", recipe)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        manifest["env"] = {**module.stage_mac(contents, bundler, CACHE), **manifest.get("env", {})}
+
+
+def make_dmg(app: Path, out_dir: Path, manifest: dict) -> Path:
+    staging = out_dir / "dmg-root"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir()
+    run(["ditto", str(app), str(staging / app.name)])
+    (staging / "Applications").symlink_to("/Applications")
+    dmg = out_dir / f"{manifest['name']}-{manifest['version']}-macos-arm64.dmg"
+    if dmg.exists():
+        dmg.unlink()
+    run(["hdiutil", "create", "-volname", manifest["name"], "-srcfolder", str(staging), "-ov",
+         "-format", "ULFO", "-fs", "HFS+", str(dmg)], stdout=subprocess.DEVNULL)
+    shutil.rmtree(staging)
+    return dmg
+
+
+# ── Native (C/C++ meson) apps ────────────────────────────────────────────────
+
+NATIVE_LAUNCHER = """#!/bin/sh
+# {name} {version}, built by `luma port mac` (native app). Sets up the bundled runtime, then runs
+# {exe} with libluma-port-boot (faces, Luma OS's GTK settings) loaded ahead of it.
+CONTENTS="$(cd "$(dirname "$0")/.." && pwd -P)"
+R="$CONTENTS/Resources"
+STATE="${{HOME}}/Library/Caches/{app_id}"
+mkdir -p "$STATE"
+CACHE="$STATE/loaders.cache"
+if [ ! -f "$CACHE" ] || [ "$(cat "$STATE/loaders.root" 2>/dev/null)" != "$R" ]; then
+  sed "s|@RESOURCES@|$R|g" "$R/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache.in" > "$CACHE"
+  printf '%s' "$R" > "$STATE/loaders.root"
+fi
+export GDK_PIXBUF_MODULE_FILE="$CACHE"
+export GDK_PIXBUF_MODULEDIR="$R/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+export XDG_DATA_DIRS="$R/share"
+export GSETTINGS_SCHEMA_DIR="$R/share/glib-2.0/schemas"
+export LUMA_FONT_DIRS="$R/share/fonts/luma"
+export LUMA_PLATFORM=macos
+[ -x "$R/python/bin/python3" ] && export PATH="$R/python/bin:$PATH"
+export LUMA_PORT_LOCALEDIR="$R/share/locale"
+export DYLD_INSERT_LIBRARIES="$CONTENTS/Frameworks/libluma-port-boot.dylib:$CONTENTS/Frameworks/libluma-port-intl.dylib"
+[ -z "$SSL_CERT_FILE" ] && [ -f /etc/ssl/cert.pem ] && export SSL_CERT_FILE=/etc/ssl/cert.pem
+{env}
+if [ ! -t 2 ]; then
+  mkdir -p "$HOME/Library/Logs"
+  exec >>"$HOME/Library/Logs/{app_id}.log" 2>&1
+  echo "--- {name} {version} started $(date)"
+fi
+for arg do
+  shift
+  case "$arg" in -psn_*) ;; *) set -- "$@" "$arg" ;; esac
+done
+cd "$HOME"
+exec "$CONTENTS/MacOS/{exe}" "$@"
+"""
+
+
+def native_kit() -> Path:
+    """The LumaUI C kit installed into one prefix every native app builds against (shared, cached)."""
+    kit_src = Path(os.environ.get("LUMA_PORT_KIT_SRC", HERE.parents[2] / "src/luma-platform"))
+    import fcntl
+
+    root = CACHE / "native-kit"
+    build, prefix = root / "build", root / "prefix"
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / ".lock", "w") as lock:   # several apps may be ported at once; one kit build at a time
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not (build / "build.ninja").exists():
+            run(["meson", "setup", str(build), str(kit_src), f"--prefix={prefix}", "--libdir=lib",
+                 "-Dwayland=disabled", "-Dtests=false", "-Dwerror=false", "-Dintrospection=disabled",
+                 "--buildtype=release"], stdout=subprocess.DEVNULL)
+        run(["ninja", "-C", str(build), "-j2"], stdout=subprocess.DEVNULL)
+        run(["meson", "install", "-C", str(build), "--no-rebuild", "--quiet"], stdout=subprocess.DEVNULL)
+    return prefix
+
+
+def native_env(kit_prefix: Path) -> dict:
+    pc = [kit_prefix / "lib/pkgconfig", kit_prefix / "share/pkgconfig", BREW / "lib/pkgconfig",
+          BREW / "share/pkgconfig"]
+    env = dict(os.environ)
+    env["PKG_CONFIG_PATH"] = ":".join(map(str, pc)) + (":" + env["PKG_CONFIG_PATH"] if env.get("PKG_CONFIG_PATH") else "")
+    env["PATH"] = f"{BREW / 'bin'}:{env['PATH']}"
+    return env
+
+
+def build_boot(work: Path, env: dict) -> Path:
+    """libluma-port-boot.dylib: tools/luma-port/native/luma-port-boot.c with its constructor on."""
+    src = HERE.parent / "native" / "luma-port-boot.c"
+    dest = work / "libluma-port-boot.dylib"
+    flags = out(["pkg-config", "--cflags", "--libs", "gtk4", "pangocairo"]).split() if not env else \
+        subprocess.run(["pkg-config", "--cflags", "--libs", "gtk4", "pangocairo"], check=True, capture_output=True,
+                       text=True, env=env).stdout.split()
+    run(["cc", "-dynamiclib", "-O2", "-DLUMA_PORT_BOOT_CONSTRUCTOR", "-install_name", "@rpath/libluma-port-boot.dylib",
+         "-o", str(dest), str(src), *flags, "-framework", "CoreText", "-framework", "CoreFoundation", "-lobjc"])
+    return dest
+
+
+def stage_native(manifest: dict, contents: Path, bundler: Bundler, work: Path) -> str:
+    """Build the app with meson against the kit + Homebrew GTK, put its program in MacOS/ and its data in
+    Resources/share. Returns the program's file name."""
+    sys.path.insert(0, str(HERE.parent / "common"))
+    import native
+
+    kit_prefix = native_kit()
+    env = native_env(kit_prefix)
+    bundler.search.insert(0, kit_prefix / "lib")
+    app_dir = Path(manifest["app_dir"])
+    log_file = work / "native-build.log"
+    log_file.write_text("")
+    log(f"meson build of {app_dir.name} (log: {log_file})")
+    setup = []
+    if native.lok_wanted(app_dir):   # LibreOfficeKit engine: the vendored SDK headers
+        setup = [f"-Dcpp_args=-I{native.LOK_INCLUDE}", f"-Dc_args=-I{native.LOK_INCLUDE}"]
+    prefix, exes = native.build(app_dir, work / "app-build", work / "app-root", setup_args=setup,
+                                options=manifest.get("meson_options"), env=env, log=log_file)
+    if manifest.get("executable"):
+        exes = [prefix / "bin" / manifest["executable"]]
+    if not exes:
+        raise SystemExit(f"luma port mac: {app_dir} installs no program")
+    program = exes[0]
+    dest = contents / "MacOS" / program.name
+    shutil.copy2(program, dest)
+    dest.chmod(0o755)
+    bundler.track(dest, program.resolve())
+    bundler.walk(dest)
+    boot = build_boot(work, env)
+    bundler.add_library(boot, boot.name)
+    # The app's installed data: schemas and icons merge with the runtime's; the rest goes to share/ as is.
+    share = contents / "Resources/share"
+    installed = prefix / "share"
+    if installed.is_dir():
+        for item in installed.iterdir():
+            if item.name in ("applications", "metainfo", "appdata", "doc", "man", "mime"):
+                continue
+            copy_tree(item, share / item.name) if item.is_dir() else shutil.copy2(item, share / item.name)
+    for lib in (prefix / "lib").rglob("*.dylib") if (prefix / "lib").is_dir() else []:
+        if not lib.is_symlink():
+            bundler.add_library(lib.resolve(), lib.name)
+    # Helper programs and scripts the app runs ({prefix}/libexec/...).
+    if (prefix / "libexec").is_dir():
+        copy_tree(prefix / "libexec", contents / "Resources/libexec")
+        for item in (contents / "Resources/libexec").rglob("*"):
+            if item.is_file() and is_macho(item):
+                bundler.track(item, item)
+                bundler.walk(item)
+    if manifest.get("python"):
+        # CPython for the app's helper scripts, as python3 on PATH. A copy of the interpreter in
+        # Resources/python/bin finds its stdlib at ../lib by itself, so it works under -I too.
+        stage_python(contents, bundler, manifest)
+        pybin = contents / "Resources/python/bin"
+        pybin.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(contents / "MacOS/python3", pybin / "python3")
+        bundler.track(pybin / "python3", bundler.origin[contents / "MacOS/python3"])
+        (contents / "MacOS/python3").unlink()
+    return program.name
+
+
+def finish_share(contents: Path) -> None:
+    """Compile schemas and refresh icon caches after the app's own data joined the runtime's."""
+    share = contents / "Resources/share"
+    schemas = share / "glib-2.0/schemas"
+    if any(schemas.glob("*.xml")):
+        run([str(BREW / "bin/glib-compile-schemas"), str(schemas)])
+        for xml in schemas.glob("*.xml"):
+            xml.unlink()
+    for theme in (share / "icons").iterdir():
+        if (theme / "index.theme").exists():
+            subprocess.run([str(BREW / "bin/gtk4-update-icon-cache"), "-q", "-f", "-t", str(theme)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def write_native_launcher(manifest: dict, contents: Path, exe: str) -> None:
+    env = dict(manifest.get("env", {}))
+    lines = []
+    for key, value in env.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        value = (value.replace("{extra}", "{resources}/extra").replace("{app}", "{resources}")
+                 .replace("{prefix}", "{resources}"))   # {prefix}: the app's installed tree (libexec/, share/)
+        quoted = "'" + value.replace("'", "'\\''") + "'"
+        quoted = quoted.replace("{resources}", "'\"$R\"'")
+        lines.append(f'[ -z "${{{key}+set}}" ] && export {key}={quoted}')
+    launcher = contents / "MacOS" / manifest["name"]
+    if launcher.name == exe:
+        raise SystemExit(f"luma port mac: the program and the launcher are both called {exe}")
+    launcher.write_text(NATIVE_LAUNCHER.format(name=manifest["name"], version=manifest["version"], exe=exe,
+                                               app_id=manifest["app_id"], env="\n".join(lines)))
+    launcher.chmod(0o755)
+
+
+def size_of(path: Path) -> str:
+    return out(["du", "-sh", str(path)]).split()[0]
+
+
+def main() -> int:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    if len(args) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    manifest = json.loads(Path(args[0]).read_text())
+    out_dir = Path(args[1]).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work = out_dir / "work"
+    work.mkdir(exist_ok=True)
+
+    app = out_dir / f"{manifest['name']}.app"
+    shutil.rmtree(app, ignore_errors=True)
+    contents = app / "Contents"
+    (contents / "MacOS").mkdir(parents=True)
+    (contents / "Resources").mkdir()
+
+    if manifest.get("kind") == "native":
+        bundler = Bundler(contents, [BREW / "lib"])
+        exe = stage_native(manifest, contents, bundler, work)
+        stage_loaders(contents, bundler)
+        stage_intl(contents, bundler, work)
+        log("staging icons, schemas, fonts")
+        stage_share(manifest, contents)
+        finish_share(contents)
+        stage_extras(contents)
+        strip_bundle(contents)
+        write_native_launcher(manifest, contents, exe)
+    else:
+        log("building the LumaUI C kit")
+        kit_build = build_kit(manifest, work)
+        search = [kit_build / "ui", kit_build / "appearance", kit_build / "semantics", BREW / "lib"]
+        search += [Path(prefix) / "lib" for prefix in manifest.get("native_prefixes", [])]
+        bundler = Bundler(contents, search)
+
+        log("staging Python, PyGObject, pycairo")
+        stage_python(contents, bundler, manifest)
+        log("staging the kit and typelibs")
+        typelibs = stage_kit(manifest, contents, bundler, kit_build)
+        stage_typelibs(typelibs, bundler, manifest)
+        stage_loaders(contents, bundler)
+        stage_intl(contents, bundler, work)
+        log("staging icons, schemas, fonts and the app")
+        stage_share(manifest, contents)
+        stage_app(manifest, contents)
+        if manifest.get("runtime"):
+            log(f"staging runtime components: {', '.join(manifest['runtime'])}")
+            components.stage(manifest["runtime"], contents, bundler, CACHE, BREW,
+                             contents / f"Resources/python/lib/python{PY_VERSION}/site-packages",
+                             BREW / f"bin/python{PY_VERSION}")
+            stage_shared_components(manifest, contents, bundler)
+        stage_extras(contents)
+        for relative, source in manifest.get("resource_paths", {}).items():
+            target = contents / "Resources" / relative
+            if ".." in Path(relative).parts or Path(relative).is_absolute():
+                raise SystemExit("Invalid bundle resource destination")
+            copy_tree(Path(source), target)
+        if manifest.get("native_webview"):
+            target = contents / "Frameworks/libluma-webview.dylib"
+            source = Path(manifest["repo_root"]) / "src/luma-platform/webview/luma-webview-mac.mm"
+            run(["clang++", "-std=c++17", "-fobjc-arc", "-dynamiclib", "-O2", str(source),
+                 "-framework", "Cocoa", "-framework", "WebKit", "-o", str(target)])
+            bundler.track(target, target); bundler.walk(target)
+        for name, source in manifest.get("native_helpers", {}).items():
+            if Path(name).name != name: raise SystemExit("Invalid helper name")
+            target = contents / "Helpers" / name; target.parent.mkdir(exist_ok=True)
+            shutil.copy2(source, target); target.chmod(0o755); bundler.track(target, Path(source)); bundler.walk(target)
+        strip_bundle(contents)
+        write_launcher(manifest, contents)
+    icon = make_icns(manifest, contents, work)
+
+    log(f"relocating {len(bundler.copied)} dylibs and signing")
+    machos = bundler.rewrite_all()
+    stage_helpers(manifest, contents)  # static Go programs: no dylibs to relocate
+    stage_web_signin(contents)  # Swift, system frameworks only
+    write_plist(manifest, contents, icon, min_macos(machos))
+    run(["codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", str(app)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    run(["codesign", "--verify", "--deep", "--strict", str(app)])
+    leaks = [str(p) for p in machos if "/opt/homebrew" in out(["otool", "-L", str(p)])]
+    if leaks:
+        raise SystemExit(f"luma port mac: still linked to Homebrew: {leaks[:5]}")
+    log(f"app: {app} ({size_of(app)})")
+    if not os.environ.get("LUMA_PORT_NO_DMG"):
+        dmg = make_dmg(app, out_dir, manifest)
+        log(f"dmg: {dmg} ({size_of(dmg)})")
+    shutil.rmtree(work / "app.iconset", ignore_errors=True)
+    if "--run" in flags:
+        run(["open", str(app)])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

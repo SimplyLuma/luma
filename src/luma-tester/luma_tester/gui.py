@@ -1299,8 +1299,7 @@ def launch(state=None):
 
         def refresh_snapshots(self):
             self.snapshot_heading.action_button.set_sensitive(bool(self.select_image()) and not self.busy)
-            if self.active():
-                return
+            if self.busy:return
             try:
                 session = self.selected_session()
                 signature = (str(session.disk), session.disk.stat().st_mtime_ns if session.disk.exists() else 0)
@@ -1325,17 +1324,15 @@ def launch(state=None):
 
         def save_snapshot(self):
             body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-            body.append(self.label('Saves the guest disk. Shared host folders are not included. Running apps close when Luma shuts down.', muted=True))
+            body.append(self.label('Saves the guest disk while Luma stays open. Unsaved app memory and shared host folders are not included.', muted=True))
             name=TextField('Snapshot name',value='Before changes')
             body.append(name);handle=[None]
             def save():
                 label=name.text.strip()
                 if not label:self.notify('Name the snapshot first.');return
                 handle[0].cancel()
-                if self.active():
-                    self.pending_snapshot=label;self.stop()
-                else:self.create_snapshot(label)
-            body.append(self.button('Save and Shut Down' if self.active() else 'Save Snapshot',save,primary=True,icon='camera'))
+                self.create_snapshot(label)
+            body.append(self.button('Save Snapshot',save,primary=True,icon='camera'))
             handle[0]=self.sheet('Save Snapshot',body)
 
         def create_snapshot(self, name):

@@ -3,10 +3,20 @@
 
 #include "luma-appearance.h"
 
+/* Off Wayland (macOS, Windows, Android: luma port) there is no background
+ * effect protocol; the backdrop reports itself unavailable and the veil is
+ * drawn unblurred, exactly as on a Wayland compositor without the protocol. */
+#ifdef LUMA_HAVE_WAYLAND
 #include <gdk/wayland/gdkwayland.h>
 #include <wayland-client.h>
 
 #include "ext-background-effect-v1-client-protocol.h"
+#else
+struct wl_registry;
+struct wl_compositor;
+struct ext_background_effect_manager_v1;
+struct ext_background_effect_surface_v1;
+#endif
 
 typedef struct _LumaBackdropDisplay LumaBackdropDisplay;
 
@@ -78,6 +88,7 @@ set_blur_available(LumaBackdropDisplay *self, gboolean available) {
   }
 }
 
+#ifdef LUMA_HAVE_WAYLAND
 static void
 manager_capabilities(void *data,
                      struct ext_background_effect_manager_v1 *manager G_GNUC_UNUSED,
@@ -129,15 +140,18 @@ static const struct wl_registry_listener registry_listener = {
   registry_global,
   registry_global_remove,
 };
+#endif
 
 static void
 luma_backdrop_display_dispose(GObject *object) {
   LumaBackdropDisplay *self = LUMA_BACKDROP_DISPLAY(object);
   set_blur_available(self, FALSE);
+#ifdef LUMA_HAVE_WAYLAND
   g_clear_pointer(&self->manager,
                   ext_background_effect_manager_v1_destroy);
   g_clear_pointer(&self->compositor, wl_compositor_destroy);
   g_clear_pointer(&self->registry, wl_registry_destroy);
+#endif
   g_clear_pointer(&self->bindings, g_ptr_array_unref);
   G_OBJECT_CLASS(luma_backdrop_display_parent_class)->dispose(object);
 }
@@ -154,6 +168,12 @@ luma_backdrop_display_init(LumaBackdropDisplay *self) {
 
 static LumaBackdropDisplay *
 display_state_for(GdkDisplay *display) {
+#ifndef LUMA_HAVE_WAYLAND
+  (void)display;
+  (void)display_state_quark;
+  (void)set_blur_available;
+  return NULL;
+#else
   LumaBackdropDisplay *state;
   struct wl_display *wl_display;
 
@@ -184,6 +204,7 @@ display_state_for(GdkDisplay *display) {
   g_object_set_qdata_full(G_OBJECT(display), display_state_quark,
                           g_object_ref(state), g_object_unref);
   return state;
+#endif
 }
 
 static void
@@ -191,6 +212,7 @@ remove_effect(LumaSurfaceBackdrop *self) {
   if (self->effect == NULL)
     return;
 
+#ifdef LUMA_HAVE_WAYLAND
   ext_background_effect_surface_v1_set_blur_region(self->effect, NULL);
   ext_background_effect_surface_v1_destroy(self->effect);
   self->effect = NULL;
@@ -198,6 +220,7 @@ remove_effect(LumaSurfaceBackdrop *self) {
     gdk_wayland_surface_force_next_commit(self->surface);
     gdk_surface_queue_render(self->surface);
   }
+#endif
 }
 
 static void
@@ -209,6 +232,7 @@ set_active(LumaSurfaceBackdrop *self, gboolean active) {
   g_object_notify_by_pspec(G_OBJECT(self), properties[PROP_ACTIVE]);
 }
 
+#ifdef LUMA_HAVE_WAYLAND
 static int
 rounded_row_inset(int radius, int row) {
   int doubled_radius = radius * 2;
@@ -276,6 +300,11 @@ update_effect_region(LumaSurfaceBackdrop *self) {
   gdk_wayland_surface_force_next_commit(self->surface);
   gdk_surface_queue_render(self->surface);
 }
+#else
+static void
+update_effect_region(LumaSurfaceBackdrop *self G_GNUC_UNUSED) {
+}
+#endif
 
 static gboolean
 update_effect_region_after_layout(GtkWidget *widget G_GNUC_UNUSED,
@@ -352,6 +381,7 @@ luma_surface_backdrop_sync(LumaSurfaceBackdrop *self) {
     return;
   }
 
+#ifdef LUMA_HAVE_WAYLAND
   if (self->effect == NULL) {
     struct wl_surface *wl_surface =
         gdk_wayland_surface_get_wl_surface(self->surface);
@@ -366,6 +396,7 @@ luma_surface_backdrop_sync(LumaSurfaceBackdrop *self) {
      * transparent margins become a bright rectangular blur halo. */
     update_effect_region(self);
   }
+#endif
   schedule_effect_region_update(self);
   set_active(self, self->effect != NULL);
 }
