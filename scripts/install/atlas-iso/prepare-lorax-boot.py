@@ -86,6 +86,15 @@ install usr/share/luma/boot/grub-theme/* boot/grub2/themes/luma/
 <% filegraft += " boot/grub2={0}/boot/grub2".format(outroot) %>
 ## make boot.iso''')
     changes[path.relative_to(source)] = text
+    # Userspace FAT tools avoid a host loop mount on either architecture while
+    # retaining the exact upstream shim/GRUB files and complete readback.
+    path = generic / 'efi.tmpl'
+    text = path.read_text()
+    command = 'runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}'
+    if text.count(command) != 1:
+        raise ValueError('unsupported Lorax EFI image creation layout')
+    changes[path.relative_to(source)] = text.replace(
+        command, 'runcmd python3 /s/make-efi-image.py ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}')
     shutil.copytree(source, destination)
     for relative, text in changes.items():
         (destination / relative).write_text(text)

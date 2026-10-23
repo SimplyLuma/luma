@@ -102,6 +102,7 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue quiet }
             for kind in ('bios', 'efi'):
                 (config / f'grub2-{kind}.cfg').write_text(menu)
             (generic / 'x86.tmpl').write_text(LORAX.ARCH + '\n## make boot.iso\n')
+            (generic / 'efi.tmpl').write_text('runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}\n')
             LORAX.prepare(root / 'source', root / 'good')
             for kind in ('bios', 'efi'):
                 result = (root / 'good/templates.d/99-generic/config_files/x86' / f'grub2-{kind}.cfg').read_text()
@@ -164,6 +165,7 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
             (config / 'grub2-efi.cfg').write_text(menu)
             template = "efiarch64 = 'AA64'\n## make boot.iso\n${efigraft} ${filegraft}\n"
             (generic / 'aarch64.tmpl').write_text(template)
+            (generic / 'efi.tmpl').write_text('runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}\n')
             LORAX.prepare(root / 'source', root / 'good', 'aarch64')
             result = (root / 'good/templates.d/99-generic/config_files/aarch64/grub2-efi.cfg').read_text()
             self.assertIn('@ROOT@ ro rhgb quiet', result)
