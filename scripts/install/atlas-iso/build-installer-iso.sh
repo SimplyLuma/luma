@@ -39,6 +39,7 @@
 #   build-installer-iso.sh --rpms DIR --boot-rpms DIR --boot-manifest FILE --work DIR --output ISO
 #       [--arch x86_64|aarch64]
 #       [--channel stable|beta|nightly]   (default nightly: staff media)
+#       [--runtime-tmpfs-gib N]          RAM for transient Lorax root; admit N+4 GiB
 #       [--payload-repo DIR]              OSTree repository to carry on the medium
 #       [--release-key PATH]              default /etc/pki/ostree/luma-release.gpg
 #       [--preview-credential-file FILE]  beta or nightly staff media only: one line,
@@ -80,6 +81,7 @@ release_key=$LUMA_OS_RELEASE_KEY
 test_url="" test_ref="" test_key=""
 credential_file=""
 architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+runtime_tmpfs_gib=${ATLAS_RUNTIME_TMPFS_GIB:-}
 # The installer runtime's product version is the OS major version the medium
 # installs (luma/<major>/x86_64); release names come from --display-name.
 product="Luma" version=$(printf '%s' "$LUMA_OS_REF_PREFIX" | cut -d/ -f2)
@@ -96,6 +98,7 @@ while [ "$#" -gt 0 ]; do
     --work) work=$2; shift 2 ;;
     --output) output=$2; shift 2 ;;
     --channel) channel=$2; shift 2 ;;
+    --runtime-tmpfs-gib) runtime_tmpfs_gib=$2; shift 2 ;;
     --payload-repo) payload_repo=$2; shift 2 ;;
     --release-key) release_key=$2; shift 2 ;;
     --test-payload-url) test_url=$2; shift 2 ;;
@@ -114,6 +117,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$architecture" in x86_64|aarch64) ;; *) fail "unsupported architecture: $architecture" ;; esac
+if [ -n "$runtime_tmpfs_gib" ]; then
+  [[ "$runtime_tmpfs_gib" =~ ^[1-9][0-9]?$ ]] || fail 'runtime tmpfs GiB must be a positive integer below 100'
+fi
 LUMA_OS_REF_PREFIX="${LUMA_OS_REF_PREFIX%/*}/$architecture"
 [ -n "$release_repo" ] || release_repo="https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/$architecture/os/"
 # Lorax has a supported target architecture override. Keep DNF, compression
@@ -320,7 +326,16 @@ fi
 # xattrs into dracut's staging tree, which silently drops files from the
 # initramfs (the first build lacked systemd-sysroot-fstab-check and could not
 # mount its root). /dev is shared so lorax sees loop devices it creates.
-podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
+# The caller must admit tmpfs capacity plus at least 4 GiB for tools, caches
+# and compression before opting in. Only the transient Lorax root moves;
+# package bodies, logs, final media and later full-image audits stay on disk.
+lorax_tmp=/w/tmp
+runtime_mount=()
+if [ -n "$runtime_tmpfs_gib" ]; then
+  lorax_tmp=/lorax-runtime-tmp
+  runtime_mount=(--tmpfs "$lorax_tmp:rw,size=${runtime_tmpfs_gib}g,mode=1777")
+fi
+podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
     --env "DNF_VAR_arch=$architecture" \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$tools_image" bash -euo pipefail -c "
   trap 'echo \"error: build step failed at line \$LINENO of the container script\" >&2' ERR
@@ -390,7 +405,7 @@ podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileg
         --add-template-var luma_atlas_clock_epoch=$clock_epoch \
         --add-template-var luma_atlas_runtime_kernel=$ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH \
         --add-template-var luma_atlas_preview_credential=$credential_var \
-        --cachedir /w/runtime-rpm-cache --tmp /w/tmp --logfile /w/logs/lorax.log \
+        --cachedir /w/runtime-rpm-cache --tmp '$lorax_tmp' --logfile /w/logs/lorax.log \
         /w/lorax-out
   if grep -q 'dracut-install: ERROR' /w/logs/program.log; then
     echo 'error: dracut could not install files into the initramfs; see logs/program.log' >&2
@@ -511,6 +526,7 @@ podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileg
 
 mv "$work/output.iso.partial" "$output"
 {
+  printf 'runtime_tmpfs_gib=%s\n' "${runtime_tmpfs_gib:-none}"
   printf 'architecture=%s\ntools_architecture=%s\n' "$architecture" "$tools_architecture"
   printf 'channel=%s\nref=%s\nremote=%s\nurl=%s\nremote_url=mirrorlist=file://%s\nmirrorlist=%s\n' \
     "$channel" "$ref" "$LUMA_OS_REMOTE" "$LUMA_OS_URL" "$LUMA_OS_MIRRORLIST" "$LUMA_OS_MIRRORLIST"
