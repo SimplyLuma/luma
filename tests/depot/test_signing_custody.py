@@ -65,6 +65,24 @@ class Custody(unittest.TestCase):
                                  'seal-inputs', str(alias), str(target)], capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(target.exists())
+    def test_sealed_graph_resolves_both_desktop_architectures_and_profiles(self):
+        target = self.base / 'graph-control'
+        digest = control.seal(SOURCE, target, graph=True)
+        control.verify(target, digest)
+        path = target / 'scripts/os/lib/desktop_target.py'
+        spec = importlib.util.spec_from_file_location('sealed_desktop_target', path)
+        desktop = importlib.util.module_from_spec(spec); spec.loader.exec_module(desktop)
+        self.assertTrue(desktop.profile(target, 'x86_64', 'full')['capabilities']['desktop'])
+        preview = desktop.profile(target, 'aarch64', 'arm-preview')
+        self.assertTrue(preview['capabilities']['desktop'])
+        self.assertFalse(preview['capabilities']['windows_apps'])
+        for name in ('desktop-targets.json', 'desktop-profiles.json'):
+            sealed = target / 'config/os' / name
+            self.assertEqual(sealed.read_bytes(), (SOURCE / 'config/os' / name).read_bytes())
+            self.assertNotEqual(sealed.stat().st_ino, (SOURCE / 'config/os' / name).stat().st_ino)
+        (target / 'config/os/desktop-profiles.json').unlink()
+        with self.assertRaises(ValueError): control.verify(target, digest)
+
     def test_existing_empty_input_directory_allowed(self):
         source = self.base / 'empty-input'; source.mkdir(mode=0o700)
         target = self.base / 'empty-input-sealed'

@@ -97,6 +97,8 @@ def seal(source, target, inputs=False, graph=False):
     selected = (list((source / 'scripts/os').rglob('*')) + [
         source / 'scripts/depot/seal-signing-control.py',
         source / 'config/os/release.env', source / 'config/desktop/inputs.env',
+        source / 'config/os/desktop-targets.json',
+        source / 'config/os/desktop-profiles.json',
         source / 'image/os-tools/Containerfile']) if graph else list(source.rglob('*')) if inputs else list((source / 'scripts/depot').rglob('*')) + [
         source / 'config/desktop/inputs.env',
         source / 'packaging/flatpak/apps/titles.json',
