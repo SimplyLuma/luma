@@ -860,9 +860,15 @@ NM_CONNECTIONS = '/etc/NetworkManager/system-connections'
 PROVIDERS = '/usr/share/mobile-broadband-provider-info/serviceproviders.xml'
 # Used only when mobile-broadband-provider-info is not installed.
 IA_FALLBACK = {'310240': 'fast.t-mobile.com', '310260': 'fast.t-mobile.com'}
+# APNs MVNOs on a network commonly use, tried right after the first listed one
+# (mobile-broadband-provider-info lists them late or, for some network codes,
+# not at all). At most DATA_APN_TRIES APNs are tried per SIM.
+MVNO_APNS = {'310240': ['wholesale'], '310260': ['wholesale']}
+DATA_APN_TRIES = 3
 
 
 LAST_IA = {}                # protocol -> IA APN last set, for re-attach
+SIM_IDENTITY = {}           # protocol -> (ICCID, IMSI, SPN) of the subscription
 
 
 def ia_tlvs(apn):
@@ -891,28 +897,140 @@ def nm_apn(iccid, imsi):
     return None
 
 
-def provider_apn(imsi, spn=None, path=None):
-    """First internet APN of the provider for this IMSI in
-    mobile-broadband-provider-info; a provider named like the SIM's SPN wins
-    over the first listed one (MVNOs share the host network's MCC/MNC)."""
+def nm_profile_covers(iccid, imsi, directory=None):
+    """Whether a saved NetworkManager gsm profile would serve this SIM: one
+    bound to its ICCID or operator, or one bound to no SIM at all."""
+    import configparser, glob
+    for path in sorted(glob.glob(os.path.join(directory or NM_CONNECTIONS, '*.nmconnection'))):
+        c = configparser.RawConfigParser(strict=False, interpolation=None)
+        try:
+            c.read(path)
+        except (OSError, configparser.Error):
+            continue
+        if not c.has_section('gsm'):
+            continue
+        sim_id = c.get('gsm', 'sim-id', fallback='')
+        operator = c.get('gsm', 'sim-operator-id', fallback='')
+        if sim_id == iccid or (not sim_id and (not operator or imsi.startswith(operator))):
+            return True
+    return False
+
+
+def nm_load_connection(path):
+    """Ask a running NetworkManager to read a new profile (it reads it at
+    start otherwise)."""
+    try:
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        bus.call_sync('org.freedesktop.NetworkManager', '/org/freedesktop/NetworkManager/Settings',
+                      'org.freedesktop.NetworkManager.Settings', 'LoadConnections',
+                      GLib.Variant('(as)', ([path],)), None, Gio.DBusCallFlags.NO_AUTO_START, 10000, None)
+    except Exception:
+        pass
+
+
+def auto_profile_path(iccid, directory=None):
+    """The mobile data profile luma-modemd created for this SIM (if any)."""
+    import hashlib
+    return os.path.join(directory or NM_CONNECTIONS, 'mobile-data-%s.nmconnection'
+                        % hashlib.sha256(iccid.encode()).hexdigest()[:12])
+
+
+def ensure_nm_profile(iccid, imsi, spn, apn, directory=None, load=None):
+    """Create the mobile data profile for a SIM no saved profile serves:
+    autoconnect, bound to the SIM, with the provider APN for data and the
+    initial attach. Never changes an existing profile. Returns its path."""
+    import uuid
+    directory = directory or NM_CONNECTIONS
+    if not (iccid and imsi and apn) or nm_profile_covers(iccid, imsi, directory):
+        return None
+    path = auto_profile_path(iccid, directory)
+    if os.path.exists(path):
+        return None
+    name = 'Mobile data' + (' (%s)' % spn if spn and re.fullmatch(r'[\w .&+-]{1,32}', spn) else '')
+    text = ('[connection]\nid=%s\nuuid=%s\ntype=gsm\nautoconnect=true\n\n'
+            '[gsm]\napn=%s\ninitial-eps-bearer-apn=%s\ninitial-eps-bearer-configure=true\nsim-id=%s\n\n'
+            '[ipv4]\nmethod=auto\n\n[ipv6]\naddr-gen-mode=default\nmethod=auto\n'
+            % (name, uuid.uuid4(), apn, apn, iccid))
+    os.makedirs(directory, mode=0o755, exist_ok=True)
+    temporary = path + '.tmp'
+    with open(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+        f.write(text)
+    os.replace(temporary, path)
+    (load or nm_load_connection)(path)
+    log('mobile data profile created for this SIM, APN', apn)
+    return path
+
+
+class ApnFallback:
+    """Steps luma-modemd's own mobile data profile through the other internet
+    APNs listed for the SIM's network when its data path carries nothing.
+    Profiles a user made are never changed."""
+
+    def __init__(self, ps=IA_PS, directory=None, load=None):
+        self.ps, self.directory, self.load = ps, directory, load
+        self.tried = {}                 # ICCID -> APNs tried
+
+    def next(self):
+        identity = SIM_IDENTITY.get(self.ps)
+        if not identity:
+            return None
+        iccid, imsi, spn = identity
+        path = auto_profile_path(iccid, self.directory)
+        try:
+            with open(path) as f:
+                text = f.read()
+        except OSError:
+            return None                 # not our profile to change
+        current = re.search(r'^apn=(.*)$', text, re.M)
+        tried = self.tried.setdefault(iccid, [])
+        if current and current.group(1) not in tried:
+            tried.append(current.group(1))
+        if len(tried) >= DATA_APN_TRIES:
+            return None
+        listed = provider_apns(imsi, spn)
+        fallback = IA_FALLBACK.get(imsi[:6]) or IA_FALLBACK.get(imsi[:5])
+        mvno = MVNO_APNS.get(imsi[:6]) or MVNO_APNS.get(imsi[:5]) or []
+        for apn in dict.fromkeys(listed[:1] + mvno + listed[1:] + ([fallback] if fallback else [])):
+            if apn in tried or not re.fullmatch(r'[A-Za-z0-9.-]{1,99}', apn):
+                continue
+            tried.append(apn)
+            text = re.sub(r'^(apn|initial-eps-bearer-apn)=.*$', lambda m: '%s=%s' % (m.group(1), apn), text, flags=re.M)
+            temporary = path + '.tmp'
+            with open(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+                f.write(text)
+            os.replace(temporary, path)
+            (self.load or nm_load_connection)(path)
+            log('data: mobile data profile now uses APN', apn)
+            return apn
+        return None
+
+
+def provider_apns(imsi, spn=None, path=None):
+    """Internet APNs of the providers for this IMSI in
+    mobile-broadband-provider-info, best first: a provider named like the SIM's
+    SPN before the others (MVNOs share the host network's MCC/MNC)."""
     import xml.etree.ElementTree as ET
     try:
         root = ET.parse(path or PROVIDERS).getroot()
     except (OSError, ET.ParseError):
-        return None
-    first = None
+        return []
+    named, others = [], []
     for p in root.iter('provider'):
         if not any(imsi.startswith(n.get('mcc', '') + n.get('mnc', ''))
                    for n in p.iter('network-id') if n.get('mcc') and n.get('mnc')):
             continue
         apns = [a.get('value') for a in p.iter('apn')
                 if a.get('value') and any(u.get('type') == 'internet' for u in a.iter('usage'))]
-        if not apns:
-            continue
-        if spn and (p.findtext('name') or '').strip().lower() == spn.strip().lower():
-            return apns[0]
-        first = first or apns[0]
-    return first
+        spn_named = spn and (p.findtext('name') or '').strip().lower() == spn.strip().lower()
+        (named if spn_named else others).extend(apns)
+    return list(dict.fromkeys(named + others))
+
+
+def provider_apn(imsi, spn=None, path=None):
+    """The best internet APN for this IMSI in mobile-broadband-provider-info."""
+    apns = provider_apns(imsi, spn, path)
+    return apns[0] if apns else None
 
 
 def ia_apn(iccid, imsi, spn=None):
@@ -949,6 +1067,7 @@ def attach_config(mipc, ps=IA_PS, errors=(OSError,)):
             spn = sim_spn(mipc, ps)
         except errors:
             spn = None
+        SIM_IDENTITY[ps] = (iccid, imsi, spn)
         apn, source = ia_apn(iccid, imsi, spn)
         if not apn:
             log('IA APN: none known for this subscription (ps%d)' % ps)
@@ -956,6 +1075,11 @@ def attach_config(mipc, ps=IA_PS, errors=(OSError,)):
         LAST_IA[ps] = apn
         result = mipc.result(APN_SET_IA, ia_tlvs(apn), ps)
         log('IA APN', apn, 'from', source, 'ps%d' % ps, '->', result)
+        if source != 'NetworkManager':      # no saved profile serves this SIM yet
+            try:
+                ensure_nm_profile(iccid, imsi, spn, apn)
+            except OSError as e:
+                log('mobile data profile not created:', e)
         log('DATA_SET_DATA_ALLOW ps%d' % ps, '->', mipc.result(DATA_SET_DATA_ALLOW, [], ps))
         # The modem applies the IA only to an attach started by the next radio
         # power-on; an IA set seconds earlier, or while the subscription has
@@ -1486,10 +1610,10 @@ class DataService:
     ModemManager may call it."""
 
     def __init__(self, indications, data, ready=lambda: True, sleep=time.sleep, clock=time.monotonic,
-                 on_dead=lambda reason: None, works=data_path_works):
+                 on_dead=lambda reason: None, works=data_path_works, next_apn=lambda: None):
         self.ind, self.data = indications, data
         self.ready, self.sleep, self.clock = ready, sleep, clock
-        self.on_dead, self.works = on_dead, works
+        self.on_dead, self.works, self.next_apn = on_dead, works, next_apn
         self.last_rebind = None
 
     def check_data_path(self, cid, interface, settings):
@@ -1497,11 +1621,19 @@ class DataService:
         result = self.works(interface, settings.get('dns6', []))
         if result is not False or cid not in self.data.active:
             if result:
-                log('data: %s carries traffic' % interface)
+                log('data: %s carries traffic (APN %s)' % (interface, self.data.bound.get(cid, (None, '?'))[1]))
             return
         now = self.clock()
         if self.last_rebind is not None and now - self.last_rebind < DATA_REBIND_EVERY:
-            log('data: %s carries no traffic; radio restarted %ds ago, not again' % (interface, now - self.last_rebind))
+            # The modem cycle did not help: try the next APN of the network
+            # (only in luma-modemd's own profile), applied by another cycle.
+            apn = self.next_apn()
+            if not apn:
+                log('data: %s carries no traffic; modem cycled %ds ago, no other APN to try'
+                    % (interface, now - self.last_rebind))
+                return
+            self.last_rebind = now
+            self.on_dead('data on %s carries no traffic after a modem cycle; trying APN %s' % (interface, apn))
             return
         self.last_rebind = now
         self.on_dead('data on %s carries no traffic (%d refusals before activation)'
@@ -1674,7 +1806,7 @@ def main():
         data = DataCalls(IA_PS)
         registration.on_radio_off.append(data.radio_off)
         try:
-            DataService(indications, data,
+            DataService(indications, data, next_apn=ApnFallback(IA_PS).next,
                         ready=lambda: registration.ims_registered or not registration.ims,
                         on_dead=lambda reason: threading.Thread(target=modem_manager_cycle, args=(reason,),
                                                                 daemon=True).start()).start()

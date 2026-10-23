@@ -719,6 +719,8 @@ class IaApnTests(unittest.TestCase):
         for name, value in (('NM_CONNECTIONS', str(d / 'nm')), ('PROVIDERS', str(self.providers))):
             p = patch.object(modemd, name, value);p.start();self.addCleanup(p.stop)
         p = patch.object(modemd, 'log', lambda *a: self.logs.append(a));p.start();self.addCleanup(p.stop)
+        self.loaded = []
+        p = patch.object(modemd, 'nm_load_connection', self.loaded.append);p.start();self.addCleanup(p.stop)
         self.logs = []
     def nm(self, text):
         (pathlib.Path(modemd.NM_CONNECTIONS) / 'c.nmconnection').write_text(text)
@@ -754,6 +756,86 @@ class IaApnTests(unittest.TestCase):
                                 (0x0403, [(0x0100, b'\x00')], 2),
                                 (0x0403, [(0x0100, b'\x01')], 2)])
         self.assertFalse(any(self.IMSI in str(a) or self.ICCID in str(a) for a in self.logs))
+    def profiles(self):
+        return sorted(pathlib.Path(modemd.NM_CONNECTIONS).glob('*.nmconnection'))
+    def test_attach_config_creates_the_mobile_data_profile_once(self):
+        class Mipc:
+            def command(inner, command, timeout=5, sim=2):
+                return {'AT+ICCID?': '+ICCID: %sF\r\nOK\r\n' % self.ICCID,
+                        'AT+CIMI': '\r\n%s\r\n\r\nOK\r\n' % self.IMSI,
+                        'AT+CRSM=176,28486,0,0,17': '+CRSM: 144,0,"014578616D706C65FFFFFFFFFFFFFFFFFF"\r\nOK\r\n'}[command]
+            def result(inner, request, tlvs, sim, timeout=5):
+                return 0
+        self.assertTrue(modemd.attach_config(Mipc(), 2))
+        (path,) = self.profiles()
+        text = path.read_text()
+        for line in ('type=gsm', 'autoconnect=true', 'apn=fast.t-mobile.com', 'initial-eps-bearer-apn=fast.t-mobile.com',
+                     'initial-eps-bearer-configure=true', 'sim-id=%s' % self.ICCID, '[ipv6]\naddr-gen-mode=default\nmethod=auto'):
+            self.assertIn(line, text)
+        self.assertNotIn(self.ICCID, path.name)
+        self.assertEqual(oct(path.stat().st_mode & 0o777), '0o600')
+        self.assertEqual(self.loaded, [str(path)])
+        self.assertFalse(any(self.IMSI in str(a) or self.ICCID in str(a) for a in self.logs))
+        self.assertEqual(modemd.ia_apn(self.ICCID, self.IMSI), ('fast.t-mobile.com', 'NetworkManager'))
+        self.assertTrue(modemd.attach_config(Mipc(), 2))                     # next boot: profile serves it
+        self.assertEqual(len(self.profiles()), 1)
+    def test_profiles_serving_the_sim_are_never_replaced(self):
+        self.nm('[connection]\nid=Mine\n[gsm]\nsim-id=%s\n' % self.ICCID)  # user's, even without an APN
+        self.assertIsNone(modemd.ensure_nm_profile(self.ICCID, self.IMSI, None, 'fast.t-mobile.com'))
+        self.nm('[connection]\nid=Any SIM\n[gsm]\napn=wholesale\n')      # bound to no SIM
+        self.assertIsNone(modemd.ensure_nm_profile(self.ICCID, self.IMSI, None, 'fast.t-mobile.com'))
+        self.nm('[gsm]\napn=other\nsim-operator-id=310410\n')              # another operator
+        path = modemd.ensure_nm_profile(self.ICCID, self.IMSI, 'Example', 'wholesale')
+        self.assertIn('id=Mobile data (Example)', pathlib.Path(path).read_text())
+        self.assertIsNone(modemd.ensure_nm_profile(self.ICCID, self.IMSI, 'Example', 'wholesale'))
+        other = modemd.ensure_nm_profile('8901240000000000002', self.IMSI, None, 'wholesale')   # SIM swap
+        self.assertNotEqual(other, path)
+        self.assertEqual(len(self.profiles()), 3)
+        self.assertIsNone(modemd.ensure_nm_profile(self.ICCID, self.IMSI, None, None))
+    def test_provider_apns_listed_best_first(self):
+        self.assertEqual(modemd.provider_apns(self.IMSI), ['fast.t-mobile.com', 'wholesale'])
+        self.assertEqual(modemd.provider_apns(self.IMSI, 'Mint Mobile'), ['wholesale', 'fast.t-mobile.com'])
+        self.assertEqual(modemd.provider_apns('208010000000000'), [])
+    def test_apn_fallback_steps_only_its_own_profile(self):
+        modemd.SIM_IDENTITY[2] = (self.ICCID, self.IMSI, None)
+        self.addCleanup(modemd.SIM_IDENTITY.clear)
+        fallback = modemd.ApnFallback(2)
+        self.assertIsNone(fallback.next())                                   # no auto profile yet
+        self.nm('[connection]\nid=Mine\n[gsm]\napn=mine\nsim-operator-id=310410\n')
+        path = pathlib.Path(modemd.ensure_nm_profile(self.ICCID, self.IMSI, None, 'fast.t-mobile.com'))
+        self.assertEqual(fallback.next(), 'wholesale')
+        text = path.read_text()
+        self.assertIn('\napn=wholesale\n', text)
+        self.assertIn('initial-eps-bearer-apn=wholesale', text)
+        self.assertIn('sim-id=%s' % self.ICCID, text)
+        self.assertEqual(oct(path.stat().st_mode & 0o777), '0o600')
+        self.assertIsNone(fallback.next())                                   # both APNs tried
+        self.assertIn('apn=mine', (pathlib.Path(modemd.NM_CONNECTIONS) / 'c.nmconnection').read_text())
+        self.assertEqual(self.loaded[-1], str(path))
+    def test_apn_fallback_tries_mvno_apn_second_and_stops_after_three(self):
+        modemd.SIM_IDENTITY[2] = (self.ICCID, '310260123456789', None)
+        self.addCleanup(modemd.SIM_IDENTITY.clear)
+        self.providers.write_text('''<serviceproviders><country code="us"><provider><name>T-Mobile</name><gsm>
+            <network-id mcc="310" mnc="260"/>
+            <apn value="fast.t-mobile.com"><usage type="internet"/></apn><apn value="epc.tmobile.com"><usage type="internet"/></apn>
+            <apn value="wap.voicestream.com"><usage type="internet"/></apn><apn value="pwg"><usage type="internet"/></apn>
+            </gsm></provider></country></serviceproviders>''')
+        modemd.ensure_nm_profile(self.ICCID, '310260123456789', None, 'fast.t-mobile.com')
+        fallback = modemd.ApnFallback(2)
+        self.assertEqual([fallback.next(), fallback.next(), fallback.next()], ['wholesale', 'epc.tmobile.com', None])
+    def test_dead_path_tries_the_next_apn_after_a_cycle(self):
+        now, dead, apns = [100.0], [], iter(['wholesale', None])
+        data = modemd.DataCalls(2)
+        interface, cid, settings = data.connect(FakeReader(), 'fast.t-mobile.com', 'ipv4v6')
+        service = modemd.DataService(None, data, clock=lambda: now[0], on_dead=dead.append,
+                                     works=lambda i, s: False, next_apn=lambda: next(apns))
+        service.check_data_path(cid, interface, settings)                     # dead: cycle the modem
+        now[0] += 60
+        service.check_data_path(cid, interface, settings)                     # still dead: next APN
+        now[0] += 60
+        service.check_data_path(cid, interface, settings)                     # no APN left: stop
+        self.assertEqual(len(dead), 2)
+        self.assertIn('trying APN wholesale', dead[1])
     def test_attach_config_without_identity_sends_nothing(self):
         class Mipc:
             def command(inner, command, timeout=5, sim=2):return 'OK'

@@ -7,9 +7,9 @@ b and on its internal storage, untouched.
 
 ## Alpha
 
-Build 20261020.16. Luma on the Titan 2 Elite is an alpha: daily use works, some hardware does not yet.
+Build 20261020.18. Luma on the Titan 2 Elite is an alpha: daily use works, some hardware does not yet.
 
-Works: SIM and eSIM, VoLTE calls (earpiece and speaker), SMS, mobile data (IPv6 with 464XLAT for IPv4), Wi-Fi, Bluetooth, main/tele/front cameras, charging, vibration, keyboard backlight.
+Works: SIM and eSIM, VoLTE calls (earpiece and speaker), SMS, mobile data (it sets itself up from the SIM, so the first start can take a few minutes; IPv6 with 464XLAT for IPv4), Wi-Fi, Bluetooth, main/tele/front cameras, charging, vibration, keyboard backlight.
 
 Not yet: proximity, rotation, light and compass sensors (the screen stays on at your ear during calls; press the power key to turn it off); GPS (location is Wi-Fi based); call audio over Bluetooth or USB-C headsets; OTA updates (the Titan update channel is not published yet).
 
