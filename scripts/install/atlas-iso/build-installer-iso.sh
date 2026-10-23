@@ -340,14 +340,14 @@ fi
 # package bodies, logs, final media and later full-image audits stay on disk.
 lorax_tmp=/w/tmp
 runtime_mount=()
-lorax_config_args=""
+# Lorax merges this supported override with its normal xz/BCJ defaults.
+# Bound compression independently of whether transient runtime storage is RAM.
+# Avoid auto-sizing compression caches/threads from the entire build host.
+printf '[compression]\nargs = -processors 4 -mem 512M\n' > "$work/templates/lorax-memory.conf"
+lorax_config_args="--config /w/templates/lorax-memory.conf"
 if [ -n "$runtime_tmpfs_gib" ]; then
   lorax_tmp=/lorax-runtime-tmp
   runtime_mount=(--tmpfs "$lorax_tmp:rw,size=${runtime_tmpfs_gib}g,mode=1777")
-  # Lorax merges this supported override with its normal xz/BCJ defaults.
-  # Avoid auto-sizing compression caches/threads from the entire build host.
-  printf '[compression]\nargs = -processors 4 -mem 512M\n' > "$work/templates/lorax-memory.conf"
-  lorax_config_args="--config /w/templates/lorax-memory.conf"
 fi
 # Initrd services drop root. A host container mask such as 0007 must not
 # turn dracut-created public library/config paths into root-only paths.
