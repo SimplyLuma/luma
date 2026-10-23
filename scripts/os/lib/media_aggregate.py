@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 from urllib.parse import urlsplit
 
@@ -89,7 +90,8 @@ def entries(document, channel):
     return result
 
 
-def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, notes):
+def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, notes,
+          incoming_arch='aarch64'):
     """Return unsigned index and alias plan from already verified inputs.
 
     notes(build_id, existing) returns exact verified JSON/signature bodies.
@@ -103,7 +105,9 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
             and not source.query and not target.fragment and not source.fragment,
             'Inputs must use the same credential-free HTTPS origin')
     require(target.path == f'/media/{channel}/latest.json', 'Wrong canonical index path')
-    require(source.path == f'/media/aarch64/{channel}/latest.json', 'Wrong ARM index path')
+    require(incoming_arch in ('x86_64', 'aarch64'), 'Invalid producer architecture')
+    incoming_prefix = '/media/aarch64' if incoming_arch == 'aarch64' else '/media'
+    require(source.path == f'{incoming_prefix}/{channel}/latest.json', 'Wrong producer index path')
     require(stamp(generated) > max(stamp(canonical['generated_utc']), stamp(incoming['generated_utc'])),
             'Aggregate generation must advance both verified inputs')
     original = entries(canonical, channel)
@@ -112,18 +116,33 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
     aliases, ignored = [], []
     result = copy.deepcopy(original)
     for identity, row in additions.items():
-        require(identity[1] == 'aarch64', 'Scoped input contains another architecture')
+        require(identity[1] == incoming_arch, 'Producer input contains another architecture')
         if row.get('public') is not True or row.get('interim') is True:
             ignored.append(list(identity))
             continue
         build, arch = identity
         filename = row.get('file', '')
         require(NAME.fullmatch(filename) and filename.endswith('.iso'), 'Invalid ISO filename')
+        alias = filename
+        if arch == 'aarch64' and not filename[:-4].endswith('-aarch64'):
+            alias = filename[:-4] + '-aarch64.iso'
+        require(NAME.fullmatch(alias), 'Architecture alias exceeds website filename bound')
+        if identity in original:
+            prior = original[identity]
+            require(prior.get('file') == alias and all(prior.get(key) == row.get(key) for key in
+                        ('sha256', 'size_bytes', 'commit', 'version')),
+                    'Existing canonical artifact identity would change')
+            # Retain canonical annotations, dates and retirement policy. An
+            # architecture producer cannot rewrite already published history.
+            continue
         require(row.get('url') == source_base + filename, 'ISO is not beside scoped index')
         require(row.get('notes_url') == source_base + f'notes/{build}.json', 'Notes are not beside scoped index')
         require(SHA.fullmatch(row.get('sha256', '')), 'Invalid ISO hash')
         require(type(row.get('size_bytes')) is int and row['size_bytes'] > 0, 'Invalid ISO size')
         stamp(row.get('published_utc') or row.get('date'))
+        row['file'], row['url'] = alias, target_base + alias
+        row['notes_url'] = target_base + f'notes/{build}.json'
+        row['sha256_url'] = target_base + alias + '.sha256'
         note, signature = notes(build, False)
         # The website addresses notes by build_id alone. Never replace x86 notes
         # with architecture-specific content under the same existing address.
@@ -137,20 +156,15 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
             for suffix, body in (('', note), ('.minisig', signature)):
                 aliases.append({'kind': 'notes' + suffix, 'source_url': source_base + f'notes/{build}.json' + suffix,
                                 'target_url': target_base + f'notes/{build}.json' + suffix,
+                                'action': 'copy' if source_base != target_base else 'publish-signed-input',
                                 'sha256': digest(body), 'bytes': len(body)})
-        alias = filename if filename[:-4].endswith('-aarch64') else filename[:-4] + '-aarch64.iso'
-        require(NAME.fullmatch(alias), 'Architecture alias exceeds website filename bound')
-        row['file'], row['url'] = alias, target_base + alias
-        row['notes_url'] = target_base + f'notes/{build}.json'
-        row['sha256_url'] = target_base + alias + '.sha256'
         if row.get('iso_available') is not False:
             aliases.append({'kind': 'installer-iso', 'source_url': source_base + filename,
-                            'target_url': row['url'], 'sha256': row['sha256'], 'bytes': row['size_bytes']})
+                            'target_url': row['url'], 'sha256': row['sha256'], 'bytes': row['size_bytes'],
+                            'action': 'copy' if source_base != target_base else 'verify-existing'})
             checksum = f"{row['sha256']}  {alias}\n".encode()
             aliases.append({'kind': 'checksum', 'target_url': row['sha256_url'],
                             'body_utf8': checksum.decode(), 'sha256': digest(checksum), 'bytes': len(checksum)})
-        require(identity not in original or original[identity] == row,
-                'Existing canonical entry would change')
         result[identity] = row
     require(len(result) <= 400, 'Aggregate exceeds website history bound; do not silently trim')
     rows = sorted(result.values(), key=lambda row: stamp(row.get('published_utc') or row['date']), reverse=True)
@@ -171,6 +185,16 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
     return aggregate, aliases, ignored
 
 
+def check_other_architectures(previous, candidate, channel, producer_arch):
+    """Refuse a legacy single-CPU producer dropping the other CPU's releases."""
+    require(producer_arch in ('x86_64', 'aarch64'), 'Invalid producer architecture')
+    prior, proposed = entries(previous, channel), entries(candidate, channel)
+    for identity, row in prior.items():
+        if identity[1] != producer_arch:
+            require(proposed.get(identity) == row,
+                    f'Would discard or change published {identity[1]} entry {identity[0]}; prepare a shared aggregate')
+
+
 def check_prior(receipt, current_canonical_body):
     """Operator calls under the shared lock immediately before metadata write."""
     require(receipt.get('schema') == 'org.projectluma.media-aggregate-preparation/v1',
@@ -182,8 +206,9 @@ def check_prior(receipt, current_canonical_body):
 def prepare(args):
     old_body = verified(args.canonical, lambda body:
                         f"luma-media-index channel={args.channel} generated_utc={json.loads(body)['generated_utc']}")
+    suffix = ' arch=aarch64' if args.incoming_arch == 'aarch64' else ''
     new_body = verified(args.incoming, lambda body:
-                        f"luma-media-index channel={args.channel} arch=aarch64 generated_utc={json.loads(body)['generated_utc']}")
+                        f"luma-media-index channel={args.channel}{suffix} generated_utc={json.loads(body)['generated_utc']}")
     canonical, incoming = json.loads(old_body), json.loads(new_body)
 
     def notes(build, existing):
@@ -199,7 +224,8 @@ def prepare(args):
         return body, signature
 
     aggregate, aliases, ignored = merge(canonical, incoming, args.channel, args.canonical_url,
-                                         args.incoming_url, args.generated_utc, notes)
+                                         args.incoming_url, args.generated_utc, notes, args.incoming_arch)
+    check_other_architectures(canonical, aggregate, args.channel, args.incoming_arch)
     body = (json.dumps(aggregate, indent=2, sort_keys=True) + '\n').encode()
     require(len(body) <= 1024 * 1024, 'Aggregate exceeds website JSON byte bound')
     args.output.mkdir(mode=0o700)
@@ -216,10 +242,21 @@ def prepare(args):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == 'check-preservation':
+        guard = argparse.ArgumentParser(description=check_other_architectures.__doc__)
+        guard.add_argument('previous', type=Path)
+        guard.add_argument('candidate', type=Path)
+        guard.add_argument('--channel', required=True)
+        guard.add_argument('--producer-arch', required=True)
+        args = guard.parse_args(sys.argv[2:])
+        check_other_architectures(json.loads(args.previous.read_bytes()), json.loads(args.candidate.read_bytes()),
+                                  args.channel, args.producer_arch)
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--channel', required=True)
     parser.add_argument('--canonical', required=True, type=Path)
     parser.add_argument('--incoming', required=True, type=Path)
+    parser.add_argument('--incoming-arch', choices=('x86_64', 'aarch64'), default='aarch64')
     parser.add_argument('--canonical-url', required=True)
     parser.add_argument('--incoming-url', required=True)
     parser.add_argument('--generated-utc', required=True)

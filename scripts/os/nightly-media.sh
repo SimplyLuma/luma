@@ -576,12 +576,56 @@ generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gen
 media_signature_arch=
 [ "$LUMA_OS_ARCH" = x86_64 ] || media_signature_arch=" arch=$LUMA_OS_ARCH"
 minisign_dir="$LUMA_OS_KEYS/update-graph-minisign"
+# A new single-CPU producer must not replace another CPU's published entries.
+# Fetch the actual signed prior, not a possibly stale local media directory.
+# Qualified operators can pass their already-held shared lock descriptor.
+luma_os_require_tools curl stat flock
+media_publication_lock=${LUMA_MEDIA_PUBLICATION_LOCK:-$LUMA_OS_ROOT/locks/media-publication.lock}
+if [ -n "${LUMA_MEDIA_PUBLICATION_LOCK_FD:-}" ]; then
+  [[ "$LUMA_MEDIA_PUBLICATION_LOCK_FD" =~ ^[0-9]+$ ]] || fail 'invalid shared publication lock descriptor'
+  [ "$(stat -Lc '%d:%i' "/proc/self/fd/$LUMA_MEDIA_PUBLICATION_LOCK_FD")" = \
+    "$(stat -Lc '%d:%i' "$media_publication_lock")" ] || fail 'shared publication lock descriptor names another file'
+  flock -n "$LUMA_MEDIA_PUBLICATION_LOCK_FD" || fail 'shared publication lock is not available'
+else
+  install -d "$(dirname "$media_publication_lock")"
+  exec 7>"$media_publication_lock"
+  flock -w 120 7 || fail 'another architecture is publishing media'
+fi
+prior_index="$dir/canonical-prior-$channel.json"
+prior_http=$(curl --silent --show-error --location --max-time 60 --max-filesize 1048576 \
+  --header 'Cache-Control: no-cache' --output "$prior_index" --write-out '%{http_code}' \
+  "$base/latest.json") || fail 'reading the current signed media index failed'
+case "$prior_http" in
+  200)
+    curl --fail --silent --show-error --location --max-time 60 --max-filesize 4096 \
+      --header 'Cache-Control: no-cache' "$base/latest.json.minisig" --output "$prior_index.minisig" ||
+      fail 'reading the current media index signature failed'
+    LUMA_OS_TOOLS_MOUNTS="$minisign_dir/luma-update-graph.pub $tree $dir $luma_os_repo_root/scripts/os/lib" luma_os_tools sh -c '
+      set -e
+      minisign -V -p "$1" -m "$2" -x "$2.minisig" >/dev/null
+      python3 "$3/media_aggregate.py" check-preservation "$2" "$4" --channel "$5" --producer-arch "$6"
+    ' sh "$minisign_dir/luma-update-graph.pub" "$prior_index" "$luma_os_repo_root/scripts/os/lib" \
+      "$tree/latest.json.new" "$channel" "${LUMA_OS_ARCH:-x86_64}" ||
+      fail 'media publication would discard another architecture; prepare the shared aggregate'
+    ;;
+  404) ;; # A genuinely new scoped channel has no previous publication.
+  *) fail "reading the current media index returned HTTP $prior_http" ;;
+esac
 LUMA_OS_TOOLS_MOUNTS="$minisign_dir $tree" luma_os_tools sh -c '
   set -e
   minisign -S -s "$1/luma-update-graph.key" -m "$2" -x "$2.minisig" -t "$3" >/dev/null
   minisign -V -p "$1/luma-update-graph.pub" -m "$2" -x "$2.minisig" >/dev/null
 ' sh "$minisign_dir" "$tree/latest.json.new" "luma-media-index channel=$channel${media_signature_arch:-} generated_utc=$generated" \
   <"$LUMA_OS_SECRETS/update-graph-minisign.password" || fail 'signing the media index failed'
+# The shared lock spans signing and upload. Recheck the exact remote predecessor
+# immediately before changing metadata, even when local media state was stale.
+prior_http_check=$(curl --silent --show-error --location --max-time 60 --max-filesize 1048576 \
+  --header 'Cache-Control: no-cache' --output "$prior_index.check" --write-out '%{http_code}' \
+  "$base/latest.json") || fail 'rechecking the current media index failed'
+[ "$prior_http_check" = "$prior_http" ] || fail 'the current media index changed during preparation'
+if [ "$prior_http" = 200 ]; then
+  cmp -s "$prior_index" "$prior_index.check" || fail 'the current media index changed; prepare again'
+fi
 mv -f "$tree/latest.json.new.minisig" "$tree/latest.json.minisig"
 mv -f "$tree/latest.json.new" "$tree/latest.json"
 

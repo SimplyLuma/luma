@@ -104,3 +104,27 @@ class MediaAggregate(unittest.TestCase):
         media.check_prior(receipt, prior)
         with self.assertRaisesRegex(ValueError, 'Canonical index changed'):
             media.check_prior(receipt, b'newer canonical bytes')
+
+    def test_next_x86_publication_retains_arm_and_archived_x86_history(self):
+        canonical, _, _ = self.run_merge()
+        arm = next(row for row in canonical['entries'] if row['arch'] == 'aarch64')
+        canonical['entries'][0]['iso_available'] = False
+        canonical['entries'][0]['url'] = None
+        old = copy.deepcopy(canonical)
+        future = self.entry('next', 'x86_64', self.base)
+        incoming = self.index(future)
+        incoming['entries'].append(copy.deepcopy(self.x86))
+        combined, aliases, _ = media.merge(canonical, incoming, 'nightly', self.base + 'latest.json',
+                                           self.base + 'latest.json', '2026-10-23T01:03:00Z',
+                                           lambda build, existing: (b'notes', b'signature'), 'x86_64')
+        self.assertIn(arm, combined['entries'])
+        for row in old['entries']:
+            self.assertIn(row, combined['entries'])
+        media.check_other_architectures(canonical, combined, 'nightly', 'x86_64')
+        iso = next(row for row in aliases if row['kind'] == 'installer-iso')
+        self.assertEqual(iso['action'], 'verify-existing')
+
+    def test_legacy_x86_only_index_cannot_drop_published_arm_entries(self):
+        canonical, _, _ = self.run_merge()
+        with self.assertRaisesRegex(ValueError, 'discard or change published aarch64'):
+            media.check_other_architectures(canonical, self.index(self.x86), 'nightly', 'x86_64')

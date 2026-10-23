@@ -41,6 +41,33 @@ origin. `--output` must be a new directory. Run preparation with the normal
 private tools containing minisign and Python; no signing key is needed. The
 operator must seal its source/control and prepared inputs as usual.
 
+## Every subsequent publication preserves both CPUs
+
+The same helper accepts `--incoming-arch x86_64` with a separately staged signed
+x86 candidate at the canonical URL, or the default scoped ARM input. It always
+starts from the actual verified canonical aggregate and keeps every existing
+identity. Known entries retain their exact canonical annotations and retirement
+state after immutable artifact fields agree. Incoming x86 objects already have
+canonical addresses; their plan says to verify existing uploaded ISO bytes or
+publish the exact signed notes input, rather than perform an object self-copy.
+
+The normal `nightly-media.sh` producer now fetches and verifies its actual remote
+predecessor and refuses to discard or change another CPU's entries. A stale local
+x86 media tree therefore cannot silently erase ARM downloads. The producer holds
+a shared publication lock across the final predecessor check, signing and upload,
+and compares the remote predecessor again before changing metadata. Configure
+`LUMA_MEDIA_PUBLICATION_LOCK` to the same canonical publication lock in every
+architecture/release operator. An operator that already holds it may pass that
+open descriptor in `LUMA_MEDIA_PUBLICATION_LOCK_FD`; the script validates the
+descriptor's device/inode and acquires its existing lock without reopening it.
+
+The protected operator must apply `check_other_architectures()` and `check_prior()`
+to its freshly verified remote prior and final candidate while holding that same
+lock. The guard is also available as `media_aggregate.py check-preservation`.
+Old private `preserved_entries` adapters that key only on build ID must use the
+shared `(build_id, arch)` helper when both CPUs can share an ID. Do not resume a
+legacy x86-only metadata upload after an ARM aggregate has been published.
+
 ## Maintained website change to remove aliases
 
 The website owner can retain the current aggregate and eliminate duplicate ISO
