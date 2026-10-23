@@ -165,8 +165,9 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
         targets[alias['target_url']] = identity
     aggregate = copy.deepcopy(canonical)
     aggregate.pop('arch', None)
-    aggregate.update(generated_utc=generated, latest=rows[0], entries=rows,
-                     latest_url=rows[0]['url'])
+    # Existing publishers differ on whether latest_url names the index or the
+    # legacy latest ISO. Preserve that contract and the existing x86 alias.
+    aggregate.update(generated_utc=generated, latest=rows[0], entries=rows)
     return aggregate, aliases, ignored
 
 

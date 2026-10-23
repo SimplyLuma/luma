@@ -27,7 +27,8 @@ class MediaAggregate(unittest.TestCase):
 
     def index(self, entry):
         return {'schema': media.SCHEMA, 'channel': 'nightly', 'generated_utc': '2026-10-23T01:01:00Z',
-                'latest': entry, 'entries': [entry], 'superseded': ['prior-validation']}
+                'latest': entry, 'entries': [entry], 'superseded': ['prior-validation'],
+                'latest_url': self.base + 'latest.json'}
 
     def run_merge(self, notes=lambda build, existing: (b'identical notes', b'signature')):
         return media.merge(self.canonical, self.incoming, 'nightly', self.base + 'latest.json',
@@ -39,6 +40,7 @@ class MediaAggregate(unittest.TestCase):
         self.assertEqual(self.canonical, old)
         self.assertIn(self.x86, doc['entries'])
         self.assertEqual(doc['superseded'], old['superseded'])
+        self.assertEqual(doc['latest_url'], old['latest_url'])
         arm = next(row for row in doc['entries'] if row['arch'] == 'aarch64')
         self.assertEqual(arm['url'], self.base + 'new-aarch64.iso')
         self.assertEqual(arm['notes_url'], self.base + 'notes/new.json')
