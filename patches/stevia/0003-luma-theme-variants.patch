@@ -1,0 +1,14 @@
+--- a/src/pos-style-manager.c
++++ b/src/pos-style-manager.c
+@@ -244,7 +244,10 @@
+ 
+   if (g_strcmp0 (theme_name, "HighContrast") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-hc-light.css";
+-  else if (g_strcmp0 (theme_name, "Luma") == 0)
++  else if (g_strcmp0 (theme_name, "Luma-light") == 0)
++    style = "/mobi/phosh/stevia/stylesheet/luma-light.css";
++  else if (g_strcmp0 (theme_name, "Luma") == 0 ||
++           g_strcmp0 (theme_name, "Luma-dark") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/luma-dark.css";
+   else
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
