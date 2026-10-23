@@ -16,7 +16,21 @@ permissions:
   contents: read
 
 jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      needed: ${{ steps.scope.outputs.needed }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+        run: echo "needed=$(python3 scripts/os/desktop-ci-changed.py --component webkit --base "$BASE")" >> "$GITHUB_OUTPUT"
   build:
+    needs: select
+    if: needs.select.outputs.needed == 'true'
     timeout-minutes: 180
     strategy:
       fail-fast: false
