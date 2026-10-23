@@ -147,9 +147,11 @@ def restore(session, name):
 def configure_guest(session, settings, mount_folders=True):
     """Host control SSH stays private; the optional agent gets a separate revocable key."""
     key = session.directory / 'agent-key'
+    if key.exists():key.chmod(0o600)
     if settings['agent_ssh'] and not key.exists():
         run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)], timeout=15)
     if key.exists():
+        key.chmod(0o600)
         public = Path(str(key) + '.pub').read_text().strip()
         script = '''import os,sys
 from pathlib import Path

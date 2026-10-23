@@ -72,6 +72,7 @@ class VMTests(unittest.TestCase):
         self.assertEqual(args[-1],'developer@127.0.0.1')
         self.assertIn('StrictHostKeyChecking=yes',args)
         self.assertNotIn('private-key-fixture',details['command'])
+        self.assertEqual((directory/'agent-key').stat().st_mode & 0o777,0o600)
         self.assertIn(details['command'],vm.agent_prompt(session,self.root/'manifest.json'))
 
     def test_old_settings_gain_iso_boot_default(self):
@@ -97,6 +98,10 @@ class VMTests(unittest.TestCase):
         cfg=vm.load(session.root);cfg.update(memory=8192,cpus=6,disk_gib=40)
         vm.save(session.root,cfg)
         session.prepare(lambda _:None)
+        self.assertEqual(session.key.stat().st_mode & 0o777,0o600)
+        session.key.chmod(0o640)
+        session.prepare(lambda _:None)
+        self.assertEqual(session.key.stat().st_mode & 0o777,0o600)
         command=session.command(graphics='software')
         self.assertEqual(command[command.index('-m')+1],'8192')
         self.assertEqual(command[command.index('-smp')+1],'6')

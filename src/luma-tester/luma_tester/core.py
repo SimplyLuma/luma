@@ -224,6 +224,8 @@ class Session:
             return
         if not self.key.exists():
             run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', self.key])
+        # Shared filesystems can inherit ACL masks that SSH refuses for keys.
+        self.key.chmod(0o600)
         if not (self.directory / 'seed.iso').exists():
             user = self.manifest['user']
             config = {'users': [{'name': user, 'groups': ['wheel'], 'shell': '/bin/bash',
@@ -520,6 +522,7 @@ class Session:
     def ssh(self, command):
         if self.status() == 'stopped':
             raise TesterError('Start the guest before connecting.')
+        self.key.chmod(0o600)
         port = json.loads((self.directory / 'connection.json').read_text())['port']
         argv = ['ssh', '-F', '/dev/null', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
                 '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=5',
