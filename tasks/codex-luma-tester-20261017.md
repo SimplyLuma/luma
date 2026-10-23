@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — Tester0.7.0 Mac r2 launched; Linux r32 snapshot update qualified and registered without stopping the user's guest. Published ARM Mobile payload verified; virtual boot adapter build underway, not yet boot-qualified.
+- Status: ready for review — Mac0.7.1 r8 open with native ARM Mobile qualified and registered; Linux r34 progress/installer UX qualified and delivered for next launch, existing Dell guest preserved. Public VM catalog publication pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -9,10 +9,22 @@
   localhost SSH, source sync/app restart workflow, image/agent documentation.
 - Owned: src/luma-tester, docs/developer-platform/tester*.md, README/BUILDING
   navigation, this task record. No app-porting source lanes modified.
-- No publication, OS deployment, signing, physical device operations, or user data
-  changes. Host platform packages and integration checkout remain unchanged.
+- No public publication, release signing or physical device operations. Existing
+  user projects and VMs preserved; authorized preview app/settings installation
+  only. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+Latest: Mac app0.7.1 r8 is open at ~/Applications/Luma Tester.app with genuine
+ARM Mobile20261015.21 virtual adapterr6 installed in normal state. Native M4
+fresh boot/Home, revocable SSH, live checkpoint, graceful restart/persistence,
+visible progress and actual Home after reopen passed ace30e3d. Linuxr34 shows
+measured download/verification progress, waiting state and explicit installer
+labels; delivered and registered without reopening the active old Dell GUI.
+Public prepared-image catalog publication remains a separate Hub/release gate.
+Current implementation cc18fcd0f; full final evidence at the end of this record.
+
+Earlier checkpoint (superseded by the latest delivery above):
 
 2026-10-23 update: Mac r2 is delivered and launched. The finish controller's
 mounted-DMG verification and Linux r32 build/UI/delivery stages all passed;
