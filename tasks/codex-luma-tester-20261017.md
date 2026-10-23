@@ -1114,3 +1114,27 @@ used that source without altering shared refs or unrelated worktrees.
   bounded driver owns no admitted worker yet. No Dell replacement launch yet.
   Next: finish packaged checks, verify hashes, serial desktop registration then
   reopen on Dell only if no guest is running; preserve existing workspace.
+- Packaged interaction checks passed on X11 and nested Weston Wayland:
+  rootaacacaac19/ui/qualification.json and /wayland/qualification.json, each5
+  dropdown selections, real9-item Hub catalog, old-default migration and explicit
+  preference persistence. Combined1GiB worker then hit its cgroup memory limit
+  during AppImage extraction; not an application crash or passed aggregate job.
+- AppImage extraction/real window/keyboard quit/bundled-tool discovery reran with
+  normal2GiB admission and passed: dev-tester-dropdown-r31-entry-514ea4fd,
+  rootf0eefcb0bc/qualification.json. Wayland rendering additionally captured and
+  inspected successfully: dev-tester-dropdown-r31-visual-22623896,
+  rootf2c659e406/images-dropdown.png and qualification.json. Xvfb without a
+  compositor produced unusable popup screenshot pixels; the actual Wayland
+  compositor screenshot shows the styled anchored menu and bottom action bar.
+- Delivered AppImage/receipt and exact Desktopr15/Mobiler10 sidecars to Dell
+  tester-dropdown-r31-20261023; all hashes verified. Existing r30 launcher had
+  already closed and no guest/Tester was running. Registration4bafb400 completed
+  inactive/exit0 before launching GUI02828e95, avoiding concurrent extraction.
+- Dell unit luma-preview-tester-dropdown-20261023-02828e95.service verified
+  active/running/exit0 and actual packaged Python child present. Read-only saved
+  metadata confirms Desktopx86_64/Tabletx86_64/Mobileaarch64, explicit choices[];
+  general migration applied without editing Dell preferences externally.
+  Existing tester-display-20261017 workspace retained. All automated tests stayed
+  on server; Dell used only delivery/registration/launch/process/preferences reads.
+- Candidate ready for Nick's manual review. No queued retry driver remains.
+  Generic ARM Mobile boot and integrated camera streaming remain separate gates.
