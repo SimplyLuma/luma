@@ -1274,6 +1274,72 @@ DATA_REACTIVATE_AFTER = 5.0
 # on (before IMS registration) gets its router advertisement but no traffic,
 # also after a later re-activation; activation waits for IMS (at most this long).
 DATA_WAIT_FOR_IMS = 90.0
+# A PDN bound after a long +CME 58xx refusal window after boot gets its router
+# advertisement but carries no traffic, also across re-activation; only a radio
+# restart and a new data call recover it. After each connect the data path is
+# probed (DNS to the network's own resolvers over the interface) and, when
+# nothing answers, ModemManager disables and enables the modem once, as airplane
+# mode does: the bearer drops, the radio powers down and up, and the connection
+# comes back with a new data call (not again within DATA_REBIND_EVERY).
+DATA_PROBE_ADDRESS_WAIT = 25.0
+DATA_PROBE_ROUNDS = 3
+DATA_REBIND_EVERY = 600.0
+DNS_PROBE_QUERY = bytes.fromhex('4c5501000001000000000000076578616d706c6503636f6d00001c0001')   # example.com AAAA
+
+
+def interface_has_global_ipv6(interface, path='/proc/net/if_inet6'):
+    try:
+        with open(path) as f:
+            return any(l.split()[5] == interface and l.split()[3] == '00' for l in f if len(l.split()) >= 6)
+    except OSError:
+        return False
+
+
+def dns_probe(interface, server, timeout=3.0):
+    """True when the resolver answers over this interface."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode())
+            s.settimeout(timeout)
+            s.sendto(DNS_PROBE_QUERY, (server, 53))
+            return len(s.recv(512)) >= 12
+    except OSError:
+        return False
+
+
+def modem_manager_cycle(reason):
+    """Disable and enable the modem through ModemManager (blocking)."""
+    from gi.repository import Gio, GLib
+    log('data:', reason + ': cycling the modem through ModemManager')
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        objects = bus.call_sync('org.freedesktop.ModemManager1', '/org/freedesktop/ModemManager1',
+                                'org.freedesktop.DBus.ObjectManager', 'GetManagedObjects', None,
+                                GLib.VariantType('(a{oa{sa{sv}}})'), Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+        for path in [p for p, i in objects.items() if 'org.freedesktop.ModemManager1.Modem' in i]:
+            for enable in (False, True):
+                bus.call_sync('org.freedesktop.ModemManager1', path, 'org.freedesktop.ModemManager1.Modem',
+                              'Enable', GLib.Variant('(b)', (enable,)), None, Gio.DBusCallFlags.NONE, 60000, None)
+    except GLib.Error as e:
+        log('data: modem cycle failed:', e.message)
+
+
+def data_path_works(interface, servers, probe=dns_probe, has_address=interface_has_global_ipv6,
+                    sleep=time.sleep, clock=time.monotonic):
+    """Probe a freshly connected data path; None when it cannot be judged."""
+    if not servers:
+        return None
+    deadline = clock() + DATA_PROBE_ADDRESS_WAIT
+    while not has_address(interface):
+        if clock() >= deadline:
+            return False
+        sleep(1)
+    for round_ in range(DATA_PROBE_ROUNDS):
+        if any(probe(interface, server) for server in servers):
+            return True
+        sleep(3)
+    return False
 # ModemManager's initial EPS bearer settings (a bearer properties dictionary,
 # as {key: [D-Bus signature, value]}), kept as given across restarts.
 IA_SETTINGS = '/var/lib/luma-titan2e-modem/initial-eps.json'
@@ -1367,6 +1433,7 @@ class DataCalls:
             return interface, cid, settings
         if bound_apn != apn:
             ind.at('AT+CGDCONT=%d,"%s","%s"' % (cid, pdp_name, apn), self.ps)
+        self.refusals = 0
         for attempt in range(12):
             try:
                 ind.at('AT+CGACT=1,%d' % cid, self.ps)
@@ -1374,6 +1441,7 @@ class DataCalls:
             except OSError as e:
                 if not re.search(r'CME ERROR: 58\d\d', str(e)) or attempt == 11:
                     raise
+                self.refusals += 1
                 self.sleep(5)
         self.active.add(cid)
         ind.request('DATA_SET_CONFIG data on', DATA_SET_CONFIG, self.ps, DATA_ON)
@@ -1417,9 +1485,27 @@ class DataService:
     eSIM owner owns the bus name and runs the main loop). Only the current
     ModemManager may call it."""
 
-    def __init__(self, indications, data, ready=lambda: True, sleep=time.sleep, clock=time.monotonic):
+    def __init__(self, indications, data, ready=lambda: True, sleep=time.sleep, clock=time.monotonic,
+                 on_dead=lambda reason: None, works=data_path_works):
         self.ind, self.data = indications, data
         self.ready, self.sleep, self.clock = ready, sleep, clock
+        self.on_dead, self.works = on_dead, works
+        self.last_rebind = None
+
+    def check_data_path(self, cid, interface, settings):
+        """After a connect: ask for one radio restart if the path carries nothing."""
+        result = self.works(interface, settings.get('dns6', []))
+        if result is not False or cid not in self.data.active:
+            if result:
+                log('data: %s carries traffic' % interface)
+            return
+        now = self.clock()
+        if self.last_rebind is not None and now - self.last_rebind < DATA_REBIND_EVERY:
+            log('data: %s carries no traffic; radio restarted %ds ago, not again' % (interface, now - self.last_rebind))
+            return
+        self.last_rebind = now
+        self.on_dead('data on %s carries no traffic (%d refusals before activation)'
+                     % (interface, getattr(self.data, 'refusals', 0)))
 
     def wait_until_ready(self):
         """Hold a data call until the modem can carry it (on the caller's thread)."""
@@ -1448,6 +1534,7 @@ class DataService:
                     interface, cid, settings = self.ind.submit(lambda ind: self.data.connect(ind, *args))
                     invocation.return_value(GLib.Variant('(sua{sv})', (interface, cid, {
                         key: GLib.Variant('as', value) for key, value in settings.items()})))
+                    self.check_data_path(cid, interface, settings)
                 elif name == 'GetInitialEpsBearerSettings':
                     invocation.return_value(GLib.Variant('(a{sv})', ({
                         key: GLib.Variant(sig, value) for key, (sig, value) in self.data.initial_eps().items()},)))
@@ -1588,7 +1675,9 @@ def main():
         registration.on_radio_off.append(data.radio_off)
         try:
             DataService(indications, data,
-                        ready=lambda: registration.ims_registered or not registration.ims).start()
+                        ready=lambda: registration.ims_registered or not registration.ims,
+                        on_dead=lambda reason: threading.Thread(target=modem_manager_cycle, args=(reason,),
+                                                                daemon=True).start()).start()
         except Exception as e:          # calls and SMS work without packet data
             log('data service:', e)
     time.sleep(2)

@@ -10,7 +10,7 @@
 
 Name: ModemManager
 Version: 1.25.95
-Release: 0.13.luma13%{?dist}
+Release: 0.14.luma14%{?dist}
 Summary: Mobile broadband manager with native eSIM profile operations and FP6 GNSS
 License: GPL-2.0-or-later
 URL: https://gitlab.freedesktop.org/mobile-broadband/ModemManager
@@ -46,6 +46,7 @@ Patch7: 0008-broadband-modem-optional-CFUN-power-down.patch
 Patch8: 0009-broadband-modem-ignore-access-technology-from-unregistered-domains.patch
 Patch9: 0010-broadband-modem-enable-5GS-registration-reports.patch
 Patch10: 0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch
+Patch11: 0012-iface-modem-voice-keep-calls-not-yet-started-on-call-list-reports.patch
 
 Requires: libmbim-utils
 Requires: libqmi-utils
@@ -230,6 +231,10 @@ cp -a cli/mmcli-completion %{buildroot}%{_datadir}/bash-completion/completions/m
 %{_datadir}/vala/vapi/libmm-glib.*
 
 %changelog
+* Fri Oct 23 2026 Project Luma - 0.14.luma14
+- Keep calls created but not yet started when the call list is reported, so
+  call list polling no longer terminates a call before it is dialled.
+
 * Fri Oct 23 2026 Project Luma - 0.13.luma13
 - External initial EPS bearer settings are bearer properties dictionaries,
   kept by the service as given, so the settings read back match.

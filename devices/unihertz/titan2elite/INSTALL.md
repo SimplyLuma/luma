@@ -27,8 +27,8 @@ its own copy.
 - A Titan 2 Elite with stock Android, and a USB-C data cable
 - A microSD card of 16 GB or more; everything on it is erased
 - A computer with `adb`, `fastboot` and `zstd`
-- From the Titan 2 Elite release: `luma-titan2e.img.zst` (the Luma system for
-  the card), `luma-titan2e-boot.img` (the kernel for `boot_a`) and `SHA256SUMS`
+- From https://dl.simplyluma.com/mobile/titan2e/alpha1/: `luma-titan2e-alpha1.zst` (the Luma system for the card),
+  `boot.bin` (the kernel for `boot_a`) and `SHA256SUMS`
 
 ## Step 1. Check the files
 
@@ -60,7 +60,7 @@ Find the card's device with `lsblk` (Linux) or `diskutil list` (macOS) before
 and after inserting it; here it is `/dev/sdX`. Write the system to it:
 
 ```
-zstd -dc luma-titan2e.img.zst | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
+zstd -dc luma-titan2e-alpha1.zst | sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
 ```
 
 Put the card in the phone. On first start, Luma grows its partition to fill
@@ -82,7 +82,7 @@ b and Luma goes into slot a. If it says `a`, stop here; installing on such a
 phone would replace Android's own boot image. Then:
 
 ```
-fastboot flash boot_a luma-titan2e-boot.img
+fastboot flash boot_a boot.bin
 fastboot set_active a
 fastboot reboot
 ```

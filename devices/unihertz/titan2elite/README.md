@@ -5,6 +5,18 @@ Luma on the Unihertz Titan 2 Elite, the MediaTek MT6878 keyboard phone with a
 a microSD card, on a mainline 7.2 kernel. The phone's own Android stays on slot
 b and on its internal storage, untouched.
 
+## Alpha
+
+Build 20261020.16. Luma on the Titan 2 Elite is an alpha: daily use works, some hardware does not yet.
+
+Works: SIM and eSIM, VoLTE calls (earpiece and speaker), SMS, mobile data (IPv6 with 464XLAT for IPv4), Wi-Fi, Bluetooth, main/tele/front cameras, charging, vibration, keyboard backlight.
+
+Not yet: proximity, rotation, light and compass sensors (the screen stays on at your ear during calls; press the power key to turn it off); GPS (location is Wi-Fi based); call audio over Bluetooth or USB-C headsets; OTA updates (the Titan update channel is not published yet).
+
+Install: download from https://dl.simplyluma.com/mobile/titan2e/alpha1/ and follow [INSTALL.md](INSTALL.md). Android stays on slot b; Luma boots from slot a and the microSD card. First boot opens the lock screen for the pre-made account; the PIN is 1234.
+
+Built on the generic Luma image; this branch adds the Titan pieces.
+
 ## Hardware
 
 | Part | In Luma |
@@ -20,12 +32,12 @@ b and on its internal storage, untouched.
 | Battery and charging | Charge level from the fuel gauge; MT6375 charger with USB charger detection (BC1.2). |
 | Vibration | Vibration motor on the MT6369 VIBR supply. |
 | USB | Peripheral mode. |
-| Cellular | MediaTek modem over CCCI, run by `luma-modemd` with ModemManager: SIM and eSIM, registration, SMS, mobile data (with 464XLAT on IPv6-only networks) and VoLTE calls with earpiece audio. |
+| Cellular | MediaTek modem over CCCI, run by `luma-modemd` with ModemManager: SIM and eSIM, registration, SMS, mobile data (with 464XLAT on IPv6-only networks) and VoLTE calls on the earpiece and speaker. |
 | Storage | Luma runs from a microSD card, grown to the whole card on first start; internal storage keeps Android. |
 | Updates | OSTree deployments with boot counting: an update that fails to start twice falls back to the previous one. |
 
-Not supported yet: switching to the speaker during a call, USB-C analog headsets,
-Bluetooth call audio, and GPS (location is Wi-Fi only). The boot
+Not supported yet: the proximity, rotation, light and compass sensors, GPS
+(location is Wi-Fi based), and call audio over Bluetooth or USB-C headsets. The boot
 image is signed with the AOSP test key, which the unlocked bootloader accepts.
 
 ## Sources
@@ -66,6 +78,38 @@ revisions, in the Fedora 44 builder (`scripts/packages/run-in-rpm-builder.sh`):
 The rest of the system is Luma's generic handheld package set; the Titan
 image is that set plus the packages above, with the Qualcomm boot packages
 left out.
+
+## The image
+
+`scripts/mobile/compose-titan2e-image.sh RPM_DIR KERNEL_DIR OUTPUT_DIR` composes
+the microSD image (`luma-titan2e.img`, an OSTree deployment on GPT partition
+`LumaRoot`) and `luma-titan2e-boot.img` (published compressed as
+`luma-titan2e-alpha1.zst` and as `boot.bin`) from the generic Luma handheld package
+set plus the Titan packages built above. Its Titan inputs are in this branch:
+`config/mobile/titan2e/packages.txt`, `config/mobile/titan2e/fedora-baseline.json`,
+`scripts/mobile/provision-titan2e-account.py` (the pre-made `luma` account with
+PIN 1234) and `scripts/mobile/tests/smoke-titan2e-initramfs.sh` (boots the
+initramfs against a composed image).
+
+### Generic dependencies
+
+These come from the generic Luma image build, not from this branch:
+
+- the generic Luma handheld RPMs in `RPM_DIR`, at the versions in
+  `config/mobile/alpha1-package-inputs.env` and `config/desktop/inputs.env`
+  (luma-phosh, phoc, luma-greeter, luma-greetd-session, luma-update,
+  luma-keyring, prairie-core-apps, luma-developer-platform, Viola and others);
+- `config/mobile/alpha1-package-inputs.env` and
+  `config/mobile/fedora-alpha1-baseline.json` (the pinned handheld and Fedora
+  package sets);
+- `scripts/mobile/lib/handheld-rootfs.sh` (handheld identity, dconf, machine id,
+  account file modes);
+- `scripts/mobile/seeded_account.py` and its `recipient_state.py` (the default
+  account, used by `provision-titan2e-account.py`);
+- `scripts/os/lib/os_release.py` with hardware targets, and
+  `scripts/os/lib/rpmdb_layout.py`;
+- the handheld greetd configuration,
+  `config/mobile/fp6-physical/overlay/etc/greetd/config.toml`.
 
 ## Firmware
 

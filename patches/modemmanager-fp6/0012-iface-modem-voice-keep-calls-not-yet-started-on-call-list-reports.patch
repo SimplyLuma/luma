@@ -1,0 +1,35 @@
+From 667a6dfbe9c1aeb4cf1579cd2c87c9d7d43522ec Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 14:52:11 -0400
+Subject: [PATCH] iface-modem-voice: keep calls not yet started on call list
+ reports
+
+A call created with CreateCall stays in the unknown state until Start
+dials it, and the modem cannot list it before then. A full call list
+report in between (call list polling) terminated it, so Start failed
+with "This call was not in unknown state". Skip unknown-state calls
+when reconciling the reported list.
+---
+ src/mm-iface-modem-voice.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
+index 9527d86..c63eb35 100644
+--- a/src/mm-iface-modem-voice.c
++++ b/src/mm-iface-modem-voice.c
+@@ -422,9 +422,10 @@ report_all_calls_foreach (MMBaseCall                   *call,
+     MMCallState state;
+     GList *l;
+ 
+-    /* fully ignore already terminated calls */
++    /* fully ignore already terminated calls, and calls created but not yet
++     * started: the modem does not know them, so they cannot be listed */
+     state = mm_base_call_get_state (call);
+-    if (state == MM_CALL_STATE_TERMINATED)
++    if (state == MM_CALL_STATE_TERMINATED || state == MM_CALL_STATE_UNKNOWN)
+         return;
+ 
+     /* Iterate over the call info list */
+-- 
+2.55.0
+

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name: luma-titan2e-platform
 Version: 0.1.0
-Release: 1.luma.49%{?dist}
+Release: 1.luma.50%{?dist}
 Summary: Unihertz Titan 2 Elite platform adapters
 License: Apache-2.0
 Source0: luma-titan2e-boot-ok
@@ -200,6 +200,11 @@ systemctl --no-reload preset luma-titan2e-audio.service luma-fp6-carrier-pdc.ser
 %{_datadir}/libcamera/configuration.yaml
 
 %changelog
+* Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.50
+- Probe the data path after each connect (DNS to the network's resolvers) and,
+  when nothing answers, have ModemManager disable and enable the modem once:
+  a PDN bound after a long refusal window after boot carried no traffic.
+
 * Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.49
 - Hold a data call until IMS is registered after boot or radio on; a PDN
   activated earlier carried no traffic.

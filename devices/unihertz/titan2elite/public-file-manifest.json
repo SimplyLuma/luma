@@ -50,9 +50,14 @@
     "bytes": 220046
   },
   {
+    "path": "config/mobile/titan2e/fedora-baseline.json",
+    "sha256": "695f3573de2703bce0b00b467aabc238d2c309307cf8af097166d6bce0476c9c",
+    "bytes": 1146
+  },
+  {
     "path": "config/mobile/titan2e/packages.txt",
-    "sha256": "5bfad6517c4a54e8ba20803a1d16a991c2053fce31955ca247c3752c2683a5b8",
-    "bytes": 11835
+    "sha256": "0dfb58d743d501edec765aa81d11bb1be67aa5ff51a1a57e21cca9bbd0f78104",
+    "bytes": 11852
   },
   {
     "path": "devices/README.md",
@@ -66,13 +71,13 @@
   },
   {
     "path": "devices/unihertz/titan2elite/INSTALL.md",
-    "sha256": "e2ea11d7a8ea68f433aa87a5853a1242c7a7a51005c64a282f3a32bb1acab485",
-    "bytes": 4379
+    "sha256": "e8b1db76edf6092790a1ab5b22e7e79a3e5d44d75a86acd55a486a5ff36d3ab0",
+    "bytes": 4382
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "c7043e12834f01020ec9e337825f300754d91290d1f58205aae1fcc81e6a132c",
-    "bytes": 7464
+    "sha256": "d24bb15ebc5c07878b47988b7a0ca09a18bc71796325fb08180ce95f22cd9266",
+    "bytes": 10027
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -111,8 +116,8 @@
   },
   {
     "path": "packaging/rpm/ModemManager-fp6.spec",
-    "sha256": "95013eff92b983a555db7575e4bfd66111e31557296f74abe29f43f9985ab307",
-    "bytes": 11202
+    "sha256": "9404dd12d79389698dfcb86e9b78c6371db83c89a6c18ae7c3c92b4021ea782f",
+    "bytes": 11480
   },
   {
     "path": "packaging/rpm/callaudiod.spec",
@@ -126,8 +131,8 @@
   },
   {
     "path": "packaging/rpm/lpac-titan2e.spec",
-    "sha256": "69db005e7005592b864dd3c1108289ac6b874ab80aa895777dd5e6e497058bfa",
-    "bytes": 3159
+    "sha256": "baff5ece34f15005443b1da03912255d315d04d5e20fd9d2c83e844beefa8bb9",
+    "bytes": 3311
   },
   {
     "path": "packaging/rpm/luma-esim-broker.spec",
@@ -141,8 +146,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "f281727a1cf1501b4ee404de66c21ecf3f65057a911fdcee58ca3d564dd0bf37",
-    "bytes": 20366
+    "sha256": "5a40c79776bba6a01c0850d2bc2d499d4bf0b75ba281c087d015b812afe73635",
+    "bytes": 20645
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -1595,14 +1600,24 @@
     "bytes": 10338
   },
   {
+    "path": "patches/modemmanager-fp6/0012-iface-modem-voice-keep-calls-not-yet-started-on-call-list-reports.patch",
+    "sha256": "8e742baa7ec093b8061709b02ae0481824c97f18b6830359bcadba6fadcd9558",
+    "bytes": 1369
+  },
+  {
     "path": "patches/modemmanager-fp6/README.md",
-    "sha256": "64460e4bf48e467f76e7845789703ab865cee2c99271688b526e5daa69414bf1",
-    "bytes": 3410
+    "sha256": "9eaf3d99ef297b28e0ae50fefd12e4242c4e9ad6548c35a6ec8c247fedf64aac",
+    "bytes": 3652
   },
   {
     "path": "scripts/mobile/build-fp6-gnss-rpm.sh",
-    "sha256": "d1b5b772d0203b0a316e9471a584145c91de8cc8b05d69452a7b6928223d27ad",
-    "bytes": 8333
+    "sha256": "28257948594f319fb8916950b20c6e5dc8a1cdfbe514e72e895a9dadd783cc07",
+    "bytes": 8454
+  },
+  {
+    "path": "scripts/mobile/compose-titan2e-image.sh",
+    "sha256": "17169088760832e0c6353f68e9e9b43c21f3689507b1aa3bf0d99a33657784c0",
+    "bytes": 15544
   },
   {
     "path": "scripts/mobile/luma-phosh-session",
@@ -1610,9 +1625,19 @@
     "bytes": 969
   },
   {
+    "path": "scripts/mobile/provision-titan2e-account.py",
+    "sha256": "c4ee789d74327701dd885e6748d6f7ae5fe1c0a7615fcdb831890512f6783d68",
+    "bytes": 1144
+  },
+  {
+    "path": "scripts/mobile/tests/smoke-titan2e-initramfs.sh",
+    "sha256": "71ba7d9eb17745cdaf096750a77a65aa9c15a76d0713d5d69488488769b89d07",
+    "bytes": 6053
+  },
+  {
     "path": "scripts/mobile/verify-fp6-gnss-rpm-bundle.sh",
-    "sha256": "c3d15b14760d62a63284e00d819b273e5c4b295ee574529a1fe1243afd949439",
-    "bytes": 7305
+    "sha256": "6ac4d8ff63e297f9d92f5559122c637fefc2b2e16e73bf3b6dc659ef28f768a0",
+    "bytes": 7595
   },
   {
     "path": "scripts/packages/build-callaudiod.sh",
@@ -1941,8 +1966,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/luma-modemd",
-    "sha256": "e6a685d2cfa9d771b0f4e4f1fc97d4ee242c80d03fd0203641e7d55121858e90",
-    "bytes": 71628
+    "sha256": "822c215844c8564f3d1106be73be794e831634cc15f68028be47880fc0b7dcde",
+    "bytes": 76023
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-audio-up",
@@ -2071,8 +2096,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/test-esim.py",
-    "sha256": "0fa6cff9be2b3206737833e72d054501d3fd302b96a0328945115d541533b8a4",
-    "bytes": 59420
+    "sha256": "1eb77ca7ad09f2153dceb19d8a4aff1e7ffa4d96aa04493641967c31478f278e",
+    "bytes": 63189
   },
   {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-HiFi.conf",

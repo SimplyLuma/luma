@@ -1,6 +1,6 @@
 Name:           lpac-titan2e
 Version:        2.3.0
-Release:        6.luma1%{?dist}
+Release:        7.luma1%{?dist}
 Summary:        Local profile assistant for the Unihertz Titan 2 Elite eUICC
 License:        AGPL-3.0-only AND LGPL-2.1-only AND MIT AND CC0-1.0
 URL:            https://github.com/estkme-group/lpac
@@ -66,6 +66,7 @@ rm -f \
 test -e %{buildroot}%{_libdir}/lpac/driver/driver_apdu_luma_mm_fd.so
 
 %files
+%defattr(-,root,root,0755)
 %license LICENSES REUSE.toml
 %doc README.md docs/ENVVARS.md docs/USAGE.md
 %{_bindir}/lpac
@@ -81,6 +82,9 @@ test -e %{buildroot}%{_libdir}/lpac/driver/driver_apdu_luma_mm_fd.so
 %{_libdir}/lpac/driver/driver_http_stdio.so
 
 %changelog
+* Thu Oct 22 2026 Project Luma - 2.3.0-7.luma1
+- Directories are 0755 whatever the build tree's mode (6 shipped 2750 dirs).
+
 * Thu Oct 22 2026 Project Luma - 2.3.0-6.luma1
 - Use the protected native-owner descriptor instead of direct AT access.
 - Replace the equivalent FP6 helper atomically when migrating a Titan image.

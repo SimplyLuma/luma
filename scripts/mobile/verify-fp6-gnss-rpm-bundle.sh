@@ -113,6 +113,9 @@ verify_component modemmanager "$FP6_GNSS_MODEMMANAGER_VERSION" \
 [ "${PATCH_0011_BROADBAND_MODEM_INITIAL_EPS_BEARER_SETTINGS_THROUGH_THE_EXTERNAL_DATA_SERVICE_PATCH_SHA256:-}" = \
   "$(hash "$repo_root/patches/modemmanager-fp6/0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch")" ] ||
   die 'ModemManager external initial EPS bearer patch hash differs'
+[ "${PATCH_0012_IFACE_MODEM_VOICE_KEEP_CALLS_NOT_YET_STARTED_ON_CALL_LIST_REPORTS_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0012-iface-modem-voice-keep-calls-not-yet-started-on-call-list-reports.patch")" ] ||
+  die 'ModemManager unstarted call patch hash differs'
 
 printf 'FP6 GNSS RPM bundle verification: PASS\n'
 printf 'packages_installed=false\ngnss_enabled=false\nphone_accessed=false\n'

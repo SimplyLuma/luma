@@ -65,6 +65,7 @@ case "$component" in
       "$repo_root/patches/modemmanager-fp6/0009-broadband-modem-ignore-access-technology-from-unregistered-domains.patch"
       "$repo_root/patches/modemmanager-fp6/0010-broadband-modem-enable-5GS-registration-reports.patch"
       "$repo_root/patches/modemmanager-fp6/0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch"
+      "$repo_root/patches/modemmanager-fp6/0012-iface-modem-voice-keep-calls-not-yet-started-on-call-list-reports.patch"
     )
     pkg-config --atleast-version=1.39.1 qmi-glib ||
       die 'build the libqmi component and install it only in this disposable builder first'

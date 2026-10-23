@@ -1038,6 +1038,65 @@ class DataCallTests(unittest.TestCase):
         r.indication(0x4404, {0x0100: b'\x01'}, 1)
         r.indication(0x4404, {0x0100: b'\x00'}, 2)
         self.assertFalse(r.ims_registered)
+    def test_data_path_probe(self):
+        now, slept = [0.0], []
+        sleep = lambda t: (slept.append(t), now.__setitem__(0, now[0] + t))
+        clock = lambda: now[0]
+        works = lambda probe, has=lambda i: True: modemd.data_path_works('ccmni2', ['fd00::9'], probe=probe,
+                                                                        has_address=has, sleep=sleep, clock=clock)
+        self.assertIsNone(modemd.data_path_works('ccmni2', [], probe=lambda i, s: False))
+        self.assertTrue(works(lambda i, s: True))
+        answers = iter([False, True])
+        self.assertTrue(works(lambda i, s: next(answers)))                    # answers in round 2
+        self.assertFalse(works(lambda i, s: False))                           # three silent rounds
+        self.assertFalse(works(lambda i, s: True, has=lambda i: False))       # never got an address
+
+    def test_global_ipv6_address_detected_on_the_interface(self):
+        path = os.path.join(tempfile.mkdtemp(), 'if_inet6')
+        with open(path, 'w') as f:
+            f.write('fe800000000000000000000000000001 07 40 20 80   ccmni2\n'
+                    '20010db8000000000000000000000001 08 40 00 00    wlan0\n')
+        self.assertFalse(modemd.interface_has_global_ipv6('ccmni2', path))     # link-local only
+        with open(path, 'a') as f:
+            f.write('2607fb90000000000000000000000001 07 40 00 00   ccmni2\n')
+        self.assertTrue(modemd.interface_has_global_ipv6('ccmni2', path))
+
+    def test_logged_boot_refusal_window_recovers_once(self):
+        # 2026-10-23 boot: IMS registered at 43.6 s, CGACT refused (5847) until 78.7 s,
+        # the bound PDN carried no traffic: exactly one modem cycle is asked for.
+        class Refusing(FakeReader):
+            n = 0
+            def at(self, command, ps):
+                if command.startswith('AT+CGACT=1') and self.n < 7:
+                    self.n += 1
+                    raise OSError('AT+CGACT failed (result 0: +CME ERROR: 5847)')
+                return super().at(command, ps)
+        now, dead = [100.0], []
+        data = modemd.DataCalls(2, sleep=lambda t: None)
+        service = modemd.DataService(None, data, clock=lambda: now[0], on_dead=dead.append,
+                                     works=lambda interface, servers: False)
+        interface, cid, settings = data.connect(Refusing(), 'wholesale', 'ipv4v6')
+        self.assertEqual(data.refusals, 7)
+        service.check_data_path(cid, interface, {'dns6': ['fd00:976a::9']})
+        self.assertEqual(len(dead), 1)
+        self.assertIn('ccmni2 carries no traffic (7 refusals', dead[0])
+        now[0] += 60                                                          # still dead after the cycle
+        service.check_data_path(cid, interface, {'dns6': ['fd00:976a::9']})
+        self.assertEqual(len(dead), 1)                                        # not again within 10 minutes
+        now[0] += modemd.DATA_REBIND_EVERY
+        service.check_data_path(cid, interface, {'dns6': ['fd00:976a::9']})
+        self.assertEqual(len(dead), 2)
+
+    def test_working_or_released_path_is_left_alone(self):
+        dead = []
+        data = modemd.DataCalls(2)
+        interface, cid, settings = data.connect(FakeReader(), 'wholesale', 'ipv4v6')
+        modemd.DataService(None, data, on_dead=dead.append, works=lambda i, s: True).check_data_path(cid, interface, settings)
+        modemd.DataService(None, data, on_dead=dead.append, works=lambda i, s: None).check_data_path(cid, interface, settings)
+        data.disconnect(FakeReader(), cid)                                    # released meanwhile
+        modemd.DataService(None, data, on_dead=dead.append, works=lambda i, s: False).check_data_path(cid, interface, settings)
+        self.assertEqual(dead, [])
+
     def test_cgact_retried_while_ims_sets_up(self):
         class Busy(FakeReader):
             n = 0

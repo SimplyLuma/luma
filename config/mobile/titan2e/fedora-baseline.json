@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "purpose": "Fedora 44 aarch64 builds the Titan 2 Elite image pins in addition to config/mobile/fedora-alpha1-baseline.json",
+  "runtime": {
+    "phosh-0.55.0-1.fc44.aarch64.rpm": {
+      "url": "https://kojipkgs.fedoraproject.org/packages/phosh/0.55.0/1.fc44/aarch64/phosh-0.55.0-1.fc44.aarch64.rpm",
+      "sha256": "05b822a15299a12dda7a21ad00995336c289cf354b635501bedc0f7c5a2b7bf0",
+      "bytes": 947642,
+      "nevra": "phosh-0.55.0-1.fc44.aarch64"
+    },
+    "stevia-0.55.0-1.fc44.aarch64.rpm": {
+      "url": "https://kojipkgs.fedoraproject.org/packages/stevia/0.55.0/1.fc44/aarch64/stevia-0.55.0-1.fc44.aarch64.rpm",
+      "sha256": "4fe209362245bb2aa9fd4dfa7ce554fe98832c2a48b532ca24ea529b4d2e68e1",
+      "bytes": 167488,
+      "nevra": "stevia-0.55.0-1.fc44.aarch64"
+    },
+    "upower-libs-1.91.4-1.fc44.aarch64.rpm": {
+      "url": "https://kojipkgs.fedoraproject.org/packages/upower/1.91.4/1.fc44/aarch64/upower-libs-1.91.4-1.fc44.aarch64.rpm",
+      "sha256": "2bd969abb65c63da2a03b5dde8e093f6cc423b21a8329e55a098231f301a8112",
+      "bytes": 60571,
+      "nevra": "upower-libs-1.91.4-1.fc44.aarch64"
+    }
+  }
+}

@@ -61,3 +61,8 @@ external data service (`GetInitialEpsBearerSettings`,
 `SetInitialEpsBearerSettings`). MediaTek CCCI modems take their initial attach
 APN over MIPC, not as a `+CGDCONT` context, so the generic path failed after
 powering the radio down.
+
+The twelfth patch keeps calls created but not yet started (unknown state) when a
+full call list is reported. With call list polling (the fifth patch) a poll
+between CreateCall and Start terminated the new call, so dialling failed at
+random.
