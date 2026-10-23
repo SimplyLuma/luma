@@ -34,7 +34,9 @@ def prepare(source, destination, architecture='x86_64'):
         for marker in (SEARCH, 'set default="1"', 'set timeout=60'):
             if text.count(marker) != 1:
                 raise ValueError(f'{path}: unsupported Lorax boot layout: {marker}')
-        if 'inst.rescue' not in text or 'nomodeset' not in text:
+        recovery = (('inst.rescue quiet', 'nomodeset quiet') if architecture == 'x86_64'
+                    else ('@ROOT@ inst.rescue\n', '@ROOT@ nomodeset\n'))
+        if any(marker not in text for marker in recovery):
             raise ValueError(f'{path}: missing recovery/basic-graphics choices')
         text = text.replace(SEARCH, SEARCH + '\n' + THEME)
         # GRUB's native hidden countdown draws no menu on normal USB startup.
