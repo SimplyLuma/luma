@@ -63,6 +63,7 @@ class VMTests(unittest.TestCase):
             manifest=dict(user='developer',target='mobile',build='Test build',arch='x86_64'))
         (directory/'connection.json').write_text(json.dumps(dict(port=2299)))
         (directory/'agent-key').write_text('private-key-fixture')
+        (directory/'agent-key').chmod(0o640)
         with self.assertRaises(TesterError):vm.ssh_connection(session)
         vm.save(self.root,dict(vm.load(self.root),agent_ssh=True))
         details=vm.ssh_connection(session)

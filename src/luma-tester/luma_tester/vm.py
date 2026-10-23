@@ -240,6 +240,7 @@ def ssh_connection(session):
         raise TesterError('Installation media has no managed SSH account. Use a developer image for SSH access.')
     if not load(session.root)['agent_ssh'] or not (session.directory / 'agent-key').exists():
         raise TesterError('Enable SSH access and start Luma to connect.')
+    (session.directory/'agent-key').chmod(0o600)
     port = json.loads((session.directory / 'connection.json').read_text())['port']
     command = ['ssh', '-F', '/dev/null', '-i', str(session.directory / 'agent-key'), '-p', str(port),
                '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',

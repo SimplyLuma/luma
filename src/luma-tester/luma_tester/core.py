@@ -522,7 +522,7 @@ class Session:
     def ssh(self, command):
         if self.status() == 'stopped':
             raise TesterError('Start the guest before connecting.')
-        self.key.chmod(0o600)
+        if self.key.exists():self.key.chmod(0o600)
         port = json.loads((self.directory / 'connection.json').read_text())['port']
         argv = ['ssh', '-F', '/dev/null', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
                 '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=5',
