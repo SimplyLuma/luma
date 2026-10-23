@@ -17,6 +17,6 @@ done
 git diff --check
 python3 -B -m unittest tests.unit.test_luma_notes_store tests.unit.test_luma_appkit \
   tests.unit.test_luma_appkit_conformance tests.unit.test_luma_appkit_families.KitGuard \
-  tests.unit.test_desktop_targets tests.unit.test_desktop_package_matrix
+  tests.unit.test_desktop_targets tests.unit.test_desktop_package_matrix tests.unit.test_desktop_profiles
 python3 -B tools/check-devices.py
 python3 -B -m unittest tests.unit.test_device_tree

@@ -32,13 +32,14 @@ fail() {
 [ -f "$packages/repodata/repomd.xml" ] || fail 'the Luma package repository has no metadata'
 
 architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+profile=${LUMA_OS_PROFILE:-full}
 [ "$(rpm --eval '%{_arch}')" = "$architecture" ] || fail 'package transaction architecture differs from target'
-python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" plan >/tmp/luma-desktop-target.json || fail 'invalid desktop target'
-mapfile -t pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" pins)
+python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" plan >/tmp/luma-desktop-target.json || fail 'invalid desktop target'
+mapfile -t pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" pins)
 [ "${#pins[@]}" -gt 0 ] || fail 'the Luma pin list is empty'
 # Always include exact Fedora pins in the transaction, even when already
 # installed, so dependency resolution cannot silently upgrade them.
-mapfile -t -O "${#pins[@]}" pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t -O "${#pins[@]}" pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 for nevra in "${pins[@]}"; do
   [ -f "$packages/Packages/$nevra.rpm" ] || fail "pinned package is not in the build repository: $nevra"
 done
@@ -93,9 +94,8 @@ while IFS= read -r name; do
   fi
   contains "$name" "${requests[@]}" || requests+=("$name")
 done < <(
-  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" fedora
-  strip_list "$src/config/shared/application-packages.txt"
-  strip_list "$src/config/desktop/application-packages.txt"
+  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" fedora
+  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" roles
 )
 
 # /opt is a symlink to /var/opt in Fedora's bootable images, and nothing a
@@ -141,6 +141,20 @@ if [ "${#installed_removals[@]}" -gt 0 ]; then
   printf 'Removing: %s\n' "${installed_removals[*]}"
   rpm -e "${installed_removals[@]}"
 fi
+
+# Refuse excluded capability providers even if a base or dependency brought
+# one in. Never hide an unsupported capability behind an installed engine.
+python3 - "$src" "$architecture" "$profile" <<'PYCAPABILITIES'
+import subprocess, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / 'scripts/os/lib'))
+from desktop_target import profile, excluded
+selection = profile(Path(sys.argv[1]), sys.argv[2], sys.argv[3])
+installed = subprocess.check_output(['rpm', '-qa', '--qf', '%{NAME}\n'], text=True).splitlines()
+unexpected = [name for name in installed if excluded(name, selection)]
+if unexpected:
+    raise SystemExit('Unsupported profile capability providers installed: ' + ', '.join(unexpected))
+PYCAPABILITIES
 
 # Verification: each pin is installed exactly, from the verified file.
 status=0

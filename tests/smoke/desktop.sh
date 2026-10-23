@@ -41,6 +41,39 @@ check() {
   fi
 }
 
+# Profiles declare unavailable capabilities explicitly; all other smoke gates
+# remain the same. This signed image declaration never substitutes for the
+# signed first-party application baseline or its handoff checks.
+capability_manifest=/usr/share/luma/desktop-capabilities.json
+check 'desktop capabilities match the declared supported profile' python3 - "$capability_manifest" "$architecture" <<'PYPROFILE'
+import json, sys
+value = json.load(open(sys.argv[1]))
+assert value['schema'] == 'org.projectluma.desktop-capabilities/v1'
+assert value['architecture'] == sys.argv[2]
+expected = {'desktop': True, 'android_apps': True, 'windows_apps': True, 'casting': True}
+if value['profile'] == 'arm-preview':
+    assert sys.argv[2] == 'aarch64'
+    expected.update(android_apps=False, windows_apps=False, casting=False)
+else:
+    assert value['profile'] == 'full'
+assert value['capabilities'] == expected
+registry = json.load(open('/usr/share/luma/desktop-profiles.json'))
+assert registry['schema'] == 'org.projectluma.desktop-profiles/v1'
+selection = registry['profiles'][value['profile']]
+assert sys.argv[2] in selection['architectures']
+for key in ('capabilities', 'excluded_packages', 'excluded_package_prefixes'):
+    assert value[key] == selection[key]
+PYPROFILE
+capability_enabled() {
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["capabilities"][sys.argv[2]] else 1)' "$capability_manifest" "$1"
+}
+check 'unsupported profile capability providers are absent' python3 - "$capability_manifest" <<'PYABSENT'
+import json, subprocess, sys
+value = json.load(open(sys.argv[1]))
+installed = subprocess.check_output(['rpm', '-qa', '--qf', '%{NAME}\n'], text=True).splitlines()
+assert not [name for name in installed if name in value['excluded_packages'] or name.startswith(tuple(value['excluded_package_prefixes']))]
+PYABSENT
+
 check 'Luma GNOME Control Center package' \
   rpm -q "gnome-control-center-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.${architecture}"
 check 'Luma GNOME Control Center filesystem package' \
@@ -75,7 +108,7 @@ check 'update agent never asks rpm-ostree to reboot or apply live' \
   bash -c "! grep -REq '\"(reboot|apply-live)\", GLib.Variant\\(\"b\", True' /usr/lib/python3*/site-packages/luma_update"
 # Luma Cast (ADR-034): one session service and its backends, started only by
 # D-Bus activation when something asks for them, never at login.
-if [ -n "${LUMA_CAST_NEVRA:-}" ]; then
+if capability_enabled casting && [ -n "${LUMA_CAST_NEVRA:-}" ]; then
   check 'Luma Cast service package' rpm -q "$LUMA_CAST_NEVRA"
   check 'Luma Cast shared backend helper package' rpm -q "$LUMA_CAST_BACKEND_COMMON_NEVRA"
   check 'Luma Cast Google Cast backend package' rpm -q "$LUMA_CAST_GOOGLECAST_NEVRA"
@@ -130,12 +163,14 @@ check 'Prairie core apps replace GNOME Calendar' \
   bash -c '! rpm -q gnome-calendar >/dev/null 2>&1'
 check 'Luma Relay package' \
   rpm -q "$LUMA_RELAY_NEVRA"
+if capability_enabled windows_apps; then
 check 'Relay Wine Explorer integration' \
   rpm -q "$WINE_RELAY_EXPLORER_NEVRA"
 check 'Relay Windows engine' rpm -q wine
 check 'Relay NTSYNC loader' rpm -q ntsync-autoload
 check 'Relay Direct3D translation' rpm -q wine-dxvk
 check 'Relay reviewed component helper' rpm -q winetricks
+fi
 # The unified Luma application installer receives Windows, Android and Linux
 # packages and hands Windows programs to Relay.
 check 'the Luma application installer owns Windows executable files' \
@@ -633,11 +668,13 @@ check_schema_default 'desktop Filer retains the full storage view by default' \
   org.gnome.nautilus.preferences personal-storage-only false
 check_value 'Prairie Calendar is the desktop calendar command' \
   /org/gnome/desktop/default-applications/office/calendar/exec "'prairie-calendar'"
+if capability_enabled android_apps; then
 check 'Luma Android integration package' \
   rpm -q "$LUMA_ANDROID_RUNTIME_NEVRA"
 check 'Fedora Waydroid engine' rpm --quiet --query waydroid
 check 'APK MIME integration' grep -Fq application/vnd.android.package-archive \
   /usr/share/mime/packages/luma-android.xml
+fi
 check 'APK installer broker' test -f \
   /usr/share/dbus-1/services/org.projectluma.ApplicationInstaller1.service
 check_value '12-hour clock default' \

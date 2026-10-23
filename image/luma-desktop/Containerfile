@@ -18,6 +18,7 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 ARG LUMA_TARGET_ARCHITECTURE=x86_64
+ARG LUMA_OS_PROFILE=full
 ARG LUMA_BUILD_ID
 ARG LUMA_OS_VERSION
 ARG LUMA_OS_CHANNEL
@@ -36,6 +37,7 @@ RUN --mount=type=bind,from=source,target=/run/luma/source \
     --mount=type=bind,from=packages,target=/run/luma/packages \
     --mount=type=tmpfs,target=/tmp \
     LUMA_TARGET_ARCHITECTURE="${LUMA_TARGET_ARCHITECTURE}" \
+    LUMA_OS_PROFILE="${LUMA_OS_PROFILE}" \
     /usr/bin/bash /run/luma/source/image/luma-desktop/scripts/install-packages.sh
 
 # 2. System policy: desktop defaults, update and trust policy, health checks,
@@ -44,6 +46,7 @@ RUN --mount=type=bind,from=source,target=/run/luma/source \
     --mount=type=bind,from=app-baseline,target=/run/luma/app-baseline \
     --mount=type=tmpfs,target=/tmp \
     LUMA_TARGET_ARCHITECTURE="${LUMA_TARGET_ARCHITECTURE}" \
+    LUMA_OS_PROFILE="${LUMA_OS_PROFILE}" \
     LUMA_APP_BASELINE_SHA256="${LUMA_APP_BASELINE_SHA256}" \
     /usr/bin/bash /run/luma/source/image/luma-desktop/scripts/configure-system.sh
 
@@ -71,5 +74,6 @@ LABEL org.opencontainers.image.title="Luma" \
       org.projectluma.release-checks-sha256="${LUMA_RELEASE_CHECKS_SHA256}" \
       org.projectluma.build-id="${LUMA_BUILD_ID}" \
       org.projectluma.channel="${LUMA_OS_CHANNEL}" \
+      org.projectluma.desktop-profile="${LUMA_OS_PROFILE}" \
       containers.bootc="1" \
       ostree.bootable="true"

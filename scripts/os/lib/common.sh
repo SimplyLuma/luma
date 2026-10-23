@@ -41,6 +41,8 @@ luma_os_load_env() {
   done <"$file"
 }
 
+: "${LUMA_OS_PROFILE:=full}"
+export LUMA_OS_PROFILE
 luma_os_load_env "$luma_os_repo_root/config/os/release.env"
 
 # The default remains x86_64 for existing callers. A selected target changes
@@ -48,7 +50,7 @@ luma_os_load_env "$luma_os_repo_root/config/os/release.env"
 luma_os_select_architecture() {
   local architecture=$1 contract
   contract=$(python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
-    --arch "$architecture" contract) || luma_os_die 'invalid desktop target'
+    --arch "$architecture" --profile "$LUMA_OS_PROFILE" contract) || luma_os_die 'invalid desktop target'
   luma_os_load_env <(printf '%s\n' "$contract")
   export LUMA_TARGET_ARCHITECTURE=$architecture
 }
@@ -58,7 +60,7 @@ fi
 
 luma_os_desktop_packages() {
   python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
-    --root "${1:-$luma_os_repo_root}" --arch "$LUMA_OS_ARCH" "${2:-pins}"
+    --root "${1:-$luma_os_repo_root}" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" "${2:-pins}"
 }
 
 luma_os_require_root() {

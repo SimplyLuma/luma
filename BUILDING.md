@@ -171,3 +171,17 @@ from that fixture directory only. Overlay layers can expose different device
 IDs for directories and files; the safety checks intentionally reject
 cross-device traversal. Keep those guards enabled rather than changing
 expected results to fit the container's overlay or shared-drive permissions.
+
+The explicit `arm-preview` desktop profile is available only for `aarch64`.
+Select it with `--profile arm-preview` on the desktop preflight, package collector
+and image builder, or set `LUMA_OS_PROFILE=arm-preview`. It uses the same source,
+Fedora kernel, package checks and signed application baseline as the full desktop.
+Android applications, Windows applications and casting are unavailable in this
+preview; their engine/provider packages are excluded. Relay, the application
+installer and the rest of the shared application baseline remain selected.
+
+The default profile is `full` for both architectures. The preview never changes
+that default or bypasses first-party bundle admission or image signing. Every
+new image records `/usr/share/luma/desktop-capabilities.json` and its profile;
+composition and desktop smoke checks reject excluded providers that reappear
+through dependency resolution.
