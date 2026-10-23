@@ -81,6 +81,39 @@ class WithdrawnApps(unittest.TestCase):
         self.assertFalse((self.site/'apps/org.projectluma.Notes.flatpakref').exists())
         self.assertTrue((self.site/'apps/org.projectluma.Notes.nightly.flatpakref').is_file())
 
+    def test_other_cpu_update_preserves_unchanged_release_annotations(self):
+        self.run_script()
+        path = self.site / "apps/index.json"
+        index = json.loads(path.read_text())
+        annotations = {"permissions": ["network"], "permission_changes": [],
+                       "published_at": "2026-10-22T01:00:00Z"}
+        index["apps"][0].update(annotations)
+        path.write_text(json.dumps(index))
+        ostree(self.repo, "commit", "--branch=app/org.projectluma.Notes/aarch64/beta",
+               f"--tree=dir={self.tmp / 'tree'}", "--subject=ARM build")
+        self.run_script()
+        rows = {row["arch"]: row for row in json.loads(path.read_text())["apps"]}
+        self.assertEqual(set(rows), {"x86_64", "aarch64"})
+        for name, value in annotations.items():
+            self.assertEqual(rows["x86_64"][name], value)
+            self.assertNotIn(name, rows["aarch64"])
+        # A new commit must not inherit permissions/timestamps from its old head.
+        ostree(self.repo, "commit", "--branch=app/org.projectluma.Notes/x86_64/beta",
+               f"--tree=dir={self.tmp / 'tree'}", "--subject=new x86 build")
+        self.run_script()
+        rows = {row["arch"]: row for row in json.loads(path.read_text())["apps"]}
+        self.assertNotIn("published_at", rows["x86_64"])
+
+    def test_previous_index_cannot_mix_another_cpu_into_its_identity(self):
+        self.run_script()
+        path = self.site / "apps/index.json"
+        index = json.loads(path.read_text())
+        index["apps"][0]["arch"] = "aarch64"
+        path.write_text(json.dumps(index))
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_script()
+        self.assertEqual(json.loads(path.read_text()), index)
+
     def test_ref_is_kept_so_installed_copies_learn_it_ended(self):
         self.run_script()
         self.assertIn("app/org.projectluma.StickyNotes/x86_64/beta", ostree(self.repo, "refs").split())
