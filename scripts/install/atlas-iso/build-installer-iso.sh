@@ -520,7 +520,7 @@ podman run --rm "${builder_security[@]}" --arch "$architecture" --privileged --n
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$final_tools_image" bash -euo pipefail -c "
   [ \"\$(rpm --eval '%{_arch}')\" = '$architecture' ] || { echo 'error: wrong final media tools architecture' >&2; exit 1; }
   rm -f /w/output.iso.partial
-  mkksiso -V '$volid' -c 'rd.live.ram=1' \
+  python3 /s/run-mkksiso.py -V '$volid' -c 'rd.live.ram=1' \
           -R 'set default=\"1\"' 'set default=\"0\"' \
           $menu_replace \
           $payload_add \
