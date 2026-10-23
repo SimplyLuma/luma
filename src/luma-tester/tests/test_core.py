@@ -244,13 +244,17 @@ class SessionTests(unittest.TestCase):
         self.save()
         session = Session(self.path, self.root / 'Application Support/Luma Tester')
         session.directory.mkdir(parents=True)
-        (session.directory / 'connection.json').write_text('{"port":2229}')
-        with patch.object(session, 'status', return_value='running'):
-            argv = session.ssh([])
-        output = subprocess.check_output([argv[0], '-G', *argv[1:]], text=True,
-                                         stderr=subprocess.DEVNULL)
-        row = next(line for line in output.splitlines() if line.startswith('userknownhostsfile '))
-        self.assertEqual(__import__('shlex').split(row)[1:], [str(session.directory / 'known_hosts')])
+        import socket
+        with socket.socket() as reserved:
+            reserved.bind(('127.0.0.1', 0))
+            (session.directory / 'connection.json').write_text(json.dumps({'port': reserved.getsockname()[1]}))
+            with patch.object(session, 'status', return_value='running'):
+                argv = session.ssh([])
+            result = subprocess.run([argv[0], '-vvv', *argv[1:]], text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+        rows = [line for line in result.stderr.splitlines() if 'expanded UserKnownHostsFile' in line]
+        self.assertEqual(len(rows), 1, result.stderr)
+        self.assertIn("'" + str(session.directory / 'known_hosts') + "'", rows[0])
 
     def test_shutdown_resumes_before_requesting_guest_poweroff(self):
         session = self.save()
