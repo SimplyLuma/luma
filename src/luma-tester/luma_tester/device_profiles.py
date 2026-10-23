@@ -55,8 +55,23 @@ def describe(value):
     regions=[rotate(rect) for rect in regions]
     hinge=rotate(hinge) if hinge else None
     if rotation in (90,270):width,height=height,width
+    native_pixels=dict(width=width,height=height)
+    native_scale=scale
+    # QEMU's VNC scanout is capped at 2160 rows. High-density panels render at
+    # half density in either orientation, preserving logical app dimensions and
+    # keeping posture transitions at the same density. Panel pixels remain
+    # explicit metadata; this is a UI preview, not a native-panel capture.
+    divisor=2 if profile and scale>=2 else 1
+    while height/divisor>2160 or width/divisor>3840:divisor*=2
+    def reduced(rect):
+        return {key:round(value/divisor) for key,value in rect.items()}
+    regions=[reduced(rect) for rect in regions]
+    hinge=reduced(hinge) if hinge else None
+    width,height=round(width/divisor),round(height/divisor)
+    scale/=divisor
     return dict(schema=1,profile=config['profile'],label=base['label'],kind=base['kind'],posture=posture,
         rotation=rotation,pixels=dict(width=width,height=height),scale=scale,
+        native_pixels=native_pixels,native_scale=native_scale,render_divisor=divisor,
         logical=dict(width=round(width/scale),height=round(height/scale)),
         regions=regions,hinge=hinge,keyboard='physical' if base['kind']=='keyboard' else 'touch',
         hinge_angle=0 if posture=='folded' else 90 if posture=='book' else 180)

@@ -13,23 +13,33 @@ class DeviceTests(unittest.TestCase):
         for rotation in (0,90,180,270):
             state=devices.describe(dict(profile='duo',rotation=rotation))
             regions=state['regions'];hinge=state['hinge']
-            self.assertEqual(sum(r['width']*r['height'] for r in regions)+hinge['width']*hinge['height'],2784*1800)
+            self.assertEqual(sum(r['width']*r['height'] for r in regions)+hinge['width']*hinge['height'],1392*900)
             self.assertEqual(len(regions),2)
             for rect in [*regions,hinge]:
                 self.assertGreaterEqual(rect['x'],0);self.assertGreaterEqual(rect['y'],0)
                 self.assertLessEqual(rect['x']+rect['width'],state['pixels']['width'])
                 self.assertLessEqual(rect['y']+rect['height'],state['pixels']['height'])
         closed=devices.describe(dict(profile='duo',posture='folded'))
-        self.assertEqual(closed['pixels'],dict(width=1350,height=1800));self.assertIsNone(closed['hinge'])
+        self.assertEqual(closed['pixels'],dict(width=675,height=900));self.assertIsNone(closed['hinge'])
 
     def test_fold_transition_retains_density_and_keyboard_changes(self):
         folded=devices.describe(dict(profile='fold',posture='folded'))
         opened=devices.describe(dict(profile='fold',posture='flat'))
-        self.assertEqual(folded['pixels'],dict(width=1080,height=2364))
-        self.assertEqual(opened['pixels'],dict(width=2076,height=2152))
+        self.assertEqual(folded['native_pixels'],dict(width=1080,height=2364))
+        self.assertEqual(opened['native_pixels'],dict(width=2076,height=2152))
         self.assertEqual(folded['scale'],opened['scale'])
         self.assertEqual(devices.describe(dict(profile='titan'))['keyboard'],'physical')
         self.assertEqual(devices.describe(dict(profile='pixel-xl'))['keyboard'],'touch')
+
+    def test_preview_preserves_ui_size_within_vnc_scanout_limits(self):
+        for profile in devices.PROFILES:
+            for rotation in (0,90,180,270):
+                state=devices.describe(dict(profile=profile,rotation=rotation))
+                self.assertLessEqual(state['pixels']['height'],2160)
+                self.assertLessEqual(state['pixels']['width'],3840)
+                for axis in ('width','height'):
+                    self.assertEqual(state['pixels'][axis]/state['scale'],
+                                     state['native_pixels'][axis]/state['native_scale'])
 
     def test_invalid_custom_size_does_not_replace_preferences(self):
         with tempfile.TemporaryDirectory() as directory:

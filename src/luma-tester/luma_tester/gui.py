@@ -930,7 +930,8 @@ def launch(state=None):
                 custom.set_visible(key=='custom');posture.set_visible(key in ('fold','duo'))
                 if key!='custom':
                     preview=device_profiles.describe(dict(config,profile=key,posture=posture.current,rotation=int(rotation.current)))
-                    detail.set_label(str(preview['pixels']['width'])+' × '+str(preview['pixels']['height'])+' px · '+str(preview['scale'])+'× UI scale')
+                    panel=preview['native_pixels'];logical=preview['logical']
+                    detail.set_label(str(panel['width'])+' × '+str(panel['height'])+' device pixels · '+str(logical['width'])+' × '+str(logical['height'])+' UI\n'+str(round(100/preview['render_divisor']))+'% preview resolution')
                 else:detail.set_label('The guest screen resizes; applications keep running.')
             posture.on_change=lambda _value:changed()
             rotation.on_change=lambda _value:changed()

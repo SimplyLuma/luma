@@ -405,3 +405,9 @@ work documents that distinction; its Fedora base alone is not a qualified Mobile
 image. A virtual ARM boot/interaction pass is required before adding that variant
 to Tester's qualified catalog. No new system design or user-provided rootfs is
 needed. The current x86 Mobile simulator remains available for native iteration.
+
+High-density device profiles use a 50% render resolution with proportionally
+reduced UI scale. Logical application dimensions and panel proportions stay the
+same in either orientation; the Device panel identifies preview density. This
+avoids QEMU VNC’s 2160-row limit and reduces software-rendering cost. Native panel
+pixels are recorded separately as `native_pixels`; screenshots use guest `pixels`.
