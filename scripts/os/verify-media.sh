@@ -124,6 +124,26 @@ if [ -n "$media_build_dir" ]; then
     luma_os_die 'private media cannot replace its bound checks with a Git revision'
   fi
 fi
+# New media name their architecture directly; retained x86 media predate that
+# field, so derive it from the signed payload ref. Reject inconsistent records
+# rather than silently installing the wrong target in a VM.
+media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
+if [ -n "$media_build_dir" ] && [ "$LUMA_OS_ARCH" != "$media_architecture" ]; then
+  luma_os_die 'media architecture differs from its candidate build'
+fi
+luma_os_select_architecture "$media_architecture"
+[ "$MEDIA_REF" = "$(luma_os_channel_ref "$MEDIA_CHANNEL")" ] ||
+  luma_os_die 'media architecture/channel does not match its payload ref'
+case "$LUMA_OS_ARCH" in
+  x86_64) media_machine=q35; media_console=ttyS0 ;;
+  aarch64) media_machine=virt; media_console=ttyAMA0 ;;
+esac
+media_cpu=host-passthrough
+media_virt=kvm
+if [ "$(uname -m)" != "$LUMA_OS_ARCH" ]; then
+  media_cpu=max
+  media_virt=qemu
+fi
 
 run=$(date -u +%Y%m%dT%H%M%SZ)
 out="$LUMA_OS_ROOT/media/verify-$run"
@@ -222,11 +242,12 @@ qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "installing $MEDIA_VERSION from $(basename "$iso") ($volid), account: $account"
 started=$SECONDS
 virt-install --connect qemu:///system --name "$domain" \
-  --memory 6144 --vcpus 4 --cpu host-passthrough --machine q35 --boot uefi \
+  --arch "$LUMA_OS_ARCH" --virt-type "$media_virt" \
+  --memory 6144 --vcpus 4 --cpu "$media_cpu" --machine "$media_machine" --boot uefi \
   --disk "path=$vm/disk.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
   --location "$iso,kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img" \
   --initrd-inject "$vm/atlas-media.ks" \
-  --extra-args "inst.ks=file:/atlas-media.ks inst.stage2=hd:LABEL=$volid inst.text console=ttyS0 inst.notmux" \
+  --extra-args "inst.ks=file:/atlas-media.ks inst.stage2=hd:LABEL=$volid inst.text console=$media_console inst.notmux" \
   --network "passt,portForward0.proto=tcp,portForward0.range0.start=$port,portForward0.range0.to=22" \
   --graphics vnc,listen=127.0.0.1 --video virtio --rng /dev/urandom \
   --serial "file,path=/var/log/libvirt/qemu/$domain-serial.log" \
