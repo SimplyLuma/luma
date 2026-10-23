@@ -113,11 +113,6 @@ podman run --detach --init "${isolation[@]}" --security-opt label=disable \
 if [ "$signing" = 0 ]; then
 actual_arch=$(podman exec "$DEPOT_TOOLS_CONTAINER" uname -m)
 [ "$actual_arch" = "$DEPOT_ARCH" ] || depot_die "Depot builder CPU $actual_arch differs from target $DEPOT_ARCH"
-podman exec "$DEPOT_TOOLS_CONTAINER" dnf5 -q -y install \
-  flatpak flatpak-builder flatpak-module-tools ostree minisign \
-  appstream appstream-compose createrepo_c gnupg2 pinentry \
-  python3-pyyaml python3-requests python3-pytest git-core rsync jq \
-  desktop-file-utils librsvg2-tools util-linux zstd tar findutils which python3-pillow cpio \
-  dnf5-plugins rclone s3cmd
+podman exec --interactive "$DEPOT_TOOLS_CONTAINER" bash -s < "$depot_repo_root/scripts/depot/install-tools-packages.sh"
 fi
 depot_log "$DEPOT_TOOLS_CONTAINER ready ($image)"
