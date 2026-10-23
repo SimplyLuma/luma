@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.71.creator20261021.1%{?dist}
+Release:        1.luma.72.creator20261023.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -254,6 +254,9 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.72.creator20261023.1
+- Declare ARM support for the bundled applications in the Depot catalogue.
+
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.70.creator20261020.1
 - Deliver Filer and Ari updates through their installed signed Flatpaks.
 

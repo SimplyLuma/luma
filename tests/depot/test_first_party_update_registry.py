@@ -12,7 +12,7 @@ class Registry(unittest.TestCase):
         entry=next(a for a in catalog['applications'] if a['id']=='connect')
         self.assertEqual((entry['backend'],entry['repository'],entry['source_id'],entry['branch']),
                          ('flatpak','luma','org.projectluma.Connect','beta'))
-        self.assertEqual(entry['architectures'],['x86_64'])
+        self.assertEqual(entry['architectures'],['x86_64','aarch64'])
         self.assertEqual(entry['sources']['flatpak'],
                          {'repository':'luma','source_id':'org.projectluma.Connect','branch':'beta'})
         self.assertEqual(entry['sources']['luma_system'],
@@ -23,6 +23,23 @@ class Registry(unittest.TestCase):
         spec.loader.exec_module(generator)
         generated=next(a for a in json.loads(generator.generate())['applications'] if a['id']=='connect')
         self.assertEqual(generated,entry)
+
+    def test_bundled_app_catalogue_supports_both_shipping_cpus(self):
+        baseline=set(json.loads((ROOT/'config/os/first-party-app-baseline.json').read_text())['applications'])
+        # Depot intentionally does not offer itself for installation in its
+        # own catalogue; its host package supplies this generated seed.
+        baseline.remove('org.projectluma.Depot')
+        catalog=json.loads((ROOT/'src/luma-installer/data/depot-catalog-4.json').read_text())
+        bundled={entry['app_id']:entry for entry in catalog['applications'] if entry.get('app_id') in baseline}
+        self.assertEqual(set(bundled),baseline)
+        self.assertEqual(len(bundled),23)
+        for app_id,entry in bundled.items():
+            with self.subTest(app_id=app_id):
+                self.assertEqual(entry['architectures'],['x86_64','aarch64'])
+        # The optional separate product remains constrained to its actual
+        # published CPU; broadening the bundled apps is not a global default.
+        write=next(entry for entry in catalog['applications'] if entry['id']=='write')
+        self.assertEqual(write['architectures'],['x86_64'])
 
     def test_every_catalogued_image_app_has_maintained_identity_and_producer(self):
         registry=json.loads((ROOT/'packaging/flatpak/first-party-updates.json').read_text())
