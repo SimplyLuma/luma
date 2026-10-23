@@ -1,0 +1,866 @@
+--- a/src/app-grid.c
++++ b/src/app-grid.c
+@@ -13,6 +13,7 @@
+ #include "app-grid-button.h"
+ #include "app-grid-icon.h"
+ #include "luma-today.h"
++#include "luma-home-pages.h"
+ #include "retained-library.h"
+ #include "app-grid-folder-button.h"
+ #include "app-list-model.h"
+@@ -82,7 +83,7 @@
+   GtkWidget *scrolled_window;
+   GtkWidget *home_page;
+   GtkWidget *today_slot;
+-  gboolean widget_gutters_pending;
++  GtkWidget *home_pages;
+   GtkWidget *all_apps_button;
+   GtkWidget *library_page;
+   GtkWidget *library_list;
+@@ -590,7 +591,8 @@
+   }
+   g_list_free_full (apps, g_object_unref);
+   g_clear_pointer (&priv->library_query, g_free);
+-  rebuild_library (self);
++  if (priv->library_active)
++    rebuild_library (self);
+ }
+ 
+ 
+@@ -668,7 +670,7 @@
+ static void
+ on_all_apps_clicked (PhoshAppGrid *self)
+ {
+-  phosh_app_grid_show_library (self, TRUE);
++  phosh_app_grid_focus_search (self);
+ }
+ 
+ 
+@@ -845,47 +847,6 @@
+ }
+ 
+ 
+-/* Align the cards with the artwork centered in the outer Home grid cells.
+- * Keep the card-to-card spacing independent of these responsive gutters. */
+-static gboolean
+-update_home_widget_gutters (gpointer data)
+-{
+-  PhoshAppGrid *self = PHOSH_APP_GRID (data);
+-  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+-  GtkWidget *grid = priv->favs;
+-  GtkAllocation allocation;
+-
+-  priv->widget_gutters_pending = FALSE;
+-  if (!gtk_widget_get_mapped (GTK_WIDGET (self)))
+-    return G_SOURCE_REMOVE;
+-  gtk_widget_get_allocation (grid, &allocation);
+-  int columns = gtk_flow_box_get_max_children_per_line (GTK_FLOW_BOX (grid));
+-  int inset = MAX (0, (allocation.width / columns - HOME_ICON_SIZE) / 2);
+-  int start = gtk_widget_get_margin_start (grid) + inset;
+-  int end = gtk_widget_get_margin_end (grid) + inset;
+-
+-  if (gtk_widget_get_margin_start (priv->today_slot) != start)
+-    gtk_widget_set_margin_start (priv->today_slot, start);
+-  if (gtk_widget_get_margin_end (priv->today_slot) != end)
+-    gtk_widget_set_margin_end (priv->today_slot, end);
+-  return G_SOURCE_REMOVE;
+-}
+-
+-
+-static void
+-on_home_grid_allocated (GtkWidget *grid, GtkAllocation *allocation, PhoshAppGrid *self)
+-{
+-  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+-
+-  if (priv->widget_gutters_pending)
+-    return;
+-  /* The parent is allocating siblings now; apply margins after this cycle. */
+-  priv->widget_gutters_pending = TRUE;
+-  g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, update_home_widget_gutters,
+-                   g_object_ref (self), g_object_unref);
+-}
+-
+-
+ static GtkWidget *
+ create_favorite_launcher (gpointer item, gpointer self)
+ {
+@@ -945,9 +906,8 @@
+     app_ids = g_settings_get_strv (priv->settings, "favorites");
+   }
+ 
+-  /* Home is a compact sixteen-slot page. Every installed app remains in
+-   * Library even when shared Home preferences contain additional entries. */
+-  for (int i = 0; app_ids[i] && g_list_model_get_n_items (G_LIST_MODEL (priv->home_model)) < 16; i++) {
++  /* Keep preferred entries first, then expose the complete visible catalog. */
++  for (int i = 0; app_ids[i]; i++) {
+     if (g_str_has_prefix (app_ids[i], "folder:")) {
+       g_autoptr (PhoshFolderInfo) folder =
+         phosh_folder_info_new_from_folder_path (app_ids[i] + strlen ("folder:"));
+@@ -955,24 +915,29 @@
+       GListModel *folder_apps = phosh_folder_info_get_app_infos (folder);
+       guint n_apps = g_list_model_get_n_items (folder_apps);
+ 
+-      /* Luma never shows a folder holding one app: that app stands on Home
+-       * itself, and an empty folder is not shown at all. */
+-      if (n_apps == 1) {
+-        g_autoptr (GAppInfo) only = g_list_model_get_item (folder_apps, 0);
+-
+-        if (!home_model_contains (priv->home_model, only))
+-          g_list_store_append (priv->home_model, only);
+-      } else if (n_apps > 1 && g_app_info_should_show (G_APP_INFO (folder))) {
+-        g_list_store_append (priv->home_model, folder);
++      for (guint j = 0; j < n_apps; j++) {
++        g_autoptr (GAppInfo) member = g_list_model_get_item (folder_apps, j);
++        if (phosh_home_app_should_show (member) &&
++            home_model_contains (priv->library_model, member) &&
++            !home_model_contains (priv->home_model, member))
++          g_list_store_append (priv->home_model, member);
+       }
+       continue;
+     }
+ 
+     g_autoptr (GDesktopAppInfo) info = resolve_home_app (app_ids[i]);
+ 
+-    if (info && g_app_info_should_show (G_APP_INFO (info)))
++    if (info && phosh_home_app_should_show (G_APP_INFO (info)) &&
++        home_model_contains (priv->library_model, G_APP_INFO (info)) &&
++        !home_model_contains (priv->home_model, G_APP_INFO (info)))
+       g_list_store_append (priv->home_model, info);
+   }
++  for (guint i = 0; i < g_list_model_get_n_items (G_LIST_MODEL (priv->library_model)); i++) {
++    g_autoptr (GAppInfo) info = g_list_model_get_item (G_LIST_MODEL (priv->library_model), i);
++    if (phosh_home_app_should_show (info) && !home_model_contains (priv->home_model, info))
++      g_list_store_append (priv->home_model, info);
++  }
++
+ }
+ 
+ static void
+@@ -1066,7 +1031,7 @@
+ 
+   /* Search is an overlay, not a second layout state. Keep Home allocated and
+    * painted below it so OSK and Search transitions cannot reflow launchers. */
+-  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->favs_revealer), TRUE);
++  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->favs_revealer), FALSE);
+   gtk_revealer_set_reveal_child (GTK_REVEALER (priv->dock_revealer), TRUE);
+   gtk_widget_set_visible (priv->search_intro, intro_visible);
+ }
+@@ -1282,8 +1247,6 @@
+   gtk_box_pack_start (GTK_BOX (priv->today_slot), today, TRUE, TRUE, 0);
+   g_signal_connect (today, "launch-requested", G_CALLBACK (on_today_launch_requested), self);
+   gtk_widget_show (today);
+-  g_signal_connect_object (priv->favs, "size-allocate",
+-                           G_CALLBACK (on_home_grid_allocated), self, 0);
+   g_signal_connect (priv->library_letters, "size-allocate",
+                      G_CALLBACK (on_library_letters_allocated), self);
+   priv->library_rail_drag = gtk_gesture_drag_new (priv->library_rail);
+@@ -1307,11 +1270,23 @@
+     NULL);
+   rebuild_home_model (self);
+ 
+-  gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->favs),
+-                           G_LIST_MODEL (priv->home_model),
+-                           create_home_launcher,
+-                           self,
+-                           NULL);
++  GtkWidget *home_box = gtk_widget_get_parent (priv->dock_revealer);
++  GList *home_children = gtk_container_get_children (GTK_CONTAINER (home_box));
++  for (GList *p = home_children; p; p = p->next) {
++    if (p->data == priv->today_slot || p->data == priv->dock_revealer)
++      continue;
++    gtk_widget_set_no_show_all (p->data, TRUE);
++    gtk_widget_hide (p->data);
++  }
++  g_list_free (home_children);
++  priv->home_pages = phosh_home_pages_new (G_LIST_MODEL (priv->home_model),
++                                          priv->today_slot, create_home_launcher, self);
++  gtk_box_pack_start (GTK_BOX (home_box), priv->home_pages, TRUE, TRUE, 0);
++  gtk_box_reorder_child (GTK_BOX (home_box), priv->home_pages, 0);
++  gtk_widget_show (priv->home_pages);
++  gtk_widget_set_tooltip_text (priv->all_apps_button, _("Search"));
++  atk_object_set_name (gtk_widget_get_accessible (priv->all_apps_button), _("Search"));
++
+   gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->dock),
+                            G_LIST_MODEL (priv->dock_model),
+                            create_favorite_launcher,
+@@ -1861,8 +1836,6 @@
+                        GtkGestureDrag *gesture)
+ {
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+-  const GdkEvent *event;
+-  GtkWidget *event_widget;
+ 
+   g_clear_object (&priv->launcher_press_target);
+   priv->launcher_held = FALSE;
+@@ -1874,51 +1847,9 @@
+    * belong to the Home/Library surface, never to Search's carousel. */
+   if (!priv->search_mode &&
+       hdy_carousel_get_position (HDY_CAROUSEL (priv->search_carousel)) >= 1.0) {
+-    if (priv->open_folder) {
+-      gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+-      return;
+-    }
+-    priv->search_drag.launcher_mode = priv->library_active ? 2 : 1;
+-    if (priv->library_active) {
+-      GtkAdjustment *adjustment = gtk_scrolled_window_get_vadjustment (
+-        GTK_SCROLLED_WINDOW (priv->library_scrolled_window));
+-
+-      priv->search_drag.launcher_can_dismiss =
+-        gtk_adjustment_get_value (adjustment) <= gtk_adjustment_get_lower (adjustment) + 0.5;
+-      /* NULL identifies a pointer sequence, not the current touch. Looking
+-       * up NULL here loses the rail/search target and lets the parent claim
+-       * its child's drag before the rail receives its update. */
+-      event = gtk_gesture_get_last_event (GTK_GESTURE (gesture),
+-        gtk_gesture_single_get_current_sequence (GTK_GESTURE_SINGLE (gesture)));
+-      event_widget = event ? gtk_get_event_widget ((GdkEvent *) event) : NULL;
+-      if (!priv->search_drag.launcher_can_dismiss ||
+-          (event_widget && (event_widget == priv->library_search ||
+-           event_widget == priv->library_rail ||
+-           gtk_widget_is_ancestor (event_widget, priv->library_rail)))) {
+-        gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+-        return;
+-      }
+-    }
+-    event = gtk_gesture_get_last_event (GTK_GESTURE (gesture),
+-      gtk_gesture_single_get_current_sequence (GTK_GESTURE_SINGLE (gesture)));
+-    event_widget = event ? gtk_get_event_widget ((GdkEvent *) event) : NULL;
+-    if (event_widget) {
+-      GtkWidget *button = GTK_IS_BUTTON (event_widget) ? event_widget :
+-        gtk_widget_get_ancestor (event_widget, GTK_TYPE_BUTTON);
+-
+-      if (button) {
+-        GtkWidget *owner = PHOSH_IS_APP_GRID_BUTTON (event_widget) ? event_widget :
+-          gtk_widget_get_ancestor (event_widget, PHOSH_TYPE_APP_GRID_BUTTON);
+-
+-        g_set_object (&priv->launcher_press_target, (owner ? owner : button));
+-        /* Home owns its delayed opening swipe from TOUCH_BEGIN. Library
+-         * leaves initial motion with GTK's native scroller so row drags do
+-         * not lose displacement when our gesture is later denied. Retain
+-         * the press target for tap and hold ownership in either mode. */
+-        if (priv->search_drag.launcher_mode == 1)
+-          gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+-      }
+-    }
++    /* Home page swipes belong to the horizontal native carousel. */
++    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
++    return;
+   }
+   priv->search_drag.start_progress =
+     hdy_carousel_get_position (HDY_CAROUSEL (priv->search_carousel));
+@@ -2299,7 +2230,6 @@
+   gtk_widget_queue_resize (GTK_WIDGET (self));
+   g_clear_pointer (&priv->library_preedit, g_free);
+   gtk_entry_set_text (GTK_ENTRY (priv->library_search), "");
+-  apply_library_search_changed (self);
+ 
+   adjustment = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (priv->scrolled_window));
+ 
+@@ -2343,25 +2273,10 @@
+ void
+ phosh_app_grid_show_library (PhoshAppGrid *self, gboolean focus_search)
+ {
+-  PhoshAppGridPrivate *priv;
+-  GtkAdjustment *adjustment;
+-
+-  g_return_if_fail (PHOSH_IS_APP_GRID (self));
+-  priv = phosh_app_grid_get_instance_private (self);
+-  if (!priv->library_active) {
+-    phosh_app_grid_reset (self);
+-    priv->library_active = TRUE;
+-    gtk_widget_set_opacity (priv->home_page, 0.0);
+-    gtk_widget_show (priv->library_page);
+-    gtk_widget_queue_resize (GTK_WIDGET (self));
+-    adjustment = gtk_scrolled_window_get_vadjustment (
+-      GTK_SCROLLED_WINDOW (priv->library_scrolled_window));
+-    gtk_adjustment_set_value (adjustment, gtk_adjustment_get_lower (adjustment));
+-  }
+   if (focus_search)
+-    gtk_entry_grab_focus_without_selecting (GTK_ENTRY (priv->library_search));
++    phosh_app_grid_focus_search (self);
+   else
+-    gtk_widget_grab_focus (GTK_WIDGET (self));
++    phosh_app_grid_show_home (self);
+ }
+ 
+ 
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -204,6 +204,7 @@
+   'app-grid-button.c',
+   'app-grid-icon.c',
+   'luma-today.c',
++  'luma-home-pages.c',
+   'app-grid-folder-button.c',
+   'app-grid.c',
+   'retained-library.c',
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -1748,3 +1748,10 @@
+ phosh-top-panel.luma-presence #top-bar { padding-top: 0; }
+ phosh-top-panel.luma-presence .indicators { margin-right: 22px; opacity: 1; color: #fff; }
+ phosh-top-panel.luma-presence #top-bar image { -gtk-icon-shadow: none; }
++
++.luma-page-button, .luma-page-button:hover, .luma-page-button:active {
++  min-width: 44px; min-height: 44px; padding: 0; margin: 0;
++  border: 0; background: transparent; box-shadow: none;
++}
++.luma-page-dot { background: rgba(255,255,255,.35); border-radius: 50%; }
++.luma-page-button.selected .luma-page-dot { background: white; }
+--- /dev/null
++++ b/src/luma-home-pages.c
+@@ -0,0 +1,417 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include "luma-home-pages.h"
++#include <handy.h>
++#include <math.h>
++#include <glib/gi18n.h>
++#include <gio/gdesktopappinfo.h>
++
++gboolean
++phosh_home_app_should_show (GAppInfo *info)
++{
++  if (!G_IS_DESKTOP_APP_INFO (info) || !g_app_info_should_show (info) ||
++      g_desktop_app_info_get_is_hidden (G_DESKTOP_APP_INFO (info)))
++    return FALSE;
++  /* Search settings has a launcher for desktop discovery, but belongs to
++   * Settings and the dock Search action on Mobile. CLI launchers stay out. */
++  return g_strcmp0 (g_app_info_get_id (info), "org.projectluma.SearchSettings.desktop") != 0 &&
++    !g_desktop_app_info_get_boolean (G_DESKTOP_APP_INFO (info), "Terminal");
++}
++
++typedef struct {
++  GtkContainer parent;
++  HdyCarousel *carousel;
++  GtkWidget *dots;
++  GtkWidget *indicator;
++  GtkWidget *today;
++  GListModel *model;
++  GtkFlowBoxCreateWidgetFunc factory;
++  gpointer factory_data;
++  guint idle;
++  guint columns, first_capacity, capacity;
++  gboolean widgets_scroll;
++  int last_width, last_height;
++  gboolean dirty, stopped;
++} PhoshHomePages;
++typedef GtkContainerClass PhoshHomePagesClass;
++G_DEFINE_TYPE (PhoshHomePages, phosh_home_pages, GTK_TYPE_CONTAINER)
++
++static void queue_layout (PhoshHomePages *self);
++
++static void
++update_dots (PhoshHomePages *self)
++{
++  if (self->stopped) return;
++  guint selected = (guint) floor (hdy_carousel_get_position (self->carousel) + .5);
++  GList *children = gtk_container_get_children (GTK_CONTAINER (self->dots));
++  guint index = 0;
++
++  for (GList *p = children; p; p = p->next, index++) {
++    GtkStyleContext *style = gtk_widget_get_style_context (p->data);
++    if (index == selected) gtk_style_context_add_class (style, "selected");
++    else gtk_style_context_remove_class (style, "selected");
++    atk_object_set_description (gtk_widget_get_accessible (p->data),
++                                 index == selected ? _("Current page") : _("Go to page"));
++  }
++  g_list_free (children);
++  g_autofree char *name = g_strdup_printf (_("Home page %u of %u"), selected + 1,
++                                          hdy_carousel_get_n_pages (self->carousel));
++  atk_object_set_name (gtk_widget_get_accessible (GTK_WIDGET (self->carousel)), name);
++}
++
++static void
++position_changed (HdyCarousel *carousel, GParamSpec *pspec, PhoshHomePages *self)
++{
++  update_dots (self);
++}
++
++static void
++dot_clicked (GtkButton *button, PhoshHomePages *self)
++{
++  guint index = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "page"));
++  GList *pages = gtk_container_get_children (GTK_CONTAINER (self->carousel));
++  GtkWidget *page = g_list_nth_data (pages, index);
++  if (page) hdy_carousel_scroll_to (self->carousel, page);
++  g_list_free (pages);
++}
++
++static GtkWidget *
++new_grid (guint columns)
++{
++  GtkWidget *grid = gtk_flow_box_new ();
++  gtk_flow_box_set_homogeneous (GTK_FLOW_BOX (grid), TRUE);
++  gtk_flow_box_set_min_children_per_line (GTK_FLOW_BOX (grid), columns);
++  gtk_flow_box_set_max_children_per_line (GTK_FLOW_BOX (grid), columns);
++  gtk_flow_box_set_selection_mode (GTK_FLOW_BOX (grid), GTK_SELECTION_NONE);
++  gtk_flow_box_set_activate_on_single_click (GTK_FLOW_BOX (grid), FALSE);
++  gtk_flow_box_set_row_spacing (GTK_FLOW_BOX (grid), 18);
++  gtk_widget_set_margin_start (grid, 18);
++  gtk_widget_set_margin_end (grid, 18);
++  gtk_widget_set_margin_top (grid, 18);
++  gtk_widget_set_margin_bottom (grid, 12);
++  gtk_widget_set_valign (grid, GTK_ALIGN_START);
++  gtk_widget_set_hexpand (grid, TRUE);
++  gtk_style_context_add_class (gtk_widget_get_style_context (grid), "luma-home-grid");
++  return grid;
++}
++
++static void
++clear_container (GtkContainer *container)
++{
++  GList *children = gtk_container_get_children (container);
++  for (GList *p = children; p; p = p->next) gtk_widget_destroy (p->data);
++  g_list_free (children);
++}
++
++static gboolean
++layout_pages (gpointer data)
++{
++  PhoshHomePages *self = data;
++  GtkWidget *carousel = GTK_WIDGET (self->carousel);
++  int width = gtk_widget_get_allocated_width (carousel);
++  int height = gtk_widget_get_allocated_height (carousel);
++  int today_min, today_height, tile_min = 0, tile_height = 80;
++  int tile_width_min = 68, tile_width = 68;
++  guint columns, first_capacity, capacity;
++  gboolean widgets_scroll;
++  guint count = g_list_model_get_n_items (self->model);
++  self->idle = 0;
++  if (self->stopped || width < 100 || height < 100) return G_SOURCE_REMOVE;
++  if (!self->dirty && width == self->last_width && height == self->last_height)
++    return G_SOURCE_REMOVE;
++  self->last_width = width;
++  self->last_height = height;
++
++  columns = MAX (1, (width - 36) / (tile_width + 18));
++  gtk_widget_get_preferred_height_for_width (self->today, width, &today_min, &today_height);
++  if (count) {
++    g_autoptr (GObject) item = g_list_model_get_item (self->model, 0);
++    GtkWidget *sample = self->factory (item, self->factory_data);
++    GtkWidget *grid = new_grid (1);
++    g_object_ref_sink (grid);
++    gtk_container_add (GTK_CONTAINER (grid), sample);
++    gtk_widget_show_all (grid);
++    gtk_widget_get_preferred_width (sample, &tile_width_min, &tile_width);
++    columns = MAX (1, (width - 36) / (MAX (tile_width_min, tile_width) + 18));
++    gtk_widget_get_preferred_height_for_width (sample, (width - 36) / columns,
++                                              &tile_min, &tile_height);
++    tile_height = MAX (80, MAX (tile_min, tile_height));
++    gtk_widget_destroy (grid);
++    g_object_unref (grid);
++  }
++  /* Include the top/bottom grid margins and inter-row spacing. */
++  capacity = MAX (1, (height - 12) / (tile_height + 18)) * columns;
++  first_capacity = MAX (0, (height - today_height - 12) / (tile_height + 18)) * columns;
++  widgets_scroll = today_height > height;
++  if (!self->dirty && columns == self->columns && capacity == self->capacity &&
++      first_capacity == self->first_capacity && widgets_scroll == self->widgets_scroll) return G_SOURCE_REMOVE;
++  self->dirty = FALSE;
++  self->columns = columns;
++  self->capacity = capacity;
++  self->first_capacity = first_capacity;
++  self->widgets_scroll = widgets_scroll;
++
++  guint selected = (guint) floor (hdy_carousel_get_position (self->carousel) + .5);
++  GtkWidget *parent = gtk_widget_get_parent (self->today);
++  if (parent) gtk_container_remove (GTK_CONTAINER (parent), self->today);
++  clear_container (GTK_CONTAINER (self->carousel));
++  clear_container (GTK_CONTAINER (self->dots));
++
++  guint offset = 0, page_number = 0;
++  do {
++    GtkWidget *page = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    gtk_widget_set_hexpand (page, TRUE);
++    GtkWidget *grid = new_grid (columns);
++    guint page_capacity = page_number == 0 ? first_capacity : capacity;
++    if (page_number == 0) {
++      int gutter = 18 + MAX (0, ((width - 36) / (int) columns - 58) / 2);
++      gtk_widget_set_margin_start (self->today, gutter);
++      gtk_widget_set_margin_end (self->today, gutter);
++      if (widgets_scroll) {
++        GtkWidget *scroller = gtk_scrolled_window_new (NULL, NULL);
++        gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
++                                         GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
++        gtk_container_add (GTK_CONTAINER (scroller), self->today);
++        gtk_box_pack_start (GTK_BOX (page), scroller, TRUE, TRUE, 0);
++      } else {
++        gtk_box_pack_start (GTK_BOX (page), self->today, FALSE, FALSE, 0);
++      }
++    } else gtk_widget_set_margin_top (grid, 16);
++    for (guint i = 0; i < page_capacity && offset < count; i++, offset++) {
++      g_autoptr (GObject) item = g_list_model_get_item (self->model, offset);
++      gtk_container_add (GTK_CONTAINER (grid), self->factory (item, self->factory_data));
++    }
++    if (page_capacity)
++      gtk_box_pack_start (GTK_BOX (page), grid, FALSE, FALSE, 0);
++    else
++      gtk_widget_destroy (grid);
++    gtk_widget_show_all (page);
++    hdy_carousel_insert (self->carousel, page, -1);
++
++    GtkWidget *dot = gtk_button_new ();
++    GtkWidget *circle = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++    gtk_widget_set_size_request (circle, 6, 6);
++    gtk_widget_set_halign (circle, GTK_ALIGN_CENTER);
++    gtk_widget_set_valign (circle, GTK_ALIGN_CENTER);
++    gtk_style_context_add_class (gtk_widget_get_style_context (circle), "luma-page-dot");
++    gtk_style_context_add_class (gtk_widget_get_style_context (dot), "luma-page-button");
++    gtk_container_add (GTK_CONTAINER (dot), circle);
++    g_object_set_data (G_OBJECT (dot), "page", GUINT_TO_POINTER (page_number));
++    g_signal_connect (dot, "clicked", G_CALLBACK (dot_clicked), self);
++    g_autofree char *label = g_strdup_printf (_("Home page %u"), page_number + 1);
++    atk_object_set_name (gtk_widget_get_accessible (dot), label);
++    gtk_widget_set_tooltip_text (dot, label);
++    gtk_box_pack_start (GTK_BOX (self->dots), dot, FALSE, FALSE, 0);
++    gtk_widget_show_all (dot);
++    page_number++;
++  } while (offset < count);
++
++  GList *pages = gtk_container_get_children (GTK_CONTAINER (self->carousel));
++  hdy_carousel_scroll_to_full (self->carousel,
++    g_list_nth_data (pages, MIN (selected, page_number - 1)), 0);
++  g_list_free (pages);
++  gtk_widget_show_all (self->dots);
++  gtk_widget_set_visible (self->dots, page_number > 1);
++  update_dots (self);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++queue_layout (PhoshHomePages *self)
++{
++  if (!self->stopped && !self->idle)
++    self->idle = g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, layout_pages,
++                                 g_object_ref (self), g_object_unref);
++}
++
++static void
++allocated (GtkWidget *widget, GtkAllocation *allocation, PhoshHomePages *self)
++{
++  queue_layout (self);
++}
++
++static void
++items_changed (GListModel *model, guint position, guint removed, guint added,
++               PhoshHomePages *self)
++{
++  self->dirty = TRUE;
++  queue_layout (self);
++}
++
++static void
++preferred_height (GtkWidget *widget, int *minimum, int *natural)
++{
++  *minimum = 0;
++  *natural = 600;
++}
++
++static void
++preferred_height_for_width (GtkWidget *widget, int width, int *minimum, int *natural)
++{
++  preferred_height (widget, minimum, natural);
++}
++
++static void
++preferred_width (GtkWidget *widget, int *minimum, int *natural)
++{
++  *minimum = 0;
++  *natural = 427;
++}
++
++static GtkSizeRequestMode
++request_mode (GtkWidget *widget)
++{
++  return GTK_SIZE_REQUEST_CONSTANT_SIZE;
++}
++
++static void
++size_allocate (GtkWidget *widget, GtkAllocation *allocation)
++{
++  PhoshHomePages *self = (PhoshHomePages *) widget;
++  gtk_widget_set_allocation (widget, allocation);
++  /* Allocate the viewport independently of the pages it contains. */
++  GtkAllocation viewport = *allocation;
++  viewport.height = MAX (1, allocation->height - 44);
++  gtk_widget_size_allocate (GTK_WIDGET (self->carousel), &viewport);
++  GtkAllocation indicator = *allocation;
++  indicator.y += viewport.height;
++  indicator.height = MIN (44, allocation->height);
++  gtk_widget_size_allocate (self->indicator, &indicator);
++}
++
++static void
++preferred_height_and_baseline (GtkWidget *widget, int width, int *minimum,
++                                int *natural, int *minimum_baseline, int *natural_baseline)
++{
++  preferred_height (widget, minimum, natural);
++  if (minimum_baseline) *minimum_baseline = -1;
++  if (natural_baseline) *natural_baseline = -1;
++}
++
++static void
++destroy (GtkWidget *widget)
++{
++  PhoshHomePages *self = (PhoshHomePages *) widget;
++  self->stopped = TRUE;
++  g_clear_handle_id (&self->idle, g_source_remove);
++  if (self->model) g_signal_handlers_disconnect_by_data (self->model, self);
++  GTK_WIDGET_CLASS (phosh_home_pages_parent_class)->destroy (widget);
++}
++
++static void
++dispose (GObject *object)
++{
++  PhoshHomePages *self = (PhoshHomePages *) object;
++  g_clear_object (&self->model);
++  g_clear_object (&self->today);
++  G_OBJECT_CLASS (phosh_home_pages_parent_class)->dispose (object);
++}
++
++static void
++forall (GtkContainer *container, gboolean internals, GtkCallback callback, gpointer data)
++{
++  PhoshHomePages *self = (PhoshHomePages *) container;
++  if (self->carousel) callback (GTK_WIDGET (self->carousel), data);
++  if (self->indicator) callback (self->indicator, data);
++}
++
++static void
++remove_child (GtkContainer *container, GtkWidget *child)
++{
++  PhoshHomePages *self = (PhoshHomePages *) container;
++  if (child == GTK_WIDGET (self->carousel)) self->carousel = NULL;
++  else if (child == self->indicator) self->indicator = NULL;
++  else return;
++  gtk_widget_unparent (child);
++}
++
++static void
++style_updated (GtkWidget *widget)
++{
++  PhoshHomePages *self = (PhoshHomePages *) widget;
++  GTK_WIDGET_CLASS (phosh_home_pages_parent_class)->style_updated (widget);
++  self->dirty = TRUE;
++  queue_layout (self);
++}
++
++static gboolean
++key_press (GtkWidget *widget, GdkEventKey *event)
++{
++  PhoshHomePages *self = (PhoshHomePages *) widget;
++  if (event->keyval == GDK_KEY_Page_Down || event->keyval == GDK_KEY_Page_Up) {
++    GList *pages = gtk_container_get_children (GTK_CONTAINER (self->carousel));
++    int count = g_list_length (pages);
++    int selected = (int) floor (hdy_carousel_get_position (self->carousel) + .5);
++    int next = CLAMP (selected + (event->keyval == GDK_KEY_Page_Down ? 1 : -1), 0, count - 1);
++    if (count > 1) hdy_carousel_scroll_to (self->carousel, g_list_nth_data (pages, next));
++    g_list_free (pages);
++    return count > 1;
++  }
++  return GTK_WIDGET_CLASS (phosh_home_pages_parent_class)->key_press_event (widget, event);
++}
++
++static void
++phosh_home_pages_class_init (PhoshHomePagesClass *klass)
++{
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++  G_OBJECT_CLASS (klass)->dispose = dispose;
++  GTK_CONTAINER_CLASS (klass)->forall = forall;
++  GTK_CONTAINER_CLASS (klass)->remove = remove_child;
++  widget_class->style_updated = style_updated;
++  widget_class->key_press_event = key_press;
++  widget_class->destroy = destroy;
++  widget_class->get_preferred_height = preferred_height;
++  widget_class->get_preferred_height_for_width = preferred_height_for_width;
++  widget_class->get_preferred_width = preferred_width;
++  widget_class->get_request_mode = request_mode;
++  widget_class->size_allocate = size_allocate;
++  widget_class->get_preferred_height_and_baseline_for_width = preferred_height_and_baseline;
++}
++
++static void
++phosh_home_pages_init (PhoshHomePages *self)
++{
++  GtkWidget *indicator = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  self->indicator = indicator;
++  gtk_widget_set_has_window (GTK_WIDGET (self), FALSE);
++  self->carousel = HDY_CAROUSEL (hdy_carousel_new ());
++  hdy_carousel_set_allow_mouse_drag (self->carousel, TRUE);
++  hdy_carousel_set_animation_duration (self->carousel, 240);
++  hdy_carousel_set_reveal_duration (self->carousel, 0);
++  gtk_widget_set_parent (GTK_WIDGET (self->carousel), GTK_WIDGET (self));
++  self->dots = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_set_halign (self->dots, GTK_ALIGN_CENTER);
++  gtk_widget_set_no_show_all (self->dots, TRUE);
++  gtk_widget_set_size_request (indicator, -1, 44);
++  gtk_box_pack_start (GTK_BOX (indicator), self->dots, TRUE, FALSE, 0);
++  gtk_widget_set_parent (indicator, GTK_WIDGET (self));
++  gtk_widget_show (indicator);
++  gtk_widget_show (GTK_WIDGET (self->carousel));
++  g_signal_connect (self->carousel, "size-allocate", G_CALLBACK (allocated), self);
++  g_signal_connect (self->carousel, "notify::position", G_CALLBACK (position_changed), self);
++}
++
++GtkWidget *
++phosh_home_pages_new (GListModel *model, GtkWidget *today,
++                      GtkFlowBoxCreateWidgetFunc factory, gpointer data)
++{
++  PhoshHomePages *self = g_object_new (phosh_home_pages_get_type (), NULL);
++  self->model = g_object_ref (model);
++  self->today = g_object_ref_sink (today);
++  gtk_widget_show (today);
++  self->factory = factory;
++  self->factory_data = data;
++  self->dirty = TRUE;
++  GtkWidget *parent = gtk_widget_get_parent (today);
++  if (parent) gtk_container_remove (GTK_CONTAINER (parent), today);
++  g_signal_connect_object (model, "items-changed", G_CALLBACK (items_changed), self, 0);
++  return GTK_WIDGET (self);
++}
++
++void
++phosh_home_pages_first (GtkWidget *pages)
++{
++  PhoshHomePages *self = (PhoshHomePages *) pages;
++  GList *children = gtk_container_get_children (GTK_CONTAINER (self->carousel));
++  if (children) hdy_carousel_scroll_to_full (self->carousel, children->data, 0);
++  g_list_free (children);
++}
+--- /dev/null
++++ b/src/luma-home-pages.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#pragma once
++#include <gtk/gtk.h>
++#include <gio/gio.h>
++
++GtkWidget *phosh_home_pages_new (GListModel *model, GtkWidget *today,
++                                GtkFlowBoxCreateWidgetFunc factory, gpointer data);
++void phosh_home_pages_first (GtkWidget *pages);
++gboolean phosh_home_app_should_show (GAppInfo *info);
+--- /dev/null
++++ b/tests/test-home-pages.c
+@@ -0,0 +1,77 @@
++#include "../src/luma-home-pages.c"
++
++static GtkWidget *factory(gpointer item,gpointer data) {
++  GtkWidget *child=gtk_flow_box_child_new();
++  GtkWidget *button=gtk_button_new();
++  GtkWidget *box=gtk_box_new(GTK_ORIENTATION_VERTICAL,6);
++  GtkWidget *icon=gtk_drawing_area_new();
++  gtk_widget_set_size_request(icon,60,60);
++  GtkWidget *label=gtk_label_new(g_app_info_get_name(item));
++  gtk_label_set_ellipsize(GTK_LABEL(label),PANGO_ELLIPSIZE_END);
++  gtk_label_set_max_width_chars(GTK_LABEL(label),9);
++  gtk_box_pack_start(GTK_BOX(box),icon,FALSE,FALSE,0);
++  gtk_box_pack_start(GTK_BOX(box),label,FALSE,FALSE,0);
++  gtk_container_add(GTK_CONTAINER(button),box);gtk_container_add(GTK_CONTAINER(child),button);
++  g_object_set_data_full(G_OBJECT(child),"identity",g_strdup(g_app_info_get_name(item)),g_free);
++  gtk_widget_show_all(child);return child;
++}
++static void settle(void) {
++  GMainLoop *loop=g_main_loop_new(NULL,FALSE);
++  gint64 end=g_get_monotonic_time()+700000;
++  while(g_get_monotonic_time()<end){while(g_main_context_pending(NULL))g_main_context_iteration(NULL,FALSE);g_usleep(1000);}
++  g_main_loop_unref(loop);
++}
++static void verify(PhoshHomePages *self,guint count) {
++  g_assert_cmpint(gtk_widget_get_allocated_height(GTK_WIDGET(self->carousel)),<=,gtk_widget_get_allocated_height(GTK_WIDGET(self))-44);
++  GHashTable *seen=g_hash_table_new(g_str_hash,g_str_equal);
++  GList *pages=gtk_container_get_children(GTK_CONTAINER(self->carousel));
++  guint total=0;
++  for(GList *p=pages;p;p=p->next) {
++    GList *children=gtk_container_get_children(GTK_CONTAINER(p->data));
++    for(GList *c=children;c;c=c->next) {
++      if(!GTK_IS_FLOW_BOX(c->data))continue;
++      GList *tiles=gtk_container_get_children(c->data);
++      for(GList *t=tiles;t;t=t->next) {
++        const char *id=g_object_get_data(t->data,"identity");
++        g_assert_nonnull(id);g_assert_false(g_hash_table_contains(seen,id));g_hash_table_add(seen,(gpointer)id);total++;
++        int x,y;
++        g_assert_true(gtk_widget_translate_coordinates(t->data,GTK_WIDGET(self->carousel),0,0,&x,&y));
++        g_assert_cmpint(y,>=,0);
++        g_assert_cmpint(y+gtk_widget_get_allocated_height(t->data),<=,gtk_widget_get_allocated_height(GTK_WIDGET(self->carousel)));
++      }
++      g_list_free(tiles);
++    }
++    g_list_free(children);
++  }
++  g_assert_cmpuint(total,==,count);
++  g_assert_cmpint(gtk_widget_get_visible(self->dots),==,g_list_length(pages)>1);
++  g_print("PASS apps=%u pages=%u columns=%u first=%u later=%u viewport=%dx%d\n",count,g_list_length(pages),self->columns,self->first_capacity,self->capacity,gtk_widget_get_allocated_width(GTK_WIDGET(self->carousel)),gtk_widget_get_allocated_height(GTK_WIDGET(self->carousel)));
++  g_list_free(pages);g_hash_table_unref(seen);
++}
++int main(int argc,char **argv) {
++  gtk_init(&argc,&argv);hdy_init();
++  GtkCssProvider *css=gtk_css_provider_new();
++  gtk_css_provider_load_from_data(css,"flowboxchild{padding:0;margin:0;border:0;} .luma-home-grid button{padding:0;margin:0;min-width:0;min-height:0;border:0;}",-1,NULL);
++  gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(css),600);g_object_unref(css);
++  GListStore *model=g_list_store_new(G_TYPE_APP_INFO);
++  GtkWidget *today=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_size_request(today,-1,178);
++  GtkWidget *window=gtk_window_new(GTK_WINDOW_TOPLEVEL),*root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);
++  gtk_container_add(GTK_CONTAINER(window),root);
++  GtkWidget *pager=phosh_home_pages_new(G_LIST_MODEL(model),today,factory,NULL);
++  gtk_box_pack_start(GTK_BOX(root),pager,TRUE,TRUE,0);
++  GtkWidget *dock=gtk_label_new("Dock");gtk_widget_set_size_request(dock,-1,100);gtk_box_pack_start(GTK_BOX(root),dock,FALSE,FALSE,0);
++  gtk_window_set_default_size(GTK_WINDOW(window),427,900);gtk_widget_show_all(window);settle();verify((PhoshHomePages*)pager,0);
++  for(int i=0;i<65;i++){g_autofree char *name=g_strdup_printf("App %02d",i);g_autoptr(GAppInfo) info=g_app_info_create_from_commandline("true",name,0,NULL);g_list_store_append(model,info);}
++  settle();verify((PhoshHomePages*)pager,65);
++  int sizes[][2]={{360,640},{480,480},{360,300},{768,600},{427,1100},{427,900}};
++  for(guint i=0;i<G_N_ELEMENTS(sizes);i++){gtk_window_resize(GTK_WINDOW(window),sizes[i][0],sizes[i][1]);settle();g_assert_cmpint(gtk_widget_get_allocated_width(window),==,sizes[i][0]);g_assert_cmpint(gtk_widget_get_allocated_height(window),==,sizes[i][1]);verify((PhoshHomePages*)pager,65); if(sizes[i][1]==480)g_assert_cmpuint(((PhoshHomePages*)pager)->first_capacity / ((PhoshHomePages*)pager)->columns,<=,2);if(sizes[i][1]==1100)g_assert_cmpuint(((PhoshHomePages*)pager)->first_capacity / ((PhoshHomePages*)pager)->columns,>,4);}
++  PhoshHomePages *self=(PhoshHomePages*)pager;
++  GdkEventKey key={0};key.keyval=GDK_KEY_Page_Down;g_assert_true(key_press(pager,&key));settle();g_assert_cmpfloat(hdy_carousel_get_position(self->carousel),==,1);
++  key.keyval=GDK_KEY_Page_Up;g_assert_true(key_press(pager,&key));settle();g_assert_cmpfloat(hdy_carousel_get_position(self->carousel),==,0);
++  guint old_capacity=self->first_capacity;
++  g_object_set(gtk_settings_get_default(),"gtk-font-name","Sans 28",NULL);settle();verify(self,65);g_assert_cmpuint(self->first_capacity,<=,old_capacity);
++  g_object_set(gtk_settings_get_default(),"gtk-font-name","Sans 10",NULL);settle();
++  GList *pages=gtk_container_get_children(GTK_CONTAINER(self->carousel));hdy_carousel_scroll_to_full(self->carousel,g_list_last(pages)->data,0);g_list_free(pages);
++  g_list_store_splice(model,1,64,NULL,0);settle();verify(self,1);g_assert_cmpfloat(hdy_carousel_get_position(self->carousel),==,0);
++  gtk_widget_destroy(window);g_object_unref(model);settle();g_print("PASS teardown and page clamp\n");return 0;
++}
+--- /dev/null
++++ b/tests/test-home-catalog.c
+@@ -0,0 +1,43 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include "../src/luma-home-pages.h"
++#include <gio/gdesktopappinfo.h>
++#include <glib/gstdio.h>
++
++static guint changes;
++static void changed(GAppInfoMonitor *monitor,gpointer data){changes++;}
++static guint count_visible(void) {
++  GList *apps=g_app_info_get_all();guint count=0;
++  for(GList *p=apps;p;p=p->next)if(phosh_home_app_should_show(p->data))count++;
++  g_list_free_full(apps,g_object_unref);return count;
++}
++static void wait_change(guint before) {
++  gint64 end=g_get_monotonic_time()+5000000;
++  while(changes<=before && g_get_monotonic_time()<end){while(g_main_context_pending(NULL))g_main_context_iteration(NULL,FALSE);g_usleep(1000);}
++  g_assert_cmpuint(changes,>,before);
++}
++int main(void) {
++  g_autofree char *root=g_dir_make_tmp("luma-home-catalog-XXXXXX",NULL);
++  g_autofree char *apps=g_build_filename(root,"applications",NULL);
++  g_mkdir_with_parents(apps,0700);
++  g_setenv("XDG_DATA_HOME",root,TRUE);g_setenv("XDG_DATA_DIRS","/nonexistent",TRUE);
++  g_setenv("XDG_CURRENT_DESKTOP","Luma",TRUE);
++  GAppInfoMonitor *monitor=g_app_info_monitor_get();g_signal_connect(monitor,"changed",G_CALLBACK(changed),NULL);
++  g_assert_cmpuint(count_visible(),==,0);
++  const char *ids[]={"real.desktop","helper.desktop","cli.desktop","org.projectluma.SearchSettings.desktop","hidden.desktop","wrong-desktop.desktop"};
++  const char *extras[]={"","NoDisplay=true\n","Terminal=true\n","","Hidden=true\n","OnlyShowIn=OtherDesktop;\n"};
++  guint before=changes;
++  for(guint i=0;i<G_N_ELEMENTS(ids);i++){
++    g_autofree char *path=g_build_filename(apps,ids[i],NULL);
++    g_autofree char *text=g_strdup_printf("[Desktop Entry]\nType=Application\nName=Test App\nExec=/bin/true\n%s",extras[i]);
++    g_assert_true(g_file_set_contents(path,text,-1,NULL));
++    g_autoptr(GDesktopAppInfo) app=g_desktop_app_info_new_from_filename(path);
++    g_assert_nonnull(app);g_print("filter %s id=%s result=%d\n",ids[i],g_app_info_get_id(G_APP_INFO(app)),phosh_home_app_should_show(G_APP_INFO(app)));g_assert_cmpint(phosh_home_app_should_show(G_APP_INFO(app)),==,i==0);
++  }
++  wait_change(before);g_assert_cmpuint(count_visible(),==,1);
++  g_print("PASS live registration and filters: GUI included; hidden/helper/CLI/Search/other-desktop excluded\n");
++  before=changes;g_autofree char *real=g_build_filename(apps,"real.desktop",NULL);g_assert_cmpint(g_remove(real),==,0);
++  wait_change(before);g_assert_cmpuint(count_visible(),==,0);
++  g_print("PASS live removal invalidates catalog\n");
++  for(guint i=1;i<G_N_ELEMENTS(ids);i++){g_autofree char *path=g_build_filename(apps,ids[i],NULL);g_remove(path);}
++  g_rmdir(apps);g_rmdir(root);return 0;
++}
