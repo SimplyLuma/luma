@@ -63,3 +63,19 @@ objects with a narrow consumer change:
 Regression checks should cover both CPUs, shared build IDs, scoped notes, rejected
 cross-origin/mismatched-CPU entries, and preserved historical x86 links. This is a
 source handoff; no website or Hub deployment is performed by the bridge helper.
+
+## Hub channel records are a separate concern
+
+The maintained Hub accepts both CPU identifiers, but its original release-schema
+seed creates only x86 channel rows. Hub-rendered ARM graphs require an additive
+channel migration; publishing an ISO or ingesting a build does not create those
+rows. The initial preview can retain the existing authorized local graph renderer
+over published release manifests and the normal isolated graph signer. A download
+index update alone must not silently switch graph ownership to Hub.
+
+The older asynchronous image-record producer/consumer also addresses records as
+`records/<channel>/<version>/<kind>.json`. Before publishing both CPUs with the
+same version through that path, the Hub owner must add architecture to its record
+identity while retaining old x86 records. Standalone image database uniqueness
+already includes architecture. A distinct initial ARM build/version avoids the
+old object-key collision; it is not a permanent architecture model.
