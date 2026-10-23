@@ -349,9 +349,15 @@ if [ -n "$runtime_tmpfs_gib" ]; then
   printf '[compression]\nargs = -processors 4 -mem 512M\n' > "$work/templates/lorax-memory.conf"
   lorax_config_args="--config /w/templates/lorax-memory.conf"
 fi
-podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
+# Initrd services drop root. A host container mask such as 0007 must not
+# turn dracut-created public library/config paths into root-only paths.
+# Clear default ACLs only in each disposable container before Lorax binds its
+# /var/tmp into the runtime; leave cached tools and host stores untouched.
+podman run --rm --umask=0022 "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
     --env "DNF_VAR_arch=$architecture" \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$tools_image" bash -euo pipefail -c "
+  umask 0022
+  python3 /s/prepare-runtime-temp.py
   trap 'echo \"error: build step failed at line \$LINENO of the container script\" >&2' ERR
   [ \"\$(rpm --eval '%{_arch}')\" = '$tools_architecture' ] || { echo 'error: wrong installer builder architecture' >&2; exit 1; }
   # Lorax44's --buildarch supplies basearch, but libdnf5 also needs its
@@ -426,6 +432,9 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
     exit 1
   fi
   lsinitrd /w/lorax-out/images/pxeboot/initrd.img > /w/logs/initrd-contents.txt
+  python3 /s/verify-runtime-access.py /w/logs/initrd-contents.txt
+  unsquashfs -no-progress -ll /w/lorax-out/images/install.img > /w/logs/stage2-contents.txt
+  python3 /s/verify-runtime-access.py /w/logs/stage2-contents.txt
   # The runtime boots the pinned kernel, not the release repository's GA one:
   # the modules in its initramfs name the kernel they were built for.
   # grep -m1 stops reading by itself: a sed | head pipe fails under pipefail
@@ -515,9 +524,11 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
   fi
 " 2>&1 | tee "$work/logs/container.log"
 
-podman run --rm "${builder_security[@]}" --arch "$architecture" --privileged --network host \
+podman run --rm --umask=0022 "${builder_security[@]}" --arch "$architecture" --privileged --network host \
     --env "SOURCE_DATE_EPOCH=$clock_epoch" --env PATH=/s/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$final_tools_image" bash -euo pipefail -c "
+  umask 0022
+  python3 /s/prepare-runtime-temp.py
   [ \"\$(rpm --eval '%{_arch}')\" = '$architecture' ] || { echo 'error: wrong final media tools architecture' >&2; exit 1; }
   rm -f /w/output.iso.partial
   python3 /s/run-mkksiso.py -V '$volid' -c 'rd.live.ram=1' \
