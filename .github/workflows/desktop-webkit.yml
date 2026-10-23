@@ -29,28 +29,41 @@ jobs:
             architecture: aarch64
             image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
     runs-on: ${{ matrix.runner }}
-    container:
-      image: ${{ matrix.image }}
     env:
       LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
       LUMA_RPM_BUILDER_DIRECT: '1'
       RPM_BUILD_NCPUS: '4'
+      LUMA_WEBKIT_DWZ: '0'
       BUILDER_IMAGE: ${{ matrix.image }}
     steps:
-      - name: Prepare native Fedora tools
-        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prepare scratch on the disposable hosted worker
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          df -h "$GITHUB_WORKSPACE"
+          # These are unused preinstalled SDKs in this fresh hosted VM.
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h "$GITHUB_WORKSPACE"
+          available=$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -n 1 | tr -d ' ')
+          test "$available" -ge 34359738368 || { echo 'WebKit needs at least 32 GiB of scratch on this worker'; exit 1; }
       - name: Build and check the shared WebKit providers
         run: |
-          test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
-          . config/desktop/inputs.env
-          case "$LUMA_TARGET_ARCHITECTURE" in
-            x86_64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER" ;;
-            aarch64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER_AARCH64" ;;
-          esac
-          mkdir -p build
-          git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
-          bash scripts/packages/build-webkitgtk-luma.sh
+          docker run --rm --cpus=4 --memory=14g --pids-limit=2048 \
+            --env LUMA_TARGET_ARCHITECTURE --env LUMA_RPM_BUILDER_DIRECT \
+            --env RPM_BUILD_NCPUS --env LUMA_WEBKIT_DWZ --env BUILDER_IMAGE \
+            --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" --workdir "$GITHUB_WORKSPACE" \
+            "$BUILDER_IMAGE" bash -euo pipefail -c '
+              dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+              test "$(rpm --eval "%{_arch}")" = "$LUMA_TARGET_ARCHITECTURE"
+              . config/desktop/inputs.env
+              case "$LUMA_TARGET_ARCHITECTURE" in
+                x86_64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER" ;;
+                aarch64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER_AARCH64" ;;
+              esac
+              mkdir -p build
+              git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+              bash scripts/packages/build-webkitgtk-luma.sh
+            '
       - name: Retain checked WebKit packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -59,6 +72,8 @@ jobs:
             build/packages/**/RPMS/
             build/packages/**/SRPMS/
             build/packages/**/SHA256SUMS
+            build/packages/**/ADMITTED-RESOURCE-OPTIONS.txt
             build/SOURCE-REVISION
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
