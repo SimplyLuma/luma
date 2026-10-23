@@ -95,3 +95,18 @@ Tester app artifacts additionally need the integrator's signed
 `tester/latest.json` and uploaded release files. Automatic update prompts,
 in-place executable replacement and ISO installation are separate work; the
 ticket client does not claim to implement them.
+
+### Ready-to-run images and installer media
+
+The default Try/Developer path needs a preinstalled, standalone VM disk, with
+its target architecture, boot profile, checksums and per-session provisioning.
+An installer ISO starts an installation and must remain an explicitly labelled
+installation-media choice. Renaming or converting an ISO does not perform the
+installation. Tester labels these separately and uses Start Installer for ISOs.
+
+Publish prepared `tester_image` artifacts alongside the existing website/Imager
+installation media. Keep a common OS build identity while distinguishing each
+virtual disk from physical-device media and its boot adapter. The client-side
+catalog support does not itself publish these artifacts; until the Hub's release
+publisher supplies the new entries, prepared private profiles remain local
+preview inputs rather than an automatic public download feed.

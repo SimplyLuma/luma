@@ -1410,3 +1410,29 @@ used that source without altering shared refs or unrelated worktrees.
   failed QA bases/overlaysr2..r6 removed only after checking no normal registered
   references/active processes; server exports/evidence retained. This reclaimed
   Mac space without deleting personal files or the final image.
+- FINAL Mac ARM preview qualification: export-r6 plus app r8 sourcecc18fcd0f
+  passed local-gui-r10 ace30e3d (native M4/HVF, local disk, fresh NoCloud status
+  done, real embedded Mobile Home, measured verification progress visible,
+  revocable agent SSH, live snapshot without reboot, graceful shutdown and
+  persisted project after restart). Inspected window.png and guest-second.png:
+  complete native Home grid/dock returns after reboot. The ARM build of the
+  existing Home bridge resolved the visual reopen issue; no input-profile hack.
+- Mac r8 mounted-DMG full inventory/signature/CLI check d6f36160 passed. Stable
+  install e5e839ed passed; /Users/nick/Applications/Luma Tester.app0.7.1 is OPEN
+  (observed process87068) using normal default data and imported ARM profile
+  luma-mobile-arm-20261015-virt-r6. JSON profile/preferences parsed on readback;
+  target mobile. Image ready for Start; normal user guest was NOT auto-started.
+  Delivery details and full image/package SHA in private local-gui-r10/DELIVERY.json
+  and tester-mac-r8/DELIVERY.json. Nick Downloads DMG updated, previous own r7
+  retained. Disposable failed QA overlays/base hardlinksr2..r9 reclaimed after
+  active-process and normal-state reference checks; Mac has8GiB free afterward.
+- Actual Source/GUI evidence for latest changes:99 tests passed in the Macr8
+  build; packaged Linux progress/installer UI030b806f passed. Final Linuxr34
+  delivered/desktop-registered as above without reopening the running oldr31
+  GUI or stopping its current guest. Updated dock entry opens0.7.1 on next launch.
+- Public VM artifacts have NOT been uploaded or added to the Hub catalog. New
+  Hub handoff section explicitly separates preinstalled Tester disks from ISO
+  installation/Imager media. Physical phone root release remains20261015.21;
+  ARM virtual display still fixed864x1920/scale2, dynamic device resizing off.
+  Windows/Intel Mac builds and Linux ARM-TCG boot qualification remain outside
+  this native M4 preview result. No public release/notarization/signing claim.
