@@ -425,6 +425,7 @@ transferable devices are discovered through host interfaces; mounted storage
 cannot be transferred. Integrated camera capture endpoints are grouped by
 physical device and shown even when a camera-sharing bridge is unavailable.
 A detected camera is not a claim that direct USB passthrough supports it.
-Audio and microphone settings are independent. Shared folders are read-only
+Microphone sharing enables the supported duplex audio device; disabling audio
+also disables microphone sharing. Shared folders are read-only
 when first added; the folder list exposes the allow-changes switch and guest
 mount path. Hardware/folder changes apply at the next guest start.

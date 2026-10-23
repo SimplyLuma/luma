@@ -34,6 +34,8 @@ def validate(settings):
     for key in ('audio', 'microphone', 'agent_ssh', 'boot_iso'):
         if type(result.get(key)) is not bool:
             raise TesterError('Invalid ' + key + ' switch.')
+    # QEMU exposes recording through its duplex codec; it has no input-only HDA codec.
+    if result['microphone']:result['audio']=True
     if result.get('device') is not None:
         from .device_profiles import validate as validate_device
         result['device']=validate_device(result['device'])
@@ -81,7 +83,7 @@ def devices(settings):
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
         backend = 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
         args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
-                 '-device', ('hda-duplex' if settings['microphone'] and settings['audio'] else 'hda-input' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
+                 '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
     for i, folder in enumerate(settings['folders']):
         path = Path(folder['path']).resolve()
         if not path.is_dir():

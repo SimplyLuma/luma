@@ -48,10 +48,14 @@ class VMTests(unittest.TestCase):
         self.assertIn('hda-output,audiodev=sound0',args)
         self.assertFalse(any('hda-duplex' in arg or 'usb-host' in arg for arg in args))
 
-    def test_microphone_can_work_without_audio_output(self):
-        args=vm.devices(dict(vm.load(self.root),audio=False,microphone=True))
-        self.assertIn('hda-input,audiodev=sound0',args)
-        self.assertNotIn('hda-duplex,audiodev=sound0',args)
+    def test_microphone_uses_a_supported_codec_and_enables_audio(self):
+        settings=vm.save(self.root,dict(vm.load(self.root),audio=False,microphone=True))
+        self.assertTrue(settings['audio'])
+        args=vm.devices(settings)
+        self.assertIn('hda-duplex,audiodev=sound0',args)
+        if shutil.which('qemu-system-x86_64'):
+            available=subprocess.check_output(['qemu-system-x86_64','-device','help'],text=True)
+            self.assertIn('name \"hda-duplex\"',available)
 
     def test_connection_command_uses_actual_identity_and_quoted_key(self):
         directory=self.root/'VM with spaces';directory.mkdir()

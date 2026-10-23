@@ -1171,10 +1171,17 @@ def launch(state=None):
             for title,key in [('Audio output','audio'),('Microphone','microphone')]:
                 line=Gtk.Box(spacing=16);label=self.label(title);label.set_hexpand(True);line.append(label)
                 line.append(Switch(active=self.settings[key],label=title,
-                    on_toggle=lambda enabled,k=key:self.save_settings(**{k:enabled})))
+                    on_toggle=lambda enabled,k=key:self.set_audio(k,enabled)))
                 body.append(line)
-            body.append(self.label('Uses your computer’s selected audio devices. Changes apply on the next start.','caption',muted=True))
+            body.append(self.label('Uses your computer’s selected audio devices. Microphone sharing enables audio. Changes apply on the next start.','caption',muted=True))
             self.sheet('Audio & Microphone',body)
+
+        def set_audio(self,key,enabled):
+            changes={key:enabled}
+            if key=='audio' and not enabled:changes['microphone']=False
+            if key=='microphone' and enabled:changes['audio']=True
+            self.save_settings(**changes)
+            self.show_audio()
 
         def show_usb(self,kind):
             self.close_sheet()
