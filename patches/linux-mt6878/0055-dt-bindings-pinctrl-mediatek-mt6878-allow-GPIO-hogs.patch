@@ -1,0 +1,31 @@
+From ffd1211f93df9a0e67af7527c4e87f1f31b1e063 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 21 Oct 2026 21:54:22 -0500
+Subject: [PATCH] dt-bindings: pinctrl: mediatek,mt6878: allow GPIO hogs
+
+Allow the generic GPIO hog child nodes already supported by the MediaTek
+GPIO controller. Match the existing MT8188 binding pattern. Titan 2
+Elite needs an early board enable independent of userspace.
+---
+ .../devicetree/bindings/pinctrl/mediatek,mt6878-pinctrl.yaml | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/pinctrl/mediatek,mt6878-pinctrl.yaml b/Documentation/devicetree/bindings/pinctrl/mediatek,mt6878-pinctrl.yaml
+index 8d44194..7a13263 100644
+--- a/Documentation/devicetree/bindings/pinctrl/mediatek,mt6878-pinctrl.yaml
++++ b/Documentation/devicetree/bindings/pinctrl/mediatek,mt6878-pinctrl.yaml
+@@ -77,6 +77,11 @@ properties:
+ 
+ # PIN CONFIGURATION NODES
+ patternProperties:
++  "-hog(-[0-9]+)?$":
++    type: object
++    required:
++      - gpio-hog
++
+   '-pins$':
+     type: object
+     additionalProperties: false
+-- 
+2.54.0 (Apple Git-157)
+

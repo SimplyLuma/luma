@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 23:51:59 -0400
+Subject: [PATCH 63/65] arm64: dts: mediatek: mt6878-titan2-elite: add the
+ keyboard backlight
+
+AW36404 on GPIO21 (EN) and GPIO23 (FLASH/TORCH, low), steps 8-19 as on stock.
+---
+ .../dts/mediatek/mt6878-unihertz-titan2-elite.dts    | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index f52bf691b..a2099c29e 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -11,6 +11,7 @@
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
+ #include <dt-bindings/interrupt-controller/irq.h>
+ #include "mt6878-unihertz-titan2-elite-resmem.dtsi"
+ 
+@@ -34,6 +35,17 @@ vibrator {
+ 		max-microvolt = <2000000>;
+ 	};
+ 
++	/* AW36404 in torch mode; stock uses steps 8-19 (50-119 mA). */
++	keyboard-backlight {
++		compatible = "awinic,aw36404";
++		enable-gpios = <&pio 21 GPIO_ACTIVE_HIGH>;
++		mode-gpios = <&pio 23 GPIO_ACTIVE_HIGH>;
++		awinic,min-step = <8>;
++		awinic,max-step = <19>;
++		color = <LED_COLOR_ID_WHITE>;
++		function = LED_FUNCTION_KBD_BACKLIGHT;
++	};
++
+ 	mt6369_codec: audio-codec {
+ 		compatible = "mediatek,mt6369-sound";
+ 		mediatek,pmic = <&mt6369>;
+-- 
+2.55.0
+

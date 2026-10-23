@@ -11,8 +11,8 @@
   },
   {
     "path": "THIRD-PARTY-SOURCES.md",
-    "sha256": "f2e7be3c85450ecc083842501518b9c95f710060d4fecd0d61fd93e5e3c13642",
-    "bytes": 46671
+    "sha256": "6991c371f6ca04e7f33bc8a9b6c2ee4c07846891c09d7c620fcb652bd88c9121",
+    "bytes": 46722
   },
   {
     "path": "config/mobile/fp6-audio.env",
@@ -41,13 +41,18 @@
   },
   {
     "path": "config/mobile/titan2e-kernel-source.json",
-    "sha256": "8eee56b2798585d423e492511d4589d53b168237c56648117e36ec555f3c6822",
+    "sha256": "850116863c28710508f63546e74e06fbd8fb8b8dc2866d3b586247f4af9b341c",
     "bytes": 2263
   },
   {
     "path": "config/mobile/titan2e-kernel.config",
-    "sha256": "ca1b32016eeb7100b8156c65cef9170c5104912c7b44221e2f4d7790782b7d82",
-    "bytes": 219991
+    "sha256": "81b679928aeaa17adb82f5fdc372ddcbbcad61e58aa4bde3ac4b79425b476441",
+    "bytes": 220046
+  },
+  {
+    "path": "config/mobile/titan2e/packages.txt",
+    "sha256": "5bfad6517c4a54e8ba20803a1d16a991c2053fce31955ca247c3752c2683a5b8",
+    "bytes": 11835
   },
   {
     "path": "devices/README.md",
@@ -61,13 +66,13 @@
   },
   {
     "path": "devices/unihertz/titan2elite/INSTALL.md",
-    "sha256": "387f62c13a03ddfdae7974ed24ad318d251d4c122c02d9c7c55c1f967178299b",
-    "bytes": 4243
+    "sha256": "e2ea11d7a8ea68f433aa87a5853a1242c7a7a51005c64a282f3a32bb1acab485",
+    "bytes": 4379
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "3291f9911e493431eb5d66d562aaffdc7fbeabf096c2d2943bcfc2f5bec60c7a",
-    "bytes": 4619
+    "sha256": "3a6d6b32210d2f99b72eac7e983be8d1194b516a98abc3741a0dd97d71ca768f",
+    "bytes": 5481
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -76,7 +81,7 @@
   },
   {
     "path": "devices/unihertz/titan2elite/device.toml",
-    "sha256": "881bc540c307dd4f200ddc9f6ba8542cf5dd33d690270591bc37491bc432e5f1",
+    "sha256": "443661929eee8a27c79de7b4337836489d7b67e662c93c18dce3b7c4bed173d1",
     "bytes": 1705
   },
   {
@@ -86,13 +91,13 @@
   },
   {
     "path": "devices/unihertz/titan2elite/source-pins.json",
-    "sha256": "b3a4cc8f2669dec06015b441e56cf118a6bc3d9324b94c64b28c11be7dc24a70",
-    "bytes": 3335
+    "sha256": "0ea65b4cdc52821623459c3e56dee3942654fa3e5b6806c62d3d394ac7cddaa8",
+    "bytes": 3683
   },
   {
     "path": "devices/unihertz/titan2elite/tests/test_unihertz_titan2elite.py",
-    "sha256": "cf9c9b2eb58dba7f69ce9f6a43765c66717b05b27b30ab947c5929242f205579",
-    "bytes": 6867
+    "sha256": "b06875bc8bc825e57228b5ac045bc336eb20571438b9557fafba3e536696ad7a",
+    "bytes": 7447
   },
   {
     "path": "docs/devices.md",
@@ -111,8 +116,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "a49f42d0e6a28ce921207a73aef8aab2b5b619c8a8c9322e8d793265c3f53209",
-    "bytes": 11775
+    "sha256": "f281727a1cf1501b4ee404de66c21ecf3f65057a911fdcee58ca3d564dd0bf37",
+    "bytes": 20366
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -123,6 +128,26 @@
     "path": "packaging/rpm/titan2e-kernel-modules.spec",
     "sha256": "ca4b7e31a105966ff485004828cbc61d2c01f92e79cf726e1e6527a38cddb7c1",
     "bytes": 1036
+  },
+  {
+    "path": "packaging/titan2e-ccci/0002-remove-sysctl-sentinels.patch",
+    "sha256": "6d36f5920b77301ebedd45da12de17b72ba8f80be18768d65d4e01fd07e20def",
+    "bytes": 1472
+  },
+  {
+    "path": "packaging/titan2e-ccci/0003-parent-ccmni-to-modem.patch",
+    "sha256": "6fe1ceb6bb3f36319814824e4790ed971091c13534b957f6f03866d42782ff28",
+    "bytes": 2168
+  },
+  {
+    "path": "packaging/titan2e-ccci/README.md",
+    "sha256": "c71bd8904260bff7a412b55a95a3efbd67f63242bf53fa9f90241e4d1dce89b1",
+    "bytes": 11644
+  },
+  {
+    "path": "packaging/titan2e-ccci/titan2e-ccci.patch",
+    "sha256": "a0b74a4bb81057dd024d0efdd3dc84ef88313b1046f82174366d2d23a34e27f6",
+    "bytes": 46801
   },
   {
     "path": "packaging/titan2e-connsys/README.md",
@@ -415,9 +440,64 @@
     "bytes": 2011
   },
   {
+    "path": "patches/linux-mt6878/0054-arm64-dts-mediatek-titan2-elite-keep-NFC-VEN-asserted-for-SIM.patch",
+    "sha256": "c7115d84919763c288e457ae63fab8760d6c98a88ee9c226d3c014c2bb8de061",
+    "bytes": 2102
+  },
+  {
+    "path": "patches/linux-mt6878/0055-dt-bindings-pinctrl-mediatek-mt6878-allow-GPIO-hogs.patch",
+    "sha256": "c7a520341685d0b83d7659d24ab01770a1850c7909e33834950e4f64b760af75",
+    "bytes": 1128
+  },
+  {
+    "path": "patches/linux-mt6878/0056-arm64-dts-mediatek-titan2-elite-reserve-NFC-VEN-from-CONNSYS.patch",
+    "sha256": "706cc0aaa1759216ff3827cc8f867e6cf5ffb6a76c8a0d048f823575aa66372f",
+    "bytes": 1863
+  },
+  {
+    "path": "patches/linux-mt6878/0057-mfd-mt6375-add-the-charger-PMIC-core.patch",
+    "sha256": "0655d089ffe02bb6c3794cf4f7755c0d5c97883c3a389ced72863adaf88910df",
+    "bytes": 6066
+  },
+  {
+    "path": "patches/linux-mt6878/0058-power-supply-mt6375-add-the-charger.patch",
+    "sha256": "6a90e9fe16cd43d3d06e30506759a8d04bfba8f3282fc4c31c935faa52647843",
+    "bytes": 18469
+  },
+  {
+    "path": "patches/linux-mt6878/0059-arm64-dts-mediatek-mt6878-titan2-elite-add-the-MT637.patch",
+    "sha256": "4fab21f26a35ba7d4cdef1f8fb71dc084e564813d6bb2fc0a2c851f346db1913",
+    "bytes": 1338
+  },
+  {
+    "path": "patches/linux-mt6878/0060-regulator-mt6369-add-VIBR.patch",
+    "sha256": "71336ea4fec560dca11e236bc078b09e779230c7c17be084383a2c07ba1c3e32",
+    "bytes": 1885
+  },
+  {
+    "path": "patches/linux-mt6878/0061-arm64-dts-mediatek-mt6878-titan2-elite-add-the-vibra.patch",
+    "sha256": "b0af7cea34018cdf0cd2afb50ea8ddb40dd0c044a1dea0b0749d41bbe84c2d30",
+    "bytes": 1466
+  },
+  {
+    "path": "patches/linux-mt6878/0062-leds-add-the-Awinic-AW36404-in-torch-mode.patch",
+    "sha256": "4fe66baae7598989163cf555636c804c0a60fd927bfd6b6bfd83ee3b225ce78c",
+    "bytes": 5891
+  },
+  {
+    "path": "patches/linux-mt6878/0063-arm64-dts-mediatek-mt6878-titan2-elite-add-the-keybo.patch",
+    "sha256": "e7649e90c4bed76b51e234f2e0aacc5fb3dc6681df5068eab74bbb94b6d41f48",
+    "bytes": 1568
+  },
+  {
+    "path": "patches/linux-mt6878/0064-soc-mediatek-titan2e-dsi-kick-reset-the-panel-when-T.patch",
+    "sha256": "df583e0dab89f98717ee438e4c67d0fd1510dcc6bf8c13ee6d7fe9b9fb15cd15",
+    "bytes": 10943
+  },
+  {
     "path": "patches/linux-mt6878/README.md",
-    "sha256": "5d522268c678b4c5a837c0cca3a8edbf109adead976b67cff7d65f5426495611",
-    "bytes": 1814
+    "sha256": "e0dc3d2306151f8b372ca865429b63a5616db9495d8a8749e1957c749c72b4ef",
+    "bytes": 2612
   },
   {
     "path": "patches/mesa/0001-gallivm-propagate-aarch64-host-features.patch",
@@ -430,19 +510,69 @@
     "bytes": 129827
   },
   {
+    "path": "patches/modemmanager-fp6/0004-broadband-modem-detect-5GNR-capability-from-C5GREG.patch",
+    "sha256": "0a094e25940c37a274d35ec6da09f690590cd2649cde70c757a99c41f118dd66",
+    "bytes": 2141
+  },
+  {
+    "path": "patches/modemmanager-fp6/0005-iface-modem-voice-optional-idle-call-list-polling.patch",
+    "sha256": "988c8c7f59942ee71529fff09b0d08dfe1f29d56484d4b2264fbba348f90e069",
+    "bytes": 6667
+  },
+  {
+    "path": "patches/modemmanager-fp6/0006-broadband-bearer-external-packet-data-through-an-external-service.patch",
+    "sha256": "d3454674d72c93e96b8fa9598643662fe77db7da7ab06ebfad5520b0b3d496c4",
+    "bytes": 22693
+  },
+  {
+    "path": "patches/modemmanager-fp6/0007-modem-helpers-accept-MediaTek-IMS-voice-calls-in-CLCC.patch",
+    "sha256": "cd4e805d7aa3285623bf1751bdf498829f7a260373c9c8391fad3850286e76a1",
+    "bytes": 2726
+  },
+  {
+    "path": "patches/modemmanager-fp6/0008-broadband-modem-optional-CFUN-power-down.patch",
+    "sha256": "043a0c93ceec8aa9afccb6ce4cf3a8c1ab817947f61b2971d00ca6ec7d498f66",
+    "bytes": 4338
+  },
+  {
+    "path": "patches/modemmanager-fp6/0009-broadband-modem-ignore-access-technology-from-unregistered-domains.patch",
+    "sha256": "bc029bfded3a93b353d0f03a6794f2a3919c3a21b5b7e2dc7d83ce1c21b021db",
+    "bytes": 2941
+  },
+  {
+    "path": "patches/modemmanager-fp6/0010-broadband-modem-enable-5GS-registration-reports.patch",
+    "sha256": "26b4ccab60460565aea90109855959643504bc08cb1a33d53e4154884201f15a",
+    "bytes": 5339
+  },
+  {
+    "path": "patches/modemmanager-fp6/0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch",
+    "sha256": "d060b15f78edd0c423186ceb3987464512f0e92d3d3b924e077e1f6477334670",
+    "bytes": 10338
+  },
+  {
+    "path": "patches/modemmanager-fp6/README.md",
+    "sha256": "64460e4bf48e467f76e7845789703ab865cee2c99271688b526e5daa69414bf1",
+    "bytes": 3410
+  },
+  {
     "path": "scripts/mobile/luma-phosh-session",
     "sha256": "d19324bfa5ebf8fa889fd95b6cb0bedecf25ecbe6cdee046d021521b855352a6",
     "bytes": 969
   },
   {
     "path": "scripts/packages/build-luma-titan2e-platform.sh",
-    "sha256": "dbe0f010653973183a744427db132cc7ce91dc7630dc10c7f2dbb07f833cbe97",
-    "bytes": 1128
+    "sha256": "4053d0010c4f07100cbfe3e84ff7646edeabf1d84bca3154680e8732c44b5e43",
+    "bytes": 1250
   },
   {
     "path": "scripts/packages/build-mesa.sh",
     "sha256": "8cdb1b984d88bf24e891c5413c6982c80d40d35eb4d9763ce17843e9af68b7f6",
     "bytes": 2149
+  },
+  {
+    "path": "scripts/packages/build-titan2e-ccci-modules.sh",
+    "sha256": "4229c4852033d33681b6f4eed92ed03c049481e750f2067e6af284fe4e1efb03",
+    "bytes": 3267
   },
   {
     "path": "scripts/packages/build-titan2e-connsys-modules.sh",
@@ -453,6 +583,11 @@
     "path": "scripts/packages/build-titan2e-kernel.sh",
     "sha256": "87fa954a40d7792cc876462a3cdc791fe5c82ef40f2e406046aacf2af1d771c5",
     "bytes": 6809
+  },
+  {
+    "path": "scripts/packages/check-rpm-modes.sh",
+    "sha256": "f47086b0ae2e292ee95588f05a84ef48c22e5b41e665c1066394dcd8fc3210eb",
+    "bytes": 869
   },
   {
     "path": "socs/mediatek/mt6878/soc.toml",
@@ -495,9 +630,29 @@
     "bytes": 351
   },
   {
+    "path": "src/luma-titan2e-platform/78-luma-titan2e-modem.rules",
+    "sha256": "3f5cd07f0d66128d865e03933e4890aa1b6ed43f77ea73a8538b5874d0c2bd01",
+    "bytes": 1230
+  },
+  {
+    "path": "src/luma-titan2e-platform/PROVENANCE.md",
+    "sha256": "40747c37505bdfa0f605846c91602c91dee21f7d53c97b9f38e4aa57c25a2d34",
+    "bytes": 3221
+  },
+  {
     "path": "src/luma-titan2e-platform/libcamera-titan2e.yaml",
     "sha256": "475294da6fc99518419adf73bcc9b70219f631eb5c35c84bebe2cb6f49ee0ea4",
     "bytes": 322
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-esim-transport",
+    "sha256": "949c70e145299bada46784d73e8d9469c7f9b626e9e69b3c4f3a9a1e20bd6dd0",
+    "bytes": 8
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-modemd",
+    "sha256": "e6a685d2cfa9d771b0f4e4f1fc97d4ee242c80d03fd0203641e7d55121858e90",
+    "bytes": 71628
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-audio-up",
@@ -550,6 +705,11 @@
     "bytes": 294
   },
   {
+    "path": "src/luma-titan2e-platform/luma-titan2e-esim",
+    "sha256": "5c83d8717c42789c73f1879c079a35d21dc3c66a89c67be4cabbde96c573b917",
+    "bytes": 39155
+  },
+  {
     "path": "src/luma-titan2e-platform/luma-titan2e-gpu-up",
     "sha256": "86307c51d8148a42f548af5220065623d983fa3fd095063c86791e8bbc0dca9a",
     "bytes": 1848
@@ -571,8 +731,23 @@
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-healthcheck",
-    "sha256": "22264acfcbff404f3eaaca8583f38314cbbc0c7694f6209212622228fd86d926",
-    "bytes": 1657
+    "sha256": "439eeef6fb9981c0013ff27a0fd7b4854595a3e772e7ae7f31c187be12d6ecfd",
+    "bytes": 1714
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-modem-fs",
+    "sha256": "91aadeb8a71da705bdf348ec90525ade9e5b9a67786d17f82fa8e978f9f66904",
+    "bytes": 5041
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-modem-up",
+    "sha256": "e3cff755964d7e042bf17dae8e2c213d292f496f961dd502071b1c45d4e81b0e",
+    "bytes": 797
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-modem.service",
+    "sha256": "74631859182ad7ab9f7eba6e004ad2e9876bd00e94f4e44ab65a39acc04dde8c",
+    "bytes": 513
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-panthor.conf",
@@ -585,9 +760,19 @@
     "bytes": 739
   },
   {
-    "path": "src/luma-titan2e-platform/luma-titan2e-session-env",
-    "sha256": "cf1302e61eaea99fa2c5fff0ea68046b71ccc2604c8e245cfbeb1f64b156e5c0",
-    "bytes": 488
+    "path": "src/luma-titan2e-platform/luma-titan2e-speech",
+    "sha256": "78ecb4c3fb1a4fecef30bdce2d154ff5290d1d6463969768df136aee4b7682c4",
+    "bytes": 10055
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-update.conf",
+    "sha256": "ca324d42d7ba81a48c33c4eec97e4ac23eea056b8bdfda32089fbc08356fe2d3",
+    "bytes": 479
+  },
+  {
+    "path": "src/luma-titan2e-platform/org.projectluma.Titan2e.Modem1.conf",
+    "sha256": "99425caf83cd793f2bb56153702844b06f8237ffac4b6d9c5fa82baa525ebb53",
+    "bytes": 457
   },
   {
     "path": "src/luma-titan2e-platform/phoc-titan2e.ini",
@@ -595,14 +780,24 @@
     "bytes": 89
   },
   {
+    "path": "src/luma-titan2e-platform/test-esim.py",
+    "sha256": "0fa6cff9be2b3206737833e72d054501d3fd302b96a0328945115d541533b8a4",
+    "bytes": 59420
+  },
+  {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-HiFi.conf",
     "sha256": "34d1ddd9d80ccf1f641d234f1e6a5ace582450f8727879a08458ec2bb44b3890",
     "bytes": 1720
   },
   {
+    "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-VoiceCall.conf",
+    "sha256": "b820bc60a887550471ec99bcfc283edb5ec0a2afe985c092b0ca58591da8ec95",
+    "bytes": 2443
+  },
+  {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite.conf",
-    "sha256": "72f880598f6c083eb1fd136b1efdac5d3912f76ca8c94a0f68f8e479edc0cdd3",
-    "bytes": 102
+    "sha256": "6b6b8ea80f8a44585ace0542e647ea7649c327770d3b4c0ea79525065911d62d",
+    "bytes": 211
   },
   {
     "path": "src/prairie-core/prairie_apps/camera_backend.py",
@@ -636,7 +831,7 @@
   },
   {
     "path": "third-party-source-register.json",
-    "sha256": "af3de5f0f9a76fa526f6d3a598f1e002be23ac5a9c50f0aefd5bb5e383d76f57",
+    "sha256": "6584e1d31f91393a772daef458419bb8d37613450c5581d4aa76a3e2065866ed",
     "bytes": 392669
   },
   {

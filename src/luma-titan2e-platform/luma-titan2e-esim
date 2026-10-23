@@ -1,0 +1,828 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Titan eUICC transport inside luma-modemd; private FD API below shared Settings.
+
+The kernel CCCI usage counter grants exclusive native MIPC port ownership.
+No daemon is stopped, no port is force-reclaimed, and no AT/APDU payload is logged.
+GPIO184 selects the soldered eUICC for SIM2 before the modem starts.
+"""
+import errno
+import fcntl
+import os
+import pathlib
+import re
+import select
+import socket
+import struct
+import threading
+import time
+import uuid
+
+BUS = 'org.projectluma.Titan2e.Modem1'
+PATH = '/org/projectluma/Titan2e/Modem1'
+BROKER = 'org.projectluma.ESim1'
+AID = bytes.fromhex('A0000005591010FFFFFFFF8900000100')
+MAGIC, MAX_APDU, MAX_CALLS = 0x4c415031, 65538, 512
+XML = """<node><interface name="org.projectluma.Titan2e.Modem1">
+<method name="AcquireESimReservation"><arg type="s" direction="in"/><arg type="b" direction="out"/></method>
+<method name="PrepareESimProfileChange"><arg type="s" direction="in"/><arg type="b" direction="in"/><arg type="b" direction="out"/></method>
+<method name="ReleaseESimReservation"><arg type="s" direction="in"/><arg type="b" direction="out"/></method>
+<method name="OpenLumaProfileTransport"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="h" direction="out"/><arg type="s" direction="out"/></method>
+<method name="OpenLumaProfileTransportBound"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="t" direction="in"/><arg type="h" direction="out"/><arg type="s" direction="out"/></method>
+<method name="GetLumaProfileTransportStatus"><arg type="s" direction="in"/><arg type="t" direction="out"/><arg type="u" direction="out"/><arg type="b" direction="out"/></method>
+<method name="GetLumaProfileCandidateBinding"><arg type="s" direction="in"/><arg type="t" direction="out"/><arg type="t" direction="out"/></method>
+</interface></node>"""
+
+
+class Refused(Exception):
+    """Deliberately payload-free public failure."""
+
+
+class Rejected(Refused):
+    """The modem returned an explicit error; the command stream is synchronized."""
+
+
+class At:
+    def __init__(self, path='/dev/ttyC0'):
+        self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC)
+        self.broken = False
+        self.reply_kind = 'none'
+
+    def close(self):
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+
+    def command(self, command, timeout=5):
+        if self.broken or self.fd < 0 or len(command) > 2048:
+            raise Refused('Native modem transport unavailable')
+        data = (command + '\r').encode('ascii')
+        deadline = time.monotonic() + timeout
+        response = bytearray()
+        self.reply_kind = 'none'
+        try:
+            # A CCCI write is one packet. Never split or retry an uncertain write.
+            if os.write(self.fd, data) != len(data):
+                raise Refused('Native modem write incomplete')
+            while time.monotonic() < deadline:
+                if not select.select([self.fd], [], [], min(.1, max(0, deadline-time.monotonic())))[0]:
+                    continue
+                chunk = os.read(self.fd, 65536)
+                if not chunk or len(response) + len(chunk) > 131072:
+                    raise Refused('Native modem response unavailable')
+                response.extend(chunk)
+                text = response.decode('ascii', errors='replace')
+                self.reply_kind = ('cpms' if '+CPMS:' in text else
+                                   'pdp' if '+CGDCONT:' in text else 'other')
+                if re.search(r'(?:^|\r?\n)(?:ERROR|\+CM[ES] ERROR:[^\r\n]*)\r?\n', text):
+                    raise Rejected('Native modem rejected operation')
+                if re.search(r'(?:^|\r?\n)OK\r?\n', text):
+                    return text
+            raise Refused('Native modem operation timed out')
+        except Rejected:
+            raise
+        except (OSError, Refused):
+            self.broken = True
+            raise Refused('Native modem operation could not be verified') from None
+
+
+class MipcAt(At):
+    """SYS_AT over the native MIPC port, explicitly addressed to SIM2.
+
+    This is the same framing used by modem_boot_config, with bounded response
+    parsing. It never takes or changes ModemManager's UART subscription.
+    """
+    def __init__(self):
+        super().__init__('/dev/ttyCMIPC0')
+        self.txid = 0x6000
+
+    def command(self, command, timeout=5, sim=2):
+        if len(command) > 2048:
+            raise Refused('Native modem request too large')
+        raw = command.encode('ascii')
+        body = struct.pack('<HH', 0x8100, len(raw)) + raw + b'\0' * (-(4 + len(raw)) & 7)
+        return self._request(3, body, sim, timeout, True)
+
+    def result(self, request, tlvs, sim, timeout=5):
+        """Send one request and return the result code of its confirmation.
+
+        Only the first TLV is read: some confirmations (APN_SET_IA) append
+        data whose declared length runs past the envelope.
+        """
+        if self.broken or self.fd < 0 or sim not in (1, 2):
+            raise Refused('Native modem transport unavailable')
+        body = b''.join(struct.pack('<HH', k, len(v)) + v + b'\0' * (-(4 + len(v)) & 7)
+                        for k, v in tlvs)
+        self.txid = (self.txid + 1) & 0xffff
+        packet = struct.pack('<IIBBHHH', 0x24541984, 0, sim, 0, request, self.txid, len(body)) + body
+        deadline = time.monotonic() + timeout
+        try:
+            if os.write(self.fd, packet) != len(packet):
+                raise Refused('Native modem write incomplete')
+            while time.monotonic() < deadline:
+                if not select.select([self.fd], [], [], min(.1, max(0, deadline-time.monotonic())))[0]:
+                    continue
+                reply = os.read(self.fd, 65552)
+                if len(reply) < 24:
+                    raise Refused('Native modem response invalid')
+                magic, reserved, ps, flags, mid, txid, size = struct.unpack_from('<IIBBHHH', reply)
+                if magic != 0x24541984 or len(reply) != 16 + size:
+                    raise Refused('Native modem framing invalid')
+                if (ps, mid, txid) != (sim, request+1, self.txid):
+                    continue
+                if struct.unpack_from('<HH', reply, 16) != (0, 4):
+                    raise Refused('Native modem result invalid')
+                return struct.unpack_from('<I', reply, 20)[0]
+            raise Refused('Native modem operation timed out')
+        except (OSError, ValueError, Refused):
+            self.broken = True
+            raise Refused('Native modem operation could not be verified') from None
+
+    def reset_sim2(self):
+        # Native SIM_RESET_SET: normal (not pass-through) reinitialization.
+        # The firmware coordinates its SIM session teardown and restart; raw
+        # independent ESIMPOWER writes do not provide this completion contract.
+        self._request(0x0529, struct.pack('<HHB3x', 0x0100, 1, 0), 2, 20, False)
+
+    def _request(self, request, body, sim, timeout, text_response):
+        if self.broken or self.fd < 0 or sim not in (1, 2):
+            raise Refused('Native modem transport unavailable')
+        self.txid = (self.txid + 1) & 0xffff
+        packet = struct.pack('<IIBBHHH', 0x24541984, 0, sim, 0, request, self.txid, len(body)) + body
+        deadline = time.monotonic() + timeout
+        try:
+            if os.write(self.fd, packet) != len(packet):
+                raise Refused('Native modem write incomplete')
+            while time.monotonic() < deadline:
+                if not select.select([self.fd], [], [], min(.1, max(0, deadline-time.monotonic())))[0]:
+                    continue
+                reply = os.read(self.fd, 65552)
+                if len(reply) < 16:
+                    raise Refused('Native modem response invalid')
+                magic, reserved, ps, flags, mid, txid, size = struct.unpack_from('<IIBBHHH', reply)
+                if magic != 0x24541984 or len(reply) != 16 + size:
+                    raise Refused('Native modem framing invalid')
+                # Unsolicited indications and stale replies cannot satisfy this request.
+                if (ps, mid, txid) != (sim, request+1, self.txid):
+                    continue
+                result, response = None, None
+                offset = 16
+                while offset < len(reply):
+                    if not any(reply[offset:]):
+                        break  # modem pads the envelope with zeroes
+                    if offset + 4 > len(reply):
+                        raise Refused('Native modem TLV invalid')
+                    kind, length = struct.unpack_from('<HH', reply, offset)
+                    end = offset + 4 + length
+                    # MIPC aligns the complete four-byte header plus payload
+                    # to eight bytes, independently of the following TLV.
+                    padded = offset + ((length + 11) & ~7)
+                    if end > len(reply) or padded > len(reply):
+                        raise Refused('Native modem TLV invalid')
+                    value = reply[offset+4:end]
+                    if kind == 0:
+                        if length != 4 or result is not None:
+                            raise Refused('Native modem result invalid')
+                        result = struct.unpack('<I', value)[0]
+                    elif text_response and kind in (0x100, 0x8100):
+                        if response is not None:
+                            raise Refused('Native modem response ambiguous')
+                        response = value.rstrip(b'\0').decode('ascii', errors='strict')
+                    offset = padded
+                if result is not None and result != 0:
+                    raise Rejected('Native modem rejected operation')
+                if result == 0 and not text_response:
+                    return None
+                if result != 0 or response is None:
+                    raise Refused('Native modem response incomplete')
+                if re.search(r'(?:^|\r?\n)(?:ERROR|\+CM[ES] ERROR:[^\r\n]*)\r?\n', response):
+                    raise Rejected('Native modem rejected operation')
+                if not re.search(r'(?:^|\r?\n)OK\r?\n', response):
+                    raise Refused('Native modem response incomplete')
+                return response
+            raise Refused('Native modem operation timed out')
+        except Rejected:
+            raise
+        except (OSError, ValueError, Refused):
+            self.broken = True
+            raise Refused('Native modem operation could not be verified') from None
+
+
+class MmApi:
+    """Use ModemManager's public device handover API, on one captured owner."""
+    name = 'org.freedesktop.ModemManager1'
+    path = '/org/freedesktop/ModemManager1'
+
+    def __init__(self, bus):
+        self.bus = bus
+        self.deadline = None
+
+    def call(self, destination, path, interface, method, signature=None, args=()):
+        from gi.repository import Gio, GLib
+        timeout = 10000
+        if self.deadline is not None:
+            remaining = self.deadline-time.monotonic()
+            if remaining <= 0:
+                raise Refused('Cellular handover deadline reached')
+            timeout = min(timeout, max(1, int(remaining*1000)))
+        try:
+            value = GLib.Variant(signature, args) if signature else None
+            return self.bus.call_sync(destination, path, interface, method, value,
+                None, Gio.DBusCallFlags.NO_AUTO_START, timeout, None).unpack()
+        except GLib.Error:
+            raise Refused('Cellular subscription handover unavailable') from None
+
+    def owner(self):
+        return self.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
+            'org.freedesktop.DBus', 'GetNameOwner', '(s)', (self.name,))[0]
+
+    def objects(self, owner):
+        return self.call(owner, self.path, 'org.freedesktop.DBus.ObjectManager',
+                         'GetManagedObjects')[0]
+
+    def inhibit(self, owner, value):
+        self.call(owner, self.path, self.name, 'InhibitDevice', '(sb)',
+                  ('titan2e-md1', value))
+
+    def enable(self, owner, path):
+        self.call(owner, path, self.name+'.Modem', 'Enable', '(b)', (True,))
+
+
+class PrimarySubscription:
+    """An explicit card-state transition hands the UART back through MM.
+
+    Inventory/download on an unchanged card never inhibits cellular service.
+    The CCCI descriptor is opened only after MM acknowledges releasing ports.
+    Uncertain writes retain that descriptor and inhibition for AP recovery.
+    """
+    def __init__(self, api, log=lambda *args: None, attach=None):
+        self.api = api
+        self.log = log
+        self.attach = attach
+        self.uart = None
+        self.inhibited = False
+
+    def metadata(self, owner):
+        if self.api.owner() != owner:
+            raise Refused('Cellular owner changed')
+        objects = self.api.objects(owner)
+        if len(objects) > 512:
+            raise Refused('Cellular metadata invalid')
+        if any(x.get(MmApi.name+'.Call', {}).get('State', 7) != 7
+               for x in objects.values()):
+            raise Refused('Call in progress')
+        matches = [(p, x[MmApi.name+'.Modem']) for p, x in objects.items()
+                   if x.get(MmApi.name+'.Modem', {}).get('Device') == 'titan2e-md1']
+        if len(matches) != 1:
+            raise Refused('Cellular device unavailable')
+        return matches[0]
+
+    def selected(self):
+        match = re.search(r'\+ESUO:\s*([45]),\s*[45]', self.uart.command('AT+ESUO?'))
+        if not match:
+            raise Refused('Subscription readback unavailable')
+        return int(match[1])
+
+    def begin(self, previous, mipc):
+        if previous not in (4, 5) or self.inhibited or self.uart is not None:
+            raise Refused('Invalid subscription handover')
+        self.api.deadline = time.monotonic()+35
+        self.owner = self.api.owner()
+        _, props = self.metadata(self.owner)
+        self.enabled = 6 <= props.get('State', -1) <= 11
+        if any('+CLCC:' in mipc.command('AT+CLCC', sim=sim) for sim in (1, 2)):
+            raise Refused('Call in progress')
+        self.log('ESIM_HANDOVER', 'inhibit')
+        # An unacknowledged inhibit may already have taken effect.
+        self.inhibited = True
+        self.api.inhibit(self.owner, True)
+        try:
+            if self.api.owner() != self.owner:
+                raise Refused('Cellular owner changed')
+            self.uart = At()
+            if self.selected() != previous:
+                raise Refused('Subscription changed unexpectedly')
+        except (OSError, Refused):
+            raise Refused('Subscription handover requires phone recovery') from None
+
+    def validate_prepared(self):
+        # Preparation and LPAC execution have separate bounded lifetimes. Do not
+        # reuse the already elapsed preparation deadline for this identity read.
+        self.api.deadline = time.monotonic()+5
+        if not self.inhibited or self.uart is None or self.api.owner() != self.owner:
+            raise Refused('Prepared cellular owner changed')
+
+    def wait_telephony_ready(self, owner):
+        # CPIN READY can precede the modem's SMS/PDP initialization after a
+        # UICC refresh. MM caches these capability probes during enumeration;
+        # handing it an incomplete response leaves storage/EPS support unknown.
+        # Probe the same selected UART while it is still exclusively ours.
+        deadline = time.monotonic()+10
+        while time.monotonic() < deadline:
+            if self.api.owner() != owner:
+                raise Refused('Cellular owner changed')
+            try:
+                def query(command):
+                    remaining = deadline-time.monotonic()
+                    if remaining <= 0:
+                        raise Refused('Telephony initialization deadline reached')
+                    self.log('ESIM_READY', command[3:])
+                    return self.uart.command(command, timeout=min(5, remaining))
+                pin = query('AT+CPIN?')
+                stores = query('AT+CPMS=?')
+                formats = query('AT+CGDCONT=?')
+                groups = re.findall(r'\(([^()]*)\)', stores)
+                storage_ready = ('+CPMS:' in stores and len(groups) == 3 and
+                    all(re.search(r'"(?:SM|ME|MT)"', group) for group in groups))
+                if ('+CPIN: READY' in pin and storage_ready and
+                        re.search(r'\+CGDCONT:\s*\(\d+(?:-\d+)?\),\s*"IP"', formats)):
+                    return
+            except Rejected:
+                self.log('ESIM_READY', 'rejected')
+                # Explicit not-ready replies are synchronized and bounded.
+            except Refused:
+                self.log('ESIM_READY', 'incomplete:'+getattr(self.uart, 'reply_kind', 'unknown'))
+                raise
+            time.sleep(.1)
+        raise Refused('Selected subscription telephony did not initialize')
+
+    def finish(self, desired):
+        if desired not in (4, 5) or not self.inhibited or self.uart is None:
+            raise Refused('No prepared subscription handover')
+        self.api.deadline = time.monotonic()+35
+        owner = self.owner
+        try:
+            if self.api.owner() != owner:
+                raise Refused('Cellular owner changed')
+            self.log('ESIM_HANDOVER', 'select')
+            if self.selected() != desired:
+                self.uart.command('AT+ESUO=%d' % desired)
+            if self.selected() != desired:
+                raise Refused('Subscription change unverified')
+            if desired == 5:
+                self.wait_telephony_ready(owner)
+            if self.attach:
+                # The re-initialized subscription asks for its initial-attach
+                # APN again. Without one, registration is denied; the handover
+                # itself does not depend on it.
+                try:
+                    self.attach()
+                except (OSError, Refused) as e:
+                    self.log('ESIM_HANDOVER', 'attach configuration failed:', type(e).__name__)
+            self.uart.close()
+            self.uart = None
+            if self.api.owner() != owner:
+                raise Refused('Cellular owner changed')
+            self.log('ESIM_HANDOVER', 'reprobe')
+            self.api.inhibit(owner, False)
+            self.inhibited = False
+            if self.enabled:
+                deadline = time.monotonic()+20
+                while True:
+                    try:
+                        path, current = self.metadata(owner)
+                    except Refused:
+                        if self.api.owner() != owner or time.monotonic() >= deadline:
+                            raise
+                    else:
+                        state = current.get('State', -1)
+                        if state == 3:
+                            self.api.enable(owner, path)
+                            break
+                        if 6 <= state <= 11:
+                            break
+                        if state == -1:
+                            raise Refused('Selected subscription failed to initialize')
+                    if time.monotonic() >= deadline:
+                        raise Refused('Selected subscription did not initialize')
+                    time.sleep(.1)
+        except (OSError, Refused):
+            raise Refused('Subscription handover requires phone recovery') from None
+
+    def select(self, previous, desired, mipc):
+        if previous not in (4, 5) or desired not in (4, 5):
+            raise Refused('Invalid subscription')
+        if previous != desired:
+            self.begin(previous, mipc)
+            self.finish(desired)
+
+
+class Euicc:
+    """One modem lifetime owns the fixed SIM2 switch; no userspace GPIO polling."""
+    def __init__(self):
+        if pathlib.Path('/proc/device-tree/model').read_bytes().rstrip(b'\0') != b'Unihertz Titan 2 Elite':
+            raise Refused('Unsupported board')
+        chip = os.open('/dev/gpiochip0', os.O_RDONLY | os.O_CLOEXEC)
+        try:
+            info = bytearray(68)
+            fcntl.ioctl(chip, 0x8044B401, info, True)
+            label = bytes(info[32:64]).split(b'\0')[0]
+            if label != b'pinctrl_paris' or struct.unpack_from('I', info, 64)[0] != 216:
+                raise Refused('Unexpected GPIO controller')
+            req = bytearray(364)
+            struct.pack_into('I', req, 0, 184)
+            struct.pack_into('I', req, 256, 2)
+            req[260] = 1
+            req[324:338] = b'luma-esim-sim2'
+            struct.pack_into('I', req, 356, 1)
+            fcntl.ioctl(chip, 0xC16CB403, req, True)
+            self.gpio = struct.unpack_from('i', req, 360)[0]
+            os.set_inheritable(self.gpio, False)
+        finally:
+            os.close(chip)
+
+    def boot_select(self):
+        # Called after native MIPC boot config, before READY is notified to systemd.
+        at = At()
+        try:
+            at.command('AT')
+            at.command('AT+CMEE=2')
+            at.command('AT+ESUO=5')
+            deadline = time.monotonic()+20
+            while True:
+                try:
+                    reply = at.command('AT+CPIN?')
+                    if '+CPIN: READY' in reply:
+                        return 5
+                    if '+CPIN: EMPTY_EUICC' in reply:
+                        at.command('AT+ESUO=4')
+                        return 4
+                except Rejected:
+                    pass
+                if time.monotonic() >= deadline:
+                    at.command('AT+ESUO=4')
+                    return 4
+                time.sleep(.5)
+        finally:
+            at.close()
+
+
+class Owner:
+    def __init__(self, log, primary=4, attach=None):
+        self.log = log
+        self.primary = primary
+        self.attach = attach  # attach(mipc): initial-attach configuration
+        self.lock = threading.RLock()
+        self.epoch = uuid.uuid4().int & ((1 << 63)-1) or 1
+        self.generation = 0
+        self.records = {}
+        self.lease = None
+        self.at = None
+        self.active = None
+        self.poisoned = False
+        self.connection = None
+        self.subscription = None
+        self.orphaned = False
+        self.prepared = False
+        self.refreshed = False
+
+    def acquire(self, sender, token):
+        if not re.fullmatch('[0-9a-f]{32}', token):
+            return False
+        with self.lock:
+            if self.poisoned or self.lease:
+                return False
+            try:
+                at = MipcAt()  # kernel-exclusive MIPC port, independent of MM's UART
+            except OSError:
+                return False
+            try:
+                at.command('AT')
+                # Check both SIM protocols without switching the UART subscription.
+                if any('+CLCC:' in at.command('AT+CLCC', sim=sim) for sim in (1, 2)):
+                    raise Refused('Call in progress')
+                reply = at.command('AT+CPIN?')
+                if not any(x in reply for x in ('+CPIN: READY', '+CPIN: EMPTY_EUICC')):
+                    raise Refused('eUICC unavailable')
+            except Refused:
+                if at.broken:
+                    self.poisoned = True
+                    self.at = at
+                    return False
+                at.close()
+                return False
+            self.at = at
+            self.orphaned = False
+            self.lease = (sender, token, time.monotonic()+185)
+            return True
+
+    def prepare(self, sender, token, enabled):
+        with self.lock:
+            if (self.poisoned or self.active or self.prepared or not self.lease or
+                    self.lease[:2] != (sender, token) or self.subscription is None):
+                return False
+            try:
+                self.subscription.begin(self.primary, self.at)
+                self.prepared = True
+                self.refreshed = False
+                self.expected_enabled = enabled
+                self.prepared_generation = self.generation
+                return True
+            except Refused:
+                self.poisoned = (self.at.broken or self.subscription.inhibited or
+                                 self.subscription.uart is not None)
+                self.log('ESIM_PREPARE', 'quarantined' if self.poisoned else 'refused')
+                return False
+
+    def refresh(self):
+        if not self.prepared or self.refreshed or self.at.broken:
+            raise Refused('Native reset is not available for this reservation')
+        self.subscription.validate_prepared()
+        self.log('ESIM_REFRESH', 'begin')
+        self.at.reset_sim2()
+        reply = self.refreshed_readiness()
+        self.refreshed = True
+        self.log('ESIM_REFRESH', 'ready')
+        return reply
+
+    def refreshed_readiness(self):
+        deadline = time.monotonic()+20
+        expected = '+CPIN: READY' if self.expected_enabled else '+CPIN: EMPTY_EUICC'
+        while True:
+            try:
+                reply = self.at.command('AT+CPIN?')
+                if expected in reply:
+                    return reply
+            except Rejected:
+                pass
+            if time.monotonic() >= deadline:
+                raise Refused('Refreshed card did not settle')
+            time.sleep(.1)
+
+    def close_channel(self, record):
+        try:
+            self.at.command('AT+CCHC=%d' % record['channel'])
+        except Rejected:
+            # Profile changes can invalidate the modem's channel mapping before
+            # CCHC. Rejection is NOT closure proof. Only the prepared handover
+            # may obtain independent proof from one acknowledged normal UICC
+            # reset and verified readiness. Uncertain transport never retries.
+            if not self.prepared or self.refreshed or record['uncertain']:
+                raise
+            record['uncertain'] = True
+            self.log('ESIM_CHANNEL', 'reset-close')
+            self.refresh()
+            record['uncertain'] = False
+        record['channel'] = None
+
+    def release(self, sender, token):
+        with self.lock:
+            if not self.lease or self.lease[:2] != (sender, token):
+                return False
+            if self.active or self.poisoned:
+                return False
+            try:
+                # A verified enabled/empty transition selects the corresponding
+                # cellular subscription through MM's supported port handover.
+                if self.prepared and self.generation == self.prepared_generation:
+                    # Cancellation before opening a card channel cannot have
+                    # changed the profile. Restore the exact prior subscription
+                    # without resetting the SIM or waiting for the intended state.
+                    self.subscription.finish(self.primary)
+                    self.prepared = False
+                if self.prepared:
+                    reply = self.refreshed_readiness() if self.refreshed else self.refresh()
+                else:
+                    reply = self.at.command('AT+CPIN?')
+                if '+CPIN: READY' not in reply:
+                    if '+CPIN: EMPTY_EUICC' not in reply:
+                        raise Refused('Card state unknown')
+                    desired = 4
+                else:
+                    desired = 5
+                if self.prepared:
+                    self.subscription.finish(desired)
+                    self.primary = desired
+                    self.prepared = False
+                    # Keep this reserved operation bound through its independent
+                    # card readback; retire its epoch only when ownership returns.
+                    self.epoch += 1
+                elif desired != self.primary:
+                    if self.subscription is None:
+                        raise Refused('Cellular owner unavailable')
+                    self.subscription.select(self.primary, desired, self.at)
+                    self.primary = desired
+            except Refused:
+                self.log('ESIM_RELEASE', 'quarantined')
+                self.poisoned = True
+                return False
+            self.at.close()
+            self.at = None
+            self.lease = None
+            return True
+
+    def open(self, sender, token, epoch=0):
+        with self.lock:
+            if (self.poisoned or self.active or not self.lease or
+                    self.lease[:2] != (sender, token) or time.monotonic() >= self.lease[2] or
+                    (epoch and epoch != self.epoch)):
+                raise Refused('Native reservation unavailable')
+            now = time.monotonic()
+            self.records = {k:v for k,v in self.records.items() if now-v['created'] < 360}
+            if len(self.records) >= 64:
+                raise Refused('Native transport record limit reached')
+            a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            a.settimeout(185)
+            self.generation += 1
+            handle = str(uuid.uuid4())
+            record = dict(sender=sender, generation=self.generation, result=(0, False),
+                          created=now, channel=None, uncertain=False,
+                          epoch=self.epoch, peer=a)
+            self.records[handle] = record
+            self.active = handle
+            threading.Thread(target=self.serve, args=(a, handle), daemon=True).start()
+            return b, handle
+
+    def lookup(self, sender, handle):
+        # Status must remain responsive while the worker awaits a bounded modem
+        # reset. Publish terminal state/safety together as one immutable tuple;
+        # never hold the hardware lock merely to read that completed snapshot.
+        r = self.records.get(handle)
+        if not r or r['sender'] != sender or time.monotonic()-r['created'] >= 360:
+            raise Refused('Native transport record unavailable')
+        snapshot = r.copy()
+        snapshot['state'], snapshot['safe'] = snapshot.pop('result')
+        return snapshot
+
+    def exchange(self, r, op, data):
+        if op == 1:
+            if data or r.get('connected'):
+                raise Refused('Invalid connection')
+            r['connected'] = True
+            return b''
+        if not r.get('connected'):
+            raise Refused('Transport not connected')
+        if op == 2:
+            if data != AID or r['channel'] is not None:
+                raise Refused('Invalid logical channel request')
+            r['uncertain'] = True
+            reply = self.at.command('AT+CCHO="'+data.hex().upper()+'"')
+            match = re.search(r'\+CCHO:\s*(\d+)|\r?\n(\d+)\r?\n', reply)
+            if not match:
+                raise Refused('Logical channel unavailable')
+            r['channel'] = int(next(x for x in match.groups() if x is not None))
+            r['uncertain'] = False
+            return b'\x01'  # logical channel mapping is private to this descriptor
+        if op == 3:
+            if (r['channel'] is None or len(data) < 4 or len(data) > 900 or
+                    data[0] & 0x4c or data[0] & 3 != 1):
+                raise Refused('Invalid APDU')
+            reply = self.at.command('AT+CGLA=%d,%d,"%s"' %
+                                    (r['channel'], len(data)*2, data.hex().upper()), 10)
+            match = re.search(r'\+CGLA:\s*(\d+),\s*"?([0-9a-fA-F]+)"?', reply)
+            if not match or int(match[1]) != len(match[2]) or len(match[2]) % 2:
+                raise Refused('APDU response unavailable')
+            result = bytes.fromhex(match[2])
+            if len(result) < 2 or len(result) > MAX_APDU:
+                raise Refused('APDU response invalid')
+            return result
+        if op == 4:
+            if data != b'\x01' or r['channel'] is None:
+                raise Refused('Invalid channel close')
+            self.close_channel(r)
+            return b''
+        if op == 5:
+            if data or r['channel'] is not None:
+                raise Refused('Invalid disconnect')
+            return b''
+        raise Refused('Unknown transport operation')
+
+    def serve(self, peer, handle):
+        sequence = 0
+        op = 0
+        r = self.records[handle]
+        try:
+            while sequence < MAX_CALLS:
+                with self.lock:
+                    if not self.lease:
+                        raise Refused("Reservation ended")
+                    peer.settimeout(max(.001, self.lease[2]-time.monotonic()))
+                packet, _, flags, _ = peer.recvmsg(16+MAX_APDU)
+                if not packet:
+                    break
+                if len(packet) < 16 or flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC):
+                    raise Refused('Invalid transport packet')
+                magic, seq, op, size = struct.unpack('!IIII', packet[:16])
+                if magic != MAGIC or seq != sequence+1 or size != len(packet)-16:
+                    raise Refused('Invalid transport sequence')
+                sequence = seq
+                with self.lock:
+                    if not self.lease or time.monotonic() >= self.lease[2]:
+                        raise Refused('Reservation expired')
+                    result = self.exchange(r, op, packet[16:])
+                peer.sendall(struct.pack('!IIII', MAGIC, seq, 0, len(result))+result)
+                if op == 5:
+                    break
+        except (OSError, Refused) as error:
+            # Only the fixed protocol operation number and exception class.
+            # Never include exception text, commands, APDUs or identifiers.
+            self.log('ESIM_TRANSPORT', op, type(error).__name__)
+        finally:
+            with self.lock:
+                try:
+                    if r['uncertain']:
+                        raise Refused('Uncertain logical channel open')
+                    if r['channel'] is not None:
+                        self.close_channel(r)
+                    if self.at.broken:
+                        raise Refused('Uncertain native transport')
+                    r['result'] = (1, True)
+                except Refused as error:
+                    self.log('ESIM_CHANNEL', 'quarantined', type(error).__name__)
+                    r['result'] = (3, False)
+                    self.poisoned = True
+                    self.epoch += 1
+                self.active = None
+                r.pop('peer', None)
+                if self.lease and (self.orphaned or time.monotonic() >= self.lease[2]):
+                    self.release(*self.lease[:2])
+            peer.close()
+
+    def run(self):
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.connection = bus
+        self.subscription = PrimarySubscription(
+            MmApi(bus), self.log, (lambda: self.attach(self.at)) if self.attach else None)
+        node = Gio.DBusNodeInfo.new_for_xml(XML)
+
+        def broker_sender(sender):
+            try:
+                reply = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                    'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (BROKER,)),
+                    GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NO_AUTO_START, 2000, None)
+                return reply.unpack()[0] == sender
+            except GLib.Error:
+                return False
+
+        def method(connection, sender, path, interface, name, parameters, invocation):
+            try:
+                if not broker_sender(sender):
+                    raise Refused('Only the native eSIM broker may use this transport')
+                args = parameters.unpack()
+                if name in ('AcquireESimReservation', 'ReleaseESimReservation', 'PrepareESimProfileChange'):
+                    fn = {'AcquireESimReservation': self.acquire, 'ReleaseESimReservation': self.release,
+                          'PrepareESimProfileChange': self.prepare}[name]
+                    accepted = fn(sender, *args)
+                    if accepted and name.startswith('Acquire'):
+                        GLib.timeout_add_seconds(186, expire)
+                    invocation.return_value(GLib.Variant('(b)', (accepted,)))
+                elif name in ('OpenLumaProfileTransport', 'OpenLumaProfileTransportBound'):
+                    if args[1] != bus.get_unique_name():
+                        raise Refused('Native owner changed')
+                    peer, handle = self.open(sender, args[0], args[2] if len(args) == 3 else 0)
+                    try:
+                        fds = Gio.UnixFDList.new()
+                        index = fds.append(peer.fileno())
+                        invocation.return_value_with_unix_fd_list(GLib.Variant('(hs)', (index, handle)), fds)
+                    finally:
+                        peer.close()
+                elif name == 'GetLumaProfileTransportStatus':
+                    r = self.lookup(sender, args[0])
+                    invocation.return_value(GLib.Variant('(tub)', (r['generation'], r['state'], r['safe'])))
+                elif name == 'GetLumaProfileCandidateBinding':
+                    r = self.lookup(sender, args[0])
+                    if not r['safe'] or r['epoch'] != self.epoch:
+                        raise Refused('Native card binding unavailable')
+                    invocation.return_value(GLib.Variant('(tt)', (r['epoch'], r['generation'])))
+                else:
+                    raise Refused('Unsupported method')
+            except (Refused, OSError, GLib.Error):
+                invocation.return_dbus_error(BUS+'.Unavailable', 'Native eSIM ownership could not be verified')
+
+        def changed(connection, sender, path, interface, signal, parameters):
+            name, old, new = parameters.unpack()
+            if name == BROKER and old and old != new:
+                # Peer EOF retires a running LPAC channel. Idle leases can be
+                # released immediately; uncertain channels stay excluded.
+                with self.lock:
+                    if self.lease and self.lease[0] == old:
+                        self.orphaned = True
+                        if self.active:
+                            try:
+                                self.records[self.active]['peer'].shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                        else:
+                            self.release(old, self.lease[1])
+
+        def expire():
+            with self.lock:
+                if self.lease and time.monotonic() >= self.lease[2]:
+                    if self.active:
+                        try:
+                            self.records[self.active]['peer'].shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                    else:
+                        self.release(*self.lease[:2])
+            return False
+
+        bus.register_object(PATH, node.interfaces[0], method, None, None)
+        bus.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameOwnerChanged',
+                             '/org/freedesktop/DBus', BROKER, Gio.DBusSignalFlags.NONE, changed)
+        Gio.bus_own_name_on_connection(bus, BUS, Gio.BusNameOwnerFlags.DO_NOT_QUEUE, None, None)
+        GLib.MainLoop().run()
+
+    def start(self):
+        threading.Thread(target=self.run, daemon=True).start()

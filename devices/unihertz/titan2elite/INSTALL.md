@@ -18,7 +18,9 @@ radio calibration and identity (its IMEI) and cannot be recreated:
 The bootloader also checks `dtbo_a`, `vbmeta_a` and `vendor_boot_a` and stops
 if they are not Unihertz's own, so they stay as shipped. Luma reads the
 `vendor` and `nvdata` partitions (read-only) on first boot to copy the Wi-Fi,
-Bluetooth and speaker firmware.
+Bluetooth and speaker firmware. For the modem it reads `nvdata`, `nvcfg`,
+`protect1`, `protect2`, `nvram`, `mcf_ota` and `modem` read-only and works from
+its own copy.
 
 ## What you need
 

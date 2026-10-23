@@ -1,0 +1,52 @@
+From 893538362b185cd23aa140bacab2db1605ab8a65 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 21 Oct 2026 21:49:15 -0500
+Subject: [PATCH] arm64: dts: mediatek: titan2-elite: keep NFC VEN asserted for
+ SIM access
+
+The THN31 NFC controller enable is also required for SIM communication
+on this board. Native-kernel tests reproduce SIM-not-inserted with
+GPIO35 low and CPIN READY plus ICCID reads with it high. The empty eUICC
+also becomes accessible through an ISD-R logical channel. No NFC
+protocol exchange or Android userspace is needed.
+
+Use the existing GPIO hog mechanism to establish and retain the board
+requirement before the modem starts. This avoids a resident GPIO holder
+or login/boot replay and keeps optional NFC software from owning native
+SIM availability. Future NFC driver integration needs coordinated
+ownership of this shared enable line.
+
+The electrical coupling has not been measured; this change records the
+observed board requirement without claiming a supply-voltage mechanism.
+---
+ .../dts/mediatek/mt6878-unihertz-titan2-elite.dts  | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index 6b75116..02f8a6a 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -371,6 +371,20 @@
+ };
+ 
+ &pio {
++	/*
++	 * GPIO35 is THN31 NFC VEN. Both SIM interfaces stop responding when
++	 * VEN is low, even with the NFC software stack absent. Keep the
++	 * controller enabled from pinctrl probe, before modem startup.
++	 * Future NFC support must preserve this shared board requirement;
++	 * disabling NFC radio operation must not deassert VEN.
++	 */
++	nfc-ven-hog {
++		gpio-hog;
++		gpios = <35 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "nfc-ven-sim-required";
++	};
++
+ 	aud_mtkaif_pins: aud-mtkaif-pins {
+ 		pins-mtkaif {
+ 			/* GPIO164 clk mosi, 166/167 data mosi, 170/171 data miso */
+-- 
+2.54.0 (Apple Git-157)
+

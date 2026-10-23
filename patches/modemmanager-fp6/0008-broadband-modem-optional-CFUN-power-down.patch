@@ -1,0 +1,115 @@
+From 137db7b34fee73b62f0fec183d3d7bbefc71fb25 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 02:52:34 -0400
+Subject: [PATCH 3/3] broadband-modem: optional +CFUN power down
+
+The generic modem had no low power state, so disabling the modem for airplane mode left its radio on. A primary port tagged ID_MM_AT_CFUN_POWER_DOWN=<fun> now powers down with +CFUN=<fun>; untagged modems keep reporting the transition as unsupported.
+---
+ include/ModemManager-tags.h | 14 +++++++++
+ src/mm-broadband-modem.c    | 58 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 72 insertions(+)
+
+diff --git a/include/ModemManager-tags.h b/include/ModemManager-tags.h
+index 6bbea42..6995afd 100644
+--- a/include/ModemManager-tags.h
++++ b/include/ModemManager-tags.h
+@@ -383,6 +383,20 @@
+  */
+ #define ID_MM_AT_DATA_SERVICE "ID_MM_AT_DATA_SERVICE"
+ 
++/**
++ * ID_MM_AT_CFUN_POWER_DOWN:
++ *
++ * This is a port specific tag applied to the primary AT port, with the +CFUN
++ * functionality level (e.g. 4) that switches the modem's radio off.
++ *
++ * When set, the generic modem implements the low power state with
++ * +CFUN=&lt;value&gt;, e.g. for airplane mode. Without it the generic modem does
++ * not support the low power state.
++ *
++ * Since: 1.26
++ */
++#define ID_MM_AT_CFUN_POWER_DOWN "ID_MM_AT_CFUN_POWER_DOWN"
++
+ /*
+  * The following symbols are deprecated. We don't add them to -compat
+  * because this -tags file is not really part of the installed API.
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index b4e7611..b2f813c 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -4571,6 +4571,62 @@ modem_power_up_finish (MMIfaceModem *self,
+     return TRUE;
+ }
+ 
++static gboolean
++modem_power_down_finish (MMIfaceModem  *self,
++                         GAsyncResult  *res,
++                         GError       **error)
++{
++    return g_task_propagate_boolean (G_TASK (res), error);
++}
++
++static void
++power_down_ready (MMBaseModem  *self,
++                  GAsyncResult *res,
++                  GTask        *task)
++{
++    GError *error = NULL;
++
++    if (!mm_base_modem_at_command_finish (self, res, &error))
++        g_task_return_error (task, error);
++    else
++        g_task_return_boolean (task, TRUE);
++    g_object_unref (task);
++}
++
++static void
++modem_power_down (MMIfaceModem        *self,
++                  GAsyncReadyCallback  callback,
++                  gpointer             user_data)
++{
++    MMPortSerialAt   *primary;
++    MMKernelDevice   *kernel_device = NULL;
++    GTask            *task;
++    gint              fun;
++    g_autofree gchar *cmd = NULL;
++
++    task = g_task_new (self, NULL, callback, user_data);
++
++    /* Only modems tagged with the +CFUN level for radio off support it */
++    primary = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
++    if (primary)
++        kernel_device = mm_port_peek_kernel_device (MM_PORT (primary));
++    if (!kernel_device || !mm_kernel_device_has_global_property (kernel_device, ID_MM_AT_CFUN_POWER_DOWN) ||
++        (fun = mm_kernel_device_get_global_property_as_int (kernel_device, ID_MM_AT_CFUN_POWER_DOWN)) <= 1) {
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_UNSUPPORTED,
++                                 "Requested power transition is not supported by this modem");
++        g_object_unref (task);
++        return;
++    }
++
++    cmd = g_strdup_printf ("+CFUN=%d", fun);
++    mm_base_modem_at_command (MM_BASE_MODEM (self),
++                              cmd,
++                              30,
++                              FALSE,
++                              (GAsyncReadyCallback) power_down_ready,
++                              task);
++}
++
+ static void
+ modem_power_up (MMIfaceModem *self,
+                 GAsyncReadyCallback callback,
+@@ -14474,6 +14530,8 @@ iface_modem_init (MMIfaceModemInterface *iface)
+     /* Enabling steps */
+     iface->modem_power_up = modem_power_up;
+     iface->modem_power_up_finish = modem_power_up_finish;
++    iface->modem_power_down = modem_power_down;
++    iface->modem_power_down_finish = modem_power_down_finish;
+     iface->check_for_sim_swap = modem_check_for_sim_swap;
+     iface->check_for_sim_swap_finish = modem_check_for_sim_swap_finish;
+     iface->setup_flow_control = modem_setup_flow_control;
+-- 
+2.55.0
+

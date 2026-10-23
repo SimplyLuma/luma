@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 19:01:05 -0400
+Subject: [PATCH 59/65] arm64: dts: mediatek: mt6878-titan2-elite: add the
+ MT6375 charger
+
+MT6375 on i2c5 with EINT 15, and the charger as the fuel gauge supply.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts   | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index 02f8a6ad7..6ce78d4ac 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -663,6 +663,22 @@ camera_capture_csi2: endpoint {
+ 	};
+ };
+ 
++/* MT6375 charger PMIC: EINT 15, level low as on stock. */
++&i2c5 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	pmic@34 {
++		compatible = "mediatek,mt6375";
++		reg = <0x34>;
++		interrupts-extended = <&pio 15 IRQ_TYPE_LEVEL_LOW>;
++
++		mt6375_chg: charger {
++			compatible = "mediatek,mt6375-charger";
++		};
++	};
++};
++
+ &i2c11 {
+ 	#address-cells = <1>;
+ 	#size-cells = <0>;
+@@ -673,6 +689,7 @@ &i2c11 {
+ 	fuel-gauge@55 {
+ 		compatible = "ti,bq27510g3";
+ 		reg = <0x55>;
++		power-supplies = <&mt6375_chg>;
+ 	};
+ };
+ 
+-- 
+2.55.0
+

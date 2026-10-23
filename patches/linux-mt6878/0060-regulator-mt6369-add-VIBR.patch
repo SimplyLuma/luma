@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 22:01:18 -0400
+Subject: [PATCH 60/65] regulator: mt6369: add VIBR
+
+Enable 0x1bc1 bit 0, VOSEL 0x1d99, on the same voltage table as VMCH.
+---
+ drivers/regulator/mt6369-regulator.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/regulator/mt6369-regulator.c b/drivers/regulator/mt6369-regulator.c
+index 95f88cd23..daec14964 100644
+--- a/drivers/regulator/mt6369-regulator.c
++++ b/drivers/regulator/mt6369-regulator.c
+@@ -3,7 +3,7 @@
+  * MediaTek MT6369 PMIC LDO regulators (SPMI).
+  *
+  * Covers the LDOs used on MT6878 boards so far: VMCH (SD card supply),
+- * VMC (SD card I/O) and VTP (touch panel). Register layout from the
++ * VMC (SD card I/O), VTP (touch panel) and VIBR (vibration motor). Register layout from the
+  * MT6369 values used by the vendor driver.
+  */
+ 
+@@ -19,9 +19,11 @@
+ #define MT6369_LDO_VMCH_EN		0x1c95
+ #define MT6369_LDO_VMC_EN		0x1ca4
+ #define MT6369_LDO_VTP_EN		0x1c15
++#define MT6369_LDO_VIBR_EN		0x1bc1
+ #define MT6369_VMCH_VOSEL		0x1da9
+ #define MT6369_VMC_VOSEL		0x1dad
+ #define MT6369_VTP_VOSEL		0x1da5
++#define MT6369_VIBR_VOSEL		0x1d99
+ #define MT6369_LDO_EN_MASK		BIT(0)
+ #define MT6369_VOSEL_MASK		GENMASK(3, 0)
+ 
+@@ -29,6 +31,7 @@ enum mt6369_regulator_id {
+ 	MT6369_ID_VMCH,
+ 	MT6369_ID_VMC,
+ 	MT6369_ID_VTP,
++	MT6369_ID_VIBR,
+ 	MT6369_MAX_REGULATOR,
+ };
+ 
+@@ -68,6 +71,7 @@ static const struct regulator_desc mt6369_regulators[] = {
+ 	MT6369_LDO(VMCH, "vmch", MT6369_LDO_VMCH_EN, MT6369_VMCH_VOSEL),
+ 	MT6369_LDO(VMC, "vmc", MT6369_LDO_VMC_EN, MT6369_VMC_VOSEL),
+ 	MT6369_LDO(VTP, "vtp", MT6369_LDO_VTP_EN, MT6369_VTP_VOSEL),
++	MT6369_LDO(VIBR, "vibr", MT6369_LDO_VIBR_EN, MT6369_VIBR_VOSEL),
+ };
+ 
+ static const struct regmap_config mt6369_regmap_config = {
+-- 
+2.55.0
+

@@ -1,0 +1,189 @@
+From a8181ed5fd69ab582985e1c7df5c4fd015573992 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 00:20:33 -0400
+Subject: [PATCH] iface-modem-voice: optional idle call list polling
+
+Some modems never report incoming calls on the AT port (no RING, +CRING or +CLIP): MediaTek IMS call control reports them only to another host channel, while +CLCC on the AT port lists the incoming call. A primary port tagged with ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL=<seconds> now has its call list reloaded at that interval while voice is enabled, so the incoming call is created and reported.
+---
+ include/ModemManager-tags.h |  16 +++++
+ src/mm-iface-modem-voice.c  | 115 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 131 insertions(+)
+
+diff --git a/include/ModemManager-tags.h b/include/ModemManager-tags.h
+index 59c31f1..0a1f5bc 100644
+--- a/include/ModemManager-tags.h
++++ b/include/ModemManager-tags.h
+@@ -350,6 +350,22 @@
+  */
+ #define ID_MM_AT_NETWORK_TIME_BROKEN "ID_MM_AT_NETWORK_TIME_BROKEN"
+ 
++/**
++ * ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL:
++ *
++ * This is a port specific tag applied to the primary AT port, with an integer
++ * value in seconds.
++ *
++ * When set, ModemManager reloads the call list (+CLCC) at this interval while
++ * the voice interface is enabled, also when no call is ongoing. Use it for
++ * modems that do not report incoming calls on the AT port (no RING, +CRING or
++ * +CLIP), e.g. MediaTek modems whose IMS call control reports incoming calls
++ * only to another host channel.
++ *
++ * Since: 1.26
++ */
++#define ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL "ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL"
++
+ /*
+  * The following symbols are deprecated. We don't add them to -compat
+  * because this -tags file is not really part of the installed API.
+diff --git a/src/mm-iface-modem-voice.c b/src/mm-iface-modem-voice.c
+index 69f53cd..9527d86 100644
+--- a/src/mm-iface-modem-voice.c
++++ b/src/mm-iface-modem-voice.c
+@@ -17,7 +17,9 @@
+ #include <ModemManager.h>
+ #define _LIBMM_INSIDE_MM
+ #include <libmm-glib.h>
++#include <ModemManager-tags.h>
+ 
++#include "mm-base-modem.h"
+ #include "mm-iface-modem.h"
+ #include "mm-iface-modem-voice.h"
+ #include "mm-call-list.h"
+@@ -2363,6 +2365,117 @@ setup_in_call_event_handling (MMCallList        *call_list,
+                               self);
+ }
+ 
++/*****************************************************************************/
++/* Idle call list polling
++ *
++ * Some modems never report incoming calls on the AT port. When the primary
++ * port is tagged with ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL, reload the call list
++ * at that interval while voice is enabled, so that an incoming call shows up
++ * as soon as the modem lists it.
++ */
++
++#define IDLE_CALL_LIST_POLL_CONTEXT_TAG "voice-idle-call-list-poll-context-tag"
++
++static GQuark idle_call_list_poll_context_quark;
++
++typedef struct {
++    guint    timeout_id;
++    gboolean ongoing;
++} IdleCallListPollContext;
++
++static void
++idle_call_list_poll_context_free (IdleCallListPollContext *ctx)
++{
++    if (ctx->timeout_id)
++        g_source_remove (ctx->timeout_id);
++    g_slice_free (IdleCallListPollContext, ctx);
++}
++
++static IdleCallListPollContext *
++get_idle_call_list_poll_context (MMIfaceModemVoice *self)
++{
++    IdleCallListPollContext *ctx;
++
++    if (G_UNLIKELY (!idle_call_list_poll_context_quark))
++        idle_call_list_poll_context_quark = g_quark_from_static_string (IDLE_CALL_LIST_POLL_CONTEXT_TAG);
++
++    ctx = g_object_get_qdata (G_OBJECT (self), idle_call_list_poll_context_quark);
++    if (!ctx) {
++        ctx = g_slice_new0 (IdleCallListPollContext);
++        g_object_set_qdata_full (G_OBJECT (self), idle_call_list_poll_context_quark, ctx,
++                                 (GDestroyNotify) idle_call_list_poll_context_free);
++    }
++    return ctx;
++}
++
++static void
++idle_call_list_poll_ready (MMIfaceModemVoice *self,
++                           GAsyncResult      *res)
++{
++    g_autoptr(GError)        error = NULL;
++    IdleCallListPollContext *ctx;
++
++    ctx = get_idle_call_list_poll_context (self);
++    ctx->ongoing = FALSE;
++    if (!mm_iface_modem_voice_reload_all_calls_finish (self, res, &error))
++        mm_obj_dbg (self, "idle call list poll failed: %s", error->message);
++}
++
++static gboolean
++idle_call_list_poll_cb (MMIfaceModemVoice *self)
++{
++    IdleCallListPollContext *ctx;
++
++    ctx = get_idle_call_list_poll_context (self);
++    if (!ctx->ongoing) {
++        ctx->ongoing = TRUE;
++        mm_iface_modem_voice_reload_all_calls (self, (GAsyncReadyCallback) idle_call_list_poll_ready, NULL);
++    }
++    return G_SOURCE_CONTINUE;
++}
++
++static void
++idle_call_list_poll_start (MMIfaceModemVoice *self)
++{
++    IdleCallListPollContext *ctx;
++    MMPortSerialAt          *port;
++    MMKernelDevice          *kernel_device;
++    gint                     interval;
++
++    if (!MM_IFACE_MODEM_VOICE_GET_IFACE (self)->load_call_list ||
++        !MM_IFACE_MODEM_VOICE_GET_IFACE (self)->load_call_list_finish)
++        return;
++
++    port = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
++    if (!port)
++        return;
++    kernel_device = mm_port_peek_kernel_device (MM_PORT (port));
++    if (!kernel_device ||
++        !mm_kernel_device_has_global_property (kernel_device, ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL))
++        return;
++    interval = mm_kernel_device_get_global_property_as_int (kernel_device, ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL);
++    if (interval <= 0)
++        return;
++
++    ctx = get_idle_call_list_poll_context (self);
++    if (ctx->timeout_id)
++        return;
++    mm_obj_dbg (self, "polling the call list every %d seconds while idle", interval);
++    ctx->timeout_id = g_timeout_add_seconds ((guint) interval, (GSourceFunc) idle_call_list_poll_cb, self);
++}
++
++static void
++idle_call_list_poll_stop (MMIfaceModemVoice *self)
++{
++    IdleCallListPollContext *ctx;
++
++    ctx = get_idle_call_list_poll_context (self);
++    if (ctx->timeout_id) {
++        g_source_remove (ctx->timeout_id);
++        ctx->timeout_id = 0;
++    }
++}
++
+ /*****************************************************************************/
+ /* Call list polling logic
+  *
+@@ -2688,6 +2801,7 @@ interface_disabling_step (GTask *task)
+ 
+     switch (ctx->step) {
+     case DISABLING_STEP_FIRST:
++        idle_call_list_poll_stop (self);
+         ctx->step++;
+         /* fall through */
+ 
+@@ -2881,6 +2995,7 @@ interface_enabling_step (GTask *task)
+         /* fall through */
+ 
+     case ENABLING_STEP_LAST:
++        idle_call_list_poll_start (self);
+         /* We are done without errors! */
+         g_task_return_boolean (task, TRUE);
+         g_object_unref (task);
+-- 
+2.55.0
+

@@ -1,0 +1,223 @@
+From ea143b5bdb0f4ec7d17f3ec0a4d60cdc1e4d4472 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 07:15:30 -0400
+Subject: [PATCH] broadband-modem: initial EPS bearer settings through the
+ external data service
+
+Modems whose packet data is set up by the service named in
+ID_MM_AT_DATA_SERVICE also attach through it: MediaTek CCCI modems take
+their initial attach APN over the MIPC host channel, not as a +CGDCONT
+context, so the generic profile-based path failed (no such profile)
+after powering the radio down. Load and set the initial EPS bearer
+settings through the service (GetInitialEpsBearerSettings,
+SetInitialEpsBearerSettings) instead.
+---
+ src/mm-broadband-bearer-external.c | 41 +++++++++++++------
+ src/mm-broadband-bearer-external.h | 10 +++++
+ src/mm-broadband-modem.c           | 66 ++++++++++++++++++++++++++++++
+ 3 files changed, 105 insertions(+), 12 deletions(-)
+
+diff --git a/src/mm-broadband-bearer-external.c b/src/mm-broadband-bearer-external.c
+index 5dd2935..b30d637 100644
+--- a/src/mm-broadband-bearer-external.c
++++ b/src/mm-broadband-bearer-external.c
+@@ -15,9 +15,12 @@
+  * the service exports <bus name>.Data at /<bus/name>/Data with
+  *   Connect (s apn, s ip_type) -> (s interface, u id, a{sv} settings)
+  *   Disconnect (u id)
++ *   GetInitialEpsBearerSettings () -> (a{sv} settings)
++ *   SetInitialEpsBearerSettings (a{sv} settings)
+  * where ip_type is "ipv4", "ipv6" or "ipv4v6" and interface names one of the
+  * modem's net ports. Optional settings: "dns4" and "dns6" (as), the name
+- * servers the network assigned (e.g. from PCO).
++ * servers the network assigned (e.g. from PCO). The initial EPS bearer
++ * settings are bearer properties dictionaries, kept by the service as given.
+  */
+ 
+ #include <config.h>
+@@ -63,24 +66,22 @@ mm_broadband_bearer_external_peek_service (MMBroadbandModem *modem)
+     return mm_kernel_device_get_global_property (kernel_device, ID_MM_AT_DATA_SERVICE);
+ }
+ 
+-static void
+-external_call (MMBroadbandBearerExternal *self,
+-               const gchar               *method,
+-               GVariant                  *parameters,
+-               const GVariantType        *reply_type,
+-               GCancellable              *cancellable,
+-               GAsyncReadyCallback        callback,
+-               GTask                     *task)
++void
++mm_broadband_bearer_external_call (MMBroadbandModem    *modem,
++                                   const gchar         *method,
++                                   GVariant            *parameters,
++                                   const GVariantType  *reply_type,
++                                   GCancellable        *cancellable,
++                                   GAsyncReadyCallback  callback,
++                                   GTask               *task)
+ {
+-    g_autoptr(MMBaseModem)      modem = NULL;
+     g_autoptr(GDBusConnection)  bus = NULL;
+     g_autoptr(GError)           error = NULL;
+     g_autofree gchar           *path = NULL;
+     g_autofree gchar           *interface = NULL;
+     const gchar                *service;
+ 
+-    g_object_get (self, MM_BASE_BEARER_MODEM, &modem, NULL);
+-    service = modem ? mm_broadband_bearer_external_peek_service (MM_BROADBAND_MODEM (modem)) : NULL;
++    service = modem ? mm_broadband_bearer_external_peek_service (modem) : NULL;
+     bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, cancellable, &error);
+     if (!service || !g_dbus_is_name (service) || !bus) {
+         g_variant_unref (g_variant_ref_sink (parameters));
+@@ -100,6 +101,22 @@ external_call (MMBroadbandBearerExternal *self,
+                             cancellable, callback, task);
+ }
+ 
++static void
++external_call (MMBroadbandBearerExternal *self,
++               const gchar               *method,
++               GVariant                  *parameters,
++               const GVariantType        *reply_type,
++               GCancellable              *cancellable,
++               GAsyncReadyCallback        callback,
++               GTask                     *task)
++{
++    g_autoptr(MMBaseModem) modem = NULL;
++
++    g_object_get (self, MM_BASE_BEARER_MODEM, &modem, NULL);
++    mm_broadband_bearer_external_call (modem ? MM_BROADBAND_MODEM (modem) : NULL,
++                                       method, parameters, reply_type, cancellable, callback, task);
++}
++
+ /*****************************************************************************/
+ /* 3GPP dialing */
+ 
+diff --git a/src/mm-broadband-bearer-external.h b/src/mm-broadband-bearer-external.h
+index 08128a2..7631467 100644
+--- a/src/mm-broadband-bearer-external.h
++++ b/src/mm-broadband-bearer-external.h
+@@ -50,6 +50,16 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (MMBroadbandBearerExternal, g_object_unref)
+  * ID_MM_AT_DATA_SERVICE tag, or NULL. */
+ const gchar *mm_broadband_bearer_external_peek_service (MMBroadbandModem *modem);
+ 
++/* Calls a method of that service's Data interface; the reply goes to
++ * callback with task as user data. Without a service, task returns an error. */
++void mm_broadband_bearer_external_call (MMBroadbandModem    *modem,
++                                        const gchar         *method,
++                                        GVariant            *parameters,
++                                        const GVariantType  *reply_type,
++                                        GCancellable        *cancellable,
++                                        GAsyncReadyCallback  callback,
++                                        GTask               *task);
++
+ void          mm_broadband_bearer_external_new        (MMBroadbandModem    *modem,
+                                                        MMBearerProperties  *config,
+                                                        GCancellable        *cancellable,
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index dc00c8d..4273133 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -3179,6 +3179,29 @@ load_initial_eps_bearer_cid_ready (MMBaseModem  *_self,
+     load_initial_eps_bearer_profile (task);
+ }
+ 
++static void
++external_initial_eps_settings_ready (GDBusConnection *bus,
++                                     GAsyncResult    *res,
++                                     GTask           *task)
++{
++    g_autoptr(GVariant)  reply = NULL;
++    g_autoptr(GVariant)  dictionary = NULL;
++    GError              *error = NULL;
++    MMBearerProperties  *properties = NULL;
++
++    reply = g_dbus_connection_call_finish (bus, res, &error);
++    if (reply) {
++        g_variant_get (reply, "(@a{sv})", &dictionary);
++        properties = mm_bearer_properties_new_from_dictionary (dictionary, &error);
++    }
++    if (!reply || !properties) {
++        g_dbus_error_strip_remote_error (error);
++        g_task_return_error (task, error);
++    } else
++        g_task_return_pointer (task, properties, g_object_unref);
++    g_object_unref (task);
++}
++
+ static void
+ modem_3gpp_load_initial_eps_bearer_settings (MMIfaceModem3gpp    *_self,
+                                              GAsyncReadyCallback  callback,
+@@ -3189,6 +3212,15 @@ modem_3gpp_load_initial_eps_bearer_settings (MMIfaceModem3gpp    *_self,
+ 
+     task = g_task_new (self, NULL, callback, user_data);
+ 
++    /* Modems whose data is set up by an external service attach with the
++     * initial EPS bearer settings that service keeps */
++    if (mm_broadband_bearer_external_peek_service (self)) {
++        mm_broadband_bearer_external_call (self, "GetInitialEpsBearerSettings", g_variant_new ("()"),
++                                           G_VARIANT_TYPE ("(a{sv})"), NULL,
++                                           (GAsyncReadyCallback) external_initial_eps_settings_ready, task);
++        return;
++    }
++
+     /* Lookup which is supposed to be the initial EPS bearer context cid */
+     if (G_UNLIKELY (!self->priv->initial_eps_bearer_cid_support_checked)) {
+         self->priv->initial_eps_bearer_cid_support_checked = TRUE;
+@@ -3247,6 +3279,13 @@ modem_3gpp_load_initial_eps_bearer (MMIfaceModem3gpp    *_self,
+ 
+     task = g_task_new (self, NULL, callback, user_data);
+ 
++    if (mm_broadband_bearer_external_peek_service (self)) {
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_UNSUPPORTED,
++                                 "initial EPS bearer status is kept by the external data service");
++        g_object_unref (task);
++        return;
++    }
++
+     g_assert (self->priv->initial_eps_bearer_cid_support_checked);
+ 
+     if (self->priv->initial_eps_bearer_cid < 0) {
+@@ -3292,6 +3331,23 @@ set_initial_eps_bearer_modify_profile_ready (MMIfaceModem3gppProfileManager *sel
+     g_object_unref (task);
+ }
+ 
++static void
++external_set_initial_eps_settings_ready (GDBusConnection *bus,
++                                         GAsyncResult    *res,
++                                         GTask           *task)
++{
++    g_autoptr(GVariant)  reply = NULL;
++    GError              *error = NULL;
++
++    reply = g_dbus_connection_call_finish (bus, res, &error);
++    if (!reply) {
++        g_dbus_error_strip_remote_error (error);
++        g_task_return_error (task, error);
++    } else
++        g_task_return_boolean (task, TRUE);
++    g_object_unref (task);
++}
++
+ static void
+ modem_3gpp_set_initial_eps_bearer_settings (MMIfaceModem3gpp    *_self,
+                                             MMBearerProperties  *props,
+@@ -3305,6 +3361,16 @@ modem_3gpp_set_initial_eps_bearer_settings (MMIfaceModem3gpp    *_self,
+ 
+     task = g_task_new (self, NULL, callback, user_data);
+ 
++    if (mm_broadband_bearer_external_peek_service (self)) {
++        /* The service keeps the settings as given, so that they read back
++         * equal to the requested ones */
++        mm_broadband_bearer_external_call (self, "SetInitialEpsBearerSettings",
++                                           g_variant_new ("(@a{sv})", mm_bearer_properties_get_dictionary (props)),
++                                           NULL, NULL,
++                                           (GAsyncReadyCallback) external_set_initial_eps_settings_ready, task);
++        return;
++    }
++
+     g_assert (self->priv->initial_eps_bearer_cid_support_checked);
+     if (self->priv->initial_eps_bearer_cid < 0) {
+         g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_UNSUPPORTED,
+-- 
+2.55.0
+

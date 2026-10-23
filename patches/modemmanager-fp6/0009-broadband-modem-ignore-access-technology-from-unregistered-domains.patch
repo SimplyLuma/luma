@@ -1,0 +1,58 @@
+From c117646766866b6942be2b7e29f4a6d7227e5b70 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 05:10:05 -0400
+Subject: [PATCH] broadband-modem: ignore access technology from unregistered
+ domains
+
+A registration reply for a domain that is not registered still carries
+an <AcT> field, e.g. +CREG: 2,0,<lac>,<ci>,0 on a modem registered over
+5GS. Reporting it replaced the 5GNR access technology with GSM. Only
+take the access technology from replies whose domain is registered.
+---
+ src/mm-broadband-modem.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index b2f813c..fd03259 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -5302,6 +5302,16 @@ modem_3gpp_set_packet_service_state (MMIfaceModem3gpp              *self,
+ /*****************************************************************************/
+ /* Unsolicited registration messages handling (3GPP interface) */
+ 
++/* A reply for a domain that is not registered (e.g. +CREG: 2,0,...,0 while
++ * registered over 5GS) carries no meaningful <AcT>; reporting it would
++ * replace the access technology of the domain that is registered. */
++static MMModemAccessTechnology
++registered_access_technology (MMModem3gppRegistrationState state,
++                              MMModemAccessTechnology      act)
++{
++    return mm_modem_3gpp_registration_state_is_registered (state) ? act : MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN;
++}
++
+ static gboolean
+ modem_3gpp_setup_unsolicited_registration_events_finish (MMIfaceModem3gpp *self,
+                                                          GAsyncResult *res,
+@@ -5369,7 +5379,8 @@ registration_state_changed (MMPortSerialAt *port,
+      */
+     if (MM_IFACE_MODEM_GET_IFACE (self)->load_access_technologies == modem_load_access_technologies ||
+         MM_IFACE_MODEM_GET_IFACE (self)->load_access_technologies == NULL)
+-        mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self), act);
++        mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self),
++                                                        registered_access_technology (state, act));
+ 
+     mm_iface_modem_3gpp_update_location (MM_IFACE_MODEM_3GPP (self), lac, tac, cell_id);
+ }
+@@ -5844,7 +5855,8 @@ registration_status_check_ready (MMBroadbandModem *self,
+         mm_iface_modem_3gpp_update_cs_registration_state (MM_IFACE_MODEM_3GPP (self), state, FALSE);
+     }
+ 
+-    mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self), act);
++    mm_iface_modem_3gpp_update_access_technologies (MM_IFACE_MODEM_3GPP (self),
++                                                    registered_access_technology (state, act));
+     mm_iface_modem_3gpp_update_location (MM_IFACE_MODEM_3GPP (self), lac, tac, cid);
+ 
+     run_registration_checks_context_step (task);
+-- 
+2.55.0
+

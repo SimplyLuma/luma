@@ -1,0 +1,568 @@
+From aac46295711c41a4d039d07cb575462ae7ee21ab Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 02:38:29 -0400
+Subject: [PATCH 1/4] broadband-bearer-external: packet data through an
+ external service
+
+Some modems cannot bind a PDN to a net port from the AT port: MediaTek CCCI modems need their MIPC host channel for it. A primary port tagged ID_MM_AT_DATA_SERVICE=<bus name> now gets bearers that connect through that service (<name>.Data Connect/Disconnect at /<name as path>/Data) and use the net port it returns; IPv6 is configured by the network (SLAAC), IPv4 only when it was the only family asked for. Name servers the service reports (dns4/dns6, e.g. from PCO) are passed on in the bearer IP configuration.
+---
+ include/ModemManager-tags.h        |  17 ++
+ src/meson.build                    |   1 +
+ src/mm-broadband-bearer-external.c | 382 +++++++++++++++++++++++++++++
+ src/mm-broadband-bearer-external.h |  61 +++++
+ src/mm-broadband-modem.c           |  28 +++
+ 5 files changed, 489 insertions(+)
+ create mode 100644 src/mm-broadband-bearer-external.c
+ create mode 100644 src/mm-broadband-bearer-external.h
+
+diff --git a/include/ModemManager-tags.h b/include/ModemManager-tags.h
+index 0a1f5bc..6bbea42 100644
+--- a/include/ModemManager-tags.h
++++ b/include/ModemManager-tags.h
+@@ -366,6 +366,23 @@
+  */
+ #define ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL "ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL"
+ 
++/**
++ * ID_MM_AT_DATA_SERVICE:
++ *
++ * This is a port specific tag applied to the primary AT port, whose value is
++ * the D-Bus system bus name of a service that sets up packet data for the
++ * modem.
++ *
++ * Bearers then connect through the service's &lt;name&gt;.Data interface at
++ * /&lt;name with dots as slashes&gt;/Data: Connect (s apn, s ip_type) returns the
++ * net port to use and an id that Disconnect (u id) releases. Use it for
++ * modems whose AT port cannot bind a PDN to a net port by itself, e.g.
++ * MediaTek CCCI modems that need their MIPC host channel for it.
++ *
++ * Since: 1.26
++ */
++#define ID_MM_AT_DATA_SERVICE "ID_MM_AT_DATA_SERVICE"
++
+ /*
+  * The following symbols are deprecated. We don't add them to -compat
+  * because this -tags file is not really part of the installed API.
+diff --git a/src/meson.build b/src/meson.build
+index 78d8794..8e6fff4 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -332,6 +332,7 @@ base_sources = files(
+   'mm-sms-at.c',
+   'mm-bearer-list.c',
+   'mm-broadband-bearer.c',
++  'mm-broadband-bearer-external.c',
+   'mm-broadband-modem.c',
+   'mm-call-list.c',
+   'mm-cbm-list.c',
+diff --git a/src/mm-broadband-bearer-external.c b/src/mm-broadband-bearer-external.c
+new file mode 100644
+index 0000000..5dd2935
+--- /dev/null
++++ b/src/mm-broadband-bearer-external.c
+@@ -0,0 +1,382 @@
++/* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details:
++ *
++ * Bearer for modems whose packet data is set up by a separate system
++ * service. The primary AT port is tagged ID_MM_AT_DATA_SERVICE=<bus name>;
++ * the service exports <bus name>.Data at /<bus/name>/Data with
++ *   Connect (s apn, s ip_type) -> (s interface, u id, a{sv} settings)
++ *   Disconnect (u id)
++ * where ip_type is "ipv4", "ipv6" or "ipv4v6" and interface names one of the
++ * modem's net ports. Optional settings: "dns4" and "dns6" (as), the name
++ * servers the network assigned (e.g. from PCO).
++ */
++
++#include <config.h>
++
++#include <string.h>
++#include <gio/gio.h>
++
++#include <ModemManager.h>
++#include <ModemManager-tags.h>
++#define _LIBMM_INSIDE_MM
++#include <libmm-glib.h>
++
++#include "mm-broadband-bearer-external.h"
++#include "mm-base-modem.h"
++#include "mm-port.h"
++#include "mm-modem-helpers.h"
++#include "mm-log-object.h"
++#include "mm-bind.h"
++
++struct _MMBroadbandBearerExternalPrivate {
++    gboolean connected;
++    guint    id;
++    GStrv    dns4;
++    GStrv    dns6;
++};
++
++G_DEFINE_TYPE_WITH_PRIVATE (MMBroadbandBearerExternal, mm_broadband_bearer_external, MM_TYPE_BROADBAND_BEARER)
++
++#define EXTERNAL_DATA_TIMEOUT_MS 120000
++
++const gchar *
++mm_broadband_bearer_external_peek_service (MMBroadbandModem *modem)
++{
++    MMPortSerialAt *primary;
++    MMKernelDevice *kernel_device;
++
++    primary = mm_base_modem_peek_port_primary (MM_BASE_MODEM (modem));
++    if (!primary)
++        return NULL;
++    kernel_device = mm_port_peek_kernel_device (MM_PORT (primary));
++    if (!kernel_device || !mm_kernel_device_has_global_property (kernel_device, ID_MM_AT_DATA_SERVICE))
++        return NULL;
++    return mm_kernel_device_get_global_property (kernel_device, ID_MM_AT_DATA_SERVICE);
++}
++
++static void
++external_call (MMBroadbandBearerExternal *self,
++               const gchar               *method,
++               GVariant                  *parameters,
++               const GVariantType        *reply_type,
++               GCancellable              *cancellable,
++               GAsyncReadyCallback        callback,
++               GTask                     *task)
++{
++    g_autoptr(MMBaseModem)      modem = NULL;
++    g_autoptr(GDBusConnection)  bus = NULL;
++    g_autoptr(GError)           error = NULL;
++    g_autofree gchar           *path = NULL;
++    g_autofree gchar           *interface = NULL;
++    const gchar                *service;
++
++    g_object_get (self, MM_BASE_BEARER_MODEM, &modem, NULL);
++    service = modem ? mm_broadband_bearer_external_peek_service (MM_BROADBAND_MODEM (modem)) : NULL;
++    bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, cancellable, &error);
++    if (!service || !g_dbus_is_name (service) || !bus) {
++        g_variant_unref (g_variant_ref_sink (parameters));
++        if (error)
++            g_task_return_error (task, g_steal_pointer (&error));
++        else
++            g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_NOT_FOUND,
++                                     "No external data service for this modem");
++        g_object_unref (task);
++        return;
++    }
++
++    path = g_strdelimit (g_strdup_printf ("/%s/Data", service), ".", '/');
++    interface = g_strdup_printf ("%s.Data", service);
++    g_dbus_connection_call (bus, service, path, interface, method, parameters, reply_type,
++                            G_DBUS_CALL_FLAGS_NO_AUTO_START, EXTERNAL_DATA_TIMEOUT_MS,
++                            cancellable, callback, task);
++}
++
++/*****************************************************************************/
++/* 3GPP dialing */
++
++static MMPort *
++dial_3gpp_finish (MMBroadbandBearer  *self,
++                  GAsyncResult       *res,
++                  GError            **error)
++{
++    return g_task_propagate_pointer (G_TASK (res), error);
++}
++
++static void
++connect_ready (GDBusConnection *bus,
++               GAsyncResult    *res,
++               GTask           *task)
++{
++    MMBroadbandBearerExternal *self;
++    MMBaseModem               *modem;
++    g_autoptr(GVariant)        reply = NULL;
++    g_autoptr(GVariant)        settings = NULL;
++    g_autoptr(GError)          error = NULL;
++    const gchar               *name = NULL;
++    guint                      id = 0;
++    MMPort                    *port;
++
++    self = g_task_get_source_object (task);
++    modem = g_task_get_task_data (task);
++
++    reply = g_dbus_connection_call_finish (bus, res, &error);
++    if (!reply) {
++        g_dbus_error_strip_remote_error (error);
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
++                                 "External data service refused the connection: %s", error->message);
++        g_object_unref (task);
++        return;
++    }
++    g_variant_get (reply, "(&su@a{sv})", &name, &id, &settings);
++    g_clear_pointer (&self->priv->dns4, g_strfreev);
++    g_clear_pointer (&self->priv->dns6, g_strfreev);
++    g_variant_lookup (settings, "dns4", "^as", &self->priv->dns4);
++    g_variant_lookup (settings, "dns6", "^as", &self->priv->dns6);
++
++    port = mm_base_modem_peek_port (modem, name);
++    if (port && mm_port_get_port_type (port) == MM_PORT_TYPE_NET) {
++        self->priv->connected = TRUE;
++        self->priv->id = id;
++        mm_obj_dbg (self, "external data service connected %u on %s", id, name);
++        g_task_return_pointer (task, g_object_ref (port), g_object_unref);
++        g_object_unref (task);
++        return;
++    }
++
++    g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_NOT_FOUND,
++                             "External data service returned an unknown data port: %s", name);
++    g_object_unref (task);
++}
++
++static const gchar *
++ip_type_name (MMBearerIpFamily family)
++{
++    if (family == MM_BEARER_IP_FAMILY_IPV4)
++        return "ipv4";
++    if (family == MM_BEARER_IP_FAMILY_IPV6)
++        return "ipv6";
++    return "ipv4v6";
++}
++
++static void
++dial_3gpp (MMBroadbandBearer   *_self,
++           MMBaseModem         *modem,
++           MMPortSerialAt      *primary,
++           guint                cid,
++           GCancellable        *cancellable,
++           GAsyncReadyCallback  callback,
++           gpointer             user_data)
++{
++    MMBroadbandBearerExternal *self = MM_BROADBAND_BEARER_EXTERNAL (_self);
++    MMBearerProperties        *config;
++    MMBearerIpFamily           family;
++    const gchar               *apn;
++    GTask                     *task;
++
++    task = g_task_new (self, cancellable, callback, user_data);
++    g_task_set_task_data (task, g_object_ref (modem), g_object_unref);
++
++    config = mm_base_bearer_peek_config (MM_BASE_BEARER (self));
++    apn = mm_bearer_properties_get_apn (config);
++    family = mm_bearer_properties_get_ip_type (config);
++    mm_3gpp_normalize_ip_family (&family, TRUE);
++
++    external_call (self, "Connect", g_variant_new ("(ss)", apn ? apn : "", ip_type_name (family)),
++                   G_VARIANT_TYPE ("(sua{sv})"), cancellable, (GAsyncReadyCallback) connect_ready, task);
++}
++
++/*****************************************************************************/
++/* IP configuration: the network configures the address (IPv6 SLAAC, or DHCP) */
++
++static gboolean
++get_ip_config_3gpp_finish (MMBroadbandBearer   *self,
++                           GAsyncResult        *res,
++                           MMBearerIpConfig   **ipv4_config,
++                           MMBearerIpConfig   **ipv6_config,
++                           GError             **error)
++{
++    MMBearerConnectResult *result;
++
++    result = g_task_propagate_pointer (G_TASK (res), error);
++    if (!result)
++        return FALSE;
++    if (mm_bearer_connect_result_peek_ipv4_config (result))
++        *ipv4_config = g_object_ref (mm_bearer_connect_result_peek_ipv4_config (result));
++    if (mm_bearer_connect_result_peek_ipv6_config (result))
++        *ipv6_config = g_object_ref (mm_bearer_connect_result_peek_ipv6_config (result));
++    mm_bearer_connect_result_unref (result);
++    return TRUE;
++}
++
++static void
++get_ip_config_3gpp (MMBroadbandBearer   *self,
++                    MMBroadbandModem    *modem,
++                    MMPortSerialAt      *primary,
++                    MMPortSerialAt      *secondary,
++                    MMPort              *data,
++                    guint                cid,
++                    MMBearerIpFamily     ip_family,
++                    GAsyncReadyCallback  callback,
++                    gpointer             user_data)
++{
++    g_autoptr(MMBearerIpConfig) ipv4 = NULL;
++    g_autoptr(MMBearerIpConfig) ipv6 = NULL;
++    GTask                      *task;
++
++    task = g_task_new (self, NULL, callback, user_data);
++
++    /* IPv4 only when only IPv4 was asked for: dual-stack networks hand out
++     * IPv6 and route IPv4 through 464XLAT on the host. */
++    if (ip_family == MM_BEARER_IP_FAMILY_IPV4) {
++        ipv4 = mm_bearer_ip_config_new ();
++        mm_bearer_ip_config_set_method (ipv4, MM_BEARER_IP_METHOD_DHCP);
++        if (MM_BROADBAND_BEARER_EXTERNAL (self)->priv->dns4)
++            mm_bearer_ip_config_set_dns (ipv4, (const gchar **) MM_BROADBAND_BEARER_EXTERNAL (self)->priv->dns4);
++    } else {
++        ipv6 = mm_bearer_ip_config_new ();
++        mm_bearer_ip_config_set_method (ipv6, MM_BEARER_IP_METHOD_DHCP);
++        if (MM_BROADBAND_BEARER_EXTERNAL (self)->priv->dns6)
++            mm_bearer_ip_config_set_dns (ipv6, (const gchar **) MM_BROADBAND_BEARER_EXTERNAL (self)->priv->dns6);
++    }
++    g_task_return_pointer (task, mm_bearer_connect_result_new (data, ipv4, ipv6),
++                           (GDestroyNotify) mm_bearer_connect_result_unref);
++    g_object_unref (task);
++}
++
++/*****************************************************************************/
++/* 3GPP disconnection */
++
++static gboolean
++disconnect_3gpp_finish (MMBroadbandBearer  *self,
++                        GAsyncResult       *res,
++                        GError            **error)
++{
++    return g_task_propagate_boolean (G_TASK (res), error);
++}
++
++static void
++disconnect_ready (GDBusConnection *bus,
++                  GAsyncResult    *res,
++                  GTask           *task)
++{
++    MMBroadbandBearerExternal *self;
++    g_autoptr(GVariant)        reply = NULL;
++    g_autoptr(GError)          error = NULL;
++
++    self = g_task_get_source_object (task);
++    reply = g_dbus_connection_call_finish (bus, res, &error);
++    if (!reply) {
++        g_dbus_error_strip_remote_error (error);
++        g_task_return_new_error (task, MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
++                                 "External data service could not disconnect: %s", error->message);
++    } else {
++        self->priv->connected = FALSE;
++        g_task_return_boolean (task, TRUE);
++    }
++    g_object_unref (task);
++}
++
++static void
++disconnect_3gpp (MMBroadbandBearer  *_self,
++                 MMBroadbandModem   *modem,
++                 MMPortSerialAt     *primary,
++                 MMPortSerialAt     *secondary,
++                 MMPort             *data,
++                 guint               cid,
++                 GAsyncReadyCallback callback,
++                 gpointer            user_data)
++{
++    MMBroadbandBearerExternal *self = MM_BROADBAND_BEARER_EXTERNAL (_self);
++    GTask                     *task;
++
++    task = g_task_new (self, NULL, callback, user_data);
++    if (!self->priv->connected) {
++        g_task_return_boolean (task, TRUE);
++        g_object_unref (task);
++        return;
++    }
++    external_call (self, "Disconnect", g_variant_new ("(u)", self->priv->id), NULL, NULL,
++                   (GAsyncReadyCallback) disconnect_ready, task);
++}
++
++/*****************************************************************************/
++
++MMBaseBearer *
++mm_broadband_bearer_external_new_finish (GAsyncResult  *res,
++                                         GError       **error)
++{
++    GObject *bearer;
++    GObject *source;
++
++    source = g_async_result_get_source_object (res);
++    bearer = g_async_initable_new_finish (G_ASYNC_INITABLE (source), res, error);
++    g_object_unref (source);
++
++    if (!bearer)
++        return NULL;
++
++    /* Only export valid bearers */
++    mm_base_bearer_export (MM_BASE_BEARER (bearer));
++
++    return MM_BASE_BEARER (bearer);
++}
++
++void
++mm_broadband_bearer_external_new (MMBroadbandModem    *modem,
++                                  MMBearerProperties  *config,
++                                  GCancellable        *cancellable,
++                                  GAsyncReadyCallback  callback,
++                                  gpointer             user_data)
++{
++    g_async_initable_new_async (
++        MM_TYPE_BROADBAND_BEARER_EXTERNAL,
++        G_PRIORITY_DEFAULT,
++        cancellable,
++        callback,
++        user_data,
++        MM_BASE_BEARER_MODEM, modem,
++        MM_BIND_TO,           modem,
++        MM_BASE_BEARER_CONFIG, config,
++        NULL);
++}
++
++static void
++mm_broadband_bearer_external_init (MMBroadbandBearerExternal *self)
++{
++    self->priv = mm_broadband_bearer_external_get_instance_private (self);
++}
++
++static void
++finalize (GObject *object)
++{
++    MMBroadbandBearerExternal *self = MM_BROADBAND_BEARER_EXTERNAL (object);
++
++    g_strfreev (self->priv->dns4);
++    g_strfreev (self->priv->dns6);
++    G_OBJECT_CLASS (mm_broadband_bearer_external_parent_class)->finalize (object);
++}
++
++static void
++mm_broadband_bearer_external_class_init (MMBroadbandBearerExternalClass *klass)
++{
++    GObjectClass           *object_class = G_OBJECT_CLASS (klass);
++    MMBroadbandBearerClass *broadband_bearer_class = MM_BROADBAND_BEARER_CLASS (klass);
++
++    object_class->finalize = finalize;
++
++    broadband_bearer_class->dial_3gpp = dial_3gpp;
++    broadband_bearer_class->dial_3gpp_finish = dial_3gpp_finish;
++    broadband_bearer_class->get_ip_config_3gpp = get_ip_config_3gpp;
++    broadband_bearer_class->get_ip_config_3gpp_finish = get_ip_config_3gpp_finish;
++    broadband_bearer_class->disconnect_3gpp = disconnect_3gpp;
++    broadband_bearer_class->disconnect_3gpp_finish = disconnect_3gpp_finish;
++}
+diff --git a/src/mm-broadband-bearer-external.h b/src/mm-broadband-bearer-external.h
+new file mode 100644
+index 0000000..08128a2
+--- /dev/null
++++ b/src/mm-broadband-bearer-external.h
+@@ -0,0 +1,61 @@
++/* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
++/*
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details:
++ */
++
++#ifndef MM_BROADBAND_BEARER_EXTERNAL_H
++#define MM_BROADBAND_BEARER_EXTERNAL_H
++
++#include <glib.h>
++#include <glib-object.h>
++
++#define _LIBMM_INSIDE_MM
++#include <libmm-glib.h>
++
++#include "mm-broadband-bearer.h"
++#include "mm-broadband-modem.h"
++
++#define MM_TYPE_BROADBAND_BEARER_EXTERNAL            (mm_broadband_bearer_external_get_type ())
++#define MM_BROADBAND_BEARER_EXTERNAL(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), MM_TYPE_BROADBAND_BEARER_EXTERNAL, MMBroadbandBearerExternal))
++#define MM_BROADBAND_BEARER_EXTERNAL_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  MM_TYPE_BROADBAND_BEARER_EXTERNAL, MMBroadbandBearerExternalClass))
++#define MM_IS_BROADBAND_BEARER_EXTERNAL(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), MM_TYPE_BROADBAND_BEARER_EXTERNAL))
++#define MM_IS_BROADBAND_BEARER_EXTERNAL_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  MM_TYPE_BROADBAND_BEARER_EXTERNAL))
++#define MM_BROADBAND_BEARER_EXTERNAL_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  MM_TYPE_BROADBAND_BEARER_EXTERNAL, MMBroadbandBearerExternalClass))
++
++typedef struct _MMBroadbandBearerExternal MMBroadbandBearerExternal;
++typedef struct _MMBroadbandBearerExternalClass MMBroadbandBearerExternalClass;
++typedef struct _MMBroadbandBearerExternalPrivate MMBroadbandBearerExternalPrivate;
++
++struct _MMBroadbandBearerExternal {
++    MMBroadbandBearer parent;
++    MMBroadbandBearerExternalPrivate *priv;
++};
++
++struct _MMBroadbandBearerExternalClass {
++    MMBroadbandBearerClass parent;
++};
++
++GType mm_broadband_bearer_external_get_type (void);
++G_DEFINE_AUTOPTR_CLEANUP_FUNC (MMBroadbandBearerExternal, g_object_unref)
++
++/* Bus name of the data service named by the primary port's
++ * ID_MM_AT_DATA_SERVICE tag, or NULL. */
++const gchar *mm_broadband_bearer_external_peek_service (MMBroadbandModem *modem);
++
++void          mm_broadband_bearer_external_new        (MMBroadbandModem    *modem,
++                                                       MMBearerProperties  *config,
++                                                       GCancellable        *cancellable,
++                                                       GAsyncReadyCallback  callback,
++                                                       gpointer             user_data);
++MMBaseBearer *mm_broadband_bearer_external_new_finish (GAsyncResult        *res,
++                                                       GError             **error);
++
++#endif /* MM_BROADBAND_BEARER_EXTERNAL_H */
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index ba3271e..b4e7611 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -48,6 +48,7 @@
+ #include "mm-iface-modem-signal.h"
+ #include "mm-iface-modem-oma.h"
+ #include "mm-broadband-bearer.h"
++#include "mm-broadband-bearer-external.h"
+ #include "mm-bearer-list.h"
+ #include "mm-cbm-list.h"
+ #include "mm-cbm-part.h"
+@@ -456,6 +457,22 @@ broadband_bearer_new_ready (GObject *source,
+     g_object_unref (task);
+ }
+ 
++static void
++broadband_bearer_external_new_ready (GObject      *source,
++                                     GAsyncResult *res,
++                                     GTask        *task)
++{
++    MMBaseBearer *bearer;
++    GError       *error = NULL;
++
++    bearer = mm_broadband_bearer_external_new_finish (res, &error);
++    if (!bearer)
++        g_task_return_error (task, error);
++    else
++        g_task_return_pointer (task, bearer, g_object_unref);
++    g_object_unref (task);
++}
++
+ static void
+ modem_create_bearer (MMIfaceModem *self,
+                      MMBearerProperties *props,
+@@ -466,6 +483,17 @@ modem_create_bearer (MMIfaceModem *self,
+ 
+     task = g_task_new (self, NULL, callback, user_data);
+ 
++    /* Packet data set up by an external service, when the modem names one */
++    if (mm_broadband_bearer_external_peek_service (MM_BROADBAND_MODEM (self))) {
++        mm_obj_dbg (self, "creating external data service bearer in broadband modem...");
++        mm_broadband_bearer_external_new (MM_BROADBAND_MODEM (self),
++                                          props,
++                                          NULL, /* cancellable */
++                                          (GAsyncReadyCallback)broadband_bearer_external_new_ready,
++                                          task);
++        return;
++    }
++
+     /* We just create a MMBroadbandBearer */
+     mm_obj_dbg (self, "creating broadband bearer in broadband modem...");
+     mm_broadband_bearer_new (MM_BROADBAND_MODEM (self),
+-- 
+2.55.0
+

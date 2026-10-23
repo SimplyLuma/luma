@@ -1,0 +1,64 @@
+From: Project Luma contributors
+Subject: [PATCH] ccmni: associate network devices with the native modem
+
+The vendor driver registers CCMNI devices without a parent. Linux then
+publishes them under devices/virtual/net, and ModemManager does not
+associate them with the CCCI WWAN AT port despite the board's existing
+udev hints.
+
+Use the same mddriver platform device as the AT port and the standard
+SET_NETDEV_DEV API before registration. The lookup reference is released
+after register_netdev, whose device registration owns the parent
+reference. Refuse a missing modem parent instead of publishing an orphan
+device.
+
+---
+
+diff --git a/drivers/misc/mediatek/ccmni/ccmni.c b/drivers/misc/mediatek/ccmni/ccmni.c
+--- a/drivers/misc/mediatek/ccmni/ccmni.c
++++ b/drivers/misc/mediatek/ccmni/ccmni.c
+@@ -24,6 +24,9 @@
+  ****************************************************************************/
+ #include <linux/netdevice.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
+ #include <net/gro.h>
+ 
+ /* set_rps_map is a vendor kernel export; RPS stays at its sysfs default. */
+ static inline int ccmni_set_rps_map(struct netdev_rx_queue *q, unsigned long v) { return 0; }
+@@ -1020,6 +1021,25 @@ const struct header_ops ccmni_eth_header_ops ____cacheline_aligned = {
+ };
+ #endif
+ 
++static int ccmni_register_netdev(struct net_device *dev)
++{
++	struct device_node *np;
++	struct platform_device *pdev;
++	int ret;
++
++	/* Match the parent of the native CCCI WWAN AT port. */
++	np = of_find_compatible_node(NULL, NULL, "mediatek,mddriver");
++	pdev = np ? of_find_device_by_node(np) : NULL;
++	of_node_put(np);
++	if (!pdev)
++		return -ENODEV;
++
++	SET_NETDEV_DEV(dev, &pdev->dev);
++	ret = register_netdev(dev);
++	put_device(&pdev->dev);
++	return ret;
++}
++
+ static int ccmni_init(struct ccmni_ccci_ops *ccci_info)
+ {
+ 	int i = 0, j = 0, ret = 0;
+@@ -1101,7 +1121,7 @@ static int ccmni_init(struct ccmni_ccci_ops *ccci_info)
+ 		ctlb->ccmni_inst[i] = ccmni;
+ 
+ 		/* register net device */
+-		ret = register_netdev(dev);
++		ret = ccmni_register_netdev(dev);
+ 		if (ret)
+ 			goto alloc_netdev_fail;
+ 		ctlb->ccci_ops->ccci_net_init(dev->name);

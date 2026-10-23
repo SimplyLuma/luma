@@ -1,0 +1,128 @@
+From d28ae7d0bf5c2690833e45773dbf316d678a1638 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 07:07:50 -0400
+Subject: [PATCH] broadband-modem: enable 5GS registration reports
+
+Unsolicited registration setup covered CS, PS and EPS only, so a modem
+registered over 5GS answered +C5GREG? without <tac>, <ci> or <AcT> and
+its access technology stayed unknown. Run +C5GREG=2 (or =1) as well when
+5GS is supported; failures there are not reported, so modems without
+5GS reports keep working as before.
+---
+ src/mm-broadband-modem.c | 46 +++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 43 insertions(+), 3 deletions(-)
+
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index fd03259..dc00c8d 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -6020,9 +6020,11 @@ typedef struct {
+     gboolean        run_cs;
+     gboolean        run_ps;
+     gboolean        run_eps;
++    gboolean        run_5gs;
+     gboolean        running_cs;
+     gboolean        running_ps;
+     gboolean        running_eps;
++    gboolean        running_5gs;
+     GError         *cs_error;
+     GError         *ps_error;
+     GError         *eps_error;
+@@ -6058,6 +6060,9 @@ unsolicited_registration_events_task_new (MMBroadbandModem   *self,
+     ctx->run_cs = cs_supported;
+     ctx->run_ps = ps_supported;
+     ctx->run_eps = eps_supported;
++    /* Not part of the interface: modems that cannot set up 5GS reports
++     * keep working without them, so their errors are not reported. */
++    ctx->run_5gs = self->priv->modem_3gpp_5gs_network_supported;
+     ctx->primary = mm_base_modem_get_port_primary (MM_BASE_MODEM (self));
+     ctx->secondary = mm_base_modem_get_port_secondary (MM_BASE_MODEM (self));
+ 
+@@ -6139,6 +6144,20 @@ static const MMBaseModemAtCommand eps_unregistration_sequence[] = {
+     { NULL }
+ };
+ 
++static const MMBaseModemAtCommand fivegs_registration_sequence[] = {
++    /* Enable unsolicited registration notifications in 5GS network, with location */
++    { "+C5GREG=2", 3, FALSE, parse_registration_setup_reply },
++    /* Enable unsolicited registration notifications in 5GS network, without location */
++    { "+C5GREG=1", 3, FALSE, parse_registration_setup_reply },
++    { NULL }
++};
++
++static const MMBaseModemAtCommand fivegs_unregistration_sequence[] = {
++    /* Disable unsolicited registration notifications in 5GS network */
++    { "+C5GREG=0", 3, FALSE, parse_registration_setup_reply },
++    { NULL }
++};
++
+ static void unsolicited_registration_events_context_step (GTask *task);
+ 
+ static void
+@@ -6155,7 +6174,8 @@ unsolicited_registration_events_sequence_ready (MMBroadbandModem *self,
+     /* Only one must be running */
+     g_assert ((ctx->running_cs ? 1 : 0) +
+               (ctx->running_ps ? 1 : 0) +
+-              (ctx->running_eps ? 1 : 0) == 1);
++              (ctx->running_eps ? 1 : 0) +
++              (ctx->running_5gs ? 1 : 0) == 1);
+ 
+     if (ctx->secondary_done) {
+         if (ctx->secondary_sequence)
+@@ -6206,8 +6226,10 @@ unsolicited_registration_events_sequence_ready (MMBroadbandModem *self,
+             ctx->cs_error = error;
+         else if (ctx->running_ps)
+             ctx->ps_error = error;
+-        else
++        else if (ctx->running_eps)
+             ctx->eps_error = error;
++        else
++            g_clear_error (&error);
+         /* Even if primary failed, go on and try to enable in secondary port */
+     }
+ 
+@@ -6237,8 +6259,10 @@ unsolicited_registration_events_sequence_ready (MMBroadbandModem *self,
+             registration_sequence = ctx->enable ? cs_registration_sequence : cs_unregistration_sequence;
+         else if (ctx->running_ps)
+             registration_sequence = ctx->enable ? ps_registration_sequence : ps_unregistration_sequence;
+-        else
++        else if (ctx->running_eps)
+             registration_sequence = ctx->enable ? eps_registration_sequence : eps_unregistration_sequence;
++        else
++            registration_sequence = ctx->enable ? fivegs_registration_sequence : fivegs_unregistration_sequence;
+         mm_base_modem_at_sequence_full (
+             MM_BASE_MODEM (self),
+             MM_IFACE_PORT_AT (ctx->secondary),
+@@ -6267,6 +6291,7 @@ unsolicited_registration_events_context_step (GTask *task)
+     ctx->running_cs = FALSE;
+     ctx->running_ps = FALSE;
+     ctx->running_eps = FALSE;
++    ctx->running_5gs = FALSE;
+     ctx->secondary_done = FALSE;
+ 
+     if (ctx->run_cs) {
+@@ -6314,6 +6339,21 @@ unsolicited_registration_events_context_step (GTask *task)
+         return;
+     }
+ 
++    if (ctx->run_5gs) {
++        ctx->running_5gs = TRUE;
++        ctx->run_5gs = FALSE;
++        mm_base_modem_at_sequence_full (
++            MM_BASE_MODEM (self),
++            MM_IFACE_PORT_AT (ctx->primary),
++            ctx->enable ? fivegs_registration_sequence : fivegs_unregistration_sequence,
++            NULL,  /* response processor context */
++            NULL,  /* response processor context free */
++            NULL,  /* cancellable */
++            (GAsyncReadyCallback)unsolicited_registration_events_sequence_ready,
++            task);
++        return;
++    }
++
+     /* All done!
+      * If we have any error reported, we'll propagate it. EPS errors take
+      * precedence over PS errors and PS errors take precedence over CS errors. */
+-- 
+2.55.0
+

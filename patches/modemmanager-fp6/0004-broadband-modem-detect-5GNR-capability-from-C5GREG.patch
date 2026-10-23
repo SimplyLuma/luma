@@ -1,0 +1,61 @@
+From 8ec16596036b21eb99ff744e70fe55ee550bca36 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Thu, 22 Oct 2026 18:05:38 -0400
+Subject: [PATCH] =?UTF-8?q?broadband-modem:=20detect=205GNR=20capability?=
+ =?UTF-8?q?=20from=20+C5GREG=3D=3F?=
+
+MediaTek modems list no NG-RAN mode in +WS46=? but support +C5GREG and register on 5G SA. Without the 5GNR capability the 5GS registration state is never queried and the modem is reported unregistered.
+---
+ src/mm-broadband-modem.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/src/mm-broadband-modem.c b/src/mm-broadband-modem.c
+index 9364a20..ba3271e 100644
+--- a/src/mm-broadband-modem.c
++++ b/src/mm-broadband-modem.c
+@@ -581,6 +581,24 @@ modem_load_current_capabilities_finish (MMIfaceModem *self,
+     return (MMModemCapability)value;
+ }
+ 
++static void
++current_capabilities_c5greg_test_ready (MMBaseModem *self,
++                                        GAsyncResult *res,
++                                        GTask *task)
++{
++    LoadCapabilitiesContext *ctx;
++
++    ctx = g_task_get_task_data (task);
++
++    /* A modem that supports +C5GREG has 5GS registration even if its +WS46=?
++     * lists no NG-RAN mode (e.g. MediaTek modems on 5G SA). */
++    if (mm_base_modem_at_command_finish (self, res, NULL))
++        ctx->caps |= MM_MODEM_CAPABILITY_5GNR;
++
++    g_task_return_int (task, ctx->caps);
++    g_object_unref (task);
++}
++
+ static void
+ current_capabilities_ws46_test_ready (MMBaseModem *self,
+                                       GAsyncResult *res,
+@@ -641,6 +659,17 @@ current_capabilities_ws46_test_ready (MMBaseModem *self,
+     g_array_unref (modes);
+ 
+ out:
++    if ((ctx->caps & MM_MODEM_CAPABILITY_LTE) && !(ctx->caps & MM_MODEM_CAPABILITY_5GNR)) {
++        mm_base_modem_at_command (
++            self,
++            "+C5GREG=?",
++            3,
++            TRUE, /* allow caching, it's a test command */
++            (GAsyncReadyCallback)current_capabilities_c5greg_test_ready,
++            task);
++        return;
++    }
++
+     g_task_return_int (task, ctx->caps);
+     g_object_unref (task);
+ }
+-- 
+2.55.0
+

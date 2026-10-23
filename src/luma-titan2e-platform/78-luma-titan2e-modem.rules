@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Titan 2 Elite modem (MediaTek CCCI). The CCCI drivers expose the AT channel as a
+# WWAN AT port (wwan*at*, parent: the mddriver platform device); data is on ccmni*.
+# The CCCI char nodes (ttyC*, ttyCMIPC*, ccci_*) are not ModemManager ports.
+# Incoming IMS calls are reported only on the modem's MIPC channel; the AT port
+# lists them in +CLCC, so ModemManager polls the call list every 2 s while idle.
+# Packet data needs the MIPC channel to bind a PDN to a ccmni port; luma-modemd
+# does it for ModemManager's bearers (org.projectluma.Titan2e.Modem1.Data).
+# Airplane mode (low power) switches the radio off with +CFUN=4.
+ACTION!="add|change|move|bind", GOTO="luma_titan2e_modem_end"
+
+SUBSYSTEM=="wwan", KERNEL=="wwan*at*", ENV{ID_MM_CANDIDATE}="1", \
+  ENV{ID_MM_PLATFORM_DRIVER_PROBE}="1", ENV{ID_MM_PHYSDEV_UID}="titan2e-md1", \
+  ENV{ID_MM_PORT_TYPE_AT_PRIMARY}="1", ENV{ID_MM_AT_VOICE_IDLE_CALL_LIST_POLL}="2", \
+  ENV{ID_MM_AT_DATA_SERVICE}="org.projectluma.Titan2e.Modem1", ENV{ID_MM_AT_CFUN_POWER_DOWN}="4"
+SUBSYSTEM=="net", KERNEL=="ccmni*", ENV{ID_MM_CANDIDATE}="1", \
+  ENV{ID_MM_PLATFORM_DRIVER_PROBE}="1", ENV{ID_MM_PHYSDEV_UID}="titan2e-md1"
+
+LABEL="luma_titan2e_modem_end"

@@ -1,0 +1,37 @@
+From: Project Luma contributors
+Subject: [PATCH] ccci: remove sentinel entries from counted sysctl tables
+
+register_sysctl() supplies ARRAY_SIZE(table) to register_sysctl_sz().
+Modern kernels validate every entry, including the old empty terminator.
+On the Titan's Linux 7.2 kernel this rejects net/(null), and ccmni_init
+exits before registering any cellular network devices. Remove the
+obsolete terminators from both tables converted to register_sysctl by
+the base port.
+
+This retains the real entries, their permissions, handlers and defaults.
+No registration or validation error is suppressed.
+
+---
+
+diff --git a/drivers/misc/mediatek/ccmni/ccmni.c b/drivers/misc/mediatek/ccmni/ccmni.c
+--- a/drivers/misc/mediatek/ccmni/ccmni.c
++++ b/drivers/misc/mediatek/ccmni/ccmni.c
+@@ -81,7 +81,6 @@ static struct ctl_table tcp_pacing_table[] = {
+ 		.proc_handler	= proc_dointvec_minmax,
+ 	},
+-	{}
+ };
+ 
+ static struct ctl_table_header *sysctl_header;
+ static int register_tcp_pacing_sysctl(void)
+diff --git a/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.c b/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.c
+--- a/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.c
++++ b/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.c
+@@ -70,7 +70,6 @@ static struct ctl_table devalloc_threshold_table[] = {
+ 		.proc_handler	= proc_dointvec_minmax,
+ 	},
+-	{}
+ };
+ 
+ static struct ctl_table_header *sysctl_header;
+ static int register_devalloc_threshold_sysctl(void)

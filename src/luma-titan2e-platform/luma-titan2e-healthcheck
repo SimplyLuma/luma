@@ -18,17 +18,18 @@ if [ -e /run/ostree-booted ]; then
 else
 	log "not an OSTree deployment: update health checks skipped"
 fi
-# The display manager must be greetd and its session compositor (phoc for the
-# presence greeter and the phone session) must run;
+# The display manager must be greetd and the phone session (phosh on phoc,
+# started by luma-phosh-session) must run;
 # luma-titan2e-boot-ok marks the LK slot only after this passes.
 dm=$(systemctl show -P Id display-manager.service 2>/dev/null)
 if [ "$dm" = greetd.service ]; then log "display manager: greetd"; else log "display manager: ${dm:-none}"; fail=1; fi
+# Not graphical.target: this check is wanted by multi-user.target, so neither
+# target is reached until it has finished.
 for i in $(seq 1 120); do
-	systemctl -q is-active graphical.target && systemctl -q is-active greetd.service &&
-		pgrep -x phoc >/dev/null && break
+	systemctl -q is-active greetd.service && pgrep -x phoc >/dev/null && pgrep -x phosh >/dev/null && break
 	sleep 1
 done
-if systemctl -q is-active graphical.target; then log "graphical.target reached"; else log "graphical.target not reached"; fail=1; fi
 if systemctl -q is-active greetd.service; then log "greetd active"; else log "greetd not active"; fail=1; fi
 if pgrep -x phoc >/dev/null; then log "phoc running"; else log "phoc not running"; fail=1; fi
+if pgrep -x phosh >/dev/null; then log "phosh running"; else log "phosh not running"; fail=1; fi
 exit $fail

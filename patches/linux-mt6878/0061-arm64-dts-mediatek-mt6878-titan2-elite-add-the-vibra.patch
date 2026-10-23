@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 22:01:19 -0400
+Subject: [PATCH 61/65] arm64: dts: mediatek: mt6878-titan2-elite: add the
+ vibration motor
+
+regulator-haptic on the MT6369 VIBR LDO at 2.0 V, the stock setting.
+---
+ .../dts/mediatek/mt6878-unihertz-titan2-elite.dts | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index 6ce78d4ac..f52bf691b 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -27,6 +27,13 @@ aliases {
+ 	};
+ 
+ 
++	vibrator {
++		compatible = "regulator-haptic";
++		haptic-supply = <&mt6369_vibr>;
++		min-microvolt = <2000000>;
++		max-microvolt = <2000000>;
++	};
++
+ 	mt6369_codec: audio-codec {
+ 		compatible = "mediatek,mt6369-sound";
+ 		mediatek,pmic = <&mt6369>;
+@@ -256,6 +263,14 @@ mt6369_vtp: vtp {
+ 					/* Bring-up: keep the touch controller powered across driver reloads. */
+ 					regulator-always-on;
+ 				};
++
++				/* Stock runs the motor at 2.0 V (VOSEL 5, no trim). */
++				mt6369_vibr: vibr {
++					regulator-name = "vibr";
++					regulator-min-microvolt = <2000000>;
++					regulator-max-microvolt = <2000000>;
++					regulator-enable-ramp-delay = <680>;
++				};
+ 			};
+ 		};
+ 	};
+-- 
+2.55.0
+

@@ -1,0 +1,130 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Seed the modem's file store (/var/lib/luma-modem/fs) from the phone's own
+partitions, once. The modem keeps its NVRAM on the AP side and reads and writes it
+through luma-modemd; it only ever works on this copy. nvdata, nvcfg, protect1 and
+protect2 (and vendor, for the modem's APN/PLMN tables) are mounted read-only
+through read-only loop devices and never written.
+
+--check-imei compares the IMEI files in the copy with the read-only originals and
+restores any that differ (exit 3; 0 when identical, 1 on error)."""
+import os, shutil, subprocess, sys, tempfile
+
+ROOT = '/var/lib/luma-modem/fs'
+BYNAME = '/dev/disk/by-partlabel'
+# partition, directory in it, directory in ROOT (luma-modemd drive map)
+PARTS = [('nvdata', 'md', 'md'), ('nvdata', 'md_cmn', 'md_cmn'),
+         ('protect1', 'md', 'protect_f/md'), ('protect2', 'md', 'protect_s/md'),
+         ('nvcfg', '.', 'nvcfg'), ('mcf_ota_a', '.', 'mcf_ota')]
+# nvdata directory holding the IMEI files, and its place in ROOT
+IMEI = ('md/NVRAM/NVD_IMEI', 'md/NVRAM/NVD_IMEI')
+EMPTY = ['mdlpm', 'vendor_de_md', 'vendor_firmware']
+
+
+def log(msg):
+    print('titan2e-modem-fs: ' + msg, file=sys.stderr)
+
+
+def mount_ro(dev, fstypes, offset=0, size=0):
+    args = ['losetup', '-r', '-f', '--show']
+    if offset:
+        args += ['-o', str(offset), '--sizelimit', str(size)]
+    loop = subprocess.check_output(args + [dev], text=True).strip()
+    mnt = tempfile.mkdtemp(prefix='titan2e-modem.')
+    for fs in fstypes:
+        opts = 'ro,nodev,nosuid,noexec' + (',noload' if fs == 'ext4' else '')
+        if subprocess.call(['mount', '-t', fs, '-o', opts, loop, mnt], stderr=subprocess.DEVNULL) == 0:
+            return loop, mnt
+    subprocess.call(['losetup', '-d', loop])
+    os.rmdir(mnt)
+    raise RuntimeError('cannot mount ' + dev)
+
+
+def umount(loop, mnt):
+    subprocess.call(['umount', mnt])
+    subprocess.call(['losetup', '-d', loop])
+    os.rmdir(mnt)
+
+
+def vendor_etc_md(tmp):
+    sys.path.insert(0, '/usr/libexec')
+    from importlib.machinery import SourceFileLoader
+    fw = SourceFileLoader('connsys_fw', '/usr/libexec/luma-titan2e-connsys-fw').load_module()
+    loop, mnt = fw.vendor_mount()
+    try:
+        shutil.copytree(os.path.join(mnt, 'etc', 'md'), os.path.join(tmp, 'vendor_etc_md'), symlinks=True)
+    finally:
+        fw.umount(loop, mnt)
+
+
+def check_imei():
+    loop, mnt = mount_ro(os.path.join(BYNAME, 'nvdata'), ('ext4',))
+    try:
+        src, dst = os.path.join(mnt, IMEI[0]), os.path.join(ROOT, IMEI[1])
+        orig = sorted(os.listdir(src))
+        changed = []
+        for n in orig:
+            with open(os.path.join(src, n), 'rb') as f:
+                a = f.read()
+            try:
+                with open(os.path.join(dst, n), 'rb') as f:
+                    b = f.read()
+            except FileNotFoundError:
+                b = None
+            if a != b:
+                changed.append(n)
+                os.makedirs(dst, exist_ok=True)
+                shutil.copy2(os.path.join(src, n), os.path.join(dst, n))
+        for n in sorted(set(os.listdir(dst)) - set(orig)) if os.path.isdir(dst) else []:
+            changed.append(n + ' (not in original)')
+            os.unlink(os.path.join(dst, n))
+    finally:
+        umount(loop, mnt)
+    if changed:
+        log('IMEI files differed from the originals, restored: ' + ', '.join(changed))
+        return 3
+    log('IMEI files identical to the originals (%d)' % len(orig))
+    return 0
+
+
+def main():
+    if sys.argv[1:] == ['--check-imei']:
+        try:
+            return check_imei()
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
+            log('IMEI check failed: %s' % e)
+            return 1
+    if os.path.isdir(os.path.join(ROOT, 'md', 'NVRAM')):
+        return 0
+    os.makedirs(os.path.dirname(ROOT), mode=0o700, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix='fs.', dir=os.path.dirname(ROOT))
+    try:
+        mounts = {}
+        try:
+            for part, sub, dst in PARTS:
+                if part not in mounts:
+                    mounts[part] = mount_ro(os.path.join(BYNAME, part), ('ext4',))
+                shutil.copytree(os.path.normpath(os.path.join(mounts[part][1], sub)),
+                                os.path.join(tmp, dst), symlinks=True)
+        finally:
+            for loop, mnt in mounts.values():
+                umount(loop, mnt)
+        try:
+            vendor_etc_md(tmp)
+        except Exception as e:  # APN/PLMN tables are optional for the modem to boot
+            log('vendor etc/md not copied: %s' % e)
+        for d in EMPTY:
+            os.makedirs(os.path.join(tmp, d), exist_ok=True)
+        if os.path.isdir(ROOT):
+            shutil.rmtree(ROOT)
+        os.rename(tmp, ROOT)
+        log('seeded ' + ROOT)
+        return 0
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        log('modem file store unavailable: %s' % e)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

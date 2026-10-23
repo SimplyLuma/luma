@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Load the MediaTek CCCI modem drivers on the Titan 2 Elite and seed the modem's
+# file store; luma-modemd then starts the modem.
+set -u
+MOD=/usr/lib/modules/$(uname -r)/extra/titan2e-ccci
+log() { echo "titan2e-modem: $*" >/dev/kmsg; echo "$*"; }
+
+[ -e "$MOD/ccci_md_all.ko" ] || { log "no modem modules for $(uname -r)"; exit 1; }
+/usr/libexec/luma-titan2e-modem-fs || { log "modem file store unavailable"; exit 1; }
+
+load() {
+	m=$1; shift
+	grep -q "^$m " /proc/modules && return 0
+	insmod "$MOD/$m.ko" "$@" || { log "insmod $m failed"; return 1; }
+}
+# titan_md_ovl adds the modem DT nodes; the drivers read LK's tags at load time.
+for m in titan_md_ovl ccci_util_lib ccmni ccci_auxadc ccci_md_all ccci_ccif ccci_dpmaif; do
+	load $m || exit 1
+done

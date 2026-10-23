@@ -1,0 +1,1604 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+# luma-modemd: host-side services the MediaTek modem needs to boot.
+#
+#  - FS server on /dev/ccci_fs: the modem keeps its NVRAM on the AP side and
+#    reads/writes it through MediaTek's CCCI FS protocol. Files are served from
+#    a working copy in /var/lib/luma-modem/fs; the nvdata/protect partitions
+#    themselves are only ever mounted read-only to seed that copy.
+#  - Starts the modem (CCCI_IOC_DO_START_MD) once the FS server is listening.
+#
+# Packet layout (little endian): ccci_header{data0, data1=len, channel, reserved=buf idx},
+# u32 op_id, u32 argc, argc * {u32 len, data padded to 4}. data0 bit31 = more fragments.
+import ctypes, errno, fcntl, fnmatch, json, os, re, select, stat, struct, sys, threading, time
+
+ROOT = '/var/lib/luma-modem/fs'
+RO_NVDATA = '/run/luma-modem/ro/nvdata/md'
+DRIVES = {'Z': 'md', 'X': 'protect_f/md', 'Y': 'protect_s/md', 'W': 'vendor_firmware',
+          'V': 'md_cmn', 'U': 'mdlpm', 'T': 'mcf_ota', 'S': 'nvcfg',
+          'R': 'vendor_etc_md', 'Q': 'vendor_de_md'}
+# The modem's protected (calibration/identity) area: every write into it is logged.
+PROTECTED = ('X', 'Y')
+# Drives served read-only (T: = the modem config OTA files from the mcf_ota partition).
+READ_ONLY = ('T',)
+PROTECT_LOG = '/var/log/luma-modem-protect.log'
+# Files that hold the IMEI. The modem may read them, never write them; luma-modemd
+# also compares them with the read-only originals before the modem starts and after it settles.
+IMEI_DIRS = ('md/NVRAM/NVD_IMEI',)
+NVRAM_BACKUP = '/dev/disk/by-partlabel/nvram'   # read only
+MTU = 3456
+HDR = 20
+LOG = sys.stderr
+VERBOSE = '-v' in sys.argv
+
+FS_PARAM_ERROR, FS_INVALID_FILENAME, FS_TOO_MANY_FILES, FS_NO_MORE_FILES = -2, -3, -5, -6
+FS_FILE_NOT_FOUND, FS_INVALID_FILE_HANDLE, FS_UNSUPPORTED = -9, -10, -12
+FS_ACCESS_DENIED, FS_GENERAL_FAILURE, FS_PATH_NOT_FOUND, FS_DISK_FULL = -16, -18, -19, -22
+FS_FILE_EXISTS = -36
+FS_READ_ONLY, FS_OPEN_DIR, FS_CREATE, FS_CREATE_ALWAYS = 0x100, 0x800, 0x10000, 0x20000
+ATTR_RO, ATTR_DIR, ATTR_ARCHIVE = 0x01, 0x10, 0x20
+
+OPS = {0x1001: 'OPEN', 0x1002: 'SEEK', 0x1003: 'READ', 0x1004: 'WRITE', 0x1005: 'CLOSE',
+       0x1006: 'CLOSEALL', 0x1007: 'CREATEDIR', 0x1008: 'REMOVEDIR', 0x1009: 'GETFILESIZE',
+       0x100A: 'GETFOLDERSIZE', 0x100B: 'RENAME', 0x100C: 'MOVE', 0x100D: 'COUNT',
+       0x100E: 'GETDISKINFO', 0x100F: 'DELETE', 0x1010: 'GETATTRIBUTES', 0x1011: 'OPENHINT',
+       0x1012: 'FINDFIRST', 0x1013: 'FINDNEXT', 0x1014: 'FINDCLOSE', 0x1015: 'LOCKFAT',
+       0x1016: 'UNLOCKALL', 0x1017: 'SHUTDOWN', 0x1018: 'XDELETE', 0x1019: 'CLEARDISKFLAG',
+       0x101A: 'GETDRIVE', 0x101B: 'GETCLUSTERSIZE', 0x101C: 'SETDISKFLAG', 0x101D: 'OTP_WRITE',
+       0x101E: 'OTP_READ', 0x101F: 'OTP_QUERYLEN', 0x1020: 'OTP_LOCK', 0x1021: 'RESTORE',
+       0x1022: 'CMPT_READ_0x1022', 0x1023: 'BIN_REGION_ACCESS', 0x1024: 'CMPT_WRITE',
+       0x1025: 'GETFILEDETAIL', 0x1026: 'CMPT_READ'}
+
+
+def log(*a):
+    LOG.write('%.3f %s\n' % (time.monotonic(), ' '.join(str(x) for x in a)))
+
+
+def u32(b):
+    return struct.unpack_from('<I', b)[0]
+
+
+def i32(v):
+    return struct.pack('<i', v)
+
+
+def wstr(b):
+    return b.decode('utf-16-le', 'replace').split('\0')[0]
+
+
+def host_path(p):
+    """'Z:\\NVRAM\\X' -> /var/lib/luma-modem/fs/md/NVRAM/X (None if not allowed)."""
+    if len(p) < 2 or p[1] != ':' or p[0].upper() not in DRIVES:
+        return None
+    rel = p[2:].replace('\\', '/').lstrip('/')
+    parts = [x for x in rel.split('/') if x]
+    if any(x in ('.', '..') for x in parts):
+        return None
+    return os.path.join(ROOT, DRIVES[p[0].upper()], *parts)
+
+
+def is_imei(hp):
+    rel = os.path.relpath(hp, ROOT)
+    return any(rel == d or rel.startswith(d + '/') for d in IMEI_DIRS)
+
+
+def holds_imei(hp):
+    """hp is an IMEI file or a directory above one (delete/rename would take it along)."""
+    rel = os.path.relpath(hp, ROOT)
+    return is_imei(hp) or any(d.startswith(rel + '/') for d in IMEI_DIRS)
+
+
+def is_read_only(p):
+    return len(p) > 1 and p[0].upper() in READ_ONLY
+
+
+def is_protected(p):
+    return len(p) > 1 and p[0].upper() in PROTECTED
+
+
+def protect_log(*a):
+    msg = ' '.join(str(x) for x in a)
+    log('PROTECT', msg)
+    with open(PROTECT_LOG, 'a') as f:
+        f.write('%s %s\n' % (time.strftime('%Y-%m-%dT%H:%M:%S'), msg))
+
+
+def fs_err(e):
+    return {errno.ENOENT: FS_FILE_NOT_FOUND, errno.ENOTDIR: FS_PATH_NOT_FOUND,
+            errno.EACCES: FS_ACCESS_DENIED, errno.EPERM: FS_ACCESS_DENIED,
+            errno.EROFS: FS_ACCESS_DENIED, errno.EEXIST: FS_FILE_EXISTS,
+            errno.ENOSPC: FS_DISK_FULL, errno.EMFILE: FS_TOO_MANY_FILES,
+            errno.EBADF: FS_INVALID_FILE_HANDLE}.get(e.errno, FS_GENERAL_FAILURE)
+
+
+def missing_err(path):
+    return FS_FILE_NOT_FOUND if os.path.isdir(os.path.dirname(path)) else FS_PATH_NOT_FOUND
+
+
+def dos_entry(path, name):
+    st = os.stat(path)
+    attr = ATTR_DIR if stat.S_ISDIR(st.st_mode) else ATTR_ARCHIVE
+    t = time.localtime(st.st_mtime)
+    dt = ((t.tm_year - 1980) << 25) | (t.tm_mon << 21) | (t.tm_mday << 16) | \
+         (t.tm_hour << 11) | (t.tm_min << 5) | (t.tm_sec // 2)
+    base, _, ext = name.upper().partition('.')
+    e = bytearray(52)
+    e[0:8] = base[:8].ljust(8).encode('ascii', 'replace')
+    e[8:11] = ext[:3].ljust(3).encode('ascii', 'replace')
+    e[11] = attr
+    struct.pack_into('<I', e, 14, dt)          # CreateDateTime
+    struct.pack_into('<I', e, 22, dt)          # DateTime
+    struct.pack_into('<I', e, 28, 0 if attr & ATTR_DIR else st.st_size)
+    return bytes(e)
+
+
+class FsServer:
+    def __init__(self):
+        self.files = {}   # handle -> fd
+        self.finds = {}   # handle -> (dir, [names])
+        self.paths = {}   # handle -> modem path
+        self.backup = None
+
+    def _handle(self):
+        # Lowest free handle, as the stock FS daemon allocates them: the modem keeps FS
+        # handles in a signed byte, so handles of 128 and more come back negative.
+        h = 1
+        while h in self.files or h in self.finds:
+            h += 1
+        return h
+
+    def op(self, opid, args):
+        name = OPS.get(opid, hex(opid))
+        try:
+            fn = getattr(self, 'op_' + name.lower(), None)
+            if fn is None:
+                log('UNHANDLED', name, [a[:64].hex() for a in args])
+                return [i32(FS_UNSUPPORTED)]
+            return fn(args)
+        except Exception as e:  # never let one request kill the server
+            log('EXC', name, repr(e))
+            return [i32(FS_GENERAL_FAILURE)]
+
+    # --- files ---
+    def op_open(self, a):
+        p = wstr(a[0]); flag = u32(a[1]); hp = host_path(p)
+        if hp is None:
+            r = FS_INVALID_FILENAME
+        elif flag & FS_OPEN_DIR:
+            r = self._handle() if os.path.isdir(hp) else missing_err(hp)
+            if r > 0:
+                self.files[r] = None
+        else:
+            m = os.O_RDONLY if flag & FS_READ_ONLY else os.O_RDWR
+            if flag & FS_CREATE_ALWAYS:
+                m = os.O_RDWR | os.O_CREAT | os.O_TRUNC
+            elif flag & FS_CREATE:
+                m = os.O_RDWR | os.O_CREAT
+            if m != os.O_RDONLY and is_read_only(p):
+                log('OPEN', p, hex(flag), 'refused (read-only drive)')
+                return [i32(FS_ACCESS_DENIED)]
+            if m != os.O_RDONLY and is_imei(hp):
+                # Served read-only: never created or truncated; see op_write.
+                log('IMEI file opened for write, served read-only:', p, hex(flag))
+                m = os.O_RDONLY
+            try:
+                if m & os.O_CREAT:
+                    os.makedirs(os.path.dirname(hp), exist_ok=True)
+                if is_protected(p) and m & (os.O_CREAT | os.O_TRUNC) and \
+                        (m & os.O_TRUNC or not os.path.exists(hp)):
+                    protect_log('CREATE' if not os.path.exists(hp) else 'TRUNCATE', p, 'offset 0 size 0')
+                fd = os.open(hp, m, 0o660)
+                r = self._handle(); self.files[r] = fd; self.paths[r] = p
+            except OSError as e:
+                r = missing_err(hp) if e.errno == errno.ENOENT else fs_err(e)
+        log('OPEN', p, hex(flag), r)
+        return [i32(r)]
+    op_openhint = op_open
+
+    def _fd(self, h):
+        fd = self.files.get(h)
+        if fd is None:
+            raise KeyError(h)
+        return fd
+
+    def op_seek(self, a):
+        h, off, wh = u32(a[0]), struct.unpack('<i', a[1][:4])[0], u32(a[2])
+        try:
+            r = os.lseek(self._fd(h), off, wh)
+        except KeyError:
+            r = FS_INVALID_FILE_HANDLE
+        if VERBOSE:
+            log('SEEK', h, off, wh, r)
+        return [i32(r)]
+
+    def op_read(self, a):
+        h, n = u32(a[0]), u32(a[1])
+        try:
+            d = os.read(self._fd(h), n); r = 0
+        except KeyError:
+            d = b''; r = FS_INVALID_FILE_HANDLE
+        if VERBOSE:
+            log('READ', h, n, len(d))
+        return [i32(r), struct.pack('<I', len(d)), d]
+
+    def op_write(self, a):
+        h, d = u32(a[0]), a[1][:u32(a[2])]
+        try:
+            fd = self._fd(h); p = self.paths.get(h, '')
+            off = os.lseek(fd, 0, os.SEEK_CUR)
+            if is_imei(host_path(p) or ROOT):
+                # Rewrites of the same bytes are acknowledged without writing; any change is refused.
+                if os.pread(fd, len(d), off) != d:
+                    log('WRITE', p, 'offset', off, 'size', len(d), 'refused (IMEI file, content differs)')
+                    return [i32(FS_ACCESS_DENIED), struct.pack('<I', 0)]
+                os.lseek(fd, off + len(d), os.SEEK_SET)
+                log('WRITE', p, 'offset', off, 'size', len(d), 'identical, not written (IMEI file)')
+                return [i32(0), struct.pack('<I', len(d))]
+            w = os.write(fd, d); r = 0
+            if is_protected(p):
+                protect_log('WRITE', p, 'offset', off, 'size', w)
+        except KeyError:
+            w = 0; r = FS_INVALID_FILE_HANDLE
+        except OSError as e:
+            w = 0; r = fs_err(e)
+        log('WRITE', h, len(d), r)
+        return [i32(r), struct.pack('<I', w)]
+
+    def op_close(self, a):
+        h = u32(a[0]); fd = self.files.pop(h, -1); self.paths.pop(h, None)
+        if fd == -1:
+            return [i32(FS_INVALID_FILE_HANDLE)]
+        if fd is not None:
+            os.close(fd)
+        return [i32(0)]
+
+    def op_closeall(self, a):
+        for fd in self.files.values():
+            if fd is not None:
+                os.close(fd)
+        self.files.clear(); self.finds.clear(); self.paths.clear()
+        return [i32(0)]
+
+    def op_getfilesize(self, a):
+        try:
+            return [i32(0), struct.pack('<I', os.fstat(self._fd(u32(a[0]))).st_size)]
+        except KeyError:
+            return [i32(FS_INVALID_FILE_HANDLE), struct.pack('<I', 0)]
+
+    # --- paths ---
+    def _path_op(self, a, f, tag, write=True):
+        p = wstr(a[0]); hp = host_path(p)
+        if hp is None:
+            return [i32(FS_INVALID_FILENAME)]
+        if write and (holds_imei(hp) or is_read_only(p)):
+            log(tag, p, 'refused (IMEI file or read-only drive)')
+            return [i32(FS_ACCESS_DENIED)]
+        if write and is_protected(p):
+            protect_log(tag, p)
+        try:
+            r = f(hp)
+        except OSError as e:
+            r = missing_err(hp) if e.errno == errno.ENOENT else fs_err(e)
+        log(tag, p, r)
+        return [i32(r)]
+
+    def op_createdir(self, a):
+        return self._path_op(a, lambda p: os.mkdir(p, 0o770) or 0, 'MKDIR')
+
+    def op_removedir(self, a):
+        return self._path_op(a, lambda p: os.rmdir(p) or 0, 'RMDIR')
+
+    def op_delete(self, a):
+        return self._path_op(a, lambda p: os.unlink(p) or 0, 'DELETE')
+
+    def op_xdelete(self, a):
+        def rm(p):
+            import shutil
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            else:
+                os.unlink(p)
+            return 0
+        return self._path_op(a, rm, 'XDELETE')
+
+    def op_getattributes(self, a):
+        def attr(p):
+            st = os.stat(p)
+            return ATTR_DIR if stat.S_ISDIR(st.st_mode) else ATTR_ARCHIVE
+        return self._path_op(a, attr, 'ATTR', write=False)
+
+    def op_getfoldersize(self, a):
+        def size(p):
+            if not os.path.isdir(p):
+                return FS_PATH_NOT_FOUND
+            return sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(p) for f in fs)
+        return self._path_op(a, size, 'FOLDERSIZE', write=False)
+
+    def op_count(self, a):
+        def count(p):
+            return sum(len(fs) for _, _, fs in os.walk(p)) if os.path.isdir(p) else FS_PATH_NOT_FOUND
+        return self._path_op(a, count, 'COUNT', write=False)
+
+    def op_rename(self, a):
+        s, d = host_path(wstr(a[0])), host_path(wstr(a[1]))
+        if not s or not d:
+            return [i32(FS_INVALID_FILENAME)]
+        if holds_imei(s) or holds_imei(d) or is_read_only(wstr(a[0])) or is_read_only(wstr(a[1])):
+            log('RENAME', wstr(a[0]), wstr(a[1]), 'refused (IMEI file or read-only drive)')
+            return [i32(FS_ACCESS_DENIED)]
+        if is_protected(wstr(a[0])) or is_protected(wstr(a[1])):
+            protect_log('RENAME', wstr(a[0]), '->', wstr(a[1]))
+        try:
+            os.rename(s, d); r = 0
+        except OSError as e:
+            r = fs_err(e)
+        log('RENAME', wstr(a[0]), wstr(a[1]), r)
+        return [i32(r)]
+
+    def op_move(self, a):
+        # FS_Move flags: 0x1 copy (source kept), 0x2 kill, 0x10000 overwrite. The modem
+        # syncs X: -> Y: (protect_f -> protect_s) with copy | overwrite.
+        flag = u32(a[2]) if len(a) > 2 else 0
+        if not flag & 0x1:
+            return self.op_rename(a)
+        s, d = host_path(wstr(a[0])), host_path(wstr(a[1]))
+        if not s or not d:
+            return [i32(FS_INVALID_FILENAME)]
+        if holds_imei(d) or is_read_only(wstr(a[1])):
+            log('MOVE', wstr(a[0]), wstr(a[1]), 'refused (IMEI file or read-only drive)')
+            return [i32(FS_ACCESS_DENIED)]
+        if is_protected(wstr(a[1])):
+            protect_log('COPY', wstr(a[0]), '->', wstr(a[1]))
+        try:
+            if os.path.exists(d) and not flag & 0x10000:
+                r = FS_FILE_EXISTS
+            else:
+                with open(s, 'rb') as f:
+                    data = f.read()
+                with open(d + '.luma-tmp', 'wb') as f:
+                    f.write(data)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(d + '.luma-tmp', d)
+                r = 0
+        except OSError as e:
+            r = missing_err(s) if e.errno == errno.ENOENT else fs_err(e)
+        log('MOVE copy', wstr(a[0]), wstr(a[1]), hex(flag), r)
+        return [i32(r)]
+
+    def op_getfiledetail(self, a):
+        hp = host_path(wstr(a[0]))
+        try:
+            st = os.stat(hp)
+            return [i32(0), struct.pack('<QQQ', int(st.st_mtime), int(st.st_atime), int(st.st_ctime))]
+        except (OSError, TypeError):
+            return [i32(FS_FILE_NOT_FOUND), bytes(24)]
+
+    # --- directory search ---
+    def _find_reply(self, h, maxlen):
+        d, names = self.finds[h]
+        while names:
+            n = names.pop(0)
+            try:
+                ent = dos_entry(os.path.join(d, n), n)
+            except OSError:
+                continue
+            w = n[:max(maxlen - 1, 0)].encode('utf-16-le') + b'\0\0' if maxlen else b''
+            return [i32(h), ent, w]
+        return None
+
+    def op_findfirst(self, a):
+        pat = wstr(a[0]); maxlen = u32(a[3]) if len(a) > 3 else 0
+        hp = host_path(pat)
+        if hp is None:
+            return [i32(FS_INVALID_FILENAME), bytes(52), b'']
+        d, g = os.path.split(hp)
+        if not os.path.isdir(d):
+            log('FINDFIRST', pat, 'nodir')
+            return [i32(FS_PATH_NOT_FOUND), bytes(52), b'']
+        names = sorted(n for n in os.listdir(d) if fnmatch.fnmatchcase(n.upper(), g.upper()))
+        h = self._handle(); self.finds[h] = (d, names)
+        r = self._find_reply(h, maxlen)
+        log('FINDFIRST', pat, len(names))
+        if r is None:
+            del self.finds[h]
+            return [i32(FS_NO_MORE_FILES), bytes(52), b'']
+        return r
+
+    def op_findnext(self, a):
+        h, maxlen = u32(a[0]), u32(a[1]) if len(a) > 1 else 0
+        if h not in self.finds:
+            return [i32(FS_INVALID_FILE_HANDLE), bytes(52), b'']
+        r = self._find_reply(h, maxlen)
+        if r is None:
+            return [i32(FS_NO_MORE_FILES), bytes(52), b'']
+        r[0] = i32(0)
+        return r
+
+    def op_findclose(self, a):
+        self.finds.pop(u32(a[0]), None)
+        return [i32(0)]
+
+    # --- volume / misc ---
+    def op_getdiskinfo(self, a):
+        st = os.statvfs(ROOT)
+        info = bytearray(84)
+        struct.pack_into('<IIII', info, 0x30, st.f_bsize, st.f_blocks, st.f_bfree, 1)
+        return [i32(0), bytes(info)]
+
+    def op_getclustersize(self, a):
+        return [i32(4096)]
+
+    def op_getdrive(self, a):
+        return [i32(ord('Z'))]
+
+    def op_lockfat(self, a):
+        return [i32(0)]
+    op_unlockall = op_shutdown = op_cleardiskflag = op_setdiskflag = op_lockfat
+
+    def _cmpt_open(self, p, flag):
+        hp = host_path(p)
+        if hp is None:
+            return FS_INVALID_FILENAME
+        r = u32(self.op_open([p.encode('utf-16-le') + b'\0\0', struct.pack('<I', flag)])[0])
+        return struct.unpack('<i', struct.pack('<I', r))[0]
+
+    def op_cmpt_write(self, a):
+        # Compound open/seek/write/close, as the modem expects it. opid_map bits:
+        # 0x1 open, 0x4 seek, 0x20 write, 0x10 close; a handle >= 0 skips the open.
+        # arg1: opid_map@0, flag@0xc, offset@0x10, whence@0x14, length@0x1c, handle@0x20.
+        # Reply: {done_map, error} (8 bytes), handle, bytes written.
+        p = wstr(a[0])
+        opid, flag, off, wh, ln, h = (struct.unpack_from('<I', a[1], o)[0] for o in (0, 0xc, 0x10, 0x14, 0x1c, 0x20))
+        h = struct.unpack('<i', struct.pack('<I', h))[0]
+        data = a[2][:ln] if len(a) > 2 else b''
+        done, err, w = 0, 0, 0
+        if h < 0:
+            h = self._cmpt_open(p, flag) if opid & 0x1 else FS_INVALID_FILE_HANDLE
+            if h < 0:
+                err = h
+            else:
+                done |= 0x1
+        if not err and opid & 0x4:
+            r = u32(self.op_seek([struct.pack('<I', h), struct.pack('<I', off), struct.pack('<I', wh)])[0])
+            r = struct.unpack('<i', struct.pack('<I', r))[0]
+            err, done = (r, done) if r < 0 else (0, done | 0x4)
+        if not err and opid & 0x20:
+            r, wb = self.op_write([struct.pack('<I', h), data, struct.pack('<I', len(data))])
+            r, w = struct.unpack('<i', r)[0], u32(wb)
+            err, done = (r, done) if r < 0 else (0, done | 0x20)
+        if (not err or done & 0x1) and opid & 0x10 and h >= 0:
+            r = struct.unpack('<i', self.op_close([struct.pack('<I', h)])[0])[0]
+            if not err:
+                err, done = (r, done) if r < 0 else (0, done | 0x10)
+        if VERBOSE or err:
+            log('CMPTW', p, hex(opid), hex(flag), off, wh, ln, '->', hex(done), err, h, w)
+        return [struct.pack('<Ii', done, err), i32(h), struct.pack('<I', w)]
+
+    def op_cmpt_read(self, a):
+        # Compound open/getsize/seek/read/close. opid_map bits:
+        # 0x1 open, 0x2 size, 0x4 seek, 0x8 read, 0x10 close; without 0x1 the handle is used.
+        # arg1: opid_map@0, flag@0xc, offset@0x14, whence@0x18, length@0x20, handle@0x28.
+        # Reply: {done_map, error}, file size, bytes read, data, handle.
+        p = wstr(a[0])
+        opid, flag, off, wh, ln, h = (struct.unpack_from('<I', a[1], o)[0] for o in (0, 0xc, 0x14, 0x18, 0x20, 0x28))
+        h = struct.unpack('<i', struct.pack('<I', h))[0]
+        done, err, size, d = 0, 0, 0, b''
+        if opid & 0x1:
+            h = self._cmpt_open(p, flag | FS_READ_ONLY)
+        if h < 0:
+            err = h if opid & 0x1 else FS_INVALID_FILE_HANDLE
+        elif opid & 0x1:
+            done |= 0x1
+        if not err and opid & 0x2:
+            r, sb = self.op_getfilesize([struct.pack('<I', h)])
+            r, size = struct.unpack('<i', r)[0], u32(sb)
+            err, done = (r, done) if r < 0 else (0, done | 0x2)
+        if not err and opid & 0x4:
+            r = u32(self.op_seek([struct.pack('<I', h), struct.pack('<I', off), struct.pack('<I', wh)])[0])
+            r = struct.unpack('<i', struct.pack('<I', r))[0]
+            err, done = (r, done) if r < 0 else (0, done | 0x4)
+        if not err and opid & 0x8:
+            r, _, d = self.op_read([struct.pack('<I', h), struct.pack('<I', ln)])
+            r = struct.unpack('<i', r)[0]
+            err, done = (r, done) if r < 0 else (0, done | 0x8)
+        if (not err or done & 0x1) and opid & 0x10 and h >= 0:
+            r = struct.unpack('<i', self.op_close([struct.pack('<I', h)])[0])[0]
+            if not err:
+                err, done = (r, done) if r < 0 else (0, done | 0x10)
+        if VERBOSE or err:
+            log('CMPTR', p, hex(opid), hex(flag), off, wh, ln, '->', hex(done), err, size, len(d))
+        return [struct.pack('<Ii', done, err), struct.pack('<I', size), struct.pack('<I', len(d)), d, i32(h)]
+
+    def op_restore(self, a):
+        # The modem asks for files to be restored from the NVRAM backup region (the
+        # nvram partition, BinRegion format) on every boot. Nothing is ever written:
+        # the request is acknowledged only when the file in the working copy is
+        # byte-identical to a copy in the backup region (a restore would not change it).
+        p = wstr(a[0]) if a else ''
+        hp = host_path(p)
+        try:
+            with open(hp, 'rb') as f:
+                d = f.read()
+            if self.backup is None:
+                with open(NVRAM_BACKUP, 'rb') as f:
+                    self.backup = f.read()
+            ok = len(d) > 0 and d in self.backup
+        except (OSError, TypeError) as e:
+            log('RESTORE', p, repr(e))
+            ok = False
+        log('RESTORE', p, 'backup identical, nothing written' if ok else 'refused (no identical backup)')
+        return [i32(0 if ok else FS_UNSUPPORTED)]
+
+    def op_bin_region_access(self, a):
+        log('BIN_REGION_ACCESS requested (unsupported)', [x[:32].hex() for x in a])
+        return [i32(FS_UNSUPPORTED)]
+
+
+def parse(pkt):
+    opid, argc = struct.unpack_from('<II', pkt, 16)
+    args, off = [], 24
+    for _ in range(argc):
+        n = u32(pkt[off:off + 4]); off += 4
+        args.append(bytes(pkt[off:off + n])); off += (n + 3) & ~3
+    return opid, args
+
+
+def build(opid, idx, outs, d0=0):
+    opid = (opid | 0xFFFF0000) & 0xffffffff   # responses carry op_id | 0xFFFF0000 (as stock)
+    body = struct.pack('<II', opid, len(outs))
+    for o in outs:
+        body += struct.pack('<I', len(o)) + o + b'\0' * (-len(o) & 3)
+    # body = op_id + rest; split the part after op_id into MTU-sized fragments
+    rest = body[4:]
+    frags = [rest[i:i + MTU] for i in range(0, len(rest), MTU)] or [b'']
+    out = []
+    for i, f in enumerate(frags):
+        more = 0x80000000 if i < len(frags) - 1 else 0
+        out.append(struct.pack('<IIIII', (d0 & 0x7fffffff) | more, HDR + len(f), 0, idx, opid) + f)
+    return out
+
+
+def fs_thread(dev):
+    srv = FsServer(); pend = {}; first_d0 = {}
+    fd = os.open(dev, os.O_RDWR)
+    log('fs server on', dev)
+    while True:
+        try:
+            pkt = os.read(fd, HDR + MTU)
+        except OSError as e:
+            log('fs read', e); time.sleep(0.5); continue
+        if len(pkt) < HDR:
+            log('short fs packet', pkt.hex()); continue
+        d0, ln, ch, idx = struct.unpack_from('<IIII', pkt)
+        if idx in pend:
+            pend[idx] += pkt[HDR:]
+        else:
+            first_d0[idx] = d0
+            pend[idx] = bytearray(pkt)
+        if d0 & 0x80000000:
+            continue
+        req = pend.pop(idx)
+        opid, args = parse(req)
+        if VERBOSE:
+            log('REQ', OPS.get(opid, hex(opid)), idx, [x[:48].hex() for x in args])
+        if VERBOSE:
+            log('HDR', hex(first_d0.get(idx, 0)), idx)
+        for f in build(opid, idx, srv.op(opid, args), first_d0.pop(idx, 0)):
+            os.write(fd, f)
+
+
+RPC_OPS = {0x400F: 'QUERY_AP_SYS_PROPERTY', 0x4010: 'SAR_TABLE_IDX_QUERY',
+           0x4014: 'AMMS_DRDI_CONTROL', 0x4015: 'SAVE_MD_CAPID'}
+
+
+def find_md_image(part, name):
+    """Offset and size of a sub-image in the md1img container (512-byte headers, 16-byte aligned)."""
+    with open(part, 'rb') as f:
+        off = 0
+        for _ in range(64):
+            f.seek(off)
+            h = f.read(0x200)
+            magic, size = struct.unpack_from('<II', h)
+            if magic != 0x58881688:
+                break
+            hsize = struct.unpack_from('<I', h, 0x34)[0] or 0x200
+            if h[8:40].split(b'\0')[0] == name:
+                return off + hsize, size
+            off = (off + hsize + size + 0xf) & ~0xf
+    return None, 0
+
+
+class Drdi:
+    """AMMS DRDI copy (IPC_RPC_AMMS_DRDI_CONTROL): the modem asks for RF parameter sets
+    from the md1drdi image in the modem partition (read-only) to be copied into the
+    64 KiB DRDI shared memory, mapped through /dev/ccci_rpc."""
+    SMEM = 0x10000
+
+    def __init__(self, rpc_fd):
+        import mmap
+        self.part = '/dev/disk/by-partlabel/modem_a'
+        self.off, self.size = find_md_image(self.part, b'md1drdi')
+        self.map = mmap.mmap(rpc_fd, self.SMEM, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+        self.nsets, self.copystat = 0, -1
+        log('DRDI md1drdi at', hex(self.off or 0), 'size', hex(self.size))
+
+    def handle(self, req):
+        # Replies as observed from the stock RPC daemon.
+        out = bytearray(8)
+        cmd, out[1] = req[0], req[1]
+        if cmd == 1:                       # INIT: version 3, n (start,size) pairs at +8
+            out[4] = 3
+            n = req[5]
+            pairs = [struct.unpack_from('<II', req, 8 + 8 * i) for i in range(min(n, 15))]
+            if req[4] != 3 or n > 15 or any(s + l > self.size for s, l in pairs):
+                out[0], out[6] = 0xfe, 0xff
+                log('DRDI init rejected', req[:8].hex(), pairs)
+                return -1, out
+            self.nsets, self.copystat = n, -1
+            log('DRDI init', n, 'sets')
+            return 0, out
+        if cmd == 2:                       # COPY: n (src,dst,len) entries at +8; req[4] == 1: last
+            sets = [struct.unpack_from('<III', req, 8 + 12 * i) for i in range(self.nsets)]
+            if any(l and (l > 0x10000 or s + l > self.size or d + l > self.SMEM) for s, d, l in sets):
+                out[0] = 0xff
+                log('DRDI copy rejected', sets)
+                return -1, out
+            out[4] = 0 if req[4] == 1 else 0xff
+            with open(self.part, 'rb') as f:
+                for i, (s, d, l) in enumerate(sets):
+                    if not l:
+                        continue
+                    f.seek(self.off + s)
+                    self.map[d:d + l] = f.read(l)
+                    self.copystat = 1 if req[4] == 1 else 0
+                    log('DRDI copy set', i, hex(s), '->', hex(d), hex(l), 'last' if req[4] == 1 else '')
+            out[0] = 0xff if self.copystat == -1 else 0
+            if not any(l for _, _, l in sets):
+                log('DRDI copy request without sets, mode', req[4], 'status', out[0])
+            return 0, out
+        out[0] = 0xff
+        log('DRDI unknown cmd', cmd)
+        return -1, out
+
+
+def rpc_thread(dev):
+    # Userspace half of the modem RPC channel (the kernel answers the rest):
+    # same framing as FS; replies set op_id |= 0xFFFF0000.
+    fd = os.open(dev, os.O_RDWR)
+    try:
+        drdi = Drdi(fd)
+    except Exception as e:
+        log('DRDI setup failed', repr(e)); drdi = None
+    while True:
+        try:
+            pkt = os.read(fd, 4096)
+        except OSError as e:
+            log(dev, e); time.sleep(1); continue
+        if len(pkt) < 24:
+            log('RPC short', pkt.hex()); continue
+        d0, ln, ch, idx = struct.unpack_from('<IIII', pkt)
+        opid, args = parse(pkt)
+        name = RPC_OPS.get(opid, hex(opid))
+        if opid == 0x400F:
+            key = args[0].split(b'\0')[0].decode(errors='replace') if args else ''
+            outs = [i32(-1), b'\0']
+            log('RPC', name, key, '-> not set')
+        elif opid == 0x4014 and drdi and args and len(args[0]) >= 0xbc:
+            r, o = drdi.handle(args[0])
+            outs = [i32(r), bytes(o)]
+        elif opid == 0x4010:
+            outs = [i32(0), struct.pack('<I', 0)]
+            log('RPC', name, '-> 0')
+        else:
+            outs = [i32(-1)]
+            log('RPC unhandled', name, [a[:32].hex() for a in args])
+        body = struct.pack('<II', (opid | 0xFFFF0000) & 0xffffffff, len(outs))
+        for o in outs:
+            body += struct.pack('<I', len(o)) + o + b'\0' * (-len(o) & 3)
+        os.write(fd, struct.pack('<IIII', 0, 16 + len(body), 0, idx) + body)
+
+
+def monitor_thread(dev):
+    # Log anything the modem sends on an auxiliary port (RPC, status) for bring-up.
+    try:
+        fd = os.open(dev, os.O_RDONLY)
+    except OSError as e:
+        log('open', dev, e); return
+    while True:
+        try:
+            d = os.read(fd, 4096)
+        except OSError as e:
+            log(dev, e); time.sleep(1); continue
+        log('MSG', dev, d[:96].hex())
+
+
+CCCI_IOC_GET_MD_STATE = 0x80044301
+CCCI_IOC_DO_STOP_MD = 0x0000430c
+CCCI_IOC_DO_START_MD = 0x0000430d
+CCCI_IOC_CCB_CTRL_LEN = 0x8004433e
+CCCI_IOC_GET_CCB_CONFIG_LENGTH = 0x8004433f
+CCCI_IOC_GET_CCB_CONFIG = 0xc0184340
+CCCI_IOC_SET_BOOT_DATA = 0x4040432f
+CCB_TAIL = 0xEEFF0011
+IMEI_CHECK = ['/usr/libexec/luma-titan2e-modem-fs', '--check-imei']
+
+
+def md_ioctl(req, arg=0):
+    # Any CCCI char port takes FSM ioctls; md_log_ctrl counts as a critical
+    # user that the start sequence waits on, so close it straight away.
+    cfd = os.open('/dev/ccci_md_log_ctrl', os.O_RDWR)
+    try:
+        return fcntl.ioctl(cfd, req, arg)
+    finally:
+        os.close(cfd)
+
+
+def set_boot_data():
+    """Boot data the stock modem init sets before each modem start (CCCI_IOC_SET_BOOT_DATA,
+    u32[16]): MD log mode 0xf0000, SBP code 0, debug dump flag -1 (unset), SBP sub-ID 0,
+    no C2K check, and the protocol 1 RAT string from ro.vendor.mtk_protocol1_rat_config at
+    [5..10]. The kernel turns the RAT string into the RAT bitmap (0x7d) the modem gets in
+    its runtime data; without it the modem gets 0."""
+    rat = os.environ.get('LUMA_MODEM_RAT', 'N/C/Lf/Lt/W/G').encode()[:23]
+    data = struct.pack('<5I24sI16x', 0xf0000, 0, 0xffffffff, 0, 0, rat, 0)
+    try:
+        md_ioctl(CCCI_IOC_SET_BOOT_DATA, data)
+        log('SET_BOOT_DATA', rat.decode())
+    except OSError as e:
+        log('SET_BOOT_DATA', e)
+
+
+def init_ccb_ctrl():
+    """Fill the CCB (modem debug-log buffer) control block before each modem start, as
+    the stock modem init does: for every buffer in the kernel's ccb_configs[] a 64-byte
+    record, DL half {page size @0x14, buffer size @0x18,
+    0xEEFF0011 @0x1c} and UL half {@0x34, @0x38, @0x3c}; the modem adds its own headers.
+    The kernel keeps this block across AP reboots (SMEM_NO_CLR_FIRST), so it is also zeroed
+    first; an empty or stale table makes the modem assert."""
+    import mmap
+    fd = os.open('/dev/ccci_ccb_ctrl', os.O_RDWR)
+    try:
+        b = bytearray(4)
+        fcntl.ioctl(fd, CCCI_IOC_CCB_CTRL_LEN, b)
+        size = struct.unpack('<I', b)[0]
+        fcntl.ioctl(fd, CCCI_IOC_GET_CCB_CONFIG_LENGTH, b)
+        count = struct.unpack('<I', b)[0]
+        if not size or count * 64 > size:
+            log('CCB control block: size', size, 'configs', count, '- not initialised')
+            return
+        m = mmap.mmap(fd, size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+        m[:] = bytes(size)
+        for i in range(count):
+            cfg = bytearray(struct.pack('<I20x', i))
+            fcntl.ioctl(fd, CCCI_IOC_GET_CCB_CONFIG, cfg)
+            _, _, dl_page, ul_page, dl_buf, ul_buf = struct.unpack('<IB3xIIII', cfg)
+            rec = bytearray(64)
+            struct.pack_into('<III', rec, 0x14, dl_page, dl_buf, CCB_TAIL)
+            struct.pack_into('<III', rec, 0x34, ul_page, ul_buf, CCB_TAIL)
+            m[i * 64:(i + 1) * 64] = rec
+        m.close()
+        log('CCB control block initialised:', count, 'buffers')
+    finally:
+        os.close(fd)
+
+
+MD_STATE_READY = 2          # CCCI_IOC_GET_MD_STATE (MD_STATE_FOR_USER): 1 booting, 2 ready, 3 exception
+MIPC_PORT = '/dev/ttyCMIPC0'
+# Requests stock's RIL makes once the modem is up (MIPC framing: magic 0x24541984, 4 pad,
+# sim_ps_id, flag, msg_id, txid, payload length; complete TLVs align to eight bytes).
+# (name, msg_id, sim_ps_id, TLVs). Configure both protocols and read their SIM
+# power/reset state. SIM_GET_RESET is a query, not a coordinated SIM reset.
+MIPC_BOOT = [('SYS_MULTI_SIM_CONFIG', 0x0059, 1, [(0x0101, b'\x02')]),   # dual SIM (DSDS)
+             ('SYS_SET_DSBP', 0x0053, 1, [(0x0100, b'\x03')]),
+             ('SYS_SILENT_REBOOT', 0x0057, 1, [(0x0100, b'\x00')]),
+             ('SYS_AT EIMSRCS=0,0', 0x0003, 1, [(0x8100, b'AT+EIMSRCS=0,0')])]  # RCS off
+for _ps in (1, 2):
+    MIPC_BOOT += [('NW_SET_RADIO_CAPABILITY ps%d' % _ps, 0x0489, _ps,
+                   [(0x0100, struct.pack('<I', 0x1f)), (0x0101, b'\x01')]),
+                  ('NW_SET_RADIO_STATE off ps%d' % _ps, 0x0403, _ps, [(0x0100, b'\x00')]),
+                  ('SIM_GET_RESET ps%d' % _ps, 0x0527, _ps, [(0x0100, b'\x01')])]
+    # Call reporting as stock's RIL sets it on each protocol: modem info
+    # reports, incoming-call approval registration (without it the modem has no
+    # host to ask and releases incoming calls) and call end causes.
+    MIPC_BOOT += [('SYS_AT %s ps%d' % (at, _ps), 0x0003, _ps, [(0x8100, at.encode())])
+                  for at in ('AT+EINFO=1074', 'AT+EINFO=1082,401,0', 'AT+EIAREG=1', 'AT+ECCAUSE=1')]
+
+
+def mipc_request(fd, msg_id, sim_ps, tlvs, txid, timeout=3.0):
+    body = b''.join(struct.pack('<HH', t, len(v)) + v + b'\0' * (-(4 + len(v)) & 7) for t, v in tlvs)
+    os.write(fd, struct.pack('<IIBBHHH', 0x24541984, 0, sim_ps, 0, msg_id, txid, len(body)) + body)
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            d = os.read(fd, 8192)
+        except BlockingIOError:
+            time.sleep(0.05)
+            continue
+        if len(d) >= 14 and struct.unpack_from('<HH', d, 10) == (msg_id + 1, txid):
+            # first TLV of a confirm is the result
+            return struct.unpack_from('<I', d, 20)[0] if len(d) >= 24 else None
+    return None
+
+
+def modem_boot_config():
+    """Once the modem is READY, send stock's boot-time configuration (multi-SIM, DSBP)."""
+    for _ in range(120):
+        b = bytearray(4)
+        try:
+            md_ioctl(CCCI_IOC_GET_MD_STATE, b)
+            if struct.unpack('<i', b)[0] == MD_STATE_READY:
+                break
+        except OSError:
+            pass
+        time.sleep(0.5)
+    else:
+        log('MIPC boot config: modem not ready')
+        return
+    try:
+        fd = os.open(MIPC_PORT, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as e:
+        log('MIPC boot config:', MIPC_PORT, e)
+        return
+    try:
+        for i, (name, msg_id, sim_ps, tlvs) in enumerate(MIPC_BOOT):
+            log('MIPC', name, '->', mipc_request(fd, msg_id, sim_ps, tlvs, 0x4c00 + i))
+    finally:
+        os.close(fd)
+
+
+# Initial-attach (IA) APN. Whenever a subscription initializes, the modem asks
+# for its IA APN (NW_IA_IND); without one LTE attach is denied with no cause.
+# Stock's RIL answers with APN_SET_IA on the subscription's protocol, then
+# allows data on it (DATA_SET_DATA_ALLOW). Field layout as stock sends it:
+# 0x8106/0x8105 empty, 0x0101 APN, 0x0102 2, 0x0103 1, 0x0104 0.
+APN_SET_IA = 0x0101
+DATA_SET_DATA_ALLOW = 0x020d
+NW_SET_RADIO_STATE = 0x0403
+IA_PS = 2                   # Luma's subscription (eUICC or SIM2) is on protocol 2
+NM_CONNECTIONS = '/etc/NetworkManager/system-connections'
+PROVIDERS = '/usr/share/mobile-broadband-provider-info/serviceproviders.xml'
+# Used only when mobile-broadband-provider-info is not installed.
+IA_FALLBACK = {'310240': 'fast.t-mobile.com', '310260': 'fast.t-mobile.com'}
+
+
+LAST_IA = {}                # protocol -> IA APN last set, for re-attach
+
+
+def ia_tlvs(apn):
+    return [(0x8106, b'\0'), (0x0101, apn.encode() + b'\0'), (0x0102, b'\x02'),
+            (0x0103, b'\x01'), (0x0104, b'\x00'), (0x8105, b'\0')]
+
+
+def nm_apn(iccid, imsi):
+    """IA APN of a saved NetworkManager connection bound to this SIM."""
+    import configparser, glob
+    for path in sorted(glob.glob(os.path.join(NM_CONNECTIONS, '*.nmconnection'))):
+        c = configparser.RawConfigParser(strict=False, interpolation=None)
+        try:
+            c.read(path)
+        except (OSError, configparser.Error):
+            continue
+        if not c.has_section('gsm'):
+            continue
+        sim_id = c.get('gsm', 'sim-id', fallback='')
+        operator = c.get('gsm', 'sim-operator-id', fallback='')
+        if sim_id != iccid and not (not sim_id and operator and imsi.startswith(operator)):
+            continue
+        apn = c.get('gsm', 'initial-eps-bearer-apn', fallback='') or c.get('gsm', 'apn', fallback='')
+        if apn:
+            return apn
+    return None
+
+
+def provider_apn(imsi, spn=None, path=None):
+    """First internet APN of the provider for this IMSI in
+    mobile-broadband-provider-info; a provider named like the SIM's SPN wins
+    over the first listed one (MVNOs share the host network's MCC/MNC)."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.parse(path or PROVIDERS).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    first = None
+    for p in root.iter('provider'):
+        if not any(imsi.startswith(n.get('mcc', '') + n.get('mnc', ''))
+                   for n in p.iter('network-id') if n.get('mcc') and n.get('mnc')):
+            continue
+        apns = [a.get('value') for a in p.iter('apn')
+                if a.get('value') and any(u.get('type') == 'internet' for u in a.iter('usage'))]
+        if not apns:
+            continue
+        if spn and (p.findtext('name') or '').strip().lower() == spn.strip().lower():
+            return apns[0]
+        first = first or apns[0]
+    return first
+
+
+def ia_apn(iccid, imsi, spn=None):
+    apn = nm_apn(iccid, imsi)
+    if apn:
+        return apn, 'NetworkManager'
+    if os.path.exists(PROVIDERS):
+        apn = provider_apn(imsi, spn)
+        return (apn, 'mobile-broadband-provider-info') if apn else (None, None)
+    apn = IA_FALLBACK.get(imsi[:6]) or IA_FALLBACK.get(imsi[:5])
+    return (apn, 'built-in') if apn else (None, None)
+
+
+def sim_spn(mipc, ps):
+    """EF_SPN (6F46) name, or None."""
+    m = re.search(r'\+CRSM:\s*144,\s*0,\s*"([0-9A-Fa-f]+)"', mipc.command('AT+CRSM=176,28486,0,0,17', sim=ps))
+    if not m:
+        return None
+    name = bytes.fromhex(m.group(1))[1:].split(b'\xff')[0]
+    return name.decode('ascii', errors='ignore').strip() or None
+
+
+def attach_config(mipc, ps=IA_PS, errors=(OSError,)):
+    """Give the subscription on protocol ps its IA APN and allow data on it.
+    Logs the APN source and the modem's results, never SIM identifiers."""
+    try:
+        m = re.search(r'\+ICCID:\s*"?([0-9A-Fa-f]{18,22})', mipc.command('AT+ICCID?', sim=ps))
+        n = re.search(r'(?:^|\n)\s*(\d{6,15})\s*(?:\r|\n|$)', mipc.command('AT+CIMI', sim=ps))
+        if not m or not n:
+            log('IA APN: subscription identity unavailable on ps%d' % ps)
+            return False
+        iccid, imsi = m.group(1).rstrip('Ff'), n.group(1)
+        try:
+            spn = sim_spn(mipc, ps)
+        except errors:
+            spn = None
+        apn, source = ia_apn(iccid, imsi, spn)
+        if not apn:
+            log('IA APN: none known for this subscription (ps%d)' % ps)
+            return False
+        LAST_IA[ps] = apn
+        result = mipc.result(APN_SET_IA, ia_tlvs(apn), ps)
+        log('IA APN', apn, 'from', source, 'ps%d' % ps, '->', result)
+        log('DATA_SET_DATA_ALLOW ps%d' % ps, '->', mipc.result(DATA_SET_DATA_ALLOW, [], ps))
+        # The modem applies the IA only to an attach started by the next radio
+        # power-on; an IA set seconds earlier, or while the subscription has
+        # already stopped searching, is not used. Restart the radio of this
+        # protocol now (before ModemManager starts, or while it is inhibited).
+        off = mipc.result(NW_SET_RADIO_STATE, [(0x0100, b'\x00')], ps)
+        on = mipc.result(NW_SET_RADIO_STATE, [(0x0100, b'\x01')], ps)
+        log('NW_SET_RADIO_STATE ps%d off/on ->' % ps, off, on)
+        return result == 0 and on == 0
+    except errors as e:
+        log('IA APN: configuration failed on ps%d:' % ps, type(e).__name__)
+        return False
+
+
+# Indications. The modem sends them only on the MIPC port stock's RIL uses
+# (ttyCMIPC1, not ttyCMIPC0), and only those registered on that port with
+# INTERNAL_REGISTER_IND (TLV 0x0100 = u16 indication id).
+MIPC_IND_PORT = '/dev/ttyCMIPC1'
+INTERNAL_REGISTER_IND = 0x0307
+NW_PS_IND = 0x4403          # 0x0100: 1 = registered
+NW_REJECT_IND = 0x4424      # 0x0100 domain (4 EMM, 0x80 5GMM), 0x0101 cause
+IMS_PDN_IND = 0x4a03        # 0x0107 = 2: the modem asks for the IMS PDN
+IMS_REG_IND = 0x4a05        # 0x0100: 1 = registered
+CALL_STATUS_IND = 0x4901
+SYS_AT_IND = 0x4001         # 0x0100: an unsolicited AT line
+NW_RADIO_IND = 0x4404       # 0x0100: 1 = radio on
+WATCHED = (NW_PS_IND, NW_REJECT_IND, IMS_PDN_IND, IMS_REG_IND, CALL_STATUS_IND, SYS_AT_IND, NW_RADIO_IND)
+# Incoming calls. The modem asks the host to approve each one (APPROVE_INCOMING
+# command: 0x0100 call id, 0x8101 number, 0x0102 type, 0x0103 sequence number,
+# 0x0104/0x0105 call mode) and does not present it until the host answers. The
+# response carries 0x0100 approve, 0x0101 0, 0x0102 call id and 0x0103 sequence
+# number (the modem turns it into AT+EAIC=<0 approve>,<call id>,<seq> and
+# ignores it when the call id and sequence number do not match; its own
+# auto-approval fills the fields the same way). The command's protocol byte is
+# a SIM bitmask (1 << (sim + 4)). Commands are registered once with
+# INTERNAL_REGISTER_CMD.
+INTERNAL_REGISTER_CMD = 0x030b
+CALL_APPROVE_INCOMING = 0x8901
+COMMANDS = (CALL_APPROVE_INCOMING,)
+# IMS. The SIP stack runs in the modem. Stock enables it once the protocol is
+# registered: IMS_CFG_ADDITION_SERVICE (64 zero bytes), then the feature switches
+# (VoLTE, ViLTE, VoWiFi, ViWiFi, SMS over IMS, IMS; no Wi-Fi calling here), and
+# answers the modem's IMS PDN request with a data call for APN "ims" (stock's
+# 672-byte profile: [1] PDP type 3, [4:] APN, [414] 0xff).
+IMS_SET_CONFIG = 0x0a00
+IMS_CFG_ADDITION_SERVICE = 0x0a1c
+DATA_ACT_CALL = 0x0201
+IMS_SWITCHES = bytes([1, 1, 0, 0, 1, 1])
+# Without IMS the modem does not come back after a tracking-area reject (band 12)
+# until its radio restarts; with IMS it recovers by itself within seconds.
+REATTACH_AFTER = 60         # s without PS registration before restarting the radio
+REATTACH_EVERY = 120        # s between radio restarts
+
+
+def ims_profile(apn=b'ims'):
+    p = bytearray(672)
+    p[1] = 3
+    p[4:4 + len(apn)] = apn
+    p[414] = 0xff
+    return bytes(p)
+
+
+class Registration:
+    """Registration and IMS of the subscription on protocol ps, driven by
+    indications. Returns the requests to send as (name, msg_id, TLVs)."""
+
+    def __init__(self, ps, ims=True):
+        self.ps, self.ims = ps, ims
+        self.registered = None
+        self.lost = None
+        self.restarted = None
+        self.radio_off = False      # radio switched off on request (airplane mode)
+        self.ims_registered = False
+        self.busy = lambda: False   # True while the eUICC owner holds a lease
+        self.on_radio_off = []      # called when the radio goes off
+
+    def indication(self, msg_id, tlvs, now):
+        if msg_id == NW_PS_IND:
+            registered = tlvs.get(0x0100, b'')[:1] == b'\x01'
+            if registered == self.registered:
+                return []
+            self.registered = registered
+            self.lost = None if registered else now
+            log('ps%d PS' % self.ps, 'registered' if registered else 'not registered')
+            if registered and self.ims:
+                return [('IMS_CFG_ADDITION_SERVICE', IMS_CFG_ADDITION_SERVICE, [(0x0100, bytes(64))]),
+                        ('IMS_SET_CONFIG', IMS_SET_CONFIG, [(0x0100, struct.pack('<I', 0)),
+                                                            (0x0102, IMS_SWITCHES)])]
+        elif msg_id == NW_REJECT_IND:
+            log('ps%d reject domain' % self.ps, tlvs.get(0x0100, b'').hex(),
+                'cause', int.from_bytes(tlvs.get(0x0101, b''), 'little'))
+        elif msg_id == IMS_PDN_IND and self.ims and tlvs.get(0x0107, b'')[:1] == b'\x02':
+            return [('DATA_ACT_CALL ims', DATA_ACT_CALL, [(0x010f, struct.pack('<I', 0)),
+                                                          (0x0102, struct.pack('<I', 2)),
+                                                          (0x010a, b'\x03'), (0x010d, ims_profile())])]
+        elif msg_id == IMS_REG_IND:
+            self.ims_registered = tlvs.get(0x0100, b'')[:1] == b'\x01'
+            log('ps%d IMS' % self.ps, 'registered' if self.ims_registered else 'not registered')
+        elif msg_id == NW_RADIO_IND:
+            off = tlvs.get(0x0100, b'')[:1] == b'\x00'
+            if off != self.radio_off:
+                log('ps%d radio' % self.ps, 'off' if off else 'on')
+                if off:
+                    self.ims_registered = False
+                    for callback in self.on_radio_off:
+                        callback()
+            self.radio_off = off
+            # count a loss only from the radio being on
+            self.lost = None if off or self.registered is not False else now
+        elif msg_id == SYS_AT_IND:      # call lines only, digits masked
+            line = tlvs.get(0x0100, b'').rstrip(b'\0').decode('ascii', 'replace').strip()
+            if re.match(r'(RING|NO CARRIER|\+(CRING|CLIP|CCWA|ECPI|EAIC|CEND|CLCC))\b', line):
+                log('ps%d AT unsolicited' % self.ps, re.sub(r'\d{5,}', '<n>', line)[:120])
+        elif msg_id == CALL_STATUS_IND:   # numbers are not logged
+            log('ps%d call status' % self.ps,
+                {hex(t): v.hex() for t, v in sorted(tlvs.items()) if len(v) <= 4})
+        return []
+
+    def command(self, msg_id, tlvs):
+        """Response TLVs for a modem command, or None if not handled."""
+        if msg_id != CALL_APPROVE_INCOMING:
+            return None
+        call_id = int.from_bytes(tlvs.get(0x0100, b''), 'little')
+        seq = int.from_bytes(tlvs.get(0x0103, b''), 'little')
+        log('ps%d incoming call %d (seq %d): approved' % (self.ps, call_id, seq),
+            {hex(t): v.hex() for t, v in sorted(tlvs.items()) if t not in (0x0101, 0x8101)})
+        return [(0x0100, b'\x01'), (0x0101, struct.pack('<I', 0)),
+                (0x0102, struct.pack('<I', call_id)), (0x0103, struct.pack('<I', seq))]
+
+    def tick(self, now):
+        if self.radio_off or self.lost is None or now - self.lost < REATTACH_AFTER:
+            return []
+        if self.busy():             # a profile change is in progress; count again after it
+            self.lost = now
+            return []
+        if self.restarted is not None and now - self.restarted < REATTACH_EVERY:
+            return []
+        apn = LAST_IA.get(self.ps)
+        if not apn:
+            return []
+        self.restarted = now
+        log('ps%d PS lost for %ds: restarting the radio' % (self.ps, now - self.lost))
+        return [('APN_SET_IA', APN_SET_IA, ia_tlvs(apn)),
+                ('DATA_SET_DATA_ALLOW', DATA_SET_DATA_ALLOW, []),
+                ('NW_SET_RADIO_STATE off', NW_SET_RADIO_STATE, [(0x0100, b'\x00')]),
+                ('NW_SET_RADIO_STATE on', NW_SET_RADIO_STATE, [(0x0100, b'\x01')])]
+
+
+def mipc_tlvs(frame):
+    tlvs, off = {}, 16
+    while off + 4 <= len(frame):
+        t, n = struct.unpack_from('<HH', frame, off)
+        if t or n:                  # empty type-0 entries are zero padding (DATA_ACT_CALL)
+            tlvs.setdefault(t, frame[off + 4:off + 4 + n])
+        off += (4 + n + 7) & ~7
+    return tlvs
+
+
+class Indications:
+    """Owns MIPC_IND_PORT: registers the watched indications for each protocol
+    and feeds them to that protocol's Registration. Requests are sent one at a
+    time; each waits for its confirmation."""
+
+    def __init__(self, registrations, port=MIPC_IND_PORT):
+        self.regs = {r.ps: r for r in registrations}
+        self.port = port
+        self.fd = -1
+        self.txid = 0x4d00
+        self.queue = []
+        self.jobs = []
+        self.jobs_lock = threading.Lock()
+
+    def submit(self, fn, timeout=60):
+        """Run fn(self) on the reader's thread (it owns the port); returns its
+        result or raises its exception. For other threads."""
+        done = threading.Event()
+        box = {}
+        with self.jobs_lock:
+            self.jobs.append((fn, box, done))
+        if not done.wait(timeout):
+            raise TimeoutError('modem request timed out')
+        if 'error' in box:
+            raise box['error']
+        return box['value']
+
+    def run_jobs(self):
+        while True:
+            with self.jobs_lock:
+                if not self.jobs:
+                    return
+                fn, box, done = self.jobs.pop(0)
+            try:
+                box['value'] = fn(self)
+            except Exception as e:       # handed to the waiting thread
+                box['error'] = e
+            done.set()
+
+    def frame(self, timeout):
+        if not select.select([self.fd], [], [], timeout)[0]:
+            return None
+        d = os.read(self.fd, 65552)
+        if len(d) < 16 or struct.unpack_from('<I', d)[0] != 0x24541984:
+            return None
+        return d
+
+    def request(self, name, msg_id, ps, tlvs, timeout=5.0):
+        return self.request_tlvs(name, msg_id, ps, tlvs, timeout)[0]
+
+    def at(self, command, ps):
+        """One AT command through MIPC SYS_AT; returns the response text."""
+        result, tlvs = self.request_tlvs('SYS_AT', 0x0003, ps, [(0x8100, command.encode())], 10.0, quiet=True)
+        text = (tlvs.get(0x0100) or tlvs.get(0x8100) or b'').rstrip(b'\0').decode('ascii', 'replace')
+        if result != 0 or not re.search(r'(^|\n)OK\r?$', text.strip()):
+            raise OSError('%s failed (result %s: %s)' % (command.split('=')[0], result,
+                                                         ' '.join(text.split())[-60:]))
+        return text
+
+    def request_tlvs(self, name, msg_id, ps, tlvs, timeout=5.0, quiet=False):
+        self.txid = (self.txid + 1) & 0xffff or 1
+        body = b''.join(struct.pack('<HH', t, len(v)) + v + b'\0' * (-(4 + len(v)) & 7) for t, v in tlvs)
+        os.write(self.fd, struct.pack('<IIBBHHH', 0x24541984, 0, ps, 0, msg_id, self.txid, len(body)) + body)
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            d = self.frame(max(0, end - time.monotonic()))
+            if d is None:
+                continue
+            if struct.unpack_from('<HH', d, 10) == (msg_id + 1, self.txid):
+                # TLV 0 is the result; it is not always the first (DATA_ACT_CALL).
+                fields = mipc_tlvs(d)
+                result = fields.get(0)
+                result = u32(result) if result and len(result) == 4 else None
+                if msg_id != INTERNAL_REGISTER_IND and not quiet:
+                    log('MIPC ps%d' % ps, name, '->', result)
+                return result, fields
+            self.queue.append(d)
+        log('MIPC ps%d' % ps, name, '-> no confirmation')
+        return None, {}
+
+    def respond(self, msg_id, ps, txid, tlvs):
+        body = b''.join(struct.pack('<HH', t, len(v)) + v + b'\0' * (-(4 + len(v)) & 7) for t, v in tlvs)
+        os.write(self.fd, struct.pack('<IIBBHHH', 0x24541984, 0, ps, 0, msg_id + 1, txid, len(body)) + body)
+
+    def run(self):
+        self.fd = os.open(self.port, os.O_RDWR | os.O_NONBLOCK)
+        for cmd in COMMANDS:
+            self.request('INTERNAL_REGISTER_CMD', INTERNAL_REGISTER_CMD, 0xff,
+                         [(0x0100, struct.pack('<H', cmd))])
+        for ps in self.regs:
+            for ind in WATCHED:
+                self.request('INTERNAL_REGISTER_IND', INTERNAL_REGISTER_IND, ps,
+                             [(0x0100, struct.pack('<H', ind))])
+        while True:
+            self.run_jobs()
+            d = self.queue.pop(0) if self.queue else self.frame(0.2)
+            now = time.monotonic()
+            out = []
+            msg_id = struct.unpack_from('<H', d, 10)[0] if d is not None else 0
+            if msg_id & 0x8000:
+                # Commands may carry another protocol id than the subscription's
+                # (the modem's call control numbers them itself); answer them with
+                # the only registration rather than dropping them.
+                reg = self.regs.get(d[8]) or (next(iter(self.regs.values())) if len(self.regs) == 1 else None)
+                log('MIPC command 0x%04x ps%d' % (msg_id, d[8]))
+                rsp = reg.command(msg_id, mipc_tlvs(d)) if reg else None
+                if rsp is not None:
+                    self.respond(msg_id, d[8], struct.unpack_from('<H', d, 12)[0], rsp)
+            elif d is not None and d[8] in self.regs:
+                if msg_id & 0x4000:
+                    out = [(d[8], r) for r in self.regs[d[8]].indication(msg_id, mipc_tlvs(d), now)]
+            for ps, reg in self.regs.items():
+                out += [(ps, r) for r in reg.tick(now)]
+            for ps, (name, msg_id, tlvs) in out:
+                self.request(name, msg_id, ps, tlvs)
+
+    def start(self):
+        def run():
+            try:
+                self.run()
+            except OSError as e:
+                log('indications:', self.port, e)
+        threading.Thread(target=run, daemon=True).start()
+
+
+# Packet data. ModemManager's bearer asks luma-modemd over D-Bus. A PDN is set
+# up with AT+CGDCONT/AT+CGACT and bound to a network interface with the MIPC
+# data call (field form: 0x0101 APN, 0x0102 APN type 1 = default, 0x0103/0x0104
+# PDP type, 0x0105 auth, 0x8106/0x8107 user/password, 0x0108, 0x0109, 0x010f
+# interface id); the confirmation's 0x0108 is the interface id, carried by
+# ccmni<id + 1> (the IMS PDN is interface 0, ccmni1). Without the AT activation
+# the modem refuses the call; AT+CGACT alone binds no interface. The binding
+# outlives AT+CGACT=0/1, and a second data call for a bound PDN (or one after
+# DATA_DEACT_CALL) is never confirmed, so it is made once per binding and
+# disconnect only deactivates the context. Radio off (airplane mode, a new IA
+# APN) releases the binding; the next connect makes a new data call, as the
+# IMS PDN gets one after each radio on. Each activation brings the router
+# advertisement; the interface gets none while the context stays up. The data
+# switch must follow the activation: sent before a long +CME ERROR: 58xx wait
+# (5843, 5847, the first minutes after boot while IMS sets up, retried for up
+# to a minute) the PDN gets its advertisement but no traffic. On this channel
+# AT+CGACT? lists no contexts, so the activation state is tracked here. The
+# confirmation also carries the network's IPv6 name servers (PCO) in 0x0113
+# and 0x0114.
+DATA_DEACT_CALL = 0x0203        # 0x0101 cid
+# Stock's data switch on the data SIM (0x0100 1 = mobile data on, 0x0101 0,
+# 0x0103 0); without it a bound PDN gets its router advertisement but no traffic.
+DATA_SET_CONFIG = 0x0211
+DATA_ON = [(0x0100, b'\x01'), (0x0101, b'\x00'), (0x0103, b'\x00')]
+DATA_CID = 2                    # the IMS PDN is cid 1
+PDP_TYPES = {'ipv4': ('IP', 1), 'ipv6': ('IPV6', 2), 'ipv4v6': ('IPV4V6', 3)}
+DATA_DNS6 = (0x0113, 0x0114)
+# A context re-activated within a fraction of a second of its deactivation
+# (NetworkManager reconnecting) gets its router advertisement but no traffic;
+# activations 5 s or more apart work.
+DATA_REACTIVATE_AFTER = 5.0
+# An internet PDN activated while IMS is still setting up after boot or radio
+# on (before IMS registration) gets its router advertisement but no traffic,
+# also after a later re-activation; activation waits for IMS (at most this long).
+DATA_WAIT_FOR_IMS = 90.0
+# ModemManager's initial EPS bearer settings (a bearer properties dictionary,
+# as {key: [D-Bus signature, value]}), kept as given across restarts.
+IA_SETTINGS = '/var/lib/luma-titan2e-modem/initial-eps.json'
+IA_SETTING_TYPES = ('s', 'b', 'y', 'n', 'q', 'i', 'u', 'x', 't')
+DATA_PATH = '/org/projectluma/Titan2e/Modem1/Data'
+DATA_IFACE = 'org.projectluma.Titan2e.Modem1.Data'
+DATA_XML = '''<node><interface name="%s">
+  <method name="Connect"><arg direction="in" type="s" name="apn"/><arg direction="in" type="s" name="ip_type"/>
+    <arg direction="out" type="s" name="interface"/><arg direction="out" type="u" name="cid"/>
+    <arg direction="out" type="a{sv}" name="settings"/></method>
+  <method name="Disconnect"><arg direction="in" type="u" name="cid"/></method>
+  <method name="GetInitialEpsBearerSettings"><arg direction="out" type="a{sv}" name="settings"/></method>
+  <method name="SetInitialEpsBearerSettings"><arg direction="in" type="a{sv}" name="settings"/></method>
+</interface></node>''' % DATA_IFACE
+
+
+def data_call_dns6(fields):
+    import socket
+    dns = [socket.inet_ntop(socket.AF_INET6, fields[t]) for t in DATA_DNS6
+           if len(fields.get(t, b'')) == 16 and any(fields[t])]
+    return list(dict.fromkeys(dns))
+
+
+def data_call_tlvs(apn, pdp, interface):
+    return [(0x0101, apn.encode() + b'\0'), (0x0102, struct.pack('<I', 1)),
+            (0x0103, bytes([pdp])), (0x0104, bytes([pdp])), (0x0105, b'\x00'),
+            (0x8106, b'\0'), (0x8107, b'\0'), (0x0108, b'\x00'), (0x0109, struct.pack('<I', 0)),
+            (0x010f, struct.pack('<I', interface))]
+
+
+class DataCalls:
+    """Internet PDN of the subscription on protocol ps; methods run on the
+    indication reader's thread (ind = Indications)."""
+
+    def __init__(self, ps=IA_PS, sleep=time.sleep, settings_path=IA_SETTINGS, clock=time.monotonic):
+        self.ps = ps
+        self.sleep = sleep
+        self.clock = clock
+        self.deactivated = {}           # cid -> clock() of its last deactivation
+        self.settings_path = settings_path
+        self.bound = {}                 # cid -> (interface, APN, settings), for this modem boot
+        self.active = set()             # cids activated and not since deactivated
+
+    # The initial attach (IA) APN: set at boot from the subscription's sources
+    # (attach_config), and by ModemManager, which powers the radio down around
+    # a change so that the next attach uses it. ModemManager compares the
+    # settings it sets with those it reads back, and the ones it is asked for
+    # with those it read at start, so they are returned as given while their
+    # APN is the IA APN in use (also after a restart).
+    def initial_eps(self):
+        apn = LAST_IA.get(self.ps, '')
+        try:
+            with open(self.settings_path) as f:
+                settings = json.load(f)
+        except (OSError, ValueError):
+            settings = {}
+        if not isinstance(settings, dict) or settings.get('apn') != ['s', apn]:
+            settings = {'apn': ['s', apn]}
+        return settings
+
+    def set_initial_eps(self, ind, settings):
+        apn = settings.get('apn', ['s', ''])
+        if apn[0] != 's' or not re.fullmatch(r'[A-Za-z0-9.-]{1,99}', apn[1]):
+            raise ValueError('invalid APN')
+        if any(not isinstance(v, list) or len(v) != 2 or v[0] not in IA_SETTING_TYPES
+               for v in settings.values()):
+            raise ValueError('unsupported setting type')
+        apn = apn[1]
+        if LAST_IA.get(self.ps) != apn:
+            result = ind.request('APN_SET_IA', APN_SET_IA, self.ps, ia_tlvs(apn))
+            if result != 0:
+                raise OSError('initial attach APN refused (result %s)' % result)
+            LAST_IA[self.ps] = apn
+        os.makedirs(os.path.dirname(self.settings_path), mode=0o700, exist_ok=True)
+        temporary = self.settings_path + '.tmp'
+        with open(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
+            json.dump(settings, f, sort_keys=True)
+        os.replace(temporary, self.settings_path)
+        log('IA APN', apn, 'from ModemManager', 'ps%d' % self.ps)
+
+    def connect(self, ind, apn, ip_type):
+        if not re.fullmatch(r'[A-Za-z0-9.-]{1,99}', apn or ''):
+            raise ValueError('invalid APN')
+        pdp_name, pdp = PDP_TYPES.get(ip_type, PDP_TYPES['ipv4v6'])
+        cid = DATA_CID
+        interface, bound_apn, settings = self.bound.get(cid, (None, None, None))
+        if cid in self.active:
+            if bound_apn != apn:
+                raise OSError('the data PDN is up for another APN')
+            log('ps%d data: cid %d on %s (already up)' % (self.ps, cid, interface))
+            return interface, cid, settings
+        if bound_apn != apn:
+            ind.at('AT+CGDCONT=%d,"%s","%s"' % (cid, pdp_name, apn), self.ps)
+        for attempt in range(12):
+            try:
+                ind.at('AT+CGACT=1,%d' % cid, self.ps)
+                break
+            except OSError as e:
+                if not re.search(r'CME ERROR: 58\d\d', str(e)) or attempt == 11:
+                    raise
+                self.sleep(5)
+        self.active.add(cid)
+        ind.request('DATA_SET_CONFIG data on', DATA_SET_CONFIG, self.ps, DATA_ON)
+        if interface is None:
+            # The data call must name the context's PDP type (ModemManager may
+            # have redefined it); a mismatch is refused or never confirmed.
+            defined = re.search(r'\+CGDCONT:\s*%d,"([A-Z0-9]+)"' % cid, ind.at('AT+CGDCONT?', self.ps))
+            pdp = {name: code for name, code in PDP_TYPES.values()}.get(defined.group(1) if defined else '', pdp)
+            result, fields = ind.request_tlvs('DATA_ACT_CALL internet', DATA_ACT_CALL, self.ps,
+                                              data_call_tlvs(apn, pdp, cid - 1), 30.0)
+            if result != 0 or not fields.get(0x0108):
+                raise OSError('data call refused')
+            interface = 'ccmni%d' % (fields[0x0108][0] + 1)
+            settings = {'dns6': data_call_dns6(fields)}
+        self.bound[cid] = (interface, apn, settings)
+        log('ps%d data: cid %d on %s, %d name servers' % (self.ps, cid, interface, len(settings['dns6'])))
+        return interface, cid, settings
+
+    def reactivate_wait(self, cid=DATA_CID):
+        """Seconds to wait before activating cid again (spent off the reader)."""
+        return max(0.0, DATA_REACTIVATE_AFTER - (self.clock() - self.deactivated.get(cid, -DATA_REACTIVATE_AFTER)))
+
+    def disconnect(self, ind, cid):
+        self.active.discard(cid)
+        try:
+            ind.at('AT+CGACT=0,%d' % cid, self.ps)
+        except OSError:
+            pass                       # already down
+        self.deactivated[cid] = self.clock()
+        log('ps%d data: cid %d disconnected' % (self.ps, cid))
+
+    def radio_off(self):
+        # The network released the PDN and the modem its interface binding;
+        # the next connect activates and binds again.
+        self.active.clear()
+        self.bound.clear()
+
+
+class DataService:
+    """D-Bus face of DataCalls on luma-modemd's system bus connection (the
+    eSIM owner owns the bus name and runs the main loop). Only the current
+    ModemManager may call it."""
+
+    def __init__(self, indications, data, ready=lambda: True, sleep=time.sleep, clock=time.monotonic):
+        self.ind, self.data = indications, data
+        self.ready, self.sleep, self.clock = ready, sleep, clock
+
+    def wait_until_ready(self):
+        """Hold a data call until the modem can carry it (on the caller's thread)."""
+        deadline = self.clock() + DATA_WAIT_FOR_IMS
+        while not self.ready() and self.clock() < deadline:
+            self.sleep(0.5)
+        self.sleep(self.data.reactivate_wait())
+
+    def start(self):
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+
+        def modem_manager(sender):
+            try:
+                reply = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                                      'GetNameOwner', GLib.Variant('(s)', ('org.freedesktop.ModemManager1',)),
+                                      GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NO_AUTO_START, 2000, None)
+                return reply.unpack()[0] == sender
+            except GLib.Error:
+                return False
+
+        def work(name, args, invocation):
+            try:
+                if name == 'Connect':
+                    self.wait_until_ready()
+                    interface, cid, settings = self.ind.submit(lambda ind: self.data.connect(ind, *args))
+                    invocation.return_value(GLib.Variant('(sua{sv})', (interface, cid, {
+                        key: GLib.Variant('as', value) for key, value in settings.items()})))
+                elif name == 'GetInitialEpsBearerSettings':
+                    invocation.return_value(GLib.Variant('(a{sv})', ({
+                        key: GLib.Variant(sig, value) for key, (sig, value) in self.data.initial_eps().items()},)))
+                elif name == 'SetInitialEpsBearerSettings':
+                    self.ind.submit(lambda ind: self.data.set_initial_eps(ind, *args))
+                    invocation.return_value(None)
+                elif name == 'Disconnect':
+                    self.ind.submit(lambda ind: self.data.disconnect(ind, *args))
+                    invocation.return_value(None)
+            except (OSError, ValueError, TimeoutError) as e:
+                log('data:', name, 'failed:', e)
+                invocation.return_dbus_error(DATA_IFACE + '.Failed', str(e))
+
+        def method(connection, sender, path, interface, name, parameters, invocation):
+            if not modem_manager(sender):
+                invocation.return_dbus_error(DATA_IFACE + '.Denied', 'Only ModemManager may manage data calls')
+                return
+            if name == 'SetInitialEpsBearerSettings':      # keep each value's type
+                settings = parameters.get_child_value(0)
+                entries = (settings.get_child_value(i) for i in range(settings.n_children()))
+                args = ({e.get_child_value(0).get_string(): [e.get_child_value(1).get_variant().get_type_string(),
+                                                             e.get_child_value(1).get_variant().unpack()]
+                         for e in entries},)
+            else:
+                args = parameters.unpack()
+            threading.Thread(target=work, args=(name, args, invocation), daemon=True).start()
+
+        node = Gio.DBusNodeInfo.new_for_xml(DATA_XML)
+        bus.register_object(DATA_PATH, node.interfaces[0], method, None, None)
+
+
+def esim_load():
+    """The native modem owns the board SIM2 switch and mediated eUICC transport."""
+    from importlib.machinery import SourceFileLoader
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'luma-titan2e-esim')
+    module = SourceFileLoader('luma_titan2e_esim', path).load_module()
+    return module, module.Euicc()
+
+
+def notify_ready():
+    address = os.environ.get('NOTIFY_SOCKET')
+    if address:
+        import socket
+        if address.startswith('@'):
+            address = '\0' + address[1:]
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.connect(address)
+            sock.sendall(b'READY=1')
+
+
+def speech_start():
+    """Modem speech control (luma-titan2e-speech, next to this program)."""
+    from importlib.machinery import SourceFileLoader
+    here = os.path.dirname(os.path.realpath(__file__))
+    for name in ('luma-titan2e-speech', 'luma-titan2e-speech.py'):
+        path = os.path.join(here, name)
+        if os.path.exists(path):
+            break
+    else:
+        log('speech control not installed')
+        return
+    try:
+        mod = SourceFileLoader('luma_titan2e_speech', path).load_module()
+        mod.Speech(log).start()
+    except Exception as e:  # calls work without it, only without audio
+        log('speech control:', e)
+
+
+def imei_ok(when):
+    """Compare the IMEI files with the read-only originals (luma-titan2e-modem-fs
+    restores any that differ). True if they were identical."""
+    import subprocess
+    try:
+        r = subprocess.run(IMEI_CHECK, capture_output=True, text=True)
+    except OSError as e:
+        log('IMEI check', when, 'failed', e)
+        return False
+    log('IMEI check', when, 'rc', r.returncode, r.stderr.strip())
+    return r.returncode == 0
+
+
+def imei_watch():
+    # After the modem settles, then periodically: on any difference stop the modem
+    # and stop serving its file system.
+    time.sleep(60)
+    while True:
+        if not imei_ok('settled'):
+            try:
+                # DO_STOP_MD reads an unsigned int from user memory (0: normal stop).
+                log('DO_STOP_MD', md_ioctl(CCCI_IOC_DO_STOP_MD, struct.pack('<I', 0)))
+            except OSError as e:
+                log('DO_STOP_MD failed', e)
+            with open('/dev/kmsg', 'w') as k:
+                k.write('<3>luma-modemd: IMEI files changed in the modem file store; '
+                        'restored from the originals, modem stopped\n')
+            os._exit(3)
+        time.sleep(600)
+
+
+def main():
+    ctypes.CDLL(None).prctl(15, b'luma-modemd', 0, 0, 0)
+    for d in DRIVES.values():
+        os.makedirs(os.path.join(ROOT, d), exist_ok=True)
+    start = '--no-start' not in sys.argv
+    if start and not imei_ok('before start'):
+        log('IMEI files differed from the originals (restored); modem not started')
+        return 3
+    threading.Thread(target=fs_thread, args=('/dev/ccci_fs',), daemon=True).start()
+    threading.Thread(target=rpc_thread, args=('/dev/ccci_rpc',), daemon=True).start()
+    time.sleep(0.5)
+    if start:
+        esim_module, esim_card = esim_load()
+        init_ccb_ctrl()
+        set_boot_data()
+        log('DO_START_MD', md_ioctl(CCCI_IOC_DO_START_MD))
+        threading.Thread(target=imei_watch, daemon=True).start()
+        modem_boot_config()
+        primary = esim_card.boot_select()
+        errors = (OSError, esim_module.Refused)
+        # Before the attach below, so that its registration is seen.
+        registration = Registration(IA_PS, ims=os.environ.get('LUMA_MODEM_IMS') != '0')
+        indications = Indications([registration])
+        indications.start()
+        try:
+            mipc = esim_module.MipcAt()
+        except OSError as e:
+            log('IA APN: native MIPC port unavailable:', e)
+        else:
+            try:
+                attach_config(mipc, IA_PS, errors)
+            finally:
+                mipc.close()
+        esim_owner = esim_module.Owner(log, primary,
+                                       attach=lambda mipc: attach_config(mipc, IA_PS, errors))
+        registration.busy = lambda: esim_owner.lease is not None
+        esim_owner.start()
+        data = DataCalls(IA_PS)
+        registration.on_radio_off.append(data.radio_off)
+        try:
+            DataService(indications, data,
+                        ready=lambda: registration.ims_registered or not registration.ims).start()
+        except Exception as e:          # calls and SMS work without packet data
+            log('data service:', e)
+    time.sleep(2)
+    threading.Thread(target=monitor_thread, args=('/dev/ccci_monitor',), daemon=True).start()
+    if start:
+        speech_start()
+    notify_ready()
+    while True:
+        time.sleep(60)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

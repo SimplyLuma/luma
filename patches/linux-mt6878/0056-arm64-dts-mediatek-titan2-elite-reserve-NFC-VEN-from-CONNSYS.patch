@@ -1,0 +1,38 @@
+From 08b76ddad1709dcf8fca50921656c1717fe8764d Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 21 Oct 2026 22:33:25 -0500
+Subject: [PATCH] arm64: dts: mediatek: titan2-elite: reserve NFC VEN from
+ CONNSYS
+
+GPIO35 is the THN31 enable, not a Wi-Fi front-end control on this board.
+The CONNSYS default state remuxes it to function 1 after the GPIO hog has
+set its output latch high, leaving both SIM interfaces inaccessible.
+
+Drop GPIO35 from the CONNSYS pin state so the board GPIO hog retains
+control throughout boot and later Wi-Fi initialization. A native physical
+test confirmed the conflicting owner and mode, and changing only this mux
+field back to GPIO restored the high level. The final boot test must
+establish SIM access with the corrected source and no live register write.
+---
+ .../dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi    | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
+index 64d43ac..222f2a4 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite-connsys.dtsi
+@@ -16,9 +16,9 @@
+ 	connsys_fem_pins: connsys-fem-pins {
+ 		/* wlan7207h (2.4 GHz) and wlan7207c (5 GHz) front-end control */
+ 		/* GPIO37, 39, 189, 191 and 192 are camera power GPIOs on this board. */
++		/* GPIO35 is NFC VEN and must stay a GPIO for native SIM access. */
+ 		pins-wf0 {
+-			pinmux = <0x2101>, <0x2201>, <0x2301>, <0x2401>,
+-				 <0x2801>;
++			pinmux = <0x2101>, <0x2201>, <0x2401>, <0x2801>;
+ 		};
+ 		/* GPIO42/43 stay off this list: stock leaves them in GPIO mode
+ 		 * with Wi-Fi on, and they are the speaker amp I2S4 BCK/LRCK. */
+-- 
+2.54.0 (Apple Git-157)
+

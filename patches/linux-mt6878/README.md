@@ -5,7 +5,7 @@ commit `12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422` with
 `git am --committer-date-is-author-date`, committing as the patch author, and
 build with `config/mobile/titan2e-kernel.config` and `LLVM=1`.
 `scripts/packages/build-titan2e-kernel.sh` does all of this; the kernel release
-is then `7.2.0-luma-titan2e-m2-g7035a815908b` on every build.
+is then `7.2.0-luma-titan2e-m2-g7083190aafdc` on every build.
 
 | Patches | What |
 | --- | --- |
@@ -17,6 +17,15 @@ is then `7.2.0-luma-titan2e-m2-g7035a815908b` on every build.
 | 0013-0016 | GPUEB mailbox and GPUFreq reply fixes; MT6878 GPUEB and MFG power domain for the Mali-G615. |
 | 0017-0018 | Wi-Fi/Bluetooth (CONNSYS) device tree nodes. |
 | 0019-0023 | Audio: MT6878 AFE, MT6369 codec, FourSemi FS18xx/FS19xx amplifiers, the sound card and its device tree. |
+| 0024-0033 | Rear camera: Sony IMX766, MT6878 camera power domains, seninf and CAMSV raw capture, MM M4U. |
+| 0034-0036 | simpledrm vblank from the panel and page flips paced to the refresh. |
+| 0037-0039 | MT6363 AUXADC VIN1 channel and PMIC child nodes. |
+| 0040-0047 | OmniVision OV32B40 front and OV50D40 telephoto cameras; seninf on CSI ports 0-2. |
+| 0048-0050 | MT6363/MT6373 AUXADC fix; MT6369 and AFE rebind fixes. |
+| 0051-0053 | The modem PCM interface, hostless speech front end and speech links. |
+| 0054-0056 | NFC VEN kept asserted for SIM access and reserved from CONNSYS; GPIO hogs for MT6878 pinctrl. |
+| 0057-0063 | MT6375 charger, MT6369 VIBR vibration motor, AW36404 keyboard backlight. |
+| 0064 | Panel reset and re-init when the tearing signal does not return after wake. |
 
 0019 and 0020 port MediaTek's GPL-2.0 MT6878 AFE and MT6369 codec drivers from
 [motorola-mt6878/kernel_device_modules](https://github.com/motorola-mt6878/kernel_device_modules)

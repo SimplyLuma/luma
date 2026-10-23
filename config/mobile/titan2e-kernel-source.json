@@ -4,8 +4,8 @@
   "commit": "12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422",
   "patches": "patches/linux-mt6878",
   "config": "config/mobile/titan2e-kernel.config",
-  "release": "7.2.0-luma-titan2e-m2-g7035a815908b",
-  "config_release": 3,
+  "release": "7.2.0-luma-titan2e-m2-g7083190aafdc",
+  "config_release": 4,
   "initramfs": {
     "init": "config/mobile/titan2e-initramfs/init",
     "busybox": {

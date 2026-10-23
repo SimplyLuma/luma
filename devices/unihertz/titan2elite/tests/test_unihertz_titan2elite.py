@@ -51,7 +51,7 @@ class UnihertzTitan2Elite(unittest.TestCase):
         self.assertEqual(pins["dtb"], kernel["dtb"])
         self.assertEqual(pins["config"], kernel["config"])
         self.assertEqual(pins["boot_partition_size"], self.boot["partition_size"])
-        self.assertEqual(len(list((ROOT / pins["patches"]).glob("[0-9][0-9][0-9][0-9]-*.patch"))), 53)
+        self.assertEqual(len(list((ROOT / pins["patches"]).glob("[0-9][0-9][0-9][0-9]-*.patch"))), 64)
 
     def test_kernel_config_has_no_bring_up_options(self):
         config = (ROOT / self.device["kernel"]["config"]).read_text()
@@ -129,14 +129,19 @@ class UnihertzTitan2Elite(unittest.TestCase):
         spec = (ROOT / "packaging" / "rpm" / "luma-titan2e-platform.spec").read_text()
         self.assertIn("%{_sbindir}/luma-titan2e-boot-android", spec)
 
-    def test_no_modem_services_ship(self):
-        spec = (ROOT / "packaging" / "rpm" / "luma-titan2e-platform.spec").read_text()
-        for name in ("luma-modemd", "luma-titan2e-speech", "VoiceCall", "lpac", "esim"):
-            self.assertNotIn(name, spec)
+    def test_modem_userspace_has_licence_and_provenance(self):
         platform = ROOT / "src" / "luma-titan2e-platform"
-        for pattern in ("*modem*", "*speech*", "*VoiceCall*", "*esim*"):
-            self.assertFalse(list(platform.glob(pattern)), pattern)
-
+        self.assertTrue((platform / "PROVENANCE.md").is_file())
+        for name in ("luma-modemd", "luma-titan2e-speech", "luma-titan2e-esim", "luma-titan2e-modem-fs",
+                     "luma-titan2e-modem-up", "luma-titan2e-modem.service", "78-luma-titan2e-modem.rules",
+                     "org.projectluma.Titan2e.Modem1.conf"):
+            self.assertIn("SPDX-License-Identifier: Apache-2.0", (platform / name).read_text()[:400], name)
+        for pattern in ("*.dis", "*.bin", "*.img", "*.so"):
+            self.assertFalse(list(ROOT.joinpath("src", "luma-titan2e-platform").glob(pattern)), pattern)
+            self.assertFalse(list(ROOT.joinpath("packaging", "titan2e-ccci").glob(pattern)), pattern)
+        patch = (ROOT / "packaging" / "titan2e-ccci" / "titan2e-ccci.patch").read_text()
+        self.assertNotIn("+++ b/compat/rps_perf.h", patch)
+        self.assertNotIn("+++ b/compat/slbc_ops.h", patch)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,179 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 23:51:59 -0400
+Subject: [PATCH 62/65] leds: add the Awinic AW36404 in torch mode
+
+1-wire pulse dimming: the LED current is 6.25 mA per rising edge on EN after a
+shutdown (EN low > 2.5 ms). The driver shuts the chip down, sends the step count
+with interrupts off (2 us pulses, the datasheet allows 0.5-10 us) and holds EN
+high, in torch mode. The board limits the steps with awinic,min-step/max-step.
+---
+ drivers/leds/Kconfig        |   9 +++
+ drivers/leds/Makefile       |   1 +
+ drivers/leds/leds-aw36404.c | 122 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 132 insertions(+)
+ create mode 100644 drivers/leds/leds-aw36404.c
+
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index f4a0a3c8c..10c47ee56 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -137,6 +137,15 @@ config LEDS_AW200XX
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called leds-aw200xx.
+ 
++config LEDS_AW36404
++	tristate "LED support for the Awinic AW36404 in torch mode"
++	depends on LEDS_CLASS
++	depends on GPIOLIB || COMPILE_TEST
++	help
++	  The Awinic AW36404 is a 1-wire pulse dimmed LED driver. This
++	  driver runs it in torch mode as a plain LED, within the current
++	  steps the board allows.
++
+ config LEDS_AW2013
+ 	tristate "LED support for Awinic AW2013"
+ 	depends on LEDS_CLASS && I2C && OF
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index 7db376891..99fee200a 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -18,6 +18,7 @@ obj-$(CONFIG_LEDS_ARIEL)		+= leds-ariel.o
+ obj-$(CONFIG_LEDS_OSRAM_AMS_AS3668)	+= leds-as3668.o
+ obj-$(CONFIG_LEDS_AW200XX)		+= leds-aw200xx.o
+ obj-$(CONFIG_LEDS_AW2013)		+= leds-aw2013.o
++obj-$(CONFIG_LEDS_AW36404)		+= leds-aw36404.o
+ obj-$(CONFIG_LEDS_BCM6328)		+= leds-bcm6328.o
+ obj-$(CONFIG_LEDS_BCM6358)		+= leds-bcm6358.o
+ obj-$(CONFIG_LEDS_BD2606MVV)		+= leds-bd2606mvv.o
+diff --git a/drivers/leds/leds-aw36404.c b/drivers/leds/leds-aw36404.c
+new file mode 100644
+index 000000000..960fdcc64
+--- /dev/null
++++ b/drivers/leds/leds-aw36404.c
+@@ -0,0 +1,122 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Awinic AW36404 LED driver in torch mode, as a plain LED.
++ *
++ * The LED current is 6.25 mA times the number of rising edges on EN after
++ * a shutdown (EN low for longer than 2.5 ms); FLASH/TORCH low selects the
++ * torch mode, which has no timeout. The steps a board may use are bounded
++ * by awinic,min-step and awinic,max-step.
++ */
++
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/irqflags.h>
++#include <linux/leds.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/platform_device.h>
++#include <linux/property.h>
++
++#define AW36404_MAX_STEPS	64
++#define AW36404_PULSE_US	2	/* high and low time: 0.5 to 10 us */
++#define AW36404_SHDN_US		3000	/* EN low time that resets the count */
++
++struct aw36404 {
++	struct led_classdev cdev;
++	struct gpio_desc *en;
++	struct gpio_desc *mode;
++	struct mutex lock;
++	u32 min_step;
++};
++
++static void aw36404_set_step(struct aw36404 *aw, unsigned int step)
++{
++	unsigned long flags;
++	unsigned int i;
++
++	gpiod_set_value_cansleep(aw->en, 0);
++	usleep_range(AW36404_SHDN_US, AW36404_SHDN_US + 500);
++	if (!step)
++		return;
++
++	/* Each rising edge is one step; keep the pulses inside 10 us. */
++	local_irq_save(flags);
++	for (i = 0; i < step; i++) {
++		gpiod_set_value(aw->en, 1);
++		udelay(AW36404_PULSE_US);
++		if (i + 1 < step) {
++			gpiod_set_value(aw->en, 0);
++			udelay(AW36404_PULSE_US);
++		}
++	}
++	local_irq_restore(flags);
++	/* EN stays high: the current ramps up after 350-450 us. */
++}
++
++static int aw36404_brightness_set(struct led_classdev *cdev,
++				  enum led_brightness brightness)
++{
++	struct aw36404 *aw = container_of(cdev, struct aw36404, cdev);
++
++	mutex_lock(&aw->lock);
++	aw36404_set_step(aw, brightness ? aw->min_step + brightness - 1 : 0);
++	mutex_unlock(&aw->lock);
++	return 0;
++}
++
++static int aw36404_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct led_init_data init_data = {};
++	struct aw36404 *aw;
++	u32 max_step;
++	int ret;
++
++	aw = devm_kzalloc(dev, sizeof(*aw), GFP_KERNEL);
++	if (!aw)
++		return -ENOMEM;
++
++	if (device_property_read_u32(dev, "awinic,min-step", &aw->min_step) ||
++	    device_property_read_u32(dev, "awinic,max-step", &max_step) ||
++	    !aw->min_step || aw->min_step > max_step ||
++	    max_step >= AW36404_MAX_STEPS)
++		return dev_err_probe(dev, -EINVAL, "invalid step range\n");
++
++	/* Torch mode first, then EN low: the LED starts off. */
++	aw->mode = devm_gpiod_get(dev, "mode", GPIOD_OUT_LOW);
++	if (IS_ERR(aw->mode))
++		return dev_err_probe(dev, PTR_ERR(aw->mode), "failed to get mode gpio\n");
++	aw->en = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
++	if (IS_ERR(aw->en))
++		return dev_err_probe(dev, PTR_ERR(aw->en), "failed to get enable gpio\n");
++	if (gpiod_cansleep(aw->en))
++		return dev_err_probe(dev, -EINVAL, "enable gpio must not sleep\n");
++
++	ret = devm_mutex_init(dev, &aw->lock);
++	if (ret)
++		return ret;
++
++	aw->cdev.max_brightness = max_step - aw->min_step + 1;
++	aw->cdev.brightness_set_blocking = aw36404_brightness_set;
++	init_data.fwnode = dev_fwnode(dev);
++	return devm_led_classdev_register_ext(dev, &aw->cdev, &init_data);
++}
++
++static const struct of_device_id aw36404_of_match[] = {
++	{ .compatible = "awinic,aw36404" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, aw36404_of_match);
++
++static struct platform_driver aw36404_driver = {
++	.driver = {
++		.name = "leds-aw36404",
++		.of_match_table = aw36404_of_match,
++	},
++	.probe = aw36404_probe,
++};
++module_platform_driver(aw36404_driver);
++
++MODULE_DESCRIPTION("Awinic AW36404 LED driver (torch mode)");
++MODULE_LICENSE("GPL");
+-- 
+2.55.0
+

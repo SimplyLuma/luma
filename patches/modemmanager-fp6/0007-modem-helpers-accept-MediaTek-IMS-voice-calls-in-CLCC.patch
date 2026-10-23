@@ -1,0 +1,64 @@
+From be7923fe40ad4ef85207e8bfe668edcf6e4b34d9 Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Fri, 23 Oct 2026 02:38:29 -0400
+Subject: [PATCH 2/3] modem-helpers: accept MediaTek IMS voice calls in +CLCC
+
+MediaTek modems list calls over IMS (VoLTE/VoNR) with the vendor-specific voice mode 20; they were skipped as non-voice calls, so incoming IMS calls never reached the call list.
+---
+ src/mm-modem-helpers.c         |  5 ++++-
+ src/tests/test-modem-helpers.c | 15 +++++++++++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/src/mm-modem-helpers.c b/src/mm-modem-helpers.c
+index ed04a32..d7373fc 100644
+--- a/src/mm-modem-helpers.c
++++ b/src/mm-modem-helpers.c
+@@ -669,8 +669,11 @@ mm_3gpp_parse_clcc_response (const gchar  *str,
+          * 7: Alternating voice/data, data mode
+          * 8: Alternating voice/fax, fax mode
+          * 9: unknown
++         *
++         * MediaTek modems report calls over IMS (VoLTE/VoNR) with the
++         * vendor-specific voice mode 20.
+          */
+-        if (aux != 0 && aux != 3 && aux != 4 && aux != 5) {
++        if (aux != 0 && aux != 3 && aux != 4 && aux != 5 && aux != 20) {
+             mm_obj_dbg (log_object, "+CLCC line is not a voice call, skipping.");
+             goto next;
+         }
+diff --git a/src/tests/test-modem-helpers.c b/src/tests/test-modem-helpers.c
+index 7684fce..2ccd934 100644
+--- a/src/tests/test-modem-helpers.c
++++ b/src/tests/test-modem-helpers.c
+@@ -4707,6 +4707,20 @@ test_clcc_response_ignore_non_voice (void)
+     common_test_clcc_response (response, expected_call_info_list, G_N_ELEMENTS (expected_call_info_list));
+ }
+ 
++static void
++test_clcc_response_mediatek_ims_voice (void)
++{
++    static const MMCallInfo expected_call_info_list[] = {
++        { 1, MM_CALL_DIRECTION_INCOMING, MM_CALL_STATE_RINGING_IN, (gchar *) "+15550100" },
++    };
++
++    /* MediaTek incoming call over IMS: voice mode 20 */
++    const gchar *response =
++        "+CLCC: 1,1,4,20,0,\"+15550100\",145,,,0\r\n";
++
++    common_test_clcc_response (response, expected_call_info_list, G_N_ELEMENTS (expected_call_info_list));
++}
++
+ /*****************************************************************************/
+ /* Test +CRSM EF_ECC read data parsing */
+ 
+@@ -5410,6 +5424,7 @@ int main (int argc, char **argv)
+     g_test_suite_add (suite, TESTCASE (test_clcc_response_single_long, NULL));
+     g_test_suite_add (suite, TESTCASE (test_clcc_response_multiple, NULL));
+     g_test_suite_add (suite, TESTCASE (test_clcc_response_ignore_non_voice, NULL));
++    g_test_suite_add (suite, TESTCASE (test_clcc_response_mediatek_ims_voice, NULL));
+ 
+     g_test_suite_add (suite, TESTCASE (test_emergency_numbers, NULL));
+ 
+-- 
+2.55.0
+

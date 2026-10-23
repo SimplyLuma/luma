@@ -12,10 +12,10 @@
     "commit": "12f2e9f040d0049f3f5ce5a7e53bf5ef27b46422",
     "patches": "patches/linux-mt6878",
     "config": "config/mobile/titan2e-kernel.config",
-    "release": "7.2.0-luma-titan2e-m2-g7035a815908b",
+    "release": "7.2.0-luma-titan2e-m2-g7083190aafdc",
     "build": "scripts/packages/build-titan2e-kernel.sh",
     "pins": "config/mobile/titan2e-kernel-source.json",
-    "config_release": 3
+    "config_release": 4
   },
   "initramfs": {
     "init": "config/mobile/titan2e-initramfs/init",
@@ -32,7 +32,8 @@
       "commit": "6586afaa0622648a6e740fb4a83f4b8057346bc2",
       "used_for": [
         "patches/linux-mt6878 0019-0021, 0052 (AFE, MT6369 codec, FourSemi amplifier, modem PCM)",
-        "packaging/titan2e-connsys (connadp)"
+        "packaging/titan2e-connsys (connadp)",
+        "packaging/titan2e-ccci (ccci_util, eccci, ccmni; rps_perf.h and slbc_ops.h fetched unchanged)"
       ]
     },
     {
@@ -77,7 +78,7 @@
     "gpu": "Fedora 44 linux-firmware >= 20260309 (arm/mali/arch11.8/mali_csffw.bin)"
   },
   "public_boot_image_published": false,
-  "modem_supported": false,
+  "modem_supported": true,
   "cameras_supported": true,
   "camera": {
     "libcamera_patches": "patches/libcamera (0032-0034 added for this device)",
@@ -87,5 +88,10 @@
     "luma-titan2e.img.zst",
     "luma-titan2e-boot.img",
     "SHA256SUMS"
-  ]
+  ],
+  "modem": {
+    "userspace": "src/luma-titan2e-platform (luma-modemd, luma-titan2e-speech, luma-titan2e-esim)",
+    "provenance": "src/luma-titan2e-platform/PROVENANCE.md",
+    "modemmanager_patches": "patches/modemmanager-fp6 0004-0011"
+  }
 }

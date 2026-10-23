@@ -1,0 +1,296 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 21 Oct 2026 01:09:10 -0400
+Subject: [PATCH 64/65] soc: mediatek: titan2e-dsi-kick: reset the panel when
+ TE does not return after wake
+
+A VTDR6130A that misses the wake from sleep stays black and sends no TE.
+Wait up to 100 ms for TE after sleep-out; without it, pulse the panel reset
+(reset-gpios) and send the stock initialisation again, at most twice. DSI
+writes now take generic packets and payloads up to 124 bytes for the
+compression parameter set. The DT gives the dsi-kick node the reset GPIO.
+---
+ .../mediatek/mt6878-unihertz-titan2-elite.dts |   1 +
+ drivers/soc/mediatek/titan2e-dsi-kick.c       | 171 ++++++++++++++++--
+ 2 files changed, 154 insertions(+), 18 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+index a2099c29e..cec7ff415 100644
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -292,6 +292,7 @@ dsi-kick@1401a000 {
+ 		compatible = "unihertz,titan2e-dsi-kick";
+ 		reg = <0x1401a000 0x100>, <0x14001000 0x100>, <0x14002000 0x100>;
+ 		interrupts = <GIC_SPI 328 IRQ_TYPE_LEVEL_HIGH 0>;	/* DSI0: TE */
++		reset-gpios = <&pio 90 GPIO_ACTIVE_HIGH>;	/* VTDR6130A reset */
+ 	};
+ 
+ 	spi3: spi@11013000 {
+diff --git a/drivers/soc/mediatek/titan2e-dsi-kick.c b/drivers/soc/mediatek/titan2e-dsi-kick.c
+index 9789eb6cb..2004c263e 100644
+--- a/drivers/soc/mediatek/titan2e-dsi-kick.c
++++ b/drivers/soc/mediatek/titan2e-dsi-kick.c
+@@ -18,6 +18,9 @@
+  * refresh. A slow timer refresh remains as a fallback, and frames are sent
+  * directly if TE stops. A backlight device drives the panel brightness.
+  *
++ * A panel that misses a wake from sleep stays black and sends no TE; it is
++ * then reset and initialised again with the stock VTDR6130A sequence.
++ *
+  * The driver is also simpledrm's vblank source: on every TE slot that may
+  * start a frame (every te_skip-th TE, 60 Hz) it reports a vblank, so page
+  * flips complete at the panel's refresh, in step with the transfers, instead
+@@ -27,6 +30,7 @@
+ #include <linux/backlight.h>
+ #include <linux/bits.h>
+ #include <linux/delay.h>
++#include <linux/gpio/consumer.h>
+ #include <linux/hrtimer.h>
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+@@ -51,7 +55,7 @@
+ #define DSI_CMDQ_SIZE		0x60
+ #define DSI_CMDQ_SIZE_SEL	BIT(15)
+ #define DSI_CMDQ0		0xd00
+-#define DSI_CMDQ_WORDS		4
++#define DSI_CMDQ_WORDS		32	/* 124-byte payloads */
+ 
+ #define DSI_CFG_LONG		0x02
+ #define DSI_CFG_HSTX		0x08
+@@ -76,6 +80,9 @@ static unsigned int te_delay_us;
+ module_param(te_delay_us, uint, 0644);
+ static unsigned int te_skip = 2;
+ module_param(te_skip, uint, 0644);
++/* Test the recovery: the next wake resets and re-initialises the panel. */
++static bool reset_on_wake;
++module_param(reset_on_wake, bool, 0644);
+ 
+ struct titan2e_kick {
+ 	struct device *dev;
+@@ -85,6 +92,7 @@ struct titan2e_kick {
+ 	struct hrtimer delay_timer;	/* te_delay_us after TE */
+ 	struct mutex lock;		/* DCS commands and panel power */
+ 	struct backlight_device *bl;
++	struct gpio_desc *reset;
+ 	struct notifier_block crtc_nb;
+ 	struct notifier_block vblank_nb;
+ 	spinlock_t slock;		/* the fields below, vs. the TE interrupt */
+@@ -236,10 +244,15 @@ static int titan2e_kick_thread(void *data)
+ 	return 0;
+ }
+ 
+-/* Send one DCS write; caller holds k->lock. */
+-static int titan2e_dcs_write(struct titan2e_kick *k, const u8 *data, size_t len)
++/*
++ * Send one DCS or generic write, in high speed or (lp) low power; caller
++ * holds k->lock. The stock panel driver sends everything in low power, and a
++ * panel initialised that way takes no high-speed commands.
++ */
++static int titan2e_dsi_write(struct titan2e_kick *k, const u8 *data, size_t len, bool generic,
++			     bool lp)
+ {
+-	u32 saved[DSI_CMDQ_WORDS], saved_size, word, val;
++	u32 hs = lp ? 0 : DSI_CFG_HSTX, saved[DSI_CMDQ_WORDS], saved_size, word, val;
+ 	unsigned int i, words;
+ 	int ret;
+ 
+@@ -255,15 +268,23 @@ static int titan2e_dcs_write(struct titan2e_kick *k, const u8 *data, size_t len)
+ 	saved_size = readl(k->dsi + DSI_CMDQ_SIZE);
+ 
+ 	if (len <= 2) {
+-		u8 type = len == 1 ? MIPI_DSI_DCS_SHORT_WRITE : MIPI_DSI_DCS_SHORT_WRITE_PARAM;
++		u8 type;
++
++		if (generic)
++			type = len == 1 ? MIPI_DSI_GENERIC_SHORT_WRITE_1_PARAM :
++					  MIPI_DSI_GENERIC_SHORT_WRITE_2_PARAM;
++		else
++			type = len == 1 ? MIPI_DSI_DCS_SHORT_WRITE : MIPI_DSI_DCS_SHORT_WRITE_PARAM;
+ 
+-		word = DSI_CFG_HSTX | (type << 8) | (data[0] << 16);
++		word = hs | (type << 8) | (data[0] << 16);
+ 		if (len == 2)
+ 			word |= data[1] << 24;
+ 		writel(word, k->dsi + DSI_CMDQ0);
+ 		words = 1;
+ 	} else {
+-		writel(DSI_CFG_LONG | DSI_CFG_HSTX | (MIPI_DSI_DCS_LONG_WRITE << 8) | (len << 16),
++		u8 type = generic ? MIPI_DSI_GENERIC_LONG_WRITE : MIPI_DSI_DCS_LONG_WRITE;
++
++		writel(DSI_CFG_LONG | hs | (type << 8) | (len << 16),
+ 		       k->dsi + DSI_CMDQ0);
+ 		words = 1 + DIV_ROUND_UP(len, 4);
+ 		for (i = 1; i < words; i++) {
+@@ -286,37 +307,146 @@ static int titan2e_dcs_write(struct titan2e_kick *k, const u8 *data, size_t len)
+ 	writel(saved_size, k->dsi + DSI_CMDQ_SIZE);
+ 
+ 	if (ret)
+-		dev_warn_ratelimited(k->dev, "DCS 0x%02x not acknowledged\n", data[0]);
++		dev_warn_ratelimited(k->dev, "DSI write 0x%02x not acknowledged\n", data[0]);
+ 	return ret;
+ }
+ 
++static int titan2e_dcs_write(struct titan2e_kick *k, const u8 *data, size_t len)
++{
++	return titan2e_dsi_write(k, data, len, false, true);
++}
++
++struct titan2e_cmd {
++	u8 type;
++	u8 len;
++	u16 delay_ms;
++	const u8 *data;
++};
++
++enum { CMD_DCS, CMD_GENERIC, CMD_DELAY };
++
++#define DCS(...)	{ CMD_DCS, sizeof((const u8[]){ __VA_ARGS__ }), 0, (const u8[]){ __VA_ARGS__ } }
++#define GEN(...)	{ CMD_GENERIC, sizeof((const u8[]){ __VA_ARGS__ }), 0, (const u8[]){ __VA_ARGS__ } }
++#define DELAY(ms)	{ CMD_DELAY, 0, ms, NULL }
++
++/* VTDR6130A initialisation after reset, as the stock panel driver sends it. */
++static const struct titan2e_cmd titan2e_panel_init[] = {
++	DCS(0x03, 0x01), DCS(0x35, 0x00), DCS(0x53, 0x20), DCS(0x55, 0x10),
++	DCS(0x5e, 0x00), DCS(0x59, 0x09), DCS(0x6c, 0x00), DCS(0x6d, 0x00),
++	DCS(0x6f, 0x02),
++	DCS(0x70, 0x11, 0x00, 0x00, 0x89, 0x30, 0x80, 0x04, 0xb0, 0x04, 0x38, 0x00, 0x14,
++	    0x02, 0x1c, 0x02, 0x1c, 0x02, 0x00, 0x02, 0x25, 0x00, 0x20, 0x01, 0xd5, 0x00,
++	    0x07, 0x00, 0x0d, 0x05, 0x7a, 0x05, 0x16, 0x18, 0x00, 0x10, 0xf0, 0x03, 0x0c,
++	    0x20, 0x00, 0x06, 0x0b, 0x0b, 0x33, 0x0e, 0x1c, 0x2a, 0x38, 0x46, 0x54, 0x62,
++	    0x69, 0x70, 0x77, 0x79, 0x7b, 0x7d, 0x7e, 0x01, 0x02, 0x01, 0x00, 0x09, 0x40,
++	    0x09, 0xbe, 0x19, 0xfc, 0x19, 0xfa, 0x19, 0xf8, 0x1a, 0x38, 0x1a, 0x78, 0x1a,
++	    0xb6, 0x2a, 0xb6, 0x2a, 0xf4, 0x2a, 0xf4, 0x4b, 0x34, 0x63, 0x74, 0x00, 0x00,
++	    0x00, 0x00, 0x00, 0x00),
++	DCS(0x72, 0x00),
++	GEN(0xff, 0x5a, 0x80), DCS(0x65, 0x0a), GEN(0xf9, 0xa8),
++	GEN(0xff, 0x5a, 0x80), DCS(0x65, 0x0e), GEN(0xf9, 0xa1),
++	GEN(0xff, 0x5a, 0x81), DCS(0x65, 0x06), GEN(0xf3, 0x87),
++	DCS(0x65, 0x09), GEN(0xf3, 0x00), DCS(0x65, 0x0a), GEN(0xf3, 0x10),
++	DCS(0x65, 0x10), GEN(0xf3, 0x10), GEN(0xf8, 0x01),
++	DCS(0x65, 0x03), GEN(0xfb, 0x93, 0x93),
++	GEN(0xff, 0x5a, 0x81), DCS(0x65, 0x03), GEN(0xf3, 0x14),
++	DCS(0x65, 0x05), GEN(0xf3, 0xa0),
++	GEN(0xff, 0x5a, 0x00), GEN(0xf0, 0xaa, 0x00),
++	DCS(MIPI_DCS_SET_DISPLAY_OFF), DELAY(50),
++	DCS(MIPI_DCS_ENTER_SLEEP_MODE), DCS(MIPI_DCS_EXIT_SLEEP_MODE), DELAY(120),
++	DCS(MIPI_DCS_SET_DISPLAY_ON), DELAY(50),
++};
++
++/* Reset the panel and send the stock initialisation; caller holds k->lock. */
++static void titan2e_panel_reinit(struct titan2e_kick *k)
++{
++	unsigned int i, level = backlight_get_brightness(k->bl);
++	u8 bl[3] = { MIPI_DCS_SET_DISPLAY_BRIGHTNESS, level >> 8, level & 0xff };
++	const struct titan2e_cmd *c;
++
++	titan2e_hold(k);
++	gpiod_set_value_cansleep(k->reset, 0);
++	msleep(30);
++	gpiod_set_value_cansleep(k->reset, 1);
++	msleep(30);
++	for (i = 0; i < ARRAY_SIZE(titan2e_panel_init); i++) {
++		c = &titan2e_panel_init[i];
++		if (c->type == CMD_DELAY)
++			msleep(c->delay_ms);
++		else
++			titan2e_dsi_write(k, c->data, c->len, c->type == CMD_GENERIC, true);
++	}
++	titan2e_dsi_write(k, bl, sizeof(bl), false, true);
++	titan2e_release(k);
++}
++
++/* Wait for a TE pulse after @since; the frame queued on wake enables TE. */
++static bool titan2e_wait_te(struct titan2e_kick *k, unsigned long since)
++{
++	unsigned long end = jiffies + msecs_to_jiffies(TE_TIMEOUT_MS);
++
++	do {
++		if (time_after(READ_ONCE(k->last_te), since))
++			return true;
++		usleep_range(5000, 10000);
++	} while (time_before(jiffies, end));
++	return false;
++}
++
+ static void titan2e_panel_power(struct titan2e_kick *k, bool on)
+ {
++	unsigned int tries = 0;
++	unsigned long since;
+ 	u8 cmd;
+ 
+ 	mutex_lock(&k->lock);
+ 	if (on == k->panel_on)
+ 		goto out;
+-	titan2e_hold(k);
+-	if (on) {
+-		cmd = MIPI_DCS_EXIT_SLEEP_MODE;
+-		titan2e_dcs_write(k, &cmd, 1);
+-		msleep(120);
+-		cmd = MIPI_DCS_SET_DISPLAY_ON;
+-		titan2e_dcs_write(k, &cmd, 1);
+-	} else {
++	if (!on) {
++		titan2e_hold(k);
+ 		cmd = MIPI_DCS_SET_DISPLAY_OFF;
+ 		titan2e_dcs_write(k, &cmd, 1);
+ 		cmd = MIPI_DCS_ENTER_SLEEP_MODE;
+ 		titan2e_dcs_write(k, &cmd, 1);
+ 		msleep(20);
++		spin_lock_irq(&k->slock);
++		k->panel_on = false;
++		spin_unlock_irq(&k->slock);
++		titan2e_release(k);
++		goto out;
+ 	}
++
++	since = jiffies;
++	titan2e_hold(k);
++	cmd = MIPI_DCS_EXIT_SLEEP_MODE;
++	titan2e_dcs_write(k, &cmd, 1);
++	msleep(120);
++	cmd = MIPI_DCS_SET_DISPLAY_ON;
++	titan2e_dcs_write(k, &cmd, 1);
+ 	spin_lock_irq(&k->slock);
+-	k->panel_on = on;
++	k->panel_on = true;
+ 	spin_unlock_irq(&k->slock);
+ 	titan2e_release(k);
+-	if (on)
++	titan2e_queue_frame(k);
++
++	/* A panel that misses the wake stays black and sends no TE: reset it. */
++	if (k->reset && READ_ONCE(reset_on_wake)) {
++		WRITE_ONCE(reset_on_wake, false);
++		dev_info(k->dev, "resetting the panel on request\n");
++		since = jiffies;
++		titan2e_panel_reinit(k);
+ 		titan2e_queue_frame(k);
++	}
++	while (!titan2e_wait_te(k, since)) {
++		if (!k->reset || tries++ == 2) {
++			dev_err(k->dev, "no TE after panel wake\n");
++			break;
++		}
++		dev_warn(k->dev, "no TE after panel wake, resetting the panel (%u)\n", tries);
++		since = jiffies;
++		titan2e_panel_reinit(k);
++		titan2e_queue_frame(k);
++	}
+ out:
+ 	mutex_unlock(&k->lock);
+ }
+@@ -417,6 +547,11 @@ static int titan2e_kick_probe(struct platform_device *pdev)
+ 			return PTR_ERR(ovl);
+ 		writel(readl(ovl + OVL_SRC_CON) & OVL_SRC_CON_L0, ovl + OVL_SRC_CON);
+ 	}
++	/* As is: the bootloader leaves the panel running. */
++	k->reset = devm_gpiod_get_optional(&pdev->dev, "reset", GPIOD_ASIS);
++	if (IS_ERR(k->reset))
++		return dev_err_probe(&pdev->dev, PTR_ERR(k->reset), "cannot get the panel reset\n");
++
+ 	hrtimer_setup(&k->delay_timer, titan2e_delay_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_HARD);
+ 
+ 	writel(0, k->dsi + DSI_INTEN);
+-- 
+2.55.0
+
