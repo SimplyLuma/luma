@@ -22,6 +22,7 @@
 
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
+. "$(dirname -- "$0")/lib/gate-vm.sh"
 
 iso=
 minutes=10
@@ -34,7 +35,17 @@ while [ "$#" -gt 0 ]; do
     *) printf 'usage: %s --iso ISO [--minutes N] [--keep-vm]\n' "$0" >&2; exit 2 ;;
   esac
 done
-[ -f "$iso" ] || { printf 'ISO is missing: %s\n' "$iso" >&2; exit 2; }
+[ -f "$iso" ] && [ -f "$iso.release" ] || { printf 'ISO or its .release record is missing: %s\n' "$iso" >&2; exit 2; }
+# Use the medium's recorded payload target, including retained x86 records
+# that predate the explicit architecture field. Never choose the host CPU.
+luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_]*\)=/MEDIA_\U\1=/' "$iso.release")"
+media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
+luma_os_select_architecture "$media_architecture"
+[ "$MEDIA_REF" = "$(luma_os_channel_ref "$MEDIA_CHANNEL")" ] ||
+  luma_os_die 'media architecture/channel does not match its payload ref'
+kvm_available=no
+[ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || kvm_available=yes
+luma_os_gate_vm_target "$LUMA_OS_ARCH" "$(uname -m)" "$kvm_available"
 luma_os_require_root
 luma_os_check_host
 luma_os_vm_lock
@@ -60,10 +71,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+luma_os_gate_vm_preflight "$out/libvirt-capabilities.xml"
 qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "booting $(basename "$iso") interactively (no kickstart)"
 virt-install --connect qemu:///system --name "$domain" \
-  --memory 6144 --vcpus 4 --cpu host-passthrough --machine q35 --boot uefi \
+  --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
+  --memory 6144 --vcpus 4 --cpu "$gate_cpu" --machine "$gate_machine" --boot "$gate_boot" \
   --disk "path=$vm/disk.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
   --cdrom "$iso" --network none \
   --graphics vnc,listen=127.0.0.1 --video virtio --rng /dev/urandom \
