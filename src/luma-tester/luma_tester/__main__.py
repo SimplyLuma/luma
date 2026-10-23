@@ -107,7 +107,7 @@ def main():
             return 0
         if args.action == 'install-desktop':
             from .desktop import install
-            print(install(data_home=args.data_home))
+            print(install(data_home=args.data_home, state=args.state))
             return 0
         if args.action == 'manifest':
             disk = args.disk.resolve()

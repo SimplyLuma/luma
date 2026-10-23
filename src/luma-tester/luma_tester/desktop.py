@@ -4,10 +4,10 @@ import os
 from pathlib import Path
 import tempfile
 
-from .core import TesterError
+from .core import TesterError, data_root
 
 
-def install(executable=None, data_home=None):
+def install(executable=None, data_home=None, state=None):
     executable = executable or os.environ.get('APPIMAGE') or os.environ.get('LUMA_TESTER_EXECUTABLE')
     if not executable:
         raise TesterError('Open the portable build to add it to Applications.')
@@ -29,14 +29,20 @@ def install(executable=None, data_home=None):
     # Exec values use Desktop Entry quoting, not shell quoting. In particular,
     # a literal percent must survive field-code expansion and paths may contain
     # spaces, quotes, backticks, dollar signs and backslashes.
-    quoted = str(executable).replace('%', '%%')
-    for character in ('\\', '"', '`', '$'):
-        quoted = quoted.replace(character, '\\' + character)
-    quoted = quoted.replace('\\', '\\\\')
+    def quote(value):
+        text = str(value)
+        if any(character in text for character in ('\n', '\r')):
+            raise TesterError('The desktop launch path contains a line break.')
+        text = text.replace('%', '%%')
+        for character in ('\\', '"', '`', '$'):
+            text = text.replace(character, '\\' + character)
+        return '"' + text.replace('\\', '\\\\') + '"'
+    quoted = quote(executable)
+    workspace = quote(data_root(state))
     arguments = ' --appimage-extract-and-run' if executable.suffix == '.AppImage' else ''
     entry = ('[Desktop Entry]\nType=Application\nName=Luma Tester\n'
              'Comment=Try Luma or develop apps for Mobile and Desktop\n'
-             f'Exec=/usr/bin/env -- "{quoted}"{arguments} gui\nIcon=io.luma.Tester\n'
+             f'Exec=/usr/bin/env -- {quoted}{arguments} --state {workspace} gui\nIcon=io.luma.Tester\n'
              'Terminal=false\nCategories=Development;Emulator;\n'
              'StartupNotify=true\nStartupWMClass=io.luma.Tester\n')
     icon = root / 'icons/hicolor/scalable/apps/io.luma.Tester.svg'
