@@ -312,7 +312,9 @@ def ensure_mobile_display(session):
 p=Path('/etc/luma/tester-image')
 assert p.is_file() and 'LUMA_PHYSICAL_DEVICE=false' in p.read_text()
 p=Path('/etc/luma/tester-display-modes')
-print(p.read_text().strip() if p.exists() else '')
+launcher=Path('/usr/libexec/luma-tester-mobile-session')
+configured=launcher.exists() and 'export LUMA_TESTER_DYNAMIC_MODES=1' in launcher.read_text()
+print(p.read_text().strip() if p.exists() and configured else '')
 """
     previous=subprocess.check_output(session.ssh(['python3','-c',probe]),text=True,timeout=15).strip()
     if previous==manifest['sha256']:return False
@@ -323,6 +325,10 @@ assert hashlib.sha256(payload).hexdigest()==sys.argv[1]
 path=Path('/etc/systemd/system/greetd.service.d/70-luma-tester-device.conf')
 prefix='# Managed by Luma Tester\n'
 assert not path.exists() or path.read_text().startswith(prefix.rstrip())
+launcher=Path('/usr/libexec/luma-tester-mobile-session')
+body=launcher.read_text()
+entry='exec /opt/luma/phosh/bin/phosh-session'
+assert body.count(entry)==1, 'Unrecognized simulator session launcher'
 with tempfile.NamedTemporaryFile(prefix='luma-tester-display-',suffix='.rpm',delete=False) as f:
  name=f.name;f.write(payload)
 try:
@@ -330,8 +336,9 @@ try:
  assert header=='phoc|x86_64'
  subprocess.run(['dnf5','-y','--disablerepo=*','install',name],check=True,timeout=120)
 finally:os.unlink(name)
-path.parent.mkdir(parents=True,exist_ok=True)
-path.write_text(prefix+'[Service]\nEnvironment=LUMA_TESTER_DYNAMIC_MODES=1\n')
+if 'export LUMA_TESTER_DYNAMIC_MODES=1' not in body:
+ launcher.write_text(body.replace(entry,'export LUMA_TESTER_DYNAMIC_MODES=1\n'+entry,1))
+path.unlink(missing_ok=True)
 Path('/etc/luma/tester-display-modes').write_text(sys.argv[1]+'\n')
 """
     run(session.ssh(['sudo','python3','-c',script,manifest['sha256']]),input=package.read_bytes(),timeout=150,stdout=subprocess.DEVNULL)
