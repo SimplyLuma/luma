@@ -40,6 +40,14 @@ class DesktopSharedPackagePins(unittest.TestCase):
         result = self.run_contract()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_release_note_requires_its_fedora_package_pin(self):
+        path = self.root / 'config/os/fedora-packages.txt'
+        path.write_text('\n'.join(line for line in path.read_text().splitlines()
+                                  if not line.startswith('gstreamer1-plugin-openh264-')) + '\n')
+        result = self.run_contract()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('gstreamer1-plugin-openh264 is not a package this tree pins', result.stdout)
+
     def test_previous_mutter_common_is_rejected(self):
         self.make_shared_pin_stale('mutter-common')
         result = self.run_contract()
