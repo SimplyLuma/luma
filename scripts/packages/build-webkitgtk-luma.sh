@@ -7,7 +7,16 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 . "$repo_root/config/desktop/inputs.env"
 . "$repo_root/config/shared/webkitgtk-inputs.env"
 arch=$(uname -m)
-case "$arch" in x86_64|aarch64) ;; *) echo 'Unsupported WebKit architecture' >&2; exit 1 ;; esac
+# Explicit job budget: ordinary builders retain two CPUs; native CI may admit
+# four without changing source, checks, or the memory-aware spec build limit.
+export LUMA_WEBKIT_BUILD_NCPUS=${RPM_BUILD_NCPUS:-2}
+[[ "$LUMA_WEBKIT_BUILD_NCPUS" =~ ^[1-4]$ ]] || { echo 'WebKit CPU budget must be between one and four' >&2; exit 2; }
+case "$arch" in
+  x86_64) builder=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) echo 'Unsupported WebKit architecture' >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$arch
 mkdir -p "$repo_root/build"
 work_dir=$(mktemp -d "$repo_root/build/webkitgtk.work.XXXXXX")
 chmod 0755 "$work_dir"
@@ -35,7 +44,9 @@ patch="$repo_root/patches/webkitgtk/0001-native-touch-surface-transform-and-canc
 printf '%s  %s\n' "$WEBKITGTK_NATIVE_TOUCH_PATCH_SHA256" "$patch" | sha256sum --check --strict
 cp "$patch" "$work_dir/rpmbuild/SOURCES/"
 cp "$repo_root/packaging/rpm/webkitgtk-luma.spec" "$work_dir/rpmbuild/SPECS/"
-bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work_dir/rpmbuild" "${1:-$FEDORA_RPM_BUILD_CONTAINER}" '
+bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work_dir/rpmbuild" "${1:-$builder}" "
+  export LUMA_WEBKIT_BUILD_NCPUS=$LUMA_WEBKIT_BUILD_NCPUS
+"'
   set -euo pipefail
   dnf5 -q -y install rpm-build dnf5-plugins
   dnf5 -q -y builddep SPECS/webkitgtk-luma.spec
@@ -43,9 +54,9 @@ bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work_dir/rpmbuild" "$
   id conform >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash conform
   work=$PWD
   chown -R conform:conform "$work"
-  runuser -u conform -- env CMAKE_BUILD_PARALLEL_LEVEL=2 rpmbuild -ba --without docs \
-    --define "_topdir $work" --define "_smp_build_ncpus 2" \
-    --define "_smp_mflags -j2" --define "_default_patch_flags -p1 --fuzz=0" SPECS/webkitgtk-luma.spec
+  runuser -u conform -- env CMAKE_BUILD_PARALLEL_LEVEL="$LUMA_WEBKIT_BUILD_NCPUS" rpmbuild -ba --without docs \
+    --define "_topdir $work" --define "_smp_build_ncpus $LUMA_WEBKIT_BUILD_NCPUS" \
+    --define "_smp_mflags -j$LUMA_WEBKIT_BUILD_NCPUS" --define "_default_patch_flags -p1 --fuzz=0" SPECS/webkitgtk-luma.spec
 '
 # A successful transaction must produce both engine/JavaScriptCore ABI pairs.
 for family in webkitgtk6.0 javascriptcoregtk6.0 webkit2gtk4.1 javascriptcoregtk4.1; do

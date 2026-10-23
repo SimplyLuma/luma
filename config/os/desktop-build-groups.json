@@ -80,6 +80,14 @@
         "packaging/rpm/luma-messages-bridges.spec",
         "scripts/packages/build-luma-messages-bridges-source.sh"
       ]
+    },
+    "webkit": {
+      "recipe": "scripts/packages/build-webkitgtk-luma.sh",
+      "paths": [
+        "packaging/rpm/webkitgtk-luma.spec",
+        "config/shared/webkitgtk-inputs.env",
+        "patches/webkitgtk/"
+      ]
     }
   }
 }
