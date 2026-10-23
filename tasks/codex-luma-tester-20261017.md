@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — native Mobile/Desktop and Hub tickets qualified; Tester0.2.0 delivered and launched on Dell.
+- Status: active — Tester0.4.1 architecture picker qualified and launched on Dell; ARM OS images remain external work.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -886,3 +886,22 @@ used that source without altering shared refs or unrelated worktrees.
   preference and reconstructed application preferences. No ARM Mobile OS image
   exists in the qualified catalog. Dell reachable; no running QEMU guest observed.
   Next: package0.4.1/r26, server qualification, then requested manual Dell launch.
+
+- Tester0.4.1 source1a58eb32 packaged successfully835cb960/root50f4194b78.
+  Immutable artifact: owned HDD appimage-arch-r26/Luma-Tester-0.4.1-linux-x86_64.AppImage,
+  294857208 bytes, SHA83124b041add8e4b0ea79428448c501280b6a6f756cc36f8c819d2ecb25db157.
+  Parentr25 native/tool/firmware closure retained; fresh Tester source and guide.
+- Packaged4034baab/root2f33299c37 PASSED actual AppImage startup, explicit x86
+  genuine Mobile KVM boot, touch/keyboard/Home, Try/Developer live switching,
+  shared-folder edits, SSH key revocation and visible SDK hotfix; graceful shutdown.
+  Bundled ARM emulator visibly booted EFI optical fixture and retained disk/UEFI
+  variables. This proves ARM emulator plumbing, not Luma ARM OS qualification.
+- 2026-10-22 19:03 America/Chicago: transferred checksum-verifiedr26 to Dell
+  /home/nick/.local/share/luma-previews/tester-arch-r26-20261022; reused unchanged
+  Desktopr15/Mobiler10 sidecars and tester-display-20261017 workspace/config/data/cache.
+  No running guest or old Tester process before launch. Desktop registration
+  luma-preview-tester-arch-register-20261022-1c428deb exited0; preview
+  luma-preview-tester-arch-20261022-9c256a46 active/running, ExecMainStatus0.
+  Dell manual preview only; all automated checks ran on server. No ARM OS yet in
+  qualified catalog (other ARM task record still says no built image). No release
+  publication/signing, Mac/Windows qualification, or physical device changes.
