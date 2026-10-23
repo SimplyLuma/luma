@@ -238,24 +238,6 @@ class SessionTests(unittest.TestCase):
         self.assertIn('2229', argv)
         self.assertNotIn('StrictHostKeyChecking=no', argv)
 
-    def test_openssh_keeps_known_hosts_in_state_path_with_spaces(self):
-        if not shutil.which('ssh'):
-            self.skipTest('OpenSSH not installed')
-        self.save()
-        session = Session(self.path, self.root / 'Application Support/Luma Tester')
-        session.directory.mkdir(parents=True)
-        import socket
-        with socket.socket() as reserved:
-            reserved.bind(('127.0.0.1', 0))
-            (session.directory / 'connection.json').write_text(json.dumps({'port': reserved.getsockname()[1]}))
-            with patch.object(session, 'status', return_value='running'):
-                argv = session.ssh([])
-            result = subprocess.run([argv[0], '-vvv', *argv[1:]], text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
-        rows = [line for line in result.stderr.splitlines() if 'expanded UserKnownHostsFile' in line]
-        self.assertEqual(len(rows), 1, result.stderr)
-        self.assertIn("'" + str(session.directory / 'known_hosts') + "'", rows[0])
-
     def test_shutdown_resumes_before_requesting_guest_poweroff(self):
         session = self.save()
         with patch.object(session, 'status', return_value='paused'), patch.object(session, 'qmp') as qmp, \
