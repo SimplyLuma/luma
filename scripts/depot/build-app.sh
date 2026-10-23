@@ -95,6 +95,16 @@ for module in doc.get("modules", []):
         if not module.get("sources"):
             raise SystemExit("an application module has no sealed source inputs")
         resolve(module)
+# A source archive can faithfully retain private checkout modes. Normalize only
+# the installed distributable payload, after the final module has installed it
+# and before Flatpak finishing/export. Preserve executable files and all source
+# archive bytes; runtime private state is created later outside /app.
+if not doc.get("modules") or not isinstance(doc["modules"][-1], dict):
+    raise SystemExit("an application needs a maintained final module")
+post_install = doc["modules"][-1].setdefault("post-install", [])
+if not isinstance(post_install, list) or not all(isinstance(x, str) for x in post_install):
+    raise SystemExit("module post-install commands must be a list of strings")
+post_install.append("chmod -R a+rX,go-w /app")
 output.write_text(json.dumps(doc, indent=2))
 record.write_text("\n".join(lines) + "\n")
 PY
@@ -168,6 +178,15 @@ depot_in_tools desktop-file-validate "$work/build/files/share/applications/$app_
 depot_log "linting with flatpak-builder-lint"
 # The committed manifest is linted (the build copy points sources at local mirrors).
 "$(dirname -- "$0")/lint-app.sh" "$app_id" "$manifest" "$work/build" "$out/repo" "$out"
+
+depot_log "checking installed app access and entrypoint modes"
+depot_in_tools python3 -B scripts/depot/verify-app-access-modes.py \
+  --repo "$out/repo" --ref "app/$app_id/$DEPOT_ARCH/$branch" >"$out/access-modes.json"
+debug_ref="runtime/$app_id.Debug/$DEPOT_ARCH/$branch"
+if depot_in_tools ostree --repo="$out/repo" refs | grep -Fxq "$debug_ref"; then
+  depot_in_tools python3 -B scripts/depot/verify-app-access-modes.py \
+    --repo "$out/repo" --ref "$debug_ref" >"$out/access-modes-debug.json"
+fi
 
 depot_log "computing permissions"
 depot_in_tools python3 -B scripts/depot/flatpak-permissions.py "$out/metadata" >"$out/permissions.json"
