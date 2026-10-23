@@ -714,7 +714,7 @@ def launch(state=None):
             return False
 
         def display_failed(self, _viewer, message):
-            if _viewer is not self.viewer:
+            if _viewer is not self.viewer or self.shutting_down:
                 return
             self.display_failure = message
             self.status_label.set_label(message)
