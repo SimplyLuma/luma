@@ -1,0 +1,529 @@
+From eeaef1aff4f95ca78f6005b13cf82a9bccee5844 Mon Sep 17 00:00:00 2001
+From: Pavel Machek <pavel@ucw.cz>
+Date: Mon, 17 Aug 2026 01:57:53 +0200
+Subject: [PATCH] af: two-phase sweep over a brightness-normalised
+ centre-window metric
+
+Three changes that together turn the sweep from "moves the lens" into
+"finds the focus":
+
+- Measure sharpness over the centre of the frame only, so that a
+  cluttered background does not outvote the subject.
+
+- Compare green samples two sampling steps apart instead of taking a
+  full RGB Laplacian, which keeps the metric away from the spatial
+  frequencies where sensor noise lives, and normalise the result by the
+  brightness of the same pixels: the AGC keeps moving while a sweep
+  runs, and an unnormalised metric simply follows the exposure.
+
+- Sweep in two phases (coarse, then fine around the coarse maximum) and
+  skip a few frames after every large lens movement so that the lens has
+  settled before the next sample is taken.
+
+[Squashed from da42da564afa, 3ac05187459d and 4312a90e32ea on
+ gitlab.com/tui/libcamera millicam_af_6, and adapted to libcamera
+ v0.7.2:
+
+ - the statistics line functions take a SwIspStats reference for
+   multi-threaded stats, so the y coordinate is threaded through as an
+   extra parameter rather than replacing one;
+ - the centre window is band 2 of 5 on both axes (the original used band
+   3, which is off-centre), and the x window is derived from each
+   format's own loop bound because the packed formats count bytes, not
+   pixels;
+ - the normalisation divides by the square of the mean green level of
+   the sampled pixels, which makes the metric independent of exposure
+   rather than merely less dependent on it, and is guarded against an
+   all-black window;
+ - the sweep constants are named and tuned for a 0..4095 VCM sampled
+   once every four frames: coarse 10%, fine 2%, ending below 1%;
+ - the mcam test application, the forced-focus button and the
+   AeState/step debug output are dropped.]
+Signed-off-by: Pavel Machek <pavel@ucw.cz>
+---
+ .../internal/software_isp/swstats_cpu.h       |  20 +--
+ src/ipa/simple/algorithms/af.cpp              | 138 +++++++++++-------
+ src/ipa/simple/algorithms/af.h                |   5 +-
+ src/ipa/simple/ipa_context.h                  |   2 +
+ src/libcamera/software_isp/swstats_cpu.cpp    |  84 +++++++----
+ 5 files changed, 160 insertions(+), 89 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 551870921..df399d71c 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -67,7 +67,7 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		(this->*stats0_)(src, stats_[statsBufferIndex]);
++		(this->*stats0_)(src, y, stats_[statsBufferIndex]);
+ 	}
+ 
+ 	void processLine2(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
+@@ -79,28 +79,28 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		(this->*stats2_)(src, stats_[statsBufferIndex]);
++		(this->*stats2_)(src, y, stats_[statsBufferIndex]);
+ 	}
+ 
+ 	Signal<uint32_t, uint32_t> statsReady;
+ 
+ private:
+-	using statsProcessFn = void (SwStatsCpu::*)(const uint8_t *src[], SwIspStats &stats);
++	using statsProcessFn = void (SwStatsCpu::*)(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 	using processFrameFn = void (SwStatsCpu::*)(MappedFrameBuffer &in);
+ 
+ 	int setupStandardBayerOrder(BayerFormat::Order order);
+ 	/* Bayer 8 bpp unpacked */
+-	void statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats);
++	void statsBGGR8Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 	/* Bayer 10 bpp unpacked */
+-	void statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats);
++	void statsBGGR10Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 	/* Bayer 12 bpp unpacked */
+-	void statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats);
++	void statsBGGR12Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 	/* Bayer 10 bpp packed */
+-	void statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats);
+-	void statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats);
++	void statsBGGR10PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
++	void statsGBRG10PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 	/* Bayer 12 bpp packed */
+-	void statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats);
+-	void statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats);
++	void statsBGGR12PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
++	void statsGBRG12PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats);
+ 
+ 	void processBayerFrame2(MappedFrameBuffer &in);
+ 
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index f321f361e..19235a567 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include "af.h"
+ 
++#include <algorithm>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -20,7 +21,23 @@ LOG_DEFINE_CATEGORY(IPASoftAutoFocus)
+ 
+ namespace ipa::soft::algorithms {
+ 
++namespace {
++
++/* Percentage of the lens travel between two samples of the coarse sweep. */
++constexpr double kCoarseStep = 10.0;
++/* The step is divided by this at every phase of the sweep. */
++constexpr double kStepDivisor = 5.0;
++/* The sweep ends once the step would become finer than this. */
++constexpr double kFineStepMin = 1.0;
++/* Stats frames to ignore after a large lens movement. */
++constexpr uint32_t kSettleSkipLong = 3;
++/* Relative sharpness change that makes a settled scene worth re-focusing. */
++constexpr double kFocusLossThreshold = 0.3;
++
++} /* namespace */
++
+ Af::Af()
++	: steps_(0)
+ {
+ }
+ 
+@@ -39,6 +56,7 @@ int Af::configure(IPAContext &context,
+ 	context.activeState.knobs.focus_pos = std::optional<double>();
+ 	context.activeState.knobs.focus_sweep = false;
+ 	context.activeState.knobs.focus_pos = 0;
++	context.configuration.focus.skip = kSettleSkipLong;
+ 	return 0;
+ }
+ 
+@@ -55,17 +73,9 @@ void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
+ 	}
+ 	if (af_trigger.has_value()) {
+ 		context.activeState.knobs.focus_sweep = af_trigger.value() == 1;
+-		if(context.activeState.knobs.focus_sweep){
+-			context.activeState.knobs.focus_pos = 0;
+-			context.configuration.focus.focus_max_pos = 0;
+-			context.configuration.focus.sharpness_max = 0;
+-			context.configuration.focus.start = 0;
+-			context.configuration.focus.stop = 100;
+-			context.configuration.focus.step = 25;
+-			LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
+-		}
++		if (context.activeState.knobs.focus_sweep)
++			restart(context);
+ 	}
+-
+ }
+ 
+ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAFrameContext &frameContext, [[maybe_unused]] double exposureMSV)
+@@ -73,45 +83,78 @@ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAF
+ 	frameContext.lens.focus_pos = context.activeState.knobs.focus_pos.value_or(50.0) / 100.0 * (context.configuration.focus.focus_max - context.configuration.focus.focus_min);
+ }
+ 
+-void Af::step(double& start, double& stop, double& step, double& focus_pos, double& max_pos, uint64_t& max_sharp, uint64_t sharp, bool& sweep){
+-	if(!sweep){
+-		if(utils::abs_diff(sharp, max_sharp) > max_sharp*0.3){
+-			LOG(IPASoftAutoFocus, Info) << "Focus lost :(";
+-			sweep = true;
+-			max_sharp = 0;
+-			max_pos = 0;
+-			focus_pos = 0;
+-			start = 0;
+-			stop = 100;
+-			step = 25;
+-		}
+-		else {
+-			return;
+-		}
++void Af::restart(IPAContext &context)
++{
++	auto &focus = context.configuration.focus;
++
++	steps_ = 0;
++	focus.focus_max_pos = 0;
++	focus.sharpness_max = 0;
++	focus.start = 0;
++	focus.stop = 100;
++	focus.step = kCoarseStep;
++	focus.skip = kSettleSkipLong;
++	context.activeState.knobs.focus_pos = 0;
++	context.activeState.knobs.focus_sweep = true;
++	LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
++}
++
++void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
++{
++	auto &focus = context.configuration.focus;
++
++	steps_++;
++
++	/* Even during a sweep the lens needs time to reach the new position. */
++	if (focus.skip != 0) {
++		focus.skip--;
++		return;
+ 	}
+-	if(focus_pos < start) {
+-		focus_pos = start;
++
++	if (!sweep) {
++		if (utils::abs_diff(sharp, focus.sharpness_max) >
++		    focus.sharpness_max * kFocusLossThreshold) {
++			LOG(IPASoftAutoFocus, Info)
++				<< "Focus lost: " << sharp << " vs "
++				<< focus.sharpness_max;
++			restart(context);
++		}
+ 		return;
+ 	}
+-	if(sharp > max_sharp) {
+-		max_sharp = sharp;
+-		max_pos = focus_pos;
++
++	if (sharp > focus.sharpness_max) {
++		focus.sharpness_max = sharp;
++		focus.focus_max_pos = focus_pos;
+ 	}
+-	if(focus_pos >= stop) {
+-		LOG(IPASoftAutoFocus, Info) << "Best focus on step " <<step << ": " << focus_pos;
+-		start = std::clamp(max_pos - step, 0.0, 100.0);
+-		stop = std::clamp(max_pos +  step, 0.0, 100.0);
+-		focus_pos = start;
+-		step /= 2;
+-		if(step <= 0.2){
+-			sweep = false;
+-			LOG(IPASoftAutoFocus, Info) << "Sweep end. Best focus: " << max_pos;
+-			focus_pos = max_pos;
+-		}
++
++	focus_pos += focus.step;
++	if (focus_pos > focus.start && focus_pos < focus.stop)
++		return;
++
++	/* Sweep phase over, narrow the range around the best position. */
++	focus.start = std::clamp(focus.focus_max_pos - focus.step, 0.0, 100.0);
++	focus.stop = std::clamp(focus.focus_max_pos + focus.step, 0.0, 100.0);
++	LOG(IPASoftAutoFocus, Info)
++		<< "Best focus with step " << focus.step << ": "
++		<< focus.focus_max_pos << " (sharpness "
++		<< focus.sharpness_max << "), next range " << focus.start
++		<< ".." << focus.stop;
++	focus_pos = focus.start;
++	focus.step /= kStepDivisor;
++	focus.skip = kSettleSkipLong;
++
++	if (focus.step >= kFineStepMin) {
++		/* Look for the maximum again at the finer step. */
++		focus.sharpness_max = 0;
+ 		return;
+ 	}
+ 
+-	focus_pos += step;
++	sweep = false;
++	focus_pos = focus.focus_max_pos;
++	LOG(IPASoftAutoFocus, Info)
++		<< "Sweep end. Best focus: " << focus.focus_max_pos
++		<< " after " << steps_ << " frames";
++	/* sharpness_max is kept to detect the scene changing later on. */
+ }
+ 
+ void Af::process([[maybe_unused]] IPAContext &context,
+@@ -121,14 +164,9 @@ void Af::process([[maybe_unused]] IPAContext &context,
+ 		 [[maybe_unused]] ControlList &metadata)
+ {
+ 	if (stats->valid) {
+-		step(context.configuration.focus.start,
+-			context.configuration.focus.stop,
+-			context.configuration.focus.step,
+-			context.activeState.knobs.focus_pos.value(),
+-			context.configuration.focus.focus_max_pos,
+-			context.configuration.focus.sharpness_max,
+-			stats->sharpness,
+-			context.activeState.knobs.focus_sweep.value());
++		step(context, context.activeState.knobs.focus_pos.value(),
++		     stats->sharpness,
++		     context.activeState.knobs.focus_sweep.value());
+ 	}
+ 
+ 	updateFocus(context, frameContext, 0);
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index 4d0ea58b3..0e0f19423 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -33,7 +33,10 @@ public:
+ 
+ private:
+ 	void updateFocus(IPAContext &context, IPAFrameContext &frameContext, double focus);
+-	void step(double& start, double& stop, double& step, double& focus_pos, double& max_pos, uint64_t& max_sharp, uint64_t sharp, bool& sweep);
++	void step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep);
++	void restart(IPAContext &context);
++
++	unsigned int steps_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index f869d1a67..4fc9c7cdf 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -38,6 +38,8 @@ struct IPASessionConfiguration {
+ 		double focus_max_pos;
+ 		uint64_t sharpness_max;
+ 		double start, stop, step;
++		/* Stats frames to ignore while the lens settles */
++		uint32_t skip;
+ 	} focus;
+ };
+ 
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index f243992fb..2cbdbefa3 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -130,6 +130,7 @@ namespace libcamera {
+  * \typedef SwStatsCpu::statsProcessFn
+  * \brief Called when there is data to get statistics from
+  * \param[in] src The input data
++ * \param[in] y The y coordinate of the line, relative to the window
+  *
+  * These functions take an array of (patternSize_.height + 1) src
+  * pointers each pointing to a line in the source image. The middle
+@@ -171,17 +172,34 @@ static constexpr unsigned int kRedYMul = 77; /* 0.299 * 256 */
+ static constexpr unsigned int kGreenYMul = 150; /* 0.587 * 256 */
+ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 
+-#define SWSTATS_START_LINE_STATS(pixel_t) \
++/*
++ * The sharpness metric is only gathered over the centre fifth of the frame,
++ * which is where the subject an autofocus run should focus on normally is.
++ * \a lineLength is the upper bound of the sampling loop of the caller, in the
++ * units that loop counts in (pixels or bytes depending on the format).
++ */
++#define SWSTATS_START_LINE_STATS(pixel_t, lineLength) \
+ 	pixel_t r, g, g2, b;              \
+ 	uint64_t yVal;                    \
+                                           \
+ 	uint64_t sumR = 0;                \
+ 	uint64_t sumG = 0;                \
+ 	uint64_t sumB = 0;                \
+-	pixel_t r0 = 0, r1 = 0, b0 = 0,   \
+-		b1 = 0, g0 = 0, g1 = 0;   \
+-	uint64_t sharpness = 0;
++	pixel_t gPrev = 0, gPrev2 = 0;    \
++	uint64_t sharpness = 0;           \
++	uint64_t sharpSumG = 0;           \
++	unsigned int sharpCount = 0;      \
++	const unsigned int sharpXBegin = (lineLength) * 2 / 5;              \
++	const unsigned int sharpXEnd = (lineLength) * 3 / 5;                \
++	const bool sharpRow = y >= window_.height * 2 / 5 &&                \
++			      y < window_.height * 3 / 5;
+ 
++/*
++ * Sharpness is the sum of the squared differences between green samples two
++ * sampling steps apart; skipping one sample keeps the metric away from the
++ * highest spatial frequencies, where sensor noise dominates.  gPrev/gPrev2 are
++ * updated for every sample so that the window always has valid history.
++ */
+ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
+ 	sumR += r;                         \
+ 	sumG += g;                         \
+@@ -191,26 +209,36 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+ 	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++; \
+-	if (r0 != 0) \
+-		sharpness += abs(r - 2 * r1 + r0) * kRedYMul + abs(g - 2 * g1 + g0) * kGreenYMul + abs(b - 2 * b1 + b0) * kBlueYMul; \
+-	r0 = r1; \
+-	g0 = g1; \
+-	b0 = b1; \
+-	r1 = r; \
+-	g1 = g; \
+-	b1 = b;
++	if (sharpRow && x >= sharpXBegin && x < sharpXEnd) { \
++		const int64_t gDiff = static_cast<int64_t>(g) - gPrev2; \
++		sharpness += gDiff * gDiff; \
++		sharpSumG += g; \
++		sharpCount++; \
++	} \
++	gPrev2 = gPrev; \
++	gPrev = g;
++
++/*
++ * Normalise the sharpness by the square of the mean green level of the same
++ * pixels, so that the metric tracks contrast rather than exposure: the AGC
++ * keeps moving while an autofocus sweep runs.
++ */
+ #define SWSTATS_FINISH_LINE_STATS() \
+ 	stats.sum_.r() += sumR;     \
+ 	stats.sum_.g() += sumG;     \
+ 	stats.sum_.b() += sumB;     \
+-	stats.sharpness += sharpness;
++	if (sharpCount) {           \
++		const uint64_t meanG = sharpSumG / sharpCount; \
++		if (meanG) \
++			stats.sharpness += sharpness * 1024 / (meanG * meanG); \
++	}
+ 
+-void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x;
+ 	const uint8_t *src1 = src[2] + window_.x;
+ 
+-	SWSTATS_START_LINE_STATS(uint8_t)
++	SWSTATS_START_LINE_STATS(uint8_t, window_.width)
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -230,12 +258,12 @@ void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
+ 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
+ 
+-	SWSTATS_START_LINE_STATS(uint16_t)
++	SWSTATS_START_LINE_STATS(uint16_t, window_.width)
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -256,12 +284,12 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
+ 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
+ 
+-	SWSTATS_START_LINE_STATS(uint16_t)
++	SWSTATS_START_LINE_STATS(uint16_t, window_.width)
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -282,7 +310,7 @@ void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+@@ -291,7 +319,7 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+ 
+-	SWSTATS_START_LINE_STATS(uint8_t)
++	SWSTATS_START_LINE_STATS(uint8_t, widthInBytes)
+ 
+ 	/* x += 5 sample every other 2x2 block */
+ 	for (unsigned int x = 0; x < widthInBytes; x += 5) {
+@@ -308,7 +336,7 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+@@ -317,7 +345,7 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+ 
+-	SWSTATS_START_LINE_STATS(uint8_t)
++	SWSTATS_START_LINE_STATS(uint8_t, widthInBytes)
+ 
+ 	/* x += 5 sample every other 2x2 block */
+ 	for (unsigned int x = 0; x < widthInBytes; x += 5) {
+@@ -334,13 +362,13 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+ 	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+ 	const unsigned int widthInBytes = window_.width * 3 / 2;
+ 
+-	SWSTATS_START_LINE_STATS(uint8_t)
++	SWSTATS_START_LINE_STATS(uint8_t, widthInBytes)
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -360,13 +388,13 @@ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+-void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats)
++void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], unsigned int y, SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+ 	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+ 	const unsigned int widthInBytes = window_.width * 3 / 2;
+ 
+-	SWSTATS_START_LINE_STATS(uint8_t)
++	SWSTATS_START_LINE_STATS(uint8_t, widthInBytes)
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -603,7 +631,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+ 		/* linePointers[0] is not used by any stats0_ functions */
+ 		linePointers[1] = src;
+ 		linePointers[2] = src + stride_;
+-		(this->*stats0_)(linePointers, stats_[0]);
++		(this->*stats0_)(linePointers, y, stats_[0]);
+ 		src += stride_ * 2;
+ 	}
+ }

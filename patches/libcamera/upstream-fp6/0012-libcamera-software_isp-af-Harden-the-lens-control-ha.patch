@@ -1,0 +1,113 @@
+From 0e454d335ba23c306e7c8f011ef7d5234dd3aa9a Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 17 Aug 2026 01:58:59 +0200
+Subject: [PATCH] libcamera: software_isp: af: Harden the lens control handling
+
+Three defects in the focus control patch that show up on a camera
+without a focus lens, which on the FP6 is the ultra-wide:
+
+- configure() dereferences the result of ControlInfoMap::find() for
+  V4L2_CID_FOCUS_ABSOLUTE whenever the lens control map is non-empty,
+  without checking that the control is actually there.
+
+- processStats() unconditionally sets V4L2_CID_FOCUS_ABSOLUTE on a
+  ControlList built from an empty ControlInfoMap, which logs a control
+  validation error for every frame of every capture.
+
+- the lens position is computed as a fraction of the travel but the
+  minimum is never added back, so a lens whose range does not start at
+  zero is driven past its near end.
+
+Also demote the "found a lens" message to Info and fix its spelling.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ src/ipa/simple/algorithms/af.cpp |  8 +++++++-
+ src/ipa/simple/ipa_context.h     |  1 +
+ src/ipa/simple/soft_simple.cpp   | 24 +++++++++++++++---------
+ 3 files changed, 23 insertions(+), 10 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 19235a567..43d4a41c4 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -8,6 +8,7 @@
+ #include "af.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -80,7 +81,12 @@ void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
+ 
+ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAFrameContext &frameContext, [[maybe_unused]] double exposureMSV)
+ {
+-	frameContext.lens.focus_pos = context.activeState.knobs.focus_pos.value_or(50.0) / 100.0 * (context.configuration.focus.focus_max - context.configuration.focus.focus_min);
++	const auto &focus = context.configuration.focus;
++	const double pos = std::clamp(context.activeState.knobs.focus_pos.value_or(50.0),
++				      0.0, 100.0);
++
++	frameContext.lens.focus_pos = focus.focus_min +
++				      std::lround(pos / 100.0 * (focus.focus_max - focus.focus_min));
+ }
+ 
+ void Af::restart(IPAContext &context)
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 4fc9c7cdf..ccc938ce9 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -34,6 +34,7 @@ struct IPASessionConfiguration {
+ 		std::optional<uint8_t> level;
+ 	} black;
+ 	struct {
++		bool available;
+ 		int32_t focus_min, focus_max;
+ 		double focus_max_pos;
+ 		uint64_t sharpness_max;
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index dcf746cb2..51a73d2dd 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -213,15 +213,20 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ 	context_.activeState = {};
+ 	context_.frameContexts.clear();
+ 
+-	if (lensInfoMap_.empty()) {
+-		LOG(IPASoft, Warning) << "No camera leans found! Focus control disabled.";
++	const auto lensFocus = lensInfoMap_.find(V4L2_CID_FOCUS_ABSOLUTE);
++	if (lensFocus == lensInfoMap_.end()) {
++		LOG(IPASoft, Info) << "No focus lens, focus control disabled";
++		context_.configuration.focus.available = false;
+ 		context_.configuration.focus.focus_min = 0;
+ 		context_.configuration.focus.focus_max = 0;
+ 	} else {
+-		const ControlInfo &lensInfo = lensInfoMap_.find(V4L2_CID_FOCUS_ABSOLUTE)->second;
+-		context_.configuration.focus.focus_min = lensInfo.min().get<int32_t>();
+-		context_.configuration.focus.focus_max = lensInfo.max().get<int32_t>();
+-		LOG(IPASoft, Warning) << "Camera leans found! Focus: " << context_.configuration.focus.focus_min << "-" << context_.configuration.focus.focus_max;
++		context_.configuration.focus.available = true;
++		context_.configuration.focus.focus_min = lensFocus->second.min().get<int32_t>();
++		context_.configuration.focus.focus_max = lensFocus->second.max().get<int32_t>();
++		LOG(IPASoft, Info)
++			<< "Focus lens range "
++			<< context_.configuration.focus.focus_min << "-"
++			<< context_.configuration.focus.focus_max;
+ 	}
+ 
+ 	context_.configuration.agc.lineDuration =
+@@ -338,10 +343,11 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
+ 		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
+ 
+-	ControlList lens_ctrls(lensInfoMap_);
+-	lens_ctrls.set(V4L2_CID_FOCUS_ABSOLUTE, frameContext.lens.focus_pos);
++	ControlList lensCtrls(lensInfoMap_);
++	if (context_.configuration.focus.available)
++		lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE, frameContext.lens.focus_pos);
+ 
+-	setSensorControls.emit(ctrls, lens_ctrls);
++	setSensorControls.emit(ctrls, lensCtrls);
+ }
+ 
+ std::string IPASoftSimple::logPrefix() const

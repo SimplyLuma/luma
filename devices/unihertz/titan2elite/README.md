@@ -67,13 +67,13 @@ revisions, in the Fedora 44 builder (`scripts/packages/run-in-rpm-builder.sh`):
 | --- | --- | --- |
 | Kernel | `scripts/packages/build-titan2e-kernel.sh` | `boot_a.img`, `titan2e-kernel-modules`, `kbuild/` |
 | Modem drivers | `scripts/packages/build-titan2e-ccci-modules.sh` | CCCI modules, from the vendored `packaging/titan2e-ccci/kernel_device_modules` |
-| Wi-Fi/Bluetooth drivers | `scripts/packages/build-titan2e-connsys-modules.sh` | CONNSYS modules, from MediaTek's GPL repositories at pinned commits |
+| Wi-Fi/Bluetooth drivers | `scripts/packages/build-titan2e-connsys-modules.sh` | CONNSYS modules, from the vendored `packaging/titan2e-connsys` trees |
 | Platform | `scripts/packages/build-luma-titan2e-platform.sh` | `luma-titan2e-platform` |
 | GPU | `scripts/packages/build-mesa.sh` | Mesa with Mali-G615 support |
 | Modem stack | `scripts/mobile/build-fp6-gnss-rpm.sh` | `ModemManager` and `libqmi` with `patches/modemmanager-fp6` and `patches/ModemManager/owned-fd` |
 | Call audio | `scripts/packages/build-callaudiod.sh` | `callaudiod` |
 | eSIM | `scripts/packages/build-luma-esim-broker.sh`, `scripts/packages/build-lpac-titan2e.sh` | `luma-esim-broker`, `lpac-titan2e` |
-| Camera | `scripts/mobile/build-fp6-libcamera.sh` | libcamera with `patches/libcamera` |
+| Camera | `scripts/mobile/build-fp6-libcamera.sh` | libcamera with `patches/libcamera/upstream-fp6` and `patches/libcamera` |
 
 The rest of the system is Luma's generic handheld package set; the Titan
 image is that set plus the packages above, with the Qualcomm boot packages
@@ -110,6 +110,17 @@ These come from the generic Luma image build, not from this branch:
   `scripts/os/lib/rpmdb_layout.py`;
 - the handheld greetd configuration,
   `config/mobile/fp6-physical/overlay/etc/greetd/config.toml`.
+
+## Keys
+
+Nothing in this branch needs a private key, and none is included. Every build
+works with the defaults below; bring your own keys to replace them.
+
+| What | Default | Your own |
+| --- | --- | --- |
+| `boot_a` (AVB hash footer) | the AOSP test key `testkey_rsa2048.pem`, pinned in `config/mobile/titan2e-kernel-source.json`. The unlocked bootloader accepts any key; `vbmeta` stays Unihertz's. | `TITAN2E_AVB_KEY=/path/to/rsa2048.pem scripts/packages/build-titan2e-kernel.sh` (`openssl genrsa -out rsa2048.pem 2048`). |
+| Kernel modules | signed with a key each kernel build generates (`certs/signing_key.pem` in its build output; `CONFIG_MODULE_SIG`, not enforced). | Nothing to do; or set `CONFIG_MODULE_SIG_KEY` to your key. |
+| OS updates | `/etc/luma/update.conf` (from `luma-titan2e-platform`) follows Luma's `unihertz-titan2e` channel, which is not published yet: update checks find nothing until it is. Set `automatic_download = false` to stop them. | Serve your own OSTree repository and update graph: sign commits with your GPG key (`gpg-verify=true` in `/etc/ostree/remotes.d/`), sign the graph with your minisign key and put its public key in `/etc/luma/update-graph-keys.d/`, then point `graph_url`, `stable_repo_url` and `ref_template` in `/etc/luma/update.conf` at your server. `scripts/os/generate-release-keys.sh` creates both key pairs. |
 
 ## Firmware
 

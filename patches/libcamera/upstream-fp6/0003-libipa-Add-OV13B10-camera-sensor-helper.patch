@@ -1,0 +1,33 @@
+From: nondescriptpointer <public@nondescriptpointer.com>
+Date: Tue, 21 Jul 2026 00:00:00 +0000
+Subject: [PATCH] libipa: Add camera sensor helper for OV13B10
+
+The OV13B10 (ultra-wide sensor on the Fairphone 6 / milos) needs a
+CameraSensorHelper so the software ISP AGC can map the analogue gain
+register code to a real gain multiplier. Without it libcamera logs
+"IPASoft: Failed to create camera sensor helper for ov13b10" and
+auto-exposure/AWB do not converge. Like the other recent OmniVision
+sensors the analogue gain is linear with 0x80 (128) == 1x.
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -827,6 +827,16 @@
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("ov13858", CameraSensorHelperOv13858)
+ 
++class CameraSensorHelperOv13b10 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperOv13b10()
++	{
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 128 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("ov13b10", CameraSensorHelperOv13b10)
++
+ class CameraSensorHelperVd55g1 : public CameraSensorHelper
+ {
+ public:

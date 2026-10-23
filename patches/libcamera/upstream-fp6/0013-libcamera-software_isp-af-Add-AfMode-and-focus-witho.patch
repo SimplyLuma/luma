@@ -1,0 +1,207 @@
+From ce00095430294bdb8d99e07e39d94b1cd3c85c88 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 17 Aug 2026 02:00:43 +0200
+Subject: [PATCH] libcamera: software_isp: af: Add AfMode and focus without
+ being asked
+
+The WIP exposes AfTrigger and LensPosition only, so the lens moves for
+an application that knows about libcamera's AF controls and never moves
+for one that does not. Every stock camera application on the phone is
+the second kind: they open the camera, stream, and expect focus to
+happen.
+
+Advertise AfMode and default it to AfModeContinuous, start a sweep from
+configure() so that focus happens as soon as the camera streams, and let
+the existing focus-loss detection re-run the sweep when the scene
+changes. AfModeAuto keeps the triggered behaviour (a sweep per
+AfTriggerStart, no chasing afterwards) and AfModeManual hands the lens
+to LensPosition, which per its documentation is ignored in the other
+modes.
+
+Report AfState and LensPosition in the metadata so applications can see
+what the algorithm is doing. This replaces the WIP's debug abuse of
+AeState.
+
+Note that LensPosition is a percentage of the lens travel here, not the
+dioptres its documentation asks for; converting requires lens
+calibration data we do not have for the DW9784. It is inherited from the
+WIP and kept for now.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ src/ipa/simple/algorithms/af.cpp | 97 ++++++++++++++++++++++++++------
+ src/ipa/simple/ipa_context.h     |  2 +
+ 2 files changed, 81 insertions(+), 18 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 43d4a41c4..00148ce1b 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -34,6 +34,11 @@ constexpr double kFineStepMin = 1.0;
+ constexpr uint32_t kSettleSkipLong = 3;
+ /* Relative sharpness change that makes a settled scene worth re-focusing. */
+ constexpr double kFocusLossThreshold = 0.3;
++/*
++ * Focus continuously by default: applications that know nothing about AF never
++ * send an AfMode or an AfTrigger, and they are the ones this exists for.
++ */
++constexpr int32_t kDefaultAfMode = controls::AfModeContinuous;
+ 
+ } /* namespace */
+ 
+@@ -45,41 +50,76 @@ Af::Af()
+ int Af::init(IPAContext &context,
+ 	     [[maybe_unused]] const ValueNode &tuningData)
+ {
++	context.ctrlMap[&controls::AfMode] =
++		ControlInfo(controls::AfModeValues,
++			    ControlValue(static_cast<int32_t>(kDefaultAfMode)));
++	context.ctrlMap[&controls::AfTrigger] =
++		ControlInfo(controls::AfTriggerValues,
++			    ControlValue(static_cast<int32_t>(controls::AfTriggerStart)));
+ 	context.ctrlMap[&controls::LensPosition] = ControlInfo(0.0f, 100.0f, 50.0f);
+-	context.ctrlMap[&controls::AfTrigger] = ControlInfo(0, 1, 0);
+ 	return 0;
+ }
+ 
+ int Af::configure(IPAContext &context,
+ 		  [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+-	context.activeState.knobs.focus_sweep = std::optional<bool>();
+-	context.activeState.knobs.focus_pos = std::optional<double>();
++	context.activeState.knobs.af_mode = kDefaultAfMode;
+ 	context.activeState.knobs.focus_sweep = false;
+ 	context.activeState.knobs.focus_pos = 0;
+ 	context.configuration.focus.skip = kSettleSkipLong;
++
++	/*
++	 * Start focusing as soon as the camera streams. Applications that do
++	 * not know about AF at all never send an AfTrigger, so waiting for one
++	 * would leave the lens parked wherever it was.
++	 */
++	if (context.configuration.focus.available &&
++	    context.activeState.knobs.af_mode != controls::AfModeManual)
++		restart(context);
++
+ 	return 0;
+ }
+ 
+-void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
++void Af::queueRequest(typename Module::Context &context,
+ 		      [[maybe_unused]] const uint32_t frame,
+ 		      [[maybe_unused]] typename Module::FrameContext &frameContext,
+ 		      const ControlList &controls)
+ {
+-	const auto &focus_pos = controls.get(controls::LensPosition);
+-	const auto &af_trigger = controls.get(controls::AfTrigger);
+-	if (focus_pos.has_value()) {
+-		context.activeState.knobs.focus_pos = focus_pos;
+-		LOG(IPASoftAutoFocus, Debug) << "Setting focus position to " << focus_pos.value();
++	if (!context.configuration.focus.available)
++		return;
++
++	const auto &afMode = controls.get(controls::AfMode);
++	if (afMode.has_value() && afMode.value() != context.activeState.knobs.af_mode) {
++		context.activeState.knobs.af_mode = afMode.value();
++		LOG(IPASoftAutoFocus, Debug) << "Setting AF mode to " << afMode.value();
++
++		if (afMode.value() == controls::AfModeContinuous)
++			restart(context);
++		else
++			context.activeState.knobs.focus_sweep = false;
+ 	}
+-	if (af_trigger.has_value()) {
+-		context.activeState.knobs.focus_sweep = af_trigger.value() == 1;
+-		if (context.activeState.knobs.focus_sweep)
++
++	const auto &lensPosition = controls.get(controls::LensPosition);
++	if (lensPosition.has_value() &&
++	    context.activeState.knobs.af_mode == controls::AfModeManual) {
++		context.activeState.knobs.focus_pos = lensPosition.value();
++		context.configuration.focus.skip = kSettleSkipLong;
++		LOG(IPASoftAutoFocus, Debug)
++			<< "Setting focus position to " << lensPosition.value();
++	}
++
++	const auto &afTrigger = controls.get(controls::AfTrigger);
++	if (afTrigger.has_value() &&
++	    context.activeState.knobs.af_mode == controls::AfModeAuto) {
++		if (afTrigger.value() == controls::AfTriggerStart)
+ 			restart(context);
++		else
++			context.activeState.knobs.focus_sweep = false;
+ 	}
+ }
+ 
+-void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAFrameContext &frameContext, [[maybe_unused]] double exposureMSV)
++void Af::updateFocus(IPAContext &context, IPAFrameContext &frameContext,
++		     [[maybe_unused]] double exposureMSV)
+ {
+ 	const auto &focus = context.configuration.focus;
+ 	const double pos = std::clamp(context.activeState.knobs.focus_pos.value_or(50.0),
+@@ -118,6 +158,13 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	}
+ 
+ 	if (!sweep) {
++		/*
++		 * Only continuous AF chases the scene; in auto mode the lens
++		 * stays where the last triggered sweep left it.
++		 */
++		if (context.activeState.knobs.af_mode != controls::AfModeContinuous)
++			return;
++
+ 		if (utils::abs_diff(sharp, focus.sharpness_max) >
+ 		    focus.sharpness_max * kFocusLossThreshold) {
+ 			LOG(IPASoftAutoFocus, Info)
+@@ -163,19 +210,33 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	/* sharpness_max is kept to detect the scene changing later on. */
+ }
+ 
+-void Af::process([[maybe_unused]] IPAContext &context,
++void Af::process(IPAContext &context,
+ 		 [[maybe_unused]] const uint32_t frame,
+-		 [[maybe_unused]] IPAFrameContext &frameContext,
+-		 [[maybe_unused]] const SwIspStats *stats,
+-		 [[maybe_unused]] ControlList &metadata)
++		 IPAFrameContext &frameContext,
++		 const SwIspStats *stats,
++		 ControlList &metadata)
+ {
+-	if (stats->valid) {
++	if (!context.configuration.focus.available)
++		return;
++
++	if (stats->valid &&
++	    context.activeState.knobs.af_mode != controls::AfModeManual) {
+ 		step(context, context.activeState.knobs.focus_pos.value(),
+ 		     stats->sharpness,
+ 		     context.activeState.knobs.focus_sweep.value());
+ 	}
+ 
+ 	updateFocus(context, frameContext, 0);
++
++	int32_t afState = controls::AfStateIdle;
++	if (context.activeState.knobs.af_mode != controls::AfModeManual)
++		afState = context.activeState.knobs.focus_sweep.value()
++				  ? controls::AfStateScanning
++				  : controls::AfStateFocused;
++
++	metadata.set(controls::AfState, afState);
++	metadata.set(controls::LensPosition,
++		     static_cast<float>(context.activeState.knobs.focus_pos.value()));
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Af, "Af")
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index ccc938ce9..4c594cd29 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -73,6 +73,8 @@ struct IPAActiveState {
+ 		std::optional<double> focus_pos;
+ 		/* 0..1 range, 0 = normal */
+ 		std::optional<bool> focus_sweep;
++		/* One of the controls::AfModeEnum values */
++		int32_t af_mode;
+ 	} knobs;
+ };
+ 

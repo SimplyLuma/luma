@@ -1,0 +1,47 @@
+From 4008fe2ced7bbf1026267ec47028b735173cc0db Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 16 Aug 2026 20:49:31 +0200
+Subject: [PATCH] libipa: Add camera sensor helper for IMX896
+
+The Sony IMX896 (main sensor on the Fairphone 6 / milos) needs a
+CameraSensorHelper so the software ISP AGC can map the analogue gain
+register code to a real gain multiplier. Without it libcamera logs
+"IPASoft: Failed to create camera sensor helper for imx896" and the
+AGC misinterprets the raw gain code (0..16128) as a linear gain.
+
+The IMX896 uses the common Sony analogue gain model with a 14 bit
+code: gain = 16384 / (16384 - code), so code 0 is 1x and the maximum
+code 16128 is 64x. Derived from the vendor kernel driver's gain2reg
+conversion (regGain = 16384 - 16384 * BASEGAIN / gain, with the gain
+table spanning 1024..65536 in 1/1024 units) and matching the mainline
+imx896 driver's gain register documentation.
+
+Assisted-by: Claude:claude-fable-5
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index 9457d62..cf2482b 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -665,6 +665,16 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx708", CameraSensorHelperImx708)
+ 
++class CameraSensorHelperImx896 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx896()
++	{
++		gain_ = AnalogueGainLinear{ 0, 16384, -1, 16384 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx896", CameraSensorHelperImx896)
++
+ class CameraSensorHelperOv01a10 : public CameraSensorHelper
+ {
+ public:
+-- 
+2.55.0
+

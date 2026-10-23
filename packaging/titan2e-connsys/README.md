@@ -16,6 +16,24 @@ Upstream sources (GPL-2.0, from the MT6878 GPL releases):
 - https://github.com/motorola-mt6878/vendor_mediatek_kernel_modules @ `1c51f57c78be8acb3c51bc1911fffcd7b5c90184`
 - https://github.com/motorola-mt6878/kernel_device_modules @ `6586afaa0622648a6e740fb4a83f4b8057346bc2`
 
+The directories the build uses are vendored complete and unmodified, symlinks
+as they are: `connectivity/{bt,common,conninfra,wlan}` in
+`vendor_mediatek_kernel_modules/`, and `drivers/misc/mediatek/{connectivity,include,power_throttling}`,
+`drivers/misc/mediatek/{Kconfig,Makefile}` and `drivers/gpu/drm/mediatek/` in
+`kernel_device_modules/`. Their SHA-256 are in the matching `.sha256` files and
+their symlinks in the `.links` files. They keep their upstream GPL-2.0 notices
+(`LICENSES/GPL-2.0.txt`). The build checks them and needs no network access.
+
+Left out: eight binary data files no Titan module builds or loads, the Bluetooth
+power tables and debug/config tables for other chips:
+`connectivity/bt/linux_v2/bt_power_table/btPowerTable.dat`,
+`connectivity/bt/linux_v2/cfg/woble_setting_7961.bin`,
+`connectivity/bt/linux_v2/debug_sop_file/{sdio,usb}_debug_{7902,7961}.bin`,
+`connectivity/bt/mt66xx/bt_power_table/btPowerTable.dat` and
+`connectivity/bt/mt66xx/cfg_example/woble_setting_7961.bin`.
+`connectivity/wlan/core/gen4m/ext` points to `../gen4m_ext/`, which the
+upstream repository does not contain either.
+
 `titan2e-connsys.patch` ports them to Linux 7.2 and the Titan:
 
 - API updates (cfg80211 callbacks, platform remove, timers, alarms, class_create, strlcpy/strncpy),

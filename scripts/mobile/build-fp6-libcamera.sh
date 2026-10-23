@@ -54,22 +54,17 @@ case "$prefix" in
 esac
 
 source_tree=$work/libcamera
-patchset_tree=$work/fp6-img
+# Prerequisite patches 1-15: vendored unmodified from fp6-img
+# ($FP6_LIBCAMERA_FP6_PATCHSET_URL at $FP6_LIBCAMERA_FP6_PATCHSET_COMMIT).
+patchset_dir=$repo_root/patches/libcamera/upstream-fp6
 git clone --filter=blob:none --no-checkout "$FP6_LIBCAMERA_URL" "$source_tree"
 git -C "$source_tree" -c advice.detachedHead=false checkout --detach \
   "$FP6_LIBCAMERA_COMMIT"
 [ "$(git -C "$source_tree" rev-parse HEAD)" = "$FP6_LIBCAMERA_COMMIT" ]
 
-git clone --filter=blob:none --no-checkout \
-  "$FP6_LIBCAMERA_FP6_PATCHSET_URL" "$patchset_tree"
-git -C "$patchset_tree" -c advice.detachedHead=false checkout --detach \
-  "$FP6_LIBCAMERA_FP6_PATCHSET_COMMIT"
-[ "$(git -C "$patchset_tree" rev-parse HEAD)" = \
-  "$FP6_LIBCAMERA_FP6_PATCHSET_COMMIT" ]
-
 for number in $(seq 1 15); do
   printf -v patch_prefix '%04d' "$number"
-  matches=("$patchset_tree"/aports/temp/libcamera/"$patch_prefix"-*.patch)
+  matches=("$patchset_dir"/"$patch_prefix"-*.patch)
   [ "${#matches[@]}" -eq 1 ] && [ -f "${matches[0]}" ] || {
     printf 'error: expected exactly one prerequisite patch %s\n' "$number" >&2
     exit 1

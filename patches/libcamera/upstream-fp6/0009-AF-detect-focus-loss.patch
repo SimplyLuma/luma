@@ -1,0 +1,64 @@
+From 5f34df040cda47cfb08d1cb02f4a288de2b8ab8c Mon Sep 17 00:00:00 2001
+From: Vasiliy Doylov <nekocwd@mainlining.org>
+Date: Mon, 17 Aug 2026 01:51:48 +0200
+Subject: [PATCH] AF: detect focus loss
+
+Re-trigger the focus sweep when the sharpness of the settled scene
+departs from the sharpness the sweep converged on by more than 30%,
+which is what happens when the scene or the subject distance changes.
+Keeping the converged maximum around (instead of clearing it at every
+phase transition) is what makes that comparison possible.
+
+[Backported from 4da3fec35a15 on gitlab.com/tui/libcamera
+ millicam_af_6.  That tree already carried the settle-skip counter, so
+ the skip handling of the original hunk is dropped here; it arrives
+ with the next patch.]
+Signed-off-by: Vasiliy Doylov <nekocwd@mainlining.org>
+---
+ src/ipa/simple/algorithms/af.cpp | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 3f0f98f93..f321f361e 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -10,6 +10,7 @@
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
++#include <libcamera/base/utils.h>
+ 
+ #include "control_ids.h"
+ 
+@@ -73,8 +74,21 @@ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAF
+ }
+ 
+ void Af::step(double& start, double& stop, double& step, double& focus_pos, double& max_pos, uint64_t& max_sharp, uint64_t sharp, bool& sweep){
+-	if(!sweep)
+-		return;
++	if(!sweep){
++		if(utils::abs_diff(sharp, max_sharp) > max_sharp*0.3){
++			LOG(IPASoftAutoFocus, Info) << "Focus lost :(";
++			sweep = true;
++			max_sharp = 0;
++			max_pos = 0;
++			focus_pos = 0;
++			start = 0;
++			stop = 100;
++			step = 25;
++		}
++		else {
++			return;
++		}
++	}
+ 	if(focus_pos < start) {
+ 		focus_pos = start;
+ 		return;
+@@ -88,7 +102,6 @@ void Af::step(double& start, double& stop, double& step, double& focus_pos, doub
+ 		start = std::clamp(max_pos - step, 0.0, 100.0);
+ 		stop = std::clamp(max_pos +  step, 0.0, 100.0);
+ 		focus_pos = start;
+-		max_sharp = 0;
+ 		step /= 2;
+ 		if(step <= 0.2){
+ 			sweep = false;

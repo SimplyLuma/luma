@@ -4,8 +4,9 @@
 # conninfra, gen4m Wi-Fi, BT) out of tree against the Titan kernel.
 #   build-titan2e-connsys-modules.sh [kernel [output dir]]
 # kernel is the build-titan2e-kernel.sh output (default) or a built kernel tree.
-# Sources: the MT6878 GPL vendor trees at pinned commits plus
-# packaging/titan2e-connsys/titan2e-connsys.patch.
+# Sources: packaging/titan2e-connsys/{vendor_mediatek_kernel_modules,
+# kernel_device_modules} (MediaTek's MT6878 GPL releases, the files this build
+# uses, vendored unmodified) plus packaging/titan2e-connsys/titan2e-connsys.patch.
 set -euo pipefail
 repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 kdir=$(realpath "${1:-$repo_root/build/packages/titan2e-kernel}")
@@ -14,29 +15,26 @@ out=${2:-$repo_root/build/titan2e-connsys}
 [ -e "$kdir/Module.symvers" ] || { echo "$kdir: not a built kernel tree" >&2; exit 1; }
 [ ! -e "$out" ] || { echo "Existing output must be retained: $out" >&2; exit 1; }
 
-VENDOR_URL=https://github.com/motorola-mt6878/vendor_mediatek_kernel_modules.git
-VENDOR_REV=1c51f57c78be8acb3c51bc1911fffcd7b5c90184
-KDM_URL=https://github.com/motorola-mt6878/kernel_device_modules.git
-KDM_REV=6586afaa0622648a6e740fb4a83f4b8057346bc2
+# Vendored unmodified, checked against their SHA-256:
+#   vendor_mediatek_kernel_modules  github.com/motorola-mt6878/vendor_mediatek_kernel_modules
+#                                   1c51f57c78be8acb3c51bc1911fffcd7b5c90184
+#   kernel_device_modules           github.com/motorola-mt6878/kernel_device_modules
+#                                   6586afaa0622648a6e740fb4a83f4b8057346bc2
+pkg=$repo_root/packaging/titan2e-connsys
+for tree in vendor_mediatek_kernel_modules kernel_device_modules; do
+	(cd "$pkg/$tree" && sha256sum --quiet -c "$pkg/$tree.sha256" &&
+		find . -type l | LC_ALL=C sort | sed 's|^\./||' | while read -r l; do printf '%s -> %s\n' "$l" "$(readlink "$l")"; done |
+		cmp -s - "$pkg/$tree.links") ||
+		{ echo "$pkg/$tree differs from $tree.sha256 or $tree.links" >&2; exit 1; }
+done
 
 mkdir -p "$(dirname "$out")"
 work=$(mktemp -d "${out}.work.XXXXXX")
-fetch() { # fetch <url> <rev> <dir> <paths...>
-	local url=$1 rev=$2 dir=$3; shift 3
-	git init -q "$dir"
-	git -C "$dir" remote add origin "$url"
-	git -C "$dir" sparse-checkout set --no-cone "$@"
-	git -C "$dir" fetch -q --depth 1 --filter=blob:none origin "$rev"
-	git -C "$dir" checkout -q FETCH_HEAD
-}
-fetch "$VENDOR_URL" "$VENDOR_REV" "$work/vendor" /connectivity/
-fetch "$KDM_URL" "$KDM_REV" "$work/kdm" /drivers/misc/mediatek/ /drivers/gpu/drm/mediatek/ \
-	/drivers/devfreq/ /drivers/memory/mediatek/ /include/
-
+cp -R "$pkg/kernel_device_modules" "$work/kdm"
 src=$work/src
 mkdir -p "$src" "$work/top/vendor/mediatek/kernel_modules"
-cp -a "$work/vendor/connectivity/"{bt,common,conninfra,wlan} "$src/"
-cp -a "$work/kdm/drivers/misc/mediatek/connectivity" "$src/connadp"
+cp -R "$pkg/vendor_mediatek_kernel_modules/connectivity/"{bt,common,conninfra,wlan} "$src/"
+cp -R "$work/kdm/drivers/misc/mediatek/connectivity" "$src/connadp"
 ln -s "$src" "$work/top/vendor/mediatek/kernel_modules/connectivity"
 ln -s "$work/kdm" "$work/top/kdm"
 patch -d "$src" -p1 -s <"$repo_root/packaging/titan2e-connsys/titan2e-connsys.patch"

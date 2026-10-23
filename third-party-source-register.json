@@ -3123,6 +3123,25 @@
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
       "origin_line": 61
+    },
+    {
+      "component": "CATCRAFTS-FP6-IMG-LIBCAMERA-PREREQUISITES",
+      "upstream": [
+        {
+          "name": "Catcrafts/fp6-img",
+          "url": "https://forgejo.catcrafts.net/Catcrafts/fp6-img"
+        }
+      ],
+      "recorded_revisions": [
+        "738148b51af05a0a5fe1608ff289180cf46470e2"
+      ],
+      "recorded_versions": [],
+      "license_identifiers": [
+        "LGPL-2.1-or-later",
+        "GPL-2.0-or-later"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 40
     }
   ],
   "spdx_license_ids_observed": [

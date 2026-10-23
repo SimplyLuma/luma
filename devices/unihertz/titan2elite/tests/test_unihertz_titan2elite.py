@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unihertz Titan 2 Elite rules that the shared device checks cannot express."""
 import hashlib
+import os
 import json
 import re
 import struct
@@ -157,6 +158,28 @@ class UnihertzTitan2Elite(unittest.TestCase):
         self.assertEqual(files, set(listed))
         for path, digest in listed.items():
             self.assertEqual(hashlib.sha256((tree / path).read_bytes()).hexdigest(), digest, path)
+
+    def test_connsys_and_camera_prerequisites_are_vendored(self):
+        connsys = ROOT / "packaging" / "titan2e-connsys"
+        script = (ROOT / "scripts" / "packages" / "build-titan2e-connsys-modules.sh").read_text()
+        for fetch in ("git fetch", "git clone", "curl ", "wget "):
+            self.assertNotIn(fetch, script)
+        for tree in ("vendor_mediatek_kernel_modules", "kernel_device_modules"):
+            listed = dict(reversed(l.split(None, 1)) for l in (connsys / f"{tree}.sha256").read_text().splitlines())
+            root = connsys / tree
+            files = {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() and not p.is_symlink()}
+            self.assertEqual(files, set(listed), tree)
+            links = dict(l.split(" -> ") for l in (connsys / f"{tree}.links").read_text().splitlines())
+            found = {str(p.relative_to(root)): os.readlink(p) for p in root.rglob("*") if p.is_symlink()}
+            self.assertEqual(found, links, tree)
+            for path, target in links.items():
+                resolved = os.path.normpath(os.path.join(os.path.dirname(path), target))
+                self.assertFalse(resolved.startswith(".."), path)
+            for path, digest in listed.items():
+                self.assertEqual(hashlib.sha256((connsys / tree / path).read_bytes()).hexdigest(), digest, path)
+        camera = (ROOT / "scripts" / "mobile" / "build-fp6-libcamera.sh").read_text()
+        self.assertNotIn("fp6-img", camera.replace("from fp6-img", ""))
+        self.assertEqual(len(list((ROOT / "patches" / "libcamera" / "upstream-fp6").glob("00*.patch"))), 15)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,408 @@
+From 62fc9d05460aa0ad5e1e4c8f81ae966796c066c9 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 17 Aug 2026 03:23:30 +0200
+Subject: [PATCH] ipa: simple: awb: Add optional white point locus clamp and
+ damping
+
+The simple IPA's AWB is pure gray world: every stats frame the applied
+gains become the frame-average G/R and G/B ratios of that frame. Two
+artifacts follow on real hardware. Panning swings the gains with the
+scene composition - a warm-dominated frame renders a white wall green,
+a cool-dominated one renders a dark desk red - and the CCM, which is
+interpolated over a colour temperature estimated from those same gains,
+amplifies and quantizes each swing.
+
+Add optional per-sensor tuning for the Awb algorithm:
+
+  - Awb:
+      whitePoints:            # ordered by strictly ascending ct
+        - { ct: 2856, gains: [ 1.378, 2.769 ] }   # [ R gain, B gain ]
+        - { ct: 5000, gains: [ 2.037, 1.809 ] }
+      clampMargin: 0.35       # max distance from the locus in gain space
+      damping: 0.8            # per-stats-frame EMA weight of the old gains
+
+whitePoints defines a piecewise-linear locus of calibrated illuminant
+white points in (R gain, B gain) space. The gray-world estimate is
+computed as before, then clamped to within clampMargin of the locus:
+scene colours can no longer pull the white balance arbitrarily far from
+colours a real illuminant would produce, while off-locus (greenish,
+e.g. fluorescent) illuminants within the margin still get corrected.
+The applied gains follow the clamped estimate through a per-stats-frame
+exponential moving average so composition changes fade in smoothly; a
+large difference persisting for several stats frames is a real
+illuminant change and halves the damping so scene cuts converge quickly
+instead of crawling.
+
+The colour temperature is no longer estimated with the generic
+estimateCCT() matrix but interpolated from the applied gains' position
+along the locus, so the Ccm algorithm always picks a matrix consistent
+with the applied white balance, on the same ct scale the tuning file's
+ccms table uses.
+
+A tuning file without whitePoints keeps the previous behaviour exactly.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ src/ipa/simple/algorithms/awb.cpp | 240 ++++++++++++++++++++++++++++--
+ src/ipa/simple/algorithms/awb.h   |  30 ++++
+ 2 files changed, 257 insertions(+), 13 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/awb.cpp b/src/ipa/simple/algorithms/awb.cpp
+index 05155c8..83dcece 100644
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -1,34 +1,160 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ /*
+  * Copyright (C) 2024-2026 Red Hat Inc.
++ * Copyright (C) 2026 Jorijn van der Graaf
+  *
+  * Auto white balance
+  */
+ 
+ #include "awb.h"
+ 
++#include <algorithm>
++#include <cmath>
++#include <limits>
+ #include <numeric>
++#include <optional>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/control_ids.h>
+ 
++#include "libcamera/internal/value_node.h"
++#include "libcamera/internal/vector.h"
++
+ #include "libipa/colours.h"
+ #include "simple/ipa_context.h"
+ 
++namespace {
++
++constexpr double kDefaultClampMargin = 0.35;
++constexpr double kDefaultDamping = 0.8;
++
++/*
++ * When the damped gains stay farther than kFastConvergeDistance (in gain
++ * space) from the clamped gray-world target for more than
++ * kFastConvergeFrames consecutive stats frames, the difference is a real
++ * illuminant change rather than scene-composition noise: halve the damping
++ * so the change converges quickly instead of crawling.
++ */
++constexpr double kFastConvergeDistance = 0.15;
++constexpr unsigned int kFastConvergeFrames = 3;
++
++/* Start from the white point closest to daylight. */
++constexpr double kInitialCT = 5000.0;
++
++} /* namespace */
++
+ namespace libcamera {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftAwb)
+ 
+ namespace ipa::soft::algorithms {
+ 
++/*
++ * Optional per-sensor tuning:
++ *
++ * - Awb:
++ *     whitePoints:            # ordered by strictly ascending ct
++ *       - { ct: 2856, gains: [ 1.378, 2.769 ] }   # [ R gain, B gain ]
++ *       - { ct: 5000, gains: [ 2.037, 1.809 ] }
++ *     clampMargin: 0.35       # max distance from the locus in gain space
++ *     damping: 0.8            # per-stats-frame EMA weight of the old gains
++ *
++ * whitePoints defines a piecewise-linear locus of calibrated illuminant
++ * white points in (R gain, B gain) space. The gray-world estimate is
++ * clamped to within clampMargin of the locus, bounding how far scene
++ * colours can pull the white balance while still allowing off-locus
++ * (greenish, e.g. fluorescent) illuminants. The applied gains follow the
++ * clamped estimate through an exponential moving average, and the colour
++ * temperature fed to the Ccm algorithm is interpolated from the applied
++ * gains' position along the locus. Without whitePoints the plain
++ * gray-world algorithm runs unchanged.
++ */
++int Awb::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++{
++	const ValueNode &wps = tuningData["whitePoints"];
++	if (wps.isEmpty())
++		return 0;
++
++	if (!wps.isList() || wps.size() < 2) {
++		LOG(IPASoftAwb, Error)
++			<< "whitePoints must be a list of at least two points";
++		return -EINVAL;
++	}
++
++	for (const ValueNode &node : wps.asList()) {
++		std::optional<double> ct = node["ct"].get<double>();
++		std::optional<Vector<double, 2>> gains =
++			node["gains"].get<Vector<double, 2>>();
++		if (!ct || !gains || (*gains)[0] <= 0.0 || (*gains)[1] <= 0.0) {
++			LOG(IPASoftAwb, Error)
++				<< "whitePoints entries need a ct and positive gains [ R, B ]";
++			whitePoints_.clear();
++			return -EINVAL;
++		}
++		if (!whitePoints_.empty()) {
++			const WhitePoint &prev = whitePoints_.back();
++			if (*ct <= prev.ct) {
++				LOG(IPASoftAwb, Error)
++					<< "whitePoints must be ordered by strictly ascending ct";
++				whitePoints_.clear();
++				return -EINVAL;
++			}
++			if ((*gains)[0] == prev.rGain && (*gains)[1] == prev.bGain) {
++				LOG(IPASoftAwb, Error)
++					<< "consecutive whitePoints must differ in gains";
++				whitePoints_.clear();
++				return -EINVAL;
++			}
++		}
++		whitePoints_.push_back({ *ct, (*gains)[0], (*gains)[1] });
++	}
++
++	clampMargin_ = tuningData["clampMargin"].get<double>(kDefaultClampMargin);
++	damping_ = tuningData["damping"].get<double>(kDefaultDamping);
++	if (clampMargin_ <= 0.0 || damping_ < 0.0 || damping_ >= 1.0) {
++		LOG(IPASoftAwb, Error)
++			<< "clampMargin must be positive and damping within [0, 1)";
++		whitePoints_.clear();
++		return -EINVAL;
++	}
++
++	LOG(IPASoftAwb, Info)
++		<< "White point locus: " << whitePoints_.size() << " points, "
++		<< whitePoints_.front().ct << "-" << whitePoints_.back().ct
++		<< " K, clamp margin " << clampMargin_
++		<< ", damping " << damping_;
++
++	return 0;
++}
++
+ int Awb::configure(IPAContext &context,
+ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+ 	auto &gains = context.activeState.awb.gains;
+ 	gains = { { 1.0, 1.0, 1.0 } };
+ 
++	fastFrames_ = 0;
++
++	if (whitePoints_.empty())
++		return 0;
++
++	/*
++	 * Start from the calibrated white point closest to daylight rather
++	 * than from unity gains, so the first frames are roughly plausible
++	 * while the loop converges.
++	 */
++	const WhitePoint *initial = &whitePoints_.front();
++	for (const WhitePoint &wp : whitePoints_) {
++		if (std::abs(wp.ct - kInitialCT) < std::abs(initial->ct - kInitialCT))
++			initial = &wp;
++	}
++	gains = { { static_cast<float>(initial->rGain), 1.0,
++		    static_cast<float>(initial->bGain) } };
++	context.activeState.awb.temperatureK =
++		static_cast<unsigned int>(std::lround(initial->ct));
++
+ 	return 0;
+ }
+ 
+@@ -43,6 +169,39 @@ void Awb::prepare(IPAContext &context,
+ 	params->gains = gains;
+ }
+ 
++/*
++ * Find the closest point on the piecewise-linear white point locus, and
++ * the colour temperature interpolated along the containing segment.
++ */
++Awb::LocusPosition Awb::closestOnLocus(double rGain, double bGain) const
++{
++	LocusPosition best{};
++	double bestDist2 = std::numeric_limits<double>::max();
++
++	for (unsigned int i = 0; i + 1 < whitePoints_.size(); i++) {
++		const WhitePoint &p0 = whitePoints_[i];
++		const WhitePoint &p1 = whitePoints_[i + 1];
++		const double dr = p1.rGain - p0.rGain;
++		const double db = p1.bGain - p0.bGain;
++		const double len2 = dr * dr + db * db;
++		double t = ((rGain - p0.rGain) * dr + (bGain - p0.bGain) * db) / len2;
++		t = std::clamp(t, 0.0, 1.0);
++		const double qr = p0.rGain + t * dr;
++		const double qb = p0.bGain + t * db;
++		const double dist2 = (rGain - qr) * (rGain - qr) +
++				     (bGain - qb) * (bGain - qb);
++		if (dist2 < bestDist2) {
++			bestDist2 = dist2;
++			best.rGain = qr;
++			best.bGain = qb;
++			best.ct = p0.ct + t * (p1.ct - p0.ct);
++		}
++	}
++
++	best.distance = std::sqrt(bestDist2);
++	return best;
++}
++
+ void Awb::process(IPAContext &context,
+ 		  [[maybe_unused]] const uint32_t frame,
+ 		  IPAFrameContext &frameContext,
+@@ -73,24 +232,79 @@ void Awb::process(IPAContext &context,
+ 	 */
+ 	const RGB<uint64_t> sum = stats->sum_.max(offset + minValid) - offset;
+ 
++	auto &gains = context.activeState.awb.gains;
++
++	if (whitePoints_.empty()) {
++		/*
++		 * Calculate red and blue gains for AWB.
++		 * Clamp max gain at 4.0, this also avoids 0 division.
++		 */
++		gains = { {
++			sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
++			1.0,
++			sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
++		} };
++
++		RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
++		context.activeState.awb.temperatureK = estimateCCT(rgbGains);
++		metadata.set(controls::ColourTemperature,
++			     context.activeState.awb.temperatureK);
++
++		LOG(IPASoftAwb, Debug)
++			<< "gain R/B: " << gains << "; temperature: "
++			<< context.activeState.awb.temperatureK;
++
++		return;
++	}
++
+ 	/*
+-	 * Calculate red and blue gains for AWB.
+-	 * Clamp max gain at 4.0, this also avoids 0 division.
++	 * Gray-world estimate. The sums are at least minValid, so the
++	 * divisions are safe; the locus clamp below bounds the result.
+ 	 */
+-	auto &gains = context.activeState.awb.gains;
+-	gains = { {
+-		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
+-		1.0,
+-		sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
+-	} };
++	double rTarget = static_cast<double>(sum.g()) / sum.r();
++	double bTarget = static_cast<double>(sum.g()) / sum.b();
++
++	/* Clamp the estimate to within clampMargin_ of the locus. */
++	const LocusPosition projection = closestOnLocus(rTarget, bTarget);
++	if (projection.distance > clampMargin_) {
++		const double f = clampMargin_ / projection.distance;
++		rTarget = projection.rGain + (rTarget - projection.rGain) * f;
++		bTarget = projection.bGain + (bTarget - projection.bGain) * f;
++	}
+ 
+-	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
+-	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
+-	metadata.set(controls::ColourTemperature, context.activeState.awb.temperatureK);
++	/*
++	 * Damp the applied gains toward the clamped target so that changes
++	 * of the frame composition (e.g. panning) do not swing the colours,
++	 * converging faster when the difference is large and persistent.
++	 */
++	const double err = std::hypot(rTarget - gains.r(), bTarget - gains.b());
++	if (err > kFastConvergeDistance)
++		fastFrames_++;
++	else
++		fastFrames_ = 0;
++	double damping = damping_;
++	if (fastFrames_ > kFastConvergeFrames)
++		damping /= 2.0;
++
++	const double rNew = damping * gains.r() + (1.0 - damping) * rTarget;
++	const double bNew = damping * gains.b() + (1.0 - damping) * bTarget;
++	gains = { { static_cast<float>(rNew), 1.0, static_cast<float>(bNew) } };
++
++	/*
++	 * The colour temperature the Ccm algorithm consumes follows from
++	 * where the applied gains sit along the locus, so the matrix always
++	 * matches the applied white balance.
++	 */
++	const LocusPosition applied = closestOnLocus(rNew, bNew);
++	context.activeState.awb.temperatureK =
++		static_cast<unsigned int>(std::lround(applied.ct));
++	metadata.set(controls::ColourTemperature,
++		     context.activeState.awb.temperatureK);
+ 
+ 	LOG(IPASoftAwb, Debug)
+-		<< "gain R/B: " << gains << "; temperature: "
+-		<< context.activeState.awb.temperatureK;
++		<< "gain R/B: " << gains
++		<< "; locus distance: " << projection.distance
++		<< "; temperature: " << context.activeState.awb.temperatureK;
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Awb, "Awb")
+diff --git a/src/ipa/simple/algorithms/awb.h b/src/ipa/simple/algorithms/awb.h
+index ad993f3..ef4e4f3 100644
+--- a/src/ipa/simple/algorithms/awb.h
++++ b/src/ipa/simple/algorithms/awb.h
+@@ -1,12 +1,15 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ /*
+  * Copyright (C) 2024-2025 Red Hat Inc.
++ * Copyright (C) 2026 Jorijn van der Graaf
+  *
+  * Auto white balance
+  */
+ 
+ #pragma once
+ 
++#include <vector>
++
+ #include "algorithm.h"
+ 
+ namespace libcamera {
+@@ -19,6 +22,7 @@ public:
+ 	Awb() = default;
+ 	~Awb() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
+ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+ 	void prepare(IPAContext &context,
+ 		     const uint32_t frame,
+@@ -29,6 +33,32 @@ public:
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
++
++private:
++	struct WhitePoint {
++		double ct;
++		double rGain;
++		double bGain;
++	};
++
++	struct LocusPosition {
++		double rGain;
++		double bGain;
++		double ct;
++		double distance;
++	};
++
++	LocusPosition closestOnLocus(double rGain, double bGain) const;
++
++	/*
++	 * Calibrated white point locus in (R gain, B gain) space, ordered by
++	 * strictly ascending colour temperature. Empty when the tuning file
++	 * provides no white points; the plain gray-world algorithm runs then.
++	 */
++	std::vector<WhitePoint> whitePoints_;
++	double clampMargin_ = 0.0;
++	double damping_ = 0.0;
++	unsigned int fastFrames_ = 0;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */

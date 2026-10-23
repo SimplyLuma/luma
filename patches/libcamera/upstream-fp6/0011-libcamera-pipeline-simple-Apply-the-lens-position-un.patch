@@ -1,0 +1,74 @@
+From 8ee13c9f2a3a8084d2360e78da32ed9793bfe5e9 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 17 Aug 2026 01:58:13 +0200
+Subject: [PATCH] libcamera: pipeline: simple: Apply the lens position
+ unconditionally
+
+The focus control patch applies the lens position inside the branch that
+only runs when the pipeline has no frame-start emitter, because that is
+where the sensor controls are applied directly. The lens is a different
+kind of device: it is a separate subdevice, it is not pushed through
+delayedCtrls_, and it has no frame-latched controls, so there is nothing
+to synchronise it to. On a platform whose pipeline does register a
+frame-start emitter the lens would simply never move.
+
+Hoist the lens write above the early return. The FP6's CAMSS pipeline
+registers no frame-start emitter (no subdevice in the graph supports
+V4L2_EVENT_FRAME_SYNC), so this makes no difference there, but it is a
+prerequisite for the feature working anywhere else.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ src/libcamera/pipeline/simple/simple.cpp | 32 +++++++++++++-----------
+ 1 file changed, 17 insertions(+), 15 deletions(-)
+
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 047800b59..0095ea7a5 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -1045,6 +1045,19 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
+ void SimpleCameraData::setSensorControls(const ControlList &sensorControls, const ControlList &lensControls)
+ {
+ 	delayedCtrls_->push(sensorControls);
++
++	/*
++	 * The lens is a separate subdevice with no frame-latched controls, so
++	 * its position is applied straight away and independently of the
++	 * sensor controls below.
++	 */
++	CameraLens *focusLens = sensor_->focusLens();
++	if (focusLens && lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE)) {
++		const ControlValue &focusValue =
++			lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
++		focusLens->setFocusPosition(focusValue.get<int32_t>());
++	}
++
+ 	/*
+ 	 * Directly apply controls now if there is no frameStart signal.
+ 	 *
+@@ -1053,21 +1066,10 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls, cons
+ 	 * but it also bypasses delayedCtrls_, creating AGC regulation issues.
+ 	 * Both problems should be fixed.
+ 	 */
+-	if (frameStartEmitter_)
+-		return;
+-
+-	ControlList ctrls(sensorControls);
+-	sensor_->setControls(&ctrls);
+-
+-	CameraLens *focusLens = sensor_->focusLens();
+-	if (!focusLens)
+-		return;
+-
+-	if (!lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE))
+-		return;
+-
+-	const ControlValue &focusValue = lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
+-	focusLens->setFocusPosition(focusValue.get<int32_t>());
++	if (!frameStartEmitter_) {
++		ControlList ctrls(sensorControls);
++		sensor_->setControls(&ctrls);
++	}
+ }
+ 
+ /* Retrieve all source pads connected to a sink pad through active routes. */

@@ -1,0 +1,41 @@
+From 262906b13ff727473679cf7895618e4745f3ba4c Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 16 Aug 2026 20:49:31 +0200
+Subject: [PATCH] libcamera: sensor: Add IMX896 sensor properties
+
+Add the Sony IMX896 (Fairphone 6 main camera, 50 MP, 8192x6144) to
+the static properties database: 1.0 um unit cell and the test pattern
+modes exposed by the kernel driver (V4L2 menu indices map 1:1 to
+register 0x0600 values). Removes the "No static properties available
+for 'imx896'" warning.
+
+Assisted-by: Claude:claude-fable-5
+---
+ src/libcamera/sensor/camera_sensor_properties.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/libcamera/sensor/camera_sensor_properties.cpp b/src/libcamera/sensor/camera_sensor_properties.cpp
+index 2804315..63050c2 100644
+--- a/src/libcamera/sensor/camera_sensor_properties.cpp
++++ b/src/libcamera/sensor/camera_sensor_properties.cpp
+@@ -335,6 +335,17 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
+ 				.hblankDelay = 3
+ 			},
+ 		} },
++		{ "imx896", {
++			.unitCellSize = { 1000, 1000 },
++			.testPatternModes = {
++				{ controls::draft::TestPatternModeOff, 0 },
++				{ controls::draft::TestPatternModeSolidColor, 1 },
++				{ controls::draft::TestPatternModeColorBars, 2 },
++				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
++				{ controls::draft::TestPatternModePn9, 4 },
++			},
++			.sensorDelays = { },
++		} },
+ 		{ "ov2685", {
+ 			.unitCellSize = { 1750, 1750 },
+ 			.testPatternModes = {
+-- 
+2.55.0
+
