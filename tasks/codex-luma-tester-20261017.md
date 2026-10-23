@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — qualified Tester0.6.0/r30 reopened on Dell; generic image/hardware/folder UX and menu/key fixes delivered. Integrated-camera streaming bridge and ARM Mobile virtual boot remain pending.
+- Status: active — Tester0.7.0 Mac r2 launched; Linux r32 snapshot update qualified and registered without stopping the user's guest. Published ARM Mobile payload verified; virtual boot adapter build underway, not yet boot-qualified.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -13,6 +13,44 @@
   changes. Host platform packages and integration checkout remain unchanged.
 
 ## Current handoff
+
+2026-10-23 update: Mac r2 is delivered and launched. The finish controller's
+mounted-DMG verification and Linux r32 build/UI/delivery stages all passed;
+private `artifacts/tester-mac-live-finish.json` records the completed stages.
+Linux r32 registration preserves the existing workspace and running guest;
+`gui_reopened:false` is intentional. The current source suite has89 passing
+tests, including actual Gio desktop launch argv/state preservation.
+
+Current priority is Mobile ARM discovery/boot on Mac. The public Mobile file
+exists and was downloaded with its published SHA256 verified. The Hub catalog
+currently lists only x86 desktop ISOs; Tester also filters to ISO media and
+suppresses published Desktop entries in Mobile. No qualified ARM Mobile profile
+was bundled with Mac r2. This is a Tester integration gap, not a missing ARM
+userspace or a reason to substitute a plain Fedora/desktop twin.
+
+Owned HDD `mobile-arm-alpha1` retains the pristine compressed public source,
+strictly decoded4096-sector GPT raw image, separate reflink `adapter.raw`,
+inspection reports and `virtual-boot/{vmlinuz,initramfs.img,kernel-inputs.json}`.
+Published OS is genuine Luma Handheld20261015.21, OSTree deployment97268a77…,
+Fairphone kernel7.1.2. A generic7.2.11 Fedora ARM kernel/module cohort is added
+only to the disposable derivative. Receipt hashes verified; RPM checks reported
+header/payload digests OK, not release-signing qualification. Native dracut via
+qemu-user with the published OS's ostree module passed in initrd-r2-07d8a0aa;
+first attempt stopped after missing private /dev/fd builder setup was found.
+
+Private helpers under account artifacts: `tester-arm-mobile-*.py`. Root workers
+are bounded/privately mounted via `tester-arm-mobile-root-job.py`; read-only
+inspection units passed. Current configure job6f10ba01 only reads private
+helpers and modifies the disposable derivative; it does not lease/read source.
+Next: inspect configure result and normal-policy labeling, then run prepared
+native Mac worker/controller through normal admission. Ports10851/22251 are
+reserved in those helpers only; no service has been started on them yet.
+Native boot, rendering, developer bootstrap, final UEFI/profile packaging and
+catalog integration remain UNVERIFIED. Do not publish/register this prototype
+as a runnable Tester image yet. No Dell guest or physical phone was touched.
+
+Earlier delivery milestones below are historical; the current ones above and
+the final dated history supersede their versions and pending-stage statements.
 
 The interface requires real LumaUI. Current source uses compact SB1 SidebarRow
 with RowLead.icon in the destinations NavigationSidebar, the shared toolbar
