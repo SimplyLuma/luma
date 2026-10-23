@@ -1343,3 +1343,25 @@ used that source without altering shared refs or unrelated worktrees.
   HDD write access failed read-only before writing; retained as failed evidence.
   Original4GiB request was refused while other builds reserve14GiB; the separate
   read-only workload now has a matching1GiB runner/systemd bound. No gate bypass.
+- Actual stopped-overlay inspection needed journal recovery on a private raw
+  copy (ro,noload cannot read uncommitted ext4 metadata). Private copy recovered
+  cleanly in7e0c0027. Cloud-init failed at passwd -l: restored account files had
+  etc_t rather than account types. Existing entries were present; no account
+  migration needed. Export-r3 corrected primary account labels and startup
+  cycle; native test ddeeec91 then reached cloud-final but exposed shadow-
+  backup still etc_t. Export-r4 a71f5ce7 now labels all matching account files,
+  including backups, with target policy; currently compressing/checking.
+- Separate Mac default-path bug: OpenSSH interprets unquoted UserKnownHostsFile
+  as multiple paths when state contains spaces. c8c045b82 quotes/escapes its
+  configuration value, retains strict accept-new per-workspace host pinning.
+  New isolated regression attempts using ssh -G and refused-connect debug output
+  did not validate parsing (output loses path boundaries / expansion occurs
+  later); those test attempts failed and were removed in0519795d2. Real native
+  fresh-image SSH integration is the qualification gate. Prior96 tests passed;
+  full suite with the final SSH change still pending.
+- Macr6 source0519795d2 built/signed successfully51885d22; not yet launched as
+  final preview. New local-gui-r6 controller/worker use packaged r6 and fresh
+  export-r4. Stable install helper requires that test's passed report, validates
+  base checksum, preserves previous preferences, installs ~/Applications/Luma
+  Tester.app and registers Mobile image in normal imported-images state. It
+  refuses active app/guest collisions. Helpers are private artifacts only.
