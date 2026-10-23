@@ -31,7 +31,7 @@ jobs:
   build:
     needs: select
     if: needs.select.outputs.needed == 'true'
-    timeout-minutes: 180
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +48,7 @@ jobs:
       LUMA_RPM_BUILDER_DIRECT: '1'
       RPM_BUILD_NCPUS: '4'
       LUMA_WEBKIT_DWZ: '0'
+      LUMA_WEBKIT_KEEP_FAILED_WORK: '1'
       BUILDER_IMAGE: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -61,10 +62,13 @@ jobs:
           available=$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -n 1 | tr -d ' ')
           test "$available" -ge 34359738368 || { echo 'WebKit needs at least 32 GiB of scratch on this worker'; exit 1; }
       - name: Build and check the shared WebKit providers
+        timeout-minutes: 330
         run: |
-          docker run --rm --cpus=4 --memory=14g --pids-limit=2048 \
+          container_name="luma-webkit-$LUMA_TARGET_ARCHITECTURE-$GITHUB_RUN_ID"
+          trap 'docker stop --time 30 "$container_name" >/dev/null 2>&1 || true' EXIT
+          docker run --rm --name "$container_name" --cpus=4 --memory=14g --pids-limit=2048 \
             --env LUMA_TARGET_ARCHITECTURE --env LUMA_RPM_BUILDER_DIRECT \
-            --env RPM_BUILD_NCPUS --env LUMA_WEBKIT_DWZ --env BUILDER_IMAGE \
+            --env RPM_BUILD_NCPUS --env LUMA_WEBKIT_DWZ --env LUMA_WEBKIT_KEEP_FAILED_WORK --env BUILDER_IMAGE \
             --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" --workdir "$GITHUB_WORKSPACE" \
             "$BUILDER_IMAGE" bash -euo pipefail -c '
               dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
@@ -78,6 +82,28 @@ jobs:
               git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
               bash scripts/packages/build-webkitgtk-luma.sh
             '
+      - name: Preserve an unqualified failed-build checkpoint
+        if: failure()
+        timeout-minutes: 20
+        run: |
+          shopt -s nullglob
+          workspaces=(build/webkitgtk.work.*)
+          test "${#workspaces[@]}" -gt 0
+          # Never publish this as a package or skip normal RPM checks on reuse.
+          sudo tar -cf - -- "${workspaces[@]}" build/SOURCE-REVISION | \
+            zstd -T2 -1 --memory=512MB -o build/UNQUALIFIED-webkit-checkpoint.tar.zst
+          sha256sum build/UNQUALIFIED-webkit-checkpoint.tar.zst > build/UNQUALIFIED-webkit-checkpoint.sha256
+      - name: Retain the unqualified checkpoint separately
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: UNQUALIFIED-webkit-checkpoint-${{ matrix.architecture }}
+          path: |
+            build/UNQUALIFIED-webkit-checkpoint.tar.zst
+            build/UNQUALIFIED-webkit-checkpoint.sha256
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3
       - name: Retain checked WebKit packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

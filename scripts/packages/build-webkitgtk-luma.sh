@@ -22,7 +22,21 @@ export LUMA_RPM_BUILDER_ARCHITECTURE=$arch
 mkdir -p "$repo_root/build"
 work_dir=$(mktemp -d "$repo_root/build/webkitgtk.work.XXXXXX")
 chmod 0755 "$work_dir"
-trap 'rm -rf "$work_dir"' EXIT INT TERM
+keep_work=${LUMA_WEBKIT_KEEP_FAILED_WORK:-0}
+case "$keep_work" in 0|1) ;; *) echo 'Invalid failed-work preservation mode' >&2; exit 2 ;; esac
+cleanup() {
+  status=$?
+  if [ "$status" != 0 ] && [ "$keep_work" = 1 ]; then
+    printf 'UNQUALIFIED failed WebKit workspace retained: %s\n' "$work_dir" >&2
+    printf 'result=UNQUALIFIED\nexit_status=%s\narchitecture=%s\nsource_rpm_sha256=%s\n' \
+      "$status" "$arch" "$WEBKITGTK_SOURCE_RPM_SHA256" > "$work_dir/UNQUALIFIED-CHECKPOINT.txt"
+  else
+    rm -rf "$work_dir"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$work_dir/rpmbuild"/{SOURCES,SPECS}
 srpm="$work_dir/webkitgtk.src.rpm"
 if [ -n "${2:-}" ]; then
