@@ -369,7 +369,7 @@ podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileg
   while read -r nevra digest header; do
     boot_install_args+=(--installpkgs \"\$nevra\")
   done < /w/boot-packages.manifest
-  lorax --buildarch '$architecture' --product '$product' --version '$version' --release 44 --isfinal \
+  python3 /s/run-lorax.py --buildarch '$architecture' --product '$product' --version '$version' --release 44 --isfinal \
         --volid '$volid' --nomacboot --noupgrade \
         --source '$release_repo' --source file:///w/luma-rpms \
         --installpkgs luma-installer-atlas --installpkgs slitherer \

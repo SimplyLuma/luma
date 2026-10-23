@@ -4,7 +4,7 @@ import hashlib
 import importlib.util
 import struct
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,11 +17,28 @@ def module(name, path):
     return value
 RPM = module('atlas_boot_rpms', 'scripts/install/atlas-iso/prepare-boot-rpms.py')
 LORAX = module('atlas_lorax_boot', 'scripts/install/atlas-iso/prepare-lorax-boot.py')
+RUNNER = module('atlas_lorax_runner', 'scripts/install/atlas-iso/run-lorax.py')
 KERNEL = module('atlas_runtime_kernel', 'scripts/install/atlas-iso/check-runtime-kernel.py')
 PRESENTATION = module('atlas_runtime_presentation', 'scripts/install/atlas-iso/prepare-runtime-presentation.py')
 FONT = module('luma_grub_font', 'scripts/boot/check-grub-fonts.py')
 
 class InstallerBootInputs(unittest.TestCase):
+    def test_foreign_transaction_requires_target_packages_and_isolated_root(self):
+        base = Mock()
+        base.get_vars().get_value.return_value = 'aarch64'
+        base.get_config().installroot = '/work/runtime'
+        RUNNER.configure_target(base, 'aarch64', 'x86_64')
+        base.get_config().get_ignorearch_option().set.assert_called_with(True)
+        RUNNER.configure_target(base, 'aarch64', 'aarch64')
+        base.get_config().get_ignorearch_option().set.assert_called_with(False)
+        base.get_config().installroot = '/'
+        with self.assertRaisesRegex(RuntimeError, 'isolated'):
+            RUNNER.configure_target(base, 'aarch64', 'x86_64')
+        base.get_config().installroot = '/work/runtime'
+        base.get_vars().get_value.return_value = 'x86_64'
+        with self.assertRaisesRegex(RuntimeError, 'differs'):
+            RUNNER.configure_target(base, 'aarch64', 'x86_64')
+
     def test_runtime_kernel_rejects_extra_boot_images_and_module_versions(self):
         for arch in ('aarch64', 'x86_64'):
             with self.subTest(arch=arch), tempfile.TemporaryDirectory() as temporary:
