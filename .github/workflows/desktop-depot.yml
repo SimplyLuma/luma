@@ -49,14 +49,29 @@ jobs:
           sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc
           available=$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -n 1 | tr -d ' ')
           test "$available" -ge 34359738368
+          # Ubuntu requires a named profile to grant unprivileged user namespaces.
+          # Keep the host-wide restriction; allow only this keyless container.
+          # https://documentation.ubuntu.com/security/security-features/privilege-restriction/apparmor/
+          profile="$RUNNER_TEMP/luma-native-depot.apparmor"
+          cat > "$profile" <<'APPARMOR'
+          abi <abi/4.0>,
+          profile luma-native-depot flags=(unconfined) {
+            userns,
+          }
+          APPARMOR
+          sudo apparmor_parser --replace "$profile"
+          trap 'sudo apparmor_parser --remove "$profile"' EXIT
           docker run --rm --cpus=4 --memory=12g --pids-limit=2048 \
             --cap-add SYS_ADMIN --cap-add NET_ADMIN --device /dev/fuse \
-            --security-opt apparmor=unconfined --security-opt seccomp=unconfined \
+            --security-opt apparmor=luma-native-depot --security-opt seccomp=unconfined \
             --security-opt systempaths=unconfined \
             --env DEPOT_ARCH --env BUILDER_IMAGE \
             --env "DEPOT_ROOT=$GITHUB_WORKSPACE/build/native-depot-probe/$DEPOT_ARCH" \
             --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" --workdir "$GITHUB_WORKSPACE" \
             "$BUILDER_IMAGE" bash scripts/depot/probe-native-tools.sh
+      - name: Retain namespace denial diagnostics
+        if: failure() && (github.event_name == 'pull_request' || inputs.architecture == matrix.architecture)
+        run: sudo dmesg | grep -Ei 'apparmor.*(denied|userns)|bwrap' | tail -n 30 || true
       - name: Retain actual native tooling evidence
         if: github.event_name == 'pull_request' || inputs.architecture == matrix.architecture
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
