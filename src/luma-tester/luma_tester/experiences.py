@@ -18,6 +18,23 @@ def preferred_arch(experience, host):
     return 'aarch64' if experience in ARM_FIRST else host
 
 
+def architecture_preferences(preferences, host):
+    """Migrate previews that saved defaults as if the user had chosen them.
+
+    Only choices carrying explicit provenance override the current defaults.
+    Image and preset selections remain available independently of this policy.
+    """
+    result = {key: preferred_arch(key, host) for key in CHOICES}
+    saved = preferences.get('architectures', {})
+    explicit = preferences.get('architecture_choices', [])
+    if not isinstance(saved, dict) or not isinstance(explicit, list):
+        return result, set()
+    choices = {key for key in explicit if key in CHOICES
+               and saved.get(key) in ('auto', 'x86_64', 'aarch64')}
+    result.update({key: saved[key] for key in choices})
+    return result, choices
+
+
 def select(experience, images, host, architecture='auto'):
     choices = [p for p in images if compatible(experience, p[1])]
     if architecture not in ('auto', 'x86_64', 'aarch64'):

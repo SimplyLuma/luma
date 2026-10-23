@@ -12,6 +12,26 @@ from luma_tester.core import Session, read_manifest, TesterError
 
 
 class ExperienceTests(unittest.TestCase):
+    def test_legacy_architecture_defaults_migrate_to_host(self):
+        legacy={'architectures':dict(desktop='aarch64',tablet='aarch64',mobile='x86_64')}
+        for host in ('x86_64','aarch64'):
+            values,explicit=experiences.architecture_preferences(legacy,host)
+            self.assertEqual(values['desktop'],host)
+            self.assertEqual(values['tablet'],host)
+            self.assertEqual(values['mobile'],'aarch64')
+            self.assertEqual(explicit,set())
+
+    def test_deliberate_architecture_choices_survive_restart(self):
+        saved={'architectures':dict(desktop='aarch64',tablet='auto',mobile='x86_64'),
+               'architecture_choices':['desktop','tablet','mobile','invalid']}
+        values,explicit=experiences.architecture_preferences(saved,'x86_64')
+        self.assertEqual(values['desktop'],'aarch64')
+        self.assertEqual(values['tablet'],'auto')
+        self.assertEqual(values['mobile'],'x86_64')
+        self.assertEqual(explicit,{'desktop','tablet','mobile'})
+        again,choices=experiences.architecture_preferences(dict(architectures=values,architecture_choices=list(explicit)),'x86_64')
+        self.assertEqual((again,choices),(values,explicit))
+
     def test_arm_modes_do_not_silently_choose_x86(self):
         x=('x86',dict(target='desktop',arch='x86_64'))
         arm=('arm',dict(target='desktop',arch='aarch64'))

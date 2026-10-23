@@ -82,15 +82,14 @@ def launch(state=None):
             self.ssh_busy = False
             self.device_busy = False
             self.selected_images = {}
-            self.architectures = {'desktop':'x86_64','tablet':'x86_64','mobile':'aarch64'}
+            self.architectures, self.architecture_choices = experiences.architecture_preferences({}, host_arch())
             self.library_items = image_library.cached(data_root(state))
             self.library_loading = False
             self.library_error = None
             self.selected_variants = {}
             try:
                 preferences=json.loads(self.preferences.read_text())
-                self.architectures.update({key:value for key,value in preferences.get("architectures",{}).items()
-                    if key in experiences.CHOICES and value in ("auto","x86_64","aarch64")})
+                self.architectures, self.architecture_choices = experiences.architecture_preferences(preferences, host_arch())
                 for key,value in preferences.get("selected_variants",{}).items():
                     target,architecture=key.split(":")
                     image=read_manifest(value)
@@ -157,7 +156,7 @@ def launch(state=None):
                 variants[self.target+':'+self.session.manifest['arch']]=selected[self.target]
             vm.atomic_json(self.preferences, dict(images=[str(p) for p in self.imported[:16]],
                 selected_images={target:str(path) for target,path in selected.items()},
-                architectures=self.architectures, selected_variants={key:str(path) for key,path in variants.items()},
+                architectures=self.architectures, architecture_choices=sorted(self.architecture_choices), selected_variants={key:str(path) for key,path in variants.items()},
                 intent=self.intent, target=self.target, workspace=True))
 
         def fit_selector(self, selector):
@@ -217,6 +216,7 @@ def launch(state=None):
                 restored=saved.get('target',self.restored_target)
                 if restored in self.catalog_targets:self.select_target(restored)
             self.window.present()
+            self.refresh_library()
             GLib.timeout_add_seconds(2, self.refresh)
 
         def build_sidebar(self):
@@ -317,14 +317,6 @@ def launch(state=None):
             actions.append(self.button('Save', self.save_preset, True))
             form.append(actions)
             self.preset_editor = Card(form)
-            foot = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-            foot.add_css_class('luma-navigation-list')
-            for title, icon, callback in [('Images', 'hard-drive', self.show_images)]:
-                row = SidebarRow(title, lead=RowLead.icon(icon))
-                row.callback = callback
-                foot.append(row)
-            foot.connect('row-activated', lambda _list, row: row.callback())
-            self.sidebar.append_footer(foot)
 
         def refresh_preset_rows(self):
             for row in self.preset_rows:
@@ -347,7 +339,9 @@ def launch(state=None):
             self.sidebar_toggle = make_control(BarAction('panel-left', tooltip='Show or hide sidebar',
                 on_activate=lambda: self.layout.set_show_sidebar(not self.layout.get_show_sidebar())))
             self.workspace_title = self.label('')  # not displayed; title belongs in the workspace
-            self.build_menu = self.button('Images', self.show_images, icon='hard-drive')
+            self.build_menu = Gtk.MenuButton(label='Images', tooltip_text='Choose an image')
+            self.build_menu.get_first_child().add_css_class('lumaui-bar-button')
+            self.build_menu.get_first_child().add_css_class('dropdown')
             self.arch_menu = Gtk.MenuButton(label='Automatic', tooltip_text='Guest CPU architecture')
             self.arch_menu.get_first_child().add_css_class('lumaui-bar-button')
             self.arch_menu.get_first_child().add_css_class('dropdown')
@@ -408,6 +402,7 @@ def launch(state=None):
             if architecture not in ('auto','x86_64','aarch64'):
                 return
             self.architectures[self.target]=architecture
+            self.architecture_choices.add(self.target)
             self.update_images()
             self.remember()
 
@@ -467,9 +462,48 @@ def launch(state=None):
             return cached.is_file() or (local.scheme=='file' and Path(unquote(local.path)).is_file())
 
         def update_build_menu(self, names=None):
-            # Images open a persistent library, rather than rebuilding a popup
-            # from inside one of that popup's own activation callbacks.
-            pass
+            groups=[];local=[];seen=set();selected=self.select_image()
+            for path in self.available_manifests():
+                try:
+                    image=read_manifest(path)
+                    identity=(image['target'],image['arch'],image['image']['sha256'])
+                    if identity in seen or not experiences.compatible(self.target,image):continue
+                    seen.add(identity)
+                    architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
+                    session=Session(path,state)
+                    status='Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download'
+                    local.append(Command('image.local.'+str(len(local)),image.get('build') or image['id'],
+                        lambda p=path:self.use_image(p), description=architecture+' · '+status,
+                        checked=lambda p=path:p==selected, enabled=lambda:not self.active()))
+                except (OSError,ValueError,TypeError,TesterError):continue
+            if local:groups.append(CommandGroup('On this computer',tuple(local)))
+            architecture=self.architectures.get(self.target,'auto')
+            published=[] if self.target=='mobile' else [item for item in self.library_items
+                if architecture=='auto' or item.get('arch')==architecture]
+            commands=[]
+            for index,item in enumerate(published):
+                downloaded=(data_root(state)/'images'/(item['sha256']+'.iso')).is_file()
+                detail=('Latest · ' if index==0 else '')+('Downloaded' if downloaded else f"{item['size_bytes']/1024**3:.1f} GB · Download")
+                commands.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
+                    lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
+            if commands:
+                recent=commands[:3]
+                if len(commands)>3:recent.append(Command('image.older','Older Builds',lambda:None,children=tuple(commands[3:])))
+                groups.append(CommandGroup('From Luma',tuple(recent)))
+            status='Checking for images…' if self.library_loading else self.library_error
+            actions=[]
+            if status:actions.append(Command('image.status',status,lambda:None,enabled=lambda:False))
+            actions.extend((Command('image.file','Add from File…',self.choose_local_image,icon=icons.icon_name('folder'),enabled=lambda:not self.active()),
+                Command('image.refresh','Check for New Images',self.refresh_library,icon=icons.icon_name('refresh-cw'),enabled=lambda:not self.library_loading)))
+            groups.append(CommandGroup(None,tuple(actions)))
+            self.build_menu.set_popover(Menu(CommandRegistry(groups),variant='compact',keep_parent=True))
+
+        def use_image(self,path):
+            if self.active():return
+            self.architectures[self.target]=read_manifest(path)['arch']
+            self.architecture_choices.add(self.target)
+            self.remember_image(self.target,path)
+            self.update_images();self.remember()
 
         def image_selected(self, *_args):
             if getattr(self, 'updating_images', False) or self.active():
@@ -526,6 +560,7 @@ def launch(state=None):
                     self.imported.append(path)
                 self.remember_image(item['target'],path)
                 self.architectures[item['target']]=read_manifest(path)['arch']
+                self.architecture_choices.add(item['target'])
                 if 'vm' in item:
                     self.settings = vm.save(data_root(state), item['vm'])
                 self.select_intent(item['intent'])
@@ -1388,83 +1423,29 @@ def launch(state=None):
 
         def show_images(self):
             if self.active():return
-            self.close_sheet()
-            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
-            tools=Gtk.Box(spacing=8)
-            tools.append(self.button('From File…',lambda:(self.close_sheet(),self.choose_local_image()),icon='folder'))
-            tools.append(self.button('Refresh',self.refresh_library,icon='refresh-cw'))
-            body.append(tools)
-            self.library_status=self.label('', 'caption',muted=True);body.append(self.library_status)
-            self.library_list=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);body.append(self.library_list)
-            self.render_library()
-            self.sheet('Images',body,width=500)
-            self.refresh_library()
-
-        def render_library(self):
-            box=getattr(self,'library_list',None)
-            if box is None:return
-            while child:=box.get_first_child():box.remove(child)
-            selected=self.select_image();seen=set();items=[]
-            for path in self.available_manifests():
-                try:
-                    image=read_manifest(path);identity=(image['target'],image['arch'],image['image']['sha256'])
-                    if identity in seen or not experiences.compatible(self.target,image):continue
-                    seen.add(identity);items.append((path,image))
-                except (OSError,ValueError,TesterError):continue
-            def card(title,detail,action,callback):
-                content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10)
-                content.append(self.label(title,'group-heading'))
-                content.append(self.label(detail,'caption',muted=True))
-                content.append(self.button(action,callback))
-                box.append(Card(content))
-            if items:
-                box.append(self.label('Your workspaces','group-heading'))
-                for path,image in items:
-                    architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
-                    session=Session(path,state)
-                    status='Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Available to download'
-                    recommended=path==selected
-                    detail=architecture+' · '+status+(' · Recommended' if recommended else '')
-                    action='Selected' if recommended else 'Use '+architecture if image['arch']!=self.architectures.get(self.target) else 'Use Image'
-                    def choose(p=path,arch=image['arch']):
-                        self.architectures[self.target]=arch;self.remember_image(self.target,p)
-                        self.update_images();self.remember();self.close_sheet()
-                    card(image.get('build') or image['id'],detail,action,choose)
-            if self.target=='mobile':
-                if not any(image['arch']=='aarch64' for _,image in items):
-                    box.append(self.label('ARM Mobile simulator support is being prepared. Use the x86-64 workspace for UI development.', 'caption',muted=True))
-            else:
-                published=[a for a in self.library_items if a.get('arch')==self.architectures.get(self.target) or self.architectures.get(self.target)=='auto']
-                if published:box.append(self.label('From Luma','group-heading'))
-                for index,item in enumerate(published[:3]):
-                    size=item['size_bytes']/1024**3
-                    downloaded=(data_root(state)/'images'/(item['sha256']+'.iso')).is_file()
-                    detail=('Latest · ' if index==0 else '')+('ARM64' if item['arch']=='aarch64' else 'x86-64')+' · '+f'{size:.1f} GB'+' · Installation ISO'
-                    card(item.get('display_name') or item['file'],detail,'Use Downloaded Image' if downloaded else 'Download',lambda a=item:self.download_image(a))
-                if len(published)>3:
-                    older=self.button('Show Older Builds',lambda:self.render_older_images(published[3:]))
-                    box.append(older)
-            message='Checking for images…' if self.library_loading else self.library_error or ''
-            self.library_status.set_label(message);self.library_status.set_visible(bool(message))
-
-        def render_older_images(self,items):
-            for item in items:
-                self.library_list.append(self.button(item.get('display_name') or item['file'],lambda a=item:self.download_image(a),icon='download'))
+            self.build_menu.popup()
 
         def refresh_library(self):
             if self.library_loading:return
             self.library_loading=True;self.library_error=None
-            self.render_library()
             def done(items,error):
                 self.library_loading=False;self.library_error=error
                 if items is not None:self.library_items=items
-                if getattr(self,'library_list',None) is not None and self.library_list.get_root():self.render_library()
+                # Replace the popup only after it closes: never unparent a live menu.
+                if self.build_menu.get_active():
+                    self.build_menu.connect('notify::active', self.library_menu_closed)
+                else:self.update_build_menu()
                 return False
             def worker():
                 try:items=image_library.refresh(data_root(state));error=None
                 except Exception:items=None;error='Couldn’t refresh downloads. Your local images are still available.'
                 GLib.idle_add(done,items,error)
             threading.Thread(target=worker,daemon=True).start()
+
+        def library_menu_closed(self, button, _property):
+            if not button.get_active():
+                button.disconnect_by_func(self.library_menu_closed)
+                self.update_build_menu()
 
         def download_image(self,artifact):
             if self.active():return
@@ -1517,6 +1498,7 @@ def launch(state=None):
                 target=self.target if experiences.compatible(self.target,manifest) else manifest['target']
                 self.remember_image(target,path)
                 self.architectures[target]=manifest['arch']
+                self.architecture_choices.add(target)
                 self.select_target(target)
                 self.update_images()
                 self.status_label.set_label('Choose an image, then start exploring.')
