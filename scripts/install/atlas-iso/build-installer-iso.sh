@@ -116,8 +116,12 @@ done
 case "$architecture" in x86_64|aarch64) ;; *) fail "unsupported architecture: $architecture" ;; esac
 LUMA_OS_REF_PREFIX="${LUMA_OS_REF_PREFIX%/*}/$architecture"
 [ -n "$release_repo" ] || release_repo="https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/$architecture/os/"
-# Separate tool images prevent one architecture silently replacing another.
+# Lorax has a supported target architecture override. Keep DNF, compression
+# and image utilities native; only target RPM scriptlets use host binfmt.
+tools_architecture=$(uname -m)
+case "$tools_architecture" in x86_64|aarch64) ;; *) fail "unsupported builder architecture: $tools_architecture" ;; esac
 [ "$architecture" = x86_64 ] || tools_image="$tools_image-$architecture"
+[ "$tools_architecture" = "$architecture" ] || tools_image="$tools_image-on-$tools_architecture"
 kernel_config="$repo_root/config/install/atlas/runtime-kernel.env"
 [ "$architecture" = x86_64 ] || kernel_config="$repo_root/config/install/atlas/runtime-kernel-$architecture.env"
 
@@ -208,16 +212,16 @@ fi
 # Use the same pinned Fedora builder input as native component builds.
 . "$repo_root/config/desktop/inputs.env"
 tools_base=$FEDORA_RPM_BUILD_CONTAINER
-[ "$architecture" = x86_64 ] || tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
+[ "$tools_architecture" = x86_64 ] || tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
 builder_security=()
-if [ "$(uname -m)" != "$architecture" ]; then
+if [ "$tools_architecture" != "$architecture" ]; then
   # Host SELinux container labels block qemu-user's emulated executable
   # mappings. Limit this exception to this isolated cross-architecture build;
   # native builds keep their normal container label.
   builder_security=(--security-opt label=disable)
 fi
-podman build "${builder_security[@]}" --arch "$architecture" --build-arg "BASE_IMAGE=$tools_base" \
-  --build-arg "TARGET_ARCH=$architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
+podman build "${builder_security[@]}" --arch "$tools_architecture" --build-arg "BASE_IMAGE=$tools_base" \
+  --build-arg "TARGET_ARCH=$tools_architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
 
 cp "$rpms"/luma-installer-atlas-*.noarch.rpm "$work/luma-rpms/"
 python3 "$here/prepare-boot-rpms.py" --inputs "$repo_root/config/desktop/inputs.env" \
@@ -266,7 +270,7 @@ fi
 clock_epoch=$(date -u +%s)
 {
   printf '# Written by build-installer-iso.sh; read by the installer kickstart.\n'
-  printf 'architecture=%s\n' "$architecture"
+  printf 'architecture=%s\ntools_architecture=%s\n' "$architecture" "$tools_architecture"
   printf 'clock_epoch=%s\n' "$clock_epoch"
   printf 'channel=%s\n' "$channel"
   printf 'channels=%s\n' "$LUMA_OS_CHANNELS"
@@ -308,10 +312,10 @@ fi
 # xattrs into dracut's staging tree, which silently drops files from the
 # initramfs (the first build lacked systemd-sysroot-fstab-check and could not
 # mount its root). /dev is shared so lorax sees loop devices it creates.
-podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
+podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$tools_image" bash -euo pipefail -c "
   trap 'echo \"error: build step failed at line \$LINENO of the container script\" >&2' ERR
-  [ \"\$(rpm --eval '%{_arch}')\" = '$architecture' ] || { echo 'error: wrong installer builder architecture' >&2; exit 1; }
+  [ \"\$(rpm --eval '%{_arch}')\" = '$tools_architecture' ] || { echo 'error: wrong installer builder architecture' >&2; exit 1; }
   # Dracut normalizes mtimes when SOURCE_DATE_EPOCH is set. Use this medium's
   # epoch so normalization cannot erase the native clock floor.
   export SOURCE_DATE_EPOCH='$clock_epoch'
@@ -359,7 +363,7 @@ podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_
   while read -r nevra digest header; do
     boot_install_args+=(--installpkgs \"\$nevra\")
   done < /w/boot-packages.manifest
-  lorax --product '$product' --version '$version' --release 44 --isfinal \
+  lorax --buildarch '$architecture' --product '$product' --version '$version' --release 44 --isfinal \
         --volid '$volid' --nomacboot --noupgrade \
         --source '$release_repo' --source file:///w/luma-rpms \
         --installpkgs luma-installer-atlas --installpkgs slitherer \
@@ -495,7 +499,7 @@ podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_
 
 mv "$work/output.iso.partial" "$output"
 {
-  printf 'architecture=%s\n' "$architecture"
+  printf 'architecture=%s\ntools_architecture=%s\n' "$architecture" "$tools_architecture"
   printf 'channel=%s\nref=%s\nremote=%s\nurl=%s\nremote_url=mirrorlist=file://%s\nmirrorlist=%s\n' \
     "$channel" "$ref" "$LUMA_OS_REMOTE" "$LUMA_OS_URL" "$LUMA_OS_MIRRORLIST" "$LUMA_OS_MIRRORLIST"
   printf 'payload=%s\n' "$( [ -n "$payload_repo" ] && echo medium || { [ "$test_media" = 1 ] && echo "test $test_ref"; } || echo online)"
