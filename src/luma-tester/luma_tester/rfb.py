@@ -5,6 +5,18 @@ import ctypes.util
 import sys
 from pathlib import Path
 
+
+def native_library(name, linux_soname):
+    """Resolve bundled macOS libraries before consulting the host linker cache."""
+    if sys.platform == 'darwin':
+        soname = f'lib{name}.0.dylib'
+        bundled = Path(sys.executable).parent.parent / 'Frameworks' / soname
+        if bundled.is_file():
+            return str(bundled)
+        return ctypes.util.find_library(name) or soname
+    return ctypes.util.find_library(name) or linux_soname
+
+
 class PixelFormat(ctypes.Structure):
     # Public VncPixelFormat layout, from gvnc's installed C API.
     _fields_ = [('bits_per_pixel', ctypes.c_uint8), ('depth', ctypes.c_uint8),
@@ -26,8 +38,8 @@ class Framebuffer:
             raise ValueError('Guest display exceeds supported 4096×4096 dimensions.')
         self.width, self.height = width, height
         self.buffer = ctypes.create_string_buffer(width * height * 4)
-        gvnc = ctypes.CDLL(ctypes.util.find_library('gvnc-1.0') or 'libgvnc-1.0.so.0')
-        objects = ctypes.CDLL(ctypes.util.find_library('gobject-2.0') or 'libgobject-2.0.so.0')
+        gvnc = ctypes.CDLL(native_library('gvnc-1.0', 'libgvnc-1.0.so.0'))
+        objects = ctypes.CDLL(native_library('gobject-2.0', 'libgobject-2.0.so.0'))
         pointer = ctypes.pythonapi.PyCapsule_GetPointer
         pointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
         pointer.restype = ctypes.c_void_p
