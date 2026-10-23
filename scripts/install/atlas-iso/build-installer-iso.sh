@@ -118,8 +118,14 @@ LUMA_OS_REF_PREFIX="${LUMA_OS_REF_PREFIX%/*}/$architecture"
 [ -n "$release_repo" ] || release_repo="https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/$architecture/os/"
 # Lorax has a supported target architecture override. Keep DNF, compression
 # and image utilities native; only target RPM scriptlets use host binfmt.
-tools_architecture=$(uname -m)
-case "$tools_architecture" in x86_64|aarch64) ;; *) fail "unsupported builder architecture: $tools_architecture" ;; esac
+host_architecture=$(uname -m)
+case "$host_architecture" in x86_64|aarch64) ;; *) fail "unsupported builder architecture: $host_architecture" ;; esac
+tools_architecture=$architecture
+# The optimized cross path is ARM media on an x86 host. Keep the existing
+# x86 tools for x86 media on ARM hosts (including BIOS composition tools).
+if [ "$host_architecture/$architecture" = x86_64/aarch64 ]; then
+  tools_architecture=$host_architecture
+fi
 [ "$architecture" = x86_64 ] || tools_image="$tools_image-$architecture"
 [ "$tools_architecture" = "$architecture" ] || tools_image="$tools_image-on-$tools_architecture"
 kernel_config="$repo_root/config/install/atlas/runtime-kernel.env"
@@ -214,7 +220,7 @@ fi
 tools_base=$FEDORA_RPM_BUILD_CONTAINER
 [ "$tools_architecture" = x86_64 ] || tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
 builder_security=()
-if [ "$tools_architecture" != "$architecture" ]; then
+if [ "$host_architecture" != "$architecture" ]; then
   # Host SELinux container labels block qemu-user's emulated executable
   # mappings. Limit this exception to this isolated cross-architecture build;
   # native builds keep their normal container label.
