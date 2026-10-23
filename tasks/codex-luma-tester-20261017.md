@@ -1267,3 +1267,36 @@ used that source without altering shared refs or unrelated worktrees.
   No VM was started or user data changed by this launch; no new app tests run.
   Linux follow-up controller remains waiting for normal tester-dock-state
   admission, per private tester-mac-live-finish.json.
+
+### ARM Mobile follow-up checkpoint — 2026-10-23
+
+- Source adc591998 follows d40b698c3: catalog VM profiles plus bounded display /
+  control capabilities; registered image JSONs are now recovered independently
+  of saved preferences.95 tests passed in image-recovery-checks-df93796b.
+- Mac r3 app0.7.1 source d40b698c3 built/signed/inventory-checked successfully,
+  unit19fdc385, SHA25680ef338eee3162fdc41ad3f146e8458829c9425006c021cd0aa2efcf0f42e158.
+  Not delivered as the final update. Native QA first failed because fixture
+  creation preceded PATH setup; corrected harness then exposed actual missing
+  local-profile discovery, fixed in adc591998. Rebuild/actual native GUI QA pending.
+- Original raw/prototype remain retained. New private adapter-uefi.raw has512-byte
+  GPT geometry, preserved partition/filesystem identities, an EFI-system first
+  partition and BOOTAA64.EFI UKI. Official Fedora systemd-boot-unsigned259.5 RPM
+  signature verified. Initial objcopy VMAs were corrected relative to the stub's
+  ImageBase before further testing. Native self-boot is NOT qualified yet.
+- Offline bootstrap tools used Fedora44 release RPMs after updates metadata
+  referenced a missing urllib3 file. Host installroot sysusers ignored the
+  target's immutable account provider and failed. Restored the matching original
+  account files from the prototype and completed dhcpcd using target-native RPM.
+  pkg-repair-r2-124bda06 passed: cloud-init25.3 runs; all910 original installed
+  package versions unchanged;25 virtual/bootstrap packages added (receipt in
+  mobile-arm-alpha1/virtual-package-result.json). No host packages changed.
+- Private helpers tester-arm-mobile-uefi-prepare-r4.py and
+  tester-arm-mobile-package-repair-r2.py retain the exact successful preparation
+  / repair commands. Prototype4Kn adapter.raw stays separate from the new512-byte
+  adapter-uefi.raw. No mounts/VMs should remain from finished jobs.
+- Next: configure real per-session NoCloud and native-ready services, remove all
+  qualification/SSH host keys and machine identity, export/check standalone qcow2,
+  qualify the fresh self-booting disk through Session on M4 and the rebuilt Mac
+  LumaUI app. Then deliver/launch via stable Mac app location if no user VM is
+  active. Keep public publication/catalog agreement separate. No final ARM image
+  or public feed entry exists yet; do not claim the app integration is finished.
