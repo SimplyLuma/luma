@@ -209,7 +209,14 @@ fi
 . "$repo_root/config/desktop/inputs.env"
 tools_base=$FEDORA_RPM_BUILD_CONTAINER
 [ "$architecture" = x86_64 ] || tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-podman build --arch "$architecture" --build-arg "BASE_IMAGE=$tools_base" \
+builder_security=()
+if [ "$(uname -m)" != "$architecture" ]; then
+  # Host SELinux container labels block qemu-user's emulated executable
+  # mappings. Limit this exception to this isolated cross-architecture build;
+  # native builds keep their normal container label.
+  builder_security=(--security-opt label=disable)
+fi
+podman build "${builder_security[@]}" --arch "$architecture" --build-arg "BASE_IMAGE=$tools_base" \
   --build-arg "TARGET_ARCH=$architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
 
 cp "$rpms"/luma-installer-atlas-*.noarch.rpm "$work/luma-rpms/"
