@@ -5,6 +5,23 @@ architecture, not a simulator product. Virtual machines are one qualification
 environment. A particular Snapdragon laptop or tablet still needs its boot,
 kernel, device-tree and firmware support checked on that model.
 
+## One operating system
+
+Use the converged `SimplyLuma/luma` source tree for every target. Architecture,
+session and device are separate selections: an ARM CPU does not imply a phone,
+and Phosh does not require a separate application or platform implementation.
+Shared fixes, app sources, libraries and build recipes belong in the common
+root. GNOME Shell or Phosh, input/layout defaults, firmware and boot providers
+are scoped profile inputs. A target must declare any unavailable capability;
+it must not silently substitute another architecture's binary.
+
+An implementation branch is temporary review work, not an ARM release fork.
+Build both desktop architectures from the same integrated source revision.
+Existing device releases may retain older qualified package sets during bring-up;
+that qualification state must not become a permanent copy of the application
+sources or an independent release process. Bring reusable mobile work into the
+shared implementation and test the affected profiles.
+
 ## Shared build inputs
 
 `config/os/desktop-targets.json` selects the immutable Fedora base and EFI
