@@ -1138,3 +1138,44 @@ used that source without altering shared refs or unrelated worktrees.
   on server; Dell used only delivery/registration/launch/process/preferences reads.
 - Candidate ready for Nick's manual review. No queued retry driver remains.
   Generic ARM Mobile boot and integrated camera streaming remain separate gates.
+
+### 2026-10-23 — Mac native build and live disk snapshots
+- User requested Mac build, then saving without shutdown and discovering snapshots
+  created by another agent. Sourceb6e82d15/1d4ca182 adds Darwin HVF for native CPU,
+  TCG for cross CPU, CoreAudio, Cocoa standalone display, native data folder,
+  relocated QEMU assets, Apple Silicon app/DMG recipe and shared LumaUI runtime.
+- Explicitly reused code from codex-mac-windows-apps-20261017's retained source:
+  scoped Meson/C guards (8files), platform_boot/platform/platform_secrets/
+  private_paths and tools/luma-port/mac+common. Its own worktree was not changed;
+  unrelated appkit/UI/application changes were not imported. Upstream font/OFL
+  text retained verbatim, including existing trailing whitespace in OFL line21.
+- Current pinned M4 route22442 works. Installed normal Homebrew gtk-vnc/xorriso
+  with auto-update/cleanup disabled; source compilation2jobs. No personal files,
+  other VM jobs, signing credentials or power/tunnel settings changed. Mac had
+  approximately16GiB free at start; own app656MiB, outputs under task-owned
+  Library/Application Support/Luma/Development/tester-mac-r1 and -r2.
+- Shared snapshot code uses QMP blockdev-snapshot-internal-sync for live disk
+  checkpoints and resumes only if initially running. It does not capture RAM,
+  UEFI variables or host shares; restore still requires stopped guest. GUI no
+  longer shuts down to save, and QMP listing refreshes while running.
+-88 source tests PASS f883370f and71f51ba2, including actual QEMU live/paused
+  checkpoints, same process continuing, duplicate refusal and restored disk bytes.
+- Actual Dell read-only QMP metadata confirmed before-clock-left-20261023 exists
+  on os in active Mobiler10 disk (vm-state-size0). Old0.6.1 sidebar suppresses
+  running refresh. No user guest was stopped or modified by this diagnosis.
+- Macr1 built; native UI/ARM HVF firmware+live snapshot passed but x86 UEFI -bios
+  failed for Homebrew's split code/vars layout. Fixed paired pflash for Mac x86,
+  and moved receipt hashing after final ad-hoc signing. Failed candidate retained.
+- Macr2 source1d4ca182 built successfully dev-tester-mac-r2-build-aa2b6d30,
+  root62d6d557f5. Reused unchanged r1 native C-kit build. Qualified on native Mac
+  dev-tester-mac-r2-qualify-6c8f80bd: real mapped LumaUI window,3 Images/CPU menu
+  cycles, Advanced, ARM HVF and x86 TCG firmware startup, live checkpoints with
+  same process continuing and paused state preserved. No Luma OS guest boot
+  qualification claimed. Private native report in tester-mac-r2/qa/qualification.json.
+- Mac DMG/receipt/SHA retrieved to owned HDD artifacts/tester-mac-r2. Final mounted
+  DMG/hash validation and Downloads delivery pending normal admission; no release
+  signing/notarization/publication. Linuxr32 first concurrent attempt failed75
+  because the same admission path was leased; no candidate built in that attempt.
+- Next: mounted-DMG check+Mac delivery, Linuxr32 package and active/externally
+  created snapshot sidebar regression; deliver Linux update without disturbing
+  Nick's currently running Mobiler10 guest. Mac Intel host remains unbuilt.

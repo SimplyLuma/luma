@@ -108,8 +108,10 @@ The guest filesystem may need expansion after increasing an existing disk.
 
 Closing Tester requests a graceful guest shutdown and preserves its disk, key,
 selected build and workspace mode. Reopening returns to that workspace. **Snapshots
-→ +** saves a named disk checkpoint after shutting down; choose it to restore
-while stopped. Snapshots save disk contents, not RAM or shared host folders.
+→ +** saves a named disk checkpoint while Luma stays open. Capture briefly pauses
+a running VM and resumes it; an already-paused VM stays paused. The sidebar also
+updates when another tool creates a checkpoint. Restore while stopped. Snapshots
+save crash-consistent disk contents, not RAM, UEFI variables or shared host folders.
 Keep host projects in their own version control. Restoring a checkpoint replaces
 guest-disk changes since that checkpoint and requires an explicit Restore action.
 
@@ -429,3 +431,21 @@ Microphone sharing enables the supported duplex audio device; disabling audio
 also disables microphone sharing. Shared folders are read-only
 when first added; the folder list exposes the allow-changes switch and guest
 mount path. Hardware/folder changes apply at the next guest start.
+
+### Build the Apple Silicon Mac app
+
+Run `python3 scripts/tester/build-macos.py --output /path/to/output
+--source-commit COMMIT` on an Apple Silicon Mac. The native producer uses Homebrew
+Python3.14, GTK4, libadwaita, PyGObject, Cairo, gobject-introspection, Meson/Ninja,
+librsvg, gtk-vnc, QEMU and xorriso, plus Apple's command-line tools.
+It builds the shared LumaUI C libraries, bundles the Python/GTK/GVnc/QEMU runtime
+and both guest firmware profiles, relocates every non-system dylib, verifies
+ad-hoc signatures, and creates a DMG with file hashes and build receipts.
+The installed app does not require Homebrew. VM images are selected/downloaded
+separately. ARM guests use HVF on Apple Silicon; x86 guests use TCG. Native
+Linux graphics acceleration is independent of this CPU acceleration.
+
+Developer ID signing and notarization require their own release infrastructure.
+Intel Mac host packaging is not produced by this Apple Silicon recipe. Native
+window, control, firmware and live-checkpoint checks do not establish a complete
+Luma OS boot/install qualification; qualify the actual selected OS image too.
