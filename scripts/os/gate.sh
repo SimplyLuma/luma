@@ -452,6 +452,8 @@ install_vm() {
       -e "s#@REPO_URL@#$repo_url#g" \
       -e "s#@REF@#$ref#g" \
       -e "s#@CHANNEL@#$channel#g" \
+      -e "s#@ARCH@#$LUMA_OS_ARCH#g" \
+      -e "s#@CONSOLE@#$gate_console#g" \
       -e "s|@FIRSTBOOT@|$firstboot|" \
       "$luma_os_repo_root/tests/os/gate/luma-gate.ks.in" >"$vm_dir/luma-gate.ks"
   qemu-img create -q -f qcow2 "$vm_dir/$domain.qcow2" 48G
