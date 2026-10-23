@@ -67,6 +67,19 @@ class EfiImageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'without symlinks'):
             EFI.create(self.boot, self.root / 'symlink.img', 'ANACONDA')
 
+    def test_atomic_replacement_preserves_original_on_readback_failure(self):
+        image = self.root / 'replace.img'
+        image.write_bytes(b'original')
+        original = EFI.digest
+        with patch.object(EFI, 'digest', side_effect=lambda path: 'bad' if path.parent.name.startswith('efi-readback-') else original(path)):
+            with self.assertRaisesRegex(ValueError, 'readback differs'):
+                EFI.replace_image(self.boot, image, 'ANACONDA')
+        self.assertEqual(image.read_bytes(), b'original')
+        EFI.replace_image(self.boot, image, 'ANACONDA')
+        output = self.root / 'replacement-readback'
+        subprocess.run(['mcopy', '-i', str(image), '::/EFI/BOOT/BOOTAA64.EFI', str(output)], check=True)
+        self.assertEqual(output.read_bytes(), (self.boot / 'BOOTAA64.EFI').read_bytes())
+
 
 if __name__ == '__main__':
     unittest.main()

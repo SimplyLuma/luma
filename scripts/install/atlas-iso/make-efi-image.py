@@ -59,11 +59,29 @@ def create(bootdir, output, label):
     print(f'EFI FAT image verified: {len(files)} files, {size} bytes')
 
 
+def replace_image(bootdir, output, label):
+    if output.is_symlink() or (output.exists() and not output.is_file()):
+        raise ValueError('replacement destination must be a regular file')
+    with tempfile.TemporaryDirectory(prefix='efi-replace-', dir=output.parent) as temporary:
+        staged = Path(temporary) / 'efiboot.img'
+        create(bootdir, staged, label)
+        os.replace(staged, output)
+        directory = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--label', default='EFI')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--replace', action='store_true', help='replace an existing image atomically after verification')
     parser.add_argument('bootdir', type=Path)
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
-    create(args.bootdir, args.output, args.label)
+    if args.replace:
+        replace_image(args.bootdir, args.output, args.label)
+    else:
+        create(args.bootdir, args.output, args.label)

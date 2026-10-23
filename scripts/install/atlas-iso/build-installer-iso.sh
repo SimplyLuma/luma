@@ -133,6 +133,7 @@ if [ "$host_architecture/$architecture" = x86_64/aarch64 ]; then
   tools_architecture=$host_architecture
 fi
 [ "$architecture" = x86_64 ] || tools_image="$tools_image-$architecture"
+final_tools_image=$tools_image
 [ "$tools_architecture" = "$architecture" ] || tools_image="$tools_image-on-$tools_architecture"
 kernel_config="$repo_root/config/install/atlas/runtime-kernel.env"
 [ "$architecture" = x86_64 ] || kernel_config="$repo_root/config/install/atlas/runtime-kernel-$architecture.env"
@@ -236,6 +237,14 @@ fi
 # inputs are copied and verified separately below on every compose.
 podman build --layers "${builder_security[@]}" --arch "$tools_architecture" --build-arg "BASE_IMAGE=$tools_base" \
   --build-arg "TARGET_ARCH=$tools_architecture" --tag "$tools_image" --file "$here/Containerfile" "$here"
+if [ "$tools_architecture" != "$architecture" ]; then
+  # mkksiso deliberately requires the ISO's architecture. Preserve its guard
+  # and use the target provider only for this final, lightweight step.
+  final_tools_base=$FEDORA_RPM_BUILD_CONTAINER
+  [ "$architecture" = x86_64 ] || final_tools_base=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
+  podman build --layers "${builder_security[@]}" --arch "$architecture" --build-arg "BASE_IMAGE=$final_tools_base" \
+    --build-arg "TARGET_ARCH=$architecture" --tag "$final_tools_image" --file "$here/Containerfile" "$here"
+fi
 
 cp "$rpms"/luma-installer-atlas-*.noarch.rpm "$work/luma-rpms/"
 python3 "$here/prepare-boot-rpms.py" --inputs "$repo_root/config/desktop/inputs.env" \
@@ -504,6 +513,12 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
       { echo 'error: this medium was not given a preview credential but its installer holds one' >&2; exit 1; }
     rm -rf /w/tmp/stage2
   fi
+" 2>&1 | tee "$work/logs/container.log"
+
+podman run --rm "${builder_security[@]}" --arch "$architecture" --privileged --network host \
+    --env "SOURCE_DATE_EPOCH=$clock_epoch" --env PATH=/s/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$final_tools_image" bash -euo pipefail -c "
+  [ \"\$(rpm --eval '%{_arch}')\" = '$architecture' ] || { echo 'error: wrong final media tools architecture' >&2; exit 1; }
   rm -f /w/output.iso.partial
   mkksiso -V '$volid' -c 'rd.live.ram=1' \
           -R 'set default=\"1\"' 'set default=\"0\"' \
@@ -518,6 +533,11 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
   python3 /s/prepare-lorax-boot.py --verify-iso /w/tmp/iso-boot-proof '$architecture'
   python3 /w/templates/check-grub-fonts.py /w/tmp/iso-boot-proof/grub2/themes/luma
   cmp /w/lorax-out/boot/grub2/themes/luma/theme.txt /w/tmp/iso-boot-proof/grub2/themes/luma/theme.txt
+  # The firmware's embedded FAT menu must match the visible ISO menu too.
+  xorriso -osirrox on -indev /w/output.iso.partial \
+    -extract /images/efiboot.img /w/tmp/iso-boot-proof/efiboot.img >/dev/null 2>&1
+  mcopy -i /w/tmp/iso-boot-proof/efiboot.img ::/EFI/BOOT/grub.cfg /w/tmp/iso-boot-proof/embedded-grub.cfg
+  cmp /w/tmp/iso-boot-proof/efi-grub.cfg /w/tmp/iso-boot-proof/embedded-grub.cfg
   if [ '$credential_var' != none ]; then
     # Every file on the medium other than the compressed installer image, and
     # the image itself, as bytes.
@@ -527,12 +547,13 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
     umount /w/tmp/iso
     [ \$status = 0 ]
   fi
-" 2>&1 | tee "$work/logs/container.log"
+" 2>&1 | tee -a "$work/logs/container.log"
 
 mv "$work/output.iso.partial" "$output"
 {
   printf 'runtime_tmpfs_gib=%s\n' "${runtime_tmpfs_gib:-none}"
   printf 'architecture=%s\ntools_architecture=%s\n' "$architecture" "$tools_architecture"
+  printf 'final_tools_architecture=%s\n' "$architecture"
   printf 'channel=%s\nref=%s\nremote=%s\nurl=%s\nremote_url=mirrorlist=file://%s\nmirrorlist=%s\n' \
     "$channel" "$ref" "$LUMA_OS_REMOTE" "$LUMA_OS_URL" "$LUMA_OS_MIRRORLIST" "$LUMA_OS_MIRRORLIST"
   printf 'payload=%s\n' "$( [ -n "$payload_repo" ] && echo medium || { [ "$test_media" = 1 ] && echo "test $test_ref"; } || echo online)"
