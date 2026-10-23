@@ -65,6 +65,25 @@ virt-install() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "
         self.assertNotEqual(result.returncode,0)
         self.assertIn('invalid desktop target',result.stderr)
 
+    def test_media_vm_scope_is_exact_and_rejects_paths(self):
+        for scope,expected in (('', '20261023T073000Z'),
+                               ('20261023.1', '20261023.1-20261023T073000Z')):
+            result=subprocess.run(['bash','-c',
+                '. "$1/scripts/os/lib/common.sh"; . "$1/scripts/os/lib/gate-vm.sh"; luma_os_media_vm_run 20261023T073000Z',
+                'scope-fixture',str(ROOT)],capture_output=True,text=True,
+                env={**os.environ,'LUMA_MEDIA_VM_SCOPE':scope})
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout.strip(),expected)
+        for scope in ('../20261023.1','other-task','20261023.1/elsewhere'):
+            result=subprocess.run(['bash','-c',
+                '. "$1/scripts/os/lib/common.sh"; . "$1/scripts/os/lib/gate-vm.sh"; luma_os_media_vm_run 20261023T073000Z',
+                'scope-fixture',str(ROOT)],capture_output=True,text=True,
+                env={**os.environ,'LUMA_MEDIA_VM_SCOPE':scope})
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('invalid media VM scope',result.stderr)
+        for name in ('verify-media.sh','verify-media-ui.sh'):
+            self.assertIn('run=$(luma_os_media_vm_run ',(ROOT/'scripts/os'/name).read_text())
+
     def test_published_manifest_uses_target_namespace(self):
         script=(ROOT/'scripts/os/verify-media.sh').read_text()
         selection=script.split('# Select the metadata namespace',1)[1].split('\nvolid=',1)[0]

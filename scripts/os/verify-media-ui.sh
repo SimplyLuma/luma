@@ -51,7 +51,7 @@ luma_os_check_host
 luma_os_vm_lock
 luma_os_check_space 10
 
-run=$(date -u +%Y%m%dT%H%M%SZ)
+run=$(luma_os_media_vm_run "$(date -u +%Y%m%dT%H%M%SZ)")
 out="$LUMA_OS_ROOT/media/verify-ui-$run"
 vm="$LUMA_OS_ROOT/vm/media-ui-$run"
 install -d -m 0755 "$out" "$vm"

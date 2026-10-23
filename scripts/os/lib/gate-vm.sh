@@ -65,3 +65,16 @@ PY
   [ "$gate_explicit_firmware" != yes ] || inputs+=("$LUMA_OS_GATE_UEFI_CODE" "$LUMA_OS_GATE_UEFI_VARS")
   [ "${#inputs[@]}" -eq 0 ] || sha256sum -- "${inputs[@]}" >"$output.inputs.sha256"
 }
+
+# Give an admitted media qualification its own names and disk tree. The optional
+# scope is a release build ID, never an arbitrary path supplied by a caller.
+luma_os_media_vm_run() {
+  local timestamp=$1 scope=${LUMA_MEDIA_VM_SCOPE:-}
+  [[ "$timestamp" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { luma_os_die 'invalid media VM timestamp'; return 1; }
+  if [ -n "$scope" ]; then
+    [[ "$scope" =~ ^[0-9]{8}\.[0-9]+$ ]] || { luma_os_die 'invalid media VM scope'; return 1; }
+    printf '%s-%s\n' "$scope" "$timestamp"
+  else
+    printf '%s\n' "$timestamp"
+  fi
+}

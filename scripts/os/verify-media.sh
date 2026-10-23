@@ -142,7 +142,7 @@ kvm_available=no
 [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || kvm_available=yes
 luma_os_gate_vm_target "$LUMA_OS_ARCH" "$(uname -m)" "$kvm_available"
 
-run=$(date -u +%Y%m%dT%H%M%SZ)
+run=$(luma_os_media_vm_run "$(date -u +%Y%m%dT%H%M%SZ)")
 out="$LUMA_OS_ROOT/media/verify-$run"
 vm="$LUMA_OS_ROOT/vm/media-$run"
 install -d -m 0755 "$out" "$vm"
