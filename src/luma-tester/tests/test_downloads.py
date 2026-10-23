@@ -51,6 +51,47 @@ class DownloadsTests(unittest.TestCase):
             result = download(self.artifact, self.path, client=self.client)
             return result, opener
 
+    def test_progress_tracks_received_bytes_then_verification(self):
+        class Chunks(Response):
+            def read(self, size=-1):
+                return super().read(min(size, 3))
+        events = []
+        with patch('luma_tester.downloads.build_opener') as opener, patch(
+            'luma_tester.transfers.time.monotonic', side_effect=__import__('itertools').count()
+        ):
+            opener.return_value.open.return_value = Chunks(self.content)
+            download(self.artifact, self.path, client=self.client, progress=events.append)
+        received = [event.received for event in events if event.phase == 'downloading']
+        self.assertEqual(received[0], 0)
+        self.assertTrue(any(0 < count < len(self.content) for count in received))
+        self.assertEqual(received[-1], len(self.content))
+        phases = [event.phase for event in events]
+        self.assertLess(phases.index('downloading'), phases.index('verifying'))
+        self.assertEqual(events[-1].phase, 'ready')
+        self.assertEqual(events[-1].fraction, 1)
+        self.assertTrue(all(event.total == len(self.content) for event in events))
+
+    def test_resumed_progress_starts_from_retained_bytes(self):
+        with self.assertRaises(URLError):
+            self.fetch(Response(self.content[:5]))
+        events = []
+        with patch('luma_tester.downloads.build_opener') as opener:
+            opener.return_value.open.return_value = Response(self.content[5:], 206,
+                {'Content-Range': f'bytes 5-{len(self.content)-1}/{len(self.content)}'})
+            download(self.artifact, self.path, client=self.client, progress=events.append)
+        self.assertEqual(next(event.received for event in events if event.phase == 'downloading'), 5)
+        self.assertEqual(events[-1].phase, 'ready')
+
+    def test_failed_verification_never_reports_ready(self):
+        events = []
+        with patch('luma_tester.downloads.build_opener') as opener:
+            opener.return_value.open.return_value = Response(b'x' * len(self.content))
+            with self.assertRaisesRegex(TesterError, 'SHA-256 mismatch'):
+                download(self.artifact, self.path, client=self.client, progress=events.append)
+        self.assertIn('verifying', [event.phase for event in events])
+        self.assertNotIn('ready', [event.phase for event in events])
+        self.assertFalse(self.path.exists())
+
     def test_verified_completion_and_cache_do_not_count_again(self):
         self.fetch()
         self.assertEqual(self.path.read_bytes(), self.content)

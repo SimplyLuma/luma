@@ -52,12 +52,12 @@ def refresh(root,client=None):
     return items
 
 
-def fetch(artifact,root,experience,report=lambda text:None):
+def fetch(artifact,root,experience,report=lambda text:None,progress=None):
     if not usable(artifact):raise TesterError('This download is not supported installation media.')
     root=Path(root)
     developer = artifact.get('kind') == 'tester_image'
     destination=root/'images'/(artifact['sha256']+('.qcow2' if developer else '.iso'))
-    download(artifact,destination,experience=experience,report=report)
+    download(artifact,destination,experience=experience,report=report,progress=progress)
     if developer:
         Session.validate_disk(destination)
         manifest=developer_profile(artifact)

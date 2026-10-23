@@ -148,11 +148,13 @@ class Session:
         required = ['qemu-img', 'qemu-system-' + self.manifest['arch'], 'ssh-keygen', 'ssh', 'xorriso']
         return {x: shutil.which(x) for x in required}
 
-    def prepare(self, report=print):
+    def prepare(self, report=print, progress=None):
         with self.lock():
-            self._prepare(report)
+            self._prepare(report, progress)
 
-    def _prepare(self, report):
+    def _prepare(self, report, progress=None):
+        from .transfers import TransferReporter
+        transfer = TransferReporter(self.manifest['image']['bytes'], report, progress)
         missing = [k for k, v in self.tools().items() if not v]
         if missing:
             raise TesterError('Install required tools: ' + ', '.join(missing))
@@ -190,7 +192,7 @@ class Session:
                         break
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
-            download(artifact, self.base, experience={'smart-device':'home'}.get(self.experience,self.experience), purpose=purpose, report=report)
+            download(artifact, self.base, experience={'smart-device':'home'}.get(self.experience,self.experience), purpose=purpose, report=report, progress=progress)
             try:
                 self.validate_image(self.base)
             except Exception:
@@ -201,7 +203,8 @@ class Session:
         if not self.base.exists():
             if shutil.disk_usage(self.root).free < image['bytes'] + 2 * 1024**3:
                 raise TesterError('Insufficient space for image plus 2 GiB working reserve.')
-            report('Fetching and verifying guest image…')
+            phase = 'copying' if urlparse(image['url']).scheme == 'file' else 'downloading'
+            transfer.update('connecting', 0, force=True)
             # Unique temporary paths allow two different sessions to share this cache safely.
             with tempfile.NamedTemporaryFile(dir=self.base.parent, delete=False) as output:
                 partial = Path(output.name)
@@ -211,23 +214,28 @@ class Session:
                             raise TesterError('Refusing a download redirected away from HTTPS.')
                         count = 0
                         checksum=hashlib.sha256()
+                        transfer.update(phase, 0, force=True)
                         while chunk := source.read(1024 * 1024):
                             count += len(chunk)
                             if count > image['bytes']:
                                 raise TesterError('Download exceeds declared image size.')
                             output.write(chunk)
                             checksum.update(chunk)
+                            transfer.update(phase, count)
+                    transfer.update(phase, count, force=True)
                     output.flush()
+                    transfer.update('verifying', count, force=True)
                     if count != image['bytes'] or checksum.hexdigest() != image['sha256']:
                         raise TesterError('Guest image size or SHA-256 mismatch.')
                     self.validate_image(partial)
                     partial.chmod(0o444)
                     partial.replace(self.base)
                     verified=True
+                    transfer.update('ready', count, force=True)
                 finally:
                     partial.unlink(missing_ok=True)
         # Verify cached inputs too. Do not run a different image under a trusted build label.
-        if self.base.stat().st_size != image['bytes'] or (not verified and digest(self.base) != image['sha256']):
+        if self.base.stat().st_size != image['bytes'] or (not verified and transfer.digest(self.base) != image['sha256']):
             raise TesterError('Cached image changed; remove only that cache file and prepare again.')
         from . import vm
         capacity = vm.load(self.root)['disk_gib'] * 1024**3

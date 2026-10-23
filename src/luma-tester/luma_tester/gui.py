@@ -55,6 +55,7 @@ def launch(state=None):
             self.closing = False
             self.settings = vm.load(data_root(state))
             self.developer_rows = []
+            self.transfer_progress = None
             self.preferences = data_root(state) / 'preferences.json'
             self.preset_path = data_root(state) / 'presets.json'
             self.saved_presets = presets.load(self.preset_path)
@@ -810,6 +811,7 @@ def launch(state=None):
             self.shutting_down = False
             self.force_stop_available = False
             self.busy = True
+            self.transfer_progress = None
             self.session_title.set_label('Luma ' + experiences.LABELS[self.target])
             self.status_label.set_label('Getting your Luma workspace ready…')
             self.spinner.set_visible(True)
@@ -823,7 +825,8 @@ def launch(state=None):
             def worker():
                 try:
                     if session.manifest['cloud_init']:
-                        session.prepare(lambda message: GLib.idle_add(self.status_label.set_label, message))
+                        session.prepare(lambda message: GLib.idle_add(self.status_label.set_label, message),
+                            progress=lambda value: GLib.idle_add(self.show_transfer_progress, value))
                     else:
                         # The supervisor verifies large ISO media once before boot.
                         session.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
@@ -849,6 +852,16 @@ def launch(state=None):
                 self.failed(str(exc))
             return False
 
+        def show_transfer_progress(self, value):
+            self.transfer_progress = value
+            self.status_label.set_label(value.message)
+            self.progress.set_visible(True)
+            if value.phase == 'connecting':
+                self.progress.pulse()
+            else:
+                self.progress.set_fraction(value.fraction)
+            return False
+
         def failed(self, message):
             self.busy = False
             self.spinner.stop()
@@ -861,7 +874,7 @@ def launch(state=None):
         def refresh(self):
             if not hasattr(self, 'status_label'):
                 return True
-            if self.busy:
+            if self.busy and (self.transfer_progress is None or self.transfer_progress.phase == 'connecting'):
                 self.progress.pulse()
             running = self.running()
             if self.child and self.child.poll() is not None:
@@ -1450,18 +1463,28 @@ def launch(state=None):
         def download_image(self,artifact):
             if self.active():return
             self.busy=True
+            self.transfer_progress=None
             self.close_sheet()
+            self.progress.set_fraction(0)
+            self.progress.set_visible(True)
+            self.spinner.set_visible(True)
+            self.spinner.start()
             self.status_label.set_label('Downloading '+(artifact.get('display_name') or artifact['file'])+'…')
             self.stack.set_visible_child_name('session');self.refresh()
             def done(path,error):
                 self.busy=False
+                self.transfer_progress=None
+                self.progress.set_visible(False)
+                self.spinner.stop()
+                self.spinner.set_visible(False)
                 if error:self.failed(error)
                 else:self.add_manifest(path)
                 return False
             def worker():
                 try:
                     path=image_library.fetch(artifact,data_root(state),self.target,
-                        lambda message:GLib.idle_add(self.status_label.set_label,message));error=None
+                        lambda message:GLib.idle_add(self.status_label.set_label,message),
+                        progress=lambda value:GLib.idle_add(self.show_transfer_progress,value));error=None
                 except Exception as exc:path=None;error=str(exc)
                 GLib.idle_add(done,path,error)
             threading.Thread(target=worker,daemon=True).start()

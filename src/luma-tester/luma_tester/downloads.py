@@ -18,7 +18,8 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, build_opener
 
 from . import DOWNLOAD_SOURCE, __version__
-from .core import HTTPSRedirects, TesterError, digest
+from .core import HTTPSRedirects, TesterError
+from .transfers import TransferReporter
 
 HUB = 'https://hub.simplyluma.com/api/hub/downloads/'
 EXPERIENCES = ('desktop', 'tablet', 'mobile', 'tv', 'home', 'watch', 'other')
@@ -144,7 +145,7 @@ def file_lock(path):
 
 
 def download(artifact, destination, *, experience='desktop', purpose='first_download',
-             client=None, report=lambda message: None):
+             client=None, report=lambda message: None, progress=None):
     """Return a verified file; leave partial bytes and the ticket on interruption.
 
     Catalog and ticket metadata must agree. Reporting is best effort; artifact
@@ -154,15 +155,18 @@ def download(artifact, destination, *, experience='desktop', purpose='first_down
     destination = Path(destination)
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with file_lock(destination.with_name(destination.name + '.lock')):
-        return _download(artifact, destination, experience, purpose, client or HubClient(), report)
+        return _download(artifact, destination, experience, purpose, client or HubClient(), report, progress)
 
 
-def _download(artifact, destination, experience, purpose, client, report):
+def _download(artifact, destination, experience, purpose, client, report, progress=None):
     size, sha = artifact['size_bytes'], artifact['sha256']
+    transfer = TransferReporter(size, report, progress)
     if destination.exists():
-        if destination.stat().st_size != size or digest(destination) != sha:
+        if destination.stat().st_size != size or transfer.digest(destination) != sha:
             raise TesterError('Cached download does not match its size or SHA-256.')
+        transfer.update('ready', size, force=True)
         return destination  # Cached launches issue no ticket and send no reports.
+    transfer.update('connecting', 0, force=True)
     partial = destination.with_name(destination.name + '.part')
     metadata = destination.with_name(destination.name + '.download.json')
     identity = {key: artifact[key] for key in ('artifact_id', 'sha256', 'size_bytes')}
@@ -186,7 +190,7 @@ def _download(artifact, destination, experience, purpose, client, report):
             headers = {'Range': 'bytes=' + str(count) + '-'} if count else {}
             headers['User-Agent'] = 'Luma-Tester/' + __version__
             request = Request(ticket['url'] if ticket else artifact['url'], headers=headers)
-            report('Downloading and verifying…')
+            transfer.update('connecting', count, force=True)
             with build_opener(HTTPSRedirects).open(request, timeout=30) as source:
                 if urlparse(source.url).scheme != 'https':
                     raise TesterError('Refusing a download redirected away from HTTPS.')
@@ -199,19 +203,23 @@ def _download(artifact, destination, experience, purpose, client, report):
                     count = 0  # Server ignored Range: restart, keep the same ticket.
                 else:
                     raise TesterError('Unexpected download response.')
+                transfer.update('downloading', count, force=True)
                 with partial.open('ab' if count else 'wb') as output:
                     while chunk := source.read(1024**2):
                         count += len(chunk)
                         if count > size:
                             raise IntegrityError('Download exceeds declared size.')
                         output.write(chunk)
+                        transfer.update('downloading', count)
+                    transfer.update('downloading', count, force=True)
                     output.flush()
                     os.fsync(output.fileno())
         if count != size:
             raise URLError('Incomplete download; retry to resume.')
-        if digest(partial) != sha:
+        if transfer.digest(partial) != sha:
             raise IntegrityError('Download SHA-256 mismatch. Retry to download again.')
         partial.replace(destination)
+        transfer.update('ready', size, force=True)
     except BaseException as exc:
         reason = 'other'
         if isinstance(exc, (KeyboardInterrupt, SystemExit)):
