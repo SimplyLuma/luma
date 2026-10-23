@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — qualified Tester0.5.0/r27 launched locally on Dell; Device profiles and real resize verified. Generic ARM Mobile virtual boot adaptation remains outstanding.
+- Status: active — qualified Tester0.6.0/r30 reopened on Dell; generic image/hardware/folder UX and menu/key fixes delivered. Integrated-camera streaming bridge and ARM Mobile virtual boot remain pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -1019,3 +1019,75 @@ used that source without altering shared refs or unrelated worktrees.
   tester-device-r27-pipeline-result.json. No background queue remains. No public
   release/signing/physical phone changes. Existing published ARM Mobile payload
   is real; QEMU boot adapter and generic ARM catalog qualification remain next.
+
+## 2026-10-23 — General sharing/library polish and crash fix delivered
+
+- Source6200ffc6. Commits09eeb5c6 (library/hardware/workflows),23e24f93
+  (supported microphone codec),fdab8cb9 (immutable AppImage metadata staging),
+  bed25d34/6200ffc6 (control/agent private-key permission repair).
+- Dell0.5 journal confirms GTK popup/native-parent crash after menu use. The
+  toolkit explicitly distinguishes reusable menus from menus that unparent
+  after a choice. Architecture now uses keep_parent=True; Images is a native
+  library sheet instead of the reused ephemeral popup/file-picker entry.
+- Experience rows show no architecture badges. TV/Smart Home say Coming soon
+  and are disabled. Fresh defaults: Desktop/Tablet x86-64, Mobile ARM64; explicit
+  saved architecture choices persist. Tablet Automatic follows host CPU.
+- Images includes local/installed/downloaded developer workspaces plus a live,
+  cached Hub ISO catalog, latest3 and older builds, anonymous verified downloads,
+  and local import. Nine real Hub ISO entries observed. ISO media stays distinct
+  from Mobile developer profiles; no fabricated ARM-ready workspace/catalog row.
+- Hardware sidebar plus opens LumaUI Audio/Microphone/Camera/USB grid. Generic
+  Linux device/interface discovery includes storage and UVC cameras, mounted
+  disk protection and grouped non-USB camera pipelines. No Dell model/PCI ID
+  condition in product code. Real Dell metadata showed an IPU7 camera with32
+  capture endpoints; a generic fixture verifies grouping into one camera.
+  Integrated camera streaming still needs a cross-platform camera-sharing bridge;
+  UI says so. No camera capture or USB transfer end-to-end qualification claimed.
+- Separate folder list adds a folder read-only in one picker, exposes Allow
+  changes and guest mount path inline, and supports removal. All existing shares,
+  disks and projects retained. Hardware/folder changes apply next start.
+- QEMU has no hda-input codec. Microphone uses supported hda-duplex and enables
+  audio; disabling audio disables microphone. Actual QEMU device capability
+  checked in tests. Source84 tests PASS dev-tester-library-source-6f455532.
+- HDD default ACLs made a control key0640; SSH rejected it. Both new and reused
+  control/agent keys now get0600. Tests verify repair, including copied agent
+  connection details. This is a filesystem behavior fix for all users, not a
+  Dell workaround. Tests initially misattributed SSH timeout entirely to disk IO.
+- Native source UI114cd0f64e passed repeated menu/gallery/hardware/folder flows.
+  Packaged X11 and actual headless Weston Wayland: a18954be92/ui and /wayland,
+  each5 menu reopen cycles, live9-item catalog, defaults/folder access verified.
+  All11 device transitions/settled no-black-tile/input checks passed /profiles.
+  Exact gui.py/device_profiles.py/display.py/host_devices.py/image_library.py
+  hashes are unchanged from that candidate to finalr30; retained evidence reused.
+- Finalr30 actual AppImage entry/doctor/quit and full Mobile touch/type/SSH,
+  bidirectional sharing, key revoke/reenable, visible SDK hotfix and shutdown
+  passed root9ce60b4424/entry and /mobile. Desktop booted1920x1080 and wrote the
+  persistence marker; screenshot /tablet/desktop.png. Tablet booted x86 using
+  the same disk, selected1600x900, agreed with Mutter GetCurrentState, retained
+  the marker and shut down cleanly: root63c1b1eb77/tablet/qualification.json.
+  Original test wrongly assumed the EDID preferred1280x800 was a forced mode;
+  that assumption was corrected, no product resolution override was introduced.
+- Aggregated successful evidence: phone experiment root-jobs/
+  luma-tester-user-63c1b1eb77/qualification.json. Native VM tests used3GiB guest
+  memory under normal4GiB admission; production default stays4GiB. A duplicate
+  admission-waiting pipeline was stopped after the already admitted final check
+  completed; no background queue remains. Other agents' jobs untouched.
+- Tablet test's stopped HDD base was retained as .hdd-retained; its cache path
+  now symlinks to the already existing exact-SHA SSD Desktopr15 base. No original
+  image/disk bytes removed; private test overlay remains on HDD. Receipt in final
+  tablet output ssd-base-reuse.json. Reserves: root36GiB, secondary21GiB, HDD5.2TiB.
+- Immutable candidate: owned HDD appimage-library-r30/
+  Luma-Tester-0.6.0-linux-x86_64.AppImage. SHA256
+  bf66029fb1438c2d65932600eb60d041913ca0868ecb1e2c3e4637a3b5c1ddb8.
+  Dell destination tester-library-r30-20261023; all app/image hashes verified.
+  Registration26d3b2c4 exited0. Preview unit
+  luma-preview-tester-library-20261023-e224b10e.service verified active/running,
+  actual packaged Python child present, ExecMainStatus0. Runtime emitted symlink
+  extraction warnings during simultaneous registration/launch, but real GUI
+  process remained active; serialize registration before future launches.
+- Existing tester-display-20261017 workspace reused, no Dell guest was running.
+  Automated app/guest tests only on server; Dell operations limited to requested
+  launch plus logs/process/hardware metadata. No publication/signing/phone change.
+- Final one-shot outcome: private artifacts/tester-library-r30-pipeline-result.json
+  passed=true, stage Dell preview launched. Next: Nick's manual review; finish
+  generic ARM Mobile boot adapter and integrated-camera stream bridge separately.
