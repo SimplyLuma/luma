@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active —0.5 Device controls implemented; compositor build/validation queued through normal admission. Dell remains verified0.4.1.
+- Status: active — qualified Tester0.5.0/r27 launched locally on Dell; Device profiles and real resize verified. Generic ARM Mobile virtual boot adaptation remains outstanding.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -977,3 +977,45 @@ used that source without altering shared refs or unrelated worktrees.
   validation has passed yet, and no0.5.0 was delivered/launched. Dell remains0.4.1.
   ARM Mobile download is verified to exist; generic virtual boot adaptation is
   still outstanding. No physical phone operation, public release or signing.
+
+## 2026-10-22, 10:01 PM Central — Device preview delivered
+
+- Source56102e38; startup fixes ea3c42b7/ee2ff27b. Corrected the builder's stale
+  SSD path. Phoc scoped simulator RPM+matching SRPM built in an HDD overlay of
+  the stopped builder; all20 normal Meson checks passed (not19). Evidence:
+  phone experiment root-jobs/luma-tester-user-ee816a31b6, artifacts in owned
+  HDD device-phoc-r11-ee816a31b6. No physical-device changes.
+- Greetd does not preserve the compositor opt-in through login. The known
+  r9/r10-only update now inserts the export into the managed simulator launcher,
+  keeps projects/disks, reboots only during startup and records package SHA.
+- QEMU VNC clips beyond2160 rows. High-density presets use half render density
+  in both orientations, preserving logical app sizes. Device panel discloses
+  preview density; metadata separates native_pixels/native_scale from guest
+  pixels/scale. Custom sizes also fit the scanout. Full native-panel screenshot
+  fidelity is not claimed. Fold regions/posture metadata still need OS consumers.
+- Source checks:78 passed, dev-tester-device-source-583d0356. Source native11
+  transitions passed: root-job d9d77088d9. Actual packaged entry,11 transitions
+  (including settled frames without black tiles), hinge input exclusion, Titan
+  OSK handling, and full Mobile touch/type/SSH/share/hotfix/shutdown passed:
+  root-jobs/luma-tester-user-971b3156c0/qualification.json, dev qualification
+  cb31538a. Reviewed settled unfolded screenshot; shell fills resized screen.
+- Immutable AppImage: owned HDD appimage-device-r27/
+  Luma-Tester-0.5.0-linux-x86_64.AppImage; SHA256
+  f8413e5a6318e9a6515fd1f7a1fcc1250d73c86205d84fba1c89ee3dff1f657d.
+  Includes matching update source RPM/NOTICE; both QEMU CPU closures retained.
+- Shared root admission was held by95GiB estimates for other jobs. Bound owned
+  HDD bulk directory onto phone experiment hdd-admission; normal devctl admits
+  against the actual build filesystem with8GiB estimate and an additional normal
+  source-worktree flock. No limits/records lowered or cleared, no other jobs
+  stopped. Root/secondary/HDD reserves remain25/21GiB/5.7TiB. Bind is retained for
+  subsequent owned HDD builds; pipeline scripts under private artifacts.
+- Dell checksum-verified delivery: /home/nick/.local/share/luma-previews/
+  tester-device-r27-20261022. Existing tester-display-20261017 workspace retained.
+  No guest was running. Old known r26 launcher stopped; new launcher unit
+  luma-preview-tester-device-20261022-8a1747ee.service verified active/running,
+  ExecMainStatus0. Desktop registration f3ed94d9 exited0. Automated tests ran
+  only on server; Dell operation was requested local preview launch/metadata.
+- One-shot pipeline finished successfully: private artifacts/
+  tester-device-r27-pipeline-result.json. No background queue remains. No public
+  release/signing/physical phone changes. Existing published ARM Mobile payload
+  is real; QEMU boot adapter and generic ARM catalog qualification remain next.
