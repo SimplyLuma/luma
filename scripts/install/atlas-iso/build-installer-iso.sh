@@ -315,9 +315,13 @@ fi
 # initramfs (the first build lacked systemd-sysroot-fstab-check and could not
 # mount its root). /dev is shared so lorax sees loop devices it creates.
 podman run --rm "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
+    --env "DNF_VAR_arch=$architecture" \
     --volume /dev:/dev --volume "$work:/w" --volume "$here:/s:ro" "${payload_mount[@]}" "$tools_image" bash -euo pipefail -c "
   trap 'echo \"error: build step failed at line \$LINENO of the container script\" >&2' ERR
   [ \"\$(rpm --eval '%{_arch}')\" = '$tools_architecture' ] || { echo 'error: wrong installer builder architecture' >&2; exit 1; }
+  # Lorax44's --buildarch supplies basearch, but libdnf5 also needs its
+  # arch variable to select compatible target packages on a different host.
+  python3 -c \"import libdnf5; b = libdnf5.base.Base(); b.setup(); assert b.get_vars().get_value('arch') == '$architecture'\"
   # Dracut normalizes mtimes when SOURCE_DATE_EPOCH is set. Use this medium's
   # epoch so normalization cannot erase the native clock floor.
   export SOURCE_DATE_EPOCH='$clock_epoch'
