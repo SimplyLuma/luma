@@ -787,6 +787,9 @@ class WeatherWindow(AppWindow):
                                             p.latitude == saved.latitude and p.longitude == saved.longitude
                                             for saved in self.places))
         self.phone_search.entry.set_name('wx-phone-search')
+        self.phone_search.add_css_class('lumaui-panel-field')
+        self.phone_search.get_first_child().add_css_class('lumaui-panel-field-icon')
+        self.phone_search.set_margin_bottom(10)
         rows = [self.phone_search]
         for place in self.places:
             snapshot = self.snapshots.get(place.uid)
