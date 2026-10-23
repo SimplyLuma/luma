@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Balance collapsed status glyphs without changing clock layout or state models.
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -59,8 +59,20 @@
+ }
+ 
+ phosh-top-panel .indicators {
+-  opacity: .92;
++  opacity: 1;
+-  margin-right: -10px;
++  margin-right: 0;
++}
++
++/* The horizontal battery has less ink inside its square icon canvas. Reserve
++ * its optical width before scaling, so its cap and adjacent symbols stay clear.
++ * Keep this correction on the collapsed row; quick settings retain their sizes. */
++phosh-top-panel .luma-status-wifi { min-width: 18px; }
++phosh-top-panel .luma-status-wifi image {
++  -gtk-icon-transform: translateY(-1px) scale(1.23);
++}
++phosh-top-panel .luma-status-battery { min-width: 24px; }
++phosh-top-panel .luma-status-battery image {
++  -gtk-icon-transform: scale(1.69);
+ }
+ 
+ .phosh-topbar-clock {
+--- a/src/ui/top-panel.ui
++++ b/src/ui/top-panel.ui
+@@ -275,11 +275,12 @@
+                           <object class="GtkBox">
+                             <property name="visible">1</property>
+                             <property name="spacing">8</property>
+-                            <child><object class="PhoshWifiInfo" id="top_wifi"><property name="visible">1</property><property name="pixel-size">13</property></object></child>
++                            <child><object class="PhoshWifiInfo" id="top_wifi"><property name="visible">1</property><property name="pixel-size">13</property><style><class name="luma-status-wifi"/></style></object></child>
+                             <child>
+                               <object class="PhoshBatteryInfo" id="batteryinfo">
+                                 <property name="visible">1</property>
+                                 <property name="pixel-size">13</property>
++                                <style><class name="luma-status-battery"/></style>
+                               </object>
+                             </child>
+                             <child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">security-high-symbolic</property><property name="pixel-size">13</property></object></child>
