@@ -316,13 +316,13 @@ print(p.read_text().strip() if p.exists() else '')
 """
     previous=subprocess.check_output(session.ssh(['python3','-c',probe]),text=True,timeout=15).strip()
     if previous==manifest['sha256']:return False
-    script="""import hashlib,os,subprocess,sys,tempfile
+    script=r"""import hashlib,os,subprocess,sys,tempfile
 from pathlib import Path
 payload=sys.stdin.buffer.read()
 assert hashlib.sha256(payload).hexdigest()==sys.argv[1]
 path=Path('/etc/systemd/system/greetd.service.d/70-luma-tester-device.conf')
-prefix='# Managed by Luma Tester\\n'
-assert not path.exists() or path.read_text().startswith(prefix)
+prefix='# Managed by Luma Tester\n'
+assert not path.exists() or path.read_text().startswith(prefix.rstrip())
 with tempfile.NamedTemporaryFile(prefix='luma-tester-display-',suffix='.rpm',delete=False) as f:
  name=f.name;f.write(payload)
 try:
@@ -331,8 +331,8 @@ try:
  subprocess.run(['dnf5','-y','--disablerepo=*','install',name],check=True,timeout=120)
 finally:os.unlink(name)
 path.parent.mkdir(parents=True,exist_ok=True)
-path.write_text(prefix+'[Service]\\nEnvironment=LUMA_TESTER_DYNAMIC_MODES=1\\n')
-Path('/etc/luma/tester-display-modes').write_text(sys.argv[1]+'\\n')
+path.write_text(prefix+'[Service]\nEnvironment=LUMA_TESTER_DYNAMIC_MODES=1\n')
+Path('/etc/luma/tester-display-modes').write_text(sys.argv[1]+'\n')
 """
     run(session.ssh(['sudo','python3','-c',script,manifest['sha256']]),input=package.read_bytes(),timeout=150,stdout=subprocess.DEVNULL)
     old=subprocess.check_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
