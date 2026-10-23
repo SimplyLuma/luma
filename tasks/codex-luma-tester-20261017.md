@@ -1300,3 +1300,23 @@ used that source without altering shared refs or unrelated worktrees.
   LumaUI app. Then deliver/launch via stable Mac app location if no user VM is
   active. Keep public publication/catalog agreement separate. No final ARM image
   or public feed entry exists yet; do not claim the app integration is finished.
+- Follow-up: Mac r4 source81f45bd85 built in39314ad0; native mapped LumaUI,
+  profile discovery, ARM HVF/x86 TCG firmware and snapshot checks passed in
+  dc35572a. DMG SHA256c14716b27490fa71de52fc77d3e1696d6011f45dbf79d9386b92e3350971fb0d.
+  Private output tester-mac-r4 on owned HDD; not yet delivered as final update.
+- Final ARM virtual disk export-r1 built/check passed in e71c3bd0,2038416896bytes,
+  SHA256a31d583cd9369492086a7943e9a77d621d10b095dc644d36b5cefe520f6a2519.
+  Genuine public Mobile20261015.21 plus generic UEFI/kernel/bootstrap adapter;
+  fresh NoCloud and ready services configured, prototype/host keys removed.
+  Standalone QCOW2 retained in mobile-arm-alpha1/export-r1. Self-boot/full fresh
+  image integration is still unqualified, separate from earlier successful
+  direct-kernel M4 prototype Home/SSH/graceful shutdown proof.
+- Actual local-image/full-GUI controller0dba75d8 failed at SSH handshake before
+  completing transfer. User reports Mac awake; subsequent pinned SSH attempt
+  found loopback22442 connection refused. Existing outbound tunnel disconnected;
+  asked user to reconnect it. No tunnel/power settings or other guests changed.
+  Prepared private tester-arm-mobile-local-gui-r2.py with checksum-verified cache
+  reuse and scoped caffeinate for bounded test. Next: reconnect pinned SSH,
+  run admitted r2 controller, inspect guest/window screenshots and real fresh
+  NoCloud/snapshot/reboot evidence, then register image and deliver/launch r4.
+  No final-image success or public Hub catalog publication claimed.
