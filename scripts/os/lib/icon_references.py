@@ -23,6 +23,11 @@ Tests and fixtures are skipped. An exact name is required: GTK's fallback from
 a missing name draws the missing-image placeholder or another glyph, and a
 reference that only works through that fallback is the bug this check stops.
 
+Exactly matched hidden Wine policy stubs are never drawn when the installed
+ARM preview declares Windows apps unavailable, their source/installed entries
+match, and their executable backends are absent. Other profiles and references
+retain the normal provider checks.
+
 --overlay adds the payload of candidate packages (an extracted RPM tree) to
 what the image provides, to prove a fix before it is pinned.
 
@@ -428,6 +433,90 @@ def scan_installed(root: Path) -> list[Reference]:
     return found
 
 
+# Exact hidden policy stubs whose application backends are unavailable in the
+# ARM preview. This is not a general NoDisplay exemption: MIME handlers, visible
+# launchers, other icons and other profiles retain the full provider check.
+PREVIEW_WINE_STUBS = {
+    "wine-uninstaller.desktop": ("msiexec", "wine uninstaller.exe"),
+    "wine-notepad.desktop": ("notepad", "notepad"),
+    "wine-regedit.desktop": ("regedit", "regedit"),
+    "wine-winecfg.desktop": ("winecfg", "winecfg"),
+    "wine-winefile.desktop": ("winefile", "winefile"),
+    "wine-winemine.desktop": ("winemine", "winemine"),
+    "winetricks.desktop": ("winetricks", "winetricks --gui"),
+    "wine-winhelp.desktop": ("winhelp", "wine winhlp32.exe"),
+    "wine-wordpad.desktop": ("wordpad", "wine wordpad.exe"),
+}
+
+
+def unavailable_preview_wine_stubs(root: Path, sources: list[Path]) -> list[tuple[str, str]]:
+    """Prove exact never-drawn references; otherwise require their icons normally.
+
+    Installed capabilities, unavailable executables and byte-identical hidden
+    source/installed desktop entries must agree. All nine stubs form one narrow
+    contract; any disagreement returns no exceptions. No target code executes.
+    """
+    def contained_file(base: Path, path: Path) -> bool:
+        return not path.is_symlink() and path.is_file() and path.resolve().is_relative_to(base.resolve())
+
+    capability_path = root / "usr/share/luma/desktop-capabilities.json"
+    try:
+        if not contained_file(root, capability_path):
+            return []
+        caps = json.loads(capability_path.read_text())
+        if (caps.get("schema") != "org.projectluma.desktop-capabilities/v1"
+                or caps.get("architecture") != "aarch64" or caps.get("profile") != "arm-preview"
+                or not isinstance(caps.get("capabilities"), dict)
+                or caps["capabilities"].get("windows_apps") is not False
+                or caps["capabilities"].get("desktop") is not True
+                or not isinstance(caps.get("excluded_packages"), list)
+                or not all(isinstance(v, str) for v in caps["excluded_packages"])
+                or not {"wine", "winetricks"}.issubset(caps["excluded_packages"])
+                or not isinstance(caps.get("excluded_package_prefixes"), list)
+                or not all(isinstance(v, str) for v in caps["excluded_package_prefixes"])
+                or "wine-" not in caps["excluded_package_prefixes"]):
+            return []
+        backends = {command.split()[0] for _, command in PREVIEW_WINE_STUBS.values()}
+        backends.update(("wine64", "wineserver", "wineboot"))
+        for directory in ("usr/bin", "usr/sbin", "usr/local/bin", "usr/local/sbin", "bin", "sbin"):
+            base = root / directory
+            if os.path.lexists(base) and not base.resolve().is_relative_to(root.resolve()):
+                return []
+            if any(os.path.lexists(base / name) for name in backends):
+                return []
+        source_roots = [base for base in sources if (base / "luma-desktop-launcher-policy/applications").is_dir()]
+        if not source_roots:
+            return []
+        entries = []
+        for filename, (icon, command) in PREVIEW_WINE_STUBS.items():
+            relative = "usr/share/luma/desktop-overrides/applications/" + filename
+            installed = root / relative
+            if not contained_file(root, installed):
+                return []
+            text = installed.read_text()
+            parser = configparser.ConfigParser(interpolation=None, strict=True)
+            parser.optionxform = str
+            parser.read_string(text)
+            if parser.defaults() or parser.sections() != ["Desktop Entry"]:
+                return []
+            desktop = dict(parser["Desktop Entry"])
+            if (desktop.get("Type") != "Application" or desktop.get("NoDisplay") != "true"
+                    or desktop.get("Icon") != icon or desktop.get("Exec") != command
+                    or any(k == "MimeType" or k.startswith("MimeType[") or k == "Actions"
+                           or k.startswith(("NoDisplay[", "Icon[", "Exec[")) for k in desktop)):
+                return []
+            for base in source_roots:
+                source = base / "luma-desktop-launcher-policy/applications" / filename
+                if (not contained_file(base, source) or source.read_bytes() != installed.read_bytes()
+                        or any(c in str(source) for c in "*?[]")):
+                    return []
+                entries.append((icon, str(source)))
+            entries.append((icon, "/" + relative))
+        return entries
+    except (OSError, ValueError, TypeError, AttributeError, configparser.Error):
+        return []
+
+
 # ---------------------------------------------------------------- allowlist
 
 def load_allowlist(path: Path | None) -> list[tuple[str, str]]:
@@ -486,6 +575,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.installed:
         references.extend(scan_installed(args.root))
     entries = load_allowlist(args.allowlist)
+    profile_entries = unavailable_preview_wine_stubs(args.root, args.source)
+    entries.extend(profile_entries)
+    if profile_entries:
+        print("note: exact hidden Wine policy stubs have no MIME/actions or backend in this ARM preview; their icons are never drawn")
     missing = [r for r in references if r.name not in providers.names and not allowed(r, entries)]
     by_name: dict[str, list[Reference]] = {}
     for reference in missing:
@@ -503,6 +596,7 @@ def main(argv: list[str] | None = None) -> int:
             "result": "fail" if by_name else "pass",
             "references": len(references),
             "provided": len(providers.names),
+            "profile_undrawn_references": [{"name": name, "path": path} for name, path in profile_entries],
             "missing": {name: [f"{r.path}:{r.line}" for r in refs] for name, refs in sorted(by_name.items())},
         }, indent=2) + "\n")
     return 1 if by_name else 0
