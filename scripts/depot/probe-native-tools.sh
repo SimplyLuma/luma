@@ -15,6 +15,7 @@ if [ "${1:-}" != --user ]; then
     *) exit 1 ;;
   esac
   bash "$source_root/scripts/depot/install-tools-packages.sh"
+  dnf5 -q -y install shadow-utils dbus-daemon dbus-tools
   # This is a new disposable container account, with no signing/API/SSH keys.
   useradd --create-home --uid 1000 luma-ci
   chown luma-ci:luma-ci /home/luma-ci
