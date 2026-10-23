@@ -29,8 +29,11 @@ done
 if [ "$signing" = 1 ]; then
   [ "$DEPOT_TOOLS_CONTAINER" != luma-depot-tools ] || depot_die "signing requires a distinct DEPOT_TOOLS_CONTAINER"
 fi
-image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER}
-if [ "$(uname -m)" = aarch64 ]; then image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER_AARCH64}; fi
+case "$DEPOT_ARCH" in
+  x86_64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER} ;;
+  aarch64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER_AARCH64} ;;
+  *) depot_die "unsupported Depot architecture: $DEPOT_ARCH" ;;
+esac
 
 if podman container exists "$DEPOT_TOOLS_CONTAINER"; then
   if [ "$recreate" != 1 ]; then
@@ -99,7 +102,7 @@ esac
 podman run --detach --init "${isolation[@]}" --security-opt label=disable \
   --cpus "${DEPOT_TOOLS_CPUS:-2}" --memory "${DEPOT_TOOLS_MEMORY:-4g}" \
   --memory-swap "${DEPOT_TOOLS_MEMORY_SWAP:-5g}" --pids-limit 2048 \
-  --cgroup-parent luma-os.slice --label "org.projectluma.depot.role=$role" "${custody_labels[@]}" \
+  --cgroup-parent "${DEPOT_TOOLS_CGROUP_PARENT:-luma-os.slice}" --label "org.projectluma.depot.role=$role" "${custody_labels[@]}" \
   --name "$DEPOT_TOOLS_CONTAINER" --hostname luma-depot-tools \
   "${work_mount[@]}" \
   "${key_mount[@]}" \
@@ -108,6 +111,8 @@ podman run --detach --init "${isolation[@]}" --security-opt label=disable \
   "$image" sleep infinity >/dev/null
 
 if [ "$signing" = 0 ]; then
+actual_arch=$(podman exec "$DEPOT_TOOLS_CONTAINER" uname -m)
+[ "$actual_arch" = "$DEPOT_ARCH" ] || depot_die "Depot builder CPU $actual_arch differs from target $DEPOT_ARCH"
 podman exec "$DEPOT_TOOLS_CONTAINER" dnf5 -q -y install \
   flatpak flatpak-builder flatpak-module-tools ostree minisign \
   appstream appstream-compose createrepo_c gnupg2 pinentry \
