@@ -193,7 +193,7 @@ mkdir -p "$work"
 work=$(realpath "$work")
 rm -rf "$work/lorax-out" "$work/tmp" "$work/luma-rpms" "$work/templates" "$work/keys" "$work/secret" "$work/lorax-templates"
 rm -f "$work/logs/container.log"
-mkdir -p "$work/tmp" "$work/luma-rpms" "$work/templates" "$work/logs" "$work/keys"
+mkdir -p "$work/tmp" "$work/luma-rpms" "$work/templates" "$work/logs" "$work/keys" "$work/runtime-rpm-cache"
 
 # The preview credential: normalized to one line without a newline, root-only,
 # and removed from the work tree however the build ends.
@@ -373,7 +373,7 @@ podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_
         --add-template-var luma_atlas_pull_key=/w/keys/pull.gpg \
         --add-template-var luma_atlas_clock_epoch=$clock_epoch \
         --add-template-var luma_atlas_preview_credential=$credential_var \
-        --tmp /w/tmp --logfile /w/logs/lorax.log \
+        --cachedir /w/runtime-rpm-cache --tmp /w/tmp --logfile /w/logs/lorax.log \
         /w/lorax-out
   if grep -q 'dracut-install: ERROR' /w/logs/program.log; then
     echo 'error: dracut could not install files into the initramfs; see logs/program.log' >&2
