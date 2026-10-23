@@ -85,7 +85,7 @@ luma_os_check_space 30
 
 build_dir="$LUMA_OS_ROOT/builds/$build_id"
 [ -s "$build_dir/export.env" ] || luma_os_die "build has no candidate commit: $build_dir"
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 luma_os_load_env "$build_dir/export.env"
 channel=$LUMA_OS_CHANNEL
 ref=$LUMA_EXPORT_REF

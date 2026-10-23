@@ -119,7 +119,7 @@ elif [ -n "${MEDIA_CANDIDATE_BUILD:-}" ]; then
   media_build_dir="$LUMA_OS_ROOT/builds/$MEDIA_CANDIDATE_BUILD"
 fi
 if [ -n "$media_build_dir" ]; then
-  luma_os_load_env "$media_build_dir/build.env"
+  luma_os_load_build_env "$media_build_dir/build.env"
   if [ "$LUMA_SOURCE_DIRTY" = true ] && [ -n "$checks_revision" ] && [ "$checks_revision" != "$media_source" ]; then
     luma_os_die 'private media cannot replace its bound checks with a Git revision'
   fi

@@ -69,6 +69,7 @@ luma_os_check_space 25
 ref=$(luma_os_channel_ref "$channel")
 [ -z "$test_build" ] || [ -z "$candidate_build" ] || luma_os_die '--test-candidate and --candidate exclude each other'
 if [ -n "$test_build$candidate_build" ]; then
+  luma_os_load_build_env "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/build.env"
   luma_os_load_env "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/export.env"
   boot_rpms="$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/packages/Packages"
   boot_manifest="$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/luma-packages.manifest"
