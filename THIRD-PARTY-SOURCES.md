@@ -186,3 +186,7 @@ Identifiers: `AFL-2.0`, `AGPL-3.0-only`, `AGPL-3.0-or-later`, `Apache-2.0`, `Aut
 ## Downstream patch inheritance
 
 `PATCH-LICENSE-INHERITANCE.json` records each of the 61 patch families. 26 have component-license evidence in the source register or package recipes; the remaining 35 are explicitly unresolved by this audit. Preserve upstream copyright notices and original patch author headers. Aggregate package expressions and mixed artwork/code terms must not be used to assign a single license to every patch.
+
+The pinned Fedora Nautilus 50.2.2-2.fc44 source RPM is also retained byte-for-byte
+at the content-addressed source mirror used by its package recipe. Its original
+source, license notices and expected SHA-256 remain unchanged.

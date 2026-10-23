@@ -48,14 +48,8 @@ output_dir="$repo_root/build/packages/nautilus"
 mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$NAUTILUS_SRPM"
-if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null 2>&1 || {
-    printf 'error: dnf5 is required when the admitted Nautilus SRPM is not cached\n' >&2
-    exit 1
-  }
-  dnf5 download --source --destdir "$cache_dir" \
-    "nautilus-50.2.2-2.fc44"
-fi
+bash "$repo_root/scripts/packages/fetch-source-rpm.sh" "$srpm" "$NAUTILUS_SRPM_SHA256" \
+  "https://media.simplyluma.com/sources/srpm/$NAUTILUS_SRPM_SHA256/nautilus-50.2.2-2.fc44.src.rpm"
 
 printf '%s  %s\n' "$NAUTILUS_SRPM_SHA256" "$srpm" |
   sha256sum --check --status || {
