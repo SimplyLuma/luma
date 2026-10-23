@@ -52,9 +52,7 @@ repo=$(luma_os_channel_repo "$channel")
 [ "$LUMA_SOURCE_DIRTY" = false ] || luma_os_die 'refusing to publish a build from a dirty source checkout'
 [ -z "${LUMA_SOURCE_SNAPSHOT_SHA256:-}" ] && [ -z "${LUMA_RELEASE_CHECKS_SHA256:-}" ] || luma_os_die 'refusing to publish a private source snapshot'
 
-# The public summary covers every architecture/channel in this repository.
-exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
-flock -n 6 || luma_os_die "another shared-repository publication is running"
+luma_os_publication_lock
 luma_os_init_channel_repo "$repo"
 if [ "$LUMA_OS_ARCH" = aarch64 ]; then
   ostree refs --repo="$repo" | grep -q "^luma/$LUMA_OS_MAJOR/x86_64/" ||

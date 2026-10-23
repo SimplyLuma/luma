@@ -44,6 +44,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 luma_os_require_root
+[ "$apply" -eq 0 ] || luma_os_publication_lock
 do_or_say() {
   if [ "$apply" -eq 1 ]; then "$@"; else printf 'would run:'; printf ' %q' "$@"; printf '\n'; fi
 }
@@ -52,8 +53,12 @@ heads=()
 for channel in $LUMA_OS_CHANNELS; do
   repo=$(luma_os_channel_repo "$channel")
   [ -f "$repo/config" ] || continue
-  head=$(ostree rev-parse --repo="$repo" "$(luma_os_channel_ref "$channel")" 2>/dev/null || true)
-  [ -n "$head" ] && heads+=("$head")
+  # Build metadata for a head of either architecture remains protected.
+  while read -r ref; do
+    [ -n "$ref" ] || continue
+    head=$(ostree rev-parse --repo="$repo" "$ref" 2>/dev/null || true)
+    [ -n "$head" ] && heads+=("$head")
+  done < <(ostree refs --repo="$repo" | grep "^luma/$LUMA_OS_MAJOR/" || true)
 done
 
 # Builds.
@@ -121,7 +126,7 @@ PY
   for iso in "$dir"/*.iso; do
     [ -f "$iso" ] && do_or_say rm -f -- "$iso"
   done
-done < <(find "$LUMA_OS_ROOT/media" -mindepth 3 -maxdepth 3 -path '*/media/*/*/result.json' 2>/dev/null)
+done < <(find "$LUMA_OS_ROOT/media" -mindepth 3 -maxdepth 4 -name result.json 2>/dev/null)
 
 # Repositories.
 if [ -f "$LUMA_OS_ROOT/ostree/candidate-repo/config" ]; then

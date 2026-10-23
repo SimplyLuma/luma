@@ -47,6 +47,7 @@ class DesktopNamespaces(unittest.TestCase):
                 directory = p.releases_path(repo, arch) / '1.0.0-nightly.20261022.1'
                 directory.mkdir(parents=True)
                 (directory / 'manifest.json').write_text(json.dumps({'version': directory.name, 'channel': 'nightly', 'architecture': arch, 'ref': f'luma/1/{arch}/nightly', 'commit': commit, 'published_utc': '2026-10-22T00:00:00Z', 'build_id': '20261022.1'}))
+                (directory / 'notes.json').write_text(json.dumps({'summary': 'General bug fixes.'}))
                 obj = repo / 'objects' / commit[:2] / (commit[2:] + '.commit')
                 obj.parent.mkdir(parents=True)
                 obj.write_bytes(b'test-only commit presence')
@@ -55,6 +56,8 @@ class DesktopNamespaces(unittest.TestCase):
                 value = json.loads(run.stdout)
                 self.assertEqual(value['arch'], arch)
                 self.assertEqual([r['commit'] for r in value['releases']], [commit])
+                scope = '' if arch == 'x86_64' else '/aarch64'
+                self.assertEqual(value['releases'][0]['notes_url'], f'https://dl.simplyluma.com/media{scope}/nightly/notes/20261022.1.json')
             self.assertNotEqual(subprocess.run(['python3', 'scripts/os/lib/graph_from_releases.py', str(repo), 'nightly', 'armv7l'], cwd=ROOT, capture_output=True).returncode, 0)
 
     def test_actual_media_entry_uses_selected_architecture(self):
@@ -93,6 +96,19 @@ class DesktopNamespaces(unittest.TestCase):
         approved.admitted_release(release, manifest, architecture='x86_64')
         with self.assertRaises(ValueError):
             approved.admitted_release(release, manifest, architecture='aarch64')
+
+    def test_shared_publication_lock_honors_legacy_channel_lock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            locks = Path(folder) / 'locks'
+            locks.mkdir()
+            import fcntl
+            with (locks / 'publish-nightly.lock').open('w') as held:
+                fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                run = subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh; luma_os_publication_lock'], cwd=ROOT, env={**os.environ, 'LUMA_OS_ROOT': folder}, capture_output=True, text=True)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn('legacy nightly publication', run.stderr)
+            run = subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh; luma_os_publication_lock'], cwd=ROOT, env={**os.environ, 'LUMA_OS_ROOT': folder}, capture_output=True)
+            self.assertEqual(run.returncode, 0)
 
     def test_signer_rejects_unknown_arch_before_signing(self):
         run = subprocess.run(['bash', 'scripts/os/sign-update-graph.sh', '--arch', 'armv7l', '--channel', 'nightly'], cwd=ROOT, capture_output=True)

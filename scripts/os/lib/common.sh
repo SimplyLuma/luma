@@ -82,6 +82,22 @@ luma_os_arch_path() {
 }
 luma_os_releases_path() { luma_os_arch_path "$1/luma/releases"; }
 
+# New publishers serialize the shared summary, while also honoring the locks
+# used by already deployed per-channel publishers. Pruning uses this boundary
+# too because it can replace the signed repository summary.
+luma_os_publication_lock() {
+  install -d -m 0700 "$LUMA_OS_ROOT/locks"
+  legacy_publication_fds=()
+  local legacy_channel legacy_fd
+  for legacy_channel in $LUMA_OS_CHANNELS; do
+    exec {legacy_fd}>"$LUMA_OS_ROOT/locks/publish-$legacy_channel.lock"
+    flock -n "$legacy_fd" || luma_os_die "a legacy $legacy_channel publication is running"
+    legacy_publication_fds+=("$legacy_fd")
+  done
+  exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+  flock -n 6 || luma_os_die 'another shared-repository publication is running'
+}
+
 luma_os_require_root() {
   [ "$(id -u)" -eq 0 ] || luma_os_die "$(basename "$0") must run as root on the build host"
 }
