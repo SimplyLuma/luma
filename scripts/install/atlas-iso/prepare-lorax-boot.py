@@ -22,6 +22,19 @@ ASSETS = '''mkdir ${GRUB2DIR}/themes/luma
 install usr/share/luma/boot/grub-theme/* ${GRUB2DIR}/themes/luma/
 '''
 
+def verify_iso(root, architecture):
+    if architecture not in ('x86_64', 'aarch64'):
+        raise ValueError(f'unsupported installer architecture: {architecture}')
+    configs = [root / 'efi-grub.cfg']
+    if architecture == 'x86_64':
+        configs.append(root / 'grub2/grub.cfg')
+    for path in configs:
+        text = path.read_text()
+        if 'set theme=/boot/grub2/themes/luma/theme.txt' not in text:
+            raise ValueError(f'{path}: installer GRUB theme missing')
+        if '@ROOT@' in text:
+            raise ValueError(f'{path}: unresolved GRUB boot root')
+
 def prepare(source, destination, architecture='x86_64'):
     if architecture not in ('x86_64', 'aarch64'):
         raise ValueError(f'unsupported installer architecture: {architecture}')
@@ -78,4 +91,7 @@ install usr/share/luma/boot/grub-theme/* boot/grub2/themes/luma/
         (destination / relative).write_text(text)
 
 if __name__ == '__main__':
-    prepare(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else 'x86_64')
+    if sys.argv[1] == '--verify-iso':
+        verify_iso(Path(sys.argv[2]), sys.argv[3])
+    else:
+        prepare(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else 'x86_64')

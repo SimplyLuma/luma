@@ -478,18 +478,7 @@ podman run --rm --arch "$architecture" --privileged --network host --env DRACUT_
     -extract /boot/grub2 /w/tmp/iso-boot-proof/grub2 >/dev/null 2>&1
   xorriso -osirrox on -indev /w/output.iso.partial \
     -extract /EFI/BOOT/grub.cfg /w/tmp/iso-boot-proof/efi-grub.cfg >/dev/null 2>&1
-  grub_configs=(/w/tmp/iso-boot-proof/efi-grub.cfg)
-  # Native ARM Lorax creates its single EFI menu. x86 additionally carries
-  # the BIOS menu; require both there rather than inventing a BIOS ARM file.
-  if [ '$architecture' = x86_64 ]; then
-    grub_configs+=(/w/tmp/iso-boot-proof/grub2/grub.cfg)
-  fi
-  for cfg in \"\${grub_configs[@]}\"; do
-    grep -Fq 'set theme=/boot/grub2/themes/luma/theme.txt' \"\$cfg\"
-    if grep -Fq '@ROOT@' \"\$cfg\"; then
-      echo 'error: unresolved GRUB boot root' >&2; exit 1
-    fi
-  done
+  python3 /s/prepare-lorax-boot.py --verify-iso /w/tmp/iso-boot-proof '$architecture'
   python3 /w/templates/check-grub-fonts.py /w/tmp/iso-boot-proof/grub2/themes/luma
   cmp /w/lorax-out/boot/grub2/themes/luma/theme.txt /w/tmp/iso-boot-proof/grub2/themes/luma/theme.txt
   if [ '$credential_var' != none ]; then

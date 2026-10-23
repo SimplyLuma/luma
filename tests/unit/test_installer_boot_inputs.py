@@ -144,6 +144,27 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
                 LORAX.prepare(root / 'source', root / 'bad', 'aarch64')
             self.assertFalse((root / 'bad').exists())
 
+    def test_final_iso_requires_native_menu_set_and_resolved_theme(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            menu = 'set theme=/boot/grub2/themes/luma/theme.txt\nlinux /vmlinuz inst.stage2=hd:LABEL=Luma\n'
+            (root / 'efi-grub.cfg').write_text(menu)
+            LORAX.verify_iso(root, 'aarch64')
+            with self.assertRaises(FileNotFoundError):
+                LORAX.verify_iso(root, 'x86_64')
+            (root / 'grub2').mkdir()
+            (root / 'grub2/grub.cfg').write_text(menu)
+            LORAX.verify_iso(root, 'x86_64')
+            for relative in ('efi-grub.cfg', 'grub2/grub.cfg'):
+                path = root / relative
+                path.write_text(menu + '@ROOT@')
+                with self.assertRaisesRegex(ValueError, 'unresolved GRUB'):
+                    LORAX.verify_iso(root, 'x86_64')
+                path.write_text(menu.replace('set theme=', 'lost theme='))
+                with self.assertRaisesRegex(ValueError, 'theme missing'):
+                    LORAX.verify_iso(root, 'x86_64')
+                path.write_text(menu)
+
     def test_runtime_handoff_preserves_tui_and_refuses_unknown_owner(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
