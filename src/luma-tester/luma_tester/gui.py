@@ -450,7 +450,9 @@ def launch(state=None):
                 title = experiences.LABELS[self.target]
                 missing=(f'Choose a Luma {title} image in Images.' if architecture!='auto' else
                     'Add an ARM64 ISO or developer image.' if self.target in ('tv','smart-device') else f'Add a Luma {title} image.')
-                self.status_label.set_label('Choose an image, then start exploring.' if selected else missing)
+                installer=bool(selected and read_manifest(selected).get('media')=='iso')
+                self.status_label.set_label('Installation media. Start the installer, or choose a ready-to-run image.' if installer else
+                    'Choose an image, then start exploring.' if selected else missing)
                 self.run_button.set_sensitive(bool(selected))
 
             self.refresh_preset_rows()
@@ -473,7 +475,9 @@ def launch(state=None):
                     seen.add(identity)
                     architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
                     session=Session(path,state)
-                    status='Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download'
+                    status=('Installer ISO · '+('Downloaded' if self.image_available(path) else 'Download')
+                        if image.get('media')=='iso' else
+                        'Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download')
                     local.append(Command('image.local.'+str(len(local)),image.get('build') or image['id'],
                         lambda p=path:self.use_image(p), description=architecture+' · '+status,
                         checked=lambda p=path:p==selected, enabled=lambda:not self.active()))
@@ -483,16 +487,20 @@ def launch(state=None):
             published=[item for item in self.library_items
                 if image_library.target(item)==('mobile' if self.target=='mobile' else 'desktop')
                 and (architecture=='auto' or item.get('arch')==architecture)]
-            commands=[]
+            commands={'tester_image':[], 'os_image':[]}
             for index,item in enumerate(published):
-                downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if item.get('kind')=='tester_image' else '.iso'))).is_file()
-                detail=('Latest · ' if index==0 else '')+('Downloaded' if downloaded else f"{item['size_bytes']/1024**3:.1f} GB · Download")
-                commands.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
+                kind=item.get('kind');entries=commands[kind]
+                downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if kind=='tester_image' else '.iso'))).is_file()
+                detail=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
+                detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
+                entries.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
-            if commands:
-                recent=commands[:3]
-                if len(commands)>3:recent.append(Command('image.older','Older Builds',lambda:None,children=tuple(commands[3:])))
-                groups.append(CommandGroup('From Luma',tuple(recent)))
+            for kind,title in (('tester_image','Ready to try'),('os_image','Installation media')):
+                entries=commands[kind]
+                if not entries:continue
+                recent=entries[:3]
+                if len(entries)>3:recent.append(Command('image.older.'+kind,'Older Builds',lambda:None,children=tuple(entries[3:])))
+                groups.append(CommandGroup(title,tuple(recent)))
             status='Checking for images…' if self.library_loading else self.library_error
             actions=[]
             if status:actions.append(Command('image.status',status,lambda:None,enabled=lambda:False))
@@ -914,7 +922,9 @@ def launch(state=None):
             self.run_button.set_sensitive(not active and self.select_image() is not None)
             selected = self.select_image()
             emulated = bool(selected and read_manifest(selected)['arch'] != host_arch())
-            self.words(self.run_button, 'Start with Emulation' if emulated else 'Start')
+            installer=bool(selected and read_manifest(selected).get('media')=='iso')
+            action='Start Installer' if installer else 'Start'
+            self.words(self.run_button, action+' with Emulation' if emulated else action)
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
