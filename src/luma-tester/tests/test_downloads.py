@@ -20,6 +20,9 @@ class Response(io.BytesIO):
         self.status = status
         self.headers = headers or {}
 
+    def read1(self, size=-1):
+        return self.read(size)
+
     def getcode(self):
         return self.status
 

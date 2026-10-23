@@ -204,8 +204,9 @@ def _download(artifact, destination, experience, purpose, client, report, progre
                 else:
                     raise TesterError('Unexpected download response.')
                 transfer.update('downloading', count, force=True)
+                read = getattr(source, 'read1', source.read)
                 with partial.open('ab' if count else 'wb') as output:
-                    while chunk := source.read(1024**2):
+                    while chunk := read(64 * 1024):
                         count += len(chunk)
                         if count > size:
                             raise IntegrityError('Download exceeds declared size.')

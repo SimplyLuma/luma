@@ -215,7 +215,8 @@ class Session:
                         count = 0
                         checksum=hashlib.sha256()
                         transfer.update(phase, 0, force=True)
-                        while chunk := source.read(1024 * 1024):
+                        read = getattr(source, 'read1', source.read)
+                        while chunk := read(64 * 1024):
                             count += len(chunk)
                             if count > image['bytes']:
                                 raise TesterError('Download exceeds declared image size.')

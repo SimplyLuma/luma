@@ -7,6 +7,7 @@ import platform
 import subprocess
 import sys
 import threading
+import time
 
 import gi
 
@@ -854,6 +855,7 @@ def launch(state=None):
 
         def show_transfer_progress(self, value):
             self.transfer_progress = value
+            self.transfer_updated = time.monotonic()
             self.status_label.set_label(value.message)
             self.progress.set_visible(True)
             if value.phase == 'connecting':
@@ -876,6 +878,10 @@ def launch(state=None):
                 return True
             if self.busy and (self.transfer_progress is None or self.transfer_progress.phase == 'connecting'):
                 self.progress.pulse()
+            if (self.busy and self.transfer_progress is not None
+                    and self.transfer_progress.phase == 'downloading'
+                    and time.monotonic() - self.transfer_updated >= 5):
+                self.status_label.set_label(self.transfer_progress.message + ' · Waiting for data…')
             running = self.running()
             if self.child and self.child.poll() is not None:
                 code = self.child.returncode
