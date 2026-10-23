@@ -33,7 +33,7 @@ required=("$gtk" "${gtk/gtk4-/gtk4-devel-}" "${gtk/gtk4-/gtk4-devel-tools-}"
   "$adwaita" "${adwaita/libadwaita-/libadwaita-devel-}"
   "$platform" "${platform/luma-developer-platform-/luma-developer-platform-devel-}"
   "$LUMA_DEVELOPER_PLATFORM_SDK_NEVRA" "$FIGTREE_NEVRA" "$CAVEAT_NEVRA"
-  "$PRAIRIE_ICON_THEME_NEVRA" "flatpak-runtime-config-${DEPOT_FEDORA_RELEASE}-1.luma.1.fc${DEPOT_FEDORA_RELEASE}.${DEPOT_ARCH}")
+  "$PRAIRIE_ICON_THEME_NEVRA" "flatpak-runtime-config-${DEPOT_FEDORA_RELEASE}-1.luma.2.fc${DEPOT_FEDORA_RELEASE}.${DEPOT_ARCH}")
 
 # The owner-patched WebKit pairs are runtime inputs, including their matching
 # SDK headers. Supplying just a package directory cannot silently omit them.
