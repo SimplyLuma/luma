@@ -52,6 +52,7 @@
 
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
+. "$(dirname -- "$0")/lib/gate-vm.sh"
 
 build_id=
 keep_vms=0
@@ -99,19 +100,9 @@ if [ -n "$update_from" ]; then
   previous=$update_from
 fi
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
-case "$LUMA_OS_ARCH" in
-  x86_64) gate_machine=q35; gate_console=ttyS0 ;;
-  aarch64) gate_machine=virt; gate_console=ttyAMA0 ;;
-  *) luma_os_die "unsupported gate architecture: $LUMA_OS_ARCH" ;;
-esac
-# KVM host CPU passthrough applies only to matching native targets. Explicit
-# emulation supports an ARM qualification host without pretending it is KVM.
-gate_cpu=host-passthrough
-gate_virt=kvm
-if [ "$(uname -m)" != "$LUMA_OS_ARCH" ]; then
-  gate_cpu=max
-  gate_virt=qemu
-fi
+kvm_available=no
+[ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || kvm_available=yes
+luma_os_gate_vm_target "$LUMA_OS_ARCH" "$(uname -m)" "$kvm_available"
 iso=${LUMA_OS_GATE_ISO:-$LUMA_OS_ROOT/vm/media/Fedora-Silverblue-ostree-$LUMA_OS_ARCH-44-1.7.iso}
 [ -f "$iso" ] || luma_os_die "installer ISO is missing: $iso"
 
@@ -123,6 +114,8 @@ install -d -m 0755 "$gate_dir" "$vm_dir"   # qemu must reach the disks in vm_dir
 log="$gate_dir/gate.log"
 exec > >(tee -a "$log") 2>&1
 luma_os_log "gate $run_id for $candidate ($LUMA_OS_VERSION) on $ref; previous ${previous:-none}"
+# Fail before credentials, repository copies and disks if this host cannot boot the target.
+luma_os_gate_vm_preflight "$gate_dir/libvirt-capabilities.xml"
 
 exec 7>"$LUMA_OS_ROOT/locks/gate.lock"
 flock -n 7 || luma_os_die 'another gate is running'
@@ -469,7 +462,7 @@ install_vm() {
     --name "$domain" \
     --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
     --memory 6144 --vcpus 4 --cpu "$gate_cpu" \
-    --machine "$gate_machine" --boot uefi \
+    --machine "$gate_machine" --boot "$gate_boot" \
     --disk "path=$vm_dir/$domain.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
     --location "$iso,kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img" \
     --initrd-inject "$vm_dir/luma-gate.ks" \

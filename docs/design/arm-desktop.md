@@ -99,6 +99,22 @@ userspace release, DTBs, firmware acquisition and recovery procedure. Do not
 invent Luma kernel tags for upstream binaries. Existing Fairphone contracts must
 remain intact; they do not automatically qualify a desktop Snapdragon device.
 
+## Qualification host
+
+The shared release gate selects ARM `virt`/`ttyAMA0` or x86 `q35`/`ttyS0`.
+Matching hosts with KVM use CPU passthrough; other hosts use QEMU emulation.
+Every image, install, update and rollback check still applies under that choice.
+Libvirt emulator and UEFI capabilities are admitted before VM allocation and
+saved with the gate evidence.
+
+A provisioned host normally supplies its architecture emulator and firmware.
+An operator can instead select an admitted native-host QEMU executable through
+`LUMA_OS_GATE_EMULATOR` and a matching upstream pflash firmware pair through
+`LUMA_OS_GATE_UEFI_CODE` and `LUMA_OS_GATE_UEFI_VARS`. The gate records their body
+hashes; libvirt creates separate writable NVRAM for every VM. The operator must
+retain provider/package provenance and arrange normal libvirt access and SELinux
+labels. These tool selections do not waive release checks or qualify hardware.
+
 ## Imager and website handoff
 
 Imager should select a verified artifact and a compatible device/boot profile.
