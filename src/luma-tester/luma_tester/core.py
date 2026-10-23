@@ -347,7 +347,8 @@ class Session:
             block={'driver':'raw','node-name':'installer','read-only':True,'file':{'driver':'file','filename':str(self.base)}}
             argv += ['-blockdev',json.dumps(block),'-device','virtio-scsi-pci,id=scsi','-device','scsi-cd,drive=installer,bootindex='+('1' if settings['boot_iso'] else '2')]
         bios = self.firmware(firmware)
-        if bios and self.manifest.get('media') == 'iso':
+        if bios and (self.manifest.get('media') == 'iso' or
+                     (arch == 'x86_64' and platform.system() == 'Darwin')):
             code=Path(bios).with_name('QEMU_EFI-pflash.raw') if arch=='aarch64' else Path(bios)
             template=code.with_name('vars-template-pflash.raw' if arch=='aarch64' else 'OVMF_VARS.fd')
             variables=self.directory/'firmware-vars.raw'

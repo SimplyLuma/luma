@@ -61,12 +61,12 @@ def main():
     value['NSMicrophoneUsageDescription']='Share your microphone with a Luma virtual machine when enabled.'
     value['NSCameraUsageDescription']='Share your camera with a Luma virtual machine when enabled.'
     info.write_bytes(plistlib.dumps(value))
+    subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
+    subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
     receipt=dict(source_commit=a.source_commit,version=__version__,host='macos-arm64',signed='ad-hoc',notarized=False,files=[])
     for path in sorted(contents.rglob('*')):
         if path.is_file() and not path.is_symlink():receipt['files'].append(dict(path=str(path.relative_to(contents)),bytes=path.stat().st_size,sha256=hashlib.file_digest(path.open('rb'),'sha256').hexdigest()))
     (out/'build-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
-    subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
     loader=importlib.machinery.SourceFileLoader('mac_backend',str(backend));spec=importlib.util.spec_from_loader(loader.name,loader);module=importlib.util.module_from_spec(spec);loader.exec_module(module)
     dmg=module.make_dmg(app,out,manifest)
     (out/'SHA256SUMS').write_text(hashlib.file_digest(dmg.open('rb'),'sha256').hexdigest()+'  '+dmg.name+'\n')
