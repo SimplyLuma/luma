@@ -30,9 +30,10 @@
 #    content only (no deltas, no other refs), the Luma collection id, and a
 #    summary signed with the Luma OS Release key, so the medium is exactly what
 #    an online install of that release verifies.
-# 2. Atlas's own media builder (scripts/install/atlas-iso/build-installer-iso.sh
-#    from the Atlas source) composes the ISO with that payload and the release
-#    public key as the only trust anchor.
+# 2. The current OS tree's shared media builder composes the ISO with that
+#    payload and the release public key as the only trust anchor. --atlas-source
+#    identifies the Atlas application RPM's source separately: reusing an
+#    unchanged frontend does not select obsolete architecture/kernel helpers.
 # 3. The ISO's sha256 and the release it carries are written beside it.
 #
 # Everything is written below LUMA_OS_ROOT; containers use the pipeline's
@@ -85,14 +86,16 @@ if [ -z "$test_build$candidate_build" ]; then
   boot_manifest="$source_repo/luma/releases/$version/luma-packages.manifest"
 fi
 [ -f "$boot_manifest" ] || luma_os_die "payload boot-package manifest missing: $boot_manifest"
-kernel_config="$atlas/config/install/atlas/runtime-kernel.env"
-[ "$LUMA_OS_ARCH" = x86_64 ] || kernel_config="$atlas/config/install/atlas/runtime-kernel-$LUMA_OS_ARCH.env"
+media_builder="$luma_os_repo_root/scripts/install/atlas-iso/build-installer-iso.sh"
+kernel_config="$luma_os_repo_root/config/install/atlas/runtime-kernel.env"
+[ "$LUMA_OS_ARCH" = x86_64 ] || kernel_config="$luma_os_repo_root/config/install/atlas/runtime-kernel-$LUMA_OS_ARCH.env"
 . "$kernel_config"
 if [ -n "$test_build$candidate_build" ]; then
   [ "$LUMA_EXPORT_KERNEL" = "$ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH" ] ||
     luma_os_die "installer runtime kernel does not match payload: $ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH versus $LUMA_EXPORT_KERNEL"
 fi
-[ -x "$atlas/scripts/install/atlas-iso/build-installer-iso.sh" ] || luma_os_die "not an Atlas source tree: $atlas"
+[ -d "$atlas/src/luma-installer-atlas" ] || luma_os_die "not an Atlas application source tree: $atlas"
+[ -x "$media_builder" ] || luma_os_die "OS media builder missing: $media_builder"
 
 media_channel="$channel"
 [ "$LUMA_OS_ARCH" = x86_64 ] || media_channel="$channel-$LUMA_OS_ARCH"
@@ -141,7 +144,7 @@ media_args=()
 CONTAINERS_STORAGE_CONF="$LUMA_OS_ROOT/etc/storage.conf" \
 CONTAINERS_CONF="$LUMA_OS_ROOT/etc/containers.conf" \
 TMPDIR="$LUMA_OS_ROOT/tmp" \
-  "$atlas/scripts/install/atlas-iso/build-installer-iso.sh" \
+  "$media_builder" \
     --arch "$LUMA_OS_ARCH" --rpms "$rpms" --boot-rpms "$boot_rpms" --boot-manifest "$boot_manifest" \
     --work "$work" --output "$output" \
     --channel "$channel" --payload-repo "$payload" \
@@ -156,6 +159,7 @@ ref=$ref
 commit=$head
 version=$version
 atlas_source_revision=$(git -c "safe.directory=$atlas" -C "$atlas" rev-parse HEAD 2>/dev/null || echo unknown)
+media_helpers_source_revision=$(git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" rev-parse HEAD 2>/dev/null || echo unknown)
 release_key_fingerprint=$(luma_os_gpg_fingerprint)
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 test=${test_build:+true}
