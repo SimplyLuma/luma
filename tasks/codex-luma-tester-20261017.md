@@ -1320,3 +1320,26 @@ used that source without altering shared refs or unrelated worktrees.
   run admitted r2 controller, inspect guest/window screenshots and real fresh
   NoCloud/snapshot/reboot evidence, then register image and deliver/launch r4.
   No final-image success or public Hub catalog publication claimed.
+- Mac tunnel reconnected after user confirmation. Local r1 ARM disk transfer and
+  checksum succeeded. Full-image GUI caught real Mac rfb ctypes resolution bug
+  (Linux soname fallback despite bundled dylib); fixed in ba8565881 with bundle
+  resolution regression.96 source tests passed549a6a81. Macr5 built ba900343;
+  mounted DMG complete file hashes/signatures/CLI passed11cb24ac. DMG delivered
+  to Nick Downloads, SHA2567f8356ba0b39bbcb12fa876632e72ef59afd7e023523a9d432ccd3f16525c261.
+- r3 actual GUI now loads the embedded framebuffer and native UEFI Linux, but
+  fresh machine identity triggered interactive systemd-firstboot timezone setup.
+  Virtual-only export-r2 masks that service; export907477fe check passed. Actual
+  r4 test boots kernel7.2.11 with networking/sshd; cloud-init users_groups fails
+  to disable luma password and cloud-final is skipped due ordering cycle caused
+  by After=cloud-final on services ordered before multi-user. Stopped only owned
+  QA guests after capturing console evidence; no normal user guest modified.
+- Read-only original adapter account inspection cf96292f confirms luma entries
+  exist in etc/passwd+shadow and usr/lib/passwd; do not assume missing entries.
+  Next inspect actual stopped overlay cloud-init error/SELinux labels, remove
+  the proven cloud-final ordering cycle and correct the actual account failure.
+  Private cloud-read-r2 ef49c88e running with1GiB hard cap for read-only inspection;
+  nested root unit8bf72a5700 converting stopped QA overlay to private raw before
+  read-only mount. Its result pending. Earlier transfer wrapper without scoped
+  HDD write access failed read-only before writing; retained as failed evidence.
+  Original4GiB request was refused while other builds reserve14GiB; the separate
+  read-only workload now has a matching1GiB runner/systemd bound. No gate bypass.
