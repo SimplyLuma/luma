@@ -30,7 +30,12 @@ for file in "${rpms[@]}"; do
   [ "$(basename "$file")" = "$identity.rpm" ]
 done
 dnf5 -y install "${rpms[@]}"
-for component in gnome-control-center nautilus gnome-shell; do
+case "${LUMA_DESKTOP_UI_COMPONENT:-all}" in
+  all) components=(gnome-control-center nautilus gnome-shell) ;;
+  gnome-control-center|nautilus|gnome-shell) components=("$LUMA_DESKTOP_UI_COMPONENT") ;;
+  *) printf 'error: unsupported desktop UI component\n' >&2; exit 2 ;;
+esac
+for component in "${components[@]}"; do
   printf 'Building desktop component: %s (%s)\n' "$component" "$architecture"
   bash "$root/scripts/packages/build-$component.sh"
 done
