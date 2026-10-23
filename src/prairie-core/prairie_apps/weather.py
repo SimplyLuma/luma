@@ -130,8 +130,7 @@ class WeatherWindow(AppWindow):
         overlay = Gtk.Overlay(child=self.sky)
         overlay.add_overlay(self.scroll)
         self.empty = EmptyState('No cities', 'Add a city to see its forecast.',
-                                'lumaui-cloud-symbolic',
-                                primary=('Add a city', lambda: self._open_add_card()))
+                                'lumaui-cloud-symbolic')
         self.detail_stack = Gtk.Stack(hexpand=True, vexpand=True)
         self.detail_stack.add_named(self.empty, 'empty')
         self.detail_stack.add_named(overlay, 'forecast')
