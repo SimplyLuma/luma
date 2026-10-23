@@ -39,7 +39,7 @@
 #   build-installer-iso.sh --rpms DIR --boot-rpms DIR --boot-manifest FILE --work DIR --output ISO
 #       [--arch x86_64|aarch64]
 #       [--channel stable|beta|nightly]   (default nightly: staff media)
-#       [--runtime-tmpfs-gib N]          RAM for transient Lorax root; admit N+4 GiB
+#       [--runtime-tmpfs-gib N]          RAM for transient Lorax root; admit N+2 GiB
 #       [--payload-repo DIR]              OSTree repository to carry on the medium
 #       [--release-key PATH]              default /etc/pki/ostree/luma-release.gpg
 #       [--preview-credential-file FILE]  beta or nightly staff media only: one line,
@@ -326,14 +326,19 @@ fi
 # xattrs into dracut's staging tree, which silently drops files from the
 # initramfs (the first build lacked systemd-sysroot-fstab-check and could not
 # mount its root). /dev is shared so lorax sees loop devices it creates.
-# The caller must admit tmpfs capacity plus at least 4 GiB for tools, caches
+# The caller must admit tmpfs capacity plus at least 2 GiB for bounded tools, caches
 # and compression before opting in. Only the transient Lorax root moves;
 # package bodies, logs, final media and later full-image audits stay on disk.
 lorax_tmp=/w/tmp
 runtime_mount=()
+lorax_config_args=""
 if [ -n "$runtime_tmpfs_gib" ]; then
   lorax_tmp=/lorax-runtime-tmp
   runtime_mount=(--tmpfs "$lorax_tmp:rw,size=${runtime_tmpfs_gib}g,mode=1777")
+  # Lorax merges this supported override with its normal xz/BCJ defaults.
+  # Avoid auto-sizing compression caches/threads from the entire build host.
+  printf '[compression]\nargs = -processors 4 -mem 512M\n' > "$work/templates/lorax-memory.conf"
+  lorax_config_args="--config /w/templates/lorax-memory.conf"
 fi
 podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_architecture" --privileged --network host --env DRACUT_NO_XATTR=1 \
     --env "DNF_VAR_arch=$architecture" \
@@ -390,7 +395,7 @@ podman run --rm "${runtime_mount[@]}" "${builder_security[@]}" --arch "$tools_ar
   while read -r nevra digest header; do
     boot_install_args+=(--installpkgs \"\$nevra\")
   done < /w/boot-packages.manifest
-  python3 /s/run-lorax.py --buildarch '$architecture' --product '$product' --version '$version' --release 44 --isfinal \
+  python3 /s/run-lorax.py $lorax_config_args --buildarch '$architecture' --product '$product' --version '$version' --release 44 --isfinal \
         --volid '$volid' --nomacboot --noupgrade \
         --source '$release_repo' --source file:///w/luma-rpms \
         --installpkgs luma-installer-atlas --installpkgs slitherer \
