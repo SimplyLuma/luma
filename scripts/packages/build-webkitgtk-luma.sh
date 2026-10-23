@@ -105,5 +105,8 @@ for source in "$work_dir/rpmbuild/RPMS/$arch/"*.rpm "$work_dir/rpmbuild/SRPMS/"*
 done
 cp "$work_dir/rpmbuild/ADMITTED-INPUT-SHA256SUMS" "$output_dir/ADMITTED-INPUT-SHA256SUMS"
 cp "$work_dir/rpmbuild/ADMITTED-RESOURCE-OPTIONS.txt" "$output_dir/ADMITTED-RESOURCE-OPTIONS.txt"
+if [ "$arch" = aarch64 ]; then
+  cp "$work_dir/rpmbuild/ADMITTED-LINKER-PROOF.txt" "$output_dir/ADMITTED-LINKER-PROOF.txt"
+fi
 (cd "$output_dir" && find RPMS SRPMS -type f -name '*.rpm' -exec sha256sum {} + | sort >SHA256SUMS)
 printf 'WebKit packages built: %s\n' "$output_dir"

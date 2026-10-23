@@ -113,6 +113,8 @@ jobs:
             build/packages/**/SRPMS/
             build/packages/**/SHA256SUMS
             build/packages/**/ADMITTED-RESOURCE-OPTIONS.txt
+            build/packages/**/ADMITTED-LINKER-PROOF.txt
+            build/packages/**/ADMITTED-INPUT-SHA256SUMS
             build/SOURCE-REVISION
           if-no-files-found: error
           retention-days: 14
