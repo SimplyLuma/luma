@@ -33,6 +33,21 @@ printf '%s|%s|%s|%s|%s\\n' "$gate_machine" "$gate_console" "$gate_cpu" "$gate_vi
         result = self.run_helper(arch='x86_64', kvm='no')
         self.assertEqual(result.stdout.strip(), 'q35|ttyS0|max|qemu|uefi')
 
+    def test_install_wait_matches_emulation_profile(self):
+        for arch, host, kvm, expected in (
+                ('aarch64', 'x86_64', 'yes', '180'),
+                ('aarch64', 'x86_64', 'no', '180'),
+                ('aarch64', 'aarch64', 'yes', '60'),
+                ('aarch64', 'aarch64', 'no', '60'),
+                ('x86_64', 'x86_64', 'yes', '60'),
+                ('x86_64', 'x86_64', 'no', '60'),
+                ('x86_64', 'aarch64', 'no', '60')):
+            with self.subTest(arch=arch, host=host, kvm=kvm):
+                result = self.run_helper(arch=arch, host=host, kvm=kvm,
+                    extra='printf "wait=%s\\n" "$gate_install_wait_minutes"')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines()[-1], 'wait=' + expected)
+
     def test_unknown_architecture_refused(self):
         result = self.run_helper(arch='riscv64')
         self.assertNotEqual(result.returncode, 0)

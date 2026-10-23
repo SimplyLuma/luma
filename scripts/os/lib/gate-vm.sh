@@ -8,6 +8,12 @@ luma_os_gate_vm_target() {
     aarch64) gate_machine=virt; gate_console=ttyAMA0 ;;
     *) luma_os_die "unsupported gate architecture: $arch"; return 1 ;;
   esac
+  # Native installs retain the existing one-hour bound. ARM guests emulated
+  # on x86 hosts need more time for the same verified OSTree installation.
+  gate_install_wait_minutes=60
+  if [ "$arch" = aarch64 ] && [ "$host" = x86_64 ]; then
+    gate_install_wait_minutes=180
+  fi
   gate_cpu=max
   gate_virt=qemu
   if [ "$host" = "$arch" ] && [ "$kvm_available" = yes ]; then

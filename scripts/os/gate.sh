@@ -475,7 +475,7 @@ install_vm() {
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --serial "file,path=/var/log/libvirt/qemu/$domain-serial.log" \
     --os-variant fedora-unknown \
-    --noreboot --noautoconsole --wait 60 >>"$gate_dir/virt-install-$name.log" 2>&1 || {
+    --noreboot --noautoconsole --wait "$gate_install_wait_minutes" >>"$gate_dir/virt-install-$name.log" 2>&1 || {
       tail -n 30 "/var/log/libvirt/qemu/$domain-serial.log" 2>/dev/null >&2
       return 1
     }

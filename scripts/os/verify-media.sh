@@ -249,7 +249,7 @@ virt-install --connect qemu:///system --name "$domain" \
   --network "passt,portForward0.proto=tcp,portForward0.range0.start=$port,portForward0.range0.to=22" \
   --graphics vnc,listen=127.0.0.1 --video virtio --rng /dev/urandom \
   --serial "file,path=/var/log/libvirt/qemu/$domain-serial.log" \
-  --os-variant fedora-unknown --noreboot --noautoconsole --wait 60 >"$out/virt-install.log" 2>&1 || {
+  --os-variant fedora-unknown --noreboot --noautoconsole --wait "$gate_install_wait_minutes" >"$out/virt-install.log" 2>&1 || {
     cp "/var/log/libvirt/qemu/$domain-serial.log" "$out/install-serial.log" 2>/dev/null
     luma_os_die 'installation from the media failed'
   }
