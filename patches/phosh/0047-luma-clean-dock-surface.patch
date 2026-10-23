@@ -1,0 +1,25 @@
+--- a/src/ui/app-grid.ui
++++ b/src/ui/app-grid.ui
+@@ -78,10 +78,2 @@
+                 </object><packing><property name="expand">1</property></packing></child>
+-                <child><object class="GtkBox" id="home_indicator">
+-                  <property name="visible">1</property>
+-                  <property name="halign">center</property>
+-                  <property name="width-request">7</property>
+-                  <property name="height-request">7</property>
+-                  <property name="margin-bottom">10</property>
+-                  <style><class name="luma-home-indicator"/></style>
+-                </object><packing><property name="expand">0</property></packing></child>
+                 <child><object class="GtkRevealer" id="dock_revealer">
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -1675,8 +1675,7 @@
+ .luma-home-dock {
+   padding: 0 10px; border-radius: 30px;
+   background-image: linear-gradient(to bottom, @luma_launcher_glass_start, @luma_launcher_glass_end);
+-  box-shadow: inset 0 1px rgba(255,255,255,.12), inset 0 0 0 1px alpha(@phosh_fg_color,.06),
+-              0 18px 40px -16px rgba(0,0,0,.6);
++  box-shadow: inset 0 1px rgba(255,255,255,.12), inset 0 0 0 1px alpha(@phosh_fg_color,.06);
+ }
+ .luma-home-dock phosh-app-grid-button label { font-size: 0; }
+ .luma-all-apps {
