@@ -69,7 +69,7 @@ chmod -R a+rX "$rpmbuild_dir"
 bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
     set -euo pipefail
-    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
+    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs xdg-dbus-proxy bubblewrap ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-application-installer.spec
     rpm_path=$(find RPMS/noarch -name "luma-application-installer-*.rpm" -print -quit)
     test -n "$rpm_path"

@@ -15,6 +15,9 @@ Source2:        org.project_luma.shell-state.gschema.xml
 BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  flatpak-libs
+# Live-instance authority tests validate the maintained sandbox executables.
+BuildRequires:  xdg-dbus-proxy
+BuildRequires:  bubblewrap
 BuildRequires:  ostree-libs
 BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
