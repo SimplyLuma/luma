@@ -99,6 +99,10 @@ def seal(source, target, inputs=False, graph=False):
         source / 'config/os/release.env', source / 'config/desktop/inputs.env',
         source / 'config/os/desktop-targets.json',
         source / 'config/os/desktop-profiles.json',
+        # The same sealed OS publisher stages public keys and invokes the
+        # normal origin sync; neither may fall back to a mutable checkout.
+        source / 'config/os/media.env',
+        source / 'config/os/keys/luma-update-graph.pub',
         source / 'image/os-tools/Containerfile']) if graph else list(source.rglob('*')) if inputs else list((source / 'scripts/depot').rglob('*')) + [
         source / 'config/desktop/inputs.env',
         source / 'packaging/flatpak/apps/titles.json',
