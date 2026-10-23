@@ -39,8 +39,17 @@ for identity in "$gtk" "$adwaita" "$platform" \
   "luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.$architecture" \
   "luma-appimage-compat-0.1.0-1.luma.1.fc44.$architecture"; do
   mapfile -t matches < <(find "$inputdir" -type f -name "$identity.rpm")
-  [ "${#matches[@]}" = 1 ]
-  [ "$(rpm -qp --nosignature --qf '%{NEVRA}' "${matches[0]}")" = "$identity" ]
+  [ "${#matches[@]}" -ge 1 ] || { printf 'Missing checked browser provider: %s\n' "$identity" >&2; exit 1; }
+  expected_sha=
+  for file in "${matches[@]}"; do
+    [ "$(rpm -qp --nosignature --qf '%{NEVRA}' "$file")" = "$identity" ]
+    actual_sha=$(sha256sum "$file" | cut -d ' ' -f1)
+    [ -z "$expected_sha" ] || [ "$actual_sha" = "$expected_sha" ] || {
+      printf 'Conflicting checked browser provider bodies: %s\n' "$identity" >&2; exit 1;
+    }
+    expected_sha=$actual_sha
+  done
+  printf 'Checked browser provider: %s (%s identical retained copies)\n' "$identity" "${#matches[@]}"
   rpms+=("${matches[0]}")
 done
 installer=luma-application-installer-0.1.0-1.luma.71.creator20261021.1.fc44.noarch.rpm
