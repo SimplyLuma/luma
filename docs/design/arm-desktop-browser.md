@@ -25,3 +25,10 @@ This input recovery is not a claim that the current desktop host has passed ARM
 runtime checks. The ordinary RPM check suite and real guest browser launch must
 pass before admitting the resulting package. The architecture chooses the
 engine input; it does not select a second application source tree or UI fork.
+
+Both retained engine inputs are available in content-addressed
+`media.simplyluma.com/inputs/viola-engine/<archive-sha256>/<filename>` paths,
+with original license notices beside them. Native browser CI selects both CPUs
+for shared host or packaging changes. An architecture-specific engine manifest
+change selects only its CPU; workflow-only edits preserve already checked
+packages. An explicit workflow dispatch requests fresh builds on both CPUs.
