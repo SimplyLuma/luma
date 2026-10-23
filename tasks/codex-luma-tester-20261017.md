@@ -1203,3 +1203,10 @@ used that source without altering shared refs or unrelated worktrees.
   actual build). Private testers-live-r32 helpers retain genuine r15/r10 sidecars;
   no hardware-specific workaround or guest payload change. Next controller run
   starts only after this checkpoint commit; read its result before repeating it.
+- 2026-10-23 ~17:38UTC: user explicitly requested launching the Mac build.
+  Pinned SSH confirmed nick's active console and no existing Tester process;
+  LaunchServices open -a launched the qualified r2 app from its task output.
+  Actual Contents/MacOS/python3 process19089 and fresh0.7.0 launch log verified.
+  No VM was started or user data changed by this launch; no new app tests run.
+  Linux follow-up controller remains waiting for normal tester-dock-state
+  admission, per private tester-mac-live-finish.json.
