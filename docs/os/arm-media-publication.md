@@ -61,6 +61,18 @@ architecture/release operator. An operator that already holds it may pass that
 open descriptor in `LUMA_MEDIA_PUBLICATION_LOCK_FD`; the script validates the
 descriptor's device/inode and acquires its existing lock without reopening it.
 
+The default path is local to a release root; it does not establish a cross-root
+lock by itself. Before admitting either operator, resolve both configured lock
+paths and compare their device/inode identities. Use the existing canonical
+nightly publication lock when the qualified wrapper already holds that lock, and
+pass its inherited descriptor into the media producer. Do not acquire the same
+lock through a second file description: that can deadlock the wrapper. A
+build-specific owner lock is additional protection, not a substitute for the
+shared canonical lock. Preserve sealed historical operators; generate and seal
+new wrappers with this configuration and the preservation checks before their
+next publication. Until both operators are configured and independently checked,
+this source change does not establish live publication serialization.
+
 The protected operator must apply `check_other_architectures()` and `check_prior()`
 to its freshly verified remote prior and final candidate while holding that same
 lock. The guard is also available as `media_aggregate.py check-preservation`.
