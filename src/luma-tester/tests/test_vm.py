@@ -48,6 +48,11 @@ class VMTests(unittest.TestCase):
         self.assertIn('hda-output,audiodev=sound0',args)
         self.assertFalse(any('hda-duplex' in arg or 'usb-host' in arg for arg in args))
 
+    def test_microphone_can_work_without_audio_output(self):
+        args=vm.devices(dict(vm.load(self.root),audio=False,microphone=True))
+        self.assertIn('hda-input,audiodev=sound0',args)
+        self.assertNotIn('hda-duplex,audiodev=sound0',args)
+
     def test_connection_command_uses_actual_identity_and_quoted_key(self):
         directory=self.root/'VM with spaces';directory.mkdir()
         session=SimpleNamespace(root=self.root,directory=directory,

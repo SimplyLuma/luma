@@ -35,7 +35,7 @@ except (ImportError, ValueError) as exc:
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets, vm, experiences, device_profiles
+from . import presets, vm, experiences, device_profiles, image_library, host_devices
 
 
 def launch(state=None):
@@ -82,12 +82,15 @@ def launch(state=None):
             self.ssh_busy = False
             self.device_busy = False
             self.selected_images = {}
-            self.architectures = {}
+            self.architectures = {'desktop':'x86_64','tablet':'x86_64','mobile':'aarch64'}
+            self.library_items = image_library.cached(data_root(state))
+            self.library_loading = False
+            self.library_error = None
             self.selected_variants = {}
             try:
                 preferences=json.loads(self.preferences.read_text())
-                self.architectures={key:value for key,value in preferences.get("architectures",{}).items()
-                    if key in experiences.CHOICES and value in ("auto","x86_64","aarch64")}
+                self.architectures.update({key:value for key,value in preferences.get("architectures",{}).items()
+                    if key in experiences.CHOICES and value in ("auto","x86_64","aarch64")})
                 for key,value in preferences.get("selected_variants",{}).items():
                     target,architecture=key.split(":")
                     image=read_manifest(value)
@@ -269,10 +272,21 @@ def launch(state=None):
             details.append(self.ssh_copy)
             self.ssh_details.set_child(details)
             self.sidebar.list.append(self.ssh_details)
-            for title, icon, callback in [('Copy Agent Prompt', 'clipboard', self.copy_agent_prompt),
-                    ('Shared Folders…', 'folder', self.show_hardware), ('Devices…', 'usb', self.show_hardware)]:
+            for title, icon, callback in [('Copy Agent Prompt', 'clipboard', self.copy_agent_prompt)]:
                 row = SidebarRow(title, lead=RowLead.icon(icon));row.callback = callback
                 self.sidebar.append_row(row);self.developer_rows.append(row)
+            self.hardware_heading = SidebarSection('Hardware', ruled=True,
+                action=('plus', 'Add hardware', self.show_hardware))
+            self.sidebar.list.append(self.hardware_heading);self.developer_rows.append(self.hardware_heading)
+            self.hardware_summary = SidebarRow('Audio, camera & USB', lead=RowLead.icon('usb'))
+            self.hardware_summary.callback=self.show_hardware
+            self.sidebar.append_row(self.hardware_summary);self.developer_rows.append(self.hardware_summary)
+            self.folders_heading = SidebarSection('Shared Folders',
+                action=('plus', 'Share a folder', self.choose_shared_folder))
+            self.sidebar.list.append(self.folders_heading);self.developer_rows.append(self.folders_heading)
+            self.folders_summary = SidebarRow('Choose folders to share', lead=RowLead.icon('folder'))
+            self.folders_summary.callback=self.show_folders
+            self.sidebar.append_row(self.folders_summary);self.developer_rows.append(self.folders_summary)
             self.snapshot_heading = SidebarSection('Snapshots', action=('plus', 'Save snapshot', self.save_snapshot))
             self.sidebar.list.append(self.snapshot_heading)
             self.snapshot_rows = []
@@ -305,7 +319,7 @@ def launch(state=None):
             self.preset_editor = Card(form)
             foot = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             foot.add_css_class('luma-navigation-list')
-            for title, icon, callback in [('Add Image…', 'plus', self.choose_image)]:
+            for title, icon, callback in [('Images', 'hard-drive', self.show_images)]:
                 row = SidebarRow(title, lead=RowLead.icon(icon))
                 row.callback = callback
                 foot.append(row)
@@ -333,9 +347,7 @@ def launch(state=None):
             self.sidebar_toggle = make_control(BarAction('panel-left', tooltip='Show or hide sidebar',
                 on_activate=lambda: self.layout.set_show_sidebar(not self.layout.get_show_sidebar())))
             self.workspace_title = self.label('')  # not displayed; title belongs in the workspace
-            self.build_menu = Gtk.MenuButton(label='Images', tooltip_text='Choose an image')
-            self.build_menu.get_first_child().add_css_class('lumaui-bar-button')
-            self.build_menu.get_first_child().add_css_class('dropdown')
+            self.build_menu = self.button('Images', self.show_images, icon='hard-drive')
             self.arch_menu = Gtk.MenuButton(label='Automatic', tooltip_text='Guest CPU architecture')
             self.arch_menu.get_first_child().add_css_class('lumaui-bar-button')
             self.arch_menu.get_first_child().add_css_class('dropdown')
@@ -410,7 +422,7 @@ def launch(state=None):
             choices=tuple(Command('arch.'+key, label, lambda value=key:self.select_architecture(value),
                 checked=lambda value=key:self.architectures.get(self.target,'auto')==value,
                 enabled=lambda:not self.active()) for key,label in labels.items())
-            self.arch_menu.set_popover(Menu(CommandRegistry((CommandGroup('Architecture',choices),)), variant='compact'))
+            self.arch_menu.set_popover(Menu(CommandRegistry((CommandGroup('Architecture',choices),)), variant='compact', keep_parent=True))
             self.image_paths = []
             names = []
             for path in self.available_manifests():
@@ -433,14 +445,14 @@ def launch(state=None):
             notice=architecture_notice(architectures)
             if selected and read_manifest(selected)['arch']!=host_arch():
                 notice=('ARM64' if read_manifest(selected)['arch']=='aarch64' else 'x86-64')+' runs with emulation on this computer.'
-            if self.target in ('tablet','tv','smart-device'):
+            if self.target in ('tv','smart-device'):
                 notice=(notice+' ' if notice else '')+'Uses the shared image’s current interface until OS mode support is available.'
             self.arch_notice.set_label(notice)
             self.arch_notice.set_visible(bool(names) and bool(self.arch_notice.get_label()))
             if not self.active():
                 title = experiences.LABELS[self.target]
-                missing=(f'Add an {labels[architecture]} Luma {title} image.' if architecture!='auto' else
-                    'Add an ARM64 ISO or developer image.' if self.target in ('tablet','tv','smart-device') else f'Add a Luma {title} image.')
+                missing=(f'Choose a Luma {title} image in Images.' if architecture!='auto' else
+                    'Add an ARM64 ISO or developer image.' if self.target in ('tv','smart-device') else f'Add a Luma {title} image.')
                 self.status_label.set_label('Choose an image, then start exploring.' if selected else missing)
                 self.run_button.set_sensitive(bool(selected))
 
@@ -455,32 +467,9 @@ def launch(state=None):
             return cached.is_file() or (local.scheme=='file' and Path(unquote(local.path)).is_file())
 
         def update_build_menu(self, names=None):
-            if not hasattr(self, 'build_menu'):
-                return
-            if names is None:
-                names=[read_manifest(path).get('build') or path.stem for path in self.image_paths]
-            groups=[]
-            included=[p for p in self.image_paths if p not in self.imported]
-            if self.target in ('tablet','tv','smart-device') and self.architectures.get(self.target,'auto')=='auto':
-                included=[p for p in included if read_manifest(p)['arch']=='aarch64']
-            if included:
-                latest=included[0]
-                groups.append(CommandGroup('Latest qualified', (Command('build.latest',
-                    read_manifest(latest)['build'], lambda: self.image_selector.set_selected(self.image_paths.index(latest)),
-                    icons.icon_name('sparkles'), checked=lambda: self.select_image()==latest,
-                    enabled=lambda: not self.active()),)))
-            for installed,heading in [(True,'Installed or Local'),(False,'Available to Download')]:
-                choices=[]
-                for index,(path,name) in enumerate(zip(self.image_paths,names)):
-                    if self.image_available(path)!=installed:continue
-                    choices.append(Command('build.'+str(index),name,
-                        lambda selected=index:self.image_selector.set_selected(selected),
-                        icons.icon_name('hard-drive' if installed else 'download'),
-                        checked=lambda p=path:self.select_image()==p,enabled=lambda:not self.active()))
-                if choices:groups.append(CommandGroup(heading,tuple(choices)))
-            groups.append(CommandGroup(None, (Command('build.import','Add Image…',self.choose_image,
-                icons.icon_name('plus'),enabled=lambda:not self.active()),)))
-            self.build_menu.set_popover(Menu(CommandRegistry(tuple(groups)), variant='compact'))
+            # Images open a persistent library, rather than rebuilding a popup
+            # from inside one of that popup's own activation callbacks.
+            pass
 
         def image_selected(self, *_args):
             if getattr(self, 'updating_images', False) or self.active():
@@ -721,6 +710,8 @@ def launch(state=None):
             self.refresh()
 
         def select_target(self, target):
+            if target in experiences.COMING_SOON:
+                self.notify('This experience is coming soon.');return
             if self.active():
                 return
             self.target = target
@@ -891,10 +882,12 @@ def launch(state=None):
                 row.set_sensitive(not active and hasattr(row, 'preset_index'))
             for name, row in self.device_rows.items():
                 row.set_sensitive(True)
-                row.set_trailing('ARM' if name in ('tablet','tv','smart-device') else 'Soon' if name not in self.catalog_targets else '')
+                row.set_trailing('Coming soon' if name in experiences.COMING_SOON else '')
+                row.set_sensitive(name not in experiences.COMING_SOON)
             for row in self.developer_rows:
                 row.set_visible(self.intent == 'develop')
             self.ssh_switch.set_active(self.settings['agent_ssh'])
+            self.folders_summary.set_title(str(len(self.settings['folders']))+' shared folder'+('s' if len(self.settings['folders'])!=1 else '') if self.settings['folders'] else 'Choose folders to share')
             self.refresh_ssh_details()
             self.ssh_row.set_sensitive(not self.ssh_busy and self.managed_guest())
             self.words(self.shutdown_button,'Force Stop' if self.force_stop_available else 'Shut Down')
@@ -1043,9 +1036,9 @@ def launch(state=None):
                 raise TesterError('Choose an image first.')
             return Session(path, state)
 
-        def sheet(self, title, body):
+        def sheet(self, title, body, width=360):
             column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16,
-                width_request=360, margin_start=24, margin_end=24, margin_top=24, margin_bottom=24)
+                width_request=min(width,max(280,self.window.get_width()-96)), margin_start=24, margin_end=24, margin_top=24, margin_bottom=24)
             header = Gtk.Box(spacing=12)
             heading = self.label(title, 'title-2');heading.set_hexpand(True)
             header.append(heading)
@@ -1160,75 +1153,107 @@ def launch(state=None):
                 self.notify(str(exc))
 
         def show_hardware(self):
-            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-            body.append(self.label('Changes take effect on the next start.', muted=True))
-            def option(label, key):
-                line = Gtk.Box(spacing=16)
-                words = self.label(label);words.set_hexpand(True);line.append(words)
-                line.append(Switch(active=self.settings[key], label=label,
-                    on_toggle=lambda enabled: self.save_settings(**{key: enabled})))
+            self.close_sheet()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            grid=Gtk.Grid(column_homogeneous=True,column_spacing=12,row_spacing=12)
+            choices=[('Audio','volume-2',self.show_audio),('Microphone','mic',self.show_audio),
+                ('Camera','camera',lambda:self.show_usb('camera')),('USB Devices','usb',lambda:self.show_usb('usb'))]
+            for i,(title,icon,callback) in enumerate(choices):
+                button=self.button(title,callback,icon=icon);button.set_size_request(-1,84)
+                grid.attach(button,i%2,i//2,1,1)
+            body.append(grid)
+            body.append(self.label('Hardware changes apply on the next start. Keyboard and pointer input are already shared.', 'caption',muted=True))
+            self.sheet('Hardware',body)
+
+        def show_audio(self):
+            self.close_sheet()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            for title,key in [('Audio output','audio'),('Microphone','microphone')]:
+                line=Gtk.Box(spacing=16);label=self.label(title);label.set_hexpand(True);line.append(label)
+                line.append(Switch(active=self.settings[key],label=title,
+                    on_toggle=lambda enabled,k=key:self.save_settings(**{k:enabled})))
                 body.append(line)
-            option('Audio output', 'audio')
-            option('Microphone', 'microphone')
-            body.append(self.label('Shared folders', 'group-heading'))
-            for index, folder in enumerate(self.settings['folders']):
-                line = Gtk.Box(spacing=8)
-                label = self.label(Path(folder['path']).name + (' · Read/write' if folder['writable'] else ' · Read only'))
-                label.set_hexpand(True);line.append(label)
-                def remove(path=folder['path'], row=line):
-                    self.save_settings(folders=[f for f in self.settings['folders'] if f['path'] != path])
-                    row.set_visible(False)
-                    self.notify('Folder removed for the next start.')
-                line.append(IconOnlyButton('x', 'Remove shared folder', size='small', on_click=remove))
-                body.append(line)
-            body.append(self.button('Add Shared Folder…', self.choose_shared_folder, icon='folder-plus'))
-            body.append(self.label('Cameras', 'group-heading'))
-            cameras = vm.cameras()
-            for saved in self.settings['usb']:
-                if any((d['bus'],d['address'],d['name'])==(saved['bus'],saved['address'],saved['name']) for d in cameras):
-                    continue
-                line=Gtk.Box(spacing=8)
-                label=self.label(saved['name']+' · Disconnected');label.set_hexpand(True);line.append(label)
-                def forget(device=saved, row=line):
-                    self.save_settings(usb=[d for d in self.settings['usb'] if d!=device]);row.set_visible(False)
-                line.append(IconOnlyButton('x','Remove disconnected camera',size='small',on_click=forget))
-                body.append(line)
-            if not cameras:
-                body.append(self.label('No USB cameras available.', muted=True))
-            for device in cameras:
-                line = Gtk.Box(spacing=8)
-                label = self.label(device['name']);label.set_hexpand(True);line.append(label)
-                active = any(d['bus']==device['bus'] and d['address']==device['address'] for d in self.settings['usb'])
-                def select(enabled, d=device):
-                    selected = [v for v in self.settings['usb'] if (v['bus'],v['address']) != (d['bus'],d['address'])]
-                    if enabled:selected.append({k:d[k] for k in ('name','bus','address')})
+            body.append(self.label('Uses your computer’s selected audio devices. Changes apply on the next start.','caption',muted=True))
+            self.sheet('Audio & Microphone',body)
+
+        def show_usb(self,kind):
+            self.close_sheet()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=14)
+            inventory=vm.usb_devices()
+            devices=[d for d in inventory if (d['kind']=='camera')==(kind=='camera')]
+            if kind=='camera':
+                for device in host_devices.integrated_cameras():
+                    body.append(self.label(device['name'],'group-heading'))
+                    body.append(self.label(device['reason'],'caption',muted=True))
+            for device in devices:
+                line=Gtk.Box(spacing=12);words=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+                words.set_hexpand(True);words.append(self.label(device['name']))
+                reason='Eject this drive on your computer before sharing.' if device['mounted'] else 'Host access permission is needed.' if not device['accessible'] else 'Available to share'
+                words.append(self.label(reason,'caption',muted=True));line.append(words)
+                active=any((d['bus'],d['address'],d['name'])==(device['bus'],device['address'],device['name']) for d in self.settings['usb'])
+                def toggle(enabled,d=device):
+                    selected=[v for v in self.settings['usb'] if (v['bus'],v['address'])!=(d['bus'],d['address'])]
+                    if enabled:selected.append({key:d[key] for key in ('name','bus','address')})
                     self.save_settings(usb=selected)
-                toggle = Switch(active=active, label=device['name'], on_toggle=select)
-                toggle.set_sensitive(device['accessible'] or active);line.append(toggle);body.append(line)
-                if not device['accessible']:body.append(self.label('Host access permission is needed.', muted=True))
-            self.sheet('Devices & Folders', body)
+                switch=Switch(active=active,label=device['name'],on_toggle=toggle)
+                switch.set_sensitive(active or (device['accessible'] and not device['mounted']))
+                line.append(switch);body.append(line)
+            known={(d['bus'],d['address'],d['name']) for d in inventory}
+            for saved in self.settings['usb']:
+                if (saved['bus'],saved['address'],saved['name']) in known:continue
+                line=Gtk.Box(spacing=12);label=self.label(saved['name']+' · Disconnected');label.set_hexpand(True);line.append(label)
+                line.append(IconOnlyButton('x','Remove device',size='small',on_click=lambda d=saved:self.forget_usb(d)))
+                body.append(line)
+            if not devices and (kind!='camera' or not host_devices.integrated_cameras()):
+                body.append(self.label('Connect a USB camera to share it.' if kind=='camera' else 'Connect a USB device to share it.',muted=True))
+            body.append(self.label('Selected devices connect on the next start.','caption',muted=True))
+            self.sheet('Cameras' if kind=='camera' else 'USB Devices',body)
+
+        def forget_usb(self,device):
+            self.save_settings(usb=[d for d in self.settings['usb'] if d!=device]);self.close_sheet()
+
+        def show_folders(self):
+            self.close_sheet()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            if not self.settings['folders']:body.append(self.label('Share a project folder with Luma.',muted=True))
+            for index,folder in enumerate(self.settings['folders']):
+                content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8)
+                line=Gtk.Box(spacing=12);title=self.label(Path(folder['path']).name,'group-heading');title.set_hexpand(True);line.append(title)
+                line.append(IconOnlyButton('x','Stop sharing folder',size='small',on_click=lambda path=folder['path']:self.remove_folder(path)))
+                content.append(line)
+                path_label=self.label(folder['path'],'caption',muted=True);path_label.set_selectable(True);content.append(path_label)
+                content.append(self.label('In Luma: /mnt/shared/'+str(index+1),'caption',muted=True))
+                row=Gtk.Box(spacing=12);label=self.label('Allow changes');label.set_hexpand(True);row.append(label)
+                row.append(Switch(active=folder['writable'],label='Allow changes to '+Path(folder['path']).name,
+                    on_toggle=lambda enabled,path=folder['path']:self.folder_access(path,enabled)))
+                content.append(row);body.append(Card(content))
+            body.append(self.button('Share Folder…',self.choose_shared_folder,primary=True,icon='folder-plus'))
+            self.sheet('Shared Folders',body)
+
+        def folder_access(self,path,enabled):
+            self.save_settings(folders=[dict(folder,writable=enabled) if folder['path']==path else folder for folder in self.settings['folders']])
+            if self.running():self.notify('Folder access changes apply on the next start.')
+
+        def remove_folder(self,path):
+            self.save_settings(folders=[folder for folder in self.settings['folders'] if folder['path']!=path])
+            self.show_folders()
+            if self.running():self.notify('Folder will disconnect on the next start.')
 
         def choose_shared_folder(self):
-            dialog = Gtk.FileDialog(title='Choose a shared folder')
-            def chosen(dialog, result):
+            self.close_sheet()
+            dialog=Gtk.FileDialog(title='Share a folder with Luma')
+            def chosen(dialog,result):
                 try:
-                    path = dialog.select_folder_finish(result).get_path()
+                    path=dialog.select_folder_finish(result).get_path()
                     if path:
-                        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-                        body.append(self.label(Path(path).name, 'group-heading'))
-                        writable = Switch(active=False, label='Allow changes')
-                        line = Gtk.Box(spacing=12);label=self.label('Allow changes');label.set_hexpand(True)
-                        line.append(label);line.append(writable);body.append(line)
-                        handle = [None]
-                        def add():
-                            folders=[f for f in self.settings['folders'] if f['path']!=str(Path(path).resolve())]
-                            self.save_settings(folders=folders + [dict(path=path, writable=writable.get_active())])
-                            handle[0].cancel();self.notify('Folder will be shared on the next start.')
-                        body.append(self.button('Share Folder', add, primary=True, icon='folder'))
-                        handle[0] = self.sheet('Share a Folder', body)
+                        path=str(Path(path).resolve())
+                        folders=[folder for folder in self.settings['folders'] if folder['path']!=path]
+                        self.save_settings(folders=folders+[dict(path=path,writable=False)])
+                        self.show_folders()
+                        if self.running():self.notify('Folder connects on the next start.')
                 except GLib.Error:pass
                 except Exception as exc:self.notify(str(exc))
-            dialog.select_folder(self.window, None, chosen)
+            dialog.select_folder(self.window,None,chosen)
 
         def refresh_snapshots(self):
             self.snapshot_heading.action_button.set_sensitive(bool(self.select_image()) and not self.busy)
@@ -1321,7 +1346,7 @@ def launch(state=None):
                 body.append(Switch(active=self.settings['boot_iso'],label='Boot from ISO',
                     on_toggle=lambda enabled:self.save_settings(boot_iso=enabled)))
                 body.append(self.label('Turn off Boot from ISO after installation to start the saved disk.',muted=True))
-            body.append(self.button('Devices & Folders…',self.show_hardware,icon='usb'))
+            body.append(self.button('Hardware…',self.show_hardware,icon='usb'))
             body.append(self.button('Open Workspace',self.workspace,icon='folder'))
             handle=[None]
             def apply():
@@ -1350,11 +1375,117 @@ def launch(state=None):
             self.advanced = None
             return False
 
-        def choose_image(self):
+        def close_sheet(self):
+            handle=getattr(self,'sheet_handle',None)
+            if handle:handle.cancel();self.sheet_handle=None
+
+        def show_images(self):
+            if self.active():return
+            self.close_sheet()
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            tools=Gtk.Box(spacing=8)
+            tools.append(self.button('From File…',lambda:(self.close_sheet(),self.choose_local_image()),icon='folder'))
+            tools.append(self.button('Refresh',self.refresh_library,icon='refresh-cw'))
+            body.append(tools)
+            self.library_status=self.label('', 'caption',muted=True);body.append(self.library_status)
+            self.library_list=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);body.append(self.library_list)
+            self.render_library()
+            self.sheet('Images',body,width=500)
+            self.refresh_library()
+
+        def render_library(self):
+            box=getattr(self,'library_list',None)
+            if box is None:return
+            while child:=box.get_first_child():box.remove(child)
+            selected=self.select_image();seen=set();items=[]
+            for path in self.available_manifests():
+                try:
+                    image=read_manifest(path);identity=(image['target'],image['arch'],image['image']['sha256'])
+                    if identity in seen or not experiences.compatible(self.target,image):continue
+                    seen.add(identity);items.append((path,image))
+                except (OSError,ValueError,TesterError):continue
+            def card(title,detail,action,callback):
+                content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10)
+                content.append(self.label(title,'group-heading'))
+                content.append(self.label(detail,'caption',muted=True))
+                content.append(self.button(action,callback))
+                box.append(Card(content))
+            if items:
+                box.append(self.label('Your workspaces','group-heading'))
+                for path,image in items:
+                    architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
+                    session=Session(path,state)
+                    status='Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Available to download'
+                    recommended=path==selected
+                    detail=architecture+' · '+status+(' · Recommended' if recommended else '')
+                    action='Selected' if recommended else 'Use '+architecture if image['arch']!=self.architectures.get(self.target) else 'Use Image'
+                    def choose(p=path,arch=image['arch']):
+                        self.architectures[self.target]=arch;self.remember_image(self.target,p)
+                        self.update_images();self.remember();self.close_sheet()
+                    card(image.get('build') or image['id'],detail,action,choose)
+            if self.target=='mobile':
+                if not any(image['arch']=='aarch64' for _,image in items):
+                    box.append(self.label('ARM Mobile simulator support is being prepared. Use the x86-64 workspace for UI development.', 'caption',muted=True))
+            else:
+                published=[a for a in self.library_items if a.get('arch')==self.architectures.get(self.target) or self.architectures.get(self.target)=='auto']
+                if published:box.append(self.label('From Luma','group-heading'))
+                for index,item in enumerate(published[:3]):
+                    size=item['size_bytes']/1024**3
+                    downloaded=(data_root(state)/'images'/(item['sha256']+'.iso')).is_file()
+                    detail=('Latest · ' if index==0 else '')+('ARM64' if item['arch']=='aarch64' else 'x86-64')+' · '+f'{size:.1f} GB'+' · Installation ISO'
+                    card(item.get('display_name') or item['file'],detail,'Use Downloaded Image' if downloaded else 'Download',lambda a=item:self.download_image(a))
+                if len(published)>3:
+                    older=self.button('Show Older Builds',lambda:self.render_older_images(published[3:]))
+                    box.append(older)
+            message='Checking for images…' if self.library_loading else self.library_error or ''
+            self.library_status.set_label(message);self.library_status.set_visible(bool(message))
+
+        def render_older_images(self,items):
+            for item in items:
+                self.library_list.append(self.button(item.get('display_name') or item['file'],lambda a=item:self.download_image(a),icon='download'))
+
+        def refresh_library(self):
+            if self.library_loading:return
+            self.library_loading=True;self.library_error=None
+            self.render_library()
+            def done(items,error):
+                self.library_loading=False;self.library_error=error
+                if items is not None:self.library_items=items
+                if getattr(self,'library_list',None) is not None and self.library_list.get_root():self.render_library()
+                return False
+            def worker():
+                try:items=image_library.refresh(data_root(state));error=None
+                except Exception:items=None;error='Couldn’t refresh downloads. Your local images are still available.'
+                GLib.idle_add(done,items,error)
+            threading.Thread(target=worker,daemon=True).start()
+
+        def download_image(self,artifact):
+            if self.active():return
+            self.busy=True
+            self.close_sheet()
+            self.status_label.set_label('Downloading '+(artifact.get('display_name') or artifact['file'])+'…')
+            self.stack.set_visible_child_name('session');self.refresh()
+            def done(path,error):
+                self.busy=False
+                if error:self.failed(error)
+                else:self.add_manifest(path)
+                return False
+            def worker():
+                try:
+                    path=image_library.fetch(artifact,data_root(state),self.target,
+                        lambda message:GLib.idle_add(self.status_label.set_label,message));error=None
+                except Exception as exc:path=None;error=str(exc)
+                GLib.idle_add(done,path,error)
+            threading.Thread(target=worker,daemon=True).start()
+
+        def choose_local_image(self):
             if self.active():
                 return
             dialog = Gtk.FileDialog(title='Add an ISO or developer image')
             dialog.open(self.advanced or self.window, None, self.image_chosen)
+
+        def choose_image(self):
+            self.show_images()
 
         def image_chosen(self, dialog, result):
             try:

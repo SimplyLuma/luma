@@ -4,7 +4,8 @@ from pathlib import Path
 from .core import TesterError, digest
 
 CHOICES = ('desktop', 'mobile', 'tablet', 'tv', 'smart-device')
-ARM_FIRST = ('mobile', 'tablet', 'tv', 'smart-device')
+ARM_FIRST = ('mobile', 'tv', 'smart-device')
+COMING_SOON = ('tv', 'smart-device')
 LABELS = {'desktop':'Desktop','mobile':'Mobile','tablet':'Tablet','tv':'TV','smart-device':'Smart Home'}
 FLAGS = {'smart-device':'home'}
 
@@ -25,7 +26,7 @@ def select(experience, images, host, architecture='auto'):
         return next((path for path, image in choices if image['arch'] == architecture), None)
     preferred = preferred_arch(experience, host)
     # A TV/home choice must not silently become an x86 machine on an x86 host.
-    if experience in ('tv','smart-device','tablet'):
+    if experience in ('tv','smart-device'):
         choices = [p for p in choices if p[1]['arch'] == preferred]
     choices.sort(key=lambda p:p[1]['arch'] != preferred)
     return choices[0][0] if choices else None

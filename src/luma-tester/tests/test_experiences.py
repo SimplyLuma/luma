@@ -16,10 +16,12 @@ class ExperienceTests(unittest.TestCase):
         x=('x86',dict(target='desktop',arch='x86_64'))
         arm=('arm',dict(target='desktop',arch='aarch64'))
         phone=('phone',dict(target='mobile',arch='aarch64'))
-        for mode in ('tv','smart-device','tablet'):
+        for mode in ('tv','smart-device'):
             self.assertIsNone(experiences.select(mode,[x,phone],'x86_64'))
             self.assertEqual(experiences.select(mode,[x,arm,phone],'x86_64'),'arm')
         self.assertEqual(experiences.select('desktop',[x,arm],'aarch64'),'arm')
+        self.assertEqual(experiences.select('tablet',[x,arm],'x86_64'),'x86')
+        self.assertEqual(experiences.select('tablet',[x,arm],'aarch64'),'arm')
         self.assertIsNone(experiences.select('mobile',[arm,x],'aarch64'))
         self.assertEqual(experiences.select('mobile',[phone,x],'x86_64'),'phone')
 
@@ -31,7 +33,7 @@ class ExperienceTests(unittest.TestCase):
         self.assertIsNone(experiences.select('mobile',images,'x86_64','aarch64'))
         for mode in ('tablet','tv','smart-device'):
             self.assertEqual(experiences.select(mode,images,'x86_64','x86_64'),'desktop-x86')
-            self.assertEqual(experiences.select(mode,images,'x86_64','auto'),'desktop-arm')
+            self.assertEqual(experiences.select(mode,images,'x86_64','auto'),'desktop-x86' if mode=='tablet' else 'desktop-arm')
         self.assertEqual(experiences.select('desktop',images,'aarch64','x86_64'),'desktop-x86')
         with self.assertRaises(TesterError):
             experiences.select('mobile',images,'x86_64','invalid')

@@ -77,11 +77,11 @@ def save(root, settings):
 def devices(settings):
     """QEMU options, never shell fragments. Folder paths use QEMU's comma escaping."""
     args = []
-    if settings['audio']:
+    if settings['audio'] or settings['microphone']:
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
         backend = 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
         args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
-                 '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
+                 '-device', ('hda-duplex' if settings['microphone'] and settings['audio'] else 'hda-input' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
     for i, folder in enumerate(settings['folders']):
         path = Path(folder['path']).resolve()
         if not path.is_dir():
@@ -94,29 +94,23 @@ def devices(settings):
         args += ['-device', 'qemu-xhci,id=usb']
     for i, device in enumerate(settings['usb']):
         node = Path(f'/dev/bus/usb/{device["bus"]:03}/{device["address"]:03}')
-        matching = any((d['bus'],d['address'],d['name']) == (device['bus'],device['address'],device['name'])
-                       for d in cameras())
+        current=next((d for d in usb_devices() if (d['bus'],d['address'],d['name']) == (device['bus'],device['address'],device['name'])),None)
+        if current and current['mounted']:
+            raise TesterError('Eject this drive on your computer before sharing: '+device['name'])
+        matching=current is not None
         if not matching or not os.access(node, os.R_OK | os.W_OK):
             raise TesterError('USB device is disconnected or needs host permission: ' + device['name'])
         args += ['-device', f'usb-host,hostbus={device["bus"]},hostaddr={device["address"]},id=hostusb{i}']
     return args
 
 
+def usb_devices():
+    from .host_devices import usb_devices as inventory
+    return inventory()
+
+
 def cameras():
-    found = []
-    base = Path('/sys/bus/usb/devices')
-    for path in base.glob('*'):
-        try:
-            if not any((p / 'bInterfaceClass').read_text().strip() == '0e'
-                       for p in base.glob(path.name + ':*') if (p / 'bInterfaceClass').is_file()):
-                continue
-            bus, address = int((path / 'busnum').read_text()), int((path / 'devnum').read_text())
-            node = Path(f'/dev/bus/usb/{bus:03}/{address:03}')
-            found.append(dict(bus=bus, address=address, name=(path / 'product').read_text().strip(),
-                              accessible=os.access(node, os.R_OK | os.W_OK)))
-        except (OSError, ValueError):
-            continue
-    return found
+    return [item for item in usb_devices() if item['kind']=='camera']
 
 
 def checkpoints(session):

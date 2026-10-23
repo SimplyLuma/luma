@@ -411,3 +411,20 @@ reduced UI scale. Logical application dimensions and panel proportions stay the
 same in either orientation; the Device panel identifies preview density. This
 avoids QEMU VNC’s 2160-row limit and reduces software-rendering cost. Native panel
 pixels are recorded separately as `native_pixels`; screenshots use guest `pixels`.
+
+The Images library combines qualified developer workspaces with the live Hub
+installation ISO catalog. It identifies installed/downloaded workspaces and
+available downloads, retaining exact size/SHA-256 verification and anonymous
+Hub tickets. Installation ISOs remain separate from Mobile developer images.
+Default choices are x86-64 Desktop/Tablet and ARM64 Mobile; explicit choices
+persist per experience. Mobile UI development can explicitly use x86-64 while
+its ARM virtual boot adapter is being prepared. TV/Smart Home are coming soon.
+
+Hardware selection uses a category picker. USB cameras, storage and other
+transferable devices are discovered through host interfaces; mounted storage
+cannot be transferred. Integrated camera capture endpoints are grouped by
+physical device and shown even when a camera-sharing bridge is unavailable.
+A detected camera is not a claim that direct USB passthrough supports it.
+Audio and microphone settings are independent. Shared folders are read-only
+when first added; the folder list exposes the allow-changes switch and guest
+mount path. Hardware/folder changes apply at the next guest start.
