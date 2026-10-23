@@ -13,11 +13,10 @@ are built out of tree against the Titan kernel:
 | `ccci_ccif.ko`, `ccci_dpmaif.ko` | `drivers/misc/mediatek/eccci/hif` |
 
 Upstream source (GPL-2.0, from the MT6878 GPL releases):
-https://github.com/motorola-mt6878/kernel_device_modules @ `6586afaa0622648a6e740fb4a83f4b8057346bc2`
-
-`drivers/misc/mediatek/rps/rps_perf.h` and `drivers/misc/mediatek/slbc/slbc_ops.h`
-from the same tree are used unchanged: `build-titan2e-ccci-modules.sh` fetches them
-at that commit, checks their SHA-256 and puts them in `compat/`.
+https://github.com/motorola-mt6878/kernel_device_modules @ `6586afaa0622648a6e740fb4a83f4b8057346bc2`.
+The files the build uses are vendored unmodified in `kernel_device_modules/`
+(see its README), with their SHA-256 in `kernel_device_modules.sha256`;
+`build-titan2e-ccci-modules.sh` builds from that copy, without network access.
 
 `titan2e-ccci.patch` ports them to Linux 7.2 and the Titan:
 

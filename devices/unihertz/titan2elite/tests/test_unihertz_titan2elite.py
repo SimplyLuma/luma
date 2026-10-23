@@ -143,5 +143,20 @@ class UnihertzTitan2Elite(unittest.TestCase):
         self.assertNotIn("+++ b/compat/rps_perf.h", patch)
         self.assertNotIn("+++ b/compat/slbc_ops.h", patch)
 
+    def test_ccci_builds_from_the_vendored_source(self):
+        ccci = ROOT / "packaging" / "titan2e-ccci"
+        script = (ROOT / "scripts" / "packages" / "build-titan2e-ccci-modules.sh").read_text()
+        for fetch in ("git fetch", "git clone", "curl ", "wget "):
+            self.assertNotIn(fetch, script)
+        listed = {}
+        for line in (ccci / "kernel_device_modules.sha256").read_text().splitlines():
+            digest, path = line.split(None, 1)
+            listed[path] = digest
+        tree = ccci / "kernel_device_modules"
+        files = {str(p.relative_to(tree)) for p in tree.rglob("*") if p.is_file() and p.name != "README.md"}
+        self.assertEqual(files, set(listed))
+        for path, digest in listed.items():
+            self.assertEqual(hashlib.sha256((tree / path).read_bytes()).hexdigest(), digest, path)
+
 if __name__ == "__main__":
     unittest.main()

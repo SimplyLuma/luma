@@ -46,12 +46,37 @@ image is signed with the AOSP test key, which the unlocked bootloader accepts.
 revision, and [`public-file-manifest.json`](public-file-manifest.json) the
 SHA-256 of every file this device adds.
 
+## Building from this branch
+
+Everything below builds from this branch and public upstreams at pinned
+revisions, in the Fedora 44 builder (`scripts/packages/run-in-rpm-builder.sh`):
+
+| Step | Script | Output |
+| --- | --- | --- |
+| Kernel | `scripts/packages/build-titan2e-kernel.sh` | `boot_a.img`, `titan2e-kernel-modules`, `kbuild/` |
+| Modem drivers | `scripts/packages/build-titan2e-ccci-modules.sh` | CCCI modules, from the vendored `packaging/titan2e-ccci/kernel_device_modules` |
+| Wi-Fi/Bluetooth drivers | `scripts/packages/build-titan2e-connsys-modules.sh` | CONNSYS modules, from MediaTek's GPL repositories at pinned commits |
+| Platform | `scripts/packages/build-luma-titan2e-platform.sh` | `luma-titan2e-platform` |
+| GPU | `scripts/packages/build-mesa.sh` | Mesa with Mali-G615 support |
+| Modem stack | `scripts/mobile/build-fp6-gnss-rpm.sh` | `ModemManager` and `libqmi` with `patches/modemmanager-fp6` and `patches/ModemManager/owned-fd` |
+| Call audio | `scripts/packages/build-callaudiod.sh` | `callaudiod` |
+| eSIM | `scripts/packages/build-luma-esim-broker.sh`, `scripts/packages/build-lpac-titan2e.sh` | `luma-esim-broker`, `lpac-titan2e` |
+| Camera | `scripts/mobile/build-fp6-libcamera.sh` | libcamera with `patches/libcamera` |
+
+The rest of the system is Luma's generic handheld package set; the Titan
+image is that set plus the packages above, with the Qualcomm boot packages
+left out.
+
 ## Firmware
 
-No firmware is in this repository. The bootloader loads the Wi-Fi, Bluetooth
-and GNSS processor code from the phone's own `connsys_*` partitions. On first
+No firmware is in this repository, and none is needed from outside the phone.
+The bootloader loads the Wi-Fi, Bluetooth and GNSS processor code from the
+phone's own `connsys_*` partitions and the modem image from `modem_a`. On first
 boot, `luma-titan2e-connsys-fw` copies the rest from the phone's vendor
 partition, read-only, to `/var/lib/titan2e-connsys/firmware`: the ten files in
 [`firmware.manifest`](firmware.manifest), plus the phone's own Wi-Fi
-calibration and Bluetooth address from `nvdata`. The Mali CSF firmware comes
-from Fedora's `linux-firmware`.
+calibration and Bluetooth address from `nvdata`. `luma-titan2e-modem-fs` copies
+the modem's NVRAM file store once from `nvdata`, `nvcfg`, `protect1`,
+`protect2` and `mcf_ota` (read-only) into `/var/lib/luma-modem`; the modem
+works from that copy. The Mali CSF firmware comes from Fedora's
+`linux-firmware`. The cameras need no firmware.

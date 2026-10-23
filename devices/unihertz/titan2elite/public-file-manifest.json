@@ -6,13 +6,13 @@
   },
   {
     "path": "PATCH-LICENSE-INHERITANCE.json",
-    "sha256": "9163ee1756b8875713488c7228a21f5e11b929a067a5320b309f10e4ff892ee6",
-    "bytes": 33678
+    "sha256": "b12bff4c0c7d7f41003641e9942c7b4d90b89c65c4749b0c7a34bc4937528652",
+    "bytes": 34525
   },
   {
     "path": "THIRD-PARTY-SOURCES.md",
-    "sha256": "4641557f40fb181a24ec2c3698af6fbb8e7d72f74bb01f2eabd270a5ff58d888",
-    "bytes": 47249
+    "sha256": "de458ebac30632a938fb8e1de6297682020b0b571b6b8fb3634dfdc4f8a03981",
+    "bytes": 47731
   },
   {
     "path": "config/mobile/fp6-audio.env",
@@ -71,8 +71,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "1b2c86cc3bdac65ed600f62c2155f18b49d56b3d4dd4f80150fa59cfa06e4b82",
-    "bytes": 5743
+    "sha256": "c7043e12834f01020ec9e337825f300754d91290d1f58205aae1fcc81e6a132c",
+    "bytes": 7464
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -96,8 +96,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/tests/test_unihertz_titan2elite.py",
-    "sha256": "b06875bc8bc825e57228b5ac045bc336eb20571438b9557fafba3e536696ad7a",
-    "bytes": 7447
+    "sha256": "46ca53d7069936e1de2550f7c5dcbf8aa72516b05b15e2dd44dfaa868dff6677",
+    "bytes": 8292
   },
   {
     "path": "docs/devices.md",
@@ -108,6 +108,21 @@
     "path": "packaging/mesa/Mesa-MLAA-License-Clarification-Email.txt",
     "sha256": "68e7be52203a4457ea97d9c4744661a07fc3d78edb44a86b43349fb66f09147a",
     "bytes": 3682
+  },
+  {
+    "path": "packaging/rpm/ModemManager-fp6.spec",
+    "sha256": "95013eff92b983a555db7575e4bfd66111e31557296f74abe29f43f9985ab307",
+    "bytes": 11202
+  },
+  {
+    "path": "packaging/rpm/callaudiod.spec",
+    "sha256": "959f7c302ebccbf685695f10f695a4722b2926368a4df1b6c5bf438b1199121e",
+    "bytes": 2985
+  },
+  {
+    "path": "packaging/rpm/libqmi-fp6.spec",
+    "sha256": "10f3111b390703f6995ba9459b11d21e557190644987da3b03c3af66d152ef29",
+    "bytes": 2816
   },
   {
     "path": "packaging/rpm/lpac-titan2e.spec",
@@ -151,8 +166,893 @@
   },
   {
     "path": "packaging/titan2e-ccci/README.md",
-    "sha256": "c71bd8904260bff7a412b55a95a3efbd67f63242bf53fa9f90241e4d1dce89b1",
-    "bytes": 11644
+    "sha256": "1ec15b13de51fa3e3905608d8fbc20dfa82c4a906e3c8e5e9b694df4555b9622",
+    "bytes": 11640
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules.sha256",
+    "sha256": "09617499ae09338b18853ba12d77f39d679911b682880128050a64b7e2ec6e6a",
+    "bytes": 19950
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/README.md",
+    "sha256": "3e787f4193b2cfbe6c13ade5bdb1d56a3054d14f5c5b670426bcd8a9b21c4d81",
+    "bytes": 1115
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/Kconfig",
+    "sha256": "126a5dab457697a7a27d21004c5f7404d96e1d9b27c71bfefc8c20dfcb047681",
+    "bytes": 675
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/Makefile",
+    "sha256": "c2e47a603287b7a9f63666e5509bcfca8acda018adaba39107fbe81fa7810fea",
+    "bytes": 1611
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_private_log.c",
+    "sha256": "850ab16715ac39ca1ebdbdb43daad44324930e090b8ddb4cfbd32bfa940612d9",
+    "bytes": 30939
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_boot_args.c",
+    "sha256": "1775e2f3ecad2a4203fe17598bbfdbcce093333c287af3975527bc7e959f047f",
+    "bytes": 6871
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_broadcast.c",
+    "sha256": "97a6f81abea22bfa9d5ba26e338b1f43f573bee81b67480c70a8a34885543b4d",
+    "bytes": 15004
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_dummy.c",
+    "sha256": "7f98bffc138d89cf9d45d5510d1a35d940f5e5b9f93de4f0228b3c19b0aa6e99",
+    "bytes": 2224
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_img_parsing.c",
+    "sha256": "5726dbc76fd8f08c4b90bdde8ff8cc4b2b84429727a727f46fc678f6f47c7574",
+    "bytes": 10778
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_ld_md_errno.c",
+    "sha256": "ed5bd6b546e5f2d2414dfea09d29656408c6044c808bcd6074db3a27147419cb",
+    "bytes": 3881
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_fo.c",
+    "sha256": "89b4d3e23dbc64742b2a655fffee988e872fc7756a19a0f96b7c9b55b987aeb4",
+    "bytes": 37874
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_load_img.c",
+    "sha256": "89ae742ebd4cabb1632a669fae2cb23ef72a1da7ab57a74e4612705c62a5f40f",
+    "bytes": 14198
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_main.c",
+    "sha256": "0825e40c29f0ed3b2cd4bf8f471107c8c9fdb04c3a0bb48a2f5bf93efaacb1e4",
+    "bytes": 1052
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_main.h",
+    "sha256": "c96e736172ff7da3ba403230dd07c0ee6d12f81d37cff62425931755ff930809",
+    "bytes": 7450
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_reserved_mem.c",
+    "sha256": "19782b9f7619c35c093708a1d895777aa031ec0b01ea3632cf0101e844b2efc3",
+    "bytes": 2326
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_reserved_mem.h",
+    "sha256": "27eca5c8e6947f0eaf5be8508ddceee3a6e621666f2af971f7d1c3026e53f1f5",
+    "bytes": 367
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_sys.c",
+    "sha256": "8c7305e3cec1460e816294ae58bc17f979d4cb4c1bab19fc83a20aa264a16e02",
+    "bytes": 9862
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_lib_sys.h",
+    "sha256": "80f0781be5dc714ef173298079279cc7a4a262978ab237bae1e9f155b54ac3e0",
+    "bytes": 200
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_log.h",
+    "sha256": "874b6a21ef9ed55b4dafa3a0b1f3a8509c33c40f4eafac4a94b877f21fa4255c",
+    "bytes": 1759
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_md_mem.c",
+    "sha256": "321997d21e206bef39f109828e6ebce12fd86bba7b59a5742496e51b22af8858",
+    "bytes": 25817
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_md_mem.h",
+    "sha256": "4a1af9c113b0b9539866a9395e411f4d703825d23b07ae743d6982f29f0d15d5",
+    "bytes": 1028
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_md_rat.c",
+    "sha256": "68d9f0f62599ca943c700f5d4e39cda4b6d9784bc2b7a81f20ad1984e136f9f9",
+    "bytes": 10074
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_pin_broadcast.c",
+    "sha256": "6cba8e76b65ba9a73999517838e59e6005abef28f56d6569057d83560656308a",
+    "bytes": 5054
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_sib.c",
+    "sha256": "3ac9741db7b55263036d4036e10ba851a9f9e51711606480901d6fc71eb1b2c7",
+    "bytes": 2808
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccci_util/ccci_util_sib.h",
+    "sha256": "ca8336eab21d82739d74460ffdd073aab5c64224c1e35405db9430368ec234e0",
+    "bytes": 292
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccmni/Kconfig",
+    "sha256": "eac3b0a9358a55a8a16667a4b19401c4b7b6c03e25ba7491a4be144c006b3eae",
+    "bytes": 384
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccmni/Makefile",
+    "sha256": "a9414474671a573cfde329c457ee3658d2577e7e4e245688a45cb1c05239f2c5",
+    "bytes": 1142
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccmni/ccmni.c",
+    "sha256": "8601f9eb6b5c3868c21a6b655766975864be3e1e813d9661fa01c42fedbe7b6b",
+    "bytes": 40679
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/ccmni/ccmni.h",
+    "sha256": "327cc8df0b051911d4af4e2d8b40002514d6d814f5acdccb872c63a78297596c",
+    "bytes": 5579
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/Kconfig",
+    "sha256": "03edf4f52fe6666036177125a12c430077bf730fc6e21137adf773e4028b2c53",
+    "bytes": 2419
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/Makefile",
+    "sha256": "65cb228c3ded8c0e947b1283b4f00ad65615d7711f5f54d8288e0c7769f74dfb",
+    "bytes": 3866
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_auxadc.c",
+    "sha256": "58543d5205248fa9a192cdc00a50eafc8ed79859ff0faadcfc4e1810fd70d33f",
+    "bytes": 2921
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_auxadc.h",
+    "sha256": "bb456a6c22815f553416925a8bf5f9bbef36d8ed04d496413a71fde4974f1d0b",
+    "bytes": 229
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_bm.c",
+    "sha256": "ddf8d1017a12507148eee0dd57fc6d4a7dbf74930e3c55bb194152f7298aaacc",
+    "bytes": 15006
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_common_config.h",
+    "sha256": "0206fcc8c4816bc08cf61539d4532d9d25d1a99ce07acdfae0dc76300c018857",
+    "bytes": 1347
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_core.c",
+    "sha256": "9248411293d004433f98eadce4e5232bcbb21aab4bf126ff6c6adde6f91bbfaf",
+    "bytes": 2960
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/ccci_modem.c",
+    "sha256": "aecf11afa2bbbe8d3245f92533ad7427021b38dbe2b5e206c4b02ae8707cb29c",
+    "bytes": 807
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/Makefile",
+    "sha256": "e539ccfa003382dd9ac42e1d812bf1f8a02f1fac926d073af33c6ddb9917203d",
+    "bytes": 2234
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ap_md_mem.c",
+    "sha256": "4709e3cf4ab7a437b46e0c0a4acf67d9049877a2c0a540e6cda80f8d91dc4c81",
+    "bytes": 10972
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ap_md_mem.h",
+    "sha256": "fb2bc4f5c8eda9422123575940550bb6ea4a09b6236d309b9410caa478c0ba21",
+    "bytes": 1818
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ap_md_reg_dump.c",
+    "sha256": "13bcca036d0ccb32bf90bec45b0783e92b0700aa768229ef4e6eecebc398dab7",
+    "bytes": 31601
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ap_md_reg_dump.h",
+    "sha256": "825b06858998d5cced9ffd036edb4a5c079c91f84b7fb043ef8ef5fcc8e1998c",
+    "bytes": 735
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm.c",
+    "sha256": "72561663a862593db38d7bfd13764c47431df7cf8e20e61fa127b404b5a87dba",
+    "bytes": 56234
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_ee.c",
+    "sha256": "eb2545df1f6d5335d153e5a219c23302a2214f1fda85096119740aac911ffe7e",
+    "bytes": 19946
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_internal.h",
+    "sha256": "4f45240619fac7c7912b050f6a9ae4de5e0c55a9d926d7c1eb75030c55dbbbc2",
+    "bytes": 8661
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_ioctl.c",
+    "sha256": "a982a146c69633533f510db5a8aad3aeeb12009dc0a4a1c8c4071d65a0346af7",
+    "bytes": 19496
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_monitor.c",
+    "sha256": "3803c9ae3833d627ce66550fc2c8f8581bc784f04ca3615c57bf618a85230e31",
+    "bytes": 4918
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_poller.c",
+    "sha256": "853930b4c553841885519fff4af416969c039688db734cad4fca61d3480c77c0",
+    "bytes": 4943
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_scp_c.c",
+    "sha256": "4a7da6a9dc3bc869d0b94cb430b2e507c525a30115003b0840f468b1ed79375c",
+    "bytes": 15212
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_sys.c",
+    "sha256": "0972008b5df9ca5d1791aa4e89ae8c41343064acbcecfc2a332d8adb147a64b4",
+    "bytes": 2658
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/ccci_fsm_sys.h",
+    "sha256": "8ddaab2d3e6f57b965d64ac6edd4c0bab062d16728395c1e9439fd93ad07ba4b",
+    "bytes": 407
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/md_sys1_platform.c",
+    "sha256": "ae3e3998c2ce060ef7e5e406fa647cbff2fae14f196f1d2494784cc4c46848af",
+    "bytes": 47145
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/md_sys1_platform.h",
+    "sha256": "512b9592c19b638dd4526f725e2d1232c9b156f2dc3481014de40e775489a7a2",
+    "bytes": 3215
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v1.c",
+    "sha256": "ad0c04ae1fa61f2eb2333d00db8729a09f1066c6e67a3f47e800b516faa904a5",
+    "bytes": 21249
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v1.h",
+    "sha256": "c860037b06a754af2635cff1e6ff1c9e5e5f7c11797b4024eb327e8c2625bdb7",
+    "bytes": 3410
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v2.c",
+    "sha256": "207e10dead2d441b3fdca4b6132585d6844b74f9845b52c4c3c4ad87b0259352",
+    "bytes": 28900
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v2.h",
+    "sha256": "6437e8208d9e62954fc5c020e7a4838da3a27e391b26d08c06f642021cbad961",
+    "bytes": 7409
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v3.c",
+    "sha256": "698a25eecccae022af7c2d130e2c0aaf05488113e08037eaba6ac610d5e1cb66",
+    "bytes": 27697
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v3.h",
+    "sha256": "b5c34aea98141c66ba3e21c3a0917d849b26e0873c53402258e3d22863abcb46",
+    "bytes": 5292
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v5.c",
+    "sha256": "1ed7751c7fa9fd23dc2570324f01fb4de53c92bc95ce141faddfa62c946f6f44",
+    "bytes": 31951
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v5.h",
+    "sha256": "9d167f3397e1c41ac115167c6076a975e48170b130fc1839c0bc3955b2ae2e28",
+    "bytes": 5497
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v6.c",
+    "sha256": "2477172178e3d87ef7c8e50a0d76b5597f3501d026fde22fd87689e69db608ee",
+    "bytes": 32105
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/mdee_dumper_v6.h",
+    "sha256": "2cddfb14cf468e1adaf3de4da7a75e87c09c2190d96cd3ae3ccbc7ea6f31a1cf",
+    "bytes": 5607
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/modem_reg_base.h",
+    "sha256": "f571d743f7f3872c4f70e91c4217ab2b1aa5bf16fd2ea6693096cceecd203163",
+    "bytes": 443
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/fsm/modem_sys1.c",
+    "sha256": "53a546c3de0614215e205e4ba69ce06ec7064303c8598b90b2917be632f24faa",
+    "bytes": 37937
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/Makefile",
+    "sha256": "d8ca8069913256e74914e605095e5273d62a6312e39f331b9c487c4e88f62f1a",
+    "bytes": 2771
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_cldma_plat.c",
+    "sha256": "df21f82b58ceb02dc3769d822d5903870ff91b007f96a24b6e1bfa7fa7e9a01c",
+    "bytes": 8436
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_cldma_plat.h",
+    "sha256": "0d45d5e8b5d1db5a8ec800083b3e880502928e75405ffd6ff61d61d126ff4abb",
+    "bytes": 908
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_bat.c",
+    "sha256": "845ca3f8d6326fe02e5f360077a7c7124f4f8cf4656eef501428f6bebb8d2354",
+    "bytes": 29706
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_bat.h",
+    "sha256": "65ce99fa75a78111e002bf93a9f533059a3103e3202e7de2c0692985191fb511",
+    "bytes": 1068
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_com.c",
+    "sha256": "b463efce6388784f71e40d605ab08f5ae996ccfe6dd8856a75fbba700fcb9ab9",
+    "bytes": 83306
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_com.h",
+    "sha256": "00233a5867e7d1dbc521148c00e759033074457546eb07e5041086c168dd3319",
+    "bytes": 13554
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_debug.c",
+    "sha256": "44e517cf9bdafe2bd537fbde6603f763942b50de24dcf154d7cfb177e559de50",
+    "bytes": 10278
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_debug.h",
+    "sha256": "77fccc70875772eeb0ebfad416bf3a1e9a2e8b65110871f8492580f8d31e06c1",
+    "bytes": 4060
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_drv_com.c",
+    "sha256": "2fd5a10bac9c0d6f1cf9f3e3efade60ce92b7e6cd0543ebbab6909bac7951a0a",
+    "bytes": 11392
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_drv_com.h",
+    "sha256": "f03b3011b203d29e304d9dbfb1db00d3368e7c686609a8041e56d70d5fcc967c",
+    "bytes": 4887
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_drv_v1.c",
+    "sha256": "c019af32ec45f4ea0dd452dc167400882159f02bb6336a29501b733460b12e42",
+    "bytes": 22078
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_drv_v2.c",
+    "sha256": "84f4f299c0e3872d86f68e7c4131a3688c125a9f07a47b282249ebe9b4a5ea1a",
+    "bytes": 37369
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_drv_v3.c",
+    "sha256": "609ffc9e7120b06b7476bdf5fcbac28d1fd2e24f70e6c7c7041fc968a09e0f3a",
+    "bytes": 52227
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.c",
+    "sha256": "b2180296f111c084806e513c74220f718a8512c93b44382255aa023a186294a3",
+    "bytes": 6991
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_page_pool.h",
+    "sha256": "7b4c98179a7075cfcf29a0d99fed1e453a0b1f7273ce6e4a06a1babd55503bb0",
+    "bytes": 745
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_reg_com.h",
+    "sha256": "b27275b8442f66e565f5cad919e7b8544558ccbb4719ecbc3852f6b8659a71a3",
+    "bytes": 32997
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_reg_v1.h",
+    "sha256": "332ca650ee53eaf6f10e9f275575b67afc2d83b17d8137e5c95cbb7bc7ec1e79",
+    "bytes": 4896
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_reg_v2.h",
+    "sha256": "e76dfc4ca76c23e2d3f11cc6253f430b8f747626dfac15e3cb0000ded5e441de",
+    "bytes": 12639
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_reg_v3.h",
+    "sha256": "075dbf66da6a9fbd8c1888110e0a9298389eab14d6045aa7953d9cc72503dbf7",
+    "bytes": 17595
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_resv_mem.c",
+    "sha256": "ad22b5d75ae2da74e52ee4ed8814db462e25e8152666cc88b1e424dc389d303d",
+    "bytes": 5843
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_dpmaif_resv_mem.h",
+    "sha256": "b99942005532853050aade260578c53d06b514d5a24ae3eba97970600d4767bc",
+    "bytes": 515
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif.c",
+    "sha256": "603ad31ec6bf22bc51157ef55040a4b40cfca49bd619cd0a01262622a7f2fe4d",
+    "bytes": 12711
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.c",
+    "sha256": "ec6c9bf24ed53d12a07edc0eb91dcbdab6056ad7d1e61166ba896985599c0e55",
+    "bytes": 55579
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif_ccif.h",
+    "sha256": "03b7a362762a31df43ea3ab40a75fbfc9a11ddeabbc6728b72b82e77d1d5a672",
+    "bytes": 4420
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.c",
+    "sha256": "297094553816e91caba0123ae6514a66fd613cbb17bea0ac0255ad9c6589cb05",
+    "bytes": 96328
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif_cldma.h",
+    "sha256": "381b0c69c6a5187d8c0cf97c7c58e431ce23fc588ba29f6c448b2db548ac9b70",
+    "bytes": 10732
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_hif_internal.h",
+    "sha256": "ff2cbd4ff997d373b5f1cdd6f8a8eea38887f59a8f61fe817f2bcf6234a0c6c2",
+    "bytes": 6162
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_ringbuf.c",
+    "sha256": "624b62b89fa98664740d8488d112e47587a35a8bded9847f3cf48ad57c55fa33",
+    "bytes": 11241
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccci_ringbuf.h",
+    "sha256": "33ddb1187d6d037f699ed72e4c1b09548a59e4684c94671b024b1994d98c8c85",
+    "bytes": 1160
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/ccif_hif_reg.h",
+    "sha256": "6ad8ffa3910f99b17135cb2bab6ae4b698687ed0de6a6b39a2396444c826b54b",
+    "bytes": 2473
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/cldma_reg.h",
+    "sha256": "abf23e19d9e04373b1d8ad1bd16dda0e53d27fbfe739f560eb0a0f653179ca0a",
+    "bytes": 11087
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/md_spd_dvfs_fn.c",
+    "sha256": "e7d0f2c8af6267fc9a9d039d30d962bf9e9a1d1f73462c9a4bbecf8f577d789e",
+    "bytes": 3939
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/md_spd_dvfs_fn.h",
+    "sha256": "d549cbfde8a575401367fb79ceae091994b2b239e4cc6571b8d92cfb8339b134",
+    "bytes": 239
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/md_spd_dvfs_method.c",
+    "sha256": "fb70bd0724a4899358827262cc82a769ea13dc9ef8272ab567f26f771612dcb1",
+    "bytes": 17677
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/md_spd_dvfs_method.h",
+    "sha256": "ffb3db9e8445e5050faf4980eab9281661f8db7c42073b65ee14be592d8c1f38",
+    "bytes": 371
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/modem_cldma_events.h",
+    "sha256": "58b941e9730cbceea1f956416ee0961ff9242ebd1e98acf99648e1f9bb4dd22d",
+    "bytes": 9677
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/net_pool.c",
+    "sha256": "ac07af9473cf8199364ad953f960d39ef2f1c88f1d9d36556c6ba8cdc0059c45",
+    "bytes": 4311
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/net_pool.h",
+    "sha256": "c940a51d982058ebc4b156739da1d3d7d31f8c82792a5cb3baf4d88b56bdec35",
+    "bytes": 583
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/net_speed.c",
+    "sha256": "3a9465d4814592ac1ebf9e1c87ef10801d59d9fc9b2945236e3009dc57453076",
+    "bytes": 9881
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/hif/net_speed.h",
+    "sha256": "e06a4cb11cf5b24e71cb06bdc29ade8da1a4869b47c9e2e595e4e2f6ea4feb95",
+    "bytes": 663
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_bm.h",
+    "sha256": "2d24efab05fb9a3ea4a0f9c3e77d7b67cf7b8c567e9e7c0056b6205d97b95b75",
+    "bytes": 2737
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_config.h",
+    "sha256": "96899b2ddea150ad0dafb8312b93a26d6539fc1a5ead9db6de67ceab98f7ab00",
+    "bytes": 473
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_core.h",
+    "sha256": "00dd3701c3237f78793ce8ae0d00ae194ad7c380846bdfd2edf6e5e4072b03a1",
+    "bytes": 19045
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_debug.h",
+    "sha256": "58c757ac471de73442e474042d53530fff0e9abc8f7c32ec54f93606b643d3b8",
+    "bytes": 5277
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_fsm.h",
+    "sha256": "16891361e4b849d1af4ffd7e0faac5ff98ababc47fcced3e26ea4cb83b679d8f",
+    "bytes": 892
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_hif.h",
+    "sha256": "a5dd72d0ab1cf0a0469bd53a0456f60be56a97ba754d21ab1aa3aae87c103849",
+    "bytes": 2069
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_modem.h",
+    "sha256": "2f147e759467e16f65868567045e61fdd712df62e8e809003e6e7d79175ef605",
+    "bytes": 9223
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/ccci_port.h",
+    "sha256": "3a4d142eb65967bb07f42cd91a4ebeb71633119c701108660eebf7a5850e1acc",
+    "bytes": 1970
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/inc/modem_secure_base.h",
+    "sha256": "2d5727255d1381ea914df7d8811de99dfcf1d4917a85597c9fb1ab49f13d814c",
+    "bytes": 887
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/modem_sys.h",
+    "sha256": "29e26e6d70f7c593585510a7e5a1541072ace3969848890b4e1e2fb17e9e017d",
+    "bytes": 6782
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/Makefile",
+    "sha256": "864446590d169aee1c89cff8b828aaa0031d14f4cb85ad3e68aa3e528ca5ea83",
+    "bytes": 1864
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/ccci_ipc_el1_msg_id.h",
+    "sha256": "067a2c716c2ce2cc16ebe023fb1ac78933e8f9ddc63f933810d5663372749db9",
+    "bytes": 1302
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/ccci_ipc_msg_id.h",
+    "sha256": "bb59d05ae56cd6ace18cdec2684acad12606611472e0ef493cb5597c96f46252",
+    "bytes": 1410
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/ccci_ipc_task_ID.h",
+    "sha256": "e2e0c227e5bc2600f9a46d64ce6980f564c245bdc095bfe706d215c4ba9ee17f",
+    "bytes": 3713
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/ccci_swtp.c",
+    "sha256": "d704ec529e75a00268632633f42c83c0d33afd82ca0077a4b74c2f6e33e8d370",
+    "bytes": 12903
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/ccci_swtp.h",
+    "sha256": "c4dc6466b5c1b4ea8b807c5bed6a96f42ad70b52db044dbe165c9831aaf04ee8",
+    "bytes": 1345
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/mdrf_notify_list.h",
+    "sha256": "8794ac90ab1bda80993499cc00387fde74d54adb925f595d47e11682fdc042fe",
+    "bytes": 386
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_cfg.c",
+    "sha256": "b7fa131cf57e0015d6778d2a9d69fa4c2f471d7c2ae48261021c3e7fd6a3e154",
+    "bytes": 28413
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_cfg.h",
+    "sha256": "e619b0e2a50692c006796418a490df13c5384663eb132c2fe7560bc9c5afe78c",
+    "bytes": 579
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_char.c",
+    "sha256": "56be7584f79fd64521ae324559d94aafa22616cf428e7d26befb638416429e44",
+    "bytes": 5821
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_char.h",
+    "sha256": "17cef4073b5cd64fb8d85de8b517a1da18b645e7df1835b89651803a7375e035",
+    "bytes": 341
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_ctlmsg.c",
+    "sha256": "2adb3efa27cb179b07dcfac2fb98c5ce28f60da439bc3fe52e5a1fdac68be3ab",
+    "bytes": 1135
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_ctlmsg.h",
+    "sha256": "fac179c5898d10ff3f24f117617ad34f928a0d7c261cb5c6b2f82673add9b3ba",
+    "bytes": 421
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_ipc.c",
+    "sha256": "1aa70fd7f67e58ca9eeae16020a18394c0bc6fb2fded80d346b5bb068f705e6f",
+    "bytes": 12918
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_ipc.h",
+    "sha256": "1e0245afdd3e270b5b17baf6e7638fa1c6a469880b6eb664c822e67ba09ba512",
+    "bytes": 1784
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_ipc_internal.h",
+    "sha256": "88f414e4d9ef96dfa746a35618eee050b92bcd24d51d131d48fa3a6554d4747a",
+    "bytes": 1210
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_kernel_interface.c",
+    "sha256": "81bce9e360ce643a394bab2d7c903b53047e9905dd58b597e343028ea832dd95",
+    "bytes": 5050
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_kernel_interface.h",
+    "sha256": "2ee02e686741cec951734212bc471fa9b98c04c22a5e79f5a8ca85e9fed87a97",
+    "bytes": 675
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_net.c",
+    "sha256": "6854fe2be0828b1a16321edbe73568440405705c21be61920ee8cf845c0f7737",
+    "bytes": 13284
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_net.h",
+    "sha256": "d1cc5ec2b4aa4104de280ab6b8ec9d0152c0197c7d6b78942f921715498af370",
+    "bytes": 233
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_net_events.h",
+    "sha256": "642ea795b0a21824b799768ade8e2ab229d3a591857ca5ee145e13779ea4d011",
+    "bytes": 5493
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_poller.c",
+    "sha256": "674b87388e86d0bc231563b55383accd33e9e31bfa88408d3fb12c2e9ad03ee5",
+    "bytes": 1112
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_poller.h",
+    "sha256": "c6e453fb4c16c893177c094bdcf81bc5368a7b1342b62db23372b8a2df32ee42",
+    "bytes": 210
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_proxy.c",
+    "sha256": "0e502010385ce71aee24883a8528b0cf361bf3d73291598bd1e11e52a8743028",
+    "bytes": 63827
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_proxy.h",
+    "sha256": "e29f93a9831f1f9518a9e7d14b33b99b2910354f87e6a3241704c9d92dfb2aa3",
+    "bytes": 1531
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_rpc.c",
+    "sha256": "c42f7b435b2cdd742831b8d3514d10a7da48ebd67c11e1bb1640363d9c70536f",
+    "bytes": 49823
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_rpc.h",
+    "sha256": "7d547b67f86861702feeeb2449799061089420d6a9436f04fc3b589f5b253b6c",
+    "bytes": 7386
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_smem.c",
+    "sha256": "524072c28e75a3936ea29a1f68600679c3bf05e8d41d70c10a13b230c0ebc58f",
+    "bytes": 26614
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_smem.h",
+    "sha256": "7fa30f6b8756d39edb1f4bb8d1d23e2692486780162fb3ac1d4c6a24aca88247",
+    "bytes": 1995
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_sysmsg.c",
+    "sha256": "cb2f5f775564fd9faff1c9b12b47d113b3089f9e1be9ab9cc337a5724302d358",
+    "bytes": 6768
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_sysmsg.h",
+    "sha256": "e1a1a8749645515cc9ff618900bac8769ffadb2ebe32c07651e68678d982d4ad",
+    "bytes": 209
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_t.h",
+    "sha256": "dc306115290f0fac393d53ef4c5925bb2c37badf405212e27e0f3e22fd5d602e",
+    "bytes": 5547
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_udc.c",
+    "sha256": "083320c6a4f334ce15ca6c9233d2c1a2390463015ae4c9935d1c906355bb4de9",
+    "bytes": 32294
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/port/port_udc.h",
+    "sha256": "e19e016592cc3d67bbea54ab2c37693bcdd393056789f53369f9aba68fcb9b2e",
+    "bytes": 3433
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/udc/Makefile",
+    "sha256": "c48af25150ab1efc8ae76e5d98d196fde24f3be340c0c2f62799073d5498ed19",
+    "bytes": 717
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/udc/udc.c",
+    "sha256": "17ef513b9eb0e6161c139ba85ea1783a9002c7b95218abed906064e7b16c7b39",
+    "bytes": 8375
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/udc/udc.h",
+    "sha256": "5a01d115add8eaad2189fd5a8ed3c102da041eca26624ce40e09d849154959ba",
+    "bytes": 2417
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/udc/udc_dictionary.h",
+    "sha256": "2c715ef34a57efa327caf9ce8638ad12664a897d5072c8e3ef0295450f066835",
+    "bytes": 21400
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/eccci/udc/udc_lib_inc/udc_zlib.h",
+    "sha256": "5461a6b35e587c4057f8f69bb111c77c3d33d5fc98d19ffbfc5009bbf72f988f",
+    "bytes": 4388
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/dbgtop.h",
+    "sha256": "d1d0603fc4e0233e6d537eff066d26cb222ff2ba330b2983974faa63403a93bd",
+    "bytes": 1159
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/aee.h",
+    "sha256": "87a0e2dfb9b234ad3dbf0bbbef0adf73c26e4f797535330e41d295999be4cc3b",
+    "bytes": 10944
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/dvfsrc-exp.h",
+    "sha256": "9d5962bf38c016acb528efd8a57c771aa8ee353f3948b5919381f35c2de0e426",
+    "bytes": 2012
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mboot_params.h",
+    "sha256": "531258122bb41a10f8db3f7615110b629982b8147ae37744a3248b1dfc0f3b98",
+    "bytes": 5259
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mrdump.h",
+    "sha256": "01744a4fb04a6083370d9ed631ec078543b708a1d6bf925d2f6accbacbc5fbc3",
+    "bytes": 5660
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk-memblock.h",
+    "sha256": "b89c5366b93c89bf7a9a9789e7904fd1fb16179077f3e113ae445015c5a8d860",
+    "bytes": 234
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk-vmm-notifier.h",
+    "sha256": "90475f9eb592bd19b4f4073a1a2f2967bff9cc5af7457f681f138d0b80410fd2",
+    "bytes": 282
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_blocktag.h",
+    "sha256": "f7471f255f66884935a1a9cc74dd21ec309b161b213cd512446c2f0f85353fa4",
+    "bytes": 2701
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_ccci_common.h",
+    "sha256": "3631c1e1a172fa3cb2924e949a5a99b72b69938affd1a6baa5a66dfa947d021a",
+    "bytes": 24040
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_irq_mon.h",
+    "sha256": "a8c4591e7bda5c7c7a34c209688eaae1e2c5124eeee1df160e148451928d6b65",
+    "bytes": 497
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_pidmap.h",
+    "sha256": "0c91d461572d238ccef7555ffe08302e785b2e5553e0eba1d1854159816b384b",
+    "bytes": 1096
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_printk_ctrl.h",
+    "sha256": "9dbb19be035e03469835128133c7d6568a5fb9f8cd469e4a453ed593d860ba51",
+    "bytes": 854
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_pwm.h",
+    "sha256": "fe2017c363b459aee1b874f0d8cf43aac61b671a006ab5b5a06be5b83fa87c59",
+    "bytes": 2363
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_pwm_hal.h",
+    "sha256": "362dc80ec97855b7a67b06443fdf7c7e4a666ea0443635c35c011b4e05d19957",
+    "bytes": 3093
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_pwm_hal_pub.h",
+    "sha256": "439b316e8b3b44005f878e0a3e814763fce83d66977299c09832594382b879f7",
+    "bytes": 2839
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_system_reset.h",
+    "sha256": "147834351c421e1ddf5a20f621d38cca9c0cfa312d5c2cb5fc57ef8d962e1913",
+    "bytes": 1150
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/mtk_wcn_cmb_stub.h",
+    "sha256": "99c1926b701c80819834f35b030db1d3b07f2eb36c04a7d0a2690d0d78faefc5",
+    "bytes": 6550
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/slog.h",
+    "sha256": "7f60e0f168d54de722da042d4cb64f1f630bc76d24e798f89f605a7b9e3dbc10",
+    "bytes": 819
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/include/mt-plat/ssc.h",
+    "sha256": "7dece455ec0a597d58eec2b918419adeafb31cf66494b65823d0d6195889339b",
+    "bytes": 752
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/rps/rps_perf.h",
+    "sha256": "b38bca244cb2b772656214c4675ada2095d560c0fdf6241b3b62e86845dd045f",
+    "bytes": 231
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/drivers/misc/mediatek/slbc/slbc_ops.h",
+    "sha256": "064fc397745f8c71da6b15f7b2a6df23db273de45b6227c603423d3be440f9cc",
+    "bytes": 7743
+  },
+  {
+    "path": "packaging/titan2e-ccci/kernel_device_modules/include/soc/mediatek/emi.h",
+    "sha256": "e32f4f77e479c3b1fdc019a20b9fb4f2b3eada3daf5b2ae67391c8ad417550d3",
+    "bytes": 2631
   },
   {
     "path": "packaging/titan2e-ccci/titan2e-ccci.patch",
@@ -168,6 +1068,121 @@
     "path": "packaging/titan2e-connsys/titan2e-connsys.patch",
     "sha256": "2480c90780211a809541bb58b449075a177dfebb7c84bebeabdb0c8336a673b3",
     "bytes": 81649
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-introspection-org.freedesktop.ModemManager1.Sim.xml",
+    "sha256": "b55d3031fa12137c1f56c72f2f1f17d1917d09af182ac9a6d4aef9c855a6dad0",
+    "bytes": 9212
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-meson.build",
+    "sha256": "a7461a68d6deb319077cd03938a5d22109f3829156ed4cbd2507f7b866ea042b",
+    "bytes": 17257
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-luma-native-candidate-evidence.h",
+    "sha256": "0590047cc5ad74875dc773ff51aea8de8d3b64bb56538af976227e0f056ac77f",
+    "bytes": 4319
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-luma-native-operation-epoch.h",
+    "sha256": "2f8174325531a8dbf6e103d309c9d61c40519da63742b97983cf18967ca81315",
+    "bytes": 4331
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-luma-owned-apdu-wire.h",
+    "sha256": "fd28913b4a5a716b8791c44cb0641d92e5b1517b8a313a3121c2c10dc77226f5",
+    "bytes": 1077
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-luma-profile-terminal-registry-DRAFT.h",
+    "sha256": "9768daa9ed9faa0bcb7b9b236521239de0c0d02d9e395acd567d3c8d44824b8a",
+    "bytes": 4321
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-luma-readonly-es10-guard.h",
+    "sha256": "2c740789ff992371a84045773dc599076670198bb813025e71bac0cbdaa83c5e",
+    "bytes": 1307
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-base-call.c",
+    "sha256": "cb7e79fccc0ffc9f4725b34ec74fc09bbb976db77ab2f1e70dac2fb3fcdb84f7",
+    "bytes": 53758
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-base-modem.c",
+    "sha256": "4a55f7e35fbf5fc944fa143503fac5513de844c7a3ee740d2d85ed35ce905c6b",
+    "bytes": 114791
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-base-modem.h",
+    "sha256": "6ebe39f5cd5453715acffb05fe2b4b7110f7f313b00ddc4328489348cb7a197b",
+    "bytes": 15885
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-broadband-modem-qmi.c",
+    "sha256": "450bd2415ce9aa0a69ebfb56f60e82e199f17c1705a3976b2302f2a0784ceb5a",
+    "bytes": 607581
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-iface-modem-voice.c",
+    "sha256": "431fa0a03b5f5649b175feca783ca2b5dea2c1c13b6e2da918a00bb23134609e",
+    "bytes": 110958
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-iface-modem.c",
+    "sha256": "1b7fd739d1528c6e49ee50948abe3116f94689a07f9cd31cf0a8a7cb4fd2ab8a",
+    "bytes": 254836
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-iface-modem.h",
+    "sha256": "730ac86a94d12dd9b4022cc19a87d94eb056cec55cf08810888c97c0b76a9198",
+    "bytes": 34130
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-shared-qmi.c",
+    "sha256": "352243dd95d400dfddaabbf5e83475d1d7809e53b0242b6a1aec3ad01a1e106a",
+    "bytes": 291210
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-sim-qmi.c",
+    "sha256": "7ede19190c237982a1704a5fa239da92e96912673cf7c037121bdc51e9c4c478",
+    "bytes": 146324
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-sim-qmi.h",
+    "sha256": "f96d4c54e7c6453eb8691c14eaeefe8aadabf8beace09d64293a59732f08c71e",
+    "bytes": 4590
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-src-mm-uim-deactivation-recovery.inc",
+    "sha256": "9b451ef155a5abb5022eff51525e1192f4a216bf98ff7e343ed689cb7e9ff3f8",
+    "bytes": 10519
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-test-native-recovery-controls.c.in",
+    "sha256": "7b5cd0c42eae59bb07ea9aefef7e6bd5455c8d195a0c880e6dfbcabd415d8e01",
+    "bytes": 9406
+  },
+  {
+    "path": "patches/ModemManager/owned-fd/luma-test-native-recovery-controls.py",
+    "sha256": "5e2f35da97d440ea297440f0539c9d2370c49f5cd37f7273ff91938bd76dcc37",
+    "bytes": 1460
+  },
+  {
+    "path": "patches/callaudiod/0001-pulse-switch-voice-call-profiles-for-the-speaker.patch",
+    "sha256": "970c0d04e12e438f41d7f885cb8f31fdce0be7ecd755b5e0375bffc402a25d37",
+    "bytes": 8733
+  },
+  {
+    "path": "patches/callaudiod/0002-pulse-tolerate-sinks-without-an-active-port.patch",
+    "sha256": "9048b601e8fe444bb4c34c781cd3e2d879707fdccfaf36e27459a68bd0f2fefc",
+    "bytes": 3830
+  },
+  {
+    "path": "patches/callaudiod/0003-pulse-hold-mode-requests-until-the-card-is-known.patch",
+    "sha256": "b8012819cac3e8add4c886f4c8002210bb2ae94c23919edf1f46de0b15fc8ed9",
+    "bytes": 5231
   },
   {
     "path": "patches/libcamera/0032-virtual-request-buffer-lifetime.patch",
@@ -585,9 +1600,24 @@
     "bytes": 3410
   },
   {
+    "path": "scripts/mobile/build-fp6-gnss-rpm.sh",
+    "sha256": "d1b5b772d0203b0a316e9471a584145c91de8cc8b05d69452a7b6928223d27ad",
+    "bytes": 8333
+  },
+  {
     "path": "scripts/mobile/luma-phosh-session",
     "sha256": "d19324bfa5ebf8fa889fd95b6cb0bedecf25ecbe6cdee046d021521b855352a6",
     "bytes": 969
+  },
+  {
+    "path": "scripts/mobile/verify-fp6-gnss-rpm-bundle.sh",
+    "sha256": "c3d15b14760d62a63284e00d819b273e5c4b295ee574529a1fe1243afd949439",
+    "bytes": 7305
+  },
+  {
+    "path": "scripts/packages/build-callaudiod.sh",
+    "sha256": "8e213337a6aa8ae83d370caf6c81eb9359e997c734bc2b835a7e9c955f2ca681",
+    "bytes": 1863
   },
   {
     "path": "scripts/packages/build-lpac-titan2e.sh",
@@ -611,8 +1641,8 @@
   },
   {
     "path": "scripts/packages/build-titan2e-ccci-modules.sh",
-    "sha256": "4229c4852033d33681b6f4eed92ed03c049481e750f2067e6af284fe4e1efb03",
-    "bytes": 3267
+    "sha256": "bcb8a4c7996c7b895b7cbf44af634b519c68b794e36b87e5ec8229247c41c1aa",
+    "bytes": 2576
   },
   {
     "path": "scripts/packages/build-titan2e-connsys-modules.sh",
@@ -1091,8 +2121,8 @@
   },
   {
     "path": "third-party-source-register.json",
-    "sha256": "f56087776c84d446f77140148cbac691258c9245aa2a1eace85bd7b7b12fd33e",
-    "bytes": 393747
+    "sha256": "da59bd0cf4a2d2604a3b8fa3de9e18cb3c57205b1198c95a5b2c41dfd5e5f787",
+    "bytes": 394754
   },
   {
     "path": "tools/check-devices.py",

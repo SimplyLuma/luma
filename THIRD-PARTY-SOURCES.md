@@ -171,6 +171,8 @@ Creative, Office, and Imager records may remain here for historical attribution;
 - **LIBCAMERA-TITAN2-ELITE-PATCHES** — [libcamera](https://git.libcamera.org/libcamera/libcamera.git) with `patches/libcamera/` 0032-0034. Recorded revision: `191e202178f02430b5942397c70d215cdd2056fa`. License: LGPL-2.1-or-later.
 - **LPAC-TITAN2-ELITE** — [estkme-group/lpac](https://github.com/estkme-group/lpac) with `patches/lpac/` 0001-0005 (`lpac-titan2e`). Recorded revision: `3ff35594ec15062a3ed10c3da1c26eb0a13390b8`. License: AGPL-3.0-only, LGPL-2.1-only, MIT, CC0-1.0.
 - **MODEMMANAGER-ESIM-BROKER-TITAN2-ELITE** — [ModemManager](https://gitlab.freedesktop.org/mobile-broadband/ModemManager) code in `src/luma-esim-broker/` (see its `NOTICE.MM-tests`). Recorded revision: `d776ea38d29ca472a12323c1d45002ee19a66f57`. License: GPL-2.0-or-later.
+- **CALLAUDIOD-TITAN2-ELITE** — [mobian1/callaudiod 0.1.99](https://gitlab.com/mobian1/callaudiod) with `patches/callaudiod/`. Recorded revision: See linked source and build recipe. License: GPL-3.0-or-later.
+- **MODEMMANAGER-OWNED-FD-TITAN2-ELITE** — [ModemManager](https://gitlab.freedesktop.org/mobile-broadband/ModemManager) source files modified in `patches/ModemManager/owned-fd/`. Recorded revision: `d776ea38d29ca472a12323c1d45002ee19a66f57`. License: GPL-2.0-or-later.
 
 ## SPDX texts needed
 
@@ -188,4 +190,4 @@ Identifiers: `AFL-2.0`, `AGPL-3.0-only`, `AGPL-3.0-or-later`, `Apache-2.0`, `Aut
 
 ## Downstream patch inheritance
 
-`PATCH-LICENSE-INHERITANCE.json` records each of the 63 patch families. 28 have component-license evidence in the source register or package recipes; the remaining 35 are explicitly unresolved by this audit. Preserve upstream copyright notices and original patch author headers. Aggregate package expressions and mixed artwork/code terms must not be used to assign a single license to every patch.
+`PATCH-LICENSE-INHERITANCE.json` records each of the 65 patch families. 30 have component-license evidence in the source register or package recipes; the remaining 35 are explicitly unresolved by this audit. Preserve upstream copyright notices and original patch author headers. Aggregate package expressions and mixed artwork/code terms must not be used to assign a single license to every patch.

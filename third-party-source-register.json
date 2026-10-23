@@ -3085,6 +3085,44 @@
       ],
       "origin_document": "devices/unihertz/titan2elite/README.md",
       "origin_line": 42
+    },
+    {
+      "component": "CALLAUDIOD-TITAN2-ELITE",
+      "upstream": [
+        {
+          "name": "mobian1/callaudiod",
+          "url": "https://gitlab.com/mobian1/callaudiod"
+        }
+      ],
+      "recorded_revisions": [],
+      "recorded_versions": [
+        "0.1.99-3.luma3"
+      ],
+      "license_identifiers": [
+        "GPL-3.0-or-later"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 62
+    },
+    {
+      "component": "MODEMMANAGER-OWNED-FD-TITAN2-ELITE",
+      "upstream": [
+        {
+          "name": "ModemManager",
+          "url": "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
+        }
+      ],
+      "recorded_revisions": [
+        "d776ea38d29ca472a12323c1d45002ee19a66f57"
+      ],
+      "recorded_versions": [
+        "1.25.95-0.13.luma13"
+      ],
+      "license_identifiers": [
+        "GPL-2.0-or-later"
+      ],
+      "origin_document": "devices/unihertz/titan2elite/README.md",
+      "origin_line": 61
     }
   ],
   "spdx_license_ids_observed": [

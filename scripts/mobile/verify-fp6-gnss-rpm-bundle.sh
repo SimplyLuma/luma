@@ -89,6 +89,30 @@ verify_component modemmanager "$FP6_GNSS_MODEMMANAGER_VERSION" \
 [ "${PATCH_0003_NETLINK_PRESERVE_COMPLETION_CALLBACK_BEFORE_TRANSACTION_REMOVAL_PATCH_SHA256:-}" = \
   "$(hash "$repo_root/patches/modemmanager-fp6/0003-netlink-preserve-completion-callback-before-transaction-removal.patch")" ] ||
   die 'ModemManager netlink transaction patch hash differs'
+[ "${PATCH_0004_BROADBAND_MODEM_DETECT_5GNR_CAPABILITY_FROM_C5GREG_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0004-broadband-modem-detect-5GNR-capability-from-C5GREG.patch")" ] ||
+  die 'ModemManager 5GNR capability patch hash differs'
+[ "${PATCH_0005_IFACE_MODEM_VOICE_OPTIONAL_IDLE_CALL_LIST_POLLING_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0005-iface-modem-voice-optional-idle-call-list-polling.patch")" ] ||
+  die 'ModemManager idle call list patch hash differs'
+[ "${PATCH_0006_BROADBAND_BEARER_EXTERNAL_PACKET_DATA_THROUGH_AN_EXTERNAL_SERVICE_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0006-broadband-bearer-external-packet-data-through-an-external-service.patch")" ] ||
+  die 'ModemManager external data bearer patch hash differs'
+[ "${PATCH_0007_MODEM_HELPERS_ACCEPT_MEDIATEK_IMS_VOICE_CALLS_IN_CLCC_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0007-modem-helpers-accept-MediaTek-IMS-voice-calls-in-CLCC.patch")" ] ||
+  die 'ModemManager MediaTek CLCC patch hash differs'
+[ "${PATCH_0008_BROADBAND_MODEM_OPTIONAL_CFUN_POWER_DOWN_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0008-broadband-modem-optional-CFUN-power-down.patch")" ] ||
+  die 'ModemManager CFUN power down patch hash differs'
+[ "${PATCH_0009_BROADBAND_MODEM_IGNORE_ACCESS_TECHNOLOGY_FROM_UNREGISTERED_DOMAINS_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0009-broadband-modem-ignore-access-technology-from-unregistered-domains.patch")" ] ||
+  die 'ModemManager access technology patch hash differs'
+[ "${PATCH_0010_BROADBAND_MODEM_ENABLE_5GS_REGISTRATION_REPORTS_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0010-broadband-modem-enable-5GS-registration-reports.patch")" ] ||
+  die 'ModemManager 5GS registration reports patch hash differs'
+[ "${PATCH_0011_BROADBAND_MODEM_INITIAL_EPS_BEARER_SETTINGS_THROUGH_THE_EXTERNAL_DATA_SERVICE_PATCH_SHA256:-}" = \
+  "$(hash "$repo_root/patches/modemmanager-fp6/0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch")" ] ||
+  die 'ModemManager external initial EPS bearer patch hash differs'
 
 printf 'FP6 GNSS RPM bundle verification: PASS\n'
 printf 'packages_installed=false\ngnss_enabled=false\nphone_accessed=false\n'

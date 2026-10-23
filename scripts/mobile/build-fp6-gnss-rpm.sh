@@ -57,6 +57,14 @@ case "$component" in
       "$repo_root/patches/modemmanager-fp6/0001-shared-qmi-unlock-AFW-gated-GNSS-engines-at-LOC-start.patch"
       "$repo_root/patches/modemmanager-fp6/0002-shared-qmi-derive-location-from-Position-Report-indications.patch"
       "$repo_root/patches/modemmanager-fp6/0003-netlink-preserve-completion-callback-before-transaction-removal.patch"
+      "$repo_root/patches/modemmanager-fp6/0004-broadband-modem-detect-5GNR-capability-from-C5GREG.patch"
+      "$repo_root/patches/modemmanager-fp6/0005-iface-modem-voice-optional-idle-call-list-polling.patch"
+      "$repo_root/patches/modemmanager-fp6/0006-broadband-bearer-external-packet-data-through-an-external-service.patch"
+      "$repo_root/patches/modemmanager-fp6/0007-modem-helpers-accept-MediaTek-IMS-voice-calls-in-CLCC.patch"
+      "$repo_root/patches/modemmanager-fp6/0008-broadband-modem-optional-CFUN-power-down.patch"
+      "$repo_root/patches/modemmanager-fp6/0009-broadband-modem-ignore-access-technology-from-unregistered-domains.patch"
+      "$repo_root/patches/modemmanager-fp6/0010-broadband-modem-enable-5GS-registration-reports.patch"
+      "$repo_root/patches/modemmanager-fp6/0011-broadband-modem-initial-EPS-bearer-settings-through-the-external-data-service.patch"
     )
     pkg-config --atleast-version=1.39.1 qmi-glib ||
       die 'build the libqmi component and install it only in this disposable builder first'
@@ -74,16 +82,36 @@ topdir=$output_dir/rpmbuild
 source_tree=$output_dir/source
 install -d -m 0700 "$topdir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 
-git clone --filter=blob:none --no-checkout "$source_repo" "$source_tree"
-git -C "$source_tree" checkout --detach "$source_commit"
-[ "$(git -C "$source_tree" rev-parse HEAD)" = "$source_commit" ] ||
-  die 'source checkout differs from the pinned commit'
-git -C "$source_tree" archive --format=tar --prefix="$archive_prefix" "$source_commit" |
-  gzip -n >"$topdir/SOURCES/$archive_name"
+offline_archive=${LUMA_FP6_GNSS_PINNED_SOURCE_ARCHIVE:-}
+if [ -n "$offline_archive" ]; then
+  [ -f "$offline_archive" ] && [ ! -L "$offline_archive" ] || die 'pinned archive must be a regular file'
+  [ "${LUMA_FP6_GNSS_PINNED_SOURCE_COMMIT:-}" = "$source_commit" ] || die 'offline source commit differs from maintained pin'
+  [ "$component:$source_commit:$archive_prefix" = modemmanager:d776ea38d29ca472a12323c1d45002ee19a66f57:ModemManager-d776ea38d29ca472a12323c1d45002ee19a66f57/ ] || die 'offline archive is outside the exact maintained MM source pin'
+  offline_sha=${LUMA_FP6_GNSS_PINNED_SOURCE_SHA256:-}
+  [ "$offline_sha" = aa9bcdceae348c49c53db9935942dbacf3a9d4d146499b8ca6d98526d9c5f56e ] || die 'offline archive differs from independently retained pristine source'
+  [[ "$offline_sha" =~ ^[0-9a-f]{64}$ ]] || die 'missing exact offline archive SHA256'
+  printf '%s  %s\n' "$offline_sha" "$offline_archive" | sha256sum -c -
+  install -m 0644 "$offline_archive" "$topdir/SOURCES/$archive_name"
+  printf '%s  %s\n' "$offline_sha" "$topdir/SOURCES/$archive_name" | sha256sum -c -
+else
+  git clone --filter=blob:none --no-checkout "$source_repo" "$source_tree"
+  git -C "$source_tree" checkout --detach "$source_commit"
+  [ "$(git -C "$source_tree" rev-parse HEAD)" = "$source_commit" ] ||
+    die 'source checkout differs from the pinned commit'
+  git -C "$source_tree" archive --format=tar --prefix="$archive_prefix" "$source_commit" |
+    gzip -n >"$topdir/SOURCES/$archive_name"
+fi
 install -m 0644 "$spec_file" "$topdir/SPECS/"
 for patch_file in "${patch_files[@]}"; do
   install -m 0644 "$patch_file" "$topdir/SOURCES/"
 done
+if [ "$component" = modemmanager ]; then
+  for owned_name in luma-introspection-org.freedesktop.ModemManager1.Sim.xml luma-meson.build luma-src-luma-owned-apdu-wire.h luma-src-luma-profile-terminal-registry-DRAFT.h luma-src-mm-base-modem.c luma-src-mm-base-modem.h luma-src-mm-sim-qmi.c luma-src-mm-sim-qmi.h luma-src-mm-iface-modem.c luma-src-mm-iface-modem.h luma-src-mm-broadband-modem-qmi.c luma-src-mm-uim-deactivation-recovery.inc luma-src-luma-native-candidate-evidence.h luma-src-luma-readonly-es10-guard.h luma-src-luma-native-operation-epoch.h luma-src-mm-shared-qmi.c luma-src-mm-base-call.c luma-src-mm-iface-modem-voice.c luma-test-native-recovery-controls.py luma-test-native-recovery-controls.c.in; do
+    owned_source="$repo_root/patches/ModemManager/owned-fd/$owned_name"
+    [ -f "$owned_source" ] || die 'missing maintained owned-FD source overlay'
+    install -m 0644 "$owned_source" "$topdir/SOURCES/"
+  done
+fi
 
 rpmbuild -ba --define "_topdir $topdir" "$topdir/SPECS/$(basename "$spec_file")"
 

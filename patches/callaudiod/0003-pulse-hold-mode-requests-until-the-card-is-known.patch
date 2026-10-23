@@ -1,0 +1,141 @@
+From 097fba9c1b05f9f592e136ef9da3a1a272115e92 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 04:05:27 -0400
+Subject: [PATCH] pulse: hold mode requests until the card is known
+
+When D-Bus activation starts the daemon for a SelectMode call, the call
+arrives before PulseAudio is ready. The card and sink indexes were still 0,
+so the request queried a context that was not ready and never answered.
+Start the indexes at -1, defer mode requests until the card is known (fail
+them after 5 s), and answer requests whose query could not be issued.
+---
+ src/cad-pulse.c | 67 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 67 insertions(+)
+
+diff --git a/src/cad-pulse.c b/src/cad-pulse.c
+index b4bb828..c8f3693 100644
+--- a/src/cad-pulse.c
++++ b/src/cad-pulse.c
+@@ -58,6 +58,10 @@ struct _CadPulse
+     GHashTable *sink_ports;
+     GHashTable *source_ports;
+ 
++    /* mode requests received before the card is known (D-Bus activation) */
++    GQueue *pending_modes;
++    guint pending_timeout;
++
+     CallAudioMode audio_mode;
+     CallAudioSpeakerState speaker_state;
+     CallAudioMicState mic_state;
+@@ -536,6 +540,43 @@ static void init_sink_info(pa_context *ctx, const pa_sink_info *info, int eol, v
+  * sound card
+  ******************************************************************************/
+ 
++typedef struct _CadPendingMode {
++    CallAudioMode mode;
++    CadOperation *op;
++} CadPendingMode;
++
++static gboolean run_pending_modes(gpointer data)
++{
++    CadPulse *self = data;
++    CadPendingMode *pending;
++
++    g_clear_handle_id(&self->pending_timeout, g_source_remove);
++    while ((pending = g_queue_pop_head(self->pending_modes))) {
++        g_debug("running deferred mode request %d", pending->mode);
++        cad_pulse_select_mode(pending->mode, pending->op);
++        g_free(pending);
++    }
++
++    return G_SOURCE_REMOVE;
++}
++
++static gboolean fail_pending_modes(gpointer data)
++{
++    CadPulse *self = data;
++    CadPendingMode *pending;
++
++    self->pending_timeout = 0;
++    while ((pending = g_queue_pop_head(self->pending_modes))) {
++        g_warning("no usable card, dropping mode request %d", pending->mode);
++        pending->op->success = FALSE;
++        if (pending->op->callback)
++            pending->op->callback(pending->op);
++        g_free(pending);
++    }
++
++    return G_SOURCE_REMOVE;
++}
++
+ static void init_card_info(pa_context *ctx, const pa_card_info *info, int eol, void *data)
+ {
+     CadPulse *self = data;
+@@ -610,6 +651,8 @@ static void init_card_info(pa_context *ctx, const pa_card_info *info, int eol, v
+     if (self->has_voice_profile)
+         update_voice_profiles(self, info);
+ 
++    g_idle_add(run_pending_modes, self);
++
+     // We were able determine the current mode, set the corresponding D-Bus property
+     if (self->audio_mode != CALL_AUDIO_MODE_UNKNOWN)
+         g_object_set(self->manager, "audio-mode", self->audio_mode, NULL);
+@@ -865,6 +908,10 @@ static void dispose(GObject *object)
+     g_clear_pointer(&self->speaker_port, g_free);
+     g_clear_pointer(&self->earpiece_port, g_free);
+     g_clear_pointer(&self->voice_profiles, g_ptr_array_unref);
++    g_clear_handle_id(&self->pending_timeout, g_source_remove);
++    if (self->pending_modes)
++        fail_pending_modes(self);
++    g_clear_pointer(&self->pending_modes, g_queue_free);
+     g_clear_pointer(&self->active_profile, g_free);
+ 
+     pulseaudio_cleanup(self);
+@@ -887,6 +934,8 @@ static void cad_pulse_class_init(CadPulseClass *klass)
+ 
+ static void cad_pulse_init(CadPulse *self)
+ {
++    self->card_id = self->sink_id = self->source_id = -1;
++    self->pending_modes = g_queue_new();
+     self->manager = G_OBJECT(cad_manager_get_default());
+     self->audio_mode = CALL_AUDIO_MODE_UNKNOWN;
+     self->speaker_state = CALL_AUDIO_SPEAKER_UNKNOWN;
+@@ -1151,6 +1200,20 @@ void cad_pulse_select_mode(CallAudioMode mode, CadOperation *cad_op)
+     g_assert(cad_op->type == CAD_OPERATION_SELECT_MODE);
+ 
+     operation->pulse = cad_pulse_get_default();
++
++    if (operation->pulse->card_id < 0) {
++        CadPendingMode *pending = g_new(CadPendingMode, 1);
++
++        g_debug("no card yet, deferring mode request %d", mode);
++        pending->mode = mode;
++        pending->op = cad_op;
++        g_queue_push_tail(operation->pulse->pending_modes, pending);
++        if (!operation->pulse->pending_timeout)
++            operation->pulse->pending_timeout = g_timeout_add_seconds(5, fail_pending_modes,
++                                                                      operation->pulse);
++        free(operation);
++        return;
++    }
+     operation->op = cad_op;
+     operation->value = mode;
+ 
+@@ -1197,6 +1260,8 @@ void cad_pulse_select_mode(CallAudioMode mode, CadOperation *cad_op)
+ 
+     if (op)
+         pa_operation_unref(op);
++    else
++        operation_complete_cb(operation->pulse->ctx, 0, operation);
+ 
+     return;
+ 
+@@ -1240,6 +1305,8 @@ void cad_pulse_enable_speaker(gboolean enable, CadOperation *cad_op)
+                                            set_output_port, operation);
+     if (op)
+         pa_operation_unref(op);
++    else
++        operation_complete_cb(operation->pulse->ctx, 0, operation);
+ 
+     return;
+ 

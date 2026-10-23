@@ -55,7 +55,8 @@ mkdir -p %{buildroot}%{_datadir}/bash-completion/completions
 cp -a src/qmicli/qmicli %{buildroot}%{_datadir}/bash-completion/completions/
 
 %check
-%meson_test
+%ninja_build -C %{_vpath_builddir} meson-test-prereq
+%meson_test --no-rebuild
 
 %ldconfig_scriptlets
 

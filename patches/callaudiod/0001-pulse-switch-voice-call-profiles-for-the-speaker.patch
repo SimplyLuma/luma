@@ -1,0 +1,233 @@
+From 574c33fffdafd6654596d04719f708bd86d66e2e Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 03:48:05 -0400
+Subject: [PATCH] pulse: switch voice call profiles for the speaker when the
+ sink has no such port
+
+PipeWire and PulseAudio put UCM devices that share a PCM into separate
+profiles, each with its own sink, e.g. "Voice Call (Earpiece, Mic)" and
+"Voice Call (Mic, Speaker)". Enabling the speaker then asked the earpiece
+sink for a port it does not have and failed.
+
+Keep the voice call profiles of the card, with whether each contains the
+speaker port. When the active sink has no port to switch to but another
+voice call profile has, select that profile instead. Cards with the speaker
+and the earpiece as ports of one sink keep the port switch unchanged.
+---
+ src/cad-pulse.c | 154 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 154 insertions(+)
+
+diff --git a/src/cad-pulse.c b/src/cad-pulse.c
+index ba6f624..02af2ea 100644
+--- a/src/cad-pulse.c
++++ b/src/cad-pulse.c
+@@ -47,6 +47,14 @@ struct _CadPulse
+     gchar *speaker_port;
+     gchar *earpiece_port;
+ 
++    /*
++     * Voice call profiles of the card, for cards that expose the speaker and
++     * the earpiece through separate profiles rather than as ports of one sink
++     * (UCM devices sharing a PCM).
++     */
++    GPtrArray *voice_profiles;
++    gchar *active_profile;
++
+     GHashTable *sink_ports;
+     GHashTable *source_ports;
+ 
+@@ -63,6 +71,90 @@ typedef struct _CadPulseOperation {
+     guint value;
+ } CadPulseOperation;
+ 
++typedef struct _CadVoiceProfile {
++    gchar *name;
++    uint32_t priority;
++    gboolean available;
++    gboolean has_speaker;
++} CadVoiceProfile;
++
++static void voice_profile_free(gpointer data)
++{
++    CadVoiceProfile *profile = data;
++
++    g_free(profile->name);
++    g_free(profile);
++}
++
++static void update_voice_profiles(CadPulse *self, const pa_card_info *info)
++{
++    guint i, j, k;
++
++    if (self->voice_profiles)
++        g_ptr_array_set_size(self->voice_profiles, 0);
++    else
++        self->voice_profiles = g_ptr_array_new_with_free_func(voice_profile_free);
++
++    g_free(self->active_profile);
++    self->active_profile = info->active_profile2 ? g_strdup(info->active_profile2->name) : NULL;
++
++    for (i = 0; i < info->n_profiles; i++) {
++        pa_card_profile_info2 *profile = info->profiles2[i];
++        CadVoiceProfile *voice;
++
++        if (!g_str_has_prefix(profile->name, SND_USE_CASE_VERB_VOICECALL))
++            continue;
++
++        voice = g_new0(CadVoiceProfile, 1);
++        voice->name = g_strdup(profile->name);
++        voice->priority = profile->priority;
++        voice->available = profile->available;
++
++        for (j = 0; j < info->n_ports && !voice->has_speaker; j++) {
++            pa_card_port_info *port = info->ports[j];
++
++            if (port->type != PA_DEVICE_PORT_TYPE_SPEAKER ||
++                port->direction != PA_DIRECTION_OUTPUT)
++                continue;
++
++            for (k = 0; k < port->n_profiles; k++) {
++                if (g_strcmp0(port->profiles2[k]->name, profile->name) == 0) {
++                    voice->has_speaker = TRUE;
++                    break;
++                }
++            }
++        }
++
++        g_debug("CARD:   voice profile %s priority %u%s", voice->name,
++                voice->priority, voice->has_speaker ? " (speaker)" : "");
++        g_ptr_array_add(self->voice_profiles, voice);
++    }
++}
++
++/*
++ * Highest priority available voice call profile with (or without) the speaker,
++ * or NULL when the card is not in a voice call profile or has none to offer.
++ */
++static const gchar *find_voice_profile(CadPulse *self, gboolean speaker)
++{
++    const CadVoiceProfile *best = NULL;
++    guint i;
++
++    if (!self->voice_profiles || !self->active_profile ||
++        !g_str_has_prefix(self->active_profile, SND_USE_CASE_VERB_VOICECALL))
++        return NULL;
++
++    for (i = 0; i < self->voice_profiles->len; i++) {
++        const CadVoiceProfile *profile = g_ptr_array_index(self->voice_profiles, i);
++
++        if (profile->available && profile->has_speaker == speaker &&
++            (!best || profile->priority > best->priority))
++            best = profile;
++    }
++
++    return best ? best->name : NULL;
++}
++
+ static void pulseaudio_cleanup(CadPulse *self);
+ static gboolean pulseaudio_connect(CadPulse *self);
+ static gboolean init_pulseaudio_objects(gpointer data);
+@@ -515,6 +607,9 @@ static void init_card_info(pa_context *ctx, const pa_card_info *info, int eol, v
+         }
+     }
+ 
++    if (self->has_voice_profile)
++        update_voice_profiles(self, info);
++
+     // We were able determine the current mode, set the corresponding D-Bus property
+     if (self->audio_mode != CALL_AUDIO_MODE_UNKNOWN)
+         g_object_set(self->manager, "audio-mode", self->audio_mode, NULL);
+@@ -604,6 +699,17 @@ static gboolean init_pulseaudio_objects(gpointer data)
+     return G_SOURCE_REMOVE;
+ }
+ 
++static void refresh_card_info(pa_context *ctx, const pa_card_info *info, int eol, void *data)
++{
++    CadPulse *self = data;
++
++    if (eol != 0 || !info || info->index != self->card_id)
++        return;
++
++    if (self->has_voice_profile)
++        update_voice_profiles(self, info);
++}
++
+ static void changed_cb(pa_context *ctx, pa_subscription_event_type_t type, uint32_t idx, void *data)
+ {
+     CadPulse *self = data;
+@@ -643,6 +749,9 @@ static void changed_cb(pa_context *ctx, pa_subscription_event_type_t type, uint3
+             g_idle_add(init_pulseaudio_objects, self);
+         } else if (idx == self->card_id && kind == PA_SUBSCRIPTION_EVENT_CHANGE) {
+             g_debug("card %u changed", idx);
++            op = pa_context_get_card_info_by_index(ctx, idx, refresh_card_info, self);
++            if (op)
++                pa_operation_unref(op);
+             if (self->sink_id != -1) {
+                 op = pa_context_get_sink_info_by_index(ctx, self->sink_id,
+                                                        change_sink_info, self);
+@@ -755,6 +864,8 @@ static void dispose(GObject *object)
+ 
+     g_clear_pointer(&self->speaker_port, g_free);
+     g_clear_pointer(&self->earpiece_port, g_free);
++    g_clear_pointer(&self->voice_profiles, g_ptr_array_unref);
++    g_clear_pointer(&self->active_profile, g_free);
+ 
+     pulseaudio_cleanup(self);
+ 
+@@ -912,6 +1023,18 @@ static void set_card_profile(pa_context *ctx, const pa_card_info *info, int eol,
+     }
+ }
+ 
++static gboolean sink_has_port(const pa_sink_info *sink, const gchar *name)
++{
++    guint i;
++
++    for (i = 0; name && i < sink->n_ports; i++) {
++        if (g_strcmp0(sink->ports[i]->name, name) == 0)
++            return TRUE;
++    }
++
++    return FALSE;
++}
++
+ static void set_output_port(pa_context *ctx, const pa_sink_info *info, int eol, void *data)
+ {
+     CadPulseOperation *operation = data;
+@@ -952,6 +1075,37 @@ static void set_output_port(pa_context *ctx, const pa_sink_info *info, int eol,
+             target_port = operation->pulse->speaker_port;
+         else
+             target_port = get_available_sink_port(info, operation->pulse->speaker_port);
++
++        /*
++         * Some cards expose the speaker and the earpiece in separate voice call
++         * profiles, each with its own sink. When the active sink has no port to
++         * switch to but another voice call profile has, switch the profile.
++         * Cards with both ports on one sink keep the port switch below.
++         */
++        if (operation->pulse->has_voice_profile &&
++            ((operation->value && !sink_has_port(info, target_port)) ||
++             (!operation->value && !target_port))) {
++            const gchar *target_profile = find_voice_profile(operation->pulse, operation->value);
++
++            if (target_profile) {
++                g_debug("no %s port on the active sink, target profile is '%s'",
++                        operation->value ? "speaker" : "non-speaker", target_profile);
++
++                if (g_strcmp0(target_profile, operation->pulse->active_profile) != 0) {
++                    op = pa_context_set_card_profile_by_index(ctx, operation->pulse->card_id,
++                                                              target_profile,
++                                                              operation_complete_cb, operation);
++                }
++
++                if (op) {
++                    pa_operation_unref(op);
++                } else {
++                    g_debug("%s: nothing to be done", __func__);
++                    operation_complete_cb(ctx, 1, operation);
++                }
++                return;
++            }
++        }
+     }
+ 
+     g_debug("active port is '%s', target port is '%s'", info->active_port->name, target_port);

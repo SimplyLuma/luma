@@ -1,0 +1,92 @@
+From 25c5832826a9af38d4b6c0d4a98344e05d491234 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 20 Oct 2026 04:02:10 -0400
+Subject: [PATCH] pulse: tolerate sinks without an active port and failed info
+ queries
+
+PipeWire reports a sink without an active port while a card profile is
+being switched or right after it appears; dereferencing it crashed the
+daemon (init_sink_info, set_output_port). A failed card or sink query
+(eol < 0) also left the D-Bus call without a reply. Check the active port
+and complete the operation with an error instead.
+---
+ src/cad-pulse.c | 28 ++++++++++++++++------------
+ 1 file changed, 16 insertions(+), 12 deletions(-)
+
+diff --git a/src/cad-pulse.c b/src/cad-pulse.c
+index 02af2ea..b4bb828 100644
+--- a/src/cad-pulse.c
++++ b/src/cad-pulse.c
+@@ -475,7 +475,7 @@ static void init_sink_info(pa_context *ctx, const pa_sink_info *info, int eol, v
+ 
+         switch (self->audio_mode) {
+         case CALL_AUDIO_MODE_CALL:
+-            if (g_strcmp0(info->active_port->name, self->speaker_port) == 0) {
++            if (info->active_port && g_strcmp0(info->active_port->name, self->speaker_port) == 0) {
+                 self->speaker_state = CALL_AUDIO_SPEAKER_ON;
+                 g_object_set(self->manager, "speaker-state", self->speaker_state, NULL);
+                 /*
+@@ -498,7 +498,7 @@ static void init_sink_info(pa_context *ctx, const pa_sink_info *info, int eol, v
+              * Note: this code path is only used when the card doesn't have a
+              * voice profile, otherwise things are easier to deal with.
+              */
+-            if (g_strcmp0(info->active_port->name, self->earpiece_port) == 0) {
++            if (info->active_port && g_strcmp0(info->active_port->name, self->earpiece_port) == 0) {
+                 self->audio_mode = CALL_AUDIO_MODE_CALL;
+                 g_object_set(self->manager, "audio-mode", self->audio_mode, NULL);
+                 /*
+@@ -971,14 +971,15 @@ static void set_card_profile(pa_context *ctx, const pa_card_info *info, int eol,
+     pa_operation *op = NULL;
+     const char *target_verb = NULL;
+ 
+-    if (eol != 0)
+-        return;
+-
+-    if (!info) {
++    if (eol < 0 || (eol == 0 && !info)) {
+         g_critical("PA returned no card info (eol=%d)", eol);
++        operation_complete_cb(ctx, 0, operation);
+         return;
+     }
+ 
++    if (eol != 0)
++        return;
++
+     if (info->index != operation->pulse->card_id)
+         return;
+ 
+@@ -1040,15 +1041,17 @@ static void set_output_port(pa_context *ctx, const pa_sink_info *info, int eol,
+     CadPulseOperation *operation = data;
+     pa_operation *op = NULL;
+     const gchar *target_port;
++    const gchar *active_port;
+ 
+-    if (eol != 0)
+-        return;
+-
+-    if (!info) {
++    if (eol < 0 || (eol == 0 && !info)) {
+         g_critical("PA returned no sink info (eol=%d)", eol);
++        operation_complete_cb(ctx, 0, operation);
+         return;
+     }
+ 
++    if (eol != 0)
++        return;
++
+     if (info->card != operation->pulse->card_id || info->index != operation->pulse->sink_id)
+         return;
+ 
+@@ -1108,9 +1111,10 @@ static void set_output_port(pa_context *ctx, const pa_sink_info *info, int eol,
+         }
+     }
+ 
+-    g_debug("active port is '%s', target port is '%s'", info->active_port->name, target_port);
++    active_port = info->active_port ? info->active_port->name : NULL;
++    g_debug("active port is '%s', target port is '%s'", active_port, target_port);
+ 
+-    if (target_port && g_strcmp0(info->active_port->name, target_port) != 0) {
++    if (target_port && g_strcmp0(active_port, target_port) != 0) {
+         g_debug("switching to target port '%s'", target_port);
+         op = pa_context_set_sink_port_by_index(ctx, operation->pulse->sink_id,
+                                                target_port,

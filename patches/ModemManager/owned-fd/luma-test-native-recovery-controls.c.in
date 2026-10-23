@@ -1,0 +1,66 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Native MM recovery regression. QMI boundaries mocked; production callbacks loaded by runner.
+ */
+
+#include <gio/gio.h>
+typedef GObject MMSimQmi; typedef GObject MMBaseModem; typedef GObject QmiClientUim;
+typedef struct {guint8 slot;} Dummy;
+typedef Dummy QmiMessageUimGetCardStatusOutput; typedef Dummy QmiMessageUimPowerOffSimOutput;
+typedef Dummy QmiMessageUimPowerOnSimOutput; typedef Dummy QmiMessageUimPowerOffSimInput; typedef Dummy QmiMessageUimPowerOnSimInput;
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QmiMessageUimGetCardStatusOutput,g_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QmiMessageUimPowerOffSimOutput,g_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QmiMessageUimPowerOnSimOutput,g_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QmiMessageUimPowerOffSimInput,g_free)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QmiMessageUimPowerOnSimInput,g_free)
+#define MM_CORE_ERROR G_IO_ERROR
+#define MM_CORE_ERROR_FAILED G_IO_ERROR_FAILED
+static gboolean current=TRUE, lease=TRUE, io=TRUE, voice=FALSE, ack=TRUE, observed=TRUE;
+static GObject *admitted_modem,*admitted_client;
+static guint off_count,on_count,status_count,confirmed,refused;
+static gboolean mm_base_modem_profile_operation_io_terminal(MMBaseModem*m,gssize o,guint64 g,gboolean c){g_assert_true(m==admitted_modem);g_assert_cmpint(o,==,41);g_assert_cmpuint(g,==,73);(void)c;return io;}
+static void mm_base_modem_profile_operation_recovery_refuse(MMBaseModem*m,gssize o,guint64 g){g_assert_true(m==admitted_modem);g_assert_cmpint(o,==,41);g_assert_cmpuint(g,==,73);refused++;}
+static gboolean mm_base_modem_profile_operation_recovery_voice_pending(MMBaseModem*m,gssize o,guint64 g){g_assert_true(m==admitted_modem);g_assert_cmpint(o,==,41);g_assert_cmpuint(g,==,73);return voice;}
+static gboolean mm_base_modem_profile_operation_begin_recovery_io(MMBaseModem*m,gssize o,guint64 g){g_assert_true(m==admitted_modem);g_assert_cmpint(o,==,41);g_assert_cmpuint(g,==,73);return lease;}
+static gboolean mm_base_modem_profile_operation_deactivation_confirmed(MMBaseModem*m,gssize o,guint64 g){g_assert_true(m==admitted_modem);g_assert_cmpint(o,==,41);g_assert_cmpuint(g,==,73);confirmed++;return lease;}
+static Dummy *dummy(void){return g_new0(Dummy,1);}
+static Dummy*qmi_client_uim_power_off_sim_finish(QmiClientUim*c,GAsyncResult*r,GError**e){(void)c;(void)r;(void)e;return dummy();}
+static Dummy*qmi_client_uim_power_on_sim_finish(QmiClientUim*c,GAsyncResult*r,GError**e){(void)c;(void)r;(void)e;return dummy();}
+static Dummy*qmi_client_uim_get_card_status_finish(QmiClientUim*c,GAsyncResult*r,GError**e){(void)c;(void)r;(void)e;return dummy();}
+static gboolean qmi_message_uim_power_off_sim_output_get_result(Dummy*d,GError**e){(void)d;(void)e;return ack;}
+static gboolean qmi_message_uim_power_on_sim_output_get_result(Dummy*d,GError**e){(void)d;(void)e;return ack;}
+static Dummy*qmi_message_uim_power_off_sim_input_new(void){return dummy();}
+static Dummy*qmi_message_uim_power_on_sim_input_new(void){return dummy();}
+static gboolean qmi_message_uim_power_off_sim_input_set_slot(Dummy*d,guint8 s,GError**e){(void)e;d->slot=s;return s==2;}
+static gboolean qmi_message_uim_power_on_sim_input_set_slot(Dummy*d,guint8 s,GError**e){(void)e;d->slot=s;return s==2;}
+static void qmi_client_uim_power_off_sim(QmiClientUim*c,Dummy*d,guint t,GCancellable*x,GAsyncReadyCallback cb,gpointer data){g_assert_true(c==admitted_client);g_assert_cmpuint(d->slot,==,2);g_assert_cmpuint(t,==,8);g_assert_null(x);(void)cb;(void)data;off_count++;}
+static void qmi_client_uim_power_on_sim(QmiClientUim*c,Dummy*d,guint t,GCancellable*x,GAsyncReadyCallback cb,gpointer data){g_assert_true(c==admitted_client);g_assert_cmpuint(d->slot,==,2);g_assert_cmpuint(t,==,8);g_assert_null(x);(void)cb;(void)data;on_count++;}
+static void qmi_client_uim_get_card_status(QmiClientUim*c,Dummy*d,guint t,GCancellable*x,GAsyncReadyCallback cb,gpointer data){g_assert_true(c==admitted_client);g_assert_null(d);g_assert_cmpuint(t,==,2);g_assert_null(x);(void)cb;(void)data;status_count++;}
+@PRODUCTION_STRUCT@
+static gboolean luma_deactivation_current(LumaDeactivationRecovery*r){(void)r;return current;}
+static gboolean luma_deactivation_card(LumaDeactivationRecovery*r,Dummy*d,gboolean ready){(void)r;(void)d;(void)ready;return observed;}
+static void luma_deactivation_dispatch(GTask*);
+@PRODUCTION_CALLBACKS@
+static GTask*setup(guint phase){
+ current=lease=io=ack=observed=TRUE;voice=FALSE;off_count=on_count=status_count=confirmed=refused=0;
+ GTask*t=g_task_new(NULL,NULL,NULL,NULL);LumaDeactivationRecovery*r=g_new0(LumaDeactivationRecovery,1);
+ r->sim=g_object_new(G_TYPE_OBJECT,NULL);r->modem=g_object_new(G_TYPE_OBJECT,NULL);r->client=g_object_new(G_TYPE_OBJECT,NULL);admitted_modem=r->modem;admitted_client=r->client;r->operation=41;r->generation=73;
+ r->slot=2;r->phase=phase;r->deadline=g_get_monotonic_time()+40000000;
+ g_task_set_task_data(t,r,luma_deactivation_free);g_object_ref(t);return t;
+}
+static void finish(GTask*t){LumaDeactivationRecovery*r=g_task_get_task_data(t);if(r->pending){g_assert_cmpuint(r->phase,==,2);current=FALSE;luma_deactivation_on_ready(NULL,NULL,t);}g_assert_false(r->pending);g_object_unref(t);}
+static void test_off_loss(void){GTask*t=setup(0);luma_deactivation_dispatch(t);g_assert_cmpuint(off_count,==,1);current=FALSE;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_down_loss(void){GTask*t=setup(0);LumaDeactivationRecovery*r=g_task_get_task_data(t);(void)r;luma_deactivation_dispatch(t);luma_deactivation_off_ready(NULL,NULL,t);current=FALSE;luma_deactivation_status_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_stale_before_off(void){GTask*t=setup(0);current=FALSE;luma_deactivation_dispatch(t);g_assert_cmpuint(off_count,==,0);g_assert_cmpuint(on_count,==,0);finish(t);}
+static void test_refused_lease(void){GTask*t=setup(0);luma_deactivation_dispatch(t);current=FALSE;lease=FALSE;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,0);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_stale_on(void){GTask*t=setup(0);luma_deactivation_dispatch(t);current=FALSE;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);luma_deactivation_on_ready(NULL,NULL,t);g_assert_cmpuint(confirmed,==,0);g_assert_true(g_task_had_error(t));finish(t);}
+static void test_deadline(void){GTask*t=setup(0);LumaDeactivationRecovery*r=g_task_get_task_data(t);luma_deactivation_dispatch(t);r->deadline=0;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_voice(void){GTask*t=setup(0);luma_deactivation_dispatch(t);voice=TRUE;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_normal(void){GTask*t=setup(0);luma_deactivation_dispatch(t);luma_deactivation_off_ready(NULL,NULL,t);luma_deactivation_status_ready(NULL,NULL,t);luma_deactivation_on_ready(NULL,NULL,t);luma_deactivation_status_ready(NULL,NULL,t);g_assert_cmpuint(confirmed,==,1);g_assert_false(g_task_had_error(t));finish(t);}
+/* Defensive dispatcher branch only: synthesized pending drain, not real callback accounting. */
+static void test_duplicate_on(void){GTask*t=setup(0);LumaDeactivationRecovery*r=g_task_get_task_data(t);luma_deactivation_dispatch(t);current=FALSE;luma_deactivation_off_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);r->pending=FALSE;luma_deactivation_dispatch(t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+/* Regained currentness cannot erase previously lost proof. */
+static void test_proof_regained(void){GTask*t=setup(2);LumaDeactivationRecovery*r=g_task_get_task_data(t);r->off_attempted=r->off_ack=r->power_down=TRUE;current=FALSE;luma_deactivation_dispatch(t);g_assert_cmpuint(on_count,==,1);current=TRUE;luma_deactivation_on_ready(NULL,NULL,t);luma_deactivation_status_ready(NULL,NULL,t);g_assert_true(r->off_ack&&r->power_down&&r->on_ack&&r->ready);g_assert_cmpuint(confirmed,==,0);g_assert_true(g_task_had_error(t));finish(t);}
+static void test_down_deadline(void){GTask*t=setup(0);LumaDeactivationRecovery*r=g_task_get_task_data(t);luma_deactivation_dispatch(t);luma_deactivation_off_ready(NULL,NULL,t);r->deadline=0;luma_deactivation_status_ready(NULL,NULL,t);g_assert_cmpuint(on_count,==,1);g_assert_cmpuint(confirmed,==,0);finish(t);}
+static void test_preoff_voice(void){GTask*t=setup(0);voice=TRUE;luma_deactivation_dispatch(t);g_assert_cmpuint(off_count,==,0);g_assert_cmpuint(on_count,==,0);finish(t);}
+int main(int argc,char**argv){g_test_init(&argc,&argv,NULL);
+ g_test_add_func("/cleanup/off-loss",test_off_loss);g_test_add_func("/cleanup/down-loss",test_down_loss);g_test_add_func("/cleanup/stale-before-off",test_stale_before_off);g_test_add_func("/cleanup/refused-lease",test_refused_lease);g_test_add_func("/cleanup/stale-on",test_stale_on);g_test_add_func("/cleanup/deadline",test_deadline);g_test_add_func("/cleanup/voice",test_voice);g_test_add_func("/cleanup/normal",test_normal);g_test_add_func("/cleanup/duplicate-on",test_duplicate_on);g_test_add_func("/cleanup/proof-regained",test_proof_regained);g_test_add_func("/cleanup/down-deadline",test_down_deadline);g_test_add_func("/cleanup/preoff-voice",test_preoff_voice);return g_test_run();}

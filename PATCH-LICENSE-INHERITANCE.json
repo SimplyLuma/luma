@@ -4,6 +4,20 @@
   "rule": "A downstream patch does not erase the modified upstream source license. Package aggregate terms and partial ledger license lists are evidence for component attribution, not permission to blanket relicense every file. Explicit per-file SPDX/copyright notices control. Unknown families remain listed honestly.",
   "families": [
     {
+      "family": "ModemManager-owned-fd",
+      "path": "patches/ModemManager/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "THIRD-PARTY-SOURCES.md",
+        "line": 175
+      },
+      "note": "Modified ModemManager source files; they keep ModemManager's GPL-2.0-or-later terms and notices."
+    },
+    {
       "family": "android-device-waydroid",
       "path": "patches/android-device-waydroid/",
       "status": "upstream-license-not-established-by-this-audit",
@@ -102,6 +116,20 @@
         "line": 108
       },
       "note": ""
+    },
+    {
+      "family": "callaudiod",
+      "path": "patches/callaudiod/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/callaudiod.spec",
+        "line": 9
+      },
+      "note": "callaudiod patches inherit callaudiod's GPL-3.0-or-later terms."
     },
     {
       "family": "dash-to-dock",
