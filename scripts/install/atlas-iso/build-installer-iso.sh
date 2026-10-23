@@ -404,6 +404,11 @@ podman run --rm --umask=0022 "${runtime_mount[@]}" "${builder_security[@]}" --ar
     actual=\$(rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH} %{SHA256HEADER}' /w/luma-rpms/\$nevra.rpm)
     [ \"\$actual\" = \"\$nevra \$header\" ] || { echo \"error: boot RPM header mismatch: \$nevra\" >&2; exit 1; }
   done < /w/boot-packages.manifest
+  # The HDD work tree can inherit a shared-development default ACL and SGID.
+  # Start Lorax below a new clean child on either selected scratch filesystem;
+  # never modify the host work directory, package caches or cached tools.
+  lorax_scratch=\$(python3 /s/prepare-runtime-temp.py --scratch-parent '$lorax_tmp')
+  printf 'Lorax disposable scratch: %s\\n' \"\$lorax_scratch\"
   python3 /s/prepare-lorax-boot.py /usr/share/lorax /w/lorax-templates '$architecture'
   createrepo_c --quiet /w/luma-rpms
   boot_install_args=()
@@ -425,7 +430,7 @@ podman run --rm --umask=0022 "${runtime_mount[@]}" "${builder_security[@]}" --ar
         --add-template-var luma_atlas_clock_epoch=$clock_epoch \
         --add-template-var luma_atlas_runtime_kernel=$ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH \
         --add-template-var luma_atlas_preview_credential=$credential_var \
-        --cachedir /w/runtime-rpm-cache --tmp '$lorax_tmp' --logfile /w/logs/lorax.log \
+        --cachedir /w/runtime-rpm-cache --tmp \"\$lorax_scratch\" --logfile /w/logs/lorax.log \
         /w/lorax-out
   if grep -q 'dracut-install: ERROR' /w/logs/program.log; then
     echo 'error: dracut could not install files into the initramfs; see logs/program.log' >&2

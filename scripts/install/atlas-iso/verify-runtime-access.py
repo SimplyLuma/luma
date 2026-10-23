@@ -12,8 +12,11 @@ from pathlib import Path
 
 DIRECTORIES = ('usr/lib', 'usr/lib64', 'usr/share', 'usr/share/dbus-1',
                'usr/share/dbus-1/system.d', 'etc/dbus-1')
-FILES = ('etc/passwd', 'etc/group', 'usr/share/dbus-1/system.conf')
+FILES = ('etc/passwd', 'etc/group', 'etc/machine-id', 'usr/share/dbus-1/system.conf')
 EXECUTABLES = ('usr/bin/dbus-broker', 'usr/bin/dbus-broker-launch', 'usr/bin/NetworkManager')
+PUBLIC_CACHES = ('usr/share/glib-2.0/schemas/gschemas.compiled',
+                 'usr/share/mime/mime.cache',
+                 'usr/share/gnome-kiosk/gnomekiosk.dconf.compiled')
 
 
 def parse(text):
@@ -63,12 +66,26 @@ def check(text):
         if parent:
             verify(parent, 'directory', (*visited, path))
 
-    for path in DIRECTORIES:
-        verify(path, 'directory')
-    for path in FILES:
-        verify(path, 'file')
-    for path in EXECUTABLES:
-        verify(path, 'executable')
+    checks = [(path, 'directory') for path in DIRECTORIES]
+    checks.extend((path, 'file') for path in FILES)
+    checks.extend((path, 'executable') for path in EXECUTABLES)
+    # Package scriptlets and Lorax create these after RPM restores file modes.
+    # They are public service/UI inputs; do not relax intentional private data
+    # such as shadow, keys, SELinux policy or fontconfig's CACHEDIR.TAG.
+    for path, (mode, _) in entries.items():
+        public_cache = path in PUBLIC_CACHES or (
+            mode[0] == '-' and path.startswith(('usr/share/mime/', 'etc/dconf/db/'))
+        ) or re.fullmatch(r'(?:usr/lib(?:64)?/fontconfig/cache|var/cache/fontconfig)/[^/]+\.cache-\d+', path)
+        if public_cache:
+            checks.append((path, 'file'))
+    errors = []
+    for path, kind in checks:
+        try:
+            verify(path, kind)
+        except ValueError as error:
+            errors.append(str(error))
+    if errors:
+        raise ValueError('\n'.join(dict.fromkeys(errors)))
 
 
 if __name__ == '__main__':
