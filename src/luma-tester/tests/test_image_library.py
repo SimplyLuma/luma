@@ -12,6 +12,14 @@ from luma_tester.core import digest,read_manifest,TesterError
 
 
 class LibraryTests(unittest.TestCase):
+    def test_registered_download_survives_without_preferences_and_is_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as name:
+            root=Path(name);directory=root/'imported-images';directory.mkdir()
+            self.assertEqual(image_library.manifest_paths(root),[])
+            path=directory/'mobile.json';path.write_text('{}')
+            self.assertEqual(image_library.manifest_paths(root),[path])
+            self.assertEqual(image_library.manifest_paths(root,[path],directory),[path])
+
     def mobile_artifact(self):
         return dict(artifact_id='tester/mobile/nightly/test/aarch64',kind='tester_image',
             arch='aarch64',file='mobile.qcow2',url='https://example.invalid/mobile.qcow2',

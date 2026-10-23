@@ -7,6 +7,14 @@ from .downloads import HubClient, download, validate_artifact
 from .vm import atomic_json
 
 
+def manifest_paths(root, remembered=(), catalog=None):
+    """Recover registered downloads even if the app exited before remembering them."""
+    paths = [Path(path) for path in remembered]
+    paths += sorted((Path(root) / 'imported-images').glob('*.json'))
+    if catalog:paths += sorted(Path(catalog).glob('*.json'))
+    return list(dict.fromkeys(paths))
+
+
 def usable(artifact):
     validate_artifact(artifact)
     if artifact.get('arch') not in ('x86_64', 'aarch64'):return False

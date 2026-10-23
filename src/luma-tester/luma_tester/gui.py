@@ -760,11 +760,8 @@ def launch(state=None):
             self.remember()
 
         def available_manifests(self):
-            directory = os.environ.get('LUMA_TESTER_CATALOG')
-            paths = list(self.imported)
-            if directory:
-                paths += sorted(Path(directory).glob('*.json'))
-            return paths
+            return image_library.manifest_paths(data_root(state), self.imported,
+                os.environ.get('LUMA_TESTER_CATALOG'))
 
         def select_image(self):
             architecture=self.architectures.get(self.target,'auto')
