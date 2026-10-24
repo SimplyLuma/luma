@@ -306,4 +306,3 @@ class ArchQualifiedGraphUrl(unittest.TestCase):
         self.assertEqual(engine.check().release.commit, fakes.commit(2))
         self.assertNotEqual(engine.status().state, "unmanaged")
         self.assertIn("https://dl.simplyluma.com/os/graph/aarch64/unihertz-titan2e/stable.json", rig.http.gets)
-
