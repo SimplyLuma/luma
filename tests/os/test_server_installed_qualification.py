@@ -500,6 +500,205 @@ class CheckerCapsule(unittest.TestCase):
         with self.assertRaises(m.QualificationError):self.prepare()
 
 
+class ModernLibvirtCompatibility(unittest.TestCase):
+    setUp=ServerQualification.setUp
+    stage=ServerQualification.stage
+    make_transition=ServerQualification.make_transition
+
+    def modern_inputs(self):
+        fixture=self.root/'modern-fixture'
+        expected=copy.deepcopy(self.expected);expected['qmp_transport']='libvirt-system-qmp/v1'
+        inputs=copy.deepcopy(self.inputs)
+        cli=self.root/'virsh';cli.write_bytes(b'unit-only CLI, never executed')
+        variables=self.root/'vars-template.qcow2';variables.write_bytes(b'unit-only UEFI template')
+        inputs.update(libvirt_cli=str(cli),firmware_variables=str(variables))
+        b=expected['producer_binding']
+        definition=f"""<domain type='qemu'><name>{b['domain_name']}</name><uuid>{b['domain_uuid']}</uuid>
+<memtune><hard_limit unit='GiB'>8</hard_limit></memtune><resource><partition>/luma/arm/desktop</partition></resource>
+<os><type arch='aarch64' machine='virt-10.2'>hvm</type><loader type='pflash' readonly='yes'>{self.firmware}</loader>
+<nvram template='{variables}'>{self.root/'NVRAM.qcow2'}</nvram></os><devices><emulator>{self.qemu}</emulator>
+<disk device='disk'><driver type='qcow2'/><source file='{inputs['target_disk_path']}'/></disk>
+<disk device='cdrom'><driver type='raw'/><source file='{self.iso}'/><readonly/></disk></devices></domain>"""
+        domain=self.root/'domain.xml';domain.write_text(definition);inputs['domain_definition']=str(domain)
+        expected['domain_definition_sha256']=sha(domain.read_bytes())
+        invocation=dict(transport='libvirt-system-qmp/v1',domain_definition_sha256=expected['domain_definition_sha256'],
+                        define_argv=[str(cli),'--connect','qemu:///system','define',str(fixture/'domain-installer.xml')],
+                        start_argv=[str(cli),'--connect','qemu:///system','start',b['domain_name'],'--paused'])
+        plan=self.root/'libvirt-launch.json';plan.write_bytes(encoded(invocation));inputs['qemu_invocation']=str(plan)
+        return fixture,expected,inputs
+
+    def prepare_modern(self,change_definition=None):
+        fixture,expected,inputs=self.modern_inputs()
+        if change_definition:
+            path=Path(inputs['domain_definition']);path.write_text(change_definition(path.read_text()))
+            expected['domain_definition_sha256']=sha(path.read_bytes())
+            plan=Path(inputs['qemu_invocation']);data=json.loads(plan.read_text())
+            data['domain_definition_sha256']=expected['domain_definition_sha256'];plan.write_bytes(encoded(data))
+        fs=type('FS',(),{'f_bavail':100*1024**3,'f_frsize':1})()
+        with patch.object(m.os,'statvfs',return_value=fs):m.prepare_fixture(fixture,expected,inputs)
+        prepared,_,_=m.validate_prepared(fixture,expected,owner_uid=os.getuid())
+        return prepared
+
+    def observed_argv(self,p):
+        argv=[p['executables']['qemu']['path'],'-accel','tcg','-machine','virt-10.2,gic-version=2,pflash0=pflash-format']
+        for prefix,path,readonly,fmt in [('iso',p['iso_path'],True,'raw'),('disk',p['target_disk_path'],False,'qcow2')]:
+            for node in [dict(driver='file',filename=path,**{'node-name':prefix+'-file','read-only':readonly}),
+                         dict(driver=fmt,file=prefix+'-file',**{'node-name':prefix+'-format','read-only':readonly})]:
+                argv+=['-blockdev',json.dumps(node)]
+            argv+=['-device',json.dumps(dict(driver='scsi-cd' if readonly else 'virtio-blk-pci',drive=prefix+'-format'))]
+        argv+=['-blockdev',json.dumps(dict(driver='file',filename=p['executables']['firmware']['path'],
+                                          **{'node-name':'pflash-code','auto-read-only':True}))]
+        argv+=['-blockdev',json.dumps(dict(driver='qcow2',file='pflash-code',
+                                          **{'node-name':'pflash-format','read-only':True}))]
+        return argv
+
+    def test_prepares_actual_modern_xml_invocation_without_guessed_qemu_argv(self):
+        prepared=self.prepare_modern()
+        self.assertIn('firmware_variables',prepared['executables'])
+        self.assertIn('libvirt_cli',prepared['executables'])
+        plan=json.loads((Path(prepared['fixture_root'])/'qemu-invocation.json').read_text())
+        self.assertEqual(plan['start_argv'][-1],'--paused')
+
+    def test_observed_blockdev_graph_binds_actual_paths_readonly_and_formats(self):
+        p=self.prepare_modern();m.validate_observed_qemu_argv(self.observed_argv(p),p)
+
+    def test_auto_ejected_iso_definition_refused(self):
+        with self.assertRaises(m.QualificationError):
+            self.prepare_modern(lambda text:text.replace("<source file='"+str(self.iso)+"'/>",''))
+
+    def test_writable_iso_definition_refused(self):
+        with self.assertRaises(m.QualificationError):self.prepare_modern(lambda text:text.replace('<readonly/>',''))
+
+    def test_changed_firmware_definition_refused(self):
+        with self.assertRaises(m.QualificationError):self.prepare_modern(lambda text:text.replace(str(self.firmware),'/wrong/code'))
+
+    def test_changed_target_definition_refused(self):
+        with self.assertRaises(m.QualificationError):self.prepare_modern(lambda text:text.replace(self.inputs['target_disk_path'],'/wrong/disk'))
+
+    def test_unowned_partition_refused(self):
+        with self.assertRaises(m.QualificationError):self.prepare_modern(lambda text:text.replace('/luma/arm/desktop','/other-owner'))
+
+    def test_changed_blockdev_iso_readonly_refused(self):
+        p=self.prepare_modern();argv=self.observed_argv(p)
+        for index,arg in enumerate(argv):
+            if arg.startswith('{'):
+                node=json.loads(arg)
+                if node.get('node-name')=='iso-format':node['read-only']=False;argv[index]=json.dumps(node)
+        with self.assertRaises(m.QualificationError):m.validate_observed_qemu_argv(argv,p)
+
+    def test_changed_blockdev_source_refused(self):
+        p=self.prepare_modern();argv=self.observed_argv(p)
+        for index,arg in enumerate(argv):
+            if arg.startswith('{'):
+                node=json.loads(arg)
+                if node.get('node-name')=='disk-file':node['filename']='/wrong/disk';argv[index]=json.dumps(node)
+        with self.assertRaises(m.QualificationError):m.validate_observed_qemu_argv(argv,p)
+
+    def test_wrong_observed_accelerator_refused(self):
+        p=self.prepare_modern();argv=self.observed_argv(p);argv[argv.index('-accel')+1]='kvm'
+        with self.assertRaises(m.QualificationError):m.validate_observed_qemu_argv(argv,p)
+
+    def direct_boot(self):
+        p=self.prepare_modern()
+        p['installer_boot_inputs']={name:{'path':'/retained/'+name} for name in ('kernel','initrd','kickstart')}
+        p['installer_boot_inputs']['kickstart']['initrd_path']='/luma-final.ks'
+        p['installer_stage2']='inst.stage2=hd:LABEL=LUMA_FINAL'
+        p['installer_cmdline']='inst.ks=file:/luma-final.ks inst.stage2=hd:LABEL=LUMA_FINAL console=ttyAMA0'
+        return p
+
+    def test_exact_direct_installer_intent_and_observed_arguments(self):
+        p=self.direct_boot()
+        argv=self.observed_argv(p)+['-kernel','/retained/kernel','-initrd','/retained/initrd','-append',p['installer_cmdline']]
+        m.validate_observed_qemu_argv(argv,p)
+
+    def test_other_kickstart_even_if_cmdline_rebound_refused(self):
+        p=self.direct_boot();p['installer_cmdline']=p['installer_cmdline'].replace('/luma-final.ks','/other.ks')
+        with self.assertRaises(m.QualificationError):
+            m.validate_installer_boot_intent('/retained/kernel','/retained/initrd',p['installer_cmdline'],p)
+
+    def test_other_final_iso_label_refused(self):
+        p=self.direct_boot();p['installer_cmdline']=p['installer_cmdline'].replace('LUMA_FINAL','FEDORA')
+        with self.assertRaises(m.QualificationError):
+            m.validate_installer_boot_intent('/retained/kernel','/retained/initrd',p['installer_cmdline'],p)
+
+    def test_changed_actual_installer_arguments_refused(self):
+        p=self.direct_boot()
+        argv=self.observed_argv(p)+['-kernel','/other/kernel','-initrd','/retained/initrd','-append',p['installer_cmdline']]
+        with self.assertRaises(m.QualificationError):m.validate_observed_qemu_argv(argv,p)
+
+    def test_effective_raw_file_cd_supported_with_exact_readonly_path(self):
+        p=self.prepare_modern()
+        blocks=[{'inserted':dict(file=p['iso_path'],drv='file',ro=True)},
+                {'inserted':dict(file=p['target_disk_path'],drv='qcow2',ro=False,image={'virtual-size':m.VIRTUAL_BYTES})}]
+        m.validate_live_blocks(blocks,p)
+        for mutate in ('write','path','format'):
+            changed=copy.deepcopy(blocks)
+            if mutate=='write':changed[0]['inserted']['ro']=False
+            elif mutate=='path':changed[0]['inserted']['file']='/wrong/iso'
+            else:changed[1]['inserted']['drv']='file'
+            with self.assertRaises(m.QualificationError):m.validate_live_blocks(changed,p)
+
+
+class ActualArchivedLibvirtArgv(unittest.TestCase):
+    """Read-only parser fixtures from real retained launches, not a guest PASS."""
+    def setUp(self):
+        path=os.environ.get('LUMA_SERVER_ARCHIVED_ARGV_FIXTURE')
+        if path is None:self.skipTest('Actual private archived-argv fixture not supplied')
+        self.fixture=json.loads(Path(path).read_text())
+        self.assertEqual(self.fixture['scope'],'HISTORICAL_ARGV_SHAPES_ONLY_NOT_FINAL_INSTALL_OR_APP_QUALIFICATION')
+        self.argv=self.fixture['full_gate']['argv']
+        self.assertEqual(sha(encoded(self.argv)),self.fixture['full_gate']['argv_sha256'])
+        self.p=self.fixture['full_gate']['expected_paths']
+
+    def test_exact_archived_full_gate_blockdev_argv(self):
+        self.assertEqual(self.argv[self.argv.index('-accel')+1],'tcg')
+        m.validate_qemu_block_graph(self.argv,self.p)
+
+    def test_protocol_auto_readonly_missing_false_is_actual_not_fabricated(self):
+        actual=[json.loads(self.argv[i+1]) for i,arg in enumerate(self.argv[:-1]) if arg=='-blockdev']
+        source=next(node for node in actual if node.get('filename')==self.p['target_disk_path'])
+        self.assertNotIn('read-only',source)
+        self.assertTrue(source['auto-read-only'])
+        m.validate_qemu_block_graph(self.argv,self.p)
+
+    def test_actual_direct_file_raw_cd_has_no_invented_raw_wrapper(self):
+        actual=[json.loads(self.argv[i+1]) for i,arg in enumerate(self.argv[:-1]) if arg=='-blockdev']
+        cd=next(node for node in actual if node.get('filename')==self.p['iso_path'])
+        self.assertEqual(cd['driver'],'file');self.assertTrue(cd['read-only'])
+        self.assertFalse(any(node.get('file')==cd['node-name'] for node in actual))
+        m.validate_qemu_block_graph(self.argv,self.p)
+
+    def test_implicit_false_format_default_from_actual_graph(self):
+        argv=copy.deepcopy(self.argv)
+        for i,arg in enumerate(argv[:-1]):
+            if arg=='-blockdev':
+                node=json.loads(argv[i+1])
+                if node.get('driver')=='qcow2' and node.get('read-only') is False:
+                    node.pop('read-only');argv[i+1]=json.dumps(node)
+        m.validate_qemu_block_graph(argv,self.p)
+
+    def test_writable_actual_cd_mutation_refused(self):
+        argv=copy.deepcopy(self.argv)
+        for i,arg in enumerate(argv[:-1]):
+            if arg=='-blockdev':
+                node=json.loads(argv[i+1])
+                if node.get('filename')==self.p['iso_path']:node['read-only']=False;argv[i+1]=json.dumps(node)
+        with self.assertRaises(m.QualificationError):m.validate_qemu_block_graph(argv,self.p)
+
+    def test_readonly_actual_target_mutation_refused(self):
+        argv=copy.deepcopy(self.argv)
+        for i,arg in enumerate(argv[:-1]):
+            if arg=='-blockdev':
+                node=json.loads(argv[i+1])
+                if node.get('filename')==self.p['target_disk_path']:node['read-only']=True;argv[i+1]=json.dumps(node)
+        with self.assertRaises(m.QualificationError):m.validate_qemu_block_graph(argv,self.p)
+
+    def test_paused_disk_only_probe_cannot_be_final_iso_invocation(self):
+        argv=self.fixture['paused_r6']['argv']
+        self.assertEqual(sha(encoded(argv)),self.fixture['paused_r6']['argv_sha256'])
+        with self.assertRaises(m.QualificationError):m.validate_qemu_block_graph(argv,self.p)
+
+
 class ActualQcowPreparation(unittest.TestCase):
     setUp = ServerQualification.setUp
     stage = ServerQualification.stage

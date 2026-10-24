@@ -42,21 +42,21 @@ if config['qmp_transport']=='libvirt-system-qmp/v1':
  bridge=provider.ServerLibvirtInputBridge(p['producer_binding']['domain_name'],p['producer_binding']['domain_uuid'],config['qemu_pid'],config['qemu_start_ticks'],config['qemu_invocation'],peer_uid=config['qemu_uid'])
 else:
  bridge=provider.ServerInputBridge(Path(config['qmp_socket']),config['qemu_pid'],config['qemu_start_ticks'],config['qemu_invocation'],peer_uid=config['qemu_uid'],capture_directory=Path(config['capture_directory']))
-assert config['qemu_invocation']==json.loads((fixture/'qemu-invocation.json').read_text())
+if p['qmp_transport']=='direct-unix-qmp/v1':
+ assert config['qemu_invocation']==json.loads((fixture/'qemu-invocation.json').read_text())
+else:
+ provider.validate_observed_qemu_argv(config['qemu_invocation'],p)
 installed_before=json.loads(provider.regular_bytes(fixture/'INSTALLED.json',owner_uid=0,immutable=True))
 history=json.loads(provider.regular_bytes(fixture/'launch-history.json',owner_uid=0,immutable=True))
 active_body=provider.regular_bytes(fixture/history[-1]['transition_file'],owner_uid=0,immutable=True)
 assert hashlib.sha256(active_body).hexdigest()==installed_before['active_launch_sha256']==history[-1]['transition_sha256']
 active_launch=json.loads(active_body)
 assert (config['qemu_pid'],config['qemu_start_ticks'])==(active_launch['qemu_pid'],active_launch['qemu_start_ticks'])
+if p['qmp_transport']=='libvirt-system-qmp/v1':
+ assert config['qemu_invocation']==active_launch['qemu_invocation']
 assert config['qemu_uid']==p['producer_binding']['qemu_uid']
 blocks=bridge.execute('query-block')
-for path,fmt,readonly in ((p['iso_path'],'raw',True),(p['target_disk_path'],'qcow2',False)):
- matches=[row['inserted'] for row in blocks if row.get('inserted',{}).get('file')==path]
- assert len(matches)==1,('Actual server block device missing',path)
- inserted=matches[0];assert inserted['drv']==fmt and inserted['ro'] is readonly
- if fmt=='qcow2':
-  assert inserted['image']['virtual-size']==provider.VIRTUAL_BYTES and not inserted['image'].get('backing-filename')
+provider.validate_live_blocks(blocks,p)
 free=os.statvfs(Path(p['target_disk_path']).parent)
 assert free.f_bavail*free.f_frsize>=provider.FLOOR_BYTES
 w=Path(config['workspace']);build_id=p['build_id'];native=p

@@ -19,6 +19,7 @@ import subprocess
 import time
 import struct
 import uuid
+import shlex
 import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
@@ -146,6 +147,8 @@ def validate_expected(expected):
     validate_producer_binding(expected.get('producer_binding'))
     require(expected.get('qmp_transport') in {'direct-unix-qmp/v1','libvirt-system-qmp/v1'},
             'Explicit server QMP transport required')
+    if expected['qmp_transport']=='libvirt-system-qmp/v1':
+        valid_hash(expected.get('domain_definition_sha256'), 'Independent installer domain XML required')
 
 
 
@@ -273,7 +276,23 @@ def validate_prepared(fixture, expected, *, owner_uid=0):
         require(isinstance(value.get('nevra'), str) and value['nevra'], 'Missing RPM NEVRA')
     invocation = json.loads(proofs['qemu-invocation.json'])
     validate_invocation(invocation, p)
-    for name in ('qemu', 'firmware'):
+    require(p.get('fixture_root') == str(fixture), 'Prepared fixture root differs')
+    executable_names={'qemu','firmware'}
+    if p['qmp_transport']=='libvirt-system-qmp/v1':
+        executable_names|={'libvirt_cli','firmware_variables'}
+        require(p.get('domain_definition_sha256')==expected['domain_definition_sha256'] and
+                p['proof_hashes'].get('domain-installer.xml')==expected['domain_definition_sha256'],
+                'Prepared modern libvirt definition differs')
+        require(p.get('installer_boot_inputs',{})==expected.get('installer_boot_inputs',{}),
+                'Independent extracted/injected installer inputs differ')
+        require(p.get('installer_cmdline')==expected.get('installer_cmdline') and
+                p.get('installer_stage2')==expected.get('installer_stage2'), 'Independent installer boot intent differs')
+        for value in p.get('installer_boot_inputs',{}).values():
+            valid_hash(value['sha256'])
+            require(file_sha256(value['path'])==value['sha256'], 'Retained installer input changed')
+        validate_libvirt_definition(proofs['domain-installer.xml'],p)
+    require(set(p['executables'])==executable_names, 'Hypervisor input inventory differs')
+    for name in executable_names:
         value = p['executables'][name]
         valid_hash(value['sha256'])
         require(file_sha256(value['path']) == value['sha256'], 'Changed host binary: ' + name)
@@ -303,6 +322,17 @@ def validate_heads(heads):
 
 
 def validate_invocation(argv, prepared):
+    if prepared['qmp_transport']=='libvirt-system-qmp/v1':
+        require(isinstance(argv,dict) and argv.get('transport')=='libvirt-system-qmp/v1',
+                'Explicit planned libvirt invocation required')
+        executable=prepared['executables']['libvirt_cli']['path']
+        require(argv.get('domain_definition_sha256')==prepared['domain_definition_sha256'],
+                'Planned invocation has wrong domain definition')
+        require(argv.get('define_argv')==[executable,'--connect','qemu:///system','define',
+                str(Path(prepared['fixture_root'])/'domain-installer.xml')], 'Unreviewed libvirt define invocation')
+        require(argv.get('start_argv')==[executable,'--connect','qemu:///system','start',
+                prepared['producer_binding']['domain_name'],'--paused'], 'Must pause exact defined domain before guest execution')
+        return
     require(isinstance(argv, list) and argv and all(isinstance(s, str) for s in argv), 'Invalid invocation')
     require(argv[0] == prepared['executables']['qemu']['path'], 'QEMU invocation mismatch')
     def option(name):
@@ -321,6 +351,151 @@ def validate_invocation(argv, prepared):
             'Actual invocation lacks pinned read-only firmware')
     require(any('file=' + prepared['target_disk_path'] in d.split(',') and
             'format=qcow2' in d.split(',') for d in drives), 'Actual invocation lacks exact target disk')
+
+
+
+def validate_installer_boot_intent(kernel,initrd,cmdline,p):
+    inputs=p.get('installer_boot_inputs',{})
+    require(set(inputs)=={'kernel','initrd','kickstart'} and kernel==inputs['kernel']['path'] and
+            initrd==inputs['initrd']['path'], 'Unpinned direct installer kernel/initrd/kickstart')
+    ks=inputs['kickstart'].get('initrd_path')
+    require(isinstance(cmdline,str) and cmdline==p.get('installer_cmdline') and
+            isinstance(ks,str) and Path(ks).is_absolute() and '..' not in Path(ks).parts,
+            'Exact intended installer command line/embedded KS path required')
+    arguments=shlex.split(cmdline)
+    require([arg for arg in arguments if arg.startswith('inst.ks=')]==['inst.ks=file:'+ks],
+            'Installer command line points at another kickstart')
+    stage2=p.get('installer_stage2')
+    require(isinstance(stage2,str) and stage2.startswith('inst.stage2=hd:LABEL=') and
+            [arg for arg in arguments if arg.startswith('inst.stage2=')]==[stage2],
+            'Installer stage2 must name the independently pinned final ISO label')
+
+
+def validate_libvirt_definition(body,p):
+    """Validate source-pinned planned/live modern libvirt XML, never infer argv."""
+    root=ET.fromstring(body)
+    require(root.get('type')=='qemu' and root.findtext('name')==p['producer_binding']['domain_name'] and
+            root.findtext('uuid')==p['producer_binding']['domain_uuid'], 'Wrong explicit libvirt domain')
+    os_type=root.find('os/type')
+    require(os_type is not None and os_type.get('arch')=='aarch64' and
+            re.fullmatch(r'virt(?:-[0-9]+\.[0-9]+)?',os_type.get('machine','')), 'Wrong libvirt guest/machine')
+    require(root.findtext('devices/emulator')==p['executables']['qemu']['path'], 'Changed XML emulator')
+    loader=root.find('os/loader');nvram=root.find('os/nvram')
+    require(loader is not None and loader.text==p['executables']['firmware']['path'] and
+            loader.get('readonly')=='yes' and loader.get('type')=='pflash', 'Changed read-only UEFI code')
+    require(nvram is not None and nvram.get('template')==p['executables']['firmware_variables']['path'] and
+            Path(nvram.text).parent==Path(p['target_disk_path']).parent, 'NVRAM must be new owned VM state from pinned template')
+    require(root.findtext('resource/partition')=='/luma/arm/desktop', 'Wrong owned libvirt resource partition')
+    kernel=root.findtext('os/kernel');initrd=root.findtext('os/initrd')
+    if kernel or initrd:
+        validate_installer_boot_intent(kernel,initrd,root.findtext('os/cmdline'),p)
+    hard=root.find('memtune/hard_limit')
+    factors={'KiB':1024,'MiB':1024**2,'GiB':1024**3,'bytes':1}
+    require(hard is not None and hard.get('unit','KiB') in factors and
+            int(hard.text)*factors[hard.get('unit','KiB')]==8*1024**3, 'Final VM hard8GiB bound required')
+    require(root.findall('devices/hostdev')==[], 'Physical host device in generic server fixture')
+    disks=root.findall('devices/disk')
+    target=[d for d in disks if d.get('device')=='disk']
+    media=[d for d in disks if d.get('device')=='cdrom']
+    require(len(disks)==2 and len(target)==len(media)==1, 'Only fresh target and exact final ISO allowed')
+    target_source=target[0].find('source');target_driver=target[0].find('driver')
+    media_source=media[0].find('source');media_driver=media[0].find('driver')
+    require(target_source is not None and target_driver is not None and target_source.get('file')==p['target_disk_path'] and
+            target_driver.get('type')=='qcow2', 'Changed XML target disk')
+    require(media_source is not None and media_driver is not None and media_source.get('file')==p['iso_path'] and
+            media[0].find('readonly') is not None and media_driver.get('type')=='raw',
+            'Exact final ISO must remain attached read-only')
+    return root
+
+
+def validate_observed_qemu_argv(argv,p):
+    """Validate final observed block graph and any directly booted installer intent."""
+    validate_qemu_block_graph(argv,p)
+    if any(flag in argv for flag in ('-kernel','-initrd','-append')):
+        def option(name):
+            require(argv.count(name)==1 and argv.index(name)+1<len(argv), 'Missing actual '+name)
+            return argv[argv.index(name)+1]
+        validate_installer_boot_intent(option('-kernel'),option('-initrd'),option('-append'),p)
+
+
+def validate_qemu_block_graph(argv,p):
+    """Bind real -blockdev or -drive argv observed at this paused QEMU birth."""
+    require(isinstance(argv,list) and argv and argv[0]==p['executables']['qemu']['path'] and
+            all(isinstance(x,str) for x in argv), 'Actual QEMU argv differs')
+    def option(name):
+        require(argv.count(name)==1 and argv.index(name)+1<len(argv), 'Missing actual '+name)
+        return argv[argv.index(name)+1]
+    require(option('-accel').split(',')[0]=='tcg' and
+            re.fullmatch(r'virt(?:-[0-9]+\.[0-9]+)?',option('-machine').split(',')[0]),
+            'Observed accelerator/machine differs')
+    require('-enable-kvm' not in argv, 'Unexpected actual KVM accelerator')
+    nodes={}
+    for i,arg in enumerate(argv[:-1]):
+        if arg=='-blockdev':
+            node=json.loads(argv[i+1])
+            require(isinstance(node,dict) and isinstance(node.get('node-name'),str) and
+                    node['node-name'] not in nodes, 'Duplicate/malformed actual block node')
+            nodes[node['node-name']]=node
+    drives=[argv[i+1] for i,arg in enumerate(argv[:-1]) if arg=='-drive']
+    attached=set()
+    for index,arg in enumerate(argv[:-1]):
+        if arg=='-device':
+            value=argv[index+1]
+            if value.startswith('{'):device=json.loads(value)
+            else:device=dict(part.split('=',1) for part in value.split(',') if '=' in part)
+            if isinstance(device.get('drive'),str):attached.add(device['drive'])
+    def readonly(node):
+        value=node.get('read-only',False)
+        require(type(value) is bool, 'Malformed actual read-only property')
+        return value
+    def source_file(node,path):
+        if node.get('driver')=='file':return node if node.get('filename')==path else None
+        source=nodes.get(node.get('file'))
+        return source if source and source.get('driver')=='file' and source.get('filename')==path else None
+    def bound_file(path,read_only,fmt):
+        for name,node in nodes.items():
+            if name not in attached:continue
+            source=source_file(node,path)
+            if source is None:continue
+            # libvirt represents a raw CD directly with the read-only file BDS.
+            if fmt=='raw' and node.get('driver')=='file' and read_only and readonly(node):return True
+            if node.get('driver')==fmt and readonly(node) is read_only:
+                # file protocol nodes commonly use auto-read-only:true without
+                # explicit read-only:false. The attached format node controls
+                # guest writes; live query-block independently checks effective ro.
+                if read_only or not readonly(source):return True
+        for drive in drives:
+            parts=drive.split(',')
+            if 'file='+path in parts and 'format='+fmt in parts:
+                if read_only:return 'readonly=on' in parts or 'read-only=on' in parts
+                return 'readonly=on' not in parts and 'read-only=on' not in parts
+        return False
+    require(bound_file(p['iso_path'],True,'raw'), 'Actual argv lacks exact attached read-only ISO block graph')
+    require(bound_file(p['target_disk_path'],False,'qcow2'), 'Actual argv lacks exact attached writable target block graph')
+    firmware=p['executables']['firmware']['path']
+    machine_options=dict(part.split('=',1) for part in option('-machine').split(',') if '=' in part)
+    pflash={value for key,value in machine_options.items() if key.startswith('pflash')}
+    firmware_ok=any(name in pflash and readonly(node) and source_file(node,firmware) is not None
+                    for name,node in nodes.items())
+    firmware_ok=firmware_ok or any('file='+firmware in d.split(',') and 'if=pflash' in d.split(',') and
+                                 'readonly=on' in d.split(',') for d in drives)
+    require(firmware_ok, 'Actual argv lacks attached pinned read-only firmware')
+
+
+def validate_live_blocks(blocks,p):
+    """Exact source/RO/format checks for effective QMP media, including raw file CD."""
+    require(isinstance(blocks,list), 'Malformed actual query-block result')
+    for path,formats,readonly in ((p['iso_path'],{'raw','file'},True),
+                                  (p['target_disk_path'],{'qcow2'},False)):
+        matches=[row['inserted'] for row in blocks if row.get('inserted',{}).get('file')==path]
+        require(len(matches)==1, 'Actual server block device missing/duplicated: '+path)
+        inserted=matches[0]
+        require(inserted.get('drv') in formats and inserted.get('ro') is readonly,
+                'Actual effective block format/read-only differs: '+path)
+        if not readonly:
+            image=inserted.get('image',{})
+            require(image.get('virtual-size')==VIRTUAL_BYTES and not image.get('backing-filename'),
+                    'Actual target size/backing differs')
 
 
 def validate_rows(q, heads):
@@ -357,6 +532,9 @@ def validate_launch_transition(p, original, transition):
     require(type(transition.get('qemu_pid')) is int and transition['qemu_pid'] > 1 and
             type(transition.get('qemu_start_ticks')) is int and transition['qemu_start_ticks'] > 0,
             'Actual launch PID birth required')
+    if p['qmp_transport']=='libvirt-system-qmp/v1':
+        validate_libvirt_definition(transition['live_domain_xml'],p)
+        validate_observed_qemu_argv(transition.get('qemu_invocation'),p)
     root = ET.fromstring(transition['live_domain_xml'])
     require(root.get('type') == 'qemu' and root.findtext('name') == binding['domain_name'] and
             root.findtext('uuid') == binding['domain_uuid'] and
@@ -582,11 +760,20 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
     require(digest == expected['checks_manifest_sha256'], 'Independent checker capsule differs')
     proofs['checks-manifest.json'] = digest
     copy_input(inputs['qemu_invocation'], 'qemu-invocation.json')
+    executable_names=('qemu','firmware')
+    if expected['qmp_transport']=='libvirt-system-qmp/v1':
+        copy_input(inputs['domain_definition'],'domain-installer.xml',expected['domain_definition_sha256'])
+        executable_names+=('libvirt_cli','firmware_variables')
     prepared = {key: expected[key] for key in IDENTITY_KEYS}
     prepared.update({key: expected[key] for key in (
         'static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
         'signed_heads_sha256', 'native_headers_sha256')})
-    prepared.update(qmp_transport=expected['qmp_transport'],producer_binding=expected['producer_binding'], result='PREPARED_ONLY', provider=PROVIDER, guest_architecture='aarch64',
+    if expected['qmp_transport']=='libvirt-system-qmp/v1':
+        prepared['domain_definition_sha256']=expected['domain_definition_sha256']
+        prepared['installer_boot_inputs']=expected.get('installer_boot_inputs',{})
+        prepared['installer_cmdline']=expected.get('installer_cmdline')
+        prepared['installer_stage2']=expected.get('installer_stage2')
+    prepared.update(fixture_root=str(fixture),qmp_transport=expected['qmp_transport'],producer_binding=expected['producer_binding'], result='PREPARED_ONLY', provider=PROVIDER, guest_architecture='aarch64',
                     host_architecture='x86_64', accelerator='tcg', qemu_machine='virt',
                     iso_path=str(iso), iso_identity=identity(iso), iso_readonly_binding=True,
                     target_disk_path=str(Path(inputs['target_disk_path'])),
@@ -595,7 +782,7 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
                     observed_free_bytes=free.f_bavail * free.f_frsize,
                     executables={name: {'path': str(Path(inputs[name])),
                                         'sha256': file_sha256(inputs[name])}
-                                 for name in ('qemu', 'firmware')}, proof_hashes=proofs)
+                                 for name in executable_names}, proof_hashes=proofs)
     require(Path(prepared['target_disk_path']).is_absolute(), 'Absolute target disk path required')
     validate_invocation(json.loads((fixture / 'qemu-invocation.json').read_text()), prepared)
     prepared_hash = immutable_json(fixture / 'PREPARED.json', prepared)
