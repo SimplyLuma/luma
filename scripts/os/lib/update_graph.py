@@ -54,19 +54,28 @@ def version_key(version):
     return functools.cmp_to_key(compare)(version)
 
 
-def validate(graph, channel, arch, releases=None, previous=None, max_age_days=14, now=None):
+def validate(graph, channel, arch, releases=None, previous=None, max_age_days=14, now=None,
+             hardware_target=None):
     now = now or datetime.now(timezone.utc)
     problems = []
     if not isinstance(graph, dict):
         return ["graph must be a JSON object"]
     missing = TOP_LEVEL - graph.keys()
-    extra = graph.keys() - TOP_LEVEL
+    expected_keys = TOP_LEVEL | ({"hardware_target"} if hardware_target is not None else set())
+    extra = graph.keys() - expected_keys
     if missing:
         problems.append(f"graph is missing {sorted(missing)}")
     if extra:
         problems.append(f"graph has unknown keys {sorted(extra)}")
-    if graph.get("schema_version") != 1:
-        problems.append("schema_version must be 1")
+    expected_schema = 2 if hardware_target is not None else 1
+    if type(graph.get("schema_version")) is not int or graph.get("schema_version") != expected_schema:
+        problems.append(f"schema_version must be {expected_schema}")
+    if hardware_target is not None:
+        if (not isinstance(hardware_target, str) or
+                not re.fullmatch(r"[a-z0-9][a-z0-9,._-]{0,63}", hardware_target)):
+            problems.append("expected hardware target is invalid")
+        if graph.get("hardware_target") != hardware_target:
+            problems.append("graph hardware target differs from the publication target")
     if graph.get("channel") != channel:
         problems.append(f"channel must be {channel!r}, got {graph.get('channel')!r}")
     if graph.get("arch") != arch:
@@ -188,6 +197,9 @@ def validate(graph, channel, arch, releases=None, previous=None, max_age_days=14
         problems.append(str(error))
 
     if previous:
+        if (previous.get("channel") != channel or previous.get("arch") != arch or
+                previous.get("hardware_target") != hardware_target):
+            problems.append("previous graph belongs to a different update target")
         prev_generated = parse_time(previous.get("generated_at"), "previous generated_at", [])
         if generated and prev_generated and generated <= prev_generated:
             problems.append("generated_at must be newer than the last signed graph")
@@ -207,6 +219,7 @@ def main(argv=None):
     v.add_argument("--graph", required=True)
     v.add_argument("--channel", required=True)
     v.add_argument("--arch", required=True)
+    v.add_argument("--hardware-target")
     v.add_argument("--releases")
     v.add_argument("--previous")
     v.add_argument("--max-age-days", type=int, default=14)
@@ -219,7 +232,8 @@ def main(argv=None):
         return 1
     releases = json.load(open(args.releases, encoding="utf-8")) if args.releases else None
     previous = json.load(open(args.previous, encoding="utf-8")) if args.previous else None
-    problems = validate(graph, args.channel, args.arch, releases, previous, args.max_age_days)
+    problems = validate(graph, args.channel, args.arch, releases, previous, args.max_age_days,
+                        hardware_target=args.hardware_target)
     for problem in problems:
         print(problem)
     return 1 if problems else 0

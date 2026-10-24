@@ -24,3 +24,13 @@ Run the unit tests with:
 ```sh
 cd src/luma-update && python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+
+Update streams are architecture-qualified (`graph/{arch}/{channel}.json`).
+The signer also maintains the older x86 `graph/{channel}.json` alias. Phone
+policies additionally select `hardware_target`, a device ref template and the
+per-device graph URL: `graph/aarch64/fairphone-fp6/{channel}.json` or
+`graph/aarch64/unihertz-titan2e/{channel}.json`. The kernel device-tree board
+must match that policy; a signed graph cannot authorize another device or an
+explicitly different commit architecture. Older generic commits without an
+architecture metadata key remain accepted.

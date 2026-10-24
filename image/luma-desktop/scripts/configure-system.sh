@@ -55,8 +55,8 @@ install -D -m 0644 "$src/config/os/desktop-profiles.json" /usr/share/luma/deskto
 python3 "$src/scripts/os/lib/desktop_target.py" \
   --arch "$architecture" --profile "$profile" contract >/tmp/luma-target-contract
 install -D -m 0644 /tmp/luma-target-contract /usr/share/luma/os-build-contract.env
-# Graphs contain one architecture. Keep the legacy x86 URL stable and place
-# ARM graphs in a distinct directory; the client's signature/arch checks stay on.
+# New installs use an architecture-qualified graph. The signer retains the
+# legacy x86 alias for existing installs; signature/architecture checks stay on.
 python3 - "$src" "$architecture" "$profile" <<'PYGRAPH'
 import configparser, sys
 from pathlib import Path

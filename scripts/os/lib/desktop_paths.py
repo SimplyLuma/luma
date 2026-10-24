@@ -19,9 +19,16 @@ def releases_path(repo, arch='x86_64'):
 def manifest_architecture(manifest):
     arch = architecture(manifest.get('architecture', 'x86_64'))
     ref = manifest.get('ref')
-    if ref and (len(ref.split('/')) < 4 or ref.split('/')[-2] != arch):
+    target = manifest.get('hardware_target', '')
+    if target:
+        import devices
+        row = devices.device(target)
+        if row['arch'] != arch or ref != devices.ref(target, '1', manifest.get('channel')):
+            raise ValueError('Release hardware target, architecture and signed ref disagree')
+    elif ref and (len(ref.split('/')) < 4 or ref.split('/')[-2] != arch):
         raise ValueError('Release architecture and signed ref disagree')
     return arch
 
 def graph_prefix(arch='x86_64'):
-    return str(architecture_path('os/graph', arch))
+    architecture(arch)
+    return 'os/graph/' + arch

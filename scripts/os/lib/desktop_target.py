@@ -99,8 +99,7 @@ def contract(root, architecture, profile_name='full'):
                   LUMA_OS_BASE_IMAGE_DIGEST=row['base_digest'])
     if profile_name != 'full':
         values['LUMA_OS_PROFILE'] = profile_name
-    if architecture != 'x86_64':
-        values['LUMA_OS_GRAPH_PREFIX'] += '/' + architecture
+    values['LUMA_OS_GRAPH_PREFIX'] += '/' + architecture
     values['LUMA_OS_HUB_GRAPH_URL_TEMPLATE'] = re.sub(
         r'arch=(x86_64|aarch64)', 'arch=' + architecture,
         values['LUMA_OS_HUB_GRAPH_URL_TEMPLATE'])

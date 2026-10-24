@@ -42,7 +42,7 @@ class Checking(EngineCase):
         self.assertEqual(self.state()["last_check"], int(NOW))
 
     def test_bad_signature_is_an_error_and_nothing_is_offered(self):
-        url = self.rig.settings.graph_url.format(channel="stable")
+        url = self.rig.settings.graph_url.format(channel="stable", arch="x86_64")
         doc = graph_doc([release("1.0.0", 1), release("9.9.9", 99)])
         data = json.dumps(doc).encode()
         _, signature = minisign.sign_for_tests(bytes(32), fakes.KEY_ID, data, "evil")
@@ -69,22 +69,22 @@ class Checking(EngineCase):
         self.assertIsNone(engine.check())
         self.assertEqual(engine.status().last_error_class, "unmanaged")
         self.assertFalse(engine.download(user_initiated=True))
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
 
     def test_automatic_spacing(self):
         self.engine.automatic()
         posts = len(self.rig.http.posts)
-        calls = len(self.rig.backend.calls)
+        calls = len(self.rig.backend.transactions())
         self.rig.now += 600
         self.engine.automatic()
-        self.assertEqual(len(self.rig.backend.calls), calls)
+        self.assertEqual(len(self.rig.backend.transactions()), calls)
         self.assertEqual(len(self.rig.http.posts), posts)
 
 
 class Downloading(EngineCase):
     def test_automatic_download_stages_exact_commit_without_downgrade(self):
         self.engine.automatic()
-        self.assertIn(("update", commit(2), None, False), self.rig.backend.calls)
+        self.assertIn(("update", commit(2), None, False), self.rig.backend.transactions())
         status = self.engine.status()
         self.assertEqual((status.state, status.staged_version, status.staged_commit), ("staged", "1.0.1", commit(2)))
         pending = self.state()["pending"]
@@ -95,7 +95,7 @@ class Downloading(EngineCase):
     def test_metered_waits_for_person(self):
         self.rig.probes.net.metered = True
         self.engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         status = self.engine.status()
         self.assertEqual((status.state, status.metered), ("available", True))
         self.assertTrue(self.engine.download(user_initiated=True))
@@ -104,13 +104,13 @@ class Downloading(EngineCase):
     def test_unknown_metered_state_waits(self):
         self.rig.probes.net.metered = None
         self.engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         self.assertTrue(self.engine.status().metered)
 
     def test_network_manager_not_answering_counts_as_metered(self):
         self.rig.probes.net = fakes.Network(available=False, metered=None, connectivity=0)
         self.engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         status = self.engine.status()
         self.assertEqual((status.state, status.metered), ("available", True))
         self.assertTrue(self.engine.download(user_initiated=True))
@@ -118,7 +118,7 @@ class Downloading(EngineCase):
     def test_upower_not_answering_waits_for_a_person(self):
         self.rig.probes.pwr = fakes.Power(available=False, on_battery=False, percentage=None)
         self.engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         self.assertEqual(self.engine.status().state, "available")
         self.rig.probes.pwr = fakes.Power(available=True, on_battery=False, percentage=None)  # a desktop on AC
         self.rig.now += 7200
@@ -129,7 +129,7 @@ class Downloading(EngineCase):
         self.rig.probes.pwr.on_battery = True
         self.rig.probes.pwr.percentage = 30.0
         self.engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         self.rig.probes.pwr.percentage = 31.0
         self.rig.now += 7200
         self.engine.automatic()
@@ -139,7 +139,7 @@ class Downloading(EngineCase):
         self.engine.check()
         self.rig.backend.active = ("Upgrade", ":1.9", "/")
         self.assertFalse(self.engine.download(user_initiated=True))
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         self.assertEqual(self.engine.status().last_error_class, "busy")
 
     def test_transaction_failure_reports_failed(self):
@@ -154,14 +154,14 @@ class Downloading(EngineCase):
         self.rig.backend.list.insert(0, fakes.FakeDeployment(commit(77), "44.1", "private:luma/repair/x", staged=True))
         self.engine.check()
         self.assertFalse(self.engine.download(user_initiated=True))
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
 
     def test_pulled_staged_release_is_removed_before_boot(self):
         self.engine.automatic()
         self.rig.now += 7200
         self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2, deadend=True)], generated=NOW + 3600))
         self.engine.check()
-        self.assertIn(("cleanup",), self.rig.backend.calls)
+        self.assertIn(("cleanup",), self.rig.backend.transactions())
         self.assertIsNone(self.state()["pending"])
         self.assertEqual(self.engine.status().state, "idle")
 
@@ -276,7 +276,7 @@ class AfterRestart(EngineCase):
         self.engine.check()
         self.assertTrue(self.engine.download(user_initiated=True))
         self.assertEqual(self.engine.status().state, "staged")
-        self.assertEqual(self.rig.backend.calls[-1][-1], "cache-only")
+        self.assertEqual(self.rig.backend.transactions()[-1][-1], "cache-only")
 
     def test_unreachable_repositories_without_cache_leave_system_unchanged(self):
         self._added_package()
@@ -291,7 +291,7 @@ class AfterRestart(EngineCase):
         self.rig.backend.fail_with = TransactionError("error: Cannot download repomd.xml: Curl error (6)")
         self.engine.check()
         self.assertFalse(self.engine.download(user_initiated=True))
-        self.assertFalse(any(call[-1] == "cache-only" for call in self.rig.backend.calls))
+        self.assertFalse(any(call[-1] == "cache-only" for call in self.rig.backend.transactions()))
 
     def test_busy_download_keeps_available_state(self):
         self.engine.check()
@@ -401,7 +401,7 @@ class ChannelsAndPreview(EngineCase):
         # The beta graph is followed and the rebase refspec is the preview remote.
         self.rig.publish(graph_doc([release("1.1.0-beta.1", 5)], channel="beta"), channel="beta")
         self.engine.automatic()
-        self.assertIn(("update", commit(5), "luma:luma/1/x86_64/beta", False), self.rig.backend.calls)
+        self.assertIn(("update", commit(5), "luma:luma/1/x86_64/beta", False), self.rig.backend.transactions())
 
         self.engine.leave_preview()
         self.assertFalse(credential.exists())
@@ -409,7 +409,7 @@ class ChannelsAndPreview(EngineCase):
         self.assertIn("url=https://dl.simplyluma.com/os/repo\n", remote.read_text())
         self.assertIn("collection-id=org.projectluma.OS\n", remote.read_text())
         self.assertEqual(self.engine.status().channel, "stable")
-        self.assertIn(("cleanup",), self.rig.backend.calls)
+        self.assertIn(("cleanup",), self.rig.backend.transactions())
         self.assertEqual(self.rig.http.posts[-1][0], "DELETE")
 
     def test_not_entitled(self):
@@ -426,12 +426,12 @@ class ChannelsAndPreview(EngineCase):
         engine = self.rig.engine()
         engine.set_channel("stable")
         engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [])
+        self.assertEqual(self.rig.backend.transactions(), [])
         self.assertEqual(engine.status().channel, "stable")
         self.rig.now += 7200
         engine.set_channel("stable", switch_now=True)
         engine.automatic()
-        self.assertIn(("update", commit(2), "luma:luma/1/x86_64/stable", True), self.rig.backend.calls)
+        self.assertIn(("update", commit(2), "luma:luma/1/x86_64/stable", True), self.rig.backend.transactions())
 
 
 class Reporting(EngineCase):

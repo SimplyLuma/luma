@@ -85,6 +85,7 @@ class FakeRpmOstree:
         self.versions: dict[str, str] = {}
         self.reloads = 0
         self.during_download = None
+        self.commit_metadata = {}
 
     def deployments(self):
         return list(self.list)
@@ -96,8 +97,8 @@ class FakeRpmOstree:
         self.reloads += 1
 
     def update_deployment(self, *, revision, refspec, allow_downgrade, progress=None, message=None,
-                          cancellable=None, cache_only=False, no_overrides=False, uninstall=(), **_):
-        self.calls.append(("update", revision, refspec, allow_downgrade) + (("cache-only",) if cache_only else ())
+                          cancellable=None, cache_only=False, no_overrides=False, uninstall=(), download_only=False, **_):
+        self.calls.append(("download" if download_only else "update", revision, refspec, allow_downgrade) + (("cache-only",) if cache_only else ())
                           + (("no-overrides",) if no_overrides else ())
                           + (("uninstall",) + tuple(uninstall) if uninstall else ()))
         if self.fail_with and not (cache_only and getattr(self, "cache_only_works", False)):
@@ -110,11 +111,20 @@ class FakeRpmOstree:
             if cancellable is not None and cancellable.is_cancelled():
                 raise TransactionError("Transaction was cancelled")
             progress(1.0, 200)
+        if download_only:
+            return
         booted = next(d for d in self.list if d.booted)
         origin = refspec or booted.origin
         self.list = [d for d in self.list if not d.staged]
         self.list.insert(0, FakeDeployment(revision, self.versions.get(revision, "?"), origin, staged=True,
                                            kargs=booted.kargs))
+
+    def commit_target_metadata(self, revision):
+        self.calls.append(("commit-metadata", revision))
+        return self.commit_metadata.get(revision, {})
+
+    def transactions(self):
+        return [call for call in self.calls if call[0] != "commit-metadata"]
 
     # ── Kernel arguments ────────────────────────────────────────────────
 
@@ -251,7 +261,7 @@ class Rig:
     def publish(self, doc: dict, channel="stable", secret=SECRET, key_id=KEY_ID) -> None:
         data = json.dumps(doc).encode()
         _, signature = minisign.sign_for_tests(secret, key_id, data, f"timestamp:{int(self.now)}\tfile:{channel}.json")
-        url = self.settings.graph_url.format(channel=channel)
+        url = self.settings.graph_url.format(channel=channel, arch=doc["arch"], hardware_target=self.settings.hardware_target)
         self.http.files[url] = data
         self.http.files[url + ".minisig"] = signature.encode()
         for item in doc["releases"]:

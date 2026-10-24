@@ -49,7 +49,7 @@ class Edges(unittest.TestCase):
         self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
         engine = self.rig.engine()
         engine.automatic()
-        self.assertEqual(self.rig.backend.calls, [("update", commit(2), None, False), ("update", commit(2), None, True)])
+        self.assertEqual(self.rig.backend.transactions(), [("update", commit(2), None, False), ("update", commit(2), None, True)])
         status = engine.status()
         self.assertEqual((status.state, status.staged_commit, status.last_error), ("staged", commit(2), ""))
         self.assertEqual([r["result"] for r in self.events()], ["staged"])
@@ -62,7 +62,7 @@ class Edges(unittest.TestCase):
         self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
         engine = self.rig.engine()
         engine.automatic()
-        self.assertEqual(backend.calls, [("update", commit(2), None, False)])
+        self.assertEqual(backend.transactions(), [("update", commit(2), None, False)])
         self.assertEqual(engine.status().last_error_class, "transaction")
 
     def test_the_older_timestamp_retry_is_not_used_for_a_booted_version_that_is_newer(self):
@@ -75,7 +75,7 @@ class Edges(unittest.TestCase):
         engine.check()
         self.rig.backend.list[0].version = "1.0.4"  # booted became newer than the chosen release since
         self.assertFalse(engine.download(user_initiated=True))
-        self.assertEqual(self.rig.backend.calls, [("update", commit(2), None, False)])
+        self.assertEqual(self.rig.backend.transactions(), [("update", commit(2), None, False)])
 
     def test_b_min_free_space_is_a_disk_space_error(self):
         for text in ("error: Writing content object: min-free-space-percent '3%' would be exceeded, "
@@ -99,7 +99,7 @@ class Edges(unittest.TestCase):
         self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
         engine = self.rig.engine()
         engine.automatic()
-        self.assertIn(("cleanup",), self.rig.backend.calls)
+        self.assertIn(("cleanup",), self.rig.backend.transactions())
         self.assertFalse(any(d.staged for d in self.rig.backend.list))
         status = engine.status()
         self.assertEqual((status.state, status.last_error_class, status.staged_commit),

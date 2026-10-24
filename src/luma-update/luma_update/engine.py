@@ -476,16 +476,33 @@ class Engine:
     # ── Reading the system ───────────────────────────────────────────────
 
     def _view(self) -> SystemView:
+        from .hardware import require_device_target
+        try:
+            require_device_target(self.paths, self.settings.hardware_target, self.arch)
+        except ValueError as error:
+            raise Unmanaged(str(error)) from error
         deployments = self.backend.deployments()
         booted = next((d for d in deployments if d.booted), None)
         if booted is None:
             raise Unmanaged("rpm-ostree reports no booted deployment")
+        origin = parse_origin(booted.origin, self.settings)
+        if origin is not None and origin.arch != self.arch:
+            raise Unmanaged("booted Luma origin architecture does not match this device")
         staged = next((d for d in deployments if d.staged), None)
         rollback = next((d for d in deployments if not d.booted and not d.staged), None)
         default_is_rollback = bool(deployments) and not deployments[0].booted and not deployments[0].staged
-        return SystemView(deployments, booted, staged, parse_origin(booted.origin, self.settings),
+        return SystemView(deployments, booted, staged, origin,
                           parse_origin(staged.origin, self.settings) if staged else None,
                           rollback, default_is_rollback)
+
+    def _require_commit_target(self, revision: str) -> None:
+        from .hardware import require_commit_target, require_device_target
+        try:
+            require_device_target(self.paths, self.settings.hardware_target, self.arch)
+            require_commit_target(self.backend.commit_target_metadata(revision),
+                                  self.settings.hardware_target, self.arch)
+        except ValueError as error:
+            raise UpdateError(str(error), "hardware-target") from error
 
     def _channel(self, view: SystemView, data: dict | None = None) -> str:
         requested = (self.store.data if data is None else data).get("requested_channel") or ""
@@ -706,7 +723,8 @@ class Engine:
             automatic_download=self.automatic_download_enabled(data),
             ignored_version=self.ignored_version(data),
             repository_url=repository_url(self.paths, self.settings),
-            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable"),
+            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable",
+                                                    arch=self._arch(view), hardware_target=self.settings.hardware_target),
             signature_verified=bool(signature.get("key_id")),
             signing_key_id=str(signature.get("key_id", "") or ""),
             last_check_reason=str(data.get("last_check_reason", "") or ""),
@@ -796,7 +814,7 @@ class Engine:
         self._operation.release()
 
     def fetch_graph(self, channel: str, arch: str) -> graphmod.Graph:
-        url = self.settings.graph_url.format(channel=channel)
+        url = self.settings.graph_url.format(channel=channel, arch=arch, hardware_target=self.settings.hardware_target)
         data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
         signature = self.http.get(url + ".minisig", minisign.MAX_SIGNATURE_BYTES)
         keys = minisign.load_keys(self.paths.graph_key_dirs)
@@ -806,7 +824,8 @@ class Engine:
         key_id = next((key.key_id_hex for key in keys if key.key_id == verified.key_id), "")
         graph = graphmod.parse_graph(data)
         graphmod.check_freshness(graph, channel=channel, arch=arch, now=self.clock(),
-                                 last_generated_at=self.store.graph_seen(channel))
+                                 last_generated_at=self.store.graph_seen(channel),
+                                 hardware_target=self.settings.hardware_target)
         with self.store.locked():
             self.store.record_graph(channel, graph.generated_at)
             # What Depot shows as "signed and verified": which key checked out, and when.
@@ -1082,6 +1101,17 @@ class Engine:
             if dropping:
                 options["uninstall"] = tuple(dropping)
             try:
+                if self.settings.hardware_target:
+                    # Fetch without staging first. All retry/cache/preview paths
+                    # pass through this boundary and inspect the same checksum.
+                    self.backend.update_deployment(
+                        revision=release.commit, refspec=refspec,
+                        allow_downgrade=allow_downgrade, progress=progress,
+                        message=lambda text: log.info("rpm-ostree: %s", text),
+                        cancellable=token, download_only=True, **options)
+                    if token.is_cancelled():
+                        raise UpdateError("update download was cancelled", "cancelled")
+                    self._require_commit_target(release.commit)
                 self.backend.update_deployment(revision=release.commit, refspec=refspec,
                                                allow_downgrade=allow_downgrade, progress=progress,
                                                message=lambda text: log.info("rpm-ostree: %s", text),
@@ -1199,6 +1229,17 @@ class Engine:
                     except Exception as cleanup_error:
                         log.error("could not remove the wrong staged deployment: %s", cleanup_error)
                 raise UpdateError("rpm-ostree did not stage the requested commit", "transaction")
+            if not self.settings.hardware_target:
+                # A generic install stages in one transaction, so the exact
+                # commit is checked here, before a shutdown can finalize it.
+                try:
+                    self._require_commit_target(release.commit)
+                except Exception:
+                    try:
+                        self.backend.cleanup_pending(message=lambda text: log.info("rpm-ostree: %s", text))
+                    except Exception as cleanup_error:
+                        log.error("could not remove the wrong staged deployment: %s", cleanup_error)
+                    raise
             kargs_added = self._apply_release_kargs(view_after, release)
             self._refresh_boot_menu(view_after, release)
         except Exception as error:
@@ -1364,6 +1405,7 @@ class Engine:
                 kind = "rollback"
             else:
                 raise NothingToDo("nothing is waiting for a restart")
+            self._require_commit_target(view.deployments[0].base_commit)
             log.info("restarting to finish the %s, as requested", kind)
             restart()
             return kind
@@ -1378,6 +1420,8 @@ class Engine:
                 raise NothingToDo("there is no previous version to go back to")
             if self.backend.active_transaction() is not None:
                 raise Busy("another rpm-ostree transaction is in progress")
+            self._require_commit_target(view.booted.base_commit if view.default_is_rollback
+                                        else view.rollback.base_commit)
             self.backend.rollback(message=lambda text: log.info("rpm-ostree: %s", text))
             after = self._view()
             with self.store.locked():

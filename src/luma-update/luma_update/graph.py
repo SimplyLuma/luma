@@ -90,6 +90,7 @@ class Graph:
     arch: str
     generated_at: float
     releases: tuple[Release, ...] = field(default_factory=tuple)
+    hardware_target: str = ""
 
     def by_commit(self, commit: str) -> Release | None:
         for release in self.releases:
@@ -211,8 +212,16 @@ def parse_graph(data: bytes) -> Graph:
         raise GraphError("graph is not UTF-8 JSON") from None
     if not isinstance(value, dict):
         raise GraphError("graph must be a JSON object")
-    if value.get("schema_version") != SCHEMA_VERSION or isinstance(value.get("schema_version"), bool):
-        raise GraphError(f"unsupported graph schema_version (expected {SCHEMA_VERSION})")
+    schema = value.get("schema_version")
+    if type(schema) is not int or schema not in (SCHEMA_VERSION, 2):
+        raise GraphError("unsupported graph schema_version")
+    hardware_target = value.get("hardware_target", "")
+    if schema == 2:
+        if (not isinstance(hardware_target, str) or
+                not re.fullmatch(r"[a-z0-9][a-z0-9,._-]{0,63}", hardware_target)):
+            raise GraphError("graph hardware_target is invalid or missing")
+    elif "hardware_target" in value:
+        raise GraphError("hardware-targeted graphs require schema_version 2")
     channel = value.get("channel")
     if channel not in CHANNELS:
         raise GraphError("graph channel is not stable, beta or nightly")
@@ -243,15 +252,18 @@ def parse_graph(data: bytes) -> Graph:
             raise GraphError(f"rollback_to of {release.version} must be an older release")
     return Graph(channel=channel, arch=arch,
                  generated_at=_timestamp(value.get("generated_at"), "generated_at"),
-                 releases=tuple(sorted(releases, key=lambda r: r.version)))
+                 releases=tuple(sorted(releases, key=lambda r: r.version)),
+                 hardware_target=hardware_target)
 
 
 def check_freshness(graph: Graph, *, channel: str, arch: str, now: float,
-                    last_generated_at: float | None) -> None:
+                    last_generated_at: float | None, hardware_target: str = "") -> None:
     if graph.channel != channel:
         raise GraphError(f"graph is for channel {graph.channel}, expected {channel}")
     if graph.arch != arch:
         raise GraphError(f"graph is for {graph.arch}, this computer is {arch}")
+    if graph.hardware_target != hardware_target:
+        raise GraphError("graph hardware target does not match this device")
     if graph.generated_at > now + FUTURE_TOLERANCE_SECONDS:
         raise StaleGraph("graph is dated in the future; check this computer's clock")
     if graph.generated_at < now - FRESHNESS_SECONDS:

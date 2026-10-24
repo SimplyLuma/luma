@@ -246,14 +246,14 @@ class StartFollowingAChannel(unittest.TestCase):
     def test_adopting_replaces_overrides_and_an_ordinary_update_does_not(self):
         self.with_remote()
         self.engine.adopt_channel("stable")
-        self.assertIn("no-overrides", self.rig.backend.calls[-1])
+        self.assertIn("no-overrides", self.rig.backend.transactions()[-1])
         rig = fakes.Rig()
         self.addCleanup(rig.close)
         rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
         engine = rig.engine()
         engine.check()
         engine.download(user_initiated=True)
-        self.assertNotIn("no-overrides", rig.backend.calls[-1])
+        self.assertNotIn("no-overrides", rig.backend.transactions()[-1])
 
     def test_the_running_version_is_kept_so_it_can_be_undone(self):
         self.with_remote()

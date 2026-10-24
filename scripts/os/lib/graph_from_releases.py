@@ -13,6 +13,7 @@ paused, dead-ended or a barrier. sign-update-graph.sh validates and signs it
 like a graph from Hub.
 """
 
+import argparse
 import datetime
 import glob
 import json
@@ -20,6 +21,16 @@ import os
 import sys
 
 from desktop_paths import architecture, releases_path, manifest_architecture
+import devices
+
+
+def release_path(repo, arch, target=""):
+    if target:
+        if devices.device(target)["arch"] != arch:
+            raise ValueError("device and graph architecture disagree")
+        from pathlib import Path
+        return Path(repo) / "luma" / devices.namespace(target) / "releases"
+    return releases_path(repo, arch)
 
 
 NOTES_BASE = "https://dl.simplyluma.com/media"
@@ -27,12 +38,14 @@ NOTES_BASE = "https://dl.simplyluma.com/media"
 
 def notes_of(repo, manifest):
     """The release's signed notes (luma/releases/<version>/notes.json), if any."""
-    path = str(releases_path(repo, manifest_architecture(manifest)) / manifest["version"] / "notes.json")
+    path = str(release_path(repo, manifest_architecture(manifest), manifest.get("hardware_target", "")) / manifest["version"] / "notes.json")
     if not os.path.exists(path):
         return None, ""
     with open(path, encoding="utf-8") as stream:
         notes = json.load(stream)
     base = NOTES_BASE + ("" if manifest_architecture(manifest) == "x86_64" else "/" + manifest_architecture(manifest))
+    if manifest.get("hardware_target"):
+        base = NOTES_BASE + "/" + devices.namespace(manifest["hardware_target"]).removeprefix("targets/")
     return f"{base}/{manifest['channel']}/notes/{manifest['build_id']}.json", " ".join(notes.get("summary", "").split())[:500]
 
 
@@ -43,7 +56,7 @@ def display_name_of(repo, manifest):
     every one of them was a Prairie Beta 0 nightly, named for its nightly date
     (from its notes, or its build id's day).
     """
-    release_dir = str(releases_path(repo, manifest_architecture(manifest)) / manifest["version"])
+    release_dir = str(release_path(repo, manifest_architecture(manifest), manifest.get("hardware_target", "")) / manifest["version"])
     fields = {}
     try:
         with open(os.path.join(release_dir, "os-release"), encoding="utf-8") as stream:
@@ -68,7 +81,7 @@ def display_name_of(repo, manifest):
 def superseded_summary(repo, channel, releases, manifest):
     """Releases published before notes existed point at the newest noted one."""
     for newer in sorted(releases, key=lambda m: m["published_utc"], reverse=True):
-        path = str(releases_path(repo, manifest_architecture(newer)) / newer["version"] / "notes.json")
+        path = str(release_path(repo, manifest_architecture(newer), newer.get("hardware_target", "")) / newer["version"] / "notes.json")
         if os.path.exists(path):
             with open(path, encoding="utf-8") as stream:
                 day = json.load(stream).get("nightly_date", "")
@@ -81,17 +94,22 @@ def superseded_summary(repo, channel, releases, manifest):
 
 
 def main(argv):
-    if len(argv) != 4:
-        print(__doc__, file=sys.stderr)
-        return 2
-    repo, channel, arch = argv[1:]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("repo")
+    parser.add_argument("channel", choices=("stable", "beta", "nightly"))
+    parser.add_argument("arch", choices=("x86_64", "aarch64"))
+    parser.add_argument("--hardware-target", choices=tuple(devices.load()), default="")
+    args = parser.parse_args(argv[1:])
+    repo, channel, arch = args.repo, args.channel, args.arch
     architecture(arch)
+    root = release_path(repo, arch, args.hardware_target)
     releases = []
-    for path in glob.glob(str(releases_path(repo, arch) / "*" / "manifest.json")):
+    for path in glob.glob(str(root / "*" / "manifest.json")):
         with open(path, encoding="utf-8") as stream:
             manifest = json.load(stream)
         commit = manifest["commit"]
-        if manifest.get("channel") != channel or manifest_architecture(manifest) != arch:
+        if (manifest.get("channel") != channel or manifest_architecture(manifest) != arch
+                or manifest.get("hardware_target", "") != args.hardware_target):
             continue
         if not os.path.exists(os.path.join(repo, "objects", commit[:2], commit[2:] + ".commit")):
             continue
@@ -99,7 +117,8 @@ def main(argv):
     releases.sort(key=lambda manifest: manifest["published_utc"])
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     graph = {
-        "schema_version": 1,
+        "schema_version": 2 if args.hardware_target else 1,
+        **({"hardware_target": args.hardware_target} if args.hardware_target else {}),
         "channel": channel,
         "arch": arch,
         "generated_at": now,

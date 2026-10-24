@@ -18,7 +18,7 @@ class DesktopNamespaces(unittest.TestCase):
         self.assertEqual(str(p.architecture_path('/pipeline/media')), '/pipeline/media')
         self.assertEqual(str(p.architecture_path('/pipeline/media', 'aarch64')), '/pipeline/media/aarch64')
         self.assertEqual(str(p.releases_path('/repo', 'aarch64')), '/repo/luma/releases/aarch64')
-        self.assertEqual(p.graph_prefix('x86_64'), 'os/graph')
+        self.assertEqual(p.graph_prefix('x86_64'), 'os/graph/x86_64')
         self.assertEqual(p.graph_prefix('aarch64'), 'os/graph/aarch64')
         with self.assertRaises(ValueError):
             p.graph_prefix('../x86_64')

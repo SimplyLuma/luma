@@ -32,6 +32,10 @@ class Paths:
         return self.root / path.lstrip("/")
 
     @property
+    def device_tree_compatible(self) -> Path:
+        return self._p("/proc/device-tree/compatible")
+
+    @property
     def state_dir(self) -> Path:
         return self._p("/var/lib/luma-update")
 
@@ -96,11 +100,12 @@ class Paths:
 
 @dataclass(frozen=True)
 class Settings:
-    graph_url: str = "https://dl.simplyluma.com/os/graph/{channel}.json"
+    graph_url: str = "https://dl.simplyluma.com/os/graph/{arch}/{channel}.json"
     stable_repo_url: str = "https://dl.simplyluma.com/os/repo"
     preview_repo_url: str = "https://dl.simplyluma.com/os/preview/{credential}/repo"
     stable_remote: str = "luma"
     ref_template: str = "luma/1/{arch}/{channel}"
+    hardware_target: str = ""
     events_url: str = "https://hub.simplyluma.com/api/updates/events"
     preview_credentials_url: str = "https://hub.simplyluma.com/api/updates/preview-credentials"
     automatic_download: bool = True
@@ -113,7 +118,7 @@ class Settings:
     extra: dict = field(default_factory=dict)
 
     def ref(self, channel: str, arch: str) -> str:
-        return self.ref_template.format(channel=channel, arch=arch)
+        return self.ref_template.format(channel=channel, arch=arch, hardware_target=self.hardware_target)
 
     def remote_for(self, channel: str) -> str:
         # One remote for every channel; preview enrollment changes where it points.

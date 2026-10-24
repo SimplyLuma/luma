@@ -19,6 +19,8 @@ class DesktopTargets(unittest.TestCase):
         self.assertEqual(target.packages(ROOT, 'x86_64'), target.lines(ROOT / 'config/desktop/packages.txt'))
         self.assertEqual(target.packages(ROOT, 'x86_64', fedora=True), target.lines(ROOT / 'config/os/fedora-packages.txt'))
         old = dict(line.split('=', 1) for line in target.lines(ROOT / 'config/os/release.env'))
+        # New installations use the arch URL; every other x86 contract field stays identical.
+        old['LUMA_OS_GRAPH_PREFIX'] += '/x86_64'
         self.assertEqual(target.contract(ROOT, 'x86_64'), old)
 
     def test_arm_uses_same_releases_and_noarch_packages(self):
