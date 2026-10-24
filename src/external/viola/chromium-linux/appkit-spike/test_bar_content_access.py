@@ -31,12 +31,18 @@ class BarContentAccess(unittest.TestCase):
     def setUp(self):
         self.window = IntegratedWindow(self.application, GLib.MainLoop(), lambda *_: None, [])
         self.addCleanup(self.window.destroy)
+        # AppKit sizes fresh windows from the monitor; a small headless
+        # monitor may correctly select the phone layout. These cases exercise
+        # desktop chrome, so request and verify a desktop allocation explicitly.
+        self.window.set_default_size(1000, 560)
         self.window.present()
         settle()
         self.window.state = {'activeTabId': 1, 'activeUrl': 'https://chat.invalid/',
                              'favorites': [], 'pinned': [], 'today': []}
         self.window.address_field.set_sensitive(True)
         self.chrome = self.window.responsive
+        self.assertGreaterEqual(self.window.get_width(), 900)
+        self.assertFalse(self.chrome.phone)
         self.chrome.render()
         settle()
 
@@ -73,6 +79,18 @@ class BarContentAccess(unittest.TestCase):
         self.window.state['activeTabId'] = 2
         self.chrome.render()
         self.assertTrue(self.chrome.center.bar.get_visible())
+
+    def test_narrow_layout_uses_its_live_search_without_the_desktop_handle(self):
+        self.window.set_default_size(420, 560)
+        settle()
+        self.assertLess(self.window.get_width(), 560)
+        self.assertTrue(self.chrome.phone)
+        self.assertFalse(self.chrome.bar_handle.get_visible())
+        self.window._focus_address()
+        settle()
+        self.assertTrue(self.chrome.center.searching)
+        self.assertIsInstance(self.window.get_focus(), Gtk.Editable)
+        self.assertEqual(self.window.get_focus().get_text(), 'https://chat.invalid/')
 
     def test_reload_follows_address_and_dispatches_one_reload(self):
         self.assertIs(self.window.address_field.get_next_sibling(), self.window.reload)
