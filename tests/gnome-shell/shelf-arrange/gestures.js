@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Three fingers sideways switches app, four switches workspace, and a swipe
-// let go where it started changes nothing. The finger counts are read off
+// Three fingers sideways switches desktops by default. Optional app switching
+// remains available. A swipe let go where it started changes nothing. The finger counts are read off
 // the gestures themselves; the switch is driven through the controller the
 // touchpad drives, so a swipe that is taken back really does put everything
 // as it was.
@@ -30,21 +30,21 @@ async function work() {
     await L.waitForShelf();
     const state = new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
 
-    // The defaults, written once.
-    L.check('four fingers switch workspace', state.get_int('touchpad-workspace-fingers') === 4,
+    // Shared defaults with initialization recorded once.
+    L.check('three fingers switch desktops', state.get_int('touchpad-workspace-fingers') === 3,
         `${state.get_int('touchpad-workspace-fingers')}`);
-    L.check('three fingers switch app', state.get_boolean('touchpad-app-switch'));
+    L.check('app switching is off by default', !state.get_boolean('touchpad-app-switch'));
     L.check('the gesture defaults were written once',
         state.get_uint('touchpad-gesture-migration') === 1,
         `${state.get_uint('touchpad-gesture-migration')}`);
 
     // A person who changes them keeps their choice: the migration does not
     // run again.
-    state.set_int('touchpad-workspace-fingers', 3);
+    state.set_int('touchpad-workspace-fingers', 4);
     await L.sleep(300);
     L.check('a changed setting is not written over',
-        state.get_int('touchpad-workspace-fingers') === 3);
-    state.set_int('touchpad-workspace-fingers', 4);
+        state.get_int('touchpad-workspace-fingers') === 4);
+    state.set_int('touchpad-workspace-fingers', 3);
     await L.sleep(300);
 
     const appSwitch = Main.wm._lumaAppSwitch;
@@ -60,10 +60,14 @@ async function work() {
     const [wsFingers, wsExact] = fingersOf(Main.wm._workspaceAnimation?._swipeTracker);
     L.check('the app gesture is exactly three fingers', appFingers === 3 && appExact === true,
         `${appFingers} ${appExact}`);
-    L.check('the workspace gesture is exactly four fingers', wsFingers === 4 && wsExact === true,
+    L.check('the workspace gesture is exactly three fingers', wsFingers === 3 && wsExact === true,
         `${wsFingers} ${wsExact}`);
     L.check('they are horizontal, so three fingers up is still the overview',
         appSwitch.tracker.orientation === Clutter.Orientation.HORIZONTAL);
+
+    // Exercise the optional app-switch controller separately from the default.
+    state.set_boolean('touchpad-app-switch', true);
+    await L.sleep(300);
 
     const a = await spawn('SwipeOne');
     const b = await spawn('SwipeTwo');
@@ -120,6 +124,13 @@ async function work() {
     L.check('another swipe keeps going back through the apps',
         titleOf() === 'SwipeThree' || titleOf() === 'SwipeOne', `${titleOf()}`);
 
+    state.set_boolean('touchpad-app-switch', false);
+    await L.sleep(300);
+    Main.overview.show();
+    await L.sleep(700);
+    Main.overview.hide();
+    await L.sleep(700);
+    L.check('closing overview keeps app switching disabled', !appSwitch.tracker.enabled);
     await L.shot('gestures-after-switch');
 }
 
