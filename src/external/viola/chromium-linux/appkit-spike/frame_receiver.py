@@ -8,6 +8,7 @@ import socket
 import struct
 import tempfile
 import threading
+from shared_frame import copy_pixels, validate_layout
 
 import gi
 gi.require_version('Gdk', '4.0')
@@ -50,34 +51,55 @@ class _FrameConnection:
                 # must still be released when the last GTK texture is dropped.
                 self.disconnected = True
 
-    def _import(self, metadata, descriptors):
+    def _import(self, metadata, descriptors, pixels=None):
         frame_id = metadata['id']
         if self.stopped.is_set():
             self._release(frame_id, descriptors)
             return GLib.SOURCE_REMOVE
         try:
-            builder = Gdk.DmabufTextureBuilder.new()
-            builder.set_display(Gdk.Display.get_default())
-            builder.set_width(metadata['width'])
-            builder.set_height(metadata['height'])
-            builder.set_fourcc(int.from_bytes(metadata['fourcc'].encode('ascii'), 'little'))
-            builder.set_modifier(int(metadata['modifier']))
-            builder.set_premultiplied(True)
-            builder.set_n_planes(len(descriptors))
-            for index, (plane, descriptor) in enumerate(zip(metadata['planes'], descriptors)):
-                builder.set_fd(index, descriptor)
-                builder.set_stride(index, plane['stride'])
-                builder.set_offset(index, int(plane['offset']))
-            texture = builder.build(lambda *_: self._release(frame_id, descriptors), frame_id)
-            if texture is None:
-                raise RuntimeError('GDK rejected the native texture')
+            if pixels is not None:
+                color = Gdk.CicpParams.new()
+                color.set_color_primaries(metadata['color_primaries'])
+                color.set_transfer_function(metadata['transfer_characteristics'])
+                color.set_matrix_coefficients(metadata['matrix_coefficients'])
+                color.set_range(Gdk.CicpRange.FULL if metadata['full_range'] else Gdk.CicpRange.NARROW)
+                builder = Gdk.MemoryTextureBuilder.new()
+                builder.set_width(metadata['width'])
+                builder.set_height(metadata['height'])
+                builder.set_stride(metadata['stride'])
+                builder.set_format(Gdk.MemoryFormat.B8G8R8A8_PREMULTIPLIED if
+                    metadata['fourcc'] == 'AR24' else Gdk.MemoryFormat.R8G8B8A8_PREMULTIPLIED)
+                builder.set_color_state(color.build_color_state())
+                builder.set_bytes(GLib.Bytes.new(pixels))
+                texture = builder.build()
+                if texture is None:
+                    raise RuntimeError('GDK rejected the shared-memory texture')
+                # The texture owns immutable bytes, so the engine may now reuse
+                # its pool buffer. DMA leases still follow texture lifetime.
+                self._release(frame_id, descriptors)
+            else:
+                builder = Gdk.DmabufTextureBuilder.new()
+                builder.set_display(Gdk.Display.get_default())
+                builder.set_width(metadata['width'])
+                builder.set_height(metadata['height'])
+                builder.set_fourcc(int.from_bytes(metadata['fourcc'].encode('ascii'), 'little'))
+                builder.set_modifier(int(metadata['modifier']))
+                builder.set_premultiplied(True)
+                builder.set_n_planes(len(descriptors))
+                for index, (plane, descriptor) in enumerate(zip(metadata['planes'], descriptors)):
+                    builder.set_fd(index, descriptor)
+                    builder.set_stride(index, plane['stride'])
+                    builder.set_offset(index, int(plane['offset']))
+                texture = builder.build(lambda *_: self._release(frame_id, descriptors), frame_id)
+                if texture is None:
+                    raise RuntimeError('GDK rejected the native texture')
             self.imported += 1
         except Exception as error:
             self._release(frame_id, descriptors)
             self.on_error(str(error))
             return GLib.SOURCE_REMOVE
-        # The consumer owns the texture lifetime. Do not release its lease if
-        # a consumer callback raises after retaining it.
+        # DMA consumers own the texture lease. Do not release that lease if
+        # a callback raises after retaining it; SHM pixels are already copied.
         try:
             self.on_frame(texture, metadata)
         except Exception as error:
@@ -151,27 +173,39 @@ class _FrameConnection:
                         if self.on_cursor:
                             GLib.idle_add(self.on_cursor, metadata)
                         continue
-                    if (flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC)
-                            or metadata['version'] != 1 or not 1 <= len(descriptors) <= 4
-                            or len(descriptors) != len(metadata['planes'])
-                            or metadata['fourcc'] not in ('AR24', 'AB24')
-                            or not 0 < metadata['id'] < 2**31
-                            or not 0 < metadata['width'] <= 5120
-                            or not 0 < metadata['height'] <= 3200
-                            or not 0 <= int(metadata['modifier']) < 2**64
-                            or not isinstance(metadata.get('target_id'), str)
-                            or not 1 <= len(metadata['target_id']) <= 128):
-                        raise ValueError('Invalid frame metadata')
-                    for plane in metadata['planes']:
-                        if (not 0 < plane['stride'] < 2**32
-                                or not 0 <= int(plane['offset']) < 2**32
-                                or not 0 < int(plane['size']) < 2**63):
-                            raise ValueError('Invalid plane metadata')
+                    pixels = None
+                    if metadata.get('transport') == 'shm':
+                        if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or len(descriptors) != 1:
+                            raise ValueError('Invalid shared frame descriptor count or truncation')
+                        validate_layout(metadata)
+                        with self.lock:
+                            if metadata['id'] in self.pending or len(self.pending) >= 3:
+                                raise ValueError('Duplicate or excess frame lease')
+                        # Copy on the receiver thread, away from GTK. No ACK
+                        # until GTK owns these immutable bytes; at most3 credits.
+                        pixels = copy_pixels(metadata, descriptors[0])
+                    else:
+                        if (flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC)
+                                or metadata['version'] != 1 or not 1 <= len(descriptors) <= 4
+                                or len(descriptors) != len(metadata['planes'])
+                                or metadata['fourcc'] not in ('AR24', 'AB24')
+                                or not 0 < metadata['id'] < 2**31
+                                or not 0 < metadata['width'] <= 5120
+                                or not 0 < metadata['height'] <= 3200
+                                or not 0 <= int(metadata['modifier']) < 2**64
+                                or not isinstance(metadata.get('target_id'), str)
+                                or not 1 <= len(metadata['target_id']) <= 128):
+                            raise ValueError('Invalid frame metadata')
+                        for plane in metadata['planes']:
+                            if (not 0 < plane['stride'] < 2**32
+                                    or not 0 <= int(plane['offset']) < 2**32
+                                    or not 0 < int(plane['size']) < 2**63):
+                                raise ValueError('Invalid plane metadata')
                     with self.lock:
                         if metadata['id'] in self.pending or len(self.pending) >= 3:
                             raise ValueError('Duplicate or excess frame lease')
                         self.pending.add(metadata['id'])
-                    GLib.idle_add(self._import, metadata, descriptors)
+                    GLib.idle_add(self._import, metadata, descriptors, pixels)
                     descriptors = []
                 finally:
                     for descriptor in descriptors:
