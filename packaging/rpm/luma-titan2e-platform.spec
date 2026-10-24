@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name: luma-titan2e-platform
 Version: 0.1.0
-Release: 1.luma.53%{?dist}
+Release: 1.luma.55%{?dist}
 Summary: Unihertz Titan 2 Elite platform adapters
 License: Apache-2.0
 Source0: luma-titan2e-boot-ok
@@ -201,6 +201,13 @@ systemctl --no-reload preset luma-titan2e-audio.service luma-titan2e-modem.servi
 %{_datadir}/libcamera/configuration.yaml
 
 %changelog
+* Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.55
+- Data restart waits for the modem to report the radio off before reconnecting.
+
+* Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.54
+- Restart the radio during the dead-data modem cycle and drop the stale PDN
+  binding, so the reconnect makes a fresh data call.
+
 * Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.53
 - Enable luma-titan2e-modem.service by preset; a fresh image had no modem.
 

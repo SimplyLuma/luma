@@ -76,8 +76,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "cfaa9e6ea23da428976b7327810cdc0ff25e7e7ec40076fab13928d0cf264955",
-    "bytes": 11504
+    "sha256": "81656e5531f1587387ac7f500f3c2d1bc8d1278b2f3d165bc5fa1fade24ba756",
+    "bytes": 11609
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
@@ -146,8 +146,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "70f2fbddfd3c0d6878be971e35fda890ed7e813c7017d1fbde9d3cd819e2e4ae",
-    "bytes": 21345
+    "sha256": "c927fec0a8b5df9dbe3e463c9900e5586489105d1c51e660f0d622bffa5b4e99",
+    "bytes": 21654
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -10921,8 +10921,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/luma-modemd",
-    "sha256": "c61678ee5175c1364356b8110b3ac5fc16d5703d5d5b824eec3a510ffd5619e0",
-    "bytes": 82409
+    "sha256": "00f8564c2296b8188b6017729c27b8fa7d6d551f2e213bbd0f7c7ed6dba716fa",
+    "bytes": 83734
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-audio-up",
@@ -11051,8 +11051,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/test-esim.py",
-    "sha256": "335d744341003363a393d3b56ae9bee94565072ddfd6f8c623970472498236b2",
-    "bytes": 69187
+    "sha256": "f297b870f2bc06a80da8d7cc5b2923c7ea2e5f3ad17f12aaadc78c3be54a9f9a",
+    "bytes": 71419
   },
   {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-HiFi.conf",

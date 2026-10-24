@@ -7,11 +7,11 @@ b and on its internal storage, untouched.
 
 ## Alpha
 
-Build 20261020.19. Luma on the Titan 2 Elite is an alpha: daily use works, some hardware does not yet.
+Build 20261020.20. Luma on the Titan 2 Elite is an alpha: daily use works, some hardware does not yet.
 
 Works: SIM and eSIM, VoLTE calls (earpiece and speaker), SMS, mobile data (it sets itself up from the SIM, so the first start can take a few minutes; IPv6 with 464XLAT for IPv4), Wi-Fi, Bluetooth, main/tele/front cameras, charging, vibration, keyboard backlight.
 
-Not yet: proximity, rotation, light and compass sensors (the screen stays on at your ear during calls; press the power key to turn it off); GPS (location is Wi-Fi based); call audio over Bluetooth or USB-C headsets; OTA updates (the Titan update channel is not published yet).
+Not yet: proximity, rotation, light and compass sensors (the screen stays on at your ear during calls; press the power key to turn it off); GPS (location is Wi-Fi based); call audio over Bluetooth or USB-C headsets; OTA updates (the Titan update channel is not published yet). Known issue: the screen can stay black after waking; hold the power key for about 15 seconds to restart.
 
 Install: download from https://dl.simplyluma.com/mobile/titan2e/alpha1/ and follow [INSTALL.md](INSTALL.md). Android stays on slot b; Luma boots from slot a and the microSD card. First boot opens the lock screen for the pre-made account; the PIN is 1234.
 

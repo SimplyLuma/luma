@@ -836,6 +836,45 @@ class IaApnTests(unittest.TestCase):
         service.check_data_path(cid, interface, settings)                     # no APN left: stop
         self.assertEqual(len(dead), 2)
         self.assertIn('trying APN wholesale', dead[1])
+    def test_radio_restart_makes_the_next_connect_a_fresh_data_call(self):
+        class Indications:
+            def submit(inner, work):
+                return work(reader)
+        reader, data = FakeReader(), modemd.DataCalls(2, sleep=lambda s: None)
+        interface, cid, settings = data.connect(reader, 'fast.t-mobile.com', 'ipv4v6')
+        data.disconnect(reader, cid)
+        reader.sent.clear()
+        data.connect(reader, 'fast.t-mobile.com', 'ipv4v6')                  # reconnect reuses the binding
+        self.assertNotIn(modemd.DATA_ACT_CALL, [m[1] for m in reader.sent if m[0] == 'MIPC'])
+        data.disconnect(reader, cid)
+        now = [0.0]
+        modemd.DataService(Indications(), data, clock=lambda: now[0],
+                           sleep=lambda s: now.__setitem__(0, now[0] + s)).restart_radio()
+        reader.sent.clear()
+        data.connect(reader, 'fast.t-mobile.com', 'ipv4v6')
+        self.assertIn(modemd.DATA_ACT_CALL, [m[1] for m in reader.sent if m[0] == 'MIPC'])
+    def test_radio_restart_turns_the_radio_off_then_on(self):
+        class Indications:
+            def submit(inner, work):
+                return work(reader)
+        reader = FakeReader()
+        now = [0.0]
+        modemd.DataService(Indications(), modemd.DataCalls(2), clock=lambda: now[0],
+                           sleep=lambda s: now.__setitem__(0, now[0] + s)).restart_radio()
+        self.assertGreaterEqual(now[0], modemd.RADIO_REPORT_WAIT)        # no report: gave up
+        self.assertEqual([(m[1], m[3]) for m in reader.sent],
+                         [(modemd.NW_SET_RADIO_STATE, [(0x0100, b'\x00')]), (modemd.NW_SET_RADIO_STATE, [(0x0100, b'\x01')])])
+    def test_radio_restart_returns_once_the_modem_reports_the_radio_off(self):
+        class Indications:
+            def submit(inner, work):
+                return work(FakeReader())
+        now, data = [0.0], modemd.DataCalls(2)
+        def sleep(s):
+            now[0] += s
+            if now[0] >= 3 and data.radio_offs < 2:
+                data.radio_off()                                         # NW_RADIO_IND off
+        modemd.DataService(Indications(), data, clock=lambda: now[0], sleep=sleep).restart_radio()
+        self.assertLess(now[0], 4)
     def test_attach_config_without_identity_sends_nothing(self):
         class Mipc:
             def command(inner, command, timeout=5, sim=2):return 'OK'

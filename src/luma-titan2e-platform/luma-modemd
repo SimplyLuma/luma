@@ -1408,6 +1408,7 @@ DATA_WAIT_FOR_IMS = 90.0
 DATA_PROBE_ADDRESS_WAIT = 25.0
 DATA_PROBE_ROUNDS = 3
 DATA_REBIND_EVERY = 600.0
+RADIO_REPORT_WAIT = 15.0     # seconds for the modem to report our radio off
 DNS_PROBE_QUERY = bytes.fromhex('4c5501000001000000000000076578616d706c6503636f6d00001c0001')   # example.com AAAA
 
 
@@ -1432,8 +1433,10 @@ def dns_probe(interface, server, timeout=3.0):
         return False
 
 
-def modem_manager_cycle(reason):
-    """Disable and enable the modem through ModemManager (blocking)."""
+def modem_manager_cycle(reason, while_disabled=lambda: None):
+    """Disable and enable the modem through ModemManager (blocking). Disable
+    alone leaves the radio and the dead PDN binding as they were, so
+    while_disabled restarts the radio in between."""
     from gi.repository import Gio, GLib
     log('data:', reason + ': cycling the modem through ModemManager')
     try:
@@ -1443,6 +1446,8 @@ def modem_manager_cycle(reason):
                                 GLib.VariantType('(a{oa{sa{sv}}})'), Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
         for path in [p for p, i in objects.items() if 'org.freedesktop.ModemManager1.Modem' in i]:
             for enable in (False, True):
+                if enable:
+                    while_disabled()
                 bus.call_sync('org.freedesktop.ModemManager1', path, 'org.freedesktop.ModemManager1.Modem',
                               'Enable', GLib.Variant('(b)', (enable,)), None, Gio.DBusCallFlags.NONE, 60000, None)
     except GLib.Error as e:
@@ -1502,6 +1507,7 @@ class DataCalls:
         self.ps = ps
         self.sleep = sleep
         self.clock = clock
+        self.radio_offs = 0             # radio_off() calls, ours and the modem's reports
         self.deactivated = {}           # cid -> clock() of its last deactivation
         self.settings_path = settings_path
         self.bound = {}                 # cid -> (interface, APN, settings), for this modem boot
@@ -1600,6 +1606,7 @@ class DataCalls:
     def radio_off(self):
         # The network released the PDN and the modem its interface binding;
         # the next connect activates and binds again.
+        self.radio_offs += 1
         self.active.clear()
         self.bound.clear()
 
@@ -1638,6 +1645,22 @@ class DataService:
         self.last_rebind = now
         self.on_dead('data on %s carries no traffic (%d refusals before activation)'
                      % (interface, getattr(self.data, 'refusals', 0)))
+
+    def restart_radio(self):
+        """Radio off and on, and forget the PDN binding, so the next connect
+        activates a fresh data call (a reconnect alone reuses the dead one)."""
+        def restart(ind):
+            self.data.radio_off()
+            for name, state in (('off', b'\x00'), ('on', b'\x01')):
+                log('data: radio %s ->' % name, ind.request('NW_SET_RADIO_STATE ' + name, NW_SET_RADIO_STATE,
+                                                            self.data.ps, [(0x0100, state)]))
+        seen = self.data.radio_offs
+        self.ind.submit(restart)
+        # The modem reports the radio off seconds later; until then IMS still
+        # reads registered and the report would drop a PDN bound before it.
+        deadline = self.clock() + RADIO_REPORT_WAIT
+        while self.data.radio_offs < seen + 2 and self.clock() < deadline:
+            self.sleep(0.2)
 
     def wait_until_ready(self):
         """Hold a data call until the modem can carry it (on the caller's thread)."""
@@ -1806,10 +1829,11 @@ def main():
         data = DataCalls(IA_PS)
         registration.on_radio_off.append(data.radio_off)
         try:
-            DataService(indications, data, next_apn=ApnFallback(IA_PS).next,
-                        ready=lambda: registration.ims_registered or not registration.ims,
-                        on_dead=lambda reason: threading.Thread(target=modem_manager_cycle, args=(reason,),
-                                                                daemon=True).start()).start()
+            service = DataService(indications, data, next_apn=ApnFallback(IA_PS).next,
+                                  ready=lambda: registration.ims_registered or not registration.ims)
+            service.on_dead = lambda reason: threading.Thread(
+                target=modem_manager_cycle, args=(reason, service.restart_radio), daemon=True).start()
+            service.start()
         except Exception as e:          # calls and SMS work without packet data
             log('data service:', e)
     time.sleep(2)
