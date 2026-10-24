@@ -1,0 +1,12 @@
+[Unit]
+Description=Titan 2 Elite: restart once after the modem's first run
+ConditionPathExists=/run/luma-modem/seeded
+ConditionPathExists=!/var/lib/luma-modem/first-boot-restart
+After=luma-titan2e-modem.service ModemManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-titan2e-modem-prime
+
+[Install]
+WantedBy=multi-user.target

@@ -71,12 +71,12 @@
   },
   {
     "path": "devices/unihertz/titan2elite/INSTALL.md",
-    "sha256": "e8b1db76edf6092790a1ab5b22e7e79a3e5d44d75a86acd55a486a5ff36d3ab0",
-    "bytes": 4382
+    "sha256": "ae647f8b75768b740fcba15c35da423f7fcab156992054cf2ddfe4be4baaa63f",
+    "bytes": 4471
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "fbdf7a3e2ba1697cc934075d1bac4905863d8bf6198a9d470e6780c5efa6916e",
+    "sha256": "8c7c81e5813d30786910d5f360a4f8ba74baa92f21e297abd78d2e2355658bb7",
     "bytes": 11504
   },
   {
@@ -146,8 +146,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "c927fec0a8b5df9dbe3e463c9900e5586489105d1c51e660f0d622bffa5b4e99",
-    "bytes": 21654
+    "sha256": "1d154c1bc87628926a7ef886ec53b31b122f9ee4dd22a4cfaed1a277c0b6d6d9",
+    "bytes": 22387
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -10876,8 +10876,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/50-luma-titan2e-platform.preset",
-    "sha256": "11cb7889e8f4f598eedeeb1efb948a76988757f5936578e009752eba128abffb",
-    "bytes": 594
+    "sha256": "9671236a8eef5b5e21610752667c40c0dab09ce9703092ed1d099a2a6357daad",
+    "bytes": 707
   },
   {
     "path": "src/luma-titan2e-platform/50-titan2e-watchdog.conf",
@@ -11006,8 +11006,18 @@
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-modem-fs",
-    "sha256": "91aadeb8a71da705bdf348ec90525ade9e5b9a67786d17f82fa8e978f9f66904",
-    "bytes": 5041
+    "sha256": "576e04310c02f701d85143e304c7f167322c469d7b20c81a490f82969ea6cba1",
+    "bytes": 5256
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-modem-prime",
+    "sha256": "c0cc9e815b0529766db9f007e0ad89d8aa90bb2c8410e067be0e967275ed856b",
+    "bytes": 5650
+  },
+  {
+    "path": "src/luma-titan2e-platform/luma-titan2e-modem-prime.service",
+    "sha256": "6c1bf3181dce59eb7a228b4be5275cfe9de79ab99ece3459ba1821b52d1bb177",
+    "bytes": 341
   },
   {
     "path": "src/luma-titan2e-platform/luma-titan2e-modem-up",
@@ -11051,8 +11061,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/test-esim.py",
-    "sha256": "f297b870f2bc06a80da8d7cc5b2923c7ea2e5f3ad17f12aaadc78c3be54a9f9a",
-    "bytes": 71419
+    "sha256": "d34215ad00125d4aed035156a359f348da7e418ca9ec279f9f4e3e6e8b316582",
+    "bytes": 74387
   },
   {
     "path": "src/luma-titan2e-platform/ucm2-Titan2Elite-HiFi.conf",

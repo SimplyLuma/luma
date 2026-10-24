@@ -5,6 +5,8 @@ enable luma-titan2e-connsys.service
 enable luma-titan2e-gpu.service
 enable luma-titan2e-audio.service
 enable luma-titan2e-modem.service
+# Restarts the phone once after the modem first runs on a fresh install.
+enable luma-titan2e-modem-prime.service
 enable luma-titan2e-boot-bless.service
 enable luma-titan2e-growfs.service
 disable greenboot-set-rollback-trigger.service

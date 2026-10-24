@@ -11,6 +11,7 @@ restores any that differ (exit 3; 0 when identical, 1 on error)."""
 import os, shutil, subprocess, sys, tempfile
 
 ROOT = '/var/lib/luma-modem/fs'
+SEEDED = '/run/luma-modem/seeded'
 BYNAME = '/dev/disk/by-partlabel'
 # partition, directory in it, directory in ROOT (luma-modemd drive map)
 PARTS = [('nvdata', 'md', 'md'), ('nvdata', 'md_cmn', 'md_cmn'),
@@ -119,6 +120,9 @@ def main():
             shutil.rmtree(ROOT)
         os.rename(tmp, ROOT)
         log('seeded ' + ROOT)
+        # luma-titan2e-modem-prime restarts the phone once after this boot's modem run
+        os.makedirs(os.path.dirname(SEEDED), exist_ok=True)
+        open(SEEDED, 'w').close()
         return 0
     except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
         shutil.rmtree(tmp, ignore_errors=True)

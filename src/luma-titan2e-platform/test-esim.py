@@ -1333,5 +1333,60 @@ class IndicationsTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertIn(('MIPC ps2', 'DATA_ACT_CALL ims', '->', 0), logs)
 
+
+prime = importlib.machinery.SourceFileLoader(
+    'modem_prime', str(pathlib.Path(__file__).with_name('luma-titan2e-modem-prime'))).load_module()
+
+
+class ModemPrimeTests(unittest.TestCase):
+    quiet, no_call = staticmethod(prime.wait_for_quiet), staticmethod(prime.wait_for_no_call)
+    def setUp(self):
+        d = tempfile.TemporaryDirectory(); self.addCleanup(d.cleanup)
+        self.seeded, self.done = os.path.join(d.name, 'seeded'), os.path.join(d.name, 'state', 'done')
+        for name, value in (('SEEDED', self.seeded), ('DONE', self.done), ('NOTICE', 0)):
+            p = patch.object(prime, name, value); p.start(); self.addCleanup(p.stop)
+        for name, value in (('log', lambda *a: None), ('notify', lambda *a: None),
+                            ('wait_for_quiet', lambda: True), ('wait_for_no_call', lambda: True)):
+            p = patch.object(prime, name, value); p.start(); self.addCleanup(p.stop)
+        self.reboots = []
+    def reboot(self):
+        self.assertTrue(os.path.exists(self.done))                          # marker first
+        self.reboots.append(1)
+    def test_restarts_once_after_a_seed(self):
+        open(self.seeded, 'w').close()
+        prime.main(self.reboot)
+        prime.main(self.reboot)                                               # marker present now
+        self.assertEqual(self.reboots, [1])
+    def test_no_seed_this_boot_no_restart(self):
+        prime.main(self.reboot)
+        self.assertEqual(self.reboots, [])
+        self.assertFalse(os.path.exists(self.done))
+    def test_a_call_that_keeps_going_skips_the_restart(self):
+        open(self.seeded, 'w').close()
+        with patch.object(prime, 'wait_for_no_call', lambda: False):
+            prime.main(self.reboot)
+        self.assertEqual(self.reboots, [])
+        self.assertFalse(os.path.exists(self.done))
+    def test_waits_for_nv_writes_to_go_quiet(self):
+        now, writes = [0.0], [0.0]
+        def sleep(s):
+            now[0] += s
+            if now[0] < 100:
+                writes[0] = now[0]                                            # modem still writing
+        self.assertTrue(self.quiet(lambda: writes[0], lambda: now[0], sleep))
+        self.assertGreaterEqual(now[0], 95 + prime.QUIET)
+        now[0], writes[0] = 0.0, 0.0
+        self.assertFalse(self.quiet(lambda: now[0], lambda: now[0], lambda s: now.__setitem__(0, now[0] + s)))
+        self.assertGreaterEqual(now[0], prime.SETTLE_MAX)
+    def test_defers_behind_a_call(self):
+        now, calls = [0.0], iter([1, 1, 0])
+        self.assertTrue(self.no_call(lambda: next(calls), lambda: now[0],
+                                               lambda s: now.__setitem__(0, now[0] + s)))
+        self.assertEqual(now[0], 20)
+        self.assertFalse(self.no_call(lambda: 1, lambda: now[0], lambda s: now.__setitem__(0, now[0] + s)))
+        def broken():
+            raise OSError('no ModemManager')
+        self.assertTrue(self.no_call(broken, lambda: 0, lambda s: None))
+
 if __name__=='__main__':
     unittest.main()

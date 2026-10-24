@@ -93,7 +93,8 @@ Luma starts from the card and shows the lock screen. Sign in as **luma** with
 the PIN **1234**, then change it in Settings right away. Once the phone has
 reached the lock screen, Luma marks slot a and its system as booted
 successfully. On the first start, Luma copies the Wi-Fi, Bluetooth and speaker
-firmware from the phone's own partitions.
+firmware from the phone's own partitions. During the first start the phone
+restarts once by itself to finish setting up the modem.
 
 ## Switching between Luma and Android
 

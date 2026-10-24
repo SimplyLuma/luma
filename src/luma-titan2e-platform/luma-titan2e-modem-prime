@@ -1,0 +1,144 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Restart the phone once after the modem's first run on a freshly seeded file
+store. That run writes the modem's carrier configuration, which only takes
+effect at the next modem boot, and the modem cannot be restarted on its own
+(its image is loaded by the boot loader): until then mobile data carries
+nothing.
+
+Runs only in the boot that seeded the store (luma-titan2e-modem-fs leaves
+SEEDED in /run). Writes DONE before rebooting and never reboots once DONE
+exists."""
+import os, subprocess, sys, time
+
+SEEDED = '/run/luma-modem/seeded'
+DONE = '/var/lib/luma-modem/first-boot-restart'
+STORE = '/var/lib/luma-modem/fs'
+SETTLE_MIN = 60         # seconds after start before NV writes count as settled
+QUIET = 30              # seconds without NV writes
+SETTLE_MAX = 300        # give up waiting for quiet after this long
+CALL_WAIT_MAX = 1800    # defer behind calls at most this long, then skip
+NOTICE = 10             # seconds between the notification and the restart
+CALL_TERMINATED = 7     # MMCallState
+
+
+def log(*args):
+    print('titan2e-modem-prime:', *args, file=sys.stderr, flush=True)
+
+
+def newest_write(root=STORE):
+    newest = 0.0
+    for dirpath, _, files in os.walk(root):
+        for name in files:
+            try:
+                newest = max(newest, os.stat(os.path.join(dirpath, name)).st_mtime)
+            except OSError:
+                pass
+    return newest
+
+
+def wait_for_quiet(newest=newest_write, clock=time.time, sleep=time.sleep):
+    """Wait until the modem has stopped writing its NV; True if it went quiet."""
+    start = clock()
+    while True:
+        now = clock()
+        if now - start >= SETTLE_MIN and now - newest() >= QUIET:
+            return True
+        if now - start >= SETTLE_MAX:
+            return False
+        sleep(5)
+
+
+def active_calls():
+    """Number of calls ModemManager has that are not terminated."""
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    def call(path, iface, method, args, reply):
+        return bus.call_sync('org.freedesktop.ModemManager1', path, iface, method, args,
+                             GLib.VariantType(reply), Gio.DBusCallFlags.NONE, 5000, None).unpack()
+    objects = call('/org/freedesktop/ModemManager1', 'org.freedesktop.DBus.ObjectManager',
+                   'GetManagedObjects', None, '(a{oa{sa{sv}}})')[0]
+    count = 0
+    for interfaces in objects.values():
+        for path in interfaces.get('org.freedesktop.ModemManager1.Modem.Voice', {}).get('Calls', []):
+            state = call(path, 'org.freedesktop.DBus.Properties', 'Get',
+                         GLib.Variant('(ss)', ('org.freedesktop.ModemManager1.Call', 'State')), '(v)')[0]
+            count += state != CALL_TERMINATED
+    return count
+
+
+def wait_for_no_call(calls=active_calls, clock=time.time, sleep=time.sleep):
+    """True once no call is active; False if calls kept going past CALL_WAIT_MAX."""
+    start = clock()
+    while True:
+        try:
+            n = calls()
+        except Exception as e:      # no ModemManager means no call to protect
+            log('call check:', e)
+            n = 0
+        if not n:
+            return True
+        if clock() - start >= CALL_WAIT_MAX:
+            return False
+        sleep(10)
+
+
+def session_users():
+    """(uid, user) of graphical sessions, for the notification."""
+    out = subprocess.run(['loginctl', 'list-sessions', '--no-legend'], capture_output=True, text=True).stdout
+    users = set()
+    for line in out.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and fields[1].isdigit() and fields[1] != '0':
+            users.add((fields[1], fields[2]))
+    return sorted(users)
+
+
+def notify(summary, body):
+    for uid, user in session_users():
+        bus = '/run/user/%s/bus' % uid
+        if not os.path.exists(bus):
+            continue
+        r = subprocess.run(['runuser', '-u', user, '--', 'env', 'DBUS_SESSION_BUS_ADDRESS=unix:path=' + bus,
+                            'busctl', '--user', 'call', 'org.freedesktop.Notifications',
+                            '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'Notify',
+                            'susssasa{sv}i', 'System', '0', 'system-reboot-symbolic', summary, body,
+                            '0', '0', str(NOTICE * 1000)], capture_output=True, text=True, timeout=10)
+        log('notified', user, (r.stdout or r.stderr).strip())
+
+
+def mark_done(path=None):
+    path = path or DONE
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('%d\n' % time.time())
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def main(reboot=lambda: subprocess.run(['systemctl', 'reboot'])):
+    if not os.path.exists(SEEDED):
+        log('modem file store not seeded this boot; nothing to do')
+        return 0
+    if os.path.exists(DONE):
+        log('already restarted once after seeding; not restarting again')
+        return 0
+    quiet = wait_for_quiet()
+    log('modem NV writes', 'settled' if quiet else 'still going after %ds; restarting anyway' % SETTLE_MAX)
+    if not wait_for_no_call():
+        log('a call kept going for %ds; not restarting' % CALL_WAIT_MAX)
+        return 0
+    notify('Finishing setup — restarting once', 'Mobile data is ready after the restart.')
+    log('restarting in %ds to finish the modem setup' % NOTICE)
+    time.sleep(NOTICE)
+    if not wait_for_no_call():
+        log('a call kept going; not restarting')
+        return 0
+    mark_done()
+    log('restarting once now')
+    reboot()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
