@@ -50,7 +50,10 @@ class EngineLifecycleTest(unittest.TestCase):
             root = Path(directory)
             executable = root / 'engine'
             executable.write_text('#!' + sys.executable + '\n' +
-                'import os, resource, signal\n'
+                'import ctypes, os, resource, signal\n'
+                # Piped host core handlers can keep inherited pipe FDs open
+                # despite RLIMIT_CORE=0. The disposable child must not dump.
+                'assert ctypes.CDLL(None).prctl(4, 0, 0, 0, 0) == 0\n'
                 'resource.setrlimit(resource.RLIMIT_CORE, (0, 0))\n'
                 'os.kill(os.getpid(), signal.SIGSEGV)\n')
             executable.chmod(0o700)
