@@ -146,7 +146,17 @@ class InputReader:
         self.stream = stream
 
     def read(self, size):
-        return self.stream.read_bytes(size, None).get_data()
+        # Compressed Gio streams may return fewer bytes than requested even
+        # before EOF. tarfile expects read(size) to fill that request.
+        chunks = []
+        remaining = size
+        while remaining:
+            data = self.stream.read_bytes(remaining, None).get_data()
+            if not data:
+                break
+            chunks.append(data)
+            remaining -= len(data)
+        return b''.join(chunks)
 
 
 def file_record(repo, checksum):

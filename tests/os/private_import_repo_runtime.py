@@ -45,7 +45,7 @@ def tiny_oci(root, source):
                                  'SCHILY.xattr.security.selinux': 'system_u:object_r:pesto_exec_t:s0'}
             archive.addfile(entry)
         for name, mode, data in (('state', 0o640, b'preserve service ownership\n'),
-                                 ('empty', 0o600, b''), ('unreadable', 0o000, b'private content\n'),
+                                 ('empty', 0o600, b''), ('unreadable', 0o000, hashlib.shake_256(b'private content').digest(100000)),
                                  ('setuid', 0o4755, b'setuid content\n')):
             entry = tarfile.TarInfo('usr/lib/luma-import-service/' + name)
             entry.uid, entry.gid, entry.mode = 123, 456, mode
