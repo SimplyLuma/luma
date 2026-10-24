@@ -110,7 +110,7 @@ class ResponsiveChrome:
     def capture_address_edit(self):
         if self.center.searching:
             field = self.host.get_focus()
-            if isinstance(field, Gtk.Editable):
+            if isinstance(field, Gtk.Editable) and field.is_ancestor(self.center.entry_row):
                 return AddressEdit.capture(field, self.host.new_tab_pending)
         elif self.host.address_focused():
             return AddressEdit.capture(self.host.address, self.host.new_tab_pending)
@@ -124,7 +124,7 @@ class ResponsiveChrome:
             def restore():
                 if self.phone and self.search is search and self.center.searching:
                     field = self.host.get_focus()
-                    if isinstance(field, Gtk.Editable):
+                    if isinstance(field, Gtk.Editable) and field.is_ancestor(self.center.entry_row):
                         edit.restore(field)
                         self.host.new_tab_pending = edit.new_tab_pending
                 return GLib.SOURCE_REMOVE

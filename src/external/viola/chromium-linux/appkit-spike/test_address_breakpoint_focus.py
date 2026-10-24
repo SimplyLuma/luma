@@ -82,5 +82,26 @@ class AddressBreakpointFocus(unittest.TestCase):
         self.assertEqual(tuple(field.get_selection_bounds()),())
         self.assertTrue(host.new_tab_pending)
 
+    def test_phone_restore_does_not_overwrite_or_refocus_another_editor(self):
+        install_appkit()
+        other=Gtk.Entry(text='sidebar rename in progress')
+        region=ToastHost(other);window=Gtk.Window(child=region,default_width=420,default_height=600)
+        self.addCleanup(window.destroy)
+        center=ActionCenter().attach(region);search=BarSearch('Address',text='page',opens=True)
+        center.show_bar([search]);window.present();settle()
+        host=SimpleNamespace(get_focus=window.get_focus,new_tab_pending=False)
+        chrome=ResponsiveChrome.__new__(ResponsiveChrome);chrome.host=host
+        chrome.phone=True;chrome.center=center;chrome.search=search
+        original=center.open_search
+        def open_then_focus_elsewhere(item):
+            original(item)
+            GLib.idle_add(lambda:other.grab_focus() and False)
+        center.open_search=open_then_focus_elsewhere
+        chrome.restore_address_edit(AddressEdit('address being restored',3,(),True));settle()
+        self.assertEqual(other.get_text(),'sidebar rename in progress')
+        self.assertTrue(window.get_focus().is_ancestor(other))
+        self.assertFalse(host.new_tab_pending)
+        self.assertIsNone(chrome.capture_address_edit())
+
 
 if __name__=='__main__':unittest.main()
