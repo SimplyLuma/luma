@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name: luma-titan2e-platform
 Version: 0.1.0
-Release: 1.luma.52%{?dist}
+Release: 1.luma.53%{?dist}
 Summary: Unihertz Titan 2 Elite platform adapters
 License: Apache-2.0
 Source0: luma-titan2e-boot-ok
@@ -139,14 +139,15 @@ if [ "$1" -eq 0 ]; then
   rm -f /etc/luma/session.d/60-titan2e-renderer.env
 fi
 
-%triggerpostun -- luma-titan2e-platform < 0.1.0-1.luma.16
+%triggerpostun -- luma-titan2e-platform < 0.1.0-1.luma.53
 # Units added to the preset in an update, where %%systemd_post does not apply
 # presets: luma-titan2e-audio.service (luma.8) copies the amplifier firmware;
 # the FP6 carrier and modem units (luma.9, luma.11) are Qualcomm-only and a
 # second AP-side IMS client must not register beside the modem's own.
 # luma.16: boot blessing and the first-boot grow (both OSTree only), and
-# greenboot's rollback trigger stays off.
-systemctl --no-reload preset luma-titan2e-audio.service luma-fp6-carrier-pdc.service luma-fp6-primary-gw-session.service luma-fp6-imsd.service luma-fp6-cellular-link.service luma-fp6-modem-quiesce.service luma-titan2e-boot-bless.service luma-titan2e-growfs.service greenboot-set-rollback-trigger.service >/dev/null 2>&1 || :
+# greenboot's rollback trigger stays off. luma.53: the modem service, which
+# images composed before it shipped disabled. All of these are idempotent.
+systemctl --no-reload preset luma-titan2e-audio.service luma-titan2e-modem.service luma-fp6-carrier-pdc.service luma-fp6-primary-gw-session.service luma-fp6-imsd.service luma-fp6-cellular-link.service luma-fp6-modem-quiesce.service luma-titan2e-boot-bless.service luma-titan2e-growfs.service greenboot-set-rollback-trigger.service >/dev/null 2>&1 || :
 
 %triggerin -- luma-phosh
 %{_libexecdir}/luma-titan2e-phoc-config || :
@@ -200,6 +201,9 @@ systemctl --no-reload preset luma-titan2e-audio.service luma-fp6-carrier-pdc.ser
 %{_datadir}/libcamera/configuration.yaml
 
 %changelog
+* Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.53
+- Enable luma-titan2e-modem.service by preset; a fresh image had no modem.
+
 * Fri Oct 23 2026 Project Luma - 0.1.0-1.luma.52
 - When the data path of the automatic mobile data profile stays dead after a
   modem cycle, step it through the other internet APNs listed for the network.

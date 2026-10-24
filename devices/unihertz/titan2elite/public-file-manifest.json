@@ -76,7 +76,7 @@
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "06610e3e9f1c8bacff0a63ded2b66ac953a9a1f07ae3bc06ac4f04478008f43b",
+    "sha256": "cfaa9e6ea23da428976b7327810cdc0ff25e7e7ec40076fab13928d0cf264955",
     "bytes": 11504
   },
   {
@@ -146,8 +146,8 @@
   },
   {
     "path": "packaging/rpm/luma-titan2e-platform.spec",
-    "sha256": "3c060aec36f59e19b17f0662815d144144237e31793ccbe1be740a2953d098d1",
-    "bytes": 21084
+    "sha256": "70f2fbddfd3c0d6878be971e35fda890ed7e813c7017d1fbde9d3cd819e2e4ae",
+    "bytes": 21345
   },
   {
     "path": "packaging/rpm/mesa.spec",
@@ -10571,8 +10571,8 @@
   },
   {
     "path": "scripts/mobile/compose-titan2e-image.sh",
-    "sha256": "17169088760832e0c6353f68e9e9b43c21f3689507b1aa3bf0d99a33657784c0",
-    "bytes": 15544
+    "sha256": "b9b369a46c106fe121c6cb97f6b82c2df35d0b45b0c32e03b12c35da7947096f",
+    "bytes": 15939
   },
   {
     "path": "scripts/mobile/luma-phosh-session",
@@ -10586,8 +10586,8 @@
   },
   {
     "path": "scripts/mobile/tests/smoke-titan2e-initramfs.sh",
-    "sha256": "71ba7d9eb17745cdaf096750a77a65aa9c15a76d0713d5d69488488769b89d07",
-    "bytes": 6053
+    "sha256": "8fd85bac5555161b2052a2d9a78a7ff67a91612aff371cff9e8ae99d10e3280b",
+    "bytes": 6520
   },
   {
     "path": "scripts/mobile/verify-fp6-gnss-rpm-bundle.sh",
@@ -10876,8 +10876,8 @@
   },
   {
     "path": "src/luma-titan2e-platform/50-luma-titan2e-platform.preset",
-    "sha256": "118309ff47f35bc72578bb8b8fc9c733c775fa160c497332eee4c6f8512d7620",
-    "bytes": 560
+    "sha256": "11cb7889e8f4f598eedeeb1efb948a76988757f5936578e009752eba128abffb",
+    "bytes": 594
   },
   {
     "path": "src/luma-titan2e-platform/50-titan2e-watchdog.conf",

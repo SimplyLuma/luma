@@ -173,6 +173,12 @@ systemctl --root="$rootfs" disable luma-first-user.socket 2>/dev/null || :
 	die 'display-manager.service is not greetd'
 ! systemctl --root="$rootfs" -q is-enabled luma-first-user.socket 2>/dev/null || die 'luma-first-user.socket is enabled'
 systemctl --root="$rootfs" -q is-enabled greenboot-healthcheck.service || die 'greenboot-healthcheck.service is not enabled'
+# Every Titan platform service meant for boot is enabled: preset-all leaves a unit
+# its preset does not name disabled (the modem service shipped off in 20261020.18).
+for unit in "$rootfs"/usr/lib/systemd/system/luma-titan2e-*.service; do
+	grep -qx 'WantedBy=multi-user.target' "$unit" || continue
+	systemctl --root="$rootfs" -q is-enabled "${unit##*/}" || die "${unit##*/} is not enabled"
+done
 # greenboot-healthcheck's Also= must not bring back the grub rollback trigger.
 systemctl --root="$rootfs" disable greenboot-set-rollback-trigger.service 2>/dev/null || :
 ! systemctl --root="$rootfs" -q is-enabled greenboot-set-rollback-trigger.service 2>/dev/null ||

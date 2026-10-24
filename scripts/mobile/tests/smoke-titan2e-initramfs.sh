@@ -54,6 +54,16 @@ c no-first-user '[ ! -e $w/sockets.target.wants/luma-first-user.socket ]'
 c health-check '[ -L $w/multi-user.target.wants/greenboot-healthcheck.service ]'
 c update-channel 'grep -q "^hardware_target = unihertz,titan2e" /etc/luma/update.conf'
 c slot-mark-after-health '[ -L $w/greenboot-success.target.wants/luma-titan2e-boot-ok.service ] && [ ! -e $w/multi-user.target.wants/luma-titan2e-boot-ok.service ]'
+# Every Titan platform unit with an install target is enabled (a unit its preset
+# did not name shipped disabled once: no modem on a fresh image).
+units_enabled() {
+	for u in /usr/lib/systemd/system/luma-titan2e-*; do
+		for t in $(grep -E '^(WantedBy|RequiredBy)=' "$u" | cut -d= -f2-); do
+			[ -L "$w/$t.wants/${u##*/}" ] || [ -L "$w/$t.requires/${u##*/}" ] || { echo "  not enabled: ${u##*/} ($t)"; return 1; }
+		done
+	done
+}
+c platform-units-enabled units_enabled
 EOF
 chmod 0755 "$W/mini/check"
 # The check runs from the new root; give it the same BusyBox.
