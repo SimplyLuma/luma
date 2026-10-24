@@ -23,7 +23,11 @@ NEW_COPY = "copy(fixture/'checks','/var/tmp/nightly-installed-checks/')"
 PRELUDE = r'''
 import hashlib,json,os,subprocess,time,threading,struct,sys,shlex,importlib.util
 from pathlib import Path
-config_path=Path(sys.argv[1]); config=json.loads(config_path.read_text())
+assert len(sys.argv)==3,'Require frozen runner configuration and independently supplied SHA256'
+config_path=Path(sys.argv[1]); config_body=config_path.read_bytes()
+assert config_path.stat().st_uid==0 and not config_path.stat().st_mode&0o222
+assert hashlib.sha256(config_body).hexdigest()==sys.argv[2]
+config=json.loads(config_body)
 module_path=Path(config['provider_module'])
 assert hashlib.sha256(module_path.read_bytes()).hexdigest()==config['provider_module_sha256']
 spec=importlib.util.spec_from_file_location('server_provider',module_path)
@@ -33,7 +37,19 @@ p,prepared_sha,expected_heads=provider.validate_prepared(fixture,expected)
 assert not (fixture/'QUALIFIED.json').exists() and (fixture/'INSTALLED.json').exists()
 # The full previous receipt chain is validated by final CLOSED acceptance.
 # Before guest assertions, bind actual booted storage to the prepared inputs.
-bridge=provider.ServerInputBridge(Path(config['qmp_socket']),config['qemu_pid'],config['qemu_start_ticks'],config['qemu_invocation'])
+assert config['qmp_transport']==p['qmp_transport']
+if config['qmp_transport']=='libvirt-system-qmp/v1':
+ bridge=provider.ServerLibvirtInputBridge(p['producer_binding']['domain_name'],p['producer_binding']['domain_uuid'],config['qemu_pid'],config['qemu_start_ticks'],config['qemu_invocation'],peer_uid=config['qemu_uid'])
+else:
+ bridge=provider.ServerInputBridge(Path(config['qmp_socket']),config['qemu_pid'],config['qemu_start_ticks'],config['qemu_invocation'],peer_uid=config['qemu_uid'],capture_directory=Path(config['capture_directory']))
+assert config['qemu_invocation']==json.loads((fixture/'qemu-invocation.json').read_text())
+installed_before=json.loads(provider.regular_bytes(fixture/'INSTALLED.json',owner_uid=0,immutable=True))
+history=json.loads(provider.regular_bytes(fixture/'launch-history.json',owner_uid=0,immutable=True))
+active_body=provider.regular_bytes(fixture/history[-1]['transition_file'],owner_uid=0,immutable=True)
+assert hashlib.sha256(active_body).hexdigest()==installed_before['active_launch_sha256']==history[-1]['transition_sha256']
+active_launch=json.loads(active_body)
+assert (config['qemu_pid'],config['qemu_start_ticks'])==(active_launch['qemu_pid'],active_launch['qemu_start_ticks'])
+assert config['qemu_uid']==p['producer_binding']['qemu_uid']
 blocks=bridge.execute('query-block')
 for path,fmt,readonly in ((p['iso_path'],'raw',True),(p['target_disk_path'],'qcow2',False)):
  matches=[row['inserted'] for row in blocks if row.get('inserted',{}).get('file')==path]
@@ -90,7 +106,8 @@ FINALE = r'''
  proofs['actual-server-blocks.json']=blocks
  provider.write_stage(fixture,expected,'QUALIFIED','PASS','INSTALLED',proofs,
                       disk_identity=installed['disk_identity'],unsigned_modifications=[],
-                      architecture='aarch64',results=q['results'],
+                      architecture='aarch64',results=q['results'],qmp_transport=p['qmp_transport'],
+                      active_launch_sha256=installed['active_launch_sha256'],
                       guest_result_sha256=hashlib.sha256(qpath.read_bytes()).hexdigest(),
                       existing_Depot_update=json.loads((out/'depot-existing-update/result.json').read_text()))
  print('PASS server TCG installed guest behavior; CLOSED custody still required',flush=True)

@@ -8,6 +8,7 @@ Preparation never launches a VM or changes candidate/feed content.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -15,6 +16,10 @@ import re
 import stat
 import socket
 import subprocess
+import time
+import struct
+import uuid
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
@@ -60,7 +65,7 @@ def valid_hash(value, label='SHA256'):
     return value
 
 
-def regular_bytes(path: Path, *, owner_uid=None, immutable=False):
+def regular_bytes(path: Path, *, owner_uid=None, immutable=False, maximum_bytes=64 * 1024**2):
     path = Path(path)
     require(path.is_absolute(), 'Proof path must be absolute')
     # Reject symlink traversal, including parents; resolve() alone would hide it.
@@ -70,12 +75,14 @@ def regular_bytes(path: Path, *, owner_uid=None, immutable=False):
     try:
         before = os.fstat(fd)
         require(stat.S_ISREG(before.st_mode), 'Proof is not regular: ' + str(path))
+        require(before.st_size <= maximum_bytes, 'Proof exceeds bounded input size')
         if owner_uid is not None:
             require(before.st_uid == owner_uid, 'Wrong proof owner: ' + str(path))
         if immutable:
             require(before.st_mode & 0o222 == 0, 'Writable receipt: ' + str(path))
         with os.fdopen(fd, 'rb', closefd=False) as stream:
-            body = stream.read()
+            body = stream.read(maximum_bytes + 1)
+            require(len(body) <= maximum_bytes, 'Proof grew past bounded input size')
         after = os.fstat(fd)
         require((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns,
                  before.st_ctime_ns) == (after.st_dev, after.st_ino, after.st_size,
@@ -136,7 +143,66 @@ def validate_expected(expected):
     for key in ('static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
                 'signed_heads_sha256', 'native_headers_sha256'):
         valid_hash(expected.get(key), 'Missing independent ' + key)
+    validate_producer_binding(expected.get('producer_binding'))
+    require(expected.get('qmp_transport') in {'direct-unix-qmp/v1','libvirt-system-qmp/v1'},
+            'Explicit server QMP transport required')
 
+
+
+def validate_producer_binding(binding):
+    require(isinstance(binding, dict), 'Independent producer binding required')
+    roots = binding.get('root_units')
+    require(isinstance(roots, dict) and roots, 'Exact root unit/cgroup bindings required')
+    for unit, cgroup in roots.items():
+        require(re.fullmatch(r'luma-arm-desktop-[a-zA-Z0-9_.@-]+\.service', unit), 'Wrong owned root unit')
+        require(cgroup == '/luma.slice/luma-arm.slice/luma-arm-desktop.slice/' + unit,
+                'Root producer cgroup must exactly match owned unit')
+    require(re.fullmatch(r'dev-arm-server-[a-zA-Z0-9_.-]+\.service', binding.get('normal_unit', '')),
+            'Exact normal admission unit required')
+    require(binding.get('normal_cgroup') == '/user.slice/user-1003.slice/user@1003.service/app.slice/' +
+            binding['normal_unit'], 'Wrong normal admission cgroup')
+    require(type(binding.get('qemu_uid')) is int and binding['qemu_uid'] > 0 and
+            type(binding.get('qemu_gid')) is int and binding['qemu_gid'] > 0, 'Explicit non-root QEMU owner required')
+    require(re.fullmatch(r'luma-arm-desktop-[a-zA-Z0-9_.-]+', binding.get('domain_name', '')),
+            'Exact owned libvirt domain name required')
+    require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', binding.get('domain_uuid', '')),
+            'Exact libvirt UUID required')
+
+
+def validate_closed_observation(consumers, binding, root_outcomes):
+    validate_producer_binding(binding)
+    require(consumers.get('qemu_pids') == [] and consumers.get('open_fds') == [], 'Live VM/disk consumers remain')
+    require(consumers.get('domain_name') == binding['domain_name'] and
+            consumers.get('domain_uuid') == binding['domain_uuid'] and
+            consumers.get('domain_state') == 'shut off', 'Actual domain UUID/state differs')
+    units = consumers.get('units')
+    require(isinstance(units, list) and len(units) == len(binding['root_units']) and
+            {x.get('Id') for x in units} == set(binding['root_units']), 'Unrelated or missing root units')
+    require(set(root_outcomes) == set(binding['root_units']), 'Missing exact root outcome receipts')
+    for unit in units:
+        name = unit['Id']; expected_cg = binding['root_units'][name]
+        require(unit.get('ActiveState') == 'inactive' and unit.get('MainPID') == '0' and
+                unit.get('ControlGroup') in ('', expected_cg) and
+                unit.get('LoadState') in ('loaded', 'not-found'), 'Root unit is not actually inactive')
+        if unit['LoadState'] == 'loaded':
+            require(unit.get('Result') == 'success' and unit.get('ExecMainStatus') == '0', 'Root unit did not succeed')
+        outcome = root_outcomes[name]
+        require(outcome.get('unit') == name and outcome.get('cgroup') == expected_cg and
+                type(outcome.get('exit_status')) is int and outcome['exit_status'] == 0,
+                'Exact root producer outcome failed')
+    normal = consumers.get('normal_unit_state', {})
+    require(normal.get('Id') == binding['normal_unit'] and normal.get('MainPID') == '0' and
+            normal.get('ActiveState') == 'inactive' and normal.get('ControlGroup') in ('', binding['normal_cgroup']),
+            'Normal admission unit has not closed')
+    groups = consumers.get('cgroups')
+    expected_groups = set(binding['root_units'].values()) | {binding['normal_cgroup']}
+    require(isinstance(groups, dict) and set(groups) == expected_groups, 'Wrong producer cgroup scan inventory')
+    states = {x['Id']: x for x in units};states[binding['normal_unit']] = normal
+    for name, cg in list(binding['root_units'].items()) + [(binding['normal_unit'], binding['normal_cgroup'])]:
+        observed = groups[cg]
+        require(observed.get('pids') == [] and type(observed.get('exists')) is bool, 'Producer cgroup is populated')
+        if not observed['exists']:
+            require(states[name]['ControlGroup'] == '', 'Missing cgroup without collected inactive unit')
 
 def immutable_json(path, data):
     body = (json.dumps(data, indent=2, sort_keys=True) + '\n').encode()
@@ -172,12 +238,14 @@ def validate_prepared(fixture, expected, *, owner_uid=0):
     fixture = Path(fixture)
     validate_expected(expected)
     path = fixture / 'PREPARED.json'
-    body = regular_bytes(path, owner_uid=owner_uid, immutable=True)
+    body = regular_bytes(path, owner_uid=owner_uid, immutable=True, maximum_bytes=4 * 1024**2)
     p = json.loads(body)
     reject_mac(p)
     for key in IDENTITY_KEYS:
         require(p.get(key) == expected[key], 'Prepared identity differs: ' + key)
     require(p.get('provider') == PROVIDER, 'Explicit server provider required')
+    require(p.get('producer_binding') == expected['producer_binding'], 'Independent producer identity differs')
+    require(p.get('qmp_transport') == expected['qmp_transport'], 'Independent QMP transport differs')
     require(p.get('result') == 'PREPARED_ONLY', 'Preparation cannot claim execution')
     require(p.get('guest_architecture') == 'aarch64' and
             p.get('host_architecture') == 'x86_64' and p.get('accelerator') == 'tcg' and
@@ -273,6 +341,89 @@ def validate_rows(q, heads):
             valid_hash(row.get('log_sha256'), 'Missing actual checker log')
 
 
+
+def validate_launch_transition(p, original, transition):
+    """Pin actual libvirt runtime ownership/labels before any guest code runs."""
+    binding = p['producer_binding']
+    require(transition.get('phase') == 'paused-before-guest-execution' and
+            transition.get('domain_name') == binding['domain_name'] and
+            transition.get('domain_uuid') == binding['domain_uuid'], 'Wrong pre-execution launch binding')
+    require(transition.get('before_disk_identity') == original, 'Launch did not begin with restored original identity')
+    live = transition.get('live_disk_identity', {})
+    require(set(live) == set(original), 'Incomplete live disk identity')
+    for key in ('device', 'inode', 'mode'):
+        require(live[key] == original[key], 'Launch replaced inode/mode: ' + key)
+    require(live['uid'] == binding['qemu_uid'] and live['gid'] == binding['qemu_gid'], 'Unexpected live QEMU owner')
+    require(type(transition.get('qemu_pid')) is int and transition['qemu_pid'] > 1 and
+            type(transition.get('qemu_start_ticks')) is int and transition['qemu_start_ticks'] > 0,
+            'Actual launch PID birth required')
+    root = ET.fromstring(transition['live_domain_xml'])
+    require(root.get('type') == 'qemu' and root.findtext('name') == binding['domain_name'] and
+            root.findtext('uuid') == binding['domain_uuid'] and
+            root.find('os/type').get('arch') == 'aarch64', 'Live domain XML identity differs')
+    disks = [row for row in root.findall('devices/disk') if row.get('device') == 'disk']
+    require(len(disks) == 1 and disks[0].find('source').get('file') == p['target_disk_path'] and
+            disks[0].find('driver').get('type') == 'qcow2', 'Actual live disk XML differs')
+    require(root.findall('devices/hostdev') == [], 'Unexpected physical host device')
+    label = root.find("seclabel[@model='selinux']")
+    dac = root.find("seclabel[@model='dac']")
+    require(label is not None and label.get('type') == 'dynamic' and label.get('relabel') == 'yes',
+            'Actual dynamic SELinux XML label required')
+    imagelabel = label.findtext('imagelabel')
+    processlabel = label.findtext('label')
+    require(isinstance(imagelabel, str) and isinstance(processlabel, str) and
+            imagelabel.startswith('system_u:object_r:svirt_image_t:s0:c') and
+            processlabel.startswith('system_u:system_r:svirt_tcg_t:s0:c') and
+            processlabel.split(':', 3)[3] == imagelabel.split(':', 3)[3], 'Wrong actual TCG process/image MCS')
+    require(dac is not None and dac.findtext('label') == '+' + str(binding['qemu_uid']) + ':+' + str(binding['qemu_gid']),
+            'Actual DAC process label differs')
+    original_attrs = original['xattrs']; actual_attrs = live['xattrs']
+    trusted = {'trusted.libvirt.security.' + suffix for suffix in
+               ('dac', 'ref_dac', 'ref_selinux', 'selinux', 'timestamp_dac', 'timestamp_selinux')}
+    require(not (trusted & set(original_attrs)), 'Fresh disk has stale libvirt security tracking')
+    require(set(actual_attrs) == set(original_attrs) | trusted, 'Unexpected runtime attribute inventory')
+    for name, value in original_attrs.items():
+        if name != 'security.selinux':
+            require(actual_attrs[name] == value, 'Unexpected changed runtime attribute: ' + name)
+    require(bytes.fromhex(actual_attrs['security.selinux']).rstrip(b'\0').decode() == imagelabel,
+            'Disk MCS differs from exact launch XML')
+    def decoded(name):return bytes.fromhex(actual_attrs['trusted.libvirt.security.' + name]).decode()
+    require(decoded('dac') == '+' + str(original['uid']) + ':+' + str(original['gid']) and
+            decoded('ref_dac') == decoded('ref_selinux') == '1' and
+            decoded('selinux') == bytes.fromhex(original_attrs['security.selinux']).rstrip(b'\0').decode(),
+            'Original owner/label tracking differs')
+    timestamp = decoded('timestamp_dac')
+    require(timestamp.isdecimal() and decoded('timestamp_selinux') == timestamp,
+            'Actual launch security timestamps differ')
+    return live
+
+
+def validate_launch_history(p, original, installed, proofs):
+    history = json.loads(proofs['launch-history.json'])
+    require(isinstance(history, list) and history, 'Actual per-launch history required')
+    births = set(); last = None
+    for index, record in enumerate(history):
+        name = record['transition_file']
+        require(name in proofs and hashlib.sha256(proofs[name]).hexdigest() == record['transition_sha256'],
+                'Missing immutable launch transition')
+        transition = json.loads(proofs[name])
+        live = validate_launch_transition(p, original, transition)
+        birth = (transition['qemu_pid'], transition['qemu_start_ticks'])
+        require(birth not in births, 'Duplicate QEMU birth relabeled as another launch');births.add(birth)
+        if index < len(history) - 1:
+            closed_name = record['closure_file']
+            require(closed_name in proofs and hashlib.sha256(proofs[closed_name]).hexdigest() == record['closure_sha256'],
+                    'Missing stopped-interval identity proof')
+            closure = json.loads(proofs[closed_name])
+            require(closure.get('transition_sha256') == record['transition_sha256'] and
+                    closure.get('restored_disk_identity') == original and
+                    closure.get('qemu_pid') == birth[0] and closure.get('qemu_start_ticks') == birth[1] and
+                    closure.get('process_absent') is True and closure.get('no_open_fds') is True,
+                    'Stopped launch did not fully restore original identity')
+        last = record
+    require(installed.get('active_launch_sha256') == last['transition_sha256'], 'Installed boot bound to wrong active launch')
+    return live, transition
+
 def validate_server_qualification(fixture: Path, expected: dict, *, owner_uid=0):
     """Verify the complete closed producer chain; never promote or modify proof."""
     fixture = Path(fixture)
@@ -283,7 +434,7 @@ def validate_server_qualification(fixture: Path, expected: dict, *, owner_uid=0)
     for name, result in (('CREATED', 'CREATED_ONLY'), ('INSTALLED', 'PASS_INSTALLED'),
                          ('QUALIFIED', 'PASS'), ('CLOSED', 'PASS_CLOSED')):
         path = fixture / (name + '.json')
-        body = regular_bytes(path, owner_uid=owner_uid, immutable=True)
+        body = regular_bytes(path, owner_uid=owner_uid, immutable=True, maximum_bytes=4 * 1024**2)
         receipt = json.loads(body)
         reject_mac(receipt)
         require(receipt.get('provider') == PROVIDER and receipt.get('result') == result,
@@ -307,7 +458,8 @@ def validate_server_qualification(fixture: Path, expected: dict, *, owner_uid=0)
     extents = json.loads(chain['CREATED'][1]['created-qemu-img-map.json'])
     require(isinstance(extents, list) and extents and all(x.get('data') is False for x in extents), 'Initial disk contains allocated guest data')
     installed, ip = chain['INSTALLED']
-    require(installed.get('disk_identity') == created['disk_identity'], 'Installed disk identity differs')
+    live_identity, active_transition = validate_launch_history(p, created['disk_identity'], installed, ip)
+    require(installed.get('disk_identity') == live_identity, 'Installed disk differs from actual boot launch')
     require(installed.get('installation_origin') == 'fresh-final-luma-iso', 'Actual final Luma medium required')
     require(installed.get('unsigned_modifications') == [], 'Unsigned diagnostic overlays not allowed')
     transcript = ip['installer.log'].decode(errors='replace')
@@ -319,7 +471,8 @@ def validate_server_qualification(fixture: Path, expected: dict, *, owner_uid=0)
     require(boot.get('uname_machine') == 'aarch64' and boot.get('graphical_target') == 'active' and
             boot.get('efi_boot') is True, 'Installed ARM EFI graphical boot not proven')
     q, qp = chain['QUALIFIED']
-    require(q.get('disk_identity') == created['disk_identity'] and q.get('unsigned_modifications') == [],
+    require(q.get('disk_identity') == live_identity and q.get('unsigned_modifications') == [] and
+            q.get('active_launch_sha256') == installed['active_launch_sha256'],
             'Qualified disk changed or modified unsigned')
     result = json.loads(qp['guest-result.json'])
     require(result.get('source_revision') == p['source_revision'], 'Guest result source differs')
@@ -336,20 +489,28 @@ def validate_server_qualification(fixture: Path, expected: dict, *, owner_uid=0)
             require(row['log_sha256'] in q['proof_hashes'].values(), 'Actual result log absent from proof closure')
     closed, cp = chain['CLOSED']
     require(closed.get('disk_identity') == created['disk_identity'], 'Closed source disk identity differs')
+    last_closure = json.loads(cp['final-launch-closure.json'])
+    require(last_closure.get('transition_sha256') == installed['active_launch_sha256'] and
+            last_closure.get('restored_disk_identity') == created['disk_identity'] and
+            last_closure.get('qemu_pid') == active_transition['qemu_pid'] and
+            last_closure.get('qemu_start_ticks') == active_transition['qemu_start_ticks'] and
+            last_closure.get('process_absent') is True and last_closure.get('no_open_fds') is True,
+            'Final launch did not fully restore original disk identity')
     outcome = json.loads(cp['normal-wrapper-outcome.json'])
-    require(outcome.get('returncode') == 0 and outcome.get('result') == 'finished' and
-            outcome.get('signal') is None, 'Normal admitted wrapper did not finish successfully')
+    require(type(outcome.get('exit_status')) is int and outcome['exit_status'] == 0 and
+            outcome.get('reason') == 'command exited' and
+            isinstance(outcome.get('finished_utc'), str) and outcome['finished_utc'],
+            'Normal admitted wrapper did not finish successfully')
+    job_record = json.loads(cp['normal-job-record.json'])
+    require(job_record.get('unit') == p['producer_binding']['normal_unit'] and
+            job_record.get('cgroup') == p['producer_binding']['normal_cgroup'] and
+            job_record.get('uid') == 1003 and job_record.get('memory_gib') == 10 and
+            job_record.get('disk_device') == p['iso_identity']['device'] and
+            type(job_record.get('disk_gib')) is int and
+            job_record['disk_gib'] * 1024**3 >= p['planned_growth_bytes'],
+            'Normal producer admission does not match exact lifecycle/storage growth')
     consumers = json.loads(cp['closed-consumers.json'])
-    require(consumers.get('qemu_pids') == [] and consumers.get('open_fds') == [] and
-            consumers.get('cgroup_pids') == [] and consumers.get('domain_state') == 'shut off',
-            'Owned VM/producer still has consumers')
-    require(consumers.get('units') and all(x.get('ActiveState') == 'inactive' and
-            x.get('Result') == 'success' and x.get('ExecMainStatus') == '0' and
-            re.fullmatch(r'luma-arm-desktop-[a-zA-Z0-9_.@-]+\.service', x.get('Id', ''))
-            for x in consumers['units']), 'Root units not successfully closed')
-    require(str(consumers.get('scanned_cgroup', '')).startswith(
-            '/sys/fs/cgroup/luma.slice/luma-arm.slice/luma-arm-desktop.slice/'),
-            'Missing exact owned producer cgroup scan')
+    validate_closed_observation(consumers, p['producer_binding'], json.loads(cp['root-wrapper-outcomes.json']))
     require(consumers.get('scanned_disk_identity') == created['disk_identity'], 'No-FD scan disk identity differs')
     archive = Path(closed['archive_path'])
     require(identity(archive) == closed['archive_identity'], 'Archived disk metadata differs')
@@ -425,7 +586,7 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
     prepared.update({key: expected[key] for key in (
         'static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
         'signed_heads_sha256', 'native_headers_sha256')})
-    prepared.update(result='PREPARED_ONLY', provider=PROVIDER, guest_architecture='aarch64',
+    prepared.update(qmp_transport=expected['qmp_transport'],producer_binding=expected['producer_binding'], result='PREPARED_ONLY', provider=PROVIDER, guest_architecture='aarch64',
                     host_architecture='x86_64', accelerator='tcg', qemu_machine='virt',
                     iso_path=str(iso), iso_identity=identity(iso), iso_readonly_binding=True,
                     target_disk_path=str(Path(inputs['target_disk_path'])),
@@ -442,6 +603,97 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
     return prepared_hash
 
 
+
+
+def prepare_checker_capsule(baseline: Path, preparation: Path, original_hashes: dict,
+                            destination: Path, source_repository: Path,
+                            original_source_revision: str, final_source_revision: str):
+    """Copy reviewed checks; change ONLY emitted source-identity metadata.
+
+    Every embedded module hash is independently checked against its exact Git
+    blob at the final source revision. A changed module/preamble is refused for
+    separate review, never silently rewritten. No guest result/PASS is reused.
+    """
+    require(re.fullmatch('[0-9a-f]{40}', final_source_revision), 'Invalid final source revision')
+    require(set(original_hashes) == set(CHECK_FILES), 'Original checker manifest incomplete')
+    destination = Path(destination)
+    require(not destination.exists(), 'Fresh checker capsule destination required')
+    original = {}
+    for name, digest in original_hashes.items():
+        body = regular_bytes(Path(baseline) / name)
+        require(hashlib.sha256(body).hexdigest() == digest, 'Original checker bytes differ: ' + name)
+        original[name] = body
+    preamble = json.loads(regular_bytes(Path(preparation)))
+    audit = preamble['preamble_hash_audit']
+    rows = {(row['check'], row['module']): row for row in audit}
+    require(len(rows) == len(audit), 'Duplicate source preamble audit')
+    embedded = {}
+    for name, body in original.items():
+        tree = ast.parse(body.decode())
+        for node in tree.body:
+            if not isinstance(node, ast.For) or not isinstance(node.iter, ast.Call):
+                continue
+            expression = node.iter.func
+            if not isinstance(expression, ast.Attribute) or expression.attr != 'items' or not isinstance(expression.value, ast.Dict):
+                continue
+            mapping = expression.value
+            pairs = [(key.value, value.value) for key, value in zip(mapping.keys, mapping.values)
+                     if isinstance(key, ast.Constant) and isinstance(key.value, str) and
+                     isinstance(value, ast.Constant) and isinstance(value.value, str) and
+                     re.fullmatch('[0-9a-f]{64}', value.value)]
+            for module, digest in pairs:
+                require((name, module) not in embedded, 'Duplicate embedded module anchor')
+                embedded[(name, module)] = digest
+    require(set(embedded) == set(rows), 'Actual embedded source hashes differ from audit inventory')
+    actual_audit = []
+    for key, digest in embedded.items():
+        rel = Path(rows[key]['source_path'])
+        require(not rel.is_absolute() and '..' not in rel.parts, 'Unsafe authoritative source path')
+        blob = subprocess.check_output(['git', '-C', str(source_repository), 'show',
+                                        final_source_revision + ':' + str(rel)],
+                                       stdin=subprocess.DEVNULL, timeout=30)
+        actual = hashlib.sha256(blob).hexdigest()
+        require(actual == digest, 'Final source module changed; checker review required: ' + str(key))
+        actual_audit.append(dict(check=key[0], module=key[1], source_path=str(rel),
+                                 expected_sha256=digest, authoritative_sha256=actual))
+    driver = original['run-guest-checks.py'].decode()
+    tree = ast.parse(driver)
+    constants = [value for node in ast.walk(tree) if isinstance(node, ast.Dict)
+                 for key, value in zip(node.keys, node.values)
+                 if isinstance(key, ast.Constant) and key.value == 'source_revision' and
+                 isinstance(value, ast.Constant) and value.value == original_source_revision]
+    require(len(constants) == 1, 'Original driver source identity anchor differs')
+    node = constants[0]
+    lines = driver.splitlines(keepends=True)
+    require(node.lineno == node.end_lineno, 'Unexpected multiline source metadata')
+    offset = sum(len(line) for line in lines[:node.lineno - 1])
+    start, end = offset + node.col_offset, offset + node.end_col_offset
+    literal = driver[start:end]
+    replacement = repr(final_source_revision)
+    adapted = driver[:start] + replacement + driver[end:]
+    require(adapted[:start] + literal + adapted[start + len(replacement):] == driver,
+            'Source metadata adaptation changed guest behavior')
+    ast.parse(adapted)
+    destination.mkdir(mode=0o700)
+    manifest = {}
+    for name, body in original.items():
+        prepared = adapted.encode() if name == 'run-guest-checks.py' else body
+        fd = os.open(destination / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
+        try:
+            with os.fdopen(fd, 'wb', closefd=False) as stream:
+                stream.write(prepared);stream.flush();os.fsync(fd)
+        finally:
+            os.close(fd)
+        manifest[name] = hashlib.sha256(prepared).hexdigest()
+    proof = dict(result='PREPARED_ONLY_NOT_GUEST_EXECUTED',
+                 original_source_revision=original_source_revision,
+                 source_revision=final_source_revision, original_hashes=original_hashes,
+                 prepared_hashes=manifest, preamble_hash_audit=actual_audit,
+                 changed_only_emitted_source_identity=True,
+                 guest_behavior_and_assertions_preserved=True)
+    immutable_json(destination / 'PREPARATION.json', proof)
+    immutable_json(destination / 'MANIFEST.json', manifest)
+    return proof
 
 def write_stage(fixture, expected, stage, result, previous_stage, proofs, **fields):
     """Exclusively freeze observed phase outputs; no producer success inference."""
@@ -511,56 +763,62 @@ def create_fresh_disk(fixture: Path, expected: dict, qemu_img: Path,
         disk_identity=identity(target), disk_path=str(target))
 
 
-def observe_disk_consumers(disk: Path, cgroup: Path, unit_names: list[str], domain_state: str):
-    """Real privileged closure scan. Errors fail closed; no empty fake defaults.
+def observe_disk_consumers(disk: Path, binding: dict, root_outcomes: dict):
+    """Real privileged closure scan bound to PREPARED producer/domain identities.
 
-    Call after the normally admitted producer has actually exited. Archive and
-    original XML byte comparison are separately mandatory for CLOSED evidence.
+    A collected cgroup is valid only with its exact inactive unit, MainPID0 and
+    blank ControlGroup. Independent recorded root/normal outcomes remain needed.
     """
     require(os.getuid() == 0, 'Full /proc consumer scan requires release administrator')
+    validate_producer_binding(binding)
     target = identity(disk)
-    require(str(cgroup).startswith('/sys/fs/cgroup/luma.slice/luma-arm.slice/luma-arm-desktop.slice/'),
-            'Only the exact owned ARM cgroup may be scanned')
-    require(cgroup.is_dir() and not cgroup.is_symlink(), 'Owned cgroup missing')
-    cg_pids = []
-    for path in cgroup.rglob('cgroup.procs'):
-        cg_pids += [int(pid) for pid in path.read_text().split()]
-    open_fds = []
-    qemu_pids = []
+    open_fds, qemu_pids = [], []
     for proc in Path('/proc').iterdir():
-        if not proc.name.isdigit():
-            continue
+        if not proc.name.isdigit():continue
         try:
             command = (proc / 'cmdline').read_bytes().split(b'\0')
             if any(os.fsencode(str(disk)) in arg for arg in command) and command and b'qemu' in command[0]:
                 qemu_pids.append(int(proc.name))
             for fd in (proc / 'fd').iterdir():
-                try:
-                    observed = fd.stat()
-                except FileNotFoundError:
-                    continue
+                try:observed = fd.stat()
+                except FileNotFoundError:continue
                 if (observed.st_dev, observed.st_ino) == (target['device'], target['inode']):
                     open_fds.append({'pid': int(proc.name), 'fd': int(fd.name)})
-        except (FileNotFoundError, ProcessLookupError):
-            continue
-    units = []
-    require(unit_names and len(unit_names) == len(set(unit_names)), 'Explicit unique owned units required')
-    for unit in unit_names:
-        require(re.fullmatch(r'luma-arm-desktop-[a-zA-Z0-9_.@-]+\.service', unit), 'Unowned closure unit')
-        output = subprocess.check_output(['systemctl', 'show', unit, '-p', 'Id', '-p', 'ActiveState',
-                                          '-p', 'Result', '-p', 'ExecMainStatus'],
-                                         text=True, stdin=subprocess.DEVNULL, timeout=30)
-        record = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
-        require(record.get('Id') == unit and record.get('ActiveState') == 'inactive' and
-                record.get('Result') == 'success' and record.get('ExecMainStatus') == '0',
-                'Actual root unit is not successfully closed')
-        units.append(record)
-    observed = dict(qemu_pids=qemu_pids, open_fds=open_fds, cgroup_pids=sorted(set(cg_pids)),
-                    domain_state=domain_state, units=units, scanned_disk_identity=target,
-                    scanned_cgroup=str(cgroup))
-    require(domain_state == 'shut off' and not qemu_pids and not open_fds and not cg_pids,
-            'Actual VM/disk consumers remain')
+        except (FileNotFoundError, ProcessLookupError):continue
+    def unit_state(name, user=False):
+        command = ['systemctl'] + (['--user'] if user else []) + ['show', name]
+        if user:
+            command = ['runuser', '-u', 'luma-dev-2', '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1003',
+                       'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1003/bus'] + command
+        for prop in ('Id', 'MainPID', 'ControlGroup', 'LoadState', 'ActiveState', 'Result', 'ExecMainStatus'):
+            command += ['-p', prop]
+        answer = subprocess.run(command, text=True, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        record = dict(line.split('=', 1) for line in answer.stdout.splitlines() if '=' in line)
+        require(answer.returncode == 0 or record.get('LoadState') == 'not-found', 'Unit state observation failed')
+        require(record.get('Id') == name, 'Observed another unit')
+        return record
+    units = [unit_state(name) for name in binding['root_units']]
+    normal = unit_state(binding['normal_unit'], user=True)
+    groups = {}
+    for cg in set(binding['root_units'].values()) | {binding['normal_cgroup']}:
+        path = Path('/sys/fs/cgroup' + cg)
+        if path.exists():
+            require(not path.is_symlink(), 'Symlink producer cgroup')
+            pids = [int(pid) for procs in path.rglob('cgroup.procs') for pid in procs.read_text().split()]
+            groups[cg] = {'exists': True, 'pids': sorted(set(pids))}
+        else:
+            groups[cg] = {'exists': False, 'pids': []}
+    def virsh(*args):
+        return subprocess.check_output(['virsh', '--connect', 'qemu:///system', *args],
+                                       text=True, stdin=subprocess.DEVNULL, timeout=30).strip()
+    observed = dict(qemu_pids=qemu_pids, open_fds=open_fds, units=units,
+                    normal_unit_state=normal, cgroups=groups,
+                    domain_name=binding['domain_name'], domain_uuid=virsh('domuuid', binding['domain_name']),
+                    domain_state=virsh('domstate', binding['domain_name']), scanned_disk_identity=target)
+    validate_closed_observation(observed, binding, root_outcomes)
     return observed
+
 
 class ServerInputBridge:
     """Actual local QMP input/screenshot bridge, bound to one observed QEMU birth.
@@ -569,8 +827,11 @@ class ServerInputBridge:
     check deadlines, synthesizes mapped windows or calls a Mac/tunnel helper.
     """
     def __init__(self, qmp_socket: Path, pid: int, start_ticks: int,
-                 invocation: list[str], timeout=30):
+                 invocation: list[str], *, peer_uid: int, capture_directory=None, timeout=30):
         require(type(pid) is int and pid > 1, 'Invalid QEMU PID')
+        require(type(peer_uid) is int and peer_uid >= 0, 'Pinned QEMU peer UID required')
+        self.peer_uid = peer_uid
+        self.capture_directory = Path(capture_directory) if capture_directory is not None else None
         self.pid, self.start_ticks, self.invocation = pid, start_ticks, invocation
         self.socket_path, self.timeout = Path(qmp_socket), timeout
         self.check_process()
@@ -589,15 +850,35 @@ class ServerInputBridge:
         require(command in {'query-status', 'query-block', 'screendump', 'input-send-event', 'send-key'},
                 'Unreviewed QMP bridge action')
         self.check_process()
+        deadline = time.monotonic() + self.timeout
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
             conn.settimeout(self.timeout); conn.connect(str(self.socket_path))
-            stream = conn.makefile('rwb')
-            require('QMP' in json.loads(stream.readline()), 'Invalid QMP greeting')
+            peer_pid, peer_uid, _ = struct.unpack('3i', conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            require((peer_pid, peer_uid) == (self.pid, self.peer_uid), 'QMP socket is not the pinned QEMU process/UID')
+            pending = bytearray()
+            total_bytes = 0
+            events = 0
+            def read_message():
+                nonlocal total_bytes, events
+                while b'\n' not in pending:
+                    remaining = deadline - time.monotonic()
+                    require(remaining > 0, 'Absolute QMP deadline exceeded')
+                    conn.settimeout(remaining)
+                    piece = conn.recv(65536)
+                    require(piece, 'QMP socket closed before complete response')
+                    total_bytes += len(piece)
+                    require(total_bytes <= 1024**2, 'QMP response budget exceeded')
+                    pending.extend(piece)
+                line, _, rest = pending.partition(b'\n')
+                pending[:] = rest
+                events += 1
+                require(events <= 64 and time.monotonic() < deadline, 'QMP event/deadline budget exceeded')
+                return json.loads(line)
+            require('QMP' in read_message(), 'Invalid QMP greeting')
             def call(name, args):
-                stream.write((json.dumps({'execute': name, 'arguments': args, 'id': name}) + '\n').encode())
-                stream.flush()
+                conn.sendall((json.dumps({'execute': name, 'arguments': args, 'id': name}) + '\n').encode())
                 while True:
-                    message = json.loads(stream.readline())
+                    message = read_message()
                     if message.get('id') == name:
                         require('error' not in message, 'QMP operation failed: ' + str(message))
                         return message['return']
@@ -607,10 +888,28 @@ class ServerInputBridge:
     def snapshot(self, path: Path):
         path = Path(path)
         require(path.is_absolute() and not path.exists(), 'Exclusive screenshot output required')
-        self.execute('screendump', {'filename': str(path), 'format': 'png'})
-        body = regular_bytes(path)
-        require(body.startswith(b'\x89PNG\r\n\x1a\n'), 'Actual QMP screenshot missing')
-        import struct
+        directory = self.capture_directory
+        require(directory is not None and directory.is_absolute(), 'Explicit QEMU-owned capture directory required')
+        for part in (directory, *directory.parents):
+            require(not part.is_symlink(), 'Symlink capture directory')
+        before = directory.stat()
+        require(stat.S_ISDIR(before.st_mode) and before.st_uid == self.peer_uid and
+                stat.S_IMODE(before.st_mode) == 0o700, 'Capture directory is not private to pinned QEMU UID')
+        source = directory / ('frame-' + uuid.uuid4().hex + '.png')
+        require(not source.exists(), 'Unexpected capture path collision')
+        self.execute('screendump', {'filename': str(source), 'format': 'png'})
+        body = regular_bytes(source, owner_uid=self.peer_uid, maximum_bytes=16 * 1024**2)
+        require(body.startswith(b'\x89PNG\r\n\x1a\n') and len(body) >= 24, 'Actual QMP screenshot missing')
+        after = directory.stat()
+        require((before.st_dev, before.st_ino, before.st_uid, stat.S_IMODE(before.st_mode)) ==
+                (after.st_dev, after.st_ino, after.st_uid, stat.S_IMODE(after.st_mode)), 'Capture directory changed')
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, 'wb', closefd=False) as stream:
+                stream.write(body);stream.flush();os.fsync(fd)
+        finally:
+            os.close(fd)
+        require(file_sha256(path) == hashlib.sha256(body).hexdigest(), 'Copied actual frame differs')
         return struct.unpack('>II', body[16:24])
 
     def key(self, key):
@@ -630,6 +929,101 @@ class ServerInputBridge:
         time.sleep(.08)
         self.execute('input-send-event', {'events': [
             {'type': 'btn', 'data': {'button': 'left', 'down': False}}]})
+
+
+LIBVIRT_CHILD = r"""
+import json,os,sys,libvirt,libvirt_qemu
+connection=libvirt.open('qemu:///system')
+try:
+ domain=connection.lookupByUUIDString(sys.argv[1])
+ assert domain.name()==sys.argv[2] and domain.isActive()
+ action=sys.argv[3]
+ if action=='monitor':
+  response=libvirt_qemu.qemuMonitorCommand(domain,sys.argv[4],0)
+  assert len(response.encode())<=1024**2
+  print(response)
+ else:
+  assert action=='screenshot'
+  target=sys.argv[4];stream=connection.newStream(0);count=0
+  fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+  try:
+   domain.screenshot(stream,0,0)
+   with os.fdopen(fd,'wb',closefd=False) as output:
+    def sink(_stream,data,_opaque):
+     global count
+     count+=len(data);assert count<=16*1024**2
+     output.write(data);return len(data)
+    stream.recvAll(sink,None);stream.finish();output.flush();os.fsync(fd)
+  except BaseException:
+   try:stream.abort()
+   except libvirt.libvirtError:pass
+   raise
+  finally:os.close(fd)
+finally:connection.close()
+"""
+
+
+class ServerLibvirtInputBridge(ServerInputBridge):
+    """Actual UUID-bound system libvirt QMP/screenshot stream, no raw socket race.
+
+    libvirt owns its primary monitor. A bounded isolated child uses the trusted
+    local qemu:///system API and exact domain UUID/name; PID birth/argv and live
+    QEMU UID are independently rechecked before and after every operation.
+    No root-only evidence directory is made writable to QEMU.
+    """
+    def __init__(self, domain_name, domain_uuid, pid, start_ticks, invocation, *, peer_uid, timeout=30):
+        require(re.fullmatch(r'luma-arm-desktop-[a-zA-Z0-9_.-]+', domain_name), 'Unowned libvirt domain')
+        require(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', domain_uuid), 'Invalid domain UUID')
+        require(type(pid) is int and pid>1 and type(start_ticks) is int and start_ticks>0 and
+                type(peer_uid) is int and peer_uid>0, 'Exact non-root QEMU PID/birth/UID required')
+        self.domain_name,self.domain_uuid=domain_name,domain_uuid
+        self.pid,self.start_ticks,self.invocation=pid,start_ticks,invocation
+        self.peer_uid,self.timeout=peer_uid,timeout
+        self.runtime_pid_identity=None
+        self.check_process()
+
+    def check_process(self):
+        super().check_process()
+        status = dict(line.split(':',1) for line in (Path('/proc')/str(self.pid)/'status').read_text().splitlines() if ':' in line)
+        require([int(value) for value in status['Uid'].split()] == [self.peer_uid]*4,
+                'Actual libvirt QEMU process UID differs')
+        self.bind_runtime_pid()
+
+    def bind_runtime_pid(self):
+        path=Path('/run/libvirt/qemu')/(self.domain_name+'.pid')
+        before=identity(path)
+        require(before['uid']==0 and before['mode']&0o022==0, 'Untrusted libvirt runtime PID file')
+        body=regular_bytes(path,owner_uid=0,maximum_bytes=64)
+        require(body.strip().isdigit() and int(body.strip())==self.pid, 'Domain UUID/name is not the pinned QEMU PID')
+        require(identity(path)==before, 'Runtime PID identity changed while observing')
+        if self.runtime_pid_identity is None:self.runtime_pid_identity=before
+        else:require(self.runtime_pid_identity==before, 'Runtime domain PID file was replaced')
+
+    def child(self, action, argument):
+        self.check_process()
+        require(action in {'monitor','screenshot'}, 'Unreviewed libvirt transport action')
+        result=subprocess.run(['/usr/bin/python3','-B','-I','-c',LIBVIRT_CHILD,self.domain_uuid,self.domain_name,action,argument],
+                              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                              timeout=self.timeout,check=True)
+        require(len(result.stdout)<=1024**2 and len(result.stderr)<=65536, 'libvirt response exceeds budget')
+        self.check_process()
+        return result.stdout
+
+    def execute(self, command, arguments=None):
+        require(command in {'query-status','query-block','input-send-event','send-key'},
+                'Unreviewed libvirt monitor command')
+        request=json.dumps({'execute':command,'arguments':arguments or {}})
+        response=json.loads(self.child('monitor',request))
+        require('error' not in response and 'return' in response, 'Actual libvirt QMP operation failed')
+        return response['return']
+
+    def snapshot(self,path):
+        path=Path(path)
+        require(path.is_absolute() and not path.exists(), 'Exclusive private screenshot output required')
+        self.child('screenshot',str(path))
+        body=regular_bytes(path,owner_uid=os.getuid(),maximum_bytes=16*1024**2)
+        require(body.startswith(b'\x89PNG\r\n\x1a\n') and len(body)>=24, 'Actual libvirt PNG stream missing')
+        return struct.unpack('>II',body[16:24])
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
