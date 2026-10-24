@@ -7,7 +7,7 @@
 #
 # 1. The image's OCI layout is imported with OSTree's container tooling (run
 #    from the image itself, so the importer matches the tree) into a
-#    bare-user staging repository. The importer writes one merged commit whose
+#    private bare staging repository. The importer writes one merged commit whose
 #    tree carries the image's SELinux labels and the /usr/etc layout rpm-ostree
 #    deploys.
 # 2. A candidate commit is written into the private candidate archive
@@ -60,7 +60,11 @@ import_repo="$LUMA_OS_ROOT/ostree/import"
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
 published_repo=$(luma_os_channel_repo "$channel")
 install -d -m 0700 "$LUMA_OS_ROOT/ostree"
-[ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare-user
+# Refuse shared/inherited staging metadata before an importer can cache it.
+python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" "$import_repo"
+[ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare
+[ "$(ostree config --repo="$import_repo" get core.mode)" = bare ] ||\
+  luma_os_die 'import cache has the wrong repository mode; quarantine it and use a fresh private path'
 if [ ! -f "$candidate_repo/config" ]; then
   ostree init --repo="$candidate_repo" --mode=archive --collection-id="$LUMA_OS_COLLECTION_ID"
 fi
@@ -97,13 +101,11 @@ ostree ls --repo="$import_repo" "$merge" /usr/etc/os-release >/dev/null 2>&1 ||
   ostree ls --repo="$import_repo" "$merge" /usr/etc/ostree/remotes.d/luma.conf >/dev/null ||
   luma_os_die 'imported tree does not carry /usr/etc'
 
-# File modes the import can change. The bare-user staging repository stores a
-# file its owner cannot read with owner-read added and set-user-ID and
-# set-group-ID dropped (sudo 4111 became 0511; shadow 0000 became 0400). Every
-# path in the image with a special bit or without owner-read is listed with
-# its image mode; differences are restored from the image by overlaying a tar
-# of exactly those paths (the tree's content, ownership and xattrs, the
-# image's mode), and the result is verified path by path.
+# Verify every sensitive image mode after import. Historical bare-user imports
+# added owner-read and dropped special bits; new imports require a private bare
+# repository to preserve directory ownership and xattrs as well. Keep the
+# existing narrowly verified mode repair for importer compatibility: only the
+# listed paths can change, while their content, ownership and xattrs must match.
 modes="$build_dir/image-modes.txt"
 luma_os_podman run --rm --net=none --security-opt label=disable --entrypoint /usr/bin/find "$LUMA_IMAGE_TAG" \
   / -xdev \( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /tmp -o -path /var \
