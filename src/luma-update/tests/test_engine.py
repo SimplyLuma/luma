@@ -81,6 +81,38 @@ class Checking(EngineCase):
         self.assertEqual(len(self.rig.http.posts), posts)
 
 
+    def test_offline_attempt_does_not_space_out_the_next_check(self):
+        # A phone checks before it joins Wi-Fi, then joins ten minutes later.
+        self.rig.http.offline = True
+        self.engine.automatic()
+        self.assertEqual(self.engine.status().last_error_class, "network")
+        self.rig.http.offline = False
+        self.rig.now += 600
+        self.engine.automatic()
+        self.assertEqual(self.engine.status().state, "staged")
+
+    def test_update_found_on_mobile_data_downloads_on_wifi(self):
+        self.rig.probes.net.metered = True
+        self.engine.automatic()
+        self.assertEqual(self.engine.status().state, "available")
+        # The daemon exits when idle and forgets its decision.
+        engine = self.rig.engine()
+        self.rig.probes.net.metered = False
+        self.rig.now += 600
+        engine.automatic()
+        self.assertEqual(engine.status().state, "staged")
+
+    def test_spacing_holds_on_mobile_data(self):
+        self.rig.probes.net.metered = True
+        self.engine.automatic()
+        engine = self.rig.engine()
+        calls = len(self.rig.backend.transactions())
+        self.rig.now += 600
+        engine.automatic()
+        self.assertEqual(len(self.rig.backend.transactions()), calls)
+        self.assertEqual(engine.status().state, "available")
+
+
 class Downloading(EngineCase):
     def test_automatic_download_stages_exact_commit_without_downgrade(self):
         self.engine.automatic()
@@ -149,6 +181,22 @@ class Downloading(EngineCase):
         self.assertEqual(self.engine.status().last_error_class, "disk-space")
         self.assertEqual(self.state()["reports"][-1]["result"], "failed")
         self.assertEqual(self.state()["reports"][-1]["error_class"], "disk-space")
+
+    def test_successful_retry_clears_current_error_but_keeps_failure_history(self):
+        self.engine.check()
+        self.rig.backend.fail_with = TransactionError("error: Timeout was reached")
+        self.assertFalse(self.engine.download(user_initiated=True))
+        self.assertTrue(self.engine.status().last_error)
+        failed = [r.copy() for r in self.state()["reports"] if r["result"] == "failed"]
+        self.assertTrue(failed)
+        self.rig.backend.fail_with = None
+        self.assertTrue(self.engine.download(user_initiated=True))
+        for engine in (self.engine, self.rig.engine()):
+            engine.refresh()
+            status = engine.status()
+            self.assertEqual(status.state, "staged")
+            self.assertEqual((status.last_error, status.last_error_class), ("", ""))
+        self.assertEqual([r for r in self.state()["reports"] if r["result"] == "failed"], failed)
 
     def test_foreign_staged_deployment_is_not_replaced(self):
         self.rig.backend.list.insert(0, fakes.FakeDeployment(commit(77), "44.1", "private:luma/repair/x", staged=True))

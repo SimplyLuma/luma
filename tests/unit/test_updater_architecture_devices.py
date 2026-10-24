@@ -97,6 +97,36 @@ luma_os_channel_ref() { case "$1" in nightly|beta|stable) printf 'luma/1/%s/%s\n
                 if target:
                     self.assertIn(namespace(target).removeprefix("targets/") + "/nightly/notes/", graph["releases"][0]["notes_url"])
 
+    def test_client_and_publisher_device_tables_have_identical_buckets(self):
+        from devices import load
+        from luma_update.hardware import DEVICES
+        producer = load()
+        self.assertEqual(set(DEVICES), set(producer))
+        for name, (board, arch, slug) in DEVICES.items():
+            self.assertTrue(board)
+            self.assertEqual((arch, slug), (producer[name]["arch"], producer[name]["slug"]))
+
+    def test_publisher_required_label_inputs_exist(self):
+        from devices import load
+        for row in load().values():
+            if row["required_labels"] != "-":
+                path = ROOT / row["required_labels"]
+                self.assertTrue(path.is_file(), path)
+                self.assertTrue(any(line and not line.startswith("#") for line in path.read_text().splitlines()))
+
+    def test_shared_updater_package_pins_are_consistent(self):
+        import re
+        spec = (ROOT / "packaging/rpm/luma-update.spec").read_text()
+        version = re.search(r"^Version:\s+(\S+)", spec, re.M)[1]
+        release = re.search(r"^Release:\s+(\S+)", spec, re.M)[1].removesuffix("%{?dist}")
+        inputs = dict(line.split("=", 1) for line in (ROOT / "config/desktop/inputs.env").read_text().splitlines() if line.startswith("LUMA_UPDATE_"))
+        self.assertEqual(inputs["LUMA_UPDATE_VERSION"], version)
+        self.assertEqual(inputs["LUMA_UPDATE_RELEASE"], release)
+        nevra = f"luma-update-{version}-{release}.fc44.noarch"
+        self.assertEqual(inputs["LUMA_UPDATE_NEVRA"], nevra)
+        self.assertIn(nevra, (ROOT / "config/desktop/packages.txt").read_text().splitlines())
+        self.assertGreater(int(release.rsplit(".", 1)[1]), 22)
+
     def test_signed_manifest_cannot_lie_about_phone_ref(self):
         doc = {"architecture": "aarch64", "hardware_target": "unihertz,titan2e", "channel": "nightly", "ref": "luma/1/aarch64/fairphone-fp6/nightly"}
         with self.assertRaises(ValueError):

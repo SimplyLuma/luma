@@ -7,9 +7,19 @@ TITAN2E = "unihertz,titan2e"
 # Hardware targets with their own update stream: the board compatible string
 # the kernel's device tree must list, and the only architecture it runs.
 DEVICES = {
-    FP6: ("fairphone,fp6", "aarch64"),
-    TITAN2E: ("unihertz,titan2-elite", "aarch64"),
+    FP6: ("fairphone,fp6", "aarch64", "fairphone-fp6"),
+    TITAN2E: ("unihertz,titan2-elite", "aarch64", "unihertz-titan2e"),
 }
+
+
+def graph_slug(configured: str, arch: str) -> str:
+    """The configured device's exact publication bucket; never infer a board."""
+    if not configured:
+        return ""
+    device = DEVICES.get(configured)
+    if device is None or device[1] != arch:
+        raise ValueError("configured update hardware target does not match this architecture")
+    return device[2]
 
 
 def require_device_target(paths, configured: str, arch: str) -> None:
@@ -37,10 +47,10 @@ def require_device_target(paths, configured: str, arch: str) -> None:
     except UnicodeDecodeError as error:
         raise ValueError("device hardware identity is malformed") from error
     if configured:
-        board, board_arch = DEVICES.get(configured, (None, None))
+        board, board_arch, _slug = DEVICES.get(configured, (None, None, None))
         if board_arch != arch or board not in compatible:
             raise ValueError("configured update hardware target does not match this device")
-    elif any(board in compatible for board, _ in DEVICES.values()):
+    elif any(board in compatible for board, _arch, _slug in DEVICES.values()):
         raise ValueError("this device requires a hardware-targeted update stream")
 
 
@@ -58,6 +68,9 @@ def require_commit_target(metadata: dict, configured: str, arch: str) -> None:
                 type(metadata["org.projectluma.architecture"]) is not str
                 or metadata["org.projectluma.architecture"] != arch):
             raise ValueError("update commit is built for another architecture")
+        target = metadata.get("org.projectluma.hardware-target", "")
+        if type(target) is not str or target:
+            raise ValueError("hardware-targeted update commit cannot update a generic desktop")
         return
     expected = {"org.projectluma.hardware-target": configured,
                 "org.projectluma.architecture": arch}

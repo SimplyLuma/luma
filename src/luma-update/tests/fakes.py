@@ -261,7 +261,7 @@ class Rig:
     def publish(self, doc: dict, channel="stable", secret=SECRET, key_id=KEY_ID) -> None:
         data = json.dumps(doc).encode()
         _, signature = minisign.sign_for_tests(secret, key_id, data, f"timestamp:{int(self.now)}\tfile:{channel}.json")
-        url = self.settings.graph_url.format(channel=channel, arch=doc["arch"], hardware_target=self.settings.hardware_target)
+        url = self.settings.graph(channel, doc["arch"])
         self.http.files[url] = data
         self.http.files[url + ".minisig"] = signature.encode()
         for item in doc["releases"]:

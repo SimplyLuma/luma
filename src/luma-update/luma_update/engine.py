@@ -479,6 +479,7 @@ class Engine:
         from .hardware import require_device_target
         try:
             require_device_target(self.paths, self.settings.hardware_target, self.arch)
+            self.settings.graph("stable", self.arch)  # Validate official feed identity before any operation.
         except ValueError as error:
             raise Unmanaged(str(error)) from error
         deployments = self.backend.deployments()
@@ -723,8 +724,7 @@ class Engine:
             automatic_download=self.automatic_download_enabled(data),
             ignored_version=self.ignored_version(data),
             repository_url=repository_url(self.paths, self.settings),
-            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable",
-                                                    arch=self._arch(view), hardware_target=self.settings.hardware_target),
+            graph_url=self.settings.graph(self._channel(view, data) or "stable", self._arch(view)),
             signature_verified=bool(signature.get("key_id")),
             signing_key_id=str(signature.get("key_id", "") or ""),
             last_check_reason=str(data.get("last_check_reason", "") or ""),
@@ -814,7 +814,7 @@ class Engine:
         self._operation.release()
 
     def fetch_graph(self, channel: str, arch: str) -> graphmod.Graph:
-        url = self.settings.graph_url.format(channel=channel, arch=arch, hardware_target=self.settings.hardware_target)
+        url = self.settings.graph(channel, arch)
         data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
         signature = self.http.get(url + ".minisig", minisign.MAX_SIGNATURE_BYTES)
         keys = minisign.load_keys(self.paths.graph_key_dirs)
@@ -883,6 +883,23 @@ class Engine:
             self.store.data["channel_default_policy"] = policy
         self._decision = None
 
+    def _connection_changed_since_attempt(self) -> bool:
+        """Does the network the last attempt saw no longer hold for this check?
+
+        An attempt that never reached the update server (a phone checking before
+        it joined Wi-Fi) settled nothing. An update found on mobile data that this
+        connection may now download waits for nothing either: the daemon forgot
+        the decision when it exited, so only a new check can start the download."""
+        data = self.store.data
+        if data.get("last_error_class") == "network":
+            return True
+        available = data.get("available")
+        if self._decision is not None or not isinstance(available, dict) or not available.get("commit"):
+            return False
+        allowed, _reason = automatic_download_allowed(self.settings, self.probes.network(), self.probes.power(),
+                                                      self.automatic_download_enabled())
+        return allowed
+
     def check(self, *, automatic: bool = False) -> graphmod.Decision | None:
         self._begin()
         try:
@@ -898,7 +915,8 @@ class Engine:
         # An attempt made on another system (before the restart into an update, or by an
         # older agent that never said which) does not space out this one's first check.
         if automatic and 0 <= since_attempt < self.settings.minimum_check_spacing_seconds \
-                and booted_now and self.store.data.get("attempt_booted") == booted_now:
+                and booted_now and self.store.data.get("attempt_booted") == booted_now \
+                and not self._connection_changed_since_attempt():
             log.info("skipping automatic check: the last attempt was less than %ss ago",
                      self.settings.minimum_check_spacing_seconds)
             self.refresh(keep_busy=False)
@@ -1274,6 +1292,8 @@ class Engine:
             self.store.data["kept_packages"] = None
             self.store.data["available"] = None
             self.store.data["switch_now"] = False
+            self.store.data["last_error"] = ""
+            self.store.data["last_error_class"] = ""
             reporting.queue_transition(self.store, self.paths, channel=channel,
                                        from_version=view.booted.version, to_version=str(release.version),
                                        arch=self._arch(view), result="staged")

@@ -227,6 +227,13 @@ class ArchitectureWithoutTarget(unittest.TestCase):
         with self.assertRaises(GraphError):
             check_freshness(graph, channel="stable", arch="x86_64", now=NOW, last_generated_at=None)
 
+    def test_generic_desktop_refuses_phone_or_malformed_commit_target(self):
+        for target in ("fairphone,fp6", "unihertz,titan2e", [], None, False):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                require_commit_target({"org.projectluma.architecture": "aarch64",
+                                       "org.projectluma.hardware-target": target}, "", "aarch64")
+        require_commit_target({"org.projectluma.hardware-target": ""}, "", "aarch64")
+
     def test_generic_commit_architecture_must_match(self):
         require_commit_target({"org.projectluma.architecture": "x86_64"}, "", "x86_64")
         require_commit_target({}, "", "x86_64")  # generic commits from before the key
@@ -298,7 +305,7 @@ class ArchQualifiedGraphUrl(unittest.TestCase):
                         boot_id=lambda: "test-boot", greenboot_installed=True)
         self.assertEqual(engine.check().release.commit, fakes.commit(2))
         self.assertNotEqual(engine.status().state, "unmanaged")
-        self.assertIn("https://dl.simplyluma.com/os/graph/aarch64/stable.json", rig.http.gets)
+        self.assertIn("https://dl.simplyluma.com/os/graph/aarch64/unihertz-titan2e/stable.json", rig.http.gets)
 
 
 class ComposedUpdatePolicies(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.20%{?dist}
+Release:        1.luma.23%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -18,6 +18,9 @@ BuildArch:      noarch
 BuildRequires:  python3-devel
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  gnupg2
+BuildRequires:  python3-gobject-base
+BuildRequires:  ostree
+BuildRequires:  openssl
 
 Requires:       luma-os-remote = %{version}-%{release}
 Requires:       python3
@@ -124,6 +127,8 @@ d /run/luma-update 0755 root root -
 EOF
 
 %check
+# Immutable target admission must exercise the real native OSTree decoder.
+python3 -c "import gi, shutil; gi.require_version('OSTree', '1.0'); from gi.repository import Gio, OSTree; assert shutil.which('ostree')"
 python3 -m unittest discover -s tests -p 'test_*.py'
 
 %post
@@ -190,6 +195,9 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.23
+- Route updates to the matching architecture and device graph.
+
 * Sat Sep 26 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.17
 - Updates stage when the new release ships a package this computer had added: an identical or older added copy is removed, a newer one is kept and the release's copy left out; both are reported.
 

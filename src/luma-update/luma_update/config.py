@@ -120,6 +120,41 @@ class Settings:
     def ref(self, channel: str, arch: str) -> str:
         return self.ref_template.format(channel=channel, arch=arch, hardware_target=self.hardware_target)
 
+    def graph(self, channel: str, arch: str) -> str:
+        """Resolve official legacy feeds without overwriting administrator files.
+
+        Vendor defaults cannot replace a retained /etc graph_url. Resolve known
+        official legacy buckets at use time from the verified machine identity;
+        intentional third-party and isolated test feeds retain their own paths.
+        Explicit incompatible official buckets fail closed rather than guessing.
+        """
+        from urllib.parse import urlsplit, urlunsplit
+        from .hardware import graph_slug
+        url = self.graph_url.format(channel=channel, arch=arch,
+                                    hardware_target=self.hardware_target)
+        parsed = urlsplit(url)
+        if parsed.hostname != "dl.simplyluma.com":
+            return url
+        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
+            raise ValueError("official update graphs require the canonical HTTPS origin")
+        if channel not in CHANNELS or arch not in ("x86_64", "aarch64"):
+            raise ValueError("unsupported update graph identity")
+        prefix = "/os/graph/"
+        if not parsed.path.startswith(prefix):
+            raise ValueError("official update graph URL is outside the graph namespace")
+        parts = parsed.path[len(prefix):].split("/")
+        if not parts or parts[-1] not in tuple(c + ".json" for c in CHANNELS):
+            raise ValueError("official update graph URL does not name a channel graph")
+        slug = graph_slug(self.hardware_target, arch)
+        bucket = parts[:-1]
+        if bucket:
+            if bucket[0] != arch:
+                raise ValueError("official update graph architecture does not match this device")
+            if len(bucket) > 2 or (len(bucket) == 2 and (not slug or bucket[1] != slug)):
+                raise ValueError("official update graph hardware target does not match this device")
+        expected = prefix + arch + ("/" + slug if slug else "") + "/" + channel + ".json"
+        return urlunsplit((parsed.scheme, parsed.netloc, expected, parsed.query, parsed.fragment))
+
     def remote_for(self, channel: str) -> str:
         # One remote for every channel; preview enrollment changes where it points.
         return self.stable_remote

@@ -1,0 +1,5 @@
+# Paths whose SELinux label a deployment needs from the signed commit itself.
+# The fresh-install image may fix a label in /etc (file_contexts.local), but an
+# OTA deployment carries only the commit's labels.
+# path	label
+/usr/libexec/luma-greetd	system_u:object_r:xdm_exec_t:s0

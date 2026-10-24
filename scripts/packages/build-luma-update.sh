@@ -45,7 +45,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-update.spec" "$rpmbuild_dir/SPECS
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
     set -euo pipefail
-    dnf5 -y install rpm-build systemd-rpm-macros python3-devel python3-gobject-base desktop-file-utils libxml2 gnupg2
+    dnf5 -y install rpm-build systemd-rpm-macros python3-devel python3-gobject-base desktop-file-utils libxml2 gnupg2 ostree openssl
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-update.spec
     rpm=$(find RPMS/noarch -name "luma-update-1*.rpm" -print -quit)
     remote_rpm=$(find RPMS/noarch -name "luma-os-remote-*.rpm" -print -quit)
