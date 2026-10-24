@@ -1,9 +1,19 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# When full connectivity returns, start an update check. luma-updated skips it
-# if a check ran within the last hour, so flapping networks cost nothing.
-[ "$2" = "connectivity-change" ] || exit 0
-[ "$CONNECTIVITY_STATE" = "FULL" ] || exit 0
+# When full connectivity returns, or a connection comes up while it already
+# holds (a phone on mobile data joining Wi-Fi), start an update check.
+# luma-updated skips it if a check reached the server within the last hour and
+# nothing it found can download on this connection, so flapping networks cost
+# nothing; metered and battery rules still decide whether anything downloads.
 [ -e /run/ostree-booted ] || exit 0
+case "$2" in
+connectivity-change)
+	[ "$CONNECTIVITY_STATE" = "FULL" ] || exit 0 ;;
+up)
+	[ "$1" != "lo" ] || exit 0
+	[ "$(nmcli -t networking connectivity 2>/dev/null)" = "full" ] || exit 0 ;;
+*)
+	exit 0 ;;
+esac
 systemctl --no-block start luma-update-check.service >/dev/null 2>&1 || :
 exit 0
