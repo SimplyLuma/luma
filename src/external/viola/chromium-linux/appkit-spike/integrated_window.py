@@ -652,17 +652,18 @@ def main():
         if os.environ.get('VIOLA_QA_INVENTORY') == '1':
             requests = [engine.request('Target.createTarget', {'url': 'about:blank',
                 'newWindow': True, 'background': False, 'windowState': 'normal'}) for _ in range(2)]
-            for request in requests: request.result(timeout=15)
+            for request in requests: request.result(timeout=60)
         else:
             engine.call('Target.createTarget', {'url': 'about:blank', 'newWindow': True,
-                                               'background': False, 'windowState': 'normal'})
+                                               'background': False, 'windowState': 'normal'}, timeout=60)
         windows.wait_primary()
         windows.connect(windows.primary)
         origin = 'http://127.0.0.1:' + str(server.server_port)
         if args.start_url or not had_profile:
             services.navigate(args.start_url or ("https://www.google.com/" if args.interactive else origin + ('/cadence' if args.measure_presentation else '/native-window')))
         for url in args.urls:
-            engine.open_external(url)
+            if not engine.open_external(url, startup=True):
+                error('Chromium did not accept the requested startup URL')
         if args.representative:
             from seed_native_layout import seed
             layout_report.update(seed(services, origin, run / 'fixture-downloads', media=bool(args.media_fixture)))

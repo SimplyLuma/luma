@@ -88,7 +88,7 @@ class EnginePipe:
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
-    def open_external(self, uri):
+    def open_external(self, uri, *, startup=False):
         from urllib.parse import urlsplit
         if urlsplit(uri).scheme not in ('http', 'https', 'file'):
             return False
@@ -96,11 +96,13 @@ class EnginePipe:
             return False
         # Reuse Chromium's singleton dispatch: it owns Mini routing, profile
         # cookies, redirects and callbacks. This process only forwards the URL.
+        # Initial dispatch shares Chromium cold-start work; interactive opens
+        # retain their shorter deadline once that startup has completed.
         try:
             result = subprocess.run([str(self.executable),
             '--user-data-dir=' + str(self.profile), '--no-first-run', '--', uri],
             env=self.display.environment() if self.display else os.environ.copy(),
-                stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log, timeout=12)
+                stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log, timeout=60 if startup else 12)
         except (OSError, subprocess.TimeoutExpired):
             return False
         return result.returncode == 0
