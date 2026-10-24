@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -118,10 +119,10 @@ else:
         self.config=self.root/'config.json';self.config.write_bytes(encoded(self.cfg))
         return path
 
-    def prepare_state(self):
-        self.state=self.root/'approved'
+    def prepare_state(self,name='approved'):
+        self.state=self.root/name
         with mock.patch.object(sys,'argv',['prepare',str(self.control),self.control_sha,str(self.config),str(self.graphdir),str(self.state),'nightly']):prepare.main()
-        self.sealed=self.root/'sealed-approved';self.state_sha=seal.seal(self.state,self.sealed,inputs=True)
+        self.sealed=self.root/('sealed-'+name);self.state_sha=seal.seal(self.state,self.sealed,inputs=True)
 
     def urlopen(self,request,timeout):
         url=request.full_url
@@ -163,6 +164,44 @@ else:
                 for prefix in self.bucket.public_prefixes():
                     self.assertEqual((self.origin/prefix/'nightly.json').read_bytes(),canonical.read_bytes())
                 self.assertTrue(all(Path(source).parent==canonical.parent for source,_ in self.uploads))
+
+    def test_new_approved_release_replaces_historical_workspace_policy(self):
+        self.publication();self.prepare_state();self.refresh_state()
+        canonical=self.bucket.directory(Path(self.cfg['workspace'])/'nightly')/'nightly.json'
+        old=json.loads(canonical.read_text())
+        # A genuinely admitted second release retains the published first one.
+        release={**self.release,'commit':'d'*64,'version':'1.0.0-nightly.2','released_at':timestamp(-24)}
+        first=self.bucket.release_manifest(self.repo,self.release['version'])
+        second=self.bucket.release_manifest(self.repo,release['version'])
+        second.parent.mkdir(parents=True)
+        for name in ('gate-result.json','provenance.json','PUBLIC-DELIVERY.json'):
+            value=json.loads((first.parent/name).read_text())
+            if 'commit' in value:value['commit']=release['commit']
+            if name=='gate-result.json':value.update(update='pass',rollback='pass')
+            (second.parent/name).write_bytes(encoded(value))
+        manifest=json.loads(first.read_text());manifest.update(commit=release['commit'],version=release['version'],
+            published_utc=release['released_at'],parent=self.release['commit'],
+            gate={'result':'pass','sha256':sha(second.parent/'gate-result.json')})
+        second.write_bytes(encoded(manifest))
+        for suffix in ('.commit','.commitmeta'):
+            obj=self.repo/'objects'/release['commit'][:2]/(release['commit'][2:]+suffix)
+            obj.parent.mkdir(parents=True,exist_ok=True);obj.write_bytes(b'fixture signed record only')
+        time.sleep(1.1)  # Real second-resolution signer timestamps must advance.
+        self.graph={**old,'generated_at':timestamp(0),'releases':old['releases']+[release]}
+        approved=self.graphdir/'nightly.json';approved.write_bytes(encoded(self.graph));signature(approved,self.bucket)
+        for prefix in self.bucket.public_prefixes():
+            public=self.origin/prefix/'nightly.json';public.write_bytes(encoded(self.graph));signature(public,self.bucket)
+        self.prepare_state('approved-next');self.refresh_state()
+        self.assertEqual([r['commit'] for r in json.loads(canonical.read_text())['releases']],
+            [self.release['commit'],release['commit']])
+
+    def test_current_public_unapproved_policy_is_refused(self):
+        self.publication();self.prepare_state()
+        public=self.origin/self.bucket.public_prefix()/'nightly.json'
+        changed=copy.deepcopy(self.graph);changed['releases'][0]['paused']=True
+        public.write_bytes(encoded(changed));signature(public,self.bucket)
+        with self.assertRaises(ValueError):self.refresh_state()
+        self.assertEqual(self.uploads,[])
 
     def test_signed_cross_device_policy_is_refused_before_upload(self):
         self.publication('aarch64','fairphone,fp6');self.prepare_state()

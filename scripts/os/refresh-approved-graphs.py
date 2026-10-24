@@ -143,7 +143,7 @@ def main():
                     actual=response.read(16*1024*1024+1)
                 if len(actual)>16*1024*1024 or actual!=expected.read_bytes():
                     raise ValueError('The public signed commit backend is unavailable or changed')
-    workspace=Path(cfg['workspace']); workspace.mkdir(mode=0o700,exist_ok=True);protected(workspace); protected(workspace)
+    workspace=Path(cfg['workspace']); workspace.mkdir(mode=0o700,exist_ok=True);protected(workspace)
     publication_lock=Path(cfg['publication_lock'])
     protected(publication_lock.parent)
     with publication_lock.open('a') as lock:
@@ -189,7 +189,8 @@ def main():
                     verify(previous_dir,channel+'.json')
                     previous_graph=json.loads(previous.read_text())
                     bucket.validate_graph(previous_graph,channel)
-                    checks.same_policy(approved,previous_graph)
+                    # A prior admitted state may contain an older release policy.
+                    # Public snapshots, not this historical cache, must match approval.
                     if current['generated_at'] < previous_graph['generated_at']:
                         raise ValueError('The canonical graph predates the last successful refresh')
             for index,directory in enumerate(graphdirs):
