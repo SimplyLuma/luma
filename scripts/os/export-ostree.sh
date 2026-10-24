@@ -7,11 +7,12 @@
 #
 # 1. The image's OCI layout is imported with OSTree's container tooling (run
 #    from the image itself, so the importer matches the tree) into a
-#    private bare staging repository. The importer writes one merged commit whose
+#    private bare-user staging repository. The importer writes one merged commit whose
 #    tree carries the image's SELinux labels and the /usr/etc layout rpm-ostree
 #    deploys.
 # 2. A candidate commit is written into the private candidate archive
-#    repository with that exact tree, bound to the channel ref and collection,
+#    repository, restoring metadata lost by user-mode checkout from the pinned
+#    image and preserving its imported policy labels, bound to the channel ref and collection,
 #    whose parent is the channel's current published head, with the build's
 #    version and provenance metadata and the rpm package list rpm-ostree uses
 #    for `db diff` and update previews.
@@ -62,8 +63,8 @@ published_repo=$(luma_os_channel_repo "$channel")
 install -d -m 0700 "$LUMA_OS_ROOT/ostree"
 # Refuse shared/inherited staging metadata before an importer can cache it.
 python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" "$import_repo"
-[ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare
-[ "$(ostree config --repo="$import_repo" get core.mode)" = bare ] ||\
+[ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare-user
+[ "$(ostree config --repo="$import_repo" get core.mode)" = bare-user ] ||\
   luma_os_die 'import cache has the wrong repository mode; quarantine it and use a fresh private path'
 if [ ! -f "$candidate_repo/config" ]; then
   ostree init --repo="$candidate_repo" --mode=archive --collection-id="$LUMA_OS_COLLECTION_ID"
@@ -101,16 +102,27 @@ ostree ls --repo="$import_repo" "$merge" /usr/etc/os-release >/dev/null 2>&1 ||
   ostree ls --repo="$import_repo" "$merge" /usr/etc/ostree/remotes.d/luma.conf >/dev/null ||
   luma_os_die 'imported tree does not carry /usr/etc'
 
-# Verify every sensitive image mode after import. Historical bare-user imports
-# added owner-read and dropped special bits; new imports require a private bare
-# repository to preserve directory ownership and xattrs as well. Keep the
-# existing narrowly verified mode repair for importer compatibility: only the
-# listed paths can change, while their content, ownership and xattrs must match.
+# Capture the mounted image once, without container runtime mounts. Directory,
+# symlink and forced-copy file metadata comes from this image; SELinux labels
+# stay exactly as computed by the importer using the image's own policy.
 modes="$build_dir/image-modes.txt"
-luma_os_podman run --rm --net=none --security-opt label=disable --entrypoint /usr/bin/find "$LUMA_IMAGE_TAG" \
-  / -xdev \( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /tmp -o -path /var \
-  -o -path /sysroot -o -path /boot \) -prune -o \( -perm /7000 -o ! -perm -u=r \) \
-  \( -type f -o -type d \) -printf '%m %p\n' | LC_ALL=C sort >"$modes"
+directory_manifest="$build_dir/image-import-metadata.json"
+directory_tar="$build_dir/metadata-repair.tar"
+image_root=$(luma_os_podman image mount "$LUMA_IMAGE_ID")
+image_mount_owned=1
+release_image_mount() {
+  [ "$image_mount_owned" = 1 ] || return 0
+  luma_os_podman image unmount "$LUMA_IMAGE_ID" >/dev/null
+  image_mount_owned=0
+}
+trap release_image_mount EXIT
+trap 'exit 143' HUP INT TERM
+python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" capture \
+  "$import_repo" "$merge" "$image_root" "$LUMA_IMAGE_ID" \
+  "$directory_manifest" "$directory_tar" "$modes" >>"$log"
+release_image_mount
+trap - EXIT HUP INT TERM
+
 grep -q ' /usr/bin/sudo$' "$modes" || luma_os_die "the image mode list is incomplete (no /usr/bin/sudo): $modes"
 repair_tar="$build_dir/mode-repair.tar"
 python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" tar "$import_repo" "$merge" "$modes" "$repair_tar" \
@@ -120,6 +132,8 @@ if [ -s "$build_dir/mode-repair.txt" ]; then
   tree_args+=(--tree="tar=$repair_tar")
   luma_os_log "restoring image modes the import changed: $(awk '{ printf "%s %s->%s; ", $1, $2, $3 }' "$build_dir/mode-repair.txt")"
 fi
+# This final overlay also restores metadata for sensitive copied files.
+tree_args+=(--tree="tar=$directory_tar")
 
 luma_os_log 'copying the tree into the candidate repository'
 ostree pull-local --repo="$candidate_repo" --untrusted "$import_repo" "$merge" >>"$log" 2>&1
@@ -180,18 +194,9 @@ candidate=$(ostree commit --repo="$candidate_repo" \
   "${metadata_args[@]}")
 [[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || luma_os_die 'candidate commit failed'
 
-if [ -s "$build_dir/mode-repair.txt" ]; then
-  # Exactly the repaired paths differ, and only in mode.
-  diff <(ostree diff --repo="$candidate_repo" "$merge" "$candidate" | awk '{ print $1, $2 }' | LC_ALL=C sort) \
-       <(awk '{ print "M", $1 }' "$build_dir/mode-repair.txt" | LC_ALL=C sort) >>"$log" ||
-    luma_os_die 'candidate commit differs from the imported tree beyond the mode repair'
-  python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" verify "$candidate_repo" "$merge" "$candidate" "$modes" >>"$log" ||
-    luma_os_die 'mode repair changed content, ownership or xattrs'
-else
-  python3 "$luma_os_repo_root/scripts/os/lib/ostree_metadata.py" same-tree \
-    "$candidate_repo" "$merge" "$candidate" ||
-    luma_os_die 'candidate commit does not carry the imported tree exactly'
-fi
+python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" verify \
+  "$candidate_repo" "$merge" "$candidate" "$directory_manifest" "$modes" >>"$log" ||
+  luma_os_die 'candidate differs beyond exact image directory metadata and sensitive file mode repairs'
 python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" check "$candidate_repo" "$candidate" "$modes" >>"$log" ||
   luma_os_die "candidate commit has file modes that differ from the image (see $log)"
 
