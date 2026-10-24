@@ -76,8 +76,8 @@
   },
   {
     "path": "devices/unihertz/titan2elite/README.md",
-    "sha256": "81656e5531f1587387ac7f500f3c2d1bc8d1278b2f3d165bc5fa1fade24ba756",
-    "bytes": 11609
+    "sha256": "fbdf7a3e2ba1697cc934075d1bac4905863d8bf6198a9d470e6780c5efa6916e",
+    "bytes": 11504
   },
   {
     "path": "devices/unihertz/titan2elite/boot.toml",
