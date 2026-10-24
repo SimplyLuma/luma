@@ -10,6 +10,7 @@ from luma_appkit.action_center import register_item
 from luma_appkit.bar_share import ShareSheet, ShareSubject, ShareTarget
 from luma_appkit.bar_panel import PanelRow, panel_list
 from native_footer import NativeFooter
+from native_address_focus import AddressEdit
 
 
 class DownloadPanelFooter(NativeFooter):
@@ -77,6 +78,8 @@ class ResponsiveChrome:
         phone = not self.host.mini and 0 < self.host.get_width() < 560
         compact = not self.host.mini and 0 < self.host.get_width() < 900
         if phone != self.phone or compact != self.compact:
+            focused = self.host.get_focus()
+            edit = self.capture_address_edit()
             self.reveal_bar()
             self.phone = self.host.phone = phone
             self.compact = compact
@@ -98,8 +101,43 @@ class ResponsiveChrome:
             self.center.fold()
             self.panel = None
             self.render(force=True)
-            self.host.page.grab_focus()
+            if edit is not None:
+                self.restore_address_edit(edit)
+            elif focused is not None and not focused.get_mapped():
+                self.host.page.grab_focus()
         return GLib.SOURCE_CONTINUE
+
+    def capture_address_edit(self):
+        if self.center.searching:
+            field = self.host.get_focus()
+            if isinstance(field, Gtk.Editable):
+                return AddressEdit.capture(field, self.host.new_tab_pending)
+        elif self.host.address_focused():
+            return AddressEdit.capture(self.host.address, self.host.new_tab_pending)
+        return None
+
+    def restore_address_edit(self, edit):
+        if self.phone:
+            self.search.set_text(edit.text)
+            self.center.open_search(self.search)
+            search = self.search
+            def restore():
+                if self.phone and self.search is search and self.center.searching:
+                    field = self.host.get_focus()
+                    if isinstance(field, Gtk.Editable):
+                        edit.restore(field)
+                        self.host.new_tab_pending = edit.new_tab_pending
+                return GLib.SOURCE_REMOVE
+            # ActionCenter assigns its live editor focus in the preceding idle.
+            GLib.idle_add(restore)
+        else:
+            # Address focus normally starts a fresh edit from the active URL.
+            # Layout restoration must retain what the user has already typed.
+            self.host.new_tab_pending = True
+            try:
+                edit.restore(self.host.address)
+            finally:
+                self.host.new_tab_pending = edit.new_tab_pending
 
     def tabs(self):
         state = self.host.state or {}

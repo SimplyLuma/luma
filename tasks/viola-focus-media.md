@@ -21,3 +21,9 @@ Initial widget test9707ae04 failed before tests on missing LumaAppearance typeli
 Exact upstream Chromium2903 focus emulation releases a visible/activity capture lease on GTK focus leave. Media's hidden-page predicate preserves unmuted audio but can pause silent video; no custom tab-switch pause command established. Behavioral reproduction with audible local media and tab/window switches is required before selecting a media fix. No speculative global focus/capture override or Chromium edit made.
 
 Initial explicit URI inspection found the fresh-profile Google navigation precedes singleton dispatch of args.urls. It can materialize a default tab before the requested initial URI; successful helper exit alone does not prove active-tab selection. Source behavior remains unchanged pending routing/Mini semantics review.
+
+## Breakpoint focus preservation
+
+Replaced the unconditional page focus on responsive layout changes with an address-edit transaction. The snapshot retains text, cursor, selection direction and pending-new-tab state. Desktop restoration suppresses the normal focus-enter URL replacement; phone restoration follows ActionCenter's focus idle and ignores a superseded search descriptor. An initial allocation with no prior focus leaves focus assignment to startup. Root owns the disjoint reload ordering and bottom-bar pointer work.
+
+Actual normal job3fd1c06e passed seven GTK tests, including the four prior component checks and three new mapped/reparent/phone-editor regressions, plus physical qualifier syntax parsing (5.85s wall,123.2MiB peak). No browser/engine or physical keyboard qualification ran in this test.
