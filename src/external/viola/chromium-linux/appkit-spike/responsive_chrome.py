@@ -54,6 +54,12 @@ class ResponsiveChrome:
         self.scroll_direction = 0
         self.center = ActionCenter().attach(host.page_layers)
         self.center.set_name('viola-page-bar')
+        self.bar_handle = Gtk.Button(halign=Gtk.Align.CENTER, valign=Gtk.Align.END,
+                                     icon_name='pan-down-symbolic')
+        self.bar_handle.add_css_class('viola-bar-handle')
+        self.bar_handle.connect('clicked', self.toggle_bar)
+        host.page_layers.add_overlay(self.bar_handle)
+        host.page_layers.set_measure_overlay(self.bar_handle, False)
         host.toolbar.remove(host.toggle)
         clamp = host.address_field.get_parent()
         host.toolbar.remove(clamp)
@@ -149,10 +155,15 @@ class ResponsiveChrome:
 
     def render(self, *, force=False):
         state = self.host.state or {}
+        self.update_bar_handle()
         active = (state.get('activeTabId'), state.get('activeUrl'))
-        if active != getattr(self, 'page_identity', None):
+        previous = getattr(self, 'page_identity', None)
+        if active != previous:
             self.page_identity = active
-            self.reveal_bar()
+            # In-page history changes (including a chat receiving its URL)
+            # must not uncover controls over an editor the user is using.
+            if previous is None or active[0] != previous[0]:
+                self.reveal_bar()
         if self.panel == 'downloads' and getattr(self, 'downloads_footer', None):
             self.downloads_footer.state = state
             for card in self.downloads_footer.cards.values():
@@ -202,8 +213,8 @@ class ResponsiveChrome:
                       on_activate=lambda: self.host.send('nav:back')),
             BarAction('chevron-right', tooltip='Forward', sensitive=bool(state.get('canGoForward')),
                       on_activate=lambda: self.host.send('nav:forward')),
-            BarAction('rotate-cw', tooltip='Reload', on_activate=lambda: self.host.send('nav:reload')),
             BrowserAddress(self.host.address_field),
+            BarAction('rotate-cw', tooltip='Reload', on_activate=lambda: self.host.send('nav:reload')),
             BarAction('share-2', tooltip='Share page', on_activate=self.show_share),
             BarAction('download', tooltip='Downloads', on_activate=self.show_downloads),
             BarAction('ellipsis', tooltip='Browser menu', on_activate=self.browser_menu),
@@ -213,10 +224,12 @@ class ResponsiveChrome:
                 tooltip='Move this live page into the full browser',
                 on_activate=lambda: self.host.window_manager.command(self.host, 'Open in Viola')))
         self.center.show_bar(actions)
+        self.center.bar.set_visible(not self.bar_hidden)
+        self.update_bar_handle()
         self.host.back = self.center.bar_row.get_first_child()
         self.host.forward = self.host.back.get_next_sibling()
-        self.host.reload = self.host.forward.get_next_sibling()
-        self.share_anchor = self.host.address_field.get_next_sibling()
+        self.host.reload = self.host.address_field.get_next_sibling()
+        self.share_anchor = self.host.reload.get_next_sibling()
         self.download_anchor = self.share_anchor.get_next_sibling()
         self.host.menu_button = self.download_anchor.get_next_sibling()
         if self.host.mini:
@@ -301,10 +314,43 @@ class ResponsiveChrome:
         self.center.bar.set_visible(True)
         self.bar_hidden = False
         self.scroll_distance = 0
+        self.update_bar_handle()
+
+    def update_bar_handle(self):
+        self.bar_handle.set_visible(not self.phone)
+        label = 'Show address bar' if self.bar_hidden else 'Hide address bar'
+        self.bar_handle.set_tooltip_text(label + (' (Ctrl+L)' if self.bar_hidden else ''))
+        self.bar_handle.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        self.bar_handle.set_icon_name('pan-up-symbolic' if self.bar_hidden else 'pan-down-symbolic')
+
+    def hide_bar(self):
+        if self.bar_hidden:
+            return
+        self.query_generation += 1
+        self.host.address_suggestions.close()
+        self.center.close_search()
+        self.center.fold()
+        self.panel = None
+        sheet = getattr(self, 'share_sheet', None)
+        if sheet:
+            sheet.close()
+        self.host.page.grab_focus()
+        self.bar_hidden = True
+        self.center.bar.set_visible(False)
+        self.scroll_distance = 0
+        self.update_bar_handle()
+
+    def toggle_bar(self, *_):
+        if self.bar_hidden:
+            self.host._focus_address()
+        else:
+            self.hide_bar()
 
     def pointer_moved(self, x, y):
-        if self.bar_hidden and y >= self.host.page.get_height() - 72:
-            self.reveal_bar()
+        # Only the small, explicit handle or a browser command reveals the
+        # bar. Page pointer motion belongs to the web page, including inputs
+        # at the very bottom of the window.
+        return None
 
     def page_scrolled(self, dx, dy):
         if abs(dy) < abs(dx) or not dy:
@@ -322,8 +368,10 @@ class ResponsiveChrome:
         self.scroll_distance += abs(dy)
         if self.scroll_distance < 32:
             return
-        self.bar_hidden = direction > 0
-        self.center.bar.set_visible(not self.bar_hidden)
+        if direction > 0:
+            self.hide_bar()
+        else:
+            self.reveal_bar()
         self.scroll_distance = 0
 
     def focus_address(self):
