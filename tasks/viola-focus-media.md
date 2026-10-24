@@ -29,3 +29,5 @@ Replaced the unconditional page focus on responsive layout changes with an addre
 Actual normal job3fd1c06e passed seven GTK tests, including the four prior component checks and three new mapped/reparent/phone-editor regressions, plus physical qualifier syntax parsing (5.85s wall,123.2MiB peak). No browser/engine or physical keyboard qualification ran in this test.
 
 Phone capture and deferred restore now require the focused editable to belong to the ActionCenter entry row. Actual normal jobad8cd0dd passed eight GTK tests, adding an interposed sidebar-editor focus case that must retain its text/focus/pending state and must not be captured as an address edit (7.55s,114.6MiB peak).
+
+Explicit startup URIs now bypass unrelated fresh-profile Google navigation, retaining singleton Mini/tab routing and explicit --start-url precedence. Actual normal job3b2e75fe passed five pure startup decision cases, integrated host syntax and scoped diffcheck. This source decision fix does not yet prove Chromium's real delivered-tab activation.

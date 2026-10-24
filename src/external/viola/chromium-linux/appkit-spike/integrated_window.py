@@ -661,8 +661,12 @@ def main():
         windows.wait_primary()
         windows.connect(windows.primary)
         origin = 'http://127.0.0.1:' + str(server.server_port)
-        if args.start_url or not had_profile:
-            services.navigate(args.start_url or ("https://www.google.com/" if args.interactive else origin + ('/cadence' if args.measure_presentation else '/native-window')))
+        from startup_navigation import primary_startup_url
+        initial_url = primary_startup_url(start_url=args.start_url, had_profile=had_profile,
+            urls=args.urls, interactive=args.interactive, origin=origin,
+            measure_presentation=args.measure_presentation)
+        if initial_url is not None:
+            services.navigate(initial_url)
         for url in args.urls:
             if not engine.open_external(url, startup=True):
                 error('Chromium did not accept the requested startup URL')
