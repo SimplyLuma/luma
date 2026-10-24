@@ -26,7 +26,7 @@ its own copy.
 
 - A Titan 2 Elite with stock Android, and a USB-C data cable
 - A microSD card of 16 GB or more; everything on it is erased
-- A computer with `adb`, `fastboot` and `zstd`
+- A computer running macOS or Linux with `adb`, `fastboot` and `zstd`
 - From https://dl.simplyluma.com/mobile/titan2e/alpha1/: `luma-titan2e-alpha1.zst` (the Luma system for the card),
   `boot.bin` (the kernel for `boot_a`) and `SHA256SUMS`
 
@@ -52,7 +52,9 @@ fastboot flashing unlock
 ```
 
 The phone asks for confirmation for only a few seconds: press **Volume Up**.
-Then run `fastboot reboot` and let Android start.
+Then run `fastboot reboot` and let Android start. Unlocking resets the phone: go
+through Android's setup again, then turn Developer options and USB debugging
+back on before Step 4.
 
 ## Step 3. Write the microSD card
 
