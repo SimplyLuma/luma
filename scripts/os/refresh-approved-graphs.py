@@ -70,6 +70,8 @@ def main():
     paths=module(control/'scripts/os/lib/desktop_paths.py','desktop_paths')
     architecture=paths.architecture(cfg.get('architecture','x86_64'))
     profile=cfg.get('profile','full')
+    hardware_target=cfg.get('hardware_target','')
+    bucket=module(control/'scripts/os/lib/graph_bucket.py','refresh_bucket').GraphBucket(architecture,hardware_target)
     targets=module(control/'scripts/os/lib/desktop_target.py','desktop_target')
     targets.profile(control,architecture,profile)
     selected=cfg['channels'][channel]
@@ -88,6 +90,7 @@ def main():
                  'CONTAINERS_STORAGE_CONF':cfg['storage_config'],
                  'LUMA_TARGET_ARCHITECTURE':architecture,'LUMA_OS_PROFILE':profile}
     def verify(data_dir,name):
+        for path in (data_dir,data_dir/name,data_dir/(name+'.minisig')):protected(path)
         subprocess.run(['podman','run','--rm','--pull=never','--network=none','--read-only',
             '--cap-drop=ALL','--security-opt=no-new-privileges','--security-opt=label=disable',
             '--cpus=1','--memory=1g','--pids-limit=128','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=32m',
@@ -96,12 +99,13 @@ def main():
             '-m','/graph/'+name,'-x','/graph/'+name+'.minisig'],env=environment,check=True,
             stdout=subprocess.DEVNULL)
         document=json.loads((data_dir/name).read_text())
-        comment='trusted comment: luma-update-graph channel='+channel+' arch='+architecture+' generated_at='+document['generated_at']+' key='+cfg['key_id']
+        bucket.validate_graph(document,channel)
+        comment='trusted comment: '+bucket.comment(document,cfg['key_id'])
         if comment not in (data_dir/(name+'.minisig')).read_text().splitlines():
             raise ValueError('Signature does not bind the expected graph channel, date, and installed key')
     approved_path=state/selected['graph']; verify(approved_path.parent,approved_path.name)
     approved=json.loads(approved_path.read_text())
-    if approved['channel']!=channel or approved['arch']!=architecture: raise ValueError('Wrong approved graph identity')
+    bucket.validate_graph(approved,channel)
     normal_repo=Path(subprocess.check_output(['/usr/bin/bash','-c',
         '. "$1"; luma_os_channel_repo "$2"','approved-refresh',
         str(control/'scripts/os/lib/common.sh'),channel],env=environment,text=True).strip())
@@ -114,7 +118,7 @@ def main():
     if set(records)!=set(r['commit'] for r in approved['releases']): raise ValueError('Incomplete approved release state')
     for release in approved['releases']:
         record=records[release['commit']]
-        path=paths.releases_path(repo,architecture)/release['version']/'manifest.json'
+        path=bucket.release_manifest(repo,release['version'])
         protected(path)
         if digest(path)!=record['manifest_sha256']: raise ValueError('Published release manifest changed')
         manifest=json.loads(path.read_text())
@@ -124,7 +128,7 @@ def main():
             raise ValueError('Passing gate hash differs from the genuine publication manifest')
         if 'provenance' in evidence and record['provenance_sha256']!=manifest.get('provenance_sha256'):
             raise ValueError('Source provenance differs from the genuine publication manifest')
-        checks.admitted_release(release,manifest,architecture=architecture,public_repository_url=public_repository_url,**evidence)
+        checks.admitted_release(release,manifest,architecture=architecture,hardware_target=hardware_target,public_repository_url=public_repository_url,**evidence)
         commit=repo/'objects'/release['commit'][:2]/(release['commit'][2:]+'.commit')
         if not commit.is_file(): raise ValueError('Approved release backend is missing; preserve the old feed')
         if not release['paused']:
@@ -139,7 +143,7 @@ def main():
                     actual=response.read(16*1024*1024+1)
                 if len(actual)>16*1024*1024 or actual!=expected.read_bytes():
                     raise ValueError('The public signed commit backend is unavailable or changed')
-    workspace=Path(cfg['workspace']); workspace.mkdir(mode=0o700,exist_ok=True); protected(workspace)
+    workspace=Path(cfg['workspace']); workspace.mkdir(mode=0o700,exist_ok=True);protected(workspace); protected(workspace)
     publication_lock=Path(cfg['publication_lock'])
     protected(publication_lock.parent)
     with publication_lock.open('a') as lock:
@@ -148,39 +152,63 @@ def main():
         with tempfile.TemporaryDirectory(prefix=channel+'-',dir=workspace) as work:
             work=Path(work)
             def served():
-                for suffix in ('','.minisig'):
-                    name=channel+'.json'+suffix
-                    request=urllib.request.Request('https://dl.simplyluma.com/'+paths.graph_prefix(architecture)+'/'+name,
-                              headers={'Cache-Control':'no-cache','User-Agent':'Luma-approved-graph-refresh/1'})
-                    with urllib.request.urlopen(request,timeout=20) as response:
-                        data=response.read(1024*1024+1)
-                    if len(data)>1024*1024: raise ValueError('Oversized public graph')
-                    (work/name).write_bytes(data)
-                verify(work,channel+'.json')
-                current=json.loads((work/(channel+'.json')).read_text())
-                checks.same_policy(approved,current)
-                return current
-            current=served()
+                snapshots={}
+                for index,prefix in enumerate(bucket.public_prefixes()):
+                    data_dir=work if index==0 else work/'legacy'
+                    data_dir.mkdir(mode=0o700,exist_ok=True)
+                    for suffix in ('','.minisig'):
+                        name=channel+'.json'+suffix
+                        request=urllib.request.Request('https://dl.simplyluma.com/'+prefix+'/'+name,
+                                  headers={'Cache-Control':'no-cache','User-Agent':'Luma-approved-graph-refresh/1'})
+                        with urllib.request.urlopen(request,timeout=20) as response:
+                            data=response.read(1024*1024+1)
+                        if len(data)>1024*1024: raise ValueError('Oversized public graph')
+                        (data_dir/name).write_bytes(data)
+                    verify(data_dir,channel+'.json')
+                    current=json.loads((data_dir/(channel+'.json')).read_text())
+                    bucket.validate_graph(current,channel)
+                    checks.same_policy(approved,current)
+                    snapshots[prefix]=(current,data_dir)
+                return snapshots
+            snapshots=served()
+            current=snapshots[bucket.public_prefix()][0]
+            target_args=['--hardware-target',hardware_target] if hardware_target else []
             if check_only:
                 subprocess.run(['/usr/bin/bash',str(control/'scripts/os/sign-update-graph.sh'),
-                    '--arch',architecture,'--profile',profile,'--channel',channel,'--source',str(approved_path),'--graph-dir',str(work/'check-graph'),
+                    '--arch',architecture,'--profile',profile,*target_args,'--channel',channel,'--source',str(approved_path),'--graph-dir',str(work/'check-graph'),
                     '--no-sync','--dry-run'],env=environment,check=True)
                 print('Approved '+channel+' refresh check PASS; no graph installed or uploaded')
                 return
-            graphdir=paths.architecture_path(workspace,architecture)/channel; graphdir.mkdir(mode=0o700,parents=True,exist_ok=True)
-            previous=graphdir/(channel+'.json')
-            if previous.exists():
-                verify(graphdir,channel+'.json')
-                if current['generated_at'] < json.loads(previous.read_text())['generated_at']:
-                    raise ValueError('The canonical graph predates the last successful refresh')
-            if not (graphdir/(channel+'.json')).exists():
-                for suffix in ('','.minisig'):
-                    (graphdir/(channel+'.json'+suffix)).write_bytes((work/(channel+'.json'+suffix)).read_bytes())
+            graph_root=bucket.refresh_root(workspace,channel)
+            graphdirs=bucket.directories(graph_root)
+            graphdir=graphdirs[0]
+            old=bucket.previous_refresh_directory(workspace,channel)
+            for previous_dir in dict.fromkeys([*graphdirs,old]):
+                previous=previous_dir/(channel+'.json')
+                if previous.exists():
+                    verify(previous_dir,channel+'.json')
+                    previous_graph=json.loads(previous.read_text())
+                    bucket.validate_graph(previous_graph,channel)
+                    checks.same_policy(approved,previous_graph)
+                    if current['generated_at'] < previous_graph['generated_at']:
+                        raise ValueError('The canonical graph predates the last successful refresh')
+            for index,directory in enumerate(graphdirs):
+                directory.mkdir(mode=0o700,parents=True,exist_ok=True);protected(directory)
+                if not (directory/(channel+'.json')).exists():
+                    served_dir=snapshots[bucket.public_prefixes()[index]][1]
+                    for suffix in ('','.minisig'):
+                        (directory/(channel+'.json'+suffix)).write_bytes((served_dir/(channel+'.json'+suffix)).read_bytes())
             subprocess.run(['/usr/bin/bash',str(control/'scripts/os/sign-update-graph.sh'),
-                '--arch',architecture,'--profile',profile,'--channel',channel,'--source',str(approved_path),'--graph-dir',str(graphdir),'--no-sync'],
+                '--arch',architecture,'--profile',profile,*target_args,'--channel',channel,'--source',str(approved_path),'--graph-dir',str(graph_root),'--no-sync'],
                 env=environment,check=True)
-            verify(graphdir,channel+'.json')
-            checks.same_policy(approved,json.loads((graphdir/(channel+'.json')).read_text()))
+            for directory in graphdirs:
+                verify(directory,channel+'.json')
+                bucket.validate_graph(json.loads((directory/(channel+'.json')).read_text()),channel)
+                checks.same_policy(approved,json.loads((directory/(channel+'.json')).read_text()))
+            for suffix in ('','.minisig'):
+                if any((directory/(channel+'.json'+suffix)).read_bytes()!=(graphdir/(channel+'.json'+suffix)).read_bytes()
+                       for directory in graphdirs):
+                    raise ValueError('Canonical and legacy signed graph bytes differ')
             served()  # A newer publication must not be overwritten after signing.
             key=Path(cfg['origin_key']); protected(key)
             if stat.S_IMODE(key.stat().st_mode)!=0o600: raise ValueError('Publisher key mode must be0600')
@@ -188,16 +216,20 @@ def main():
             if not re.fullmatch(r'[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+:',destination): raise ValueError('Invalid publisher destination')
             ssh='ssh -i '+shlex.quote(str(key))+' -oBatchMode=yes -oConnectTimeout=20 -oStrictHostKeyChecking=yes'
             files=[graphdir/(channel+'.json'+s) for s in ('.minisig','')]
-            for path in files:
-                subprocess.run(['rsync','--delay-updates','--partial-dir=.rsync-partial','--timeout=60',
-                    '--mkpath','-e',ssh,str(path),destination+paths.graph_prefix(architecture)+'/'],env=environment,check=True)
-            actual=served()
-            for path in files:
-                if path.read_bytes()!=(work/path.name).read_bytes(): raise ValueError('Public refresh readback differs')
-            receipt={'schema':'org.projectluma.approved-graph-refresh-receipt/v1','channel':channel,'architecture':architecture,'profile':profile,
+            for prefix in bucket.public_prefixes():
+                for path in files:
+                    subprocess.run(['rsync','--delay-updates','--partial-dir=.rsync-partial','--timeout=60',
+                        '--mkpath','-e',ssh,str(path),destination+prefix+'/'],env=environment,check=True)
+            actual_snapshots=served()
+            actual=actual_snapshots[bucket.public_prefix()][0]
+            for _current,data_dir in actual_snapshots.values():
+                for path in files:
+                    if path.read_bytes()!=(data_dir/path.name).read_bytes():
+                        raise ValueError('Public refresh readback differs')
+            receipt={'schema':'org.projectluma.approved-graph-refresh-receipt/v1','channel':channel,'architecture':architecture,'hardware_target':hardware_target,'profile':profile,
                      'generated_at':actual['generated_at'],'control_sha256':control_sha,'state_sha256':state_sha,
                      'files':{p.name:digest(p) for p in files},'public_signature_and_readback':'PASS'}
-            receipt_dir=paths.architecture_path(workspace,architecture);receipt_dir.mkdir(mode=0o700,exist_ok=True)
+            receipt_dir=bucket.directory(workspace);receipt_dir.mkdir(mode=0o700,parents=True,exist_ok=True)
             temp=receipt_dir/(channel+'-LAST.json.partial'); temp.write_text(json.dumps(receipt,indent=2)+'\n')
             temp.replace(receipt_dir/(channel+'-LAST.json'));print(json.dumps(receipt))
 

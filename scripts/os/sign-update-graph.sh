@@ -59,7 +59,6 @@ luma_os_select_architecture "$LUMA_OS_ARCH"
 graph_dir=${graph_dir:-$LUMA_OS_ROOT/publish/graph}
 ref=$(luma_os_channel_ref "$channel")
 target_args=()
-metadata_namespace=
 legacy_graph_dir=
 if [ -n "$hardware_target" ]; then
   device_arch=$(luma_os_device_field "$hardware_target" arch)
@@ -68,15 +67,16 @@ if [ -n "$hardware_target" ]; then
     luma_os_die 'hardware target and selected architecture disagree'
   [ -n "$source_file" ] || luma_os_die 'hardware-targeted signing requires --source; desktop Hub graphs are not device graphs'
   ref=$(luma_os_device_ref "$hardware_target" "$channel")
-  metadata_namespace=$(luma_os_device_namespace "$hardware_target")
-  graph_dir="$graph_dir/${metadata_namespace#targets/}"
   target_args=(--hardware-target "$hardware_target")
-else
-  [ "$LUMA_OS_ARCH" != x86_64 ] || legacy_graph_dir=$graph_dir
-  graph_dir="$graph_dir/$LUMA_OS_ARCH"
 fi
-graph_dirs=("$graph_dir")
-[ -z "$legacy_graph_dir" ] || graph_dirs+=("$legacy_graph_dir")
+# --graph-dir is always the unscoped root. Every caller uses this same helper
+# to locate the files the signer actually installs, including x86 aliases.
+graph_paths=$(python3 "$luma_os_repo_root/scripts/os/lib/graph_bucket.py" \
+  --arch "$LUMA_OS_ARCH" --hardware-target "$hardware_target" "$graph_dir") || \
+  luma_os_die 'invalid graph bucket'
+mapfile -t graph_dirs <<<"$graph_paths"
+graph_dir=${graph_dirs[0]}
+legacy_graph_dir=${graph_dirs[1]:-}
 luma_os_require_tools curl python3 install flock cmp
 minisign_dir="$LUMA_OS_KEYS/update-graph-minisign"
 password_file="$LUMA_OS_SECRETS/update-graph-minisign.password"
@@ -184,11 +184,9 @@ python3 - "$repo" "$channel" "$LUMA_OS_ARCH" "$luma_os_repo_root/scripts/os/lib"
 import glob, json, os, sys
 repo, channel, architecture, lib, target, ref = sys.argv[1:7]
 sys.path.insert(0, lib)
-from desktop_paths import manifest_architecture, releases_path
-releases_root = str(releases_path(repo, architecture))
-if target:
-    from devices import namespace
-    releases_root = os.path.join(repo, "luma", namespace(target), "releases")
+from graph_bucket import GraphBucket
+bucket = GraphBucket(architecture, target)
+releases_root = str(bucket.releases(repo))
 releases = {}
 for path in glob.glob(os.path.join(releases_root, "*", "manifest.json")):
     manifest = json.load(open(path, encoding="utf-8"))
@@ -196,8 +194,8 @@ for path in glob.glob(os.path.join(releases_root, "*", "manifest.json")):
     # Retention may have pruned an old release's commit: a graph must not
     # offer what the repository no longer serves.
     present = os.path.exists(os.path.join(repo, "objects", commit[:2], commit[2:] + ".commit"))
-    if (manifest.get("channel") == channel and manifest_architecture(manifest) == architecture
-            and (not target or manifest.get("ref") == ref) and present):
+    if manifest.get("channel") == channel and present:
+        bucket.validate_manifest(manifest)
         releases[commit] = manifest["version"]
 json.dump(releases, sys.stdout)
 PY
@@ -253,8 +251,9 @@ fi
 generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generated_at"])' "$work/graph.json")
 python3 -c 'import json,sys; g=json.load(open(sys.argv[1])); open(sys.argv[2],"w").write(json.dumps(g, indent=2, sort_keys=True)+"\n")' \
   "$work/graph.json" "$work/$channel.json"
-comment="luma-update-graph channel=$channel arch=$LUMA_OS_ARCH generated_at=$generated key=$LUMA_OS_GRAPH_KEY_ID"
-[ -z "$hardware_target" ] || comment="$comment hardware_target=$hardware_target"
+comment=$(python3 "$luma_os_repo_root/scripts/os/lib/graph_bucket.py" --arch "$LUMA_OS_ARCH" \
+  --hardware-target "$hardware_target" --comment "$work/graph.json" --key-id "$LUMA_OS_GRAPH_KEY_ID") || \
+  luma_os_die 'graph signing identity differs'
 [ -r "$password_file" ] || luma_os_die "update-graph key password is unavailable: $password_file"
 luma_os_graph_tools sign "$work" sh -c '
   set -eu

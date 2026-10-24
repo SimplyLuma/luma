@@ -34,6 +34,8 @@ def main():
     paths=load_module(control/'scripts/os/lib/desktop_paths.py','desktop_paths')
     architecture=paths.architecture(cfg.get('architecture','x86_64'))
     profile=cfg.get('profile','full')
+    hardware_target=cfg.get('hardware_target','')
+    bucket=load_module(control/'scripts/os/lib/graph_bucket.py','prepare_bucket').GraphBucket(architecture,hardware_target)
     targets=load_module(control/'scripts/os/lib/desktop_target.py','desktop_target')
     targets.profile(control,architecture,profile)
     selected=cfg['channels'][channel]
@@ -41,10 +43,10 @@ def main():
     graph_path=graphs/(channel+'.json');runner.protected(graph_path)
     signature=graphs/(channel+'.json.minisig');runner.protected(signature)
     graph=json.loads(graph_path.read_text())
-    if graph['channel']!=channel or graph['arch']!=architecture:raise ValueError('Wrong publication graph')
+    bucket.validate_graph(graph,channel)
     records={}
     for release in graph['releases']:
-        path=paths.releases_path(repo,architecture)/release['version']/'manifest.json';runner.protected(path)
+        path=bucket.release_manifest(repo,release['version']);runner.protected(path)
         manifest=json.loads(path.read_text())
         if manifest['channel']!=channel:raise ValueError('Wrong genuine publication channel')
         record={'manifest_sha256':runner.digest(path)};evidence={}
@@ -58,14 +60,14 @@ def main():
                 raise ValueError('Gate evidence differs from the signed publication manifest')
             if record['provenance_sha256']!=manifest['provenance_sha256']:
                 raise ValueError('Source provenance differs from the signed publication manifest')
-        checks.admitted_release(release,manifest,architecture=architecture,public_repository_url=selected['public_repository_url'],**evidence)
+        checks.admitted_release(release,manifest,architecture=architecture,hardware_target=hardware_target,public_repository_url=selected['public_repository_url'],**evidence)
         records[release['commit']]=record
     if target.exists():raise ValueError('Refusing to alter an existing approval snapshot')
     target.mkdir(mode=0o700);(target/'graphs').mkdir(mode=0o700)
     for path in (graph_path,signature):
         (target/'graphs'/path.name).write_bytes(path.read_bytes())
     selected={**selected,'graph':'graphs/'+channel+'.json','releases':records}
-    cfg={**cfg,'channels':{channel:selected}}
+    cfg={**cfg,'architecture':architecture,'profile':profile,'hardware_target':hardware_target,'channels':{channel:selected}}
     (target/'approved.json').write_text(json.dumps(cfg,indent=2,sort_keys=True)+'\n')
     print('Prepared '+channel+' genuine publication inputs; seal and validate signature before activation')
 

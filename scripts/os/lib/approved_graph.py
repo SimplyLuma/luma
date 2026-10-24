@@ -10,13 +10,13 @@ def same_policy(approved, served):
     if policy(approved) != policy(served):
         raise ValueError('The published policy changed; admit its new approved refresh state before replacing it')
 
-def admitted_release(release, manifest, delivery=None, gate=None, public_repository_url=None, provenance=None, architecture=None):
+def admitted_release(release, manifest, delivery=None, gate=None, public_repository_url=None, provenance=None, architecture=None, hardware_target=""):
     if architecture is not None:
-        ref = manifest.get("ref")
-        if (manifest.get("architecture", "x86_64") != architecture or
-                (ref and not ref.endswith("/" + architecture + "/" + manifest.get("channel", ""))) or
-                (architecture != "x86_64" and not ref)):
-            raise ValueError("Publication architecture/ref differs from the approved graph")
+        import importlib.util
+        from pathlib import Path
+        spec=importlib.util.spec_from_file_location('approved_graph_bucket',Path(__file__).with_name('graph_bucket.py'))
+        buckets=importlib.util.module_from_spec(spec);spec.loader.exec_module(buckets)
+        buckets.GraphBucket(architecture,hardware_target).validate_manifest(manifest)
     if (release['commit'], release['version'], release['released_at']) != (
             manifest['commit'], manifest['version'], manifest['published_utc']):
         raise ValueError('Approved graph and genuine publication manifest disagree')
