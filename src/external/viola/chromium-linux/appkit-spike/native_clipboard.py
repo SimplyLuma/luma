@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Bridge native clipboard offers while Chromium retains copy/paste semantics."""
 import fcntl
+import logging
 import os
 
 MAX_BYTES = 16 * 1024 * 1024
@@ -62,17 +63,31 @@ class EngineClipboard:
         self.session = display.pointer_session
         self.clipboard = Gdk.Display.get_default().get_clipboard()
         self.closed = False
+        self.enabled = False
         self.revision = 0
         self.pending = {}
         self.formats = ()
         self.signal = self.connection.signal_subscribe(self.SERVICE, self.INTERFACE,
             'SelectionTransfer', self.session, None, Gio.DBusSignalFlags.NONE,
             self._transfer)
-        self.connection.call_sync(self.SERVICE, self.session, self.INTERFACE,
-            'EnableClipboard', GLib.Variant('(a{sv})', ({},)), None,
-            Gio.DBusCallFlags.NONE, 1000, None)
         self.changed = self.clipboard.connect('changed', self._changed)
-        self._changed()
+        # The owned compositor may still be settling on a cold desktop. Keep
+        # its bounded handshake off the UI thread; clipboard availability must
+        # not abort the browser before it can show a window.
+        self.connection.call(self.SERVICE, self.session, self.INTERFACE,
+            'EnableClipboard', GLib.Variant('(a{sv})', ({},)), None,
+            Gio.DBusCallFlags.NONE, 5000, None, self._enabled)
+
+    def _enabled(self, connection, result):
+        try:
+            connection.call_finish(result)
+        except Exception as error:
+            if not self.closed:
+                logging.getLogger(__name__).warning('Clipboard bridge unavailable: %s', error)
+            return
+        if not self.closed:
+            self.enabled = True
+            self._changed()
 
     def _call(self, method, parameters, done=None):
         from gi.repository import Gio
@@ -91,6 +106,8 @@ class EngineClipboard:
 
     def _changed(self, *_args):
         from gi.repository import GLib
+        if self.closed or not self.enabled:
+            return
         self.revision += 1
         for serial in list(self.pending):
             self._done(serial, False)
