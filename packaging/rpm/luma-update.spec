@@ -129,7 +129,7 @@ EOF
 %check
 # Immutable target admission must exercise the real native OSTree decoder.
 python3 -c "import gi, shutil; gi.require_version('OSTree', '1.0'); from gi.repository import Gio, OSTree; assert shutil.which('ostree')"
-python3 -m unittest discover -s tests -p 'test_*.py'
+python3 -m unittest discover -v -s tests -p 'test_*.py'
 
 %post
 %systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service

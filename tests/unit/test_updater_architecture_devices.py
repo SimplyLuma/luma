@@ -133,3 +133,59 @@ luma_os_channel_ref() { case "$1" in nightly|beta|stable) printf 'luma/1/%s/%s\n
             manifest_architecture(doc)
         doc["ref"] = "luma/1/aarch64/unihertz-titan2e/nightly"
         self.assertEqual(manifest_architecture(doc), "aarch64")
+
+
+# Compose integration needs the full repository and stays outside the standalone RPM.
+sys.path.insert(0, str(ROOT / "src/luma-update/tests"))
+import fakes
+from fakes import graph_doc
+from luma_update.config import Settings
+from luma_update.engine import Engine
+from luma_update.hardware import FP6, TITAN2E
+
+
+class ComposedUpdatePolicies(unittest.TestCase):
+    def test_actual_desktop_compose_and_phone_policies_fetch_separate_graphs(self):
+        import subprocess
+        import sys
+        from luma_update.config import load_settings
+        root = ROOT
+        cases = (("x86_64", "", "", b""),
+                 ("aarch64", "", "", b""),
+                 ("aarch64", FP6, "config/mobile/fp6-physical/overlay/etc/luma/update.conf", b"fairphone,fp6\0qcom,milos\0"),
+                 ("aarch64", TITAN2E, "src/luma-titan2e-platform/luma-update.conf", b"unihertz,titan2-elite\0mediatek,mt6878\0"))
+        for arch, target, policy, compatible in cases:
+            with self.subTest(arch=arch, target=target):
+                rig = fakes.Rig()
+                self.addCleanup(rig.close)
+                rig.paths.vendor_config.parent.mkdir(parents=True, exist_ok=True)
+                rig.paths.vendor_config.write_bytes((root / "src/luma-update/data/config/update.conf").read_bytes())
+                if policy:
+                    rig.paths.admin_config.parent.mkdir(parents=True, exist_ok=True)
+                    rig.paths.admin_config.write_bytes((root / policy).read_bytes())
+                    dt = rig.paths.device_tree_compatible
+                    dt.parent.mkdir(parents=True, exist_ok=True)
+                    dt.write_bytes(compatible)
+                else:
+                    # Execute the maintained compose block, redirecting ONLY its
+                    # absolute output into this private fixture root.
+                    text = (root / "image/luma-desktop/scripts/configure-system.sh").read_text()
+                    body = text.split("<<'PYGRAPH'\n", 1)[1].split("\nPYGRAPH", 1)[0]
+                    body = body.replace("Path('/usr/lib/luma/update.conf')", "Path(" + repr(str(rig.paths.vendor_config)) + ")")
+                    profile = "arm-preview" if arch == "aarch64" else "full"
+                    subprocess.run([sys.executable, "-", str(root), arch, profile], input=body, text=True, check=True, timeout=10)
+                rig.settings = load_settings(rig.paths)
+                self.assertEqual(rig.settings.hardware_target, target)
+                expected = "https://dl.simplyluma.com/os/graph/" + arch
+                if target:
+                    expected += "/" + ("fairphone-fp6" if target == FP6 else "unihertz-titan2e")
+                self.assertEqual(rig.settings.graph_url.format(arch=arch, channel="stable"), expected + "/stable.json")
+                rig.backend = fakes.FakeRpmOstree(origin="luma:" + rig.settings.ref("stable", arch))
+                doc = graph_doc([fakes.release("1.0.0", 1), fakes.release("1.0.1", 2)], arch=arch)
+                if target:
+                    doc.update(schema_version=2, hardware_target=target)
+                rig.publish(doc)
+                engine = Engine(rig.paths, rig.settings, rig.backend, rig.probes, rig.http,
+                                clock=lambda: rig.now, arch=arch, boot_id=lambda: "fixture", greenboot_installed=True)
+                self.assertEqual(engine.check().release.commit, fakes.commit(2))
+                self.assertIn(expected + "/stable.json", rig.http.gets)
