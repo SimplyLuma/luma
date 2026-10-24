@@ -1,0 +1,4 @@
+target_cpu = "arm64"
+# Upstream enables CFI for official Linux x64, not Linux ARM64. Keep the
+# architecture's upstream CFI default; bound this producer's link memory.
+use_thin_lto = false
