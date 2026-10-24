@@ -1,0 +1,94 @@
+name: Native desktop browser
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-browser.yml'
+      - 'scripts/os/build-desktop-browser.sh'
+      - 'scripts/packages/build-viola-browser.sh'
+      - 'packaging/rpm/viola-browser-stable.spec'
+      - 'src/external/viola/chromium-linux/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      needed: ${{ steps.scope.outputs.needed }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+        run: |
+          echo "needed=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE")" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE" --print-matrix)" >> "$GITHUB_OUTPUT"
+  build:
+    needs: select
+    if: needs.select.outputs.needed == 'true'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+      RPM_BUILD_NCPUS: '2'
+      BUILDER_IMAGE: ${{ matrix.image }}
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Reuse checked toolkit packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-toolkit-${{ matrix.architecture }}
+          run-id: 39857373641
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/toolkit
+      - name: Reuse checked apk-metadata packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-apk-metadata-${{ matrix.architecture }}
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/apk-metadata
+      - name: Reuse checked appimage packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-appimage-${{ matrix.architecture }}
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/appimage
+      - name: Build and check the shared browser host
+        run: |
+          test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
+          . config/desktop/inputs.env
+          case "$LUMA_TARGET_ARCHITECTURE" in
+            x86_64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER" ;;
+            aarch64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER_AARCH64" ;;
+          esac
+          mkdir -p build
+          git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+          bash scripts/os/build-desktop-browser.sh
+      - name: Retain checked browser packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-browser-${{ matrix.architecture }}
+          path: |
+            build/packages/**/RPMS/
+            build/packages/**/SRPMS/
+            build/packages/**/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14

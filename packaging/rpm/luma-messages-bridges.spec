@@ -33,7 +33,7 @@ Neither network offers this officially; Messages says so before an account is ad
 %autosetup -n luma-messages-bridges
 
 %build
-export GOTOOLCHAIN=local CGO_ENABLED=0 GOFLAGS="-mod=vendor -trimpath"
+export GOTOOLCHAIN=local CGO_ENABLED=0 GOFLAGS="-mod=vendor -trimpath -buildvcs=false"
 mkdir -p bin
 for helper in gmessages whatsapp; do
   (cd "$helper" && go build -ldflags "-s -w" -o "../bin/$helper" .)
@@ -50,7 +50,7 @@ for helper in gmessages whatsapp; do
 done
 
 %check
-export GOTOOLCHAIN=local CGO_ENABLED=0 GOFLAGS="-mod=vendor -trimpath"
+export GOTOOLCHAIN=local CGO_ENABLED=0 GOFLAGS="-mod=vendor -trimpath -buildvcs=false"
 (cd gmessages && go vet . && go test -count=1 .)
 python3 tests/conformance.py bin/gmessages gmessages
 python3 tests/conformance.py bin/whatsapp whatsapp code

@@ -168,6 +168,28 @@ def commit_info(repo: Path, ref: str, history: int = 3) -> dict:
     return info
 
 
+def previous_release_annotations(site: Path, base_url: str) -> dict:
+    """Keep reviewed release details for unchanged refs of either CPU."""
+    path = site / "apps/index.json"
+    if not path.exists():
+        return {}
+    prior = json.loads(path.read_text())
+    if prior.get("remote") != f"{base_url}/repo/":
+        raise ValueError("Previous application index names another remote")
+    result = {}
+    for entry in prior["apps"]:
+        identity = f"app/{entry['app_id']}/{entry['arch']}/{entry['branch']}"
+        if entry["ref"] != identity:
+            raise ValueError("Previous application index has inconsistent identity")
+        key = identity, entry["commit"]
+        if key in result:
+            raise ValueError("Previous application index repeats a ref")
+        result[key] = {name: entry[name] for name in
+                       ("permissions", "permission_changes", "published_at")
+                       if name in entry}
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", type=Path, required=True)
@@ -188,6 +210,7 @@ def main() -> int:
     titles = json.loads(args.titles.read_text()) if args.titles else {}
 
     site = args.site
+    previous = previous_release_annotations(site, base_url)
     (site / "apps").mkdir(parents=True, exist_ok=True)
     (site / "keys").mkdir(parents=True, exist_ok=True)
     (site / "media").mkdir(parents=True, exist_ok=True)
@@ -219,10 +242,12 @@ def main() -> int:
             (site / "apps" / default_name).write_text(descriptor)
         entry = commit_info(args.repo, f"app/{app_id}/{arch}/{branch}")
         entry.update({"app_id": app_id, "arch": arch, "branch": branch})
+        entry.update(previous.get((entry["ref"], entry["commit"]), {}))
         release = args.releases / app_id / "release.json" if args.releases else None
         if release and release.is_file():
             data = json.loads(release.read_text())
-            if data.get("commit") == entry["commit"] and data.get("branch") == branch:
+            if (data.get("commit") == entry["commit"] and data.get("branch") == branch
+                    and data.get("arch", arch) == arch):
                 entry["permissions"] = data.get("permissions", [])
                 entry["permission_changes"] = data.get("permission_changes", [])
                 entry["published_at"] = data.get("published_at")

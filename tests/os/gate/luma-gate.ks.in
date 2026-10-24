@@ -33,7 +33,7 @@ poweroff
 
 %pre --interpreter=/usr/bin/bash --erroronfail
 set -euo pipefail
-exec > >(tee /dev/ttyS0) 2>&1
+exec > >(tee /dev/@CONSOLE@) 2>&1
 # The installer runtime must trust exactly one key for the OSTree pull. Its
 # root filesystem may be read-only, so the trusted keyring directory is
 # replaced by a tmpfs holding only the Luma OS Release key.
@@ -55,7 +55,7 @@ ostreesetup --osname=@STATEROOT@ --remote=@REMOTE@ --url=@REPO_URL@ --ref=@REF@
 
 %post --nochroot --erroronfail --interpreter=/usr/bin/bash
 set -euo pipefail
-exec > >(tee /dev/ttyS0) 2>&1
+exec > >(tee /dev/@CONSOLE@) 2>&1
 root=${ANA_INSTALL_PATH:-/mnt/sysroot}
 physical=/mnt/sysimage
 # The remote lives only in the image's /etc/ostree/remotes.d/luma.conf, with
@@ -91,7 +91,7 @@ out = []
 for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.toml"))):
     data = tomllib.load(open(path, "rb"))
     arches = data.get("match-architectures")
-    if not arches or "x86_64" in arches:
+    if not arches or "@ARCH@" in arches:
         out += data.get("kargs", [])
 print(" ".join(out))
 PY

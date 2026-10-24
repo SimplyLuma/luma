@@ -39,7 +39,10 @@ done
 [ -r "$release_env" ] && [ -n "$expect_commit" ] && [ -n "$channel" ] || exit 2
 
 contract() { sed -n "s/^$1=//p" "$release_env"; }
-ref="$(contract LUMA_OS_REF_PREFIX)/$channel"
+architecture=$(uname -m)
+case "$architecture" in x86_64|aarch64) ;; *) printf 'Unsupported desktop architecture\n' >&2; exit 2 ;; esac
+ref_prefix=$(contract LUMA_OS_REF_PREFIX)
+ref="${ref_prefix%/*}/$architecture/$channel"
 fingerprint=$(contract LUMA_OS_RELEASE_KEY_FINGERPRINT)
 key_path=$(contract LUMA_OS_RELEASE_KEY_PATH)
 collection=$(contract LUMA_OS_COLLECTION_ID)
@@ -143,13 +146,13 @@ print("\n".join(bad))
 sys.exit(1 if bad or not checked else 0)'
 check 'the running kernel has every argument the image declares in kargs.d' \
   python3 -c '
-import glob, sys, tomllib
+import glob, platform, sys, tomllib
 cmdline = open("/proc/cmdline").read().split()
 missing = []
 for path in sorted(glob.glob("/usr/lib/bootc/kargs.d/*.toml")):
     data = tomllib.load(open(path, "rb"))
     arches = data.get("match-architectures")
-    if arches and "x86_64" not in arches:
+    if arches and platform.machine() not in arches:
         continue
     missing += [karg + " (" + path + ")" for karg in data.get("kargs", []) if karg not in cmdline]
 print("\n".join(missing))

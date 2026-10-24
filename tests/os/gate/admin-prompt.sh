@@ -276,7 +276,9 @@ flatpak-ref)
   # A tiny standalone Flathub runtime with no dependencies and no extra data
   # (the Adwaita-dark GTK 3 theme, a few kilobytes): the same
   # flatpak-system-helper deploy and polkit check as Depot's app installs.
-  ref=$(timeout 180 flatpak remote-ls --system flathub --runtime --columns=ref 2>/dev/null | grep -E '^runtime/org\.gtk\.Gtk3theme\.Adwaita-dark/x86_64/' | sort -V | tail -n 1)
+  architecture=$(flatpak --default-arch)
+  case "$architecture" in x86_64|aarch64) ;; *) echo 'Unsupported desktop architecture' >&2; exit 2 ;; esac
+  ref=$(timeout 180 flatpak remote-ls --system flathub --runtime --columns=ref 2>/dev/null | grep -E "^runtime/org\\.gtk\\.Gtk3theme\\.Adwaita-dark/$architecture/" | sort -V | tail -n 1)
   [ -n "$ref" ] || { echo none; exit 1; }
   printf '%s\n' "$ref" >"$state/flatpak-ref"
   echo "$ref"

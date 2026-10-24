@@ -150,6 +150,7 @@ class LumaContainerBuilder(ContainerBuilder):
             for i in /proc /sys /dev /var/cache/dnf ; do
                 mkdir -p {installroot}/$i
                 mount --rbind $i {installroot}/$i
+                mount --make-rslave {installroot}/$i
             done
             dnf --installroot={installroot} install -y {package_str}
             """)

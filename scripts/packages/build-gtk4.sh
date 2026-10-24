@@ -7,19 +7,19 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-for tool in cpio mktemp podman rpm2cpio sha256sum; do
+for tool in cpio curl mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required RPM build tool is missing: %s\n' "$tool" >&2
     exit 1
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma GTK RPM on the canonical Linux/x86_64 host\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the Luma GTK RPM on a Linux builder\n' >&2
   exit 1
 fi
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER
@@ -27,7 +27,7 @@ case "$architecture" in
     ;;
   aarch64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    package_nevra=$GTK4_AARCH64_NEVRA
+    package_nevra=${GTK4_NEVRA%.x86_64}.aarch64
     ;;
   *)
     printf 'error: unsupported GTK target architecture: %s\n' "$architecture" >&2
@@ -41,13 +41,8 @@ output_dir="$repo_root/build/packages/gtk4"
 mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$GTK4_SRPM"
-if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null 2>&1 || {
-    printf 'error: %s is not cached and dnf5 is not available to download it\n' "$GTK4_SRPM" >&2
-    exit 1
-  }
-  dnf5 download --source --destdir "$cache_dir" "gtk4-4.22.4-1.fc44"
-fi
+bash "$repo_root/scripts/packages/fetch-source-rpm.sh" \
+  "$srpm" "$GTK4_SRPM_SHA256" "$GTK4_SRPM_URL"
 
 printf '%s  %s\n' "$GTK4_SRPM_SHA256" "$srpm" |
   sha256sum --check --status || {
@@ -190,6 +185,12 @@ install -d -m 0755 "$stable_rpms" "$stable_srpms"
 install -m 0644 \
   "$rpmbuild_dir/RPMS/$architecture/$package_nevra.rpm" \
   "$stable_rpms/"
+# Dependents must use the headers from this build as well as its library.
+for built in "$rpmbuild_dir/RPMS/$architecture"/gtk4-*.rpm; do
+  [ -f "$built" ] || continue
+  case "$(basename "$built")" in *-debuginfo-*|*-debugsource-*) continue ;; esac
+  install -m 0644 "$built" "$stable_rpms/"
+done
 install -m 0644 \
   "$rpmbuild_dir/SRPMS/gtk4-4.22.4-${GTK4_LUMA_RELEASE}.fc44.src.rpm" \
   "$stable_srpms/"

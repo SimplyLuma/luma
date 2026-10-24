@@ -10,6 +10,12 @@ set -euo pipefail
 
 src=/run/luma/source
 rootfs=$src/image/luma-desktop/rootfs
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+profile=${LUMA_OS_PROFILE:-full}
+python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" capabilities >/tmp/luma-desktop-capabilities.json
+capability_enabled() {
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open("/tmp/luma-desktop-capabilities.json"))["capabilities"][sys.argv[1]] else 1)' "$1"
+}
 
 fail() {
   printf 'error: %s\n' "$*" >&2
@@ -26,8 +32,10 @@ install -D -m 0644 "$src/config/desktop/gtk-4.0/settings.ini" /etc/gtk-4.0/setti
 install -D -m 0644 "$src/config/boot/plymouthd.conf" /etc/plymouth/plymouthd.conf
 install -D -m 0644 "$src/config/desktop/fprintd-no-idle-exit.conf" \
   /etc/systemd/system/fprintd.service.d/10-luma-no-idle-exit.conf
-install -D -m 0644 "$src/config/desktop/waydroid-container-ordering.conf" \
-  /etc/systemd/system/waydroid-container.service.d/10-luma-ordering.conf
+if capability_enabled android_apps; then
+  install -D -m 0644 "$src/config/desktop/waydroid-container-ordering.conf" \
+    /etc/systemd/system/waydroid-container.service.d/10-luma-ordering.conf
+fi
 dconf update
 
 # Update and trust policy (ADR-030 sections 3 and 5). The image files are the
@@ -38,6 +46,34 @@ dconf update
   [ -x "$rootfs/$file" ] && mode=0755
   install -D -m "$mode" "$rootfs/$file" "/$file"
 done
+
+install -D -m 0644 /tmp/luma-desktop-capabilities.json /usr/share/luma/desktop-capabilities.json
+install -D -m 0644 "$src/config/os/desktop-profiles.json" /usr/share/luma/desktop-profiles.json
+
+# Retain the selected build contract for diagnostics. The update service uses
+# its machine architecture to select refs and verifies graph architecture.
+python3 "$src/scripts/os/lib/desktop_target.py" \
+  --arch "$architecture" --profile "$profile" contract >/tmp/luma-target-contract
+install -D -m 0644 /tmp/luma-target-contract /usr/share/luma/os-build-contract.env
+# Graphs contain one architecture. Keep the legacy x86 URL stable and place
+# ARM graphs in a distinct directory; the client's signature/arch checks stay on.
+python3 - "$src" "$architecture" "$profile" <<'PYGRAPH'
+import configparser, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / 'scripts/os/lib'))
+from desktop_target import contract
+values = contract(Path(sys.argv[1]), sys.argv[2], sys.argv[3])
+path = Path('/usr/lib/luma/update.conf')
+if not path.is_file():
+    raise SystemExit('The update policy package has no vendor configuration')
+config = configparser.ConfigParser(interpolation=None)
+config.read(path)
+base = values['LUMA_OS_PUBLIC_BASE_URL'].removesuffix('/os')
+config['update']['graph_url'] = base + '/' + values['LUMA_OS_GRAPH_PREFIX'] + '/{channel}.json'
+with path.open('w') as stream:
+    config.write(stream)
+PYGRAPH
+
 
 # The immutable OS contains only public, signed app bundles. Flatpak deploys
 # missing apps into persistent /var at first handoff; later OS updates and
@@ -101,7 +137,10 @@ for conf in /etc/fwupd/remotes.d/*.conf; do
 done
 
 # Service policy through presets, applied now so the image's /etc matches.
-systemctl preset flatpak-add-fedora-repos.service rpm-ostreed-automatic.timer waydroid-container.service
+systemctl preset flatpak-add-fedora-repos.service rpm-ostreed-automatic.timer
+if capability_enabled android_apps; then
+  systemctl preset waydroid-container.service
+fi
 if systemctl is-enabled --quiet waydroid-container.service; then
   fail 'unused Android support would start at boot'
 fi
@@ -181,7 +220,7 @@ fi
 # image's own builds; luma-install-commands refuses to replace them from any
 # other source. tests/os/gate/fedora-cannot-replace-luma.sh checks both.
 mapfile -t owned < <(
-  sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$src/config/desktop/packages.txt" |
+  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" pins |
     while read -r nevra; do rpm -q --qf '%{NAME}\n' "$nevra" || echo "MISSING:$nevra"; done | sort -u
 )
 [ "${#owned[@]}" -gt 0 ] || fail 'no Luma-owned packages found'

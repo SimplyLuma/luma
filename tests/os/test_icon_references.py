@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s tests/os -p 'test_*.py'
 """
 
 import io
+import json
 import os
 import struct
 import sys
@@ -69,6 +70,109 @@ class IconReferenceTest(unittest.TestCase):
         with redirect_stdout(output):
             code = icon_references.main(["--root", str(self.root), "--source", str(self.source), *extra])
         return code, output.getvalue()
+
+    def preview_wine_stubs(self):
+        caps = {"schema": "org.projectluma.desktop-capabilities/v1", "architecture": "aarch64",
+                "profile": "arm-preview", "capabilities": {"desktop": True, "windows_apps": False},
+                "excluded_packages": ["wine", "winetricks"], "excluded_package_prefixes": ["wine-"]}
+        self.write(self.root / "usr/share/luma/desktop-capabilities.json", json.dumps(caps))
+        for filename, (icon, command) in icon_references.PREVIEW_WINE_STUBS.items():
+            text = f"[Desktop Entry]\nType=Application\nNoDisplay=true\nIcon={icon}\nExec={command}\n"
+            self.write(self.source / "luma-desktop-launcher-policy/applications" / filename, text)
+            self.write(self.root / "usr/share/luma/desktop-overrides/applications" / filename, text)
+        self.write(self.root / "usr/share/applications/wine-notepad.desktop", "[Desktop Entry]\nNoDisplay=true\n")
+        return caps
+
+    def change_preview_capability(self, **changes):
+        path = self.root / "usr/share/luma/desktop-capabilities.json"
+        value = json.loads(path.read_text())
+        value.update(changes)
+        path.write_text(json.dumps(value))
+
+    def change_preview_stub(self, old, new):
+        for base in (self.source / "luma-desktop-launcher-policy/applications",
+                     self.root / "usr/share/luma/desktop-overrides/applications"):
+            path = base / "wine-notepad.desktop"
+            path.write_text(path.read_text().replace(old, new))
+
+    def test_preview_hidden_unavailable_stubs_are_never_drawn(self):
+        self.preview_wine_stubs()
+        code, output = self.run_check("--installed")
+        self.assertEqual(code, 0, output)
+        self.assertIn("exact hidden Wine policy stubs", output)
+        entries = icon_references.unavailable_preview_wine_stubs(self.root, [self.source])
+        self.assertEqual(len(entries), 18)
+
+    def test_windows_enabled_still_requires_stub_icons(self):
+        self.preview_wine_stubs()
+        self.change_preview_capability(capabilities={"desktop": True, "windows_apps": True})
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_x86_full_profile_keeps_normal_icon_requirements(self):
+        self.preview_wine_stubs()
+        self.change_preview_capability(architecture="x86_64", profile="full",
+                                       capabilities={"desktop": True, "windows_apps": True})
+        self.assertEqual(self.run_check("--installed")[0], 1)
+        for icon, _ in icon_references.PREVIEW_WINE_STUBS.values():
+            self.write(self.root / "usr/share/icons/Prairie/scalable/apps" / (icon + ".svg"), SVG)
+        code, output = self.run_check("--installed")
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("exact hidden Wine policy stubs", output)
+
+    def test_preview_visible_launcher_is_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("NoDisplay=true", "NoDisplay=false")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_mime_handler_is_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("Exec=notepad", "Exec=notepad\nMimeType=text/plain;")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_desktop_actions_are_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("Exec=notepad", "Exec=notepad\nActions=Open;")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_dbus_activation_is_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("Exec=notepad", "Exec=notepad\nDBusActivatable=true")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_changed_icon_is_not_exempt(self):
+        self.preview_wine_stubs()
+        self.change_preview_stub("Icon=notepad", "Icon=other-missing-icon")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_installed_source_mismatch_is_not_exempt(self):
+        self.preview_wine_stubs()
+        path = self.root / "usr/share/luma/desktop-overrides/applications/wine-notepad.desktop"
+        path.write_text(path.read_text() + "Name=Changed\n")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_available_backend_still_requires_icons(self):
+        self.preview_wine_stubs()
+        self.write(self.root / "usr/bin/wine", "#!/bin/sh\n")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_backend_symlink_is_not_treated_as_absent(self):
+        self.preview_wine_stubs()
+        (self.root / "usr/bin/wine").symlink_to("unavailable-target")
+        self.assertEqual(self.run_check("--installed")[0], 1)
+
+    def test_preview_does_not_exempt_same_icon_elsewhere(self):
+        self.preview_wine_stubs()
+        self.write(self.source / "another-app/main.py", 'set_icon_name("notepad")\n')
+        code, output = self.run_check("--installed")
+        self.assertEqual(code, 1)
+        self.assertIn("another-app/main.py", output)
+
+    def test_preview_does_not_exempt_other_missing_icons(self):
+        self.preview_wine_stubs()
+        self.write(self.source / "another-app/main.py", 'set_icon_name("other-missing-icon")\n')
+        code, output = self.run_check("--installed")
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL icon other-missing-icon:", output)
 
     def test_gvdb_matches_glib_compile_resources(self):
         keys = icon_references.gvdb_keys(FIXTURE.read_bytes())

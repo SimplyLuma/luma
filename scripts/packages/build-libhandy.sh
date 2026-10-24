@@ -14,12 +14,12 @@ for tool in cpio dnf5 mktemp patch podman rpm2cpio sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma libhandy RPM on the canonical Linux/x86_64 host\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the Luma libhandy RPM on a Linux builder\n' >&2
   exit 1
 fi
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER
@@ -27,7 +27,7 @@ case "$architecture" in
     ;;
   aarch64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    package_nevra=$LIBHANDY_AARCH64_NEVRA
+    package_nevra=${LIBHANDY_NEVRA%.x86_64}.aarch64
     ;;
   *)
     printf 'error: unsupported libhandy target architecture: %s\n' "$architecture" >&2

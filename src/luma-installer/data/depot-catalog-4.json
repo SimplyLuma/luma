@@ -272,7 +272,8 @@
     {
       "app_id": "org.projectluma.Ari",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -875,7 +876,8 @@
     {
       "app_id": "org.projectluma.Camera",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -1439,7 +1441,8 @@
     {
       "app_id": "org.projectluma.Connect",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -2061,7 +2064,8 @@
     {
       "app_id": "org.gnome.Nautilus",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -3271,7 +3275,8 @@
     {
       "app_id": "io.luma.Monitor",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -4148,7 +4153,8 @@
     {
       "app_id": "org.projectluma.Photos",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -6292,7 +6298,8 @@
     {
       "app_id": "com.rhyme.viola",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",

@@ -2,16 +2,21 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Admit Viola's byte-identical released engine for its independent GTK UI.
 
-Source0 is the same fixed native30 archive admitted by the canonical RPM,
+Source0 is the same fixed architecture-specific archive admitted by the canonical RPM,
 including upstream license material. It is never fetched by this helper.
 """
 import argparse
 import hashlib
+import platform
 from pathlib import Path
 import tarfile
 
-ENGINE_SHA256 = '2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028'
-ENGINE_NAME = 'viola-native-engine-0.2.10-native30.tar.zst'
+ENGINE_INPUTS = {
+    'x86_64': ('viola-native-engine-0.2.10-native30.tar.zst',
+               '2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028', 30),
+    'aarch64': ('viola-native-engine-0.2.10-native31.tar.zst',
+                '325f3ca8be682bbe6c267251a29315f01229a52971b4627c972dbe0a32552f30', 31),
+}
 
 
 def admitted_engine(path):
@@ -20,14 +25,20 @@ def admitted_engine(path):
         raise ValueError('Viola requires the regular bounded admitted engine archive')
     with path.open('rb') as stream:
         data = stream.read(512 * 1024**2 + 1)
-    if len(data) > 512 * 1024**2 or hashlib.sha256(data).hexdigest() != ENGINE_SHA256:
+    digest = hashlib.sha256(data).hexdigest()
+    matches = [row for row in ENGINE_INPUTS.values() if row[1] == digest]
+    if len(data) > 512 * 1024**2 or len(matches) != 1:
         raise ValueError('Viola engine archive differs from the admitted native release')
-    return [('upstream-viola/' + ENGINE_NAME, data, 0o644)]
+    return [('upstream-viola/' + matches[0][0], data, 0o644)]
 
 
 def prepare(root):
     root = root.resolve()
-    source = root / 'upstream-viola' / ENGINE_NAME
+    architecture = platform.machine()
+    if architecture not in ENGINE_INPUTS:
+        raise ValueError('Unsupported native Viola architecture')
+    engine_name, _, engine_release = ENGINE_INPUTS[architecture]
+    source = root / 'upstream-viola' / engine_name
     admitted_engine(source)
     target = root / 'viola-engine'
     if target.exists():
@@ -40,7 +51,7 @@ def prepare(root):
             raise ValueError('Unexpected admitted engine archive membership')
         target.mkdir(mode=0o755)
         archive.extractall(target, members=members, filter='data')
-    manifest = root / 'src/external/viola/chromium-linux/luma-package/native-30-engine.sha256'
+    manifest = root / f'src/external/viola/chromium-linux/luma-package/native-{engine_release}-engine.sha256'
     wanted = {}
     for line in manifest.read_text().splitlines():
         digest, name = line.split('  ', 1)

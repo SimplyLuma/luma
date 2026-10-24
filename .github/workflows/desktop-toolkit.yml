@@ -1,0 +1,58 @@
+name: Native desktop toolkit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-toolkit.yml'
+      - 'scripts/os/build-desktop-toolkit.sh'
+      - 'scripts/packages/build-gtk4.sh'
+      - 'scripts/packages/build-libadwaita.sh'
+      - 'scripts/packages/build-luma-developer-platform.sh'
+      - 'scripts/packages/build-figtree-fonts.sh'
+      - 'scripts/packages/run-in-rpm-builder.sh'
+      - 'patches/gtk4/**'
+      - 'patches/libadwaita/**'
+      - 'src/luma-platform/**'
+      - 'packaging/rpm/luma-developer-platform.spec'
+      - 'config/desktop/inputs.env'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x86_64
+            image: registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+          - runner: ubuntu-24.04-arm
+            architecture: aarch64
+            image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build and check the toolkit cohort
+        run: bash scripts/os/build-desktop-toolkit.sh
+      - name: Retain checked toolkit packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-toolkit-${{ matrix.architecture }}
+          path: |
+            build/packages/**/RPMS/
+            build/packages/**/SRPMS/
+            build/packages/**/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14
