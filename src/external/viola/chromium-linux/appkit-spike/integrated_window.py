@@ -439,8 +439,6 @@ class IntegratedWindow(AppWindow):
         blank_selected = (state.get('activeUrl') == 'about:blank' and
                           (not self.state or self.state.get('activeTabId') != state.get('activeTabId')))
         self.state = state
-        if blank_selected:
-            self._edit_blank_tab()
         self.present_selected_frame()
         self.toolbar.set_sensitive(True)
         self.address_field.set_sensitive(True)
@@ -459,6 +457,10 @@ class IntegratedWindow(AppWindow):
         else:
             self.sidebar.render(state)
         self.responsive.render()
+        if blank_selected:
+            # The initial editor starts disabled, and responsive rendering may
+            # reparent it. Focus only after it is enabled in its final bar.
+            self._edit_blank_tab()
         return GLib.SOURCE_REMOVE
 
     def native_event(self, name, payload):
@@ -673,7 +675,8 @@ def main():
             window.identity_menu = NativeIdentityMenu(window, description)
             if args.qa_present:
                 window.present()
-                window._focus_address()
+                if not window.address_focused():
+                    window._focus_address()
             timeout_policy.ready = True
             (args.work_root / 'native-ready').write_text('ready\n')
             if os.environ.get('VIOLA_QA_WINDOWS') == '1':
