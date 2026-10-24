@@ -14,6 +14,7 @@ FIXTURE_PATHS = frozenset({
     "scripts/os/lib/gate_checks_revision.py",
     "tests/os/gate/admin-prompt.sh",
     "tests/os/gate/browser-opens.js",
+    "tests/smoke/desktop.sh",
     "tests/unit/test_gate_checks_revision.py",
 })
 

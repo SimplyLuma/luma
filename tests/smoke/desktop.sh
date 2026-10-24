@@ -491,7 +491,7 @@ check 'GTK embeds the Luma native dark-mode window elevation' \
 check 'shared Luma core applications package is installed' \
   rpm -q "$PRAIRIE_CORE_APPS_NEVRA"
 check 'shared Luma Developer Platform package is installed' \
-  rpm -q "$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA"
+  rpm -q "$LUMA_DEVELOPER_PLATFORM_NEVRA"
 check 'Luma Semantics introspection is installed' test -f \
   /usr/lib64/girepository-1.0/LumaSemantics-1.typelib
 check 'Luma UI introspection is installed' test -f \
@@ -674,9 +674,9 @@ check 'Luma Android integration package' \
 check 'Fedora Waydroid engine' rpm --quiet --query waydroid
 check 'APK MIME integration' grep -Fq application/vnd.android.package-archive \
   /usr/share/mime/packages/luma-android.xml
-fi
 check 'APK installer broker' test -f \
   /usr/share/dbus-1/services/org.projectluma.ApplicationInstaller1.service
+fi
 check_value '12-hour clock default' \
   /org/gnome/desktop/interface/clock-format "'12h'"
 

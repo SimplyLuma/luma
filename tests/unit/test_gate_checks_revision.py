@@ -57,6 +57,20 @@ class GateChecksRevisionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside gate fixtures"):
             MODULE.admit(self.repo, self.source, self.commit())
 
+    def test_desktop_smoke_fixture_correction_is_allowed(self):
+        self.write("tests/smoke/desktop.sh", "architecture-aware fixture\n")
+        checks = self.commit()
+        result = MODULE.admit(self.repo, self.source, checks)
+        self.assertEqual(result["changed_paths"], ["tests/smoke/desktop.sh"])
+        self.assertFalse(result["candidate_payload_changed"])
+        self.assertFalse(result["phase_reuse"])
+
+    def test_desktop_smoke_cannot_hide_changed_product_pins(self):
+        self.write("tests/smoke/desktop.sh", "architecture-aware fixture\n")
+        self.write("config/desktop/inputs.env", "different product pins\n")
+        with self.assertRaisesRegex(ValueError, "outside gate fixtures"):
+            MODULE.admit(self.repo, self.source, self.commit())
+
     def test_other_check_cannot_change(self):
         self.write("tests/os/image-contract.sh", "different image assertion\n")
         with self.assertRaisesRegex(ValueError, "outside gate fixtures"):
