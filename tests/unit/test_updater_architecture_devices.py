@@ -125,6 +125,8 @@ luma_os_channel_ref() { case "$1" in nightly|beta|stable) printf 'luma/1/%s/%s\n
         nevra = f"luma-update-{version}-{release}.fc44.noarch"
         self.assertEqual(inputs["LUMA_UPDATE_NEVRA"], nevra)
         self.assertIn(nevra, (ROOT / "config/desktop/packages.txt").read_text().splitlines())
+        self.assertIn(f"luma-os-remote-{version}-{release}.fc44.noarch",
+                      (ROOT / "config/desktop/packages.txt").read_text().splitlines())
         self.assertGreater(int(release.rsplit(".", 1)[1]), 22)
 
     def test_signed_manifest_cannot_lie_about_phone_ref(self):
