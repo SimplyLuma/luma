@@ -58,13 +58,17 @@ Flatpak app definitions live in `packaging/flatpak/apps/`; platform/SDK definiti
 
 ## Viola's external engine dependency
 
-`src/external/viola/chromium-linux/appkit-spike/` contains the native host and Application Kit integration. The native35 package builder retains the separately built native30 browser engine. `scripts/packages/build-viola-browser.sh` requires `LUMA_VIOLA_ENGINE_ARCHIVE` to identify that archive and validates this exact SHA-256:
+`src/external/viola/chromium-linux/appkit-spike/` contains the shared native host and Application Kit integration. `scripts/packages/build-viola-browser.sh` supports both `x86_64` and `aarch64`; `LUMA_TARGET_ARCHITECTURE` selects the target and defaults to the builder's machine architecture. Each architecture has its own admitted engine archive, release and SHA-256 in that script.
 
-```text
-2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028
+Run on a builder for the target architecture and supply its matching engine archive, for example:
+
+```sh
+LUMA_TARGET_ARCHITECTURE=aarch64 \
+LUMA_VIOLA_ENGINE_ARCHIVE=/path/to/admitted-aarch64-engine.tar.zst \
+scripts/packages/build-viola-browser.sh
 ```
 
-The current builder accepts x86_64 only. This repository is not a complete Chromium/browser-engine source checkout. The matching engine source, its upstream licenses, and its build recipe must be obtained separately; an arbitrary Chromium binary cannot substitute for the admitted archive. Do not infer an ARM Viola build from the shared native platform's AArch64 support.
+This repository is not a complete Chromium/browser-engine source checkout. The matching engine source, its upstream licenses, and its build recipe must be obtained separately; an arbitrary Chromium binary cannot substitute for the admitted archive. Package builds and source checks do not establish successful native rendering; qualify the resulting browser in the target desktop environment before release.
 
 ## Desktop images and installation media
 
