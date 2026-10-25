@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Exercise actual signed EOL commits in an isolated repository."""
 import ast
+import gzip
 import importlib.util
 import json
 from pathlib import Path
@@ -39,6 +40,8 @@ class Retirement(unittest.TestCase):
             tree = root / "tree"
             (tree / "files").mkdir(parents=True)
             (tree / "files/preserved").write_text("keep these exact bytes\n")
+            xml_dir = tree / "files/share/app-info/xmls"
+            xml_dir.mkdir(parents=True)
             originals = {}
             for app, arch, branch in (("Displays", "aarch64", "beta"),
                                       ("Displays", "x86_64", "beta"),
@@ -46,7 +49,25 @@ class Retirement(unittest.TestCase):
                                       ("Viola", "x86_64", "beta")):
                 (tree / "metadata").write_text(f"[Application]\nname=org.projectluma.{app}\n")
                 ref = f"app/org.projectluma.{app}/{arch}/{branch}"
+                for old in xml_dir.iterdir():
+                    old.unlink()
+                (xml_dir / f"org.projectluma.{app}.xml.gz").write_bytes(gzip.compress(
+                    ('<components version="0.8"><component type="desktop-application">'
+                     f'<id>org.projectluma.{app}</id><name>Fixture {app}</name>'
+                     '<summary>Isolated repository fixture</summary>'
+                     '<metadata_license>CC0-1.0</metadata_license>'
+                     '<project_license>Apache-2.0</project_license>'
+                     f'<bundle type="flatpak">{ref}</bundle>'
+                     '</component></components>').encode()))
                 originals[ref] = ostree("commit", f"--branch={ref}", f"--tree=dir={tree}", "--subject=fixture")
+            run("flatpak", "build-update-repo", str(repo))
+            def appstream(arch):
+                self.assertIn(f"appstream2/{arch}", ostree("refs").splitlines())
+                listing = ostree("ls", f"appstream2/{arch}")
+                self.assertIn("/appstream.xml", listing)
+                return run("ostree", f"--repo={repo}", "cat", f"appstream2/{arch}", "/appstream.xml")
+            self.assertIn("org.projectluma.Displays", appstream("aarch64"))
+            self.assertIn("org.projectluma.Displays", appstream("x86_64"))
             records = policy.retire(repo, fingerprint, keys)
             self.assertEqual(len(records), 3)
             for row in records:
@@ -73,7 +94,11 @@ class Retirement(unittest.TestCase):
             self.assertFalse(list((site / "apps").glob("org.projectluma.Displays*.flatpakref")))
             self.assertEqual({r["app_id"] for r in json.loads((site / "apps/index.json").read_text())["apps"]},
                              {"org.projectluma.Viola"})
-            self.assertEqual(set(ostree("refs").splitlines()), set(originals))
+            self.assertTrue(set(originals).issubset(ostree("refs").splitlines()))
+            run("flatpak", "build-update-repo", str(repo))
+            for arch in ("aarch64", "x86_64"):
+                self.assertNotIn("org.projectluma.Displays", appstream(arch))
+            self.assertIn("org.projectluma.Viola", appstream("x86_64"))
 
     def test_signed_host_and_remote_retirement_sets_agree(self):
         tree = ast.parse((ROOT / "src/luma-installer/luma_installer/retired_apps.py").read_text())

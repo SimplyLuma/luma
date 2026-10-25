@@ -63,3 +63,9 @@ checks remain required.
 Actual normal job403c6dfb passed all11 remote-generation, signed retirement and
 remote synchronization tests. The retirement fixture verifies the new signatures
 against an isolated remote keyring; no production keys or remote are used.
+Additional actual31355ffc passed the same signed retirement with real AppStream
+generation before and after: Displays appears before withdrawal on both CPUs,
+disappears afterward, and unrelated Viola remains advertised. The first two
+fixture attempts expected compressed XML in appstream2 and failed; inspection
+confirmed Flatpak writes uncompressed appstream.xml there. Only the fixture
+reader changed; EOL policy and production assertions stayed intact.
