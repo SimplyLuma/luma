@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+import itertools
 import json
 import pathlib
+import tempfile
 import unittest
 
 
@@ -15,6 +17,108 @@ SPEC.loader.exec_module(state)
 
 
 class ShellStateModelTests(unittest.TestCase):
+    def test_runtime_profile_reads_standardized_hints_and_boot_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            def write(name, value):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(value)
+            self.assertEqual(state.read_presentation_profile(root), "desktop")
+            write("run/luma/experience", b"handheld\n")
+            self.assertEqual(state.read_presentation_profile(root), "mobile")
+            write("run/luma/experience", b"")
+            write("sys/class/dmi/id/chassis_type", b"9\n")
+            write("sys/firmware/devicetree/base/chassis-type", b"tablet\0")
+            self.assertEqual(state.read_presentation_profile(root), "tablet")
+            write("etc/luma-device-class", b"handheld\n")
+            self.assertEqual(state.read_presentation_profile(root), "mobile")
+            write("run/luma/experience", b"desktop\n")
+            self.assertEqual(state.read_presentation_profile(root), "desktop")
+            write("run/luma/experience", b"invalid")
+            write("etc/luma-device-class", b"desktop")
+            write("sys/firmware/devicetree/base/chassis-type", b"handset\0")
+            self.assertEqual(state.read_presentation_profile(root), "mobile")
+            write("sys/firmware/devicetree/base/chassis-type", b"x" * 129)
+            self.assertEqual(state.read_presentation_profile(root), "desktop")
+
+    def test_home_grid_accepts_integer_widget_spans(self):
+        value = {"columns": 4, "rows": 5, "pages": [[
+            {"id": "weather", "kind": "widget", "x": 0, "y": 0, "w": 2, "h": 2},
+            {"id": "org.example.App.desktop", "kind": "app", "x": 2, "y": 0, "w": 1, "h": 1}]]}
+        for mode in ("mobile", "tablet"):
+            normalized = state.normalize_home_layout(f"{mode}:4x5", value)
+            self.assertEqual(normalized["version"], 1)
+            self.assertEqual(normalized["pages"], value["pages"])
+
+    def test_home_grid_rejects_overlap_and_duplicate_items(self):
+        item = {"id": "org.example.App.desktop", "kind": "app", "x": 0, "y": 0, "w": 1, "h": 1}
+        for pages in ([[item, {**item, "id": "org.example.Other.desktop"}]], [[item], [item]]):
+            with self.assertRaises(state.InvalidState):
+                state.normalize_home_layout("tablet:4x5", {"columns": 4, "rows": 5, "pages": pages})
+
+    def test_home_grid_rejects_ambiguous_or_unbounded_positions(self):
+        item = {"id": "org.example.App.desktop", "kind": "app", "x": 0, "y": 0, "w": 1, "h": 1}
+        for change in ({"x": True}, {"x": 1.5}, {"y": -1}, {"w": 2}, {"h": 6}, {"x": 4}, {"kind": "command"}):
+            with self.subTest(change=change), self.assertRaises(state.InvalidState):
+                state.normalize_home_layout("mobile:4x5", {"columns": 4, "rows": 5, "pages": [[{**item, **change}]]})
+        for profile in ("desktop:4x5", "mobile:0x5", "tablet:99x99", None):
+            with self.assertRaises(state.InvalidState):
+                state.normalize_home_layout(profile, {"columns": 4, "rows": 5, "pages": [[item]]})
+
+    def test_automatic_never_infers_mobile_from_peripherals_or_posture(self):
+        for values in itertools.product((None, False, True), repeat=4):
+            capabilities = dict(zip(("touchscreen", "tablet_mode", "keyboard", "pointer"), values))
+            for profile in ("desktop", "tablet"):
+                with self.subTest(profile=profile, capabilities=capabilities):
+                    self.assertNotEqual(state.presentation_state(profile=profile,
+                        capabilities=capabilities)["effective"], "mobile")
+            for profile in ("mobile", "handheld"):
+                with self.subTest(profile=profile, capabilities=capabilities):
+                    self.assertEqual(state.presentation_state(profile=profile,
+                        capabilities=capabilities)["effective"], "mobile")
+
+    def test_boot_profiles_and_standardized_hardware_categories(self):
+        for requested in ("desktop", "tablet", "mobile"):
+            for chassis in (None, 3, 30, 31, 32):
+                self.assertEqual(state.presentation_profile(requested, "handheld", chassis), requested)
+        for device in ("handheld", "mobile"):
+            self.assertEqual(state.presentation_profile("", device, 32), "mobile")
+        for chassis in (30, 32):
+            self.assertEqual(state.presentation_profile("", "desktop", chassis), "tablet")
+        for chassis in (None, 3, 31, 99):
+            self.assertEqual(state.presentation_profile("", "desktop", chassis), "desktop")
+    def test_explicit_presentation_survives_every_posture(self):
+        for mode in ("desktop", "tablet", "mobile"):
+            for posture in (None, False, True):
+                for profile in ("desktop", "tablet", "mobile"):
+                    result = state.presentation_state(mode, profile=profile,
+                        capabilities={"touchscreen": True, "tablet_mode": posture})
+                    self.assertEqual((result["effective"], result["reason"]), (mode, "user"))
+
+    def test_automatic_uses_posture_and_profile_not_keyboard_absence(self):
+        for keyboard in (False, True, None):
+            result = state.presentation_state(capabilities={"keyboard": keyboard})
+            self.assertEqual(result["effective"], "desktop")
+        self.assertEqual(state.presentation_state(profile="tablet")["effective"], "tablet")
+        for posture in (False, True):
+            capabilities = {"touchscreen": True, "tablet_mode": posture, "keyboard": False}
+            self.assertEqual(state.presentation_state(capabilities=capabilities)["effective"],
+                             "tablet" if posture else "desktop")
+            self.assertEqual(state.presentation_state(profile="mobile",
+                             capabilities=capabilities)["effective"], "mobile")
+        self.assertEqual(state.presentation_state(capabilities={
+            "tablet_mode": True, "touchscreen": False})["effective"], "desktop")
+
+    def test_presentation_rejects_ambiguous_and_untyped_observations(self):
+        for mode in ("phone", "Tablet", "", None, 1):
+            with self.assertRaises(state.InvalidState):
+                state.normalize_presentation(mode)
+        for capabilities in ({"tablet_mode": 1}, {"keyboard": "false"},
+                             {"width": 1280}, [], None):
+            with self.assertRaises(state.InvalidState):
+                state.normalize_capabilities(capabilities)
+
     def test_status_cluster_contract(self):
         expected = state.normalize_status()
         self.assertEqual(expected["frame"], "none")
@@ -75,6 +179,16 @@ class ShellStateModelTests(unittest.TestCase):
         )
         with self.assertRaises(state.InvalidState):
             state.normalize_wallpaper_uri("https://example.invalid/a.jpg")
+
+    def test_presentation_idle_defaults_preserve_explicit_preferences(self):
+        for mode, seconds in (("desktop", 300), ("tablet", 120), ("mobile", 60)):
+            self.assertEqual(state.presentation_idle_default(mode, None), seconds)
+            self.assertEqual(state.presentation_idle_default(mode, 300, 300), seconds)
+            for preference in (0, 60, 120, 300, 600):
+                self.assertIsNone(state.presentation_idle_default(mode, preference))
+            self.assertIsNone(state.presentation_idle_default(mode, 600, 120))
+        with self.assertRaises(state.InvalidState):
+            state.presentation_idle_default("automatic", None)
 
     def test_idle_delay_accepts_off_or_phone_safe_interval(self):
         self.assertEqual(state.normalize_idle_delay(0), 0)

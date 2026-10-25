@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.120.creator20261021.1%{?dist}
++Release:        1.luma.122.presentation20261025.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,271 @@
+@@ -32,6 +32,284 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -275,6 +275,9 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1272:      0278-brightness-one-percent-and-idle-input.patch
 +Patch1273:      0279-applications-and-downloads-drawer.patch
 +Patch1274:      0280-drawer-artwork-and-grid-alignment.patch
++Patch1275:      0281-converged-presentation.patch
++Patch1276:      0282-notification-pulse-lifecycle.patch
++Patch1277:      0283-lucide-camera-privacy-indicator.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -283,34 +286,57 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9005:     android-existing-activation.js
 +Source9006:     settings-input-source.js
 +Source9007:     CC-BY-SA-4.0.txt
++Source9008:     presentation.js
++Source9009:     layout.js
++Source9010:     presentation.css
++Source9011:     grid.js
++Source9012:     homeEditor.js
++Source9013:     widgets.js
++Source9014:     tabletTasks.js
++Source9015:     handheldOptions.js
++Source9016:     frameTokens.js
++Source9017:     switcherDrag.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +336,8 @@
+@@ -71,6 +349,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
++BuildRequires:  luma-home-widgets >= 0.1.0-1.luma.1
 +BuildRequires:  sassc
 +BuildRequires:  google-figtree-fonts >= 2.0.3-1.luma.4
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +357,10 @@
+@@ -90,6 +371,11 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
-+Requires:       luma-shell-state >= 0.2.0-1.luma.34
++Requires:       luma-shell-state >= 0.2.0-1.luma.36
++Requires:       luma-home-widgets >= 0.1.0-1.luma.1
 +Requires:       mutter >= 50.4-1.luma.8.preview20260919.1
 +Requires:       libtinysparql%{?_isa}
 +Recommends:     localsearch
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +460,11 @@
+@@ -189,8 +475,22 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
 +cp %{SOURCE9007} CC-BY-SA-4.0.txt
++mkdir -p js/ui/lumaPresentation
++cp %{SOURCE9008} js/ui/lumaPresentation/presentation.js
++cp %{SOURCE9009} js/ui/lumaPresentation/layout.js
++cp %{SOURCE9010} data/theme/luma-presentation.css
++cp %{SOURCE9011} js/ui/lumaPresentation/grid.js
++cp %{SOURCE9012} js/ui/lumaPresentation/homeEditor.js
++cp %{SOURCE9013} js/ui/lumaPresentation/widgets.js
++cp %{SOURCE9014} js/ui/lumaPresentation/tabletTasks.js
++cp %{SOURCE9015} js/ui/lumaPresentation/handheldOptions.js
++cp %{SOURCE9016} js/ui/lumaPresentation/frameTokens.js
++cp %{SOURCE9017} js/ui/lumaPresentation/switcherDrag.js
  
  %build
 +sh data/theme/luma-notifications/verify-generated.sh
@@ -318,7 +344,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +482,25 @@
+@@ -208,9 +508,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -344,7 +370,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +508,7 @@
+@@ -218,7 +534,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -353,7 +379,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +540,11 @@
+@@ -250,6 +566,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

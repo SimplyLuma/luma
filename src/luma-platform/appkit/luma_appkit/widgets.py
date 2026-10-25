@@ -1675,6 +1675,8 @@ class AppWindow(Adw.ApplicationWindow):
         super().__init__(application=application, title=title)
         # The kit's tokens and toolkit sheets, before anything is styled.
         install_appkit()
+        from .pen_cursor import install_pen_cursor
+        self._pen_cursor = install_pen_cursor(self)
         self.context = AppContext.from_environment()
         from .app_updates import refresh_native_action, window_commands
         commands = window_commands(self, commands)
@@ -1830,6 +1832,34 @@ class AppWindow(Adw.ApplicationWindow):
         self._native_sheet_layer = hasattr(LumaUI, "window_set_sheet_layer")
         if self._native_sheet_layer:
             LumaUI.window_set_sheet_layer(self, self.sheet_layer, self.body, self.title_bar)
+        self._toolbar_view = view
+        self._status_ink = Gio.SimpleAction.new_stateful("luma-status-ink", None, GLib.Variant("s", "auto"))
+        self._status_ink.set_enabled(False)
+        self.add_action(self._status_ink)
+        from .session_context import session_context
+        self._context_unsubscribe = session_context().watch(self._apply_session_context)
+        self.connect("unrealize", self._pause_session_context)
+        self.connect("realize", self._resume_session_context)
+
+    def _pause_session_context(self, *_args) -> None:
+        if self._context_unsubscribe is not None:
+            self._context_unsubscribe()
+            self._context_unsubscribe = None
+
+    def set_status_bar_style(self, ink: str = "auto") -> None:
+        """Describe a custom top surface to the shell; never change OS mode."""
+        if ink not in {"auto", "light", "dark"}:
+            raise ValueError("status bar ink must be auto, light or dark")
+        self._status_ink.set_state(GLib.Variant("s", ink))
+
+    def _resume_session_context(self, *_args) -> None:
+        if self._context_unsubscribe is None:
+            from .session_context import session_context
+            self._context_unsubscribe = session_context().watch(self._apply_session_context)
+
+    def _apply_session_context(self, context: AppContext) -> None:
+        from .session_context import _apply_window_context
+        _apply_window_context(self, context)
 
     def _controllers(self) -> list[Gtk.EventController]:
         model = self.observe_controllers()
@@ -1846,6 +1876,13 @@ class AppWindow(Adw.ApplicationWindow):
         """On a phone, let the content run under the clock (v71 Weather, Photos, Maps paint
         to the bezel); the page insets itself by `status_inset`. No effect on a computer."""
         (self.add_css_class if bleed else self.remove_css_class)("lumaui-bleed")
+
+    def set_edge_to_edge(self, enabled: bool = True) -> None:
+        """Paint through Tablet system areas; inset interactive UI explicitly.
+
+        Phone bleed alone retains the shared Tablet frame and safe area.
+        """
+        (self.add_css_class if enabled else self.remove_css_class)("lumaui-edge-to-edge")
 
     @property
     def tier(self) -> str:
@@ -2168,12 +2205,17 @@ class AppWindow(Adw.ApplicationWindow):
     def _save_state(self) -> None:
         width, height = self.get_allocated_width(), self.get_allocated_height()
         geometry = {"width": width, "height": height, "maximized": self.is_maximized()}
-        record = self._state.load() if self._geometry_scope else {}
+        record = self._state.load()
         record.update(self._remembered)
-        if self._geometry_scope:
-            self._geometry_state.save(geometry)
-        else:
-            record.update(geometry)
+        # A fullscreen presentation is temporary layout, not a new preferred
+        # desktop size. Remembering a draft or closing here keeps the previous
+        # desktop geometry, including a separate welcome/editor scope.
+        if (self.context.presentation is PresentationMode.WINDOWED and
+                not self.is_fullscreen() and width > 0 and height > 0):
+            if self._geometry_scope:
+                self._geometry_state.save(geometry)
+            else:
+                record.update(geometry)
         self._state.save(record)
 
     def remember(self, key: str, value: object) -> None:

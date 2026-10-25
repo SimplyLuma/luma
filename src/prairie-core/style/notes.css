@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-.luma-notes .luma-window-body { padding-top: 0; }
+.luma-notes:not(.lumaui-phone-device) .luma-window-body { padding-top: 0; }
 .notes-editor, .notes-editor text { background: transparent; }
 .nt-document-title, .nt-document-title text {
   padding: 0; border: none; border-radius: 0; outline: none;

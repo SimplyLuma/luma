@@ -2560,6 +2560,15 @@
   --lumaui-panel-person-presence-size: 7px;
   --lumaui-panel-person-presence-gap: 5px;
   --lumaui-panel-person-presence-glow: 6px;
+  --lumaui-home-widget-radius: 26px;
+  --lumaui-home-widget-gap: 12px;
+  --lumaui-home-widget-padding-x: 16px;
+  --lumaui-home-widget-padding-y: 14px;
+  --lumaui-home-widget-weather-value: 44px;
+  --lumaui-home-widget-calendar-value: 30px;
+  --lumaui-home-widget-heading: 11.5px;
+  --lumaui-home-widget-description: 13px;
+  --lumaui-home-widget-detail: 12px;
   --lumaui-media-collection-radius: 12px;
   --lumaui-media-collection-hover-scale: 1.03;
   --lumaui-media-collection-min-width: 120px;
@@ -3301,6 +3310,13 @@
   --lumaui-facts-card-padding-x: 16px;
   --lumaui-facts-card-row-height: 48px;
   --lumaui-facts-card-value-weight: 600;
+  --lumaui-tablet-frame-status: 44px;
+  --lumaui-tablet-frame-top: 52px;
+  --lumaui-tablet-frame-edge: 12px;
+  --lumaui-tablet-frame-island-radius: 20px;
+  --lumaui-tablet-frame-places: 248px;
+  --lumaui-tablet-frame-list: 340px;
+  --lumaui-tablet-frame-details: 300px;
 }
 
 /* LumaUI type roles from family fragments (design-tokens.d). */

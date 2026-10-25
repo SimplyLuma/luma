@@ -797,10 +797,10 @@ class PhotosWindow(AppWindow):
             child=child.get_next_sibling()
 
     def _resize_gestures(self,widget):
-        """v71 phone: pinch the grid (or Ctrl-scroll) to make photos bigger or
+        """Pinch the grid (or Ctrl-scroll) to make photos bigger or
         smaller, in step with the size slider."""
-        pinch=Gtk.GestureZoom()
-        pinch.connect('begin',lambda *_:setattr(self,'_pinch_from',self.state.size if self.state else 168))
+        pinch=Gtk.GestureZoom(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        pinch.connect('begin',self._pinch_begun)
         pinch.connect('scale-changed',self._pinched)
         widget.add_controller(pinch)
         scroll=Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL)
@@ -808,13 +808,19 @@ class PhotosWindow(AppWindow):
         scroll.connect('scroll',self._scrolled)
         widget.add_controller(scroll)
 
+    def _pinch_begun(self,gesture,_sequence):
+        self._pinch_from=self.state.size if self.state else 168
+        # A two-contact resize owns both sequences, including their releases;
+        # child photo tiles must not interpret the final lift as activation.
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+
     def _pinched(self,_gesture,scale):
-        if not self._phone or self.state is None or self.state.zoom=='years':return
+        if self.state is None or self.state.zoom=='years':return
         self._size_changed(round(getattr(self,'_pinch_from',self.state.size)*scale))
         if self.size_control:self.size_control.set_value(self.state.size/100)
 
     def _scrolled(self,controller,_dx,dy):
-        if not self._phone or self.state is None or self.state.zoom=='years' or not dy:return False
+        if self.state is None or self.state.zoom=='years' or not dy:return False
         if not controller.get_current_event_state()&Gdk.ModifierType.CONTROL_MASK:return False
         self._size_changed(round(self.state.size*(1.06 if dy<0 else 1/1.06)))
         if self.size_control:self.size_control.set_value(self.state.size/100)

@@ -1,0 +1,813 @@
+From: Luma maintainers
+Subject: [PATCH] home: host shared Weather and Calendar widgets
+
+Extract the existing Mobile widget model into luma-home-widgets and use its
+GTK3 host here. Shell activation, appearance and Home placement stay native.
+Apply after the maintained Home baseline containing luma-today.c.
+
+--- a/src/luma-today.c
++++ b/src/luma-today.c
+@@ -1,774 +1,49 @@
+ /* SPDX-License-Identifier: GPL-3.0-or-later */
+-
+-/* A native presentation of the shared Weather cache and Phosh CalendarServer.
+- * No forecast requests, copied calendar database, polling or resident helper.
+- */
+-#define _GNU_SOURCE
++/* Phosh hosts the shared Home widgets; it owns application activation only. */
+ #include "luma-today.h"
+-
+-#include <gio/gio.h>
+-#include <json-glib/json-glib.h>
+-#include <glib/gi18n.h>
+-#include <fcntl.h>
+-#include <math.h>
+-#include <string.h>
+-#include <sys/stat.h>
+-#include <unistd.h>
+-
+-#define MAX_JSON_BYTES (512 * 1024)
+-#define MAX_EVENTS 512
+-#define WEATHER_MAX_AGE (6 * 60 * 60)
+-#define CALENDAR_NAME "mobi.phosh.Shell.CalendarServer"
+-#define CALENDAR_PATH "/mobi/phosh/Shell/CalendarServer"
+-/* Today's remaining events, then the next ones within a week. */
+-#define CALENDAR_DAYS 7
+-
+-typedef struct {
+-  char *summary;
+-  gint64 begin;
+-  gint64 end;
+-} TodayEvent;
+-
+-typedef struct {
+-  GWeakRef widget;
+-} TodayCall;
+-
++#include <luma-widget-gtk3.h>
+ struct _PhoshLumaToday {
+   GtkBox parent_instance;
+-  GtkWidget *weather_place;
+-  GtkWidget *weather_value;
+-  GtkWidget *weather_condition;
+-  GtkWidget *weather_detail;
+-  gboolean   weather_imperial;
+-  GtkWidget *calendar_weekday;
+-  GtkWidget *calendar_day;
+-  GtkWidget *calendar_events[2];
+-  char *places_path;
+-  char *cache_path;
+-  GFileMonitor *places_monitor;
+-  GFileMonitor *cache_monitor;
+-  GFileMonitor *timezone_monitor;
+-  GCancellable *cancel;
+-  GDBusProxy *calendar;
+-  GHashTable *events;
+-  guint refresh_id;
+-  guint expiry_id;
+-  guint date_id;
+-  guint event_id;
+-  gboolean calendar_loaded;
+-  gboolean stopped;
++  LumaWidgetsModel *model;
+ };
+-
+ G_DEFINE_TYPE (PhoshLumaToday, phosh_luma_today, GTK_TYPE_BOX)
+-
+-enum { LAUNCH_REQUESTED, N_SIGNALS };
+-static guint signals[N_SIGNALS];
+-
+-static void refresh_weather (PhoshLumaToday *self);
+-static void refresh_calendar (PhoshLumaToday *self);
+-static void refresh_date (PhoshLumaToday *self);
+-static void request_calendar (PhoshLumaToday *self);
+-static void watch_files (PhoshLumaToday *self);
+-
++static guint launch_requested;
+ static void
+-event_free (gpointer data)
++launch (GtkWidget *view G_GNUC_UNUSED, const char *desktop_id, PhoshLumaToday *self)
+ {
+-  TodayEvent *event = data;
+-  g_free (event->summary);
+-  g_free (event);
++  g_signal_emit (self, launch_requested, 0, desktop_id);
+ }
+-
+-static TodayCall *
+-call_new (PhoshLumaToday *self)
++static void
++dispose (GObject *object)
+ {
+-  TodayCall *call = g_new0 (TodayCall, 1);
+-  g_weak_ref_init (&call->widget, self);
+-  return call;
+-}
+-
+-static void
+-call_free (TodayCall *call)
+-{
+-  g_weak_ref_clear (&call->widget);
+-  g_free (call);
+-}
+-
+-/* Read only owned regular files, with a hard cap even if the file grows during
+- * a concurrent atomic cache replacement. Damaged or absent data is an empty state.
+- */
+-static JsonParser *
+-read_json (const char *path)
+-{
+-  g_autofree char *text = g_malloc (MAX_JSON_BYTES + 1);
+-  g_autoptr (JsonParser) parser = json_parser_new ();
+-  struct stat st;
+-  gsize used = 0;
+-  int fd;
+-
+-  fd = open (path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+-  if (fd < 0)
+-    return NULL;
+-  if (fstat (fd, &st) < 0 || !S_ISREG (st.st_mode) ||
+-      st.st_uid != geteuid () || st.st_size < 0 || st.st_size > MAX_JSON_BYTES) {
+-    close (fd);
+-    return NULL;
+-  }
+-  while (used <= MAX_JSON_BYTES) {
+-    ssize_t n = read (fd, text + used, MAX_JSON_BYTES + 1 - used);
+-    if (n < 0) {
+-      close (fd);
+-      return NULL;
+-    }
+-    if (n == 0)
+-      break;
+-    used += n;
+-  }
+-  close (fd);
+-  if (used > MAX_JSON_BYTES || !g_utf8_validate (text, used, NULL))
+-    return NULL;
+-  if (!json_parser_load_from_data (parser, text, used, NULL))
+-    return NULL;
+-  return g_steal_pointer (&parser);
+-}
+-
+-static const char *
+-json_string (JsonObject *object, const char *key)
+-{
+-  JsonNode *node = json_object_get_member (object, key);
+-  const char *value;
+-
+-  if (!node || !JSON_NODE_HOLDS_VALUE (node) || json_node_get_value_type (node) != G_TYPE_STRING)
+-    return NULL;
+-  value = json_node_get_string (node);
+-  return value && g_utf8_validate (value, -1, NULL) && strlen (value) <= 512 ? value : NULL;
+-}
+-
+-static gboolean
+-json_number (JsonObject *object, const char *key, double *value)
+-{
+-  JsonNode *node = json_object_get_member (object, key);
+-  GType type;
+-
+-  if (!node || !JSON_NODE_HOLDS_VALUE (node))
+-    return FALSE;
+-  type = json_node_get_value_type (node);
+-  if (type != G_TYPE_INT64 && type != G_TYPE_DOUBLE)
+-    return FALSE;
+-  *value = json_node_get_double (node);
+-  return isfinite (*value);
+-}
+-
+-static JsonObject *
+-json_child (JsonObject *object, const char *key)
+-{
+-  JsonNode *node = json_object_get_member (object, key);
+-  return node && JSON_NODE_HOLDS_OBJECT (node) ? json_node_get_object (node) : NULL;
+-}
+-
+-static char *
+-cache_filename (const char *uid)
+-{
+-  g_autoptr (GString) safe = g_string_new (NULL);
+-
+-  for (const char *p = uid; *p; p = g_utf8_next_char (p)) {
+-    gunichar c = g_utf8_get_char (p);
+-    if (g_unichar_isalnum (c) || c == '-' || c == '_')
+-      g_string_append_unichar (safe, c);
+-  }
+-  return g_strconcat (safe->len ? safe->str : "place", ".json", NULL);
+-}
+-
+-static gboolean
+-imperial_locale (void)
+-{
+-  const char *locale = g_getenv ("LC_MEASUREMENT");
+-  const char *country;
+-
+-  if (!locale)
+-    locale = g_getenv ("LANG");
+-  country = locale ? strchr (locale, '_') : NULL;
+-  if (!country)
+-    return FALSE;
+-  country++;
+-  return (g_ascii_strncasecmp (country, "US", 2) == 0 ||
+-          g_ascii_strncasecmp (country, "LR", 2) == 0 ||
+-          g_ascii_strncasecmp (country, "MM", 2) == 0) &&
+-         (country[2] == '\0' || country[2] == '.' || country[2] == '@');
+-}
+-
+-static char *
+-temperature (PhoshLumaToday *self, double celsius)
+-{
+-  double degrees = self->weather_imperial ? celsius * 9.0 / 5.0 + 32 : celsius;
+-
+-  /* Match shared Weather's whole-degree rule, including negative half values. */
+-  return g_strdup_printf ("%d°", (int) floor (degrees + 0.5));
+-}
+-
+-static const char *
+-condition (const char *symbol)
+-{
+-  if (!symbol)
+-    return _("Forecast available");
+-  if (strstr (symbol, "thunder")) return _("Thunderstorms");
+-  if (g_str_has_prefix (symbol, "clearsky")) return _("Clear");
+-  if (g_str_has_prefix (symbol, "fair")) return _("Fair");
+-  if (g_str_has_prefix (symbol, "partlycloudy")) return _("Partly cloudy");
+-  if (g_str_has_prefix (symbol, "cloudy")) return _("Cloudy");
+-  if (g_str_has_prefix (symbol, "fog")) return _("Fog");
+-  if (strstr (symbol, "sleet")) return _("Sleet");
+-  if (strstr (symbol, "snow")) return _("Snow");
+-  if (strstr (symbol, "rain")) return _("Rain");
+-  return _("Forecast available");
+-}
+-
+-static gboolean
+-weather_expired (gpointer data)
+-{
+-  PhoshLumaToday *self = data;
+-  self->expiry_id = 0;
+-  refresh_weather (self);
+-  return G_SOURCE_REMOVE;
+-}
+-
+-static void
+-set_weather_unit_label (PhoshLumaToday *self)
+-{
+-  const char *unit = self->weather_imperial ? _("Degrees Fahrenheit") : _("Degrees Celsius");
+-
+-  gtk_widget_set_tooltip_text (self->weather_value, unit);
+-  atk_object_set_description (gtk_widget_get_accessible (self->weather_value), unit);
+-}
+-
+-
+-static void
+-refresh_weather (PhoshLumaToday *self)
+-{
+-  g_autoptr (JsonParser) places = NULL;
+-  g_autoptr (JsonParser) forecast = NULL;
+-  g_autoptr (GDateTime) fetched = NULL;
+-  g_autoptr (GDateTime) now = g_date_time_new_now_utc ();
+-  g_autofree char *filename = NULL;
+-  g_autofree char *path = NULL;
+-  g_autofree char *temp = NULL;
+-  g_autofree char *range = NULL;
+-  JsonNode *node;
+-  JsonArray *array = NULL;
+-  JsonObject *place = NULL, *root, *current, *cached_place;
+-  const char *uid = NULL, *name = NULL, *stamp;
+-  double version, degrees, high, low;
+-  gint64 age;
+-
+-  g_clear_handle_id (&self->expiry_id, g_source_remove);
+-  gtk_label_set_text (GTK_LABEL (self->weather_place), _("Weather"));
+-  gtk_label_set_text (GTK_LABEL (self->weather_value), "—");
+-  gtk_label_set_text (GTK_LABEL (self->weather_condition), _("Open Weather"));
+-  gtk_label_set_text (GTK_LABEL (self->weather_detail), _("Choose a city"));
+-  places = read_json (self->places_path);
+-  if (!places) {
+-    self->weather_imperial = imperial_locale ();
+-    set_weather_unit_label (self);
+-    return;
+-  }
+-  node = json_parser_get_root (places);
+-  /* The unit is Weather's own setting (preferences.units in this file):
+-   * metric or imperial, else automatic, which follows the locale. */
+-  self->weather_imperial = imperial_locale ();
+-  if (JSON_NODE_HOLDS_OBJECT (node)) {
+-    JsonObject *preferences = json_child (json_node_get_object (node), "preferences");
+-    const char *units = preferences ? json_string (preferences, "units") : NULL;
+-
+-    if (g_strcmp0 (units, "imperial") == 0)
+-      self->weather_imperial = TRUE;
+-    else if (g_strcmp0 (units, "metric") == 0)
+-      self->weather_imperial = FALSE;
+-  }
+-  set_weather_unit_label (self);
+-  if (JSON_NODE_HOLDS_OBJECT (node))
+-    node = json_object_get_member (json_node_get_object (node), "places");
+-  if (!node || !JSON_NODE_HOLDS_ARRAY (node))
+-    return;
+-  array = json_node_get_array (node);
+-  for (guint i = 0; i < MIN (json_array_get_length (array), 256); i++) {
+-    node = json_array_get_element (array, i);
+-    if (!JSON_NODE_HOLDS_OBJECT (node))
+-      continue;
+-    place = json_node_get_object (node);
+-    uid = json_string (place, "uid");
+-    name = json_string (place, "name");
+-    if (uid && *uid && name && *name)
+-      break;
+-    uid = name = NULL;
+-  }
+-  if (!uid)
+-    return;
+-  gtk_label_set_text (GTK_LABEL (self->weather_place), name);
+-  gtk_label_set_text (GTK_LABEL (self->weather_detail), _("Update in Weather"));
+-  filename = cache_filename (uid);
+-  path = g_build_filename (self->cache_path, filename, NULL);
+-  forecast = read_json (path);
+-  if (!forecast)
+-    return;
+-  node = json_parser_get_root (forecast);
+-  if (!JSON_NODE_HOLDS_OBJECT (node))
+-    return;
+-  root = json_node_get_object (node);
+-  current = json_child (root, "current");
+-  cached_place = json_child (root, "place");
+-  stamp = json_string (root, "fetched_at");
+-  if (!current || !cached_place || !stamp ||
+-      g_strcmp0 (json_string (cached_place, "uid"), uid) != 0 ||
+-      !json_number (root, "version", &version) || version != 1 ||
+-      !json_number (current, "temperature_c", &degrees) || degrees < -100 || degrees > 100)
+-    return;
+-  fetched = g_date_time_new_from_iso8601 (stamp, NULL);
+-  if (!fetched)
+-    return;
+-  age = g_date_time_difference (now, fetched) / G_TIME_SPAN_SECOND;
+-  if (age < -300 || age >= WEATHER_MAX_AGE)
+-    return;
+-  temp = temperature (self, degrees);
+-  gtk_label_set_text (GTK_LABEL (self->weather_value), temp);
+-  gtk_label_set_text (GTK_LABEL (self->weather_condition), condition (json_string (current, "symbol")));
+-  if (json_number (current, "high_c", &high) && json_number (current, "low_c", &low) &&
+-      high >= low && high <= 100 && low >= -100) {
+-    g_autofree char *hi = temperature (self, high);
+-    g_autofree char *lo = temperature (self, low);
+-    range = g_strdup_printf (_("H %s · L %s"), hi, lo);
+-  } else {
+-    range = g_strdup (_("Cached forecast"));
+-  }
+-  gtk_label_set_text (GTK_LABEL (self->weather_detail), range);
+-  self->expiry_id = g_timeout_add_seconds (WEATHER_MAX_AGE - MIN (age, WEATHER_MAX_AGE) + 1,
+-                                           weather_expired, self);
+-}
+-
+-static gboolean
+-events_changed (gpointer data)
+-{
+-  PhoshLumaToday *self = data;
+-  self->event_id = 0;
+-  refresh_calendar (self);
+-  return G_SOURCE_REMOVE;
+-}
+-
+-static void
+-refresh_calendar (PhoshLumaToday *self)
+-{
+-  GHashTableIter iter;
+-  gpointer value;
+-  TodayEvent *first = NULL, *second = NULL;
+-  gint64 now = g_get_real_time () / G_TIME_SPAN_SECOND;
+-
+-  g_clear_handle_id (&self->event_id, g_source_remove);
+-  g_hash_table_iter_init (&iter, self->events);
+-  while (g_hash_table_iter_next (&iter, NULL, &value)) {
+-    TodayEvent *event = value;
+-    if (event->end <= now || event->begin > now + CALENDAR_DAYS * 24 * 60 * 60)
+-      continue;
+-    if (!first || event->begin < first->begin) {
+-      second = first;
+-      first = event;
+-    } else if (!second || event->begin < second->begin) {
+-      second = event;
+-    }
+-  }
+-  gtk_label_set_text (GTK_LABEL (self->calendar_events[0]),
+-                      self->calendar_loaded ? _("No upcoming events") : _("Open Calendar"));
+-  gtk_label_set_text (GTK_LABEL (self->calendar_events[1]), "");
+-  for (guint i = 0; i < 2; i++) {
+-    TodayEvent *event = i ? second : first;
+-    g_autoptr (GDateTime) date = NULL;
+-    g_autofree char *time = NULL;
+-    g_autofree char *text = NULL;
+-    if (!event)
+-      continue;
+-    date = g_date_time_new_from_unix_local (event->begin);
+-    if (!date)
+-      continue;
+-    {
+-      g_autoptr (GDateTime) today = g_date_time_new_now_local ();
+-      gboolean same_day = g_date_time_get_year (date) == g_date_time_get_year (today) &&
+-                          g_date_time_get_day_of_year (date) == g_date_time_get_day_of_year (today);
+-
+-      time = g_date_time_format (date, same_day ? "%H:%M" : "%a %H:%M");
+-    }
+-    text = g_strdup_printf ("%s\n%s", event->summary, event->begin <= now ? _("Now") : time);
+-    gtk_label_set_text (GTK_LABEL (self->calendar_events[i]), text);
+-  }
+-  if (first) {
+-    gint64 boundary = first->begin > now ? first->begin : first->end;
+-    self->event_id = g_timeout_add_seconds (MAX (1, boundary - now + 1), events_changed, self);
+-  }
+-}
+-
+-static void
+-calendar_signal (GDBusProxy *proxy, const char *sender, const char *signal,
+-                 GVariant *parameters, PhoshLumaToday *self)
+-{
+-  if (self->stopped)
+-    return;
+-  if (g_str_equal (signal, "EventsAddedOrUpdated") &&
+-      g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(a(ssxxa{sv}))"))) {
+-    g_autoptr (GVariant) records = g_variant_get_child_value (parameters, 0);
+-    GVariantIter iter;
+-    const char *id, *summary;
+-    gint64 begin, end;
+-    GVariant *extra;
+-    guint count = 0;
+-    g_variant_iter_init (&iter, records);
+-    while (count++ < MAX_EVENTS &&
+-           g_variant_iter_next (&iter, "(&s&sxx@a{sv})", &id, &summary, &begin, &end, &extra)) {
+-      g_variant_unref (extra);
+-      if (strlen (id) > 512 || strlen (summary) > 1024 || end < begin ||
+-          !g_utf8_validate (summary, -1, NULL))
+-        continue;
+-      if (!g_hash_table_contains (self->events, id) && g_hash_table_size (self->events) >= MAX_EVENTS)
+-        continue;
+-      TodayEvent *event = g_new0 (TodayEvent, 1);
+-      event->summary = g_strdup (*summary ? summary : _("Event"));
+-      event->begin = begin;
+-      event->end = end;
+-      g_hash_table_replace (self->events, g_strdup (id), event);
+-    }
+-    self->calendar_loaded = TRUE;
+-  } else if (g_str_equal (signal, "EventsRemoved") &&
+-             g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(as)"))) {
+-    g_autoptr (GVariant) ids = g_variant_get_child_value (parameters, 0);
+-    GVariantIter iter;
+-    const char *id;
+-    g_variant_iter_init (&iter, ids);
+-    while (g_variant_iter_next (&iter, "&s", &id))
+-      g_hash_table_remove (self->events, id);
+-  } else if (g_str_equal (signal, "ClientDisappeared") &&
+-             g_variant_is_of_type (parameters, G_VARIANT_TYPE ("(s)"))) {
+-    const char *source;
+-    GHashTableIter iter;
+-    gpointer key;
+-    g_variant_get (parameters, "(&s)", &source);
+-    g_hash_table_iter_init (&iter, self->events);
+-    while (g_hash_table_iter_next (&iter, &key, NULL))
+-      if (g_str_has_prefix (key, source) && ((char *)key)[strlen (source)] == '\n')
+-        g_hash_table_iter_remove (&iter);
+-  }
+-  refresh_calendar (self);
+-}
+-
+-static void
+-calendar_range_ready (GObject *object, GAsyncResult *result, gpointer data)
+-{
+-  TodayCall *call = data;
+-  g_autoptr (PhoshLumaToday) self = g_weak_ref_get (&call->widget);
+-  g_autoptr (GVariant) reply = g_dbus_proxy_call_finish (G_DBUS_PROXY (object), result, NULL);
+-  if (self && !self->stopped) {
+-    self->calendar_loaded = reply != NULL;
+-    refresh_calendar (self);
+-  }
+-  call_free (call);
+-}
+-
+-static void
+-request_calendar (PhoshLumaToday *self)
+-{
+-  g_autofree char *owner = NULL;
+-  g_autoptr (GVariant) since = NULL, until = NULL;
+-  g_autoptr (GDateTime) now = NULL, end = NULL;
+-
+-  if (!self->calendar || self->stopped)
+-    return;
+-  /* Not running yet: the request below starts it, and its events follow. */
+-  owner = g_dbus_proxy_get_name_owner (self->calendar);
+-  if (!owner) {
+-    self->calendar_loaded = FALSE;
+-    g_hash_table_remove_all (self->events);
+-    refresh_calendar (self);
+-  }
+-  now = g_date_time_new_now_local ();
+-  end = g_date_time_add_days (now, CALENDAR_DAYS);
+-  since = g_dbus_proxy_get_cached_property (self->calendar, "Since");
+-  until = g_dbus_proxy_get_cached_property (self->calendar, "Until");
+-  /* CalendarServer has one global query. Reuse its live range and request a
+-   * forced refresh to receive the snapshot; never narrow another presenter's range.
+-   */
+-  gint64 start_time = g_date_time_to_unix (now), end_time = g_date_time_to_unix (end);
+-  if (since && until && g_variant_is_of_type (since, G_VARIANT_TYPE_INT64) &&
+-      g_variant_is_of_type (until, G_VARIANT_TYPE_INT64) &&
+-      g_variant_get_int64 (since) <= start_time && g_variant_get_int64 (until) >= end_time) {
+-    start_time = g_variant_get_int64 (since);
+-    end_time = g_variant_get_int64 (until);
+-  }
+-  g_dbus_proxy_call (self->calendar, "SetTimeRange",
+-                     g_variant_new ("(xxb)", start_time, end_time, TRUE),
+-                     /* The server starts on this request: nothing else runs it. */
+-                     G_DBUS_CALL_FLAGS_NONE, 5000, self->cancel,
+-                     calendar_range_ready, call_new (self));
+-}
+-
+-static void
+-calendar_owner_changed (GObject *object, GParamSpec *pspec, PhoshLumaToday *self)
+-{
+-  if (self->stopped)
+-    return;
+-  self->calendar_loaded = FALSE;
+-  g_hash_table_remove_all (self->events);
+-  request_calendar (self);
+-}
+-
+-static void
+-calendar_ready (GObject *object, GAsyncResult *result, gpointer data)
+-{
+-  TodayCall *call = data;
+-  g_autoptr (PhoshLumaToday) self = g_weak_ref_get (&call->widget);
+-  g_autoptr (GDBusProxy) proxy = g_dbus_proxy_new_for_bus_finish (result, NULL);
+-  if (self && !self->stopped && proxy) {
+-    self->calendar = g_steal_pointer (&proxy);
+-    g_signal_connect_object (self->calendar, "g-signal", G_CALLBACK (calendar_signal), self, 0);
+-    g_signal_connect_object (self->calendar, "notify::g-name-owner",
+-                             G_CALLBACK (calendar_owner_changed), self, 0);
+-    request_calendar (self);
+-  }
+-  call_free (call);
+-}
+-
+-static gboolean
+-date_changed (gpointer data)
+-{
+-  PhoshLumaToday *self = data;
+-  self->date_id = 0;
+-  refresh_date (self);
+-  request_calendar (self);
+-  return G_SOURCE_REMOVE;
+-}
+-
+-static void
+-refresh_date (PhoshLumaToday *self)
+-{
+-  g_autoptr (GDateTime) now = g_date_time_new_now_local ();
+-  g_autoptr (GDateTime) next = g_date_time_add_days (now, 1);
+-  g_autoptr (GDateTime) midnight = g_date_time_new_local (
+-    g_date_time_get_year (next), g_date_time_get_month (next), g_date_time_get_day_of_month (next), 0, 0, 0);
+-  g_autofree char *weekday = g_date_time_format (now, "%A");
+-  g_autofree char *upper = g_utf8_strup (weekday, -1);
+-  g_autofree char *day = g_date_time_format (now, "%e");
+-
+-  g_clear_handle_id (&self->date_id, g_source_remove);
+-  gtk_label_set_text (GTK_LABEL (self->calendar_weekday), upper);
+-  gtk_label_set_text (GTK_LABEL (self->calendar_day), g_strstrip (day));
+-  self->date_id = g_timeout_add_seconds (
+-    MAX (1, g_date_time_difference (midnight, now) / G_TIME_SPAN_SECOND + 1), date_changed, self);
+-  refresh_calendar (self);
+-}
+-
+-static gboolean
+-files_refresh (gpointer data)
+-{
+-  PhoshLumaToday *self = data;
+-  self->refresh_id = 0;
+-  watch_files (self);
+-  refresh_weather (self);
+-  refresh_date (self);
+-  return G_SOURCE_REMOVE;
+-}
+-
+-static void
+-file_changed (GFileMonitor *monitor, GFile *file, GFile *other,
+-              GFileMonitorEvent event, PhoshLumaToday *self)
+-{
+-  g_autofree char *path = file ? g_file_get_path (file) : NULL;
+-  g_autofree char *other_path = other ? g_file_get_path (other) : NULL;
+-  const char *target = monitor == self->places_monitor ? self->places_path : self->cache_path;
+-  gboolean relevant = monitor == self->timezone_monitor;
+-
+-  for (guint i = 0; i < 2; i++) {
+-    const char *changed = i ? other_path : path;
+-    if (changed && (g_str_equal (changed, target) ||
+-                    (g_str_has_prefix (target, changed) && target[strlen (changed)] == '/') ||
+-                    (monitor == self->cache_monitor && g_str_has_prefix (changed, target) &&
+-                     changed[strlen (target)] == '/')))
+-      relevant = TRUE;
+-  }
+-  if (relevant && !self->stopped && !self->refresh_id)
+-    self->refresh_id = g_timeout_add (150, files_refresh, self);
+-}
+-
+-static GFileMonitor *
+-watch_directory (PhoshLumaToday *self, const char *directory)
+-{
+-  g_autofree char *path = g_strdup (directory);
+-  g_autoptr (GFile) file = NULL;
+-  GFileMonitor *monitor;
+-
+-  /* Watching the nearest existing ancestor also catches first-use creation.
+-   * Re-arm deeper after directory creation; never create the application's data.
+-   */
+-  while (!g_file_test (path, G_FILE_TEST_IS_DIR)) {
+-    char *parent = g_path_get_dirname (path);
+-    if (g_str_equal (parent, path)) {
+-      g_free (parent);
+-      return NULL;
+-    }
+-    g_free (path);
+-    path = parent;
+-  }
+-  file = g_file_new_for_path (path);
+-  monitor = g_file_monitor_directory (file, G_FILE_MONITOR_WATCH_MOVES, self->cancel, NULL);
+-  if (monitor)
+-    g_signal_connect_object (monitor, "changed", G_CALLBACK (file_changed), self, 0);
+-  return monitor;
+-}
+-
+-static void
+-watch_files (PhoshLumaToday *self)
+-{
+-  g_autofree char *directory = g_path_get_dirname (self->places_path);
+-  if (self->places_monitor) g_file_monitor_cancel (self->places_monitor);
+-  if (self->cache_monitor) g_file_monitor_cancel (self->cache_monitor);
+-  g_clear_object (&self->places_monitor);
+-  g_clear_object (&self->cache_monitor);
+-  self->places_monitor = watch_directory (self, directory);
+-  self->cache_monitor = watch_directory (self, self->cache_path);
+-}
+-
+-static void
+-card_clicked (GtkButton *button, PhoshLumaToday *self)
+-{
+-  const char *id = g_object_get_data (G_OBJECT (button), "desktop-id");
+-  g_signal_emit (self, signals[LAUNCH_REQUESTED], 0, id);
+-}
+-
+-static GtkWidget *
+-new_label (GtkWidget *box, const char *css, const char *name)
+-{
+-  GtkWidget *label = gtk_label_new ("");
+-  gtk_label_set_xalign (GTK_LABEL (label), 0);
+-  gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+-  gtk_label_set_max_width_chars (GTK_LABEL (label), 18);
+-  gtk_style_context_add_class (gtk_widget_get_style_context (label), css);
+-  gtk_widget_set_name (label, name);
+-  gtk_box_pack_start (GTK_BOX (box), label, FALSE, FALSE, 0);
+-  return label;
+-}
+-
+-static GtkWidget *
+-new_card (PhoshLumaToday *self, const char *css, const char *desktop_id, const char *name)
+-{
+-  GtkWidget *button = gtk_button_new ();
+-  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 4);
+-  GtkStyleContext *style = gtk_widget_get_style_context (button);
+-
+-  gtk_style_context_add_class (style, "luma-today-card");
+-  gtk_style_context_add_class (style, css);
+-  gtk_widget_set_size_request (button, 0, 158);
+-  gtk_widget_set_hexpand (button, TRUE);
+-  gtk_widget_set_can_focus (button, TRUE);
+-  atk_object_set_name (gtk_widget_get_accessible (button), name);
+-  gtk_widget_set_tooltip_text (button, name);
+-  g_object_set_data (G_OBJECT (button), "desktop-id", (gpointer)desktop_id);
+-  g_signal_connect (button, "clicked", G_CALLBACK (card_clicked), self);
+-  gtk_container_add (GTK_CONTAINER (button), box);
+-  gtk_box_pack_start (GTK_BOX (self), button, TRUE, TRUE, 0);
+-  return box;
+-}
+-
+-static void
+-stop (PhoshLumaToday *self)
+-{
+-  if (self->stopped)
+-    return;
+-  self->stopped = TRUE;
+-  g_cancellable_cancel (self->cancel);
+-  g_clear_handle_id (&self->refresh_id, g_source_remove);
+-  g_clear_handle_id (&self->expiry_id, g_source_remove);
+-  g_clear_handle_id (&self->date_id, g_source_remove);
+-  g_clear_handle_id (&self->event_id, g_source_remove);
+-  if (self->places_monitor) g_file_monitor_cancel (self->places_monitor);
+-  if (self->cache_monitor) g_file_monitor_cancel (self->cache_monitor);
+-  if (self->timezone_monitor) g_file_monitor_cancel (self->timezone_monitor);
+-  g_clear_object (&self->places_monitor);
+-  g_clear_object (&self->cache_monitor);
+-  g_clear_object (&self->timezone_monitor);
+-  g_clear_object (&self->calendar);
+-}
+-
+-static void
+-phosh_luma_today_destroy (GtkWidget *widget)
+-{
+-  stop (PHOSH_LUMA_TODAY (widget));
+-  GTK_WIDGET_CLASS (phosh_luma_today_parent_class)->destroy (widget);
+-}
+-
+-static void
+-phosh_luma_today_dispose (GObject *object)
+-{
+-  stop (PHOSH_LUMA_TODAY (object));
++  PhoshLumaToday *self = PHOSH_LUMA_TODAY (object);
++  g_clear_object (&self->model);
+   G_OBJECT_CLASS (phosh_luma_today_parent_class)->dispose (object);
+ }
+-
+-static void
+-phosh_luma_today_finalize (GObject *object)
+-{
+-  PhoshLumaToday *self = PHOSH_LUMA_TODAY (object);
+-  g_clear_object (&self->cancel);
+-  g_clear_pointer (&self->events, g_hash_table_unref);
+-  g_free (self->places_path);
+-  g_free (self->cache_path);
+-  G_OBJECT_CLASS (phosh_luma_today_parent_class)->finalize (object);
+-}
+-
+ static void
+ phosh_luma_today_class_init (PhoshLumaTodayClass *klass)
+ {
+-  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+-  object_class->dispose = phosh_luma_today_dispose;
+-  object_class->finalize = phosh_luma_today_finalize;
+-  widget_class->destroy = phosh_luma_today_destroy;
+-  signals[LAUNCH_REQUESTED] = g_signal_new ("launch-requested", G_TYPE_FROM_CLASS (klass),
++  G_OBJECT_CLASS (klass)->dispose = dispose;
++  gtk_widget_class_set_css_name (GTK_WIDGET_CLASS (klass), "luma-today");
++  launch_requested = g_signal_new ("launch-requested", G_TYPE_FROM_CLASS (klass),
+     G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_STRING);
+-  gtk_widget_class_set_css_name (widget_class, "luma-today");
+ }
+-
+ static void
+ phosh_luma_today_init (PhoshLumaToday *self)
+ {
+-  GtkWidget *weather, *calendar;
+-  GtkWidget *spacer;
+-  g_autoptr (GFile) timezone = g_file_new_for_path ("/etc/localtime");
+-
+   gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_HORIZONTAL);
+   gtk_box_set_homogeneous (GTK_BOX (self), TRUE);
+   gtk_box_set_spacing (GTK_BOX (self), 12);
+   gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (self)), "luma-today");
+-  self->cancel = g_cancellable_new ();
+-  self->events = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, event_free);
+-  self->places_path = g_build_filename (g_get_user_data_dir (), "prairie", "weather", "places.json", NULL);
+-  self->cache_path = g_build_filename (g_get_user_cache_dir (), "prairie-weather", NULL);
+-  weather = new_card (self, "luma-today-weather", "org.projectluma.Weather.desktop", _("Open Weather"));
+-  self->weather_place = new_label (weather, "luma-today-kicker", "luma-today-weather-place");
+-  self->weather_value = new_label (weather, "luma-today-value", "luma-today-weather-value");
+-  spacer = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+-  gtk_box_pack_start (GTK_BOX (weather), spacer, TRUE, TRUE, 0);
+-  self->weather_condition = new_label (weather, "luma-today-condition", "luma-today-weather-condition");
+-  self->weather_detail = new_label (weather, "luma-today-detail", "luma-today-weather-detail");
+-  calendar = new_card (self, "luma-today-calendar", "org.projectluma.Calendar.desktop", _("Open Calendar"));
+-  self->calendar_weekday = new_label (calendar, "luma-today-kicker", "luma-today-calendar-weekday");
+-  self->calendar_day = new_label (calendar, "luma-today-value", "luma-today-calendar-day");
+-  for (guint i = 0; i < 2; i++) {
+-    self->calendar_events[i] = new_label (calendar, "luma-today-event", i ? "luma-today-event-second" : "luma-today-event-first");
+-    gtk_label_set_lines (GTK_LABEL (self->calendar_events[i]), 2);
++  self->model = luma_widgets_model_new ("mobi.phosh.Shell.CalendarServer");
++  const char *ids[] = {"weather", "calendar"};
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++) {
++    GtkWidget *view = luma_widgets_gtk3_new (self->model, ids[i]);
++    gtk_box_pack_start (GTK_BOX (self), view, TRUE, TRUE, 0);
++    g_signal_connect_object (view, "launch-requested", G_CALLBACK (launch), self, 0);
+   }
+-  refresh_weather (self);
+-  refresh_date (self);
+-  watch_files (self);
+-  self->timezone_monitor = g_file_monitor_file (timezone, G_FILE_MONITOR_NONE, self->cancel, NULL);
+-  if (self->timezone_monitor)
+-    g_signal_connect_object (self->timezone_monitor, "changed", G_CALLBACK (file_changed), self, 0);
+-  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START_AT_CONSTRUCTION,
+-                            NULL, CALENDAR_NAME, CALENDAR_PATH, CALENDAR_NAME, self->cancel,
+-                            calendar_ready, call_new (self));
+   gtk_widget_show_all (GTK_WIDGET (self));
+ }
+-
+ GtkWidget *
+ phosh_luma_today_new (void)
+ {
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -466,6 +466,7 @@
+ )
+ 
+ phosh_deps = [
++  dependency('luma-home-widgets-gtk3'),
+   appstream_dep,
+   libsoup_dep,
+   fribidi_dep,

@@ -512,6 +512,10 @@ class CameraSurface:
         gesture = Gtk.GestureClick(button=1)
         gesture.connect("released", self.focus)
         w._picture.add_controller(gesture)
+        pinch = Gtk.GestureZoom(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        pinch.connect('begin', self._zoom_begin)
+        pinch.connect('scale-changed', self._zoom_changed)
+        w._picture.add_controller(pinch)
         # This session at the upper left; source at the upper right.
         w._last_shot_button = TextButton("", icon="image", style="raised", on_click=self.session)
         w._last_shot_button.set_name("cm-session")
@@ -689,7 +693,7 @@ class CameraSurface:
         if not self.phone:
             return self.values["aspect"]
         ratio = portrait(self.values["aspect"])
-        rotation = 0 if device.desktop_uvc else image_rotation_from_mount(
+        rotation = 0 if device.managed_stream else image_rotation_from_mount(
             device.rotation, front_facing=device.location == "front")
         return 1 / ratio if rotation in (90, 270) else ratio
 
@@ -973,7 +977,7 @@ class CameraSurface:
         if w._fixture:
             return list(w._fixture.modes)
         modes = [("photo", "Photo")]
-        if w._devices and w._devices[w.state.source].desktop_uvc:
+        if w._devices and w._devices[w.state.source].managed_stream:
             from .camera_video import VideoRecording
             if VideoRecording.available():
                 modes.append(("video", "Video"))
@@ -1123,6 +1127,14 @@ class CameraSurface:
             device = w._devices[w.state.source]
             w._configure_crop(w._crop, device.preview_width, device.preview_height)
         self.refresh()
+
+    def _zoom_begin(self, gesture, _sequence):
+        self._zoom_from = self.window.state.zoom
+        # Claim both contacts before the viewfinder's tap-focus/mode swipe.
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+
+    def _zoom_changed(self, _gesture, scale):
+        self.zoom(max(1.0, min(4.0, self._zoom_from * scale)))
 
     def settings(self):
         w = self.window

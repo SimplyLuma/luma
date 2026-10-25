@@ -148,6 +148,9 @@ class WeatherWindow(AppWindow):
         # v71 `bleed` / `statusInk`: on a phone the sky runs to the bezel under the clock;
         # the page adds 12px below the reserved44px status region (56px total).
         self.set_phone_bleed(True)
+        if hasattr(self, 'set_edge_to_edge'):
+            self.set_edge_to_edge(True)
+        self._sync_status_inset()
         self.forecast_layout = ForecastLayout()
         self.forecast_layout.set_name('wx-grid')
         self.forecast_layout.set_margin_top(12)
@@ -601,6 +604,9 @@ class WeatherWindow(AppWindow):
             box.remove(child)
 
     def _render(self, message=None):
+        # Older standalone AppKit runtimes retain their normal status style.
+        if hasattr(self, 'set_status_bar_style'):
+            self.set_status_bar_style('light' if self.places else 'auto')
         self._clear(self.page)
         self._radar = None
         self.detail_stack.set_visible_child_name('forecast' if self.places else 'empty')
@@ -700,12 +706,24 @@ class WeatherWindow(AppWindow):
 
     # ── the phone (v71 wxBodyPhone / wxBarPhone) ────────────────────────────
 
+    def _apply_session_context(self, context):
+        super()._apply_session_context(context)
+        if hasattr(self, 'page'):
+            self._sync_status_inset()
+
+    def _sync_status_inset(self):
+        # Bleeding backgrounds paint to the bezel; only foreground content
+        # moves below the shell-owned strip. Width still chooses the layout.
+        self.page.set_margin_top(12 + self.status_inset
+                                 if self.phone_device or self.phone else 36)
+        self.sidebar.set_margin_top(self.status_inset + 8 if self.phone_device else 0)
+
     def _set_phone(self, phone):
         if phone == self.phone:
             return
         self.phone = phone
         self.toggle.set_phone_enabled(False)
-        self.page.set_margin_top(12 + self.status_inset if phone else 36)
+        self._sync_status_inset()
         if not phone:
             self._stop_radar()
         # Crossing 560 redraws in the other shape (changelog: "redraw on crossing the phone width").

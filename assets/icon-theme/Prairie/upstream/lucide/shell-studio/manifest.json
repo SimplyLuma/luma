@@ -93,6 +93,20 @@
       "source": "volume-x.svg",
       "sha256": "5ed2c5de361389d1fbaef3e0a8ae3fd564788e71ff1317a35c58e7ae6eb98c19",
       "output": "luma-volume-x-symbolic.svg"
+    },
+    {
+      "source": "tablet.svg",
+      "sha256": "cf58f791bd83c5340362fc0694d3f766aa82b9abfe291ef72e15a3ac3da54125",
+      "output": "luma-tablet-symbolic.svg",
+      "source_reference": "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/tablet.svg (2026-10-24; exact digest above)",
+      "stroke_width": 1.6
+    },
+    {
+      "source": "smartphone.svg",
+      "sha256": "bd7dd8ac12e3f3661980287367aab8c265cbb4f694a65daba3102cf52a70ea41",
+      "output": "luma-smartphone-symbolic.svg",
+      "source_reference": "upstream/lucide/lumaui/smartphone.svg",
+      "stroke_width": 1.6
     }
   ]
 }
