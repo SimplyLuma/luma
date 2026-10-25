@@ -102,6 +102,10 @@ tar -xzf %{SOURCE1} -C host --strip-components=1
 # Every engine and host file must be the approved release's.
 (cd engine && sha256sum -c --quiet ../host/luma-package/native-%{engine_release}-engine.sha256)
 (cd host/appkit-spike && sha256sum -c --quiet ../luma-package/native-%{native_release}-host.sha256)
+if [ -e host/luma-package/native-engine-profile.json ]; then
+  test '%{_arch}' = aarch64
+  cmp host/luma-package/desktop-arm-preview-frame-profile.json host/luma-package/native-engine-profile.json
+fi
 
 %build
 # The host manifest includes the supplied SVG and all nine locked PNGs.
@@ -133,6 +137,10 @@ install -d %{buildroot}%{_datadir}/viola-browser/luma-host
   xargs -d '\n' cp --parents -t %{buildroot}%{_datadir}/viola-browser/luma-host/)
 find %{buildroot}%{_datadir}/viola-browser -type d -exec chmod 0755 {} +
 find %{buildroot}%{_datadir}/viola-browser -type f -exec chmod 0644 {} +
+if [ -f host/luma-package/native-engine-profile.json ]; then
+  install -m 0644 host/luma-package/native-engine-profile.json \
+    %{buildroot}%{_datadir}/viola-browser/native-engine-profile.json
+fi
 
 install -d %{buildroot}%{_datadir}/applications
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications host/luma-package/viola-browser.desktop
@@ -164,6 +172,12 @@ record = {
     'engine_released_sha256': '%{engine_sha256}',
     'engine_packaged_sha256': hashlib.sha256(chrome.read_bytes()).hexdigest(),
 }
+profile = root / 'usr/share/viola-browser/native-engine-profile.json'
+if profile.exists():
+    record['native_engine_profile'] = {
+        'selection': json.loads(profile.read_bytes()),
+        'sha256': hashlib.sha256(profile.read_bytes()).hexdigest(),
+    }
 (root / 'usr/share/viola-browser/provenance.json').write_text(json.dumps(record, indent=2) + '\n')
 PY
 
@@ -174,6 +188,19 @@ host=%{buildroot}%{_datadir}/viola-browser/luma-host
 # The installed host is exactly the approved one: every file and nothing else.
 (cd "$host" && sha256sum -c --quiet "$host_manifest")
 test "$(find "$host" -type f | wc -l)" = "$(wc -l <"$host_manifest")"
+if [ -f host/luma-package/native-engine-profile.json ]; then
+  cmp host/luma-package/native-engine-profile.json "$host/../native-engine-profile.json"
+else
+  test ! -e "$host/../native-engine-profile.json"
+fi
+python3 - "$host" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from engine_pipe import native_frame_profile_flags
+selected = Path(sys.argv[1]).parent / 'native-engine-profile.json'
+assert native_frame_profile_flags() == (['--viola-native-shm-frame-probe'] if selected.exists() else [])
+PY
 # The host's unit tests (the approved files plus test-only modules), on a headless Weston.
 # (Wayland socket paths are limited to 108 bytes, so not below the build tree.)
 export XDG_RUNTIME_DIR=$(mktemp -d /tmp/viola-check.XXXXXX)

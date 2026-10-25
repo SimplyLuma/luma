@@ -32,12 +32,14 @@ def admitted_engine(path):
     return [('upstream-viola/' + matches[0][0], data, 0o644)]
 
 
-def prepare(root):
+def prepare(root, *, desktop_profile=False):
     root = root.resolve()
     architecture = platform.machine()
     if architecture not in ENGINE_INPUTS:
         raise ValueError('Unsupported native Viola architecture')
     engine_name, _, engine_release = ENGINE_INPUTS[architecture]
+    if desktop_profile and architecture == 'aarch64' and engine_release < 32:
+        raise ValueError('The desktop preview profile requires the shared-memory-capable engine')
     source = root / 'upstream-viola' / engine_name
     admitted_engine(source)
     target = root / 'viola-engine'
@@ -45,7 +47,7 @@ def prepare(root):
         raise ValueError('Viola engine preparation already exists')
     with tarfile.open(source) as archive:
         members = archive.getmembers()
-        if not members or len(members) > 4096 or any(
+        if not members or len(members) > 8192 or any(
                 not Path(member.name).parts or Path(member.name).parts[0] not in {'engine', 'system'}
                 for member in members):
             raise ValueError('Unexpected admitted engine archive membership')
@@ -67,10 +69,20 @@ def prepare(root):
         with path.open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != wanted[name]:
                 raise ValueError('Admitted engine file differs: ' + name)
+    if desktop_profile and architecture == 'aarch64':
+        profile = root / 'src/external/viola/chromium-linux/luma-package/desktop-arm-preview-frame-profile.json'
+        if profile.is_symlink() or not profile.is_file() or profile.stat().st_size > 4096:
+            raise ValueError('The maintained desktop engine profile is unavailable')
+        selected = target / 'native-engine-profile.json'
+        selected.write_bytes(profile.read_bytes())
+        selected.chmod(0o644)
     print('Viola admitted native engine preparation PASS:', len(files), flush=True)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', type=Path)
-    prepare(parser.parse_args().root)
+    parser.add_argument('--desktop-profile', action='store_true',
+                        help='Select the maintained desktop transport profile; mobile producers omit this flag')
+    args = parser.parse_args()
+    prepare(args.root, desktop_profile=args.desktop_profile)

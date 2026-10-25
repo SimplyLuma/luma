@@ -66,4 +66,8 @@ curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
   "https://media.simplyluma.com/inputs/viola-engine/$engine_sha/$(basename "$engine")" --output "$engine"
 printf '%s  %s\n' "$engine_sha" "$engine" | sha256sum -c -
 export LUMA_VIOLA_ENGINE_ARCHIVE=$engine
+case "$architecture" in
+  aarch64) export LUMA_VIOLA_DESKTOP_PROFILE=arm-preview ;;
+  x86_64) export LUMA_VIOLA_DESKTOP_PROFILE= ;;
+esac
 bash "$root/scripts/packages/build-viola-browser.sh"

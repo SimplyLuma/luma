@@ -40,8 +40,9 @@
         }
       ],
       "build-commands": [
-        "python3 -B packaging/viola/flatpak-source.py .",
+        "python3 -B packaging/viola/flatpak-source.py . --desktop-profile",
         "install -d /app/lib/viola /app/share/viola-browser/luma-host /app/bin",
+        "if test -f viola-engine/native-engine-profile.json; then install -m644 viola-engine/native-engine-profile.json /app/share/viola-browser/native-engine-profile.json; fi",
         "cp -a viola-engine/engine /app/lib/viola/browser",
         "mv /app/lib/viola/browser/chrome-sandbox.packaged /app/lib/viola/browser/chrome-sandbox",
         "chmod 755 /app/lib/viola/browser/chrome-sandbox",

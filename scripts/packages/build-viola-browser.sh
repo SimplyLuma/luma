@@ -5,6 +5,11 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 . "$repo_root/config/desktop/inputs.env"
 architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+desktop_profile=${LUMA_VIOLA_DESKTOP_PROFILE:-}
+case "$desktop_profile:$architecture" in
+  :*|arm-preview:aarch64) ;;
+  *) printf 'error: unsupported Viola desktop profile/architecture\n' >&2; exit 1 ;;
+esac
 case "$architecture" in
   x86_64)
     builder=$FEDORA_RPM_BUILD_CONTAINER
@@ -16,6 +21,10 @@ case "$architecture" in
     engine_sha=325f3ca8be682bbe6c267251a29315f01229a52971b4627c972dbe0a32552f30 ;;
   *) printf 'error: unsupported Viola architecture: %s\n' "$architecture" >&2; exit 1 ;;
 esac
+if [ "$desktop_profile" = arm-preview ] && [ "$engine_release" -lt 32 ]; then
+  printf 'error: the desktop preview profile requires the shared-memory-capable engine\n' >&2
+  exit 1
+fi
 engine=${LUMA_VIOLA_ENGINE_ARCHIVE:?Supply the admitted engine archive for the selected architecture}
 [ -f "$engine" ] && [ ! -L "$engine" ]
 printf '%s  %s\n' "$engine_sha" "$engine" | sha256sum -c -
@@ -40,6 +49,12 @@ while IFS= read -r member; do
   install -D -m 0644 "$base/appkit-spike/$member" "$host/appkit-spike/$member"
 done < <(cut -c67- "$manifest")
 cp -R "$base/luma-package/." "$host/luma-package/"
+# Generic/mobile package builds omit the desktop's explicit transport choice.
+# Carry the selected bytes in Source1 so the SRPM records this build input.
+if [ "$desktop_profile" = arm-preview ]; then
+  cp "$host/luma-package/desktop-arm-preview-frame-profile.json" \
+    "$host/luma-package/native-engine-profile.json"
+fi
 find "$host" -type d -name __pycache__ -prune -exec rm -rf {} +
 epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work" --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
