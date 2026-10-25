@@ -21,6 +21,7 @@ async function probe() {
         const launcher = new Gio.SubprocessLauncher({flags:
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE});
         launcher.setenv('GDK_BACKEND', 'wayland', true);
+        launcher.setenv('WAYLAND_DISPLAY', 'viola-qa-shm-r1', true);
         launcher.unsetenv('DISPLAY');
         child = launcher.spawnv(['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
@@ -28,11 +29,18 @@ async function probe() {
             '--profile', `${home}/.local/share/viola-luma/profile`,
             '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', url]);
         const pid = Number(child.get_identifier());
-        const output = child.communicate_utf8_async(null, null);
+        const output = child.communicate_utf8_async(null, null).then(reply => {
+            const [stdout, stderr] = reply;
+            GLib.file_set_contents(`${out}/browser.stdout`, stdout ?? '');
+            GLib.file_set_contents(`${out}/browser.stderr`, stderr ?? '');
+            return reply;
+        });
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
             .filter(candidate => candidate.get_pid() === pid);
         const deadline = Date.now() + 45000;
-        while (!windows().length && Date.now() < deadline) await sleep(200);
+        let exited = false;
+        output.then(() => {exited = true;});
+        while (!windows().length && !exited && Date.now() < deadline) await sleep(200);
         if (windows().length !== 1) throw Error('Owned native browser did not map exactly one window');
         window = windows()[0];
         // The desktop default is taller than this fixture's 800px monitor.
