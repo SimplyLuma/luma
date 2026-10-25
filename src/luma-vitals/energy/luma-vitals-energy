@@ -40,8 +40,20 @@ NAMES = {"package-0": "package", "core": "core", "uncore": "graphics",
 
 
 def batteries() -> list[Path]:
-    return [path for path in sorted(POWER_SUPPLY.glob("BAT*"))
-            if (path / "status").exists()]
+    found = []
+    for path in sorted(POWER_SUPPLY.glob("*")):
+        try:
+            if (path / "type").read_text().strip() != "Battery":
+                continue
+            if (path / "scope").exists() and (path / "scope").read_text().strip() == "Device":
+                continue
+            if (path / "present").exists() and (path / "present").read_text().strip() == "0":
+                continue
+            if (path / "status").exists():
+                found.append(path)
+        except OSError:  # A hot-unplugged supply is no longer a candidate.
+            continue
+    return found
 
 
 def discharging(found: list[Path]) -> bool:
