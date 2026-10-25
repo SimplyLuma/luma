@@ -13,6 +13,8 @@ import pwd
 import re
 import stat
 import time
+import select
+import sys
 
 def identity(pid):
     root=Path('/proc')/str(pid)
@@ -21,7 +23,8 @@ def identity(pid):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('click','key-a'))
+    parser.add_argument('action',choices=('click','key-a','seat'))
+    parser.add_argument('--ready',type=Path)
     parser.add_argument('--x',type=int)
     parser.add_argument('--y',type=int)
     args=parser.parse_args()
@@ -37,6 +40,10 @@ def main():
     actor=Path(actors[0].split('=',1)[1])
     assert actor.name=='browser-opens.js' and re.fullmatch(r'luma-gate-browser-opens\.[A-Za-z0-9]+',actor.parent.name) and actor.parent.parent==Path('/tmp')
     assert actor.is_file() and not actor.is_symlink() and actor.stat().st_uid==uid
+    if args.action=='seat':
+        assert args.ready is not None and args.ready.parent==actor.parent/'out'
+        assert args.ready.name=='virtual-seat.json' and not args.ready.exists()
+    else:assert args.ready is None
     runtime=Path('/run/user')/str(uid)
     assert os.environ.get('XDG_RUNTIME_DIR')==str(runtime)
     assert os.environ.get('DBUS_SESSION_BUS_ADDRESS')=='unix:path='+str(runtime/'bus')
@@ -68,7 +75,22 @@ def main():
     interface=service+'.Session'
     try:
         call(session,interface,'Start')
-        if args.action=='click':
+        if args.action=='seat':
+            # A headless desktop has no physical devices. Keep its real
+            # virtual seat alive before GTK maps, just as EngineDisplay does
+            # for Chromium's separate private compositor.
+            call(session,interface,'NotifyPointerMotionRelative',GLib.Variant('(dd)',(0.,0.)))
+            for pressed in (True,False):
+                call(session,interface,'NotifyKeyboardKeysym',GLib.Variant('(ub)',(0xffe1,pressed)))
+            fd=os.open(args.ready,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            with os.fdopen(fd,'w') as stream:
+                json.dump(dict(scope='OWNED_VIRTUAL_DEVICES_NOT_PAGE_INPUT_PROOF',parent_pid=parent,parent_start=expected[1],owner=owner),stream)
+            deadline=time.monotonic()+420
+            while time.monotonic()<deadline:
+                owned_service()
+                if select.select([sys.stdin],[],[],1)[0]:
+                    break
+        elif args.action=='click':
             call(session,interface,'NotifyPointerMotionRelative',GLib.Variant('(dd)',(-10000.,-10000.)))
             time.sleep(.1)
             call(session,interface,'NotifyPointerMotionRelative',GLib.Variant('(dd)',(float(args.x),float(args.y))))

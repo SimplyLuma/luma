@@ -15,6 +15,7 @@ const home = GLib.get_home_dir();
 let child = null;
 let childOutput = null;
 let window = null;
+let inputSeat = null;
 let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
@@ -26,6 +27,15 @@ async function probe() {
         launcher.setenv('GDK_BACKEND', 'wayland', true);
         launcher.setenv('WAYLAND_DISPLAY', 'viola-qa-shm-r1', true);
         launcher.unsetenv('DISPLAY');
+        const seatLauncher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.STDIN_PIPE});
+        const seatReady = `${out}/virtual-seat.json`;
+        inputSeat = seatLauncher.spawnv(['/usr/bin/python3', '-B',
+            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'seat', '--ready', seatReady]);
+        const seatDeadline = Date.now() + 10000;
+        while (!GLib.file_test(seatReady, GLib.FileTest.EXISTS)) {
+            if (Date.now() > seatDeadline) throw Error('Owned headless virtual seat did not become ready');
+            await sleep(100);
+        }
         child = launcher.spawnv(['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
@@ -85,9 +95,12 @@ async function probe() {
                 GLib.file_get_contents(report)[1]);
             result.failure_windows = global.get_window_actors().map(actor => ({
                 pid: actor.meta_window.get_pid(), title: actor.meta_window.get_title(),
-                frame: actor.meta_window.get_frame_rect(),
-                buffer: actor.meta_window.get_buffer_rect(),
+                frame: (() => {const r=actor.meta_window.get_frame_rect();return {x:r.x,y:r.y,width:r.width,height:r.height};})(),
+                buffer: (() => {const r=actor.meta_window.get_buffer_rect();return {x:r.x,y:r.y,width:r.width,height:r.height};})(),
                 focused: actor.meta_window.has_focus(),
+                minimized: actor.meta_window.minimized,
+                workspace: actor.meta_window.get_workspace()?.index(),
+                showing: actor.meta_window.showing_on_its_workspace(),
             }));
             const stream = Gio.File.new_for_path(`${out}/failure-screen.png`)
                 .replace(null, false, Gio.FileCreateFlags.NONE, null);
@@ -99,6 +112,10 @@ async function probe() {
             try {if (window) window.delete(global.get_current_time());} catch (_) {}
             try {if (child) child.send_signal(15);} catch (_) {}
             if (childOutput) await Promise.race([childOutput.catch(() => {}), sleep(3000)]);
+        }
+        if (inputSeat) {
+            inputSeat.get_stdin_pipe().close(null);
+            await Promise.race([inputSeat.wait_async(null), sleep(3000)]);
         }
         global.context.terminate();
     }
