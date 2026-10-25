@@ -16,7 +16,7 @@ let child = null;
 let childOutput = null;
 let window = null;
 let inputSeat = null;
-let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
+let result = {scope: 'TEMPORARY_HOST_STACK_DIAGNOSTIC_NOT_BROWSER_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
 async function probe() {
@@ -37,18 +37,20 @@ async function probe() {
             if (Date.now() > seatDeadline) throw Error('Owned headless virtual seat did not become ready');
             await sleep(100);
         }
-        child = launcher.spawnv(['/usr/bin/python3',
+        const hostLauncher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE});
+        hostLauncher.setenv('GDK_BACKEND', 'wayland', true);
+        hostLauncher.setenv('WAYLAND_DISPLAY', 'viola-qa-shm-r1', true);
+        hostLauncher.unsetenv('DISPLAY');
+        hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
+        hostLauncher.set_stderr_file_path(`${out}/browser.stderr`);
+        child = hostLauncher.spawnv(['/usr/bin/python3', '-c',
+            'import faulthandler,runpy,sys; faulthandler.dump_traceback_later(25,repeat=True); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
             '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);
         const pid = Number(child.get_identifier());
-        const output = child.communicate_utf8_async(null, null).then(reply => {
-            const [stdout, stderr] = reply;
-            GLib.file_set_contents(`${out}/browser.stdout`, stdout ?? '');
-            GLib.file_set_contents(`${out}/browser.stderr`, stderr ?? '');
-            return reply;
-        });
+        const output = child.wait_async(null).then(() => ['', '']);
         childOutput = output;
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
             .filter(candidate => candidate.get_pid() === pid);
@@ -90,8 +92,7 @@ async function probe() {
         if (windows().length) throw Error('Owned native browser window did not close');
         // The outer process timeout also bounds communication and engine drain.
         const [stdout, stderr] = await output;
-        GLib.file_set_contents(`${out}/browser.stdout`, stdout ?? '');
-        GLib.file_set_contents(`${out}/browser.stderr`, stderr ?? '');
+
         if (!child.get_successful()) throw Error('Native host failed while closing');
         const reports = Gio.File.new_for_path(`${home}/.local/state/viola-luma/sessions`)
             .enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
@@ -107,7 +108,7 @@ async function probe() {
         if (report.errors.length || report.engine_exit_code !== 0 || report.pending_leases !== 0)
             throw Error('Native engine shutdown did not drain successfully');
         result.integration = report;
-        result.ok = true;
+        throw Error('Temporary stack diagnostic cannot qualify a release');
     } catch (error) {
         result.error = String(error);
         result.stack = error.stack;
