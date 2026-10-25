@@ -15,8 +15,8 @@
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.58.creator20261021.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.58.creator20261021.1.fc44.noarch
-gnome-shell-50.3-1.luma.120.creator20261021.1.fc44.x86_64
-gnome-shell-common-50.3-1.luma.120.creator20261021.1.fc44.noarch
+gnome-shell-50.3-1.luma.121.creator20261024.1.fc44.x86_64
+gnome-shell-common-50.3-1.luma.121.creator20261024.1.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.14.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.27.fc44.noarch
@@ -67,7 +67,7 @@ luma-audio-policy-0.1.0-1.luma.3.fc44.noarch
 luma-sound-theme-0.1.0-2.luma.1.fc44.noarch
 luma-background-0.1.0-1.luma.5.creator20261007.1.fc44.noarch
 luma-backgrounds-0.2.0-1.luma.4.fc44.noarch
-luma-desktop-launcher-policy-0.1.0-28.creator20261007.1.fc44.noarch
+luma-desktop-launcher-policy-0.1.0-29.creator20261024.1.fc44.noarch
 luma-cast-0.1.0-1.luma.4.fc44.noarch
 luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
 luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
@@ -111,9 +111,9 @@ wine-luma-relay-explorer-11.0-3.luma.2.fc44.x86_64
 
 # Luma applications and desktop utilities
 luma-agenda-0.1.0-1.luma.9.fc44.noarch
-luma-ari-0.1.0-1.luma.19.creator20261019.3.fc44.noarch
+luma-ari-0.1.0-1.luma.20.creator20261024.1.fc44.noarch
 luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
-luma-displays-0.1.0-1.luma.6.creator20261008.1.fc44.noarch
+luma-display-config-0.1.0-1.luma.7.creator20261024.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
 luma-tide-0.1.0-2.luma.34.creator20261012.1.fc44.noarch
 luma-viewer-0.1.0-1.luma.17.creator20261007.1.fc44.noarch

@@ -350,16 +350,16 @@ done
 # Owner-requested baseline exclusions are checked by package name and exact
 # launchers. GIO verifies hidden provider metadata without concealing duplicates.
 for package in gnome-disk-utility gnome-calculator ptyxis gnome-terminal \
-               gnome-console yelp firefox gnome-extensions-app openemu-linux luma-imager; do
+               gnome-console yelp firefox gnome-extensions-app openemu-linux luma-imager luma-displays; do
   check "excluded baseline application $package is absent" collection_package_absent "$package"
 done
 for launcher in org.gnome.DiskUtility org.gnome.Calculator org.gnome.Ptyxis \
                 org.gnome.Terminal org.gnome.Console org.gnome.Extensions \
-                firefox yelp org.projectluma.Imager org.openemu.OpenEmuLinux.Development; do
+                firefox yelp org.projectluma.Imager org.projectluma.Displays org.openemu.OpenEmuLinux.Development; do
   check "excluded baseline launcher $launcher is absent" \
     collection_launcher_absent "/usr/share/applications/$launcher.desktop"
 done
-check 'GIO hides secondary Displays and Mods, retaining Luma native roles' \
+check 'GIO hides Mods, retaining Luma native roles' \
   env XDG_DATA_DIRS=/usr/share/luma/desktop-overrides:/usr/local/share:/usr/share python3 - <<'PYGIO'
 import ctypes
 import ctypes.util
@@ -371,7 +371,7 @@ lib.g_app_info_should_show.argtypes = [ctypes.c_void_p]
 lib.g_app_info_should_show.restype = ctypes.c_int
 lib.g_desktop_app_info_get_filename.argtypes = [ctypes.c_void_p]
 lib.g_desktop_app_info_get_filename.restype = ctypes.c_char_p
-for desktop in ('org.projectluma.Displays', 'org.projectluma.Mods'):
+for desktop in ('org.projectluma.Mods',):
     app = lib.g_desktop_app_info_new((desktop + '.desktop').encode())
     assert app and not lib.g_app_info_should_show(app), desktop
     expected = '/usr/share/luma/desktop-overrides/applications/' + desktop + '.desktop'
@@ -379,7 +379,7 @@ for desktop in ('org.projectluma.Displays', 'org.projectluma.Mods'):
 for desktop in ('org.projectluma.Calculator', 'org.projectluma.Terminal', 'org.projectluma.Disks.Preview', 'org.projectluma.Tide'):
     app = lib.g_desktop_app_info_new((desktop + '.desktop').encode())
     assert app and lib.g_app_info_should_show(app), desktop
-print('PASS: 2 hidden providers, 4 visible native applications')
+print('PASS: 1 hidden provider, 4 visible native applications')
 PYGIO
 check 'exact shared Search package installed' rpm -q "$LUMA_SEARCH_NEVRA"
 

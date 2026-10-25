@@ -1,0 +1,96 @@
+Subject: [PATCH] Remove automatic Displays activation and retain Settings confirmation
+
+--- a/js/ui/lumaDisplayArrival.js
++++ b/js/ui/lumaDisplayArrival.js
+@@ -1,71 +1,9 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+-// Ask how to use displays that have never been arranged together.
+-//
+-// Plugging in a dock and a second cable, or unplugging both, is a run of
+-// monitor changes a few seconds apart. Nothing is asked until they stop.
+-// Displays itself decides whether the arrangement is new: it reads the same
+-// monitors.xml Mutter keeps, and returns without a window when it knows it.
+-import Gio from 'gi://Gio';
+-import GLib from 'gi://GLib';
++// Display controls and their explicit confirmation belong to Settings.
+ import Shell from 'gi://Shell';
+ 
+-import * as Main from './main.js';
+-
+-const SETTLE_SECONDS = 4;
+-// A session that starts on a new arrangement is asked once it is up.
+-const STARTUP_SECONDS = 10;
+-const DISPLAYS = 'org.projectluma.Displays';
+-
+-export class DisplayArrival {
+-    constructor() {
+-        this._source = 0;
+-        Main.layoutManager.connect('monitors-changed', () => this._schedule(SETTLE_SECONDS));
+-        this._schedule(STARTUP_SECONDS);
+-    }
+-
+-    _schedule(seconds) {
+-        // Settings owns its preview; geometry changes aren't a new cable arrival.
+-        if (Shell.WindowTracker.get_default().focus_app?.get_id() === 'org.gnome.Settings.desktop')
+-            return;
+-        if (this._source)
+-            GLib.source_remove(this._source);
+-        this._source = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
+-            this._source = 0;
+-            this._ask();
+-            return GLib.SOURCE_REMOVE;
+-        });
+-    }
+-
+-    _ask() {
+-        const mode = Main.sessionMode;
+-        if (mode.isLocked || mode.isGreeter || !mode.hasOverview)
+-            return;
+-        if (Shell.WindowTracker.get_default().focus_app?.get_id() === 'org.gnome.Settings.desktop')
+-            return;
+-        if (Main.layoutManager.monitors.length < 2)
+-            return;
+-        // D-Bus activation starts Displays as its own service, not as a child
+-        // of the Shell. A Luma without Displays installed simply isn't asked.
+-        Gio.DBus.session.call(DISPLAYS, '/org/projectluma/Displays',
+-            'org.freedesktop.Application', 'ActivateAction',
+-            new GLib.Variant('(sava{sv})', ['arrival', [], {}]),
+-            null, Gio.DBusCallFlags.NONE, -1, null,
+-            (connection, result) => {
+-                try {
+-                    connection.call_finish(result);
+-                } catch (_error) {
+-                }
+-            });
+-    }
++export function keptByDisplays() {
++    // Keep the exported helper for the window manager's existing call site.
++    return Shell.WindowTracker.get_default().focus_app?.get_id() ===
++        'org.gnome.Settings.desktop';
+ }
+-
+-// Displays shows a layout before it is kept and undoes it on its own if
+-// nobody touches the window, so the Shell's countdown would only ask the
+-// same question twice.
+-export function keptByDisplays() {
+-    const app = Shell.WindowTracker.get_default().focus_app;
+-    // Settings persists only after its own explicit Keep button. Preview uses
+-    // Mutter's temporary method and never enters the Shell confirmation path.
+-    return app?.get_id() === `${DISPLAYS}.desktop` ||
+-        app?.get_id() === 'org.gnome.Settings.desktop';
+-}
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -36 +35,0 @@
+-import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+@@ -69 +67,0 @@
+-export let lumaDisplayArrival = null;
+@@ -246,8 +244 @@
+-    if (sessionMode.hasOverview) {
+-        try {
+-            lumaDisplayArrival = new LumaDisplayArrival.DisplayArrival();
+-        } catch (error) {
+-            logError(error, 'Failed to watch for new display arrangements');
+-        }
+-    }
+     magnifier = new Magnifier.Magnifier();

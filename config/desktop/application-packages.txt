@@ -10,6 +10,6 @@
 # secondary controls; without a tray host they are simply never shown.
 gnome-shell-extension-appindicator
 luma-ari
-# Luma-owned desktop utility: asks how to use new display arrangements
-luma-displays
+# Headless display configuration backend used by Ari; Settings owns the UI.
+luma-display-config
 

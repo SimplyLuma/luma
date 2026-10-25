@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.120.creator20261021.1%{?dist}
++Release:        1.luma.121.creator20261024.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,271 @@
+@@ -32,6 +32,272 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -274,6 +274,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1271:      0277-login-surfaces-and-dock-battery-percentage.patch
 +Patch1272:      0278-brightness-one-percent-and-idle-input.patch
 +Patch1273:      0279-applications-and-downloads-drawer.patch
++Patch1274:      0280-retire-standalone-displays.patch
 +Patch1274:      0280-drawer-artwork-and-grid-alignment.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
