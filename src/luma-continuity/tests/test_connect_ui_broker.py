@@ -55,6 +55,21 @@ class ConnectUI(unittest.TestCase):
         finally:broker.slots.release();broker.slots.release()
         self.assertEqual(len(ran),1)
 
+    def test_status_does_not_wait_for_an_active_sync(self):
+        started=threading.Event();release=threading.Event()
+        def runner(args,timeout,body,cancelled):
+            if args == ['push']:
+                started.set();release.wait(2)
+            return 0,'{}',''
+        broker=ConnectUIBroker(authenticate=lambda *_:APP,runner=runner)
+        self.addCleanup(broker.close);self.addCleanup(release.set)
+        sync=Invocation();broker.dispatch(None,':1.2',[json.dumps({'operation':'sync','values':{}})],sync,GLib)
+        self.assertTrue(started.wait(1))
+        status=Invocation();broker.dispatch(None,':1.2',[json.dumps({'operation':'status','values':{}})],status,GLib)
+        self.assertTrue(status.ready.wait(1),'status blocked behind sync')
+        self.assertIsNone(status.error);self.assertFalse(sync.ready.is_set())
+        release.set();self.assertTrue(sync.ready.wait(1))
+
     def test_native_real_pid_absence_and_foreign_uid_inspection_failure_closed(self):
         require_connect_if_sandbox(NativeSender(),':native','GetState')
         class Foreign(NativeSender):
