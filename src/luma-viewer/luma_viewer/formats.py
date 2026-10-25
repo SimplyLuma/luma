@@ -164,9 +164,16 @@ def load_image(path: Path):
     import gi
 
     gi.require_version("GdkPixbuf", "2.0")
-    from gi.repository import GdkPixbuf
+    from gi.repository import GdkPixbuf, Gio
 
-    pixbuf = GdkPixbuf.Pixbuf.new_from_file(str(path)).apply_embedded_orientation()
+    # Portal files may have backing descriptors whose resolved filename no
+    # longer exists. Give the decoder the open stream, rather than asking its
+    # sandbox to reopen that backing filename.
+    stream = Gio.File.new_for_path(str(path)).read(None)
+    try:
+        pixbuf = GdkPixbuf.Pixbuf.new_from_stream(stream, None).apply_embedded_orientation()
+    finally:
+        stream.close(None)
     return pixbuf, (pixbuf.get_width(), pixbuf.get_height())
 
 
@@ -174,9 +181,13 @@ def image_thumbnail(path: Path, size: int = 76):
     import gi
 
     gi.require_version("GdkPixbuf", "2.0")
-    from gi.repository import GdkPixbuf
+    from gi.repository import GdkPixbuf, Gio
 
-    return GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), size, size, True).apply_embedded_orientation()
+    stream = Gio.File.new_for_path(str(path)).read(None)
+    try:
+        return GdkPixbuf.Pixbuf.new_from_stream_at_scale(stream, size, size, True, None).apply_embedded_orientation()
+    finally:
+        stream.close(None)
 
 
 def open_pdf(path: Path):

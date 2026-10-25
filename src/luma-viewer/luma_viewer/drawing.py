@@ -32,6 +32,23 @@ def mark_bounds(cr, mark):
             y + max(ink.y+ink.height, logical.y+logical.height)/Pango.SCALE + 2)
 
 
+def ink_path(cr, points):
+    """Round sampled ink inside its control-point bounds, retaining endpoints."""
+    cr.move_to(*points[0])
+    if len(points) < 3:
+        for point in points[1:]:
+            cr.line_to(*point)
+        return
+    start = points[0]
+    for control, following in zip(points[1:-1], points[2:]):
+        end = tuple((a+b)/2 for a, b in zip(control, following))
+        first = tuple(a+(b-a)*2/3 for a, b in zip(start, control))
+        second = tuple(a+(b-a)*2/3 for a, b in zip(end, control))
+        cr.curve_to(*first, *second, *end)
+        start = end
+    cr.line_to(*points[-1])
+
+
 def draw_mark(cr, mark, opacity=None):
     cr.save()
     if mark.tool=='highlight':
@@ -56,9 +73,7 @@ def draw_mark(cr, mark, opacity=None):
         else:cr.rectangle(x,y,w,h);cr.fill()
     elif mark.tool in ("ink","highlight","sign"):
         points = mark.points or (mark.start, mark.end)
-        cr.move_to(*points[0])
-        for point in points[1:]:
-            cr.line_to(*point)
+        ink_path(cr, points)
         if len(points) == 1 or all(p == points[0] for p in points):
             cr.arc(*points[0], mark.width/2, 0, math.tau)
             cr.fill()
