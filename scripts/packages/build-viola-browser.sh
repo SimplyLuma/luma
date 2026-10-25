@@ -17,8 +17,8 @@ case "$architecture" in
     engine_sha=2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028 ;;
   aarch64)
     builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    engine_release=31
-    engine_sha=325f3ca8be682bbe6c267251a29315f01229a52971b4627c972dbe0a32552f30 ;;
+    engine_release=32
+    engine_sha=2d10bdd8dc21364ee91cde00abef725fd7e3e13658fd059275057663b129d4b1 ;;
   *) printf 'error: unsupported Viola architecture: %s\n' "$architecture" >&2; exit 1 ;;
 esac
 if [ "$desktop_profile" = arm-preview ] && [ "$engine_release" -lt 32 ]; then
@@ -49,6 +49,9 @@ while IFS= read -r member; do
   install -D -m 0644 "$base/appkit-spike/$member" "$host/appkit-spike/$member"
 done < <(cut -c67- "$manifest")
 cp -R "$base/luma-package/." "$host/luma-package/"
+source_revision=$(git -c safe.directory="$repo_root" -C "$repo_root" rev-parse HEAD)
+[[ "$source_revision" =~ ^[0-9a-f]{40}$ ]]
+printf '%s\n' "$source_revision" > "$host/luma-package/luma-source-revision"
 # Generic/mobile package builds omit the desktop's explicit transport choice.
 # Carry the selected bytes in Source1 so the SRPM records this build input.
 if [ "$desktop_profile" = arm-preview ]; then

@@ -9,18 +9,18 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 37
-# Retain each architecture's previously built engine; the native host is shared.
+%global native_release 38
+# The native host is shared. ARM uses the source-built engine; x86 keeps its
+# existing engine and original release identity.
 %ifarch aarch64
-%global engine_release 31
-%global approved_release development-native31-arm64-mobile-20261006
-%global engine_sha256 4a0667c2551e8daaefa312e154732676fea9de84fb7689529c16509b45943137
+%global engine_release 32
+%global approved_release 20261025-native32-arm-desktop
+%global engine_sha256 0c4829cf130a9490489e2dfb81d9cb1fe156ff3701511e3c94ca4b0af5f53b40
 %else
 %global engine_release 30
 %global approved_release 20260921-native-30
 %global engine_sha256 d6a87f43aff38963678dcfd0f89223fdc798193745dac99df4882c03938feff1
 %endif
-%global source_commit %{?viola_commit}%{!?viola_commit:unknown}
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
 # release already stripped it); keep its private libraries out of the
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261024.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261025.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -162,13 +162,15 @@ install -d %{buildroot}%{_datadir}/licenses/%{name}
 cp -a system/usr/share/licenses/viola-browser-stable/. %{buildroot}%{_datadir}/licenses/%{name}/
 
 python3 - %{buildroot} <<'PY'
-import hashlib, json, pathlib, sys
+import hashlib, json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 chrome = root / 'opt/viola/browser/chrome'
+source_revision = pathlib.Path('host/luma-package/luma-source-revision').read_text().strip()
+assert re.fullmatch('[0-9a-f]{40}', source_revision)
 record = {
     'viola_version': '%{viola_version}', 'viola_build': %{viola_build},
     'native_release': %{native_release}, 'approved_release': '%{approved_release}', 'engine_release': %{engine_release},
-    'source': {'repository': 'https://github.com/nmcmil/Viola', 'commit': '%{source_commit}'},
+    'source': {'repository': 'https://github.com/SimplyLuma/luma', 'commit': source_revision},
     'engine_released_sha256': '%{engine_sha256}',
     'engine_packaged_sha256': hashlib.sha256(chrome.read_bytes()).hexdigest(),
 }
@@ -276,6 +278,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sun Oct 25 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native38.creator20261025.1
+- Add an explicit ARM desktop frame transport profile and native frame diagnostics.
+
 * Thu Oct 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-14.viola8210.native36.creator20261008.1
 - Restore qualified shared floating page controls and pointer-and-rings artwork; retain the existing engine, signed host service and profile migration.
 
