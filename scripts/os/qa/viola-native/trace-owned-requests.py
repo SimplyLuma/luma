@@ -16,6 +16,7 @@ sys.path.insert(0, str(host.parent))
 from engine_pipe import EnginePipe
 from frame_receiver import FrameReceiver
 from native_visibility import NativeVisibility
+original_init = EnginePipe.__init__
 original = EnginePipe.request
 original_visible = FrameReceiver.set_visible
 original_changed = NativeVisibility.changed
@@ -64,6 +65,22 @@ def changed(self, *args):
               state=str(surface.get_state()) if surface else None, active=self.window.is_active()))
     return original_changed(self, *args)
 
+def initialize(self, executable, profile, on_event, **kwargs):
+    observed = [0]
+    def event(packet):
+        method = packet.get('method', '')
+        if method.startswith(('Page.', 'Target.')) and observed[0] < 128:
+            observed[0] += 1
+            fields = packet.get('params', {})
+            emit(dict(stage='navigation-event', method=method, session=packet.get('sessionId'),
+                      keys=sorted(fields.keys()),
+                      target_info=fields.get('targetInfo'),
+                      frame=fields.get('frame') if method=='Page.frameNavigated' else None,
+                      url=fields.get('url')))
+        on_event(packet)
+    return original_init(self, executable, profile, event, **kwargs)
+
+EnginePipe.__init__ = initialize
 FrameReceiver.set_visible = visible
 NativeVisibility.changed = changed
 EnginePipe.request = request

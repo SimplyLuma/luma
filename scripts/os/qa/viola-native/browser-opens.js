@@ -41,6 +41,10 @@ async function probe() {
         }
         const hostLauncher = new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE});
         hostLauncher.setenv('GDK_BACKEND', 'wayland', true);
+        // Diagnostic comparison with the previously rendered bare-Mutter fixture.
+        // This is confined to the fresh CI process; never product policy.
+        hostLauncher.setenv('GTK_A11Y', 'none', true);
+        result.accessibility_diagnostic_only = 'none';
         hostLauncher.setenv('WAYLAND_DISPLAY', 'viola-qa-shm-r1', true);
         hostLauncher.unsetenv('DISPLAY');
         hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
