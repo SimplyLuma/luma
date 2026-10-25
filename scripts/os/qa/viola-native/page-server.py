@@ -47,6 +47,8 @@ def main():
         def log_message(self,*_args):pass
         def do_GET(self):
             if self.path!=page:self.send_error(404);return
+            if not (out/'page-requested.json').exists():
+                record('page-requested.json',dict(url=url,token=token,scope='HTTP request only; not DOM/input/native pixel acceptance'))
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(html)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(html)
         def do_POST(self):
             self.connection.settimeout(5)

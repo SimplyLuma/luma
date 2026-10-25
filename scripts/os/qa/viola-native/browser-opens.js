@@ -12,6 +12,7 @@ const out = GLib.getenv('BROWSER_GATE_OUT');
 const url = GLib.getenv('BROWSER_GATE_URL');
 const home = GLib.get_home_dir();
 let child = null;
+let childOutput = null;
 let window = null;
 let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 
@@ -35,6 +36,7 @@ async function probe() {
             GLib.file_set_contents(`${out}/browser.stderr`, stderr ?? '');
             return reply;
         });
+        childOutput = output;
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
             .filter(candidate => candidate.get_pid() === pid);
         const deadline = Date.now() + 45000;
@@ -81,6 +83,7 @@ async function probe() {
         if (!result.ok) {
             try {if (window) window.delete(global.get_current_time());} catch (_) {}
             try {if (child) child.send_signal(15);} catch (_) {}
+            if (childOutput) await Promise.race([childOutput.catch(() => {}), sleep(3000)]);
         }
         global.context.terminate();
     }

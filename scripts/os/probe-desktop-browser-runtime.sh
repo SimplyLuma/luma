@@ -133,9 +133,19 @@ if [ -f "$home/.local/share/viola-luma/profile.log" ]; then
   cp "$home/.local/share/viola-luma/profile.log" "$out/engine.log"
 fi
 if [ -d "$home/.local/state/viola-luma/sessions" ]; then
-  find "$home/.local/state/viola-luma/sessions" -type f \
-    \( -name presentation-live.json -o -name integration-report.json -o -name runtime-provenance.json \) \
-    -exec cp --parents -t "$out" {} +
+  # Avoid carrying a .local ancestor: the artifact uploader excludes hidden
+  # paths by default. Copy only the three fresh fixture diagnostic families.
+  python3 - "$home/.local/state/viola-luma/sessions" "$out/runtime-reports" <<'PY'
+import shutil,sys
+from pathlib import Path
+source,destination=map(Path,sys.argv[1:])
+for name in ('presentation-live.json','integration-report.json','runtime-provenance.json'):
+    for path in source.rglob(name):
+        assert path.is_file() and not path.is_symlink()
+        target=destination/path.relative_to(source)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(path,target)
+PY
 fi
 rpm -V viola-browser-stable > "$out/rpm-verify-after.txt"
 exit "$status"
