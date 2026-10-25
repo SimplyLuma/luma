@@ -80,6 +80,15 @@
         "packaging/rpm/luma-messages-bridges.spec",
         "scripts/packages/build-luma-messages-bridges-source.sh"
       ]
+    },
+    "display-config": {
+      "recipe": "scripts/packages/build-luma-display-config.sh",
+      "paths": [
+        "packaging/rpm/luma-display-config.spec",
+        "src/luma-displays/luma_displays/model.py",
+        "src/luma-displays/luma_displays/displayconfig.py",
+        "tests/luma-displays/test_model.py"
+      ]
     }
   }
 }
