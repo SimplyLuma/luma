@@ -18,7 +18,7 @@ let childOutput = null;
 let window = null;
 let inputSeat = null;
 let monitorStream = null;
-let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
+let result = {scope: 'TEMPORARY_NATIVE_C_STACK_DIAGNOSTIC_NOT_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
 async function probe() {
@@ -45,20 +45,13 @@ async function probe() {
         hostLauncher.unsetenv('DISPLAY');
         hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
         hostLauncher.set_stderr_file_path(`${out}/browser.stderr`);
-        const monitorReady = `${out}/monitor-stream.json`;
-        monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
-            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', monitorReady]);
-        const monitorDeadline = Date.now() + 15000;
-        while (!GLib.file_test(monitorReady, GLib.FileTest.EXISTS)) {
-            if (Date.now() > monitorDeadline) throw Error('Owned headless monitor did not deliver a frame');
-            await sleep(100);
-        }
         child = hostLauncher.spawnv(['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
             '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);
         const pid = Number(child.get_identifier());
+        GLib.file_set_contents(`${out}/owned-host-pid.json`, JSON.stringify({pid}));
         const output = child.wait_async(null).then(() => ['', '']);
         childOutput = output;
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
@@ -117,7 +110,7 @@ async function probe() {
         if (report.errors.length || report.engine_exit_code !== 0 || report.pending_leases !== 0)
             throw Error('Native engine shutdown did not drain successfully');
         result.integration = report;
-        result.ok = true;
+        throw Error('C-stack diagnostic cannot qualify a release');
     } catch (error) {
         result.error = String(error);
         result.stack = error.stack;

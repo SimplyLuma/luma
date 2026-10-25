@@ -55,7 +55,7 @@ curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
 printf '%s  %s\n' "$installer_sha" "$inputs/$installer" | sha256sum -c -
 dnf5 -y install "${rpms[@]}" "$inputs/$installer" \
   pipewire wireplumber gstreamer1-plugins-base gstreamer1-plugins-good \
-  pipewire-gstreamer mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
+  gdb pipewire-gstreamer mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
 host=/usr/share/viola-browser/luma-host
 sha256sum /opt/viola/browser/chrome > "$out/installed-engine.sha256"
 rpm -V viola-browser-stable > "$out/rpm-verify-before.txt"
@@ -105,6 +105,8 @@ cp "$root/scripts/os/qa/viola-native/"* "$qa/"
 mkdir "$qa/out"
 chown -R luma-gate-browser-opens:luma-gate-browser-opens "$out" "$qa"
 status=0
+# Diagnostic attaches only to this fresh fixture's exact host and compositor.
+python3 "$qa/gdb-owned-host.py" "$qa/out" "$out" & debugger=$!
 runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG_RUNTIME_DIR=/run/user/1100 \
   OUT="$out" QA="$qa" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=gl \
   XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome XDG_SESSION_TYPE=wayland \
@@ -131,6 +133,7 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
       --wayland-display=viola-qa-shm-r1 --automation-script="$QA/browser-opens.js" >"$OUT/shell.log" 2>&1
     python3 -c '\''import json,sys;d=json.load(open(sys.argv[1]));assert d["ok"] is True,d'\'' "$QA/out/RESULT.json"
   ' || status=$?
+wait "$debugger" || true
 mkdir "$out/mapped"
 cp -a "$qa/out/." "$out/mapped/"
 # Retain the fresh fixture profile log and exact diagnostics, never a user profile.
