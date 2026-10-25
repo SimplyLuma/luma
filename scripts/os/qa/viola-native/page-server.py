@@ -47,7 +47,7 @@ def main():
         def setup(self):
             super().setup()
             self.connection.settimeout(5)
-        def log_message(self,*_args):pass
+        def log_message(self,format,*values):print('FIXTURE_HTTP '+(format%values)[:2048],flush=True)
         def do_GET(self):
             if self.path!=page:self.send_error(404);return
             if not (out/'page-requested.json').exists():

@@ -18,7 +18,7 @@ let childOutput = null;
 let window = null;
 let inputSeat = null;
 let monitorStream = null;
-let result = {scope: 'TEMPORARY_NATIVE_C_STACK_DIAGNOSTIC_NOT_ACCEPTANCE', ok: false};
+let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
 async function probe() {
@@ -45,13 +45,32 @@ async function probe() {
         hostLauncher.unsetenv('DISPLAY');
         hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
         hostLauncher.set_stderr_file_path(`${out}/browser.stderr`);
+        result.desktop_state = {screen_locked: String(Main.screenShield?.locked),
+            screen_active: String(Main.screenShield?.active),session_mode: String(Main.sessionMode?.currentMode)};
+        const powerArgs = ['/usr/bin/busctl', '--user', 'get-property',
+            'org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig', 'PowerSaveMode'];
+        const power = launcher.spawnv(powerArgs);
+        const [powerOut, powerError] = await power.communicate_utf8_async(null, null);
+        if (!power.get_successful()) throw Error(`Display power state unavailable: ${powerError}`);
+        result.desktop_state.power_before = powerOut.trim();
+        // Waking this disposable monitor is an actual GUI-test precondition.
+        // Never unlock a screen or replace the application's input proof.
+        if (/^i [123]$/.test(powerOut.trim())) {
+            const wake = launcher.spawnv(['/usr/bin/busctl', '--user', 'set-property',
+                ...powerArgs.slice(3), 'i', '0']);
+            const [, wakeError] = await wake.communicate_utf8_async(null, null);
+            if (!wake.get_successful()) throw Error(`Owned display wake failed: ${wakeError}`);
+        }
+        GLib.file_set_contents(`${out}/desktop-state.json`, JSON.stringify(result.desktop_state, null, 2));
+        monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
+            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', `${out}/monitor-stream.json`]);
         child = hostLauncher.spawnv(['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
             '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);
         const pid = Number(child.get_identifier());
-        GLib.file_set_contents(`${out}/owned-host-pid.json`, JSON.stringify({pid}));
         const output = child.wait_async(null).then(() => ['', '']);
         childOutput = output;
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
@@ -110,7 +129,7 @@ async function probe() {
         if (report.errors.length || report.engine_exit_code !== 0 || report.pending_leases !== 0)
             throw Error('Native engine shutdown did not drain successfully');
         result.integration = report;
-        throw Error('C-stack diagnostic cannot qualify a release');
+        result.ok = true;
     } catch (error) {
         result.error = String(error);
         result.stack = error.stack;

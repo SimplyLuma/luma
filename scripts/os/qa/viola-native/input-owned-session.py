@@ -15,6 +15,7 @@ import stat
 import time
 import select
 import sys
+import subprocess
 
 def identity(pid):
     root=Path('/proc')/str(pid)
@@ -124,15 +125,25 @@ def monitor(call,bus,service,owned_service,ready,parent,expected):
     session=call('/org/gnome/Mutter/ScreenCast',service,'CreateSession',GLib.Variant('(a{sv})',({},)))[0]
     stream=call(session,service+'.Session','RecordMonitor',GLib.Variant('(sa{sv})',('Meta-0',{'cursor-mode':GLib.Variant('u',0)})))[0]
     loop=GLib.MainLoop(); pipeline=None; errors=[]; frames=0
+    def diagnostic(name,document):
+        path=ready.with_name(name)
+        fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        with os.fdopen(fd,'w') as output:json.dump(document,output)
     def message(_bus,packet):
         if packet.type==Gst.MessageType.ERROR:
-            error,detail=packet.parse_error();errors.append(str(error)+': '+str(detail));loop.quit()
+            error,detail=packet.parse_error();errors.append(str(error)+': '+str(detail));diagnostic('monitor-error.json',dict(errors=errors));loop.quit()
     def handoff(*_):
         nonlocal frames
         frames+=1
     def started(_bus,_sender,_path,_interface,_signal,parameters):
         nonlocal pipeline
         node=parameters.unpack()[0]
+        diagnostic('monitor-node.json',dict(node_id=node,parent_pid=parent,monotonic=time.monotonic()))
+        try:
+            dump=subprocess.run(['pw-dump'],capture_output=True,text=True,timeout=5)
+            (ready.with_name('pipewire-nodes.json')).write_text(dump.stdout[:1048576])
+            diagnostic('pipewire-dump-status.json',dict(status=dump.returncode,stderr=dump.stderr[:8192]))
+        except Exception as error:diagnostic('pipewire-dump-status.json',dict(error=str(error)))
         pipeline=Gst.parse_launch(f'pipewiresrc path={int(node)} do-timestamp=true ! fakesink name=monitor-consumer sync=false signal-handoffs=true')
         pipeline.get_by_name('monitor-consumer').connect('handoff',handoff)
         channel=pipeline.get_bus();channel.add_signal_watch();channel.connect('message',message)
