@@ -1,0 +1,58 @@
+name: Native ARM browser runtime probe
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+      # The packaged Chromium SUID sandbox creates its own namespaces. This
+      # capability is confined to the disposable CI container; browser sandbox
+      # flags and the runner host's policy are unchanged.
+      options: --cap-add=SYS_ADMIN
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git python3 curl findutils shadow-utils
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-browser-aarch64
+          run-id: 40227053792
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/browser
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-toolkit-aarch64
+          run-id: 39857373641
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/toolkit
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-apk-metadata-aarch64
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/apk-metadata
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-appimage-aarch64
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/appimage
+      - name: Probe the unchanged packaged native host and engine
+        run: bash scripts/os/probe-desktop-browser-runtime.sh
+      - name: Retain actual runtime evidence on either outcome
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-browser-runtime-aarch64
+          path: build/browser-runtime-evidence/
+          if-no-files-found: warn
+          retention-days: 14

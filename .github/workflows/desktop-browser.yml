@@ -9,6 +9,11 @@ on:
       - 'packaging/rpm/viola-browser-stable.spec'
       - 'src/external/viola/chromium-linux/**'
   workflow_dispatch:
+    inputs:
+      runtime_probe:
+        description: Probe retained native ARM packages without rebuilding
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,6 +21,7 @@ permissions:
 
 jobs:
   select:
+    if: inputs.runtime_probe != true
     runs-on: ubuntu-24.04
     outputs:
       needed: ${{ steps.scope.outputs.needed }}
@@ -92,3 +98,6 @@ jobs:
             build/SOURCE-REVISION
           if-no-files-found: error
           retention-days: 14
+  runtime-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true
+    uses: ./.github/workflows/desktop-browser-runtime.yml
