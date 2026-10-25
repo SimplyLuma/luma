@@ -1,0 +1,59 @@
+// Actual input into this disposable GNOME compositor, never app adapters.
+import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
+
+const sleep=ms=>new Promise(resolve=>GLib.timeout_add(GLib.PRIORITY_DEFAULT,ms,()=>{resolve();return GLib.SOURCE_REMOVE;}));
+export class OwnedCompositorInput {
+    constructor(out) {
+        if (GLib.get_user_name()!=='luma-gate-browser-opens' ||
+            GLib.get_home_dir()!=='/home/luma-gate-browser-opens' ||
+            GLib.getenv('WAYLAND_DISPLAY')!=='viola-qa-shm-r1' ||
+            !/^\/tmp\/luma-gate-browser-opens\.[A-Za-z0-9]+\/out$/.test(out) ||
+            GLib.getenv('BROWSER_GATE_OUT')!==out)
+            throw Error('Owned virtual input is restricted to the disposable Shell fixture');
+        this.out=out;this.sequence=0;
+        const seat=global.stage.context.get_backend().get_default_seat();
+        this.pointer=seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this.keyboard=seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    }
+    save(receipt) {
+        GLib.file_set_contents(`${this.out}/compositor-input-${++this.sequence}.json`,JSON.stringify(receipt,null,2));
+    }
+    async click(x,y) {
+        if (![x,y].every(Number.isFinite) || x<0 || y<0 || x>=1600 || y>=1000)
+            throw Error('Owned compositor click is outside the virtual monitor');
+        const receipt={scope:'REAL_COMPOSITOR_VIRTUAL_INPUT_NOT_PAGE_ACCEPTANCE',action:'click',
+            compositor:GLib.get_prgname(),requested:[x,y],before:global.get_pointer(),
+            focus_before:global.display.focus_window?.get_pid()??null};
+        this.pointer.notify_absolute_motion(GLib.get_monotonic_time(),x,y);
+        const deadline=Date.now()+2000;
+        while (Date.now()<deadline) {
+            const [actualX,actualY]=global.get_pointer();
+            if (Math.abs(actualX-x)<=1 && Math.abs(actualY-y)<=1) break;
+            await sleep(20);
+        }
+        receipt.after_motion=global.get_pointer();
+        const [actualX,actualY]=receipt.after_motion;
+        receipt.position_verified=Math.abs(actualX-x)<=1 && Math.abs(actualY-y)<=1;
+        this.save(receipt);
+        if (!receipt.position_verified) throw Error('Actual compositor pointer did not reach requested coordinates');
+        await sleep(100);
+        this.pointer.notify_button(GLib.get_monotonic_time(),272,Clutter.ButtonState.PRESSED);
+        try {await sleep(80);} finally {
+            this.pointer.notify_button(GLib.get_monotonic_time(),272,Clutter.ButtonState.RELEASED);
+        }
+        await sleep(150);
+        receipt.after_click=global.get_pointer();
+        receipt.focus_after=global.display.focus_window?.get_pid()??null;
+        receipt.button_sent=true;this.save(receipt);return receipt;
+    }
+    async keyA() {
+        const receipt={scope:'REAL_COMPOSITOR_VIRTUAL_INPUT_NOT_PAGE_ACCEPTANCE',action:'key-a',
+            compositor:GLib.get_prgname(),pointer:global.get_pointer(),focus_before:global.display.focus_window?.get_pid()??null};
+        this.keyboard.notify_keyval(GLib.get_monotonic_time(),Clutter.KEY_a,Clutter.KeyState.PRESSED);
+        try {await sleep(80);} finally {
+            this.keyboard.notify_keyval(GLib.get_monotonic_time(),Clutter.KEY_a,Clutter.KeyState.RELEASED);
+        }
+        await sleep(150);receipt.key_sent=true;this.save(receipt);return receipt;
+    }
+}

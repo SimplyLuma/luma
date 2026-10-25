@@ -20,7 +20,7 @@ function geometry(window,native) {
     return {window:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},page:[rect.x+x,rect.y+y,w,h]};
 }
 
-export async function proveNativeWindow(window,launcher,out,url) {
+export async function proveNativeWindow(window,launcher,out,url,compositorInput) {
     const token=/[?&]token=([a-f0-9]{32})(?:&|$)/.exec(url)?.[1];
     if (!token) throw Error('unique native page token is absent');
     const observer=GLib.getenv('BROWSER_GATE_NATIVE_OBSERVER');
@@ -94,13 +94,13 @@ export async function proveNativeWindow(window,launcher,out,url) {
         const start=await pixels('loaded',0,false);
         const rectangle=geometry(window,start.native).page;
         await pageViewport(0,start.native);
-        const click=await capture(launcher,['/usr/bin/python3','-B',input,'click','--x',`${Math.round(rectangle[0]+rectangle[2]*.25)}`,'--y',`${Math.round(rectangle[1]+rectangle[3]*.25)}`]);
-        if (!click.ok) throw Error(`owned compositor click failed: ${click.stderr}`);
-        records.push({action:'real-compositor-click',receipt:JSON.parse(click.stdout),page:await pageState(1)});save();
+        const click=await compositorInput.click(Math.round(rectangle[0]+rectangle[2]*.25),Math.round(rectangle[1]+rectangle[3]*.25));
+        records.push({action:'real-compositor-click',receipt:click});save();
+        records.push({action:'trusted-pointer-page',page:await pageState(1)});save();
         await pageViewport(1,(await pixels('trusted-pointer',1,true)).native);
-        const key=await capture(launcher,['/usr/bin/python3','-B',input,'key-a']);
-        if (!key.ok) throw Error(`owned compositor key failed: ${key.stderr}`);
-        records.push({action:'real-compositor-key',receipt:JSON.parse(key.stdout),page:await pageState(2)});save();
+        const key=await compositorInput.keyA();
+        records.push({action:'real-compositor-key',receipt:key});save();
+        records.push({action:'trusted-key-page',page:await pageState(2)});save();
         await pageViewport(2,(await pixels('trusted-key',2,true)).native);
         const before=window.get_frame_rect();
         const width=Math.max(600,before.width-100),height=Math.max(500,before.height-60);

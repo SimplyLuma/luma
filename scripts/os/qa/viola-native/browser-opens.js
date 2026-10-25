@@ -5,6 +5,7 @@ import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {proveNativeWindow} from './native-proof.js';
+import {OwnedCompositorInput} from './owned-compositor-input.js';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
 Gio._promisify(Gio.Subprocess.prototype, 'wait_async', 'wait_finish');
 Gio._promisify(Shell.Screenshot.prototype, 'screenshot');
@@ -96,17 +97,13 @@ async function probe() {
         // the real titlebar through the owned compositor input device before
         // requiring a page load; this never advances the page-input proof.
         const frame = window.get_frame_rect();
-        const focus = launcher.spawnv(['/usr/bin/python3', '-B',
-            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'click',
-            '--x', `${Math.round(frame.x + frame.width / 2)}`,
-            '--y', `${Math.round(frame.y + 20)}`]);
-        const [focusOut, focusError] = await focus.communicate_utf8_async(null, null);
-        if (!focus.get_successful()) throw Error(`Owned titlebar focus failed: ${focusError}`);
-        result.titlebar_focus = JSON.parse(focusOut);
+        const compositorInput=new OwnedCompositorInput(out);
+        result.titlebar_focus=await compositorInput.click(
+            Math.round(frame.x+frame.width/2),Math.round(frame.y+20));
         const focusDeadline = Date.now() + 10000;
         while (!window.has_focus() && Date.now() < focusDeadline) await sleep(100);
         if (!window.has_focus()) throw Error('Owned compositor click did not focus the browser window');
-        result.records = await proveNativeWindow(window, launcher, out, url);
+        result.records = await proveNativeWindow(window, launcher, out, url, compositorInput);
         window.delete(global.get_current_time());
         const closeDeadline = Date.now() + 15000;
         while (windows().length && Date.now() < closeDeadline) await sleep(100);
