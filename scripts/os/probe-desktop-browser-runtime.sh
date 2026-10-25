@@ -62,6 +62,19 @@ rpm -V viola-browser-stable > "$out/rpm-verify-before.txt"
 cp /usr/share/viola-browser/provenance.json "$out/installed-provenance.json"
 cmp "$root/src/external/viola/chromium-linux/luma-package/desktop-arm-preview-frame-profile.json" \
   /usr/share/viola-browser/native-engine-profile.json
+# The Fedora package uses the real journal socket for dbus-broker-launch.
+# A minimal CI container has no service manager, so supply its ordinary journal
+# daemon locally rather than changing the browser or suppressing broker errors.
+/usr/bin/systemd-machine-id-setup
+/usr/lib/systemd/systemd-journald > "$out/journald.log" 2>&1 &
+journal=$!
+trap 'kill "$journal" 2>/dev/null || true; wait "$journal" 2>/dev/null || true' EXIT
+for _ in $(seq 50); do
+  [ -S /run/systemd/journal/socket ] && break
+  kill -0 "$journal"
+  sleep .1
+done
+[ -S /run/systemd/journal/socket ]
 useradd --create-home --uid 1100 viola-runtime
 install -d -o viola-runtime -g viola-runtime -m 0700 /run/user/1100
 chown -R viola-runtime:viola-runtime "$out"
