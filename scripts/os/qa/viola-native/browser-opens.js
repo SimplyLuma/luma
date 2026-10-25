@@ -58,6 +58,20 @@ async function probe() {
         if (windows().length !== 1) throw Error('Owned native browser did not map exactly one window');
         window = windows()[0];
         window.activate(global.get_current_time());
+        // Headless clients have no preceding user activation serial. Focus
+        // the real titlebar through the owned compositor input device before
+        // requiring a page load; this never advances the page-input proof.
+        const frame = window.get_frame_rect();
+        const focus = launcher.spawnv(['/usr/bin/python3', '-B',
+            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'click',
+            '--x', `${Math.round(frame.x + frame.width / 2)}`,
+            '--y', `${Math.round(frame.y + 20)}`]);
+        const [focusOut, focusError] = await focus.communicate_utf8_async(null, null);
+        if (!focus.get_successful()) throw Error(`Owned titlebar focus failed: ${focusError}`);
+        result.titlebar_focus = JSON.parse(focusOut);
+        const focusDeadline = Date.now() + 10000;
+        while (!window.has_focus() && Date.now() < focusDeadline) await sleep(100);
+        if (!window.has_focus()) throw Error('Owned compositor click did not focus the browser window');
         result.records = await proveNativeWindow(window, launcher, out, url);
         window.delete(global.get_current_time());
         const closeDeadline = Date.now() + 15000;
