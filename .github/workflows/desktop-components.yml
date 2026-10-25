@@ -7,12 +7,30 @@ on:
       - 'config/os/desktop-build-groups.json'
       - 'config/desktop/inputs.env'
       - 'scripts/os/desktop-package-matrix.py'
+      - 'scripts/os/check-native-noarch-package.py'
       - 'scripts/packages/**'
       - 'patches/**'
+      - 'src/luma-installer/**'
+      - 'src/luma-depot/**'
+      - 'src/luma-ari/**'
+      - 'src/luma-desktop-launcher-policy/**'
+      - 'src/luma-shell-state/org.project_luma.shell-state.gschema.xml'
+      - 'packaging/rpm/luma-application-installer.spec'
+      - 'packaging/rpm/luma-ari.spec'
+      - 'packaging/rpm/luma-desktop-launcher-policy.spec'
+      - 'tests/luma-ari/**'
+      - 'tests/fixtures/ari-v70*'
+      - 'tests/fixtures/ari-v70-data/**'
+      - 'tests/fixtures/depot-v70.json'
+      - 'tests/fixtures/valet-v70*'
+      - 'tests/fixtures/valet-v70/**'
+      - 'tools/lumaui-conform/scenarios/ari.json'
+      - 'config/desktop/system-flatpak-replacements.txt'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   select:
@@ -49,11 +67,19 @@ jobs:
     env:
       LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
       LUMA_RPM_BUILDER_DIRECT: '1'
+      LUMA_RPM_BUILDER_ARCHITECTURE: ${{ matrix.architecture }}
       RPM_BUILD_NCPUS: '2'
     steps:
       - name: Prepare native Fedora tools
-        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+        run: dnf5 -y install git gh podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Admit already checked matching toolkit
+        if: matrix.toolkit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE"
       - name: Build and check the selected component
         env:
           RECIPE: ${{ matrix.recipe }}
@@ -61,7 +87,13 @@ jobs:
           test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
           mkdir -p build
           git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+          export SOURCE_DATE_EPOCH=$(git -c safe.directory="$PWD" log -1 --format=%ct HEAD)
           bash "$RECIPE"
+      - name: Verify the noarch package identity and shipped payload
+        if: matrix.spec != ''
+        env:
+          SPEC: ${{ matrix.spec }}
+        run: python3 scripts/os/check-native-noarch-package.py --spec "$SPEC"
       - name: Retain checked RPMs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

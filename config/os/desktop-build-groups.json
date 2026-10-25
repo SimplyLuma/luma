@@ -89,6 +89,43 @@
         "src/luma-displays/luma_displays/displayconfig.py",
         "tests/luma-displays/test_model.py"
       ]
+    },
+    "application-installer": {
+      "recipe": "scripts/packages/build-luma-application-installer.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "toolkit": true,
+      "spec": "packaging/rpm/luma-application-installer.spec",
+      "paths": [
+        "src/luma-installer/",
+        "src/luma-depot/",
+        "packaging/rpm/luma-application-installer.spec",
+        "tests/fixtures/depot-v70",
+        "tests/fixtures/valet-v70",
+        "src/luma-shell-state/org.project_luma.shell-state.gschema.xml"
+      ]
+    },
+    "ari": {
+      "recipe": "scripts/packages/build-luma-ari.sh",
+      "toolkit": true,
+      "spec": "packaging/rpm/luma-ari.spec",
+      "paths": [
+        "src/luma-ari/",
+        "tests/luma-ari/",
+        "tests/fixtures/ari-v70",
+        "tools/lumaui-conform/scenarios/ari.json",
+        "packaging/rpm/luma-ari.spec"
+      ]
+    },
+    "desktop-launcher-policy": {
+      "recipe": "scripts/packages/build-luma-desktop-launcher-policy.sh",
+      "spec": "packaging/rpm/luma-desktop-launcher-policy.spec",
+      "paths": [
+        "src/luma-desktop-launcher-policy/",
+        "config/desktop/system-flatpak-replacements.txt",
+        "packaging/rpm/luma-desktop-launcher-policy.spec"
+      ]
     }
   }
 }
