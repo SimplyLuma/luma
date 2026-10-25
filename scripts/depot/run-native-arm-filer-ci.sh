@@ -9,6 +9,8 @@ test "$(uname -m)" = aarch64
 [[ "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+:[0-9]+$ ]]
 CI_SOURCE=$GITHUB_WORKSPACE
 PRODUCT_SOURCE=$GITHUB_WORKSPACE/product-source
+HOST_OUT=$GITHUB_WORKSPACE/build/native-arm-filer-logs
+test -d "$HOST_OUT" && test -w "$HOST_OUT"
 CI_OUT=$GITHUB_WORKSPACE/build/native-arm-filer-ci
 CI_INPUTS=$GITHUB_WORKSPACE/build/native-arm-filer-inputs
 DEPOT_ROOT=$GITHUB_WORKSPACE/build/native-arm-filer-depot
@@ -45,14 +47,14 @@ cleanup() {
     id=$(cat "$CI_OUT/container-id")
     [[ "$id" =~ ^[a-f0-9]{64}$ ]]
     test "$(docker inspect --format '{{ index .Config.Labels "org.projectluma.native-filer-run" }}' "$id")" = "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
-    docker inspect --format '{{json .State}}' "$id" > "$CI_OUT/CONTAINER-BEFORE-CLEANUP.json"
+    docker inspect --format '{{json .State}}' "$id" > "$HOST_OUT/CONTAINER-BEFORE-CLEANUP.json"
     local stop_status=0
-    timeout --signal=TERM --kill-after=2s 15s docker stop -t 10 "$id" > "$CI_OUT/container-stop.txt" 2>&1 || stop_status=$?
+    timeout --signal=TERM --kill-after=2s 15s docker stop -t 10 "$id" > "$HOST_OUT/container-stop.txt" 2>&1 || stop_status=$?
     printf 'Docker stop exit status: %s\n' "$stop_status"
-    timeout --signal=TERM --kill-after=2s 10s docker rm --force "$id" > "$CI_OUT/container-removal.txt"
+    timeout --signal=TERM --kill-after=2s 10s docker rm --force "$id" > "$HOST_OUT/container-removal.txt"
     remaining=$(docker ps --all --no-trunc --filter "id=$id" --format '{{.ID}}')
     test -z "$remaining"
-    python3 - "$CI_OUT" "$id" <<'PY'
+    python3 - "$HOST_OUT" "$id" <<'PY'
 import json,pathlib,sys
 p=pathlib.Path(sys.argv[1]);before=json.loads((p/'CONTAINER-BEFORE-CLEANUP.json').read_text())
 (p/'CONTAINER-CLOSED.json').write_text(json.dumps(dict(container_id=sys.argv[2],container_removed=True,remaining_matching_containers=0,state_before_removal=before),indent=2)+'\n')
