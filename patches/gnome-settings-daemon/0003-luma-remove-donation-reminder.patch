@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Luma does not compile or schedule the upstream donation campaign.
+--- a/plugins/housekeeping/meson.build
++++ b/plugins/housekeeping/meson.build
+@@ -4,7 +4,6 @@
+ )
+ 
+ sources = common_files + files(
+-  'gsd-donation-reminder.c',
+   'gsd-oom-notice.c',
+   'gsd-housekeeping-manager.c',
+   'gsd-systemd-notify.c',
+--- a/plugins/housekeeping/gsd-housekeeping-manager.c
++++ b/plugins/housekeeping/gsd-housekeeping-manager.c
+@@ -26,7 +26,6 @@
+ #include "gnome-settings-profile.h"
+ #include "gsd-housekeeping-manager.h"
+ #include "gsd-disk-space.h"
+-#include "gsd-donation-reminder.h"
+ #include "gsd-systemd-notify.h"
+ 
+ 
+@@ -400,7 +399,6 @@
+ 
+         G_APPLICATION_CLASS (gsd_housekeeping_manager_parent_class)->startup (app);
+ 
+-        gsd_donation_reminder_init ();
+ 
+         gnome_settings_profile_end (NULL);
+ }
+@@ -412,7 +410,6 @@
+ 
+         g_debug ("Stopping housekeeping manager");
+ 
+-        gsd_donation_reminder_end ();
+ 
+         g_clear_object (&manager->systemd_notify);
+ 
+--- a/data/org.gnome.settings-daemon.plugins.housekeeping.gschema.xml.in
++++ b/data/org.gnome.settings-daemon.plugins.housekeeping.gschema.xml.in
+@@ -29,7 +29,7 @@
+       <description>Specify a time in minutes. Subsequent warnings for a volume will not appear more often than this period.</description>
+     </key>
+     <key name="donation-reminder-enabled" type="b">
+-      <default>true</default>
++      <default>false</default>
+       <summary>Whether donation reminders are enabled</summary>
+       <description>Enables or disables the low-frequency donation reminder notification.</description>
+     </key>

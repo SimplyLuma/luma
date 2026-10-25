@@ -251,20 +251,20 @@
       <description>The folder broken out of the Dock when the session ended: 'uri' (s), 'x' and 'y' (i, its position) and 'monitors' (s, the display layout it was left on). It is reopened there only if that layout is still the one in use.</description>
     </key>
     <key name="touchpad-app-switch" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Three fingers sideways switches app</summary>
-      <description>A three-finger swipe left or right moves to the next or the previous app, following your fingers and finishing when you let go. Off leaves three fingers sideways to the Shell.</description>
+      <description>When enabled, three-finger horizontal swipes switch apps. Use four-finger desktop switching to keep the gestures separate.</description>
     </key>
     <key name="touchpad-workspace-fingers" type="i">
-      <default>4</default>
+      <default>3</default>
       <summary>Fingers that switch workspace</summary>
-      <description>Four, so that three can switch app. Three gives the workspaces their old gesture back, and then apps have none.</description>
+      <description>Three-finger horizontal swipes switch desktops by default. Four leaves three-finger swipes available for optional app switching.</description>
       <range min="3" max="4"/>
     </key>
     <key name="touchpad-gesture-migration" type="u">
       <default>0</default>
       <summary>Whether the gesture defaults have been written once</summary>
-      <description>Luma writes the gesture defaults a single time, so that a person who changes them afterwards keeps their choice when the defaults change again.</description>
+      <description>Records gesture initialization without replacing existing preferences.</description>
     </key>
   </schema>
 </schemalist>

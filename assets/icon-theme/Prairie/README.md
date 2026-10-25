@@ -83,6 +83,10 @@ They use GTK's symbolic recoloring rather than a baked system accent. Window
 controls and status icons retain their separate native 16px fill-only contract.
 Trash retains its independent Places and Applications aliases.
 
+The disabled Wi-Fi status glyph derives from Prairie’s excellent-signal artwork
+with a separated diagonal slash. It uses the same fill-only foreground geometry
+to keep the off state consistent with connected states.
+
 Luma-owned application artwork, including the owner's selected icon family,
 is CC-BY-SA-4.0. The owner confirmed distribution rights for revision 40 on
 2026-09-28. Attributed Lucide geometry retains ISC/MIT notices. Theme metadata, generator, framing, status glyphs and

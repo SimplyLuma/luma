@@ -130,8 +130,7 @@ class WeatherWindow(AppWindow):
         overlay = Gtk.Overlay(child=self.sky)
         overlay.add_overlay(self.scroll)
         self.empty = EmptyState('No cities', 'Add a city to see its forecast.',
-                                'lumaui-cloud-symbolic',
-                                primary=('Add a city', lambda: self._open_add_card()))
+                                'lumaui-cloud-symbolic')
         self.detail_stack = Gtk.Stack(hexpand=True, vexpand=True)
         self.detail_stack.add_named(self.empty, 'empty')
         self.detail_stack.add_named(overlay, 'forecast')
@@ -787,6 +786,9 @@ class WeatherWindow(AppWindow):
                                             p.latitude == saved.latitude and p.longitude == saved.longitude
                                             for saved in self.places))
         self.phone_search.entry.set_name('wx-phone-search')
+        self.phone_search.add_css_class('lumaui-panel-field')
+        self.phone_search.get_first_child().add_css_class('lumaui-panel-field-icon')
+        self.phone_search.set_margin_bottom(10)
         rows = [self.phone_search]
         for place in self.places:
             snapshot = self.snapshots.get(place.uid)

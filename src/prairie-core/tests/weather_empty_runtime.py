@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as root:
             w.set_default_size(width, 740)
             w.present()
             deadline = time.monotonic() + 5
-            while w.get_width() == 0 and time.monotonic() < deadline:
+            while (w.get_surface() is None or w.get_surface().get_width() != width) and time.monotonic() < deadline:
                 GLib.MainContext.default().iteration(False)
                 time.sleep(0.01)
             # Gtk.Window's allocation excludes its CSD shadow. The capture's
@@ -42,18 +42,23 @@ with tempfile.TemporaryDirectory() as root:
             assert w.detail_stack.get_visible_child_name() == 'empty'
             assert w.empty.heading.get_text() == 'No cities'
             assert w.empty.description.get_text() == 'Add a city to see its forecast.'
-            with patch.object(w, '_open_add_card') as add:
-                w.empty.primary_button.emit('clicked')
-                add.assert_called_once()
+            assert w.empty.primary_button is None
             with patch.object(w, '_focus_search') as focus:
                 w._open_add_card()
                 focus.assert_called_once()
-            w.empty.primary_button.emit('clicked')
+            if w.phone:
+                # Exercise the remaining action bar button, including its panel.
+                w._bar_widget(w._pin).emit('clicked')
+                assert w.center.grown == 'places'
+                entry = w.phone_search.entry
+            else:
+                w._open_add_card()
+                entry = w.foot.entry
             deadline = time.monotonic() + 2
-            while not w.foot.entry.get_mapped() and time.monotonic() < deadline:
+            while not entry.get_mapped() and time.monotonic() < deadline:
                 GLib.MainContext.default().iteration(False)
                 time.sleep(0.01)
-            assert w.foot.entry.get_mapped() and w.get_focus() is not None
+            assert entry.get_mapped()
             assert not w.store.list()
             place = weather.new_place(weather.Place(uid='', name='Test place',
                                                      latitude=1.0, longitude=2.0))

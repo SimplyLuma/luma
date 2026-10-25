@@ -5,23 +5,25 @@
  Name:           gnome-settings-daemon
  Version:        50.1
 -Release:        %autorelease
-+Release:        1.luma.2%{?dist}
++Release:        1.luma.3%{?dist}
  Summary:        The daemon sharing settings from GNOME to GTK+/KDE applications
  
  License:        GPL-2.0-or-later AND LGPL-2.1-or-later
-@@ -37,6 +37,11 @@
+@@ -36,6 +36,13 @@
+ 
  # gsetting overrides for the "Server with GUI" installation
  Source100:    	org.gnome.settings-daemon.plugins.power.gschema.override
- 
++
 +# Project Luma: a volume change makes no sound; the on-screen level is the feedback.
 +Patch1001:      0001-luma-media-keys-no-volume-change-sound.patch
 +# Project Luma: the memory notice names the stopped app, once, from Monitor.
 +Patch1002:      0002-luma-housekeeping-named-memory-notice.patch
-+
++# Shared by desktop, tablet and mobile: do not compile donation campaigns.
++Patch1003:      0003-luma-remove-donation-reminder.patch
+ 
  BuildRequires:  gcc
  BuildRequires:  gettext
- BuildRequires:  meson >= 0.64.0
-@@ -126,6 +131,12 @@
+@@ -126,6 +133,12 @@
  
  %find_lang %{name} --with-gnome
  
