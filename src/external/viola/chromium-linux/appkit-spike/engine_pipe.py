@@ -13,10 +13,41 @@ import threading
 import time
 from concurrent.futures import Future
 
+
+NATIVE_ENGINE_PROFILE = Path(__file__).parent.parent / 'native-engine-profile.json'
+
+
+def native_frame_profile_flags(path=NATIVE_ENGINE_PROFILE):
+    """Read the desktop producer's transport selection, outside user profiles.
+
+    An installation without this optional packaged profile keeps its existing
+    DMA transport. Mobile producers do not install the desktop preview profile.
+    Shared-memory delivery still uses Chromium's GPU renderer and sandbox.
+    """
+    if path.is_symlink():
+        raise ValueError('Invalid native engine profile file')
+    if not path.exists():
+        return []
+    if not path.is_file():
+        raise ValueError('Invalid native engine profile file')
+    with path.open('rb') as stream:
+        data = stream.read(4097)
+    if len(data) > 4096:
+        raise ValueError('Native engine profile is too large')
+    profile = json.loads(data)
+    if profile != {
+            'schema': 'org.projectluma.viola.native-engine-profile/v1',
+            'role': 'desktop-arm-preview',
+            'frame_transport': 'shm'}:
+        raise ValueError('Unsupported native engine profile')
+    return ['--viola-native-shm-frame-probe']
+
+
 class EnginePipe:
     def __init__(self, executable: Path, profile: Path, on_event, *, native_frame_probe=False, frame_socket=None, native_menu_probe=False, native_media_probe=False, on_closed=None, manual_browsing=False, reuse_profile=False):
         if manual_browsing and not native_frame_probe:
             raise ValueError('Manual browsing requires the native interactive host')
+        frame_profile_flags = native_frame_profile_flags() if native_frame_probe else []
         if profile.exists() and any(profile.iterdir()) and not reuse_profile:
             raise ValueError("The architecture probe requires a new, empty profile")
         profile.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -48,6 +79,7 @@ class EnginePipe:
                        # obsolete VaapiVideoDecoder flags do not select it.
                        '--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL',
                        '--force-device-scale-factor=1'] if native_frame_probe else []
+        probe_flags.extend(frame_profile_flags)
         if manual_browsing:
             # This user-operated browser uses the pipe as internal IPC, not a
             # WebDriver session. Keep QA's normal automation marker unchanged.

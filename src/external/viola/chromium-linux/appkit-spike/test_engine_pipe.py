@@ -11,10 +11,37 @@ import tempfile
 import threading
 import unittest
 
-from engine_pipe import EnginePipe
+from engine_pipe import EnginePipe, native_frame_profile_flags
 
 
 class EngineLifecycleTest(unittest.TestCase):
+    def test_packaged_desktop_transport_profile_is_explicit_and_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'native-engine-profile.json'
+            self.assertEqual(native_frame_profile_flags(path), [])
+            approved = Path(directory) / 'approved.json'
+            approved.write_text(json.dumps({
+                'schema': 'org.projectluma.viola.native-engine-profile/v1',
+                'role': 'desktop-arm-preview', 'frame_transport': 'shm'}))
+            path.write_bytes(approved.read_bytes())
+            self.assertEqual(native_frame_profile_flags(path), ['--viola-native-shm-frame-probe'])
+            profile = json.loads(path.read_text())
+            for change in ({'role': 'mobile'}, {'frame_transport': 'anything'}, {'extra': True}):
+                with self.subTest(change=change):
+                    path.write_text(json.dumps(profile | change))
+                    with self.assertRaises(ValueError):
+                        native_frame_profile_flags(path)
+            path.write_bytes(b' ' * 4097)
+            with self.assertRaises(ValueError):
+                native_frame_profile_flags(path)
+            path.unlink()
+            path.symlink_to(approved)
+            with self.assertRaises(ValueError):
+                native_frame_profile_flags(path)
+            approved.unlink()
+            with self.assertRaises(ValueError):
+                native_frame_profile_flags(path)
+
     def test_child_receives_supported_gtk3_and_retained_security_arguments(self):
         # Exercise actual child argv for both pipe modes. The compositor stub
         # keeps this a launcher test; it is not graphical qualification.
@@ -23,11 +50,13 @@ class EngineLifecycleTest(unittest.TestCase):
             executable = root / 'engine'
             executable.write_text('#!' + sys.executable + '\n' + "import json, os, pathlib, sys\npathlib.Path(__file__).with_suffix('.argv.json').write_text(json.dumps(sys.argv[1:]))\nbuffer = b''\nwhile True:\n    data = os.read(3, 65536)\n    if not data:\n        break\n    buffer += data\n    while b'\\0' in buffer:\n        record, buffer = buffer.split(b'\\0', 1)\n        message = json.loads(record)\n        if message['method'] == 'Browser.close':\n            os._exit(0)\n        os.write(4, json.dumps({'id': message['id'], 'result': {'ok': True}}).encode() + b'\\0')\n")
             executable.chmod(0o700)
-            for native in (False, True):
-                with self.subTest(native_frame=native):
+            for native, selected in ((False, False), (True, False), (True, True)):
+                with self.subTest(native_frame=native, desktop_shm=selected):
                     display = SimpleNamespace(environment=os.environ.copy, close=lambda: None)
-                    with patch('engine_display.EngineDisplay', return_value=display):
-                        engine = EnginePipe(executable, root / str(native), lambda _: None,
+                    flags = ['--viola-native-shm-frame-probe'] if selected else []
+                    with patch('engine_display.EngineDisplay', return_value=display), \
+                            patch('engine_pipe.native_frame_profile_flags', return_value=flags):
+                        engine = EnginePipe(executable, root / f'{native}-{selected}', lambda _: None,
                                             native_frame_probe=native)
                     try:
                         self.assertEqual(engine.call('Ping'), {'ok': True})
@@ -39,6 +68,7 @@ class EngineLifecycleTest(unittest.TestCase):
                             self.assertIn(flag, argv)
                         self.assertEqual('--headless=new' in argv, not native)
                         self.assertEqual('--viola-native-frame-probe' in argv, native)
+                        self.assertEqual('--viola-native-shm-frame-probe' in argv, selected)
                         for flag in ('--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'):
                             self.assertNotIn(flag, argv)
                     finally:
