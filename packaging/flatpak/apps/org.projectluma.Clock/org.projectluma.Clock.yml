@@ -17,7 +17,6 @@
     "--share=network",
     "--talk-name=org.projectluma.AppData1",
     "--talk-name=org.projectluma.Background1",
-    "--system-talk-name=org.freedesktop.timedate1",
     "--talk-name=org.projectluma.ClockHost1",
     "--metadata=X-Luma=min-host-core=93",
     "--metadata=X-Luma=min-host-background=5",
