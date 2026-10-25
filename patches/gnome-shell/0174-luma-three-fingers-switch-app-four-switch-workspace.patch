@@ -1,26 +1,10 @@
 From: Project Luma <engineering@projectluma.org>
 Date: Sun, 20 Sep 2026 22:00:00 -0500
-Subject: [PATCH] luma: three fingers switch app, four switch workspace
+Subject: [PATCH] luma: configurable touchpad desktop and app gestures
 
-Three fingers sideways switched workspace, which is the gesture people
-reach for to change app -- and on a machine with one workspace it did
-nothing at all, which is how most people have it.
-
-Three fingers sideways now moves between apps, in the order they were last
-used, following the fingers: the app being left goes with them, the one
-being gone to comes in behind it, and letting go either finishes the move
-or puts everything back where it was. Four fingers sideways is workspaces.
-Three fingers up is still the overview, which cannot collide with either
-of them: that one is vertical.
-
-The gestures have to be told how many fingers they are for, because "three
-or more" made a four-finger swipe do both. The tracker takes a finger
-count and whether it is exact, and the two sideways gestures are exact.
-
-The finger count for workspaces is a setting, so someone who wants the old
-gesture back can have it, and the defaults are written once: after that
-they are the person's, and a later change of mind here does not overrule
-theirs.
+Three fingers sideways switches desktops by default. Optional app switching
+uses three fingers when enabled alongside four-finger desktop switching.
+Keep explicit gesture preferences and leave vertical overview gestures alone.
 
 ---
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
@@ -153,7 +137,7 @@ index 0000000..2a4fed0
 +
 +        Main.overview.connectObject(
 +            'showing', () => (this._tracker.enabled = false),
-+            'hiding', () => (this._tracker.enabled = true), this);
++            'hidden', () => this._syncEnabled(), this);
 +
 +        this._syncEnabled();
 +        this._settings?.connectObject('changed::touchpad-app-switch',
@@ -165,7 +149,7 @@ index 0000000..2a4fed0
 +    }
 +
 +    _syncEnabled() {
-+        const wanted = this._settings?.get_boolean('touchpad-app-switch') ?? true;
++        const wanted = this._settings?.get_boolean('touchpad-app-switch') ?? false;
 +        this._tracker.enabled = wanted && !Main.overview.visible;
 +    }
 +
@@ -413,12 +397,11 @@ index 51819f8..849fedd 100644
  
  import * as Main from './main.js';
  import * as LumaGrid from './lumaGrid.js';
-@@ -506,6 +507,30 @@ class ResizePopup extends St.Widget {
+@@ -506,6 +507,27 @@ class ResizePopup extends St.Widget {
      }
  });
  
-+// Luma: the touchpad gesture defaults, written once. After that they are
-+// the person's, and a later change of mind here does not overrule theirs.
++// Use the schema defaults while preserving explicit gesture preferences.
 +function lumaGestureSettings() {
 +    let settings;
 +    try {
@@ -429,10 +412,8 @@ index 51819f8..849fedd 100644
 +
 +    try {
 +        if (settings.get_uint('touchpad-gesture-migration') < 1) {
-+            settings.set_int('touchpad-workspace-fingers', 4);
-+            settings.set_boolean('touchpad-app-switch', true);
 +            settings.set_uint('touchpad-gesture-migration', 1);
-+            log('[luma-gestures] four fingers switch workspace, three switch app');
++            log('[luma-gestures] touchpad gesture preferences initialized');
 +        }
 +    } catch (e) {
 +        logError(e, '[luma-gestures] the gesture defaults could not be written');
@@ -484,13 +465,11 @@ index f7c2f7a..8a9ea8a 100644
  export class WorkspaceAnimationController {
      constructor() {
          this._movingWindow = null;
-@@ -356,12 +371,17 @@ export class WorkspaceAnimationController {
+@@ -356,12 +371,15 @@ export class WorkspaceAnimationController {
              this._swipeTracker.enabled = true;
          });
  
-+        // Luma: four fingers sideways is workspaces; three is apps
-+        // (lumaAppSwitch.js). The count is a setting, so someone who wants
-+        // the old three-finger workspaces can have them back.
++        // Three fingers switch desktops by default; keep the configured count.
          const swipeTracker = new SwipeTracker.SwipeTracker(global.stage,
              Clutter.Orientation.HORIZONTAL,
              Shell.ActionMode.NORMAL,
