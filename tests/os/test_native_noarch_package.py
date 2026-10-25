@@ -62,5 +62,45 @@ printf 'fixture\\n' > %{buildroot}/usr/libexec/luma-flatpak-replacements
             module.check(self.root, self.spec)
 
 
+class AdditionalNoarchPayloads(unittest.TestCase):
+    def test_real_shell_state_and_icon_packages_require_their_shipped_payload(self):
+        import hashlib
+        for name in ('luma-shell-state', 'prairie-icon-theme'):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                directory = root / 'build/packages' / name
+                directory.mkdir(parents=True)
+                required = sorted(module.REQUIRED[name])
+                spec = root / 'fixture.spec'
+                install = '\n'.join(
+                    'mkdir -p %{buildroot}' + str(Path(path).parent) + '\n' +
+                    "printf 'fixture\\n' > %{buildroot}" + path for path in required)
+                spec.write_text(f"""Name: {name}
+Version: 0.0.1
+Release: 1
+Summary: Isolated checker payload fixture
+License: MIT
+BuildArch: noarch
+%description
+Private fixture; never installed or executed.
+%install
+{install}
+%files
+""" + '\n'.join(required) + '\n')
+                subprocess.run(['rpmbuild', '-bb', '--nodeps', '--define', f'_topdir {directory}',
+                                '--define', '_build_id_links none', str(spec)], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                rpm = next(directory.glob('RPMS/**/*.rpm'))
+                digest = hashlib.sha256(rpm.read_bytes()).hexdigest()
+                (directory / 'SHA256SUMS').write_text(f'{digest}  {rpm.relative_to(directory)}\n')
+                module.check(root, spec)
+                # Actual payload is queried again; adding a missing required file
+                # cannot be satisfied by the valid NEVRA/checksum alone.
+                from unittest.mock import patch
+                with patch.dict(module.REQUIRED, {name: set(required) | {'/usr/share/missing'}}):
+                    with self.assertRaisesRegex(ValueError, 'Missing shipped files'):
+                        module.check(root, spec)
+
+
 if __name__ == '__main__':
     unittest.main()

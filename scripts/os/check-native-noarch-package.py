@@ -7,6 +7,19 @@ from pathlib import Path
 import subprocess
 
 REQUIRED = {
+    'luma-shell-state': {
+        '/usr/libexec/luma-shell-state-service', '/usr/bin/luma-shell-statectl',
+        '/usr/share/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml',
+        '/usr/lib/systemd/user/graphical-session.target.wants/luma-shell-state.service',
+        '/usr/share/themes/Luma/gtk-4.0/gtk.css',
+    },
+    'prairie-icon-theme': {
+        '/usr/share/icons/Prairie/index.theme',
+        '/usr/share/icons/Prairie/scalable/apps/org.gnome.Nautilus.svg',
+        '/usr/share/icons/Prairie/symbolic/actions/window-close-symbolic.svg',
+        '/usr/share/glib-2.0/schemas/90-prairie.gschema.override',
+        '/usr/share/doc/prairie-icon-theme/LUCIDE_REFERENCE_LICENSE.txt',
+    },
     'luma-application-installer': {
         '/usr/bin/luma-installer', '/usr/bin/luma-depot',
         '/usr/lib/systemd/user/luma-retired-apps.service',

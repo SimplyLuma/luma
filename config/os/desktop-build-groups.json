@@ -126,6 +126,29 @@
         "config/desktop/system-flatpak-replacements.txt",
         "packaging/rpm/luma-desktop-launcher-policy.spec"
       ]
+    },
+    "shell-state": {
+      "recipe": "scripts/packages/build-luma-shell-state.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "spec": "packaging/rpm/luma-shell-state.spec",
+      "paths": [
+        "src/luma-shell-state/",
+        "packaging/rpm/luma-shell-state.spec"
+      ]
+    },
+    "icon-theme": {
+      "recipe": "scripts/packages/build-prairie-icon-theme.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "spec": "packaging/rpm/prairie-icon-theme.spec",
+      "paths": [
+        "assets/icon-theme/",
+        "packaging/gsettings/90-prairie.gschema.override",
+        "packaging/rpm/prairie-icon-theme.spec"
+      ]
     }
   }
 }

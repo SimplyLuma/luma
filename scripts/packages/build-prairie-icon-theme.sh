@@ -7,6 +7,12 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
+# Direct native CI runs the recipe inside its canonical Fedora container.
+# Install this recipe's host-side SVG validator there, before source staging.
+if [ "${LUMA_RPM_BUILDER_DIRECT:-0}" = 1 ] && ! command -v xmllint >/dev/null 2>&1; then
+  dnf5 -y install libxml2
+fi
+
 for tool in head mktemp podman python3 sha256sum tar xmllint; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required Prairie icon-theme build tool is missing: %s\n' "$tool" >&2
