@@ -62,10 +62,8 @@ with tempfile.TemporaryDirectory() as root:
         assert w.detail_stack.get_visible_child_name()=='empty'
         assert w.empty.heading.get_text()=='No cities'
         assert w.empty.description.get_text()=='Add a city to see its forecast.'
-        # The empty state's button opens the same card the sidebar's + opens,
-        # anchored to itself.
-        with patch.object(w,'_open_add_card') as add:
-            w.empty.primary_button.emit('clicked');add.assert_called_once()
+        # Adding a city stays in the sidebar or phone action bar.
+        assert w.empty.primary_button is None
         assert not w.store.list()
         # A failed refresh is not an error state: the app keeps showing what it
         # has and never puts a dialog in the way. Removal is the one
