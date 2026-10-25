@@ -34,3 +34,11 @@ stopped…"); a repeated signal for the same unit is ignored. The logic is in
 (meson suite `luma`), modelled on the two kills of 2026-09-22 (a Chromium
 scope and a `luma-dev-env-*` service). Dropping this patch restores GNOME's
 anonymous notice.
+
+`0003-luma-remove-donation-reminder.patch` removes the upstream donation
+producer from the housekeeping build and its startup/shutdown hooks. The shared
+package serves desktop, tablet and mobile on both CPU architectures. Existing
+settings keys remain compatible, with the enable key defaulting to false; even
+a retained true value cannot activate code absent from the binary. Packaged
+checks reject the campaign title, body and URL in gsd-housekeeping. Other
+notifications and housekeeping tasks retain their existing behavior.
