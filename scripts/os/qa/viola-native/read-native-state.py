@@ -30,7 +30,7 @@ def main():
     root = home / '.local/state/viola-luma/sessions'
     assert argv == ['/usr/bin/python3', host, '--engine', '/opt/viola/browser/chrome',
                     '--profile', str(home / '.local/share/viola-luma/profile'),
-                    '--work-root', str(root), '--interactive', args.url]
+                    '--work-root', str(root), '--interactive', '--start-url', args.url]
     path = root / 'presentation-live.json'
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:

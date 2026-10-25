@@ -28,7 +28,7 @@ async function probe() {
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
-            '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', url]);
+            '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);
         const pid = Number(child.get_identifier());
         const output = child.communicate_utf8_async(null, null).then(reply => {
             const [stdout, stderr] = reply;
