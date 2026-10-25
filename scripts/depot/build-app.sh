@@ -23,6 +23,12 @@
 set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 
+depot_validate_build_architectures
+build_jobs=()
+if [ -n "${DEPOT_BUILD_JOBS:-}" ]; then
+  [[ "$DEPOT_BUILD_JOBS" =~ ^([1-9]|1[0-6])$ ]] || depot_die "DEPOT_BUILD_JOBS must be 1 through 16"
+  build_jobs=(--jobs="$DEPOT_BUILD_JOBS")
+fi
 manifest=${1:?usage: build-app.sh MANIFEST [BRANCH]}
 branch=${2:-beta}
 case "$branch" in stable|beta|nightly) ;; *) depot_die "branch must be stable, beta or nightly" ;; esac
@@ -136,7 +142,7 @@ depot_log "building $app_id ($branch)"
 # portal available for nested flatpak-spawn image decoding.
 offline_compose=$(depot_in_tools python3 -c 'import json,sys; print("yes" if json.load(open(sys.argv[1])).get("appstream-compose") is False else "no")' "$work/manifest.json")
 if [ "$offline_compose" = yes ]; then
-  depot_in_tools flatpak-builder --user --disable-rofiles-fuse --force-clean --build-only \
+  depot_in_tools flatpak-builder --user --arch="$DEPOT_ARCH" "${build_jobs[@]}" --disable-rofiles-fuse --force-clean --build-only \
     --state-dir="$DEPOT_ROOT/work/flatpak-builder-state" --default-branch="$branch" \
     "$work/build" "$work/manifest.json" >"$out/build.log" 2>&1 ||
     { tail -n 60 "$out/build.log" >&2; depot_die "flatpak-builder build phase failed for $app_id"; }
@@ -146,12 +152,12 @@ if [ "$offline_compose" = yes ]; then
     --icons-dir="$work/build/files/share/app-info/icons/flatpak" \
     --components="$app_id" "$work/build/files" >>"$out/build.log" 2>&1 ||
     { tail -n 60 "$out/build.log" >&2; depot_die "offline AppStream composition failed for $app_id"; }
-  depot_in_tools flatpak-builder --user --disable-rofiles-fuse --finish-only \
+  depot_in_tools flatpak-builder --user --arch="$DEPOT_ARCH" "${build_jobs[@]}" --disable-rofiles-fuse --finish-only \
     --state-dir="$DEPOT_ROOT/work/flatpak-builder-state" --default-branch="$branch" \
     --repo="$out/repo" "$work/build" "$work/manifest.json" >>"$out/build.log" 2>&1 ||
     { tail -n 60 "$out/build.log" >&2; depot_die "flatpak-builder finish phase failed for $app_id"; }
 else
-  if ! depot_in_tools flatpak-builder --user --disable-rofiles-fuse --force-clean \
+  if ! depot_in_tools flatpak-builder --user --arch="$DEPOT_ARCH" "${build_jobs[@]}" --disable-rofiles-fuse --force-clean \
       --state-dir="$DEPOT_ROOT/work/flatpak-builder-state" \
       --default-branch="$branch" --repo="$out/repo" \
       "$work/build" "$work/manifest.json" >"$out/build.log" 2>&1; then

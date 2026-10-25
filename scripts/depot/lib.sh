@@ -14,6 +14,9 @@ depot_repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd
 # ostree, minisign and appstream. Created by scripts/depot/tools-container.sh.
 : "${DEPOT_TOOLS_CONTAINER:=luma-depot-tools}"
 : "${DEPOT_ARCH:=$(uname -m)}"
+# Native tools own Bubblewrap namespaces; SDK processes may use binfmt for a
+# separately selected target CPU. Native remains the default for every caller.
+: "${DEPOT_TOOLS_ARCH:=$DEPOT_ARCH}"
 : "${DEPOT_RUNTIME_BRANCH:=44}"
 : "${DEPOT_FEDORA_RELEASE:=44}"
 : "${DEPOT_REMOTE_NAME:=luma}"
@@ -44,6 +47,13 @@ depot_die() {
   exit 1
 }
 
+depot_validate_build_architectures() {
+  case "$DEPOT_TOOLS_ARCH/$DEPOT_ARCH" in
+    x86_64/x86_64|aarch64/aarch64|x86_64/aarch64) ;;
+    *) depot_die "unsupported tools/target CPU pair: $DEPOT_TOOLS_ARCH/$DEPOT_ARCH" ;;
+  esac
+}
+
 depot_gpg_fingerprint() {
   local file="$DEPOT_KEYS/gpg-fingerprint.txt"
   [ -s "$file" ] || depot_die "no Depot signing key; run scripts/depot/generate-keys.sh"
@@ -57,6 +67,7 @@ depot_in_tools() {
   else
     local workdir=$depot_repo_root
     podman exec --interactive --env DEPOT_INSIDE_TOOLS=1 --env "DEPOT_ROOT=$DEPOT_ROOT" \
+      --env "DEPOT_ARCH=$DEPOT_ARCH" --env "DEPOT_TOOLS_ARCH=$DEPOT_TOOLS_ARCH" \
       --env "DEPOT_KEYS=$DEPOT_KEYS" --env "FLATPAK_USER_DIR=$depot_flatpak_user_dir" \
       --workdir "$workdir" "$DEPOT_TOOLS_CONTAINER" "$@"
   fi

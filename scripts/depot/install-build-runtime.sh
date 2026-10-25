@@ -11,6 +11,7 @@
 set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 
+depot_validate_build_architectures
 site="$DEPOT_ROOT/site"
 [ -f "$site/luma.flatpakrepo" ] || depot_die "no $site/luma.flatpakrepo; run update-remote.sh first"
 
@@ -22,14 +23,14 @@ compiler_installation=$(realpath "$depot_flatpak_user_dir")
 exec 9>"$compiler_installation.compiler.lock"
 flock --exclusive 9
 
-depot_in_tools bash -s -- "$site" "$depot_repo" "$DEPOT_RUNTIME_BRANCH" <<'SH'
+depot_in_tools bash -s -- "$site" "$depot_repo" "$DEPOT_RUNTIME_BRANCH" "$DEPOT_ARCH" "$DEPOT_TOOLS_ARCH" <<'SH'
 set -euo pipefail
-site=$1 repo=$2 branch=$3
+site=$1 repo=$2 branch=$3 target_arch=$4 tools_arch=$5
 sed "s#^Url=.*#Url=file://$repo#" "$site/luma.flatpakrepo" >/tmp/luma-local.flatpakrepo
 flatpak remote-add --user --if-not-exists luma-local /tmp/luma-local.flatpakrepo
 flatpak remote-modify --user --url="file://$repo" luma-local
-flatpak install --user --noninteractive --or-update luma-local \
+flatpak install --user --arch="$target_arch" --noninteractive --or-update luma-local \
   "org.projectluma.Platform//$branch" "org.projectluma.Sdk//$branch"
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user --noninteractive --or-update flathub org.flatpak.Builder
+flatpak install --user --arch="$tools_arch" --noninteractive --or-update flathub org.flatpak.Builder
 SH
