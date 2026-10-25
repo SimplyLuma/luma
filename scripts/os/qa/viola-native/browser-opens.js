@@ -35,6 +35,11 @@ async function probe() {
         while (!windows().length && Date.now() < deadline) await sleep(200);
         if (windows().length !== 1) throw Error('Owned native browser did not map exactly one window');
         window = windows()[0];
+        // The desktop default is taller than this fixture's 800px monitor.
+        // Request a real fitting frame; all later proofs still use observed
+        // compositor/GTK geometry, including a second, independent resize.
+        window.move_resize_frame(false, 80, 60, 1000, 680);
+        window.activate(global.get_current_time());
         result.records = await proveNativeWindow(window, launcher, out, url);
         window.delete(global.get_current_time());
         const closeDeadline = Date.now() + 15000;

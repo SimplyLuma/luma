@@ -87,6 +87,17 @@ for _ in $(seq 50); do
   sleep .1
 done
 [ -S /run/dbus/system_bus_socket ]
+# Fedora's login1 activation delegates to a service manager, which is absent
+# here. Start the ordinary daemon directly and require its real bus owner.
+/usr/lib/systemd/systemd-logind > "$out/logind.log" 2>&1 &
+logind=$!
+trap 'kill "$logind" "$system_bus" "$journal" 2>/dev/null || true; wait "$logind" "$system_bus" "$journal" 2>/dev/null || true' EXIT
+for _ in $(seq 50); do
+  busctl --system --no-pager status org.freedesktop.login1 > "$out/logind-bus.txt" 2>&1 && break
+  kill -0 "$logind"
+  sleep .1
+done
+busctl --system --no-pager status org.freedesktop.login1 > "$out/logind-bus.txt"
 useradd --create-home --uid 1100 luma-gate-browser-opens
 install -d -o luma-gate-browser-opens -g luma-gate-browser-opens -m 0700 /run/user/1100
 qa=$(mktemp -d /tmp/luma-gate-browser-opens.XXXXXX)
