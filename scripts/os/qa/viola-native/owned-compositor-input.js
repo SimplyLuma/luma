@@ -25,6 +25,22 @@ export class OwnedCompositorInput {
         const receipt={scope:'REAL_COMPOSITOR_VIRTUAL_INPUT_NOT_PAGE_ACCEPTANCE',action:'click',
             compositor:GLib.get_prgname(),requested:[x,y],before:global.get_pointer(),
             focus_before:global.display.focus_window?.get_pid()??null};
+        if (!this.motionProbed) {
+            this.motionProbed=true;
+            const diagnostic={scope:'BOUNDED_REAL_COMPOSITOR_MOTION_DIAGNOSTIC_NO_BUTTONS',
+                before:global.get_pointer(),samples:[]};
+            for (const [probeX,probeY] of [[200,200],[800,500],[1200,800]]) {
+                this.pointer.notify_absolute_motion(GLib.get_monotonic_time(),probeX,probeY);
+                await sleep(250);
+                const sample={requested:[probeX,probeY],actual:global.get_pointer()};
+                try {
+                    const [point,mods]=global.backend.get_cursor_tracker().get_pointer();
+                    sample.cursor_tracker={x:point.x,y:point.y,mods};
+                } catch(error) {sample.cursor_tracker_error=String(error);}
+                diagnostic.samples.push(sample);
+            }
+            GLib.file_set_contents(`${this.out}/compositor-motion-probe.json`,JSON.stringify(diagnostic,null,2));
+        }
         this.pointer.notify_absolute_motion(GLib.get_monotonic_time(),x,y);
         const deadline=Date.now()+2000;
         while (Date.now()<deadline) {
@@ -38,9 +54,9 @@ export class OwnedCompositorInput {
         this.save(receipt);
         if (!receipt.position_verified) throw Error('Actual compositor pointer did not reach requested coordinates');
         await sleep(100);
-        this.pointer.notify_button(GLib.get_monotonic_time(),272,Clutter.ButtonState.PRESSED);
+        this.pointer.notify_button(GLib.get_monotonic_time(),Clutter.BUTTON_PRIMARY,Clutter.ButtonState.PRESSED);
         try {await sleep(80);} finally {
-            this.pointer.notify_button(GLib.get_monotonic_time(),272,Clutter.ButtonState.RELEASED);
+            this.pointer.notify_button(GLib.get_monotonic_time(),Clutter.BUTTON_PRIMARY,Clutter.ButtonState.RELEASED);
         }
         await sleep(150);
         receipt.after_click=global.get_pointer();
