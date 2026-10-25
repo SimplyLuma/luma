@@ -81,16 +81,33 @@ Subject: [PATCH] Remove automatic Displays activation and retain Settings confir
 -}
 --- a/js/ui/main.js
 +++ b/js/ui/main.js
-@@ -36 +35,0 @@
+@@ -33,7 +33,6 @@
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
+ import * as LumaSearch from './lumaSearch.js';
 -import * as LumaDisplayArrival from './lumaDisplayArrival.js';
-@@ -69 +67,0 @@
+ import * as LumaWindowCorners from './lumaWindowCorners.js';
+ import * as LumaWindowWatch from './lumaWindowWatch.js';
+ import * as LumaShare from './lumaShare.js';
+@@ -71,7 +70,6 @@
+ export let stickyDockManager = null;
+ export let overview = null;
+ export let lumaSearch = null;
 -export let lumaDisplayArrival = null;
-@@ -246,8 +244 @@
--    if (sessionMode.hasOverview) {
--        try {
+ export let lumaWindowCorners = null;
+ export let lumaWindowWatch = null;
+ export let lumaShare = null;
+@@ -260,13 +258,6 @@
+     }
+     if (sessionMode.hasOverview) {
+         try {
 -            lumaDisplayArrival = new LumaDisplayArrival.DisplayArrival();
 -        } catch (error) {
 -            logError(error, 'Failed to watch for new display arrangements');
 -        }
 -    }
-     magnifier = new Magnifier.Magnifier();
+-    if (sessionMode.hasOverview) {
+-        try {
+             lumaWindowCorners = new LumaWindowCorners.WindowCorners();
+             lumaWindowWatch = new LumaWindowWatch.WindowWatch();
+         } catch (error) {
