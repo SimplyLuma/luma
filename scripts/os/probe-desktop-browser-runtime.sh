@@ -55,7 +55,7 @@ curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
 printf '%s  %s\n' "$installer_sha" "$inputs/$installer" | sha256sum -c -
 dnf5 -y install "${rpms[@]}" "$inputs/$installer" \
   pipewire wireplumber gstreamer1-plugins-base gstreamer1-plugins-good \
-  pipewire-utils pipewire-gstreamer mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
+  pipewire-utils pipewire-gstreamer gnome-keyring mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
 host=/usr/share/viola-browser/luma-host
 sha256sum /opt/viola/browser/chrome > "$out/installed-engine.sha256"
 rpm -V viola-browser-stable > "$out/rpm-verify-before.txt"
@@ -114,6 +114,7 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --nofork --nopidfile >"$OUT/session-bus.log" 2>&1 &
     for _ in $(seq 50); do [ -S /run/user/1100/bus ] && break; sleep .1; done
     [ -S /run/user/1100/bus ]
+    python3 "$QA/initialize-fixture-keyring.py" >"$OUT/keyring-readiness.json"
     pipewire >"$OUT/pipewire.log" 2>&1 & audio=$!
     wireplumber >"$OUT/wireplumber.log" 2>&1 & policy=$!
     python3 "$QA/page-server.py" "$QA/out" --html-sha256 cceef935f0735daaa75004d613262781db0883b33db51e7c11a223e64c168504 >"$OUT/page-server.log" 2>&1 &
