@@ -75,6 +75,18 @@ for _ in $(seq 50); do
   sleep .1
 done
 [ -S /run/systemd/journal/socket ]
+# GNOME's login/time-limit clients require an actual system bus even in a
+# headless container. Keep this daemon local to the disposable CI container.
+install -d -m 0755 /run/dbus
+dbus-daemon --system --nofork --nopidfile > "$out/system-bus.log" 2>&1 &
+system_bus=$!
+trap 'kill "$system_bus" "$journal" 2>/dev/null || true; wait "$system_bus" "$journal" 2>/dev/null || true' EXIT
+for _ in $(seq 50); do
+  [ -S /run/dbus/system_bus_socket ] && break
+  kill -0 "$system_bus"
+  sleep .1
+done
+[ -S /run/dbus/system_bus_socket ]
 useradd --create-home --uid 1100 luma-gate-browser-opens
 install -d -o luma-gate-browser-opens -g luma-gate-browser-opens -m 0700 /run/user/1100
 qa=$(mktemp -d /tmp/luma-gate-browser-opens.XXXXXX)
