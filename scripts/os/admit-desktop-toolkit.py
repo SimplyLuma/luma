@@ -16,12 +16,12 @@ a = p.parse_args()
 # new successful matching toolkit cohort with refreshed run/archive receipts.
 # Whole-archive digests are GitHub's retained upload identities, not rebuild hashes.
 artifacts = {
-    'aarch64': (12461641598, '2177ba2b825afca9848ae0c4db58b3c74030ea0668f38e018f83304c872fe168'),
-    'x86_64': (12460839503, '03d2060ad144a6e810759098e86355abf145e1577a78560bafba8aec2dffae18'),
+    'aarch64': (12581102615, 'ebc05bf0238160788a9707fd5d07d2aa2ff4bc907b6866c0ca7fff41d5b4aa49'),
+    'x86_64': (12581197912, '4e2c8fcb90eeea143b0732286e67131ca439d8638c93f0fe7d54a92d410305d9'),
 }
-run = 39857373641
-source = '84ccfae4eeaa45a41046f4415b190d2165741f2c'
-merge = 'cbc781c98b5455a0a2e3204976a252099ead0037'
+run = 40145550176
+source = 'e81f2847d7385552753ba8f079ce6e9f4044ed51'
+merge = '2e61eda859348efdc117bc04c8c61e664a5ece94'
 repo = 'SimplyLuma/luma'
 def api(path):
     return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))

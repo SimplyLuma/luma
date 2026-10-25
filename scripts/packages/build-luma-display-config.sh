@@ -17,7 +17,7 @@ trap 'rm -rf "$work_dir"' EXIT
 mkdir -p "$work_dir"/{SOURCES,SPECS} "$work_dir/source/luma-display-config"/{luma_displays,tests}
 cp "$repo_root/src/luma-displays/luma_displays/"{__init__,model,displayconfig}.py "$work_dir/source/luma-display-config/luma_displays/"
 cp "$repo_root/tests/luma-displays/test_model.py" "$work_dir/source/luma-display-config/tests/"
-source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir/source" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 --numeric-owner -cf - luma-display-config | gzip -n >"$work_dir/SOURCES/luma-display-config.tar.gz"
 install -m 0644 "$repo_root/LICENSE.md" "$work_dir/SOURCES/"
 install -m 0644 "$repo_root/packaging/rpm/luma-display-config.spec" "$work_dir/SPECS/"
