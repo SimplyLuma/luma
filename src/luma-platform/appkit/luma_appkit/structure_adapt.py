@@ -41,6 +41,41 @@ PHONE_BELOW = tokens.PHONE_MAX_WIDTH + 1
 REGULAR_ABOVE = 900
 
 
+class _LayoutWatch:
+    """Observe completed layout without requesting continuous animation frames.
+
+    Internal companion to WidthWatch for parts that also depend on child
+    allocation or scroll position. Mapping supplies the initial frame; normal
+    layout/scroll changes supply subsequent frames. Unmapping disconnects the
+    clock so a hidden or reparented part cannot retain the old window.
+    """
+
+    def __init__(self, widget, callback):
+        self.widget, self.callback = widget, callback
+        self.clock = None
+        self.handler = 0
+        widget.connect("map", self._mapped)
+        widget.connect("unmap", self._unmapped)
+        widget.connect("unrealize", self._unmapped)
+        if widget.get_mapped():
+            self._mapped(widget)
+
+    def _mapped(self, widget):
+        self._unmapped(widget)
+        self.clock = widget.get_frame_clock()
+        if self.clock is not None:
+            self.handler = self.clock.connect("after-paint", self._frame)
+
+    def _unmapped(self, _widget):
+        if self.clock is not None and self.handler:
+            self.clock.disconnect(self.handler)
+        self.clock, self.handler = None, 0
+
+    def _frame(self, clock):
+        if self.widget.get_mapped():
+            self.callback(self.widget, clock)
+
+
 def tier_for(width: int) -> str:
     """The tier of a window `width` wide: "phone" (<560), "compact" (560-900) or "regular" (>900)."""
     if width < PHONE_BELOW:

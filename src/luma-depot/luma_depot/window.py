@@ -27,6 +27,7 @@ from luma_appkit import (
     Toast, ToastHost, DestructiveDialog, add_style_sheet,
 )
 from luma_appkit.menus import Menu
+from luma_appkit.structure_adapt import _LayoutWatch
 
 from luma_installer import depot_counting, depot_errors as errors
 from luma_installer.depot_errors import lifecycle
@@ -1035,7 +1036,10 @@ class DepotWindow(UpdatesPage, AppWindow):
             if count == columns[0]:
                 return True
             columns[0] = count
-            focused = next((card for card in cards if card.has_focus()), None)
+            root = widget.get_root()
+            focused = root.get_focus() if root is not None else None
+            if focused is not None and not focused.is_ancestor(widget):
+                focused = None
             while child := widget.get_first_child():
                 widget.remove(child)
             for index, card in enumerate(cards):
@@ -1045,7 +1049,7 @@ class DepotWindow(UpdatesPage, AppWindow):
             if focused is not None:
                 focused.grab_focus()
             return True
-        grid.add_tick_callback(layout)
+        grid._layout_watch = _LayoutWatch(grid, layout)
         return grid
 
     def _card(self, app: App) -> Gtk.Widget:
@@ -2703,7 +2707,7 @@ class DepotWindow(UpdatesPage, AppWindow):
                     if label.get_margin_end() != margin:
                         label.set_margin_end(margin)
                     return True
-                widget.add_tick_callback(measure_width)
+                widget._layout_watch = _LayoutWatch(widget, measure_width)
                 copy.append(widget)
             else:
                 copy.append(widget)
@@ -2757,7 +2761,7 @@ class DepotWindow(UpdatesPage, AppWindow):
             widget.set_orientation(Gtk.Orientation.VERTICAL if compact else Gtk.Orientation.HORIZONTAL)
             art.set_size_request(76 if compact else 104, 76 if compact else 104)
             return True
-        block.add_tick_callback(adapt)
+        block._layout_watch = _LayoutWatch(block, adapt)
         return block
 
     def _os_block(self) -> Gtk.Widget:

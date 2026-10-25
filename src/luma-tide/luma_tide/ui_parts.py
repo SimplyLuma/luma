@@ -22,6 +22,7 @@ from luma_appkit import lumaui
 from luma_appkit import BarAction, CoverArt, DetailsItem, MediaTransport, Selection, apply_type, icons, lumaui_tokens
 from luma_appkit.action_center import make_control
 from luma_appkit.media_transport import MediaGlyph
+from luma_appkit.structure_adapt import _LayoutWatch
 from .presentation import (
     Album, PHONE_ALBUM_ROW_HEIGHT, PHONE_SONG_ROW_HEIGHT, SONG_ROW_HEIGHT, duration_text, song_viewport,
 )
@@ -493,7 +494,7 @@ class SongList(Gtk.Box):
         self.append(self.listing)
         self.append(self.trailing)
         self._set_span((0, len(subjects) if len(subjects) <= 128 else 40))
-        self.add_tick_callback(self._viewport_changed)
+        self._viewport_layout = _LayoutWatch(self, self._viewport_changed)
 
     def _viewport_changed(self, *_):
         if len(self.subjects) <= 128:
