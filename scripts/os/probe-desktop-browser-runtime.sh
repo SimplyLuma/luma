@@ -55,7 +55,7 @@ curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
 printf '%s  %s\n' "$installer_sha" "$inputs/$installer" | sha256sum -c -
 dnf5 -y install "${rpms[@]}" "$inputs/$installer" \
   pipewire wireplumber gstreamer1-plugins-base gstreamer1-plugins-good \
-  pipewire-gstreamer mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon
+  pipewire-gstreamer mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
 host=/usr/share/viola-browser/luma-host
 sha256sum /opt/viola/browser/chrome > "$out/installed-engine.sha256"
 rpm -V viola-browser-stable > "$out/rpm-verify-before.txt"
@@ -75,42 +75,44 @@ for _ in $(seq 50); do
   sleep .1
 done
 [ -S /run/systemd/journal/socket ]
-useradd --create-home --uid 1100 viola-runtime
-install -d -o viola-runtime -g viola-runtime -m 0700 /run/user/1100
-chown -R viola-runtime:viola-runtime "$out"
-runuser -u viola-runtime -- env HOME=/home/viola-runtime XDG_RUNTIME_DIR=/run/user/1100 \
-  OUT="$out" HOST="$host" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
-  timeout --kill-after=15 240 dbus-run-session -- bash -euo pipefail -c '
+useradd --create-home --uid 1100 luma-gate-browser-opens
+install -d -o luma-gate-browser-opens -g luma-gate-browser-opens -m 0700 /run/user/1100
+qa=$(mktemp -d /tmp/luma-gate-browser-opens.XXXXXX)
+cp "$root/scripts/os/qa/viola-native/"* "$qa/"
+mkdir "$qa/out"
+chown -R luma-gate-browser-opens:luma-gate-browser-opens "$out" "$qa"
+status=0
+runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG_RUNTIME_DIR=/run/user/1100 \
+  OUT="$out" QA="$qa" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
+  XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome XDG_SESSION_TYPE=wayland \
+  timeout --kill-after=15 420 bash -euo pipefail -c '
+    trap '\''jobs -pr | xargs -r kill; wait || true'\'' EXIT
+    export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1100/bus
+    dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --nofork --nopidfile >"$OUT/session-bus.log" 2>&1 &
+    for _ in $(seq 50); do [ -S /run/user/1100/bus ] && break; sleep .1; done
+    [ -S /run/user/1100/bus ]
     pipewire >"$OUT/pipewire.log" 2>&1 & audio=$!
     wireplumber >"$OUT/wireplumber.log" 2>&1 & policy=$!
-    trap '\''kill "$policy" "$audio" 2>/dev/null || true; wait "$policy" "$audio" 2>/dev/null || true'\'' EXIT
-    python3 "$HOST/headless_qa.py" --engine /opt/viola/browser/chrome --work-root "$OUT/visual" >"$OUT/visual.log" 2>&1
-    python3 "$HOST/headless_qa.py" --engine /opt/viola/browser/chrome --work-root "$OUT/controls" --qualify-controls >"$OUT/controls.log" 2>&1
-  '
+    python3 "$QA/page-server.py" "$QA/out" --html-sha256 cceef935f0735daaa75004d613262781db0883b33db51e7c11a223e64c168504 >"$OUT/page-server.log" 2>&1 &
+    for _ in $(seq 50); do [ -s "$QA/out/page-server.json" ] && break; sleep .1; done
+    export BROWSER_GATE_URL=$(python3 -c '\''import json,sys;print(json.load(open(sys.argv[1]))["url"])'\'' "$QA/out/page-server.json")
+    export BROWSER_GATE_OUT="$QA/out" BROWSER_GATE_NATIVE_OBSERVER="$QA/read-native-state.py"
+    export BROWSER_GATE_PIXEL_VALIDATOR="$QA/verify-pixels.py" BROWSER_GATE_INPUT_HELPER="$QA/input-owned-session.py"
+    GSETTINGS_BACKEND=memory gnome-shell --headless --no-x11 --virtual-monitor=1280x800 \
+      --wayland-display=viola-qa-shm-r1 --automation-script="$QA/browser-opens.js" >"$OUT/shell.log" 2>&1
+    python3 -c '\''import json,sys;d=json.load(open(sys.argv[1]));assert d["ok"] is True,d'\'' "$QA/out/RESULT.json"
+  ' || status=$?
+mkdir "$out/mapped"
+cp -a "$qa/out/." "$out/mapped/"
+# Retain the fresh fixture profile log and exact diagnostics, never a user profile.
+home=/home/luma-gate-browser-opens
+if [ -f "$home/.local/share/viola-luma/profile.log" ]; then
+  cp "$home/.local/share/viola-luma/profile.log" "$out/engine.log"
+fi
+if [ -d "$home/.local/state/viola-luma/sessions" ]; then
+  find "$home/.local/state/viola-luma/sessions" -type f \
+    \( -name presentation-live.json -o -name integration-report.json -o -name runtime-provenance.json \) \
+    -exec cp --parents -t "$out" {} +
+fi
 rpm -V viola-browser-stable > "$out/rpm-verify-after.txt"
-python3 - "$out" <<'PY'
-import json,sys
-from pathlib import Path
-from PIL import Image
-out=Path(sys.argv[1]);reports=[]
-for case in ('visual','controls'):
-    paths=list((out/case).rglob('integration-report.json'));assert len(paths)==1
-    report=json.loads(paths[0].read_text())
-    assert not report['errors'] and report['engine_exit_code']==0
-    assert report['imported_frames']>0 and report['pending_leases']==0
-    if case=='controls':
-        controls=report['controls_qualification']
-        assert controls.get('completed') is True and not controls.get('error')
-        assert len(controls['checks'])>=15
-        checks={key:value for row in controls['checks'] for key,value in row.items() if type(value) is bool}
-        for required in ('native_maximize','native_restore','page_fills_maximize','page_fills_restore',
-                         'page_enter_submits_form','page_enter_adds_textarea_newline',
-                         'page_pointerdown_opens_dropdown','page_click_activates_notification','native_close_button'):
-            assert checks.get(required) is True,(required,controls)
-        assert all(row.get('passed',True) is True for row in controls['checks'])
-    reports.append(dict(case=case,path=str(paths[0].relative_to(out)),report=report))
-images=list((out/'visual').rglob('native-monitor.png'));assert len(images)==1
-image=Image.open(images[0]);image.load();assert image.width>=800 and image.height>=600
-assert len(image.convert('RGB').getcolors(image.width*image.height) or [])>100
-(out/'RESULT.json').write_text(json.dumps(dict(result='NATIVE_MAPPED_CONTROL_PROBE_PASSED_VISUAL_REVIEW_REQUIRED',scope='NOT_FLATPAK_OR_OS_RELEASE_ACCEPTANCE',reports=reports,screenshot=str(images[0].relative_to(out))),indent=2)+'\n')
-PY
+exit "$status"
