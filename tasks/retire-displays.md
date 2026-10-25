@@ -69,3 +69,20 @@ disappears afterward, and unrelated Viola remains advertised. The first two
 fixture attempts expected compressed XML in appstream2 and failed; inspection
 confirmed Flatpak writes uncompressed appstream.xml there. Only the fixture
 reader changed; EOL policy and production assertions stayed intact.
+
+Native CI exposed two Shell packaging issues missed by the earlier relaxed
+source-application fixture: duplicate Patch1274 declarations, and zero-context
+main.js hunks rejected by RPM's plain Git application. Both are corrected.
+Actual6115f685 parsed the full patched Fedora spec; d9126da9 reproduced the
+production prep failure, and ae8f5d83 passed the complete real rpmbuild %prep
+after normal-context regeneration. No activation remains in the resulting
+main.js; Settings' preview helper and call remain.
+
+The maintained component workflow now builds installer73 on its canonical x86
+builder, and Ari20/policy29 on both native CPUs. Installer and Ari admit the
+already checked matching toolkit, rather than rebuilding it. These three
+packages have explicit noarch identity, checksum and required-payload checks.
+Actual2e15fd02 passed12 matrix tests,3 real isolated RPM checker tests and YAML
+guards. Checker-only changes select only their five consuming native jobs;
+their uploaded artifacts omit duplicate toolkit packages. Actual new product
+package builds remain pending CI, with installed-image checks still required.
