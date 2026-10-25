@@ -49,3 +49,17 @@ then failed honestly on a nonexistent test path (zero tests, exit5). Continuatio
 consult its actual result before claiming success. Earlier wrappere4234cd5
 stopped at missing private jsonschema dependency; installed only into an isolated
 venv for6f8843d9. No shared Python or test assertions changed.
+
+Release-side withdrawal now uses scripts/depot/retire-remote-apps.py from the
+sealed signer before update-remote regenerates AppStream, summary and descriptors.
+It marks every existing Displays architecture/branch EOL with “Display controls
+are in Settings.” Each new signed commit preserves the previous commit as its
+parent and its exact application tree; unrelated refs are checked unchanged.
+Repeated execution is a no-op. No live remote was changed by this source work.
+An isolated real repository test covers both CPUs, multiple branches, signed
+EOL commits, history/payload preservation, unrelated refs and descriptor/index
+withdrawal; actual installed-image wake/upgrade and final published AppStream
+checks remain required.
+Actual normal job403c6dfb passed all11 remote-generation, signed retirement and
+remote synchronization tests. The retirement fixture verifies the new signatures
+against an isolated remote keyring; no production keys or remote are used.
