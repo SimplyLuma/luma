@@ -35,7 +35,7 @@ paths = ['config/desktop/inputs.env', 'scripts/os/build-desktop-toolkit.sh',
          'patches/gtk4', 'patches/libadwaita', 'src/luma-platform',
          'packaging/rpm/luma-developer-platform.spec', 'scripts/fonts',
          'packaging/fontconfig', 'packaging/rpm/google-figtree-fonts.spec',
-         'assets/icon-theme/Prairie', 'LICENSE.md', 'scripts/packages/spec-release.sh',
+         'assets/icon-theme/Prairie/symbolic/actions/lumaui-*.svg', 'LICENSE.md', 'scripts/packages/spec-release.sh',
          'tests/toolkit-native']
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
 artifact_id, digest = artifacts[a.architecture]
