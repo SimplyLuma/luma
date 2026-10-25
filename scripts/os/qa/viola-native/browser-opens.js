@@ -17,6 +17,7 @@ let child = null;
 let childOutput = null;
 let window = null;
 let inputSeat = null;
+let monitorStream = null;
 let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
@@ -44,6 +45,14 @@ async function probe() {
         hostLauncher.unsetenv('DISPLAY');
         hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
         hostLauncher.set_stderr_file_path(`${out}/browser.stderr`);
+        const monitorReady = `${out}/monitor-stream.json`;
+        monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
+            GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', monitorReady]);
+        const monitorDeadline = Date.now() + 15000;
+        while (!GLib.file_test(monitorReady, GLib.FileTest.EXISTS)) {
+            if (Date.now() > monitorDeadline) throw Error('Owned headless monitor did not deliver a frame');
+            await sleep(100);
+        }
         child = hostLauncher.spawnv(['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
@@ -138,6 +147,10 @@ async function probe() {
             try {if (window) window.delete(global.get_current_time());} catch (_) {}
             try {if (child) child.send_signal(15);} catch (_) {}
             if (childOutput) await Promise.race([childOutput.catch(() => {}), sleep(3000)]);
+        }
+        if (monitorStream) {
+            monitorStream.get_stdin_pipe().close(null);
+            await Promise.race([monitorStream.wait_async(null), sleep(3000)]);
         }
         if (inputSeat) {
             inputSeat.get_stdin_pipe().close(null);

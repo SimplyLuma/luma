@@ -23,7 +23,7 @@ def identity(pid):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('click','key-a','seat'))
+    parser.add_argument('action',choices=('click','key-a','seat','monitor'))
     parser.add_argument('--ready',type=Path)
     parser.add_argument('--x',type=int)
     parser.add_argument('--y',type=int)
@@ -40,9 +40,9 @@ def main():
     actor=Path(actors[0].split('=',1)[1])
     assert actor.name=='browser-opens.js' and re.fullmatch(r'luma-gate-browser-opens\.[A-Za-z0-9]+',actor.parent.name) and actor.parent.parent==Path('/tmp')
     assert actor.is_file() and not actor.is_symlink() and actor.stat().st_uid==uid
-    if args.action=='seat':
+    if args.action in ('seat','monitor'):
         assert args.ready is not None and args.ready.parent==actor.parent/'out'
-        assert args.ready.name=='virtual-seat.json' and not args.ready.exists()
+        assert args.ready.name==('virtual-seat.json' if args.action=='seat' else 'monitor-stream.json') and not args.ready.exists()
     else:assert args.ready is None
     runtime=Path('/run/user')/str(uid)
     assert os.environ.get('XDG_RUNTIME_DIR')==str(runtime)
@@ -55,7 +55,7 @@ def main():
     import gi
     from gi.repository import Gio,GLib
     bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
-    service='org.gnome.Mutter.RemoteDesktop'
+    service='org.gnome.Mutter.ScreenCast' if args.action=='monitor' else 'org.gnome.Mutter.RemoteDesktop'
     def dbus(method,signature,values):
         return bus.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus',
             'org.freedesktop.DBus',method,GLib.Variant(signature,values),None,
@@ -71,6 +71,9 @@ def main():
         owned_service()
         reply=bus.call_sync(owner,path,interface,method,parameters,None,Gio.DBusCallFlags.NONE,5000,None)
         return reply.unpack() if reply else None
+    if args.action=='monitor':
+        monitor(call,bus,service,owned_service,args.ready,parent,expected)
+        return
     session=call('/org/gnome/Mutter/RemoteDesktop',service,'CreateSession')[0]
     interface=service+'.Session'
     try:
@@ -111,5 +114,51 @@ def main():
     finally:
         call(session,interface,'Stop')
     print(json.dumps(dict(result='REAL_OWNED_QA_COMPOSITOR_EVENT_SENT_NOT_PAGE_ACCEPTANCE',action=args.action,x=args.x,y=args.y,uid=uid,parent_pid=parent,parent_start=expected[1],display=display,service_unique_owner=owner)))
+
+def monitor(call,bus,service,owned_service,ready,parent,expected):
+    """Keep an actual PipeWire consumer on the owned headless monitor."""
+    import gi
+    gi.require_version('Gst','1.0')
+    from gi.repository import Gio,GLib,Gst
+    Gst.init(None)
+    session=call('/org/gnome/Mutter/ScreenCast',service,'CreateSession',GLib.Variant('(a{sv})',({},)))[0]
+    stream=call(session,service+'.Session','RecordMonitor',GLib.Variant('(sa{sv})',('Meta-0',{'cursor-mode':GLib.Variant('u',0)})))[0]
+    loop=GLib.MainLoop(); pipeline=None; errors=[]; frames=0
+    def message(_bus,packet):
+        if packet.type==Gst.MessageType.ERROR:
+            error,detail=packet.parse_error();errors.append(str(error)+': '+str(detail));loop.quit()
+    def handoff(*_):
+        nonlocal frames
+        frames+=1
+    def started(_bus,_sender,_path,_interface,_signal,parameters):
+        nonlocal pipeline
+        node=parameters.unpack()[0]
+        pipeline=Gst.parse_launch(f'pipewiresrc path={int(node)} do-timestamp=true ! fakesink name=monitor-consumer sync=false signal-handoffs=true')
+        pipeline.get_by_name('monitor-consumer').connect('handoff',handoff)
+        channel=pipeline.get_bus();channel.add_signal_watch();channel.connect('message',message)
+        pipeline.set_state(Gst.State.PLAYING)
+    subscription=bus.signal_subscribe(service,service+'.Stream','PipeWireStreamAdded',stream,None,Gio.DBusSignalFlags.NONE,started)
+    deadline=time.monotonic()+420
+    def poll():
+        try:
+            owned_service()
+            if frames and not ready.exists():
+                fd=os.open(ready,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                with os.fdopen(fd,'w') as output:
+                    json.dump(dict(scope='REAL_HEADLESS_MONITOR_CONSUMER_NOT_PAGE_PROOF',parent_pid=parent,parent_start=expected[1],frames_received=frames),output)
+            if time.monotonic()>deadline or select.select([sys.stdin],[],[],0)[0]:loop.quit();return False
+        except Exception as error:errors.append(str(error));loop.quit();return False
+        return True
+    timer=GLib.timeout_add(100,poll)
+    try:
+        call(session,service+'.Session','Start');loop.run()
+    finally:
+        GLib.source_remove(timer)
+        if pipeline:pipeline.set_state(Gst.State.NULL)
+        bus.signal_unsubscribe(subscription)
+        call(session,service+'.Session','Stop')
+    if errors:raise RuntimeError('; '.join(errors))
+    assert frames>0
+    print(json.dumps(dict(scope='REAL_HEADLESS_MONITOR_CONSUMER_NOT_PAGE_PROOF',frames_received=frames,parent_pid=parent)))
 
 if __name__=='__main__':main()
