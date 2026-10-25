@@ -54,7 +54,17 @@ async function probe() {
         const deadline = Date.now() + 45000;
         let exited = false;
         output.then(() => {exited = true;});
-        while (!windows().length && !exited && Date.now() < deadline) await sleep(200);
+        const ready = () => {
+            const owned = windows();
+            if (owned.length !== 1 || !GLib.file_test(
+                `${home}/.local/state/viola-luma/sessions/native-ready`, GLib.FileTest.EXISTS)) return false;
+            const frame = owned[0].get_frame_rect();
+            return frame.width > 200 && frame.height > 200;
+        };
+        // Meta exposes a new Wayland window before its first configure/map.
+        // Use the shipped host's readiness marker and actual nonzero frame.
+        while (!ready() && !exited && Date.now() < deadline) await sleep(200);
+        if (!ready()) throw Error('Owned native browser did not finish mapping and host startup');
         if (windows().length !== 1) throw Error('Owned native browser did not map exactly one window');
         window = windows()[0];
         window.activate(global.get_current_time());
