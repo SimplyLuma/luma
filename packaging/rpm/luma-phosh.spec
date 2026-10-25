@@ -2,7 +2,7 @@
 
 Name:           luma-phosh
 Version:        0.55.0
-Release:        1.luma.59%{?dist}
+Release:        1.luma.60%{?dist}
 Summary:        Luma native handheld renderer based on Phosh
 License:        GPL-3.0-or-later
 URL:            https://gitlab.gnome.org/World/Phosh/phosh
@@ -30,6 +30,7 @@ Patch16:        0017-luma-physical-lock-carousel.patch
 Patch17:        0018-luma-single-owner-touch-drawers.patch
 Patch18:        0019-luma-bound-favorite-dock.patch
 Patch19:        0020-luma-gtk3-font-weights.patch
+Patch20:        0021-luma-status-icon-proportions.patch
 
 ExclusiveArch:  aarch64
 
