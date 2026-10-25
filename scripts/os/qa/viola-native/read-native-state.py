@@ -57,7 +57,7 @@ def main():
     width, height = native['window_size']
     assert all(type(v) in (int, float) and math.isfinite(v) for v in (x,y,w,h,width,height))
     assert x >= 0 and y >= 0 and w >= 80 and h >= 80
-    assert x+w <= width+1 and y+h <= height+1 and width <= 1280 and height <= 800
+    assert x+w <= width+1 and y+h <= height+1 and width <= 1600 and height <= 1000
     assert identity() == before
     print(json.dumps(dict(native=native, imported_frames=state['imported_frames'],
                           pending_leases=state['pending_leases'], pid_start=before[1],

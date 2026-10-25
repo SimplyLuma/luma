@@ -43,7 +43,7 @@ def main():
     assert runtime.stat().st_uid==uid and stat.S_IMODE(runtime.stat().st_mode)==0o700
     for path in (runtime/'bus',runtime/display):
         info=path.lstat();assert stat.S_ISSOCK(info.st_mode) and info.st_uid==uid
-    if args.action=='click':assert args.x is not None and args.y is not None and 0<=args.x<1280 and 0<=args.y<800
+    if args.action=='click':assert args.x is not None and args.y is not None and 0<=args.x<1600 and 0<=args.y<1000
     else:assert args.x is None and args.y is None
     import gi
     from gi.repository import Gio,GLib

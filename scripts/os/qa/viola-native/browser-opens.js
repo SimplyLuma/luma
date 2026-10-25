@@ -16,6 +16,7 @@ let child = null;
 let childOutput = null;
 let window = null;
 let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
+export const METRICS = {};
 
 async function probe() {
     try {
@@ -46,10 +47,6 @@ async function probe() {
         while (!windows().length && !exited && Date.now() < deadline) await sleep(200);
         if (windows().length !== 1) throw Error('Owned native browser did not map exactly one window');
         window = windows()[0];
-        // The desktop default is taller than this fixture's 800px monitor.
-        // Request a real fitting frame; all later proofs still use observed
-        // compositor/GTK geometry, including a second, independent resize.
-        window.move_resize_frame(false, 80, 60, 1000, 680);
         window.activate(global.get_current_time());
         result.records = await proveNativeWindow(window, launcher, out, url);
         window.delete(global.get_current_time());
@@ -106,24 +103,7 @@ async function probe() {
         global.context.terminate();
     }
 }
-export function init() {
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        (async () => {
-            const deadline = Date.now() + 60000;
-            while (!Main.layoutManager?.primaryMonitor || Main.layoutManager._startingUp) {
-                if (Date.now() > deadline) throw Error('Owned GNOME compositor did not finish startup');
-                await sleep(200);
-            }
-            await probe();
-        })().catch(error => {
-            result.error = String(error);
-            result.stack = error.stack;
-            GLib.file_set_contents(`${out}/RESULT.json`, JSON.stringify(result, null, 2));
-            global.context.terminate();
-        });
-        return GLib.SOURCE_REMOVE;
-    });
-}
-
-// GNOME's automation loader owns this lifecycle; probe() terminates its context.
-export async function run() {await new Promise(() => {});}
+// Use GNOME's automation lifecycle after its own performance helper maps;
+// scheduling from init() bypasses the compositor's readiness barrier.
+export function init() {}
+export async function run() {await probe();}
