@@ -33,3 +33,19 @@ retry failures. Integrate reviewed source before final build.
 Remaining: final installer/user/system unit integration, relevant package builds,
 actual upgraded image removal/wake checks and new nightly publication. No running
 user installation changed, no new nightly claimed by these component results.
+
+Integrated companion a9e0beae9 plus installer73 packaging5b4f0be61. Both user
+and system services run Type=exec, so boot/login targets do not wait for cleanup;
+RuntimeMaxSec2min bounds it, with five-minute failure retries. Actual isolated
+Flatpak uninstall a64d0807 preserves unrelated deployment and real private data
+marker; 14 root baseline boundary tests7ad83258 passed. The new baseline is23
+apps plus3 runtimes, derived from the validated selection, never an old24-app
+baseline relabeled.
+
+Root integration checks6f8843d9 passed78 public contracts,10 profile checks,
+20 device tests,6 retirement policy tests and4 registry tests. That wrapper
+then failed honestly on a nonexistent test path (zero tests, exit5). Continuation
+2a457207 runs the actual three baseline inventory tests plus release/unit checks;
+consult its actual result before claiming success. Earlier wrappere4234cd5
+stopped at missing private jsonschema dependency; installed only into an isolated
+venv for6f8843d9. No shared Python or test assertions changed.
