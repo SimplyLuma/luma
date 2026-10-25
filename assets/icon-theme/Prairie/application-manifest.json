@@ -233,12 +233,7 @@
         "luma-v3-video-editor",
         "org.projectluma.Reel"
       ],
-      "bundled": [
-        "src/luma-reel/data/org.projectluma.Reel.svg"
-      ],
-      "precomposed": true,
-      "bundled_source": "artwork/icon-family-r40/reel.svg",
-      "bundled_sha256": "7d1c48ae0a5e29a506b2bedc2feaa7228b388e9d03c1d04f50ab4136304733e9"
+      "precomposed": true
     },
     {
       "source": "artwork/icon-family-r42/ari.svg",
