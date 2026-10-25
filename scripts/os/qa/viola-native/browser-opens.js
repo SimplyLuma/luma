@@ -15,7 +15,7 @@ let child = null;
 let window = null;
 let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 
-async function run() {
+async function probe() {
     try {
         Main.overview.hide();
         const launcher = new Gio.SubprocessLauncher({flags:
@@ -72,4 +72,24 @@ async function run() {
         global.context.terminate();
     }
 }
-GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {run(); return GLib.SOURCE_REMOVE;});
+export function init() {
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        (async () => {
+            const deadline = Date.now() + 60000;
+            while (!Main.layoutManager?.primaryMonitor || Main.layoutManager._startingUp) {
+                if (Date.now() > deadline) throw Error('Owned GNOME compositor did not finish startup');
+                await sleep(200);
+            }
+            await probe();
+        })().catch(error => {
+            result.error = String(error);
+            result.stack = error.stack;
+            GLib.file_set_contents(`${out}/RESULT.json`, JSON.stringify(result, null, 2));
+            global.context.terminate();
+        });
+        return GLib.SOURCE_REMOVE;
+    });
+}
+
+// GNOME's automation loader owns this lifecycle; probe() terminates its context.
+export async function run() {await new Promise(() => {});}
