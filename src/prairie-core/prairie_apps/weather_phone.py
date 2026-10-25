@@ -204,6 +204,8 @@ def _left(widget):
 
 def today(snapshot: Snapshot, on_places) -> list[Gtk.Widget]:
     say = label(snapshot.phone_sentence, 'weather-phone-sentence', wrap=True, name='wx-phone-say')
+    say.label.set_xalign(0.5)
+    say.label.set_justify(Gtk.Justification.CENTER)
     parts = [hero(snapshot, on_places), say, next_strip(snapshot)]
     parts += [alert_card(alert) for alert in snapshot.alerts]
     parts += [your_day(snapshot), next_hours(snapshot), tiles(snapshot)]
