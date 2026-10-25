@@ -21,9 +21,10 @@ build graph does not establish runtime qualification.
 The optional `0002-native-shared-memory-diagnostic.patch` adds a forced raw
 shared-memory capture experiment, explicitly selected by
 `--viola-native-shm-frame-probe`. Its default DMA path remains unchanged. The
-strict ARM translation-unit compile has passed; the full engine and native
-rendering remain unqualified. This diagnostic patch is not an automatic fallback
-policy or a qualified engine release.
+strict ARM capture translation-unit compile, full Chrome link and complete
+runtime assembly have passed. Native rendering remains unqualified. This
+diagnostic patch is not an automatic fallback policy or a qualified engine
+release.
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 
@@ -91,10 +92,12 @@ and records the actual interpreter and generator hashes. An interpreter that
 does not honor this control requires a separately verified bounded setup; do not
 assume that lowering Ninja concurrency also limits these child pools.
 
-The ARM experiment has compiled the changed capture translation unit with the
-unaltered strict compiler flags. The full engine build is running with its
-completed objects retained. Runtime assembly and native qualification commands
-will be added when they have actually been exercised.
+The ARM experiment has compiled the changed capture translation unit and linked
+the full Chrome target with the unaltered strict compiler flags. Its complete GN
+runtime inventory has been assembled with resource packs, locales, notices and
+an independently built sandbox helper. The producer retains its raw binary,
+debug data and completed objects. These build results do not establish native
+rendering, input, resize or window lifecycle qualification.
 
 ## Recorded build sequence
 
