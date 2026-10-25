@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# A native-CPU rendering/adapter probe, not signed OS or Flatpak qualification.
+# A native-CPU mapped-window probe, not signed OS or Flatpak qualification.
 set -euo pipefail
 trap 'printf "Runtime probe failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -85,7 +85,7 @@ runuser -u viola-runtime -- env HOME=/home/viola-runtime XDG_RUNTIME_DIR=/run/us
     wireplumber >"$OUT/wireplumber.log" 2>&1 & policy=$!
     trap '\''kill "$policy" "$audio" 2>/dev/null || true; wait "$policy" "$audio" 2>/dev/null || true'\'' EXIT
     python3 "$HOST/headless_qa.py" --engine /opt/viola/browser/chrome --work-root "$OUT/visual" >"$OUT/visual.log" 2>&1
-    python3 "$HOST/headless_qa.py" --engine /opt/viola/browser/chrome --work-root "$OUT/adapter" --qualify-input >"$OUT/adapter.log" 2>&1
+    python3 "$HOST/headless_qa.py" --engine /opt/viola/browser/chrome --work-root "$OUT/controls" --qualify-controls >"$OUT/controls.log" 2>&1
   '
 rpm -V viola-browser-stable > "$out/rpm-verify-after.txt"
 python3 - "$out" <<'PY'
@@ -93,14 +93,24 @@ import json,sys
 from pathlib import Path
 from PIL import Image
 out=Path(sys.argv[1]);reports=[]
-for case in ('visual','adapter'):
+for case in ('visual','controls'):
     paths=list((out/case).rglob('integration-report.json'));assert len(paths)==1
     report=json.loads(paths[0].read_text())
     assert not report['errors'] and report['engine_exit_code']==0
     assert report['imported_frames']>0 and report['pending_leases']==0
+    if case=='controls':
+        controls=report['controls_qualification']
+        assert controls.get('completed') is True and not controls.get('error')
+        assert len(controls['checks'])>=15
+        checks={key:value for row in controls['checks'] for key,value in row.items() if type(value) is bool}
+        for required in ('native_maximize','native_restore','page_fills_maximize','page_fills_restore',
+                         'page_enter_submits_form','page_enter_adds_textarea_newline',
+                         'page_pointerdown_opens_dropdown','page_click_activates_notification','native_close_button'):
+            assert checks.get(required) is True,(required,controls)
+        assert all(row.get('passed',True) is True for row in controls['checks'])
     reports.append(dict(case=case,path=str(paths[0].relative_to(out)),report=report))
 images=list((out/'visual').rglob('native-monitor.png'));assert len(images)==1
 image=Image.open(images[0]);image.load();assert image.width>=800 and image.height>=600
 assert len(image.convert('RGB').getcolors(image.width*image.height) or [])>100
-(out/'RESULT.json').write_text(json.dumps(dict(result='NATIVE_FRAMES_AND_ADAPTER_PROBE_PASSED_VISUAL_REVIEW_REQUIRED',scope='NOT_PAGE_PIXEL_COMPOSITOR_INPUT_FLATPAK_OR_OS_RELEASE_ACCEPTANCE',reports=reports,screenshot=str(images[0].relative_to(out))),indent=2)+'\n')
+(out/'RESULT.json').write_text(json.dumps(dict(result='NATIVE_MAPPED_CONTROL_PROBE_PASSED_VISUAL_REVIEW_REQUIRED',scope='NOT_FLATPAK_OR_OS_RELEASE_ACCEPTANCE',reports=reports,screenshot=str(images[0].relative_to(out))),indent=2)+'\n')
 PY
