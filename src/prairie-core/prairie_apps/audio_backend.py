@@ -9,7 +9,6 @@ import math
 import os
 from pathlib import Path
 import re
-import subprocess
 import time
 import uuid
 
@@ -308,7 +307,7 @@ class RecordingSession:
         return destination
 
 
-def start_recording(root=None, *, source='pipewiresrc', source_label='', on_level=None, on_error=None):
+def start_recording(root=None, *, source='pulsesrc', source_label='', on_level=None, on_error=None):
     directory = recordings_directory() if root is None else Path(root)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(directory, 0o700)
@@ -601,13 +600,28 @@ def recover_partials(root=None):
 def inspect_recording_capability() -> RecordingCapability:
     try:
         Gst = gst()
-        for name in ('pipewiresrc', 'audioconvert', 'audioresample', 'level', 'opusenc', 'oggmux'):
+        for name in ('pulsesrc', 'audioconvert', 'audioresample', 'level', 'opusenc', 'oggmux'):
             if not Gst.ElementFactory.find(name):
                 return RecordingCapability(False, f'The {name} audio component is not installed.')
-        result = subprocess.run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SOURCE@'], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError, ImportError, ValueError) as error:
+        # Probe through the same multimedia runtime the application ships.
+        # Host-only command line tools are not part of a Flatpak's contract.
+        monitor = Gst.DeviceMonitor.new()
+        try:
+            if not monitor.add_filter('Audio/Source', None) or not monitor.start():
+                return RecordingCapability(False, 'The microphone service is unavailable.')
+            sources = []
+            for device in monitor.get_devices():
+                properties = device.get_properties()
+                # PulseAudio exposes speaker loopbacks as Audio/Source too.
+                if properties and properties.get_string('device.class') == 'monitor':
+                    continue
+                default = properties.get_value('is-default') if properties and properties.has_field('is-default') else False
+                sources.append((bool(default), device.get_display_name()))
+        finally:
+            monitor.stop()
+    except (OSError, ImportError, ValueError) as error:
         return RecordingCapability(False, f'The audio service is unavailable: {error}')
-    if result.returncode:
+    if not sources:
         return RecordingCapability(False, 'No microphone input is available on this device yet.')
-    match = re.search(r'node.description\s*=\s*"([^"\n]+)"', result.stdout)
-    return RecordingCapability(True, 'A microphone recording route is available.', match.group(1) if match else 'Default microphone')
+    source = next((name for default, name in sources if default), 'Default microphone')
+    return RecordingCapability(True, 'A microphone recording route is available.', source)
