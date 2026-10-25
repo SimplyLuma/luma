@@ -44,7 +44,7 @@ async function probe() {
         hostLauncher.set_stdout_file_path(`${out}/browser.stdout`);
         hostLauncher.set_stderr_file_path(`${out}/browser.stderr`);
         child = hostLauncher.spawnv(['/usr/bin/python3', '-c',
-            'import faulthandler,runpy,sys; faulthandler.dump_traceback_later(25,repeat=True); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")',
+            'import faulthandler,runpy,sys; faulthandler.dump_traceback_later(25,repeat=True); sys.argv=sys.argv[1:]; sys.path.insert(0,"/usr/share/viola-browser/luma-host"); runpy.run_path(sys.argv[0],run_name="__main__")',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
