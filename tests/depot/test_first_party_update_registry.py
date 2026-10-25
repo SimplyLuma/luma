@@ -32,7 +32,7 @@ class Registry(unittest.TestCase):
         catalog=json.loads((ROOT/'src/luma-installer/data/depot-catalog-4.json').read_text())
         bundled={entry['app_id']:entry for entry in catalog['applications'] if entry.get('app_id') in baseline}
         self.assertEqual(set(bundled),baseline)
-        self.assertEqual(len(bundled),23)
+        self.assertEqual(len(bundled),len(baseline))
         for app_id,entry in bundled.items():
             with self.subTest(app_id=app_id):
                 self.assertEqual(entry['architectures'],['x86_64','aarch64'])
@@ -40,6 +40,16 @@ class Registry(unittest.TestCase):
         # published CPU; broadening the bundled apps is not a global default.
         write=next(entry for entry in catalog['applications'] if entry['id']=='write')
         self.assertEqual(write['architectures'],['x86_64'])
+
+    def test_displays_withdrawn_from_all_active_sources(self):
+        registry=json.loads((ROOT/'packaging/flatpak/first-party-updates.json').read_text())
+        shipping=json.loads((ROOT/'config/os/first-party-app-baseline.json').read_text())
+        catalog=json.loads((ROOT/'src/luma-installer/data/depot-catalog-4.json').read_text())
+        self.assertNotIn('org.projectluma.Displays',{a['id'] for a in registry['applications']})
+        self.assertNotIn('org.projectluma.Displays',shipping['applications'])
+        self.assertNotIn('displays',{a['id'] for a in catalog['applications']})
+        history=json.loads((ROOT/'src/luma-installer/data/depot-first-party.json').read_text())
+        self.assertEqual(next(a for a in history['applications'] if a['id']=='displays')['visibility'],'withdrawn')
 
     def test_every_catalogued_image_app_has_maintained_identity_and_producer(self):
         registry=json.loads((ROOT/'packaging/flatpak/first-party-updates.json').read_text())

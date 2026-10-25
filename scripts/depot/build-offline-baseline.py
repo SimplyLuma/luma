@@ -29,7 +29,7 @@ def run(*args, **kwargs):
 
 def selected_applications(entries, shipping=None):
     by_id={entry['id']:entry for entry in entries}
-    if len(by_id)!=len(entries) or len(by_id)!=30 or any(not entry.get('recipe') for entry in entries):
+    if not by_id or len(by_id)!=len(entries) or any(not entry.get('recipe') for entry in entries):
         raise ValueError('Every maintained app needs a unique identity and producer.')
     if shipping is None:return set(by_id)
     if shipping.get('schema')!='org.projectluma.os-app-baseline/v1':

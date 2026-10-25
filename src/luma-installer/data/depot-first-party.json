@@ -251,7 +251,7 @@
      "summary": "Put a system on a USB drive to try it or install it.",
      "qualification_reason": "An optional Luma application.",
      "categories": ["utilities"]},
-    {"id": "displays", "name": "Displays", "app_id": "org.projectluma.Displays", "visibility": "public",
+    {"id": "displays", "name": "Displays", "app_id": "org.projectluma.Displays", "visibility": "withdrawn",
      "backend": "rpm", "repository": "luma", "source_id": "luma-displays",
      "sources": {"luma_system": {"package": "luma-displays", "desktop_id": "org.projectluma.Displays.desktop", "removable": false}},
      "preinstalled_on_luma": true, "license": "Apache-2.0",

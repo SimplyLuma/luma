@@ -23,7 +23,8 @@ def admit(root, shipping, architecture=None):
     return {'schema':'org.projectluma.os-app-input/v1',
             'manifest_sha256':baseline.digest(root/'manifest.json'),
             'architecture':manifest['architecture'],
-            'applications':24, 'runtimes':3,
+            'applications':sum(row['ref'].startswith('app/') for row in manifest['bundles']),
+            'runtimes':sum(row['ref'].startswith('runtime/') for row in manifest['bundles']),
             'bundle_bytes':sum(row['bytes'] for row in manifest['bundles']),
             'bundles':manifest['bundles']}
 
