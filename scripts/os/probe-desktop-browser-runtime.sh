@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # A native-CPU rendering/adapter probe, not signed OS or Flatpak qualification.
 set -euo pipefail
+trap 'printf "Runtime probe failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 [ "$(id -u)" = 0 ] && [ "$(uname -m)" = aarch64 ] && [ -f /.dockerenv ]
 inputs="$root/build/runtime-inputs"
@@ -33,8 +34,18 @@ for identity in "${GTK4_NEVRA%.*}.aarch64" "${LIBADWAITA_NEVRA%.*}.aarch64" \
   'luma-appimage-compat-0.1.0-1.luma.1.fc44.aarch64' \
   'viola-browser-stable-151.0.7922.72-15.viola8210.native38.creator20261025.1.fc44.aarch64'; do
   mapfile -t found < <(find "$inputs" -type f -name "$identity.rpm")
-  [ "${#found[@]}" = 1 ]
-  [ "$(rpm -qp --nosignature --qf '%{NEVRA}' "${found[0]}")" = "$identity" ]
+  printf 'Selecting %s: %s retained copies\n' "$identity" "${#found[@]}"
+  [ "${#found[@]}" -ge 1 ]
+  expected_sha=
+  for file in "${found[@]}"; do
+    observed=$(rpm -qp --nosignature --qf '%{NEVRA}' "$file")
+    printf 'Observed RPM identity: %s (%s)\n' "$observed" "$file"
+    [ "$observed" = "$identity" ]
+    actual_sha=$(sha256sum "$file" | cut -d ' ' -f1)
+    [ -z "$expected_sha" ] || [ "$actual_sha" = "$expected_sha" ]
+    expected_sha=$actual_sha
+  done
+  printf '%s  %s\n' "$expected_sha" "${found[0]}" >> "$out/selected-rpms.sha256"
   rpms+=("${found[0]}")
 done
 installer=luma-application-installer-0.1.0-1.luma.71.creator20261021.1.fc44.noarch.rpm
