@@ -42,7 +42,7 @@ from gi.repository import Gdk, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
 from . import icons, lumaui  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
 from .commands import CommandRegistry  # noqa: E402
-from .structure_adapt import WidthWatch, arrow_keys, icon_button, is_phone  # noqa: E402
+from .structure_adapt import WidthWatch, _LayoutWatch, arrow_keys, icon_button, is_phone  # noqa: E402
 
 __all__ = ["ModeSwitch", "CornerPill"]
 
@@ -447,7 +447,6 @@ class CornerPill(Gtk.Box):
                 raise TypeError("modes is a ModeSwitch")
             self._add("modes", modes)
         self._search_widget = None
-        self._search_tick = 0
         self._search_wrapped = False
         if search is not None:
             from .bar_items import BarSearch
@@ -477,8 +476,7 @@ class CornerPill(Gtk.Box):
                     return False
                 keys.connect("key-pressed", escape)
                 widget.add_controller(keys)
-            self.connect("map", self._search_mapped)
-            self.connect("unmap", self._search_unmapped)
+            self._search_layout = _LayoutWatch(self, self._fit_search)
         if zoom is not None:
             # v71 Photos' view island: the size slider after the modes; it folds away in a
             # window of 720 or less (@container win (max-width: 720px) .pview .psize).
@@ -563,15 +561,6 @@ class CornerPill(Gtk.Box):
         arrow_keys(self.normal)
         arrow_keys(self.editing)
         self._watch = WidthWatch(self, lambda _w: self._collapse(), threshold=tokens.PHONE_MAX_WIDTH)
-
-    def _search_mapped(self, *_args) -> None:
-        if not self._search_tick:
-            self._search_tick = self.add_tick_callback(self._fit_search)
-
-    def _search_unmapped(self, *_args) -> None:
-        if self._search_tick:
-            self.remove_tick_callback(self._search_tick)
-            self._search_tick = 0
 
     def _fit_search(self, *_args) -> bool:
         """Keep every mode/action reachable when an open pane constrains the corner."""
