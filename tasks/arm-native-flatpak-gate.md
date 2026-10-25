@@ -20,7 +20,8 @@ Selected refs are Viola aarch64/beta and Platform, GL.default, Locale aarch64/44
 Publication agent owns export/upload; this task did neither.
 
 The installer imports all four exact signed commits through a fresh normal
-user Flatpak installation, verifies the original signed summary and maintained
+user Flatpak installation (runtimes first, then app with normal dependency
+checks), verifies the original signed summary and maintained
 signature fingerprint/ref bindings, restores the maintained official `luma`
 remote URL, rejects all permission overrides, and compares the actual engine
 and every native38 shipping host file (excluding generated PYC) with the signed

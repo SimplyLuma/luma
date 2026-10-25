@@ -51,8 +51,13 @@ def main():
     advertised = {ref.format_ref(): ref.get_commit() for ref in
                   installation.list_remote_refs_sync('luma', None)}
     assert all(advertised.get(ref) == commit for ref, commit in profile['refs'].items())
-    run('flatpak', 'install', '--user', '--noninteractive', '--assumeyes',
-        '--no-related', '--no-deps', 'luma', *sorted(profile['refs']))
+    runtime_refs = sorted(ref for ref in profile['refs'] if ref.startswith('runtime/'))
+    app_ref = next(ref for ref in profile['refs'] if ref.startswith('app/'))
+    # Install the complete selected runtime set first, then let the normal
+    # application transaction verify its dependencies without a skip flag.
+    for selected in (runtime_refs, [app_ref]):
+        run('flatpak', 'install', '--user', '--noninteractive', '--assumeyes',
+            '--no-related', 'luma', *selected)
     # Ordinary offline seeding ends with the maintained official remote URL.
     # Keep signature checking enabled while importing and after restoring it.
     run('flatpak', 'remote-modify', '--user', '--url=' + official_url, 'luma')
@@ -64,7 +69,6 @@ def main():
         ref = installed[name]
         assert ref.get_commit() == commit and ref.get_origin() == 'luma'
         verify_deployed_commit(installation, ref, exact_ref=name)
-    app_ref = next(name for name in profile['refs'] if name.startswith('app/'))
     files = Path(installed[app_ref].get_deploy_dir()) / 'files'
     engine_sha = digest(files / 'lib/viola/browser/chrome')
     assert engine_sha == digest(Path('/opt/viola/browser/chrome'))
