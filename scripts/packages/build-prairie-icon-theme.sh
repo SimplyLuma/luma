@@ -10,6 +10,10 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # Direct native CI runs the recipe inside its canonical Fedora container.
 # Install this recipe's host-side SVG validator there, before source staging.
 if [ "${LUMA_RPM_BUILDER_DIRECT:-0}" = 1 ] && ! command -v xmllint >/dev/null 2>&1; then
+  [ "$(id -u)" = 0 ] && { [ -f /run/.containerenv ] || [ -f /.dockerenv ]; } || {
+    printf 'error: direct icon prerequisites require the isolated root CI container\n' >&2
+    exit 1
+  }
   dnf5 -y install libxml2
 fi
 

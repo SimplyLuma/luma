@@ -164,3 +164,12 @@ class NativeMatrix(unittest.TestCase):
         self.assertFalse(matrix.routing_only_workflow_additions(None, current))
         self.assertFalse(matrix.routing_only_workflow_additions(current, previous))
         self.assertFalse(matrix.routing_only_workflow_additions(current, current))
+
+    def test_routing_exception_requires_the_top_level_event_block(self):
+        current = (ROOT / matrix.WORKFLOW).read_text()
+        previous = current.replace("      - 'assets/icon-theme/**'\n", '')
+        for replacement in ('inputs:', 'xon:', '  on:'):
+            with self.subTest(replacement=replacement):
+                self.assertFalse(matrix.routing_only_workflow_additions(
+                    previous.replace('\non:\n', '\n' + replacement + '\n'),
+                    current.replace('\non:\n', '\n' + replacement + '\n')))

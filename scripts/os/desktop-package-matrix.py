@@ -17,11 +17,13 @@ SHARED = {'config/desktop/inputs.env',
 
 def routing_only_workflow_additions(previous, current):
     """Only an exact, ordinary paths-list addition may avoid a shared rebuild."""
-    marker = '  pull_request:\n    paths:\n'
+    marker = 'on:\n  pull_request:\n    paths:\n'
     def split(body):
         if not isinstance(body, str) or body.count(marker) != 1:
             return None
         prefix, rest = body.split(marker)
+        if prefix and not prefix.endswith('\n'):
+            return None
         lines = rest.splitlines(keepends=True)
         paths = []
         while lines and lines[0].startswith('      '):
