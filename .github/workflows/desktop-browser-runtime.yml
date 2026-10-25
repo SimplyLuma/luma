@@ -2,7 +2,23 @@ name: Native ARM browser runtime probe
 
 on:
   workflow_dispatch:
+    inputs:
+      signed_input_url:
+        description: Exact public selected signed Flatpak input archive URL (optional)
+        type: string
+        default: ''
+      signed_input_sha256:
+        description: Full SHA256 of the selected signed input archive
+        type: string
+        default: ''
   workflow_call:
+    inputs:
+      signed_input_url:
+        type: string
+        default: ''
+      signed_input_sha256:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -11,7 +27,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 30
     container:
       image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
       # The packaged Chromium SUID sandbox creates its own namespaces. This
@@ -46,7 +62,10 @@ jobs:
           run-id: 39860196045
           github-token: ${{ github.token }}
           path: build/runtime-inputs/appimage
-      - name: Probe the unchanged packaged native host and engine
+      - name: Probe the unchanged native RPM or selected signed Flatpak
+        env:
+          BROWSER_GATE_SIGNED_INPUT_URL: ${{ inputs.signed_input_url }}
+          BROWSER_GATE_SIGNED_INPUT_SHA256: ${{ inputs.signed_input_sha256 }}
         run: bash scripts/os/probe-desktop-browser-runtime.sh
       - name: Retain actual runtime evidence on either outcome
         if: always()

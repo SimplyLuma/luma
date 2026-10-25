@@ -19,7 +19,13 @@ let childOutput = null;
 let window = null;
 let inputSeat = null;
 let monitorStream = null;
-let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
+const flatpakPath=GLib.getenv('BROWSER_GATE_FLATPAK_DEPLOYMENT');
+const deployment=flatpakPath?JSON.parse(new TextDecoder().decode(GLib.file_get_contents(flatpakPath)[1])):null;
+if (deployment && deployment.scope!=='EXACT_SIGNED_FLATPAK_INSTALLATION_NOT_RUNTIME_ACCEPTANCE')
+    throw Error('Signed Flatpak fixture deployment is absent');
+const stateRoot=deployment?deployment.state_root:`${home}/.local/state/viola-luma/sessions`;
+let result = {scope: deployment?'SIGNED_FLATPAK_NATIVE_CPU_MECHANISM_NOT_OS_ACCEPTANCE':'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
+if (deployment) result.signed_deployment=deployment;
 export const METRICS = {};
 
 async function probe() {
@@ -66,23 +72,23 @@ async function probe() {
         GLib.file_set_contents(`${out}/desktop-state.json`, JSON.stringify(result.desktop_state, null, 2));
         monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
             GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', `${out}/monitor-stream.json`]);
-        child = hostLauncher.spawnv(['/usr/bin/python3',
+        child = hostLauncher.spawnv(deployment?['/usr/bin/flatpak','run','--user',deployment.app_ref,'--start-url',url]:['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
-            '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);
+            '--work-root', stateRoot, '--interactive', '--start-url', url]);
         const pid = Number(child.get_identifier());
         const output = child.wait_async(null).then(() => ['', '']);
         childOutput = output;
         const windows = () => global.get_window_actors().map(actor => actor.meta_window)
-            .filter(candidate => candidate.get_pid() === pid);
+            .filter(candidate => deployment?candidate.get_gtk_application_id()==='com.rhyme.viola':candidate.get_pid()===pid);
         const deadline = Date.now() + 45000;
         let exited = false;
         output.then(() => {exited = true;});
         const ready = () => {
             const owned = windows();
             if (owned.length !== 1 || !GLib.file_test(
-                `${home}/.local/state/viola-luma/sessions/native-ready`, GLib.FileTest.EXISTS)) return false;
+                `${stateRoot}/native-ready`, GLib.FileTest.EXISTS)) return false;
             const frame = owned[0].get_frame_rect();
             return frame.width > 200 && frame.height > 200;
         };
@@ -112,13 +118,13 @@ async function probe() {
         const [stdout, stderr] = await output;
 
         if (!child.get_successful()) throw Error('Native host failed while closing');
-        const reports = Gio.File.new_for_path(`${home}/.local/state/viola-luma/sessions`)
+        const reports = Gio.File.new_for_path(stateRoot)
             .enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
         const paths = [];
         let info;
         while ((info = reports.next_file(null))) {
             if (info.get_name().startsWith('native-window-'))
-                paths.push(`${home}/.local/state/viola-luma/sessions/${info.get_name()}/integration-report.json`);
+                paths.push(`${stateRoot}/${info.get_name()}/integration-report.json`);
         }
         reports.close(null);
         if (paths.length !== 1) throw Error('Native host did not retain one integration report');
@@ -134,7 +140,7 @@ async function probe() {
         // active state, geometry and frame diagnostics. This is evidence,
         // never a replacement for the strict successful-page proof.
         try {
-            const report = `${home}/.local/state/viola-luma/sessions/presentation-live.json`;
+            const report = `${stateRoot}/presentation-live.json`;
             GLib.file_set_contents(`${out}/live-report-before-cleanup.json`,
                 GLib.file_get_contents(report)[1]);
             result.failure_windows = global.get_window_actors().map(actor => ({

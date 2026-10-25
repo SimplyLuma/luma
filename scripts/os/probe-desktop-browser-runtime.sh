@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# A native-CPU mapped-window probe, not signed OS or Flatpak qualification.
+# Native CPU mapped-window proof for an RPM or an exact signed Flatpak.
+# This does not qualify the installed OS image or authorize publication.
 set -euo pipefail
 trap 'printf "Runtime probe failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -8,6 +9,11 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 inputs="$root/build/runtime-inputs"
 out="$root/build/browser-runtime-evidence"
 mkdir -p "$out"
+signed_url=${BROWSER_GATE_SIGNED_INPUT_URL:-}
+signed_sha=${BROWSER_GATE_SIGNED_INPUT_SHA256:-}
+[ -n "$signed_url" ] || [ -z "$signed_sha" ]
+signed_mirror=
+signed_deployment=
 python3 - "$inputs" "$out" <<'PY'
 import hashlib,json,sys
 from pathlib import Path
@@ -55,7 +61,24 @@ curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
 printf '%s  %s\n' "$installer_sha" "$inputs/$installer" | sha256sum -c -
 dnf5 -y install "${rpms[@]}" "$inputs/$installer" \
   pipewire wireplumber gstreamer1-plugins-base gstreamer1-plugins-good \
-  pipewire-utils pipewire-gstreamer gnome-keyring mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs
+  pipewire-utils pipewire-gstreamer gnome-keyring mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs flatpak ostree
+if [ -n "$signed_url" ]; then
+  python3 - "$signed_url" "$signed_sha" <<'PY_URL'
+import re,sys
+from urllib.parse import urlsplit
+url=urlsplit(sys.argv[1]);sha=sys.argv[2]
+assert re.fullmatch('[0-9a-f]{64}',sha)
+assert url.scheme=='https' and url.hostname=='dl.simplyluma.com' and url.port is None
+assert not url.username and not url.password and not url.query and not url.fragment
+assert url.path=='/inputs/depot-build/'+sha+'/runtime-input.tar'
+PY_URL
+  curl --fail --location --retry 3 --proto '=https' --tlsv1.2 --max-filesize 8589934592 \
+    "$signed_url" --output "$inputs/runtime-input.tar"
+  signed_mirror="$inputs/signed"
+  python3 "$root/scripts/os/qa/viola-native/signed-flatpak-inputs.py" \
+    "$inputs/runtime-input.tar" "$signed_mirror" "$signed_sha" --url "$signed_url" > "$out/signed-inputs.json"
+  signed_deployment="$out/flatpak-deployment.json"
+fi
 host=/usr/share/viola-browser/luma-host
 sha256sum /opt/viola/browser/chrome > "$out/installed-engine.sha256"
 rpm -V viola-browser-stable > "$out/rpm-verify-before.txt"
@@ -106,7 +129,8 @@ mkdir "$qa/out"
 chown -R luma-gate-browser-opens:luma-gate-browser-opens "$out" "$qa"
 status=0
 runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG_RUNTIME_DIR=/run/user/1100 \
-  OUT="$out" QA="$qa" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=gl \
+  OUT="$out" QA="$qa" BROWSER_GATE_SIGNED_MIRROR="$signed_mirror" \
+  BROWSER_GATE_FLATPAK_DEPLOYMENT="$signed_deployment" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=gl \
   XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome XDG_SESSION_TYPE=wayland \
   timeout --kill-after=15 420 bash -euo pipefail -c '
     trap '\''jobs -pr | xargs -r kill; wait || true'\'' EXIT
@@ -116,6 +140,12 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     [ -S /run/user/1100/bus ]
     python3 "$QA/diagnose-pixbuf-codec.py" >"$OUT/pixbuf-codec-diagnostic.json"
     python3 "$QA/initialize-fixture-keyring.py" >"$OUT/keyring-readiness.json"
+    if [ -n "$BROWSER_GATE_SIGNED_MIRROR" ]; then
+      # This packaged host-service directory must exist before Flatpak mounts
+      # its manifest-defined read-only xdg-run/luma-viola exposure.
+      install -d -m 0700 /run/user/1100/luma-viola
+      python3 "$QA/install-signed-flatpak.py" "$BROWSER_GATE_SIGNED_MIRROR" "$OUT" >"$OUT/flatpak-installation.json"
+    fi
     pipewire >"$OUT/pipewire.log" 2>&1 & audio=$!
     wireplumber >"$OUT/wireplumber.log" 2>&1 & policy=$!
     python3 "$QA/page-server.py" "$QA/out" --html-sha256 cceef935f0735daaa75004d613262781db0883b33db51e7c11a223e64c168504 >"$OUT/page-server.log" 2>&1 &
@@ -137,13 +167,19 @@ mkdir "$out/mapped"
 cp -a "$qa/out/." "$out/mapped/"
 # Retain the fresh fixture profile log and exact diagnostics, never a user profile.
 home=/home/luma-gate-browser-opens
-if [ -f "$home/.local/share/viola-luma/profile.log" ]; then
-  cp "$home/.local/share/viola-luma/profile.log" "$out/engine.log"
+state_root="$home/.local/state/viola-luma/sessions"
+profile="$home/.local/share/viola-luma/profile"
+if [ -n "$signed_deployment" ] && [ -f "$signed_deployment" ]; then
+  state_root=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["state_root"])' "$signed_deployment")
+  profile=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["profile"])' "$signed_deployment")
 fi
-if [ -d "$home/.local/state/viola-luma/sessions" ]; then
+if [ -f "$profile.log" ]; then
+  cp "$profile.log" "$out/engine.log"
+fi
+if [ -d "$state_root" ]; then
   # Avoid carrying a .local ancestor: the artifact uploader excludes hidden
   # paths by default. Copy only the three fresh fixture diagnostic families.
-  python3 - "$home/.local/state/viola-luma/sessions" "$out/runtime-reports" <<'PY'
+  python3 - "$state_root" "$out/runtime-reports" <<'PY'
 import shutil,sys
 from pathlib import Path
 source,destination=map(Path,sys.argv[1:])
