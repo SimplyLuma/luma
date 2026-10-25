@@ -49,18 +49,18 @@ def main():
     if len(data)<33 or data[:8]!=b'\x89PNG\r\n\x1a\n' or data[12:16]!=b'IHDR' or struct.unpack('>I',data[8:12])[0]!=13:
         raise ValueError('invalid PNG header')
     width,height=struct.unpack('>II',data[16:24])
+    if data[24]!=8:
+        raise ValueError('PNG requires eight-bit channels')
     if width<1 or height<1 or width*height>16_777_216:
         raise ValueError('PNG dimensions exceed bound')
-    import gi
-    gi.require_version('GdkPixbuf','2.0')
-    from gi.repository import GdkPixbuf
-    loader=GdkPixbuf.PixbufLoader.new_with_type('png')
-    loader.write(data); loader.close()
-    image=loader.get_pixbuf()
-    if image.get_width()*image.get_height() > 16_777_216 or image.get_bits_per_sample()!=8:
-        raise ValueError('unsupported screenshot geometry')
-    pixels=image.get_pixels(); stride=image.get_rowstride(); channels=image.get_n_channels()
-    report=verify(image.get_width(),image.get_height(),lambda x,y:pixels[y*stride+x*channels:y*stride+x*channels+3],args.rectangle,args.phase)
+    import io
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as source:
+        if source.format!='PNG' or source.size!=(width,height):
+            raise ValueError('decoded PNG geometry does not match bounded header')
+        image=source.convert('RGB')
+        image.load()
+    report=verify(width,height,lambda x,y:image.getpixel((x,y)),args.rectangle,args.phase)
     after=path.stat()
     if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns):
         raise ValueError('screenshot changed during verification')

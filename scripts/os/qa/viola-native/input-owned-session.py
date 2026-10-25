@@ -24,8 +24,9 @@ def identity(pid):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('click','key-a','seat','monitor'))
+    parser.add_argument('action',choices=('click','key-a','seat','monitor','capture'))
     parser.add_argument('--ready',type=Path)
+    parser.add_argument('--output',type=Path)
     parser.add_argument('--x',type=int)
     parser.add_argument('--y',type=int)
     args=parser.parse_args()
@@ -45,6 +46,13 @@ def main():
         assert args.ready is not None and args.ready.parent==actor.parent/'out'
         assert args.ready.name==('virtual-seat.json' if args.action=='seat' else 'monitor-stream.json') and not args.ready.exists()
     else:assert args.ready is None
+    if args.action=='capture':
+        assert args.output is not None and args.output.parent==actor.parent/'out'
+        assert re.fullmatch(r'native-[a-z-]+-[0-9]+\.png',args.output.name)
+        assert args.output.parent.is_dir() and not args.output.parent.is_symlink()
+        assert args.output.parent.stat().st_uid==uid
+        assert not args.output.exists() and not args.output.is_symlink()
+    else:assert args.output is None
     runtime=Path('/run/user')/str(uid)
     assert os.environ.get('XDG_RUNTIME_DIR')==str(runtime)
     assert os.environ.get('DBUS_SESSION_BUS_ADDRESS')=='unix:path='+str(runtime/'bus')
@@ -56,7 +64,7 @@ def main():
     import gi
     from gi.repository import Gio,GLib
     bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
-    service='org.gnome.Mutter.ScreenCast' if args.action=='monitor' else 'org.gnome.Mutter.RemoteDesktop'
+    service='org.gnome.Mutter.ScreenCast' if args.action in ('monitor','capture') else 'org.gnome.Mutter.RemoteDesktop'
     def dbus(method,signature,values):
         return bus.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus',
             'org.freedesktop.DBus',method,GLib.Variant(signature,values),None,
@@ -72,6 +80,9 @@ def main():
         owned_service()
         reply=bus.call_sync(owner,path,interface,method,parameters,None,Gio.DBusCallFlags.NONE,5000,None)
         return reply.unpack() if reply else None
+    if args.action=='capture':
+        capture_monitor(call,bus,service,owned_service,args.output,parent,expected,owner)
+        return
     if args.action=='monitor':
         monitor(call,bus,service,owned_service,args.ready,parent,expected)
         return
@@ -173,5 +184,86 @@ def monitor(call,bus,service,owned_service,ready,parent,expected):
     if errors:raise RuntimeError('; '.join(errors))
     assert frames>0
     print(json.dumps(dict(scope='REAL_HEADLESS_MONITOR_CONSUMER_NOT_PAGE_PROOF',frames_received=frames,parent_pid=parent)))
+
+
+def capture_monitor(call,bus,service,owned_service,output,parent,expected,owner):
+    """Capture the pinned Shell monitor through its real ScreenCast stream."""
+    import gi
+    gi.require_version('Gst','1.0')
+    from gi.repository import Gio,GLib,Gst
+    Gst.init(None)
+    deadline=time.monotonic()+15
+    fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    before=os.fstat(fd)
+    session=None;subscription=None;pipeline=None;frames=0;errors=[];eos=False;node_id=None
+    loop=GLib.MainLoop()
+    def message(_bus,packet):
+        nonlocal eos
+        if packet.type==Gst.MessageType.ERROR:
+            error,detail=packet.parse_error();errors.append(str(error)+': '+str(detail));loop.quit()
+        elif packet.type==Gst.MessageType.EOS:
+            eos=True;loop.quit()
+    def handoff(*_):
+        nonlocal frames
+        frames+=1
+    def started(_bus,_sender,_path,_interface,_signal,parameters):
+        nonlocal pipeline,node_id
+        try:
+            owned_service()
+            node_id=parameters.unpack()[0]
+            assert pipeline is None
+            pipeline=Gst.Pipeline.new('owned-shell-monitor-png')
+            source=Gst.ElementFactory.make('pipewiresrc')
+            caps=Gst.ElementFactory.make('capsfilter')
+            tap=Gst.ElementFactory.make('identity')
+            convert=Gst.ElementFactory.make('videoconvert')
+            encode=Gst.ElementFactory.make('pngenc')
+            sink=Gst.ElementFactory.make('filesink')
+            elements=(source,caps,tap,convert,encode,sink)
+            assert all(elements),'Installed compositor PNG elements unavailable'
+            source.set_property('path',str(node_id))
+            source.set_property('num-buffers',1)
+            source.set_property('do-timestamp',True)
+            caps.set_property('caps',Gst.Caps.from_string('video/x-raw'))
+            tap.set_property('signal-handoffs',True);tap.connect('handoff',handoff)
+            # Keep the exclusively created inode pinned; filesink cannot follow
+            # a replaced output pathname or overwrite an existing user file.
+            sink.set_property('location',f'/proc/self/fd/{fd}')
+            sink.set_property('sync',False)
+            for element in elements:pipeline.add(element)
+            for left,right in zip(elements,elements[1:]):assert left.link(right)
+            channel=pipeline.get_bus();channel.add_signal_watch();channel.connect('message',message)
+            assert pipeline.set_state(Gst.State.PLAYING)!=Gst.StateChangeReturn.FAILURE
+        except Exception as error:errors.append(str(error));loop.quit()
+    def poll():
+        try:
+            owned_service()
+            if time.monotonic()>=deadline:
+                errors.append('Owned compositor PNG capture timed out');loop.quit();return False
+        except Exception as error:errors.append(str(error));loop.quit();return False
+        return True
+    timer=GLib.timeout_add(100,poll)
+    try:
+        session=call('/org/gnome/Mutter/ScreenCast',service,'CreateSession',GLib.Variant('(a{sv})',({},)))[0]
+        stream=call(session,service+'.Session','RecordMonitor',GLib.Variant('(sa{sv})',('Meta-0',{'cursor-mode':GLib.Variant('u',0)})))[0]
+        subscription=bus.signal_subscribe(service,service+'.Stream','PipeWireStreamAdded',stream,None,Gio.DBusSignalFlags.NONE,started)
+        call(session,service+'.Session','Start');loop.run()
+    finally:
+        if pipeline:pipeline.set_state(Gst.State.NULL)
+        if subscription is not None:bus.signal_unsubscribe(subscription)
+        if GLib.MainContext.default().find_source_by_id(timer):GLib.source_remove(timer)
+        try:
+            if session:call(session,service+'.Session','Stop')
+        finally:os.close(fd)
+    assert not errors,'; '.join(errors)
+    assert eos and frames==1,'Actual one-frame compositor PNG did not complete'
+    owned_service()
+    after=output.lstat()
+    assert stat.S_ISREG(after.st_mode) and (after.st_dev,after.st_ino)==(before.st_dev,before.st_ino)
+    assert 33<=after.st_size<=16*1024*1024
+    with output.open('rb') as image:assert image.read(8)==b'\x89PNG\r\n\x1a\n'
+    print(json.dumps(dict(scope='REAL_OWNED_COMPOSITOR_PNG_NOT_PAGE_IDENTITY_PROOF',output=str(output),
+                         parent_pid=parent,parent_start=expected[1],service_unique_owner=owner,
+                         node_id=node_id,frames_received=frames,bytes=after.st_size)))
 
 if __name__=='__main__':main()

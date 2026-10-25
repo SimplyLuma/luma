@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from PIL import Image, ImageDraw
 from urllib.parse import urlsplit
 
 
@@ -63,6 +64,41 @@ class PageServerTest(unittest.TestCase):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=3)
+
+
+class CompositorPixelTest(unittest.TestCase):
+    def test_real_png_decoder_requires_all_page_colors(self):
+        verifier = Path(__file__).resolve().parents[2] / 'scripts/os/qa/viola-native/verify-pixels.py'
+        with tempfile.TemporaryDirectory(prefix='native-pixel-test-') as directory:
+            image = Image.new('RGB', (200, 200))
+            draw = ImageDraw.Draw(image)
+            colors = ((231, 41, 83), (19, 173, 109), (43, 83, 229), (241, 181, 29))
+            for index, color in enumerate(colors):
+                x, y = (index % 2) * 100, (index // 2) * 100
+                draw.rectangle((x, y, x + 99, y + 99), fill=color)
+            path = Path(directory) / 'monitor.png'
+            image.save(path)
+            command = [sys.executable, str(verifier), str(path), '--rectangle', '0', '0', '200', '200', '--phase']
+            passed = subprocess.run(command + ['0'], capture_output=True, text=True, timeout=5)
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            self.assertEqual(len(json.loads(passed.stdout)['samples']), 20)
+            rejected = subprocess.run(command + ['1'], capture_output=True, text=True, timeout=5)
+            self.assertEqual(rejected.returncode, 1)
+            self.assertFalse(json.loads(rejected.stdout)['ok'])
+
+    def test_png_bounds_checked_before_decode(self):
+        verifier = Path(__file__).resolve().parents[2] / 'scripts/os/qa/viola-native/verify-pixels.py'
+        with tempfile.TemporaryDirectory(prefix='native-pixel-bounds-') as directory:
+            path = Path(directory) / 'monitor.png'
+            Image.new('RGB', (100, 100)).save(path)
+            data = bytearray(path.read_bytes())
+            data[16:24] = (65536).to_bytes(4, 'big') * 2
+            path.write_bytes(data)
+            result = subprocess.run([sys.executable, str(verifier), str(path), '--rectangle',
+                                     '0', '0', '100', '100', '--phase', '0'],
+                                    capture_output=True, text=True, timeout=5)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('PNG dimensions exceed bound', result.stderr)
 
 
 if __name__ == '__main__':

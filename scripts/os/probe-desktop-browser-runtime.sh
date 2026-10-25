@@ -114,6 +114,7 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --nofork --nopidfile >"$OUT/session-bus.log" 2>&1 &
     for _ in $(seq 50); do [ -S /run/user/1100/bus ] && break; sleep .1; done
     [ -S /run/user/1100/bus ]
+    python3 "$QA/diagnose-pixbuf-codec.py" >"$OUT/pixbuf-codec-diagnostic.json"
     python3 "$QA/initialize-fixture-keyring.py" >"$OUT/keyring-readiness.json"
     pipewire >"$OUT/pipewire.log" 2>&1 & audio=$!
     wireplumber >"$OUT/wireplumber.log" 2>&1 & policy=$!

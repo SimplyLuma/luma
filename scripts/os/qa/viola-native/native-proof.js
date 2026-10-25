@@ -49,13 +49,14 @@ export async function proveNativeWindow(window,launcher,out,url) {
                 if (requireNewFrame && frame===previousFrame) throw Error('page state has no new displayed SHM frame');
                 const bound=geometry(window,state.native);
                 const path=`${out}/native-${label}-${attempt}.png`;
-                const stream=Gio.File.new_for_path(path).replace(null,false,Gio.FileCreateFlags.NONE,null);
-                try {await new Shell.Screenshot().screenshot(false,stream);}finally{stream.close(null);}
+                const shot=await capture(launcher,['/usr/bin/python3','-B',input,'capture','--output',path]);
+                if (!shot.ok) throw Error(`owned compositor PNG capture failed: ${shot.stderr}`);
+                const screenshot=JSON.parse(shot.stdout);
                 const reply=await capture(launcher,['/usr/bin/python3','-B',validator,path,'--phase',`${phase}`,'--rectangle',...bound.page.map(String)]);
                 if (!reply.ok) throw Error(`native screenshot color proof failed: ${reply.stdout} ${reply.stderr}`);
                 const proof=JSON.parse(reply.stdout);
                 if (!proof.ok) throw Error('native screenshot validator did not confirm pixels');
-                records.push({label,phase,frame,observation:state,geometry:bound,pixels:proof});
+                records.push({label,phase,frame,observation:state,geometry:bound,screenshot,pixels:proof});
                 previousFrame=frame;save();return state;
             } catch(error) {lastError=String(error);}
             await sleep(1000);
