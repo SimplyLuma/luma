@@ -44,6 +44,9 @@ def main():
         with os.fdopen(fd,'w') as stream:
             json.dump(document,stream,sort_keys=True);stream.write('\n');stream.flush();os.fsync(stream.fileno())
     class Handler(http.server.BaseHTTPRequestHandler):
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(5)
         def log_message(self,*_args):pass
         def do_GET(self):
             if self.path!=page:self.send_error(404);return
@@ -74,7 +77,9 @@ def main():
                     self.server.phase+=1
                 self.send_response(204);self.send_header('Content-Length','0');self.end_headers()
             except (ValueError,TypeError,KeyError,OSError):self.send_error(400)
-    server=http.server.HTTPServer(('127.0.0.1',0),Handler);server.phase=0;server.viewports=0
+    # Chromium may preconnect without sending a request. A single-threaded
+    # server then waits on that idle socket while the actual page queues.
+    server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);server.phase=0;server.viewports=0
     origin='http://127.0.0.1:'+str(server.server_port);url=origin+page
     record('page-server.json',dict(pid=os.getpid(),url=url,token=token,html_sha256=args.html_sha256,scope='DISPOSABLE_LOOPBACK_FIXTURE_NOT_BROWSER_QUALIFICATION'))
     server.serve_forever()
