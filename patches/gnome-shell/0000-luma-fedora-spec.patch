@@ -275,7 +275,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1272:      0278-brightness-one-percent-and-idle-input.patch
 +Patch1273:      0279-applications-and-downloads-drawer.patch
 +Patch1274:      0280-retire-standalone-displays.patch
-+Patch1274:      0280-drawer-artwork-and-grid-alignment.patch
++Patch1275:      0280-drawer-artwork-and-grid-alignment.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
