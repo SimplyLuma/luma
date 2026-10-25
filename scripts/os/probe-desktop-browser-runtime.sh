@@ -106,7 +106,7 @@ mkdir "$qa/out"
 chown -R luma-gate-browser-opens:luma-gate-browser-opens "$out" "$qa"
 status=0
 runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG_RUNTIME_DIR=/run/user/1100 \
-  OUT="$out" QA="$qa" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
+  OUT="$out" QA="$qa" PYTHONDONTWRITEBYTECODE=1 LIBGL_ALWAYS_SOFTWARE=1 GSK_RENDERER=gl \
   XDG_CURRENT_DESKTOP=GNOME XDG_SESSION_DESKTOP=gnome XDG_SESSION_TYPE=wayland \
   timeout --kill-after=15 420 bash -euo pipefail -c '
     trap '\''jobs -pr | xargs -r kill; wait || true'\'' EXIT
