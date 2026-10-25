@@ -30,6 +30,7 @@ from pathlib import Path
 POWER_SUPPLY = Path("/sys/class/power_supply")
 CPUIDLE = Path("/sys/devices/system/cpu/cpuidle")
 ENERGY_PUBLICATION = Path("/run/luma-vitals/energy.json")
+DRM = Path("/sys/class/drm")
 #: How often the /proc walk runs, in seconds. Cheap enough to be honest about.
 ATTRIBUTION_SECONDS = 60.0
 #: Below this many wakeups a second a process is not worth naming.
@@ -104,8 +105,12 @@ class PowerSample:
 # ---------------------------------------------------------------- the draw
 
 def _battery() -> Path | None:
-    for path in sorted(POWER_SUPPLY.glob("BAT*")):
-        if _read(path / "type").strip() == "Battery":
+    # ACPI's BAT0 naming is not used by many ARM and embedded platforms.
+    # Peripheral batteries (pens, keyboards, mice) do not power the machine.
+    for path in sorted(POWER_SUPPLY.glob("*")):
+        if (_read(path / "type").strip() == "Battery"
+                and _read(path / "scope").strip() != "Device"
+                and _read(path / "present").strip() != "0"):
             return path
     return None
 
@@ -140,17 +145,27 @@ def draw() -> Draw:
     if not micro_watts:  # some firmware reports charge (µAh) and voltage
         volts = _int(battery / "voltage_now") / 1e6
         micro_watts = int(_int(battery / "current_now") * volts)
-        energy = int(_int(battery / "charge_now") * volts)
-        full = int(_int(battery / "charge_full") * volts)
-    watts = micro_watts / 1e6 if micro_watts else None
+    # Rate and stored energy are independent sysfs capabilities. Falling back
+    # for one must not discard a valid reading of the other.
+    if not energy or not full:
+        volts = _int(battery / "voltage_now") / 1e6
+        if not energy:
+            energy = int(_int(battery / "charge_now") * volts)
+        if not full:
+            full = int(_int(battery / "charge_full") * volts)
+    # Status carries the direction; report the magnitude consistently across
+    # drivers which expose positive power or signed discharge current/power.
+    watts = abs(micro_watts) / 1e6 if micro_watts else None
     energy_wh = energy / 1e6 if energy else None
+    capacity = _read(battery / "capacity").strip()
+    percent = int(capacity) if capacity.isdigit() and 0 <= int(capacity) <= 100 else None
     return Draw(
         on_battery=on_battery,
         status=status,
         watts=watts,
         energy_wh=energy_wh,
         energy_full_wh=full / 1e6 if full else None,
-        percent=_int(battery / "capacity") or None,
+        percent=percent,
         seconds_to_empty=(energy_wh / watts * 3600) if on_battery and watts and energy_wh else None,
         screen_percent=_screen_percent(),
         lid_closed=_lid_closed(),
@@ -244,19 +259,26 @@ def _idle_counters() -> dict[str, int]:
 
 
 def _graphics() -> tuple[int, int | None]:
-    """(microseconds the render engine was gated off, its frequency in MHz)."""
-    for card in sorted(Path("/sys/class/drm").glob("card*/device")):
+    """Known GPU idle counters, or no reading when the device is ambiguous.
+
+    A platform DRM card can be parented by the display controller, independently
+    of its GPU. Display runtime PM must not be reported as GPU residency.
+    """
+    for entry in sorted(DRM.glob("card*")):
+        if not entry.name[4:].isdigit():
+            continue
+        card = entry / "device"
         gt = card / "tile0/gt0"
         if (gt / "gtidle/idle_residency_ms").exists():
             return _int(gt / "gtidle/idle_residency_ms") * 1000, _int(gt / "freq0/act_freq") or None
         legacy = card / "power/runtime_suspended_time"  # i915 and older
-        if legacy.exists():
+        if legacy.exists() and (card / "subsystem").resolve().name == "pci":
             return _int(legacy) * 1000, None
     return 0, None
 
 
 def _runtime_pm_off() -> list[str]:
-    """Devices told never to suspend. On a laptop each one is a standing cost."""
+    """Devices with runtime suspend disabled; driver support is not implied."""
     stuck = []
     for control in Path("/sys/bus/pci/devices").glob("*/power/control"):
         if _read(control).strip() == "on":
@@ -288,10 +310,11 @@ def _blockers(draw_now: Draw, package_idle: float | None, gpu_idle: float | None
             and draw_now.on_battery:
         found.append("the processor is set to favour speed over energy")
     if runtime_pm_off:
-        found.append(f"{len(runtime_pm_off)} devices may not power down: " + ", ".join(runtime_pm_off[:4]))
-    if _read("/sys/module/pcie_aspm/parameters/policy").find("[powersave]") < 0 \
-            and Path("/sys/module/pcie_aspm/parameters/policy").exists():
-        found.append("PCI Express links are not set to save power when idle")
+        found.append("runtime suspend policy is disabled: " + ", ".join(runtime_pm_off[:4]))
+    # The default policy can already enable ASPM according to the firmware.
+    # Its name alone does not establish that link power saving is disabled.
+    if "[performance]" in _read("/sys/module/pcie_aspm/parameters/policy"):
+        found.append("PCI Express power policy prioritizes performance")
     for name, rate in sorted(interrupts.items(), key=lambda item: -item[1])[:3]:
         if rate >= 500 and not name.startswith(("LOC", "RES", "CAL", "TLB", "IWI")):
             found.append(f"{name} is interrupting {rate:.0f} times a second")
