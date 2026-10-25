@@ -2,6 +2,7 @@
 // Native package mechanism probe. Final signed Flatpak/OS gates are separate.
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {proveNativeWindow} from './native-proof.js';
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async', 'communicate_utf8_finish');
@@ -78,6 +79,23 @@ async function probe() {
     } catch (error) {
         result.error = String(error);
         result.stack = error.stack;
+        // Capture the live failure before closing the window changes its
+        // active state, geometry and frame diagnostics. This is evidence,
+        // never a replacement for the strict successful-page proof.
+        try {
+            const report = `${home}/.local/state/viola-luma/sessions/presentation-live.json`;
+            GLib.file_set_contents(`${out}/live-report-before-cleanup.json`,
+                GLib.file_get_contents(report)[1]);
+            result.failure_windows = global.get_window_actors().map(actor => ({
+                pid: actor.meta_window.get_pid(), title: actor.meta_window.get_title(),
+                frame: actor.meta_window.get_frame_rect(),
+                buffer: actor.meta_window.get_buffer_rect(),
+                focused: actor.meta_window.has_focus(),
+            }));
+            const stream = Gio.File.new_for_path(`${out}/failure-screen.png`)
+                .replace(null, false, Gio.FileCreateFlags.NONE, null);
+            try {await new Shell.Screenshot().screenshot(false, stream);} finally {stream.close(null);}
+        } catch (diagnosticError) {result.diagnostic_error = String(diagnosticError);}
     } finally {
         GLib.file_set_contents(`${out}/RESULT.json`, JSON.stringify(result, null, 2));
         if (!result.ok) {
