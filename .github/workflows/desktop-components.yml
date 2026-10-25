@@ -90,11 +90,16 @@ jobs:
           export SOURCE_DATE_EPOCH=$(git -c safe.directory="$PWD" log -1 --format=%ct HEAD)
           bash "$RECIPE"
       - name: Verify the noarch package identity and shipped payload
+        id: package
         if: matrix.spec != ''
         env:
           SPEC: ${{ matrix.spec }}
-        run: python3 scripts/os/check-native-noarch-package.py --spec "$SPEC"
+        run: |
+          python3 scripts/os/check-native-noarch-package.py --spec "$SPEC"
+          name=$(rpmspec --query --rpms --qf '%{NAME}' "$SPEC")
+          echo "directory=build/packages/$name" >> "$GITHUB_OUTPUT"
       - name: Retain checked RPMs
+        if: matrix.spec == ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-${{ matrix.component }}-${{ matrix.architecture }}
@@ -102,6 +107,18 @@ jobs:
             build/packages/**/RPMS/
             build/packages/**/SRPMS/
             build/packages/**/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain checked noarch component RPMs
+        if: matrix.spec != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.component }}-${{ matrix.architecture }}
+          path: |
+            ${{ steps.package.outputs.directory }}/RPMS/
+            ${{ steps.package.outputs.directory }}/SRPMS/
+            ${{ steps.package.outputs.directory }}/SHA256SUMS
             build/SOURCE-REVISION
           if-no-files-found: error
           retention-days: 14

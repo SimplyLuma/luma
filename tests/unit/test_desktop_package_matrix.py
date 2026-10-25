@@ -90,3 +90,10 @@ class NativeMatrix(unittest.TestCase):
         rows = matrix.matrix(ROOT, {matrix.REGISTRY}, previous)['include']
         self.assertEqual(len(rows), 5)
         self.assertEqual(sum(row['toolkit'] for row in rows), 3)
+
+    def test_noarch_checker_changes_only_rebuild_its_five_consumers(self):
+        rows = matrix.matrix(ROOT, {'scripts/os/check-native-noarch-package.py'})['include']
+        self.assertEqual(len(rows), 5)
+        self.assertEqual({row['component'] for row in rows},
+                         {'application-installer', 'ari', 'desktop-launcher-policy'})
+        self.assertTrue(all(row['spec'] for row in rows))

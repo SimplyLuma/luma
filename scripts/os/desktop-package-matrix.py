@@ -10,8 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'config/os/desktop-build-groups.json'
 SHARED = {'config/desktop/inputs.env',
           'scripts/packages/run-in-rpm-builder.sh', 'scripts/packages/spec-release.sh',
-          '.github/workflows/desktop-components.yml',
-          'scripts/os/check-native-noarch-package.py'}
+          '.github/workflows/desktop-components.yml'}
 
 
 def matrix(root, changed=None, previous_registry=None):
@@ -31,7 +30,8 @@ def matrix(root, changed=None, previous_registry=None):
             raise ValueError(f'Invalid toolkit prerequisite for {group}')
         registry_changed = changed is not None and REGISTRY in changed and (
             previous_registry is None or previous_registry.get('groups', {}).get(group) != row)
-        affected = changed is None or registry_changed or bool(SHARED.intersection(changed)) or any(
+        affected = changed is None or registry_changed or bool(SHARED.intersection(changed)) or (
+            bool(row.get('spec')) and 'scripts/os/check-native-noarch-package.py' in changed) or any(
             path == row['recipe'] or any(path.startswith(prefix) for prefix in row['paths']) for path in changed)
         if not affected:
             continue
