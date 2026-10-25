@@ -415,13 +415,20 @@ class ViewerUI:
             modes = [('view', 'View', 'eye')]
         if not self.document and self.facts.kind=='Image':modes.append(('adjust','Adjust','sliders-horizontal'))
         if self.mode not in {m[0] for m in modes}:self.mode='view'
-        switch=ModeSwitch(modes,current=self.mode,on_change=self._set_mode) if len(modes) > 1 else None
-        self.mode_buttons=switch.buttons if switch is not None else {}
-        for k,b in self.mode_buttons.items():b.set_name('vw-mode-'+k)
-        corner=CornerPill(modes=switch,open_in=self._open_in,share=self._share,info=self.info)
-        corner.set_name('vw-corner')
-        for k,b in corner.controls.items():b.set_name('vw-'+k.replace('_','-'))
-        self.corner_slot.set_child(corner)
+        # Keep the touch/focus targets alive while editing. Marks and undo state
+        # change often; they do not change the document's available modes.
+        mode_key=tuple(modes)
+        if self.corner_slot.get_child() is None or getattr(self,'_corner_modes',None)!=mode_key:
+            switch=ModeSwitch(modes,current=self.mode,on_change=self._set_mode) if len(modes) > 1 else None
+            self._mode_switch=switch;self._corner_modes=mode_key
+            self.mode_buttons=switch.buttons if switch is not None else {}
+            for k,b in self.mode_buttons.items():b.set_name('vw-mode-'+k)
+            corner=CornerPill(modes=switch,open_in=self._open_in,share=self._share,info=self.info)
+            corner.set_name('vw-corner')
+            for k,b in corner.controls.items():b.set_name('vw-'+k.replace('_','-'))
+            self.corner_slot.set_child(corner)
+        elif self._mode_switch is not None:
+            self._mode_switch.set_current(self.mode)
         if self.facts.kind in ('Audio', 'EPUB book', '3D model'):
             self.tools.set_shown(False)
             self.adjust_panel.set_shown(False)

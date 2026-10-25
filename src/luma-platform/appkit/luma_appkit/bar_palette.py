@@ -61,7 +61,7 @@ class ToolPalette(Gtk.Box):
             for css in ('on','primary'):
                 (candidate.add_css_class if on else candidate.remove_css_class)(css)
             candidate.update_state([Gtk.AccessibleState.PRESSED],
-                [Gtk.AccessibleTristate.TRUE if on else Gtk.AccessibleTristate.FALSE])
+                [int(Gtk.AccessibleTristate.TRUE if on else Gtk.AccessibleTristate.FALSE)])
 
     def _position(self,overlay,child,allocation):
         if child is not self:return False
