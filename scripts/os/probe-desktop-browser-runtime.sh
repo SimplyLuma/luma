@@ -121,7 +121,6 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     for _ in $(seq 50); do [ -s "$QA/out/page-server.json" ] && break; sleep .1; done
     export BROWSER_GATE_URL=$(python3 -c '\''import json,sys;print(json.load(open(sys.argv[1]))["url"])'\'' "$QA/out/page-server.json")
     export BROWSER_GATE_OUT="$QA/out" BROWSER_GATE_NATIVE_OBSERVER="$QA/read-native-state.py"
-    export BROWSER_GATE_REQUEST_DIAGNOSTIC="$QA/trace-owned-requests.py"
     export BROWSER_GATE_PIXEL_VALIDATOR="$QA/verify-pixels.py" BROWSER_GATE_INPUT_HELPER="$QA/input-owned-session.py"
     export WAYLAND_DISPLAY=viola-qa-shm-r1
     (

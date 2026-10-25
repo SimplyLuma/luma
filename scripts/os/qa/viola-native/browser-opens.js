@@ -18,7 +18,7 @@ let childOutput = null;
 let window = null;
 let inputSeat = null;
 let monitorStream = null;
-let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false, diagnostic_only: 'REQUEST_TIMING_NOT_RELEASE_ACCEPTANCE'};
+let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTANCE', ok: false};
 export const METRICS = {};
 
 async function probe() {
@@ -66,7 +66,7 @@ async function probe() {
         monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
             GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', `${out}/monitor-stream.json`]);
         child = hostLauncher.spawnv(['/usr/bin/python3',
-            GLib.getenv('BROWSER_GATE_REQUEST_DIAGNOSTIC'),
+            '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
             '--work-root', `${home}/.local/state/viola-luma/sessions`, '--interactive', '--start-url', url]);

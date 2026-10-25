@@ -144,7 +144,9 @@ def monitor(call,bus,service,owned_service,ready,parent,expected):
             (ready.with_name('pipewire-nodes.json')).write_text(dump.stdout[:1048576])
             diagnostic('pipewire-dump-status.json',dict(status=dump.returncode,stderr=dump.stderr[:8192]))
         except Exception as error:diagnostic('pipewire-dump-status.json',dict(error=str(error)))
-        pipeline=Gst.parse_launch(f'pipewiresrc path={int(node)} do-timestamp=true ! fakesink name=monitor-consumer sync=false signal-handoffs=true')
+        # A fakesink accepts ANY caps. Constrain the source to raw video so
+        # PipeWire/WirePlumber can link it to GNOME's video output stream.
+        pipeline=Gst.parse_launch(f'pipewiresrc path={int(node)} do-timestamp=true ! video/x-raw ! fakesink name=monitor-consumer sync=false signal-handoffs=true')
         pipeline.get_by_name('monitor-consumer').connect('handoff',handoff)
         channel=pipeline.get_bus();channel.add_signal_watch();channel.connect('message',message)
         pipeline.set_state(Gst.State.PLAYING)
