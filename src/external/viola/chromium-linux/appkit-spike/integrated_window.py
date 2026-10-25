@@ -789,6 +789,21 @@ def main():
                 'inflight_max', 'queue_wait_ms_max', 'ack_ms_max',
                 'ack_timeouts')})
         summary['transport_metrics'] = dict(engine.transport_metrics)
+        valid, bounds = active_window.page.compute_bounds(active_window)
+        frame = active_window.page.displayed_frame or {}
+        state = getattr(active_window.services, 'state', None) or {}
+        summary['native_identity_geometry'] = dict(
+            bounds_valid=valid,
+            page_bounds=[bounds.get_x(), bounds.get_y(), bounds.get_width(), bounds.get_height()] if valid else None,
+            window_size=[active_window.get_width(), active_window.get_height()],
+            scale=active_window.get_scale_factor(),
+            window_description=active_window.native_context.get('description'),
+            target=active_window.page_input.target, tab_id=active_window.page_input.tab_id,
+            input_identity_valid=active_window.page_input.valid_identity(),
+            active_url=state.get('activeUrl'),
+            displayed_frame={key: frame.get(key) for key in (
+                'id', 'transport', 'version', 'window_id', 'target_id', 'tab_id',
+                'width', 'height', 'content', 'fourcc')})
         temporary = args.work_root / 'presentation-live.tmp'
         temporary.write_text(json.dumps(summary) + '\n')
         temporary.replace(args.work_root / 'presentation-live.json')
