@@ -410,7 +410,8 @@ struct _LumaDetailsPane {
   GtkWidget *body;
   GtkWidget *scroller;
   GtkWidget *footer;
-  guint drawer_tick;
+  GdkFrameClock *drawer_clock;
+  gulong drawer_frame;
   gboolean presenting_drawer;
   GtkWidget *last_facts; /* the block facts join, while it is the body's last child */
   GtkWidget *last_list;  /* the list rows join, likewise */
@@ -507,10 +508,9 @@ static void pane_return_focus(LumaDetailsPane *self) {
 /* Beside the island, or a drawer */
 
 static void pane_drop_drawer(LumaDetailsPane *self) {
-  if (self->drawer_tick != 0) {
-    gtk_widget_remove_tick_callback(self->sheet, self->drawer_tick);
-    self->drawer_tick = 0;
-  }
+  if (self->drawer_clock != NULL)
+    g_clear_signal_handler(&self->drawer_frame, self->drawer_clock);
+  g_clear_object(&self->drawer_clock);
   if (self->drawer == NULL)
     return;
   if (!self->drawer_closed) {
@@ -608,17 +608,33 @@ static void pane_limit_drawer_body(LumaDetailsPane *self, int height) {
     gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(self->scroller), maximum);
 }
 
-static gboolean pane_drawer_resized(GtkWidget *widget G_GNUC_UNUSED,
-                                    GdkFrameClock *clock G_GNUC_UNUSED, gpointer data) {
+/* Observe allocation frames without asking GTK to animate an unchanged drawer. */
+static void pane_drawer_resized(GdkFrameClock *clock G_GNUC_UNUSED, gpointer data) {
   LumaDetailsPane *self = data;
-  if (!pane_is_drawer(self)) {
-    self->drawer_tick = 0;
-    return G_SOURCE_REMOVE;
-  }
+  if (!pane_is_drawer(self))
+    return;
   LumaLayerHost *host = luma_layer_host_window_host(GTK_WIDGET(self));
   if (host != NULL)
     pane_limit_drawer_body(self, gtk_widget_get_height(GTK_WIDGET(host)));
-  return G_SOURCE_CONTINUE;
+}
+
+static void pane_drawer_unmapped(GtkWidget *widget G_GNUC_UNUSED, gpointer data) {
+  LumaDetailsPane *self = data;
+  if (self->drawer_clock != NULL)
+    g_clear_signal_handler(&self->drawer_frame, self->drawer_clock);
+  g_clear_object(&self->drawer_clock);
+}
+
+static void pane_drawer_mapped(GtkWidget *widget, gpointer data) {
+  LumaDetailsPane *self = data;
+  pane_drawer_unmapped(widget, self);
+  if (!pane_is_drawer(self) || !gtk_widget_get_mapped(widget))
+    return;
+  GdkFrameClock *clock = gtk_widget_get_frame_clock(widget);
+  if (clock != NULL) {
+    self->drawer_clock = g_object_ref(clock);
+    self->drawer_frame = g_signal_connect(clock, "after-paint", G_CALLBACK(pane_drawer_resized), self);
+  }
 }
 
 static void pane_as_drawer(LumaDetailsPane *self) {
@@ -649,7 +665,7 @@ static void pane_as_drawer(LumaDetailsPane *self) {
   self->drawer = g_object_ref(handle);
   self->drawer_closed = FALSE;
   self->drawer_handler = g_signal_connect(handle, "cancelled", G_CALLBACK(drawer_cancelled), self);
-  self->drawer_tick = gtk_widget_add_tick_callback(self->sheet, pane_drawer_resized, self, NULL);
+  pane_drawer_mapped(self->sheet, self);
   self->presenting_drawer = FALSE;
 }
 
@@ -796,6 +812,8 @@ static void luma_details_pane_init(LumaDetailsPane *self) {
   self->sheet = g_object_ref_sink(g_object_new(LUMA_TYPE_ISLAND, "orientation", GTK_ORIENTATION_VERTICAL, "hexpand",
                                                FALSE, "vexpand", TRUE, "accessible-role",
                                                GTK_ACCESSIBLE_ROLE_REGION, NULL));
+  g_signal_connect(self->sheet, "map", G_CALLBACK(pane_drawer_mapped), self);
+  g_signal_connect(self->sheet, "unmap", G_CALLBACK(pane_drawer_unmapped), self);
   gtk_widget_add_css_class(self->sheet, "lumaui-details");
   gtk_widget_add_css_class(self->sheet, "luma-island");
   gtk_widget_set_overflow(self->sheet, GTK_OVERFLOW_HIDDEN);

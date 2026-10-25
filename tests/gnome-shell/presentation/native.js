@@ -339,7 +339,8 @@ async function work() {
             await mode('desktop');
             launcher.setenv('PYTHONPATH', `${source}/src/luma-platform/appkit:${source}/src/luma-tide`, true);
             launcher.set_stdout_file_path(`${out}/efficiency-layout.log`);
-            const layout = launcher.spawnv(['python3', `${source}/src/luma-platform/tests/idle_layout_runtime.py`]);
+            const runtime = GLib.getenv('PRESENTATION_EFFICIENCY_NATIVE') ? 'idle_native_details_runtime.py' : 'idle_layout_runtime.py';
+            const layout = launcher.spawnv(['python3', `${source}/src/luma-platform/tests/${runtime}`]);
             await new Promise(resolve => layout.wait_check_async(null, (process, result) => {
                 try { process.wait_check_finish(result); check('passive layout stays idle and adapts after resizing', true); }
                 catch (error) { check('passive layout stays idle and adapts after resizing', false, error.message); }
