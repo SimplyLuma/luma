@@ -46,7 +46,10 @@ cleanup() {
     [[ "$id" =~ ^[a-f0-9]{64}$ ]]
     test "$(docker inspect --format '{{ index .Config.Labels "org.projectluma.native-filer-run" }}' "$id")" = "$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
     docker inspect --format '{{json .State}}' "$id" > "$CI_OUT/CONTAINER-BEFORE-CLEANUP.json"
-    docker rm --force --time 10 "$id" > "$CI_OUT/container-removal.txt"
+    local stop_status=0
+    timeout --signal=TERM --kill-after=2s 15s docker stop -t 10 "$id" > "$CI_OUT/container-stop.txt" 2>&1 || stop_status=$?
+    printf 'Docker stop exit status: %s\n' "$stop_status"
+    timeout --signal=TERM --kill-after=2s 10s docker rm --force "$id" > "$CI_OUT/container-removal.txt"
     remaining=$(docker ps --all --no-trunc --filter "id=$id" --format '{{.ID}}')
     test -z "$remaining"
     python3 - "$CI_OUT" "$id" <<'PY'
@@ -81,6 +84,7 @@ docker run --name "$name" --cidfile "$CI_OUT/container-id" \
   --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" --volume "$PRODUCT_SOURCE:$PRODUCT_SOURCE:ro" \
   --workdir "$GITHUB_WORKSPACE" "$image" \
   bash "$CI_SOURCE/scripts/depot/build-native-arm-filer-ci.sh" > "$CI_OUT/runner.log" 2>&1 || status=$?
+printf 'Docker build exit status: %s\n' "$status"
 if [ "$status" = 0 ]; then
   python3 - "$CI_OUT/PROVIDER.json" "$CI_OUT/provider.tar" <<'PY'
 import hashlib,json,pathlib,sys

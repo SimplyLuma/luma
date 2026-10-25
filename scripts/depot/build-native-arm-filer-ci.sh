@@ -10,6 +10,7 @@ export FLATPAK_USER_DIR="$DEPOT_ROOT/flatpak-user" TMPDIR="$DEPOT_ROOT/tmp"
 test "$(uname -m)" = aarch64
 if [ "${1:-}" != --user ]; then
   test "$(id -u)" = 0
+  install -d "$DEPOT_ROOT/tmp"
   bash "$PRODUCT_SOURCE/scripts/depot/install-tools-packages.sh"
   dnf5 -q -y install shadow-utils dbus-daemon dbus-tools
   rpm -qa --qf '%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort > "$CI_OUT/tools-rpms.tsv"
