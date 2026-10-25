@@ -9,6 +9,12 @@ on:
       - 'scripts/depot/tools-container.sh'
   workflow_dispatch:
     inputs:
+      operation:
+        description: Native keyless task
+        required: true
+        default: tooling
+        type: choice
+        options: [tooling, filer]
       architecture:
         description: Native builder CPU
         required: true
@@ -21,6 +27,7 @@ permissions:
 
 jobs:
   probe:
+    if: github.event_name == 'pull_request' || inputs.operation != 'filer'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -82,3 +89,7 @@ jobs:
             build/native-depot-probe/${{ matrix.architecture }}/logs/
           if-no-files-found: error
           retention-days: 14
+
+  filer:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'filer' && inputs.architecture == 'aarch64'
+    uses: ./.github/workflows/native-arm-filer.yml

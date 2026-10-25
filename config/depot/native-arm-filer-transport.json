@@ -1,0 +1,13 @@
+{
+  "schema": "org.projectluma.depot.native-filer-transport/v1",
+  "runtime_archive": {
+    "url": "https://dl.simplyluma.com/inputs/depot-build/37d6e8c08c35fae0338df148c0fc4e7307ca60c427969f7439472ea1642dbbf7/runtime-input.tar",
+    "sha256": "37d6e8c08c35fae0338df148c0fc4e7307ca60c427969f7439472ea1642dbbf7",
+    "bytes": 1525749760
+  },
+  "filer_archive": {
+    "url": "https://dl.simplyluma.com/inputs/depot-build/f2e2b9e9e4bebce525f9cccea9b9ee5af2f44fe0f916e26a537026431c7b118a/filer-input.tar",
+    "sha256": "f2e2b9e9e4bebce525f9cccea9b9ee5af2f44fe0f916e26a537026431c7b118a",
+    "bytes": 4997120
+  }
+}
