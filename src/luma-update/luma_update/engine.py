@@ -74,6 +74,7 @@ FRIENDLY = {
                             "and is waiting. It updates once Luma ships that version, or after you remove your copy."),
     "signature": "The update information wasn't signed by Luma, so it was ignored.",
     "graph": "The update information from Luma couldn't be read.",
+    "architecture": "The update source does not match this computer’s processor. No update was installed.",
     "stale-graph": "The update information from Luma is out of date. Check this computer's date and time.",
     "busy": "Another software change is in progress. Luma will try again when it finishes.",
     "transaction": "The update couldn't be prepared.",
@@ -462,9 +463,11 @@ class Engine:
             self.store.data["last_error"] = message
             self.store.data["last_error_class"] = error_class
             self.store.data["last_check_reason"] = error_class
-            if error_class in ("signature", "graph"):
+            if error_class in ("signature", "graph", "architecture"):
                 # The graph did not verify this time: stop claiming it did.
                 self.store.data["graph_signature"] = None
+            if error_class == "architecture":
+                self.store.data["available"] = None
         self._set(state=keep_state or ERROR, last_error=message, last_error_class=error_class, progress=0.0)
         try:
             # The published state follows the system: an update that is still
@@ -540,7 +543,13 @@ class Engine:
         return channel if channel in CHANNELS else ""
 
     def _arch(self, view: SystemView) -> str:
-        return view.origin.arch if view.origin is not None else self.arch
+        # The running device is authoritative, never a configurable origin ref.
+        if self.arch not in ("x86_64", "aarch64"):
+            raise UpdateError(f"unsupported system architecture {self.arch!r}", "architecture")
+        if view.origin is not None and view.origin.arch != self.arch:
+            raise UpdateError(f"origin is for {view.origin.arch}, this computer is {self.arch}",
+                              "architecture")
+        return self.arch
 
     def _booted_version(self, view: SystemView):
         """The booted version for comparison. An unmanaged system may not carry a
@@ -706,7 +715,7 @@ class Engine:
             automatic_download=self.automatic_download_enabled(data),
             ignored_version=self.ignored_version(data),
             repository_url=repository_url(self.paths, self.settings),
-            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable"),
+            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable", arch=self.arch),
             signature_verified=bool(signature.get("key_id")),
             signing_key_id=str(signature.get("key_id", "") or ""),
             last_check_reason=str(data.get("last_check_reason", "") or ""),
@@ -796,7 +805,9 @@ class Engine:
         self._operation.release()
 
     def fetch_graph(self, channel: str, arch: str) -> graphmod.Graph:
-        url = self.settings.graph_url.format(channel=channel)
+        if arch != self.arch or self.arch not in ("x86_64", "aarch64"):
+            raise UpdateError(f"requested graph is for {arch}, this computer is {self.arch}", "architecture")
+        url = self.settings.graph_url.format(channel=channel, arch=self.arch)
         data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
         signature = self.http.get(url + ".minisig", minisign.MAX_SIGNATURE_BYTES)
         keys = minisign.load_keys(self.paths.graph_key_dirs)
@@ -1017,6 +1028,13 @@ class Engine:
         if decision is None or decision.release is None or decision.action == "none":
             return False
         view = self._view()
+        try:
+            # Recheck even when a previously selected decision is still cached.
+            self._arch(view)
+        except UpdateError as error:
+            self._decision = None
+            self._fail(error)
+            return False
         release = decision.release
         if self._ours_waiting(view) == release.commit:
             self.refresh(keep_busy=False)
