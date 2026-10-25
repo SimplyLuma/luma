@@ -142,7 +142,7 @@ def validate_expected(expected):
     require(expected['profile'] == 'arm-preview', 'Wrong desktop profile')
     require(re.fullmatch('[a-zA-Z0-9_.-]+', expected['fixture_token']), 'Invalid fixture token')
     for key in ('static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
-                'signed_heads_sha256', 'native_headers_sha256'):
+                'signed_heads_sha256', 'native_headers_sha256', 'app_baseline_sha256'):
         valid_hash(expected.get(key), 'Missing independent ' + key)
     validate_producer_binding(expected.get('producer_binding'))
     require(expected.get('qmp_transport') in {'direct-unix-qmp/v1','libvirt-system-qmp/v1'},
@@ -254,21 +254,23 @@ def validate_prepared(fixture, expected, *, owner_uid=0):
             p.get('host_architecture') == 'x86_64' and p.get('accelerator') == 'tcg' and
             p.get('qemu_machine') == 'virt', 'Wrong server architecture/accelerator')
     for key in ('static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
-                'signed_heads_sha256', 'native_headers_sha256'):
+                'signed_heads_sha256', 'native_headers_sha256', 'app_baseline_sha256'):
         require(p.get(key) == expected[key], 'Independent input differs: ' + key)
     proofs = read_proofs(p, fixture, owner_uid)
     for key, name in (('static_proof_sha256', 'static-proof.json'),
                       ('checks_preparation_sha256', 'checks-preparation.json'),
                       ('checks_manifest_sha256', 'checks-manifest.json'),
                       ('signed_heads_sha256', 'signed-heads.json'),
-                      ('native_headers_sha256', 'native-headers.json')):
+                      ('native_headers_sha256', 'native-headers.json'),
+                      ('app_baseline_sha256', 'app-baseline.json')):
         require(p['proof_hashes'].get(name) == p[key], 'Missing pinned input proof: ' + name)
     manifest = json.loads(proofs['checks-manifest.json'])
     require(set(manifest) == set(CHECK_FILES), 'Guest checker capsule incomplete')
     for name, digest in manifest.items():
         require(p['proof_hashes'].get('checks/' + name) == digest, 'Guest checker differs: ' + name)
     heads = json.loads(proofs['signed-heads.json'])
-    validate_heads(heads)
+    baseline = json.loads(proofs['app-baseline.json'])
+    validate_heads(heads, baseline)
     headers = json.loads(proofs['native-headers.json'])
     require(set(headers) == {'luma-terminal', 'luma-application-installer'}, 'Native headers incomplete')
     for value in headers.values():
@@ -305,17 +307,31 @@ def validate_prepared(fixture, expected, *, owner_uid=0):
     return p, hashlib.sha256(body).hexdigest(), heads
 
 
-def validate_heads(heads):
-    require(isinstance(heads, dict) and len(heads) == 27, 'Exactly 27 signed heads required')
-    require(len([ref for ref in heads if ref.startswith('app/')]) == 24, 'Exactly 24 app heads required')
+def validate_app_baseline(baseline):
+    """Validate independently pinned current-source policy, never infer from heads."""
+    require(isinstance(baseline, dict) and set(baseline) == {'schema', 'applications'} and
+            baseline['schema'] == 'org.projectluma.os-app-baseline/v1',
+            'Wrong current-source app baseline schema')
+    apps = baseline['applications']
+    require(isinstance(apps, list) and apps, 'Nonempty app baseline required')
+    # Reverse-DNS Flatpak names: three or more nonempty ASCII components.
+    # A dash is supported only in the final application component.
+    pattern = r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+\.[A-Za-z_][A-Za-z0-9_-]*'
+    require(all(isinstance(app, str) and len(app) <= 255 and re.fullmatch(pattern, app)
+                for app in apps), 'Invalid baseline application ID')
+    require(len(apps) == len(set(apps)), 'Duplicate baseline application ID')
+    return frozenset(apps)
+
+
+def validate_heads(heads, baseline):
+    apps = validate_app_baseline(baseline)
     runtimes = {'runtime/org.projectluma.Platform/aarch64/44',
                 'runtime/org.projectluma.Platform.Locale/aarch64/44',
                 'runtime/org.projectluma.Platform.GL.default/aarch64/44'}
-    require({r for r in heads if r.startswith('runtime/')} == runtimes, 'Wrong signed runtime heads')
-    for ref, digest in heads.items():
-        parts = ref.split('/')
-        require(len(parts) == 4 and parts[2] == 'aarch64' and
-                ((parts[0] == 'app' and parts[3] == 'beta') or ref in runtimes), 'Wrong signed ref')
+    expected_refs = {'app/' + app + '/aarch64/beta' for app in apps} | runtimes
+    require(isinstance(heads, dict) and set(heads) == expected_refs,
+            'Signed heads differ from exact pinned baseline and runtime refs')
+    for digest in heads.values():
         valid_hash(digest)
     for app, _ in BEHAVIORS:
         require('app/' + app + '/aarch64/beta' in heads, 'Missing behavioral app')
@@ -712,11 +728,15 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
     """Freeze real inputs exclusively; never infer new release IDs from old proof.
 
     inputs contains iso, static_proof, checks_preparation, checks_directory,
-    signed_heads, native_headers, qemu, firmware, qemu_invocation (JSON file),
-    target_disk_path, and planned_growth_bytes. Admission remains caller-owned.
+    signed_heads, native_headers, app_baseline (current source baseline JSON),
+    qemu, firmware, qemu_invocation (JSON file),
+    target_disk_path, and planned_growth_bytes. expected.app_baseline_sha256
+    independently pins authoritative source baseline bytes, never derived from
+    the signed head inventory. Admission remains caller-owned.
     Returns preparation hash; a failed preparation is retained, never overwritten.
     """
     validate_expected(expected)
+    require('app_baseline' in inputs, 'Independent current-source app baseline input required')
     fixture = Path(fixture)
     require(fixture.is_absolute() and not fixture.exists(), 'Fresh fixture path required')
     iso = Path(inputs['iso'])
@@ -748,7 +768,8 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
         ('static-proof.json', 'static_proof', 'static_proof_sha256'),
         ('checks-preparation.json', 'checks_preparation', 'checks_preparation_sha256'),
         ('signed-heads.json', 'signed_heads', 'signed_heads_sha256'),
-        ('native-headers.json', 'native_headers', 'native_headers_sha256')):
+        ('native-headers.json', 'native_headers', 'native_headers_sha256'),
+        ('app-baseline.json', 'app_baseline', 'app_baseline_sha256')):
         copy_input(inputs[key], name, expected[digest_key])
     checks = Path(inputs['checks_directory'])
     manifest = {}
@@ -767,7 +788,7 @@ def prepare_fixture(fixture: Path, expected: dict, inputs: dict):
     prepared = {key: expected[key] for key in IDENTITY_KEYS}
     prepared.update({key: expected[key] for key in (
         'static_proof_sha256', 'checks_preparation_sha256', 'checks_manifest_sha256',
-        'signed_heads_sha256', 'native_headers_sha256')})
+        'signed_heads_sha256', 'native_headers_sha256', 'app_baseline_sha256')})
     if expected['qmp_transport']=='libvirt-system-qmp/v1':
         prepared['domain_definition_sha256']=expected['domain_definition_sha256']
         prepared['installer_boot_inputs']=expected.get('installer_boot_inputs',{})

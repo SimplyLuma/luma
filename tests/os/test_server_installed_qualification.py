@@ -28,11 +28,71 @@ def sha(body):
     return hashlib.sha256(body).hexdigest()
 
 
+class ExactBaselineHeads(unittest.TestCase):
+    def setUp(self):
+        path = MODULE.parents[3] / 'config/os/first-party-app-baseline.json'
+        self.baseline = json.loads(path.read_text())
+        self.heads = {'app/' + app + '/aarch64/beta': sha(app.encode())
+                      for app in self.baseline['applications']}
+        for app in ('Platform', 'Platform.Locale', 'Platform.GL.default'):
+            self.heads['runtime/org.projectluma.' + app + '/aarch64/44'] = sha(app.encode())
+
+    def test_current_23_app_26_head_source_inventory_is_accepted(self):
+        self.assertEqual(len(self.baseline['applications']), 23)
+        self.assertEqual(len(self.heads), 26)
+        self.assertNotIn('org.projectluma.Displays', self.baseline['applications'])
+        m.validate_heads(self.heads, self.baseline)
+
+    def test_schema_empty_duplicate_and_invalid_app_ids_are_refused(self):
+        invalid = [None, {}, {'schema': 'unknown', 'applications': ['org.example.App']},
+                   {**self.baseline, 'unknown': True}]
+        for apps in ([], 'org.example.App', ['org.example.App', 'org.example.App'],
+                     [None], ['invalid'], ['org.example..App'], ['org.1example.App'],
+                     ['org.example/App'], ['org.example.App/aarch64/beta'], ['a' * 256]):
+            invalid.append({'schema': 'org.projectluma.os-app-baseline/v1', 'applications': apps})
+        for baseline in invalid:
+            with self.subTest(baseline=baseline), self.assertRaises(m.QualificationError):
+                m.validate_app_baseline(baseline)
+
+    def test_exact_keyset_refuses_missing_extra_retired_wrong_arch_and_runtime(self):
+        app = 'app/org.projectluma.Notes/aarch64/beta'
+        runtime = 'runtime/org.projectluma.Platform/aarch64/44'
+        for missing, added in ((app, None), (None, 'app/org.example.Unexpected/aarch64/beta'),
+                               (None, 'app/org.projectluma.Displays/aarch64/beta'),
+                               (app, app.replace('/aarch64/', '/x86_64/')),
+                               (app, app.replace('/beta', '/stable')),
+                               (runtime, None), (runtime, runtime.replace('/44', '/45')),
+                               (None, 'runtime/org.example.Other/aarch64/44')):
+            heads = dict(self.heads)
+            if missing: heads.pop(missing)
+            if added: heads[added] = 'a' * 64
+            with self.subTest(missing=missing, added=added), self.assertRaises(m.QualificationError):
+                m.validate_heads(heads, self.baseline)
+
+    def test_baseline_cannot_remove_a_required_behavioral_app(self):
+        baseline = copy.deepcopy(self.baseline)
+        baseline['applications'].remove('org.projectluma.Tide')
+        heads = dict(self.heads); heads.pop('app/org.projectluma.Tide/aarch64/beta')
+        with self.assertRaisesRegex(m.QualificationError, 'Missing behavioral app'):
+            m.validate_heads(heads, baseline)
+
+    def test_invalid_signed_commit_digest_is_still_refused(self):
+        heads = dict(self.heads); heads[next(iter(heads))] = 'not-a-commit'
+        with self.assertRaises(m.QualificationError):
+            m.validate_heads(heads, self.baseline)
+
+
 class ServerQualification(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        # A shared development filesystem may inherit setgid/default ACLs.
+        # Normalize only this newly owned fixture, preserving custody assertions.
+        for name in ('system.posix_acl_access', 'system.posix_acl_default'):
+            if name in os.listxattr(self.root):
+                os.removexattr(self.root, name)
+        self.root.chmod(0o700)
         self.fixture = self.root / 'fixture'
         self.iso = self.root / 'final.iso'
         self.iso.write_bytes(b'unit fixture, not an actual ISO')
@@ -44,11 +104,11 @@ class ServerQualification(unittest.TestCase):
         self.checks.mkdir()
         for name in m.CHECK_FILES:
             (self.checks / name).write_text('# unit capsule, not actual guest code\n')
+        baseline_path = MODULE.parents[3] / 'config/os/first-party-app-baseline.json'
+        self.baseline_body = baseline_path.read_bytes()
+        self.baseline = json.loads(self.baseline_body)
         self.heads = {'app/' + app + '/aarch64/beta': sha(app.encode())
-                      for app in sorted({app for app, _ in m.BEHAVIORS})}
-        for number in range(24 - len(self.heads)):
-            app = 'org.projectluma.Unit' + str(number)
-            self.heads['app/' + app + '/aarch64/beta'] = sha(app.encode())
+                      for app in self.baseline['applications']}
         for app in ('Platform', 'Platform.Locale', 'Platform.GL.default'):
             self.heads['runtime/org.projectluma.' + app + '/aarch64/44'] = sha(app.encode())
         self.headers = {name: {'nevra': name + '-0.1-1.aarch64', 'header_sha256': sha(name.encode())}
@@ -64,13 +124,14 @@ class ServerQualification(unittest.TestCase):
                                  'domain_uuid': '00000000-1111-2222-3333-444444444444', 'qemu_uid':107, 'qemu_gid':107})
         source_inputs = {'static_proof': {'result': 'UNIT_TEST_ONLY'},
                          'checks_preparation': {'result': 'UNIT_TEST_ONLY'},
-                         'signed_heads': self.heads, 'native_headers': self.headers}
+                         'signed_heads': self.heads, 'native_headers': self.headers,
+                         'app_baseline': self.baseline}
         self.inputs = dict(iso=str(self.iso), checks_directory=str(self.checks),
                            qemu=str(self.qemu), firmware=str(self.firmware),
                            target_disk_path=str(self.root / 'disk.qcow2'), planned_growth_bytes=1024)
         for key, value in source_inputs.items():
             path = self.root / (key + '.json')
-            path.write_bytes(encoded(value))
+            path.write_bytes(self.baseline_body if key == 'app_baseline' else encoded(value))
             self.inputs[key] = str(path)
             hash_key = {'signed_heads': 'signed_heads', 'native_headers': 'native_headers'}.get(key, key)
             self.expected[hash_key + '_sha256'] = sha(path.read_bytes())
@@ -203,6 +264,62 @@ class ServerQualification(unittest.TestCase):
         self.assertEqual(result['provider'], m.PROVIDER)
         self.assertFalse(result['physical_hardware_coverage'])
         self.assertIn(str(self.fixture / 'CLOSED.json'), result['proof_hashes'])
+
+    def test_current_source_baseline_is_frozen_exactly(self):
+        self.assertEqual(len(self.baseline['applications']), 23)
+        self.assertEqual(len(self.heads), 26)
+        self.assertEqual((self.fixture / 'app-baseline.json').read_bytes(), self.baseline_body)
+        prepared = json.loads((self.fixture / 'PREPARED.json').read_text())
+        self.assertEqual(prepared['app_baseline_sha256'], sha(self.baseline_body))
+        self.assertEqual(prepared['proof_hashes']['app-baseline.json'], sha(self.baseline_body))
+        self.validate()
+
+    def test_independent_baseline_hash_is_mandatory(self):
+        self.expected.pop('app_baseline_sha256')
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_wrong_independent_baseline_hash_is_refused(self):
+        self.expected['app_baseline_sha256'] = 'f' * 64
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_changed_baseline_bytes_are_refused_even_with_same_json(self):
+        path = self.fixture / 'app-baseline.json'
+        path.chmod(0o600); path.write_bytes(path.read_bytes() + b' '); path.chmod(0o400)
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_prepared_baseline_cannot_replace_independent_caller_policy(self):
+        self.proof_mutation('app-baseline.json', 'PREPARED',
+                            lambda value: value['applications'].append('org.projectluma.Displays'))
+        digest = sha((self.fixture / 'app-baseline.json').read_bytes())
+        self.mutate('PREPARED.json', lambda value: value.update(app_baseline_sha256=digest))
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_missing_baseline_proof_is_refused(self):
+        self.mutate('PREPARED.json', lambda value: value['proof_hashes'].pop('app-baseline.json'))
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_historical_preparation_without_baseline_binding_is_refused(self):
+        self.mutate('PREPARED.json', lambda value: value.pop('app_baseline_sha256'))
+        with self.assertRaises(m.QualificationError):
+            self.validate()
+
+    def test_preparer_requires_explicit_baseline_input(self):
+        inputs = dict(self.inputs); inputs.pop('app_baseline')
+        target = self.root / 'missing-baseline-input'
+        with self.assertRaises(m.QualificationError):
+            m.prepare_fixture(target, self.expected, inputs)
+        self.assertFalse(target.exists())
+
+    def test_preparer_rejects_different_baseline_source_bytes(self):
+        path = Path(self.inputs['app_baseline']); path.write_bytes(path.read_bytes() + b' ')
+        fs = type('FS', (), {'f_bavail': 100 * 1024**3, 'f_frsize': 1})()
+        with patch.object(m.os, 'statvfs', return_value=fs), self.assertRaises(m.QualificationError):
+            m.prepare_fixture(self.root / 'changed-baseline-input', self.expected, self.inputs)
 
     def test_wrong_independent_source(self):
         self.expected['source_revision'] = '3' * 40
@@ -723,7 +840,7 @@ class ActualQcowPreparation(unittest.TestCase):
 class QMPBridge(unittest.TestCase):
     def test_actual_unix_qmp_protocol_and_original_input_translation(self):
         # A real local protocol socket, not a real QEMU/guest qualification.
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='luma-qmp-', dir='/tmp') as directory:
             path = Path(directory) / 'qmp.sock'
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             server.bind(str(path)); server.listen(4)
@@ -763,7 +880,7 @@ class QMPBridge(unittest.TestCase):
             self.assertFalse(observed[2]['arguments']['events'][0]['data']['down'])
 
     def test_qmp_socket_rejects_wrong_peer_pid(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='luma-qmp-', dir='/tmp') as directory:
             path = Path(directory) / 'qmp.sock'
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self.addCleanup(server.close)
@@ -773,7 +890,7 @@ class QMPBridge(unittest.TestCase):
                 with self.assertRaises(m.QualificationError): bridge.execute('query-status')
 
     def test_qmp_socket_rejects_wrong_peer_uid(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='luma-qmp-', dir='/tmp') as directory:
             path = Path(directory) / 'qmp.sock'
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self.addCleanup(server.close)
@@ -783,7 +900,7 @@ class QMPBridge(unittest.TestCase):
                 with self.assertRaises(m.QualificationError): bridge.execute('query-status')
 
     def test_snapshot_copies_full_frame_to_private_evidence(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='luma-qmp-', dir='/tmp') as directory:
             root=Path(directory);capture=root/'capture';capture.mkdir(mode=0o700)
             target=root/'evidence.png'
             bridge=m.ServerInputBridge.__new__(m.ServerInputBridge)
@@ -800,7 +917,7 @@ class QMPBridge(unittest.TestCase):
             self.assertEqual(capture.stat().st_mode&0o777,0o700)
 
     def test_snapshot_refuses_shared_capture_directory(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix='luma-qmp-', dir='/tmp') as directory:
             root=Path(directory);capture=root/'capture';capture.mkdir();capture.chmod(0o755)
             bridge=m.ServerInputBridge.__new__(m.ServerInputBridge)
             bridge.peer_uid=os.getuid();bridge.capture_directory=capture
