@@ -122,6 +122,11 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     export BROWSER_GATE_OUT="$QA/out" BROWSER_GATE_NATIVE_OBSERVER="$QA/read-native-state.py"
     export BROWSER_GATE_PIXEL_VALIDATOR="$QA/verify-pixels.py" BROWSER_GATE_INPUT_HELPER="$QA/input-owned-session.py"
     export WAYLAND_DISPLAY=viola-qa-shm-r1
+    (
+      sleep 35
+      ps -u "$(id -u)" -o pid,ppid,stat,wchan:30,comm,args >"$OUT/startup-processes.txt"
+      busctl --user --no-pager list >"$OUT/startup-bus.txt" 2>&1 || true
+    ) &
     GSETTINGS_BACKEND=memory gnome-shell --headless --no-x11 --virtual-monitor=1600x1000 \
       --wayland-display=viola-qa-shm-r1 --automation-script="$QA/browser-opens.js" >"$OUT/shell.log" 2>&1
     python3 -c '\''import json,sys;d=json.load(open(sys.argv[1]));assert d["ok"] is True,d'\'' "$QA/out/RESULT.json"

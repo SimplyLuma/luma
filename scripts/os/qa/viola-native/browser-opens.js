@@ -20,6 +20,7 @@ let result = {scope: 'NATIVE_PACKAGE_MECHANISM_NOT_SIGNED_FLATPAK_OR_OS_ACCEPTAN
 export const METRICS = {};
 
 async function probe() {
+    print("LUMA_NATIVE_PHASE probe-entered");
     try {
         Main.overview.hide();
         const launcher = new Gio.SubprocessLauncher({flags:
@@ -146,5 +147,21 @@ async function probe() {
 }
 // Use GNOME's automation lifecycle after its own performance helper maps;
 // scheduling from init() bypasses the compositor's readiness barrier.
-export function init() {}
+export function init() {
+    print('LUMA_NATIVE_PHASE init-entered');
+    Main.layoutManager.connect('startup-complete', () => print('LUMA_NATIVE_PHASE startup-complete'));
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 20000, () => {
+        const diagnostic = {
+            scope: 'COMPOSITOR_STARTUP_DIAGNOSTIC_NOT_BROWSER_ACCEPTANCE',
+            starting_up: Main.layoutManager._startingUp,
+            stage_mapped: global.stage.mapped,
+            stage_visible: global.stage.visible,
+            monitors: Main.layoutManager.monitors.map(m => ({x:m.x,y:m.y,width:m.width,height:m.height})),
+            windows: global.get_window_actors().map(a => ({pid:a.meta_window.get_pid(),title:a.meta_window.get_title()})),
+        };
+        GLib.file_set_contents(`${out}/startup-diagnostic.json`, JSON.stringify(diagnostic, null, 2));
+        print(`LUMA_NATIVE_PHASE startup-diagnostic ${JSON.stringify(diagnostic)}`);
+        return GLib.SOURCE_REMOVE;
+    });
+}
 export async function run() {await probe();}
