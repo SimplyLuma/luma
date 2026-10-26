@@ -18,6 +18,18 @@ on:
         description: Probe retained native ARM packages without rebuilding
         type: boolean
         default: false
+      media_readback:
+        description: Verify exact public ISO URLs without building packages
+        type: boolean
+        default: false
+      media_profile_json:
+        description: Exact small prepared ISO readback profile JSON
+        type: string
+        default: ''
+      media_profile_sha256:
+        description: SHA256 of the exact prepared readback profile bytes
+        type: string
+        default: ''
       signed_input_url:
         description: Exact selected signed Flatpak test input archive URL
         type: string
@@ -33,7 +45,7 @@ permissions:
 
 jobs:
   select:
-    if: inputs.runtime_probe != true && inputs.public_readback != true
+    if: inputs.runtime_probe != true && inputs.public_readback != true && inputs.media_readback != true
     runs-on: ubuntu-24.04
     outputs:
       needed: ${{ steps.scope.outputs.needed }}
@@ -111,12 +123,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   runtime-probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true && inputs.public_readback != true
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true && inputs.public_readback != true && inputs.media_readback != true
     uses: ./.github/workflows/desktop-browser-runtime.yml
     with:
       signed_input_url: ${{ inputs.signed_input_url }}
       signed_input_sha256: ${{ inputs.signed_input_sha256 }}
 
   public-readback:
-    if: github.event_name == 'workflow_dispatch' && inputs.public_readback == true && inputs.runtime_probe != true
+    if: github.event_name == 'workflow_dispatch' && inputs.public_readback == true && inputs.runtime_probe != true && inputs.media_readback != true
     uses: ./.github/workflows/depot-public-readback.yml
+
+  media-readback:
+    if: github.event_name == 'workflow_dispatch' && inputs.media_readback == true && inputs.runtime_probe != true && inputs.public_readback != true
+    uses: ./.github/workflows/media-public-readback.yml
+    with:
+      profile_json: ${{ inputs.media_profile_json }}
+      profile_sha256: ${{ inputs.media_profile_sha256 }}
