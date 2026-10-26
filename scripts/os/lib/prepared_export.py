@@ -79,6 +79,18 @@ def validate_files(directory):
         raise ValueError('Import metadata names another image')
     return values, manifest
 
+def pull_prepared_objects(target, source, tree, candidate):
+    """Check all object hashes; only the raw importer tree has no ref binding.
+
+    The importer intentionally writes --no-bindings. Its exact hash is bound
+    by the authenticated receipt and checked again by verify_commit. The
+    publishable candidate must still pass normal collection/ref verification.
+    """
+    base = ['ostree', 'pull-local', '--repo=' + str(target), '--untrusted']
+    subprocess.run(base + ['--disable-verify-bindings', str(source), tree], check=True)
+    subprocess.run(base + [str(source), candidate], check=True)
+
+
 def receipt(directory, candidate, tree, parent, ref, kernel, root):
     values, manifest = validate_files(directory)
     for value in (candidate, tree, root):

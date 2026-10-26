@@ -61,8 +61,13 @@ fi
 log="$build_dir/logs/sign-prepared-export.log"
 install -d -m 0755 "$build_dir/logs"
 # Pull validates every object checksum; no ARM execution occurs on the signer.
-ostree pull-local --repo="$candidate_repo" --untrusted "$prepared_repo" \
-  "$LUMA_EXPORT_TREE_COMMIT" "$LUMA_EXPORT_CANDIDATE" >>"$log" 2>&1
+python3 -B - "$luma_os_repo_root/scripts/os/lib" "$candidate_repo" "$prepared_repo" \
+  "$LUMA_EXPORT_TREE_COMMIT" "$LUMA_EXPORT_CANDIDATE" >>"$log" 2>&1 <<'PYPULL'
+import sys
+sys.path.insert(0, sys.argv[1])
+from prepared_export import pull_prepared_objects
+pull_prepared_objects(*sys.argv[2:])
+PYPULL
 # Verify parent, source, image/provenance, architecture, ref binding and the
 # complete package inventory against the actual imported commit metadata.
 python3 -B - "$luma_os_repo_root/scripts/os/lib" "$candidate_repo" "$build_dir" <<'PYVERIFY'
