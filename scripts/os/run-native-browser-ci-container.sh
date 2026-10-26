@@ -88,7 +88,8 @@ Path(evidence,'outer-seccomp-adjustment.json').write_text(json.dumps({
 SECCOMP
 docker rm -f "$container" >/dev/null
 container=$(docker create --name "$profile" --cap-add=SYS_ADMIN \
-  --security-opt "apparmor=$profile" --security-opt "seccomp=$seccomp_file" --shm-size=512m \
+  --security-opt "apparmor=$profile" --security-opt "seccomp=$seccomp_file" \
+  --security-opt systempaths=unconfined --shm-size=512m \
   --mount "type=bind,source=$root,target=/workspace" --workdir /workspace \
   --env "BROWSER_GATE_SIGNED_INPUT_URL=${BROWSER_GATE_SIGNED_INPUT_URL:-}" \
   --env "BROWSER_GATE_SIGNED_INPUT_SHA256=${BROWSER_GATE_SIGNED_INPUT_SHA256:-}" \
@@ -105,10 +106,15 @@ paths=[Path('/run/containerd/io.containerd.runtime.v2.task/moby')/identity/'conf
        Path('/run/docker/runtime-runc/moby')/identity/'config.json']
 found=[p for p in paths if p.is_file()]
 assert len(found)==1
-actual=json.loads(found[0].read_text())['linux']['seccomp']
+linux=json.loads(found[0].read_text())['linux']
+# Nested unprivileged proc mounts cannot reveal paths masked by a parent proc.
+# The outer container still has its own PID namespace; the app creates its own.
+assert not linux.get('maskedPaths') and not linux.get('readonlyPaths')
+actual=linux['seccomp']
 assert actual==json.loads(Path(expected).read_text()), 'Outer seccomp differs from reviewed policy'
 p=Path(evidence,'outer-seccomp-adjustment.json');record=json.loads(p.read_text())
 record['verified_container']=identity
+record['outer_systempaths_unmasked_for_nested_proc']=True
 record['actual_effective_sha256']=hashlib.sha256(json.dumps(actual,sort_keys=True).encode()).hexdigest()
 assert record['actual_effective_sha256']==record['effective_sha256']
 p.write_text(json.dumps(record,indent=2)+'\n')
