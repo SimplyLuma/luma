@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,284 @@
+@@ -32,6 +32,289 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -278,6 +278,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1275:      0281-converged-presentation.patch
 +Patch1276:      0282-notification-pulse-lifecycle.patch
 +Patch1277:      0283-lucide-camera-privacy-indicator.patch
++Patch1278:      0284-unified-shell-surfaces.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -296,10 +297,14 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9015:     handheldOptions.js
 +Source9016:     frameTokens.js
 +Source9017:     switcherDrag.js
++Source9018:     statusGrid.js
++Source9019:     fillSlider.js
++Source9020:     optionsSurface.js
++Source9021:     optionsSurface.css
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +349,9 @@
+@@ -71,6 +354,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -309,7 +314,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +371,11 @@
+@@ -90,6 +376,11 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -321,7 +326,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +475,22 @@
+@@ -189,8 +480,26 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -337,6 +342,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9015} js/ui/lumaPresentation/handheldOptions.js
 +cp %{SOURCE9016} js/ui/lumaPresentation/frameTokens.js
 +cp %{SOURCE9017} js/ui/lumaPresentation/switcherDrag.js
++cp %{SOURCE9018} js/ui/lumaPresentation/statusGrid.js
++cp %{SOURCE9019} js/ui/lumaPresentation/fillSlider.js
++cp %{SOURCE9020} js/ui/lumaPresentation/optionsSurface.js
++cat %{SOURCE9021} >> data/theme/luma-shelf.css
  
  %build
 +sh data/theme/luma-notifications/verify-generated.sh
@@ -344,7 +353,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +508,25 @@
+@@ -208,9 +517,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -370,7 +379,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +534,7 @@
+@@ -218,7 +543,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -379,7 +388,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +566,11 @@
+@@ -250,6 +575,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

@@ -337,7 +337,8 @@ install -m 0644 "$repo_root/patches/gnome-shell/0280-drawer-artwork-and-grid-ali
 install -m 0644 "$repo_root/patches/gnome-shell/0281-converged-presentation.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
-for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js presentation.css; do
+install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
+for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"

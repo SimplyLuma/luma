@@ -131,7 +131,7 @@ class TilingToggle extends QuickSettings.QuickMenuToggle {
     constructor() {
         super({
             title: 'Tiling',
-            iconName: 'view-grid-symbolic',
+            iconName: 'lumaui-columns-2-symbolic',
             toggleMode: true,
         });
 

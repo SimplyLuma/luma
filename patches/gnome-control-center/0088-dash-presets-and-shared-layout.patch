@@ -1,0 +1,284 @@
+diff --git a/shell/cc-luma-live-shelf.c b/shell/cc-luma-live-shelf.c
+--- a/shell/cc-luma-live-shelf.c
++++ b/shell/cc-luma-live-shelf.c
+@@ -28,7 +28,7 @@
+   gboolean arrangement;     /* the schema has shelf-arrangement */
+ } Shelf;
+ 
+-static const char * const owned[] = { "edge", "spread", "joined", "float", "preset", "dockApplications", "dockDownloads", "dockFoldersVisible", NULL };
++static const char * const owned[] = { "edge", "spread", "joined", "float", "preset", "dockApplications", "dockDownloads", "dockFoldersVisible", "dashSpan", "dashFloatEnds", NULL };
+ 
+ static gboolean
+ has_key (GSettingsSchema *schema, const char *key)
+@@ -68,7 +68,7 @@
+         }
+     }
+   g_autofree char *layout = g_settings_get_string (self->settings, "shelf-group-layout");
+-  return g_str_equal (layout, "centered-combined") ? "together" : "spread";
++  return (g_str_equal (layout, "centered-combined") || g_str_equal (layout, "luma")) ? "together" : "spread";
+ }
+ 
+ static JsonArray *
+@@ -106,6 +106,10 @@
+ publish (Shelf *self)
+ {
+   publish_folders (self);
++  if (has_key (self->schema, "shelf-span-full"))
++    cc_luma_fixture_publish_boolean (self->model, "dashSpan", g_settings_get_boolean (self->settings, "shelf-span-full"));
++  if (has_key (self->schema, "shelf-float-ends"))
++    cc_luma_fixture_publish_boolean (self->model, "dashFloatEnds", g_settings_get_boolean (self->settings, "shelf-float-ends"));
+   g_autofree char *edge = g_settings_get_string (self->settings, "shelf-edge");
+   g_autofree char *surface = g_settings_get_string (self->settings, "shelf-surface-mode");
+   g_autofree char *mode = g_settings_get_string (self->settings, "shelf-edge-mode");
+@@ -128,6 +132,10 @@
+           gboolean same = !g_str_equal (id, "free");
+           for (guint k = 0; same && k < G_N_ELEMENTS (keys); k++)
+             same = g_strcmp0 (json_object_get_string_member_with_default (map, keys[k], NULL), values[k]) == 0;
++          if (same && has_key (self->schema, "shelf-span-full"))
++            same = g_settings_get_boolean (self->settings, "shelf-span-full") == g_str_equal (id, "taskbar");
++          if (same && has_key (self->schema, "shelf-float-ends"))
++            same = g_settings_get_boolean (self->settings, "shelf-float-ends") != g_str_equal (id, "taskbar");
+           if (same) { preset = id; break; }
+         }
+     }
+@@ -240,6 +248,32 @@
+ {
+   Shelf *self = state;
+   if (!self->settings || !g_strv_contains (owned, key)) return FALSE;
++  if (g_str_equal (key, "dashSpan") || g_str_equal (key, "dashFloatEnds"))
++    {
++      if (!JSON_NODE_HOLDS_VALUE (value) || json_node_get_value_type (value) != G_TYPE_BOOLEAN) return FALSE;
++      const char *setting = g_str_equal (key, "dashSpan") ? "shelf-span-full" : "shelf-float-ends";
++      if (!has_key (self->schema, setting) || !g_settings_is_writable (self->settings, setting))
++        { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash width is locked by policy"); return FALSE; }
++      gboolean enabled = json_node_get_boolean (value);
++      g_autofree char *surface = g_settings_get_string (self->settings, "shelf-surface-mode");
++      if (g_str_equal (key, "dashSpan") && !enabled && g_str_equal (surface, "connected"))
++        {
++          const char *keys[] = { "shelf-group-layout", "shelf-dock-anchor", "shelf-actions-anchor", "shelf-arrangement", NULL };
++          for (guint i = 0; keys[i]; i++)
++            if (has_key (self->schema, keys[i]) && !g_settings_is_writable (self->settings, keys[i]))
++              { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash layout is locked by policy"); return FALSE; }
++          g_autoptr (GSettings) batch = g_settings_new_full (self->schema, NULL, NULL);
++          g_settings_delay (batch);
++          g_settings_set_boolean (batch, setting, FALSE);
++          g_settings_set_string (batch, "shelf-group-layout", "luma");
++          if (has_key (self->schema, "shelf-dock-anchor")) g_settings_set_string (batch, "shelf-dock-anchor", "center");
++          if (has_key (self->schema, "shelf-actions-anchor")) g_settings_set_string (batch, "shelf-actions-anchor", "center");
++          if (self->arrangement) g_settings_reset (batch, "shelf-arrangement");
++          g_settings_apply (batch);
++          return TRUE;
++        }
++      return g_settings_set_boolean (self->settings, setting, enabled);
++    }
+   if (g_str_has_prefix (key, "dock")) return write_folder (self, key, value, error);
+   const char *text = JSON_NODE_HOLDS_VALUE (value) && json_node_get_value_type (value) == G_TYPE_STRING ? json_node_get_string (value) : NULL;
+   if (!text)
+@@ -250,32 +284,58 @@
+   if (g_str_equal (key, "edge"))
+     return set_choice (self, "shelf-edge", text, error);
+   if (g_str_equal (key, "joined"))
+-    return set_choice (self, "shelf-surface-mode", g_str_equal (text, "joined") ? "connected" : "separate", error);
++    {
++      gboolean connected = g_str_equal (text, "joined");
++      gboolean span = connected && has_key (self->schema, "shelf-span-full") && g_str_equal (spread_of (self), "spread");
++      if (!g_settings_is_writable (self->settings, "shelf-surface-mode") ||
++          (span && !g_settings_is_writable (self->settings, "shelf-span-full")))
++        { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash layout is locked by policy"); return FALSE; }
++      g_autoptr (GSettings) batch = g_settings_new_full (self->schema, NULL, NULL);
++      g_settings_delay (batch);
++      g_settings_set_string (batch, "shelf-surface-mode", connected ? "connected" : "separate");
++      if (span) g_settings_set_boolean (batch, "shelf-span-full", TRUE);
++      g_settings_apply (batch);
++      return TRUE;
++    }
+   if (g_str_equal (key, "float"))
+     return set_choice (self, "shelf-edge-mode", g_str_equal (text, "edge") ? "protruding" : "floating", error);
+   if (g_str_equal (key, "spread"))
+     {
+-      /* Luma's own spread layout where the schema has it. */
+-      g_autoptr (GSettingsSchemaKey) layout = g_settings_schema_get_key (self->schema, "shelf-group-layout");
+-      g_autoptr (GVariant) luma = g_variant_ref_sink (g_variant_new_string ("luma"));
+-      const char *wanted = g_str_equal (text, "together") ? "centered-combined" :
+-                           g_settings_schema_key_range_check (layout, luma) ? "luma" : "split-ends";
+-      if (!set_choice (self, "shelf-group-layout", wanted, error)) return FALSE;
+-      /* Islands arranged by hand hold their own places; choosing how the
+-       * islands sit gives the shelf back its default arrangement for the
+-       * layout, the way panels/dash's layout choices take effect. */
+-      if (self->arrangement && g_str_equal (spread_of (self), text) == FALSE)
+-        {
+-          if (!g_settings_is_writable (self->settings, "shelf-arrangement"))
+-            {
+-              g_set_error (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "The shelf’s arrangement is locked by policy");
+-              return FALSE;
+-            }
+-          g_settings_reset (self->settings, "shelf-arrangement");
+-        }
++      gboolean spread = g_str_equal (text, "spread");
++      g_autofree char *surface = g_settings_get_string (self->settings, "shelf-surface-mode");
++      gboolean span = spread && has_key (self->schema, "shelf-span-full") && g_str_equal (surface, "connected");
++      const char *keys[] = { "shelf-group-layout", "shelf-dock-anchor", "shelf-actions-anchor", "shelf-arrangement", NULL };
++      for (guint i = 0; keys[i]; i++)
++        if (has_key (self->schema, keys[i]) && !g_settings_is_writable (self->settings, keys[i]))
++          { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash layout is locked by policy"); return FALSE; }
++      if (span && !g_settings_is_writable (self->settings, "shelf-span-full"))
++        { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash width is locked by policy"); return FALSE; }
++      g_autoptr (GSettings) batch = g_settings_new_full (self->schema, NULL, NULL);
++      g_settings_delay (batch);
++      g_settings_set_string (batch, "shelf-group-layout", spread ? "split-ends" : "luma");
++      if (has_key (self->schema, "shelf-dock-anchor")) g_settings_set_string (batch, "shelf-dock-anchor", spread ? "start" : "center");
++      if (has_key (self->schema, "shelf-actions-anchor")) g_settings_set_string (batch, "shelf-actions-anchor", spread ? "end" : "center");
++      if (self->arrangement) g_settings_reset (batch, "shelf-arrangement");
++      if (span) g_settings_set_boolean (batch, "shelf-span-full", TRUE);
++      g_settings_apply (batch);
+       return TRUE;
+     }
+-  /* preset: only free placement is a key of its own. */
++  /* A preset owns geometry; it does not change apps, folders or appearance. */
++  if (!g_str_equal (text, "free") && !g_str_equal (text, "custom"))
++    {
++      gboolean taskbar = g_str_equal (text, "taskbar");
++      const char *required[] = { "shelf-span-full", "shelf-float-ends", "shelf-arrangement", NULL };
++      for (guint i = 0; required[i]; i++)
++        if (has_key (self->schema, required[i]) && !g_settings_is_writable (self->settings, required[i]))
++          { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Dash layout is locked by policy"); return FALSE; }
++      g_autoptr (GSettings) batch = g_settings_new_full (self->schema, NULL, NULL);
++      g_settings_delay (batch);
++      if (has_key (self->schema, "shelf-span-full")) g_settings_set_boolean (batch, "shelf-span-full", taskbar);
++      if (has_key (self->schema, "shelf-float-ends")) g_settings_set_boolean (batch, "shelf-float-ends", !taskbar);
++      if (self->arrangement) g_settings_reset (batch, "shelf-arrangement");
++      g_settings_apply (batch);
++    }
++  /* Free placement remains independent of the preset's geometry. */
+   if (!self->free_placement)
+     {
+       if (g_str_equal (text, "free"))
+diff --git a/shell/cc-luma-view-shelf.c b/shell/cc-luma-view-shelf.c
+--- a/shell/cc-luma-view-shelf.c
++++ b/shell/cc-luma-view-shelf.c
+@@ -243,16 +243,30 @@
+       place (GTK_OVERLAY (desk), island (v, c, vertical, TRUE, FALSE, FALSE), edge, at, "mid");
+       place (GTK_OVERLAY (desk), island (v, at ? "h top at" : "h top", FALSE, FALSE, TRUE, FALSE), "bottom", at, "top");
+     }
++  else if (!spread && !joined)
++    {
++      GtkWidget *group = gtk_box_new (vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, 6);
++      gtk_box_append (GTK_BOX (group), island (v, cls, vertical, TRUE, FALSE, FALSE));
++      gtk_box_append (GTK_BOX (group), island (v, cls, vertical, FALSE, TRUE, FALSE));
++      place (GTK_OVERLAY (desk), group, edge, at, "mid");
++    }
+   else if (joined)
+     {
+-      g_autofree char *c = g_strconcat (cls, spread ? " full" : " full mid", NULL);
+-      place (GTK_OVERLAY (desk), island (v, c, vertical, TRUE, TRUE, !spread), edge, at, spread ? "full" : "mid");
++      g_autofree char *c = g_strconcat (cls, cc_luma_view_flag (v, "dashSpan") ? " full" : " mid", NULL);
++      place (GTK_OVERLAY (desk), island (v, c, vertical, TRUE, TRUE, !spread), edge, at, cc_luma_view_flag (v, "dashSpan") ? "full" : "mid");
+     }
+   else
+     {
+       g_autofree char *a = g_strconcat (cls, spread ? " mid" : " pair", NULL);
+       g_autofree char *b = g_strconcat (cls, spread ? " end" : " pair2", NULL);
+-      place (GTK_OVERLAY (desk), island (v, a, vertical, TRUE, FALSE, FALSE), edge, at, spread ? "mid" : "pair");
++      GtkWidget *apps = island (v, a, vertical, TRUE, FALSE, FALSE);
++      if (spread && !vertical)
++        put (GTK_OVERLAY (desk), apps, GTK_ALIGN_START, g_str_equal (edge, "top") ? GTK_ALIGN_START : GTK_ALIGN_END, 8, 0,
++             g_str_equal (edge, "top") ? (at ? 0 : 8) : 0, g_str_equal (edge, "top") ? 0 : (at ? 0 : 8));
++      else if (spread)
++        put (GTK_OVERLAY (desk), apps, g_str_equal (edge, "left") ? GTK_ALIGN_START : GTK_ALIGN_END, GTK_ALIGN_START,
++             g_str_equal (edge, "left") ? (at ? 0 : 8) : 0, g_str_equal (edge, "left") ? 0 : (at ? 0 : 8), 8, 0);
++      else place (GTK_OVERLAY (desk), apps, edge, at, "pair");
+       place (GTK_OVERLAY (desk), island (v, b, vertical, FALSE, TRUE, FALSE), edge, at, spread ? "end" : "pair2");
+     }
+   GtkWidget *edge_ring = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+@@ -323,6 +337,13 @@
+   segment_row (v, card, "spread", "Islands", "Together in the middle, or spread to the ends", spread);
+   segment_row (v, card, "joined", "Surface", NULL, joined);
+   segment_row (v, card, "float", "Edge", "Float above the edge, or grow out of it", floating);
++  if (cc_luma_fixture_get (v->model, "dashSpan"))
++    {
++      gboolean vertical = g_str_equal (cc_luma_view_text (v, "edge"), "left") || g_str_equal (cc_luma_view_text (v, "edge"), "right");
++      cf_sw (v, card, "dashSpan", vertical ? "Full height" : "Full width", "Extend the Dash along the entire edge", NULL);
++      GtkWidget *ends = cf_sw (v, card, "dashFloatEnds", "Inset ends", "Keep space between the Dash and the ends of the screen", NULL);
++      gtk_widget_set_sensitive (ends, cc_luma_view_flag (v, "dashSpan"));
++    }
+   if (hiding || sizing)
+     {
+       card = cf_group (v, "Behaviour", NULL);
+diff --git a/shell/luma-settings-structure.json b/shell/luma-settings-structure.json
+--- a/shell/luma-settings-structure.json
++++ b/shell/luma-settings-structure.json
+@@ -1 +1 @@
+-{"version":1,"spec_sha256":"66d185165a453b0691e3b1603260651652d575110280af0855369aa7423ba454","selected":"wifi","settings":{},"data":{"CFGRPS":[["",["wifi","network","bluetooth"]],["Desktop",["appearance","shelf","windows","notifications","search"]],["Devices",["displays","sound","power","mouse","keyboard","printers"]],["You",["apps","accounts","privacy","wellbeing","a11y"]],["System",["sharing","region","datetime","users","remote","ssh","about"]]],"CFACC":[[250,"Blue"],[195,"Teal"],[150,"Green"],[95,"Yellow"],[55,"Orange"],[25,"Red"],[350,"Pink"],[300,"Purple"]],"CFPRE":[["luma","Luma",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}],["one","One bar",{"edge":"bottom","spread":"together","joined":"joined","float":"floating"}],["grown","Grown",{"edge":"bottom","spread":"together","joined":"separate","float":"edge"}],["tabs","Tabs",{"edge":"bottom","spread":"spread","joined":"separate","float":"edge"}],["taskbar","Taskbar",{"edge":"bottom","spread":"spread","joined":"joined","float":"edge"}],["split","Split",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}],["side","Side",{"edge":"left","spread":"spread","joined":"separate","float":"floating"}],["free","Free",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}]],"CFPERM":{"search":["Search","Offers results when you search"],"notif":["Notifications","Shows notifications"],"bg":["Run in background","Keeps working when its window is closed"],"shot":["Screenshots","Can take pictures of the screen at any time"],"wall":["Change wallpaper","Can set the desktop background"],"sound":["Sounds","Plays sounds"],"inh":["Keyboard shortcuts","Can block system shortcuts while focused"],"cam":["Camera","Takes pictures and video"],"mic":["Microphone","Records sound"],"loc":["Location","Knows where this computer is"]},"CFMINS":[["1","1 minute"],["2","2 minutes"],["3","3 minutes"],["5","5 minutes"],["8","8 minutes"],["10","10 minutes"],["15","15 minutes"],["0","Never"]],"CFAPPCATS":{"filer":"tools","photos":"media","viola":"work","write":"work","tide":"media","messages":"work","notes":"work","contacts":"work","calendar":"work","maps":"tools","camera":"media","memos":"tools","canvas":"create","reel":"create","term":"tools"},"CFFMT":{"US":["United States","Thursday, September 24, 2026","3:42 PM","1,234,567.89","$1,234.56","Imperial","Letter"],"GB":["United Kingdom","Thursday 24 September 2026","15:42","1,234,567.89","£1,234.56","Metric","A4"],"DE":["Deutschland","Donnerstag, 24. September 2026","15:42","1.234.567,89","1.234,56 €","Metric","A4"],"FR":["France","jeudi 24 septembre 2026","15:42","1 234 567,89","1 234,56 €","Metric","A4"],"IN":["India","Thursday, 24 September 2026","3:42 pm","12,34,567.89","₹1,234.56","Metric","A4"],"JP":["日本","2026年9月24日木曜日","15:42","1,234,567.89","￥1,235","Metric","A4"]},"CFLANG":[["en-US","English (United States)"],["en-GB","English (United Kingdom)"],["de-DE","Deutsch"],["es-ES","Español"],["fr-FR","Français"],["hi-IN","हिन्दी"],["ja-JP","日本語"],["pt-BR","Português (Brasil)"]],"CFZONE":[["America/Chicago","Chicago"],["America/New_York","New York"],["America/Los_Angeles","Los Angeles"],["Europe/London","London"],["Europe/Berlin","Berlin"],["Asia/Kolkata","Kolkata"],["Asia/Tokyo","Tokyo"],["Australia/Sydney","Sydney"]],"CFKB":{"codes":[["Backquote","Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7","Digit8","Digit9","Digit0","Minus","Equal","Backspace"],["Tab","KeyQ","KeyW","KeyE","KeyR","KeyT","KeyY","KeyU","KeyI","KeyO","KeyP","BracketLeft","BracketRight","Backslash"],["CapsLock","KeyA","KeyS","KeyD","KeyF","KeyG","KeyH","KeyJ","KeyK","KeyL","Semicolon","Quote","Enter"],["ShiftLeft","KeyZ","KeyX","KeyC","KeyV","KeyB","KeyN","KeyM","Comma","Period","Slash","ShiftRight"],["ControlLeft","MetaLeft","AltLeft","Space","AltRight","ContextMenu","ControlRight"]],"w":{"Backspace":1.9,"Tab":1.5,"Backslash":1.4,"CapsLock":1.8,"Enter":2.1,"ShiftLeft":2.35,"ShiftRight":2.55,"ControlLeft":1.3,"MetaLeft":1.3,"AltLeft":1.3,"Space":6,"AltRight":1.3,"ContextMenu":1.3,"ControlRight":1.3},"L":{"English (US)":["` 1 2 3 4 5 6 7 8 9 0 - = ⌫","Tab q w e r t y u i o p [ ] \\","Caps a s d f g h j k l ; ' Return","Shift z x c v b n m , . / Shift","Ctrl Super Alt _ Alt Menu Ctrl"],"Deutsch":["^ 1 2 3 4 5 6 7 8 9 0 ß ´ ⌫","Tab q w e r t z u i o p ü + #","Caps a s d f g h j k l ö ä Return","Shift y x c v b n m , . - Shift","Strg Super Alt _ AltGr Menu Strg"],"Français":["² & é \" ' ( - è _ ç à ) = ⌫","Tab a z e r t y u i o p ^ $ *","Caps q s d f g h j k l m ù Return","Shift w x c v b n , ; : ! Shift","Ctrl Super Alt _ AltGr Menu Ctrl"]}}},"pages":[{"id":"me","title":"Luma account","parent":null},{"id":"wifi","title":"Wi‑Fi","parent":null},{"id":"wifi-net","title":"Studio North","parent":"wifi"},{"id":"wifi-known","title":"Known networks","parent":"wifi"},{"id":"hotspot","title":"Hotspot","parent":"wifi"},{"id":"network","title":"Network","parent":null},{"id":"bluetooth","title":"Bluetooth","parent":null},{"id":"appearance","title":"Appearance","parent":null},{"id":"shelf","title":"Shelf","parent":null},{"id":"windows","title":"Windows & Workspaces","parent":null},{"id":"notifications","title":"Notifications","parent":null},{"id":"search","title":"Search","parent":null},{"id":"search-places","title":"Folders to search","parent":"search"},{"id":"displays","title":"Displays","parent":null},{"id":"nightlight","title":"Night Light","parent":"displays"},{"id":"sound","title":"Sound","parent":null},{"id":"sound-levels","title":"Volume by app","parent":"sound"},{"id":"sound-alert","title":"Alert sound","parent":"sound"},{"id":"power","title":"Power","parent":null},{"id":"mouse","title":"Mouse & Touchpad","parent":null},{"id":"keyboard","title":"Keyboard","parent":null},{"id":"shortcuts","title":"Keyboard shortcuts","parent":"keyboard"},{"id":"printers","title":"Printers","parent":null},{"id":"apps","title":"Apps","parent":null},{"id":"defaults","title":"Default apps","parent":"apps"},{"id":"media","title":"Removable media","parent":"apps"},{"id":"accounts","title":"Online Accounts","parent":null},{"id":"acct-fm","title":"Fastmail","parent":"accounts"},{"id":"acct-nc","title":"Nextcloud","parent":"accounts"},{"id":"privacy","title":"Privacy & Security","parent":null},{"id":"p-lock","title":"Screen lock","parent":"privacy"},{"id":"p-loc","title":"Location","parent":"privacy"},{"id":"p-cam","title":"Camera","parent":"privacy"},{"id":"p-mic","title":"Microphone","parent":"privacy"},{"id":"p-files","title":"File history and trash","parent":"privacy"},{"id":"p-diag","title":"Problem reports","parent":"privacy"},{"id":"p-dev","title":"Device security","parent":"privacy"},{"id":"wellbeing","title":"Wellbeing","parent":null},{"id":"a11y","title":"Accessibility","parent":null},{"id":"a-see","title":"Seeing","parent":"a11y"},{"id":"a-hear","title":"Hearing","parent":"a11y"},{"id":"a-type","title":"Typing","parent":"a11y"},{"id":"a-point","title":"Pointing and clicking","parent":"a11y"},{"id":"a-zoom","title":"Zoom","parent":"a11y"},{"id":"sharing","title":"Sharing","parent":null},{"id":"region","title":"Region & Language","parent":null},{"id":"datetime","title":"Date & Time","parent":null},{"id":"users","title":"Users","parent":null},{"id":"user-priya","title":"Priya Raman","parent":"users"},{"id":"remote","title":"Remote Desktop","parent":null},{"id":"ssh","title":"Secure Shell","parent":null},{"id":"about","title":"About","parent":null},{"id":"about-sys","title":"System details","parent":"about"}]}
+\ No newline at end of file
++{"version":1,"spec_sha256":"66d185165a453b0691e3b1603260651652d575110280af0855369aa7423ba454","selected":"wifi","settings":{},"data":{"CFGRPS":[["",["wifi","network","bluetooth"]],["Desktop",["appearance","shelf","windows","notifications","search"]],["Devices",["displays","sound","power","mouse","keyboard","printers"]],["You",["apps","accounts","privacy","wellbeing","a11y"]],["System",["sharing","region","datetime","users","remote","ssh","about"]]],"CFACC":[[250,"Blue"],[195,"Teal"],[150,"Green"],[95,"Yellow"],[55,"Orange"],[25,"Red"],[350,"Pink"],[300,"Purple"]],"CFPRE":[["luma","Luma",{"edge":"bottom","spread":"together","joined":"separate","float":"floating"}],["one","One bar",{"edge":"bottom","spread":"together","joined":"joined","float":"floating"}],["grown","Grown",{"edge":"bottom","spread":"together","joined":"separate","float":"edge"}],["tabs","Tabs",{"edge":"bottom","spread":"spread","joined":"separate","float":"edge"}],["taskbar","Taskbar",{"edge":"bottom","spread":"spread","joined":"joined","float":"edge"}],["split","Split",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}],["side","Side",{"edge":"left","spread":"spread","joined":"separate","float":"floating"}],["free","Free",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}]],"CFPERM":{"search":["Search","Offers results when you search"],"notif":["Notifications","Shows notifications"],"bg":["Run in background","Keeps working when its window is closed"],"shot":["Screenshots","Can take pictures of the screen at any time"],"wall":["Change wallpaper","Can set the desktop background"],"sound":["Sounds","Plays sounds"],"inh":["Keyboard shortcuts","Can block system shortcuts while focused"],"cam":["Camera","Takes pictures and video"],"mic":["Microphone","Records sound"],"loc":["Location","Knows where this computer is"]},"CFMINS":[["1","1 minute"],["2","2 minutes"],["3","3 minutes"],["5","5 minutes"],["8","8 minutes"],["10","10 minutes"],["15","15 minutes"],["0","Never"]],"CFAPPCATS":{"filer":"tools","photos":"media","viola":"work","write":"work","tide":"media","messages":"work","notes":"work","contacts":"work","calendar":"work","maps":"tools","camera":"media","memos":"tools","canvas":"create","reel":"create","term":"tools"},"CFFMT":{"US":["United States","Thursday, September 24, 2026","3:42 PM","1,234,567.89","$1,234.56","Imperial","Letter"],"GB":["United Kingdom","Thursday 24 September 2026","15:42","1,234,567.89","£1,234.56","Metric","A4"],"DE":["Deutschland","Donnerstag, 24. September 2026","15:42","1.234.567,89","1.234,56 €","Metric","A4"],"FR":["France","jeudi 24 septembre 2026","15:42","1 234 567,89","1 234,56 €","Metric","A4"],"IN":["India","Thursday, 24 September 2026","3:42 pm","12,34,567.89","₹1,234.56","Metric","A4"],"JP":["日本","2026年9月24日木曜日","15:42","1,234,567.89","￥1,235","Metric","A4"]},"CFLANG":[["en-US","English (United States)"],["en-GB","English (United Kingdom)"],["de-DE","Deutsch"],["es-ES","Español"],["fr-FR","Français"],["hi-IN","हिन्दी"],["ja-JP","日本語"],["pt-BR","Português (Brasil)"]],"CFZONE":[["America/Chicago","Chicago"],["America/New_York","New York"],["America/Los_Angeles","Los Angeles"],["Europe/London","London"],["Europe/Berlin","Berlin"],["Asia/Kolkata","Kolkata"],["Asia/Tokyo","Tokyo"],["Australia/Sydney","Sydney"]],"CFKB":{"codes":[["Backquote","Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7","Digit8","Digit9","Digit0","Minus","Equal","Backspace"],["Tab","KeyQ","KeyW","KeyE","KeyR","KeyT","KeyY","KeyU","KeyI","KeyO","KeyP","BracketLeft","BracketRight","Backslash"],["CapsLock","KeyA","KeyS","KeyD","KeyF","KeyG","KeyH","KeyJ","KeyK","KeyL","Semicolon","Quote","Enter"],["ShiftLeft","KeyZ","KeyX","KeyC","KeyV","KeyB","KeyN","KeyM","Comma","Period","Slash","ShiftRight"],["ControlLeft","MetaLeft","AltLeft","Space","AltRight","ContextMenu","ControlRight"]],"w":{"Backspace":1.9,"Tab":1.5,"Backslash":1.4,"CapsLock":1.8,"Enter":2.1,"ShiftLeft":2.35,"ShiftRight":2.55,"ControlLeft":1.3,"MetaLeft":1.3,"AltLeft":1.3,"Space":6,"AltRight":1.3,"ContextMenu":1.3,"ControlRight":1.3},"L":{"English (US)":["` 1 2 3 4 5 6 7 8 9 0 - = ⌫","Tab q w e r t y u i o p [ ] \\","Caps a s d f g h j k l ; ' Return","Shift z x c v b n m , . / Shift","Ctrl Super Alt _ Alt Menu Ctrl"],"Deutsch":["^ 1 2 3 4 5 6 7 8 9 0 ß ´ ⌫","Tab q w e r t z u i o p ü + #","Caps a s d f g h j k l ö ä Return","Shift y x c v b n m , . - Shift","Strg Super Alt _ AltGr Menu Strg"],"Français":["² & é \" ' ( - è _ ç à ) = ⌫","Tab a z e r t y u i o p ^ $ *","Caps q s d f g h j k l m ù Return","Shift w x c v b n , ; : ! Shift","Ctrl Super Alt _ AltGr Menu Ctrl"]}}},"pages":[{"id":"me","title":"Luma account","parent":null},{"id":"wifi","title":"Wi‑Fi","parent":null},{"id":"wifi-net","title":"Studio North","parent":"wifi"},{"id":"wifi-known","title":"Known networks","parent":"wifi"},{"id":"hotspot","title":"Hotspot","parent":"wifi"},{"id":"network","title":"Network","parent":null},{"id":"bluetooth","title":"Bluetooth","parent":null},{"id":"appearance","title":"Appearance","parent":null},{"id":"shelf","title":"Dash","parent":null},{"id":"windows","title":"Windows & Workspaces","parent":null},{"id":"notifications","title":"Notifications","parent":null},{"id":"search","title":"Search","parent":null},{"id":"search-places","title":"Folders to search","parent":"search"},{"id":"displays","title":"Displays","parent":null},{"id":"nightlight","title":"Night Light","parent":"displays"},{"id":"sound","title":"Sound","parent":null},{"id":"sound-levels","title":"Volume by app","parent":"sound"},{"id":"sound-alert","title":"Alert sound","parent":"sound"},{"id":"power","title":"Power","parent":null},{"id":"mouse","title":"Mouse & Touchpad","parent":null},{"id":"keyboard","title":"Keyboard","parent":null},{"id":"shortcuts","title":"Keyboard shortcuts","parent":"keyboard"},{"id":"printers","title":"Printers","parent":null},{"id":"apps","title":"Apps","parent":null},{"id":"defaults","title":"Default apps","parent":"apps"},{"id":"media","title":"Removable media","parent":"apps"},{"id":"accounts","title":"Online Accounts","parent":null},{"id":"acct-fm","title":"Fastmail","parent":"accounts"},{"id":"acct-nc","title":"Nextcloud","parent":"accounts"},{"id":"privacy","title":"Privacy & Security","parent":null},{"id":"p-lock","title":"Screen lock","parent":"privacy"},{"id":"p-loc","title":"Location","parent":"privacy"},{"id":"p-cam","title":"Camera","parent":"privacy"},{"id":"p-mic","title":"Microphone","parent":"privacy"},{"id":"p-files","title":"File history and trash","parent":"privacy"},{"id":"p-diag","title":"Problem reports","parent":"privacy"},{"id":"p-dev","title":"Device security","parent":"privacy"},{"id":"wellbeing","title":"Wellbeing","parent":null},{"id":"a11y","title":"Accessibility","parent":null},{"id":"a-see","title":"Seeing","parent":"a11y"},{"id":"a-hear","title":"Hearing","parent":"a11y"},{"id":"a-type","title":"Typing","parent":"a11y"},{"id":"a-point","title":"Pointing and clicking","parent":"a11y"},{"id":"a-zoom","title":"Zoom","parent":"a11y"},{"id":"sharing","title":"Sharing","parent":null},{"id":"region","title":"Region & Language","parent":null},{"id":"datetime","title":"Date & Time","parent":null},{"id":"users","title":"Users","parent":null},{"id":"user-priya","title":"Priya Raman","parent":"users"},{"id":"remote","title":"Remote Desktop","parent":null},{"id":"ssh","title":"Secure Shell","parent":null},{"id":"about","title":"About","parent":null},{"id":"about-sys","title":"System details","parent":"about"}]}
+\ No newline at end of file
+diff --git a/shell/test-fixture-schemas/luma-test.gschema.xml b/shell/test-fixture-schemas/luma-test.gschema.xml
+--- a/shell/test-fixture-schemas/luma-test.gschema.xml
++++ b/shell/test-fixture-schemas/luma-test.gschema.xml
+@@ -9,6 +9,10 @@
+       <default>'bottom'</default>
+       <summary>Screen edge that owns the Shelf</summary>
+     </key>
++    <key name="shelf-span-full" type="b"><default>false</default></key>
++    <key name="shelf-float-ends" type="b"><default>true</default></key>
++    <key name="shelf-dock-anchor" type="s"><default>'center'</default></key>
++    <key name="shelf-actions-anchor" type="s"><default>'end'</default></key>
+     <key name="shelf-group-layout" type="s">
+       <choices><choice value="centered-combined"/><choice value="split-ends"/><choice value="luma"/></choices>
+       <default>'luma'</default>
+diff --git a/shell/test-luma-live-desk.c b/shell/test-luma-live-desk.c
+--- a/shell/test-luma-live-desk.c
++++ b/shell/test-luma-live-desk.c
+@@ -31,7 +31,7 @@
+ /* v70's shelf presets, as the structure carries them. */
+ static const char structure[] =
+   "{\"settings\":{},\"pages\":[],\"data\":{\"CFPRE\":["
+-  "[\"luma\",\"Luma\",{\"edge\":\"bottom\",\"spread\":\"spread\",\"joined\":\"separate\",\"float\":\"floating\"}],"
++  "[\"luma\",\"Luma\",{\"edge\":\"bottom\",\"spread\":\"together\",\"joined\":\"separate\",\"float\":\"floating\"}],"
+   "[\"one\",\"One bar\",{\"edge\":\"bottom\",\"spread\":\"together\",\"joined\":\"joined\",\"float\":\"floating\"}],"
+   "[\"split\",\"Split\",{\"edge\":\"bottom\",\"spread\":\"spread\",\"joined\":\"separate\",\"float\":\"floating\"}],"
+   "[\"side\",\"Side\",{\"edge\":\"left\",\"spread\":\"spread\",\"joined\":\"separate\",\"float\":\"floating\"}],"
+@@ -72,7 +72,7 @@
+   g_autoptr (GSettings) state = g_settings_new ("org.project_luma.shell-state");
+   /* Luma's default: the luma layout, separate floating islands. */
+   g_assert_cmpstr (text (model, "edge"), ==, "bottom");
+-  g_assert_cmpstr (text (model, "spread"), ==, "spread");
++  g_assert_cmpstr (text (model, "spread"), ==, "together");
+   g_assert_cmpstr (text (model, "preset"), ==, "luma");
+   g_assert_null (cc_luma_fixture_get (model, "hide"));
+   g_assert_null (cc_luma_fixture_get (model, "isz"));
+@@ -95,7 +95,8 @@
+   g_autofree char *surface = g_settings_get_string (state, "shelf-surface-mode");
+   g_autofree char *layout = g_settings_get_string (state, "shelf-group-layout");
+   g_assert_cmpstr (surface, ==, "connected");
+-  g_assert_cmpstr (layout, ==, "centered-combined");
++  g_assert_cmpstr (layout, ==, "luma");
++  g_assert_false (g_settings_get_boolean (state, "shelf-span-full"));
+   g_assert_cmpstr (text (model, "preset"), ==, "one");
+   g_assert_true (cc_luma_shelf_set_choice (model, "edge", "left", &error));
+   g_autofree char *edge = g_settings_get_string (state, "shelf-edge");
+@@ -106,6 +107,24 @@
+   g_autoptr (GVariant) arrangement = g_settings_get_value (state, "shelf-arrangement");
+   g_assert_cmpuint (g_variant_n_children (arrangement), ==, 0);
+   g_assert_cmpstr (text (model, "spread"), ==, "spread");
++  g_assert_true (g_settings_get_boolean (state, "shelf-span-full"));
++  g_autofree char *dock_anchor = g_settings_get_string (state, "shelf-dock-anchor");
++  g_autofree char *status_anchor = g_settings_get_string (state, "shelf-actions-anchor");
++  g_assert_cmpstr (dock_anchor, ==, "start");
++  g_assert_cmpstr (status_anchor, ==, "end");
++  /* Fitting a connected bar returns to Together; joining spread islands
++   * subsequently restores the room needed for both end anchors. */
++  g_assert_true (cc_luma_fixture_set_flag (model, "dashSpan", FALSE, &error));
++  spin ();
++  g_assert_cmpstr (text (model, "spread"), ==, "together");
++  g_assert_true (cc_luma_shelf_set_choice (model, "joined", "separate", &error));
++  g_assert_true (cc_luma_shelf_set_choice (model, "spread", "spread", &error));
++  g_assert_false (g_settings_get_boolean (state, "shelf-span-full"));
++  g_assert_true (cc_luma_shelf_set_choice (model, "joined", "joined", &error));
++  g_assert_true (g_settings_get_boolean (state, "shelf-span-full"));
++  g_assert_true (cc_luma_fixture_set_flag (model, "dashFloatEnds", FALSE, &error));
++  g_assert_false (g_settings_get_boolean (state, "shelf-float-ends"));
++  g_assert_no_error (error);
+   /* A shelf on the top edge is shown as it is. */
+   g_settings_set_string (state, "shelf-edge", "top");
+   spin ();

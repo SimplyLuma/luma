@@ -37,6 +37,7 @@ export class HandheldOptions {
         this.menu.close(PopupAnimation.NONE);
         this._finishMainPageTransition();
         this.enabled = true;
+        this.menu.box.add_style_class_name('lumaui-touch-options');
         const parent = main.get_parent();
         this.original = {parent, index: parent.get_children().indexOf(main), style: this.menu.box.get_style()};
         parent.remove_child(main);
@@ -63,9 +64,9 @@ export class HandheldOptions {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) return;
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
-        // Desktop's 316px content / 340px outer width, reduced only if needed
+        // Desktop's 338px content / 372px outer width, reduced only if needed
         // for a smaller screen. Keep every native style and material intact.
-        const width = Math.max(160, Math.min(316, monitor.width / scale - 48));
+        const width = Math.max(160, Math.min(338, monitor.width / scale - 48));
         this.menu.box.set_style([this.original.style, `width: ${width}px; min-width: 0; max-width: ${width}px;`].filter(Boolean).join('; '));
         this.scroll.set_style(`max-height: ${Math.max(120, monitor.height / scale - 112)}px;`);
         this.menu._boxPointer.setPosition(this.home._statusRight, 1);
@@ -93,6 +94,7 @@ export class HandheldOptions {
         this.original.parent.insert_child_at_index(main, this.original.index);
         this.scroll.destroy();
         this.menu.box.set_style(this.original.style);
+        this.menu.box.remove_style_class_name('lumaui-touch-options');
         this.menu._boxPointer.setPosition(this.menu.sourceActor, .5);
         this.enabled = false;
     }
