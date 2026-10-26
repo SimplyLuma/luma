@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.24%{?dist}
+Release:        1.luma.25%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -208,7 +208,7 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
-* Sun Oct 25 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.24
+* Sun Oct 25 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.25
 - Fix packaged directory permissions and installation alongside greenboot.
 
 * Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.23

@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.111.tester20261026.1%{?dist}
+Release:        1.luma.117.nightly20261026.1%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -650,7 +650,7 @@ done
 - Give inactive AppKit windows a calm backdrop elevation with an unbroken
   title-row surface.
 
-* Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.24
+* Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.25
 - Preserve native island elevation outside the AppKit content allocation.
 
 * Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.23

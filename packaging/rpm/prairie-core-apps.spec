@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.105.creator20261019.1%{?dist}
+Release:        1.luma.106.nightly20261026.1%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -1081,7 +1081,7 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 - Rebuild Notes on the shared Luma Application Kit with durable rich editing,
   folders, favorites, ordering, autosave, and recoverable deletion
 
-* Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.24
+* Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.25
 - Keep Luma MIME defaults in the system XDG configuration layer
 
 * Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.23
