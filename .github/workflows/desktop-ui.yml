@@ -39,6 +39,11 @@ on:
       - 'LICENSE.md'
   workflow_dispatch:
     inputs:
+      architecture:
+        description: Native CPU to build (both preserves the shared default)
+        type: choice
+        options: [both, x86_64, aarch64]
+        default: both
       components:
         description: Comma separated selected components (empty means all)
         type: string
@@ -57,6 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       components: ${{ steps.matrix.outputs.components }}
+      targets: ${{ steps.matrix.outputs.targets }}
       count: ${{ steps.matrix.outputs.count }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -66,6 +72,7 @@ jobs:
         env:
           BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
           SELECTED: ${{ inputs.components }}
+          ARCHITECTURE: ${{ inputs.architecture }}
         run: |
           python3 tests/os/test_desktop_ui_matrix.py
           if [ -n "$BASE" ]; then
@@ -78,6 +85,8 @@ jobs:
           fi
           echo "components=$components" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$components" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
+          targets=$(python3 -c 'import json,os,pathlib; v=dict(line.split("=",1) for line in pathlib.Path("config/desktop/inputs.env").read_text().splitlines() if line and not line.startswith("#") and "=" in line); pick=os.environ.get("ARCHITECTURE") or "both"; assert pick in ("both","x86_64","aarch64"); rows=[{"runner":"ubuntu-24.04","architecture":"x86_64","image":v["FEDORA_RPM_BUILD_CONTAINER"]},{"runner":"ubuntu-24.04-arm","architecture":"aarch64","image":v["FEDORA_RPM_BUILD_CONTAINER_AARCH64"]}]; print(json.dumps([r for r in rows if pick=="both" or r["architecture"]==pick]))')
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
   build:
     needs: select
     if: needs.select.outputs.count != '0'
@@ -86,13 +95,7 @@ jobs:
       fail-fast: false
       matrix:
         component: ${{ fromJSON(needs.select.outputs.components) }}
-        target:
-          - runner: ubuntu-24.04
-            architecture: x86_64
-            image: registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
-          - runner: ubuntu-24.04-arm
-            architecture: aarch64
-            image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+        target: ${{ fromJSON(needs.select.outputs.targets) }}
     runs-on: ${{ matrix.target.runner }}
     container:
       image: ${{ matrix.target.image }}

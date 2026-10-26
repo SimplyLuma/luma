@@ -38,7 +38,7 @@ for identity in "${GTK4_NEVRA%.*}.aarch64" "${LIBADWAITA_NEVRA%.*}.aarch64" \
   "${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.*}.aarch64" \
   'luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.aarch64' \
   'luma-appimage-compat-0.1.0-1.luma.1.fc44.aarch64' \
-  'viola-browser-stable-151.0.7922.72-15.viola8210.native38.creator20261025.1.fc44.aarch64'; do
+  'viola-browser-stable-151.0.7922.72-15.viola8210.native39.creator20261026.1.fc44.aarch64'; do
   mapfile -t found < <(find "$inputs" -type f -name "$identity.rpm")
   printf 'Selecting %s: %s retained copies\n' "$identity" "${#found[@]}"
   [ "${#found[@]}" -ge 1 ]

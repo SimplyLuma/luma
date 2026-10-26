@@ -495,7 +495,8 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       # marked on their own; the shelf washes the whole island (0161).
       grep -q "controls\.remove_style_pseudo_class(.checked.)" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "DASH_TILE_SIZE = 45" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_SIZE = 45;" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_GAP = 11;" shelfMetrics.js
       grep -Fq "runningIndicatorGeometry" shelfMetrics.js
       grep -Fq "shelf-span-full" luma-dash.js
       grep -Fq "shelf-float-ends" luma-dash.js
