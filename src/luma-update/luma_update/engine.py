@@ -480,6 +480,8 @@ class Engine:
 
     def _view(self) -> SystemView:
         from .hardware import require_device_target
+        if self.arch not in ("x86_64", "aarch64"):
+            raise UpdateError(f"unsupported system architecture {self.arch!r}", "architecture")
         try:
             require_device_target(self.paths, self.settings.hardware_target, self.arch)
             self.settings.graph("stable", self.arch)  # Validate official feed identity before any operation.
@@ -491,7 +493,7 @@ class Engine:
             raise Unmanaged("rpm-ostree reports no booted deployment")
         origin = parse_origin(booted.origin, self.settings)
         if origin is not None and origin.arch != self.arch:
-            raise Unmanaged("booted Luma origin architecture does not match this device")
+            raise UpdateError("booted Luma origin architecture does not match this device", "architecture")
         staged = next((d for d in deployments if d.staged), None)
         rollback = next((d for d in deployments if not d.booted and not d.staged), None)
         default_is_rollback = bool(deployments) and not deployments[0].booted and not deployments[0].staged
@@ -1064,9 +1066,9 @@ class Engine:
             decision = self._check_locked(automatic=False)
         if decision is None or decision.release is None or decision.action == "none":
             return False
-        view = self._view()
         try:
             # Recheck even when a previously selected decision is still cached.
+            view = self._view()
             self._arch(view)
         except UpdateError as error:
             self._decision = None

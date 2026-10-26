@@ -21,8 +21,15 @@ class Architecture(unittest.TestCase):
                       self.rig.probes, self.rig.http, clock=lambda: self.rig.now,
                       arch=machine, greenboot_installed=True)
 
-    def publish(self, arch):
+    def publish(self, arch, *, bucket=None):
         self.rig.publish(graph_doc([release('1.0.0', 1), release('1.0.1', 2)], arch=arch))
+        if bucket is not None and bucket != arch:
+            # Serve a genuinely signed foreign graph at the native bucket the
+            # client requests; publishing only the foreign URL tests a 404.
+            source = self.rig.settings.graph('stable', arch)
+            target = self.rig.settings.graph('stable', bucket)
+            for suffix in ('', '.minisig'):
+                self.rig.http.files[target + suffix] = self.rig.http.files[source + suffix]
 
     def test_matching_native_updates_stage_on_both_architectures(self):
         for arch in ('aarch64', 'x86_64'):
@@ -38,7 +45,7 @@ class Architecture(unittest.TestCase):
     def test_wrong_signed_feed_is_rejected_in_both_directions(self):
         for machine, other in (('aarch64', 'x86_64'), ('x86_64', 'aarch64')):
             with self.subTest(machine=machine):
-                self.publish(other)
+                self.publish(other, bucket=machine)
                 engine = self.engine(machine, machine)
                 self.assertIsNone(engine.check())
                 self.assertFalse(engine.download(user_initiated=True))
