@@ -114,7 +114,18 @@ with tempfile.TemporaryFile() as archive:
         for entry in z.infolist():
             if not any(part.startswith('work.') for part in Path(entry.filename).parts):
                 z.extract(entry, a.output)
-assert (a.output / 'SOURCE-REVISION').read_text().strip() == merge, 'toolkit source receipt mismatch'
+receipt_source = (a.output / 'SOURCE-REVISION').read_text().strip()
+if receipt_source != source:
+    # Pull-request workflows build GitHub's test merge rather than head_sha.
+    # Reuse only when that exact commit directly includes the recorded head
+    # and has the identical complete tree; base-only changes fail closed.
+    assert record['event'] == 'pull_request', 'toolkit source receipt mismatch'
+    assert len(receipt_source) == 40 and all(c in '0123456789abcdef' for c in receipt_source)
+    receipt_commit = api(f'git/commits/{receipt_source}')
+    source_commit = api(f'git/commits/{source}')
+    assert source in [parent['sha'] for parent in receipt_commit['parents']], 'toolkit merge head mismatch'
+    assert receipt_commit['tree']['sha'] == source_commit['tree']['sha'], 'toolkit merge source tree mismatch'
+merge = receipt_source
 covered = set()
 for manifest in a.output.glob('packages/**/SHA256SUMS'):
     for line in manifest.read_text().splitlines():
