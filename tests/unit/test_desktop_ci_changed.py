@@ -45,3 +45,25 @@ class NativeProviderScope(unittest.TestCase):
         for provider in ('webkit', 'browser'):
             self.assertTrue(scope.affected(provider, ['config/desktop/inputs.env']))
             self.assertTrue(scope.affected(provider, ['scripts/packages/run-in-rpm-builder.sh']))
+
+    def test_unrelated_shell_and_icon_pins_do_not_rebuild_engines(self):
+        before = 'GNOME_SHELL_LUMA_RELEASE=124\nPRAIRIE_ICON_THEME_RELEASE=41\n'
+        after = 'GNOME_SHELL_LUMA_RELEASE=125\nPRAIRIE_ICON_THEME_RELEASE=42\n'
+        keys = scope.changed_input_keys(before, after)
+        self.assertEqual(keys, {'GNOME_SHELL_LUMA_RELEASE', 'PRAIRIE_ICON_THEME_RELEASE'})
+        for provider in ('webkit', 'browser'):
+            self.assertFalse(scope.affected(provider, ['config/desktop/inputs.env'], input_keys=keys))
+            self.assertTrue(scope.affected(provider, ['scripts/packages/run-in-rpm-builder.sh',
+                            'config/desktop/inputs.env'], input_keys=keys))
+
+    def test_platform_pin_rechecks_browser_without_recompiling_webkit(self):
+        keys = {'LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA'}
+        self.assertTrue(scope.affected('browser', ['config/desktop/inputs.env'], input_keys=keys))
+        self.assertFalse(scope.affected('webkit', ['config/desktop/inputs.env'], input_keys=keys))
+
+    def test_container_change_rechecks_both_providers_and_removed_pins_count(self):
+        keys = scope.changed_input_keys('FEDORA_RPM_BUILD_CONTAINER=old\nGTK4_NEVRA=old\n',
+                                       'FEDORA_RPM_BUILD_CONTAINER=new\n')
+        self.assertEqual(keys, {'FEDORA_RPM_BUILD_CONTAINER', 'GTK4_NEVRA'})
+        for provider in ('webkit', 'browser'):
+            self.assertTrue(scope.affected(provider, ['config/desktop/inputs.env'], input_keys=keys))
