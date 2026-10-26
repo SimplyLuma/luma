@@ -8,7 +8,9 @@ ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/luma-seed-app-baseline
-UMask=0077
+# System Flatpak content must be readable by ordinary application users.
+# StateDirectory and completion records retain their explicit private modes.
+UMask=0022
 PrivateTmp=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes
@@ -16,6 +18,7 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
 StateDirectory=luma/app-baseline
+StateDirectoryMode=0700
 TimeoutStartSec=30min
 
 [Install]
