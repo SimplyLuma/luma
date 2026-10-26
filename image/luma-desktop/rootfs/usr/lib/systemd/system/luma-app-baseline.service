@@ -18,7 +18,9 @@ ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
 StateDirectory=luma/app-baseline
 StateDirectoryMode=0700
 RemainAfterExit=yes
-TimeoutStartSec=600
+# Match the packaged baseline owner: a slow first import must not prevent GDM
+# from starting while authenticated offline application bundles are progressing.
+TimeoutStartSec=30min
 
 [Install]
 WantedBy=graphical.target
