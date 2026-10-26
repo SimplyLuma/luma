@@ -56,6 +56,8 @@ scripts/packages/build-prairie-core-apps.sh
 
 Flatpak app definitions live in `packaging/flatpak/apps/`; platform/SDK definitions live in `packaging/flatpak/runtime/`. `scripts/depot/` contains their source preparation, build, verification, and publication tooling. Use the specific manifest's declared sources and permission contract. Publication requires separate authorized signing and repository configuration; compiling an application does not publish it.
 
+Run runtime assembly in the dedicated tools container. RPM installation into an alternate root still runs package scriptlets; it must not modify the running build host's SELinux policy. Keep unsigned native build workers separate from the networkless signing container, and budget memory for both the host-side input verifier and the signer.
+
 ## Viola's external engine dependency
 
 `src/external/viola/chromium-linux/appkit-spike/` contains the shared native host and Application Kit integration. `scripts/packages/build-viola-browser.sh` supports both `x86_64` and `aarch64`; `LUMA_TARGET_ARCHITECTURE` selects the target and defaults to the builder's machine architecture. Each architecture has its own admitted engine archive, release and SHA-256 in that script.
