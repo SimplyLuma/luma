@@ -159,9 +159,30 @@ async function probe() {
     } finally {
         GLib.file_set_contents(`${out}/RESULT.json`, JSON.stringify(result, null, 2));
         if (!result.ok) {
-            try {if (window) window.delete(global.get_current_time());} catch (_) {}
-            try {if (child) child.send_signal(15);} catch (_) {}
-            if (childOutput) await Promise.race([childOutput.catch(() => {}), sleep(3000)]);
+            // Preserve the original failure and let the unchanged host drain
+            // its engine and write its integration report before any signal.
+            const cleanup={normal_close_requested:false,normal_exit:false,signal_sent:false,forced:false};
+            let exited=false;
+            const finished=childOutput?.then(()=>{exited=true;},()=>{exited=true;});
+            try {
+                if (window) {
+                    window.delete(global.get_current_time());
+                    cleanup.normal_close_requested=true;
+                }
+                if (finished) await Promise.race([finished,sleep(15000)]);
+                cleanup.normal_exit=exited;
+                if (child && !exited) {
+                    child.send_signal(15);cleanup.signal_sent=true;
+                    if (finished) await Promise.race([finished,sleep(3000)]);
+                }
+                if (child && !exited) {
+                    child.force_exit();cleanup.forced=true;
+                    if (finished) await Promise.race([finished,sleep(3000)]);
+                }
+                if (child && exited) cleanup.exit_status=child.get_exit_status();
+            } catch (error) {cleanup.error=String(error);}
+            result.failure_cleanup=cleanup;
+            GLib.file_set_contents(`${out}/RESULT.json`, JSON.stringify(result, null, 2));
         }
         if (monitorStream) {
             monitorStream.get_stdin_pipe().close(null);

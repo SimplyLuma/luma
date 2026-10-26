@@ -166,6 +166,11 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     export BROWSER_GATE_PIXEL_VALIDATOR="$QA/verify-pixels.py" BROWSER_GATE_INPUT_HELPER="$QA/input-owned-session.py"
     export WAYLAND_DISPLAY=viola-qa-shm-r1
     (
+      sleep 15
+      timeout 20 python3 "$QA/diagnose-secret-portal.py" >"$OUT/secret-portal-metadata.json" \
+        2>"$OUT/secret-portal-metadata.stderr" || true
+    ) &
+    (
       sleep 35
       ps -u "$(id -u)" -o pid,ppid,stat,wchan:30,comm,args >"$OUT/startup-processes.txt"
       busctl --user --no-pager list >"$OUT/startup-bus.txt" 2>&1 || true

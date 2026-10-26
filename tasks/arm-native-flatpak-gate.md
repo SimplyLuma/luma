@@ -121,3 +121,31 @@ Focused Bash syntax and native host workflow checks run in admitted unit
 `dev-arm-native-container-fixture-checks-1d9e89d1`; actual policy loading and
 UID-map success require a fresh Ubuntu ARM CI run. No dispatch or host policy
 mutation was performed on the shared Fedora server.
+
+## 2026-10-26 UTC — signed Flatpak failure diagnostics
+
+Run 40251312020 completed normal signed four-ref installation and mapped Viola,
+but failed waiting for trusted requested-page phase 0. Its final GTK/SHM viewport
+is 883×579 with valid native identity and active window; active URL remains
+about:blank and no requested-page GET reached the server. Earlier engine frame
+sizes are startup transitions. Source and argv inspection confirms the normal
+shipping wrapper forwards --start-url. The complete engine log contains shared
+image errors and unrelated GCM HTTP responses; neither establishes the cause.
+The encrypted default/login keyring is unlocked. A sandbox Secret portal issue
+remains a hypothesis, not a demonstrated application defect.
+
+The diagnostic fixture now preserves the original failure while allowing up to
+15 seconds for an actual mapped-window close and host integration-report drain,
+then bounded TERM/KILL fallback. It records cleanup outcome without changing
+acceptance. A delayed read-only metadata helper records public portal/backend
+owners, Secret interface version/introspection and installed portal selection
+configuration. It never retrieves a secret, item, token or permission database.
+App argv, permissions, source, native identity and all mechanism guards stay
+unchanged. The existing report collector retains the resulting integration
+report and engine-exit/request-timeout evidence.
+
+Focused source check unit dev-arm-signed-portal-diagnostic-source-r2-f56ebeef
+exited 0 with Bash, JavaScript and Python syntax and diff checks passing. It used
+a 1 GiB reservation. The first default-sized reservation was refused by
+admission before running; no test result was inferred from that refusal.
+Actual new cleanup/metadata behavior still requires the next native CI run.
