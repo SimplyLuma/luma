@@ -11,7 +11,8 @@ Restart=on-failure
 RestartSec=5min
 TimeoutStartSec=2min
 RuntimeMaxSec=2min
-UMask=0077
+# System Flatpak repositories are public; the retirement lock is explicitly 0600.
+UMask=0022
 PrivateTmp=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes

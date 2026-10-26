@@ -8,7 +8,7 @@ import configparser
 import re
 import subprocess
 
-SUPPORTED_INSTALLER_RELEASE = 75
+SUPPORTED_INSTALLER_RELEASE = 76
 # Fixed maintained host owners, never an executable/package supplied by app
 # metadata. Existing OS deployments stay compatible until a real host API is
 # needed; a newer app is held before its installed commit changes.
