@@ -669,6 +669,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.106.nightly20261026.1
+- Package the October 26 shared source updates.
+
 * Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103.creator20261012.1
 - Recognize the shared Photos library through the system home directory alias.
 

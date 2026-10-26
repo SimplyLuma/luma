@@ -269,7 +269,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
-* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
+- Package the October 26 shared source updates.
+
+* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.73.creator20261024.1
 - Remove retired Displays installations automatically while preserving app data.
 
 * Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.72.creator20261023.1

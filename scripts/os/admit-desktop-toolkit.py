@@ -11,6 +11,8 @@ import zipfile
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--architecture', required=True, choices=['x86_64', 'aarch64'])
 p.add_argument('--output', type=Path, default=Path('build'))
+p.add_argument('--providers-only', action='store_true', help='Reuse only unchanged GTK, Adwaita and fonts before rebuilding the platform')
+p.add_argument('--run-id', type=int, help='Admit a successful toolkit cohort from this exact source revision')
 a = p.parse_args()
 # Temporary bring-up bootstrap: expired artifacts fail closed and require a
 # new successful matching toolkit cohort with refreshed run/archive receipts.
@@ -25,8 +27,15 @@ merge = '84d0d83661b7987b0765f508c45f6473f068da25'
 repo = 'SimplyLuma/luma'
 def api(path):
     return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))
+if a.run_id:
+    assert not a.providers_only, 'select one admission mode'
+    run = a.run_id
+    source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    merge = source
 record = api(f'actions/runs/{run}')
 assert record['conclusion'] == 'success' and record['head_sha'] == source, 'toolkit run identity/result mismatch'
+if a.run_id:
+    assert record['path'] == '.github/workflows/desktop-toolkit.yml' and record['name'] == 'Native desktop toolkit'
 # Provider recipes and inputs must still match the successful source revision.
 paths = ['config/desktop/inputs.env', 'scripts/os/build-desktop-toolkit.sh',
          'scripts/packages/build-gtk4.sh', 'scripts/packages/build-libadwaita.sh',
@@ -37,8 +46,28 @@ paths = ['config/desktop/inputs.env', 'scripts/os/build-desktop-toolkit.sh',
          'packaging/fontconfig', 'packaging/rpm/google-figtree-fonts.spec',
          'assets/icon-theme/Prairie/symbolic/actions/lumaui-*.svg', 'LICENSE.md', 'scripts/packages/spec-release.sh',
          'tests/toolkit-native']
+if a.providers_only:
+    paths = ['scripts/packages/build-gtk4.sh', 'scripts/packages/build-libadwaita.sh',
+             'scripts/packages/build-figtree-fonts.sh', 'scripts/packages/run-in-rpm-builder.sh',
+             'scripts/packages/fetch-source-rpm.sh', 'scripts/packages/spec-release.sh',
+             'patches/gtk4', 'patches/libadwaita', 'scripts/fonts', 'packaging/fontconfig',
+             'packaging/rpm/google-figtree-fonts.spec', 'LICENSE.md']
+    def values(body):
+        return dict(line.split('=', 1) for line in body.splitlines() if line and not line.startswith('#') and '=' in line)
+    prior = values(subprocess.check_output(['git', 'show', f'{source}:config/desktop/inputs.env'], text=True))
+    current = values(Path('config/desktop/inputs.env').read_text())
+    keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER'))]
+    assert keys and all(prior[key] == current.get(key) for key in keys), 'toolkit provider pin changed'
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
-artifact_id, digest = artifacts[a.architecture]
+if a.run_id:
+    candidates = api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts']
+    selected = [row for row in candidates if row['name'] == f'desktop-toolkit-{a.architecture}']
+    assert len(selected) == 1, 'ambiguous toolkit artifact'
+    artifact_id = selected[0]['id']
+    digest = selected[0]['digest'].removeprefix('sha256:')
+    assert len(digest) == 64 and all(c in '0123456789abcdef' for c in digest)
+else:
+    artifact_id, digest = artifacts[a.architecture]
 metadata = api(f'actions/artifacts/{artifact_id}')
 assert not metadata['expired'], 'bootstrap toolkit expired; build/check a new toolkit cohort and refresh its pinned receipts'
 assert metadata['name'] == f'desktop-toolkit-{a.architecture}'
@@ -70,4 +99,11 @@ for manifest in a.output.glob('packages/**/SHA256SUMS'):
         covered.add(path)
 rpms = {path.resolve() for path in a.output.glob('packages/**/*.rpm')}
 assert rpms and rpms == covered, 'uncovered toolkit RPM or missing checksum entry'
+if a.providers_only:
+    import shutil
+    platform = a.output / 'packages/luma-developer-platform'
+    if platform.exists():
+        shutil.rmtree(platform)
+    (a.output / 'SOURCE-REVISION').unlink()
+    (a.output / 'REUSED-TOOLKIT-PROVIDERS.json').write_text(json.dumps({'run': run, 'source': source, 'receipt_source': merge, 'artifact_id': artifact_id, 'archive_sha256': digest, 'platform_reused': False}, indent=2) + '\n')
 print(f'Admitted {len(rpms)} checked {a.architecture} toolkit RPMs from successful run {run}')

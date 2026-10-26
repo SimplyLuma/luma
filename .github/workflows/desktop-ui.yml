@@ -38,6 +38,15 @@ on:
       - 'packaging/rpm/google-figtree-fonts.spec'
       - 'LICENSE.md'
   workflow_dispatch:
+    inputs:
+      components:
+        description: Comma separated selected components (empty means all)
+        type: string
+        default: ""
+      toolkit_run:
+        description: Successful toolkit run for this exact source revision
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -56,12 +65,16 @@ jobs:
       - id: matrix
         env:
           BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+          SELECTED: ${{ inputs.components }}
         run: |
           python3 tests/os/test_desktop_ui_matrix.py
           if [ -n "$BASE" ]; then
             components=$(python3 scripts/os/desktop-ui-matrix.py --base "$BASE")
           else
             components=$(python3 scripts/os/desktop-ui-matrix.py)
+          fi
+          if [ -n "$SELECTED" ]; then
+            components=$(python3 -c 'import json,os; a=os.environ["SELECTED"].split(","); assert a and len(a)==len(set(a)) and set(a)<=set(["gnome-shell","gnome-control-center","nautilus"]); print(json.dumps(a))')
           fi
           echo "components=$components" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$components" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
@@ -97,7 +110,11 @@ jobs:
       - name: Admit already checked matching toolkit
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE"
+          TOOLKIT_RUN: ${{ inputs.toolkit_run }}
+        run: |
+          args=()
+          if [ -n "$TOOLKIT_RUN" ]; then args+=(--run-id "$TOOLKIT_RUN"); fi
+          python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" "${args[@]}"
       - name: Build and check UI component
         run: |
           git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION

@@ -32,6 +32,15 @@ on:
       - 'tools/lumaui-conform/scenarios/ari.json'
       - 'config/desktop/system-flatpak-replacements.txt'
   workflow_dispatch:
+    inputs:
+      groups:
+        description: Comma separated selected components (empty means all)
+        type: string
+        default: ""
+      toolkit_run:
+        description: Successful toolkit run for this exact source revision
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -50,11 +59,15 @@ jobs:
       - id: matrix
         env:
           BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+          SELECTED: ${{ inputs.groups }}
         run: |
           if [ -n "$BASE" ]; then
             matrix=$(python3 scripts/os/desktop-package-matrix.py --base "$BASE")
           else
             matrix=$(python3 scripts/os/desktop-package-matrix.py)
+          fi
+          if [ -n "$SELECTED" ]; then
+            matrix=$(MATRIX="$matrix" python3 -c 'import json,os; m=json.loads(os.environ["MATRIX"]); a=os.environ["SELECTED"].split(","); assert a and len(a)==len(set(a)) and set(a)<=set(r["component"] for r in m["include"]); m["include"]=[r for r in m["include"] if r["component"] in a]; print(json.dumps(m))')
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "count=$(printf '%s' "$matrix" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["include"]))')" >> "$GITHUB_OUTPUT"
@@ -84,7 +97,11 @@ jobs:
         if: matrix.toolkit
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE"
+          TOOLKIT_RUN: ${{ inputs.toolkit_run }}
+        run: |
+          args=()
+          if [ -n "$TOOLKIT_RUN" ]; then args+=(--run-id "$TOOLKIT_RUN"); fi
+          python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" "${args[@]}"
       - name: Build and check the selected component
         env:
           RECIPE: ${{ matrix.recipe }}

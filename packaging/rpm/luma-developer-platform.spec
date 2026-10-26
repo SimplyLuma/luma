@@ -328,6 +328,9 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.117.nightly20261026.1
+- Package the October 26 shared source updates.
+
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101.creator20261007.1
 - Delegate Python Flatpak app-menu updates to the installed host update portal
 - Keep current code running and require terminal progress before success notices

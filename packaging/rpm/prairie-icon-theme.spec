@@ -144,6 +144,9 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.40
+- Package the October 26 shared source updates.
+
 * Mon Oct 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.36.creator20261005.1
 - Resolve the Disks Preview launcher through the canonical rounded Disks artwork.
 

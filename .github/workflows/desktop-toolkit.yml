@@ -16,9 +16,15 @@ on:
       - 'packaging/rpm/luma-developer-platform.spec'
       - 'config/desktop/inputs.env'
   workflow_dispatch:
+    inputs:
+      incremental:
+        description: Reuse authenticated unchanged GTK, Adwaita and fonts; build the changed platform
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -41,10 +47,23 @@ jobs:
       LUMA_RPM_BUILDER_DIRECT: '1'
     steps:
       - name: Prepare native Fedora tools
-        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+        run: dnf5 -y install git gh podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - name: Build and check the toolkit cohort
-        run: bash scripts/os/build-desktop-toolkit.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INCREMENTAL: ${{ inputs.incremental }}
+        run: |
+          if [ "$INCREMENTAL" = true ]; then
+            python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" --providers-only
+            dnf5 -y install build/packages/gtk4/RPMS/"$LUMA_TARGET_ARCHITECTURE"/gtk4-*.rpm build/packages/figtree-fonts/RPMS/noarch/*.rpm
+            bash scripts/packages/build-luma-developer-platform.sh
+            git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+          else
+            bash scripts/os/build-desktop-toolkit.sh
+          fi
       - name: Retain checked toolkit packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
