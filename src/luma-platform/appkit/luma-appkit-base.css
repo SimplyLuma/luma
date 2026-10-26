@@ -2254,3 +2254,10 @@ box.lumaui-details-subject {
   padding-bottom: var(--lumaui-details-body-padding-top);
 }
 box.lumaui-details-subject > box { border-spacing: var(--lumaui-details-hero-gap); }
+
+/* Shared desktop frame hairline; keep fullscreen and handheld frames flush. */
+window.luma-app-window:not(.fullscreen):not(.lumaui-phone-device):not(.lumaui-tablet-mode),
+window.luma-application-window:not(.fullscreen):not(.lumaui-phone-device):not(.lumaui-tablet-mode) {
+  outline: 1px solid @luma_border;
+  outline-offset: -1px;
+}
