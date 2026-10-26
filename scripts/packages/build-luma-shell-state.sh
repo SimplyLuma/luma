@@ -30,6 +30,8 @@ for source in \
   luma_shell_state.py \
   luma-shell-state-service \
   luma-shell-statectl \
+  luma-presentation-profile \
+  luma-presentation-profile.service \
   org.project_luma.shell-state.gschema.xml \
   luma-shell-state.service \
   org.project_luma.ShellState1.service \

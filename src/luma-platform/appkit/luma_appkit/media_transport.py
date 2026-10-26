@@ -59,6 +59,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
 
 from . import lumaui_tokens as tokens  # noqa: E402
 from . import media_style as style  # noqa: E402
+from .structure_adapt import _LayoutWatch
 
 __all__ = ["MediaReadout", "MediaTransport", "TRANSPORT_VARIANTS", "SPEEDS", "clock_text", "remaining_text", "timecode_parts",
            "MediaGlyph"]
@@ -561,18 +562,16 @@ class MediaTransport(Gtk.Box):
         root = self.get_root()
         if root is None:
             return
-        if getattr(self, "_phone_tick", 0) == 0:
-            # A window's width has no signal of its own; a per-frame integer compare is cheap.
-            def tick(_widget: Gtk.Widget, _clock: object) -> bool:
-                current = self.get_root()
-                width = (current.get_width() if current is not None else 0, self._available_width())
-                if width != getattr(self, "_seen_width", -1):
-                    self._seen_width = width
-                    self._sync_phone()
-                return True
-
-            self._phone_tick = self.add_tick_callback(tick)
+        if not hasattr(self, "_phone_layout"):
+            self._phone_layout = _LayoutWatch(self, self._check_phone_layout)
         self._sync_phone()
+
+    def _check_phone_layout(self, *_args) -> None:
+        current = self.get_root()
+        width = (current.get_width() if current is not None else 0, self._available_width())
+        if width != getattr(self, "_seen_width", -1):
+            self._seen_width = width
+            self._sync_phone()
 
     def _available_width(self) -> int:
         """The allocated container span, independent of our full/compact minimum.

@@ -50,7 +50,7 @@ from gi.repository import Gdk, Gio, GLib, GObject, Gtk, Pango  # noqa: E402
 
 from . import icons, lumaui  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
-from .structure_adapt import WidthWatch, icon_button, is_phone  # noqa: E402
+from .structure_adapt import _LayoutWatch, WidthWatch, icon_button, is_phone  # noqa: E402
 from .structure_layers import LayerHost, ModalHandle  # noqa: E402
 
 __all__ = ["DetailsFacts", "DetailsPane", "DetailsRow", "DetailsItem", "AddRow", "DetailsPhotos", "FactRow"]
@@ -481,6 +481,7 @@ class DetailsPane(Gtk.Box):
         self.set_title(title)
         self.append(self.sheet)
         self.sheet.set_visible(False)
+        self._drawer_layout = _LayoutWatch(self.sheet, self._drawer_resized)
         self._watch = WidthWatch(self, lambda _w: self._reflow(), threshold=tokens.PHONE_MAX_WIDTH)
         # A pane in a view that is not showing (another page, a closed tab) never
         # floats over the window: its drawer waits until the view shows again.
@@ -809,7 +810,6 @@ class DetailsPane(Gtk.Box):
             self.scroller.set_propagate_natural_height(True)
             self.sheet.set_vexpand(False)
             self._drawer = host.present_modal(self.sheet, on_cancel=self._drawer_cancelled, drawer=True)
-            self.sheet.add_tick_callback(self._drawer_resized)
         finally:
             self._presenting_drawer = False
 

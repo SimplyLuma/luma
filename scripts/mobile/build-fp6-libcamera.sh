@@ -33,7 +33,7 @@ esac
   exit 1
 }
 
-for tool in git meson ninja patch python3; do
+for tool in git meson ninja python3; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: missing build tool: %s\n' "$tool" >&2
     exit 1

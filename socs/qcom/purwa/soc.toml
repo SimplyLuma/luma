@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "qcom"
+family = "purwa"
+name = "Qualcomm Snapdragon X Plus X1P-42-100 (Purwa)"
+arch = "aarch64"
+part_numbers = ["X1P-42-100"]
+
+[kernel]
+repository = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+branch = "master"
+upstream = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+dts_directory = "arch/arm64/boot/dts/qcom"
+
+[boot]
+format = "uefi"
+page_size = 4096
+dtb_in_boot_image = false
+
+[firmware]
+directory = "qcom/x1p42100"

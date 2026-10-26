@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Project a validated boot experience into readable ephemeral session state."""
+from pathlib import Path
+import sys
+
+base = Path(__file__).resolve().parent
+sys.path.insert(0, str(base / "luma-shell-state" if (base / "luma-shell-state").is_dir() else base))
+from luma_shell_state import presentation_profile
+
+def read(path):
+    try:
+        return Path(path).read_text(encoding="utf-8").strip().strip("\0")
+    except (OSError, UnicodeError):
+        return ""
+
+try:
+    chassis = int(read("/sys/class/dmi/id/chassis_type"))
+except ValueError:
+    chassis = None
+profile = presentation_profile(read("/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw"),
+                               read("/etc/luma-device-class"), chassis)
+directory = Path("/run/luma")
+directory.mkdir(mode=0o755, parents=True, exist_ok=True)
+target = directory / "experience"
+target.write_text(profile + "\n", encoding="utf-8")
+target.chmod(0o644)

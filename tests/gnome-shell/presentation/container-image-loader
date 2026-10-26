@@ -1,0 +1,14 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Test-container image encoder adapter; never installed in an OS image.
+
+The outer Podman sandbox has no network or capabilities. Its user namespace
+cannot nest bubblewrap. Run only the image encoder supplied by that image,
+preserving its inherited D-Bus descriptor, to capture synthetic test UI.
+"""
+import os
+import sys
+for index, arg in enumerate(sys.argv[1:], 1):
+    if arg.startswith("/usr/libexec/glycin-loaders/") and os.path.isfile(arg):
+        os.execv(arg, sys.argv[index:])
+raise SystemExit("Unsupported command in container image-loader adapter")

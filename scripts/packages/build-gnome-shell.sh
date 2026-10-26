@@ -335,6 +335,14 @@ install -m 0644 "$repo_root/patches/gnome-shell/0278-brightness-one-percent-and-
 install -m 0644 "$repo_root/patches/gnome-shell/0279-applications-and-downloads-drawer.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0280-retire-standalone-displays.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0280-drawer-artwork-and-grid-alignment.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0281-converged-presentation.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
+for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
+  install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
+done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
@@ -399,6 +407,13 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
   }
 )
 
+widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.1.fc44.$architecture.rpm"
+[ -f "$widgets_rpm" ] || {
+  printf 'error: build the shared Home widget package first: %s\n' "$widgets_rpm" >&2
+  exit 1
+}
+install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
+
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
   "$builder_container" '
@@ -412,7 +427,7 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
       printf "VERIFY FAILED at line %s: %s\n" "$1" "$2" >&2
     }
     trap "luma_verify_failed \$LINENO \"\$BASH_COMMAND\"" ERR
-    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm
+    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm SOURCES/luma-home-widgets-*.rpm
     dnf5 -y builddep SPECS/gnome-shell.spec
     rpmbuild -ba --noclean --define "_lto_cflags -flto=2" --define "_topdir $PWD" SPECS/gnome-shell.spec
 

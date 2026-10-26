@@ -41,7 +41,7 @@ new file mode 100644
 index 0000000..b2d437d
 --- /dev/null
 +++ b/src/stylesheet/luma-dark.css
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,67 @@
 +/* Project Luma's compact dark handheld keyboard palette. */
 +@define-color pos_key_fg_color #f4f5f6;
 +@define-color pos_key_bg_color #30363d;

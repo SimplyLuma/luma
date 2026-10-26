@@ -1,0 +1,16 @@
+Subject: arm64: dts: qcom: sp12in: select production-signed video firmware
+
+Retail Surface TrustZone rejects the test-signed generic VPU image. Select
+Microsoft's production-signed payload, supplied separately for the owner's
+personal test image. This does not bypass TrustZone authentication.
+
+This is the same device-specific firmware name used by SayaAndy's Surface
+packaging. No firmware binary is included in this patch.
+
+--- a/arch/arm64/boot/dts/qcom/x1p42100-microsoft-sp12in.dts
++++ b/arch/arm64/boot/dts/qcom/x1p42100-microsoft-sp12in.dts
+@@ -1073,3 +1073,4 @@
+ &iris {
++	firmware-name = "qcom/x1p42100/Microsoft/Surface12/qcvss8380_pa.mbn";
+         status = "okay";
+ };

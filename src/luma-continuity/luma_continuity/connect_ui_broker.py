@@ -2,6 +2,7 @@
 """Fixed, signed Connect UI access to its host-owned cloud sync engine."""
 from concurrent.futures import ThreadPoolExecutor
 import json
+from contextlib import nullcontext
 import os
 from pathlib import Path
 import selectors
@@ -93,7 +94,9 @@ class ConnectUIBroker:
             invocation.return_dbus_error('org.projectluma.Connect1.UI.Refused', 'Connect access is unavailable.'); return
         def run():
             try:
-                with self.serial:
+                # Read-only status must remain available during a long sync.
+                # Mutations keep their original serialization and queue bound.
+                with (nullcontext() if plan[0] == ['status', '--json'] else self.serial):
                     if self.closed or self.authenticate(connection, sender) != APP: raise PermissionError()
                     code, out, err = self.runner(*plan, lambda: self.closed)
                     # A status/profile response carries only the existing public

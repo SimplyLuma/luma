@@ -7,7 +7,9 @@
 #include "luma-navigation-sidebar.h"
 #include "luma-ui-private.h"
 
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
 #include <gio/gdesktopappinfo.h>
+#endif
 #include <string.h>
 
 /* A Luma window, drawn by LumaUI (ADR-052).
@@ -40,6 +42,7 @@ struct _LumaApplicationWindow {
   GtkWidget *title_trailing;
   gboolean title_centred;
   LumaSurfaceBackdrop *backdrop;
+  GSimpleAction *status_ink;
 };
 
 G_DEFINE_FINAL_TYPE(LumaApplicationWindow, luma_application_window,
@@ -51,24 +54,30 @@ enum { PROP_0, PROP_CONTEXT, N_PROPERTIES };
 static GParamSpec *properties[N_PROPERTIES];
 
 static void apply_context(LumaApplicationWindow *self) {
-  if (luma_ui_mobile_form_factor()) {
-    gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-phone-device");
-    gtk_window_set_decorated(GTK_WINDOW(self), FALSE);
-    gtk_widget_set_visible(self->titlebar, FALSE);
-    gtk_widget_set_can_target(self->titlebar, FALSE);
-    return;
-  }
   if (self->context == NULL)
     return;
   /* Windowed keeps the frame. Handheld fullscreen has none to keep: the shell
    * owns that surface's chrome, and the title row would be a second one. */
   const gboolean decorated = luma_context_get_decorated(self->context);
+  luma_ui_set_css_class(GTK_WIDGET(self), "lumaui-tablet-mode",
+      g_str_equal(luma_context_get_experience(self->context), "tablet"));
+  if (decorated)
+    gtk_widget_remove_css_class(GTK_WIDGET(self), "lumaui-phone-device");
+  else
+    gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-phone-device");
   gtk_window_set_decorated(GTK_WINDOW(self), decorated);
   gtk_widget_set_visible(self->titlebar, decorated);
+  gtk_widget_set_can_target(self->titlebar, decorated);
   if (luma_context_get_touch_targets(self->context))
     gtk_widget_add_css_class(GTK_WIDGET(self), "luma-touch");
   else
     gtk_widget_remove_css_class(GTK_WIDGET(self), "luma-touch");
+}
+
+static void context_changed(LumaContext *context, GParamSpec *pspec,
+                             LumaApplicationWindow *self) {
+  (void)context; (void)pspec;
+  apply_context(self);
 }
 
 static void luma_application_window_get_property(GObject *object, guint id,
@@ -100,7 +109,15 @@ static void luma_application_window_set_property(GObject *object, guint id,
 static void luma_application_window_constructed(GObject *object) {
   LumaApplicationWindow *self = LUMA_APPLICATION_WINDOW(object);
   G_OBJECT_CLASS(luma_application_window_parent_class)->constructed(object);
+  if (self->context == NULL)
+    self->context = luma_context_new_from_environment();
   apply_context(self);
+  if (self->context != NULL)
+    g_signal_connect_object(self->context, "notify", G_CALLBACK(context_changed), self, 0);
+  self->status_ink = g_simple_action_new_stateful("luma-status-ink", NULL,
+                                                g_variant_new_string("auto"));
+  g_simple_action_set_enabled(self->status_ink, FALSE);
+  g_action_map_add_action(G_ACTION_MAP(self), G_ACTION(self->status_ink));
   /* The application is set by now (it is a construct property). */
   add_identity(self);
 }
@@ -109,6 +126,7 @@ static void luma_application_window_dispose(GObject *object) {
   LumaApplicationWindow *self = LUMA_APPLICATION_WINDOW(object);
   g_clear_object(&self->context);
   g_clear_object(&self->backdrop);
+  g_clear_object(&self->status_ink);
   self->toolbar_view = NULL;
   self->titlebar = NULL;
   self->body_bin = NULL;
@@ -144,6 +162,7 @@ static void prepare_visible_dialog(LumaApplicationWindow *self) {
 static char *identity_name(GtkApplication *application, GtkWindow *window) {
   const char *app_id = application != NULL ?
       g_application_get_application_id(G_APPLICATION(application)) : NULL;
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
   if (app_id != NULL && *app_id != '\0') {
     g_autofree char *desktop_id = g_strconcat(app_id, ".desktop", NULL);
     g_autoptr(GDesktopAppInfo) info = g_desktop_app_info_new(desktop_id);
@@ -151,6 +170,7 @@ static char *identity_name(GtkApplication *application, GtkWindow *window) {
     if (name != NULL && *name != '\0')
       return g_strdup(name);
   }
+#endif
   /* GLib answers the program name when no name was set, which is never
    * what the corner should say while the window has a title. */
   const char *named = g_get_application_name();
@@ -178,6 +198,7 @@ static GtkWidget *identity_icon(GtkApplication *application, GtkWindow *window) 
     icon = gtk_image_new_from_icon_name(gtk_window_get_icon_name(window));
   if (icon == NULL && theme_has(window, gtk_window_get_default_icon_name()))
     icon = gtk_image_new_from_icon_name(gtk_window_get_default_icon_name());
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
   if (icon == NULL && app_id != NULL && *app_id != '\0') {
     g_autofree char *desktop_id = g_strconcat(app_id, ".desktop", NULL);
     g_autoptr(GDesktopAppInfo) info = g_desktop_app_info_new(desktop_id);
@@ -191,6 +212,7 @@ static GtkWidget *identity_icon(GtkApplication *application, GtkWindow *window) 
       icon = gtk_image_new_from_gicon(gicon);
     }
   }
+#endif
   if (icon == NULL && theme_has(window, app_id))
     icon = gtk_image_new_from_icon_name(app_id);
   if (icon == NULL)
@@ -549,6 +571,18 @@ GtkWidget *luma_application_window_new(GtkApplication *application,
 void luma_application_window_set_phone_bleed(LumaApplicationWindow *self, gboolean bleed) {
   g_return_if_fail(LUMA_IS_APPLICATION_WINDOW(self));
   luma_ui_set_css_class(GTK_WIDGET(self), "lumaui-bleed", bleed);
+}
+
+void luma_application_window_set_edge_to_edge(LumaApplicationWindow *self, gboolean enabled) {
+  g_return_if_fail(LUMA_IS_APPLICATION_WINDOW(self));
+  luma_ui_set_css_class(GTK_WIDGET(self), "lumaui-edge-to-edge", enabled);
+}
+
+void luma_application_window_set_status_bar_style(LumaApplicationWindow *self, const char *ink) {
+  g_return_if_fail(LUMA_IS_APPLICATION_WINDOW(self));
+  g_return_if_fail(ink == NULL || g_str_equal(ink, "auto") ||
+                   g_str_equal(ink, "light") || g_str_equal(ink, "dark"));
+  g_simple_action_set_state(self->status_ink, g_variant_new_string(ink ? ink : "auto"));
 }
 
 int luma_application_window_get_status_inset(LumaApplicationWindow *self) {

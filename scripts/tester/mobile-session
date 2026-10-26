@@ -1,0 +1,27 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+set -eu
+export LUMA_TESTER_DYNAMIC_MODES=1
+export LUMA_DEVICE_CLASS=handheld LUMA_PRESENTATION_MODE=fullscreen-mobile LUMA_INPUT_MODE=touch
+export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh XDG_SESSION_TYPE=wayland
+export XDG_DATA_DIRS=/opt/luma/phosh/share:/usr/local/share:/usr/share
+export XDG_CONFIG_DIRS=/etc/xdg:/opt/luma/phosh/etc/xdg
+export GI_TYPELIB_PATH=/opt/luma/phosh/lib64/girepository-1.0
+# Phosh's text-input surface uses the compositor's native input method. The
+# common desktop base also carries IBus; don't route phone fields through it.
+export GTK_IM_MODULE=wayland
+# A two-dimensional VirtIO GPU has no VirGL command stream. GLES buffer damage
+# through that scanout can leave black tiles even while compositor screenshots
+# are clean. Use the compositor's native CPU renderer for this virtual hardware;
+# retain its normal accelerated renderer when VIRTIO_GPU_F_VIRGL (bit 0) exists.
+# Linux exposes negotiated VirtIO features as a bitstring, least-significant first.
+if [ -z "${WLR_RENDERER:-}" ]; then
+    for device in /sys/bus/virtio/devices/virtio*; do
+        [ -r "$device/device" ] && [ -r "$device/features" ] || continue
+        [ "$(cat "$device/device")" = 0x0010 ] || continue
+        case "$(cat "$device/features")" in
+            0*) export WLR_RENDERER=pixman ;;
+        esac
+    done
+fi
+exec /opt/luma/phosh/bin/phosh-session

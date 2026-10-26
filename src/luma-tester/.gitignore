@@ -1,0 +1,5 @@
+# Generated Python build and package metadata
+build/
+dist/
+*.egg-info/
+__pycache__/

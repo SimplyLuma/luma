@@ -1,0 +1,57 @@
+Implement get_selection for ov13858
+
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/media/i2c/ov13858.c
++++ b/drivers/media/i2c/ov13858.c
+@@ -1402,6 +1402,41 @@
+ 	return 0;
+ }
+ 
++static int ov13858_get_selection(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *sd_state,
++				 struct v4l2_subdev_selection *sel)
++{
++	struct ov13858 *ov13858 = to_ov13858(sd);
++
++	struct v4l2_rect bounds = {
++		.left = 0,
++		.top = 0,
++		.width = ov13858->cur_mode->width,
++		.height = ov13858->cur_mode->height,
++	};
++	struct v4l2_rect crop = {
++		.left = 0,
++		.top = 0,
++		.width = ov13858->cur_mode->width,
++		.height = ov13858->cur_mode->height,
++	};
++
++	if (sel->pad != 0)
++		return -EINVAL;
++
++	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++	case V4L2_SEL_TGT_CROP_DEFAULT:
++		sel->r = crop;
++		return 0;
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++		sel->r = bounds;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
+ static int ov13858_init_state(struct v4l2_subdev *sd,
+ 			      struct v4l2_subdev_state *sd_state)
+ {
+@@ -1435,6 +1470,7 @@
+ 	.get_fmt = v4l2_subdev_get_fmt,
+ 	.set_fmt = ov13858_set_format,
+ 	.enum_frame_size = ov13858_enum_frame_size,
++	.get_selection = ov13858_get_selection,
+ 	.enable_streams = ov13858_enable_streams,
+ 	.disable_streams = ov13858_disable_streams,
+ };

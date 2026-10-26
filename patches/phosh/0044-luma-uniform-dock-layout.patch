@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Prerequisite: Mobile simulator 20261022-r10 v71 shell baseline; see docs/developer-platform/mobile-dock-integration.md.
+--- a/src/ui/app-grid.ui
++++ b/src/ui/app-grid.ui
+@@ -85,17 +85,21 @@
+                   <style><class name="luma-home-indicator"/></style>
+                 </object><packing><property name="expand">0</property></packing></child>
+                 <child><object class="GtkRevealer" id="dock_revealer">
++                  <property name="vexpand">0</property>
+                   <property name="visible">1</property>
+                   <property name="reveal-child">1</property>
+-                  <child><object class="GtkBox">
++                  <child><object class="GtkGrid">
++                    <property name="vexpand">0</property>
++                    <property name="column-homogeneous">1</property>
+                     <property name="visible">1</property>
+                     <property name="margin-start">12</property>
+                     <property name="margin-end">12</property>
+                     <property name="margin-bottom">12</property>
+                     <property name="height-request">88</property>
+-                    <property name="spacing">2</property>
++                    <property name="column-spacing">0</property>
+                     <style><class name="luma-home-dock"/></style>
+                     <child><object class="GtkFlowBox" id="dock">
++                      <property name="vexpand">1</property>
+                       <property name="visible">1</property>
+                       <property name="valign">center</property>
+                       <property name="hexpand">1</property>
+@@ -105,11 +109,12 @@
+                       <property name="min-children-per-line">4</property>
+                       <property name="max-children-per-line">4</property>
+                       <property name="column-spacing">0</property>
+-                    </object><packing><property name="expand">1</property></packing></child>
++                    </object><packing><property name="left-attach">0</property><property name="top-attach">0</property><property name="width">4</property><property name="height">1</property></packing></child>
+                     <child><object class="GtkButton" id="all_apps_button">
++                      <property name="halign">center</property>
+                       <property name="visible">1</property>
+-                      <property name="width-request">58</property>
+-                      <property name="height-request">58</property>
++                      <property name="width-request">55</property>
++                      <property name="height-request">55</property>
+                       <property name="valign">center</property>
+                       <property name="tooltip-text" translatable="yes">All apps</property>
+                       <signal name="clicked" handler="on_all_apps_clicked" swapped="true"/>
+@@ -120,7 +125,7 @@
+                         <property name="pixel-size">24</property>
+                       </object></child>
+ 
+-                    </object><packing><property name="expand">0</property></packing></child>
++                    </object><packing><property name="left-attach">4</property><property name="top-attach">0</property><property name="width">1</property><property name="height">1</property></packing></child>
+                   </object></child>
+                 </object><packing><property name="expand">0</property></packing></child>
+                 </object></child>
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -1680,7 +1680,7 @@
+ }
+ .luma-home-dock phosh-app-grid-button label { font-size: 0; }
+ .luma-all-apps {
+-  min-width: 58px; min-height: 58px; padding: 0; border: 0; border-radius: 18px;
++  min-width: 55px; min-height: 55px; padding: 0; border: 0; border-radius: 13px;
+   background-image: none; background-color: @luma_launcher_chip; color: @phosh_fg_color;
+   box-shadow: inset 0 1px rgba(255,255,255,.2);
+ }
+--- a/data/icons/luma-v4-browser.svg
++++ b/data/icons/luma-v4-browser.svg
+@@ -1,4 +1,4 @@
+-<svg xmlns="http://www.w3.org/2000/svg" viewBox="82 82 860 860" width="1024" height="1024">
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="54.857142857 54.857142857 914.285714286 914.285714286" width="1024" height="1024">
+ <defs><linearGradient id="vl5g-pl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#6a7cff"/><stop offset="1" stop-color="#3a3ed8"/></linearGradient><radialGradient id="vl5g-plh" cx="0.26" cy="0.12" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.2"/><stop offset="0.55" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><linearGradient id="vl5g-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.42"/><stop offset="0.1" stop-color="#fff" stop-opacity="0"/><stop offset="0.86" stop-color="#0c1466" stop-opacity="0"/><stop offset="1" stop-color="#0c1466" stop-opacity="0.35"/></linearGradient><clipPath id="vl5g-clip"><rect x="82" y="82" width="860" height="860" rx="202"/></clipPath><filter id="vl5g-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="56"/></filter><mask id="vl5g-hl" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(378.4 378.4) scale(19)" fill="#fff" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(8 9.6) translate(378.4 378.4) scale(19)" fill="#000" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></mask><mask id="vl5g-lo" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(378.4 378.4) scale(19)" fill="#fff" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(-8 -9.6) translate(378.4 378.4) scale(19)" fill="#000" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></mask><mask id="vl5g-in" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(378.4 378.4) scale(19)" fill="#fff" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></mask><filter id="vl5g-hsoft" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="2"/></filter><filter id="vl5g-sh" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="20"/></filter><linearGradient id="vl5g-w" x1="0.1" y1="0.05" x2="0.9" y2="0.95"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#fafbfd"/><stop offset="1" stop-color="#e8eaf8"/></linearGradient></defs>
+ <g id="plate"><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#vl5g-pl)"/><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#vl5g-plh)"/></g><circle cx="462" cy="462" r="90" fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="16"/><circle cx="462" cy="462" r="166" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="14"/><circle cx="462" cy="462" r="242" fill="none" stroke="#fff" stroke-opacity="0.32" stroke-width="12"/><g opacity="0.4" filter="url(#vl5g-sh)"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(12 26) translate(378.4 378.4) scale(19)" fill="#0c1466" stroke="#0c1466" stroke-width="1.4" stroke-linejoin="round"/></g><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(0 12) translate(378.4 378.4) scale(19)" fill="#b3b8e2" stroke="#b3b8e2" stroke-width="1.4" stroke-linejoin="round"/><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" transform="translate(378.4 378.4) scale(19)" fill="url(#vl5g-w)" stroke="url(#vl5g-w)" stroke-width="1.4" stroke-linejoin="round"/><g filter="url(#vl5g-hsoft)"><rect x="0" y="0" width="1024" height="1024" fill="#6e74a8" opacity="0.25" mask="url(#vl5g-lo)"/><rect x="0" y="0" width="1024" height="1024" fill="#fff" opacity="1" mask="url(#vl5g-hl)"/></g><g id="plate-rim" clip-path="url(#vl5g-clip)"><rect x="82" y="82" width="860" height="860" rx="202" fill="none" stroke="url(#vl5g-rim)" stroke-width="8"/></g>
+ </svg>

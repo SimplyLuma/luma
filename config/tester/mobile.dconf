@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+[org/gnome/desktop/interface]
+icon-theme='Prairie'
+font-name='Figtree 11'
+gtk-theme='Luma'
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+
+[sm/puri/phosh]
+automatic-high-contrast=false
+
+[mobi/phosh/osk]
+# A simulator always has a host keyboard. Keep the real phone keyboard visible
+# on field focus so touch input can still be developed and tested.
+ignore-hw-keyboards=true

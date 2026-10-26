@@ -2,7 +2,7 @@
 
 Name:           luma-shell-state
 Version:        0.2.0
-Release:        1.luma.35.gestures20261024.1%{?dist}
+Release:        1.luma.36.presentation20261025.1%{?dist}
 Summary:        Shared Project Luma shell-state contract
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -24,6 +24,8 @@ Source14:       gtk4-dark.css
 Source15:       gtk-translucent.css
 Source16:       gtk4-translucent.css
 Source17:       index-translucent.theme
+Source18:       luma-presentation-profile
+Source19:       luma-presentation-profile.service
 BuildArch:      noarch
 BuildRequires:  glib2
 BuildRequires:  python3
@@ -46,6 +48,13 @@ install -D -m 0755 %{SOURCE1} \
   %{buildroot}%{_libexecdir}/luma-shell-state-service
 install -D -m 0755 %{SOURCE2} \
   %{buildroot}%{_bindir}/luma-shell-statectl
+install -D -m 0755 %{SOURCE18} \
+  %{buildroot}%{_libexecdir}/luma-presentation-profile
+install -D -m 0644 %{SOURCE19} \
+  %{buildroot}%{_unitdir}/luma-presentation-profile.service
+install -d %{buildroot}%{_unitdir}/graphical.target.wants
+ln -s ../luma-presentation-profile.service \
+  %{buildroot}%{_unitdir}/graphical.target.wants/luma-presentation-profile.service
 install -D -m 0644 %{SOURCE3} \
   %{buildroot}%{_datadir}/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml
 install -D -m 0644 %{SOURCE4} \
@@ -133,6 +142,9 @@ PYTHONPYCACHEPREFIX=%{_builddir}/luma-state-check-pycache python3 -m py_compile 
 %{_libexecdir}/luma-shell-state/
 %{_libexecdir}/luma-shell-state-service
 %{_bindir}/luma-shell-statectl
+%{_libexecdir}/luma-presentation-profile
+%{_unitdir}/luma-presentation-profile.service
+%{_unitdir}/graphical.target.wants/luma-presentation-profile.service
 %{_datadir}/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml
 %{_userunitdir}/luma-shell-state.service
 %{_userunitdir}/graphical-session.target.wants/luma-shell-state.service

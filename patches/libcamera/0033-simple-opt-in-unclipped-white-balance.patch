@@ -1,0 +1,147 @@
+From: Luma Developers <dev@projectluma.org>
+Subject: [PATCH] simple: allow AWB to ignore saturated sensor samples
+
+Adapt the saturated-sample exclusion described and implemented by Martin
+Neiva de Carvalho in https://patchwork.libcamera.org/patch/28175/ to the
+pinned Simple IPA and existing Luma metering statistics.
+
+Keep existing whole-frame colour sums and luminance histograms unchanged.
+Sensor tuning opts into unclipped colour sums using Awb.rejectSaturated.
+Subtract black level using only the contributing sample count; retain the
+previous white balance if every sample is saturated. Existing calibrated
+phone profiles keep their current estimator unless explicitly opted in.
+
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -32,6 +32,13 @@
+ 	 */
+ 	RGB<uint64_t> sum_;
+ 	/**
++	 * \brief Colour sums excluding saturated samples, for opt-in AWB
++	 *
++	 * Histogram and sum_ retain all samples for exposure and existing tuning.
++	 */
++	RGB<uint64_t> awbSum_;
++	uint64_t awbSamples_;
++	/**
+ 	 * \brief Number of bins in the yHistogram
+ 	 */
+ 	static constexpr unsigned int kYHistogramSize = 64;
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -167,6 +167,8 @@
+ 		LOG(SwStatsCpu, Error)
+ 			<< "Failed to create shared memory for statistics";
+ }
++
++static constexpr unsigned int kAwbSaturationThreshold = 248;
+ 
+ static constexpr unsigned int kRedYMul = 77; /* 0.299 * 256 */
+ static constexpr unsigned int kGreenYMul = 150; /* 0.587 * 256 */
+@@ -185,6 +187,7 @@
+ 	uint64_t sumR = 0;                \
+ 	uint64_t sumG = 0;                \
+ 	uint64_t sumB = 0;                \
++	uint64_t awbR = 0, awbG = 0, awbB = 0, awbSamples = 0; \
+ 	pixel_t gPrev = 0, gPrev2 = 0;    \
+ 	uint64_t sharpness = 0;           \
+ 	uint64_t sharpSumG = 0;           \
+@@ -212,6 +215,11 @@
+ 	sumR += r;                         \
+ 	sumG += g;                         \
+ 	sumB += b;                         \
++	if (r < kAwbSaturationThreshold * (div) && \
++	    g < kAwbSaturationThreshold * (div) && \
++	    b < kAwbSaturationThreshold * (div)) { \
++		awbR += r; awbG += g; awbB += b; awbSamples++; \
++	} \
+                                            \
+ 	yVal = r * kRedYMul;               \
+ 	yVal += g * kGreenYMul;            \
+@@ -245,6 +253,10 @@
+ 	stats.sum_.r() += sumR;     \
+ 	stats.sum_.g() += sumG;     \
+ 	stats.sum_.b() += sumB;     \
++	stats.awbSum_.r() += awbR; \
++	stats.awbSum_.g() += awbG; \
++	stats.awbSum_.b() += awbB; \
++	stats.awbSamples_ += awbSamples;     \
+ 	for (unsigned int gridX = 0; gridX < 3; gridX++) { \
+ 		if (!gridSharpCount[gridX]) \
+ 			continue; \
+@@ -458,6 +470,8 @@
+ 
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
++		s.awbSum_ = RGB<uint64_t>({ 0, 0, 0 });
++		s.awbSamples_ = 0;
+ 		s.yHistogram.fill(0);
+ 		s.sharpness = 0;
+ 		s.sharpnessGrid.fill(0);
+@@ -479,6 +493,8 @@
+ 
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
++		sharedStats_->awbSum_ = RGB<uint64_t>({ 0, 0, 0 });
++		sharedStats_->awbSamples_ = 0;
+ 		sharedStats_->sharpness = 0;
+ 		sharedStats_->sharpnessGrid.fill(0);
+ 		sharedStats_->yHistogram.fill(0);
+@@ -487,6 +503,8 @@
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sharpness += s.sharpness;
+ 			sharedStats_->sum_ += s.sum_;
++			sharedStats_->awbSum_ += s.awbSum_;
++			sharedStats_->awbSamples_ += s.awbSamples_;
+ 			for (unsigned int grid = 0; grid < 9; grid++)
+ 				sharedStats_->sharpnessGrid[grid] +=
+ 					s.sharpnessGrid[grid];
+@@ -499,6 +517,7 @@
+ 		}
+ 
+ 		sharedStats_->sum_ >>= sumShift_;
++		sharedStats_->awbSum_ >>= sumShift_;
+ 	}
+ 
+ 	sharedStats_->valid = valid;
+--- a/src/ipa/simple/algorithms/awb.h
++++ b/src/ipa/simple/algorithms/awb.h
+@@ -59,6 +59,7 @@
+ 	double clampMargin_ = 0.0;
+ 	double damping_ = 0.0;
+ 	unsigned int fastFrames_ = 0;
++	bool rejectSaturated_ = false;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -73,6 +73,7 @@
+  */
+ int Awb::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
+ {
++	rejectSaturated_ = tuningData["rejectSaturated"].get<bool>(false);
+ 	const ValueNode &wps = tuningData["whitePoints"];
+ 	if (wps.isEmpty())
+ 		return 0;
+@@ -222,15 +223,18 @@
+ 	 * would be off if they were computed from the whole brightness range
+ 	 * rather than from the sensor range.
+ 	 */
+-	const uint64_t nPixels = std::accumulate(
++	const uint64_t nPixels = rejectSaturated_ ? stats->awbSamples_ : std::accumulate(
+ 		histogram.begin(), histogram.end(), uint64_t(0));
++	if (!nPixels)
++		return;
+ 	const uint64_t offset = blackLevel * nPixels;
+ 	const uint64_t minValid = 1;
+ 	/*
+ 	 * Make sure the sums are at least minValid, while preventing unsigned
+ 	 * integer underflow.
+ 	 */
+-	const RGB<uint64_t> sum = stats->sum_.max(offset + minValid) - offset;
++	const RGB<uint64_t> &colourSum = rejectSaturated_ ? stats->awbSum_ : stats->sum_;
++	const RGB<uint64_t> sum = colourSum.max(offset + minValid) - offset;
+ 
+ 	auto &gains = context.activeState.awb.gains;
+ 

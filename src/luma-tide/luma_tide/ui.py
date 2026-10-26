@@ -20,6 +20,7 @@ from luma_appkit.navigation import NavigationTrail, Place, bind_navigation_input
 from luma_appkit.action_bubble import FloatingMenu
 from luma_appkit.rows_menu import RichMenuItem
 from luma_appkit.structure_table import Column
+from luma_appkit.structure_adapt import _LayoutWatch
 from luma_appkit.lumaui import set_css_class as lumaui_set_class
 from .presentation import (
     PHONE_ALBUM_ROW_HEIGHT, PHONE_SONG_ROW_HEIGHT, SONG_ROW_HEIGHT, Library, Player, more_albums, next_queue,
@@ -94,7 +95,7 @@ class TideWindow(AppWindow):
         self.layer.add_overlay(self.backdrop)
         self.layer.set_measure_overlay(self.backdrop, False)
         self.page = named(Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                  margin_top=self.status_inset), 'td-body')
+                                  margin_top=0 if self.context.device_class == 'tablet' else self.status_inset), 'td-body')
         self.scroll = ScrollView(self.page)
         self.scroll.set_hexpand(True)
         self.scroll.set_vexpand(True)
@@ -153,7 +154,12 @@ class TideWindow(AppWindow):
         phone.add_setter(self.root, 'margin-start', 8)
         phone.add_setter(self.deck.previous, 'visible', False)
         self.add_breakpoint(phone)
-        self.layer.add_tick_callback(self._size_deck)
+        self._deck_layout = _LayoutWatch(self.layer, self._size_deck)
+
+    def _apply_session_context(self, context):
+        super()._apply_session_context(context)
+        if getattr(self, 'page', None) is not None:
+            self.page.set_margin_top(0 if context.device_class == 'tablet' else self.status_inset)
 
     def _tier_changed(self, tier):
         phone = tier == 'phone'

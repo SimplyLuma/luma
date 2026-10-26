@@ -25,6 +25,8 @@ class DeviceTree(unittest.TestCase):
         for name in ("scripts/mobile/fp6-native-init-functions.sh", "config/mobile/fp6-ostree-source.json"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
+        for name in ("config/kernel", "patches/linux-surface-pro12"):
+            shutil.copytree(ROOT / name, self.root / name)
         self.fp6 = self.root / "devices" / "fairphone" / "fp6"
 
     def tearDown(self):
@@ -46,6 +48,16 @@ class DeviceTree(unittest.TestCase):
 
     def test_real_tree_is_valid(self):
         self.assertEqual(self.errors(), [])
+
+    def test_userspace_requirements_reject_dnf_options(self):
+        surface = self.root / 'devices/microsoft/sp12in/device.toml'
+        self.edit(surface, 'alsa-ucm >= 1.2.16.1', '--disableexcludes=all')
+        self.assertRejected('does not match')
+
+    def test_userspace_requirements_reject_extra_commands(self):
+        surface = self.root / 'devices/microsoft/sp12in/device.toml'
+        self.edit(surface, 'alsa-ucm >= 1.2.16.1', 'alsa-ucm-conf; reboot')
+        self.assertRejected('does not match')
 
     def test_unknown_manifest_key(self):
         self.edit(self.fp6 / "device.toml", 'tier = "supported"', 'tier = "supported"\ncolour = "green"')

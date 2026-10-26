@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.project_luma.shell-state" path="/org/project-luma/shell-state/">
+    <key name="home-layouts" type="s">
+      <default>'{}'</default>
+      <summary>Saved Mobile and Tablet Home grids</summary>
+      <description>Versioned whole-cell positions and spans, per presentation and logical grid dimensions. Explicit moves persist independently from automatic application discovery.</description>
+    </key>
+    <key name="presentation-mode" type="s">
+      <choices><choice value="automatic"/><choice value="desktop"/><choice value="tablet"/><choice value="mobile"/></choices>
+      <default>'automatic'</default>
+      <summary>Preferred shell presentation</summary>
+      <description>Automatic follows the device profile and native seat posture. An explicit choice persists across restarts and accessory changes. Layout size and input capabilities remain independent.</description>
+    </key>
     <key name="surface-treatment" type="s">
       <choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices>
       <default>'light'</default>
@@ -114,7 +125,7 @@
     </key>
     <key name="shelf-padding" type="i">
       <range min="4" max="24"/>
-      <default>14</default>
+      <default>11</default>
       <summary>Dash content padding and floating edge gaps</summary>
       <description>Logical pixels around each island's content and at floating screen edges. Icon spacing is independent.</description>
     </key>
@@ -231,9 +242,9 @@
       <description>Off hides the folders rail without unpinning anything: the folders keep their places, their arrangements and their counts, and come back as they were.</description>
     </key>
     <key name="dock-folders-separate" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Show the Dock folders as an island of their own</summary>
-      <description>Off (the default): the folders are a part of the Dock, with the divider in front of them. On: they leave the Dock and become the 'folders' island, placed and moved like any other island.</description>
+      <description>Off: the folders are a part of the Dock, with the divider in front of them. On (the default): they leave the Dock and become the 'folders' island, placed and moved like any other island.</description>
     </key>
     <key name="dock-folders-views" type="a{ss}">
       <default>{}</default>
@@ -265,6 +276,12 @@
       <default>0</default>
       <summary>Whether the gesture defaults have been written once</summary>
       <description>Records gesture initialization without replacing existing preferences.</description>
+    </key>
+    <key name="presentation-idle-default" type="i">
+      <default>-1</default>
+      <range min="-1" max="86400"/>
+      <summary>Last screen-idle default projected by the presentation policy</summary>
+      <description>Tracks ownership of the shared session idle setting. Explicit user preferences take precedence; -1 means the policy does not own it.</description>
     </key>
   </schema>
 </schemalist>

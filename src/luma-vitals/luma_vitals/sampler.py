@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import power
+
 CGROUP_ROOT = Path("/sys/fs/cgroup")
 
 
@@ -140,12 +142,8 @@ def _temperature() -> float | None:
 
 
 def _battery_watts() -> float | None:
-    for battery in Path("/sys/class/power_supply").glob("BAT*"):
-        if _read(battery / "status").strip() == "Discharging":
-            microwatts = _int(battery / "power_now")
-            if microwatts:
-                return microwatts / 1_000_000
-    return None
+    reading = power.draw()
+    return reading.watts if reading.on_battery else None
 
 
 def containers(cgroup_root: Path = CGROUP_ROOT) -> list[UnitSample]:

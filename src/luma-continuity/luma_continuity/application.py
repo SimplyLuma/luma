@@ -608,7 +608,6 @@ class ConnectWindow(PhonesMixin,AppWindow):
             self.cloud_loading=False
             if self.closed:return
             if report is not None:self.cloud=report
-            elif self.cloud is None:self.cloud={'signed_in':False,'services':[],'devices':[]}
             self.cloud_problem=problem or ((report or {}).get('problem') or '')
             self._update()
         self.cloud_sync.status(received)
@@ -630,7 +629,11 @@ class ConnectWindow(PhonesMixin,AppWindow):
         """Show what changed, and only that. Refreshes that change nothing visible do nothing."""
         if self.closed:return
         if self.cloud is None and self.state is None:return
-        if self.cloud is None and self.cloud_sync.available and not self._relay_signed_in():return  # still finding out
+        if self.cloud is None and self.cloud_sync.available and not self._relay_signed_in():
+            if not self.cloud_problem:return  # still finding out
+            if self.shape!='unavailable':
+                self.shape='unavailable';self._build_cloud_unavailable()
+            return
         if self._cloud_connected() or self._relay_signed_in():shape='account'
         elif self.phones_only:shape='phones-only'
         else:shape='welcome'
@@ -647,6 +650,21 @@ class ConnectWindow(PhonesMixin,AppWindow):
     def _render(self):
         """Kept for callers and fixtures that set state directly."""
         self._update()
+
+    def _build_cloud_unavailable(self):
+        # A failed status request does not establish that the saved account is
+        # signed out. Offer retry without asking for another enrollment code.
+        self.title_bar.set_visible(not self.handheld)
+        island=Island()
+        center=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,
+            valign=Gtk.Align.CENTER,halign=Gtk.Align.CENTER,vexpand=True,
+            margin_start=28,margin_end=28)
+        message=Gtk.Label(label='Luma Connect is temporarily unavailable.',wrap=True,
+            justify=Gtk.Justification.CENTER)
+        center.append(message)
+        retry=Gtk.Button(label='Try Again');retry.add_css_class('suggested-action')
+        retry.connect('clicked',lambda *_:self._refresh_cloud());center.append(retry)
+        island.append(center);self.toasts.set_child(island)
 
     # The signed-out welcome ───────────────────────────────────────────────
     def _build_welcome(self):

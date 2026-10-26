@@ -10,7 +10,7 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst
 
 from .camera_state import crop_edges
-from .camera_backend import image_rotation_from_mount, video_direction_for_transform
+from .camera_backend import create_camera_source, image_rotation_from_mount, video_direction_for_transform
 
 
 class VideoRecording:
@@ -38,8 +38,10 @@ class VideoRecording:
             self.pipeline.add(element)
             return element
 
-        source = make("libcamerasrc", "video-camera")
-        source.set_property("camera-name", device.identifier)
+        source = create_camera_source(device, "video-camera")
+        if source is None:
+            raise RuntimeError('The camera streaming component is unavailable.')
+        self.pipeline.add(source)
         caps = make("capsfilter", "video-source-caps")
         caps.set_property("caps", Gst.Caps.from_string(
             f"{device.stream_format},width={device.preview_width},height={device.preview_height}"))
@@ -53,7 +55,7 @@ class VideoRecording:
         output.set_property("caps", Gst.Caps.from_string(
             f"video/x-raw,width={device.preview_width},height={device.preview_height}"))
         flip = make("videoflip", "video-mount")
-        rotation = 0 if device.desktop_uvc else image_rotation_from_mount(device.rotation, front_facing=device.location == "front")
+        rotation = 0 if device.managed_stream else image_rotation_from_mount(device.rotation, front_facing=device.location == "front")
         flip.set_property("video-direction", video_direction_for_transform(rotation, mirror_horizontal=mirror and device.location == "front"))
         tee = make("tee", "video-tee")
         preview_queue = make("queue", "video-preview-queue")

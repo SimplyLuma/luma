@@ -201,6 +201,7 @@ class ViewerWindow(ViewerUI, AppWindow):
         self._process_token=getattr(self,"_process_token",0)+1
         self.zoom = 1.0;self.zoom_fitted=True;self.pan=(0,0)
         self.document = self.pixbuf = self.texture = self.source_bytes = None
+        self._image_layer = None
         self.loaded = False
         self.last_saved = ""
         self.title_label.set_label(self.facts.name)
@@ -549,10 +550,7 @@ class ViewerWindow(ViewerUI, AppWindow):
                     self._refresh_info();self._refresh_actions()
                 entry.connect('changed',changed);fields.put(entry,x,y)
                 self.form_entries[key]=entry
-            drag=Gtk.GestureDrag(button=1)
-            def begin(g,x,y,a=area,n=number):
-                self.page=n;self.marks_area=a;self._mark_begin(g,x,y)
-            drag.connect('drag-begin',begin);drag.connect('drag-update',self._mark_update);drag.connect('drag-end',self._mark_end);area.add_controller(drag)
+            self._attach_markup_input(area, number)
             keys=Gtk.EventControllerKey();keys.connect('key-pressed',self._canvas_key);area.add_controller(keys)
         self.marks_area=self.pdf_areas[self.page]
         layout.append(thumbs);layout.append(self.pdf_scroll);self.stage.append(layout)
@@ -581,12 +579,7 @@ class ViewerWindow(ViewerUI, AppWindow):
         self.marks_area = area
         self.stage.set_vexpand(True)
         self.stage.append(area)
-        drag = Gtk.GestureDrag(button=1)
-        drag.connect("drag-begin", self._mark_begin)
-        drag.connect("drag-update", self._mark_update)
-        drag.connect("drag-end", self._mark_end)
-        drag.connect("cancel", lambda *_: self._cancel_drag())
-        area.add_controller(drag)
+        self._attach_markup_input(area)
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._canvas_key)
         area.add_controller(keys)
@@ -596,6 +589,65 @@ class ViewerWindow(ViewerUI, AppWindow):
         scroll.connect("scroll",wheel);area.add_controller(scroll)
         area.connect("resize", self._canvas_resized)
         self._resize_canvas()
+
+    def _attach_markup_input(self, area, page=None):
+        pen_active = [False]
+        origin = [None]
+
+        def activate():
+            self.marks_area = area
+            if page is not None:
+                self.page = page
+
+        def drag_begin(gesture, x, y):
+            device = gesture.get_current_event_device()
+            if device is not None and device.get_source() == Gdk.InputSource.PEN:
+                gesture.set_state(Gtk.EventSequenceState.DENIED)
+                return
+            activate()
+            self._mark_begin(gesture, x, y)
+
+        drag = Gtk.GestureDrag(button=1)
+        drag.connect('drag-begin', drag_begin)
+        drag.connect('drag-update', self._mark_update)
+        drag.connect('drag-end', self._mark_end)
+        drag.connect('cancel', lambda *_: None if pen_active[0] else self._cancel_drag())
+        area.add_controller(drag)
+
+        def down(gesture, x, y):
+            pen_active[0] = True
+            origin[0] = (x, y)
+            activate()
+            self._mark_begin(gesture, x, y)
+
+        def motion(gesture, x, y):
+            if not pen_active[0]:
+                return
+            available, backlog = gesture.get_backlog()
+            samples = tuple((c.axes[int(Gdk.AxisUse.X)], c.axes[int(Gdk.AxisUse.Y)])
+                            for c in backlog) if available else ()
+            ox, oy = origin[0]
+            self._mark_update(gesture, x-ox, y-oy, samples=samples)
+
+        def up(gesture, x, y):
+            if pen_active[0]:
+                ox, oy = origin[0]
+                self._mark_end(gesture, x-ox, y-oy)
+            pen_active[0] = False
+            origin[0] = None
+
+        def cancel(*_):
+            pen_active[0] = False
+            origin[0] = None
+            self._cancel_drag()
+
+        stylus = Gtk.GestureStylus(stylus_only=True)
+        stylus.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        stylus.connect('down', down)
+        stylus.connect('motion', motion)
+        stylus.connect('up', up)
+        stylus.connect('cancel', cancel)
+        area.add_controller(stylus)
 
     def _wheel_zoom(self, controller, dy):
         state=controller.get_current_event_state()
@@ -670,27 +722,30 @@ class ViewerWindow(ViewerUI, AppWindow):
         cr.translate(-cx,-cy)
         if self.adjustments.get('str') and not self.hold:
             cr.translate(pw/2,ph/2);cr.rotate(math.radians(self.adjustments['str']));cr.translate(-pw/2,-ph/2)
-        if self.document is not None:
-            cr.set_source_rgb(1, 1, 1)
-            cr.paint()
-            self.document.get_page(self.page).render(cr)
-        elif self.pixbuf is not None:
-            self._paint_image(cr)
-        for index, mark in enumerate(self.marks):
-            if mark.page != self.page:
-                continue
-            shown = self.pending if index == self.selected and self.tool == "select" and self.pending else mark
-            draw_marks(cr,[shown],self._paint_source)
-            if index == self.selected and self.mode == "markup":
-                x1,y1,x2,y2 = mark_bounds(cr, shown)
-                from luma_appkit.media_style import colour
-                ink=colour(area,'luma_blue')
-                cr.set_source_rgba(ink.red,ink.green,ink.blue,ink.alpha)
-                cr.set_line_width(1/max(viewport.scale,0.001))
-                cr.set_dash([4/max(viewport.scale,0.001)])
-                cr.rectangle(x1,y1,x2-x1,y2-y1)
-                cr.stroke()
-                cr.set_dash([])
+        if self.document is None and self.pixbuf is not None and self.selected is None:
+            self._paint_image_layer(cr)
+        else:
+            if self.document is not None:
+                cr.set_source_rgb(1, 1, 1)
+                cr.paint()
+                self.document.get_page(self.page).render(cr)
+            elif self.pixbuf is not None:
+                self._paint_image(cr)
+            for index, mark in enumerate(self.marks):
+                if mark.page != self.page:
+                    continue
+                shown = self.pending if index == self.selected and self.tool == "select" and self.pending else mark
+                draw_marks(cr,[shown],self._paint_source)
+                if index == self.selected and self.mode == "markup":
+                    x1,y1,x2,y2 = mark_bounds(cr, shown)
+                    from luma_appkit.media_style import colour
+                    ink=colour(area,'luma_blue')
+                    cr.set_source_rgba(ink.red,ink.green,ink.blue,ink.alpha)
+                    cr.set_line_width(1/max(viewport.scale,0.001))
+                    cr.set_dash([4/max(viewport.scale,0.001)])
+                    cr.rectangle(x1,y1,x2-x1,y2-y1)
+                    cr.stroke()
+                    cr.set_dash([])
         if self.pending and self.tool != "select":
             draw_marks(cr,[self.pending],self._paint_source)
         if self.live and not self.document:
@@ -705,6 +760,24 @@ class ViewerWindow(ViewerUI, AppWindow):
         cr.restore()
         if self.cropping and self.pixbuf is not None:
             self._draw_crop_overlay(cr, viewport)
+
+    def _paint_image_layer(self, cr):
+        """Retain unchanged document content while the live stroke advances."""
+        import cairo
+        image = self.pixbuf if self.hold else getattr(self, 'processed', self.pixbuf)
+        marks = self.marks
+        key = (id(self.pixbuf), id(image), id(marks), self.page, self.hold)
+        layer = getattr(self, '_image_layer', None)
+        if layer is None or layer[0] != key:
+            surface = cairo.RecordingSurface(cairo.CONTENT_COLOR_ALPHA,
+                (0, 0, self.pixbuf.get_width(), self.pixbuf.get_height()))
+            painter = cairo.Context(surface)
+            self._paint_image(painter)
+            draw_marks(painter, [mark for mark in marks if mark.page == self.page], self._paint_source)
+            # Keep the identity-keyed inputs alive and retain only one layer.
+            self._image_layer = layer = (key, (self.pixbuf, image, marks), surface)
+        cr.set_source_surface(layer[2], 0, 0)
+        cr.paint()
 
     def _paint_image(self, cr):
         image = self.pixbuf if self.hold else getattr(self, 'processed', self.pixbuf)
@@ -850,6 +923,12 @@ class ViewerWindow(ViewerUI, AppWindow):
     # ── Marks ────────────────────────────────────────────────────────────
 
     def _cancel_drag(self):
+        cursor = getattr(self, '_inking_cursor', None)
+        if cursor is not None:
+            area, previous, hidden = cursor
+            if area.get_cursor() is hidden:
+                area.set_cursor(previous)
+            self._inking_cursor = None
         self.pending = self.drag_origin = self.drag_viewport = None
         self._crop_drag = None
         self.pan_origin=None
@@ -880,7 +959,19 @@ class ViewerWindow(ViewerUI, AppWindow):
         point = viewport.to_page((x, y))
         if point is None:
             return
+        # An accepted markup stroke owns this sequence; the surrounding scroll
+        # view must not turn the same touch drag into kinetic scrolling.
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         self.marks_area.grab_focus()
+        get_tool = getattr(gesture, 'get_device_tool', None)
+        event = gesture.get_current_event() if get_tool is None else None
+        tool = get_tool() if get_tool is not None else event.get_device_tool() if event else None
+        if (self.tool in ('ink', 'highlight', 'sign') and tool is not None
+                and tool.get_tool_type() != Gdk.DeviceToolType.MOUSE):
+            area = self.marks_area
+            previous = area.get_cursor()
+            area.set_cursor_from_name('none')
+            self._inking_cursor = (area, previous, area.get_cursor())
         self.drag_origin, self.drag_viewport = (x, y), viewport
         self.selected = None
         scale=.5 if self.document else max(1,self._page_size()[0]/900)
@@ -914,7 +1005,7 @@ class ViewerWindow(ViewerUI, AppWindow):
         self._refresh_actions()
         self.marks_area.queue_draw()
 
-    def _mark_update(self, gesture, dx, dy):
+    def _mark_update(self, gesture, dx, dy, *, samples=()):
         if getattr(self,'_crop_drag',None) is not None:
             handle,start,(x,y,w,h),viewport=self._crop_drag
             origin=viewport.to_view(start)
@@ -969,8 +1060,15 @@ class ViewerWindow(ViewerUI, AppWindow):
                 sx,sy=self.pending.start
                 point=(point[0],sy+math.copysign(abs(point[0]-sx),point[1]-sy or 1))
             points = self.pending.points
-            if self.pending.tool in ("ink","highlight","sign") and point != points[-1]:
-                points = (*points, point)
+            if self.pending.tool in ("ink","highlight","sign"):
+                added = []
+                for sample in samples:
+                    mapped = self.drag_viewport.to_page(sample, clamp=True)
+                    if mapped != (added[-1] if added else points[-1]):
+                        added.append(mapped)
+                if point != (added[-1] if added else points[-1]):
+                    added.append(point)
+                points = (*points, *added)
             self.pending = replace(self.pending, end=point, points=points)
         self.marks_area.queue_draw()
 

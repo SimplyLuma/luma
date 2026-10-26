@@ -4,7 +4,7 @@
   "title": "Luma device boot policy (devices/<vendor>/<codename>/boot.toml)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "partition", "cmdline", "avb", "dtbo"],
+  "required": ["schema", "cmdline"],
   "properties": {
     "schema": {"const": 1},
     "partition": {"type": "string", "pattern": "^[a-z0-9_]+$"},
@@ -13,6 +13,14 @@
     "os_patch_level": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
     "format": {"enum": ["android-boot-v2", "android-boot-v3", "android-boot-v4", "uefi"]},
     "page_size": {"enum": [2048, 4096, 16384]},
+    "uefi": {
+      "type": "object", "additionalProperties": false, "required": ["loader", "dtb", "secure_boot"],
+      "properties": {
+        "loader": {"const": "BOOTAA64.EFI"},
+        "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+/[A-Za-z0-9_.,+-]+\\.dtb$"},
+        "secure_boot": {"enum": ["signed", "development-disabled"]}
+      }
+    },
     "cmdline": {
       "type": "object", "additionalProperties": false, "required": ["args", "generated", "forbidden"],
       "properties": {
@@ -40,6 +48,20 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {"required": ["format"], "properties": {"format": {"const": "uefi"}}},
+      "then": {
+        "required": ["uefi"],
+        "not": {"anyOf": [
+          {"required": ["partition"]}, {"required": ["avb"]}, {"required": ["dtbo"]},
+          {"required": ["page_size"]}, {"required": ["partition_size"]},
+          {"required": ["os_version"]}, {"required": ["os_patch_level"]}
+        ]}
+      },
+      "else": {"required": ["partition", "avb", "dtbo"], "not": {"required": ["uefi"]}}
+    }
+  ],
   "$defs": {
     "arg": {"type": "string", "pattern": "^[A-Za-z0-9_.,:/=+-]+$"}
   }

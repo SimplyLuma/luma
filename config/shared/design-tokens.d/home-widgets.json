@@ -1,0 +1,19 @@
+{
+  "lumaui": {
+    "home_widget": {
+      "radius": 26,
+      "gap": 12,
+      "padding_x": 16,
+      "padding_y": 14,
+      "weather_value": 44,
+      "calendar_value": 30,
+      "heading": 11.5,
+      "description": 13,
+      "detail": 12,
+      "weather_top": "rgba(46,136,205,0.92)",
+      "weather_bottom": "rgba(34,74,162,0.94)",
+      "calendar_dark": "#202638",
+      "calendar_heading": "#ef8c83"
+    }
+  }
+}

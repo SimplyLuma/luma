@@ -29,6 +29,8 @@ def parser() -> argparse.ArgumentParser:
     appearance.add_argument("value", choices=("default", "prefer-light", "prefer-dark"))
     idle = commands.add_parser("idle-delay")
     idle.add_argument("seconds", type=int)
+    mode = commands.add_parser("presentation")
+    mode.add_argument("value", choices=("automatic", "desktop", "tablet", "mobile"))
     return result
 
 
@@ -60,6 +62,8 @@ def main() -> int:
         call(proxy, "SetAppearance", GLib.Variant("(s)", (args.value,)))
     elif args.command == "idle-delay":
         call(proxy, "SetIdleDelay", GLib.Variant("(u)", (args.seconds,)))
+    elif args.command == "presentation":
+        call(proxy, "SetPresentation", GLib.Variant("(s)", (args.value,)))
     return 0
 
 

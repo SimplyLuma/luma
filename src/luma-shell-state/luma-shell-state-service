@@ -6,8 +6,11 @@
 from __future__ import annotations
 
 import sys
+import json
+from pathlib import Path
 
-sys.path.insert(0, "/usr/libexec/luma-shell-state")
+_base = Path(__file__).resolve().parent
+sys.path.insert(0, str(_base / "luma-shell-state" if (_base / "luma-shell-state").is_dir() else _base))
 
 from gi.repository import Gio, GLib
 
@@ -21,8 +24,14 @@ from luma_shell_state import (
     normalize_app_ids,
     normalize_appearance,
     normalize_idle_delay,
+    presentation_idle_default,
     normalize_shelf,
     normalize_wallpaper_uri,
+    normalize_presentation,
+    normalize_capabilities,
+    normalize_home_layout,
+    presentation_state,
+    read_presentation_profile,
 )
 
 
@@ -33,6 +42,8 @@ INTERFACE = BUS_NAME
 INTROSPECTION_XML = """
 <node>
   <interface name="org.project_luma.ShellState1">
+    <property name="Presentation" type="s" access="read"/>
+    <property name="InputCapabilities" type="a{sb}" access="read"/>
     <method name="GetSnapshot">
       <arg name="snapshot" type="s" direction="out"/>
     </method>
@@ -50,6 +61,16 @@ INTROSPECTION_XML = """
     </method>
     <method name="SetIdleDelay">
       <arg name="seconds" type="u" direction="in"/>
+    </method>
+    <method name="SetPresentation">
+      <arg name="mode" type="s" direction="in"/>
+    </method>
+    <method name="SetHomeLayout">
+      <arg name="profile" type="s" direction="in"/>
+      <arg name="layout" type="s" direction="in"/>
+    </method>
+    <method name="ReportInputCapabilities">
+      <arg name="capabilities" type="s" direction="in"/>
     </method>
     <signal name="Changed">
       <arg name="key" type="s"/>
@@ -71,6 +92,9 @@ class ShellStateService:
         self._session = Gio.Settings.new("org.gnome.desktop.session")
         self._a11y = Gio.Settings.new("org.gnome.desktop.a11y.applications")
         self._luma = Gio.Settings.new("org.project_luma.shell-state")
+        self._capabilities = {}
+        self._posture_source = 0
+        self._profile = read_presentation_profile()
         self._phosh = None
         self._syncing_favorites = False
         schema_source = Gio.SettingsSchemaSource.get_default()
@@ -90,6 +114,20 @@ class ShellStateService:
             settings.connect("changed", self._on_settings_changed, group)
         self._sync_gtk3_theme()
         self._project_favorites_to_phosh()
+        self._sync_idle_default()
+
+    def _sync_idle_default(self) -> None:
+        if not self._luma.props.settings_schema.has_key("presentation-idle-default"):
+            return
+        mode = presentation_state(self._luma.get_string("presentation-mode"),
+            profile=self._profile, capabilities=self._capabilities)["effective"]
+        current = self._session.get_user_value("idle-delay")
+        value = presentation_idle_default(mode, current.get_uint32() if current is not None else None,
+            self._luma.get_int("presentation-idle-default"))
+        if value is not None:
+            self._luma.set_int("presentation-idle-default", value)
+            if self._session.get_uint("idle-delay") != value:
+                self._session.set_uint("idle-delay", value)
 
     def _sync_gtk3_theme(self) -> None:
         """Keep supported legacy GTK apps on Luma's selected material."""
@@ -110,6 +148,17 @@ class ShellStateService:
         if not self._luma.props.settings_schema.has_key("shelf-arrangement"):
             return []
         return self._luma.get_value("shelf-arrangement").unpack()
+
+    def _home_layouts(self) -> dict:
+        if not self._luma.props.settings_schema.has_key("home-layouts"):
+            return {}
+        try:
+            value = json.loads(self._luma.get_string("home-layouts"))
+            if not isinstance(value, dict) or len(value) > 16:
+                return {}
+            return {profile: normalize_home_layout(profile, layout) for profile, layout in value.items()}
+        except (InvalidState, TypeError, ValueError):
+            return {}
 
     def _free_placement(self) -> bool:
         if not self._luma.props.settings_schema.has_key("shelf-free-placement"):
@@ -177,6 +226,10 @@ class ShellStateService:
             input_method=self._luma.get_string("input-method"),
             restore_app_state=self._luma.get_boolean("restore-app-state"),
             renderer=self._renderer(),
+            presentation=presentation_state(
+                self._luma.get_string("presentation-mode"), profile=self._profile,
+                capabilities=self._capabilities),
+            home_layouts=self._home_layouts(),
             shelf=normalize_shelf(
                 layout_version=self._luma.get_uint("shelf-layout-version"),
                 edge=self._luma.get_string("shelf-edge"),
@@ -214,7 +267,24 @@ class ShellStateService:
         )
         return encode_snapshot(snapshot)
 
+    def _context_properties(self):
+        state = presentation_state(self._luma.get_string("presentation-mode"),
+                                   profile=self._profile, capabilities=self._capabilities)
+        return {
+            "Presentation": GLib.Variant("s", state["effective"]),
+            "InputCapabilities": GLib.Variant("a{sb}", {
+                key: value for key, value in state["capabilities"].items() if value is not None}),
+        }
+
+    def _on_get_property(self, _connection, _sender, _path, _interface, name):
+        return self._context_properties().get(name)
+
     def _on_settings_changed(self, _settings: Gio.Settings, key: str, group: str) -> None:
+        if (group == "luma" and key == "presentation-mode") or group == "presentation":
+            self._sync_idle_default()
+        if group == "power" and key == "idle-delay" and self._luma.props.settings_schema.has_key("presentation-idle-default"):
+            if self._session.get_uint("idle-delay") != self._luma.get_int("presentation-idle-default"):
+                self._luma.set_int("presentation-idle-default", -1)
         if group == "favorites" and key == "favorite-apps":
             self._project_favorites_to_phosh()
         if (group == "appearance" and key in {"color-scheme", "gtk-theme"}) or (
@@ -230,9 +300,33 @@ class ShellStateService:
             "Changed",
             GLib.Variant("(ss)", (f"{group}.{key}", self.snapshot())),
         )
+        self._connection.emit_signal(None, OBJECT_PATH,
+            "org.freedesktop.DBus.Properties", "PropertiesChanged",
+            GLib.Variant("(sa{sv}as)", (INTERFACE, self._context_properties(), [])))
 
     def _return_error(self, invocation: Gio.DBusMethodInvocation, error: Exception) -> None:
         invocation.return_dbus_error(f"{INTERFACE}.InvalidState", str(error))
+
+    def _report_capabilities(self, sender: str, payload: str) -> None:
+        # Only the compositor's bus identity can describe native seat posture.
+        # Ordinary clients can choose a mode, but cannot impersonate hardware.
+        owner = self._connection.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "GetNameOwner", GLib.Variant("(s)", ("org.gnome.Shell",)),
+            GLib.VariantType.new("(s)"), Gio.DBusCallFlags.NONE, 1000, None)
+        if owner.unpack()[0] != sender:
+            raise InvalidState("only the compositor may report input capabilities")
+        if len(payload) > 4096:
+            raise InvalidState("capability report is too large")
+        capabilities = normalize_capabilities(json.loads(payload))
+        if self._posture_source:
+            GLib.source_remove(self._posture_source)
+        def settled():
+            self._posture_source = 0
+            self._capabilities = capabilities
+            self._on_settings_changed(self._luma, "input-capabilities", "presentation")
+            return GLib.SOURCE_REMOVE
+        self._posture_source = GLib.timeout_add(400, settled)
 
     def _on_method_call(
         self,
@@ -263,13 +357,34 @@ class ShellStateService:
                 self._interface.set_string("color-scheme", normalize_appearance(values[0]))
                 invocation.return_value(None)
             elif method_name == "SetIdleDelay":
-                self._session.set_uint("idle-delay", normalize_idle_delay(values[0]))
+                seconds = normalize_idle_delay(values[0])
+                # Explicit choices remain authoritative across mode switches.
+                self._luma.set_int("presentation-idle-default", -1)
+                self._session.set_uint("idle-delay", seconds)
+                invocation.return_value(None)
+            elif method_name == "SetPresentation":
+                self._luma.set_string("presentation-mode", normalize_presentation(values[0]))
+                invocation.return_value(None)
+            elif method_name == "SetHomeLayout":
+                profile, payload = values
+                if len(payload.encode("utf-8")) > 262144:
+                    raise InvalidState("Home layout exceeds the size limit")
+                layout = normalize_home_layout(profile, json.loads(payload))
+                layouts = self._home_layouts()
+                layouts.pop(profile, None)
+                layouts[profile] = layout
+                while len(layouts) > 16:
+                    del layouts[next(iter(layouts))]
+                self._luma.set_string("home-layouts", json.dumps(layouts, separators=(",", ":")))
+                invocation.return_value(None)
+            elif method_name == "ReportInputCapabilities":
+                self._report_capabilities(_sender, values[0])
                 invocation.return_value(None)
             else:
                 invocation.return_dbus_error(
                     f"{INTERFACE}.UnknownMethod", f"unknown method: {method_name}"
                 )
-        except (InvalidState, TypeError, ValueError) as error:
+        except (InvalidState, TypeError, ValueError, GLib.Error) as error:
             self._return_error(invocation, error)
 
     def on_bus_acquired(self, connection: Gio.DBusConnection, _name: str) -> None:
@@ -278,11 +393,13 @@ class ShellStateService:
             OBJECT_PATH,
             self._node.interfaces[0],
             self._on_method_call,
-            None,
+            self._on_get_property,
             None,
         )
 
     def close(self) -> None:
+        if self._posture_source:
+            GLib.source_remove(self._posture_source)
         if self._connection is not None and self._registration_id:
             self._connection.unregister_object(self._registration_id)
 

@@ -1,0 +1,45 @@
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -67,6 +67,9 @@
+         this._left.connect('repaint', () => this._shoulder(this._left, false));
+         this._right.connect('repaint', () => this._shoulder(this._right, true));
+         this._glow = new St.Widget({style_class: 'luma-lip-glow', opacity: 0});
++        this._glow.connectObject('notify::mapped', () => this._breathe(), this);
++        St.Settings.get().connectObject('notify::enable-animations', () => this._breathe(), this);
++        Main.sessionMode.connectObject('updated', () => this._breathe(), this);
+         this.add_child(this._glow);
+         this._settings = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
+         this._positionSettings = new Gio.Settings({schema_id: 'org.gnome.shell'});
+@@ -476,14 +479,25 @@
+     _breathe() {
+         this._glow.remove_all_transitions();
+         this._glow.opacity = 0;
+-        if (this._state !== 'pill' || !this._fresh || this.dnd) return;
+-        if (!St.Settings.get().enable_animations) { this._glow.opacity = 128; return; }
+-        const breath = up => {
+-            if (this._state !== 'pill' || !this._fresh || this.dnd) return;
++        const eligible = () => !this._destroying && !Main.sessionMode.isLocked &&
++            !Main.sessionMode.isGreeter && this.mapped && this._glow.mapped &&
++            this._state === 'pill' && this._fresh && !this.dnd;
++        // Signal briefly, then retain a steady unread indicator without
++        // keeping an otherwise idle display repainting.
++        let remaining = 6;
++        const pulse = up => {
++            if (!eligible()) return;
++            // Re-check every completion: animation settings or actor mapping may
++            // change while a pulse is in flight. An unmapped ease can complete
++            // synchronously, so unconditional recursion is unsafe.
++            if (!St.Settings.get().enable_animations || remaining-- === 0) {
++                this._glow.opacity = 128;
++                return;
++            }
+             this._glow.ease({opacity: up ? 230 : 0, duration: 1300,
+-                mode: Clutter.AnimationMode.EASE_IN_OUT_SINE, onComplete: () => breath(!up)});
++                mode: Clutter.AnimationMode.EASE_IN_OUT_SINE, onComplete: () => pulse(!up)});
+         };
+-        breath(true);
++        pulse(true);
+     }
+     toggle() { if (this.isOpen) this.close(); else this.open(); }
+     open() {

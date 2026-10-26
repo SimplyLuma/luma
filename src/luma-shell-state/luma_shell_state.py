@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from pathlib import Path
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -37,6 +39,136 @@ MAX_DISPLAY_ID_BYTES = 512
 
 class InvalidState(ValueError):
     """Raised when a shell-state mutation violates the public contract."""
+
+
+PRESENTATION_MODES = frozenset({"automatic", "desktop", "tablet", "mobile"})
+
+
+def normalize_home_layout(profile: str, value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate a cell-based Home transaction, including widget occupancy."""
+    match = re.fullmatch(r"(mobile|tablet):([1-9][0-9]?)x([1-9][0-9]?)", profile) if isinstance(profile, str) else None
+    if not match or not isinstance(value, Mapping):
+        raise InvalidState("invalid Home layout profile")
+    columns, rows = int(match[2]), int(match[3])
+    if not 1 <= columns <= 32 or not 1 <= rows <= 32:
+        raise InvalidState("Home grid dimensions are out of range")
+    if set(value) - {"version", "columns", "rows", "pages"} or type(value.get("version", 1)) is not int or value.get("version", 1) != 1:
+        raise InvalidState("unsupported Home layout")
+    for key, expected in (("columns", columns), ("rows", rows)):
+        if type(value.get(key)) is not int or value[key] != expected:
+            raise InvalidState("Home dimensions do not match profile")
+    pages = value.get("pages")
+    if not isinstance(pages, list) or not 1 <= len(pages) <= 64:
+        raise InvalidState("Home must contain between one and 64 pages")
+    normalized, seen = [], set()
+    for page in pages:
+        if not isinstance(page, list):
+            raise InvalidState("Home pages must contain item lists")
+        occupied, result = set(), []
+        for item in page:
+            if not isinstance(item, Mapping) or set(item) != {"id", "kind", "x", "y", "w", "h"}:
+                raise InvalidState("invalid Home item")
+            identity, kind = item["id"], item["kind"]
+            if kind == "app":
+                normalize_app_ids([identity])
+            elif kind == "widget":
+                if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}", identity):
+                    raise InvalidState("invalid widget identity")
+            else:
+                raise InvalidState("unrecognized Home item kind")
+            if identity in seen or len(seen) >= 1024:
+                raise InvalidState("duplicate or excessive Home items")
+            seen.add(identity)
+            if any(type(item[key]) is not int for key in ("x", "y", "w", "h")):
+                raise InvalidState("Home cells must use whole integers")
+            x, y, width, height = (item[key] for key in ("x", "y", "w", "h"))
+            if x < 0 or y < 0 or width < 1 or height < 1 or x + width > columns or y + height > rows:
+                raise InvalidState("Home item extends beyond the grid")
+            if kind == "app" and (width, height) != (1, 1):
+                raise InvalidState("app icons occupy one cell")
+            cells = {(xx, yy) for xx in range(x, x + width) for yy in range(y, y + height)}
+            if cells & occupied:
+                raise InvalidState("Home items overlap")
+            occupied.update(cells)
+            result.append(dict(item))
+        normalized.append(result)
+    return {"version": 1, "columns": columns, "rows": rows, "pages": normalized}
+
+
+def presentation_profile(requested: str = "", device_class: str = "",
+                         chassis_type: int | None = None,
+                         device_tree_chassis: str = "") -> str:
+    """Use an explicit boot profile, then standardized hardware categories."""
+    if requested == "handheld":
+        return "mobile"
+    if requested in {"desktop", "tablet", "mobile"}:
+        return requested
+    if device_class in {"mobile", "handheld"} or device_tree_chassis == "handset":
+        return "mobile"
+    if device_class == "tablet" or device_tree_chassis == "tablet" or chassis_type in {30, 32}:
+        return "tablet"  # SMBIOS Tablet and Detachable, independent of vendor.
+    return "desktop"
+
+
+def read_presentation_profile(root: Path = Path("/")) -> str:
+    """Read bounded boot/device hints; input availability never identifies a form factor."""
+    def read(name: str) -> str:
+        try:
+            with (root / name).open("rb") as stream:
+                value = stream.read(129)
+            return value.decode("utf-8").rstrip("\0").strip() if len(value) <= 128 else ""
+        except (OSError, UnicodeError):
+            return ""
+
+    raw_chassis = read("sys/class/dmi/id/chassis_type")
+    return presentation_profile(
+        read("run/luma/experience"), read("etc/luma-device-class"),
+        int(raw_chassis) if raw_chassis.isascii() and raw_chassis.isdecimal() else None,
+        read("sys/firmware/devicetree/base/chassis-type") or read("proc/device-tree/chassis-type"))
+
+
+def normalize_presentation(value: str) -> str:
+    if not isinstance(value, str) or value not in PRESENTATION_MODES:
+        raise InvalidState("presentation must be automatic, desktop, tablet or mobile")
+    return value
+
+
+def normalize_capabilities(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Unknown posture stays unknown; a missing keyboard is not a tablet signal."""
+    allowed = {"touchscreen", "tablet_mode", "keyboard", "pointer"}
+    if not isinstance(value, Mapping) or set(value) - allowed:
+        raise InvalidState("unrecognized input capability")
+    result = {key: value.get(key) for key in sorted(allowed)}
+    if any(item is not None and type(item) is not bool for item in result.values()):
+        raise InvalidState("capabilities must be booleans or null")
+    return result
+
+
+def presentation_state(selected: str = "automatic", *, profile: str = "desktop",
+                       capabilities: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Resolve policy independently of CPU, viewport and last-used input.
+
+    A compositor reports native seat posture (including the standard tablet
+    switch). A boot experience supplies the fallback when hardware is unknown.
+    Phone profiles remain phones when a keyboard is connected. User choice wins.
+    """
+    selected = normalize_presentation(selected)
+    capabilities = normalize_capabilities(capabilities or {})
+    if profile == "handheld":
+        profile = "mobile"
+    if profile not in {"desktop", "tablet", "mobile"}:
+        profile = "desktop"
+    if selected != "automatic":
+        effective, reason = selected, "user"
+    elif profile == "mobile":
+        effective, reason = "mobile", "profile"
+    elif capabilities["touchscreen"] is True and capabilities["tablet_mode"] is not None:
+        effective = "tablet" if capabilities["tablet_mode"] else "desktop"
+        reason = "posture"
+    else:
+        effective, reason = profile, "profile"
+    return {"selected": selected, "effective": effective, "reason": reason,
+            "profile": profile, "capabilities": capabilities}
 
 
 def normalize_app_ids(values: Iterable[str]) -> list[str]:
@@ -89,6 +221,20 @@ def gtk_theme_for_appearance(value: str, treatment: str | None = None) -> str:
     if treatment in {"light", "dark"}:
         return "Luma-dark" if treatment == "dark" else "Luma"
     return "Luma-dark" if appearance == "prefer-dark" else "Luma"
+
+
+def presentation_idle_default(mode: str, user_value: int | None, owned_value: int = -1) -> int | None:
+    """Choose a screen-idle default without replacing a person's preference.
+
+    owned_value records the broker's last projection across restarts. A value
+    changed through another settings client immediately becomes user-owned.
+    Zero is an explicit never-idle preference and is preserved.
+    """
+    if mode not in {"desktop", "tablet", "mobile"}:
+        raise InvalidState("an effective presentation is required")
+    if user_value is not None and (owned_value < 0 or user_value != owned_value):
+        return None
+    return {"desktop": 300, "tablet": 120, "mobile": 60}[mode]
 
 
 def normalize_idle_delay(value: int) -> int:
@@ -297,6 +443,8 @@ def build_snapshot(
     restore_app_state: bool,
     renderer: str,
     shelf: Mapping[str, Any] | None = None,
+    presentation: Mapping[str, Any] | None = None,
+    home_layouts: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     canonical_favorites = normalize_app_ids(favorites)
     canonical_home_apps = normalize_app_ids(home_apps)
@@ -321,6 +469,8 @@ def build_snapshot(
             "restore_app_state": bool(restore_app_state),
         },
         "shelf": dict(shelf or {}),
+        "presentation": dict(presentation or presentation_state()),
+        "home_layouts": dict(home_layouts or {}),
     }
 
 

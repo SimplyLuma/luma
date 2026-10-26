@@ -1,0 +1,26 @@
+--- a/plugins/mobile-data-quick-setting/mobile-data-quick-setting.c
++++ b/plugins/mobile-data-quick-setting/mobile-data-quick-setting.c
+@@ -105,6 +105,11 @@
+ 
+   wwan = phosh_shell_get_wwan (phosh_shell_get_default ());
+ 
++  /* Show radio controls only when their hardware exists, including hotplug. */
++  gtk_widget_set_no_show_all (GTK_WIDGET (self), TRUE);
++  g_object_bind_property (wwan, "present", self, "visible", G_BINDING_SYNC_CREATE);
++  toggle_sensitive_cb (self);
++
+   g_object_bind_property (wwan, "data-enabled",
+                           self, "active",
+                           G_BINDING_SYNC_CREATE);
+--- a/plugins/wifi-hotspot-quick-setting/wifi-hotspot-quick-setting.c
++++ b/plugins/wifi-hotspot-quick-setting/wifi-hotspot-quick-setting.c
+@@ -140,6 +140,9 @@
+     return;
+   }
+ 
++  gtk_widget_set_no_show_all (GTK_WIDGET (self), TRUE);
++  g_object_bind_property (self->wifi, "present", self, "visible", G_BINDING_SYNC_CREATE);
++
+   g_object_bind_property (self->wifi, "is-hotspot-master",
+                           self, "active",
+                           G_BINDING_SYNC_CREATE);
