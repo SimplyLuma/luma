@@ -98,7 +98,7 @@ def prepare_reuse(root, architecture, public, manifest_sha256):
     loader=importlib.machinery.SourceFileLoader('luma_baseline_reuse_validator',str(path))
     spec=importlib.util.spec_from_loader(loader.name,loader)
     validator=importlib.util.module_from_spec(spec);loader.exec_module(validator)
-    document=validator.validate(root,architecture,hash_bundles=False)
+    document=validator.validate(root,architecture,hash_bundles=False,historical=True)
     if (root/'luma-depot.gpg').read_bytes()!=public:
         raise ValueError('Reusable baseline has a different authenticated signing key.')
     cache={'root':root,'root_pin':root_pin,'pins':pins,

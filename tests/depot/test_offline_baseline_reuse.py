@@ -109,5 +109,36 @@ class Reuse(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'content identity differs'):
             PRODUCER.copy_reused_bundle(cache,self.ref,'f'*64,self.target)
 
+    def test_retired_app_is_historical_cache_only(self):
+        retired='org.projectluma.Displays'
+        shipping=json.loads((self.cache/'shipping.json').read_text())
+        shipping['applications'].append(retired)
+        (self.cache/'shipping.json').write_text(json.dumps(shipping))
+        roles=json.loads((self.cache/'roles.json').read_text())
+        roles['roles'][retired]='signed-system-flatpak'
+        (self.cache/'roles.json').write_text(json.dumps(roles))
+        body=b'historical retired bundle, never selected for reuse'
+        sha=hashlib.sha256(body).hexdigest();(self.cache/(sha+'.flatpak')).write_bytes(body)
+        self.rows.append({'ref':'app/'+retired+'/x86_64/beta','commit':'c'*64,
+                          'sha256':sha,'bytes':len(body),'file':sha+'.flatpak'})
+        self.document.update(shipping_contract_sha256=digest(self.cache/'shipping.json'),
+                             role_contract_sha256=digest(self.cache/'roles.json'))
+        self.publish()
+        cache=self.admitted()
+        # Only an independently authenticated current ref is copied. The old
+        # retired bundle remains untouched and never appears in this output.
+        PRODUCER.copy_reused_bundle(cache,self.ref,self.commit,self.target)
+        self.assertEqual(digest(self.target),self.rows[0]['sha256'])
+        loader=PRODUCER.importlib.machinery.SourceFileLoader('test_baseline_normal',
+            str(ROOT/'image/luma-desktop/rootfs/usr/libexec/luma-app-baseline'))
+        spec=PRODUCER.importlib.util.spec_from_loader(loader.name,loader)
+        validator=PRODUCER.importlib.util.module_from_spec(spec);loader.exec_module(validator)
+        with self.assertRaisesRegex(ValueError,'unique reviewed shipping selection'):
+            validator.validate(self.cache,'x86_64',hash_bundles=False)
+        shipping['applications'][-1]='org.projectluma.Write'
+        (self.cache/'shipping.json').write_text(json.dumps(shipping))
+        with self.assertRaisesRegex(ValueError,'unique reviewed shipping selection'):
+            validator.validate(self.cache,'x86_64',hash_bundles=False,historical=True)
+
 
 if __name__=='__main__':unittest.main()

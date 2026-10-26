@@ -78,3 +78,20 @@ unchanged. Initial58daa624 exited2 before tests because the administrator wrappe
 changes cwd; absolute test path corrected that harness issue. Python compilation
 and diff checks pass. No root active baseline producer/output or old bundle was
 touched; no whole baseline run was launched by this helper.
+
+## 2026-10-26 UTC — historical retired-app cache admission
+
+Added explicit `historical=False` to the maintained baseline validator. Normal
+OS/install callers retain the retired-app rejection. Only pinned producer reuse
+passes `historical=True`, allowing a prior retired app in the old cache while
+all OPTIONAL/schema/key/role/ref/file/hash guards remain unchanged. Production
+reuse still selects only the current authenticated shipping refs and exact
+commits; retired cache entries are never copied merely because they exist.
+
+Actual final `dev-arm-offline-historical-cache-final-2315822c` exited0: seven
+root-owned real bundle/custody tests pass, including a prior Displays cache
+accepted only historically, the same manifest rejected by normal default
+admission, and historical rejection of optional Write. Earlier d4711bfd also
+passed before the extra optional-app assertion. Python compilation and diff
+checks pass. No protected actual cache, source old baseline, root active output
+or producer job was changed by this helper.
