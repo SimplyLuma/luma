@@ -43,14 +43,16 @@ pkg.generate(
   requires: ['glib-2.0', 'gobject-2.0', 'gio-2.0'],
 )
 
-semantics_gir = gnome.generate_gir(
-  semantics_lib,
-  sources: semantics_sources + semantics_headers,
-  namespace: 'LumaSemantics',
-  nsversion: '1',
-  identifier_prefix: 'Luma',
-  symbol_prefix: 'luma',
-  includes: ['GObject-2.0', 'Gio-2.0'],
-  header: 'luma-semantics.h',
-  install: true,
-)
+if build_introspection
+  semantics_gir = gnome.generate_gir(
+    semantics_lib,
+    sources: semantics_sources + semantics_headers,
+    namespace: 'LumaSemantics',
+    nsversion: '1',
+    identifier_prefix: 'Luma',
+    symbol_prefix: 'luma',
+    includes: ['GObject-2.0', 'Gio-2.0'],
+    header: 'luma-semantics.h',
+    install: true,
+  )
+endif

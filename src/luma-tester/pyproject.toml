@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luma-tester"
+version = "0.7.1"
+description = "LumaUI launcher for Luma Mobile and Desktop QEMU previews"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+
+[project.scripts]
+luma-tester = "luma_tester.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["luma_tester*"]
+
+[tool.setuptools.package-data]
+luma_tester = ["tester.css", "io.luma.Tester.svg"]
+
+[tool.setuptools.data-files]
+"share/applications" = ["io.luma.Tester.desktop"]
+"share/icons/hicolor/scalable/apps" = ["luma_tester/io.luma.Tester.svg"]
+
+"share/doc/luma-tester" = ["THIRD-PARTY.md"]

@@ -15,12 +15,16 @@ gobject_dep = dependency('gobject-2.0', version: '>= 2.80')
 gio_dep = dependency('gio-2.0', version: '>= 2.80')
 gtk_dep = dependency('gtk4', version: '>= 4.18')
 adw_dep = dependency('libadwaita-1', version: '>= 1.7')
-wayland_client_dep = dependency('wayland-client', version: '>= 1.23')
+wayland_client_dep = dependency('wayland-client', version: '>= 1.23', required: get_option('wayland'))
+gio_unix_dep = dependency('gio-unix-2.0', required: false)
+build_introspection = get_option('introspection').allowed() and meson.can_run_host_binaries()
 
 subdir('appearance')
 subdir('semantics')
 subdir('ui')
-subdir('tests')
+if get_option('tests')
+  subdir('tests')
+endif
 
 install_subdir('schemas', install_dir: get_option('datadir') / 'luma-platform')
 install_subdir('protocols', install_dir: get_option('datadir') / 'luma-platform')

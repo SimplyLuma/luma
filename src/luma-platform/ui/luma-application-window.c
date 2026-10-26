@@ -7,7 +7,9 @@
 #include "luma-navigation-sidebar.h"
 #include "luma-ui-private.h"
 
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
 #include <gio/gdesktopappinfo.h>
+#endif
 #include <string.h>
 
 /* A Luma window, drawn by LumaUI (ADR-052).
@@ -160,6 +162,7 @@ static void prepare_visible_dialog(LumaApplicationWindow *self) {
 static char *identity_name(GtkApplication *application, GtkWindow *window) {
   const char *app_id = application != NULL ?
       g_application_get_application_id(G_APPLICATION(application)) : NULL;
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
   if (app_id != NULL && *app_id != '\0') {
     g_autofree char *desktop_id = g_strconcat(app_id, ".desktop", NULL);
     g_autoptr(GDesktopAppInfo) info = g_desktop_app_info_new(desktop_id);
@@ -167,6 +170,7 @@ static char *identity_name(GtkApplication *application, GtkWindow *window) {
     if (name != NULL && *name != '\0')
       return g_strdup(name);
   }
+#endif
   /* GLib answers the program name when no name was set, which is never
    * what the corner should say while the window has a title. */
   const char *named = g_get_application_name();
@@ -194,6 +198,7 @@ static GtkWidget *identity_icon(GtkApplication *application, GtkWindow *window) 
     icon = gtk_image_new_from_icon_name(gtk_window_get_icon_name(window));
   if (icon == NULL && theme_has(window, gtk_window_get_default_icon_name()))
     icon = gtk_image_new_from_icon_name(gtk_window_get_default_icon_name());
+#ifdef LUMA_HAVE_DESKTOP_APP_INFO
   if (icon == NULL && app_id != NULL && *app_id != '\0') {
     g_autofree char *desktop_id = g_strconcat(app_id, ".desktop", NULL);
     g_autoptr(GDesktopAppInfo) info = g_desktop_app_info_new(desktop_id);
@@ -207,6 +212,7 @@ static GtkWidget *identity_icon(GtkApplication *application, GtkWindow *window) 
       icon = gtk_image_new_from_gicon(gicon);
     }
   }
+#endif
   if (icon == NULL && theme_has(window, app_id))
     icon = gtk_image_new_from_icon_name(app_id);
   if (icon == NULL)

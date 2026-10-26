@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# A shared developer image selects presentation from its per-session NoCloud seed.
+set -euo pipefail
+[ "$(id -u)" = 0 ]
+[ -f /etc/luma/tester-image ]
+profile=${1:-}
+if [ -z "$profile" ] && [ -r /etc/luma-tester-target ]; then
+  IFS= read -r profile </etc/luma-tester-target || true
+fi
+case "$profile" in
+  mobile)
+    [ -x /opt/luma/phosh/libexec/phosh ] && grep -qx 'LUMA_TESTER_MOBILE_RENDERER=luma-phosh' /etc/luma/tester-image || {
+      printf 'error: Mobile requires the native phone shell image\n' >&2; exit 2;
+    }
+    install -Dm644 /usr/share/luma-tester/profiles/mobile-base.dconf /etc/dconf/db/luma.d/00-luma-desktop
+    install -Dm644 /usr/share/luma-tester/profiles/mobile-handheld.dconf /etc/dconf/db/luma.d/10-luma-handheld
+    install -Dm644 /usr/share/luma-tester/profiles/mobile.dconf /etc/dconf/db/luma.d/90-luma-tester
+    rm -f /etc/dconf/db/luma.d/95-luma-tester-extensions
+    printf '%s\n' handheld >/etc/luma-device-class
+    cat >/etc/environment.d/90-luma-tester.conf <<'ENV'
+LUMA_DEVICE_CLASS=handheld
+LUMA_PRESENTATION_MODE=fullscreen-mobile
+LUMA_INPUT_MODE=touch
+ENV
+    sed -i 's/^LUMA_TESTER_TARGET=.*/LUMA_TESTER_TARGET=mobile/' /etc/luma/tester-image
+    dconf update
+    exit 0
+    ;;
+  desktop) device_class=desktop ;;
+  *) printf 'error: tester target must be mobile or desktop\n' >&2; exit 2 ;;
+esac
+install -Dm644 /usr/share/luma-tester/profiles/desktop.dconf /etc/dconf/db/luma.d/00-luma-desktop
+rm -f /etc/dconf/db/luma.d/10-luma-handheld
+printf '%s\n' "$device_class" >/etc/luma-device-class
+cat >/etc/environment.d/90-luma-tester.conf <<ENV
+LUMA_DEVICE_CLASS=$device_class
+ENV
+# Keep the build identity; update only this session's presentation field.
+sed -i "s/^LUMA_TESTER_TARGET=.*/LUMA_TESTER_TARGET=$profile/" /etc/luma/tester-image
+# Preserve the selected profile's extension set and add virtual-only readiness.
+python3 - "$profile" <<'PYTHON'
+import ast, pathlib, sys
+profile = pathlib.Path('/usr/share/luma-tester/profiles') / (sys.argv[1] + '.dconf')
+line = next(line for line in profile.read_text().splitlines() if line.startswith('enabled-extensions='))
+extensions = ast.literal_eval(line.split('=', 1)[1])
+extensions.append('tester@project-luma.local')
+pathlib.Path('/etc/dconf/db/luma.d/95-luma-tester-extensions').write_text(
+    '[org/gnome/shell]\nenabled-extensions=' + repr(extensions) + '\n')
+PYTHON
+dconf update
+printf 'Luma Tester profile selected: %s (%s)\n' "$profile" "$device_class"
