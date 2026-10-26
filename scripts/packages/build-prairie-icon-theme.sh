@@ -24,10 +24,18 @@ for tool in head mktemp podman python3 sha256sum tar xmllint; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Prairie icon-theme RPM on the canonical Linux/x86_64 builder\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the noarch Prairie icon-theme RPM on a native Linux builder\n' >&2
   exit 1
 fi
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$architecture" = "$(uname -m)" ] || { printf 'error: icon RPM builder must execute natively\n' >&2; exit 1; }
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported native icon builder architecture\n' >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 
 theme_dir="$repo_root/assets/icon-theme/Prairie"
 full_icon="$theme_dir/scalable/apps/org.gnome.Nautilus.svg"
@@ -203,7 +211,7 @@ install -m 0644 "$repo_root/packaging/rpm/prairie-icon-theme.spec" \
 
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
-  "${LUMA_ICON_RPM_BUILD_CONTAINER:-$FEDORA_RPM_BUILD_CONTAINER}" '
+  "${LUMA_ICON_RPM_BUILD_CONTAINER:-$builder_container}" '
     set -euo pipefail
     dnf5 -y install rpm-build cpio libxml2 python3
     rpmbuild -ba --define "_topdir $PWD" SPECS/prairie-icon-theme.spec

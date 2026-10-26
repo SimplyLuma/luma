@@ -140,6 +140,15 @@
       "gtk_symbolic_sha256": "a6f111b6aa9aef5d1c9bb94f215b6c7ed031b290e6c3d07d55a811cd782c4702"
     },
     {
+      "lucide": "arrow-down-a-z",
+      "icon": "lumaui-arrow-down-a-z-symbolic",
+      "source": "upstream/lucide/lumaui/arrow-down-a-z.svg",
+      "sha256": "05707c3d921cb5603825e5a193aca990e8348b2714e9b93e12f7fa116691a6cf",
+      "upstream_version": "0.468.0",
+      "gtk_symbolic_sha256": "b5cc2918e0cdb22695bbb19255cfcda40b2d2501e6aad2860307782681f25930",
+      "source_origin": "https://unpkg.com/lucide-static@0.468.0/icons/arrow-down-a-z.svg"
+    },
+    {
       "lucide": "arrow-left-right",
       "icon": "lumaui-arrow-left-right-symbolic",
       "source": "upstream/lucide/lumaui/arrow-left-right.svg",
@@ -2002,6 +2011,15 @@
       "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "2cd3f510835eef5bd60994d4aeebb9ea55395314b8ae67460d949f1f2df3105e"
+    },
+    {
+      "lucide": "shapes",
+      "icon": "lumaui-shapes-symbolic",
+      "source": "upstream/lucide/lumaui/shapes.svg",
+      "sha256": "6838d037ef45de39a261cc2ba0fd5654a080eef9e62a8e12d40103f0e615d930",
+      "upstream_version": "0.468.0",
+      "gtk_symbolic_sha256": "93211b9c92cd9ab96fb2e3efe5e411fd71b62ac5f08364a9d0168c39d118a1cd",
+      "source_origin": "https://unpkg.com/lucide-static@0.468.0/icons/shapes.svg"
     },
     {
       "lucide": "share",
