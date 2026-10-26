@@ -8,6 +8,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 import zipfile
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -21,7 +22,13 @@ identities = {
     'aarch64': (12665686413, 'c41ba93a94c97a4c5567377d1ac00fab78dff089ba6c5a82d1d22e43954b2680'),
 }
 def api(path):
-    return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))
+    for attempt in range(3):
+        try:
+            return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}'], timeout=90))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
 record = api(f'actions/runs/{run}')
 assert record['head_sha'] == source and record['path'] == '.github/workflows/desktop-components.yml'
 jobs = api(f'actions/runs/{run}/jobs?per_page=100')['jobs']
@@ -38,8 +45,15 @@ assert metadata['name'] == f'desktop-home-widgets-{a.architecture}' and metadata
 with tempfile.TemporaryDirectory() as temporary:
     directory = Path(temporary)
     archive = directory / 'artifact.zip'
-    with archive.open('wb') as stream:
-        subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{artifact}/zip'], stdout=stream, check=True)
+    for attempt in range(3):
+        try:
+            with archive.open('wb') as stream:
+                subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{artifact}/zip'], stdout=stream, check=True, timeout=300)
+            break
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
     with archive.open('rb') as stream:
         assert hashlib.file_digest(stream, 'sha256').hexdigest() == digest
     with zipfile.ZipFile(archive) as zipped:

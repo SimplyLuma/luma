@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import zipfile
 
 p = argparse.ArgumentParser(description=__doc__)
@@ -26,7 +27,13 @@ source = '4d8d714d5a34bc20a1eb46135f2e1316d958d15e'
 merge = '84d0d83661b7987b0765f508c45f6473f068da25'
 repo = 'SimplyLuma/luma'
 def api(path):
-    return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}']))
+    for attempt in range(3):
+        try:
+            return json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/{path}'], timeout=90))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
 if a.run_id:
     assert not a.providers_only, 'select one admission mode'
     run = a.run_id
@@ -80,7 +87,16 @@ assert metadata['name'] == f'desktop-toolkit-{a.architecture}'
 assert metadata['workflow_run']['id'] == run and metadata['digest'] == f'sha256:{digest}'
 a.output.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryFile() as archive:
-    subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{artifact_id}/zip'], stdout=archive, check=True)
+    for attempt in range(3):
+        archive.seek(0)
+        archive.truncate()
+        try:
+            subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{artifact_id}/zip'], stdout=archive, check=True, timeout=300)
+            break
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
     archive.seek(0)
     assert hashlib.file_digest(archive, 'sha256').hexdigest() == digest, 'toolkit archive checksum mismatch'
     archive.seek(0)
