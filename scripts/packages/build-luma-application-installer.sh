@@ -7,22 +7,22 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-platform_rpm=${LUMA_PLATFORM_RPM:-$repo_root/build/packages/luma-developer-platform/x86_64/RPMS/$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA.rpm}
-[ -f "$platform_rpm" ] || {
-  printf 'error: application installer requires the built platform RPM: %s\n' "$platform_rpm" >&2
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$(uname -s)" = Linux ] && [ "$architecture" = "$(uname -m)" ] || {
+  printf 'error: build the noarch application installer on a native Fedora Linux builder\n' >&2
   exit 1
 }
-
+case "$architecture" in
+  x86_64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA; builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_AARCH64_NEVRA; builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported application-installer build architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
+platform_rpm=${LUMA_PLATFORM_RPM:-$repo_root/build/packages/luma-developer-platform/$architecture/RPMS/$platform_nevra.rpm}
+[ -f "$platform_rpm" ] || { printf 'error: application installer requires the built platform RPM: %s\n' "$platform_rpm" >&2; exit 1; }
 for tool in mktemp podman python3 sha256sum tar; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    printf 'error: required application-installer build tool is missing: %s\n' "$tool" >&2
-    exit 1
-  }
+  command -v "$tool" >/dev/null 2>&1 || { printf 'error: required application-installer build tool is missing: %s\n' "$tool" >&2; exit 1; }
 done
-[ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || {
-  printf 'error: build the noarch application-installer RPM on the canonical Linux/x86_64 builder\n' >&2
-  exit 1
-}
 
 output_dir="$repo_root/build/packages/luma-application-installer"
 mkdir -p "$(dirname -- "$output_dir")"
@@ -71,7 +71,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-application-installer.spec" \
 chmod -R a+rX "$rpmbuild_dir"
 
 bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
-  "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
     dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs xdg-dbus-proxy bubblewrap ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
     # GitHub mounts HOME as a shared writable volume. Trust-boundary tests

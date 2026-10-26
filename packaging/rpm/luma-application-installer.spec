@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.74.nightly20261026.1%{?dist}
+Release:        1.luma.75.nightly20261026.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -269,6 +269,9 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.75.nightly20261026.1
+- Keep system app baseline contents readable by ordinary users.
+
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
 - Package the October 26 shared source updates.
 
