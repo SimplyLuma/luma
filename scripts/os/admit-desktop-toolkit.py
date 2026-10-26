@@ -26,6 +26,10 @@ run = 40357494359
 source = 'e236b494dbf38ca0b8d377470f1b5fad7af13f19'
 merge = source
 repo = 'SimplyLuma/luma'
+# Apply the same verified source and consumed-pin checks to the pinned whole
+# toolkit and explicitly selected runs. Unrelated application pins may advance.
+if not a.providers_only:
+    a.run_id = a.run_id or run
 def api(path):
     for attempt in range(3):
         try:
