@@ -1,0 +1,94 @@
+--- a/src/app-grid.c
++++ b/src/app-grid.c
+@@ -24,6 +24,8 @@
+ #include "gtk-list-models/gtkfilterlistmodel.h"
+ 
+ #include <gmobile.h>
++
++#define HOME_ICON_SIZE 58
+ 
+ #define ACTIVE_SEARCH_CLASS "search-active"
+ 
+@@ -80,6 +82,7 @@
+   GtkWidget *scrolled_window;
+   GtkWidget *home_page;
+   GtkWidget *today_slot;
++  gboolean widget_gutters_pending;
+   GtkWidget *all_apps_button;
+   GtkWidget *library_page;
+   GtkWidget *library_list;
+@@ -842,12 +845,53 @@
+ }
+ 
+ 
++/* Align the cards with the artwork centered in the outer Home grid cells.
++ * Keep the card-to-card spacing independent of these responsive gutters. */
++static gboolean
++update_home_widget_gutters (gpointer data)
++{
++  PhoshAppGrid *self = PHOSH_APP_GRID (data);
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  GtkWidget *grid = priv->favs;
++  GtkAllocation allocation;
++
++  priv->widget_gutters_pending = FALSE;
++  if (!gtk_widget_get_mapped (GTK_WIDGET (self)))
++    return G_SOURCE_REMOVE;
++  gtk_widget_get_allocation (grid, &allocation);
++  int columns = gtk_flow_box_get_max_children_per_line (GTK_FLOW_BOX (grid));
++  int inset = MAX (0, (allocation.width / columns - HOME_ICON_SIZE) / 2);
++  int start = gtk_widget_get_margin_start (grid) + inset;
++  int end = gtk_widget_get_margin_end (grid) + inset;
++
++  if (gtk_widget_get_margin_start (priv->today_slot) != start)
++    gtk_widget_set_margin_start (priv->today_slot, start);
++  if (gtk_widget_get_margin_end (priv->today_slot) != end)
++    gtk_widget_set_margin_end (priv->today_slot, end);
++  return G_SOURCE_REMOVE;
++}
++
++
++static void
++on_home_grid_allocated (GtkWidget *grid, GtkAllocation *allocation, PhoshAppGrid *self)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++
++  if (priv->widget_gutters_pending)
++    return;
++  /* The parent is allocating siblings now; apply margins after this cycle. */
++  priv->widget_gutters_pending = TRUE;
++  g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, update_home_widget_gutters,
++                   g_object_ref (self), g_object_unref);
++}
++
++
+ static GtkWidget *
+ create_favorite_launcher (gpointer item, gpointer self)
+ {
+   GtkWidget *btn = phosh_app_grid_button_new_favorite (G_APP_INFO (item));
+ 
+-  phosh_app_grid_button_set_icon_size (PHOSH_APP_GRID_BUTTON (btn), 58);
++  phosh_app_grid_button_set_icon_size (PHOSH_APP_GRID_BUTTON (btn), HOME_ICON_SIZE);
+   mark_unavailable_launcher (btn, G_APP_INFO (item));
+ 
+   g_signal_connect (btn, "app-launched", G_CALLBACK (app_launched_cb), self);
+@@ -1238,6 +1282,8 @@
+   gtk_box_pack_start (GTK_BOX (priv->today_slot), today, TRUE, TRUE, 0);
+   g_signal_connect (today, "launch-requested", G_CALLBACK (on_today_launch_requested), self);
+   gtk_widget_show (today);
++  g_signal_connect_object (priv->favs, "size-allocate",
++                           G_CALLBACK (on_home_grid_allocated), self, 0);
+   g_signal_connect (priv->library_letters, "size-allocate",
+                      G_CALLBACK (on_library_letters_allocated), self);
+   priv->library_rail_drag = gtk_gesture_drag_new (priv->library_rail);
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -1687,7 +1687,7 @@
+ .luma-all-apps:active { background-color: alpha(@phosh_fg_color,.24); }
+ .luma-home-indicator { background-color: white; border-radius: 4px; }
+ .luma-today-card {
+-  min-height: 130px; min-width: 0; padding: 14px 16px; border: 0; border-radius: 26px;
++  min-height: 114px; min-width: 0; padding: 14px 16px; border: 0; border-radius: 26px;
+   color: @phosh_fg_color; background-color: transparent;
+   background-image: linear-gradient(to bottom, @luma_launcher_glass_start, @luma_launcher_glass_end);
+   box-shadow: inset 0 1px rgba(255,255,255,.12), inset 0 0 0 1px alpha(@phosh_fg_color,.06),
