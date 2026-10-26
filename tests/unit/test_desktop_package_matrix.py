@@ -173,3 +173,32 @@ class NativeMatrix(unittest.TestCase):
                 self.assertFalse(matrix.routing_only_workflow_additions(
                     previous.replace('\non:\n', '\n' + replacement + '\n'),
                     current.replace('\non:\n', '\n' + replacement + '\n')))
+
+    def test_exact_pr_base_correction_preserves_execution_contract(self):
+        current = (ROOT / matrix.WORKFLOW).read_text()
+        previous = current.replace('github.event.pull_request.base.sha || github.event.before',
+                                   'github.event.before || github.event.pull_request.base.sha')
+        self.assertTrue(matrix.selection_base_only_workflow_change(previous, current))
+        self.assertEqual(matrix.matrix(ROOT, {matrix.WORKFLOW}, previous_workflow=previous)['include'], [])
+        self.assertFalse(matrix.selection_base_only_workflow_change(
+            previous, current.replace('timeout-minutes: 60', 'timeout-minutes: 1')))
+        self.assertEqual(matrix.matrix(ROOT, {matrix.WORKFLOW}), matrix.matrix(ROOT))
+
+    def test_known_pin_changes_check_their_consumers(self):
+        values = dict(line.split('=', 1) for line in (ROOT / 'config/desktop/inputs.env').read_text().splitlines()
+                      if line and not line.startswith('#') and '=' in line)
+        for key, expected in [
+                ('GNOME_SHELL_LUMA_RELEASE', set()),
+                ('PRAIRIE_ICON_THEME_RELEASE', {'icon-theme', 'ari'}),
+                ('LUMA_APPLICATION_INSTALLER_RELEASE', {'application-installer', 'ari'}),
+                ('LUMA_DEVELOPER_PLATFORM_RELEASE', {'application-installer', 'ari'})]:
+            previous = {**values, key: 'prior'}
+            rows = matrix.matrix(ROOT, {'config/desktop/inputs.env'}, previous_inputs=previous)['include']
+            with self.subTest(key=key):
+                self.assertEqual({row['component'] for row in rows}, expected)
+        previous = {**values, 'UNKNOWN_PROVIDER': 'old'}
+        self.assertEqual(matrix.matrix(ROOT, {'config/desktop/inputs.env'}, previous_inputs=previous), matrix.matrix(ROOT))
+        # A shared builder change still checks every group alongside a narrow pin change.
+        previous = {**values, 'GNOME_SHELL_LUMA_RELEASE': 'prior'}
+        self.assertEqual(matrix.matrix(ROOT, {'config/desktop/inputs.env', 'scripts/packages/run-in-rpm-builder.sh'},
+                                      previous_inputs=previous), matrix.matrix(ROOT))
