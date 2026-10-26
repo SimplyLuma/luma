@@ -291,19 +291,27 @@ luma_os_vm_lock() {
 }
 
 luma_os_tools_image() {
-  local digest tag fedora_image
-  digest=$(sha256sum "$luma_os_repo_root/image/os-tools/Containerfile" | cut -c1-16)
+  local digest tag fedora_image host_arch image_key image_arch expected_arch
+  host_arch=$(uname -m)
+  case "$host_arch" in
+    x86_64) image_key=FEDORA_RPM_BUILD_CONTAINER; expected_arch=amd64 ;;
+    aarch64|arm64) host_arch=aarch64; image_key=FEDORA_RPM_BUILD_CONTAINER_AARCH64; expected_arch=arm64 ;;
+    *) luma_os_die "unsupported release tools host architecture: $host_arch" ;;
+  esac
+  fedora_image=$(awk -F= -v key="$image_key" '$1 == key { print $2 }' \
+    "$luma_os_repo_root/config/desktop/inputs.env")
+  [ -n "$fedora_image" ] || luma_os_die "$image_key is not pinned"
+  digest=$({ cat "$luma_os_repo_root/image/os-tools/Containerfile"; printf '%s\n' "$fedora_image"; } | sha256sum | cut -c1-16)
   tag="$LUMA_OS_TOOLS_IMAGE_NAME:$digest"
   if ! luma_os_podman image exists "$tag"; then
-    fedora_image=$(awk -F= '$1 == "FEDORA_RPM_BUILD_CONTAINER" { print $2 }' \
-      "$luma_os_repo_root/config/desktop/inputs.env")
-    [ -n "$fedora_image" ] || luma_os_die 'FEDORA_RPM_BUILD_CONTAINER is not pinned'
     luma_os_log "building tools image $tag"
-    luma_os_podman build --security-opt label=disable \
+    luma_os_podman build --arch "$host_arch" --security-opt label=disable \
       --build-arg "FEDORA_IMAGE=$fedora_image" \
       -t "$tag" -f "$luma_os_repo_root/image/os-tools/Containerfile" \
       "$luma_os_repo_root/image/os-tools" >&2
   fi
+  image_arch=$(luma_os_podman image inspect --format '{{.Architecture}}' "$tag")
+  [ "$image_arch" = "$expected_arch" ] || luma_os_die 'release tools image differs from executing host architecture'
   printf '%s\n' "$tag"
 }
 
