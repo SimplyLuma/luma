@@ -247,6 +247,8 @@ class NativeWindows:
         if context['closed']:
             return
         context['closed'] = True
+        if context.get('visibility'):
+            context['visibility'].close()
         identity = (context['description'] or {}).get('window_id')
         self.contexts.pop(identity, None)
         if window.pip_window:

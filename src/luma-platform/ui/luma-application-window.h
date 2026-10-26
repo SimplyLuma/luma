@@ -11,6 +11,13 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE(LumaApplicationWindow, luma_application_window, LUMA,
                      APPLICATION_WINDOW, AdwApplicationWindow)
 
+/**
+ * luma_application_window_new:
+ * @application: the application owning the window
+ * @context: (nullable): an explicit context, or %NULL to follow the session
+ *
+ * Returns: (transfer none): a new application window
+ */
 GtkWidget *luma_application_window_new(GtkApplication *application,
                                        LumaContext *context);
 /* Match Python AppWindow: a bleeding page owns the phone status inset itself.
@@ -71,4 +78,7 @@ void luma_application_window_set_identity(LumaApplicationWindow *self,
 void luma_application_window_set_menu_model(LumaApplicationWindow *self,
                                             GMenuModel *menu_model);
 
+void luma_application_window_set_status_bar_style(LumaApplicationWindow *self, const char *ink);
+/* Paint through Tablet system areas; the caller must inset interactive UI. */
+void luma_application_window_set_edge_to_edge(LumaApplicationWindow *self, gboolean enabled);
 G_END_DECLS

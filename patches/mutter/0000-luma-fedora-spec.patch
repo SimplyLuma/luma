@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,36 @@
+@@ -29,13 +29,37 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.13.creator20261009.1%{?dist}
++Release:       1.luma.14.presentation20261025.1%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -35,6 +35,7 @@
 +Patch1018:     0019-input-Adjustable-scroll-speed-for-mice-and-touchpads.patch
 +Patch1019:     0020-x11-Keep-the-geometry-the-shell-chose-before-map.patch
 +Patch1020:     0021-display-Default-unconfigured-desktop-monitors-to-100-percent.patch
++Patch1021:     0022-native-Expose-hardware-tablet-posture.patch
  
  
  BuildRequires: cvt

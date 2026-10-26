@@ -1,0 +1,18 @@
+From: Luma Developers <dev@projectluma.org>
+Subject: [PATCH] status: use the shared filled camera privacy glyph
+
+Keep native camera-use monitoring and visibility bindings intact.
+
+--- a/js/ui/status/camera.js
++++ b/js/ui/status/camera.js
+@@ -9,8 +9,9 @@
+         super();
+ 
+         this._indicator = this._addIndicator();
+-        this._indicator.icon_name = 'camera-web-symbolic';
++        this._indicator.icon_name = 'lumaui-camera-active-symbolic';
+         this._indicator.add_style_class_name('privacy-indicator');
++        this._indicator.add_style_class_name('luma-camera-privacy-indicator');
+ 
+         this._cameraMonitor = new Shell.CameraMonitor();
+         this._cameraMonitor.bind_property('cameras-in-use', this._indicator,

@@ -1,0 +1,9 @@
+/* Generated from shared design tokens; do not edit. */
+.luma-today-card { border-radius: 26px; padding: 14px 16px; color: @theme_fg_color; }
+.luma-today-weather { color: white; background-image: linear-gradient(to bottom, rgba(46,136,205,0.92), rgba(34,74,162,0.94)); }
+.luma-today-kicker { font-size: 0.82143em; font-weight: 600; }
+.luma-today-calendar .luma-today-kicker { color: #ef8c83; }
+.luma-today-weather .luma-today-value { font-size: 3.14286em; font-weight: 300; color: white; }
+.luma-today-calendar .luma-today-value { font-size: 2.14286em; font-weight: 600; }
+.luma-today-condition { font-size: 0.92857em; font-weight: 600; }
+.luma-today-detail, .luma-today-event { font-size: 0.85714em; }

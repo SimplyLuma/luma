@@ -1,0 +1,148 @@
+diff --git a/src/backends/native/meta-seat-impl.h b/src/backends/native/meta-seat-impl.h
+--- a/src/backends/native/meta-seat-impl.h
++++ b/src/backends/native/meta-seat-impl.h
+@@ -87,6 +87,7 @@
+   gboolean has_tablet_switch;
+   gboolean has_pointer;
+   gboolean touch_mode;
++  int reported_tablet_mode_switch;
+   gboolean input_thread_initialized;
+ 
+   /* keyboard repeat */
+diff --git a/src/backends/native/meta-seat-native.h b/src/backends/native/meta-seat-native.h
+--- a/src/backends/native/meta-seat-native.h
++++ b/src/backends/native/meta-seat-native.h
+@@ -62,6 +62,7 @@
+ 
+   gboolean released;
+   gboolean touch_mode;
++  int tablet_mode_switch_state;
+ };
+ 
+ #define META_TYPE_SEAT_NATIVE meta_seat_native_get_type ()
+diff --git a/src/backends/native/meta-seat-impl.c b/src/backends/native/meta-seat-impl.c
+--- a/src/backends/native/meta-seat-impl.c
++++ b/src/backends/native/meta-seat-impl.c
+@@ -85,6 +85,7 @@
+   KBD_A11Y_FLAGS_CHANGED,
+   KBD_A11Y_MODS_STATE_CHANGED,
+   TOUCH_MODE,
++  TABLET_MODE_SWITCH,
+   BELL,
+   POINTER_POSITION_CHANGED_IN_IMPL,
+   N_SIGNALS
+@@ -1941,6 +1942,23 @@
+ update_touch_mode (MetaSeatImpl *seat_impl)
+ {
+   gboolean touch_mode;
++  int switch_state = seat_impl->has_tablet_switch
++    ? (seat_impl->tablet_mode_switch_state ? 1 : 0) : -1;
++
++  /* Preserve the distinction between SW_TABLET_MODE and touch-mode's
++   * no-pointer fallback. Presentation policy must not mistake a missing
++   * mouse for a physical tablet posture. Dispatch on the main thread using
++   * the same path as touch-mode, including switch removal and hotplug. */
++  if (seat_impl->reported_tablet_mode_switch != switch_state)
++    {
++      GValue value = G_VALUE_INIT;
++
++      seat_impl->reported_tablet_mode_switch = switch_state;
++      g_value_init (&value, G_TYPE_INT);
++      g_value_set_int (&value, switch_state);
++      emit_signal (seat_impl, signals[TABLET_MODE_SWITCH], &value, 1);
++      g_value_unset (&value);
++    }
+ 
+   /* No touch mode if we don't have a touchscreen, easy */
+   if (!seat_impl->has_touchscreen)
+@@ -3621,6 +3639,12 @@
+                   0, NULL, NULL,
+                   g_cclosure_marshal_VOID__BOOLEAN,
+                   G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
++  signals[TABLET_MODE_SWITCH] =
++    g_signal_new ("tablet-mode-switch",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0, NULL, NULL, NULL,
++                  G_TYPE_NONE, 1, G_TYPE_INT);
+   signals[BELL] =
+     g_signal_new ("bell",
+                   G_TYPE_FROM_CLASS (object_class),
+@@ -3641,6 +3665,7 @@
+ static void
+ meta_seat_impl_init (MetaSeatImpl *seat_impl)
+ {
++  seat_impl->reported_tablet_mode_switch = -1;
+   g_rw_lock_init (&seat_impl->state_lock);
+ 
+   seat_impl->repeat = TRUE;
+diff --git a/src/backends/native/meta-seat-native.c b/src/backends/native/meta-seat-native.c
+--- a/src/backends/native/meta-seat-native.c
++++ b/src/backends/native/meta-seat-native.c
+@@ -48,6 +48,7 @@
+   PROP_SEAT_ID,
+   PROP_FLAGS,
+   PROP_BACKEND,
++  PROP_TABLET_MODE_SWITCH_STATE,
+   N_PROPS,
+ 
+   /* This property is overridden */
+@@ -141,6 +142,18 @@
+ {
+   seat_native->touch_mode = enabled;
+   g_object_notify (G_OBJECT (seat_native), "touch-mode");
++}
++
++static void
++proxy_tablet_mode_switch (MetaSeatImpl   *seat_impl,
++                         int             state,
++                         MetaSeatNative *seat_native)
++{
++  if (seat_native->tablet_mode_switch_state == state)
++    return;
++  seat_native->tablet_mode_switch_state = state;
++  g_object_notify_by_pspec (G_OBJECT (seat_native),
++                           props[PROP_TABLET_MODE_SWITCH_STATE]);
+ }
+ 
+ static void
+@@ -232,6 +245,8 @@
+                     G_CALLBACK (proxy_kbd_a11y_mods_state_changed), seat);
+   g_signal_connect (seat->impl, "touch-mode",
+                     G_CALLBACK (proxy_touch_mode_changed), seat);
++  g_signal_connect (seat->impl, "tablet-mode-switch",
++                    G_CALLBACK (proxy_tablet_mode_switch), seat);
+   g_signal_connect (seat->impl, "bell",
+                     G_CALLBACK (proxy_bell), seat);
+ 
+@@ -298,6 +313,9 @@
+     case PROP_SEAT_ID:
+       g_value_set_string (value, seat_native->seat_id);
+       break;
++    case PROP_TABLET_MODE_SWITCH_STATE:
++      g_value_set_int (value, seat_native->tablet_mode_switch_state);
++      break;
+     case PROP_TOUCH_MODE:
+       g_value_set_boolean (value, seat_native->touch_mode);
+       break;
+@@ -544,6 +562,12 @@
+                          G_PARAM_READWRITE |
+                          G_PARAM_CONSTRUCT_ONLY);
+ 
++  props[PROP_TABLET_MODE_SWITCH_STATE] =
++    g_param_spec_int ("tablet-mode-switch-state", NULL, NULL,
++                      -1, 1, -1,
++                      G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY |
++                      G_PARAM_STATIC_STRINGS);
++
+   g_object_class_install_properties (object_class, N_PROPS, props);
+ 
+   g_object_class_override_property (object_class, PROP_TOUCH_MODE,
+@@ -560,6 +584,7 @@
+ static void
+ meta_seat_native_init (MetaSeatNative *seat)
+ {
++  seat->tablet_mode_switch_state = -1;
+   seat->reserved_virtual_slots = g_hash_table_new (NULL, NULL);
+ }
+ 

@@ -164,3 +164,32 @@ assert len(made)<160,len(made)
 quiet(window,'20k virtual songs')
 window.close();pump(.2);assert not errors,errors
 print('PASS passive layout, Tide resize/search and bounded virtual scrolling',flush=True)
+
+# A static viewfinder must not request frames merely to check its geometry.
+# The fixture forbids hardware access and keeps image bytes unchanged.
+import os
+from unittest.mock import patch
+sys.path.insert(0, str(source/'src/prairie-core'))
+os.environ['LUMA_CAMERA_FIXTURE'] = str(source/'tests/fixtures/camera-v70.json')
+os.environ['LUMA_CAMERA_STYLE_PATH'] = str(source/'src/prairie-core/style/camera.css')
+from prairie_apps import camera
+with patch.object(camera, 'list_camera_devices', side_effect=AssertionError('camera acquired')), \
+     patch.object(camera, 'PhotoLibrary', side_effect=AssertionError('photo library opened')), \
+     patch.object(camera, 'VideoRecording', side_effect=AssertionError('encoder opened')):
+    camera_app = camera.CameraApplication()
+    assert camera_app.register(None)
+    window = camera.CameraWindow(camera_app)
+    window.present();pump(.8)
+    surface = window._surface
+    quiet(window, 'static Camera viewfinder')
+    for width in (390, 1024):
+        window.set_default_size(width, 760);pump(.8)
+        assert surface.phone == (window.get_width() <= 559)
+        assert surface.last_size[:2] == (surface.overlay.get_width(), surface.overlay.get_height())
+        quiet(window, 'Camera width '+str(width))
+    window.set_visible(False);pump(.2)
+    window.present();pump(.8)
+    quiet(window, 'remapped Camera')
+    window.close();pump(.3)
+assert not errors,errors
+print('PASS static Camera resize/remap without hardware access',flush=True)

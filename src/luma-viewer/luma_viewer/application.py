@@ -201,6 +201,7 @@ class ViewerWindow(ViewerUI, AppWindow):
         self._process_token=getattr(self,"_process_token",0)+1
         self.zoom = 1.0;self.zoom_fitted=True;self.pan=(0,0)
         self.document = self.pixbuf = self.texture = self.source_bytes = None
+        self._image_layer = None
         self.loaded = False
         self.last_saved = ""
         self.title_label.set_label(self.facts.name)
@@ -721,27 +722,30 @@ class ViewerWindow(ViewerUI, AppWindow):
         cr.translate(-cx,-cy)
         if self.adjustments.get('str') and not self.hold:
             cr.translate(pw/2,ph/2);cr.rotate(math.radians(self.adjustments['str']));cr.translate(-pw/2,-ph/2)
-        if self.document is not None:
-            cr.set_source_rgb(1, 1, 1)
-            cr.paint()
-            self.document.get_page(self.page).render(cr)
-        elif self.pixbuf is not None:
-            self._paint_image(cr)
-        for index, mark in enumerate(self.marks):
-            if mark.page != self.page:
-                continue
-            shown = self.pending if index == self.selected and self.tool == "select" and self.pending else mark
-            draw_marks(cr,[shown],self._paint_source)
-            if index == self.selected and self.mode == "markup":
-                x1,y1,x2,y2 = mark_bounds(cr, shown)
-                from luma_appkit.media_style import colour
-                ink=colour(area,'luma_blue')
-                cr.set_source_rgba(ink.red,ink.green,ink.blue,ink.alpha)
-                cr.set_line_width(1/max(viewport.scale,0.001))
-                cr.set_dash([4/max(viewport.scale,0.001)])
-                cr.rectangle(x1,y1,x2-x1,y2-y1)
-                cr.stroke()
-                cr.set_dash([])
+        if self.document is None and self.pixbuf is not None and self.selected is None:
+            self._paint_image_layer(cr)
+        else:
+            if self.document is not None:
+                cr.set_source_rgb(1, 1, 1)
+                cr.paint()
+                self.document.get_page(self.page).render(cr)
+            elif self.pixbuf is not None:
+                self._paint_image(cr)
+            for index, mark in enumerate(self.marks):
+                if mark.page != self.page:
+                    continue
+                shown = self.pending if index == self.selected and self.tool == "select" and self.pending else mark
+                draw_marks(cr,[shown],self._paint_source)
+                if index == self.selected and self.mode == "markup":
+                    x1,y1,x2,y2 = mark_bounds(cr, shown)
+                    from luma_appkit.media_style import colour
+                    ink=colour(area,'luma_blue')
+                    cr.set_source_rgba(ink.red,ink.green,ink.blue,ink.alpha)
+                    cr.set_line_width(1/max(viewport.scale,0.001))
+                    cr.set_dash([4/max(viewport.scale,0.001)])
+                    cr.rectangle(x1,y1,x2-x1,y2-y1)
+                    cr.stroke()
+                    cr.set_dash([])
         if self.pending and self.tool != "select":
             draw_marks(cr,[self.pending],self._paint_source)
         if self.live and not self.document:
@@ -756,6 +760,24 @@ class ViewerWindow(ViewerUI, AppWindow):
         cr.restore()
         if self.cropping and self.pixbuf is not None:
             self._draw_crop_overlay(cr, viewport)
+
+    def _paint_image_layer(self, cr):
+        """Retain unchanged document content while the live stroke advances."""
+        import cairo
+        image = self.pixbuf if self.hold else getattr(self, 'processed', self.pixbuf)
+        marks = self.marks
+        key = (id(self.pixbuf), id(image), id(marks), self.page, self.hold)
+        layer = getattr(self, '_image_layer', None)
+        if layer is None or layer[0] != key:
+            surface = cairo.RecordingSurface(cairo.CONTENT_COLOR_ALPHA,
+                (0, 0, self.pixbuf.get_width(), self.pixbuf.get_height()))
+            painter = cairo.Context(surface)
+            self._paint_image(painter)
+            draw_marks(painter, [mark for mark in marks if mark.page == self.page], self._paint_source)
+            # Keep the identity-keyed inputs alive and retain only one layer.
+            self._image_layer = layer = (key, (self.pixbuf, image, marks), surface)
+        cr.set_source_surface(layer[2], 0, 0)
+        cr.paint()
 
     def _paint_image(self, cr):
         image = self.pixbuf if self.hold else getattr(self, 'processed', self.pixbuf)

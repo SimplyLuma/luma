@@ -8,7 +8,7 @@
 
 Name:           gnome-shell-extension-tiling-shell
 Version:        17.3
-Release:        1.luma.27%{?dist}
+Release:        1.luma.28%{?dist}
 Summary:        Advanced tiling window management for GNOME Shell
 License:        GPL-3.0-or-later
 URL:            https://github.com/domferr/tilingshell
@@ -34,6 +34,7 @@ Patch13:        0016-luma-windows-open-straight-into-their-tile.patch
 Patch14:        0017-luma-floating-zone-editor-actions.patch
 Patch15:        0018-independent-window-spacing-and-resize.patch
 Patch16:        0019-rebuild-selection-after-monitor-reentry.patch
+Patch17:        0020-window-preview-drag.patch
 BuildArch:      noarch
 BuildRequires:  glib2
 BuildRequires:  nodejs
@@ -68,6 +69,7 @@ find . -type f -exec chmod 0644 {} +
 %patch -P 14 -p1
 %patch -P 15 -p1
 %patch -P 16 -p1
+%patch -P 17 -p1
 cp %{SOURCE1} ../LICENSE
 install -m 0644 %{SOURCE2} schemas/
 
@@ -77,6 +79,8 @@ glib-compile-schemas source/schemas
 %check
 # Every shipped script parses, and the schema is valid.
 find source -name '*.js' -print0 | xargs -0 -n1 node --check
+grep -qF 'beginWindowPreviewDrag(window)' source/extension.js
+grep -qF 'lumaPreviewWindowAt(window, x, y)' source/components/tilingsystem/tilingManager.js
 glib-compile-schemas --strict --dry-run source/schemas
 node %{SOURCE3} source
 # The Luma defaults apply: no panel button, an outer gap on every edge; the
@@ -110,11 +114,10 @@ grep -q '  holdPreplaced: 150,' source/components/lumaWindowMemory/windowMemory.
 %install
 install -d -m 0755 \
   %{buildroot}%{_datadir}/gnome-shell/extensions/%{extension_uuid}
-cp -a source/. \
+cp -r --no-preserve=mode,ownership source/. \
   %{buildroot}%{_datadir}/gnome-shell/extensions/%{extension_uuid}/
-# Patched files keep whatever mode patch left them with, and cp -a carries
-# it into the payload. Normalize here, after the last step that can change a
-# mode, and prove it below.
+# Normalize payload modes rather than copying source ACLs or ownership through
+# a rootless builder's bind mount. Prove the final installed modes below.
 payload=%{buildroot}%{_datadir}/gnome-shell/extensions/%{extension_uuid}
 find "$payload" -type d -exec chmod 0755 {} +
 find "$payload" -type f -exec chmod 0644 {} +

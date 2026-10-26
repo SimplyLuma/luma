@@ -769,6 +769,10 @@ def main() -> int:
     expected_empty_header = ("/* Generated from config/shared/design-tokens.json. */\n#pragma once\n"
         f"#define LUMA_EMPTY_MAX_WIDTH {t['max_width']}\n"
         f"#define LUMA_EMPTY_COMPACT_MAX_WIDTH {t['compact']['max_width']}\n")
+    frame_js = ROOT / 'src/luma-shell-presentation/frameTokens.js'
+    expected_frame_js = ('// SPDX-License-Identifier: Apache-2.0\n'
+        '// Generated from shared tablet_frame tokens; do not edit.\n'
+        'export const tabletFrame = Object.freeze(' + json.dumps(load_document()['lumaui']['tablet_frame'], sort_keys=True) + ');\n')
     expected_frame = render_frame_tokens()
     expected_icons = render_icon_tokens()
     expected = render("light")
@@ -786,6 +790,7 @@ def main() -> int:
                     (empty_output, expected_empty),
                     (empty_header, expected_empty_header),
                     (FRAME_OUTPUT, expected_frame),
+                    (frame_js, expected_frame_js),
                     (ICON_OUTPUT, expected_icons),
                     (OUTPUT, expected),
                     (DARK_OUTPUT, expected_dark),
@@ -812,6 +817,7 @@ def main() -> int:
     empty_header.write_text(expected_empty_header, encoding="utf-8")
     FRAME_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     FRAME_OUTPUT.write_text(expected_frame, encoding="utf-8")
+    frame_js.write_text(expected_frame_js, encoding="utf-8")
     ICON_OUTPUT.write_text(expected_icons, encoding="utf-8")
     OUTPUT.write_text(expected, encoding="utf-8")
     DARK_OUTPUT.write_text(expected_dark, encoding="utf-8")
