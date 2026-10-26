@@ -1,0 +1,355 @@
+ov13838 uses custom locking routines around starting/enabling and stopping/disabling streams.
+Rewrite it to using enable_streams/disable_streams.
+
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/media/i2c/ov13858.c
++++ b/drivers/media/i2c/ov13858.c
+@@ -1025,9 +1025,6 @@
+ 
+ 	/* Current mode */
+ 	const struct ov13858_mode *cur_mode;
+-
+-	/* Mutex for serialized access */
+-	struct mutex mutex;
+ };
+ 
+ #define to_ov13858(_sd)	container_of(_sd, struct ov13858, sd)
+@@ -1149,8 +1146,6 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	mutex_init(&ov13858->mutex);
+-	ctrl_hdlr->lock = &ov13858->mutex;
+ 	ov13858->link_freq = v4l2_ctrl_new_int_menu(ctrl_hdlr,
+ 				&ov13858_ctrl_ops,
+ 				V4L2_CID_LINK_FREQ,
+@@ -1226,26 +1221,32 @@
+ 
+ error:
+ 	v4l2_ctrl_handler_free(ctrl_hdlr);
+-	mutex_destroy(&ov13858->mutex);
+ 
+ 	return ret;
+ }
+ 
+ static void ov13858_update_pad_format(const struct ov13858_mode *mode,
+-				      struct v4l2_subdev_format *fmt)
++				      struct v4l2_mbus_framefmt *fmt)
+ {
+-	fmt->format.width = mode->width;
+-	fmt->format.height = mode->height;
+-	fmt->format.code = MEDIA_BUS_FMT_SGRBG10_1X10;
+-	fmt->format.field = V4L2_FIELD_NONE;
++	fmt->width = mode->width;
++	fmt->height = mode->height;
++	fmt->code = MEDIA_BUS_FMT_SGRBG10_1X10;
++	fmt->field = V4L2_FIELD_NONE;
+ }
+ 
+ /* Start streaming */
+-static int ov13858_start_streaming(struct ov13858 *ov13858)
++static int ov13858_enable_streams(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *state,
++				  u32 pad, u64 streams_mask)
+ {
++	struct ov13858 *ov13858 = to_ov13858(sd);
+ 	const struct reg_sequence *reg_sequence;
+ 	int sequence_length;
+ 	int ret, link_freq_index;
++
++	ret = pm_runtime_resume_and_get(ov13858->dev);
++	if (ret)
++		return ret;
+ 
+ 	/* Get out of from software reset */
+ 	ret = cci_write(ov13858->regmap, OV13858_REG_SOFTWARE_RST,
+@@ -1253,7 +1254,7 @@
+ 	if (ret) {
+ 		dev_err(ov13858->dev, "%s failed to set powerup registers\n",
+ 			__func__);
+-		return ret;
++		goto out;
+ 	}
+ 
+ 	/* Setup PLL */
+@@ -1264,7 +1265,7 @@
+ 				     sequence_length);
+ 	if (ret) {
+ 		dev_err(ov13858->dev, "%s failed to set plls\n", __func__);
+-		return ret;
++		goto out;
+ 	}
+ 
+ 	/* Apply default values of current mode */
+@@ -1274,29 +1275,39 @@
+ 				     sequence_length);
+ 	if (ret) {
+ 		dev_err(ov13858->dev, "%s failed to set mode\n", __func__);
+-		return ret;
++		goto out;
+ 	}
+ 
+ 	/* Apply customized values from user */
+ 	ret =  __v4l2_ctrl_handler_setup(ov13858->sd.ctrl_handler);
+ 	if (ret)
+-		return ret;
++		goto out;
+ 
+ 	ret = cci_write(ov13858->regmap, OV13858_REG_MODE_SELECT,
+ 			OV13858_MODE_STREAMING, NULL);
++out:
++	if (ret)
++		pm_runtime_put(ov13858->dev);
+ 
+ 	return ret;
+ }
+ 
+ /* Stop streaming */
+-static int ov13858_stop_streaming(struct ov13858 *ov13858)
++static int ov13858_disable_streams(struct v4l2_subdev *sd,
++				   struct v4l2_subdev_state *state,
++				   u32 pad, u64 streams_mask)
+ {
+-	return cci_write(ov13858->regmap, OV13858_REG_MODE_SELECT,
+-			 OV13858_MODE_STANDBY, NULL);
++	struct ov13858 *ov13858 = to_ov13858(sd);
++
++	cci_write(ov13858->regmap, OV13858_REG_MODE_SELECT,
++		  OV13858_MODE_STANDBY, NULL);
++	pm_runtime_put(ov13858->dev);
++
++	return 0;
+ }
+ 
+ static int
+-ov13858_set_pad_format(struct v4l2_subdev *sd,
++ov13858_set_format(struct v4l2_subdev *sd,
+ 		       struct v4l2_subdev_state *sd_state,
+ 		       struct v4l2_subdev_format *fmt)
+ {
+@@ -1309,8 +1320,6 @@
+ 	s64 pixel_rate;
+ 	s64 link_freq;
+ 
+-	mutex_lock(&ov13858->mutex);
+-
+ 	/* Only one raw bayer(GRBG) order is supported */
+ 	if (fmt->format.code != MEDIA_BUS_FMT_SGRBG10_1X10)
+ 		fmt->format.code = MEDIA_BUS_FMT_SGRBG10_1X10;
+@@ -1319,7 +1328,7 @@
+ 				      ARRAY_SIZE(supported_modes),
+ 				      width, height,
+ 				      fmt->format.width, fmt->format.height);
+-	ov13858_update_pad_format(mode, fmt);
++	ov13858_update_pad_format(mode, &fmt->format);
+ 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
+ 		framefmt = v4l2_subdev_state_get_format(sd_state, fmt->pad);
+ 		*framefmt = fmt->format;
+@@ -1347,8 +1356,6 @@
+ 					 h_blank, 1, h_blank);
+ 	}
+ 
+-	mutex_unlock(&ov13858->mutex);
+-
+ 	return 0;
+ }
+ 
+@@ -1383,34 +1390,15 @@
+ 	return 0;
+ }
+ 
+-static int ov13858_do_get_pad_format(struct ov13858 *ov13858,
+-				     struct v4l2_subdev_state *sd_state,
+-				     struct v4l2_subdev_format *fmt)
+-{
+-	struct v4l2_mbus_framefmt *framefmt;
+-
+-	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
+-		framefmt = v4l2_subdev_state_get_format(sd_state, fmt->pad);
+-		fmt->format = *framefmt;
+-	} else {
+-		ov13858_update_pad_format(ov13858->cur_mode, fmt);
+-	}
+-
+-	return 0;
+-}
+-
+-static int ov13858_get_pad_format(struct v4l2_subdev *sd,
+-				  struct v4l2_subdev_state *sd_state,
+-				  struct v4l2_subdev_format *fmt)
++static int ov13858_init_state(struct v4l2_subdev *sd,
++			      struct v4l2_subdev_state *sd_state)
+ {
+ 	struct ov13858 *ov13858 = to_ov13858(sd);
+-	int ret;
+-
+-	mutex_lock(&ov13858->mutex);
+-	ret = ov13858_do_get_pad_format(ov13858, sd_state, fmt);
+-	mutex_unlock(&ov13858->mutex);
+-
+-	return ret;
++
++	ov13858_update_pad_format(ov13858->cur_mode,
++				  v4l2_subdev_state_get_format(sd_state, 0));
++
++	return 0;
+ }
+ 
+ static int ov13858_get_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+@@ -1418,63 +1406,6 @@
+ 	*frames = OV13858_NUM_OF_SKIP_FRAMES;
+ 
+ 	return 0;
+-}
+-
+-/* Open sub-device */
+-static int ov13858_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+-{
+-	struct ov13858 *ov13858 = to_ov13858(sd);
+-	struct v4l2_mbus_framefmt *try_fmt = v4l2_subdev_state_get_format(fh->state,
+-									  0);
+-
+-	mutex_lock(&ov13858->mutex);
+-
+-	/* Initialize try_fmt */
+-	try_fmt->width = ov13858->cur_mode->width;
+-	try_fmt->height = ov13858->cur_mode->height;
+-	try_fmt->code = MEDIA_BUS_FMT_SGRBG10_1X10;
+-	try_fmt->field = V4L2_FIELD_NONE;
+-
+-	/* No crop or compose */
+-	mutex_unlock(&ov13858->mutex);
+-
+-	return 0;
+-}
+-
+-static int ov13858_set_stream(struct v4l2_subdev *sd, int enable)
+-{
+-	struct ov13858 *ov13858 = to_ov13858(sd);
+-	int ret = 0;
+-
+-	mutex_lock(&ov13858->mutex);
+-
+-	if (enable) {
+-		ret = pm_runtime_resume_and_get(ov13858->dev);
+-		if (ret < 0)
+-			goto err_unlock;
+-
+-		/*
+-		 * Apply default & customized values
+-		 * and then start streaming.
+-		 */
+-		ret = ov13858_start_streaming(ov13858);
+-		if (ret)
+-			goto err_rpm_put;
+-	} else {
+-		ov13858_stop_streaming(ov13858);
+-		pm_runtime_put(ov13858->dev);
+-	}
+-
+-	mutex_unlock(&ov13858->mutex);
+-
+-	return ret;
+-
+-err_rpm_put:
+-	pm_runtime_put(ov13858->dev);
+-err_unlock:
+-	mutex_unlock(&ov13858->mutex);
+-
+-	return ret;
+ }
+ 
+ static const struct v4l2_subdev_core_ops ov13858_core_ops = {
+@@ -1484,14 +1415,16 @@
+ };
+ 
+ static const struct v4l2_subdev_video_ops ov13858_video_ops = {
+-	.s_stream = ov13858_set_stream,
++	.s_stream = v4l2_subdev_s_stream_helper,
+ };
+ 
+ static const struct v4l2_subdev_pad_ops ov13858_pad_ops = {
+ 	.enum_mbus_code = ov13858_enum_mbus_code,
+-	.get_fmt = ov13858_get_pad_format,
+-	.set_fmt = ov13858_set_pad_format,
++	.get_fmt = v4l2_subdev_get_fmt,
++	.set_fmt = ov13858_set_format,
+ 	.enum_frame_size = ov13858_enum_frame_size,
++	.enable_streams = ov13858_enable_streams,
++	.disable_streams = ov13858_disable_streams,
+ };
+ 
+ static const struct v4l2_subdev_sensor_ops ov13858_sensor_ops = {
+@@ -1510,14 +1443,8 @@
+ };
+ 
+ static const struct v4l2_subdev_internal_ops ov13858_internal_ops = {
+-	.open = ov13858_open,
+-};
+-
+-static void ov13858_free_controls(struct ov13858 *ov13858)
+-{
+-	v4l2_ctrl_handler_free(ov13858->sd.ctrl_handler);
+-	mutex_destroy(&ov13858->mutex);
+-}
++	.init_state = ov13858_init_state,
++};
+ 
+ /* Verify chip ID */
+ static int ov13858_identify_module(struct ov13858 *ov13858)
+@@ -1544,8 +1471,9 @@
+ 	struct ov13858 *ov13858 = to_ov13858(sd);
+ 
+ 	v4l2_async_unregister_subdev(sd);
++	v4l2_subdev_cleanup(sd);
+ 	media_entity_cleanup(&sd->entity);
+-	ov13858_free_controls(ov13858);
++	v4l2_ctrl_handler_free(sd->ctrl_handler);
+ 
+ 	pm_runtime_disable(ov13858->dev);
+ }
+@@ -1609,9 +1537,12 @@
+ 		goto error_handler_free;
+ 	}
+ 
+-	ret = v4l2_async_register_subdev_sensor(&ov13858->sd);
+-	if (ret < 0)
++	ov13858->sd.state_lock = ov13858->ctrl_handler.lock;
++	ret = v4l2_subdev_init_finalize(&ov13858->sd);
++	if (ret < 0) {
++		dev_err(ov13858->dev, "failed to init subdev: %d", ret);
+ 		goto error_media_entity;
++	}
+ 
+ 	/*
+ 	 * Device is already turned on by i2c-core with ACPI domain PM.
+@@ -1619,16 +1550,25 @@
+ 	 */
+ 	pm_runtime_set_active(ov13858->dev);
+ 	pm_runtime_enable(ov13858->dev);
++
++	ret = v4l2_async_register_subdev_sensor(&ov13858->sd);
++	if (ret < 0)
++		goto error_v4l2_subdev;
++
+ 	pm_runtime_idle(ov13858->dev);
+ 
+ 	return 0;
++
++error_v4l2_subdev:
++	pm_runtime_disable(ov13858->dev);
++	pm_runtime_set_suspended(ov13858->dev);
++	v4l2_subdev_cleanup(&ov13858->sd);
+ 
+ error_media_entity:
+ 	media_entity_cleanup(&ov13858->sd.entity);
+ 
+ error_handler_free:
+-	ov13858_free_controls(ov13858);
+-	dev_err(ov13858->dev, "%s failed:%d\n", __func__, ret);
++	v4l2_ctrl_handler_free(ov13858->sd.ctrl_handler);
+ 
+ 	return ret;
+ }

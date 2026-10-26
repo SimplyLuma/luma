@@ -1,0 +1,95 @@
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/media/i2c/ov13858.c
++++ b/drivers/media/i2c/ov13858.c
+@@ -64,6 +64,11 @@
+ #define OV13858_ANA_GAIN_MAX		0x1fff
+ #define OV13858_ANA_GAIN_STEP		1
+ #define OV13858_ANA_GAIN_DEFAULT	0x80
++
++/* Rotate */
++#define OV13858_ROTATE_CONTROL		CCI_REG8(0x3820)
++#define OV13858_ISP_X_WIN_CONTROL	CCI_REG16(0x3810)
++#define OV13858_ISP_Y_WIN_CONTROL	CCI_REG16(0x3812)
+ 
+ /* Digital gain control */
+ #define OV13858_REG_B_MWB_GAIN		CCI_REG16(0x5100)
+@@ -233,8 +238,6 @@
+ 	{0x380d, 0x62},
+ 	{0x380e, 0x0c},
+ 	{0x380f, 0x8e},
+-	{0x3811, 0x04},
+-	{0x3813, 0x05},
+ 	{0x3814, 0x01},
+ 	{0x3815, 0x01},
+ 	{0x3816, 0x01},
+@@ -424,8 +427,6 @@
+ 	{0x380d, 0x62},
+ 	{0x380e, 0x0c},
+ 	{0x380f, 0x8e},
+-	{0x3811, 0x04},
+-	{0x3813, 0x05},
+ 	{0x3814, 0x03},
+ 	{0x3815, 0x01},
+ 	{0x3816, 0x03},
+@@ -615,8 +616,6 @@
+ 	{0x380d, 0x62},
+ 	{0x380e, 0x0c},
+ 	{0x380f, 0x8e},
+-	{0x3811, 0x08},
+-	{0x3813, 0x03},
+ 	{0x3814, 0x03},
+ 	{0x3815, 0x01},
+ 	{0x3816, 0x03},
+@@ -806,8 +805,6 @@
+ 	{0x380d, 0x62},
+ 	{0x380e, 0x0c},
+ 	{0x380f, 0x8e},
+-	{0x3811, 0x04},
+-	{0x3813, 0x05},
+ 	{0x3814, 0x07},
+ 	{0x3815, 0x01},
+ 	{0x3816, 0x07},
+@@ -1111,6 +1108,19 @@
+ 	case V4L2_CID_TEST_PATTERN:
+ 		ret = ov13858_enable_test_pattern(ov13858, ctrl->val);
+ 		break;
++	case V4L2_CID_HFLIP:
++		cci_write(ov13858->regmap, OV13858_ISP_X_WIN_CONTROL,
++			  ctrl->val ? 2 : 1, &ret);
++		cci_update_bits(ov13858->regmap, OV13858_ROTATE_CONTROL,
++				BIT(3), ctrl->val ? 0 : BIT(3), &ret);
++		break;
++
++	case V4L2_CID_VFLIP:
++		cci_write(ov13858->regmap, OV13858_ISP_Y_WIN_CONTROL,
++			  ctrl->val ? 2 : 1, &ret);
++		cci_update_bits(ov13858->regmap, OV13858_ROTATE_CONTROL,
++				BIT(4), ctrl->val << 4, &ret);
++		break;
+ 	default:
+ 		dev_info(ov13858->dev,
+ 			 "ctrl(id:0x%x,val:0x%x) is not handled\n",
+@@ -1142,7 +1152,7 @@
+ 	int ret;
+ 
+ 	ctrl_hdlr = &ov13858->ctrl_handler;
+-	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 10);
++	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 12);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -1194,6 +1204,12 @@
+ 	v4l2_ctrl_new_std(ctrl_hdlr, &ov13858_ctrl_ops, V4L2_CID_DIGITAL_GAIN,
+ 			  OV13858_DGTL_GAIN_MIN, OV13858_DGTL_GAIN_MAX,
+ 			  OV13858_DGTL_GAIN_STEP, OV13858_DGTL_GAIN_DEFAULT);
++
++	v4l2_ctrl_new_std(ctrl_hdlr, &ov13858_ctrl_ops, V4L2_CID_HFLIP,
++			  0, 1, 1, 0);
++
++	v4l2_ctrl_new_std(ctrl_hdlr, &ov13858_ctrl_ops, V4L2_CID_VFLIP,
++			  0, 1, 1, 0);
+ 
+ 	v4l2_ctrl_new_std_menu_items(ctrl_hdlr, &ov13858_ctrl_ops,
+ 				     V4L2_CID_TEST_PATTERN,

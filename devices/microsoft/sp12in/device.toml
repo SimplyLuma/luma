@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "microsoft"
+codename = "sp12in"
+name = "Surface Pro 12-inch (1st Edition, Snapdragon)"
+form_factor = "tablet"
+year = 2025
+soc = "qcom/purwa"
+tier = "experimental"
+maintainers = ["@nmcmil"]
+
+[kernel]
+# A source lock is experimental bring-up, not a published kernel tag.
+source_lock = "config/kernel/surface-pro12-7.3.json"
+release = "7.3.0-1.luma.surface12.fc44.aarch64"
+# Packaging revision is pinned independently of the unchanged module ABI.
+rpm_version_release = "7.3.0-2.luma.surface12.fc44"
+config = "config/kernel/surface-pro12.config"
+dtb = "qcom/x1p42100-microsoft-sp12in.dtb"
+
+[boot]
+config = "boot.toml"
+
+[userspace]
+# Match the AudioReach topology: playback MultiMedia1, capture MultiMedia2.
+rpm_requires = ["alsa-ucm >= 1.2.16.1"]
+
+[firmware]
+# Personal test input hashes, not a grant to publish the payloads.
+manifest = "firmware.manifest"
+manifest_sha256 = "a01e7fa4ba34501d9e90a5659612f25f010591958f2c150d5f92242f8ddd6f23"
+files = 14
+store = "/usr/lib/firmware"
+
+[install]
+guide = "INSTALL.md"
+method = "uefi"
+preserve = ["windows", "recovery", "esp"]
+
+[updates]
+ostree_ref = "luma/1/aarch64/microsoft-sp12in/nightly"

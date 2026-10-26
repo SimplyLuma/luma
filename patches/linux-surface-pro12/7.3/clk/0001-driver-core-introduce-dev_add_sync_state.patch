@@ -1,0 +1,147 @@
+We have cases where a device node represents a provider for multiple
+types of resources, like clocks, power-domains, resets, etc. We
+currently have dev_set_drv_sync_state() where a framework or driver
+can set the sync_state callback for a device node, however it currently
+only supports a single sync_state callback.
+
+The pmdomain subsystem currently sets up a sync_state callback in the
+core framework, and the clk subsystem will setup it's own separate
+sync_state callback in the core framework. These can collide with each
+other on some types of devices that have multiple types of resources.
+Additionally, some clk drivers already have their own separate
+sync_state callback already defined.
+
+Let's introduce support for allowing drivers and frameworks to add their
+own sync_state callback via a new function dev_add_sync_state() so that
+multiple sync_state callbacks can coexist.
+
+Link: https://lore.kernel.org/linux-clk/CAPx+jO9JiV16ePLk59hTQzEMnA96Va6Ns4jqJbwyZ6oTT0AjXA@mail.gmail.com/
+Signed-off-by: Brian Masney <bmasney@redhat.com>
+Assisted-by: Claude:claude-opus-4-6
+---
+ drivers/base/base.h    |  7 +++++
+ drivers/base/core.c    | 29 +++++++++++++++++++++++++++++
+ include/linux/device.h | 11 +++++++++++
+ 4 files changed, 47 insertions(+)
+
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/base/base.h
++++ b/drivers/base/base.h
+@@ -178,6 +178,8 @@
+ 
+ 	if (!dev)
+ 		return false;
++	if (!list_empty(&dev->sync_state_list))
++		return true;
+ 	drv = READ_ONCE(dev->driver);
+ 	if (drv && drv->sync_state)
+ 		return true;
+@@ -188,10 +190,15 @@
+ 
+ static inline void dev_sync_state(struct device *dev)
+ {
++	struct sync_state_entry *entry;
++
+ 	if (dev->bus->sync_state)
+ 		dev->bus->sync_state(dev);
+ 	else if (dev->driver && dev->driver->sync_state)
+ 		dev->driver->sync_state(dev);
++
++	list_for_each_entry(entry, &dev->sync_state_list, node)
++		entry->fn(dev);
+ }
+ 
+ int driver_add_groups(const struct device_driver *drv,
+--- a/drivers/base/core.c
++++ b/drivers/base/core.c
+@@ -2616,6 +2616,7 @@
+ static void device_release(struct kobject *kobj)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
++	struct sync_state_entry *entry, *tmp;
+ 	struct device_private *p = dev->p;
+ 
+ 	/*
+@@ -2628,6 +2629,11 @@
+ 	 * possible memory leak.
+ 	 */
+ 	devres_release_all(dev);
++
++	list_for_each_entry_safe(entry, tmp, &dev->sync_state_list, node) {
++		list_del(&entry->node);
++		kfree(entry);
++	}
+ 
+ 	kfree(dev->dma_range_map);
+ 	kfree(dev->driver_override.name);
+@@ -3243,11 +3249,34 @@
+ 	INIT_LIST_HEAD(&dev->links.consumers);
+ 	INIT_LIST_HEAD(&dev->links.suppliers);
+ 	INIT_LIST_HEAD(&dev->links.defer_sync);
++	INIT_LIST_HEAD(&dev->sync_state_list);
+ 	dev->links.status = DL_DEV_NO_DRIVER;
+ 	dev_assign_dma_coherent(dev, dma_default_coherent);
+ 	swiotlb_dev_init(dev);
+ }
+ EXPORT_SYMBOL_GPL(device_initialize);
++
++int dev_add_sync_state(struct device *dev,
++                      void (*fn)(struct device *dev))
++{
++       struct sync_state_entry *entry;
++
++       if (!dev || !dev->driver)
++               return 0;
++
++       list_for_each_entry(entry, &dev->sync_state_list, node)
++       if (entry->fn == fn)
++               return 0;
++
++       entry = kmalloc_obj(*entry);
++       if (!entry)
++               return -ENOMEM;
++
++       entry->fn = fn;
++       list_add_tail(&entry->node, &dev->sync_state_list);
++       return 0;
++}
++EXPORT_SYMBOL_GPL(dev_add_sync_state);
+ 
+ struct kobject *virtual_device_parent(void)
+ {
+--- a/include/linux/device.h
++++ b/include/linux/device.h
+@@ -644,6 +644,8 @@
+  * @driver_override: Driver name to force a match.  Do not touch directly; use
+  *		     device_set_driver_override() instead.
+  * @links:	Links to suppliers and consumers of this device.
++ * @sync_state_list: List of sync_state callbacks added by subsystem
++ *		frameworks (e.g. clk, genpd) via dev_add_sync_state().
+  * @power:	For device power management.
+  *		See Documentation/driver-api/pm/devices.rst for details.
+  * @pm_domain:	Provide callbacks that are executed during system suspend,
+@@ -725,6 +727,7 @@
+ 					 */
+ 
+ 	struct dev_links_info	links;
++	struct list_head	sync_state_list;
+ 	struct dev_pm_info	power;
+ 	struct dev_pm_domain	*pm_domain;
+ 
+@@ -1139,6 +1142,14 @@
+ 	return 0;
+ }
+ 
++struct sync_state_entry {
++	struct list_head	node;
++	void			(*fn)(struct device *dev);
++};
++
++int dev_add_sync_state(struct device *dev,
++			   void (*fn)(struct device *dev));
++
+ static inline void dev_set_removable(struct device *dev,
+ 				     enum device_removable removable)
+ {

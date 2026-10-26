@@ -1,0 +1,46 @@
+From: Luma device integration <noreply@simplyluma.com>
+Subject: [PATCH] net: qrtr: smd: release send lock before failed endpoint cleanup
+
+With the scoped opening/closing race fix, a failed rpmsg endpoint open
+calls qrtr_endpoint_unregister() while still holding send_lock. The core
+HELLO worker holds node->ep_lock while calling the transport xmit hook,
+which waits for send_lock. Unregister waits for node->ep_lock in turn.
+
+Keep registration and channel opening under send_lock, but release it
+before unregistering a failed endpoint. The queued transmitter then sees
+the NULL channel and returns -ENODEV, allowing teardown to complete.
+
+Observed on Surface Pro 12-inch: IPCRTR udev workers and qrtr_hello_work
+remain blocked after rpmsg reports that endpoint creation failed.
+No Signed-off-by is supplied; this local device patch has not been
+submitted upstream or physically qualified.
+
+--- a/net/qrtr/smd.c
++++ b/net/qrtr/smd.c
+@@ -78,14 +78,20 @@
+ 	if (rc)
+ 		return rc;
+ 
+-	/* Block sending until we have fully opened the channel */
+-	guard(mutex)(&qdev->send_lock);
++	/* Block sending until we have fully opened the channel. */
++	scoped_guard(mutex, &qdev->send_lock) {
++		rc = qrtr_endpoint_register(&qdev->ep, QRTR_EP_NID_AUTO);
++		if (rc)
++			return rc;
+ 
+-	rc = qrtr_endpoint_register(&qdev->ep, QRTR_EP_NID_AUTO);
+-	if (rc)
+-		return rc;
++		qdev->channel = rpmsg_dev_open_ept(rpdev, qcom_smd_qrtr_callback, qdev);
++	}
+ 
+-	qdev->channel = rpmsg_dev_open_ept(rpdev, qcom_smd_qrtr_callback, qdev);
++	/*
++	 * The HELLO worker can hold the endpoint lock while waiting for
++	 * send_lock. Drop send_lock before unregistering a failed channel,
++	 * because unregister also needs the endpoint lock.
++	 */
+ 	if (!qdev->channel) {
+ 		qrtr_endpoint_unregister(&qdev->ep);
+ 		return -EREMOTEIO;

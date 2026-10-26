@@ -217,6 +217,46 @@ class Checker:
         if files != firmware.get("files"):
             self.error(path, f"{files} files listed but device.toml says {firmware.get('files')}")
 
+    def check_kernel_source(self, device_dir: Path, kernel: dict) -> None:
+        source = kernel.get("source_lock")
+        if not source:
+            return
+        where = device_dir / "device.toml"
+        path = (self.root / source).resolve()
+        if not path.is_relative_to(self.root.resolve()) or not path.is_file():
+            self.error(where, "kernel.source_lock must name a repository file")
+            return
+        try:
+            lock = json.loads(path.read_text())
+            if lock.get("schema") != "org.projectluma.kernel-source/v1":
+                raise ValueError("unknown kernel source schema")
+            if lock.get("release") != kernel.get("release"):
+                raise ValueError("kernel source release differs from device manifest")
+            rpm_pin = kernel.get("rpm_version_release")
+            if rpm_pin and rpm_pin.split('-', 1)[0] != lock['release'].split('-', 1)[0]:
+                raise ValueError("kernel RPM version differs from kernel ABI")
+            if lock.get("device_tree") != kernel.get("dtb"):
+                raise ValueError("kernel source device tree differs from device manifest")
+            for row in lock["sources"].values():
+                if not row["url"].startswith("https://") or not SHA256.fullmatch(row["sha256"]):
+                    raise ValueError("kernel archives need HTTPS URLs and SHA-256 pins")
+            for row in lock["patches"]:
+                if not SHA256.fullmatch(row["sha256"]):
+                    raise ValueError("kernel patches need SHA-256 pins")
+                relative = PurePosixPath(row["path"])
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ValueError("unsafe kernel patch path")
+                if row["source"] == "repository":
+                    patch = (self.root / row["path"]).resolve()
+                    if not patch.is_relative_to(self.root.resolve()) or not patch.is_file():
+                        raise ValueError("kernel patch is missing")
+                    if hashlib.sha256(patch.read_bytes()).hexdigest() != row["sha256"]:
+                        raise ValueError("kernel patch differs from its SHA-256 pin")
+                elif row["source"] not in lock["sources"]:
+                    raise ValueError("unknown kernel patch source")
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            self.error(where, f"invalid kernel source lock: {exc}")
+
     def check_initramfs(self, device_dir: Path, initramfs: dict | None) -> None:
         """Repository files the boot image's initramfs is built from must exist as recorded."""
         if not initramfs:
@@ -253,6 +293,12 @@ class Checker:
                 self.error(path, f"{generated!r} is generated per image; do not fix it in args")
         if tier != "experimental" and REQUIRED_ENFORCING not in args:
             self.error(path, f"cmdline.args must contain {REQUIRED_ENFORCING!r} (SELinux enforcing)")
+        if boot.get("format") == "uefi":
+            device = self.load_toml(device_dir / "device.toml") or {}
+            if boot.get("uefi", {}).get("dtb") != device.get("kernel", {}).get("dtb"):
+                self.error(path, "UEFI device tree must match the kernel device tree")
+            if tier != "experimental" and boot.get("uefi", {}).get("secure_boot") != "signed":
+                self.error(path, "non-experimental UEFI profiles require signed boot artifacts")
         soc_boot = (soc or {}).get("boot", {})
         if "format" not in boot and "format" not in soc_boot:
             self.error(path, "boot format is set neither here nor in the SoC")
@@ -322,6 +368,7 @@ class Checker:
                 release = device.get("kernel", {}).get("release", "")
                 if tag and release and not tag.endswith("-" + release):
                     self.error(device_dir / "device.toml", "kernel.tag must end with the kernel release")
+                self.check_kernel_source(device_dir, device.get("kernel", {}))
                 self.check_initramfs(device_dir, device.get("initramfs"))
                 if (device_dir / "firmware.manifest").is_file():
                     self.check_firmware_manifest(device_dir, device.get("firmware", {}))

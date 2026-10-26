@@ -1,0 +1,83 @@
+v4l2_subdev_state_get_format should also be called when fmt->which != V4L2_SUBDEV_FORMAT_TRY.
+Rewrite to return early when fmt->which == V4L2_SUBDEV_FORMAT_TRY
+
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/media/i2c/ov13858.c
++++ b/drivers/media/i2c/ov13858.c
+@@ -1329,48 +1329,44 @@
+ {
+ 	struct ov13858 *ov13858 = to_ov13858(sd);
+ 	const struct ov13858_mode *mode;
+-	struct v4l2_mbus_framefmt *framefmt;
+ 	s32 vblank_def;
+ 	s32 vblank_min;
+ 	s64 h_blank;
+ 	s64 pixel_rate;
+ 	s64 link_freq;
+ 
+-	/* Only one raw bayer(GRBG) order is supported */
+-	if (fmt->format.code != MEDIA_BUS_FMT_SGRBG10_1X10)
+-		fmt->format.code = MEDIA_BUS_FMT_SGRBG10_1X10;
+ 
+ 	mode = v4l2_find_nearest_size(supported_modes,
+ 				      ARRAY_SIZE(supported_modes),
+ 				      width, height,
+ 				      fmt->format.width, fmt->format.height);
+ 	ov13858_update_pad_format(mode, &fmt->format);
+-	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
+-		framefmt = v4l2_subdev_state_get_format(sd_state, fmt->pad);
+-		*framefmt = fmt->format;
+-	} else {
+-		ov13858->cur_mode = mode;
+-		__v4l2_ctrl_s_ctrl(ov13858->link_freq, mode->link_freq_index);
+-		link_freq = link_freq_menu_items[mode->link_freq_index];
+-		pixel_rate = link_freq_to_pixel_rate(link_freq);
+-		__v4l2_ctrl_s_ctrl_int64(ov13858->pixel_rate, pixel_rate);
+-
+-		/* Update limits and set FPS to default */
+-		vblank_def = ov13858->cur_mode->vts_def -
+-			     ov13858->cur_mode->height;
+-		vblank_min = ov13858->cur_mode->vts_min -
+-			     ov13858->cur_mode->height;
+-		__v4l2_ctrl_modify_range(
+-			ov13858->vblank, vblank_min,
+-			OV13858_VTS_MAX - ov13858->cur_mode->height, 1,
+-			vblank_def);
+-		__v4l2_ctrl_s_ctrl(ov13858->vblank, vblank_def);
+-		h_blank =
+-			link_freq_configs[mode->link_freq_index].pixels_per_line
+-			 - ov13858->cur_mode->width;
+-		__v4l2_ctrl_modify_range(ov13858->hblank, h_blank,
+-					 h_blank, 1, h_blank);
+-	}
++	*v4l2_subdev_state_get_format(sd_state, fmt->pad) = fmt->format;
++
++	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY)
++		return 0;
++
++	ov13858->cur_mode = mode;
++	__v4l2_ctrl_s_ctrl(ov13858->link_freq, mode->link_freq_index);
++	link_freq = link_freq_menu_items[mode->link_freq_index];
++	pixel_rate = link_freq_to_pixel_rate(link_freq);
++	__v4l2_ctrl_s_ctrl_int64(ov13858->pixel_rate, pixel_rate);
++
++	/* Update limits and set FPS to default */
++	vblank_def = ov13858->cur_mode->vts_def -
++		     ov13858->cur_mode->height;
++	vblank_min = ov13858->cur_mode->vts_min -
++		     ov13858->cur_mode->height;
++	__v4l2_ctrl_modify_range(
++		ov13858->vblank, vblank_min,
++		OV13858_VTS_MAX - ov13858->cur_mode->height, 1,
++		vblank_def);
++	__v4l2_ctrl_s_ctrl(ov13858->vblank, vblank_def);
++	h_blank =
++		link_freq_configs[mode->link_freq_index].pixels_per_line
++		 - ov13858->cur_mode->width;
++	__v4l2_ctrl_modify_range(ov13858->hblank, h_blank,
++				 h_blank, 1, h_blank);
+ 
+ 	return 0;
+ }
