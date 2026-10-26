@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 38
+%global native_release 39
 # The native host is shared. ARM uses the source-built engine; x86 keeps its
 # existing engine and original release identity.
 %ifarch aarch64
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261025.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261026.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -77,7 +77,7 @@ Requires:       gtk4
 Requires:       gtk3
 # Menu headings, shortcut chips and disabled rows take solid inks (libadwaita 0039).
 Requires:       libadwaita >= 1.9.3-1.luma.48
-Requires:       luma-developer-platform >= 0.1.0-1.luma.102
+Requires:       luma-developer-platform >= 0.1.0-1.luma.117
 Requires:       luma-application-installer >= 0.1.0-1.luma.61
 Requires:       mutter
 Requires:       dbus-broker
