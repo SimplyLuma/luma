@@ -1,0 +1,203 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: desktop app drawer and folder stacks on existing controller
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -160,6 +160,12 @@
+     <file>ui/lumaPresentation/statusGrid.js</file>
+     <file>ui/lumaPresentation/fillSlider.js</file>
+     <file>ui/lumaPresentation/optionsSurface.js</file>
++    <file>ui/lumaPresentation/appDrawer.js</file>
++    <file>ui/lumaPresentation/launcherFolders.js</file>
++    <file>ui/lumaPresentation/fileFaces.js</file>
++    <file>ui/lumaPresentation/launcherModel.js</file>
++    <file>ui/lumaPresentation/launcherFolders.css</file>
++    <file>ui/lumaPresentation/launcher.svg</file>
+     <file>ui/lumaPresentation/frameTokens.js</file>
+     <file>ui/lumaPresentation/switcherDrag.js</file>
+     <file>ui/shelfMetrics.js</file>
+diff --git a/js/ui/lumaDockFolders.js b/js/ui/lumaDockFolders.js
+--- a/js/ui/lumaDockFolders.js
++++ b/js/ui/lumaDockFolders.js
+@@ -22,6 +22,7 @@
+ // the rail is a part of the dock island, separated it is the 'folders' island,
+ // placed and dragged like any other. One rail, one setting, no second copy.
+ 
++import {LauncherFolders} from './lumaPresentation/launcherFolders.js';
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+@@ -933,6 +934,8 @@
+         global.display.connectObject('workareas-changed', () => this._place(), this);
+ 
+         this._sync();
++        this._desktopUI = new LauncherFolders(this);
++        this._syncTiles();
+         this._restoreDetached();
+     }
+ 
+@@ -941,13 +944,16 @@
+     get uris() {
+         const pinned = this._settings.get_strv('dock-folders');
+         // Preserve explicit choices (including an empty list) and managed
+-        // policy. Only untouched desktop defaults gain the two shortcuts.
++        // policy. Only untouched defaults gain the standard folder shortcuts.
+         if (pinned.length || this._settings.get_user_value('dock-folders') !== null ||
+             !this._settings.is_writable('dock-folders'))
+             return pinned;
+-        const downloads = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD);
+-        return [APPLICATIONS_URI, ...(downloads && downloads !== GLib.get_home_dir()
+-            ? [Gio.File.new_for_path(downloads).get_uri()] : [])];
++        const directories = [GLib.UserDirectory.DIRECTORY_DOWNLOAD,
++            ...((this._shelf._lumaPresentationMode ?? 'desktop') === 'desktop'
++                ? [GLib.UserDirectory.DIRECTORY_DOCUMENTS, GLib.UserDirectory.DIRECTORY_PICTURES] : [])];
++        const paths = directories.map(kind => GLib.get_user_special_dir(kind))
++            .filter(path => path && path !== GLib.get_home_dir());
++        return [APPLICATIONS_URI, ...new Set(paths.map(path => Gio.File.new_for_path(path).get_uri()))];
+     }
+ 
+     applicationMetrics() {
+@@ -990,7 +996,7 @@
+ 
+     // What the rail draws: the folders that are pinned, while they are shown.
+     get shown() {
+-        return (this.uris.length > 0 || this._folderDrag === true) && this.visible;
++        return (this.uris.some(uri => !this._desktopUI?.enabled || uri !== APPLICATIONS_URI) || this._folderDrag === true) && this.visible;
+     }
+ 
+     get edge() {
+@@ -1134,12 +1140,14 @@
+             `width: ${vertical ? SHELF_DIVIDER_LENGTH : DIVIDER_WIDTH}px`,
+             `height: ${vertical ? DIVIDER_WIDTH : SHELF_DIVIDER_LENGTH}px`,
+         ].join('; '));
++        this._desktopUI?.syncOrientation();
+     }
+ 
+     _syncTiles() {
+         this._syncOrientation();
+         for (const tile of this._tiles.values())
+             tile.sync();
++        this._desktopUI?.sync();
+     }
+ 
+     // ── Opening ─────────────────────────────────────────────────────────────
+@@ -1153,6 +1161,8 @@
+     }
+ 
+     open(model) {
++        if (this._desktopUI?.openApplications(model)) return;
++        this._desktopUI?.willClose();
+         const switching = !!this.openFolder && !this.detached;
+         this.openFolder = model;
+         if (!switching)
+@@ -1179,6 +1189,7 @@
+     }
+ 
+     close() {
++        this._desktopUI?.willClose();
+         if (!this.openFolder)
+             return;
+         this._cancelThumbnails();
+@@ -1237,6 +1248,7 @@
+     }
+ 
+     _render() {
++        if (this._desktopUI?.render()) return;
+         const model = this.openFolder;
+         if (!model)
+             return;
+@@ -1374,7 +1386,7 @@
+         const top = adjustment.value - adjustment.page_size;
+         const bottom = adjustment.value + 2 * adjustment.page_size;
+         const grid = this.viewFor(this.openFolder) === 'grid';
+-        const iconSize = grid ? FILER_GRID_ICON : 22;
++        const iconSize = this._desktopUI?.panelActive ? 96 : grid ? FILER_GRID_ICON : 22;
+         let budget = 12;
+         const thumbs = [];
+         for (const actor of this._itemActors()) {
+@@ -1415,7 +1427,16 @@
+             global.create_app_launch_context(0, -1), null, null);
+     }
+ 
++    // Reuse Filer policy and the existing thumbnail cache; lookup never decodes
++    // an image or starts a thumbnail worker in Shell's input path.
++    previewFor(item, size = 32) {
++        if (!thumbnailAllowed(item, size)) return null;
++        if (!this._thumbs.has(item.uri)) this._thumbs.set(item.uri, thumbnailFor(item.file, item));
++        return this._thumbs.get(item.uri);
++    }
++
+     onScrolled() {
++        this._desktopUI?.onScrolled();
+         this._cancelThumbnails();
+         this._queueThumbnails();
+     }
+@@ -1735,6 +1756,7 @@
+     // Arrow keys move through the items in both arrangements, Enter opens one,
+     // Escape closes, attached or not.
+     onKey(event) {
++        if (this._desktopUI?.onKey(event)) return Clutter.EVENT_STOP;
+         if (!this.openFolder)
+             return Clutter.EVENT_PROPAGATE;
+         const symbol = event.get_key_symbol();
+@@ -1772,6 +1794,7 @@
+     }
+ 
+     _itemActors() {
++        if (this._desktopUI?.panelActive) return this._desktopUI.itemActors();
+         if (!this.openFolder || !this._surface)
+             return [];
+         const body = this._surface.body;
+@@ -2030,6 +2053,8 @@
+     }
+ 
+     destroy() {
++        this._desktopUI?.destroy();
++        this._desktopUI = null;
+         if (this._placeLater)
+             GLib.source_remove(this._placeLater);
+         this._placeLater = 0;
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1728,6 +1728,8 @@
+     }
+ 
+     _setDimmed(dim) {
++        // Studio replaces the page; dimming its ancestor isolates the backdrop.
++        if (this._surfaceLayout) { this._dimEffect.enabled = false; return; }
+         const val = 127 * (1 + (dim ? 1 : 0) * DIM_BRIGHTNESS);
+         const color = new Cogl.Color({
+             red: val,
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -518,7 +518,7 @@
+         // Dock cross-axis padding belongs INSIDE the scroll viewport so lifted
+         // artwork is not clipped at its resting tile bounds.
+         const insets = this._content.has_style_class_name('luma-shelf-clock-button')
+-            ? (this._vertical ? [padding,6,padding,6] : [0,16.5,0,16.5])
++            ? (this._vertical ? [padding,6,padding,6] : [0,padding,0,padding])
+             : this._content._statusActive ? (this._vertical ? [8.5,6,8.5,6] : [8.5,10.5,8.5,9])
+             : this._content._lumaDock
+             ? (this._vertical ? [padding, 0, padding, 0] : [0, padding, 0, padding])
+@@ -1075,6 +1075,7 @@
+         if ((this._lumaPresentationMode ?? 'desktop') === 'desktop' && mode !== 'desktop')
+             this._restorePanelActors();
+         this._lumaPresentationMode = mode;
++        this.dockFolders?._desktopUI?.sync();
+         this._sync();
+     }
+ 
+@@ -3126,6 +3127,10 @@
+             this._dockScroll.set_size(this._thickness * scale, length);
+         else
+             this._dockScroll.set_size(length, -1);
++        // The fixed viewport can keep the same width across mode changes.
++        // Invalidate every cross-size request cached by the material, even
++        // when setting that width did not emit notify::width.
++        this._dockMaterial.queue_relayout();
+         const fade = (clip ? DASH_TILE_SIZE : Math.min(this._padding, DASH_TILE_SIZE / 2)) * scale;
+         this._dockScroll.update_fade_effect(new Clutter.Margin({
+             top: this._vertical ? fade : 0, bottom: this._vertical ? fade : 0,

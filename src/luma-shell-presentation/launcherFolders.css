@@ -1,0 +1,69 @@
+/* LumaUI Desktop launcher and folder surfaces. One fill per painted surface. */
+.lumaui-drawer-backdrop { background-color: rgba(14,15,18,.38); }
+.lumaui-drawer-backdrop.luma-surface-light { background-color: rgba(18,20,24,.30); }
+.lumaui-drawer-search { border-radius: 14px; background-color: rgba(32,33,36,.60); border: 1px solid rgba(255,255,255,.14); padding: 0 14px; color: white; font-size: 14px; }
+.lumaui-drawer-search:focus { border-color: rgba(255,255,255,.30); }
+.lumaui-drawer-search StIcon { color: rgba(255,255,255,.65); }
+.lumaui-app-tile { padding: 0; border: 0; border-radius: 16px; background-color: transparent; }
+.lumaui-app-tile:hover { background-color: rgba(255,255,255,.06); }
+.lumaui-app-tile:focus { box-shadow: inset 0 0 0 2px rgba(255,255,255,.70); }
+.lumaui-app-tile StBoxLayout { spacing: 12px; padding-top: 10px; }
+.lumaui-app-name { font-size: 12.5px; font-weight: 550; max-width: 108px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.lumaui-drawer-dots { spacing: 0; }
+.lumaui-drawer-page { width: 7px; height: 7px; padding: 6px 4.5px; background-color: transparent; }
+.lumaui-drawer-dot { width: 7px; height: 7px; border-radius: 4px; background-color: rgba(255,255,255,.30); }
+.lumaui-drawer-page:checked .lumaui-drawer-dot { background-color: white; }
+.lumaui-drawer-page:focus { border: 1px solid rgba(255,255,255,.7); border-radius: 6px; }
+.lumaui-drawer-empty { font-size: 14px; color: rgba(255,255,255,.72); }
+.lumaui-launcher-button { padding: 0; border: 0; border-radius: 10px; background-color: transparent; }
+.lumaui-launcher-button:hover { background-color: rgba(255,255,255,.04); }
+.lumaui-launcher-button:focus { border: 2px solid rgba(255,255,255,.7); }
+.lumaui-launcher-divider { background-color: rgba(255,255,255,.08); margin: 0 3px; }
+.lumaui-folder-panel .luma-dockf-surface { background-color: rgba(32,33,36,.65); border: 1px solid rgba(255,255,255,.06); border-radius: 24px; padding: 14px; box-shadow: 0 8px 24px -4px rgba(0,0,0,.4); }
+.lumaui-folder-panel .luma-dockf-name { font-size: 14px; font-weight: 650; }
+.lumaui-folder-panel .luma-dockf-meta { font-size: 11.5px; color: rgba(255,255,255,.50); }
+.lumaui-folder-sort { padding: 0 10px; height: 30px; background-color: rgba(0,0,0,.26); border: 1px solid rgba(0,0,0,.42); border-radius: 10px; color: #e7e9e8; font-size: 12.5px; }
+/* The shared LumaUI small button recipe, expressed for Shell's St renderer. */
+.lumaui-folder-panel .luma-dockf-act.lumaui-folder-open {
+    background-color: rgba(242,243,245,.08); color: #f2f3f5;
+    border: 1px solid rgba(255,255,255,.08); border-radius: 10px;
+    box-shadow: none; font-size: 13px; font-weight: 700;
+}
+.lumaui-folder-open StBoxLayout { spacing: 7px; }
+.lumaui-folder-panel .luma-dockf-act.lumaui-folder-open:hover { background-color: rgba(255,255,255,.12); }
+.lumaui-folder-panel .luma-dockf-act.lumaui-folder-open:active { background-color: rgba(255,255,255,.108); }
+.lumaui-folder-panel .luma-dockf-act.lumaui-folder-open:focus { border-color: rgba(255,255,255,.40); }
+.lumaui-folder-empty { spacing: 6px; }
+.lumaui-folder-empty-icon { color: rgba(242,243,245,.36); margin-bottom: 2px; }
+.lumaui-folder-empty-title { font-size: 14px; font-weight: 650; color: rgba(242,243,245,.86); }
+.lumaui-folder-empty-description { font-size: 12px; color: rgba(242,243,245,.50); }
+.lumaui-file-card, .lumaui-file-card:hover, .lumaui-file-card:active { padding: 0; border: 0; background-color: transparent; border-radius: 8px; box-shadow: none; }
+.lumaui-file-card:focus { box-shadow: inset 0 0 0 2px rgba(255,255,255,.45); }
+.lumaui-file-card > StBoxLayout { spacing: 6px; }
+.lumaui-file-name { font-size: 12px; font-weight: 550; color: rgba(255,255,255,.84); }
+.lumaui-file-card:hover .lumaui-file-name { color: white; }
+.lumaui-file-meta { font-size: 11px; color: rgba(255,255,255,.46); }
+.lumaui-file-face { background-color: transparent; }
+.lumaui-face-picture { background-color: rgba(255,255,255,.08); border-radius: 8px; }
+.lumaui-file-face.miniature .lumaui-face-picture { border: 1.5px solid #f4f3ef; border-radius: 2px; }
+.lumaui-face-media { background-color: rgba(0,0,0,.5); border-radius: 5px; padding: 3px; color: white; }
+.lumaui-face-count { font-size: 10px; font-weight: 650; color: white; padding: 0 6px 6px 0; }
+.lumaui-folder-arrow { width: 30px; height: 44px; border-radius: 12px; background-color: rgba(32,33,36,.65); border: 1px solid rgba(255,255,255,.06); color: rgba(255,255,255,.8); }
+.lumaui-folder-arrow:hover { border-color: rgba(255,255,255,.16); background-color: rgba(38,39,42,.68); }
+.lumaui-folder-notch { background-color: rgba(32,33,36,.65); border-radius: 2px; }
+.lumaui-folder-stack-back { border-radius: 10px; box-shadow: 0 2px 3px rgba(0,0,0,.30); }
+.lumaui-folder-stack-pocket { border-radius: 5px 5px 10px 10px; box-shadow: 0 -2px 5px rgba(0,0,0,.28); }
+.lumaui-folder-stack-symbol { color: rgba(255,255,255,.95); }
+.lumaui-folder-panel .luma-dockf-head { padding: 0 0 12px 4px; spacing: 6px; border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 12px; }
+.lumaui-folder-panel .luma-dockf-surface.luma-surface-dark,
+.lumaui-folder-panel .luma-dockf-surface.luma-surface-frost { background-color: rgba(32,33,36,.65); }
+.lumaui-folder-sort StBoxLayout { spacing: 8px; }
+.lumaui-drawer-backdrop.lumaui-floating-material.luma-surface-dark,
+.lumaui-drawer-backdrop.lumaui-floating-material.luma-surface-frost { background-color: rgba(14,15,18,.38); }
+.lumaui-drawer-backdrop.lumaui-floating-material.lumaui-floating-reduced { background-color: #15171c; }
+.lumaui-folder-panel .luma-dockf-surface.lumaui-floating-reduced { background-color: #202124; }
+.lumaui-folder-panel.luma-surface-light .luma-dockf-surface { background-color: #f1f2f3; color: #191d22; }
+.lumaui-folder-panel.luma-surface-light .lumaui-file-name { color: rgba(25,29,34,.85); }
+.lumaui-folder-panel.luma-surface-light .lumaui-file-meta { color: rgba(25,29,34,.60); }
+
+.lumaui-drawer-search:focus { box-shadow: none; border-color: rgba(255,255,255,.30); }

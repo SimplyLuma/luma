@@ -288,12 +288,11 @@ export class Presentation {
             option.checked = selected === choice;
             option.setOrnament(option.checked ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
         }
-        const caption = this._modeButtons.get(selected)?.label.text ?? selected;
         this._options.iconName = {desktop: 'luma-monitor-symbolic', tablet: 'luma-tablet-symbolic',
             mobile: 'luma-smartphone-symbolic'}[mode] ?? 'luma-monitor-symbolic';
         this._options.menu.setHeader(this._options.iconName, _('Experience'));
-        this._options.subtitle = selected === 'automatic'
-            ? `${caption} · ${this._modeButtons.get(mode)?.label.text ?? mode}` : caption;
+        this._options.title = this._modeButtons.get(mode)?.label.text ?? mode;
+        this._options.subtitle = null;
         if (this.mode === mode) {
             if ((favoritesChanged || homeChanged) && mode !== 'desktop') this._queueRebuild();
             return;
@@ -302,10 +301,12 @@ export class Presentation {
         this._editor.setEditing(false);
         this.mode = mode;
         this._gridDrag.setMode();
-        Main.shelf?.setPresentationMode?.(mode);
         if (mode === 'desktop') {
+            // Return borrowed status actors before measuring/showing the Dash.
             this._leaveHandheld();
+            Main.shelf?.setPresentationMode?.(mode);
         } else {
+            Main.shelf?.setPresentationMode?.(mode);
             if (previous === 'desktop')
                 this._enterHandheld();
             this._rebuild();
@@ -358,6 +359,12 @@ export class Presentation {
             if (!menu._mainPage || this._optionsInstalled) return;
             // Register through the same native detail-page path as Wi-Fi/Bluetooth.
             menu.addItem(this._options, 2);
+            if (menu._surfaceLayout) {
+                menu._surfaceLayout.setModePicker(this._options);
+                this._optionsInstalled = true;
+                this._handheldOptions?.setEnabled(this.mode !== 'desktop');
+                return;
+            }
             this._options.get_parent().remove_child(this._options);
             this._modeUtilityRow = new St.BoxLayout({style_class: 'luma-options-toggle-row luma-experience-row',
                 x_expand: true});

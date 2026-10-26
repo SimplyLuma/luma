@@ -16,7 +16,7 @@ tar -czf "$rpmbuild_dir/SOURCES/luma-home-widgets-0.1.0.tar.gz" -C "$work_dir" l
 install -m 0644 "$repo_root/packaging/rpm/luma-home-widgets.spec" "$rpmbuild_dir/SPECS/"
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
   set -euo pipefail
-  dnf5 -y install gcc meson glib2-devel json-glib-devel gobject-introspection-devel gtk3-devel python3-gobject-base dbus-daemon rpm-build
+  dnf5 -y install gcc meson glib2-devel json-glib-devel gobject-introspection-devel gtk3-devel python3-gobject-base dbus-daemon xorg-x11-server-Xvfb rpm-build
   rpmbuild -ba --define "_topdir $PWD" SPECS/luma-home-widgets.spec
 '
 mkdir -p "$output_dir"

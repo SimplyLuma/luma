@@ -90,9 +90,9 @@ diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.greso
      <file>luma-cast.css</file>
      <file>luma-shelf.css</file>
 +    <file>luma-presentation.css</file>
+     <file>luma-dock-applications.svg</file>
+     <file>luma-dock-downloads.svg</file>
      <file>gnome-shell-start.svg</file>
-     <file>pad-osd.css</file>
-     <file>prairie-daybreak.svg</file>
 diff --git a/po/POTFILES.in b/po/POTFILES.in
 --- a/po/POTFILES.in
 +++ b/po/POTFILES.in
