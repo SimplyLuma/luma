@@ -491,9 +491,9 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
         usr/lib64/gnome-shell/libshell-18.so
       grep -Fq "Clutter.OffscreenRedirect.NEVER" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-dark" \
+      grep -Fq ".luma-shelf-material.luma-surface-dark" \
         luma-shelf.css
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-glass" \
+      grep -Fq ".luma-shelf-material.luma-surface-glass" \
         luma-shelf.css
       # The Quick Options island is one surface: its controls are never
       # marked on their own; the shelf washes the whole island (0161).
