@@ -128,6 +128,45 @@ def check_bundle_identity(path,ref,commit):
         raise ValueError('Bundle content identity differs.')
 
 
+def prepare_single_bundle(path, ref, sha256, heads):
+    """Admit an independently pinned completed bundle, never a baseline."""
+    if not re.fullmatch('[0-9a-f]{64}',sha256 or '') or ref not in heads:
+        raise ValueError('Completed bundle needs a pinned hash and selected ref.')
+    before=source_identity(path)
+    with path.open('rb') as stream:
+        if hashlib.file_digest(stream,'sha256').hexdigest()!=sha256:
+            raise ValueError('Completed bundle differs from its independent hash.')
+    check_bundle_identity(path,ref,heads[ref])
+    if source_identity(path)!=before:
+        raise ValueError('Completed bundle changed during admission.')
+    return {'path':path,'ref':ref,'commit':heads[ref],
+            'sha256':sha256,'bytes':before[2],'identity':before}
+
+
+def copy_single_bundle(cache, target):
+    source=cache['path']
+    if source_identity(source)!=cache['identity']:
+        raise ValueError('Completed bundle changed before copying.')
+    hasher=hashlib.sha256();size=0
+    descriptor=os.open(source,os.O_RDONLY|os.O_NOFOLLOW)
+    with os.fdopen(descriptor,'rb') as incoming,target.open('xb') as outgoing:
+        opened=os.fstat(incoming.fileno())
+        if (opened.st_dev,opened.st_ino)!=(cache['identity'][0],cache['identity'][1]):
+            raise ValueError('Completed bundle changed before opening.')
+        while chunk:=incoming.read(1024**2):
+            size+=len(chunk)
+            if size>cache['bytes']:raise ValueError('Completed bundle grew during copying.')
+            hasher.update(chunk);outgoing.write(chunk)
+        outgoing.flush();os.fsync(outgoing.fileno())
+    if size!=cache['bytes'] or hasher.hexdigest()!=cache['sha256']:
+        raise ValueError('Completed bundle copy differs from its independent pin.')
+    with target.open('rb') as stream:
+        if hashlib.file_digest(stream,'sha256').hexdigest()!=cache['sha256']:
+            raise ValueError('Completed bundle copy failed full readback.')
+    if source_identity(source)!=cache['identity']:
+        raise ValueError('Completed bundle changed during copying.')
+
+
 def copy_reused_bundle(cache, ref, commit, target):
     row=reuse_candidate(cache,ref,commit)
     if row is None:raise ValueError('Reusable bundle does not match the currently authenticated commit.')
@@ -156,12 +195,19 @@ def copy_reused_bundle(cache, ref, commit, target):
     return dict(row)
 
 
-def produce(repo,site,registry,output,arch,shipping=None,minimum_free_bytes=0,reuse_baseline=None,reuse_manifest_sha256=None):
+def produce(repo,site,registry,output,arch,shipping=None,minimum_free_bytes=0,reuse_baseline=None,reuse_manifest_sha256=None,reuse_bundle=None,reuse_bundle_ref=None,reuse_bundle_sha256=None):
+    # Check the actual supported-bundle API before expensive compression.
+    import gi
+    gi.require_version('Flatpak','1.0')
+    from gi.repository import Flatpak
+    if not hasattr(Flatpak,'BundleRef'):raise ValueError('Flatpak bundle API is unavailable.')
     if minimum_free_bytes<0:raise ValueError('Baseline physical reserve must be nonnegative.')
     if output.exists():raise ValueError('Baseline producer output is immutable.')
     if arch not in {'x86_64','aarch64'}:raise ValueError('Unsupported baseline architecture.')
     if (reuse_baseline is None)!=(reuse_manifest_sha256 is None):
         raise ValueError('Baseline reuse requires both a source directory and its admitted manifest SHA256.')
+    if any(value is not None for value in (reuse_bundle,reuse_bundle_ref,reuse_bundle_sha256)) and not all(value is not None for value in (reuse_bundle,reuse_bundle_ref,reuse_bundle_sha256)):
+        raise ValueError('Completed-bundle reuse requires file, ref and independent SHA256.')
     entries=json.loads(registry.read_text())['applications']
     ids=selected_applications(entries,json.loads(shipping.read_text()) if shipping else None)
     refs=['runtime/'+name+'/'+arch+'/44' for name in RUNTIMES]+['app/'+name+'/'+arch+'/beta' for name in sorted(ids)]
@@ -193,13 +239,17 @@ def produce(repo,site,registry,output,arch,shipping=None,minimum_free_bytes=0,re
         # Every current ref above has independently passed the ordinary signed
         # summary/commit admission before a matching prior bundle is considered.
         reuse=prepare_reuse(reuse_baseline,arch,public,reuse_manifest_sha256) if reuse_baseline else None
+        single=prepare_single_bundle(reuse_bundle,reuse_bundle_ref,reuse_bundle_sha256,heads) if reuse_bundle else None
         output.mkdir(mode=0o700,parents=True)
         rows=[];reused=0
         for index,ref in enumerate(refs):
             kind,name,_arch,branch=ref.split('/')
             target=output/('bundle-'+str(index)+'.flatpak')
             candidate=reuse_candidate(reuse,ref,heads[ref])
-            if candidate is not None:
+            if single is not None and ref==single['ref']:
+                require_capacity(output,minimum_free_bytes+single['bytes'])
+                copy_single_bundle(single,target);reused+=1
+            elif candidate is not None:
                 require_capacity(output,minimum_free_bytes+candidate['bytes'])
                 copy_reused_bundle(reuse,ref,heads[ref],target);reused+=1
             else:
@@ -244,4 +294,7 @@ if __name__=='__main__':
     parser.add_argument('--minimum-free-bytes',type=int,default=0,help='Retain this measured physical-space reserve before and after every bundle.')
     parser.add_argument('--reuse-baseline',type=Path,help='Previously verified protected baseline containing identical signed bundles.')
     parser.add_argument('--reuse-manifest-sha256',help='Manifest digest pinned by the prior protected baseline admission.')
-    args=parser.parse_args();produce(args.repo,args.site,args.registry,args.output,args.arch,args.shipping_apps,args.minimum_free_bytes,args.reuse_baseline,args.reuse_manifest_sha256)
+    parser.add_argument('--reuse-bundle',type=Path,help='Protected completed bundle from an interrupted producer; never supplies a baseline manifest.')
+    parser.add_argument('--reuse-bundle-ref',help='Exact selected ref authenticated again against the signed repository.')
+    parser.add_argument('--reuse-bundle-sha256',help='Independent full SHA256 captured before resuming.')
+    args=parser.parse_args();produce(args.repo,args.site,args.registry,args.output,args.arch,args.shipping_apps,args.minimum_free_bytes,args.reuse_baseline,args.reuse_manifest_sha256,args.reuse_bundle,args.reuse_bundle_ref,args.reuse_bundle_sha256)
