@@ -145,7 +145,7 @@ python3 - <<'PY_CHECK'
 import json
 from pathlib import Path
 rows = [json.loads(line) for line in Path("%{_vpath_builddir}/meson-logs/testlog.json").read_text().splitlines() if line.strip()]
-expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch")}
+expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch")}
 names = {row["name"] for row in rows}
 # The thirteen platform executables, plus LumaUI-1's own part tests, token check and C/Python parity.
 lumaui = {name for name in names if name.startswith("luma-developer-platform:lumaui-")}
