@@ -19,11 +19,11 @@ a = p.parse_args()
 # new successful matching toolkit cohort with refreshed run/archive receipts.
 # Whole-archive digests are GitHub's retained upload identities, not rebuild hashes.
 artifacts = {
-    'aarch64': (12667077058, '9861d67972d1bb6ca52edd8e5c17b1a6412c6343a3b7b2b2af61b3266e5a9b4f'),
-    'x86_64': (12668020019, 'f558e275857115178156c05110aea28b0a485cd3daa9a60b65812cc4413df077'),
+    'aarch64': (12693178186, '43ddb07adc40940f95d727a8ecfed26c3ba75aa9b6d458d88fae88b13fbf4ae6'),
+    'x86_64': (12692698325, '9bd2b7b60dac0a5d64aca1022001bd45fe8ff0268e311eb4003940936839e83f'),
 }
-run = 40357494359
-source = 'e236b494dbf38ca0b8d377470f1b5fad7af13f19'
+run = 40408751360
+source = '6863ccf3dd549a4d555cb14f8e9e1e8d77249561'
 merge = source
 repo = 'SimplyLuma/luma'
 # Apply the same verified source and consumed-pin checks to the pinned whole
@@ -114,7 +114,18 @@ with tempfile.TemporaryFile() as archive:
         for entry in z.infolist():
             if not any(part.startswith('work.') for part in Path(entry.filename).parts):
                 z.extract(entry, a.output)
-assert (a.output / 'SOURCE-REVISION').read_text().strip() == merge, 'toolkit source receipt mismatch'
+receipt_source = (a.output / 'SOURCE-REVISION').read_text().strip()
+if receipt_source != source:
+    # Pull-request workflows build GitHub's test merge rather than head_sha.
+    # Reuse only when that exact commit directly includes the recorded head
+    # and has the identical complete tree; base-only changes fail closed.
+    assert record['event'] == 'pull_request', 'toolkit source receipt mismatch'
+    assert len(receipt_source) == 40 and all(c in '0123456789abcdef' for c in receipt_source)
+    receipt_commit = api(f'git/commits/{receipt_source}')
+    source_commit = api(f'git/commits/{source}')
+    assert source in [parent['sha'] for parent in receipt_commit['parents']], 'toolkit merge head mismatch'
+    assert receipt_commit['tree']['sha'] == source_commit['tree']['sha'], 'toolkit merge source tree mismatch'
+merge = receipt_source
 covered = set()
 for manifest in a.output.glob('packages/**/SHA256SUMS'):
     for line in manifest.read_text().splitlines():
