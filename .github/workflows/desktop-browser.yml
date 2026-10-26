@@ -60,7 +60,7 @@ jobs:
           fetch-depth: 0
       - id: scope
         env:
-          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           echo "needed=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE")" >> "$GITHUB_OUTPUT"
           echo "matrix=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE" --print-matrix)" >> "$GITHUB_OUTPUT"
