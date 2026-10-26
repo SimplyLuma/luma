@@ -27,13 +27,19 @@ set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
 
 build_id=
-case "${1:-}" in
-  --build-id) build_id=${2:?} ;;
-  *) printf 'usage: %s --build-id YYYYMMDD.N\n' "$0" >&2; exit 2 ;;
-esac
+prepare_only=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --build-id) build_id=${2:?}; shift 2 ;;
+    --prepare-only) prepare_only=1; shift ;;
+    *) printf 'usage: %s --build-id YYYYMMDD.N [--prepare-only]\n' "$0" >&2; exit 2 ;;
+  esac
+done
+[[ "$build_id" =~ ^[0-9]{8}\.[0-9]+$ ]] || luma_os_die 'invalid build id'
 
 luma_os_require_root
-luma_os_require_tools ostree gpg python3 flock
+luma_os_require_tools ostree python3 flock
+if [ "$prepare_only" = 0 ]; then luma_os_require_tools gpg; fi
 luma_os_check_host
 luma_os_check_space 20
 
@@ -167,6 +173,7 @@ metadata_file="$build_dir/commit-metadata.args"
   printf -- '--add-metadata-string=org.projectluma.build-id=%s\n' "$build_id"
   printf -- '--add-metadata-string=org.projectluma.build-version=%s\n' "$LUMA_OS_VERSION"
   printf -- '--add-metadata-string=org.projectluma.channel=%s\n' "$channel"
+  printf -- '--add-metadata-string=org.projectluma.architecture=%s\n' "$LUMA_OS_ARCH"
   # The release's name as people see it (os-release PRETTY_NAME, ADR-040).
   [ -z "${LUMA_DISPLAY_NAME:-}" ] ||
     printf -- '--add-metadata-string=org.projectluma.display-name=%s\n' "$LUMA_DISPLAY_NAME"
@@ -199,6 +206,22 @@ python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" verify \
   luma_os_die 'candidate differs beyond exact image directory metadata and sensitive file mode repairs'
 python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" check "$candidate_repo" "$candidate" "$modes" >>"$log" ||
   luma_os_die "candidate commit has file modes that differ from the image (see $log)"
+
+# A keyless native builder stops here. No signed-export success file or
+# channel ref is written until the authorized release signer finishes it.
+if [ "$prepare_only" = 1 ]; then
+  [ ! -e "$build_dir/export.env" ] || luma_os_die 'build already has a completed signed export'
+  root_dirtree=$(python3 "$luma_os_repo_root/scripts/os/lib/ostree_metadata.py" root-dirtree "$candidate_repo" "$candidate")
+  python3 "$luma_os_repo_root/scripts/os/lib/prepared_export.py" capture \
+    --build-dir "$build_dir" --candidate "$candidate" --tree-commit "$merge" \
+    --parent "$parent" --ref "$ref" --kernel "$kver" --root-dirtree "$root_dirtree"
+  python3 "$luma_os_repo_root/scripts/os/lib/prepared_export.py" verify \
+    --build-dir "$build_dir" --receipt-sha256 "$(luma_os_sha256 "$build_dir/export-prepared.json")" \
+    --source-revision "$LUMA_SOURCE_REVISION" --image-id "$LUMA_IMAGE_ID" \
+    --parent "$parent" --repo "$candidate_repo" --env-output "$build_dir/export-prepared.env"
+  luma_os_log "prepared unsigned candidate $candidate; release signing and qualification are pending"
+  exit 0
+fi
 
 luma_os_gpg_unlock
 trap luma_os_gpg_lock EXIT
