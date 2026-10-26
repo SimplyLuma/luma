@@ -30,9 +30,12 @@ def api(path):
 if a.run_id:
     assert not a.providers_only, 'select one admission mode'
     run = a.run_id
-    source = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'rev-parse', 'HEAD'], text=True).strip()
-    merge = source
 record = api(f'actions/runs/{run}')
+if a.run_id:
+    source = record['head_sha']
+    assert len(source) == 40 and all(c in '0123456789abcdef' for c in source)
+    merge = source
+    subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'merge-base', '--is-ancestor', source, 'HEAD'], check=True)
 assert record['conclusion'] == 'success' and record['head_sha'] == source, 'toolkit run identity/result mismatch'
 if a.run_id:
     assert record['path'] == '.github/workflows/desktop-toolkit.yml' and record['name'] == 'Native desktop toolkit'
