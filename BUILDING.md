@@ -225,3 +225,6 @@ before the normal GPG signing and signed summary steps create `export.env`.
 Release keys and passphrases remain on the authorized signing infrastructure.
 Return the signed candidate to the native test host for installer, boot and
 update qualification; signing alone does not authorize publication.
+
+The Prairie icon theme produces a noarch RPM on either native Fedora builder.
+Build it once and reuse the same RPM for both desktop architectures.
