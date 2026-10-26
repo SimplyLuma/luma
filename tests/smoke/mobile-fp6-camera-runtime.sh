@@ -13,8 +13,8 @@ bash -n "$builder"
 [ "$FP6_LIBCAMERA_COMMIT" = 191e202178f02430b5942397c70d215cdd2056fa ]
 [ "$FP6_LIBCAMERA_FP6_PATCHSET_COMMIT" = \
   738148b51af05a0a5fe1608ff289180cf46470e2 ]
-[ "$(find "$repo_root/patches/libcamera" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 16 ]
-for number in $(seq 16 31); do
+[ "$(find "$repo_root/patches/libcamera" -maxdepth 1 -type f -name '*.patch' | wc -l)" -eq 18 ]
+for number in $(seq 16 33); do
   printf -v prefix '%04d' "$number"
   matches=("$repo_root"/patches/libcamera/"$prefix"-*.patch)
   [ "${#matches[@]}" -eq 1 ] && [ -s "${matches[0]}" ]
