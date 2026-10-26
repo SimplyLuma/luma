@@ -19,12 +19,32 @@ INPUTS = {
 }
 
 
-def affected(component, paths, architecture=None):
+# These are the desktop pins actually consumed by the provider builders.
+# WebKit's own source pins live in config/shared/webkitgtk-inputs.env.
+DESKTOP_PIN_PREFIXES = {
+    'webkit': ('FEDORA_RPM_BUILD_CONTAINER',),
+    'browser': ('FEDORA_RPM_BUILD_CONTAINER', 'GTK4_', 'LIBADWAITA_',
+                'LUMA_DEVELOPER_PLATFORM_'),
+}
+
+
+def changed_input_keys(before, after):
+    def values(body):
+        return dict(line.split('=', 1) for line in body.splitlines()
+                    if re.match(r'^[A-Z][A-Z0-9_]*=', line))
+    old, new = values(before), values(after)
+    return {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+
+
+def affected(component, paths, architecture=None, input_keys=None):
     if component not in INPUTS:
         raise ValueError('Unknown desktop provider')
     # Workflow/selector-only metadata changes do not invalidate a qualified
     # package. workflow_dispatch explicitly requests a fresh build when needed.
     for path in paths:
+        if path == 'config/desktop/inputs.env' and input_keys is not None:
+            if not any(key.startswith(DESKTOP_PIN_PREFIXES[component]) for key in input_keys):
+                continue
         if component == 'browser' and architecture is not None:
             engine_arch = {'native-30-engine.sha256': 'x86_64',
                            'native-31-engine.sha256': 'aarch64'}.get(Path(path).name)
@@ -61,11 +81,17 @@ def main():
     data = subprocess.check_output(['git', '-C', str(ROOT), 'diff', '--name-only', '-z',
                                     args.base, 'HEAD', '--'], text=True)
     paths = list(filter(None, data.split('\0')))
+    input_keys = None
+    if 'config/desktop/inputs.env' in paths:
+        before = subprocess.check_output(['git', '-C', str(ROOT), 'show',
+                                          f'{args.base}:config/desktop/inputs.env'], text=True)
+        after = (ROOT / 'config/desktop/inputs.env').read_text()
+        input_keys = changed_input_keys(before, after)
     if args.print_matrix:
         print(json.dumps(matrix([arch for arch in ('x86_64', 'aarch64')
-                                 if affected(args.component, paths, arch)])))
+                                 if affected(args.component, paths, arch, input_keys)])))
     else:
-        print('true' if affected(args.component, paths) else 'false')
+        print('true' if affected(args.component, paths, input_keys=input_keys) else 'false')
 
 
 if __name__ == '__main__':
