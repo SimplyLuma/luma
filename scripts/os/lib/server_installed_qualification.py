@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
-PROVIDER = 'server-qemu-tcg-aarch64-ssd/v1'
+PROVIDER = 'server-qemu-tcg-aarch64/v2'
 VIRTUAL_BYTES = 48 * 1024**3
 FLOOR_BYTES = 20 * 1024**3
 LAUNCHERS = ('org.projectluma.Tide', 'org.projectluma.Messages', 'org.projectluma.Ari')
@@ -949,7 +949,7 @@ def create_fresh_disk(fixture: Path, expected: dict, qemu_img: Path,
     parent = target.parent.stat()
     require(parent.st_uid == os.getuid() and stat.S_IMODE(parent.st_mode) & 0o077 == 0,
             'Fresh disk parent must be private to producer')
-    require(parent.st_dev == Path(p['iso_path']).stat().st_dev, 'VM disk must share admitted MAIN SSD lifecycle')
+    require(parent.st_dev == Path(p['iso_path']).stat().st_dev, 'VM disk must share the admitted ISO filesystem')
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     os.close(fd)
     # Only this exclusively created empty inode may be initialized by qemu-img.
