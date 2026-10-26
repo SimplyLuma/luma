@@ -23,6 +23,14 @@ prairie=${LUMA_CONTINUITY_PRAIRIE_RPM:-}
 [ -f "$prairie" ] || { printf 'error: LUMA_CONTINUITY_PRAIRIE_RPM must name a qualified shared-app RPM\n' >&2;exit 1; }
 [ "$(rpm -qp --qf '%{NAME}' "$prairie")" = prairie-core-apps ] || exit 1
 install -m 0644 "$prairie" "$work/dependencies/"
+# Installing the protocol provider also requires its non-Fedora background
+# service. Carry the exact pin instead of relying on a pre-populated builder.
+background_nevra=$(awk '$1 ~ /^luma-background-/ {print $1;exit}' "$repo_root/config/desktop/packages.txt")
+[ -n "$background_nevra" ] || { printf 'error: no pinned background service\n' >&2;exit 1; }
+background=${LUMA_BACKGROUND_RPM:-$repo_root/build/packages/luma-background/RPMS/noarch/$background_nevra.rpm}
+[ -f "$background" ] || { printf 'error: build the pinned background service first: %s\n' "$background" >&2;exit 1; }
+[ "$(rpm -qp --qf '%{NVRA}' "$background")" = "$background_nevra" ] || exit 1
+install -m 0644 "$background" "$work/dependencies/"
 architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 [ "$architecture" = "$(uname -m)" ] || { printf 'error: Connect requires a native builder\n' >&2;exit 1; }
 case "$architecture" in
