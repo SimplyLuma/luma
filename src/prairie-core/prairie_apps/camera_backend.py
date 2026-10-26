@@ -15,7 +15,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -44,6 +44,22 @@ class CameraDevice:
     preview_saturation: float | None = None
     desktop_uvc: bool = False
     stream_format: str = "video/x-raw"
+    portal_device: object = field(default=None, repr=False, compare=False)
+
+    @property
+    def managed_stream(self) -> bool:
+        return self.desktop_uvc or self.portal_device is not None
+
+
+def create_camera_source(device: CameraDevice, name: str):
+    """Keep portal-granted device/FD selection attached to every capture path."""
+    if device.portal_device is not None:
+        return device.portal_device.create_element(name)
+    from gi.repository import Gst
+    source = Gst.ElementFactory.make("libcamerasrc", name)
+    if source is not None:
+        source.set_property("camera-name", device.identifier)
+    return source
 
 
 _CAMERA_LINE = re.compile(r"^\s*\d+:\s+(.+?)\s+\((/.+)\)\s*$")

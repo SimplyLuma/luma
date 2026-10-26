@@ -118,3 +118,9 @@ the end of editing or extension teardown. Monitor changes cancel the draft
 because the editing canvas uses fixed geometry. The editor uses one neutral
 canvas without the inherited blue window preview or window-gap insets. Actual
 window spacing and saved normalized zone coordinates remain unchanged.
+
+`0020-window-preview-drag.patch` exposes a transactional preview drag for the
+shared native window switcher. It reuses the active layout, existing tile
+preview/hit testing and ordinary tile placement, including spacing and window
+memory. Previewing does not change the real window's tile or geometry; only a
+valid drop commits. Cancellation and extension teardown close the preview.

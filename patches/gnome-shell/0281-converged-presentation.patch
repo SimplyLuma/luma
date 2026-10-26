@@ -1,0 +1,142 @@
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -26,6 +26,7 @@
+ import * as PadOsd from './padOsd.js';
+ import * as Panel from './panel.js';
+ import * as Shelf from './shelf.js';
++import * as Presentation from './lumaPresentation/presentation.js';
+ import * as LumaStickyDock from './lumaStickyDock.js';
+ import * as RunDialog from './runDialog.js';
+ import * as WelcomeDialog from './welcomeDialog.js';
+@@ -67,6 +68,7 @@
+ export let extensionManager = null;
+ export let panel = null;
+ export let shelf = null;
++export let presentation = null;
+ export let stickyDock = null;
+ export let stickyDockManager = null;
+ export let overview = null;
+@@ -345,6 +347,16 @@
+             shelf = null;
+             logError(e, 'the Shelf could not be built');
+         }
++        if (shelf) {
++            try {
++                presentation = new Presentation.Presentation({
++                    stylesheet: Gio.File.new_for_uri(
++                        'resource:///org/gnome/shell/theme/luma-presentation.css'),
++                });
++            } catch (e) {
++                logError(e, 'presentation could not be initialized');
++            }
++        }
+         // The note stack lives on the same lanes the Shelf does: it is chrome
+         // for the same reason, and on the handheld lane the application can
+         // ask for a layer surface itself.
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1029,8 +1029,16 @@
+              GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld' && this._workAreaTracked);
+     }
+ 
++    setPresentationMode(mode) {
++        if ((this._lumaPresentationMode ?? 'desktop') === 'desktop' && mode !== 'desktop')
++            this._restorePanelActors();
++        this._lumaPresentationMode = mode;
++        this._sync();
++    }
++
+     _isDesktopSession() {
+-        return !Main.sessionMode.isGreeter &&
++        return (this._lumaPresentationMode ?? 'desktop') === 'desktop' &&
++            !Main.sessionMode.isGreeter &&
+             Main.sessionMode.currentMode !== 'unlock-dialog' &&
+             GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld';
+     }
+@@ -1540,4 +1548,7 @@
+     _restorePanelActors() {
++        if ((this._lumaPresentationMode ?? 'desktop') !== 'desktop' &&
++            !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter)
++            return;
+         const indicators = Main.panel.statusArea;
+         const quick = indicators.quickSettings;
+         if (quick?._statusActive) {
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -150,6 +150,15 @@
+     <file>ui/screenshot.js</file>
+     <file>ui/lumaStickyDock.js</file>
+     <file>ui/shelf.js</file>
++    <file>ui/lumaPresentation/presentation.js</file>
++    <file>ui/lumaPresentation/layout.js</file>
++    <file>ui/lumaPresentation/grid.js</file>
++    <file>ui/lumaPresentation/homeEditor.js</file>
++    <file>ui/lumaPresentation/widgets.js</file>
++    <file>ui/lumaPresentation/tabletTasks.js</file>
++    <file>ui/lumaPresentation/handheldOptions.js</file>
++    <file>ui/lumaPresentation/frameTokens.js</file>
++    <file>ui/lumaPresentation/switcherDrag.js</file>
+     <file>ui/shelfMetrics.js</file>
+     <file>ui/shelfArrangement.js</file>
+     <file>ui/shelfArrange.js</file>
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -13,6 +13,7 @@
+     <file>luma-share.css</file>
+     <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
++    <file>luma-presentation.css</file>
+     <file>gnome-shell-start.svg</file>
+     <file>pad-osd.css</file>
+     <file>prairie-daybreak.svg</file>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -45,3 +45,7 @@
+ js/ui/lookingGlass.js
++js/ui/lumaPresentation/presentation.js
++js/ui/lumaPresentation/homeEditor.js
++js/ui/lumaPresentation/tabletTasks.js
++js/ui/lumaPresentation/handheldOptions.js
+ js/ui/main.js
+ js/ui/messageList.js
+diff --git a/js/ui/status/network.js b/js/ui/status/network.js
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -1390,7 +1390,7 @@
+ }, class NMToggle extends QuickMenuToggle {
+     constructor() {
+-        super();
++        super({visible: false});
+ 
+         this._items = new Map();
+         this._itemSorter = new ItemSorter({trackMru: true});
+ 
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -18,6 +18,12 @@
+ import {smoothOffscreenSampling} from './iconMask.js';
+ 
+ let activeGrid = null;
++let windowDragHandler = null;
++
++// The presentation supplies placement policy for these same native cards.
++export function setWindowDragHandler(handler) {
++    windowDragHandler = handler;
++}
+ 
+ // The arrangement Grid last showed, as stable window sequences. Rebuilding the
+ // row in most-recently-used order every time moves the window you just left to
+@@ -84,6 +90,7 @@
+         return;
+     activeGrid = new GridPopup(backward, modifierMask);
+     activeGrid.open();
++    windowDragHandler?.(activeGrid);
+ }
+ 
+ // Rounds a preview and shrinks it to the card. The body is laid out at the

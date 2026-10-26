@@ -1,5 +1,20 @@
 @import url("luma-empty-state-tokens.css");
 
+/* Status safe areas belong to the structural provider, above application
+ * composition. Legacy app padding resets must not cover system indicators.
+ * The window continues painting its own background through the status strip. */
+window.luma-app-window.lumaui-tablet-mode .luma-window-body,
+window.luma-app-window.lumaui-tablet-mode .luma-window-body.lumaui-frame-sidebar {
+  padding: var(--lumaui-tablet-frame-top) var(--lumaui-tablet-frame-edge) var(--lumaui-tablet-frame-edge);
+}
+window.luma-app-window.lumaui-tablet-mode .luma-island {
+  padding-top: 0; border-radius: var(--lumaui-tablet-frame-island-radius);
+}
+/* A legacy phone bleed request does not transfer Tablet safe-area ownership.
+ * Edge-to-edge clients explicitly opt in and inset their own interactive UI. */
+window.luma-app-window.lumaui-tablet-mode.lumaui-edge-to-edge .luma-window-body { padding: 0; }
+window.luma-app-window.lumaui-tablet-mode.lumaui-edge-to-edge .luma-island { border-radius: 0; }
+
 /* Frost and Glass select libadwaita's light colour scheme for legible ink,
  * but that must never turn an application's title region into an opaque Light
  * slab. The root window owns the one physical translucent material. Every

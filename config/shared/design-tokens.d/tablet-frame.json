@@ -1,0 +1,13 @@
+{
+  "lumaui": {
+    "tablet_frame": {
+      "status": 44,
+      "top": 52,
+      "edge": 12,
+      "island_radius": 20,
+      "places": 248,
+      "list": 340,
+      "details": 300
+    }
+  }
+}

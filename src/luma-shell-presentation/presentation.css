@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.luma-converged-home, .luma-converged-status {
+  font-family: Figtree;
+  color: white;
+}
+.luma-converged-status { padding: 0 24px; spacing: 12px; }
+.luma-converged-status .panel-button { background: transparent; border: 0; box-shadow: none; padding: 0; min-height: 44px; }
+.luma-converged-status .panel-button.luma-shelf-material {
+  background-color: transparent; color: inherit; border: 0; box-shadow: none;
+  padding: 0; border-radius: 0; min-height: 44px;
+}
+.luma-converged-status .system-status-icon { icon-size: 18px; padding: 0; }
+.luma-converged-status .panel-button > .panel-status-indicators-box { spacing: 6px; }
+.system-status-icon.luma-camera-privacy-indicator { icon-size: 16px; }
+.luma-converged-status .system-status-icon.luma-camera-privacy-indicator { icon-size: 16px; }
+.luma-converged-clock { padding: 0; min-width: 44px; min-height: 44px; font-size: 1.1em; font-weight: 600; border-radius: 12px; }
+.luma-converged-app { border-radius: 16px; padding: 4px; }
+.luma-converged-app:hover, .luma-converged-app:focus { background: rgba(255,255,255,0.14); }
+.luma-converged-app.editing { background: rgba(255,255,255,0.08); }
+.luma-converged-app.selected, .luma-converged-app.dragging { box-shadow: inset 0 0 0 2px #99c1f1; }
+.luma-home-drop-target { border: 2px solid #99c1f1; border-radius: 16px; background: rgba(153,193,241,0.16); }
+.luma-home-edit-done { min-width: 44px; min-height: 36px; padding: 0 10px; border-radius: 12px; background: rgba(127,127,127,0.24); font-weight: 600; }
+.luma-converged-app-content { spacing: 8px; }
+.luma-converged-app-label { font-size: 0.9em; font-weight: 400; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.luma-converged-home.opaque .luma-converged-dock { background-color: #1e192b; }
+.luma-converged-home.high-contrast { background-color: #000000; }
+.luma-converged-home.high-contrast .luma-converged-dock { background-color: #111111; border-color: white; }
+.luma-converged-dock { background-color: #1e192b; }
+.luma-converged-home.high-contrast { background-color: #000000; }
+.luma-converged-home.high-contrast .luma-converged-widget,
+.luma-converged-home.high-contrast .luma-converged-widget.weather,
+.luma-converged-home.high-contrast .luma-converged-dock { background-color: #111111; border-color: white; }
+.luma-converged-widget:hover, .luma-converged-widget:focus { border-color: rgba(255,255,255,0.5); }
+.luma-converged-dock {
+  background-color: rgba(30,25,43,0.78);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 24px;
+}
+.luma-converged-dock-app { padding: 0; border-radius: 16px; }
+.luma-converged-dock-app:hover, .luma-converged-dock-app:focus { background: rgba(255,255,255,0.14); }
+.luma-converged-dock-search { background: rgba(255,255,255,0.12); border-radius: 16px; padding: 0; border: 0; }
+.luma-converged-dock-search:hover, .luma-converged-dock-search:focus { background: rgba(255,255,255,0.24); }
+.luma-converged-home-control { background: transparent; }
+.luma-converged-home-pill { width: 0; height: 0; background: transparent; }
+.luma-converged-page { width: 44px; height: 44px; }
+.luma-converged-page-dot { width: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,0.35); }
+.luma-converged-page.selected .luma-converged-page-dot { background: white; }
+.luma-tablet-control { min-width: 44px; min-height: 44px; border-radius: 12px; padding: 0; }
+.luma-tablet-control:focus { box-shadow: inset 0 0 0 2px #99c1f1; }
+.luma-tablet-seam { background: transparent; padding: 0; }
+.luma-tablet-seam-grip { width: 4px; height: 40px; border-radius: 2px; background: rgba(255,255,255,0.65); }
+.luma-tablet-seam:hover .luma-tablet-seam-grip { background: white; }
+.luma-tablet-drop-surface { background: rgba(0,0,0,0.15); }
+.luma-tablet-drop-lane { background: rgba(66,143,230,0.28); border: 2px solid #99c1f1; border-radius: 20px; color: white; }
+.luma-tablet-task-panel { background: rgba(30,32,38,0.98); border-radius: 24px; color: white; padding: 16px; spacing: 16px; border: 1px solid rgba(255,255,255,0.2); }
+.luma-tablet-task-header { spacing: 12px; font-weight: 600; }
+.luma-tablet-app-search { min-height: 44px; border-radius: 12px; background: #383b43; padding: 0 12px; color: white; }
+
+
+.luma-tablet-task-backdrop { background: rgba(0,0,0,0.35); }

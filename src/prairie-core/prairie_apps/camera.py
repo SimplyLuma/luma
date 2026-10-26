@@ -38,6 +38,7 @@ from luma_appkit import (  # noqa: E402
 
 from .camera_backend import (
     CameraDevice,
+    create_camera_source,
     image_rotation_from_mount,
     list_camera_devices,
     new_photo_path,
@@ -161,6 +162,9 @@ class CameraWindow(AppWindow):
         self._last_capture_record: PhotoRecord | None = None
         self._closed = False
         self._discovery_generation = 0
+        self._camera_portal = None
+        self._camera_discovery_future = None
+        self._request_camera_access = None
         self._library_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="luma-camera-library"
         )
@@ -179,14 +183,48 @@ class CameraWindow(AppWindow):
             self._camera_devices_loaded(generation, self._fixture.devices, "")
             return
         self.set_body(EmptyState("Loading cameras…", "", "camera"))
-        future = self._library_executor.submit(list_camera_devices)
-        def finished(result):
-            try:
-                devices, error = result.result(), ""
-            except Exception as failure:
-                devices, error = (), str(failure)
-            GLib.idle_add(self._camera_devices_loaded, generation, devices, error)
-        future.add_done_callback(finished)
+        portal = None
+        def discover(error=''):
+            if self._closed or generation != self._discovery_generation:
+                if portal:
+                    portal.close()
+                return
+            if error:
+                self._camera_devices_loaded(generation, (), error)
+                return
+            future = self._library_executor.submit(portal.devices if portal else list_camera_devices)
+            self._camera_discovery_future = future
+            def finished(result):
+                try:
+                    devices, error = result.result(), ""
+                except Exception as failure:
+                    devices, error = (), str(failure)
+                if self._closed or generation != self._discovery_generation:
+                    if portal:
+                        portal.close()
+                    return
+                GLib.idle_add(self._camera_devices_loaded, generation, devices, error)
+            future.add_done_callback(finished)
+        if Path('/.flatpak-info').exists():
+            from .camera_portal import CameraPortal
+            portal = self._camera_portal = CameraPortal()
+            def request():
+                try:
+                    portal.access(discover)
+                except GLib.Error:
+                    discover('Camera access is unavailable. Try again.')
+            self._request_camera_access = request
+            self._begin_camera_access()
+        else:
+            discover()
+
+    def _begin_camera_access(self):
+        # The shell accepts permission dialogs only from the focused app.
+        # Discovery is scheduled during construction, before present/map/focus.
+        if not self.is_active() or not self._request_camera_access:
+            return
+        request, self._request_camera_access = self._request_camera_access, None
+        request()
 
     def _camera_devices_loaded(self, generation, devices, error):
         if self._closed or generation != self._discovery_generation:
@@ -195,6 +233,9 @@ class CameraWindow(AppWindow):
         if self.state.source >= len(self._devices):
             self.state.select_source(0)
         if not self._devices:
+            if self._camera_portal:
+                self._camera_portal.close()
+                self._camera_portal = None
             empty = EmptyState("No camera found",
                 error or "Connect one, or check that another app isn’t using it.",
                 "camera-off", primary=("Try again", self._refresh_camera_availability))
@@ -240,7 +281,7 @@ class CameraWindow(AppWindow):
             self._fixture.require_live_io()
         if not self._devices or self._pipeline is None:
             return
-        if not self._devices[self.state.source].desktop_uvc:
+        if not self._devices[self.state.source].managed_stream:
             self._show_pipeline_error("Video recording is not available for this camera.")
             return
         if self._pipeline is None or self._stopping_pipeline is not None or self._capture_pipeline is not None:
@@ -423,6 +464,10 @@ class CameraWindow(AppWindow):
 
     @staticmethod
     def _source_description(device: CameraDevice) -> str:
+        if device.location == 'front':
+            return 'Front camera'
+        if device.location == 'back':
+            return 'Rear camera'
         label = device.label
         if "integrated camera" in label.casefold() or "built-in" in label.casefold():
             return "Built-in Camera"
@@ -619,7 +664,7 @@ class CameraWindow(AppWindow):
         self._status.set_visible(True)
 
         pipeline = Gst.Pipeline.new("prairie-camera-preview")
-        source = Gst.ElementFactory.make("libcamerasrc", "camera-source")
+        source = create_camera_source(device, "camera-source")
         source_caps = Gst.ElementFactory.make("capsfilter", "sensor-mode-caps")
         decoder = Gst.ElementFactory.make("jpegdec" if device.stream_format == "image/jpeg" else "identity", "preview-decoder")
         rate = Gst.ElementFactory.make("videorate", "viewfinder-rate")
@@ -647,7 +692,6 @@ class CameraWindow(AppWindow):
             self._show_pipeline_error("The low-latency camera preview components are missing.")
             return
 
-        source.set_property("camera-name", device.identifier)
         source_pad = source.get_static_pad("src")
         if source_pad is not None and source_pad.find_property("stream-role") is not None:
             # GstLibcameraStreamRole::Viewfinder. Preview and still capture are
@@ -664,7 +708,7 @@ class CameraWindow(AppWindow):
             f"width={device.preview_width},height={device.preview_height},"
             "framerate=30/1"
         )
-        if device.desktop_uvc:
+        if device.managed_stream:
             requested_caps = f"{device.stream_format},width={device.preview_width},height={device.preview_height}"
         source_caps.set_property("caps", Gst.Caps.from_string(requested_caps))
         rate.set_property("drop-only", True)
@@ -678,14 +722,14 @@ class CameraWindow(AppWindow):
             f"width={device.viewfinder_width},height={device.viewfinder_height},"
             f"framerate={device.viewfinder_framerate}/1"
         )
-        if device.desktop_uvc:
+        if device.managed_stream:
             viewfinder_caps = f"video/x-raw,width={device.viewfinder_width},height={device.viewfinder_height}"
         preview_caps.set_property("caps", Gst.Caps.from_string(viewfinder_caps))
         rotation = image_rotation_from_mount(
             device.rotation,
             front_facing=device.location == "front",
         )
-        if device.desktop_uvc:
+        if device.managed_stream:
             rotation = 0
         flip.set_property(
             "video-direction",
@@ -760,6 +804,8 @@ class CameraWindow(AppWindow):
         _window: Adw.ApplicationWindow,
         _parameter: GObject.ParamSpec,
     ) -> None:
+        if getattr(self, '_request_camera_access', None):
+            self._begin_camera_access()
         if self.state.recording:
             if not self._desktop and not self.is_active():
                 self._stop_video()
@@ -997,7 +1043,7 @@ class CameraWindow(AppWindow):
             return
 
         pipeline = Gst.Pipeline.new("prairie-camera-still")
-        source = Gst.ElementFactory.make("libcamerasrc", "still-camera-source")
+        source = create_camera_source(device, "still-camera-source")
         caps = Gst.ElementFactory.make("capsfilter", "still-caps")
         crop = Gst.ElementFactory.make("videocrop", "still-crop")
         scale = Gst.ElementFactory.make("videoscale", "still-scale")
@@ -1013,7 +1059,6 @@ class CameraWindow(AppWindow):
             self._finish_capture("The high-resolution capture components are missing.")
             return
 
-        source.set_property("camera-name", device.identifier)
         source_pad = source.get_static_pad("src")
         if source_pad is not None and source_pad.find_property("stream-role") is not None:
             source_pad.set_property("stream-role", 1)
@@ -1043,7 +1088,7 @@ class CameraWindow(AppWindow):
             device.rotation,
             front_facing=device.location == "front",
         )
-        if device.desktop_uvc:
+        if device.managed_stream:
             rotation = 0
         flip.set_property(
             "video-direction",
@@ -1251,13 +1296,13 @@ class CameraWindow(AppWindow):
         if flip is None:
             return
         device = self._devices[self.state.source]
-        rotation = 0 if device.desktop_uvc else image_rotation_from_mount(
+        rotation = 0 if device.managed_stream else image_rotation_from_mount(
             device.rotation, front_facing=device.location == "front")
         flip.set_property("video-direction", video_direction_for_transform(
             rotation, mirror_horizontal=device.location == "front" and enabled))
 
     def _request_refocus(self, x: float, y: float) -> None:
-        if self._source is None or self._source.find_property("focus-point-x") is None or self._devices[self.state.source].desktop_uvc:
+        if self._source is None or self._source.find_property("focus-point-x") is None or self._devices[self.state.source].managed_stream:
             return
         x = min(self._picture.get_width() * .92, max(self._picture.get_width() * .08, x))
         y = min(self._picture.get_height() * .92, max(self._picture.get_height() * .08, y))
@@ -1307,6 +1352,7 @@ class CameraWindow(AppWindow):
             self._stop_video()
             return True
         self._closed = True
+        self._request_camera_access = None
         if hasattr(self, "_surface"):
             self._surface.dispose()
         if self.shell_surface is not None:
@@ -1317,6 +1363,13 @@ class CameraWindow(AppWindow):
         self._stop_camera()
         if self._capture_pipeline is not None:
             self._capture_pipeline.set_state(Gst.State.NULL)
+        if self._camera_portal:
+            portal, self._camera_portal = self._camera_portal, None
+            future = self._camera_discovery_future
+            if future and not future.done():
+                future.add_done_callback(lambda _result: portal.close())
+            else:
+                portal.close()
         self._library_executor.shutdown(wait=False, cancel_futures=True)
         return False
 

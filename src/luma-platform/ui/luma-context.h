@@ -30,5 +30,6 @@ LumaPresentationMode luma_context_get_presentation(LumaContext *self);
 LumaInputMode luma_context_get_input(LumaContext *self);
 gboolean luma_context_get_decorated(LumaContext *self);
 gboolean luma_context_get_touch_targets(LumaContext *self);
+const char *luma_context_get_experience(LumaContext *self);
 
 G_END_DECLS

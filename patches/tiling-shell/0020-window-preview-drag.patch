@@ -1,0 +1,90 @@
+--- a/components/tilingsystem/tilingManager.js
++++ b/components/tilingsystem/tilingManager.js
+@@ -664,6 +664,26 @@
+       window._lumaTileGoneId = 0;
+     }
+   }
++  // Preview drags keep the real window and its assignment unchanged until drop.
++  lumaPreviewWindowAt(window, x, y) {
++    if (this._isGrabbingWindow || !window.get_compositor_private()) return null;
++    const layout = this._workspaceTilingLayout.get(window.get_workspace());
++    if (!layout) return null;
++    if (!layout.showing) layout.openAbove(window);
++    const rect = layout.getTileBelow({ x, y }, true);
++    if (!rect) {
++      this._selectedTilesPreview.close(true);
++      return null;
++    }
++    layout.hoverTilesInRect(rect, true);
++    this.openSelectionTilePreview(rect, true, true, window);
++    return this._lumaCellTile(rect);
++  }
++  lumaCloseWindowPreview(window) {
++    this._workspaceTilingLayout.get(window.get_workspace())?.close();
++    this._selectedTilesPreview.close(true);
++  }
++
+   _onWindowGrabBegin(window, grabOp) {
+     this._lumaReleaseTile(window);
+     if (this._isGrabbingWindow) return;
+--- a/extension.js
++++ b/extension.js
+@@ -270,6 +270,7 @@
+   }
+ 
+   _createTilingManagers() {
++    this._lumaPreviewDrag?.cancel();
+     debug("building a tiling manager for each monitor");
+     this._tilingManagers.forEach((tm) => tm.destroy());
+     this._tilingManagers = getMonitors().map(
+@@ -714,7 +715,50 @@
+     ) !== void 0;
+   }
+ 
++  beginWindowPreviewDrag(window) {
++    if (!window?.get_compositor_private() || !window.allows_move() || !window.allows_resize() ||
++        this._tilingManagers.some(manager => manager._isGrabbingWindow)) return null;
++    this._lumaPreviewDrag?.cancel();
++    let manager = null, tile = null, ended = false;
++    const close = () => {
++      manager?.lumaCloseWindowPreview(window);
++      manager = null; tile = null;
++      ended = true;
++      if (this._lumaPreviewDrag === session) this._lumaPreviewDrag = null;
++    };
++    const session = {
++      update: (x, y) => {
++        if (ended || !window.get_compositor_private()) return false;
++        const next = this._tilingManagers.find(item => {
++          const m = item._monitor;
++          return x >= m.x && x < m.x+m.width && y >= m.y && y < m.y+m.height;
++        });
++        if (manager !== next) manager?.lumaCloseWindowPreview(window);
++        manager = next;
++        tile = manager?.lumaPreviewWindowAt(window, x, y) ?? null;
++        return Boolean(tile);
++      },
++      drop: () => {
++        if (ended || !tile || !window.get_compositor_private()) return false;
++        const target = manager, selected = tile;
++        close();
++        // Reuse ordinary tile placement, including shared gaps, assignment,
++        // geometry settling and window memory. Cancel never releases a tile.
++        this._tilingManagers.forEach(item => item._lumaReleaseTile(window));
++        if (window.is_fullscreen()) window.unmake_fullscreen();
++        window.unminimize();
++        target.onTileFromWindowMenu(selected, window);
++        window.activate(global.get_current_time());
++        return true;
++      },
++      cancel: () => { if (!ended) close(); },
++    };
++    this._lumaPreviewDrag = session;
++    return session;
++  }
++
+   disable() {
++    this._lumaPreviewDrag?.cancel();
+     try {
+       this._lumaWindowMemory?.destroy();
+     } catch (e) {

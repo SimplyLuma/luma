@@ -95,7 +95,7 @@ class TideWindow(AppWindow):
         self.layer.add_overlay(self.backdrop)
         self.layer.set_measure_overlay(self.backdrop, False)
         self.page = named(Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                  margin_top=self.status_inset), 'td-body')
+                                  margin_top=0 if self.context.device_class == 'tablet' else self.status_inset), 'td-body')
         self.scroll = ScrollView(self.page)
         self.scroll.set_hexpand(True)
         self.scroll.set_vexpand(True)
@@ -155,6 +155,11 @@ class TideWindow(AppWindow):
         phone.add_setter(self.deck.previous, 'visible', False)
         self.add_breakpoint(phone)
         self._deck_layout = _LayoutWatch(self.layer, self._size_deck)
+
+    def _apply_session_context(self, context):
+        super()._apply_session_context(context)
+        if getattr(self, 'page', None) is not None:
+            self.page.set_margin_top(0 if context.device_class == 'tablet' else self.status_inset)
 
     def _tier_changed(self, tier):
         phone = tier == 'phone'

@@ -31,6 +31,17 @@ def fixture(desktop=True, recording=False):
 
 
 class CameraActivityTests(unittest.TestCase):
+    def test_portal_request_waits_for_focus_and_runs_once(self):
+        request = Mock()
+        camera = SimpleNamespace(is_active=lambda: False, _request_camera_access=request)
+        begin = method('_begin_camera_access')
+        begin(camera)
+        request.assert_not_called()
+        camera.is_active = lambda: True
+        begin(camera); begin(camera)
+        request.assert_called_once_with()
+        self.assertIsNone(camera._request_camera_access)
+
     def test_desktop_focus_loss_keeps_preview_and_pending_capture(self):
         camera = fixture()
         method("_on_window_activity_changed")(camera, None, None)
