@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
       - id: matrix
         env:
-          BASE: ${{ github.event.before || github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           SELECTED: ${{ inputs.groups }}
         run: |
           if [ -n "$BASE" ]; then
