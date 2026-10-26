@@ -66,6 +66,40 @@ class PageServerTest(unittest.TestCase):
                     process.wait(timeout=3)
 
 
+class SignedBrowserPageServerTest(unittest.TestCase):
+    def test_idle_preconnection_does_not_block_signed_browser_page(self):
+        source = (Path(__file__).resolve().parents[2] /
+                  'tests/os/gate/browser-opens.sh').read_text()
+        script = source.split("cat >\"$work/page.py\" <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        with tempfile.TemporaryDirectory(prefix='signed-browser-page-test-') as directory:
+            out = Path(directory)
+            program = out / 'page.py'
+            program.write_text(script)
+            process = subprocess.Popen([sys.executable, str(program), str(out)])
+            idle = None
+            try:
+                deadline = time.monotonic() + 5
+                while not (out / 'url').exists():
+                    self.assertIsNone(process.poll())
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.02)
+                url = urlsplit((out / 'url').read_text().strip())
+                idle = socket.create_connection((url.hostname, url.port), timeout=2)
+                time.sleep(.1)
+                client = http.client.HTTPConnection(url.hostname, url.port, timeout=2)
+                client.request('GET', url.path)
+                response = client.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertIn(b'Luma browser gate', response.read())
+                client.close()
+                self.assertEqual(json.loads((out / 'page-requested').read_text())['path'], url.path)
+            finally:
+                if idle:
+                    idle.close()
+                process.terminate()
+                process.wait(timeout=3)
+
+
 class CompositorPixelTest(unittest.TestCase):
     def test_real_png_decoder_requires_all_page_colors(self):
         verifier = Path(__file__).resolve().parents[2] / 'scripts/os/qa/viola-native/verify-pixels.py'

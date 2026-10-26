@@ -121,7 +121,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200);self.send_header('Content-Type','text/html');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
         (out/'page-requested').write_text(json.dumps({'path':self.path,'user_agent':self.headers.get('User-Agent'),'token':token})+'\n')
     def log_message(self,*args): pass
-server=http.server.HTTPServer(('127.0.0.1',0),Handler)
+# Chromium may open an idle preconnection before requesting the page.
+# One idle socket must not prevent the actual signed browser request.
+server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
 (out/'url').write_text('http://127.0.0.1:'+str(server.server_port)+path+'\n')
 server.serve_forever()
 PY
