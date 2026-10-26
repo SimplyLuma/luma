@@ -95,3 +95,29 @@ admission, and historical rejection of optional Write. Earlier d4711bfd also
 passed before the extra optional-app assertion. Python compilation and diff
 checks pass. No protected actual cache, source old baseline, root active output
 or producer job was changed by this helper.
+
+## 2026-10-26 UTC — host namespace fixture candidate
+
+Run 40249388808 failed before Flatpak installation: Bubblewrap reported
+`setting up uid map: Permission denied` in namespace-preflight.stderr. Its
+signed-inputs.json had already passed full archive hashing. Private downloaded
+evidence is under native-flatpak-ci-40249388808/artifact in this account's
+arm-desktop experiment directory. No application runtime pass is claimed.
+
+The native workflow now runs on its Ubuntu ARM host and explicitly creates the
+same pinned Fedora container after loading a unique temporary AppArmor profile.
+Ubuntu's documented `flags=(default_allow)` plus `userns` rule addresses host
+mediation that plain `apparmor=unconfined` does not grant to unprivileged users.
+No host sysctl changes, Docker seccomp changes, or Flatpak/Chromium overrides
+are introduced. The container retains the previously authorized SYS_ADMIN.
+A numeric UID 1100 Bubblewrap preflight runs before the signed archive download;
+the existing normal-user preflight and every runtime assertion remain. Cleanup
+removes only this run's container/profile and gives the host artifact action
+read access to fresh evidence. No GitHub token is forwarded into the container.
+
+Primary rationale: https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces
+
+Focused Bash syntax and native host workflow checks run in admitted unit
+`dev-arm-native-container-fixture-checks-1d9e89d1`; actual policy loading and
+UID-map success require a fresh Ubuntu ARM CI run. No dispatch or host policy
+mutation was performed on the shared Fedora server.
