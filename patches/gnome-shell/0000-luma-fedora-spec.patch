@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,297 @@
+@@ -32,6 +32,301 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -280,6 +280,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1277:      0283-lucide-camera-privacy-indicator.patch
 +Patch1278:      0284-unified-shell-surfaces.patch
 +Patch1279:      0285-desktop-launcher-folders.patch
++Patch1280:      0286-dock-native-touch-scroll.patch
++Patch1281:      0287-calendar-island-menu-state.patch
++Patch1282:      0288-surface-material-owner-lifecycle.patch
++Patch1283:      0289-status-material-and-readiness.patch
 +Patch1280:      0280-retire-standalone-displays.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
