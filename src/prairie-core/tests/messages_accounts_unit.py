@@ -979,12 +979,14 @@ class CookieTest(unittest.TestCase):
             firefox.write_text(f"""#!{sys.executable}
 import sqlite3, sys, time
 profile = sys.argv[sys.argv.index('--profile') + 1]
+# Publish the fixture observation before the cookie makes sign-in complete.
+# The capture correctly terminates the browser as soon as it sees that cookie.
+open('{temp}/profile-path', 'w').write(profile)
 time.sleep(0.3)
 db = sqlite3.connect(profile + '/cookies.sqlite')
 db.execute('CREATE TABLE moz_cookies(host TEXT, name TEXT, value TEXT)')
 db.execute("INSERT INTO moz_cookies VALUES('.fake.example','SID','cookie-value')")
 db.commit(); db.close()
-open('{temp}/profile-path', 'w').write(profile)
 time.sleep(60)
 """)
             firefox.chmod(0o755)
