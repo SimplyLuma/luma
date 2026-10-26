@@ -132,10 +132,10 @@ def check(sheets, tokens, require_exclusive=True):
                 # specific status selector must not introduce a second veil.
                 covered = required & set(selectors)
                 for selector in selectors:
-                    for compound in re.split(r"[\s>+~]+", selector):
-                        classes = set(re.findall(r"\.([\w-]+)", compound))
-                        if {"luma-shelf-material", f"luma-surface-{t}"} <= classes:
-                            covered.add(selector)
+                    compound = re.split(r"[\s>+~]+", selector)[-1]
+                    classes = set(re.findall(r"\.([\w-]+)", compound))
+                    if {"luma-shelf-material", f"luma-surface-{t}"} <= classes:
+                        covered.add(selector)
                 if covered and (
                         "background-color" in decls or "background" in decls):
                     hit = sorted(covered)[0]
@@ -209,6 +209,10 @@ def self_test() -> int:
            ".luma-shelf-actions-island > "
            ".luma-shelf-material.luma-status-cluster.luma-surface-glass "
            "{ background-color: red; }\n")], False),
+        ("a control inside a material can paint its own background",
+         [("a.css", good_sheet() +
+           ".luma-shelf-material.luma-surface-glass .button "
+           "{ background-color: red; }\n")], True),
         ("the shared rule no longer naming Quick Options",
          [("a.css", good_sheet(
              drop=".popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options"))],
