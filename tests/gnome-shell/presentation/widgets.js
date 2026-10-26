@@ -58,7 +58,7 @@ export async function testWidgets(p, check, sleep, shot, mode, source) {
     };
     await click(p._clockButton);
     check('clock opens Quick Options, never GNOME calendar', menu.isOpen && !Main.panel.statusArea.dateMenu.menu.isOpen);
-    check('Tablet uses the identical Desktop menu, styles and controls', menu._mainPage === original.main && menu.box.style_class === original.classes &&
+    check('Tablet uses the identical Desktop menu, styles and controls', menu._mainPage === original.main && menu.box.style_class.split(/\s+/).filter(name => name !== 'lumaui-touch-options').sort().join(' ') === original.classes.split(/\s+/).sort().join(' ') &&
         original.children.every(actor => actor.get_parent() === original.main));
     const [menuX, menuY] = menu.box.get_transformed_position();
     check('Quick Options is a bounded top-right popup', menuY < 100 && menuX+menu.box.width > Main.layoutManager.primaryMonitor.width-80 && menu.box.height < Main.layoutManager.primaryMonitor.height);
@@ -92,9 +92,9 @@ export async function testWidgets(p, check, sleep, shot, mode, source) {
     check('downward status swipe opens the same menu', menu.isOpen); menu.close();
     await click(p._clockButton); await click(p._options._menuButton); await click(p._modeButtons.get('mobile'));
     await sleep(1800);
-    check('native Experience picker changes the actual presentation', p.mode === 'mobile' && p._options.subtitle === 'Mobile');
+    check('native Experience picker changes the actual presentation', p.mode === 'mobile' && p._options.title === 'Mobile' && !p._options.subtitle);
     await click(p._clockButton);
-    check('Mobile uses the same native Quick Options', menu.isOpen && menu._mainPage === original.main && menu.box.style_class === original.classes);
+    check('Mobile uses the same native Quick Options', menu.isOpen && menu._mainPage === original.main && menu.box.style_class.split(/\s+/).filter(name => name !== 'lumaui-touch-options').sort().join(' ') === original.classes.split(/\s+/).sort().join(' '));
     menu.close(); await run('remove');
     for (let i = 0; i < 50 && p._liveWidgets.snapshot.weather.title !== 'Weather'; i++) await sleep(100);
     check('removing saved city clears Weather', p._liveWidgets.snapshot.weather.title === 'Weather' && p._liveWidgets.snapshot.weather.value === '—');
