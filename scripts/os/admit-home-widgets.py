@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory() as temporary:
     extracted = directory / 'extracted'
     receipts = list(extracted.rglob('SOURCE-REVISION'))
     assert len(receipts) == 1 and receipts[0].read_text().strip() == source
-    native = list(extracted.glob(f'packages/luma-home-widgets/RPMS/{a.architecture}/luma-home-widgets-*.rpm'))
+    native = list(extracted.glob(f'packages/luma-home-widgets/RPMS/{a.architecture}/luma-home-widgets-0.1.0-1.luma.1.fc44.{a.architecture}.rpm'))
     assert len(native) == 1
     identity = subprocess.check_output(['rpm', '-qp', '--nosignature', '--qf', '%{NEVRA}', str(native[0])], text=True)
     assert identity == f'luma-home-widgets-0.1.0-1.luma.1.fc44.{a.architecture}'
