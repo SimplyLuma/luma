@@ -11,7 +11,7 @@ out="$root/build/browser-runtime-evidence"
 mkdir -p "$out"
 profile="luma-browser-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 profile_file=$(mktemp)
-seccomp_file=$(mktemp)
+seccomp_file="$out/outer-seccomp-policy.json"
 container=
 profile_loaded=false
 owner_uid=$(id -u)
@@ -29,7 +29,7 @@ cleanup() {
   if [ "$profile_loaded" = true ]; then
     sudo apparmor_parser --remove "$profile_file" || status=1
   fi
-  rm -f "$profile_file" "$seccomp_file"
+  rm -f "$profile_file"
   exit "$status"
 }
 trap cleanup EXIT
