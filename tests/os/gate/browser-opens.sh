@@ -150,6 +150,15 @@ for generator in /usr/lib/systemd/user-environment-generators/*; do
     case $line in [A-Za-z_]*=*) session_env+=("$line") ;; esac
   done < <(runuser -u "$user" -- env -i "${session_env[@]}" "$generator")
 done
+# Initialize the fresh encrypted login keyring before Shell/portals/browser can
+# prompt for a password. This is disposable session setup, not an app override.
+if ! runuser -u "$user" -- env -i -C "/home/$user" "${session_env[@]}" \
+  timeout -k 2 15 python3 -B "$here/browser-fixture-keyring.py" --uid "$uid" \
+  >"$out/keyring-readiness.json" 2>"$work/keyring.log"; then
+  emit signed-browser-keyring fail 'disposable login/default keyring readiness failed'
+  exit 1
+fi
+emit signed-browser-keyring pass 'fresh encrypted login/default keyring unlocked on the owned session bus'
 runuser -u "$user" -- env -i -C "/home/$user" "${session_env[@]}" \
   GSETTINGS_BACKEND=memory LIBGL_ALWAYS_SOFTWARE=1 \
   BROWSER_GATE_OUT="$out" BROWSER_GATE_URL="$url" BROWSER_GATE_HTTPS="$https" \

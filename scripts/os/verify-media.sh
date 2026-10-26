@@ -378,7 +378,7 @@ release_check() {
   # Keep the signed-browser script's source-owned sibling closure intact.
   if [ "$name" = default-browser ]; then
     local helper helper_ready
-    for helper in browser-opens.sh browser-opens.js browser-process-proof.py; do
+    for helper in browser-opens.sh browser-opens.js browser-process-proof.py browser-fixture-keyring.py; do
       helper_ready=0
       if [ -n "$media_build_dir" ] && [ "${LUMA_SOURCE_DIRTY:-false}" = true ]; then
         cp -- "$release_files/tests/os/gate/$helper" "$vm/$helper" && helper_ready=1

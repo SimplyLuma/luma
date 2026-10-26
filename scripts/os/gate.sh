@@ -252,11 +252,11 @@ gate_release_check() {
     record "$stage-$name" fail "tests/os/gate/$name.sh is not in the release source"
     return 1
   fi
-  # The signed-browser check invokes three source-owned sibling helpers.
+  # The signed-browser check invokes source-owned sibling helpers.
   # Deliver them from the same admitted release tree, never from host drafts.
   if [ "$name" = default-browser ]; then
     local helper
-    for helper in browser-opens.sh browser-opens.js browser-process-proof.py; do
+    for helper in browser-opens.sh browser-opens.js browser-process-proof.py browser-fixture-keyring.py; do
       if [ ! -f "$release_files/tests/os/gate/$helper" ]; then
         record "$stage-$name" fail "tests/os/gate/$helper is not in the release source"
         return 1
