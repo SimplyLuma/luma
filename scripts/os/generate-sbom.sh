@@ -19,8 +19,19 @@
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
 
-syft_image=docker.io/anchore/syft@sha256:600896ff278677fb13b16dc35999452f4e79636fc098c9fee6ce3cffef9858e2
 syft_version=1.51.1
+# Official v1.51.1 image manifests. SBOM tooling executes on the build host;
+# the RPM database being catalogued may belong to either supported target.
+syft_host_arch=$(uname -m)
+case "$syft_host_arch" in
+  x86_64)
+    syft_image=docker.io/anchore/syft@sha256:600896ff278677fb13b16dc35999452f4e79636fc098c9fee6ce3cffef9858e2
+    syft_image_arch=amd64 ;;
+  aarch64)
+    syft_image=docker.io/anchore/syft@sha256:0d7d157c1fc16d924c6b2c9667f9f8bfde3e2aa3c0e61c9223125e4c02e756ca
+    syft_image_arch=arm64 ;;
+  *) luma_os_die "unsupported SBOM tools host architecture: $syft_host_arch" ;;
+esac
 
 build_dir=
 case "${1:-}" in
@@ -41,7 +52,9 @@ luma_os_podman run --rm --net=none --security-opt label=disable "$image_tag" \
   cat /usr/lib/os-release >"$scan/os-release"
 install -d -m 0755 "$scan/etc" && cp "$scan/os-release" "$scan/etc/os-release"
 
-if luma_os_podman image exists "$syft_image" || luma_os_podman pull --quiet "$syft_image" >/dev/null 2>&1; then
+if luma_os_podman image exists "$syft_image" || luma_os_podman pull --quiet --arch "$syft_host_arch" "$syft_image" >/dev/null 2>&1; then
+  [ "$(luma_os_podman image inspect --format '{{.Architecture}}' "$syft_image")" = "$syft_image_arch" ] ||
+    luma_os_die 'SBOM tools image differs from executing host architecture'
   luma_os_podman run --rm --net=none --security-opt label=disable \
     --memory=4g --memory-swap=4g --cpus=2 \
     --volume "$scan:/scan:ro" \
