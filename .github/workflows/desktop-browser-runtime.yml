@@ -31,9 +31,11 @@ jobs:
     container:
       image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
       # The packaged Chromium SUID sandbox creates its own namespaces. This
-      # capability is confined to the disposable CI container; browser sandbox
-      # flags and the runner host's policy are unchanged.
-      options: --cap-add=SYS_ADMIN --shm-size=512m
+      # capability is confined to the disposable CI container. Docker's default
+      # AppArmor profile denies the mounts needed by nested Bubblewrap; allow
+      # the test container to create them while retaining the app's normal
+      # Flatpak/Chromium sandboxes and Docker's default seccomp policy.
+      options: --cap-add=SYS_ADMIN --security-opt apparmor=unconfined --shm-size=512m
     steps:
       - name: Prepare native Fedora tools
         run: dnf5 -y install git python3 curl findutils shadow-utils

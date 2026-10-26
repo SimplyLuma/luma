@@ -63,6 +63,11 @@ dnf5 -y install "${rpms[@]}" "$inputs/$installer" \
   pipewire wireplumber gstreamer1-plugins-base gstreamer1-plugins-good \
   pipewire-utils pipewire-gstreamer gnome-keyring mesa-dri-drivers mesa-libEGL python3-pillow dbus-daemon gnome-shell gjs flatpak ostree
 if [ -n "$signed_url" ]; then
+  # A normal installed OS already has a system installation. Initialize the
+  # fresh container's empty one as root, so the unprivileged read-only override
+  # check does not ask the absent system helper to create its repository.
+  flatpak override --system --show > "$out/system-flatpak-overrides-before.txt"
+  [ ! -s "$out/system-flatpak-overrides-before.txt" ]
   python3 - "$signed_url" "$signed_sha" <<'PY_URL'
 import re,sys
 from urllib.parse import urlsplit
@@ -141,6 +146,12 @@ runuser -u luma-gate-browser-opens -- env HOME=/home/luma-gate-browser-opens XDG
     python3 "$QA/diagnose-pixbuf-codec.py" >"$OUT/pixbuf-codec-diagnostic.json"
     python3 "$QA/initialize-fixture-keyring.py" >"$OUT/keyring-readiness.json"
     if [ -n "$BROWSER_GATE_SIGNED_MIRROR" ]; then
+      # Prove that this disposable host can create standard sandbox namespaces
+      # before installing/launching the normal, unchanged Flatpak.
+      timeout 15 bwrap --die-with-parent --unshare-user --unshare-pid --unshare-uts --unshare-ipc \
+        --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
+        --proc /proc --dev /dev /usr/bin/true \
+        >"$OUT/namespace-preflight.stdout" 2>"$OUT/namespace-preflight.stderr"
       # This packaged host-service directory must exist before Flatpak mounts
       # its manifest-defined read-only xdg-run/luma-viola exposure.
       install -d -m 0700 /run/user/1100/luma-viola
