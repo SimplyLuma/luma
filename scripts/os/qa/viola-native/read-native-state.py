@@ -12,6 +12,22 @@ from pathlib import Path
 import stat
 
 
+def validate_runtime_identity(runtime, commit, deployment):
+    import gi
+    gi.require_version('Flatpak', '1.0')
+    from gi.repository import Flatpak
+    # Flatpak 1.18 flatpak_run_add_app_info_args() writes the full ref, not
+    # the shorter runtime preference used in the application's metadata.
+    expected = 'runtime/org.projectluma.Platform/aarch64/44'
+    reference = Flatpak.Ref.parse(runtime)
+    assert runtime == reference.format_ref() == deployment['runtime_ref'] == expected
+    assert reference.get_kind() == Flatpak.RefKind.RUNTIME
+    assert reference.get_name() == 'org.projectluma.Platform'
+    assert reference.get_arch() == 'aarch64' and reference.get_branch() == '44'
+    assert re.fullmatch('[0-9a-f]{64}', commit)
+    assert commit == deployment['runtime_commit'] == deployment['refs'][expected]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('pid', type=int)
@@ -41,9 +57,9 @@ def main():
         text = (process / 'root/.flatpak-info').read_text()
         info.read_string(text)
         assert info['Application']['name'] == 'com.rhyme.viola'
-        assert info['Application']['runtime'] == 'org.projectluma.Platform/aarch64/44'
+        validate_runtime_identity(info['Application']['runtime'],
+                                  info['Instance']['runtime-commit'], deployment)
         assert info['Instance']['app-commit'] == deployment['app_commit']
-        assert info['Instance']['runtime-commit'] == deployment['runtime_commit']
         assert info['Instance']['arch'] == 'aarch64' and info['Instance']['branch'] == 'beta'
         instance_id = info['Instance']['instance-id']
         assert instance_id.isdecimal()
@@ -80,7 +96,7 @@ def main():
         assert Path(deployment['profile']).is_relative_to(home / '.var/app/com.rhyme.viola')
         assert argv == ['/usr/bin/python3', '/app/share/viola-browser/luma-host/integrated_window.py',
                         '--engine', '/app/bin/viola-engine', '--profile', deployment['profile'],
-                        '--work-root', str(root), '--interactive', '--start-url', args.url]
+                        '--work-root', str(root), '--interactive', args.url]
     else:
         assert argv == ['/usr/bin/python3', host, '--engine', '/opt/viola/browser/chrome',
                         '--profile', str(home / '.local/share/viola-luma/profile'),

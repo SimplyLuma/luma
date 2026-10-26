@@ -72,7 +72,9 @@ async function probe() {
         GLib.file_set_contents(`${out}/desktop-state.json`, JSON.stringify(result.desktop_state, null, 2));
         monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
             GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', `${out}/monitor-stream.json`]);
-        child = hostLauncher.spawnv(deployment?['/usr/bin/flatpak','run','--user',deployment.app_ref,'--start-url',url]:['/usr/bin/python3',
+        // The shipped desktop/MIME entry passes %U positionally. Exercise
+        // that normal singleton URI route, including inside the signed app.
+        child = hostLauncher.spawnv(deployment?['/usr/bin/flatpak','run','--user',deployment.app_ref,url]:['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,

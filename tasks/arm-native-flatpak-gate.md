@@ -149,3 +149,37 @@ exited 0 with Bash, JavaScript and Python syntax and diff checks passing. It use
 a 1 GiB reservation. The first default-sized reservation was refused by
 admission before running; no test result was inferred from that refusal.
 Actual new cleanup/metadata behavior still requires the next native CI run.
+
+## 2026-10-26 UTC — actual signed runtime observer correction
+
+Run 40252402497 reached the unique requested page and posted DOM phase 0. Its
+failure is the observer's incorrect runtime string comparison, before pixel
+observation. Actual normal close succeeded without signals: integration errors
+empty, command timeouts zero, engine exit 0 and pending leases zero. Public
+Secret version 1 and the normal GNOME keyring backend were present. Complete
+artifacts are in second-account experiments/arm-desktop/
+native-flatpak-diagnostic-40252402497/artifact. This is progress, not acceptance.
+
+Flatpak 1.18.4 common/flatpak-run.c writes Application.runtime using
+flatpak_decomposed_get_ref(), including the runtime/ prefix, rather than the
+short preference used in an app manifest. The observer now uses the real GI
+Flatpak.Ref parser, requires the exact canonical Platform/aarch64/44 runtime
+ref and checks its commit against both the admitted deployment and signed ref
+map. All mounted-deployment, PID ancestry, broker, argv, environment, native
+frame/pixel/input/resize/close checks remain in force.
+
+The signed launcher now passes its URL positionally, as the maintained desktop
+entry's Exec=viola-browser %U specifies. The shipping wrapper forwards it and
+startup_navigation.py routes explicit URLs through Chromium's existing singleton
+URI mechanism. This avoids exercising the custom --start-url palette path;
+its earlier intermittent page failure remains an unproven timing hypothesis.
+The observer requires the corresponding exact normal host argv. Native RPM
+launch arguments remain the same.
+
+Actual dev-arm-signed-runtime-ref-parser-77706ac1 exited 0. Three tests use the
+real GI parser and cover exact selected commit admission plus wrong kind/name/
+architecture/branch, short preference, changed commit and disagreeing signed
+map rejection. JavaScript syntax and diff checks passed. Next native signed CI
+is still required; no product or engine rebuild was performed.
+
+Primary source: https://github.com/flatpak/flatpak/blob/1.18.4/common/flatpak-run.c
