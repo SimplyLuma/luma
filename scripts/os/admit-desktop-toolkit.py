@@ -19,13 +19,17 @@ a = p.parse_args()
 # new successful matching toolkit cohort with refreshed run/archive receipts.
 # Whole-archive digests are GitHub's retained upload identities, not rebuild hashes.
 artifacts = {
-    'aarch64': (12583195962, '4173a2a9d0146390f36abd31e581133237b128a3d503b65bbd2e7dd34237c02f'),
-    'x86_64': (12582657109, '6be2904c26659f41ffadcf749b3dca32a74738405d4df42988133e1472bb60bd'),
+    'aarch64': (12667077058, '9861d67972d1bb6ca52edd8e5c17b1a6412c6343a3b7b2b2af61b3266e5a9b4f'),
+    'x86_64': (12668020019, 'f558e275857115178156c05110aea28b0a485cd3daa9a60b65812cc4413df077'),
 }
-run = 40150227413
-source = '4d8d714d5a34bc20a1eb46135f2e1316d958d15e'
-merge = '84d0d83661b7987b0765f508c45f6473f068da25'
+run = 40357494359
+source = 'e236b494dbf38ca0b8d377470f1b5fad7af13f19'
+merge = source
 repo = 'SimplyLuma/luma'
+# Apply the same verified source and consumed-pin checks to the pinned whole
+# toolkit and explicitly selected runs. Unrelated application pins may advance.
+if not a.providers_only:
+    a.run_id = a.run_id or run
 def api(path):
     for attempt in range(3):
         try:
