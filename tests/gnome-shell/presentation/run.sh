@@ -79,7 +79,7 @@ timeout 120 dbus-run-session -- bash -c '
   monitors=(--virtual-monitor "${PRESENTATION_MONITOR:-1280x800}")
   if [ -n "${PRESENTATION_SECOND_MONITOR:-}" ]; then monitors+=(--virtual-monitor "$PRESENTATION_SECOND_MONITOR"); fi
   gnome-shell --headless --no-x11 "${monitors[@]}" \
-    --automation-script="$PRESENTATION_SOURCE/tests/gnome-shell/presentation/native.js"
+    --automation-script="${PRESENTATION_AUTOMATION:-$PRESENTATION_SOURCE/tests/gnome-shell/presentation/native.js}"
 ' > "$PRESENTATION_OUT/shell.log" 2>&1
 python3 - "$PRESENTATION_OUT/results.json" <<'PY'
 import json,sys
