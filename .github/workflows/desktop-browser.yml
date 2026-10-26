@@ -10,6 +10,10 @@ on:
       - 'src/external/viola/chromium-linux/**'
   workflow_dispatch:
     inputs:
+      public_readback:
+        description: Verify the exact published signed application union without rebuilding
+        type: boolean
+        default: false
       runtime_probe:
         description: Probe retained native ARM packages without rebuilding
         type: boolean
@@ -29,7 +33,7 @@ permissions:
 
 jobs:
   select:
-    if: inputs.runtime_probe != true
+    if: inputs.runtime_probe != true && inputs.public_readback != true
     runs-on: ubuntu-24.04
     outputs:
       needed: ${{ steps.scope.outputs.needed }}
@@ -107,8 +111,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   runtime-probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true && inputs.public_readback != true
     uses: ./.github/workflows/desktop-browser-runtime.yml
     with:
       signed_input_url: ${{ inputs.signed_input_url }}
       signed_input_sha256: ${{ inputs.signed_input_sha256 }}
+
+  public-readback:
+    if: github.event_name == 'workflow_dispatch' && inputs.public_readback == true && inputs.runtime_probe != true
+    uses: ./.github/workflows/depot-public-readback.yml
