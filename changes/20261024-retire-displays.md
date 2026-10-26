@@ -1,7 +1,7 @@
 ---
 type: fix
 component: Desktop
-packages: [gnome-shell, luma-displays, luma-display-config, luma-ari, luma-application-installer, luma-desktop-launcher-policy]
+packages: [gnome-shell, luma-display-config, luma-ari, luma-application-installer, luma-desktop-launcher-policy]
 highlight: false
 ---
 Summary: Removed the standalone Displays app

@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: CC-BY-4.0
 # Pure rebuilds with no user-visible change, exempt from release note fragments.
+# Removed package names cannot appear in current-pin fragments. Their concrete
+# removal remains described by the replacement owner's fragment.
+luma-displays removed Removed the standalone Displays app; covered by changes/20261024-retire-displays.md.
 # Fields: NAME VERSION-RELEASE REASON
 luma-stage-preview 0.1.0-18.test.20260916.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.67.
 luma-stage-preview 0.1.0-19.test.20260916.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.68.
