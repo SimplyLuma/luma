@@ -49,17 +49,20 @@ paths = ['config/desktop/inputs.env', 'scripts/os/build-desktop-toolkit.sh',
          'packaging/fontconfig', 'packaging/rpm/google-figtree-fonts.spec',
          'assets/icon-theme/Prairie/symbolic/actions/lumaui-*.svg', 'LICENSE.md', 'scripts/packages/spec-release.sh',
          'tests/toolkit-native']
+if a.run_id:
+    paths.remove('config/desktop/inputs.env')
 if a.providers_only:
     paths = ['scripts/packages/build-gtk4.sh', 'scripts/packages/build-libadwaita.sh',
              'scripts/packages/build-figtree-fonts.sh', 'scripts/packages/run-in-rpm-builder.sh',
              'scripts/packages/fetch-source-rpm.sh', 'scripts/packages/spec-release.sh',
              'patches/gtk4', 'patches/libadwaita', 'scripts/fonts', 'packaging/fontconfig',
              'packaging/rpm/google-figtree-fonts.spec', 'LICENSE.md']
+if a.providers_only or a.run_id:
     def values(body):
         return dict(line.split('=', 1) for line in body.splitlines() if line and not line.startswith('#') and '=' in line)
     prior = values(subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'show', f'{source}:config/desktop/inputs.env'], text=True))
     current = values(Path('config/desktop/inputs.env').read_text())
-    keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER'))]
+    keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER') + (() if a.providers_only else ('LUMA_DEVELOPER_PLATFORM_',)))]
     assert keys and all(prior[key] == current.get(key) for key in keys), 'toolkit provider pin changed'
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
 if a.run_id:

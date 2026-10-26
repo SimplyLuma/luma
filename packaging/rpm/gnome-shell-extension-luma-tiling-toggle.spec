@@ -4,7 +4,7 @@
 
 Name:           gnome-shell-extension-luma-tiling-toggle
 Version:        0.1.0
-Release:        1.luma.14%{?dist}
+Release:        1.luma.15%{?dist}
 Summary:        Project Luma Quick Settings bridge for Tiling Shell
 License:        Apache-2.0
 URL:            https://project-luma.local/
