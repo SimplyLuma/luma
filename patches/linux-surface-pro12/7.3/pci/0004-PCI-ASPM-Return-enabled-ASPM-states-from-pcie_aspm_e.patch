@@ -1,0 +1,64 @@
+pcie_aspm_enabled() returns 'pcie_link_state::aspm_enabled' parameter which
+contains the enabled states. But the API currently returns the 'bool' type
+which is used by the callers to decide if ASPM is enabled or not.
+
+To allow the future callers to also make use of the enabled ASPM states,
+return the actual type of 'pcie_link_state::aspm_enabled' parameter, 'u32'.
+
+Existing callers can still treat the return value as a 'bool' as the C11
+standard guarantees the behavior (this API relied on the same behavior
+before as well).
+
+Signed-off-by: Manivannan Sadhasivam <manivannan.sadhasivam@oss.qualcomm.com>
+Link: https://patch.msgid.link/20250825-ath-aspm-fix-v2-5-61b2f2db7d89@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ drivers/pci/pcie/aspm.c | 6 ++++--
+ include/linux/pci.h     | 4 ++--
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+
+Luma rebase onto Linux 7.3: context adjusted; original provenance above.
+
+--- a/drivers/pci/pcie/aspm.c
++++ b/drivers/pci/pcie/aspm.c
+@@ -1732,15 +1732,17 @@
+ 	NULL, 0644);
+ 
+ /**
+- * pcie_aspm_enabled - Check if PCIe ASPM has been enabled for a device.
++ * pcie_aspm_enabled - Get the enabled PCIe ASPM states for a device.
+  * @pdev: Target device.
+  *
+  * Relies on the upstream bridge's link_state being valid.  The link_state
+  * is deallocated only when the last child of the bridge (i.e., @pdev or a
+  * sibling) is removed, and the caller should be holding a reference to
+  * @pdev, so this should be safe.
++ *
++ * Return: Enabled PCIe ASPM states. 0 if ASPM is disabled.
+  */
+-bool pcie_aspm_enabled(struct pci_dev *pdev)
++u32 pcie_aspm_enabled(struct pci_dev *pdev)
+ {
+ 	struct pcie_link_state *link = pcie_aspm_get_link(pdev);
+ 
+--- a/include/linux/pci.h
++++ b/include/linux/pci.h
+@@ -1955,7 +1955,7 @@
+ int pci_force_enable_link_state(struct pci_dev *pdev, int state);
+ void pcie_no_aspm(void);
+ bool pcie_aspm_support_enabled(void);
+-bool pcie_aspm_enabled(struct pci_dev *pdev);
++u32 pcie_aspm_enabled(struct pci_dev *pdev);
+ #else
+ static inline int pci_disable_link_state(struct pci_dev *pdev, int state)
+ { return 0; }
+@@ -1969,7 +1969,7 @@
+ { return 0; }
+ static inline void pcie_no_aspm(void) { }
+ static inline bool pcie_aspm_support_enabled(void) { return false; }
+-static inline bool pcie_aspm_enabled(struct pci_dev *pdev) { return false; }
++static inline u32 pcie_aspm_enabled(struct pci_dev *pdev) { return false; }
+ #endif
+ 
+ #ifdef CONFIG_HOTPLUG_PCI

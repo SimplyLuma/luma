@@ -1,0 +1,13 @@
+{
+  "schema": "org.projectluma.device-audio-source/v1",
+  "device": "microsoft/sp12in",
+  "repository": "https://github.com/linux-msm/audioreach-topology",
+  "commit": "d6bb205aca5f4b8fa6b2f44cf8b5f6a081cbf037",
+  "archive": "https://api.github.com/repos/linux-msm/audioreach-topology/tarball/d6bb205aca5f4b8fa6b2f44cf8b5f6a081cbf037",
+  "sha256": "84e0ac85e655ae0aa7cfe01d001ce8429920c637e9f56b9f5ec1a060fc3bd16c",
+  "license": "BSD-3-Clause",
+  "input": "X1P42100-Microsoft-Surface-Pro-12in.m4",
+  "output": "qcom/x1e80100/X1P42100-Microsoft-Surface-Pro-12in-tplg.bin",
+  "build": ["m4 -I SOURCE SOURCE/X1P42100-Microsoft-Surface-Pro-12in.m4 > Surface12.conf", "alsatplg -c Surface12.conf -o Surface12-tplg.bin", "alsatplg -d Surface12-tplg.bin -o Surface12-decoded.conf"],
+  "qualification": "Compile/decode validation required; physical playback remains unqualified. Retain the kernel's upstream speaker gain limits."
+}

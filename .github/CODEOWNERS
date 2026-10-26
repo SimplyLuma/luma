@@ -13,3 +13,6 @@
 
 # Devices
 /devices/fairphone/fp6/ @nmcmil
+
+/socs/qcom/purwa/       @nmcmil
+/devices/microsoft/sp12in/ @nmcmil

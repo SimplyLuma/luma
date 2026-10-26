@@ -15,7 +15,7 @@
     "kernel": {
       "type": "object", "additionalProperties": false, "required": ["repository", "branch"],
       "properties": {
-        "repository": {"const": "https://github.com/SimplyLuma/linux"},
+        "repository": {"type": "string", "pattern": "^https://(github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|git\\.kernel\\.org/pub/scm/linux/kernel/git/[A-Za-z0-9_./-]+\\.git)$"},
         "branch": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
         "upstream": {"type": "string", "pattern": "^https://"},
         "dts_directory": {"type": "string", "pattern": "^arch/[a-z0-9]+/boot/dts(/[a-z0-9_-]+)?$"}

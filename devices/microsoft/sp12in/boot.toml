@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+format = "uefi"
+
+[uefi]
+loader = "BOOTAA64.EFI"
+dtb = "qcom/x1p42100-microsoft-sp12in.dtb"
+# Development kernel is not Microsoft-trusted. Do not represent it as signed
+# for Secure Boot merely because modules are signed by its build key.
+secure_boot = "development-disabled"
+
+[cmdline]
+args = ["enforcing=1", "mem_sleep_default=s2idle"]
+generated = ["root", "ostree"]
+forbidden = ["selinux=0", "enforcing=0", "init=", "rd.break"]

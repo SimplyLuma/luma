@@ -1,0 +1,520 @@
+{
+  "schema": "org.projectluma.kernel-source/v1",
+  "version": "7.3",
+  "release": "7.3.0-1.luma.surface12.fc44.aarch64",
+  "architecture": "aarch64",
+  "device_tree": "qcom/x1p42100-microsoft-sp12in.dtb",
+  "sources": {
+    "linux": {
+      "name": "linux-7.3.tar.xz",
+      "url": "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.tar.xz",
+      "sha256": "87363c24f10e06321eb362765521094e94471f6bff8bce2d6b3e40f39f004953",
+      "size": 162399360
+    },
+    "overlay": {
+      "name": "surface-overlay-c570db8.tar.gz",
+      "url": "https://api.github.com/repos/miasvanklei/Gentoo-overlay/tarball/c570db86262ffac9b636acf45b1557c06e0d7ebd",
+      "sha256": "ffce40ba9643290b6fbeae101a812c2c55051763d65574572ba34f26c1397b84",
+      "size": 393804,
+      "revision": "c570db86262ffac9b636acf45b1557c06e0d7ebd"
+    }
+  },
+  "base_config": {
+    "source_rpm": "https://kojipkgs.fedoraproject.org/packages/kernel/7.2.11/200.fc44/aarch64/kernel-core-7.2.11-200.fc44.aarch64.rpm",
+    "source_rpm_sha256": "c71821a704919ee93c2cb9dd21439a9973952fafc558f267c2b84fda13cf40ca",
+    "member": "lib/modules/7.2.11-200.fc44.aarch64/config",
+    "sha256": "a51ef35e4ec68f0d066eb90550d9dae3c9ea7b93c91709653d86ba0778a95de6"
+  },
+  "patches": [
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/other/0001-arm64-dts-qcom-hamoa-workaround-idle-resets.patch",
+      "sha256": "55925bd4a4df6c0af33e1501acb86fe9658cdeac45788722fa9ac10763b5ae67",
+      "origin": "other/0001-arm64-dts-qcom-hamoa-workaround-idle-resets.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/other/0008-Bluetooth-hci_qca-Drop-unused-event-during-BT-on.patch",
+      "sha256": "e4ca052e5046370ce92e3a4532b4e750cc04268c39c39a3dd1130fbf1d1d34fb",
+      "origin": "other/0008-Bluetooth-hci_qca-Drop-unused-event-during-BT-on.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/audio/0001-ASoC-qcom-q6dsp-lpass-ports-Extend-q6dsp-lpass-ports.patch",
+      "sha256": "2c4c87c03e6e96b01e83908c564a2c516c31c9ad12a30ec70704ad0fd29800d6",
+      "origin": "audio/0001-ASoC-qcom-q6dsp-lpass-ports-Extend-q6dsp-lpass-ports.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/audio/0002-ASoC-qcom-q6dsp-lpass-ports-Update-constraints-to-su.patch",
+      "sha256": "2bd69a32ef7fcbd9a9510bfd10d07e5f2cd14529108ca1d25f39ac9c0529fead",
+      "origin": "audio/0002-ASoC-qcom-q6dsp-lpass-ports-Update-constraints-to-su.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/clk/0002-pmdomain-core-migrate-to-dev_add_sync_state.patch",
+      "sha256": "b3ef0a340330773024b08f4e97e7a6e7431ee2f8b2e5995303828eb3b8d9016c",
+      "origin": "clk/0002-pmdomain-core-migrate-to-dev_add_sync_state.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/clk/0004-clk-implement-sync_state-support.patch",
+      "sha256": "1f6eaa4eafdca53aaa403a841902f8cd54dc5791d54f972ae02304cda00e4b81",
+      "origin": "clk/0004-clk-implement-sync_state-support.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/clk/0005-7.4-clk-qcom-gcc-x1e80100-Tie-the-CX-power-domain-to-controller.patch",
+      "sha256": "6e0cbb54785790c3ecb81f585ecdd7288b1937301cceb02800a6adee9bb1cb15",
+      "origin": "clk/0005-7.4-clk-qcom-gcc-x1e80100-Tie-the-CX-power-domain-to-controller.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/pci/0001-PCI-ASPM-Always-disable-ASPM-when-driver-requests-it.patch",
+      "sha256": "4c0ce1ce5a2b85fed1f7a00af452f35866bc6c429f8952310a9a797458f0b91e",
+      "origin": "pci/0001-PCI-ASPM-Always-disable-ASPM-when-driver-requests-it.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/pci/0002-PCI-ASPM-Add-pci_force_enable_link_state-API.patch",
+      "sha256": "64a8d47078b74d69a00bed7c0c9f834e68175cea5c9d8aa6ba1cc97ac8ae2882",
+      "origin": "pci/0002-PCI-ASPM-Add-pci_force_enable_link_state-API.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/pci/0003-PCI-ASPM-Transition-the-device-to-D0-if-required-when-enabling-ASPM-link-states.patch",
+      "sha256": "86202b748e135ada0bf5e081291c7e9ca9dae22112b94c74828e4ddf31f46f7b",
+      "origin": "pci/0003-PCI-ASPM-Transition-the-device-to-D0-if-required-when-enabling-ASPM-link-states.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0001-net-qrtr-smd-Fix-race-conditions-while-opening-closing.patch",
+      "sha256": "625edcc8ff809d60d2013ce220d41fca084704d601bddbe1501495224ef45294",
+      "origin": "remoteproc/0001-net-qrtr-smd-Fix-race-conditions-while-opening-closing.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0002-soc-qcom-smp2p-Ensure-there-is-enough-space-for-outb.patch",
+      "sha256": "93f66f4502c9322d51a61cb7137b6c6ac3e15437369e96eda928eae83accc15e",
+      "origin": "remoteproc/0002-soc-qcom-smp2p-Ensure-there-is-enough-space-for-outb.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0003-soc-qcom-smp2p-Use-length-limited-strncmp-for-compar.patch",
+      "sha256": "86d57e30a2cd898ae8a73703057817304a715ee184157254528f09b1b11902ca",
+      "origin": "remoteproc/0003-soc-qcom-smp2p-Use-length-limited-strncmp-for-compar.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0004-soc-qcom-smp2p-Drop-redundant-stack-copies-of-entry-.patch",
+      "sha256": "6200c2e703fded698ceb8c075c0fcce986d93581a98e341eefc5555416072b77",
+      "origin": "remoteproc/0004-soc-qcom-smp2p-Drop-redundant-stack-copies-of-entry-.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0005-rpmsg-core-Call-announce_destroy-only-after-announce.patch",
+      "sha256": "54beea7d8562e1ef65b908ac5f3dccd50ec7f39c749ac22864266295ec53a951",
+      "origin": "remoteproc/0005-rpmsg-core-Call-announce_destroy-only-after-announce.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/remoteproc/0006-rpmsg-core-Make-it-easier-to-manually-create-endpoin.patch",
+      "sha256": "68c66c737b6813f88fa657b1f09220989334db8129e19fe6f85f4bd9678f7060",
+      "origin": "remoteproc/0006-rpmsg-core-Make-it-easier-to-manually-create-endpoin.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/gmu/0001-drm-msm-adreno-a6xx-Mark-cxpd-device_link-as-stateless.patch",
+      "sha256": "47d780c2d6a9dff4869b0d67d29aa77ba1c26d2efc839e626a57c5f68d9c3e34",
+      "origin": "gpu/gmu/0001-drm-msm-adreno-a6xx-Mark-cxpd-device_link-as-stateless.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/gmu/0002-drm-msm-Centralize-the-standalone-drm-device-check-for-GPU.patch",
+      "sha256": "aaf556412036f7418c31a3892e915af63cf75d1e68c0c0e3e029b35cda315067",
+      "origin": "gpu/gmu/0002-drm-msm-Centralize-the-standalone-drm-device-check-for-GPU.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/gmu/0003-drm-msm-adreno-Fix-invalid-drvdata-typecast-in-adreno_remove.patch",
+      "sha256": "756088e9882aae8e00e0e6f7cc35b21b318dd1e9ba159a4119689e1ac808284a",
+      "origin": "gpu/gmu/0003-drm-msm-adreno-Fix-invalid-drvdata-typecast-in-adreno_remove.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/gmu/0004-drm-msm-Always-use-component-model-for-standalone-GPU.patch",
+      "sha256": "91cc0390405021d0235b3d18a55fc149350bcb83dddf14a891eada53fad62a7d",
+      "origin": "gpu/gmu/0004-drm-msm-Always-use-component-model-for-standalone-GPU.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/gmu/0005-drm-msm-Attach-a-driver-to-the-GMU.patch",
+      "sha256": "944edd3c9125acae99bfaef0b23adcf5671c26f9098b641a0a4175963cf951cd",
+      "origin": "gpu/gmu/0005-drm-msm-Attach-a-driver-to-the-GMU.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0002-drm-connector-report-out-of-band-IRQ_HPD-events.patch",
+      "sha256": "f4890c5851933891683356e20d40ca6a8a546faa48f1bb93cf5202dced89a3b7",
+      "origin": "gpu/irq_hpd/0002-drm-connector-report-out-of-band-IRQ_HPD-events.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0003-drm-connector-pass-down-IRQ_HPD-to-the-drivers.patch",
+      "sha256": "3e466cc45ba4e78184547a34fe4c430f637ad1027282772c5aac638bb7ac89bd",
+      "origin": "gpu/irq_hpd/0003-drm-connector-pass-down-IRQ_HPD-to-the-drivers.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0004-drm-bridge-aux-hpd-let-drivers-pass-IRQ_HPD-events.patch",
+      "sha256": "1cda54a7372dec1a67c55693e36143d7b34b6e5fc39c21f720b13f01f3fd8380",
+      "origin": "gpu/irq_hpd/0004-drm-bridge-aux-hpd-let-drivers-pass-IRQ_HPD-events.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0005-drm-bridge-pass-extra-events-to-the-HPD-callback.patch",
+      "sha256": "27a0efbe76d885d287e881974cb1b0dbc6884586bc2ea1a0d44b52a620ecbbfa",
+      "origin": "gpu/irq_hpd/0005-drm-bridge-pass-extra-events-to-the-HPD-callback.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0006-drm-bridge-pass-down-IRQ_HPD-to-the-drivers.patch",
+      "sha256": "ce0023fb242126d2923b007c328fccfae243f82688339331b9f6cb433779c189",
+      "origin": "gpu/irq_hpd/0006-drm-bridge-pass-down-IRQ_HPD-to-the-drivers.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0007-drm-msm-dp-handle-the-IRQ_HPD-events-reported-by-USB-C.patch",
+      "sha256": "623e68dea72e728f6550488642a540fe096df00dd1cbcadc003bc3de34e371dd",
+      "origin": "gpu/irq_hpd/0007-drm-msm-dp-handle-the-IRQ_HPD-events-reported-by-USB-C.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0008-usb-typec-ucsi-huawei-gaokun-pass-down-HPD_IRQ-events.patch",
+      "sha256": "73db26073eff7c21f0b639dd5334eb0a103b095561825919c9916d95daf2cac4",
+      "origin": "gpu/irq_hpd/0008-usb-typec-ucsi-huawei-gaokun-pass-down-HPD_IRQ-events.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/gpu/irq_hpd/0009-soc-qcom-pmic-glink-altmode-pass-down-HPD_IRQ-events.patch",
+      "sha256": "e5b3a64cd7155187979412769c707a5b1c5c4e34af2712b46251572875115be5",
+      "origin": "gpu/irq_hpd/0009-soc-qcom-pmic-glink-altmode-pass-down-HPD_IRQ-events.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/wifi/0001-wifi-ath12k-Use-pci_-enable-disable-_link_state-APIs.patch",
+      "sha256": "1852239ab429def6291d9ed5c4bb7b8a24e36ffe9d0e397b6c2b6887343aacdf",
+      "origin": "wifi/0001-wifi-ath12k-Use-pci_-enable-disable-_link_state-APIs.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/wifi/0003-7.4-wifi-ath12k-skip-hardware-rfkill-setup-on-Microsoft-Surface-devices.patch",
+      "sha256": "f84aad1b4a1cc2ed90500f312453fc769d17daea736df5efa707aa9767953401",
+      "origin": "wifi/0003-7.4-wifi-ath12k-skip-hardware-rfkill-setup-on-Microsoft-Surface-devices.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/wifi/0004-wifi-ath12k-skip-hardware-rfkill-setup-on-Microsoft-Surface-Pro-12in.patch",
+      "sha256": "6ac1095886db758b1c23ec43ee5be43d53bfb57c7f3aaf14af39c5f0a66a759c",
+      "origin": "wifi/0004-wifi-ath12k-skip-hardware-rfkill-setup-on-Microsoft-Surface-Pro-12in.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/phy/0001-7.4-phy-core-Fix-use-after-free-in-phy_get-paths.patch",
+      "sha256": "33e09179f86b0d66bd75f8a621cfefc8c9ccac084c2f2924837e074f116c1d3f",
+      "origin": "phy/0001-7.4-phy-core-Fix-use-after-free-in-phy_get-paths.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/phy/0002-7.4-phy-core-Add-phy_get_by_of_node.patch",
+      "sha256": "dc61d759430d3aa0dafa97a5b2a3c97a0dd9b5edab3621a24fd9694b5842cd8c",
+      "origin": "phy/0002-7.4-phy-core-Add-phy_get_by_of_node.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/phy/0003-7.4-phy-core-Add-devm_phy_get_by_of_node.patch",
+      "sha256": "3783c6b14bc7031868f3f6a6f8916fe050538f5675bceb525d0d52c2b8d84e72",
+      "origin": "phy/0003-7.4-phy-core-Add-devm_phy_get_by_of_node.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/phy/0004-7.4-phy-qcom-mipi-csi2-Add-a-CSI2-MIPI-DPHY-driver.patch",
+      "sha256": "03e567495c4f1ee7b3b1949036db7ab3f5053bd81b335cbcd7fc728807eea52c",
+      "origin": "phy/0004-7.4-phy-qcom-mipi-csi2-Add-a-CSI2-MIPI-DPHY-driver.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0002-media-qcom-camss-Add-support-for-PHY-API-devices.patch",
+      "sha256": "814659ff1ac22a25aedb3d7334f22ccbb4e7ea41e1e0874576d683fc34b61e42",
+      "origin": "camera/0002-media-qcom-camss-Add-support-for-PHY-API-devices.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0003-media-qcom-camss-Use-data-lanes-starting-at-1-for-new-CSIPHY-mode.patch",
+      "sha256": "817025dfa78c49f5c4958125981d9232e3cf3ba3f567c9ad3c566206b6a6a663",
+      "origin": "camera/0003-media-qcom-camss-Use-data-lanes-starting-at-1-for-new-CSIPHY-mode.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0008-media-qcom-camss-Add-support-for-x1p42100.patch",
+      "sha256": "8e8d74e2653e9616feef4b82afe4d9f51973fa5d354fe52151664263287310f5",
+      "origin": "camera/0008-media-qcom-camss-Add-support-for-x1p42100.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0009-media-qcom-camss-Drop-legacy-PHY-descriptions-from-x.patch",
+      "sha256": "0216c6b31270ac3a3c4c459844cb343b0228e19e58446949690ff1d532c25546",
+      "origin": "camera/0009-media-qcom-camss-Drop-legacy-PHY-descriptions-from-x.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0025-media-i2c-ov02c10-improve-default-exposure-setting.patch",
+      "sha256": "d63c3549d6276d7678404e5b802e5dab96912e1ded9d7ada86eabd8fd00425ab",
+      "origin": "camera/0025-media-i2c-ov02c10-improve-default-exposure-setting.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/camera/0026-media-i2c-ov02c10-add-get_selection.patch",
+      "sha256": "3282efc2616e9bb30a030d4e972c2137cca0565aff206d482548fa5e123e08c8",
+      "origin": "camera/0026-media-i2c-ov02c10-add-get_selection.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/irq/0001-revert-arm64-dts-qcom-x1e80100-Add-deepest-idle-state.patch",
+      "sha256": "5d08a0ff468d81c91c226d110d22a46d306e445dd3065d1e23be4a56d19e040c",
+      "origin": "irq/0001-revert-arm64-dts-qcom-x1e80100-Add-deepest-idle-state.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/irq/0002-7.4-irqchip-qcom-pdc-Add-purwa-compatible-for-PDC-secondary-mode.patch",
+      "sha256": "4cc718b574a062df1b32f1427e00b8022b2a28333aa2f2306b6a3c7cb4eac0f7",
+      "origin": "irq/0002-7.4-irqchip-qcom-pdc-Add-purwa-compatible-for-PDC-secondary-mode.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/irq/0003-7.4-arm64-dts-qcom-purwa-Drop-the-hamoa-workaround-for-PDC.patch",
+      "sha256": "6c6003f5e812e7e43a91039e24458c34ce93a6aa735e2197795d8228975f2388",
+      "origin": "irq/0003-7.4-arm64-dts-qcom-purwa-Drop-the-hamoa-workaround-for-PDC.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0004-rtc-add-sam-driver.patch",
+      "sha256": "26056c7bd98ac45b5faed9dc1cdb1252bb941caef36bd54197491933b34b5d4d",
+      "origin": "surface/0004-rtc-add-sam-driver.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0005-platform-surface-SAM-add-rtc-for-Surface-Pro-12in.patch",
+      "sha256": "68382863e11dfa8b6f364725d5c63f1e19002d16ef1f4585d357a0b312ab99f1",
+      "origin": "surface/0005-platform-surface-SAM-add-rtc-for-Surface-Pro-12in.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0007-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-remove-pmc8380_6_die_temp.patch",
+      "sha256": "196855a38d765b2412af4c53d23aa411129bd6bc8f7fc8725109f851da2cda31",
+      "origin": "surface/0007-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-remove-pmc8380_6_die_temp.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0008-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-correct-gpios-vol.patch",
+      "sha256": "f55b28fddb3ba849d13984f1742e3894ea12440c7519cd6b92ae52aabaebff77",
+      "origin": "surface/0008-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-correct-gpios-vol.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0009-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-correct-regulators-display.patch",
+      "sha256": "d599103502f44f83b5f77670f4b9d08fa077b07fe3d37f198a5f71534d37bc26",
+      "origin": "surface/0009-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-correct-regulators-display.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0010-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-displayport-audio.patch",
+      "sha256": "4f0f995982af689c51e49c8c677ac500e6b2ad4cd2b0802dc8cab89240a6bd86",
+      "origin": "surface/0010-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-displayport-audio.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0011-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-charge-limit-nvmem.patch",
+      "sha256": "bdbf1db73128888efd80904a6b1cd8180df84392d9e28dd8bad8e2d22559ce87",
+      "origin": "surface/0011-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-charge-limit-nvmem.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0012-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-camera-support.patch",
+      "sha256": "16e7e3808c24aa1c9541919a24a69a096c669ef2f5b0f2984b342df395f1e2f2",
+      "origin": "surface/0012-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-camera-support.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0014-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-iris-node.patch",
+      "sha256": "4e47396e5e31995ffb052c890a7c4f2a8b7c17564e0786640d8bb02b18f13428",
+      "origin": "surface/0014-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-add-iris-node.patch"
+    },
+    {
+      "source": "overlay",
+      "path": "sys-kernel/vanilla-kernel/files/surface/0015-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-remove-reserved-memory.patch",
+      "sha256": "8d3c3eba1277c86044c0824e868269eae345f725fc96b60f2d1f6b9b6d23efa0",
+      "origin": "surface/0015-arm64-dts-qcom-purwa-Microsoft-Surface-Pro-12in-remove-reserved-memory.patch"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/other/0006-hack-soc-qcom-pmic_glink-Avoid-platform-rpmsg-probe-.patch",
+      "sha256": "7940dd0d4ea1fd7dfc90de5e7e337743038f062b97f5e1e91ea42af85258954d",
+      "origin": "other/0006-hack-soc-qcom-pmic_glink-Avoid-platform-rpmsg-probe-.patch",
+      "origin_sha256": "c5b821567d4c8c0e34faf4b03a8b9776380340fde55a909cfabf7626bc0d38ce"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/clk/0001-driver-core-introduce-dev_add_sync_state.patch",
+      "sha256": "996ac491f3c278b8fa6f73a4022e5fa330504fa3f7e940dd3725ba6e9cda794c",
+      "origin": "clk/0001-driver-core-introduce-dev_add_sync_state.patch",
+      "origin_sha256": "c8b997f4646fa641e6cafa8dccd99811ec14a4c5e7b3f45db4cae545ff71e8c5"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/clk/0003-driver-core-remove-dev_set_drv_sync_state.patch",
+      "sha256": "4b00f2a71869a419549489daeee24a9d7953caadd0e365e2cb6c2f51b6df71eb",
+      "origin": "clk/0003-driver-core-remove-dev_set_drv_sync_state.patch",
+      "origin_sha256": "d8c89177673bc60f30597d4883edbdba5d3255bbdb7100d45a6edd26cd4d292a"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/pci/0004-PCI-ASPM-Return-enabled-ASPM-states-from-pcie_aspm_e.patch",
+      "sha256": "6bfd9d3e9c8f5840b7a217804dafdcf6e5c7c09baca1ea389de8b24d9dd44bac",
+      "origin": "pci/0004-PCI-ASPM-Return-enabled-ASPM-states-from-pcie_aspm_e.patch",
+      "origin_sha256": "49986cb110841d79763ef93a69a47bf0f8ccafc60490b6994b4f74053fbf8aac"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0012-arm64-dts-qcom-hamoa-Add-CCI-definitions.patch",
+      "sha256": "0f9e0e8d1fb831384dee3c2aafbf1b2f14fe02dad73e64c748378ccfc9d0af5b",
+      "origin": "camera/0012-arm64-dts-qcom-hamoa-Add-CCI-definitions.patch",
+      "origin_sha256": "fbf41ad732b007272d9015eacaee417cced4a447f2482b104009b12a22fb4b5f"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0014-arm64-dts-qcom-hamoa-Add-CAMSS-block-defintion.patch",
+      "sha256": "39bee7a105587cad7cf13a40fea3e02cf5ad40dc7001d76fdcc99cb7ab38480e",
+      "origin": "camera/0014-arm64-dts-qcom-hamoa-Add-CAMSS-block-defintion.patch",
+      "origin_sha256": "127de4d23c88251d142f57c3c4674ff4c8b8a2abe38d1f6e68dcfd42f9579d11"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0015-arm64-dts-qcom-purwa-Add-CAMSS-block-defintion.patch",
+      "sha256": "33c7f6bbda49db99bcd1007e272b3aa6d35be7065fe575273c41a542e249375c",
+      "origin": "camera/0015-arm64-dts-qcom-purwa-Add-CAMSS-block-defintion.patch",
+      "origin_sha256": "dbfc2608b11a2a068458a7b17e783342b1b6febf70c919b4668f9a8cb9493957"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0018-media-i2c-ov13858-reorder-methods.patch",
+      "sha256": "3f5b92c24f611ee3e2e379c3192d4cad22ae9ce0eed9eb4d44af7fb19039b69c",
+      "origin": "camera/0018-media-i2c-ov13858-reorder-methods.patch",
+      "origin_sha256": "17657f0649c7c986b22afd24628a8b63464fa12fe7e1ba00ccfe0a4a9f0808d5"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0019-media-i2c-ov13858-port-to-regmap_cci-api.patch",
+      "sha256": "7ed971262729060dada1817d8cbf64dcff352e99314b902dcbf6ff3a59af00c1",
+      "origin": "camera/0019-media-i2c-ov13858-port-to-regmap_cci-api.patch",
+      "origin_sha256": "8c54f5da5ab6d71dd51077428ea90e704ace43f2546fe7f214c7a0b0ff00cc12"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0020-media-i2c-ov13858-replace-open_set-stream-with-v4l2.patch",
+      "sha256": "705ce77aedb2a6981cc17dac33394ed17a324fb7457ae25deed3fa53e0458675",
+      "origin": "camera/0020-media-i2c-ov13858-replace-open_set-stream-with-v4l2.patch",
+      "origin_sha256": "5c2c9299cfe6ab986ba63a883bed824c21134969b87bcadfca307408042c0e32"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0021-media-i2c-ov13858-add-rotate-control-support.patch",
+      "sha256": "06f20da87972a70b5e30fce7773cb4f85becac70225671b2fd8d46e42121649d",
+      "origin": "camera/0021-media-i2c-ov13858-add-rotate-control-support.patch",
+      "origin_sha256": "d74eb313e3477bcbfe0b6787916012d17bc4ab6912b3ff142ee19c9753ed594b"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0022-media-i2c-ov13858-fix-setting-format.patch",
+      "sha256": "e667217545584497de62e21c4412867b12bd477d2788de4aea44f5f37b8df282",
+      "origin": "camera/0022-media-i2c-ov13858-fix-setting-format.patch",
+      "origin_sha256": "c0cfcf4c32d38f21be18b23c746e6068d1f65dd025fd934fa357b2eaa88f590d"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0023-media-i2c-ov13858-add-get_selection.patch",
+      "sha256": "d0eab6858663640195b233b058fb5458ff82f09aa12747192efe5bf3a34c897a",
+      "origin": "camera/0023-media-i2c-ov13858-add-get_selection.patch",
+      "origin_sha256": "5e8d06796954ce6c2b71c4d828fe88e424b83d173c2f66d1bce7fd2bda022582"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/camera/0024-media-i2c-ov13858-support-of.patch",
+      "sha256": "b49e1e26f1741f5e0ef846e3b07269c1a68b057a5891fb2aaed4c24ab1103f28",
+      "origin": "camera/0024-media-i2c-ov13858-support-of.patch",
+      "origin_sha256": "94777625282de7af57e7c78205032c104930b68316ce1f5183a474146033759c"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/production-video-firmware.patch",
+      "sha256": "d3b739b10327f30c766cd0263582f4181e15db1cead2422afde0b2e2952bea2f",
+      "origin": "Surface Pro 12-inch production firmware selection; no TrustZone bypass"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-surface-pro12/7.3/qrtr-unlock-before-failed-endpoint-cleanup.patch",
+      "sha256": "ab4d7d6f20307bba5e8c28e077c125167801e3ccabe76304aee8bdd593516b45",
+      "origin": "Local correction to failed-channel cleanup after remoteproc/0001 opening/closing race fix; real-device blocked-task trace."
+    }
+  ],
+  "excluded": [
+    {
+      "path": "other/0009-remove-werror-clang.patch",
+      "reason": "Do not weaken compiler diagnostics."
+    },
+    {
+      "path": "remoteproc/0007-soc-qcom-smp2p-Take-over-outgoing-SMEM-items-from-bo.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "remoteproc/0008-remoteproc-qcom_q6v5_pas-Add-early_boot-to-x1e80100-cdsp-adsp.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "remoteproc/0009-remoteproc-core-Allow-restarting-detached-remoteproc.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "remoteproc/0010-remoteproc-qcom_q6v5-Send-SMP2P-stop-signal-in-attac.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "remoteproc/0011-remoteproc-qcom_q6v5_pas-Attach-running-remoteproc-i.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "remoteproc/0012-remoteproc-qcom_q6v5_pas-Avoid-using-broken-reset.patch",
+      "reason": "EL2 boot/remoteproc attach path not selected."
+    },
+    {
+      "path": "wifi/0002-wifi-ath11k-Override-spammy-warn-for-msdu_done.patch",
+      "reason": "Unrelated ath11k hardware; keep warnings."
+    },
+    {
+      "path": "input/0002-hid-surface-filter-FN-KEY.patch",
+      "reason": "Patch targets Laptop 4 FN-key report; no demonstrated need on this device."
+    },
+    {
+      "path": "input/0003-hid-surfacego2-fix-touchcover.patch",
+      "reason": "Different Surface model."
+    },
+    {
+      "path": "camera/0017-surfacego2-camera.patch",
+      "reason": "Different Surface model."
+    }
+  ],
+  "additional_exclusions": {
+    "el2": "No custom hypervisor boot chain; use retail UEFI/EL1.",
+    "video": "No firmware loading that bypasses TrustZone. Use standard production-signed owner firmware."
+  }
+}
