@@ -30,8 +30,8 @@ if [ "$signing" = 1 ]; then
   [ "$DEPOT_TOOLS_CONTAINER" != luma-depot-tools ] || depot_die "signing requires a distinct DEPOT_TOOLS_CONTAINER"
 fi
 depot_validate_build_architectures
-# Signing retains its existing native architecture contract.
-[ "$signing" = 0 ] || [ "$DEPOT_TOOLS_ARCH" = "$DEPOT_ARCH" ] || depot_die "signing tools must match the target CPU"
+# Signing exports files and metadata without executing the target payload.
+# The declared tools CPU must still match the actual container for every role.
 case "$DEPOT_TOOLS_ARCH" in
   x86_64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER} ;;
   aarch64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER_AARCH64} ;;
@@ -113,9 +113,9 @@ podman run --detach --init "${isolation[@]}" --security-opt label=disable \
   --env PYTHONPATH= --env PYTHONHOME= --env BASH_ENV= --env ENV= --env LD_PRELOAD= --env LD_LIBRARY_PATH= \
   "$image" sleep infinity >/dev/null
 
-if [ "$signing" = 0 ]; then
 actual_arch=$(podman exec "$DEPOT_TOOLS_CONTAINER" uname -m)
-[ "$actual_arch" = "$DEPOT_TOOLS_ARCH" ] || depot_die "Depot builder CPU $actual_arch differs from tools CPU $DEPOT_TOOLS_ARCH"
+depot_validate_actual_tools_cpu "$actual_arch"
+if [ "$signing" = 0 ]; then
 podman exec --interactive "$DEPOT_TOOLS_CONTAINER" bash -s < "$depot_repo_root/scripts/depot/install-tools-packages.sh"
 fi
 depot_log "$DEPOT_TOOLS_CONTAINER ready ($image)"

@@ -41,6 +41,25 @@ class BuildArchitectures(unittest.TestCase):
                 r = self.profile(target, tools); self.assertNotEqual(r.returncode, 0)
                 self.assertIn('unsupported tools/target CPU pair', r.stderr)
 
+    def test_actual_tools_cpu_matches_for_native_and_cross_target_exports(self):
+        for target, tools, actual, expected in [
+            ('x86_64', 'x86_64', 'x86_64', 0),
+            ('aarch64', 'aarch64', 'aarch64', 0),
+            ('aarch64', 'x86_64', 'x86_64', 0),
+            ('aarch64', 'aarch64', 'x86_64', 1),
+            ('aarch64', 'x86_64', 'aarch64', 1),
+        ]:
+            with self.subTest(target=target, tools=tools, actual=actual):
+                env = dict(os.environ, DEPOT_ARCH=target, DEPOT_TOOLS_ARCH=tools)
+                result = subprocess.run(
+                    ['bash', '-c', '. "$1/scripts/depot/lib.sh"; '
+                     'depot_validate_build_architectures && '
+                     'depot_validate_actual_tools_cpu "$2"', 'profile', str(ROOT), actual],
+                    env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected)
+                if expected:
+                    self.assertIn('differs from declared tools CPU', result.stderr)
+
     def test_invalid_job_limits_fail_before_manifest_or_build(self):
         for jobs in ('0', '-1', '17', '2 3', '2;false'):
             env = dict(os.environ, DEPOT_ARCH='aarch64', DEPOT_TOOLS_ARCH='x86_64', DEPOT_BUILD_JOBS=jobs)
