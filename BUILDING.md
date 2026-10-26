@@ -203,3 +203,23 @@ Existing x86 metadata, media and graph paths stay unchanged. Graph signing accep
 `--arch`; sealed approved-refresh configurations may declare `architecture` and
 `profile` (their defaults remain `x86_64` and `full`). A new sealed state and normal
 publication approval are required before deploying any refresh configuration.
+
+A native builder without release keys can prepare an OS export with
+`scripts/os/export-ostree.sh --build-id ID --prepare-only`. This runs the normal
+container import, candidate creation and image metadata/mode verification. It
+writes `export-prepared.json` with an explicit unsigned result and hashes of the
+build evidence. It does not write `export.env`, move a channel ref, sign anything
+or qualify the image.
+
+Transfer the build evidence named in that receipt and both recorded commits
+from the native candidate repository to the authorized signing host. Record the
+receipt SHA256, source revision and image ID through the authenticated builder
+connection. Keep incoming evidence root owned and unwritable by other accounts.
+The signing host runs `scripts/os/sign-prepared-export.sh --build-id ID
+--prepared-repo REPO --receipt-sha256 SHA256 --source-revision COMMIT --image-id
+IMAGE_ID`. It validates those identities, the current channel parent, actual
+commit metadata/package inventory and the existing image metadata repairs
+before the normal GPG signing and signed summary steps create `export.env`.
+Release keys and passphrases remain on the authorized signing infrastructure.
+Return the signed candidate to the native test host for installer, boot and
+update qualification; signing alone does not authorize publication.
