@@ -54,6 +54,11 @@ depot_validate_build_architectures() {
   esac
 }
 
+depot_validate_actual_tools_cpu() {
+  [ "$1" = "$DEPOT_TOOLS_ARCH" ] ||
+    depot_die "Depot tools CPU $1 differs from declared tools CPU $DEPOT_TOOLS_ARCH"
+}
+
 depot_gpg_fingerprint() {
   local file="$DEPOT_KEYS/gpg-fingerprint.txt"
   [ -s "$file" ] || depot_die "no Depot signing key; run scripts/depot/generate-keys.sh"
