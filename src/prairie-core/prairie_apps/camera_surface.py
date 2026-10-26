@@ -32,7 +32,7 @@ from luma_appkit.action_bubble import FloatingMenu, MenuItem, float_at, rect_in
 from luma_appkit.bar_frame import BarFrame
 from luma_appkit.action_center import BarAction, make_control
 from luma_appkit.media_style import TextureLoader
-from luma_appkit.structure_adapt import WidthWatch
+from luma_appkit.structure_adapt import WidthWatch, _LayoutWatch
 from luma_appkit.structure_layers import LayerHost
 from luma_appkit.lumaui import media_context, mobile_form_factor, set_css_class
 from .camera_backend import image_rotation_from_mount
@@ -639,7 +639,7 @@ class CameraSurface:
         swipe.connect("drag-end", self.swiped)
         w._picture.add_controller(swipe)
         self.swipe_time = 0.0
-        self.overlay.add_tick_callback(self.resize)
+        self._layout_watch = _LayoutWatch(self.overlay, self.resize)
         self.refresh()
         if self.values["focus"] is not None:
             self.start_focus_fade()

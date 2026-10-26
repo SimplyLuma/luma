@@ -509,6 +509,10 @@ class WeatherWindow(AppWindow):
         if serial is not None and serial != self._refresh_serial.get(uid):
             return False
         if snapshot is not None:
+            # Essential and enriched results can be identical. Keep the
+            # current widgets, focus and scroll position in that case.
+            if snapshot == self.snapshots.get(uid):
+                return False
             self.snapshots[uid] = snapshot
             self._render_sidebar()
             if self.selected == uid:
