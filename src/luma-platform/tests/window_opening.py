@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import tempfile
 import time
+import subprocess
+import sys
 import gi
 gi.require_version('Adw', '1')
 gi.require_version('Gtk', '4.0')
@@ -71,6 +73,18 @@ with tempfile.TemporaryDirectory() as root:
             compact.add_setter(built.title_bar, 'visible', False)
             built.add_breakpoint(compact)
         return built
+
+    # A process has one resolved session presentation. Exercise the phone
+    # contract in a fresh process rather than changing a running desktop's
+    # environment underneath its existing SessionContext subscription.
+    if '--handheld' in sys.argv:
+        handheld = window()
+        assert not handheld.get_decorated()
+        assert not handheld.title_bar.get_visible()
+        handheld.destroy()
+        settle()
+        print('PASS: a fresh handheld session leaves its shell chrome alone')
+        raise SystemExit(0)
 
     # 1. Nothing remembered: the shared rule decides, the window opens wider
     #    than its own phone layout, and the title row is there.
@@ -136,15 +150,9 @@ with tempfile.TemporaryDirectory() as root:
 
     # 6. On a handheld the shell draws the surface chrome, so the phone layout
     #    is right to hide the row and the guarantee stays out of the way.
-    os.environ['LUMA_PRESENTATION_MODE'] = 'fullscreen-mobile'
-    try:
-        handheld = window()
-        assert not handheld.get_decorated()
-        assert not handheld.title_bar.get_visible()
-        handheld.destroy()
-        settle()
-    finally:
-        del os.environ['LUMA_PRESENTATION_MODE']
+    subprocess.run([sys.executable, str(Path(__file__).resolve()), '--handheld'],
+                   env=os.environ | {'LUMA_PRESENTATION_MODE': 'fullscreen-mobile'},
+                   check=True)
 
 print('PASS: opening size from the shared rule, wider than the window’s own '
       'phone layout; remembered narrow size, an outright hide and a resize all '
