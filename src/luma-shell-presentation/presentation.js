@@ -301,10 +301,12 @@ export class Presentation {
         this._editor.setEditing(false);
         this.mode = mode;
         this._gridDrag.setMode();
-        Main.shelf?.setPresentationMode?.(mode);
         if (mode === 'desktop') {
+            // Return borrowed status actors before measuring/showing the Dash.
             this._leaveHandheld();
+            Main.shelf?.setPresentationMode?.(mode);
         } else {
+            Main.shelf?.setPresentationMode?.(mode);
             if (previous === 'desktop')
                 this._enterHandheld();
             this._rebuild();

@@ -2,7 +2,7 @@
 /* LumaUI floating controls, dark appearance. Grouping actors have no fill. */
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options {
     width: 338px; padding: 18px 16px 14px; border-radius: 26px;
-    background-color: rgba(32,33,36,.65);
+    background-color: rgba(32,33,36,.78);
     background-gradient-direction: none;
     border: 1px solid rgba(255,255,255,.06); color: #eef0f4; font-family: Figtree;
     box-shadow: 0 2px 6px rgba(0,0,0,.18), 0 8px 24px -4px rgba(0,0,0,.24), 0 24px 60px -24px rgba(0,0,0,.5);
@@ -167,7 +167,7 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-footer-mode .quick-toggle-menu-button { width: 20px; padding: 0; background-color: transparent; border: 0; box-shadow: none; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-quick-footer { spacing: 8px; }
 /* Detail pages keep their one outer material, without an inset dark panel. */
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-mode-detail { padding: 8px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-mode-detail { padding: 8px 8px 14px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-mode-detail .luma-options-page { spacing: 4px; padding: 0; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-mode-detail .luma-options-page-header { padding: 0; margin: 0; spacing: 4px; min-height: 30px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-mode-detail .luma-options-back { width: 28px; height: 28px; }
@@ -193,3 +193,6 @@
     background-color: transparent; background-gradient-direction: none;
 }
 .luma-shelf-root.luma-shelf-separate > .luma-shelf-group { background-color: transparent; }
+
+/* Preserve the native no-transparency/accessibility fallback. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-floating-reduced { background-color: #202124; }

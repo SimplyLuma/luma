@@ -38,9 +38,13 @@ export class OptionsSurface {
         this.indicators = indicators;
         this._footer = indicators._system.quickSettingsItems[0];
         menu.box.add_style_class_name('lumaui-shell-options');
+        // A background blur must sample the stage, not an empty intermediate
+        // framebuffer belonging to the popup's parent.
+        menu._boxPointer.set_offscreen_redirect(Clutter.OffscreenRedirect.AUTOMATIC);
+        menu._dimEffect.enabled = false;
         menu._materialBinding.setCornerRadii(26);
-        menu._materialBinding.setTranslucentRecipe({radius: 28, saturation: 1.5});
-        menu._materialBinding.setFloatingRecipe({radius: 28, saturation: 1.5});
+        menu._materialBinding.setTranslucentRecipe({radius: 36, saturation: 1.2});
+        menu._materialBinding.setFloatingRecipe({radius: 36, saturation: 1.2});
         menu._grid.hide();
         move(menu._lumaHeader, menu._mainPage);
         menu._mainPage.set_child_at_index(menu._lumaHeader, 0);
