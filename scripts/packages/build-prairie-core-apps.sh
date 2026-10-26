@@ -14,13 +14,29 @@ for tool in mktemp podman sha256sum tar; do
   }
 done
 
-[ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || {
-  printf 'error: build the noarch Prairie apps RPM on the canonical Linux/x86_64 builder\n' >&2
+[ "$(uname -s)" = Linux ] || {
+  printf 'error: build the noarch Prairie apps RPM on a native Fedora Linux builder\n' >&2
   exit 1
 }
-
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$architecture" = "$(uname -m)" ] || {
+  printf 'error: the Core builder must execute natively for %s\n' "$architecture" >&2
+  exit 1
+}
+case "$architecture" in
+  x86_64)
+    platform_nevra=$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA
+    apk_nevra=$LUMA_APK_METADATA_X86_64_NEVRA
+    builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64)
+    platform_nevra=$LUMA_DEVELOPER_PLATFORM_AARCH64_NEVRA
+    apk_nevra=$LUMA_APK_METADATA_AARCH64_NEVRA
+    builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported Core build architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 output_dir="$repo_root/build/packages/prairie-core-apps"
-platform_rpm="$repo_root/build/packages/luma-developer-platform/x86_64/RPMS/$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA.rpm"
+platform_rpm="$repo_root/build/packages/luma-developer-platform/$architecture/RPMS/$platform_nevra.rpm"
 [ -f "$platform_rpm" ] || {
   printf 'error: build the pinned Luma Developer Platform first: %s\n' "$platform_rpm" >&2
   exit 1
@@ -52,8 +68,8 @@ install -m 0644 "$installer_rpm" "$rpmbuild_dir/SOURCES/dependencies/"
 # The installer's two non-Fedora runtime dependencies and the native test
 # font are pinned prerequisites too; admit their complete local closure.
 for prerequisite in \
-  "luma-apk-metadata/RPMS/x86_64/$LUMA_APK_METADATA_X86_64_NEVRA.rpm" \
-  "luma-appimage-compat/RPMS/x86_64/luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64.rpm" \
+  "luma-apk-metadata/RPMS/$architecture/$apk_nevra.rpm" \
+  "luma-appimage-compat/RPMS/$architecture/luma-appimage-compat-0.1.0-1.luma.1.fc44.$architecture.rpm" \
   "figtree-fonts/RPMS/noarch/$FIGTREE_NEVRA.rpm"; do
   path="$repo_root/build/packages/$prerequisite"
   [ -f "$path" ] || { printf 'error: missing Core build prerequisite: %s\n' "$path" >&2; exit 1; }
@@ -104,7 +120,7 @@ sed -n 's/^Source[0-9]*:[[:space:]]*//p' "$rpmbuild_dir/SPECS/prairie-core-apps.
   done
 
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
-  "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
     export ATSPI_DBUS_IMPLEMENTATION=dbus-daemon
     build_log=$(mktemp)
