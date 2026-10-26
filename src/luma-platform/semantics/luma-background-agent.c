@@ -5,8 +5,10 @@
  */
 #include "luma-background-agent.h"
 
+#ifdef G_OS_UNIX
 #include <glib-unix.h>
 #include <signal.h>
+#endif
 #include <string.h>
 
 #define SERVICE_NAME "org.projectluma.Background1"
@@ -511,6 +513,7 @@ name_lost(G_GNUC_UNUSED GDBusConnection *connection,
     g_main_loop_quit(self->loop);
 }
 
+#ifdef G_OS_UNIX
 static gboolean
 on_terminate(gpointer data)
 {
@@ -519,6 +522,7 @@ on_terminate(gpointer data)
     g_main_loop_quit(self->loop);
   return G_SOURCE_CONTINUE;
 }
+#endif
 
 void
 luma_background_agent_quit(LumaBackgroundAgent *self, int status)
@@ -535,7 +539,9 @@ luma_background_agent_run(LumaBackgroundAgent *self, G_GNUC_UNUSED int argc,
 {
   g_autoptr(GError) error = NULL;
   g_autoptr(GDBusConnection) connection = NULL;
+#ifdef G_OS_UNIX
   guint term_source, int_source;
+#endif
 
   g_return_val_if_fail(LUMA_IS_BACKGROUND_AGENT(self), 1);
   connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
@@ -551,11 +557,15 @@ luma_background_agent_run(LumaBackgroundAgent *self, G_GNUC_UNUSED int argc,
   self->name_id = g_bus_own_name_on_connection(
       connection, self->agent_id, G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE,
       name_acquired, name_lost, self, NULL);
+#ifdef G_OS_UNIX
   term_source = g_unix_signal_add(SIGTERM, on_terminate, self);
   int_source = g_unix_signal_add(SIGINT, on_terminate, self);
+#endif
   g_main_loop_run(self->loop);
+#ifdef G_OS_UNIX
   g_source_remove(term_source);
   g_source_remove(int_source);
+#endif
   if (self->started)
     g_signal_emit(self, signals[SIGNAL_STOP], 0);
   g_bus_unown_name(self->name_id);

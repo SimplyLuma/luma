@@ -1,0 +1,7 @@
+{
+  "uuid": "tester@project-luma.local",
+  "name": "Luma Tester",
+  "description": "Virtual preview display setup and first-frame readiness.",
+  "shell-version": ["50"],
+  "version": 1
+}

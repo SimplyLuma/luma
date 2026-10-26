@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Luma Tester</title>
+  <!-- The orange full stop from Luma's canonical wordmark (#FE6819). -->
+  <rect width="128" height="128" rx="28" fill="#21252b"/>
+  <circle cx="64" cy="64" r="36" fill="#FE6819"/>
+</svg>
