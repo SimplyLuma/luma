@@ -2661,5 +2661,15 @@
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "820c6d546377fbfcca57f571160a79cf98b132d86852fafe2d6eba53f0352849"
     }
+  ],
+  "derived_icons": [
+    {
+      "name": "camera-active",
+      "icon": "lumaui-camera-active-symbolic",
+      "source": "upstream/lucide/fills/camera-active.svg",
+      "sha256": "cd359a6f058f0f076a358809423530c8c1ad417da32df6592f7fb7f6b1a9e32c",
+      "derivation": "Filled camera body with transparent lens cutout derived from Lucide camera geometry; retains ISC notice in the vendored Lucide license.",
+      "license": "upstream/lucide/LICENSE.txt"
+    }
   ]
 }

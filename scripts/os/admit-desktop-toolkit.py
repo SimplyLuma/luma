@@ -30,7 +30,7 @@ def api(path):
 if a.run_id:
     assert not a.providers_only, 'select one admission mode'
     run = a.run_id
-    source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    source = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'rev-parse', 'HEAD'], text=True).strip()
     merge = source
 record = api(f'actions/runs/{run}')
 assert record['conclusion'] == 'success' and record['head_sha'] == source, 'toolkit run identity/result mismatch'
@@ -54,7 +54,7 @@ if a.providers_only:
              'packaging/rpm/google-figtree-fonts.spec', 'LICENSE.md']
     def values(body):
         return dict(line.split('=', 1) for line in body.splitlines() if line and not line.startswith('#') and '=' in line)
-    prior = values(subprocess.check_output(['git', 'show', f'{source}:config/desktop/inputs.env'], text=True))
+    prior = values(subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'show', f'{source}:config/desktop/inputs.env'], text=True))
     current = values(Path('config/desktop/inputs.env').read_text())
     keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER'))]
     assert keys and all(prior[key] == current.get(key) for key in keys), 'toolkit provider pin changed'
