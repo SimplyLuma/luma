@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.23%{?dist}
+Release:        1.luma.24%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -21,6 +21,7 @@ BuildRequires:  gnupg2
 BuildRequires:  python3-gobject-base
 BuildRequires:  ostree
 BuildRequires:  openssl
+BuildRequires:  acl
 
 Requires:       luma-os-remote = %{version}-%{release}
 Requires:       python3
@@ -75,6 +76,7 @@ python3 -c 'import luma_update.dbus_interface as d; print(d.introspection_xml(),
   > org.projectluma.Update1.xml
 
 %install
+umask 022
 install -d %{buildroot}%{python3_sitelib}/luma_update
 install -m 0644 luma_update/*.py %{buildroot}%{python3_sitelib}/luma_update/
 install -D -m 0755 bin/luma-update %{buildroot}%{_bindir}/luma-update
@@ -125,6 +127,12 @@ cat > %{buildroot}%{_tmpfilesdir}/luma-update.conf <<'EOF'
 d /var/lib/luma-update 0700 root root -
 d /run/luma-update 0755 root root -
 EOF
+# Shared build volumes may carry default ACLs and setgid directories. Neither
+# belongs in the installed OS payload or in directories created by RPM's later
+# byte-compilation/documentation processing.
+setfacl -Rb %{buildroot}
+find %{buildroot} -type d -exec chmod 0755 {} +
+chmod 0644 %{buildroot}%{_tmpfilesdir}/luma-update.conf
 
 %check
 # Immutable target admission must exercise the real native OSTree decoder.
@@ -144,6 +152,7 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %systemd_user_postun luma-update-notifier.path luma-update-notifier.timer
 
 %files
+%defattr(-,root,root,0755)
 %license LICENSE.md
 %doc README.md
 %{python3_sitelib}/luma_update/
@@ -167,34 +176,41 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_datadir}/polkit-1/actions/org.projectluma.update.policy
 %{_datadir}/polkit-1/rules.d/49-org.projectluma.update.rules
 %{_datadir}/applications/org.projectluma.Update.desktop
-%dir %{_prefix}/lib/luma-update
+%dir %attr(0755,root,root) %{_prefix}/lib/luma-update
 %{_prefix}/lib/luma-update/luma-greenboot-common.sh
-%dir %{_prefix}/lib/luma-update/graph-keys.d
-%dir %{_prefix}/lib/greenboot
-%dir %{_prefix}/lib/greenboot/check
-%dir %{_prefix}/lib/greenboot/check/required.d
-%dir %{_prefix}/lib/greenboot/green.d
-%dir %{_prefix}/lib/greenboot/red.d
+%dir %attr(0755,root,root) %{_prefix}/lib/luma-update/graph-keys.d
+%dir %attr(0755,root,root) %{_prefix}/lib/greenboot
+%dir %attr(0755,root,root) %{_prefix}/lib/greenboot/check
+%dir %attr(0755,root,root) %{_prefix}/lib/greenboot/check/required.d
+%dir %attr(0755,root,root) %{_prefix}/lib/greenboot/green.d
+%dir %attr(0755,root,root) %{_prefix}/lib/greenboot/red.d
 %{_prefix}/lib/greenboot/check/required.d/43-luma-updated.sh
 %{_prefix}/lib/greenboot/green.d/50-luma-update-record.sh
 %{_prefix}/lib/greenboot/red.d/50-luma-update-record.sh
 %{_prefix}/lib/NetworkManager/dispatcher.d/90-luma-update
-%dir %{_prefix}/lib/luma
+%dir %attr(0755,root,root) %{_prefix}/lib/luma
 %{_prefix}/lib/luma/update.conf
-%dir %{_sysconfdir}/luma
+%dir %attr(0755,root,root) %{_sysconfdir}/luma
 %config(noreplace) %{_sysconfdir}/luma/statistics.conf
-%dir %{_sysconfdir}/luma/update-graph-keys.d
+%dir %attr(0755,root,root) %{_sysconfdir}/luma/update-graph-keys.d
 %{_tmpfilesdir}/luma-update.conf
 
 %files -n luma-os-remote
+%defattr(-,root,root,0755)
+%dir %attr(0755,root,root) %{_sysconfdir}/luma
+%dir %attr(0755,root,root) %{_prefix}/lib/luma-update
+%dir %attr(0755,root,root) %{_prefix}/lib/luma-update/graph-keys.d
 %license LICENSE.md
 %config(noreplace) %{_sysconfdir}/ostree/remotes.d/luma.conf
 %config(noreplace) %attr(0600,root,root) %{_sysconfdir}/luma/update-mirrorlist
-%dir %{_sysconfdir}/pki/ostree
+%dir %attr(0755,root,root) %{_sysconfdir}/pki/ostree
 %{_sysconfdir}/pki/ostree/luma-release.gpg
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sun Oct 25 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.24
+- Fix packaged directory permissions and installation alongside greenboot.
+
 * Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.23
 - Route updates to the matching architecture and device graph.
 
