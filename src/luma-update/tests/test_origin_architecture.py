@@ -16,7 +16,7 @@ class OriginArchitecture(unittest.TestCase):
                         clock=lambda: rig.now, arch="aarch64",
                         boot_id=lambda: "test-boot", greenboot_installed=True)
         self.assertIsNone(engine.check())
-        self.assertEqual(engine.status().last_error_class, "unmanaged")
+        self.assertEqual(engine.status().last_error_class, "architecture")
         self.assertFalse(engine.download(user_initiated=True))
         self.assertEqual(rig.backend.calls, [])
 

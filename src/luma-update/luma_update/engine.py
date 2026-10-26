@@ -648,8 +648,15 @@ class Engine:
         except Exception as error:  # rpm-ostree unavailable: publish what is known
             error_class = classify_error(error)
             log.error("could not read deployments: %s", error)
+            invalidated = {}
+            if error_class == "architecture":
+                self._decision = None
+                invalidated = dict(available_version="", available_commit="",
+                                   available_summary="", available_name="", notes_url="",
+                                   download_bytes=0, waiting_version="", waiting_name="",
+                                   signature_verified=False, signing_key_id="", managed=False)
             self._set(state=ERROR, last_error=FRIENDLY.get(error_class, "Luma couldn't read the installed system."),
-                      last_error_class=error_class)
+                      last_error_class=error_class, **invalidated)
             return self.status()
         data = self.store.snapshot()
         pending_now = data.get("pending") if isinstance(data.get("pending"), dict) else None
