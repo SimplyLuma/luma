@@ -7,6 +7,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-contacts",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_CONTACTS_STYLE_PATH=/app/share/prairie-core/contacts.css",
     "--metadata=X-Luma=min-host-core=97",
     "--metadata=X-Luma=app-data-schema=contacts-v1",

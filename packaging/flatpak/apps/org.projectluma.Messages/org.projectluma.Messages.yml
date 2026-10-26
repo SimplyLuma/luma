@@ -8,6 +8,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-messages",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_MESSAGES_STYLE_PATH=/app/share/prairie-core/messages.css",
     "--env=PRAIRIE_STYLE_PATH=/app/share/prairie-core/prairie.css",
     "--metadata=X-Luma=app-data-schema=messages-v1",

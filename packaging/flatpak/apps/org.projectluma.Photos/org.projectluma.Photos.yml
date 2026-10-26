@@ -7,6 +7,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-photos",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_PHOTOS_STYLE_PATH=/app/share/prairie-core/photos.css",
     "--metadata=X-Luma=app-data-schema=photos-v1",
     "--metadata=X-Luma=min-host-installer=64",
