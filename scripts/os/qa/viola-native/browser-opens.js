@@ -72,9 +72,9 @@ async function probe() {
         GLib.file_set_contents(`${out}/desktop-state.json`, JSON.stringify(result.desktop_state, null, 2));
         monitorStream = seatLauncher.spawnv(['/usr/bin/python3', '-B',
             GLib.getenv('BROWSER_GATE_INPUT_HELPER'), 'monitor', '--ready', `${out}/monitor-stream.json`]);
-        // The shipped desktop/MIME entry passes %U positionally. Exercise
-        // that normal singleton URI route, including inside the signed app.
-        child = hostLauncher.spawnv(deployment?['/usr/bin/flatpak','run','--user',deployment.app_ref,url]:['/usr/bin/python3',
+        // External URI activation intentionally opens Mini Viola. Launch the
+        // normal primary window and navigate its address bar with real input.
+        child = hostLauncher.spawnv(deployment?['/usr/bin/flatpak','run','--user',deployment.app_ref]:['/usr/bin/python3',
             '/usr/share/viola-browser/luma-host/integrated_window.py',
             '--engine', '/opt/viola/browser/chrome',
             '--profile', `${home}/.local/share/viola-luma/profile`,
@@ -111,6 +111,7 @@ async function probe() {
         const focusDeadline = Date.now() + 10000;
         while (!window.has_focus() && Date.now() < focusDeadline) await sleep(100);
         if (!window.has_focus()) throw Error('Owned compositor click did not focus the browser window');
+        if (deployment) result.address_navigation=await compositorInput.navigateFixture(window,url);
         result.records = await proveNativeWindow(window, launcher, out, url, compositorInput);
         window.delete(global.get_current_time());
         const closeDeadline = Date.now() + 15000;

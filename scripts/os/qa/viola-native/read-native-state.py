@@ -96,7 +96,7 @@ def main():
         assert Path(deployment['profile']).is_relative_to(home / '.var/app/com.rhyme.viola')
         assert argv == ['/usr/bin/python3', '/app/share/viola-browser/luma-host/integrated_window.py',
                         '--engine', '/app/bin/viola-engine', '--profile', deployment['profile'],
-                        '--work-root', str(root), '--interactive', args.url]
+                        '--work-root', str(root), '--interactive']
     else:
         assert argv == ['/usr/bin/python3', host, '--engine', '/opt/viola/browser/chrome',
                         '--profile', str(home / '.local/share/viola-luma/profile'),

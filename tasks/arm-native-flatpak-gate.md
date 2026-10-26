@@ -183,3 +183,31 @@ map rejection. JavaScript syntax and diff checks passed. Next native signed CI
 is still required; no product or engine rebuild was performed.
 
 Primary source: https://github.com/flatpak/flatpak/blob/1.18.4/common/flatpak-run.c
+
+## 2026-10-26 UTC — primary window navigation by real keyboard input
+
+Run 40253180533 demonstrated that positional external URI activation opens
+Mini Viola, as the product intends. Its separate focused window caused the
+primary-window focus guard to fail. No engine/product defect or acceptance is
+inferred. Complete artifacts are in second-account experiments/arm-desktop/
+native-flatpak-acceptance-40253180533/artifact.
+
+The signed fixture now launches plain `flatpak run --user APP_REF`, matching a
+normal primary-window launch. After proving actual compositor focus it sends
+Ctrl+L, Ctrl+A, the exact owned localhost fixture URL and Return through the
+existing Clutter virtual keyboard. Every press/release, typed URL, character
+count and focus PID is retained. Only the exact BROWSER_GATE_URL with matching
+path/token is admitted; losing primary-window compositor focus aborts input.
+Modifier/key releases run in finally blocks. Mutter's native implementation
+resolves keysym keycodes and synthesizes Shift levels for URL punctuation.
+There are no page/CDP/native-adapter input calls. The observer requires exact
+normal host argv with no URL/QA navigation flag. All requested-page, signed
+identity, geometry, five pixel, trusted pointer/key, resize and close guards
+remain unchanged; the RPM route is unchanged.
+
+Actual dev-arm-signed-primary-address-source-83d6b451 exited 0: both changed
+JavaScript modules parse, all three real-GI signed-runtime identity tests pass,
+and diff checks pass. Actual compositor typing and signed acceptance still
+require the next native ARM CI run. No product/engine rebuild.
+
+Primary API source: https://github.com/GNOME/mutter/blob/main/src/backends/native/meta-virtual-input-device-native.c

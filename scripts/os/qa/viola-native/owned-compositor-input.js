@@ -72,4 +72,48 @@ export class OwnedCompositorInput {
         }
         await sleep(150);receipt.key_sent=true;this.save(receipt);return receipt;
     }
+    async navigateFixture(window,url) {
+        if (url!==GLib.getenv('BROWSER_GATE_URL') ||
+            !/^http:\/\/127\.0\.0\.1:[0-9]+\/native-shm-([a-f0-9]{32})\?token=\1$/.test(url))
+            throw Error('Virtual address typing requires this owned fixture URL');
+        const focused=()=>global.display.focus_window===window && window.has_focus() &&
+            window.get_gtk_application_id()==='com.rhyme.viola';
+        if (!focused()) throw Error('Primary signed browser must own compositor focus before address typing');
+        const receipt={scope:'REAL_COMPOSITOR_ADDRESS_TYPING_NOT_PAGE_ACCEPTANCE',
+            action:'navigate-fixture',url,pid:window.get_pid(),focus_before:global.display.focus_window.get_pid(),
+            keys:[],characters_sent:0,return_sent:false};
+        const key=(value,state)=>{
+            const time=GLib.get_monotonic_time();
+            this.keyboard.notify_keyval(time,value,state);
+            receipt.keys.push({keyval:value,state,time_us:time});
+        };
+        const stroke=async value=>{
+            if (!focused()) throw Error('Primary browser lost compositor focus while typing');
+            key(value,Clutter.KeyState.PRESSED);
+            try {await sleep(25);} finally {key(value,Clutter.KeyState.RELEASED);}
+            await sleep(25);
+        };
+        const control=async value=>{
+            if (!focused()) throw Error('Primary browser lost compositor focus before shortcut');
+            key(Clutter.KEY_Control_L,Clutter.KeyState.PRESSED);
+            try {await sleep(80);await stroke(value);} finally {
+                key(Clutter.KEY_Control_L,Clutter.KeyState.RELEASED);
+            }
+            await sleep(150);
+        };
+        try {
+            await control(Clutter.KEY_l);
+            await control(Clutter.KEY_a);
+            for (const character of url) {
+                // This exact fixture URL is printable ASCII; Mutter resolves
+                // each keysym's keycode and synthesizes its Shift level.
+                await stroke(character.charCodeAt(0));receipt.characters_sent++;
+            }
+            await sleep(300);
+            await stroke(Clutter.KEY_Return);receipt.return_sent=true;
+            await sleep(150);
+            receipt.focus_after=global.display.focus_window?.get_pid()??null;
+            return receipt;
+        } finally {this.save(receipt);}
+    }
 }
