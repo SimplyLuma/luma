@@ -3,6 +3,13 @@
 set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 . "$repo_root/config/desktop/inputs.env"
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) exit 2 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 python3 "$repo_root/scripts/developer/generate-home-widget-styles.py" --check
 output_dir="$repo_root/build/packages/luma-home-widgets"
 mkdir -p "$(dirname "$output_dir")"
@@ -14,7 +21,7 @@ stage="$work_dir/luma-home-widgets-0.1.0"
 cp -a "$repo_root/src/luma-home-widgets" "$stage"
 tar -czf "$rpmbuild_dir/SOURCES/luma-home-widgets-0.1.0.tar.gz" -C "$work_dir" luma-home-widgets-0.1.0
 install -m 0644 "$repo_root/packaging/rpm/luma-home-widgets.spec" "$rpmbuild_dir/SPECS/"
-"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$builder_container" '
   set -euo pipefail
   dnf5 -y install gcc meson glib2-devel json-glib-devel gobject-introspection-devel gtk3-devel python3-gobject-base dbus-daemon xorg-x11-server-Xvfb rpm-build
   rpmbuild -ba --define "_topdir $PWD" SPECS/luma-home-widgets.spec

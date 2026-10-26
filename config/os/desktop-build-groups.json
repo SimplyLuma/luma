@@ -149,6 +149,35 @@
         "packaging/gsettings/90-prairie.gschema.override",
         "packaging/rpm/prairie-icon-theme.spec"
       ]
+    },
+    "home-widgets": {
+      "recipe": "scripts/packages/build-luma-home-widgets.sh",
+      "paths": [
+        "src/luma-home-widgets/",
+        "packaging/rpm/luma-home-widgets.spec",
+        "config/shared/design-tokens.d/home-widgets.json"
+      ]
+    },
+    "tiling": {
+      "recipe": "scripts/packages/build-tiling.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "paths": [
+        "patches/tiling-shell/",
+        "extensions/luma-tiling-toggle/",
+        "packaging/rpm/gnome-shell-extension-tiling-shell.spec"
+      ]
+    },
+    "update": {
+      "recipe": "scripts/packages/build-luma-update.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "paths": [
+        "src/luma-update/",
+        "packaging/rpm/luma-update.spec"
+      ]
     }
   }
 }

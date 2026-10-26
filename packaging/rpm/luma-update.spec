@@ -208,7 +208,7 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
-* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.25
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.25
 - Package the October 26 shared source updates.
 
 * Sun Oct 25 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.24
