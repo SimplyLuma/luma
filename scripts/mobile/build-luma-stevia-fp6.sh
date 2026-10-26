@@ -44,7 +44,8 @@ git -C "$source_dir" -c advice.detachedHead=false checkout -q FETCH_HEAD
   die 'Stevia source commit mismatch'
 git -C "$source_dir" apply \
   "$repo_root/patches/stevia/0001-luma-latinime-completer.patch" \
-  "$repo_root/patches/stevia/0002-luma-compact-dark-keyboard.patch"
+  "$repo_root/patches/stevia/0002-luma-compact-dark-keyboard.patch" \
+  "$repo_root/patches/stevia/0003-luma-theme-variants.patch"
 
 build_dir="$work_dir/build"
 meson setup "$build_dir" "$source_dir" -Dtests=true -Dgtk_doc=false -Dman=false
