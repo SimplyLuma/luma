@@ -72,7 +72,8 @@ assert len(found)==1, 'Cannot identify exact disposable container OCI bundle'
 policy=json.loads(found[0].read_text())['linux']['seccomp']
 assert policy['defaultAction']=='SCMP_ACT_ERRNO'
 assert 'SCMP_ARCH_AARCH64' in policy['architectures']
-assert len(policy['syscalls'])>=20
+allowed={name for rule in policy['syscalls'] if rule['action']=='SCMP_ACT_ALLOW' for name in rule['names']}
+assert {'read','write','execve','mount','unshare'} <= allowed, 'Expected default container syscall rules are missing'
 assert not any('pivot_root' in rule['names'] for rule in policy['syscalls'])
 original=json.dumps(policy,sort_keys=True).encode()
 policy['syscalls'].append({'names':['pivot_root'],'action':'SCMP_ACT_ALLOW'})
