@@ -194,7 +194,8 @@ def prepare(session, lease, options, report=print):
         try:
             for signum in (signal.SIGTERM, signal.SIGINT):
                 previous[signum] = signal.signal(signum, cancel)
-            deadline = time.monotonic()+3600
+            # Slow disks and cross-architecture emulation can need more than an hour.
+            deadline = time.monotonic()+7200
             last_message = ''
             while child.poll() is None:
                 check_cancel(session)

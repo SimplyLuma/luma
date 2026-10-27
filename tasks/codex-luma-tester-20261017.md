@@ -2101,3 +2101,18 @@ mac-archive-074 and mac-archive-074-r2. Both restore complete archived copies.
 Public source draftPR87 c668dbed allfourCI PASS; pending shutdown fix update.
 Attach-artifact tool called but hung, execution stopped; retry attach later.
 Public0.7.3 unchanged; do not publish old r4/r43 packages before shutdown fix.
+
+23:18 UTC: live status verified, not inferred: Linux private setup disk grew
+13.0GiB ->13.2GiB and serial advanced Writing objects ->Deployment starting.
+Windows verified full7,034,372,096B public ISO and installer serial Writing objects
+advanced pastguest1586s. Neither x86 desktop boot has passed yet; no release claim.
+Mac persistence2491ed1a PASS: two disk boots, graphical SSH readiness, preserved
+marker and live snapshot, clean shutdown. QA fixture archive0232b07c PASS after
+correct GNU sparse1.0 parser handling and independent whole-file SHA+source rehash;
+only completed owned QA tree retired, no user VM/ISO/keychain touched.
+Slow HDD setup approached original60min timeout while still advancing; product
+bound extended to120min for slow disks/emulation. Existing owned Linux prototype
+QA supervisor3362985 received the same deadline extension through scoped Python
+remote debugging, receipt QA-SETUP-TIME-BUDGET.json. This is explicitly not an
+unmodified final-package run. Memory/disk admissions unchanged. Final Windowsr10
+build43af6d16 started before timeout change and must be treated as superseded.
