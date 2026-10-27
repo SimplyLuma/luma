@@ -11,6 +11,10 @@ FLAGS = {'smart-device':'home'}
 
 
 def compatible(experience, image):
+    # Installation media contains the shared OS; its own mode switcher selects
+    # the installed interface. Keep dedicated developer disks target-specific.
+    if image.get('media') == 'iso':
+        return experience in CHOICES
     return experience in CHOICES and image['target'] == ('mobile' if experience == 'mobile' else 'desktop')
 
 

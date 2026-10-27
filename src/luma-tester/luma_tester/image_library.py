@@ -39,6 +39,12 @@ def target(artifact):
     return developer_profile(artifact)['target'] if artifact.get('kind') == 'tester_image' else 'desktop'
 
 
+def supports(artifact, experience):
+    if artifact.get('kind') == 'os_image':
+        return usable(artifact) and experience in ('desktop', 'tablet', 'mobile')
+    return target(artifact) == ('mobile' if experience == 'mobile' else 'desktop')
+
+
 def cached(root):
     try:
         items=json.loads((Path(root)/'download-catalog.json').read_text())

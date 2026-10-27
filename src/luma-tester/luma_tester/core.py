@@ -345,6 +345,9 @@ class Session:
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
         if experience == 'mobile' and self.manifest.get('display'):
             width, height = (self.manifest['display'][key] for key in ('width', 'height'))
+        if experience == 'mobile' and self.manifest.get('media') == 'iso':
+            # ARM EDK2 needs an 80-column console; 432px can assert before GRUB.
+            width, height = 864, 1920
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
                 '-accel', accelerator, '-cpu', 'host' if kvm or hvf else 'max',

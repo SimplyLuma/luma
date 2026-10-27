@@ -82,6 +82,11 @@ class LibraryTests(unittest.TestCase):
             client=SimpleNamespace(catalog=lambda **filters:[artifact])
             self.assertEqual(image_library.refresh(root/'state',client),[artifact])
             self.assertEqual(image_library.cached(root/'state'),[artifact])
+            for mode in ('desktop', 'tablet', 'mobile'):
+                self.assertTrue(image_library.supports(artifact, mode))
+                from luma_tester import experiences
+                self.assertTrue(experiences.compatible(mode, manifest))
+            self.assertFalse(image_library.supports(artifact, 'tv'))
 
     def test_non_iso_payload_is_not_exposed_as_qemu_installation_media(self):
         item=dict(artifact_id='phone',kind='os_image',arch='aarch64',file='userdata.sparse.zst',

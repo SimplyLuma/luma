@@ -485,13 +485,14 @@ def launch(state=None):
             if local:groups.append(CommandGroup('On this computer',tuple(local)))
             architecture=self.architectures.get(self.target,'auto')
             published=[item for item in self.library_items
-                if image_library.target(item)==('mobile' if self.target=='mobile' else 'desktop')
+                if image_library.supports(item,self.target)
                 and (architecture=='auto' or item.get('arch')==architecture)]
             commands={'tester_image':[], 'os_image':[]}
             for index,item in enumerate(published):
                 kind=item.get('kind');entries=commands[kind]
                 downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if kind=='tester_image' else '.iso'))).is_file()
-                detail=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
+                detail=('ARM64 · ' if item['arch']=='aarch64' else 'x86-64 · ')
+                detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
                 detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
                 entries.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
@@ -928,14 +929,14 @@ def launch(state=None):
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
-            self.device_button.set_visible(self.target=='mobile')
+            self.device_button.set_visible(self.target=='mobile' and not installer)
             capabilities = self.session.manifest.get('capabilities', {}) if self.session else {}
             if not running and selected:capabilities = read_manifest(selected).get('capabilities', {})
             self.device_button.set_sensitive(not self.busy and not self.device_busy and not self.shutting_down and
                 capabilities.get('dynamic_display', True) and
                 (not running or (self.graphical_ready and self.session.status()=='running')))
             self.device_button.set_tooltip_text(None if capabilities.get('dynamic_display', True) else 'This image uses a fixed phone display.')
-            self.home_button.set_visible(running and self.target == 'mobile' and capabilities.get('home', True))
+            self.home_button.set_visible(running and not installer and self.target == 'mobile' and capabilities.get('home', True))
             self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
