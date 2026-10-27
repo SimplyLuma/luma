@@ -397,6 +397,13 @@ release_check() {
           return 1
         }
     done
+    # This public fixture is read by the disposable unprivileged session.
+    # Root's SCP umask must not make that session's keyring setup unreadable.
+    guest 'chmod 0644 /var/tmp/browser-fixture-keyring.py' || {
+      printf 'FAIL  %s: could not make the public keyring fixture readable\n' "$label" | tee -a "$results"
+      failures=$((failures + 1))
+      return 1
+    }
   fi
   scp -q -P "$port" -i "$key_dir/ssh-key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "$vm/$name.sh" "root@127.0.0.1:/var/tmp/luma-check-$name.sh"
