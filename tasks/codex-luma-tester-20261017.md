@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Linux/Mac0.7.2 locally qualified and Mac installed/open; Windowsr3 built, native qualification pending.
+- Status: current-source x86/ARM ISO assembly queued on signed exports; media preflight passed. Linux/Mac0.7.2 locally qualified; Windowsr3 native qualification pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -1609,3 +1609,45 @@ used that source without altering shared refs or unrelated worktrees.
   Macr9 installed/qualified (DELIVERY.json), Windowsr3 unsigned/unqualified,
   exact hashes and original two public installer ISOs. No public upload/signing
   or notarization performed. Mac application remains OPEN for owner testing.
+
+## 2026-10-27 current-source Tester media
+
+- Owner requested current GitHub x86/ARM media ahead of the proper nightly
+  publication, plus a concrete image/app-update delivery plan. Read current
+  nightly source and producer task records; preserve their work and signing
+  lane. GitHub main is older; the reviewed release source is eccd6bb20f2b2fd0afb784ea868621aabc09ca75,
+  the same PR76–78 set as the active nightly (PR79 installer changes excluded).
+- Own admitted job dev-tester-current-isos-r2-941f8615 is running with4GiB RAM
+  and64GiB HDD admission. Private producer build-current-isos.py and runner
+  are in the owned luma-tester-phone-20261017 experiments directory. Bounded
+  root driver has512MiB and a3GiB isolated keyless media container. It waits
+  for exact normally signed exports20261027.2/x86 and20261027.1/ARM, then
+  assembles private ISOs using the maintained runtime reuse producer. It does
+  not compile ARM on x86, sign, publish, mutate another pipeline, or assert
+  guest qualification. Current state: waiting for both signed exports.
+- Output: owned bulk current-source-isos-20261027-r2. STARTED.json binds the
+  archived source; STATUS.json records actual progress; BUILT.json appears
+  only after full producer checks. FAILED.json records any failure.
+- Added docs/developer-platform/tester-release-delivery.md: two shared OS
+  ISOs through the existing Hub catalog/tickets, independent app packages,
+  immutable workspace backing, user-initiated updates, signing/publication
+  gates. It is a proposal, not a claim that auto-updates or live ISO mode ship.
+- Next: inspect producer completion, resolve actual failures, boot each actual
+  ISO on native CPU and report scope honestly. Public delivery remains gated
+  on the normal release infrastructure; Windows and notarization gaps above
+  remain open. No new application binaries built in this step.
+- Preflight dev-tester-media-preflight-r1-0013a773 PASS: actual pinned native
+  Atlas tools, generated frozen source with canonical read-only Git objects,
+  exact old/new runtime source closure and BOTH real donor ISO metadata. This
+  is not a new ISO or guest boot PASS. PREFLIGHT.json retains nine unchanged
+  runtime source boundaries and both actual volume labels. Python compile
+  checks and git diff --check passed.
+- R1 was deliberately stopped while waiting, before any media assembly, to
+  retain the already signed minimal payload summary and exact binary public
+  key in R2. No unsigned replacement summary is generated. R2 validates the
+  signed summary with normal OSTree GPG admission and compares it after use.
+- Baseline helper experiment: first admission0fd02b9d correctly declined the
+  shared coding lease75; e7d29925 started a separate keyless private baseline.
+  Stopped ONLY that helper at16:25UTC after the upstream owner's retry appeared,
+  avoiding duplicate bundling. No VERIFIED.json exists, and the wrapper's
+  exit0 after systemd stop is NOT a baseline success. Partial own output kept.
