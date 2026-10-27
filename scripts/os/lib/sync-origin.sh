@@ -16,6 +16,22 @@
 # never reads a summary naming objects the origin does not have yet.
 set -euo pipefail
 generation=$1 apply=$2 prune=$3 parts=$4 media=$5
+public_repo_destination=${DL_PUBLIC_REPO_DEST:-os/repo}
+public_repo_link_destination=${DL_PUBLIC_REPO_LINK_DEST:-}
+# Some maintained origins expose a legacy directory as the public repository.
+# Keep the public URL stable and require an explicit, bounded hosting profile.
+case "$public_repo_destination" in
+  os/repo|os/preview-repo) ;;
+  *) printf 'unsupported public repository destination\n' >&2; exit 2 ;;
+esac
+if [ -n "$public_repo_link_destination" ]; then
+  [ "$public_repo_destination" = os/preview-repo ] && [ "$public_repo_link_destination" = /os/repo ] ||
+    { printf 'unsupported public repository link destination\n' >&2; exit 2; }
+fi
+if [ "$public_repo_destination" = os/preview-repo ] && [[ " $parts " = *' preview '* ]]; then
+  printf 'public repository profile conflicts with private preview destination\n' >&2
+  exit 2
+fi
 
 ssh_cmd="ssh -i $DL_SSH_KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
 rs=(rsync --recursive --links --times --omit-dir-times --perms --chmod=D0755,F0644 --no-owner --no-group
@@ -24,33 +40,37 @@ rs=(rsync --recursive --links --times --omit-dir-times --perms --chmod=D0755,F06
 log() { printf '%s sync-origin: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
 sync_repo() {
-  local source=$1 prefix=$2 file
+  local source=$1 prefix=$2 destination=${3:-$2} file
   [ -f "$source/config" ] || { log "$prefix: no repository in this generation"; return 0; }
   if [ "$prune" = 1 ]; then
     # Deletion only (--existing with --ignore-existing transfers nothing): a
     # prune never uploads, so it can never put a summary ahead of its objects.
     "${rs[@]}" --existing --ignore-existing --delete-after --exclude tmp/ --exclude state/ --exclude .lock \
-      --exclude .rsync-partial/ "$source/" "$DL_RSYNC_DEST:$prefix/"
+      --exclude .rsync-partial/ "$source/" "$DL_RSYNC_DEST:$destination/"
     log "$prefix: pruned to the served generation"
     return 0
   fi
-  "${rs[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
+  local immutable=("${rs[@]}")
+  if [ "$prefix" = os/repo ] && [ -n "$public_repo_link_destination" ]; then
+    immutable+=(--link-dest="$public_repo_link_destination")
+  fi
+  "${immutable[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
     --include 'objects/***' --include 'deltas/***' --include 'objects/' --include 'deltas/' --exclude '*' \
-    "$source/" "$DL_RSYNC_DEST:$prefix/"
+    "$source/" "$DL_RSYNC_DEST:$destination/"
   "${rs[@]}" --exclude 'objects/' --exclude 'deltas/' --exclude tmp/ --exclude state/ --exclude .lock \
     --exclude summary --exclude summary.sig --exclude 'summary.idx*' --exclude 'summaries/' \
-    "$source/" "$DL_RSYNC_DEST:$prefix/"
+    "$source/" "$DL_RSYNC_DEST:$destination/"
   local last=()
   for file in summaries summary.idx summary.idx.sig summary summary.sig; do
     [ -e "$source/$file" ] && last+=("$file")
   done
-  [ "${#last[@]}" -eq 0 ] || (cd "$source" && "${rs[@]}" --delay-updates --relative "${last[@]}" "$DL_RSYNC_DEST:$prefix/")
+  [ "${#last[@]}" -eq 0 ] || (cd "$source" && "${rs[@]}" --delay-updates --relative "${last[@]}" "$DL_RSYNC_DEST:$destination/")
   log "$prefix: uploaded"
 }
 
 for part in $parts; do
   case "$part" in
-    repo) sync_repo "$generation/os/repo" os/repo ;;
+    repo) sync_repo "$generation/os/repo" os/repo "$public_repo_destination" ;;
     preview) sync_repo "$generation/os/preview-repo" os/preview-repo ;;
     graph)
       [ -d "$generation/os/graph" ] || continue
