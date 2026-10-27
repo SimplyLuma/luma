@@ -2072,3 +2072,32 @@ old Sept30/Oct1 non-Git LumaUI handoff bundles, already-published buildr14 and
 three redundant notarization staging copies, preserving current signed app,
 credentials, native kit build cache, user VM and current ISO. More Mac space
 needed before retesting new control-key setup. No Windows/desktop-boot claim.
+
+22:51 UTC: Mac ARM actual public c0a68...ISO -> private unattended setup ->
+autologin desktop PASS, normal560d6cda completed0. Setup took about83s on M4;
+actual SSH active graphical session+gnome-shell and full desktop screendump
+visually reviewed (bulk/first-start-074/mac-native/desktop.png). Native packaged
+Mac0.7.4 UI8bc425e8PASS: title Try Luma, Desktop default, no-image Start resolves,
+downloads and launches. First private UI helper had replacement indentation
+error; corrected count=1, no product change. Macr15 build636a5d0ePASS.
+Developer ID r4 ec2f4f21PASS, hardened nativeUI/HVF/TCG/zip9192e73cPASS; not yet
+notarized/published. Linuxr43 package89db3244PASS, actual first x86 setup96a43ac4
+still pulling on slow HDD (8.6GiB allocated at28m). Windows fullboot e04b7df6
+active in own clean r15 overlay, original VM off; whole exact publicISO received,
+verified, private unattended installer actually booting. No Windows desktop PASS.
+
+Mac restart/snapshot cf8c7006 found actual shutdown race: SSH closes promptly
+but QEMU needs >5s to power off. Raised bounded wait to60s; disconnect alone still
+fails if VM remains up.122 tests178a0bfePASS, including regression exceedingold
+5s window and negative disconnect case. Native live snapshot completed before
+that failure; persistence retest2491ed1a active with fixed control code and new
+snapshot name, same existing QA disk. Mac QA disk13GiB leaves2.8GiB free;
+after persistence checks archive/verify/move ONLY own completed QA session toHDD
+before rebuilding final Mac or launching user's real setup. Current user's VM,
+ISO, keychain untouched. Mac old-artifact migrations e7cfd470 +4b487a3f bothPASS;
+second verifies35,086 files, SHA4a8bec48e4e5f5aaf265f8c0a113f07372ac7e8cda50d0ef1f90ac482a2c9f81.
+Exact private archives/manifests/retirement receipts under HDD hdd-admission
+mac-archive-074 and mac-archive-074-r2. Both restore complete archived copies.
+Public source draftPR87 c668dbed allfourCI PASS; pending shutdown fix update.
+Attach-artifact tool called but hung, execution stopped; retry attach later.
+Public0.7.3 unchanged; do not publish old r4/r43 packages before shutdown fix.

@@ -247,6 +247,23 @@ class SessionTests(unittest.TestCase):
         qmp.assert_called_once_with('cont')
         ssh.assert_called_once_with(['sudo', 'systemctl', '--no-block', 'poweroff'])
 
+    def test_shutdown_waits_for_vm_after_ssh_closes_early(self):
+        session=self.save()
+        with patch.object(session,'status',side_effect=['running']*10+['stopped']), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],255,stderr='Connection closed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=range(30)), \
+             patch('luma_tester.core.time.sleep'):
+            session.shutdown()
+
+    def test_ssh_disconnect_alone_does_not_prove_shutdown(self):
+        session=self.save()
+        with patch.object(session,'status',return_value='running'), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],255,stderr='Connection closed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
+            with self.assertRaises(TesterError):session.shutdown()
+
     def test_sync_rejects_home_or_root(self):
         session = self.save()
         for source in [Path.home(), Path('/')]:
