@@ -234,6 +234,16 @@ ostree refs --repo="$candidate_repo" --create="$ref" --force "$candidate" 2>/dev
 ostree summary --repo="$candidate_repo" --update \
   --gpg-sign="$(luma_os_gpg_fingerprint)" --gpg-homedir="$(luma_os_gpg_home)"
 luma_os_gpg_lock
+if [ "${LUMA_OS_CAPTURE_PAYLOAD_BODIES:-0}" = 1 ]; then
+  body_args=()
+  if [ -n "${LUMA_OS_PREVIOUS_BODY_INDEX:-}" ]; then
+    body_args=(--previous "$LUMA_OS_PREVIOUS_BODY_INDEX" --previous-sha256 "${LUMA_OS_PREVIOUS_BODY_INDEX_SHA256:?}")
+  fi
+  python3 "$luma_os_repo_root/scripts/install/atlas-iso/payload-object-reuse.py" \
+    --repository "$candidate_repo" --output "$build_dir/payload-object-bodies.json" \
+    --source-revision "$LUMA_SOURCE_REVISION" --candidate "$candidate" \
+    --architecture "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --ref "$ref" "${body_args[@]}" >>"$log"
+fi
 trap - EXIT
 
 # Release the import staging content; the candidate repository owns it now.

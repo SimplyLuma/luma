@@ -342,8 +342,17 @@ def main():
                         help='externally pinned immutable tools image; enables sealed clock checkpoints')
     parser.add_argument('--resume', type=checksum, metavar='CHECKPOINT_SHA256',
                         help='reuse a completed clock stage only with this externally pinned digest')
+    for name in ('payload-body-index', 'donor-payload-receipt'):
+        parser.add_argument('--'+name)
+        parser.add_argument('--'+name+'-sha256', type=checksum)
     parser.add_argument('--arch', choices=('x86_64', 'aarch64'), required=True)
     args = parser.parse_args()
+    for name in ('payload_body_index', 'donor_payload_receipt'):
+        if bool(getattr(args, name)) != bool(getattr(args, name+'_sha256')):
+            raise ValueError('body custody inputs require an external SHA256 pin')
+    if args.donor_payload_receipt and not args.payload_body_index:
+        raise ValueError('donor body reuse requires the new export body index')
+
     if args.tools_image_id and any(not re.fullmatch('[0-9a-f]{40}', value)
                                    for value in (args.source_revision, args.donor_revision)):
         raise ValueError('checkpoints require exact source and donor Git revisions')
@@ -447,7 +456,34 @@ def main():
                '--replace-payload-repository']
     for destination, path in overrides.items():
         command += ['--runtime-clock-map', str(path), destination]
+    body_manifest = None
+    object_plan = None
+    if args.payload_body_index:
+        spec = importlib.util.spec_from_file_location('payload_objects', here / 'payload-object-reuse.py')
+        objects = importlib.util.module_from_spec(spec); spec.loader.exec_module(objects)
+        index = objects.load_pinned(args.payload_body_index, args.payload_body_index_sha256, objects.INDEX_SCHEMA)
+        if index.get('ostree_full_fsck_verified') is not True:
+            raise ValueError('payload index lacks full OSTree verification')
+        if (index['source_revision'], index['candidate'], index['architecture'], index['ref']) != (
+                args.source_revision, args.commit, args.arch, args.ref):
+            raise ValueError('export body index differs from selected payload')
+        objects.verify_signed_metadata(repo, args.ref, args.commit, Path(args.key).resolve(), attempt)
+        body_manifest = objects.manifest_from_index(repo, index)
+        if args.donor_payload_receipt:
+            options = attempt / 'payload-object-options'
+            body_manifest, object_plan = objects.authenticated_plan(
+                donor, args.donor_payload_receipt, args.donor_payload_receipt_sha256,
+                repo, args.payload_body_index, args.payload_body_index_sha256, options)
+            options.chmod(0o400)
+            command += ['--payload-object-options', str(options), sha(options)]
+            objects.save_private(attempt / 'payload-object-plan.json', object_plan)
     run(*command, '-V', volid, '-a', payload, donor, output)
+    if body_manifest is not None:
+        body_receipt = objects.verify_iso_inventory(output, body_manifest)
+        body_receipt['export_body_index_sha256'] = args.payload_body_index_sha256
+        body_receipt['donor_receipt_sha256'] = args.donor_payload_receipt_sha256
+        objects.save_private(Path(str(output)+'.payload-bodies.json'), body_receipt)
+
     if mkksiso.GetISODetails(str(output))[0] != volid:
         raise ValueError('remaster changed embedded stage2 label')
     new = attempt / 'new-runtime'
@@ -490,6 +526,9 @@ def main():
                  squashfs_cache_mib=args.squashfs_cache_mib if overrides else None,
                  payload_commit=args.commit, payload_ref=args.ref, runtime_sha256=bodies,
                  payload_signature_valid_at_runtime_clock=True, efi_machines=efi_machines,
+                 payload_object_reuse=object_plan,
+                 payload_body_tools_sha256={name: sha(here / name) for name in ('payload-object-reuse.py', 'run-mkksiso.py')} if body_manifest is not None else None,
+                 payload_bodies_receipt_sha256=sha(Path(str(output)+'.payload-bodies.json')) if body_manifest is not None else None,
                  iso_sha256=sha(output), iso_size=output.stat().st_size)
     Path(str(output) + '.runtime-reuse.json').write_text(json.dumps(proof, indent=2) + '\n')
     Path(str(output) + '.sha256').write_text(f"{proof['iso_sha256']}  {output.name}\n")

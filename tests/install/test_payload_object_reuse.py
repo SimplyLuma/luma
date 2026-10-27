@@ -13,6 +13,8 @@ import zlib
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('payload_reuse', ROOT / 'scripts/install/atlas-iso/payload-object-reuse.py')
 reuse = importlib.util.module_from_spec(spec); spec.loader.exec_module(reuse)
+wrapper_spec=importlib.util.spec_from_file_location('payload_wrapper',ROOT/'scripts/install/atlas-iso/run-mkksiso.py')
+wrapper=importlib.util.module_from_spec(wrapper_spec);wrapper_spec.loader.exec_module(wrapper)
 REF = 'luma/1/aarch64/nightly'
 C = 'a' * 64
 
@@ -21,10 +23,11 @@ def manifest(repo, candidate=C):
     return dict(schema=reuse.SCHEMA, source_revision='b'*40, candidate=candidate,
                 architecture='aarch64', profile='arm-preview', ref=REF,
                 config=(repo/'config').read_text(), heads={REF: candidate},
+                directories={'':reuse.attributes(repo), **{p.relative_to(repo).as_posix():reuse.attributes(p) for p in repo.rglob('*') if p.is_dir()}},
                 metadata_roots=sorted(p.name for p in repo.iterdir() if p.name != 'objects'),
-                metadata_bodies={p.relative_to(repo).as_posix(): dict(bytes=p.stat().st_size, sha256=reuse.digest(p))
+                metadata_bodies={p.relative_to(repo).as_posix(): dict(bytes=p.stat().st_size, sha256=reuse.digest(p), **reuse.attributes(p))
                                  for p in repo.rglob('*') if p.is_file() and 'objects' not in p.relative_to(repo).parts},
-                objects={p.relative_to(repo).as_posix(): dict(bytes=p.stat().st_size, sha256=reuse.digest(p))
+                objects={p.relative_to(repo).as_posix(): dict(bytes=p.stat().st_size, sha256=reuse.digest(p), **reuse.attributes(p))
                          for p in (repo/'objects').rglob('*') if p.is_file()})
 
 
@@ -50,6 +53,8 @@ class PayloadReuse(unittest.TestCase):
             self.assertIn(body.relative_to(repo).as_posix(),op['replace'])
             self.assertIn(f'objects/aa/{"a"*62}.commitmeta',op['replace'])
             self.assertIn(f'objects/aa/{"a"*62}.commit',op['reuse'])
+            before=manifest(repo);body.chmod(0o400);after=manifest(repo)
+            self.assertIn(body.relative_to(repo).as_posix(),reuse.plan(before,after)['replace'])
 
     def test_invalid_config_heads_paths_and_scope_rejected(self):
         with tempfile.TemporaryDirectory() as d:
@@ -86,13 +91,14 @@ class PayloadReuse(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'object set'):reuse.verify_object_inventory(oldrepo,old)
             extra.write_bytes(original)
             donor=root/'donor.iso';self.run_iso('-outdev',donor,'-map',oldrepo,'/luma/repo')
-            newrepo=root/'new/repo';shutil.copytree(oldrepo,newrepo);(newrepo/extra.relative_to(oldrepo)).unlink();(newrepo/'refs/heads/ostree-metadata').unlink()
+            newrepo=root/'new/repo';shutil.copytree(oldrepo,newrepo);(newrepo/extra.relative_to(oldrepo)).unlink();(newrepo/extra.parent.relative_to(oldrepo)).rmdir();(newrepo/'refs/heads/ostree-metadata').unlink()
             (newrepo/f'objects/aa/{"a"*62}.commitmeta').write_bytes(b'replacement signature')
-            (newrepo/'summary').write_bytes(b'fresh summary');new=manifest(newrepo)
+            (newrepo/'summary').write_bytes(b'fresh summary');(newrepo/'objects/aa').chmod(0o700);new=manifest(newrepo)
             options=root/'commands';op=reuse.write_options(newrepo,old,new,options)
             self.assertEqual(op['remove'],[extra.relative_to(oldrepo).as_posix()])
             out=root/'new.iso';self.run_iso('-indev',donor,'-outdev',out,'-options_from_file',options)
             extracted=root/'extracted';self.run_iso('-osirrox','on','-indev',out,'-extract','/luma/repo',extracted)
+            reuse.verify_iso_inventory(out,new)
             actual={p.relative_to(extracted).as_posix():p.read_bytes() for p in extracted.rglob('*') if p.is_file()}
             expected={p.relative_to(newrepo).as_posix():p.read_bytes() for p in newrepo.rglob('*') if p.is_file()}
             self.assertEqual(actual,expected)
@@ -121,6 +127,17 @@ class PayloadReuse(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'mutable metadata'):
                 reuse.write_options(repo,old,new,Path(d)/'bad-options')
 
+    def test_prior_index_only_reuses_unchanged_file_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo=Path(d)/'repo';p=fixture(repo)
+            before=reuse.capture_index(repo,'b'*40,C,'aarch64','arm-preview',REF)
+            second=reuse.capture_index(repo,'b'*40,C,'aarch64','arm-preview',REF,before)
+            self.assertEqual(second['actual_body_read_bytes'],0)
+            body=p.read_bytes();p.write_bytes(bytes([body[0]^1])+body[1:])
+            changed=reuse.capture_index(repo,'b'*40,C,'aarch64','arm-preview',REF,before)
+            self.assertGreater(changed['actual_body_read_bytes'],0)
+            self.assertNotEqual(changed['objects'][p.relative_to(repo).as_posix()]['sha256'],before['objects'][p.relative_to(repo).as_posix()]['sha256'])
+
     @staticmethod
     def run_iso(*args):
         subprocess.run(['xorriso',*map(str,args),'-commit','--','-end'],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -140,8 +157,40 @@ class PayloadReuse(unittest.TestCase):
                 c=run('ostree','--repo='+str(repo),'commit','--branch='+REF,'--tree=dir='+str(tree),'--gpg-sign='+fpr,'--gpg-homedir='+str(home)).strip()
                 run('ostree','--repo='+str(repo),'summary','--update','--gpg-sign='+fpr,'--gpg-homedir='+str(home));return c
             oldcommit=commit();old=manifest(repo,oldcommit);donor=r/'old.iso';self.run_iso('-outdev',donor,'-map',repo,'/luma/repo')
-            (tree/'body').write_text('second');newcommit=commit();new=manifest(repo,newcommit);options=r/'options';reuse.write_options(repo,old,new,options)
-            out=r/'new.iso';self.run_iso('-indev',donor,'-outdev',out,'-options_from_file',options)
+            old_index=reuse.capture_index(repo,'b'*40,oldcommit,'aarch64','arm-preview',REF)
+            donor_receipt=reuse.verify_iso_inventory(donor,old);receipt_path=r/'donor-receipt.json';reuse.save_private(receipt_path,donor_receipt)
+            receipt_sha=reuse.digest(receipt_path)
+
+            (tree/'body').write_text('second');newcommit=commit();new=manifest(repo,newcommit);options=r/'options'
+            old_index_path=r/'old-index.json';reuse.save_private(old_index_path,old_index)
+            cli_index=r/'cli-index.json'
+            cli_pin=run('python3',ROOT/'scripts/install/atlas-iso/payload-object-reuse.py',
+                        '--repository',repo,'--output',cli_index,'--source-revision','c'*40,
+                        '--candidate',newcommit,'--architecture','aarch64','--profile','arm-preview',
+                        '--ref',REF,'--previous',old_index_path,'--previous-sha256',reuse.digest(old_index_path)).strip()
+            new_index=reuse.load_pinned(cli_index,cli_pin,reuse.INDEX_SCHEMA)
+
+            self.assertGreater(new_index['reused_unchanged_inode_bodies'],0)
+            index_path=r/'new-index.json';reuse.save_private(index_path,new_index);index_sha=reuse.digest(index_path)
+            reuse.verify_signed_metadata(repo,REF,newcommit,key,r/'metadata-proof')
+            signature=(repo/'summary.sig').read_bytes();(repo/'summary.sig').write_bytes(b'invalid signature')
+            with self.assertRaises(subprocess.CalledProcessError):
+                reuse.verify_signed_metadata(repo,REF,newcommit,key,r/'bad-signature-proof')
+            (repo/'summary.sig').write_bytes(signature)
+
+            actual_manifest,operation=reuse.authenticated_plan(donor,receipt_path,receipt_sha,repo,index_path,index_sha,options)
+            self.assertEqual(actual_manifest['objects'],new['objects']);self.assertTrue(operation['reuse'])
+            payload=r/'luma';payload.mkdir();(payload/'repo').symlink_to(repo,target_is_directory=True)
+            out=r/'new.iso'
+            command=wrapper.replace_payload_command(['xorriso','-indev',str(donor),'-outdev',str(out),'-map',str(payload),'luma'],payload_options=options)
+            subprocess.run(command+['-commit','--','-end'],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            final_receipt=reuse.verify_iso_inventory(out,actual_manifest)
+            self.assertEqual(final_receipt['iso_sha256'],reuse.digest(out))
+            # Full ISO custody detects substitution before any reuse is planned.
+            with donor.open('ab') as stream:stream.write(b'changed')
+            with self.assertRaisesRegex(ValueError,'donor ISO'):
+                reuse.authenticated_plan(donor,receipt_path,receipt_sha,repo,index_path,index_sha,r/'bad-plan')
+
             extracted=r/'extracted';self.run_iso('-osirrox','on','-indev',out,'-extract','/luma/repo',extracted)
             run('ostree','--repo='+str(extracted),'fsck','--all')
             client=r/'client';run('ostree','--repo='+str(client),'init','--mode=archive')

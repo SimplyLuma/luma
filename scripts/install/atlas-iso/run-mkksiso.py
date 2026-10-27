@@ -6,7 +6,7 @@ import shutil
 import sys
 
 
-def replace_payload_command(command, clock_maps=()):
+def replace_payload_command(command, clock_maps=(), payload_options=None):
     """Remove only the old medium repository before the normal new /luma map."""
     if command and command[0] == 'xorriso' and '-outdev' in command:
         maps = [i for i, item in enumerate(command) if item == '-map']
@@ -17,6 +17,10 @@ def replace_payload_command(command, clock_maps=()):
         repository = (Path(command[index + 1]) / 'repo').resolve(strict=True)
         if not repository.is_dir():
             raise ValueError('replacement payload must be a repository directory')
+        if payload_options is not None:
+            return (command[:index] + [arg for path, destination in clock_maps
+                                      for arg in ('-map', str(path), destination)]
+                    + ['-options_from_file', str(payload_options)] + command[index + 3:])
         # Map the real directory, not a host-only symlink into the new image.
         return (command[:index] + [arg for path, destination in clock_maps
                                   for arg in ('-map', str(path), destination)]
@@ -52,6 +56,20 @@ def main():
         # executable runs here: retain EFI rebuilding and every other check,
         # replacing only that comparison with a mandatory target binding.
         mkksiso.CheckDiscinfo = lambda path: check_target_discinfo(path, target)
+    payload_options = None
+    if '--payload-object-options' in sys.argv:
+        import hashlib
+        index = sys.argv.index('--payload-object-options')
+        if sys.argv.count('--payload-object-options') != 1 or index + 2 >= len(sys.argv):
+            raise ValueError('object options need an external checksum')
+        payload_options = Path(sys.argv[index + 1])
+        if payload_options.is_symlink() or not payload_options.is_file() or payload_options.stat().st_mode & 0o222:
+            raise ValueError('object options must be an immutable regular file')
+        if hashlib.sha256(payload_options.read_bytes()).hexdigest() != sys.argv[index + 2]:
+            raise ValueError('object options differ from external pin')
+        del sys.argv[index:index + 3]
+        if '--replace-payload-repository' not in sys.argv:
+            raise ValueError('object options require payload replacement')
     clock_maps = []
     while '--runtime-clock-map' in sys.argv:
         index = sys.argv.index('--runtime-clock-map')
@@ -67,7 +85,7 @@ def main():
         original_run = mkksiso.subprocess.run
 
         def run(command, *args, **kwargs):
-            return original_run(replace_payload_command(command, clock_maps), *args, **kwargs)
+            return original_run(replace_payload_command(command, clock_maps, payload_options), *args, **kwargs)
 
         mkksiso.subprocess.run = run
     original = mkksiso.RebuildEFIBoot

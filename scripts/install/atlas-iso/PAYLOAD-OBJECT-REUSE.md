@@ -1,58 +1,84 @@
-# Exact payload-object reuse prototype
+# Exact payload-object reuse
 
 The measured Oct27 writer processed 153,155 OSTree object nodes in 2,194 seconds
-(about 70 nodes per second). Replacing the whole repository makes the writer read
-unchanged compressed bodies from the host filesystem. A small package delta does
-not imply a small repository walk or small filesystem I/O cost.
+(about 70 nodes per second). Replacing the whole repository reads unchanged
+compressed bodies from the host filesystem. A small package delta does not mean
+a small repository walk or small storage cost.
 
-`payload-object-reuse.py` implements a tested planning primitive. It is deliberately
-not connected to the shipping mapper: current releases keep the existing path.
-The primitive creates an xorriso options file that keeps byte-identical donor
-objects, maps changed/new bodies, removes objects absent from the new exact set,
-and completely replaces refs, config, summary, signatures and other allowed
-mutable repository roots. Detached `.commitmeta` always maps from the new source,
-even when the name and body match. A `.filez` name never substitutes for the SHA256
-and length of its compressed bytes. The command file avoids an unbounded argv.
+`payload-object-reuse.py` provides a conditional mapping path. Existing calls
+without explicitly pinned body custody keep the full mapper. Invalid supplied
+proof fails closed, rather than enabling unverified reuse. Nothing here declares
+media or a release qualified, and no current release used this new path.
 
-The prototype accepts only a single desktop architecture/profile/channel and its
-collection metadata head. It rejects parent-dependent repositories, private or
-unexpected top-level data, object-path escapes, symlinks, changed metadata, and
-new object inventories that differ from their manifest. Unknown repository
-formats fail closed rather than broadening the accepted paths.
+## Export-time custody
 
-## Custody needed before production activation
+Set `LUMA_OS_CAPTURE_PAYLOAD_BODIES=1` on either normal signed exporter to capture
+`builds/ID/payload-object-bodies.json` immediately after signing, while the
+candidate repository is hot and its writer lock is held. Capture runs complete
+OSTree verification, then records the compressed SHA256 and size of every object.
+The read-only, fsynced index binds the exact source, candidate, architecture,
+profile and ref. Its digest goes into the export log; retain that digest in the
+authenticated export custody record. Production private keys stay on the normal
+signing infrastructure.
 
-1. During the authenticated export, while objects are hot, produce and protect a
-   complete body manifest with schema `org.projectluma.iso-payload-bodies/v1`.
-   Record source revision, candidate, architecture, profile, ref and exact heads;
-   config text, allowed metadata roots and SHA256/size records for every mutable
-   metadata file; and SHA256/size records for every compressed object file.
-   Normal complete OSTree closure and commit/summary GPG validation still run.
-2. Bind the producer's manifest hash to the existing export custody receipt.
-   After creating the donor ISO, verify its **actual** exact object inventory and
-   bodies against that manifest, then bind that verification to the complete ISO
-   SHA256. `verify_object_inventory` provides the full body check for an extracted
-   ISO repository. Source manifests alone do not prove what was written to an ISO.
-3. Authenticate both externally pinned manifests and the full donor ISO before
-   calling `write_options`; keep source and donor read-only for the operation.
-   `load` rejects writable/symlink manifests and external-pin mismatches. Reused
-   host bodies are not read again: their new intended bytes are authenticated by
-   the new export manifest and supplied by the verified donor. Replacement bodies
-   and all mutable metadata are independently read and checked before mapping.
-4. Invoke the options file at the existing repository-map hook while retaining
-   the existing clock, EFI, fonts, volume ID, source, GPG and payload guards.
-   Verify the final ISO's exact object set and actual bodies, refs, signatures and
-   full closure; retain the plan and full ISO digest. Do not silently fall back
-   to keeping unreferenced donor objects or qualifying the build from a plan.
-5. Benchmark the exact same signed corpus and tools against whole-repository
-   replacement on the intended storage. Keeping ISO bodies avoids host object
-   reads, but ISO output still writes the full medium and xorriso still walks
-   nodes. The fixture does not establish an end-to-end timing target.
+For a persistent candidate store, `LUMA_OS_PREVIOUS_BODY_INDEX` and
+`LUMA_OS_PREVIOUS_BODY_INDEX_SHA256` can reuse previous protected body records only
+when device, inode, size, nanosecond mtime and ctime still match. Changed/new files
+are hashed again. This does not replace the complete OSTree verification. Capture
+rejects foreign heads and parent/private configuration: use a scoped repository
+for this conditional path. The caller must budget capture, its index and the
+normal verification; running it after archiving onto cold storage defeats the
+purpose of capturing while objects and inode metadata are hot.
 
-The focused tests use real xorriso extraction to compare the entire output file
-set and bytes, and a real signed OSTree fixture to verify summary/commit trust,
-pull the complete candidate closure and read its content. They also test changed
-compressed encodings, detached signatures, removed metadata/objects, corrupted or
-missing donor bodies, private/parent input rejection, pinned manifests and bounded
-mapping reads for 1,000 unchanged object bodies. No production keys or artifacts
-are involved.
+## Establish the first donor
+
+Pass `--payload-body-index FILE --payload-body-index-sha256 SHA` to the runtime
+reuse helper. Without a donor body receipt it uses the normal full mapper, then
+records `OUTPUT.payload-bodies.json`. That receipt checks the actual exact ISO
+object and mutable-metadata set, compressed body SHA256 and sizes, permissions,
+ownership and directory attributes. Body reads run in physical LBA order directly
+from the ISO, avoiding extraction and 150,000 host-file opens. The receipt also
+pins the complete ISO SHA256. Unsupported multi-section objects, nonregular
+payload entries and missing/extra/mismatched data fail closed.
+
+Normal signature, runtime equality, source, clock, volume ID, EFI and font checks
+remain in place. Retain the completed build's custody and qualification evidence
+separately: a body receipt alone does not qualify a donor.
+
+## Use a qualified donor
+
+Additionally pass `--donor-payload-receipt FILE
+--donor-payload-receipt-sha256 SHA`. The helper authenticates both read-only custody
+files and the complete donor ISO; verifies the new signed summary and candidate
+in a fresh GPG-verifying OSTree client; and gives a pinned immutable options file
+to the existing Lorax wrapper. EFI rebuilding and normal output finalization stay
+in place.
+
+Only objects with equal compressed-body SHA256, length, ownership and permissions
+are retained. `.filez` names alone never prove byte equality. Detached
+`.commitmeta` always maps from the new source, even when its name and body match.
+Objects and object directories absent from the exact new set are removed. All
+refs, config, summary, signatures and other allowed mutable metadata are replaced,
+and retained directory permissions/ownership are updated. Parent dependencies,
+private/control files, unexpected heads, path escapes and symlinks are refused.
+The options file avoids an unbounded argv.
+
+Every actual final ISO body and directory is checked again, and a new receipt is
+written for the next run. The runtime result binds the exact plan, custody hashes,
+actual mapping tools and output-body receipt. Read-only sources and normal
+pipeline locks remain the operator's responsibility throughout the job.
+
+## Evidence and remaining measurement
+
+Focused tests use real xorriso output/extraction with exact file sets and bytes,
+and an activated signed OSTree fixture: export CLI, prior-inode reuse, donor ISO
+receipt, pinned mapper, final ISO receipt, summary/commit GPG validation, full
+closure pull and fsck. Tests also reject invalid signatures, changed encodings,
+stale detached metadata, extra/removed objects, wrong pins, private/parent inputs,
+corrupt/missing donor bodies and stale permissions. A 1,000-unchanged-body fixture
+checks that mapping opens only the required mutable commitmeta body.
+
+A representative corpus benchmark on the intended storage is still needed before
+claiming any nightly duration. ISO output still writes a complete medium and
+xorriso still walks nodes. The small functional fixture is not a production speed
+measurement or a 30-minute guarantee.
