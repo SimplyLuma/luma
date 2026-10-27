@@ -112,6 +112,8 @@ if [ -f "$origin_env" ]; then
   LUMA_OS_TOOLS_MOUNTS="$generation $(dirname "$DL_SSH_KEY") $LUMA_OS_SECRETS${DL_PREVIEW_CREDENTIAL_FILE:+ $(dirname "$DL_PREVIEW_CREDENTIAL_FILE")}$media_mounts $LUMA_OS_ROOT/publish/media" \
     luma_os_tools env DL_RSYNC_DEST="$DL_RSYNC_DEST" DL_SSH_KEY="$DL_SSH_KEY" \
       DL_HTTP_ORIGIN="$DL_HTTP_ORIGIN" DL_HOST_HEADER="$DL_HOST_HEADER" KNOWN_HOSTS="$known_hosts" \
+      DL_PUBLIC_REPO_DEST="${DL_PUBLIC_REPO_DEST:-os/repo}" \
+      DL_PUBLIC_REPO_LINK_DEST="${DL_PUBLIC_REPO_LINK_DEST:-}" \
       DL_PREVIEW_CREDENTIAL_FILE="${DL_PREVIEW_CREDENTIAL_FILE:-}" \
       MEDIA_TREE="$LUMA_OS_ROOT/publish/media" \
       MEDIA_STAFF_PREFIX="$media_staff_prefix" MEDIA_PUBLIC_PREFIX="$media_public_prefix" \

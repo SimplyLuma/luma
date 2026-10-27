@@ -17,6 +17,21 @@
 set -euo pipefail
 generation=$1 apply=$2 prune=$3 parts=$4 media=$5
 
+# Logical public URLs can be served from a different physical repository on
+# the origin. Keep the routing explicit and narrowly bounded; verification
+# always uses the client-facing os/repo URL, never the internal destination.
+public_repo_destination=${DL_PUBLIC_REPO_DEST:-os/repo}
+public_repo_link_destination=${DL_PUBLIC_REPO_LINK_DEST:-}
+case "$public_repo_destination:$public_repo_link_destination" in
+  os/repo:|os/preview-repo:|os/preview-repo:/os/repo) ;;
+  *) printf '%s\n' 'Unreviewed public repository origin routing' >&2; exit 2 ;;
+esac
+if [ "$public_repo_destination" = os/preview-repo ] &&
+   [[ " $parts " == *" repo "* && " $parts " == *" preview "* ]]; then
+  printf '%s\n' 'Public and preview sources cannot share one origin destination' >&2
+  exit 2
+fi
+
 ssh_cmd="ssh -i $DL_SSH_KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
 rs=(rsync --recursive --links --times --omit-dir-times --perms --chmod=D0755,F0644 --no-owner --no-group
     --partial-dir=.rsync-partial --timeout=600 -e "$ssh_cmd")
@@ -25,6 +40,10 @@ log() { printf '%s sync-origin: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
 sync_repo() {
   local source=$1 prefix=$2 file
+  local reuse=()
+  if [ "$prefix" = "$public_repo_destination" ] && [ -n "$public_repo_link_destination" ]; then
+    reuse+=(--link-dest="$public_repo_link_destination")
+  fi
   [ -f "$source/config" ] || { log "$prefix: no repository in this generation"; return 0; }
   if [ "$prune" = 1 ]; then
     # Deletion only (--existing with --ignore-existing transfers nothing): a
@@ -34,7 +53,7 @@ sync_repo() {
     log "$prefix: pruned to the served generation"
     return 0
   fi
-  "${rs[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
+  "${rs[@]}" "${reuse[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
     --include 'objects/***' --include 'deltas/***' --include 'objects/' --include 'deltas/' --exclude '*' \
     "$source/" "$DL_RSYNC_DEST:$prefix/"
   "${rs[@]}" --exclude 'objects/' --exclude 'deltas/' --exclude tmp/ --exclude state/ --exclude .lock \
@@ -50,7 +69,7 @@ sync_repo() {
 
 for part in $parts; do
   case "$part" in
-    repo) sync_repo "$generation/os/repo" os/repo ;;
+    repo) sync_repo "$generation/os/repo" "$public_repo_destination" ;;
     preview) sync_repo "$generation/os/preview-repo" os/preview-repo ;;
     graph)
       [ -d "$generation/os/graph" ] || continue
@@ -169,9 +188,10 @@ for part in $parts; do
       fi
       credential= ;;
     graph)
-      for file in "$generation"/os/graph/*; do
-        served "os/graph/$(basename "$file")" "$file" "os/graph/$(basename "$file")"
-      done ;;
+      while IFS= read -r -d '' file; do
+        relative=${file#"$generation/os/graph/"}
+        served "os/graph/$relative" "$file" "os/graph/$relative"
+      done < <(find "$generation/os/graph" -type f -print0) ;;
     keys)
       for file in "$generation"/os/keys/*; do
         served "os/keys/$(basename "$file")" "$file" "os/keys/$(basename "$file")"
