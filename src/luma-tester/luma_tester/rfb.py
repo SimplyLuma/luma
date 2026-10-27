@@ -4,6 +4,7 @@ import ctypes
 import ctypes.util
 import sys
 from pathlib import Path
+from . import host
 
 
 def native_library(name, linux_soname):
@@ -14,6 +15,8 @@ def native_library(name, linux_soname):
         if bundled.is_file():
             return str(bundled)
         return ctypes.util.find_library(name) or soname
+    if sys.platform == 'win32':
+        return {'gvnc-1.0':'libgvnc-1.0-0.dll', 'gobject-2.0':'libgobject-2.0-0.dll'}.get(name, name+'.dll')
     return ctypes.util.find_library(name) or linux_soname
 
 
@@ -92,10 +95,7 @@ def capture(socket_path, destination, timeout=15):
         loop.quit()
 
     def auth(_connection, types):
-        available = [types.get_nth(index) for index in range(types.n_values)]
-        if any((v.get_uint() if hasattr(v, 'get_uint') else v) == GVnc.ConnectionAuth.NONE for v in available):
-            connection.set_auth_type(GVnc.ConnectionAuth.NONE)
-        else:
+        if not host.display_auth(connection, types, socket_path, GVnc):
             fail('Unexpected authentication on the private display socket.')
 
     def initialized(_connection):
@@ -129,13 +129,16 @@ def capture(socket_path, destination, timeout=15):
         return False
 
     connection.connect('vnc-auth-choose-type', auth)
+    if host.windows():
+        connection.connect('vnc-auth-credential', lambda c, values:
+            host.display_credentials(c, values, socket_path, GVnc))
     connection.connect('vnc-initialized', initialized)
     connection.connect('vnc-framebuffer-update', updated)
     connection.connect('vnc-error', lambda _c, message: fail(message))
     connection.connect('vnc-disconnected', lambda _c: None if complete else fail('Display disconnected during capture.'))
     deadline = GLib.timeout_add_seconds(timeout, expired)
     try:
-        if not connection.open_addr(Gio.UnixSocketAddress.new(str(socket_path)), None):
+        if not connection.open_addr(host.display_address(socket_path), None):
             raise RuntimeError('Could not open the private guest display.')
         loop.run()
         if errors:

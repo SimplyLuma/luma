@@ -82,10 +82,12 @@ def devices(settings):
     args = []
     if settings['audio'] or settings['microphone']:
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
-        backend = 'coreaudio' if platform.system() == 'Darwin' else 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
+        backend = 'sdl' if platform.system() == 'Windows' else 'coreaudio' if platform.system() == 'Darwin' else 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
         args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
                  '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
     for i, folder in enumerate(settings['folders']):
+        if platform.system() == 'Windows':
+            raise TesterError('This Windows QEMU build does not support folder passthrough. Use SSH to copy files.')
         path = Path(folder['path']).resolve()
         if not path.is_dir():
             raise TesterError('Shared folder is no longer available: ' + str(path))

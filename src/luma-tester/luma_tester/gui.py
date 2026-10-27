@@ -678,7 +678,7 @@ def launch(state=None):
             self.stack.set_visible_child_name('live' if self.running() and self.graphical_ready else 'session')
 
         def connect_display(self):
-            if self.viewer or not self.session.display_path.is_socket():
+            if self.viewer or not self.session.display_available():
                 return
             self.viewer = GuestDisplay(self.session.display_path,
                 touch=self.session.touch if self.session.manifest['target'] == 'mobile' else None)

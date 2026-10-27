@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Linux0.7.2 r36 candidate ready; latest ARM/x86 public ISOs fully verified and visible in all3 experiences. Mac native rebuild awaits offline tunnel. ARM TCG reaches stage2 but graphical installer not qualified within bounded probe; native release boot gates pass.
+- Status: active Windows port/build/native VM qualification; Linux0.7.2 r36 candidate retained, Mac rebuild awaits tunnel.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
