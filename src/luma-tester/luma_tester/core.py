@@ -592,8 +592,9 @@ class Session:
                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                 text=True, timeout=15)
         if result.returncode == 255:
-            # The guest can close SSH before the non-blocking poweroff reply.
-            deadline=time.monotonic()+5
+            # SSH closes early in a normal shutdown; desktop services and disk
+            # flushes can take considerably longer than the SSH connection.
+            deadline=time.monotonic()+60
             while time.monotonic()<deadline:
                 if self.status()=='stopped':return
                 time.sleep(.25)
