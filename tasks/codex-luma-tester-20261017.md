@@ -1833,3 +1833,69 @@ new output current-source-arm-iso-20261027-r7 and SSD arm-fast-work-r7, same
 normal4GiB/HDD64GiB and paired acceptedSSD7GiB reservation. New normal b74eea4c
 launched; confirm actual container activity before calling it active. x86 resume
 c8c32a09 remains the existing frozen producer, no duplicate x86 task started.
+
+User selected icon2 Play, requests proper alignment. Pending aligning/publishing
+selected SVG and regenerated native assets. User then prioritizes continuous ISO
+monitoring and immediate failure recovery. x86 writer74.5% observed. ARM r7
+failed guard because shared auxiliary holder's .closed marker was written
+CLOSED_FAILED_PARENT_NOT_IMAGE_PASS, holder exited; no finished runtime cached.
+Own no-holder HDD r9 prepared but admission correctly refused memory; NOT RUN.
+Current upstream arm-media-recovery-oct27/build-hdd-r2.py already applies the
+same standalone-HDD correction, self-owned reservation identity,3GiB container,
+512MiB compressor cache and optional metadata fix. Its normal2f85b604 active;
+output /srv/dev-storage/projects/luma-os/build/arm-desktop/arm-media-recovery-oct27-r2.
+Consume this ARM output; do NOT start a duplicate own r9. All normal4GiB/HDD64
+admission checks remain. Monitoring x86 c8c32a09 and upstream ARM2f85b604 through
+actual completion/boot checks. No image completion claimed yet.
+
+x86 REMASTERED.json now actuallyPASS (not boot qualification):7,034,372,096B,
+SHA2569eb954fc858cd3e801f395399e0c833e29791c25eb31de03de05cd9800f24604,
+pipeline/media/nightly/20261027.4/luma-nightly-20261027.4.iso. Native boot pending.
+ARM stable r2 finished its full clock-only compression/proof, then failed ONLY
+Lorax mkksiso's host-architecture check. No more compression is needed.
+
+Own r10 normal63d90e51 launched4GiB/HDD64GiB, output bulk
+current-source-arm-iso-20261027-r10. Seals full SHA of r2 completed stage2/initrd/
+clock proof and exact source archive. Cached files mounted read-only. Private
+resume-iso-clock-native-map.py reruns normal source/key/candidate/runtime checks
+and replaces only mkksiso invocation with native xorriso replay of authenticated
+existing boot data, explicit3file mappings and implantisomd5. No ARM binary
+execution or architecture spoofing. Extracted donor/output EFI FAT bytes must
+match exactly in NATIVE-DATA-MAP.json; normal new-runtime/menu/font/embedded
+UEFI checks and full ISO digest still run. This is private operator continuation,
+not a source/payload change. Do not start a duplicate ARM or redo compression.
+
+Icon2 selected: corrected vertical symmetry and translated complete filled
+play glyph+11px depth by(-21.918965,-5.5) so its area centroid is512,512. Canonical
+SVG updated along with concept2. Native export prepared, initial admission
+correctly declined memory while both image jobs had priority; retry after slots
+free. No selected native exports or new source commit claimed yet.
+
+2026-10-27 19:24 UTC: BOTH ISOs actually completed against ECCd source.
+Own ARM r10 BUILT.json:20261027.1/adf510f5...,6,530,924,544B,
+SHA9fd8fcb0da681789cc9357f294b5cc896eb06bf68969c618d1f7fdc9459dccc9.
+Native xorriso data replay retained exact donor EFI FAT digest; original
+runtime/source/signature/menu/font assertions passed. No guest boot claim yet.
+x86 REMASTERED.json:20261027.4/f823c262...,7,034,372,096B,
+SHA9eb954fc858cd3e801f395399e0c833e29791c25eb31de03de05cd9800f24604.
+Do not recompose/recompress either. Upstream separately adopts its own ARM
+body; only ONE final published exact ARM hash may enter approval feed.
+
+Actual x86 boot attempts d38aa39c/832445ce failed fixture checks: media file
+had already been handed to uid107/QEMU, then root-private parent blocked
+hypervisor traversal. ISO remains intact. Own r3 helper verifies full ISO hash
+and exact uid107/bytes, temporarily grants only qemu traverse ACL to ISO parent,
+records before/during and restores only if ACL unchanged concurrently. Maintained
+UEFI/interactive installer test and VM7GiB hard cap unchanged. Normal8/HDD4
+launch queued with bounded15s admission retries; do not stop peers or bypass caps.
+ARM native exact-body transfer actually active normal1 f4cf0b5b to private M4
+/Volumes/A016/Luma-Try-ISO-QA-20261027-r1 (29GiB available at preflight), 2.6GiB
+transferred at19:24. Own VM uses bundled product QEMU/HVF,3072MiB/2vCPU, five
+QMP screenshots, cleanup-finally. Exact copied digest required before boot.
+Production Mac app/savedVMs untouched; no native OS boot claimed yet.
+
+Selected icon native exports actually PASS e84193f3, finalfiles under bulk
+branding-play-final-20261027:Mac ICNS+Retinaiconset,full Windows ICO,Linux
+hicolorSVG/PNGs,Try-Luma-icon.zip,alignment.json and darkpreview. SVG2+canonical
+mark complete silhouette area centroid512,512 including11px depth. Diffcheck
+clean; source rename's earlier110 tests unchanged (no redundant icon-only rerun).
