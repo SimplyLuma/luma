@@ -143,6 +143,40 @@ falls back to an unbudgeted full copy or widens ancestor permissions. This is
 a DAC preflight, not a substitute for the normal libvirt/SELinux boot check.
 
 
+For a separately admitted publication phase, use
+`scripts/os/lib/publication_window.py --unit luma-os-publication-UNIQUE.service
+--state-dir ROOT_OWNED_ATTEMPT --timer luma-APPROVED-REFRESH.timer -- COMMAND ...`
+with the approved host's actual timer names. It supervises a separate native
+worker with a 4 GiB default cap, private mount namespace and two-hour runtime
+bound. Admit the supervisor, worker, containers and storage together; container
+limits do not cover native OSTree fsck/delta processes. Tune `--memory-mib` and
+`--runtime-seconds` within that real budget. Selected architecture/profile and
+configuration paths cross the service-manager boundary explicitly. Use
+`--pass-env NAME` for additional non-secret proof paths; never pass credential
+contents or inherited lock descriptors. Acquire worker locks inside the worker.
+
+The supervisor pauses only explicitly named, idle refresh timers, rechecks for
+racing refresh services, quiesces an interrupted/failed client worker, and restores
+previously active timers. Root-owned phase receipts distinguish worker failure,
+timer restoration and interrupted-supervisor recovery from release success.
+An exclusive attempt lock prevents recovery from racing a live supervisor,
+even before its worker has started. After a hard supervisor kill, `--recover ROOT_OWNED_ATTEMPT` restores timers only
+when the recorded worker is inactive. Neither worker exit zero nor recovery
+qualifies or publishes a release. The generic `run-capped.sh` keeps its existing
+mount behavior unless
+`--private-mounts` is selected; publication workers always isolate mounts.
+Host setup requiring persistent mounts must run outside that isolated worker;
+ordinary repository file writes remain shared.
+
+Before expensive native publication, compare local predecessor catalogs with
+the exact signature-verified preparation copies. Repeat
+`--require-equal-files LOCAL VERIFIED_PREDECESSOR` for each metadata/signature
+pair to fail before worker startup on drift. This bounded byte preflight does
+not replace signature verification. A signed timestamp refresh may explain a
+difference, but it still requires explicit signature/semantic reconciliation and
+retention of the old bytes before publication. Never discover this mismatch only
+after moving a channel ref, or rerun a completed publisher to repair graph state.
+
 For targeted qualification that reuses an installed VM, account absence alone
 is not a valid first-run fixture. Prefer a fresh no-account installation. If a
 reviewed check deliberately rearms an explicitly disposable synthetic-person

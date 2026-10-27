@@ -6,7 +6,7 @@
 # gives Luma package builds), so an image build or VM gate can never starve
 # the other work on the machine.
 #
-#   run-capped.sh [--wait] [--name NAME] [--log FILE] COMMAND [ARG...]
+#   run-capped.sh [--wait] [--private-mounts] [--name NAME] [--log FILE] COMMAND [ARG...]
 #
 # Without --wait the unit starts in the background and its name is printed;
 # follow it with `journalctl -u NAME -f` or the log file.
@@ -15,25 +15,33 @@ set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
 
 wait_flag=()
+isolation=()
 name="luma-os-$(date -u +%Y%m%dT%H%M%SZ)"
 log=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --wait) wait_flag=(--wait); shift ;;
+    --private-mounts) isolation=(--property=PrivateMounts=yes); shift ;;
     --name) name=${2:?}; shift 2 ;;
     --log) log=${2:?}; shift 2 ;;
     --) shift; break ;;
-    -*) printf 'usage: %s [--wait] [--name NAME] [--log FILE] COMMAND [ARG...]\n' "$0" >&2; exit 2 ;;
+    -*) printf 'usage: %s [--wait] [--private-mounts] [--name NAME] [--log FILE] COMMAND [ARG...]\n' "$0" >&2; exit 2 ;;
     *) break ;;
   esac
 done
-[ "$#" -gt 0 ] || { printf 'usage: %s [--wait] [--name NAME] [--log FILE] COMMAND [ARG...]\n' "$0" >&2; exit 2; }
+[ "$#" -gt 0 ] || { printf 'usage: %s [--wait] [--private-mounts] [--name NAME] [--log FILE] COMMAND [ARG...]\n' "$0" >&2; exit 2; }
 luma_os_require_root
 luma_os_check_host
 
 # Leave the machine at least 8 GiB, as the shared runner does.
 available=$(awk '/^MemAvailable:/ { print int($2 / 1048576) }' /proc/meminfo)
 [ "${available:-0}" -ge 12 ] || luma_os_die "only ${available} GiB of memory is available; refusing to start"
+
+forwarded=()
+for key in LUMA_OS_PROFILE LUMA_TARGET_ARCHITECTURE LUMA_OS_KEYS LUMA_OS_SECRETS \
+           CONTAINERS_STORAGE_CONF LUMA_OS_GRAPH_TOOLS_IMAGE LUMA_OS_SLICE LUMA_OS_TOOLS_IMAGE_NAME; do
+  [ -z "${!key+x}" ] || forwarded+=("--setenv=$key=${!key}")
+done
 
 output=(--property=StandardOutput=journal --property=StandardError=journal)
 command=("$@")
@@ -53,7 +61,9 @@ exec systemd-run --system --collect "${wait_flag[@]}" \
   --description="Luma OS release pipeline: $*" \
   --property=Nice=10 \
   --property=KillMode=control-group \
+  "${isolation[@]}" \
   "${output[@]}" \
+  "${forwarded[@]}" \
   --setenv=LUMA_OS_ROOT="$LUMA_OS_ROOT" \
   --setenv=TMPDIR="$LUMA_OS_ROOT/tmp" \
   --setenv=PATH=/usr/local/bin:/usr/bin:/usr/sbin \
