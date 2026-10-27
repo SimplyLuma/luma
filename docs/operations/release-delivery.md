@@ -29,6 +29,16 @@ the fresh-install, no-account, update and rollback gates. Retain the genuine
 gate result, provenance and signed release manifest. Failed or skipped phases
 do not become passing evidence when publication is retried.
 
+For a reviewed desktop-only Nightly, the explicit targeted-desktop gate can
+reuse an earlier installation and automatic-recovery result when the Fedora
+base and every RPM outside Shell, the native UI platform and icons are
+unchanged. Retain the prior published manifest and its genuine proof hashes,
+verify installer input equivalence, boot the actual new ISO, and run the new
+candidate's setup/desktop, update, data-preservation and manual-rollback checks.
+If no prior automatic-recovery result exists, run it on the new candidate.
+Record reused installation stages as reused, using the distinct targeted
+schema; they must never appear as fresh runs of the full gate.
+
 Mirror the immutable OSTree objects to R2 using a frozen inventory and complete
 checksum comparisons. Coverage includes the candidate, retained rollback
 commits, every head advertised by the served repository and the collection

@@ -44,3 +44,15 @@ The failed dependency attempt remains retained. User explicitly approved only
 the22 bundled-app ShellState1 additions after reviewing that the interface
 also permits desktop preference changes. Actual immutable export diffs must
 match this scope before publication.
+
+2026-10-27 targeted admission: six synthetic negative/positive controls passed
+in job955ec1ba (candidate/CPU binding, unrelated kernel change rejection,
+missing/failed checks, sealed proof tampering, and first-release recovery).
+These controls are not guest qualification. Common installer-runtime reuse
+helper integrates reviewed444d18254/270ba19fc; its six producer tests include
+real signed OSTree clock verification and clock-only Squashfs/CPIO refresh.
+The normal source pins/fragments contract passed113 pins and27 fragments in
+74f435d1 after correcting the three selected PRs' malformed fragment syntax.
+ARM ID20261027.1 reserved normally; x86 next ID20261027.2. Updated application
+export tooling is a separately committed producer; the image source need not
+wait for a helper that changes no installed application code.
