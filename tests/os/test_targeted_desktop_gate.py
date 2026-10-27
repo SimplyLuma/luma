@@ -16,6 +16,92 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
 
+class AdditionalComponentAdmission(unittest.TestCase):
+    """Synthetic policy controls, never release/Windows qualification."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.record = dict(architecture='x86_64', build_id='20261027.4',
+                           source_revision='eccd6bb20f2b2fd0afb784ea868621aabc09ca75',
+                           commit='b'*64, previous_commit='a'*64,
+                           additional_component_policy='fedora-wine-20261027')
+        rows = []
+        self.old, self.new = {}, {}
+        for number in range(28):
+            name = 'wine-fixture-' + str(number)
+            old = [name, '0', '1', '1', 'x86_64', 'old-header', 'wine.src.rpm', 'LGPL']
+            new = old[:]
+            new[2], new[5] = '2', 'new-header'
+            self.old[(name,'x86_64')], self.new[(name,'x86_64')] = old,new
+            rows.append(dict(name=name, architecture='x86_64', old=old, new=new))
+        self.bodies = {label: ''.join('\t'.join(row)+'\n' for row in sorted(inventory.values())).encode()
+                       for label,inventory in (('prior-packages',self.old),('candidate-packages',self.new))}
+        delta = dict(result='PASS_EXACT_28_UNPLANNED_FEDORA_WINE_PACKAGE_DELTAS_AUTHENTICATED_NOT_FUNCTIONAL_QUALIFICATION',
+                     build_id=self.record['build_id'], architecture='x86_64',
+                     source_revision=self.record['source_revision'], previous=self.record['previous_commit'],
+                     normal_fedora_gpgcheck_enabled=True, signature_skip_only_private_luma_repository=True,
+                     prior_inventory_sha256=hashlib.sha256(self.bodies['prior-packages']).hexdigest(),
+                     candidate_inventory_sha256=hashlib.sha256(self.bodies['candidate-packages']).hexdigest(),
+                     deltas=rows)
+        self.component = {'fedora_wine_delta':self.seal('delta',delta)}
+        self.smoke = dict(result='PASS', candidate=self.record['commit'], previous_commit=self.record['previous_commit'],
+                          source_revision=self.record['source_revision'], architecture='x86_64',
+                          checks=[dict(name=name,result='PASS') for name in ('wine-prefix-initialization','wine-pe-console')],
+                          console_stdout='LUMA_WINE_NIGHTLY_20261027\n', prefix_exit_status=0, console_exit_status=0)
+        self.component['wine_smoke'] = self.seal('smoke',self.smoke)
+        original = gate.APPROVED_FEDORA_WINE_DELTA_SHA256
+        self.addCleanup(setattr,gate,'APPROVED_FEDORA_WINE_DELTA_SHA256',original)
+        gate.APPROVED_FEDORA_WINE_DELTA_SHA256 = self.component['fedora_wine_delta']['sha256']
+
+    def seal(self,name,doc):
+        path = self.root/name
+        if path.exists(): path.chmod(0o600)
+        raw = json.dumps(doc).encode()
+        path.write_bytes(raw)
+        path.chmod(0o400)
+        return dict(path=str(path),sha256=hashlib.sha256(raw).hexdigest())
+
+    def validate(self):
+        return gate.additional_component_names(self.record,self.bodies,
+                                               {'changed-components':self.component},
+                                               self.old,self.new,os.getuid())
+
+    def test_exact_reviewed_rows_and_actual_smoke_required(self):
+        self.assertEqual(len(self.validate()),28)
+
+    def test_reject_new_kernel_even_with_component_policy(self):
+        self.new[('kernel','x86_64')] = ['kernel','0','2','1','x86_64','header','kernel.src.rpm','GPL']
+        with self.assertRaisesRegex(ValueError,'Unreviewed additional RPM'): self.validate()
+
+    def test_reject_future_build_or_other_architecture(self):
+        for field,value in (('build_id','20261028.1'),('architecture','aarch64')):
+            with self.subTest(field=field):
+                previous = self.record[field]
+                self.record[field] = value
+                with self.assertRaises(ValueError): self.validate()
+                self.record[field] = previous
+
+    def test_reject_changed_inventory(self):
+        self.bodies['candidate-packages'] += b'changed\n'
+        with self.assertRaisesRegex(ValueError,'different inventories'): self.validate()
+
+    def test_reject_changed_or_unsigned_authentication_receipt(self):
+        self.component['fedora_wine_delta']['sha256'] = '0'*64
+        with self.assertRaisesRegex(ValueError,'Changed component evidence'): self.validate()
+
+    def test_reject_failed_console_and_stale_candidate(self):
+        for field,value in (('console_exit_status',1),('candidate','c'*64),('console_stdout','')):
+            with self.subTest(field=field):
+                doc = self.smoke | {field:value}
+                self.component['wine_smoke'] = self.seal('smoke',doc)
+                with self.assertRaises(ValueError): self.validate()
+
+    def test_reject_missing_functional_check(self):
+        self.component['wine_smoke'] = self.seal('smoke',self.smoke | {'checks':[]})
+        with self.assertRaisesRegex(ValueError,'Actual new Wine checks'): self.validate()
+
+
 class TargetedAdmission(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

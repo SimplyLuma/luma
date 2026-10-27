@@ -27,6 +27,64 @@ PROOFS = frozenset(('prior-manifest', 'prior-gate', 'prior-provenance',
                    'guest', 'media-boot', 'changed-components', 'runtime-reuse',
                    'app-export'))
 
+# A separately reviewed publishing policy for the observed Fedora dependency
+# update. This is deliberately an exact receipt, not a Wine package wildcard.
+APPROVED_FEDORA_WINE_DELTA_SHA256 = 'd687e4fa0a59cf15c71ce50b5b76df5bc536d4c3cd8ed87971148dda6ffafcc3'
+
+
+def additional_component_names(gate, bodies, docs, old, new, owner_uid):
+    """Require exact authenticated RPM rows and an actual candidate Wine smoke."""
+    require((gate.get('architecture'), gate.get('build_id'), gate.get('source_revision')) ==
+            ('x86_64', '20261027.4', 'eccd6bb20f2b2fd0afb784ea868621aabc09ca75') and
+            gate.get('additional_component_policy') == 'fedora-wine-20261027',
+            'Additional package changes have no applicable reviewed policy')
+    component = docs['changed-components']
+
+    def evidence(name, expected=None):
+        row = component.get(name, {})
+        require(set(row) == {'path', 'sha256'}, 'Missing component evidence: ' + name)
+        body = protected(row['path'], owner_uid)
+        digest = hashlib.sha256(body).hexdigest()
+        require(digest == row['sha256'] and (expected is None or digest == expected),
+                'Changed component evidence: ' + name)
+        return json.loads(body)
+
+    delta = evidence('fedora_wine_delta', APPROVED_FEDORA_WINE_DELTA_SHA256)
+    require(delta.get('result') == 'PASS_EXACT_28_UNPLANNED_FEDORA_WINE_PACKAGE_DELTAS_AUTHENTICATED_NOT_FUNCTIONAL_QUALIFICATION' and
+            (delta.get('build_id'), delta.get('architecture'), delta.get('source_revision'), delta.get('previous')) ==
+            (gate['build_id'], gate['architecture'], gate['source_revision'], gate['previous_commit']) and
+            delta.get('normal_fedora_gpgcheck_enabled') is True and
+            delta.get('signature_skip_only_private_luma_repository') is True,
+            'Fedora dependency authentication/identity is incomplete')
+    require(delta.get('prior_inventory_sha256') == hashlib.sha256(bodies['prior-packages']).hexdigest() and
+            delta.get('candidate_inventory_sha256') == hashlib.sha256(bodies['candidate-packages']).hexdigest(),
+            'Additional dependency receipt belongs to different inventories')
+    rows = delta.get('deltas', [])
+    require(len(rows) == 28, 'Exact reviewed 28-row dependency delta required')
+    expected = {}
+    for row in rows:
+        key = (row['name'], row['architecture'])
+        require(key not in expected and (key[0] == 'ntsync-autoload' or key[0].startswith('wine')) and
+                len(row['old']) == len(row['new']) == 8 and
+                (row['old'][0], row['old'][4]) == key == (row['new'][0], row['new'][4]),
+                'Invalid additional dependency identity')
+        expected[key] = (row['old'], row['new'])
+    actual = {key: (old.get(key), new.get(key)) for key in old.keys() | new.keys()
+              if key[0] not in CHANGED and old.get(key) != new.get(key)}
+    require(actual == expected, 'Unreviewed additional RPM delta')
+    smoke = evidence('wine_smoke')
+    require((smoke.get('result'), smoke.get('candidate'), smoke.get('previous_commit'),
+             smoke.get('source_revision'), smoke.get('architecture')) ==
+            ('PASS', gate['commit'], gate['previous_commit'], gate['source_revision'], 'x86_64'),
+            'Wine smoke belongs to a different candidate')
+    checks = smoke.get('checks', [])
+    require({'wine-prefix-initialization', 'wine-pe-console'} <= {row['name'] for row in checks} and
+            all(row.get('result') == 'PASS' for row in checks), 'Actual new Wine checks required')
+    require('LUMA_WINE_NIGHTLY_20261027' in smoke.get('console_stdout', '') and
+            smoke.get('prefix_exit_status') == smoke.get('console_exit_status') == 0,
+            'Wine prefix initialization and PE console execution did not succeed')
+    return frozenset(key[0] for key in expected)
+
 
 def require(value, message):
     if not value:
@@ -101,7 +159,9 @@ def validate(gate, candidate, head, architecture, provenance_sha256, *, owner_ui
                 'RPM inventory is not bound to provenance')
     a, b = (packages(bodies[k]) for k in ('prior-packages', 'candidate-packages'))
     changed = {key[0] for key in a.keys() | b.keys() if a.get(key) != b.get(key)}
-    require(changed and changed <= CHANGED and a.keys() == b.keys(),
+    additional = (additional_component_names(gate, bodies, docs, a, b, owner_uid)
+                  if changed - CHANGED and gate.get('additional_component_policy') else frozenset())
+    require(changed and changed <= CHANGED | additional and a.keys() == b.keys(),
             'Changes to installer, kernel, updater, boot recovery or another package require full qualification')
     old_luma, new_luma = old['luma_packages']['packages'], new['luma_packages']['packages']
     def unchanged(rows):
