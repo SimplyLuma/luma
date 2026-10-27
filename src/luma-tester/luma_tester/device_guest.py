@@ -26,13 +26,6 @@ def apply(state):
     unit='mobi.phosh.OSK.service'
     def service(*args):return command(['systemctl','--user',*args,unit])
     masked=False
-    # QEMU's synthetic EDID millimetres describe a generic monitor, not the
-    # selected phone. Use Stevia's logical key size in virtual touch profiles;
-    # preserve landscape/accessibility flags and restore the original on exit.
-    from gi.repository import Gio
-    osk_settings=Gio.Settings.new('mobi.phosh.osk')
-    before_scaling=osk_settings.get_strv('scaling')
-    saved_scaling=previous.get('restore_osk_scaling',before_scaling)
     try:
         command(['wlr-randr','--output',name,'--custom-mode',f'{width}x{height}@60',
                  '--scale',str(state['scale']),'--transform','normal'])
@@ -51,19 +44,10 @@ def apply(state):
         elif state['keyboard']!='physical' and previous.get('osk_mask_owned'):
             service('unmask','--runtime')
             if restore:service('start')
-        wanted_scaling=list(before_scaling)
-        if state['keyboard']=='touch':
-            wanted_scaling=[flag for flag in wanted_scaling if flag!='auto-portrait']
-        elif 'auto-portrait' in saved_scaling and 'auto-portrait' not in wanted_scaling:
-            wanted_scaling.insert(0,'auto-portrait')
-        osk_settings.set_strv('scaling',wanted_scaling)
-        Gio.Settings.sync()
-        state=dict(state,output=name,restore_osk=restore,restore_osk_scaling=saved_scaling,
+        state=dict(state,output=name,restore_osk=restore,
                    osk_mask_owned=masked or (state['keyboard']=='physical' and previous.get('osk_mask_owned',False)))
         temporary=path.with_suffix('.new');temporary.write_text(json.dumps(state)+'\n');temporary.chmod(0o600);temporary.replace(path)
     except BaseException:
-        osk_settings.set_strv('scaling',before_scaling)
-        Gio.Settings.sync()
         try:
             command(['wlr-randr','--output',name,'--custom-mode',f"{old['width']}x{old['height']}@{old['refresh']}",
                      '--scale',str(output.get('scale',1)),'--transform',output.get('transform','normal')])

@@ -69,7 +69,7 @@ class LibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as name:
             root=Path(name);iso=root/'image.iso'
             content=bytearray(32768+2048);content[32768:32775]=b'\x01CD001\x01';iso.write_bytes(content)
-            artifact=dict(artifact_id='os/nightly/test/x86_64',kind='os_image',arch='x86_64',file='image.iso',
+            artifact=dict(artifact_id='os/nightly/20261027.2/x86_64',kind='os_image',arch='x86_64',file='image.iso',
                 url='https://example.invalid/image.iso',sha256=digest(iso),size_bytes=iso.stat().st_size)
             def fake_download(item,target,**kwargs):
                 self.assertEqual(kwargs['experience'],'tablet')
@@ -80,8 +80,15 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual(manifest['target'],'desktop');self.assertFalse(manifest['cloud_init'])
             self.assertEqual(manifest['image']['sha256'],artifact['sha256'])
             client=SimpleNamespace(catalog=lambda **filters:[artifact])
+            (root/'state/approved-images.json').write_text(json.dumps(dict(schema=1,generation=100,
+                images=[dict(artifact_id=artifact['artifact_id'],sha256=artifact['sha256'])])))
             self.assertEqual(image_library.refresh(root/'state',client),[artifact])
             self.assertEqual(image_library.cached(root/'state'),[artifact])
+            for mode in ('desktop', 'tablet', 'mobile'):
+                self.assertTrue(image_library.supports(artifact, mode))
+                from luma_tester import experiences
+                self.assertTrue(experiences.compatible(mode, manifest))
+            self.assertFalse(image_library.supports(artifact, 'tv'))
 
     def test_non_iso_payload_is_not_exposed_as_qemu_installation_media(self):
         item=dict(artifact_id='phone',kind='os_image',arch='aarch64',file='userdata.sparse.zst',

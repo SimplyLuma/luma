@@ -1,13 +1,18 @@
-# Luma Tester
+# Try Luma
 
-A Linux host launcher for Luma Mobile and Desktop QEMU developer images. Mobile
-is available alongside Desktop. Both x86_64 and aarch64 guest definitions are supported;
-matching host/guest architectures use KVM when accessible. Other combinations use
-QEMU TCG and can be much slower. An Apple Silicon macOS packaging recipe is available; Windows host packaging remains future work.
+A LumaUI launcher for persistent Luma QEMU workspaces. Desktop, Tablet and Mobile
+share the public OS ISO for each architecture: x86_64 or aarch64. Matching
+host/guest architectures use KVM on Linux, HVF on macOS, or WHPX on Windows when
+available. Other combinations use QEMU TCG and can be much slower.
+
+Try Luma always uses dark LumaUI styling on Linux, macOS and Windows. It has no
+light-mode option and does not change the host desktop appearance. Native host
+packages require their own build and validation; see the task release evidence.
 
 The launcher requires the shared LumaUI runtime: its AppWindow, islands, cards,
 type scale and icons. It displays the real guest inside that LumaUI frame through
-GVnc and GTK4, over a private Unix socket. It does not use a stock GTK launcher,
+GVnc and GTK4, over a private Unix socket on Linux/macOS or password-protected
+loopback TCP on Windows. It does not use a stock GTK launcher,
 a GTK3 viewer, browser rendering, or screenshot polling. Pointer, keyboard and
 scroll input go to the real QEMU guest. Ctrl+Alt returns focus to the launcher.
 
@@ -33,34 +38,36 @@ runtime dependencies. See [runtime notices](THIRD-PARTY.md).
 ## Guest images
 
 The interface starts with **Try Luma** or **Develop for Luma**, then opens a
-shared simulator workspace. Choose an experience and build in its sidebar;
-**Start**, **Pause/Resume**, and **Shut Down** stay in the bottom action bar. Desktop is
-initially selected when available and prefers the host CPU architecture.
-Mobile prefers a qualified ARM64 image, with an explicitly identified x86_64
-simulator available for the same native phone shell. Develop adds project
-SSH access, a copyable local-agent prompt, shared folders and device controls. Named presets
-retain an exact image, experience, workspace mode and VM settings. Named disk snapshots preserve guest changes, and closing the app gracefully shuts down the guest. Tablet, TV and Smart Device
-require dedicated future profiles and remain unavailable. Imports and presets
-are remembered locally; release catalogs remain an image qualification milestone.
+shared workspace. The sidebar mode switch can reveal developer controls without
+restarting the guest. Choose Desktop, Tablet or Mobile in the sidebar and an
+architecture and image in the bottom action bar. Desktop and Tablet prefer the
+host architecture; Mobile initially prefers ARM64. An explicit architecture
+selection overrides that preference. TV and Smart Device are coming soon.
 
-Tester 0.3.0 supports anonymous [Hub download attribution](../../docs/developer-platform/tester-downloads.md).
+The Images dropdown lists public Hub downloads alongside local workspaces.
+Downloads show transfer and verification progress and are accepted only after
+size and SHA-256 verification. One public OS ISO per architecture can be used
+with Desktop, Tablet or Mobile; the OS's own presentation switcher also changes
+its interface. Current public ISOs boot the installer. Tester does not convert
+them to live Try images. Preinstalled developer disks are separate imports and
+may have narrower experience or developer-access capabilities.
+
+**Start**, **Pause/Resume**, and **Shut Down** stay in the bottom action bar.
+Developer controls include local SSH, a copyable agent prompt, shared folders
+and device controls where supported by the host and guest. Named presets retain
+an exact image, experience, workspace mode and VM settings. Named disk snapshots
+can be saved while the guest runs. Persistent workspaces preserve guest disk
+changes across shutdown and restart.
+
+Tester supports anonymous [Hub download attribution](../../docs/developer-platform/tester-downloads.md).
 Private previews use `source: test`. Catalog lookup and cached launches create no
 tickets. Published file downloads retain a ticket across retries and report
-completion only after size/SHA-256 verification. Installer ISOs in the public
-catalog are separate from ready-to-run developer session disks.
+completion only after size/SHA-256 verification.
 
-There is no default public image feed yet. For this developer milestone, add a
-local image manifest using **Add Image…** in the workspace sidebar. A packaged image catalog can be supplied through
-`LUMA_TESTER_CATALOG=/path/to/manifests`. A manifest can refer to a local
-standalone qcow2 or an HTTPS image;
-the launcher downloads on first use and verifies both byte count and SHA-256.
-A checksum verifies the selected manifest's content, not its publisher: obtain
-manifests from a trusted source. Guest images are executable operating systems.
-
-A manifest identifies one target/architecture/build. Preparing a mobile image
-is a separate job from producing a device installer. The existing FP6 twin is
-an experimental Fedora/Phosh behavioral environment, not a finished Luma Mobile
-image. See [image producer contract](../../docs/developer-platform/tester-images.md).
+Local ISO or manifest imports are also supported. A manifest can refer to a local
+standalone qcow2 or an HTTPS image. A checksum verifies the selected manifest's
+content, not its publisher: obtain manifests from a trusted source. Guest images
+are executable operating systems. See the [image producer contract](../../docs/developer-platform/tester-images.md).
 
 Image bases are cached by digest. Each manifest id gets a persistent qcow2
 overlay, generated SSH key, cloud-init seed, known-hosts file and logs. The
@@ -83,7 +90,7 @@ terminates its VM. Shut down from the guest first to let apps save their work. T
 or preparation process is active. No automatic overlay deletion is provided.
 
 For screenshots, headless sessions, source sync, hot fixes and local agents, see
-[developing with Luma Tester](../../docs/developer-platform/tester.md).
+[developing with Try Luma](../../docs/developer-platform/tester.md).
 
 ## Validation
 

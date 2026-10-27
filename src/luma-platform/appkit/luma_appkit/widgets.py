@@ -233,6 +233,12 @@ def install_appkit() -> None:
                 Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT)
             if not chosen or high_contrast:
                 dark = _prefers_dark()
+            # Applications with a fixed visual treatment may opt out of host
+            # palette changes without writing the desktop's appearance settings.
+            if os.environ.get('LUMA_APPKIT_FIXED_DARK') == '1':
+                dark = True
+                frost = glass = False
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
             token_sheet = _find_sheet(
                 "LUMA_APPKIT_TOKENS_PATH",
                 "luma-appkit-high-contrast-tokens.css" if high_contrast else

@@ -80,6 +80,9 @@ class ExperienceTests(unittest.TestCase):
                 firmware=root/'firmware';firmware.mkdir()
                 for file in ('QEMU_EFI.fd','QEMU_EFI-pflash.raw','vars-template-pflash.raw'):(firmware/file).write_bytes(b'test-only-not-firmware')
                 with patch.object(session,'firmware',return_value=str(firmware/'QEMU_EFI.fd')):
+                    mobile=session.command(experience='mobile',graphics='software',embedded=True)
+                    self.assertIn('name=opt/luma/experience,string=mobile',mobile)
+                    self.assertTrue(any('xres=864,yres=1920' in arg for arg in mobile))
                     command=session.command(experience='tv',graphics='software',embedded=True)
                     self.assertIn('name=opt/luma/experience,string=tv',command)
                     self.assertIn('scsi-cd,drive=installer,bootindex=1',command)

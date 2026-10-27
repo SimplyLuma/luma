@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Initialize the relocatable Luma Tester process and its private local catalog."""
+"""Initialize the relocatable Try Luma process and its private local catalog."""
 import hashlib
 import json
 import os
@@ -9,7 +9,7 @@ import sys
 
 base = Path(__file__).resolve().parent
 os.environ.update({
-    'LUMA_TESTER_EXECUTABLE': os.environ.get('APPIMAGE', str(base / 'Luma Tester')),
+    'LUMA_TESTER_EXECUTABLE': os.environ.get('APPIMAGE', str(base / 'Try Luma')),
     'GI_TYPELIB_PATH': str(base / 'usr/lib64/girepository-1.0'),
     'GSETTINGS_SCHEMA_DIR': str(base / 'usr/share/glib-2.0/schemas'),
     'GIO_EXTRA_MODULES': str(base / 'usr/lib64/gio/modules'),

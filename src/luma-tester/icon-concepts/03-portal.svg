@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Try Luma — Portal</title>
+<defs>
+<linearGradient id="plate" x1="0.2" y1="0" x2="0.8" y2="1"><stop stop-color="#8795f4"/><stop offset="1" stop-color="#3848a8"/></linearGradient>
+<radialGradient id="light" cx=".26" cy=".12" r=".85"><stop stop-color="#fff" stop-opacity=".2"/><stop offset=".6" stop-color="#fff" stop-opacity=".025"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="orange" x1=".25" y1="0" x2=".75" y2="1"><stop stop-color="#ffad53"/><stop offset=".48" stop-color="#fe6819"/><stop offset="1" stop-color="#e44512"/></linearGradient>
+<radialGradient id="orbLight" cx=".3" cy=".17" r=".8"><stop stop-color="#fff2ce" stop-opacity=".48"/><stop offset=".55" stop-color="#fff2ce" stop-opacity="0"/></radialGradient>
+<linearGradient id="ivory" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dfe6f4"/></linearGradient>
+<linearGradient id="inside" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#293769"/><stop offset="1" stop-color="#172344"/></linearGradient>
+<filter id="shadow" x="-.5" y="-.5" width="2" height="2" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="20"/></filter>
+<clipPath id="tile"><rect x="82" y="82" width="860" height="860" rx="202"/></clipPath>
+</defs>
+<!-- Prairie's canonical 860px tile and dock-size transform. -->
+<g transform="translate(512 512) scale(1.12) translate(-512 -512)">
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#plate)"/>
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#light)"/>
+<g clip-path="url(#tile)">
+<rect x="275" y="308" width="484" height="436" rx="64" fill="#172150" opacity=".46" filter="url(#shadow)"/>
+<rect x="270" y="291" width="484" height="436" rx="64" fill="#a6b4de"/>
+<rect x="270" y="279" width="484" height="436" rx="64" fill="url(#ivory)"/>
+<rect x="300" y="309" width="424" height="376" rx="40" fill="url(#inside)"/>
+<circle cx="517" cy="516" r="115" fill="#080c24" opacity=".45" filter="url(#shadow)"/>
+<circle cx="512" cy="506" r="113" fill="#b43614"/>
+<circle cx="512" cy="497" r="113" fill="url(#orange)"/>
+<circle cx="512" cy="497" r="111" fill="url(#orbLight)"/>
+</g>
+</g></svg>
