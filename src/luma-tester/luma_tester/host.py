@@ -91,3 +91,39 @@ def display_credentials(connection, credentials, path, namespace):
     import json
     endpoint = json.loads(Path(path).read_text())
     connection.set_credential(namespace.ConnectionCredential.PASSWORD, endpoint['password'])
+
+
+def local_control_socket(path, timeout=5):
+    """Connect to a private QMP socket, including Windows' native AF_UNIX."""
+    if not windows():
+        stream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            stream.settimeout(timeout)
+            stream.connect(str(path))
+            return stream
+        except BaseException:
+            stream.close()
+            raise
+    # Windows 10+ and bundled QEMU support AF_UNIX. CPython's Windows socket
+    # module does not expose its address structure, so connect through Winsock.
+    # Keep QMP in the owner-only runtime directory, without a listening TCP port.
+    encoded = str(path).encode('utf-8')
+    if not encoded or len(encoded) >= 108 or b'\0' in encoded:
+        raise ValueError('The local control socket path is too long or invalid.')
+    class Address(ctypes.Structure):
+        _fields_ = [('family', ctypes.c_ushort), ('path', ctypes.c_char * 108)]
+    address = Address(1, encoded)
+    library = ctypes.WinDLL('ws2_32')
+    connect = library.connect
+    connect.argtypes = [ctypes.c_size_t, ctypes.c_void_p, ctypes.c_int]
+    connect.restype = ctypes.c_int
+    stream = socket.socket(1, socket.SOCK_STREAM)
+    try:
+        if connect(stream.fileno(), ctypes.byref(address), ctypes.sizeof(address)) != 0:
+            code = library.WSAGetLastError()
+            raise OSError(code, 'Could not connect to the local VM controls.')
+        stream.settimeout(timeout)
+        return stream
+    except BaseException:
+        stream.close()
+        raise

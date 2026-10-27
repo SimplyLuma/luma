@@ -111,7 +111,7 @@ def main():
     identity=root/'app/luma_tester/__init__.py'
     if args.release:identity.write_text(identity.read_text().replace("DOWNLOAD_SOURCE = 'test'","DOWNLOAD_SOURCE = 'tester'"))
     shutil.copy2(repo/'packaging/standalone/tester/windows-bootstrap.py',root/'app/luma_port_boot.py')
-    meta=dict(app_id='io.luma.Tester',name='Try Luma',version=__version__,module='luma_tester.windows',env={'LUMA_PLATFORM':'windows','LUMA_APP_ID':'io.luma.Tester'})
+    meta=dict(app_id='io.luma.Tester',name='Try Luma',version=__version__,module='luma_tester.windows',env={'LUMA_PLATFORM':'windows','LUMA_APP_ID':'io.luma.Tester','LUMA_APP_NAME':'Try Luma'})
     (root/'app/luma-port-app.json').write_text(json.dumps(meta,indent=2)+'\n')
     icon=root/'share/icons/hicolor/scalable/apps/io.luma.Tester.svg';icon.parent.mkdir(parents=True,exist_ok=True)
     shutil.copy2(repo/'src/luma-tester/luma_tester/io.luma.Tester.svg',icon)
