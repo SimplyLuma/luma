@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from .core import TesterError, run
 
-DEFAULTS = dict(memory=4096, cpus=4, disk_gib=32, graphics='auto', audio=True,
+DEFAULTS = dict(memory=4096, cpus=4, disk_gib=64, graphics='auto', audio=True,
                 microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[], device=None)
 
 
