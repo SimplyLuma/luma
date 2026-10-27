@@ -1651,3 +1651,12 @@ used that source without altering shared refs or unrelated worktrees.
   Stopped ONLY that helper at16:25UTC after the upstream owner's retry appeared,
   avoiding duplicate bundling. No VERIFIED.json exists, and the wrapper's
   exit0 after systemd stop is NOT a baseline success. Partial own output kept.
+- 16:39UTC: upstream x86 baseline-only c2807b38 actually closed0; all26
+  bundles and manifest exist. This is input admission, not OS/image boot.
+  ARM normal application signing47d010ca is active. Own R2 assembly remains
+  healthy/waiting for both exact signed OS exports. It survives chat disconnect
+  but has an approximately3-hour hard deadline; no ISOs have been built yet.
+- Actual GitHub release branch head032672da6a9a7ca40b985585e3ce6ceddde6e44f
+  inspected through API: commits after PR77 concern origin delivery/graph
+  metadata. PR76 is desktop touch scrolling/Shell state; PR78 is Wi-Fi artwork.
+  Main remains older; no unreviewed installer delta selected.
