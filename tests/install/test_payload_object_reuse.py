@@ -171,6 +171,14 @@ class PayloadReuse(unittest.TestCase):
             new_index=reuse.load_pinned(cli_index,cli_pin,reuse.INDEX_SCHEMA)
 
             self.assertGreater(new_index['reused_unchanged_inode_bodies'],0)
+            # A complete, fsck-verified capture cannot become an incomplete
+            # payload by dropping a reachable body before manifest construction.
+            missing = next(p for p in (repo/'objects').rglob('*.filez'))
+            missing_body = missing.read_bytes(); missing_mode = missing.stat().st_mode & 0o7777
+            missing.unlink()
+            with self.assertRaisesRegex(ValueError, 'object set differs'):
+                reuse.manifest_from_index(repo, new_index)
+            missing.write_bytes(missing_body); missing.chmod(missing_mode)
             index_path=r/'new-index.json';reuse.save_private(index_path,new_index);index_sha=reuse.digest(index_path)
             reuse.verify_signed_metadata(repo,REF,newcommit,key,r/'metadata-proof')
             signature=(repo/'summary.sig').read_bytes();(repo/'summary.sig').write_bytes(b'invalid signature')

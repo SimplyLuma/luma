@@ -314,6 +314,8 @@ def manifest_from_index(repository, index):
         if row is None or p.stat().st_size != row['bytes']:
             raise ValueError('payload object missing from export body custody')
         objects[name] = dict(bytes=row['bytes'], sha256=row['sha256'], **attributes(p))
+    if set(objects) != set(index['objects']):
+        raise ValueError('payload object set differs from complete export body custody')
     metadata = {}
     tops = sorted(p.name for p in repository.iterdir() if p.name != 'objects')
     for top in tops:
