@@ -169,9 +169,11 @@ for part in $parts; do
       fi
       credential= ;;
     graph)
-      for file in "$generation"/os/graph/*; do
-        served "os/graph/$(basename "$file")" "$file" "os/graph/$(basename "$file")"
-      done ;;
+      [ -d "$generation/os/graph" ] || continue
+      while IFS= read -r -d '' file; do
+        relative=${file#"$generation/os/graph/"}
+        served "os/graph/$relative" "$file" "os/graph/$relative"
+      done < <(find "$generation/os/graph" -type f -print0) ;;
     keys)
       for file in "$generation"/os/keys/*; do
         served "os/keys/$(basename "$file")" "$file" "os/keys/$(basename "$file")"
