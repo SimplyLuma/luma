@@ -2030,3 +2030,26 @@ Windows r12 native check proved image-cache fix (Image verified) but found QEMU 
 Mac signing follow-up owner authorized: Developer ID Application teamY98NLN3Q93 valid on M4, no private keys/passwords exported. SSH attemptsr1/r2failed errSecInternalComponent because keychain access/session; user explicitly unlockedlogin. AquaLaunchAgent jobr3 normal29b27f8b signed161MachOs and outerapp withsecuretimestamp+hardenedruntime, deepstrictPASS. Native signedapp LumaUI QA05d6e94cPASS; native signedQEMUHVF aarch64 andTCGx86_64 accelerator/firmware control smoke7a475319PASS (no fullOSbootclaim). Macapp remote ~/Library/Application Support/Luma/Development/try-luma-sign-073-r3; localUIproof bulk/try-luma-sign-073-r3/updates-ui.json. Xcodearchiveupload failed solely because onlyCommandLineTools installed, no fullXcode.app. No savednotaryprofile found, standardAPIkeydirectoriesabsent; user asked to securelystore profileTryLuma with notarytool onMac, no password requested inchat. SignedvalidatedZIP prepared normald441bd84PASS, NOTARY-INPUT.json notyetnotarized. APP+DMG notarization/stapling/Gatekeeper job scripts prepared underprivateartifacts try-mac-notarize-r3*, NOT launched until credentialsetupreply. Currentpublic0.7.3 untouched andstillaccuratelymarkedMacadhoc/notnotarized.
 
 2026-10-27 21:54 UTC: NOTARIZED MAC PUBLICATION COMPLETE. Owner stored credentials underMacKeychain profileTryLuma; no password read/copied tochat/server/source. Normal8ffc0a24PASS: Apple APP145fcc65-2d68-4f60-a039-e197b975525dAccepted, DMGc6b7590a-c9ee-4bc5-aa58-5228d7c32504Accepted. Both app and signedDMG stapled/validated, Gatekeeper execute/openacceptedNotarizedDeveloperID. QuarantineactualpackagedDMG and appcopiedfromread-onlymountedDMG normal4264829bPASS; mountdetachedcleanly. Native signedUI05d6e94c andHVF/TCG7a475319 alreadyPASS; no runtimecodechanges. Publicadditive release normala230df63PASS: https://github.com/SimplyLuma/try/releases/download/v0.7.3/Try.Luma-0.7.3-macos-arm64-notarized.dmg 65,718,163B SHAcda63039c7208fe1558c8550b270d7f00218ef7cfabdf1d80a3a8eb4c8f94685. Complete unauthenticatedpublicdownload+newSHA256SUMS-macos-notarizedverified. All existing publicassets IDs/digests/bytespreserved; originalMacad-hocdownload remains foroldlinks, releasebody andTryREADME nowpoint to notarizedMacasset. Website/tryMacbutton mustuse NEW notarizedURL. Proof bulk/macos-notarized-073-r3/PUBLIC-NOTARIZED-PASS.json, Apple/Gatekeeper/quarantine receipts alongside. No outstandingownjobs or extraVMs; GUI signing/notarization agents unloaded.
+
+2026-10-27 22:24 UTC: owner reports public Mac opens installer instead of Desktop.
+Implementing 0.7.4: Desktop default (9d345402d), explicit Mac display-name env,
+one-click approved native-image resolution/download/autostart, private one-time
+unattended setup from SAME two approved ISOs with signed medium payload, then
+normal persistent/autologin disk boot. Existing disk.qcow2 never partitioned;
+setup uses separate workspace-install.qcow2 and completion receipt before promotion.
+119 unit tests normal1a095d93 PASS before latest cancellation/progress/UI changes.
+Exact public x86 input independently SHA verified normal01156f4b. Actual x86
+first-start normal96a43ac4 active, installer pulling carried OSTree payload;
+no Desktop PASS yet. Earlier harness attempts failed readonly-output/cross-bind
+hardlink; corrected owned writable alias and fixture symlink, not product hacks.
+Mac r1 fixture lacked bundled approval fallback; bundled policy now exact public
+channel3 pair. Mac r2 refused safely because only4.3GiB free, no installer started.
+Owner explicitly authorized moving obvious old artifacts to8TB. Normal e7cfd470
+archives only own obsolete Mac build directories, full bytes/modes/link targets
+verified before scoped removal; current signing output/current ISO/user VM/keys
+untouched. Windows fullboot reservation refused memory; do not bypass, retry
+when capacity released. Private scripts try-074-first-start-qa.py,
+try-074-mac-first-start.py, try-074-windows-vm.py and orchestrate.py under account
+artifacts. Mac old-build retirement script try-074-mac-archive.py and HDD
+hdd-admission/mac-archive-074 retained evidence. Public0.7.3 remains unchanged;
+no new release or cross-platform Desktop-boot PASS claimed.
