@@ -1,11 +1,11 @@
-# Luma Tester
+# Try Luma
 
 A LumaUI launcher for persistent Luma QEMU workspaces. Desktop, Tablet and Mobile
 share the public OS ISO for each architecture: x86_64 or aarch64. Matching
 host/guest architectures use KVM on Linux, HVF on macOS, or WHPX on Windows when
 available. Other combinations use QEMU TCG and can be much slower.
 
-Tester always uses dark LumaUI styling on Linux, macOS and Windows. It has no
+Try Luma always uses dark LumaUI styling on Linux, macOS and Windows. It has no
 light-mode option and does not change the host desktop appearance. Native host
 packages require their own build and validation; see the task release evidence.
 
@@ -90,7 +90,7 @@ terminates its VM. Shut down from the guest first to let apps save their work. T
 or preparation process is active. No automatic overlay deletion is provided.
 
 For screenshots, headless sessions, source sync, hot fixes and local agents, see
-[developing with Luma Tester](../../docs/developer-platform/tester.md).
+[developing with Try Luma](../../docs/developer-platform/tester.md).
 
 ## Validation
 

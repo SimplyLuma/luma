@@ -49,4 +49,4 @@ pathlib.Path('/etc/dconf/db/luma.d/95-luma-tester-extensions').write_text(
     '[org/gnome/shell]\nenabled-extensions=' + repr(extensions) + '\n')
 PYTHON
 dconf update
-printf 'Luma Tester profile selected: %s (%s)\n' "$profile" "$device_class"
+printf 'Try Luma profile selected: %s (%s)\n' "$profile" "$device_class"

@@ -32,7 +32,7 @@ p.add_argument('--arm-firmware-rpm',type=Path,help='Exact RPM containing --arm-f
 p.add_argument('--catalog', type=Path, required=True)
 p.add_argument('--mobile-display-update',type=Path,help='Checked Mobile display update manifest, RPM and matching source RPM')
 p.add_argument('--output', type=Path, required=True)
-p.add_argument('--release', action='store_true', help='Count published downloads as Tester; private previews default to test')
+p.add_argument('--release', action='store_true', help='Count published downloads as Try Luma; private previews default to test')
 mode = p.add_mutually_exclusive_group()
 mode.add_argument('--offline', action='store_true', help='Embed verified guest images in the AppImage')
 mode.add_argument('--sidecar-images', action='store_true', help='Keep private preview images beside the AppImage')
@@ -245,13 +245,13 @@ tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 unset PYTHONHOME PYTHONPATH LD_LIBRARY_PATH
 exec "$tester_dir/usr/lib64/ld-linux-x86-64.so.2" --inhibit-cache --library-path "$tester_dir/usr/lib64" "$tester_dir/usr/bin/python3.14" "$tester_dir/bootstrap.py" "$@"
 ''')
-(dest / 'Luma Tester').write_text('''#!/bin/sh
+(dest / 'Try Luma').write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ "$#" -eq 0 ]; then set -- gui; fi
 exec "$tester_dir/python" -m luma_tester "$@"
 ''')
-for name in ('python', 'Luma Tester'): (dest / name).chmod(0o755)
+for name in ('python', 'Try Luma'): (dest / name).chmod(0o755)
 # Public bundle content must be readable when AppImage stores root ownership.
 for path in dest.rglob('*'):
     if not path.is_symlink():

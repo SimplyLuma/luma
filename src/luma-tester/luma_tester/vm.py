@@ -273,7 +273,7 @@ def ssh_connection(session):
 def agent_prompt(session, manifest_path, executable='luma-tester'):
     settings = load(session.root)
     connection = ssh_connection(session)
-    text = f'''Work in this Luma Tester {session.manifest['target']} guest.
+    text = f'''Work in this Try Luma {session.manifest['target']} guest.
 Build: {session.manifest['build']}
 Guest architecture: {session.manifest['arch']}. Host architecture and guest architecture are independent.
 Connect locally using this existing private key (never print or copy its contents):

@@ -53,7 +53,7 @@ def main():
         return subprocess.check_output(session.ssh(argv), text=True, timeout=20).strip()
 
     def capture(app, name):
-        xid = subprocess.check_output(['xdotool', 'search', '--name', '^Luma Tester$'], text=True).splitlines()[-1]
+        xid = subprocess.check_output(['xdotool', 'search', '--name', '^Try Luma$'], text=True).splitlines()[-1]
         subprocess.run(['import', '-window', xid, str(output / name)], check=True)
 
     def finish_hotfix(app):

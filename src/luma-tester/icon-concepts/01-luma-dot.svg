@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Try Luma — Luma Dot</title>
+<defs>
+<linearGradient id="plate" x1="0.2" y1="0" x2="0.8" y2="1"><stop stop-color="#3b404b"/><stop offset="1" stop-color="#1b1e26"/></linearGradient>
+<radialGradient id="light" cx=".26" cy=".12" r=".85"><stop stop-color="#fff" stop-opacity=".2"/><stop offset=".6" stop-color="#fff" stop-opacity=".025"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="orange" x1=".25" y1="0" x2=".75" y2="1"><stop stop-color="#ffad53"/><stop offset=".48" stop-color="#fe6819"/><stop offset="1" stop-color="#e44512"/></linearGradient>
+<radialGradient id="orbLight" cx=".3" cy=".17" r=".8"><stop stop-color="#fff2ce" stop-opacity=".48"/><stop offset=".55" stop-color="#fff2ce" stop-opacity="0"/></radialGradient>
+<linearGradient id="ivory" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dfe6f4"/></linearGradient>
+<linearGradient id="inside" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#293769"/><stop offset="1" stop-color="#172344"/></linearGradient>
+<filter id="shadow" x="-.5" y="-.5" width="2" height="2" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="20"/></filter>
+<clipPath id="tile"><rect x="82" y="82" width="860" height="860" rx="202"/></clipPath>
+</defs>
+<!-- Prairie's canonical 860px tile and dock-size transform. -->
+<g transform="translate(512 512) scale(1.12) translate(-512 -512)">
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#plate)"/>
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#light)"/>
+<g clip-path="url(#tile)">
+<circle cx="520" cy="545" r="204" fill="#080c14" opacity=".48" filter="url(#shadow)"/>
+<circle cx="512" cy="521" r="206" fill="#a72e0b"/>
+<circle cx="512" cy="507" r="206" fill="url(#orange)"/>
+<circle cx="512" cy="507" r="204" fill="url(#orbLight)"/>
+<path d="M349 382A202 202 0 0 1 620 334" fill="none" stroke="#ffd49a" stroke-opacity=".4" stroke-width="5" stroke-linecap="round"/>
+</g>
+</g></svg>

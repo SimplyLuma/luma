@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Build the native Apple Silicon Tester app with its complete QEMU runtime."""
+"""Build the native Apple Silicon Try Luma app with its complete QEMU runtime."""
 import argparse
 import hashlib
 import importlib.machinery
@@ -18,7 +18,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output',required=True,type=Path)
     p.add_argument('--source-commit',required=True)
-    p.add_argument('--release',action='store_true',help='Attribute public downloads to Tester; previews default to test')
+    p.add_argument('--release',action='store_true',help='Attribute public downloads to Try Luma; previews default to test')
     a=p.parse_args()
     if sys.platform!='darwin' or os.uname().machine!='arm64':p.error('Build on an Apple Silicon Mac.')
     repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
@@ -34,7 +34,7 @@ def main():
         target=firmware/folder;target.mkdir(exist_ok=True)
         for dest,source in pairs.items():shutil.copy2(brew/'share/qemu'/source,target/dest)
     # VM images are obtained through the catalog; no multi-GB disk in the app.
-    manifest=dict(app_id='io.luma.Tester',name='Luma Tester',version=__version__,module='luma_tester.macos',
+    manifest=dict(app_id='io.luma.Tester',name='Try Luma',version=__version__,module='luma_tester.macos',
         app_dir=str(repo/'src/luma-tester'),repo_root=str(repo),kit_dir=str(repo/'src/luma-platform/appkit/luma_appkit'),
         packages=['luma_tester'],extra_typelibs=['GVnc-1.0'],native_helpers={name:str(brew/'bin'/name) for name in required},
         resource_paths={'firmware':str(firmware),'share/qemu':str(brew/'share/qemu')},
@@ -43,7 +43,7 @@ def main():
     backend=repo/'tools/luma-port/mac/build'
     env=dict(os.environ,LUMA_PORT_NO_DMG='1',LUMA_BUILD_JOBS='2')
     subprocess.run([sys.executable,str(backend),str(file),str(out)],env=env,check=True)
-    app=out/'Luma Tester.app';contents=app/'Contents'
+    app=out/'Try Luma.app';contents=app/'Contents'
     if a.release:
         identity=contents/'Resources/app/luma_tester/__init__.py'
         identity.write_text(identity.read_text().replace("DOWNLOAD_SOURCE = 'test'", "DOWNLOAD_SOURCE = 'tester'"))

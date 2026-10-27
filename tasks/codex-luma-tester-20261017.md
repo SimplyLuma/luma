@@ -1701,3 +1701,135 @@ used that source without altering shared refs or unrelated worktrees.
   actual ISO assembly/native boots, then pin only the two final approved bodies
   in a higher Try channel generation. Native Windows qualification, Mac signing/
   notarization and signed public app-index publication remain separate open gates.
+
+### 17:58 UTC continuation
+
+- Own storage relocation dab5e940 actually PASS: all191,774 entries checked,
+  bytes/metadata/links preserved, original path remains usable through a symlink.
+  Observed main-SSD free-space increase11,698,438,144bytes (concurrent export
+  writes explain difference from18,454,040,576 allocated source bytes).
+- Mac0.7.3 native build8319f0f6 PASS from f5b865277ffe9b9328ad3beca561748bab0eafdd.
+  DMG SHA2562e3e215c7ea662cded1cd846d7d867c981423c61d5d6380f1d1ce9f433b819b8,
+  bulk tester-mac-r10. Native actual-bundle LumaUI update/curation17352ac5 PASS;
+  deep/strict ad-hoc signature verified. Isolated NON_UNIQUE fixture preserved
+  active production app/guests and used its own log. No notarization claimed.
+- Linux0.7.3 AppImage2da1ab4b PASS packaging; bulk appimage-release-r38,
+  SHA256be288699cf4b94118eb86547cf1a29ea7c7626229ae49d06d401971a1f236692,
+  295,614,968bytes. Actual packaged native UI/version8511a4b2 running separately.
+- Windows0.7.3 cross-package07f775db running with1GiB cap; native Windows
+  remains unqualified. No new Windows VM started while images have priority.
+- ARM native prepared transport-r2 now complete:5,204,111,360bytes, exact
+  origin/receiver SHA256d0dcd385fb8bdb8892250416e046fa06393ab9859126a5682bb2ad66a3cbdcf7.
+  This supersedes the earlier export-storage blocker but is UNSIGNED input;
+  wait for the normal server signing/export completion. x86 export62ba8032
+  imported its tree17:54UTC and is copying into the candidate repository.
+  Own ISO job remains bounded/waiting; no new media/guest qualification yet.
+
+- 18:00UTC: deliberately stopped ONLY idle own R3 assembler/rootunit before
+  any media construction, releasing4GiB admission for upstream ARM intake/sign.
+  This is canceled waiting, NOT build PASS. Retained R3 source/status, no BUILT.
+  Prepared private build-current-isos-r4.py/run-current-isos-r4.py (new bulk-r4)
+  to start after signed inputs actually exist; do not hold resources idly while
+  upstream needs them. Both ordinary exports still pending at this observation.
+
+- 18:03UTC: actual Linux packaged UI/version8511a4b2 PASS. Windows ZIP07f775db
+  packaged successfully, SHA256156f3428681ef1bb024d4fb616204a602483eed89a0d8eda29ee0a7f711f78d4,
+  266,916,337bytes, native Windows remains pending.
+- SimplyLuma/try DRAFT release425808030, tagv0.7.3, uploaded all3 candidate
+  apps plus SHA256SUMS. GitHub's asset SHA256 values match the local bodies.
+  GitHub normalized Mac name to Luma.Tester-0.7.3-macos-arm64.dmg; combined
+  SHA256SUMS corrected/reuploaded to match the actual asset name. No public
+  release, signed app-index publication or image-channel approval performed.
+- x86 export.env closed17:59:46UTC, candidatef823c2620fb49c7617cee9cdec459d0f809b97815a9f65ec54d133eb7e52f6bb.
+  Minimal targeted repo exists but summary.sig not yet present18:02UTC.
+  ARM native primary QA d938d539 is active; server pipeline still absent.
+  Next image action: when final signed minimal repos exist, admit own r4 media
+  assembly OR consume the producer's exact same-source qualified remaster to
+  avoid duplicate I/O. No old media approved as a substitute.
+
+User explicitly asks where ISOs are. Both signed export.env now exist, ARM
+completed18:04:39UTC. x86 producer remaster953cf215 active, output pipeline/media/nightly/20261027.4;
+do not duplicate. Own ARM-only normal f1f51a3e now actually assembling, bulk
+current-source-arm-iso-20261027-r4/aarch64; exact signed candidate adf510f5...
+and source eccd, normal4GiB/64GiBHDD. Initial admission75 respected, bounded
+lightweight queue then admitted normally. No ARM executable runs on x86;
+reuse maintained native donor runtime plus authenticated ARM payload as data.
+Prefer consuming this exact same-source remaster rather than starting another
+ARM ISO build. No BUILT/boot qualification yet.
+
+Current ISO blocker: x86 remaster953cf215 FAILED because published donor omits
+optional /.treeinfo. Upstream helper owner has added conditional handling in
+its own worktree; preserve their fix. ARM r4 still recompressing clock-only
+runtime, likely reaches the same missing optional metadata next. Own private
+resume-iso-clock.py adapter applies the same optional-metadata condition and
+reuses ONLY the successfully completed original clock-only images after sealing
+full hashes, original donor hashes, exact epoch, source archive and known
+failure. It keeps the prior runtime read-only and reruns all normal source,
+signature, new-ISO runtime, UEFI and boot menu checks. No OS source/payload or
+signature policy changed. Operator adapter/hash is recorded separately.
+Private build-current-arm-iso-r5.py/run-current-arm-iso-r5.py prepared; bounded
+queue-arm-resume-r5.py running as exec session41917 (15-minute bound), waits for
+r4 actual close and uses devctl4GiB/64GiB normally. It skips recovery if r4 builds.
+No finished ISO or new native boot PASS can be claimed at this observation.
+
+User status continuation: upstream ARM data-only remaster aaacaf87 is now
+actually running native-media-20261027.1-r1. Stopped ONLY own superseded ARM
+r4 rootunit+normal f1f51a3e to avoid duplicate compression/I/O and free4GiB
+normal admission for upstream x86 remaster resume. Own r5 queue is no longer
+active; no r5 build started. Own canceled r4 is not a build PASS. x86 owner has
+remaster-resume-r5.py and maintained conditional optional-treeinfo fix prepared;
+upstream targeted guest QA e4895194 currently active. Follow actual upstream
+media receipts; do not claim either ISO finished or download-ready yet.
+
+User explicitly directs BOTH ISO jobs actually run. Narrow launch of already
+frozen x86 resume operator (no source edits to the peer worktree): normal
+c8c32a09, paired MAIN3GiB/1GiB-memory holder1ae6e387; original owner holder
+script writes its expected MEDIA-RESUME-HOT-RESERVATION.json. Protected original
+resume helper and E2 export digest unchanged. x86 writer actually27% observed;
+normal root unit tester-oct27-x64-remaster-r5-20261027T182811.
+
+Upstream ARM remaster aaacaf87 actually failed: mksquashfs SIGKILL; no finished
+clock receipt. Started own corrected ARM r6, normal cd24f489 (4GiB/64GiBHDD),
+with paired main-SSD7GiB/1GiB-memory holder2002fb3f. Initial8GiB SSD request
+was correctly refused;7GiB bounds the approximately5.5GiB installer scratch,
+normal admission accepted without reserve changes. No attempt to use secondary
+SSD. New private operator arm-media-memory-bounded.py makes optional .treeinfo
+conditional and sets mksquashfs2workers/512MiB cache; container3GiB. Installed
+OS source/payload/signatures unchanged. Every normal source/runtime/signature/
+new-ISO/UEFI check remains. Own work on SSD arm-fast-work-r6, ISO/proofs in
+bulk current-source-arm-iso-20261027-r6. OPERATOR-CONTROL.json retains adapter
+hash and actual SSD admission. Root worker polls physical20GiB floor and holder
+identity during container execution. Both actual root packaging processes
+confirmed active, not just queued wrappers. Do not duplicate either ISO job.
+
+## Try Luma name and icon directions
+
+User requests Try Luma display name and three Prairie-style icon choices, with
+native Mac/Windows/Linux formats. Renamed UI, desktop entry, native bundle/exe,
+portable launchers, package filenames, update prompts and current product docs.
+Kept app ID io.luma.Tester, existing state directories, attribution/schema IDs,
+CLI and guest managed-file markers stable. Source pyproject version synchronized
+with existing0.7.3 module value. No running installed user app replaced.
+
+Three authored SVG concepts in src/luma-tester/icon-concepts: Luma Dot, Play,
+Portal, sharing existing Prairie tile/lighting geometry. No candidate selected
+as the final shipped icon yet. export-icons.py generated actual ICNS, Apple
+1x/2x iconset, Windows ICO10sizes16..256 (readback asserted), and Linux hicolor
+SVG/PNG16..1024 for each. Native package/export zip plus comparison PNG in own
+bulk branding-20261027. Initial render completed exports but preview font lookup
+failed (DejaVu absent); corrected to installed Noto Sans. Final bf154d2b and
+native-export ZIP ba7d40ff actuallyPASS. No raster/package committed to source.
+
+Windows packager now builds its own PE launcher with native ICO + VERSIONINFO
+via MinGW-w64 gcc/windres, replacing the unrelated copied launcher. Requires
+explicit build tools; final new PE/nativeWindows validation is still pending.
+Mac existing native iconutil/Info.plist pipeline retained. Rename check1e7bee50
+PASS110 existing unit tests plus actual native LumaUI update/image-menu smoke;
+all modified Python parsed and gitdiffcheck passed. Generated exports inspected.
+
+ISO continuation: r6 failed before runtime work due old canceled container name
+remaining registered (raw125 preserved). r7 uses a distinct container name,
+new output current-source-arm-iso-20261027-r7 and SSD arm-fast-work-r7, same
+normal4GiB/HDD64GiB and paired acceptedSSD7GiB reservation. New normal b74eea4c
+launched; confirm actual container activity before calling it active. x86 resume
+c8c32a09 remains the existing frozen producer, no duplicate x86 task started.

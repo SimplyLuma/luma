@@ -31,7 +31,7 @@ def desktop_edid():
     def text(tag, value):
         return bytes([0, 0, 0, tag, 0]) + (value + '\n').ljust(13).encode('ascii')
     block[72:90] = text(0xfc, 'Desktop')
-    block[90:108] = text(0xff, 'Luma Tester')
+    block[90:108] = text(0xff, 'Try Luma')
     block[108:126] = bytes.fromhex('00 00 00 fd 00 32 4b 1e 55 11 00 0a 20 20 20 20 20 20')
     block[127] = -sum(block) & 255
     return block

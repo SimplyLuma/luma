@@ -32,7 +32,7 @@ try:
     from luma_appkit.structure_layers import LayerHost
     from luma_appkit.widgets import AppWindow, IconButton, Island, IslandOverlaySplitView, NavigationSidebar, ScrollView, add_style_sheet
 except (ImportError, ValueError) as exc:
-    raise ImportError('Luma Tester requires the LumaUI runtime (luma-developer-platform).') from exc
+    raise ImportError('Try Luma requires the LumaUI runtime (luma-developer-platform).') from exc
 
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
@@ -43,7 +43,7 @@ from . import presets, vm, experiences, device_profiles, image_library, host_dev
 def launch(state=None):
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     GLib.set_prgname('io.luma.Tester')
-    GLib.set_application_name('Luma Tester')
+    GLib.set_application_name('Try Luma')
     Gtk.Window.set_default_icon_name('io.luma.Tester')
     class Application(Adw.Application):
         def __init__(self):
@@ -194,7 +194,7 @@ def launch(state=None):
                 Command('tester.quit', 'Quit', self.window_close, icons.icon_name('log-out'), shortcut=('Ctrl', 'Q')),
             )),))
             Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(Path(__file__).parent))
-            self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Luma Tester',
+            self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Try Luma',
                                     icon_name='io.luma.Tester', commands=self.commands,
                                     default_width=780, default_height=650,
                                     minimum_width=480, minimum_height=480)
@@ -1490,7 +1490,7 @@ def launch(state=None):
                 if error:
                     if manual:self.notify('Couldn’t check for updates. Try again later.')
                 elif artifact is None:
-                    if manual:self.notify('Luma Tester is up to date.')
+                    if manual:self.notify('Try Luma is up to date.')
                 else:
                     try:saved=json.loads(self.update_preferences.read_text())
                     except (OSError,ValueError):saved={}
@@ -1514,13 +1514,13 @@ def launch(state=None):
             try:vm.atomic_json(self.update_preferences,dict(offered_version=release))
             except OSError:pass
             body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
-            body.append(self.label(f'Luma Tester {release} is available.'))
+            body.append(self.label(f'Try Luma {release} is available.'))
             body.append(self.label(f"{artifact['size_bytes']/10**6:.0f} MB · Download now and install when you’re ready.",muted=True))
             buttons=Gtk.Box(spacing=12,homogeneous=True)
             buttons.append(self.button('Later',self.close_sheet))
             buttons.append(self.button('Download',lambda:self.download_app_update(artifact),primary=True,icon='download'))
             body.append(buttons)
-            self.sheet('Update Luma Tester',body,width=400)
+            self.sheet('Update Try Luma',body,width=400)
 
         def download_app_update(self, artifact):
             if self.active():return
@@ -1528,7 +1528,7 @@ def launch(state=None):
             self.close_sheet();self.busy=True;self.transfer_progress=None
             self.progress.set_fraction(0);self.progress.set_visible(True)
             self.spinner.set_visible(True);self.spinner.start()
-            self.status_label.set_label('Downloading Luma Tester…')
+            self.status_label.set_label('Downloading Try Luma…')
             self.stack.set_visible_child_name('session');self.refresh()
             def done(path,error):
                 self.busy=False;self.transfer_progress=None

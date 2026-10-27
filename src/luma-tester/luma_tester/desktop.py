@@ -40,7 +40,7 @@ def install(executable=None, data_home=None, state=None):
     quoted = quote(executable)
     workspace = quote(data_root(state))
     arguments = ' --appimage-extract-and-run' if executable.suffix == '.AppImage' else ''
-    entry = ('[Desktop Entry]\nType=Application\nName=Luma Tester\n'
+    entry = ('[Desktop Entry]\nType=Application\nName=Try Luma\n'
              'Comment=Try Luma or develop apps for Mobile and Desktop\n'
              f'Exec=/usr/bin/env -- {quoted}{arguments} --state {workspace} gui\nIcon=io.luma.Tester\n'
              'Terminal=false\nCategories=Development;Emulator;\n'

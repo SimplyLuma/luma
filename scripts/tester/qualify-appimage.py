@@ -24,7 +24,7 @@ with (out / 'appimage.log').open('w') as log:
         window = None
         while time.monotonic() < deadline:
             assert child.poll() is None, 'AppImage exited before showing its window.'
-            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Luma Tester$'],
+            found = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^Try Luma$'],
                                    text=True, capture_output=True)
             if found.returncode == 0:
                 window = found.stdout.splitlines()[-1]
