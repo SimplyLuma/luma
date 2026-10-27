@@ -2116,3 +2116,20 @@ QA supervisor3362985 received the same deadline extension through scoped Python
 remote debugging, receipt QA-SETUP-TIME-BUDGET.json. This is explicitly not an
 unmodified final-package run. Memory/disk admissions unchanged. Final Windowsr10
 build43af6d16 started before timeout change and must be treated as superseded.
+
+23:55 UTC: final Linuxr44 build18ab4264 and native packagedUI55ac885b PASS;
+Windowsr11 buildbe832521 PASS. Extended Linux installed disk boot6157a430 reached
+actual autologin Luma wallpaper+dock, reviewed boot-r3-desktop-21.png, at~8min.
+Serial showed luma-app-baseline holding display-manager startup: prior150s capture
+was premature, not a proven renderer failure. Provisioned GUI graphical readiness
+bound240s is too short on slow first boot; extend to1800s matching bounded OS
+baseline service, retaining real SSH/session proof before display reveal.
+Windows first-start e04b7df6 ended external2900s harness timeout, not desktopPASS.
+Retrybd4e34e5 active with finalr11, cached ISO, bounded9000s admitted root job,
+7200s product setup bound and8000s QA watcher. Own failed setup temp can be retried;
+no user workspaces involved. Macr16/signr5/nativeUI+HVF/TCG allPASS; notarization
+attempts never submitted because staleSSH forwarding2235490 owned22442 and did
+not answer banners. Verified exactUID1003, only22442 listener, no child jobs;
+SIGTERM cleared only that stale connection. User restarted tunnel, pinnedSSH
+connected23:54. Rebuild finalMac after first-boot readiness bound before signing.
+Public0.7.4 remains draft, not released; no new signed/notarized release claim.
