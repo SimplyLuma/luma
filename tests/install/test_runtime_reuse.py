@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 def module(name, filename):
@@ -57,6 +58,28 @@ class RuntimeReuse(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'runtime source changed'):
                 reuse.runtime_source_proof(root, old, git('rev-parse', 'HEAD'))
 
+    def test_treeinfo_validation_and_replacement(self):
+        body = '[checksums]\nimages/install.img = sha256:' + 'a'*64 + '\n'
+        self.assertEqual(reuse.update_treeinfo(body, {'/images/install.img': None}), body)
+        updated = reuse.update_treeinfo(body, {'/images/install.img': 'b'*64})
+        self.assertIn('sha256:' + 'b'*64, updated)
+        self.assertEqual(updated.count('sha256:'), 1)
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            reuse.update_treeinfo(body + body, {'/images/install.img': None})
+        # Optional unrelated Lorax entries remain byte-for-byte intact.
+        self.assertEqual(reuse.update_treeinfo(body, {'/images/pxeboot/initrd.img': 'c'*64}), body)
+
+    def test_tool_preflight_reports_all_missing_before_work(self):
+        with patch.object(reuse.shutil, 'which', return_value=None):
+            with self.assertRaisesRegex(ValueError, 'mksquashfs, cpio'):
+                reuse.preflight_tools(True)
+            with self.assertRaises(ValueError) as error:
+                reuse.preflight_tools(False)
+            self.assertNotIn('mksquashfs', str(error.exception))
+        for value in ('0', '-1'):
+            with self.assertRaises(reuse.argparse.ArgumentTypeError):
+                reuse.positive_integer(value)
+
     def test_clock_refresh_changes_only_two_stage2_fields_and_appends_initramfs(self):
         import gzip
         import os
@@ -69,16 +92,26 @@ class RuntimeReuse(unittest.TestCase):
             clock.touch(); os.utime(clock, (1000, 1000))
             (tree / 'usr/share/luma-installer-atlas/media.env').write_text('clock_epoch=1000\nvolid=RETAINED\n')
             (tree / 'unrelated').write_text('same bytes')
+            os.setxattr(tree / 'unrelated', 'user.runtime-fixture', b'preserved')
             old = root / 'old'; old.mkdir()
+            # An unprivileged fixture can preserve user xattrs, but cannot
+            # restore security.selinux. Production retains every namespace.
             subprocess.run(['mksquashfs', str(tree), str(old / 'install.img'), '-noappend',
-                            '-processors', '1', '-no-progress'], check=True, stdout=subprocess.DEVNULL)
+                            '-processors', '1', '-no-progress', '-xattrs-include', '^user\\.'],
+                           check=True, stdout=subprocess.DEVNULL)
             (old / 'initrd.img').write_bytes(b'original-initramfs-prefix')
             work = root / 'work'; work.mkdir()
-            overrides = reuse.refresh_clock(old, work, 2000)
+            with patch.object(reuse, 'run', wraps=reuse.run) as commands:
+                overrides = reuse.refresh_clock(old, work, 2000)
+            squash = next(call.args for call in commands.call_args_list if call.args[0] == 'mksquashfs')
+            self.assertEqual(squash[squash.index('-processors') + 1], '2')
+            self.assertEqual(squash[squash.index('-mem') + 1], '512M')
             rebuilt = root / 'rebuilt'
-            subprocess.run(['unsquashfs', '-no-progress', '-d', str(rebuilt),
+            subprocess.run(['unsquashfs', '-no-progress', '-xattrs-include', '^user\\.',
+                            '-d', str(rebuilt),
                             str(overrides['/images/install.img'])], check=True, stdout=subprocess.DEVNULL)
             self.assertEqual((rebuilt / 'unrelated').read_text(), 'same bytes')
+            self.assertEqual(os.getxattr(rebuilt / 'unrelated', 'user.runtime-fixture'), b'preserved')
             self.assertEqual(int((rebuilt / 'usr/lib/clock-epoch').stat().st_mtime), 2000)
             self.assertEqual((rebuilt / 'usr/share/luma-installer-atlas/media.env').read_text(),
                              'clock_epoch=2000\nvolid=RETAINED\n')
@@ -104,7 +137,9 @@ class RuntimeReuse(unittest.TestCase):
             tree = root / 'tree'; tree.mkdir(); (tree / 'hello').write_text('fixture')
             commit = run('ostree', f'--repo={repo}', 'commit', '-b', 'test', f'--tree=dir={tree}',
                          '--gpg-sign=fixture@example.invalid', f'--gpg-homedir={home}').decode().strip()
-            current = root / 'current'; current.mkdir()
+            current = root / ('deep-release-control-' * 8) / 'current'
+            current.mkdir(parents=True)
+            self.assertGreater(len(str(current / 'gpg')), 108)
             reuse.verify_at_clock(repo, commit, key, int(time.time()), current)
             early = root / 'early'; early.mkdir()
             with self.assertRaisesRegex(ValueError, 'invalid at retained runtime clock'):

@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -64,17 +65,21 @@ def verify_at_clock(repo, commit, key, epoch, directory):
         raise ValueError('payload commit has no detached GPG signatures')
     data = directory / 'commit'
     data.write_bytes((repo / 'objects' / commit[:2] / (commit[2:] + '.commit')).read_bytes())
-    home = directory / 'gpg'
-    home.mkdir(mode=0o700)
-    run('gpg', '--batch', '--homedir', home, '--no-autostart', '--import', key, stdout=subprocess.DEVNULL)
-    for index, signature in enumerate(signatures):
-        sig = directory / f'signature-{index}'
-        sig.write_bytes(bytes(signature))
-        check = subprocess.run(['gpg', '--batch', '--homedir', str(home),
-                                '--faked-system-time', str(epoch) + '!',
-                                '--verify', str(sig), str(data)], capture_output=True)
-        if check.returncode == 0:
-            return
+    # GnuPG creates Unix sockets beneath its home. Release work paths can
+    # exceed sockaddr_un even though all ordinary file accesses succeed.
+    # This fresh, private public-key-only home has a bounded path length.
+    with tempfile.TemporaryDirectory(prefix='luma-clock-gpg-', dir='/tmp') as temporary:
+        home = Path(temporary)
+        run('gpg', '--batch', '--homedir', home, '--no-autostart', '--import', key,
+            stdout=subprocess.DEVNULL)
+        for index, signature in enumerate(signatures):
+            sig = directory / f'signature-{index}'
+            sig.write_bytes(bytes(signature))
+            check = subprocess.run(['gpg', '--batch', '--homedir', str(home),
+                                    '--no-autostart', '--faked-system-time', str(epoch) + '!',
+                                    '--verify', str(sig), str(data)], capture_output=True)
+            if check.returncode == 0:
+                return
     raise ValueError('new payload signature is invalid at retained runtime clock; '
                      'refresh the runtime clock deliberately before reusing it')
 
@@ -99,9 +104,38 @@ def inventory(root):
     return result
 
 
-def refresh_clock(old, work, epoch):
+def positive_integer(value):
+    value = int(value)
+    if value < 1:
+        raise argparse.ArgumentTypeError('must be a positive integer')
+    return value
+
+
+def preflight_tools(refresh):
+    tools = ['gpg', 'ostree', 'xorriso', 'unsquashfs', 'mcopy', 'python3']
+    if refresh:
+        tools += ['mksquashfs', 'cpio']
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if missing:
+        raise ValueError(f'missing runtime reuse tools: {", ".join(missing)}')
+
+
+def update_treeinfo(body, checksums):
+    # Parse and reject ambiguity BEFORE extracting/recompressing the full
+    # stage2. None means validation-only; actual digests are applied afterward.
+    for destination, digest in checksums.items():
+        pattern = r'(?m)^(' + re.escape(destination.lstrip('/')) + r'\s*=\s*)sha256:[0-9a-f]{64}$'
+        if len(re.findall(pattern, body)) > 1:
+            raise ValueError('ambiguous runtime image checksum in .treeinfo')
+        if digest is not None:
+            body = re.sub(pattern, lambda match: match[1] + 'sha256:' + digest, body)
+    return body
+
+
+def refresh_clock(old, work, epoch, processors=2, cache_mib=512):
     root = work / 'stage2-clock'
-    run('unsquashfs', '-no-progress', '-d', root, old / 'install.img', stdout=subprocess.DEVNULL)
+    run('unsquashfs', '-no-progress', '-processors', str(processors),
+        '-d', root, old / 'install.img', stdout=subprocess.DEVNULL)
     before = inventory(root)
     clock = root / 'usr/lib/clock-epoch'
     env = root / 'usr/share/luma-installer-atlas/media.env'
@@ -125,7 +159,7 @@ def refresh_clock(old, work, epoch):
     # compression container is regenerated; no RPM transaction or Lorax runs.
     stage2 = work / 'install-clock.img'
     run('mksquashfs', root, stage2, '-noappend', '-comp', 'xz', '-b', '1048576',
-        '-processors', '3', '-no-progress')
+        '-processors', str(processors), '-mem', f'{cache_mib}M', '-no-progress')
     # Linux unpacks concatenated initramfs archives in order. Keep every old
     # compressed byte and append one reproducible override for clock-epoch.
     overlay = work / 'clock-overlay'
@@ -157,8 +191,13 @@ def main():
                  'output', 'work'):
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--clock-epoch', type=int, help='deliberate clock-only runtime refresh')
+    parser.add_argument('--squashfs-processors', type=positive_integer, default=2,
+                        help='compression workers within the caller memory budget (default: 2)')
+    parser.add_argument('--squashfs-cache-mib', type=positive_integer, default=512,
+                        help='mksquashfs cache MiB, excluding worker/OS memory (default: 512)')
     parser.add_argument('--arch', choices=('x86_64', 'aarch64'), required=True)
     args = parser.parse_args()
+    preflight_tools(args.clock_epoch is not None)
     here = Path(__file__).resolve().parent
     source, donor, repo = map(lambda p: Path(p).resolve(),
                                (args.source, args.donor, args.payload_repo))
@@ -203,18 +242,19 @@ def main():
         verify_at_clock(repo, args.commit, Path(args.key), epoch, Path(temporary))
     overrides = {}
     if epoch != int(settings['clock_epoch']):
-        overrides = refresh_clock(old, work, epoch)
-        treeinfo = work / '.treeinfo'
-        run('xorriso', '-osirrox', 'on', '-indev', donor,
-            '-extract', '/.treeinfo', treeinfo, stdout=subprocess.DEVNULL)
-        body = treeinfo.read_text()
-        for destination, path in overrides.items():
-            pattern = r'(?m)^(' + re.escape(destination.lstrip('/')) + r'\s*=\s*)sha256:[0-9a-f]{64}$'
-            body, count = re.subn(pattern, lambda match: match[1] + 'sha256:' + sha(path), body)
-            if count > 1:
-                raise ValueError('ambiguous runtime image checksum in .treeinfo')
-        treeinfo.write_text(body)
-        overrides['/.treeinfo'] = treeinfo
+        treeinfo = None
+        if '.treeinfo' in entries:
+            treeinfo = work / '.treeinfo'
+            run('xorriso', '-osirrox', 'on', '-indev', donor,
+                '-extract', '/.treeinfo', treeinfo, stdout=subprocess.DEVNULL)
+            body = update_treeinfo(treeinfo.read_text(), dict.fromkeys(
+                ('/images/install.img', '/images/pxeboot/initrd.img')))
+        overrides = refresh_clock(old, work, epoch, args.squashfs_processors,
+                                  args.squashfs_cache_mib)
+        if treeinfo is not None:
+            treeinfo.write_text(update_treeinfo(body, {destination: sha(path)
+                                                      for destination, path in overrides.items()}))
+            overrides['/.treeinfo'] = treeinfo
 
     payload = work / 'luma'
     payload.mkdir()
@@ -255,6 +295,8 @@ def main():
                  source_revision=args.source_revision, unchanged_source_paths=paths,
                  retained_volume_id=volid, retained_clock_epoch=int(settings['clock_epoch']), clock_epoch=epoch,
                  clock_only_refresh=bool(overrides),
+                 squashfs_processors=args.squashfs_processors if overrides else None,
+                 squashfs_cache_mib=args.squashfs_cache_mib if overrides else None,
                  payload_commit=args.commit, payload_ref=args.ref, runtime_sha256=bodies,
                  payload_signature_valid_at_runtime_clock=True,
                  iso_sha256=sha(output), iso_size=output.stat().st_size)

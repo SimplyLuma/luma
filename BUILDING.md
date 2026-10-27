@@ -100,6 +100,22 @@ scripts/os/build-staff-media.sh --atlas-source YOUR_ATLAS_SOURCE \
 
 `--test-candidate` produces test media; it does not declare a release ready. Retain the build's source identity, package manifest, SBOM, provenance, and qualification results. Dirty development inputs are explicitly marked and refused by normal publication paths.
 
+For a payload-only rebuild, `scripts/install/atlas-iso/reuse-installer-runtime.py`
+can retain an authenticated, qualified donor runtime when its consumed installer
+source paths have not changed. It verifies the new payload signature against the
+embedded release key and runtime clock; a deliberate clock-only refresh preserves
+all other extracted stage2 content and metadata. Optional Lorax `.treeinfo` is
+updated when present. The helper still checks runtime image equality, visible and
+embedded UEFI menus, and GRUB fonts after assembly. Its result is a built medium,
+not a qualification pass.
+
+Clock-refresh compression defaults to two workers and a 512 MiB mksquashfs cache.
+`--squashfs-processors` and `--squashfs-cache-mib` permit an explicitly budgeted
+builder to tune them; cache size excludes compression workers and OS/file-cache
+memory. The caller must admit and cap the complete job, including tools, scratch
+space and the final ISO, and retain the required host reserves. These settings
+are not a promise that an arbitrary runtime fits in a 512 MiB job.
+
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
 ## Desktop architectures
