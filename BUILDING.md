@@ -249,3 +249,18 @@ When the public destination is physical `os/preview-repo`, publish it with
 `preview` is deliberately rejected before uploading: two different source
 repositories cannot share one destination. Architecture, device and legacy
 graph files are each verified at their actual relative public paths.
+
+### Private release evidence on shared storage
+
+Create each fresh root-owned evidence attempt with mode 0700. Before creating
+its children, remove inherited default and access ACLs on that new private leaf
+and explicitly set mode 0700; a process umask does not replace a filesystem's default
+ACL. Leave shared parents and other tasks' directories unchanged. Final producer
+receipts use mode 0400 and are flushed before the producer announces their SHA-256.
+Private operator adapters invoking the normal sealed publication tools follow
+this same custody policy.
+
+Preserve failed attempts and the original producer journal. A completed receipt
+whose permissions need repair must keep its externally recorded producer hash,
+root ownership, inode and body; record the prior metadata and the custody repair.
+A custody change does not rerun checks or create a different passing result.
