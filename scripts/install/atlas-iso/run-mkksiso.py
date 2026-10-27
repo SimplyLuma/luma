@@ -25,8 +25,33 @@ def replace_payload_command(command, clock_maps=()):
     return command
 
 
+def check_target_discinfo(path, architecture):
+    """Bind a data-only remaster to its explicit target, never the tools CPU."""
+    if architecture not in ('x86_64', 'aarch64'):
+        raise ValueError('unsupported data-only target architecture')
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError('target-bound media require .discinfo')
+    lines = [line.strip() for line in path.read_text().splitlines()]
+    if len(lines) < 3 or lines[2] != architecture:
+        raise ValueError('donor .discinfo differs from the target architecture')
+
+
 def main():
     from pylorax.cmdline import mkksiso
+    target = None
+    if '--data-only-architecture' in sys.argv:
+        index = sys.argv.index('--data-only-architecture')
+        if sys.argv.count('--data-only-architecture') != 1 or index + 1 >= len(sys.argv):
+            raise ValueError('expected one explicit data-only target architecture')
+        target = sys.argv[index + 1]
+        if target not in ('x86_64', 'aarch64'):
+            raise ValueError('unsupported data-only target architecture')
+        del sys.argv[index:index + 2]
+        # Lorax's default compares .discinfo to the host CPU. No target
+        # executable runs here: retain EFI rebuilding and every other check,
+        # replacing only that comparison with a mandatory target binding.
+        mkksiso.CheckDiscinfo = lambda path: check_target_discinfo(path, target)
     clock_maps = []
     while '--runtime-clock-map' in sys.argv:
         index = sys.argv.index('--runtime-clock-map')

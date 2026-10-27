@@ -9,12 +9,14 @@ runtime source revision; normal boot/install qualification remains separate.
 import argparse
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import shutil
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 import time
 
@@ -132,6 +134,20 @@ def update_treeinfo(body, checksums):
     return body
 
 
+def pe_machine(path, architecture):
+    data = Path(path).read_bytes()
+    if len(data) < 64 or data[:2] != b'MZ':
+        raise ValueError('UEFI executable lacks a DOS header')
+    offset = struct.unpack_from('<I', data, 0x3c)[0]
+    if offset + 6 > len(data) or data[offset:offset + 4] != b'PE\0\0':
+        raise ValueError('UEFI executable lacks a PE header')
+    expected = {'x86_64': 0x8664, 'aarch64': 0xaa64}[architecture]
+    machine = struct.unpack_from('<H', data, offset + 4)[0]
+    if machine != expected:
+        raise ValueError('UEFI executable differs from the target architecture')
+    return machine
+
+
 def refresh_clock(old, work, epoch, processors=2, cache_mib=512):
     root = work / 'stage2-clock'
     run('unsquashfs', '-no-progress', '-processors', str(processors),
@@ -214,6 +230,15 @@ def main():
     if not volid or not all(p.lstrip('/') in entries for p in UNCHANGED_FILES):
         raise ValueError('donor lacks the qualified installer runtime')
     work.mkdir(mode=0o700)
+    # Fail before extracting/recompressing the full runtime when an input's
+    # metadata disagrees with the already selected target architecture.
+    spec = importlib.util.spec_from_file_location('runtime_mkksiso', here / 'run-mkksiso.py')
+    wrapper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wrapper)
+    discinfo = work / 'donor.discinfo'
+    run('xorriso', '-osirrox', 'on', '-indev', donor,
+        '-extract', '/.discinfo', discinfo, stdout=subprocess.DEVNULL)
+    wrapper.check_target_discinfo(discinfo, args.arch)
     old = work / 'donor-runtime'
     old.mkdir()
     for item in UNCHANGED_FILES:
@@ -263,7 +288,8 @@ def main():
     (payload / 'repo').symlink_to(repo, target_is_directory=True)
     # Extra image mappings are inserted by the source-owned wrapper immediately
     # before its normal output finalization (including implantisomd5).
-    command = ['python3', here / 'run-mkksiso.py', '--replace-payload-repository']
+    command = ['python3', here / 'run-mkksiso.py', '--data-only-architecture', args.arch,
+               '--replace-payload-repository']
     for destination, path in overrides.items():
         command += ['--runtime-clock-map', str(path), destination]
     run(*command, '-V', volid, '-a', payload, donor, output)
@@ -290,6 +316,15 @@ def main():
     run('mcopy', '-i', boot / 'efiboot.img', '::/EFI/BOOT/grub.cfg', boot / 'embedded-grub.cfg')
     if (boot / 'efi-grub.cfg').read_bytes() != (boot / 'embedded-grub.cfg').read_bytes():
         raise ValueError('embedded UEFI menu differs from visible menu')
+    # Cross-host tools manipulate bytes only. Inspect actual rebuilt FAT PE
+    # headers so a mislabeled donor cannot supply another CPU's boot loaders.
+    efi_names = (('BOOTX64.EFI', 'grubx64.efi') if args.arch == 'x86_64'
+                 else ('BOOTAA64.EFI', 'grubaa64.efi'))
+    efi_machines = {}
+    for name in efi_names:
+        binary = boot / name
+        run('mcopy', '-i', boot / 'efiboot.img', '::/EFI/BOOT/' + name, binary)
+        efi_machines[name] = dict(machine=pe_machine(binary, args.arch), sha256=sha(binary))
     proof = dict(result='BUILT_REUSED_RUNTIME_NOT_QUALIFIED', architecture=args.arch,
                  donor_sha256=args.donor_sha256, donor_revision=args.donor_revision,
                  source_revision=args.source_revision, unchanged_source_paths=paths,
@@ -298,7 +333,7 @@ def main():
                  squashfs_processors=args.squashfs_processors if overrides else None,
                  squashfs_cache_mib=args.squashfs_cache_mib if overrides else None,
                  payload_commit=args.commit, payload_ref=args.ref, runtime_sha256=bodies,
-                 payload_signature_valid_at_runtime_clock=True,
+                 payload_signature_valid_at_runtime_clock=True, efi_machines=efi_machines,
                  iso_sha256=sha(output), iso_size=output.stat().st_size)
     Path(str(output) + '.runtime-reuse.json').write_text(json.dumps(proof, indent=2) + '\n')
     Path(str(output) + '.sha256').write_text(f"{proof['iso_sha256']}  {output.name}\n")

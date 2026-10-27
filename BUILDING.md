@@ -107,7 +107,12 @@ embedded release key and runtime clock; a deliberate clock-only refresh preserve
 all other extracted stage2 content and metadata. Optional Lorax `.treeinfo` is
 updated when present. The helper still checks runtime image equality, visible and
 embedded UEFI menus, and GRUB fonts after assembly. Its result is a built medium,
-not a qualification pass.
+not a qualification pass. Data-only remastering can use the host's native tools
+for either target: donor `.discinfo`, the embedded runtime and signed payload
+must all match `--arch`, and final FAT boot loaders must carry that architecture's
+PE machine type. It does not execute target binaries on the tools host. The
+wrapper's explicit `--data-only-architecture` keeps Lorax's EFI rebuilding and
+replaces only its host-CPU equality check with this target binding.
 
 Clock-refresh compression defaults to two workers and a 512 MiB mksquashfs cache.
 `--squashfs-processors` and `--squashfs-cache-mib` permit an explicitly budgeted

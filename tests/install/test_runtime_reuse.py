@@ -58,6 +58,44 @@ class RuntimeReuse(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'runtime source changed'):
                 reuse.runtime_source_proof(root, old, git('rev-parse', 'HEAD'))
 
+    def test_explicit_target_discinfo_rejects_wrong_or_missing_architecture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / '.discinfo'
+            for arch in ('x86_64', 'aarch64'):
+                path.write_text('epoch\nLuma\n' + arch + '\n')
+                wrapper.check_target_discinfo(path, arch)
+                other = 'aarch64' if arch == 'x86_64' else 'x86_64'
+                with self.assertRaisesRegex(ValueError, 'target architecture'):
+                    wrapper.check_target_discinfo(path, other)
+            path.write_text('short\n')
+            with self.assertRaises(ValueError):
+                wrapper.check_target_discinfo(path, 'aarch64')
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, 'require .discinfo'):
+                wrapper.check_target_discinfo(path, 'aarch64')
+
+    def test_actual_pe_header_machine_and_bounds(self):
+        import struct
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'boot.efi'
+            for arch, machine in (('x86_64', 0x8664), ('aarch64', 0xaa64)):
+                body = bytearray(160)
+                body[:2] = b'MZ'
+                struct.pack_into('<I', body, 0x3c, 128)
+                body[128:132] = b'PE\0\0'
+                struct.pack_into('<H', body, 132, machine)
+                path.write_bytes(body)
+                self.assertEqual(reuse.pe_machine(path, arch), machine)
+                other = 'aarch64' if arch == 'x86_64' else 'x86_64'
+                with self.assertRaisesRegex(ValueError, 'target architecture'):
+                    reuse.pe_machine(path, other)
+                path.write_bytes(body[:130])
+                with self.assertRaisesRegex(ValueError, 'PE header'):
+                    reuse.pe_machine(path, arch)
+            path.write_bytes(b'short')
+            with self.assertRaisesRegex(ValueError, 'DOS header'):
+                reuse.pe_machine(path, 'aarch64')
+
     def test_treeinfo_validation_and_replacement(self):
         body = '[checksums]\nimages/install.img = sha256:' + 'a'*64 + '\n'
         self.assertEqual(reuse.update_treeinfo(body, {'/images/install.img': None}), body)
