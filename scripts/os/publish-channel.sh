@@ -59,7 +59,9 @@ if [ "$LUMA_OS_ARCH" = aarch64 ]; then
     luma_os_die 'ARM publication requires the canonical shared repository with its existing x86 refs; import the candidate into that workflow'
 fi
 protected_refs=$(ostree refs --repo="$repo" | while IFS= read -r other; do
-  [ "$other" = "$ref" ] || printf '%s %s\n' "$other" "$(ostree rev-parse --repo="$repo" "$other")"
+  # Collection summary regeneration advances this shared metadata ref.
+  [ "$other" = "$ref" ] || [ "$other" = ostree-metadata ] || \
+    printf '%s %s\n' "$other" "$(ostree rev-parse --repo="$repo" "$other")"
 done)
 head=$(luma_os_channel_head "$repo" "$ref")
 
