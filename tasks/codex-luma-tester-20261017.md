@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active — public ARM20261026.8 and x8620261026.9 fully downloaded/checksum verified; Linux0.7.2 r35 built,99 tests and native LumaUI catalog checks passed. Brief packaged QEMU boot probes running; Mac tunnel offline, native rebuild pending.
+- Status: Linux0.7.2 r36 candidate ready; latest ARM/x86 public ISOs fully verified and visible in all3 experiences. Mac native rebuild awaits offline tunnel. ARM TCG reaches stage2 but graphical installer not qualified within bounded probe; native release boot gates pass.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -41,7 +41,7 @@ Packaged QEMU startup smoke0d83344c passed process/QMP checks for both ISOs;
 x86KVM45sec screenshot shows Luma boot splash. ARMTCG45sec screenshot still
 has inactive display, though console reached ExitBootServices; not an ARM
 installed/graphical boot pass. Additional120sec ARM probe20d7de49 reached kernel/systemd but remained in
-dractut-initqueue at capture; no graphical ARM boot claim. Both short probes
+dracut-initqueue at capture; no graphical ARM boot claim. Both short probes
 used3GiB guest RAM, below published4GiB minimum. Correct4GiB ARM probe75aaea85
 running under6GiB cap,240sec bound. Exact release native M4 boot gate remains
 the full ARM boot proof. f7f807c6e aligns pyproject0.7.2 and changes NEW workspace
@@ -1488,3 +1488,30 @@ used that source without altering shared refs or unrelated worktrees.
   ARM virtual display still fixed864x1920/scale2, dynamic device resizing off.
   Windows/Intel Mac builds and Linux ARM-TCG boot qualification remain outside
   this native M4 preview result. No public release/notarization/signing claim.
+
+## 2026-10-27 final launch-prep checkpoint
+
+- Implementation6910be67a + default/versionf7f807c6e; final package source
+  b8878bd80 (includes factual checkpoint). Linuxr36 170c92d4 PASS,99 tests
+  PASS2.223s.295610872bytes, SHA256
+  f839fe7e57e3b33452a11cae2fe5932b01390a41d0251c682478633fc7d54d1a.
+  Final candidate appimage-release-r36 on own bulk. GUI/core/image-library
+  receipt hashes equal r35, whose native LumaUI6-combination test passed.
+- ARM4GiB240sec probe75aaea85 reached initrd-switch-root and real stage2
+  systemd; ldconfig/udev startup still pending at cutoff, screenshot black.
+  QEMU/QMP startup passed; NOT a graphical installer or full installed boot
+  pass. Exact release native M4 gate remains actual full ARM boot evidence.
+  Earlier3GiB probes below OS minimum retained, not product failures.
+  ARM initrd inspectiona3c5f620 confirms virtio_scsi module present; no transport
+  or OS patch introduced. All own probe children stopped normally.
+- Final live Hub recheck still latestx8620261026.9/ARM20261026.8. Actual complete
+  bodies/size/SHA passed source=test downloader, both are installer ISOs.
+  No auto-Try promise; that work is explicitly deferred by owner.
+- Durable publication handoff (not an uploaded release index):
+  /srv/dev-storage/projects/luma-os/artifacts/codex-luma-tester-20261017/release-handoff-20261027.json
+  includes exact public artifact metadata, package path/SHA/source and limits.
+- Mac still offline/no2244x tunnel listeners; native0.7.2 builder helper r9
+  prepared but NOTRUN. Existing0.7.1 and all user guests/projects untouched.
+  Next: reconnect native Mac, build/package/test0.7.2 with --release, then
+  authorized release publisher uploads app(s) and signs real Tester index.
+  No publication, Windows/IntelMac, or ARM-TCG graphical qualification claimed.
