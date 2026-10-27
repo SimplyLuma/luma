@@ -121,6 +121,19 @@ memory. The caller must admit and cap the complete job, including tools, scratch
 space and the final ISO, and retain the required host reserves. These settings
 are not a promise that an arbitrary runtime fits in a 512 MiB job.
 
+For resumable assembly, pass `--tools-image-id` with the operator's pinned native
+tools image checksum. After completing the clock refresh, the helper writes a
+private, read-only checkpoint and prints `CLOCK_CHECKPOINT_SHA256`. Preserve that
+digest in the operator's trusted job record. A retry may use the same `--work`,
+a new `--output`, the same semantic inputs and tools, and `--resume CHECKPOINT_SHA256`.
+The helper validates the externally pinned checkpoint and complete retained file
+hashes, donor and signature before skipping refresh/compression. Source, candidate,
+architecture, key, clock, tools or stage changes are refused. Failed assembly
+attempts and partial ISOs remain preserved; the helper never overwrites them.
+Resume produces built media and still runs every final runtime/EFI/font check;
+it does not reuse a qualification pass.
+
+
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
 ## Desktop architectures

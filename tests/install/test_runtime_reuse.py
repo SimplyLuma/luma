@@ -58,6 +58,67 @@ class RuntimeReuse(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'runtime source changed'):
                 reuse.runtime_source_proof(root, old, git('rev-parse', 'HEAD'))
 
+    def checkpoint_fixture(self, root):
+        inputs = dict(has_treeinfo=False, source_revision='a'*40, candidate='b'*64,
+                      architecture='aarch64', clock_epoch=2000, tools_image_id='c'*64,
+                      executable_sha256={'compressor': 'd'*64})
+        for name in reuse.CLOCK_FILES:
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(('fixture:' + name).encode())
+        return inputs
+
+    def test_resume_rejects_changed_inputs_corruption_and_checkpoint_replacement(self):
+        import copy
+        import os
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = self.checkpoint_fixture(root)
+            digest = reuse.save_clock_checkpoint(root, inputs)
+            reuse.load_clock_checkpoint(root, digest, inputs)
+            for name in inputs:
+                with self.subTest(input=name):
+                    changed = copy.deepcopy(inputs)
+                    changed[name] = 'changed'
+                    with self.assertRaisesRegex(ValueError, 'inputs or tools changed'):
+                        reuse.load_clock_checkpoint(root, digest, changed)
+            stage = root / 'install-clock.img'
+            original = stage.read_bytes()
+            stage.write_bytes(b'corrupt')
+            with self.assertRaisesRegex(ValueError, 'retained clock stage differs'):
+                reuse.load_clock_checkpoint(root, digest, inputs)
+            stage.write_bytes(original)
+            stage.unlink(); stage.symlink_to(root / 'initrd-clock.img')
+            with self.assertRaisesRegex(ValueError, 'escapes'):
+                reuse.load_clock_checkpoint(root, digest, inputs)
+            stage.unlink(); stage.write_bytes(original)
+            checkpoint = root / reuse.CLOCK_CHECKPOINT
+            checkpoint.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, 'immutable'):
+                reuse.load_clock_checkpoint(root, digest, inputs)
+            with checkpoint.open('ab') as stream:
+                stream.write(b' ')
+            checkpoint.chmod(0o400)
+            with self.assertRaisesRegex(ValueError, 'externally pinned'):
+                reuse.load_clock_checkpoint(root, digest, inputs)
+
+    def test_completed_clock_refresh_is_never_reexecuted_on_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = self.checkpoint_fixture(root)
+            overrides = {'/images/install.img': root / 'install-clock.img',
+                         '/images/pxeboot/initrd.img': root / 'initrd-clock.img'}
+            with patch.object(reuse, 'refresh_clock', return_value=overrides) as refresh:
+                first, digest = reuse.clock_phase(root / 'donor-runtime', root, 2000,
+                                                 inputs, 2, 512)
+                self.assertEqual(refresh.call_count, 1)
+            with patch.object(reuse, 'refresh_clock', side_effect=AssertionError('recompressed')) as refresh:
+                second, resumed_digest = reuse.clock_phase(root / 'donor-runtime', root,
+                    2000, inputs, 2, 512, resume=digest)
+                refresh.assert_not_called()
+            self.assertEqual(first, second)
+            self.assertEqual(digest, resumed_digest)
+
     def test_explicit_target_discinfo_rejects_wrong_or_missing_architecture(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / '.discinfo'

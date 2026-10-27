@@ -17,6 +17,7 @@ import shutil
 from pathlib import Path
 import subprocess
 import struct
+import stat
 import tempfile
 import time
 
@@ -134,6 +135,132 @@ def update_treeinfo(body, checksums):
     return body
 
 
+CLOCK_CHECKPOINT = 'clock-refresh.checkpoint.json'
+CLOCK_FILES = ('install-clock.img', 'initrd-clock.img', 'CLOCK-ONLY-DELTA.json',
+               'donor.discinfo', 'donor-runtime/install.img',
+               'donor-runtime/vmlinuz', 'donor-runtime/initrd.img',
+               'stage2/usr/share/luma-installer-atlas/media.env',
+               'stage2/usr/share/luma-installer-atlas/luma-release.gpg')
+
+
+def checksum(value):
+    if not re.fullmatch('[0-9a-f]{64}', value):
+        raise argparse.ArgumentTypeError('expected an exact SHA-256 checksum')
+    return value
+
+
+def checkpoint_file(work, name):
+    path = work / name
+    if path.is_symlink() or not path.resolve().is_relative_to(work.resolve()):
+        raise ValueError('checkpoint file escapes the private work directory')
+    before = path.stat()
+    if not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid():
+        raise ValueError('checkpoint file must be regular and owned by this builder')
+    digest = sha(path)
+    after = path.stat()
+    stable = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode')
+    if any(getattr(before, field) != getattr(after, field) for field in stable):
+        raise ValueError('checkpoint file changed while hashing')
+    return dict(sha256=digest, size=after.st_size, mode=stat.S_IMODE(after.st_mode))
+
+
+def checkpoint_names(inputs):
+    return (*CLOCK_FILES, *(('donor.treeinfo',) if inputs['has_treeinfo'] else ()))
+
+
+def save_clock_checkpoint(work, inputs):
+    if work.is_symlink() or work.stat().st_uid != os.geteuid() or work.stat().st_mode & 0o077:
+        raise ValueError('checkpoint requires a private builder-owned work directory')
+    record = dict(schema=1, result='CLOCK_REFRESH_COMPLETE_NOT_QUALIFIED', inputs=inputs,
+                  files={name: checkpoint_file(work, name) for name in checkpoint_names(inputs)})
+    body = (json.dumps(record, sort_keys=True, indent=2) + '\n').encode()
+    descriptor, temporary = tempfile.mkstemp(prefix='.clock-checkpoint-', dir=work)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(body)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o400)
+            os.fsync(stream.fileno())
+        # Exclusive atomic creation preserves an existing checkpoint on a retry.
+        os.link(temporary, work / CLOCK_CHECKPOINT)
+        directory = os.open(work, os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        os.unlink(temporary)
+    digest = hashlib.sha256(body).hexdigest()
+    print('CLOCK_CHECKPOINT_SHA256=' + digest, flush=True)
+    return digest
+
+
+def load_clock_checkpoint(work, expected_sha256, inputs=None, verify_files=True):
+    checksum(expected_sha256)
+    if work.is_symlink() or work.stat().st_uid != os.geteuid() or work.stat().st_mode & 0o077:
+        raise ValueError('resume requires a private builder-owned work directory')
+    path = work / CLOCK_CHECKPOINT
+    metadata = path.lstat()
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o400):
+        raise ValueError('resume requires the immutable builder-owned checkpoint')
+    body = path.read_bytes()
+    if hashlib.sha256(body).hexdigest() != expected_sha256:
+        raise ValueError('checkpoint differs from the externally pinned SHA-256')
+    record = json.loads(body)
+    if record.get('schema') != 1 or record.get('result') != 'CLOCK_REFRESH_COMPLETE_NOT_QUALIFIED':
+        raise ValueError('checkpoint does not attest a completed clock refresh')
+    if inputs is not None and record['inputs'] != inputs:
+        raise ValueError('resume semantic inputs or tools changed')
+    if set(record['files']) != set(checkpoint_names(record['inputs'])):
+        raise ValueError('checkpoint retained file set differs')
+    if verify_files:
+        for name, expected in record['files'].items():
+            if checkpoint_file(work, name) != expected:
+                raise ValueError('retained clock stage differs: ' + name)
+    return record
+
+
+def checkpoint_tools(args, here, mkksiso):
+    # The operator pins the immutable image externally. Also record the actual
+    # executable/module/script bytes consumed inside it, not just version text.
+    tools = {}
+    for name in ('python3', 'gpg', 'ostree', 'xorriso', 'unsquashfs', 'mksquashfs', 'cpio', 'mcopy'):
+        executable = shutil.which(name)
+        if executable is None:
+            raise ValueError('missing checkpoint tool: ' + name)
+        tools[name] = sha(Path(executable).resolve())
+    scripts = {name: sha(here / name) for name in
+               ('run-mkksiso.py', 'prepare-lorax-boot.py', 'extract-iso-efi.py')}
+    scripts['reuse-installer-runtime.py'] = sha(Path(__file__))
+    scripts['check-grub-fonts.py'] = sha(Path(args.source) / 'scripts/boot/check-grub-fonts.py')
+    return dict(tools_image_id=args.tools_image_id, executable_sha256=tools,
+                script_sha256=scripts, lorax_module_sha256=sha(Path(mkksiso.__file__)))
+
+
+def checkpoint_inputs(args, repo, key, epoch, has_treeinfo, tools):
+    metadata = {}
+    for name in ('config', 'summary', 'summary.sig',
+                 'objects/' + args.commit[:2] + '/' + args.commit[2:] + '.commitmeta'):
+        path = repo / name
+        metadata[name] = sha(path) if path.is_file() else None
+    return dict(source_revision=args.source_revision, donor_revision=args.donor_revision,
+                donor_sha256=args.donor_sha256, candidate=args.commit, ref=args.ref,
+                architecture=args.arch, key_sha256=sha(key), clock_epoch=epoch,
+                squashfs_processors=args.squashfs_processors, squashfs_cache_mib=args.squashfs_cache_mib,
+                payload_metadata_sha256=metadata, has_treeinfo=has_treeinfo, **tools)
+
+
+def clock_phase(old, work, epoch, inputs, processors, cache_mib, resume=None):
+    if resume:
+        load_clock_checkpoint(work, resume, inputs)
+        return {'/images/install.img': work / 'install-clock.img',
+                '/images/pxeboot/initrd.img': work / 'initrd-clock.img'}, resume
+    overrides = refresh_clock(old, work, epoch, processors, cache_mib)
+    digest = save_clock_checkpoint(work, inputs) if inputs is not None else None
+    return overrides, digest
+
+
 def pe_machine(path, architecture):
     data = Path(path).read_bytes()
     if len(data) < 64 or data[:2] != b'MZ':
@@ -211,43 +338,60 @@ def main():
                         help='compression workers within the caller memory budget (default: 2)')
     parser.add_argument('--squashfs-cache-mib', type=positive_integer, default=512,
                         help='mksquashfs cache MiB, excluding worker/OS memory (default: 512)')
+    parser.add_argument('--tools-image-id', type=checksum,
+                        help='externally pinned immutable tools image; enables sealed clock checkpoints')
+    parser.add_argument('--resume', type=checksum, metavar='CHECKPOINT_SHA256',
+                        help='reuse a completed clock stage only with this externally pinned digest')
     parser.add_argument('--arch', choices=('x86_64', 'aarch64'), required=True)
     args = parser.parse_args()
+    if args.tools_image_id and any(not re.fullmatch('[0-9a-f]{40}', value)
+                                   for value in (args.source_revision, args.donor_revision)):
+        raise ValueError('checkpoints require exact source and donor Git revisions')
     preflight_tools(args.clock_epoch is not None)
     here = Path(__file__).resolve().parent
     source, donor, repo = map(lambda p: Path(p).resolve(),
                                (args.source, args.donor, args.payload_repo))
     output, work = Path(args.output).absolute(), Path(args.work).absolute()
-    if output.exists() or work.exists() or donor == output:
-        raise ValueError('output and work must be new paths')
+    if output.exists() or donor == output or work.is_symlink():
+        raise ValueError('output must be new and work may not be a symlink')
+    if args.resume and (not args.tools_image_id or not work.is_dir()):
+        raise ValueError('resume requires the original work directory and immutable tools-image pin')
+    if not args.resume and work.exists():
+        raise ValueError('initial work directory must be new')
     if len(args.commit) != 64 or any(c not in '0123456789abcdef' for c in args.commit):
         raise ValueError('expected exact OSTree commit checksum')
+    from pylorax.cmdline import mkksiso
+    # Pin the actual helper/wrapper/tool bytes before donor I/O or compression.
+    toolchain = checkpoint_tools(args, here, mkksiso) if args.tools_image_id else None
     paths = runtime_source_proof(source, args.donor_revision, args.source_revision)
     if sha(donor) != args.donor_sha256:
         raise ValueError('authenticated donor digest mismatch')
-    from pylorax.cmdline import mkksiso
     volid, entries = mkksiso.GetISODetails(str(donor))
     if not volid or not all(p.lstrip('/') in entries for p in UNCHANGED_FILES):
         raise ValueError('donor lacks the qualified installer runtime')
-    work.mkdir(mode=0o700)
+    retained = load_clock_checkpoint(work, args.resume, verify_files=False) if args.resume else None
+    if retained is None:
+        work.mkdir(mode=0o700)
     # Fail before extracting/recompressing the full runtime when an input's
     # metadata disagrees with the already selected target architecture.
     spec = importlib.util.spec_from_file_location('runtime_mkksiso', here / 'run-mkksiso.py')
     wrapper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(wrapper)
     discinfo = work / 'donor.discinfo'
-    run('xorriso', '-osirrox', 'on', '-indev', donor,
-        '-extract', '/.discinfo', discinfo, stdout=subprocess.DEVNULL)
+    if retained is None:
+        run('xorriso', '-osirrox', 'on', '-indev', donor,
+            '-extract', '/.discinfo', discinfo, stdout=subprocess.DEVNULL)
     wrapper.check_target_discinfo(discinfo, args.arch)
     old = work / 'donor-runtime'
-    old.mkdir()
-    for item in UNCHANGED_FILES:
-        run('xorriso', '-osirrox', 'on', '-indev', donor,
-            '-extract', item, old / Path(item).name, stdout=subprocess.DEVNULL)
     runtime = work / 'stage2'
-    run('unsquashfs', '-no-progress', '-d', runtime, old / 'install.img',
-        'usr/share/luma-installer-atlas/media.env',
-        'usr/share/luma-installer-atlas/luma-release.gpg', stdout=subprocess.DEVNULL)
+    if retained is None:
+        old.mkdir()
+        for item in UNCHANGED_FILES:
+            run('xorriso', '-osirrox', 'on', '-indev', donor,
+                '-extract', item, old / Path(item).name, stdout=subprocess.DEVNULL)
+        run('unsquashfs', '-no-progress', '-d', runtime, old / 'install.img',
+            'usr/share/luma-installer-atlas/media.env',
+            'usr/share/luma-installer-atlas/luma-release.gpg', stdout=subprocess.DEVNULL)
     settings = dict(line.split('=', 1) for line in
                     (runtime / 'usr/share/luma-installer-atlas/media.env').read_text().splitlines()
                     if '=' in line and not line.startswith('#'))
@@ -260,28 +404,39 @@ def main():
         raise ValueError('payload ref does not resolve to exact candidate')
     if sha(runtime / 'usr/share/luma-installer-atlas/luma-release.gpg') != sha(args.key):
         raise ValueError('payload key differs from embedded installer release key')
-    epoch = args.clock_epoch or int(settings['clock_epoch'])
+    epoch = (args.clock_epoch or (retained['inputs']['clock_epoch'] if retained
+                                  else int(settings['clock_epoch'])))
     if epoch < int(settings['clock_epoch']) or epoch > int(time.time()) + 300:
         raise ValueError('clock refresh must advance within current build time')
     with tempfile.TemporaryDirectory(dir=work) as temporary:
         verify_at_clock(repo, args.commit, Path(args.key), epoch, Path(temporary))
+    inputs = (checkpoint_inputs(args, repo, Path(args.key), epoch,
+                                '.treeinfo' in entries, toolchain) if args.tools_image_id else None)
+    if retained is not None and retained['inputs'] != inputs:
+        raise ValueError('resume semantic inputs or tools changed')
     overrides = {}
+    checkpoint_sha256 = None
+    treeinfo_body = None
     if epoch != int(settings['clock_epoch']):
-        treeinfo = None
         if '.treeinfo' in entries:
-            treeinfo = work / '.treeinfo'
-            run('xorriso', '-osirrox', 'on', '-indev', donor,
-                '-extract', '/.treeinfo', treeinfo, stdout=subprocess.DEVNULL)
-            body = update_treeinfo(treeinfo.read_text(), dict.fromkeys(
+            treeinfo = work / 'donor.treeinfo'
+            if retained is None:
+                run('xorriso', '-osirrox', 'on', '-indev', donor,
+                    '-extract', '/.treeinfo', treeinfo, stdout=subprocess.DEVNULL)
+            treeinfo_body = update_treeinfo(treeinfo.read_text(), dict.fromkeys(
                 ('/images/install.img', '/images/pxeboot/initrd.img')))
-        overrides = refresh_clock(old, work, epoch, args.squashfs_processors,
-                                  args.squashfs_cache_mib)
-        if treeinfo is not None:
-            treeinfo.write_text(update_treeinfo(body, {destination: sha(path)
-                                                      for destination, path in overrides.items()}))
-            overrides['/.treeinfo'] = treeinfo
+        overrides, checkpoint_sha256 = clock_phase(old, work, epoch, inputs,
+            args.squashfs_processors, args.squashfs_cache_mib, args.resume)
+    elif retained is not None:
+        raise ValueError('resume checkpoint must describe a completed clock refresh')
+    attempt = Path(tempfile.mkdtemp(prefix='assembly-', dir=work))
+    if treeinfo_body is not None:
+        treeinfo = attempt / '.treeinfo'
+        treeinfo.write_text(update_treeinfo(treeinfo_body, {destination: sha(path)
+                                                          for destination, path in overrides.items()}))
+        overrides['/.treeinfo'] = treeinfo
 
-    payload = work / 'luma'
+    payload = attempt / 'luma'
     payload.mkdir()
     # A read-only symlink avoids copying a signed object corpus. mkksiso maps
     # this directory into the NEW image; its replacement hook removes old repo.
@@ -295,7 +450,7 @@ def main():
     run(*command, '-V', volid, '-a', payload, donor, output)
     if mkksiso.GetISODetails(str(output))[0] != volid:
         raise ValueError('remaster changed embedded stage2 label')
-    new = work / 'new-runtime'
+    new = attempt / 'new-runtime'
     new.mkdir()
     bodies = {}
     for item in UNCHANGED_FILES:
@@ -305,7 +460,7 @@ def main():
         bodies[item] = sha(target)
         if bodies[item] != sha(overrides.get(item, old / Path(item).name)):
             raise ValueError(f'remaster changed qualified runtime {item}')
-    boot = work / 'boot-proof'
+    boot = attempt / 'boot-proof'
     boot.mkdir()
     for item, name in (('/boot/grub2', 'grub2'), ('/EFI/BOOT/grub.cfg', 'efi-grub.cfg')):
         run('xorriso', '-osirrox', 'on', '-indev', output, '-extract', item, boot / name,
@@ -329,7 +484,8 @@ def main():
                  donor_sha256=args.donor_sha256, donor_revision=args.donor_revision,
                  source_revision=args.source_revision, unchanged_source_paths=paths,
                  retained_volume_id=volid, retained_clock_epoch=int(settings['clock_epoch']), clock_epoch=epoch,
-                 clock_only_refresh=bool(overrides),
+                 clock_only_refresh=bool(overrides), clock_refresh_resumed=bool(args.resume),
+                 clock_checkpoint_sha256=checkpoint_sha256,
                  squashfs_processors=args.squashfs_processors if overrides else None,
                  squashfs_cache_mib=args.squashfs_cache_mib if overrides else None,
                  payload_commit=args.commit, payload_ref=args.ref, runtime_sha256=bodies,
