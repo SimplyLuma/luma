@@ -86,7 +86,7 @@ class RuntimeReuse(unittest.TestCase):
             self.assertTrue(initrd.startswith(b'original-initramfs-prefix'))
             archive = gzip.decompress(initrd[len(b'original-initramfs-prefix'):])
             extract = root / 'cpio'; extract.mkdir()
-            subprocess.run(['cpio', '-id', '--quiet'], input=archive, cwd=extract, check=True)
+            subprocess.run(['cpio', '-idm', '--quiet'], input=archive, cwd=extract, check=True)
             self.assertEqual(int((extract / 'usr/lib/clock-epoch').stat().st_mtime), 2000)
 
     def test_real_signed_commit_rejects_old_rtc(self):
