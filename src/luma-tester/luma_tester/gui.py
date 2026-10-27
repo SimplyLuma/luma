@@ -700,7 +700,8 @@ def launch(state=None):
                 try:
                     from . import provision
                     if provision.ready(session):
-                        session.wait_graphical(240)
+                        # First boot can prepare bundled apps before the login session starts.
+                        session.wait_graphical(1800)
                         vm.configure_guest(session,vm.load(session.root))
                         GLib.idle_add(self.reveal_display,session)
                         return
