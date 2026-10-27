@@ -54,9 +54,7 @@ def config_body(body):
     return body
 
 
-def validate(manifest):
-    if manifest.get('schema') != SCHEMA:
-        raise ValueError('unsupported body manifest')
+def validate_target(manifest):
     if not HEX.fullmatch(manifest.get('candidate', '')):
         raise ValueError('invalid candidate')
     if not re.fullmatch(r'[0-9a-f]{40}', manifest.get('source_revision', '')):
@@ -68,6 +66,12 @@ def validate(manifest):
         raise ValueError('unexpected desktop channel')
     if manifest.get('profile') not in ('full', 'arm-preview'):
         raise ValueError('invalid desktop profile')
+
+
+def validate(manifest):
+    if manifest.get('schema') != SCHEMA:
+        raise ValueError('unsupported body manifest')
+    validate_target(manifest)
     config_body(manifest.get('config', ''))
     heads = manifest.get('heads', {})
     if heads.get(manifest['ref']) != manifest['candidate'] or not set(heads) <= {manifest['ref'], 'ostree-metadata'}:
@@ -276,10 +280,12 @@ def save_private(path, doc):
     finally: os.close(fd)
 
 
-def capture_index(repository, source_revision, candidate, architecture, profile, ref, previous=None):
+def capture_index(repository, source_revision, candidate, architecture, profile, ref, previous=None, scope="payload"):
     """Capture hot export bodies; unchanged protected inode identities avoid rereads."""
     repository = Path(repository).resolve(strict=True)
     config_body((repository / 'config').read_text())
+    if scope not in ('payload', 'candidate-cache'):
+        raise ValueError('unsupported body index scope')
     old = (previous or {}).get('objects', {})
     objects = {}; read_bytes = 0; reused = 0
     for path in (repository / 'objects').rglob('*'):
@@ -294,18 +300,29 @@ def capture_index(repository, source_revision, candidate, architecture, profile,
             checksum = digest(path); read_bytes += before[2]
         if identity(path) != before: raise ValueError('object changed while capturing body index')
         objects[name] = dict(bytes=before[2], sha256=checksum, identity=before)
-    doc = dict(schema=INDEX_SCHEMA, source_revision=source_revision, candidate=candidate,
+    doc = dict(schema=INDEX_SCHEMA, scope=scope, source_revision=source_revision, candidate=candidate,
                architecture=architecture, profile=profile, ref=ref, objects=objects,
                actual_body_read_bytes=read_bytes, reused_unchanged_inode_bodies=reused,
                producer_sha256=digest(Path(__file__)), ostree_full_fsck_verified=False)
-    # Validate semantic identity with a manifest assembled from actual metadata.
-    manifest_from_index(repository, doc)
+    validate_target(doc)
+    if scope == 'payload':
+        # Only a selected payload's exact object set can become media custody.
+        manifest_from_index(repository, doc)
+    else:
+        # Shared candidate caches may retain other architecture/channel heads.
+        # This index is only a hash-cache aid for a later scoped capture, never
+        # media proof and never permission to change or delete foreign refs.
+        head = repository / 'refs/heads' / ref
+        if head.is_symlink() or head.read_text().strip() != candidate:
+            raise ValueError('selected candidate cache head differs')
     return doc
 
 
 def manifest_from_index(repository, index):
     repository = Path(repository)
     if index.get('schema') != INDEX_SCHEMA: raise ValueError('not an export body index')
+    if index.get('scope', 'payload') != 'payload':
+        raise ValueError('candidate cache index requires a new scoped payload capture')
     objects = {}
     for p in (repository / 'objects').rglob('*'):
         if p.is_dir() and not p.is_symlink(): continue
@@ -437,6 +454,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path, required=True)
     for field in ('source-revision', 'candidate', 'architecture', 'profile', 'ref'):
         parser.add_argument('--'+field, required=True)
+    parser.add_argument('--scope', choices=('payload', 'candidate-cache'), default='payload')
     parser.add_argument('--previous', type=Path)
     parser.add_argument('--previous-sha256')
     args = parser.parse_args()
@@ -445,7 +463,7 @@ if __name__ == '__main__':
     import subprocess
     subprocess.run(['ostree', '--repo='+str(args.repository), 'fsck', '--all'], check=True,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    doc = capture_index(args.repository, args.source_revision, args.candidate, args.architecture, args.profile, args.ref, previous)
+    doc = capture_index(args.repository, args.source_revision, args.candidate, args.architecture, args.profile, args.ref, previous, args.scope)
     doc['ostree_full_fsck_verified'] = True
     save_private(args.output, doc)
     print(digest(args.output))

@@ -13,8 +13,8 @@ media or a release qualified, and no current release used this new path.
 ## Export-time custody
 
 Set `LUMA_OS_CAPTURE_PAYLOAD_BODIES=1` on either normal signed exporter to capture
-`builds/ID/payload-object-bodies.json` immediately after signing, while the
-candidate repository is hot and its writer lock is held. Capture runs complete
+`builds/ID/payload-object-bodies.json` as a candidate-cache index immediately
+after signing, while the candidate repository is hot and its writer lock is held. Capture runs complete
 OSTree verification, then records the compressed SHA256 and size of every object.
 The read-only, fsynced index binds the exact source, candidate, architecture,
 profile and ref. Its digest goes into the export log; retain that digest in the
@@ -24,15 +24,25 @@ signing infrastructure.
 For a persistent candidate store, `LUMA_OS_PREVIOUS_BODY_INDEX` and
 `LUMA_OS_PREVIOUS_BODY_INDEX_SHA256` can reuse previous protected body records only
 when device, inode, size, nanosecond mtime and ctime still match. Changed/new files
-are hashed again. This does not replace the complete OSTree verification. Capture
-rejects foreign heads and parent/private configuration: use a scoped repository
-for this conditional path. The caller must budget capture, its index and the
+are hashed again. This does not replace the complete OSTree verification. The exporter emits a `candidate-cache`
+index that can include other
+architecture/channel heads without changing them. It is a body-hash cache only
+and is refused as direct media proof. `build-staff-media.sh` captures a separate
+`OUTPUT.payload-index.json` from its normal selected, signed repository, optionally
+reusing unchanged cache inode hashes. That payload-scoped index must match its
+actual complete object set exactly; deleting a captured body fails closed. Both
+captures retain full OSTree verification, and parent/private configuration is
+refused. The export environment and media release sidecar bind the respective
+index digest. For manually assembled selected payloads, run the capture CLI
+with its default `payload` scope and retain its externally pinned digest.
+The caller must budget capture, its index and the
 normal verification; running it after archiving onto cold storage defeats the
 purpose of capturing while objects and inode metadata are hot.
 
 ## Establish the first donor
 
-Pass `--payload-body-index FILE --payload-body-index-sha256 SHA` to the runtime
+Pass the payload-scoped index (never the candidate cache) with
+`--payload-body-index FILE --payload-body-index-sha256 SHA` to the runtime
 reuse helper. Without a donor body receipt it uses the normal full mapper, then
 records `OUTPUT.payload-bodies.json`. That receipt checks the actual exact ISO
 object and mutable-metadata set, compressed body SHA256 and sizes, permissions,
@@ -40,6 +50,12 @@ ownership and directory attributes. Body reads run in physical LBA order directl
 from the ISO, avoiding extraction and 150,000 host-file opens. The receipt also
 pins the complete ISO SHA256. Unsupported multi-section objects, nonregular
 payload entries and missing/extra/mismatched data fail closed.
+
+The normal `build-staff-media.sh` full-builder path also runs
+`verify-payload-bodies.py` against its pinned selected index after assembly,
+creating `OUTPUT.payload-bodies.json` and binding that digest in its release
+sidecar. This establishes a real first donor without enabling object reuse or
+changing the existing full media builder.
 
 Normal signature, runtime equality, source, clock, volume ID, EFI and font checks
 remain in place. Retain the completed build's custody and qualification evidence

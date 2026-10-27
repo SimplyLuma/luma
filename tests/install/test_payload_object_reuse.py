@@ -138,6 +138,26 @@ class PayloadReuse(unittest.TestCase):
             self.assertGreater(changed['actual_body_read_bytes'],0)
             self.assertNotEqual(changed['objects'][p.relative_to(repo).as_posix()]['sha256'],before['objects'][p.relative_to(repo).as_posix()]['sha256'])
 
+    def test_shared_candidate_cache_cannot_be_used_as_payload_custody(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo=Path(d)/'repo';fixture(repo)
+            foreign=repo/'refs/heads/luma/1/x86_64/nightly'
+            foreign.parent.mkdir(parents=True);foreign.write_text('e'*64+'\n')
+            before=foreign.read_bytes()
+            cache=reuse.capture_index(repo,'b'*40,C,'aarch64','arm-preview',REF,scope='candidate-cache')
+            self.assertEqual(foreign.read_bytes(),before)
+            with self.assertRaisesRegex(ValueError,'new scoped payload capture'):
+                reuse.manifest_from_index(repo,cache)
+            with self.assertRaisesRegex(ValueError,'heads'):
+                reuse.capture_index(repo,'b'*40,C,'aarch64','arm-preview',REF)
+            # Normal selected media generation, not cache capture, owns scoping.
+            payload=Path(d)/'payload';shutil.copytree(repo,payload)
+            (payload/foreign.relative_to(repo)).unlink()
+            scoped=reuse.capture_index(payload,'b'*40,C,'aarch64','arm-preview',REF,cache)
+            self.assertEqual(scoped['scope'],'payload')
+            reuse.manifest_from_index(payload,scoped)
+            self.assertEqual(foreign.read_bytes(),before)
+
     @staticmethod
     def run_iso(*args):
         subprocess.run(['xorriso',*map(str,args),'-commit','--','-end'],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -169,6 +189,36 @@ class PayloadReuse(unittest.TestCase):
                         '--candidate',newcommit,'--architecture','aarch64','--profile','arm-preview',
                         '--ref',REF,'--previous',old_index_path,'--previous-sha256',reuse.digest(old_index_path)).strip()
             new_index=reuse.load_pinned(cli_index,cli_pin,reuse.INDEX_SCHEMA)
+            # Exercise the exporter cache -> selected signed payload boundary
+            # with a real shared repository and full OSTree fsck on both sides.
+            foreign_ref='luma/1/x86_64/nightly'
+            run('ostree','--repo='+str(repo),'refs','--create='+foreign_ref,oldcommit)
+            foreign_before=(repo/'refs/heads'/foreign_ref).read_bytes()
+            cache_path=r/'shared-cache.json'
+            cache_pin=run('python3',ROOT/'scripts/install/atlas-iso/payload-object-reuse.py',
+                         '--scope','candidate-cache','--repository',repo,'--output',cache_path,
+                         '--source-revision','c'*40,'--candidate',newcommit,
+                         '--architecture','aarch64','--profile','arm-preview','--ref',REF).strip()
+            cache=reuse.load_pinned(cache_path,cache_pin,reuse.INDEX_SCHEMA)
+            with self.assertRaisesRegex(ValueError,'new scoped payload capture'):
+                reuse.manifest_from_index(repo,cache)
+            scoped_repo=r/'selected-repo'
+            run('ostree','--repo='+str(scoped_repo),'init','--mode=archive')
+            run('ostree','--repo='+str(scoped_repo),'pull-local',repo,newcommit)
+            run('ostree','--repo='+str(scoped_repo),'refs','--create='+REF,newcommit)
+            run('ostree','--repo='+str(scoped_repo),'summary','--update','--gpg-sign='+fpr,'--gpg-homedir='+str(home))
+            scoped_index=r/'selected-index.json'
+            scoped_pin=run('python3',ROOT/'scripts/install/atlas-iso/payload-object-reuse.py',
+                           '--repository',scoped_repo,'--output',scoped_index,
+                           '--source-revision','c'*40,'--candidate',newcommit,
+                           '--architecture','aarch64','--profile','arm-preview','--ref',REF,
+                           '--previous',cache_path,'--previous-sha256',cache_pin).strip()
+            scoped=reuse.load_pinned(scoped_index,scoped_pin,reuse.INDEX_SCHEMA)
+            self.assertTrue(scoped['ostree_full_fsck_verified'])
+            self.assertEqual(reuse.manifest_from_index(scoped_repo,scoped)['heads'],{REF:newcommit})
+            self.assertEqual((repo/'refs/heads'/foreign_ref).read_bytes(),foreign_before)
+            # Keep the original test payload explicitly scoped for its ISO checks.
+            run('ostree','--repo='+str(repo),'refs','--delete',foreign_ref)
 
             self.assertGreater(new_index['reused_unchanged_inode_bodies'],0)
             # A complete, fsck-verified capture cannot become an incomplete
@@ -194,6 +244,12 @@ class PayloadReuse(unittest.TestCase):
             subprocess.run(command+['-commit','--','-end'],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             final_receipt=reuse.verify_iso_inventory(out,actual_manifest)
             self.assertEqual(final_receipt['iso_sha256'],reuse.digest(out))
+            # The maintained first-donor path verifies actual output bytes too.
+            cli_receipt=r/'cli-body-receipt.json'
+            cli_receipt_pin=run('python3',ROOT/'scripts/install/atlas-iso/verify-payload-bodies.py',
+                                '--iso',out,'--repository',repo,'--body-index',index_path,
+                                '--body-index-sha256',index_sha,'--output',cli_receipt).strip()
+            self.assertEqual(reuse.load_pinned(cli_receipt,cli_receipt_pin,reuse.RECEIPT_SCHEMA)['iso_sha256'],reuse.digest(out))
             # Full ISO custody detects substitution before any reuse is planned.
             with donor.open('ab') as stream:stream.write(b'changed')
             with self.assertRaisesRegex(ValueError,'donor ISO'):
