@@ -39,12 +39,26 @@ def admitted_release(release, manifest, delivery=None, gate=None, public_reposit
         raise ValueError('Only a clean, gate-qualified published release can be refreshed')
     if not gate or gate.get('commit') != release['commit'] or gate.get('result') != 'pass':
         raise ValueError('The release lacks its genuine passing gate evidence')
-    if any(gate.get(stage) != 'pass' for stage in ('fresh', 'no_account')):
-        raise ValueError('Fresh and no-account release gates are required')
-    for stage in ('update', 'rollback'):
-        accepted = ('pass',) if manifest.get('parent') else ('pass', 'not-applicable')
-        if gate.get(stage) not in accepted:
-            raise ValueError('Upgrade and rollback release gates are required')
+    if gate.get('schema') == 'org.projectluma.targeted-desktop-gate/v1':
+        # Fresh-install reuse is admitted only by the same strict protected
+        # producer-proof validator used for normal publication. Never relabel
+        # reused coverage or accept it by a string/boolean exception here.
+        import importlib.util
+        from pathlib import Path
+        path = Path(__file__).with_name('targeted_desktop_gate.py')
+        spec = importlib.util.spec_from_file_location('refresh_targeted_gate', path)
+        targeted = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(targeted)
+        targeted.validate(gate, release['commit'], manifest.get('parent'),
+                          architecture or manifest.get('architecture', 'x86_64'),
+                          manifest['provenance_sha256'])
+    else:
+        if any(gate.get(stage) != 'pass' for stage in ('fresh', 'no_account')):
+            raise ValueError('Fresh and no-account release gates are required')
+        for stage in ('update', 'rollback'):
+            accepted = ('pass',) if manifest.get('parent') else ('pass', 'not-applicable')
+            if gate.get(stage) not in accepted:
+                raise ValueError('Upgrade and rollback release gates are required')
     if (not delivery or delivery.get('schema') != 'org.projectluma.os-public-delivery/v1'
             or delivery.get('commit') != release['commit']
             or any(delivery.get(field) is not True for field in (
