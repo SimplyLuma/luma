@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Wrap an assembled Luma Tester directory as an offline Linux AppImage."""
+"""Wrap an assembled Try Luma directory as an offline Linux AppImage."""
 import argparse
 import hashlib
 import json
@@ -39,6 +39,8 @@ def omit_external(folder, names):
     return list(external) if Path(folder).resolve() == (a.portable_dir / 'images').resolve() else []
 
 shutil.copytree(a.portable_dir, app, symlinks=True, copy_function=os.link, ignore=omit_external)
+if not (app / 'Try Luma').exists() and (app / 'Luma Tester').is_file():
+    (app / 'Luma Tester').rename(app / 'Try Luma')
 for relative in external.values():
     target = out / relative
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -50,12 +52,12 @@ for relative in ('AppRun','io.luma.Tester.desktop','io.luma.Tester.svg',
 (app / 'AppRun').write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$tester_dir/Luma Tester" "$@"
+exec "$tester_dir/Try Luma" "$@"
 ''')
 (app / 'AppRun').chmod(0o755)
 (app / 'io.luma.Tester.desktop').write_text('''[Desktop Entry]
 Type=Application
-Name=Luma Tester
+Name=Try Luma
 Comment=Try Luma or build apps for Mobile and Desktop
 Exec=AppRun
 Icon=io.luma.Tester
@@ -77,7 +79,7 @@ subprocess.run(['mksquashfs', str(app), str(payload), '-noappend', '-no-xattrs',
 receipt = json.loads((a.portable_dir / 'build-receipt.json').read_text())
 version = receipt.get('app_version', '0.1.0')
 assert isinstance(version, str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[.-][A-Za-z0-9.-]+)?', version)
-image = out / ('Luma-Tester-' + version + '-linux-x86_64.AppImage')
+image = out / ('Try-Luma-' + version + '-linux-x86_64.AppImage')
 with image.open('wb') as target:
     for source in (a.runtime, payload):
         with source.open('rb') as stream:

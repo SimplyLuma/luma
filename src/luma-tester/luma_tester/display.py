@@ -18,6 +18,7 @@ from gi.repository import Gdk, Gio, GLib, GObject, Gtk, GVnc, Gsk, Graphene
 
 
 from .rfb import Framebuffer as BaseFramebuffer
+from . import host
 
 
 class Framebuffer(BaseFramebuffer):
@@ -55,6 +56,9 @@ class GuestDisplay(Gtk.Picture):
         self.scroll_x = self.scroll_y = 0.0
         self.connection.set_shared(True)
         self.connection.connect('vnc-auth-choose-type', self.auth)
+        if host.windows():
+            self.connection.connect('vnc-auth-credential', lambda c, values:
+                host.display_credentials(c, values, self.socket_path, GVnc))
         self.connection.connect('vnc-initialized', self.initialized)
         self.connection.connect('vnc-desktop-resize', self.resized)
         self.connection.connect('vnc-pixel-format-changed', self.format_changed)
@@ -121,16 +125,12 @@ class GuestDisplay(Gtk.Picture):
             snapshot.restore()
 
     def open(self):
-        if not self.socket_path.is_socket():
+        if not (self.socket_path.is_file() if host.windows() else self.socket_path.is_socket()):
             return False
-        return self.connection.open_addr(Gio.UnixSocketAddress.new(str(self.socket_path)), None)
+        return self.connection.open_addr(host.display_address(self.socket_path), None)
 
     def auth(self, connection, types):
-        available = [types.get_nth(index) for index in range(types.n_values)]
-        available = [value.get_uint() if hasattr(value, 'get_uint') else value for value in available]
-        if GVnc.ConnectionAuth.NONE in available:
-            connection.set_auth_type(GVnc.ConnectionAuth.NONE)
-        else:
+        if not host.display_auth(connection, types, self.socket_path, GVnc):
             self.emit('display-error', 'The private guest display requested unexpected authentication.')
             connection.shutdown()
 

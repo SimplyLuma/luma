@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from .core import TesterError, run
 
-DEFAULTS = dict(memory=4096, cpus=4, disk_gib=32, graphics='auto', audio=True,
+DEFAULTS = dict(memory=4096, cpus=4, disk_gib=64, graphics='auto', audio=True,
                 microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[], device=None)
 
 
@@ -82,10 +82,12 @@ def devices(settings):
     args = []
     if settings['audio'] or settings['microphone']:
         runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'))
-        backend = 'coreaudio' if platform.system() == 'Darwin' else 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
+        backend = 'sdl' if platform.system() == 'Windows' else 'coreaudio' if platform.system() == 'Darwin' else 'pipewire' if (runtime / 'pipewire-0').is_socket() else 'none'
         args += ['-audiodev', backend + ',id=sound0', '-device', 'ich9-intel-hda',
                  '-device', ('hda-duplex' if settings['microphone'] else 'hda-output') + ',audiodev=sound0']
     for i, folder in enumerate(settings['folders']):
+        if platform.system() == 'Windows':
+            raise TesterError('This Windows QEMU build does not support folder passthrough. Use SSH to copy files.')
         path = Path(folder['path']).resolve()
         if not path.is_dir():
             raise TesterError('Shared folder is no longer available: ' + str(path))
@@ -271,7 +273,7 @@ def ssh_connection(session):
 def agent_prompt(session, manifest_path, executable='luma-tester'):
     settings = load(session.root)
     connection = ssh_connection(session)
-    text = f'''Work in this Luma Tester {session.manifest['target']} guest.
+    text = f'''Work in this Try Luma {session.manifest['target']} guest.
 Build: {session.manifest['build']}
 Guest architecture: {session.manifest['arch']}. Host architecture and guest architecture are independent.
 Connect locally using this existing private key (never print or copy its contents):

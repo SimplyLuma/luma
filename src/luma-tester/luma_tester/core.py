@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -13,6 +12,7 @@ import re
 import shlex
 import signal
 import shutil
+from . import host
 import socket
 import subprocess
 import sys
@@ -100,6 +100,8 @@ def validate_manifest(m):
 
 
 def data_root(state=None):
+    if not state and not os.environ.get('LUMA_TESTER_HOME') and host.windows():
+        return (Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'Luma Tester').resolve()
     if not state and not os.environ.get('LUMA_TESTER_HOME') and platform.system() == 'Darwin':
         return (Path.home() / 'Library/Application Support/Luma Tester').resolve()
     return Path(state or os.environ.get('LUMA_TESTER_HOME') or
@@ -120,15 +122,15 @@ class Session:
         self.root = data_root(state)
         self.directory = self.root / 'sessions' / self.manifest['id']
         # UNIX socket paths have a small platform limit. Keep them outside the data path.
-        runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/tmp/luma-tester-{os.getuid()}'))
-        runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if runtime.stat().st_uid != os.getuid() or runtime.stat().st_mode & 0o077:
-            raise TesterError('Runtime directory must be private and owned by this user.')
+        runtime = (data_root() / 'runtime' if host.windows() else
+            Path(os.environ.get('XDG_RUNTIME_DIR', f'/tmp/luma-tester-{os.getuid()}')))
+        try:host.private_directory(runtime)
+        except RuntimeError as exc:raise TesterError(str(exc)) from exc
         token = hashlib.sha256(str(self.directory).encode()).hexdigest()[:16]
         self.runtime = runtime / ('luma-test-' + token)
-        self.runtime.mkdir(mode=0o700, exist_ok=True)
-        if self.runtime.stat().st_uid != os.getuid() or self.runtime.stat().st_mode & 0o077:
-            raise TesterError('Session runtime directory must be private and owned by this user.')
+        try:host.private_directory(self.runtime)
+        except RuntimeError as exc:raise TesterError(str(exc)) from exc
+        self.pipe_name = 'luma-tester-' + token
         self.qmp_path = self.runtime / 'qmp'
         self.display_path = self.runtime / 'display'
         self.base = self.root / 'images' / (self.manifest['image']['sha256'] + ('.iso' if self.manifest.get('media') == 'iso' else '.qcow2'))
@@ -137,15 +139,20 @@ class Session:
 
     @contextlib.contextmanager
     def lock(self):
-        with open(self.runtime / 'lock', 'a') as stream:
+        with open(self.runtime / 'lock', 'a+b') as stream:
             try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
+                host.lock(stream)
+            except OSError as exc:
                 raise TesterError('This session is already running or being prepared.') from exc
+            if host.windows() and self.status() != 'stopped':
+                raise TesterError('This session is already running.')
             yield stream
 
     def tools(self):
-        required = ['qemu-img', 'qemu-system-' + self.manifest['arch'], 'ssh-keygen', 'ssh', 'xorriso']
+        required = ['qemu-img', 'qemu-system-' + self.manifest['arch']]
+        if self.manifest['cloud_init']:
+            required += ['ssh-keygen', 'ssh']
+            if not host.windows():required += ['xorriso']
         return {x: shutil.which(x) for x in required}
 
     def prepare(self, report=print, progress=None):
@@ -267,8 +274,12 @@ class Session:
             # cloud-init accepts JSON as a YAML subset.
             (self.directory / 'user-data').write_text('#cloud-config\n' + json.dumps(config))
             (self.directory / 'meta-data').write_text(json.dumps({'instance-id': self.manifest['id']}))
-            run(['xorriso', '-as', 'mkisofs', '-quiet', '-o', self.directory / 'seed.iso.new',
-                 '-V', 'cidata', '-J', '-r', self.directory / 'user-data', self.directory / 'meta-data'])
+            if host.windows():
+                from .seed import create
+                create(self.directory)
+            else:
+                run(['xorriso', '-as', 'mkisofs', '-quiet', '-o', self.directory / 'seed.iso.new',
+                     '-V', 'cidata', '-J', '-r', self.directory / 'user-data', self.directory / 'meta-data'])
             (self.directory / 'seed.iso.new').replace(self.directory / 'seed.iso')
         report('Guest image and private developer session are ready.')
 
@@ -335,16 +346,20 @@ class Session:
             raise TesterError('Accelerated graphics needs an accessible GPU render device.')
         display = ('egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
                    'gtk,gl=on,zoom-to-fit=on' if accelerated else
-                   'none' if headless or embedded else 'cocoa' if platform.system() == 'Darwin' else 'gtk,zoom-to-fit=on')
+                   'none' if headless or embedded else 'sdl' if host.windows() else 'cocoa' if platform.system() == 'Darwin' else 'gtk,zoom-to-fit=on')
         gpu = 'virtio-gpu-gl-pci' if accelerated else 'virtio-gpu-pci'
         arch = self.manifest['arch']
         native = platform.machine() in ({'aarch64', 'arm64'} if arch == 'aarch64' else {'x86_64', 'AMD64'})
         kvm = native and not software and platform.system() == 'Linux' and os.access('/dev/kvm', os.R_OK | os.W_OK)
         hvf = native and not software and platform.system() == 'Darwin'
-        accelerator = 'hvf' if hvf else 'kvm' if kvm else 'tcg,thread=multi'
+        whpx = native and not software and host.whpx_available()
+        accelerator = 'whpx' if whpx else 'hvf' if hvf else 'kvm' if kvm else 'tcg,thread=multi'
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
         if experience == 'mobile' and self.manifest.get('display'):
             width, height = (self.manifest['display'][key] for key in ('width', 'height'))
+        if experience == 'mobile' and self.manifest.get('media') == 'iso':
+            # ARM EDK2 needs an 80-column console; 432px can assert before GRUB.
+            width, height = 864, 1920
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
                 '-machine', 'virt,gic-version=3' if arch == 'aarch64' else 'q35',
                 '-accel', accelerator, '-cpu', 'host' if kvm or hvf else 'max',
@@ -355,6 +370,8 @@ class Session:
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
                 '-display', display]
+        if host.windows():
+            argv[argv.index('-qmp')+1] = 'pipe:' + self.pipe_name
         if os.environ.get('LUMA_TESTER_QEMU_DATA_DIR'):
             argv += ['-L', os.environ['LUMA_TESTER_QEMU_DATA_DIR']]
         if arch=='aarch64':
@@ -364,7 +381,11 @@ class Session:
         if self.manifest['target'] == 'mobile':
             argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
-            argv += ['-vnc', 'unix:' + str(self.display_path)]
+            if host.windows():
+                import secrets
+                self.windows_display = dict(port=host.free_port(), password=secrets.token_hex(4))
+                argv += ['-vnc', '127.0.0.1:'+str(self.windows_display['port']-5900)+',password=on', '-S']
+            else:argv += ['-vnc', 'unix:' + str(self.display_path)]
         disks=[('os',self.disk,'qcow2',False)]
         if self.manifest['cloud_init']:
             disks.append(('seed',self.directory/'seed.iso','raw',True))
@@ -414,8 +435,8 @@ class Session:
             raise TesterError('GPU initialization failed: ' + detail)
 
     def start(self, **options):
-        if platform.system() not in ('Linux', 'Darwin'):
-            raise TesterError('This launcher supports Linux and macOS hosts.')
+        if platform.system() not in ('Linux', 'Darwin', 'Windows'):
+            raise TesterError('This launcher supports Linux, macOS and Windows hosts.')
         with self.lock() as lease:
             self.experience=options.get('experience') or self.manifest['target']
             self._prepare(print)
@@ -443,7 +464,20 @@ class Session:
             (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
             print('Starting ' + self.manifest['build'] + '; acceleration: ' + command[command.index('-accel') + 1], flush=True)
             # Preserve the lease in QEMU if the supervisor dies unexpectedly.
-            child = subprocess.Popen(command, pass_fds=(lease.fileno(),))
+            child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
+            if host.windows() and options.get('embedded'):
+                try:
+                    for _ in range(100):
+                        if child.poll() is not None:raise TesterError('QEMU stopped before opening its controls.')
+                        try:
+                            self.qmp('change-vnc-password', {'password':self.windows_display['password']})
+                            break
+                        except OSError:time.sleep(.1)
+                    else:raise TesterError('QEMU did not open its controls.')
+                    self.display_path.write_text(json.dumps(self.windows_display))
+                    self.qmp('cont')
+                except BaseException:
+                    child.terminate();child.wait();raise
             previous = {}
             def forward(signum, _frame):
                 if child.poll() is None:
@@ -462,25 +496,32 @@ class Session:
                 self.display_path.unlink(missing_ok=True)
 
     def qmp(self, execute, arguments=None, timeout=5):
+        if host.windows():
+            with open('\\\\.\\pipe\\'+self.pipe_name, 'r+b', buffering=0) as stream:
+                return self.qmp_stream(stream, execute, arguments)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
             sock.connect(str(self.qmp_path))
             with sock.makefile('rwb', buffering=0) as stream:
-                def receive():
-                    while True:
-                        line = stream.readline(1024 * 1024)
-                        if not line:
-                            raise TesterError('QEMU closed the control connection.')
-                        result = json.loads(line)
-                        if 'error' in result:
-                            raise TesterError(str(result['error']))
-                        if 'return' in result:
-                            return result['return']
-                json.loads(stream.readline())  # greeting
-                stream.write(b'{"execute":"qmp_capabilities"}\n')
-                receive()
-                stream.write(json.dumps({'execute': execute, 'arguments': arguments or {}}).encode() + b'\n')
-                return receive()
+                return self.qmp_stream(stream, execute, arguments)
+
+    @staticmethod
+    def qmp_stream(stream, execute, arguments=None):
+        def receive():
+            while True:
+                line = stream.readline(1024 * 1024)
+                if not line:
+                    raise TesterError('QEMU closed the control connection.')
+                result = json.loads(line)
+                if 'error' in result:
+                    raise TesterError(str(result['error']))
+                if 'return' in result:
+                    return result['return']
+        json.loads(stream.readline())  # greeting
+        stream.write(b'{"execute":"qmp_capabilities"}\n')
+        receive()
+        stream.write(json.dumps({'execute': execute, 'arguments': arguments or {}}).encode() + b'\n')
+        return receive()
 
     def touch(self, phase, x, y, width, height):
         """Deliver a real evdev touch contact through QEMU's multitouch device."""
@@ -503,6 +544,9 @@ class Session:
         else:
             events.append({'type': 'btn', 'data': {'button': 'touch', 'down': False}})
         self.qmp('input-send-event', {'events': events})
+
+    def display_available(self):
+        return self.display_path.is_file() if host.windows() else self.display_path.is_socket()
 
     def status(self):
         try:
@@ -548,7 +592,7 @@ class Session:
         try:
             self.qmp('screendump', {'filename': str(destination)})
         except TesterError as exc:
-            if 'no surface' not in str(exc) or not self.display_path.is_socket():
+            if 'no surface' not in str(exc) or not self.display_available():
                 raise
             # GVnc owns a GLib coroutine context. A capture requested from a
             # worker must never enter the embedded viewer's main context.
@@ -563,7 +607,7 @@ class Session:
             raise TesterError('Start the guest before connecting.')
         if self.key.exists():self.key.chmod(0o600)
         port = json.loads((self.directory / 'connection.json').read_text())['port']
-        argv = ['ssh', '-F', '/dev/null', '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
+        argv = ['ssh', '-F', os.devnull, '-i', str(self.key), '-p', str(port), '-o', 'BatchMode=yes',
                 '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=5',
                 '-o', 'StrictHostKeyChecking=accept-new', '-o',
                 'UserKnownHostsFile="' + str(self.directory / 'known_hosts').replace(

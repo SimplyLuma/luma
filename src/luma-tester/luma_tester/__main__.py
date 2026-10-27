@@ -9,7 +9,7 @@ from .core import Session, TesterError, digest, run
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Luma Tester — QEMU mobile and desktop previews')
+    parser = argparse.ArgumentParser(description='Try Luma — QEMU mobile and desktop previews')
     parser.add_argument('--state', help='Private data directory (or LUMA_TESTER_HOME)')
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('gui', help='Open the native launcher')
@@ -184,7 +184,7 @@ def main():
     except KeyboardInterrupt:
         return 130
     except (TesterError, ImportError, OSError, ValueError, KeyError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        print('Luma Tester: ' + str(exc), file=sys.stderr)
+        print('Try Luma: ' + str(exc), file=sys.stderr)
         return 1
     return 0
 

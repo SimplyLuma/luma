@@ -5,6 +5,7 @@ from pathlib import Path
 from .core import Session, TesterError, validate_manifest
 from .downloads import HubClient, download, validate_artifact
 from .vm import atomic_json
+from . import image_approval
 
 
 def manifest_paths(root, remembered=(), catalog=None):
@@ -39,17 +40,30 @@ def target(artifact):
     return developer_profile(artifact)['target'] if artifact.get('kind') == 'tester_image' else 'desktop'
 
 
+def supports(artifact, experience):
+    if artifact.get('kind') == 'os_image':
+        return usable(artifact) and experience in ('desktop', 'tablet', 'mobile')
+    return target(artifact) == ('mobile' if experience == 'mobile' else 'desktop')
+
+
 def cached(root):
     try:
         items=json.loads((Path(root)/'download-catalog.json').read_text())
-        return [item for item in items if usable(item)]
+        policy=image_approval.load(root)
+        return [item for item in items if listed(item,root,policy)]
     except (OSError,ValueError,TypeError,TesterError):return []
 
 
 def refresh(root,client=None):
-    items=[item for item in (client or HubClient()).catalog() if usable(item)]
+    policy=image_approval.load(root,refresh=client is None)
+    items=[item for item in (client or HubClient()).catalog() if listed(item,root,policy)]
     atomic_json(Path(root)/'download-catalog.json',items)
     return items
+
+
+def listed(artifact,root,policy=None):
+    return usable(artifact) and (artifact.get('kind')!='os_image'
+        or image_approval.allows(artifact,policy if policy is not None else image_approval.load(root)))
 
 
 def fetch(artifact,root,experience,report=lambda text:None,progress=None):

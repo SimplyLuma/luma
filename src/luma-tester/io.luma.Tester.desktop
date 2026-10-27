@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Luma Tester
+Name=Try Luma
 Comment=Explore and develop for Luma Mobile and Desktop
 Exec=luma-tester gui
 Icon=io.luma.Tester
