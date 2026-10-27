@@ -45,6 +45,7 @@ def main():
             try:
                 assert time.monotonic()-started<20,phase
                 if phase==0:
+                    assert app.target == 'desktop', app.target
                     app.busy=True;release_check.set();phase=1
                 elif phase==1 and app.pending_update:
                     assert getattr(app,'sheet_handle',None) is None

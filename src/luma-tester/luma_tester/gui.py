@@ -53,7 +53,7 @@ def launch(state=None):
             self.log = None
             self.busy = False
             self.intent = 'try'
-            self.target = 'mobile'
+            self.target = 'desktop'
             self.project = None
             self.closing = False
             self.settings = vm.load(data_root(state))
@@ -73,8 +73,6 @@ def launch(state=None):
                     self.catalog_targets.add(read_manifest(path)['target'])
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
-            if 'desktop' in self.catalog_targets:
-                self.target = 'desktop'
             self.catalog_targets.update(('tv','smart-device','tablet'))
             self.advanced = None
             self.viewer = None
