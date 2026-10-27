@@ -128,16 +128,33 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failures=0
 fail() { log "$1"; failures=$((failures + 1)); }
+# Follow only the official immutable-object handoff. Custom origin Host routing
+# belongs to the first request; sending it to the media host serves the wrong
+# virtual host. Policy, credentials, graphs and summaries never follow redirects.
+http_request() {
+  local path=$1 output=$2 method=$3 result code location
+  local options=()
+  [ "$method" != HEAD ] || options+=(--head)
+  result=$(printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$path" |
+    curl --config - --fail --silent --max-time 120 "${options[@]}" \
+      -H "Host: $DL_HOST_HEADER" --output "$output" \
+      --write-out '%{http_code}\n%{redirect_url}' 2>/dev/null) || return 1
+  code=${result%%$'\n'*}
+  location=${result#*$'\n'}
+  [[ "$code" == 2[0-9][0-9] ]] && return 0
+  case "$code" in 301|302|303|307|308) ;; *) return 1 ;; esac
+  [[ "$path" = os/repo/objects/* &&
+     "$location" = "https://media.simplyluma.com/$path" ]] || return 1
+  # No custom Host and no further redirects; the final resource must succeed.
+  code=$(printf 'url = "%s"\n' "$location" |
+    curl --config - --proto '=https' --fail --silent --max-time 120 \
+      "${options[@]}" --output "$output" --write-out '%{http_code}' 2>/dev/null) || return 1
+  [[ "$code" == 2[0-9][0-9] ]]
+}
 # fetch URL-PATH OUTPUT-FILE
-fetch() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --max-time 120 -H "Host: $DL_HOST_HEADER" --output "$2" 2>/dev/null
-}
-# present URL-PATH: the origin answers 200 to HEAD
-present() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --head --max-time 60 -H "Host: $DL_HOST_HEADER" --output /dev/null 2>/dev/null
-}
+fetch() { http_request "$1" "$2" GET; }
+# present URL-PATH: a final successful HEAD, including the verified media hop.
+present() { http_request "$1" /dev/null HEAD; }
 digest() { sha256sum <"$1" | cut -d' ' -f1; }
 # served URL-PATH LOCAL-FILE LABEL: the origin serves LOCAL-FILE byte for byte
 served() {
