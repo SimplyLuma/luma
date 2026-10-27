@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active Windows native preview/startup qualification; Linux0.7.2 r37 dark-only UI passed, Mac rebuild awaits tunnel.
+- Status: Linux/Mac0.7.2 locally qualified and Mac installed/open; Windowsr3 built, native qualification pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -1593,3 +1593,19 @@ used that source without altering shared refs or unrelated worktrees.
   proved unlocked at15:49; no credential output. SSH banner timeouts persist;
   using an interactive Run setup to SHA-check/extract r3 and open its exact EXE.
   Do not call Windows visible GUI or backend snapshots passed until verified.
+
+- Final Windows r6 ended at its admitted deadline15:55:05UTC; no live VM left.
+  R3 was not proven launched: SSH command failed before banner; interactive
+  Run setup input was unreliable (last frame Windows cannot find Bypass).
+  Do NOT attribute this input/transport failure to r3 startup code or call it
+  passed. Initial r1 dark-only assertions remain narrow observed evidence.
+  Own HTTP root28cfb5618f stopped afterward; original Windows VM untouched.
+- Next Windows useful action: use a stable unlocked console/SSH connection with
+  enough Windows memory, SHA-check and launch exact candidate-r3, then run the
+  retained native QA for authenticated VNC, QMP pipe and live snapshots. Tests
+  use firmware-only ISO, not a full OS boot. Private helpers/input failures are
+  retained for diagnosis; do not propagate their console assumptions to users.
+- Latest release-handoff-20261027.json on owned bulk now records Linuxr37,
+  Macr9 installed/qualified (DELIVERY.json), Windowsr3 unsigned/unqualified,
+  exact hashes and original two public installer ISOs. No public upload/signing
+  or notarization performed. Mac application remains OPEN for owner testing.
