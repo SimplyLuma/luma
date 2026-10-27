@@ -1917,3 +1917,40 @@ same ECCd source/adf payload but DIFFERENT ISO bytes. Own ARM boot result MUST
 NOT be relabeled as canonical r4 exact-body validation. Hub catalog queried
 19:27 still serves previous26 images; curated channel stays empty until final
 public qualified exact ID+SHA pair. Publication is separate from built/booted.
+
+2026-10-27 19:36 UTC: publication peer independently booted CANONICAL ARM r4
+body c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8 on M4/HVF.
+Consumed protected native-media-20261027.1-r2/ISO-BOOT-PENDING.json, matching
+ECCd/adf/6,530,924,544B. Viewed actual atlas-boot-r1-1.png: genuine language/
+keyboard chooser and Continue; both stable copies independently SHA583311945ebf53e9079f65e93355cf61a04f532d5c800df41de47d94f1150bb3.
+Own account visual-review receipt now adds canonical_arm_review separately;
+no own-r10 result relabeling. Publisher retains its qualification/gate scope.
+
+Renamed packages built from fb032f484 (selected play icon source d89582266):
+- Linux r39 normal173d70c9 PASS; real AppImage version + packaged LumaUI QA
+  e453ef33 PASS. Both installed and module SVGs match selected icon; desktop
+  Name=Try Luma. SHA47e4c21a0ab0e268f2c5166c0c4d769f36e66950f28a6cd35c90720b1b12966a,
+  295,614,968B. Bulk/appimage-release-r39.
+- Mac r11 build4315abfe and native UI/deep strict codesign QA246561ad PASS.
+  Native ICNS/retina icon, ad-hoc only, not notarized. DMG SHA
+  b3f3b239201a2f9333fe9381648eb5411fd9f9e9f175363fb74e94143bc61c44,
+  65,432,392B. Bulk/try-luma-mac-r11. Production app untouched.
+- Windows r6 build860e637d PASS. New compiled Try Luma.exe contains 10 ICONs,
+  GROUP_ICON and VERSIONINFO (AMD64 GUI/ASLR/NX; imports only standard Windows
+  KERNEL32/msvcrt/USER32). ZIP CRC all files PASS; no old root folder name.
+  SHA4c8ececa4ef72a6320de2667d1766743a6fa95c9faa58c0c160bbf16d1df146d,
+  267,059,767B. Native Windows app runtime remains UNQUALIFIED. Build-r5 raw
+  failure preserved: extracted MinGW gcc omitted split cpp package/cc1; scoped
+  authenticated Fedora cpp intake fixed tooling, r6 compiled normally. No host
+  package installation, alternate identity or copied Leaf launcher.
+
+Draft refresh19311a7f PASS: uploaded all three new names, independently compared
+GitHub asset digest+bytes with local hashes, then removed ONLY this task's
+previous old-name draft packages and replaced SHA256SUMS (SHA9a12b158...).
+SimplyLuma/try release425808030 title Try Luma0.7.3, draft=true/prerelease=true.
+Actual names include GitHub-normalized Try.Luma-0.7.3-macos-arm64.dmg. Receipt
+bulk/try-luma-draft-073-r2/DRAFT-UPDATED.json. Public release NOT performed;
+Mac notarization, native Windows runtime, final source publication and final
+public OS exact-ID/hash channel approval remain separate gates. Hub still
+served26 images at last check; curated images generation2 intentionally empty.
+All own image/boot/package/upload jobs are completed; none left stalled.
