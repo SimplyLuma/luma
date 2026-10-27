@@ -22,6 +22,8 @@ def main():
     parser.add_argument('--pycdlib-wheel',type=Path,required=True)
     parser.add_argument('--openssh-zip',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--native-kit',type=Path,help='Current cross-built LumaUI DLL build tree')
+    parser.add_argument('--typelibs',type=Path,help='Matching current LumaUI typelibs')
     parser.add_argument('--release',action='store_true')
     args=parser.parse_args()
     repo=Path(__file__).resolve().parents[2]
@@ -35,11 +37,18 @@ def main():
     # Executables in bin were deliberately excluded above; restore required Python/tools.
     for path in (args.runtime/'bin').glob('*.exe'):shutil.copy2(path,root/'bin'/path.name)
     for path in (args.qemu_prefix/'bin').glob('*.dll'):shutil.copy2(path,root/'bin'/path.name)
+    if args.native_kit:
+        for path in args.native_kit.rglob('libluma-*.dll'):shutil.copy2(path,root/'bin'/path.name)
     for name in ('qemu-img','qemu-system-x86_64','qemu-system-aarch64'):
         shutil.copy2(args.qemu_prefix/('bin/'+name+'.exe'),root/('bin/'+name+'.exe'))
     for relative in ('lib/girepository-1.0','lib/gio/modules','share/qemu','share/licenses'):
         source=args.qemu_prefix/relative
         if source.exists():shutil.copytree(source,root/relative,dirs_exist_ok=True)
+    if args.typelibs:
+        for path in args.typelibs.glob('Luma*.typelib'):shutil.copy2(path,root/'lib/girepository-1.0'/path.name)
+    schemas=root/'share/glib-2.0/schemas'
+    for path in (repo/'src/luma-platform/schemas').glob('*.gschema.xml'):shutil.copy2(path,schemas/path.name)
+    subprocess.run(['glib-compile-schemas','--strict',str(schemas)],check=True)
     kit=repo/'src/luma-platform/appkit'
     shutil.rmtree(root/'app/luma_appkit')
     shutil.copytree(kit/'luma_appkit',root/'app/luma_appkit',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))

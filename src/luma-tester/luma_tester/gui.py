@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """LumaUI simulator workspace with shared navigation and a native guest display."""
 import os
+os.environ['LUMA_APPKIT_FIXED_DARK'] = '1'
 import json
 from pathlib import Path
 import platform
@@ -40,6 +41,7 @@ from . import presets, vm, experiences, device_profiles, image_library, host_dev
 
 
 def launch(state=None):
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     GLib.set_prgname('io.luma.Tester')
     GLib.set_application_name('Luma Tester')
     Gtk.Window.set_default_icon_name('io.luma.Tester')
