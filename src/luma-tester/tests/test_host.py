@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from luma_tester import host
 from luma_tester.core import Session, TesterError
 
@@ -34,3 +34,30 @@ class HostTests(unittest.TestCase):
     def test_windows_disabled_hypervisor_is_not_reported_as_accelerated(self):
         with patch.object(host,'windows',return_value=True),patch('ctypes.WinDLL',create=True,side_effect=OSError('not installed')):
             self.assertFalse(host.whpx_available())
+
+    def test_windows_control_socket_reconnects_without_an_open_tcp_port(self):
+        api = MagicMock();api.connect.return_value = 0
+        stream = MagicMock();stream.fileno.return_value = 123
+        with patch.object(host, 'windows', return_value=True), patch.object(host.socket, 'socket', return_value=stream) as create, patch('ctypes.WinDLL', create=True, return_value=api):
+            for _ in range(2):
+                self.assertIs(host.local_control_socket('C:/private/qmp', 7), stream)
+        self.assertEqual(create.call_count, 2)
+        create.assert_called_with(1, host.socket.SOCK_STREAM)
+        self.assertEqual(api.connect.call_count, 2)
+        address = api.connect.call_args.args[1]._obj
+        self.assertEqual(address.family, 1)
+        self.assertEqual(address.path, b'C:/private/qmp')
+        stream.settimeout.assert_called_with(7)
+
+    def test_windows_control_socket_closes_on_connect_failure(self):
+        api = MagicMock();api.connect.return_value = -1;api.WSAGetLastError.return_value = 10061
+        stream = MagicMock()
+        with patch.object(host, 'windows', return_value=True), patch.object(host.socket, 'socket', return_value=stream), patch('ctypes.WinDLL', create=True, return_value=api):
+            with self.assertRaises(OSError):host.local_control_socket('C:/private/qmp')
+        stream.close.assert_called_once()
+
+    def test_windows_control_socket_rejects_unrepresentable_paths(self):
+        with patch.object(host, 'windows', return_value=True), patch.object(host.socket, 'socket') as create:
+            for value in ['x'*108, 'private\0qmp']:
+                with self.assertRaises(ValueError):host.local_control_socket(value)
+        create.assert_not_called()
