@@ -2053,3 +2053,22 @@ try-074-mac-first-start.py, try-074-windows-vm.py and orchestrate.py under accou
 artifacts. Mac old-build retirement script try-074-mac-archive.py and HDD
 hdd-admission/mac-archive-074 retained evidence. Public0.7.3 remains unchanged;
 no new release or cross-platform Desktop-boot PASS claimed.
+
+22:30 UTC: source QA c1a220ca PASS:120 unit tests and actual bundled native
+LumaUI fresh Desktop Start -> approved host image resolve -> download -> launch
+(with isolated network/download/VM fixtures). First UI harness failures were
+40s cold-runtime timeout, then wrong host_arch import; corrected writable cache,
+120s outer bound and imports, no product workaround. Added private per-workspace
+Ed25519 control key to setup KS; only public key goes into guest, sshd reachable
+through loopback forwarding. Native workspace readiness now requires active
+Wayland/X11 user session plus real gnome-shell before viewer reveal; enables
+existing developer controls for provisioned disks and SSH poweroff. Linux first
+install still running older no-control-key prototype, so not a final readiness
+PASS. Mac archive e7cfd470 verified all40,751 content/mode/link records, SHA
+6e6ed6ddbbd46edc5a667644f653648d841c04cb0ccdfca6d3bd58b94f016554,
+then source rehash+scoped retirement completed; available Mac disk now10GiB.
+Owner authorized further obvious old migration: second normal4b487a3f archives
+old Sept30/Oct1 non-Git LumaUI handoff bundles, already-published buildr14 and
+three redundant notarization staging copies, preserving current signed app,
+credentials, native kit build cache, user VM and current ISO. More Mac space
+needed before retesting new control-key setup. No Windows/desktop-boot claim.

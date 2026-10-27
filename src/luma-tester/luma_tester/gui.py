@@ -698,6 +698,12 @@ def launch(state=None):
             def wait_for_graphics():
                 import time
                 try:
+                    from . import provision
+                    if provision.ready(session):
+                        session.wait_graphical(240)
+                        vm.configure_guest(session,vm.load(session.root))
+                        GLib.idle_add(self.reveal_display,session)
+                        return
                     if not session.manifest['cloud_init']:
                         deadline=time.monotonic()+60
                         while time.monotonic()<deadline and self.running():
@@ -1190,9 +1196,10 @@ def launch(state=None):
             return False
 
         def managed_guest(self):
-            if self.running():return self.session.manifest['cloud_init']
+            from . import provision
+            if self.running():return self.session.manifest['cloud_init'] or provision.ready(self.session)
             path=self.select_image()
-            return not path or read_manifest(path)['cloud_init']
+            return not path or read_manifest(path)['cloud_init'] or provision.ready(Session(path,state))
 
         def refresh_ssh_details(self):
             self.ssh_details.set_visible(self.intent == 'develop' and self.settings['agent_ssh'])

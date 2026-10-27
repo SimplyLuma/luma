@@ -15,7 +15,7 @@ import gi
 gi.require_version('Gtk','4.0')
 from gi.repository import GLib,Gtk
 from luma_tester import gui,image_library,experiences
-from luma_tester.core import host_arch
+from luma_tester.downloads import host_arch
 
 
 def main():
@@ -43,6 +43,7 @@ def main():
                 assert time.monotonic()-started<20,'One-click UI timed out'
                 if phase==0:
                     assert app.target=='desktop'
+                    app.select_intent('try')
                     assert app.select_image() is None
                     assert app.run_button.get_sensitive()
                     def spawned(session,path):

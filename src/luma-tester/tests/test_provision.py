@@ -58,5 +58,12 @@ class ProvisionTests(unittest.TestCase):
             self.assertIn('AutomaticLogin=luma',text)
             self.assertIn('> /dev/'+console,text)
 
+    def test_private_control_uses_only_valid_public_key(self):
+        text=provision.kickstart('aarch64','ssh-ed25519 AAAA1234')
+        self.assertIn('sshkey --username=luma "ssh-ed25519 AAAA1234"',text)
+        self.assertIn('services --enabled=sshd',text)
+        for key in ('ssh-ed25519 AAAA\nreboot','not-a-key','ssh-rsa AAAA'):
+            with self.assertRaises(TesterError):provision.kickstart('x86_64',key)
+
 
 if __name__=='__main__':unittest.main()

@@ -157,6 +157,11 @@ class Session:
         if self.manifest['cloud_init']:
             required += ['ssh-keygen', 'ssh']
             if not host.windows():required += ['xorriso']
+        elif self.manifest.get('media')=='iso':
+            from . import provision
+            if provision.approved(self):
+                required += ['ssh-keygen','ssh']
+                if not host.windows():required += ['xorriso']
         return {x: shutil.which(x) for x in required}
 
     def prepare(self, report=print, progress=None):
@@ -574,7 +579,8 @@ class Session:
             'org.project_luma.Tester1.ShowHome']), stdout=subprocess.DEVNULL, timeout=15)
 
     def shutdown(self):
-        if not self.manifest['cloud_init']:
+        from . import provision
+        if not self.manifest['cloud_init'] and not provision.ready(self):
             if self.status() in ('paused','prelaunch'):self.qmp('cont')
             self.qmp('system_powerdown')
             return
@@ -655,6 +661,22 @@ class Session:
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
         deadline = time.monotonic() + timeout
+        from . import provision
+        if provision.ready(self):
+            check = """import os, subprocess
+uid=str(os.getuid())
+display=subprocess.check_output(['loginctl','show-user',uid,'-p','Display','--value'],text=True).strip()
+assert display, 'Graphical login is not ready'
+properties=dict(line.split('=',1) for line in subprocess.check_output(
+    ['loginctl','show-session',display,'-p','Type','-p','Class','-p','Active'],text=True).splitlines())
+assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' and properties['Active']=='yes', properties
+assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
+"""
+            while time.monotonic()<deadline:
+                if subprocess.call(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)==0:
+                    return
+                time.sleep(2)
+            raise TesterError('The Luma desktop did not finish signing in. Inspect console.log.')
         check = """import json, os
 from pathlib import Path
 runtime = Path(os.environ['XDG_RUNTIME_DIR'])

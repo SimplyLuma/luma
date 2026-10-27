@@ -43,8 +43,13 @@ def ready(session):
         return False
 
 
-def kickstart(arch):
+def kickstart(arch, public_key=None):
     console = 'ttyAMA0' if arch == 'aarch64' else 'ttyS0'
+    access = ''
+    if public_key is not None:
+        if not re.fullmatch(r'ssh-ed25519 [A-Za-z0-9+/]+={0,3}',public_key):
+            raise TesterError('Invalid private VM control public key.')
+        access='sshkey --username=luma "'+public_key+'"\nservices --enabled=sshd\n'
     return '''text
 lang en_US.UTF-8
 keyboard us
@@ -58,7 +63,7 @@ bootloader --timeout=0 --append="rhgb quiet"
 firstboot --disable
 user --name=luma --gecos="Luma" --groups=wheel --lock
 rootpw --lock
-poweroff
+''' + access + '''poweroff
 %include /usr/share/anaconda/interactive-defaults.ks
 %post --erroronfail
 mkdir -p /etc/gdm /var/lib/AccountsService/users /etc/sudoers.d
@@ -82,6 +87,11 @@ def boot_files(session):
     """Extract only the media's kernel/initrd; no mounting or host administrator."""
     directory = session.directory/'setup'
     directory.mkdir(mode=0o700, exist_ok=True)
+    if not session.key.exists():
+        subprocess.run(['ssh-keygen','-q','-t','ed25519','-N','','-f',str(session.key)],check=True)
+    session.key.chmod(0o600)
+    public_key=' '.join(subprocess.check_output(['ssh-keygen','-y','-f',str(session.key)],text=True).split()[:2])
+    configuration=kickstart(session.manifest['arch'],public_key)
     try:
         import pycdlib
     except ImportError:
@@ -100,7 +110,7 @@ def boot_files(session):
                                 '-extract', '/images/pxeboot/'+name, str(temporary)],
                                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 temporary.replace(target)
-        (directory/'ks.cfg').write_text(kickstart(session.manifest['arch']))
+        (directory/'ks.cfg').write_text(configuration)
         subprocess.run(['xorriso', '-as', 'mkisofs', '-quiet', '-o', str(directory/'setup.iso.new'),
                         '-V', 'TRY_LUMA_SETUP', '-J', '-r', str(directory/'ks.cfg')], check=True)
     else:
@@ -119,7 +129,7 @@ def boot_files(session):
         seed = pycdlib.PyCdlib()
         seed.new(interchange_level=3, joliet=3, rock_ridge='1.09', vol_ident='TRY_LUMA_SETUP')
         try:
-            data = kickstart(session.manifest['arch']).encode()
+            data = configuration.encode()
             seed.add_fp(io.BytesIO(data), len(data), iso_path='/KS.CFG;1', rr_name='ks.cfg', joliet_path='/ks.cfg')
             seed.write(str(directory/'setup.iso.new'))
         finally:
