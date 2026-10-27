@@ -1961,3 +1961,42 @@ vertical placement and tile styling. Updated both source SVGs and concept note.
 Native export normal e045f4b1 PASS; review preview and Mac/Windows/Linux assets
 in bulk/branding-play-left-r2-20261027. Previously uploaded draft binaries still
 contain prior placement; no package rebuild or draft replacement claimed here.
+
+2026-10-27 final publication authorized explicitly by user. Approved optical-left
+icon committed9b67dd912. Final builds all PASS: Linux r40 acec4751, Mac r12
+5b04e70f, Windows r7 3bc71c08. Actual final AppImage/native LumaUI ddd627fe and
+native Mac LumaUI/deep codesign9b0b5de9 PASS. Final draft refresh a519e0ed PASS:
+three packages plus exact packaged-source archive uploaded and GitHub digest/
+size verified, receipt bulk/try-luma-draft-073-final-r3/DRAFT-UPDATED.json.
+The draft API reassigns an untagged temporary tag when saving without tag_name;
+final publish MUST explicitly set tag_name=v0.7.3 in SAME PATCH as draft=false.
+Website agent was given permanent v0.7.3 Mac/Windows/Linux URLs, not yet public.
+Mac filename is GitHub-normalized Try.Luma-0.7.3-macos-arm64.dmg.
+
+Public converged source PR84 all four CI checks PASS (including Tester) and
+merged e5e69d1c1c60dec8ba3e233a2a2579b2e3ec9150. Clean source e14e70f6
+publishes only 46 relevant files, preserves public toolkit features and adds
+only six-line fixed-dark opt-in to shared widgets; no private task history or
+unrelated toolkit rollback. Exact packaged older-kit source accompanies release
+archive, SHAfc4d1a48408000616cc7a65f126006b4166b6952bf6be5e48a95ae30b85ed5ee.
+SimplyLuma/try title corrected # Try Luma, alt text and description/homepage,
+pushed bb247ca after owner steering; no unrelated screenshot edits lost.
+
+Native Windows attempt r8 normal699aca2f did not establish a test verdict:
+private console locked, Interactive scheduled task did not start until later
+manual private fixture sign-in, then outer polling budget expired. Original
+failure preserved, original Windows builder untouched and own VM cleaned.
+Corrected r9 normal a5da622d reuses only its own existing overlay/NVRAM/TPM,
+retains6GiB/4CPU actual guest in normal8/root7GiB, actual original NIC identity
+preserves Windows network profile (QA fixture only, not product changes).
+Private console lockscreen visually verified then signed in with existing
+private fixture credential; quser confirms consoleActive. CONSOLE_READY flag
+set after sign-in, so actual native QA timeout begins after readiness. Current
+bulk/windows/native-final-r9; original base is read-only backing.
+
+ARM signed publication normal51cda6d3 belongs to existing OS publisher and was
+already active; not duplicated or stopped. It uploaded canonical ARM .1 body
+and signed media metadata; Hub now exposes exact c0a68aeca... approved checksum.
+Public origin/readback still active at latest observation. x86 .4 publication
+and final website acceptance/channel generation3 remain pending; do not approve
+old x86 .9 or wrong ARM own-r10 body. No public app release PATCH yet.
