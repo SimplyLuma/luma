@@ -18,6 +18,8 @@ import stat
 import subprocess
 import sys
 
+WINDOW_LOCK = Path('/run/lock/luma-os-publication-window.lock')
+
 CONFIG_ENV = ('LUMA_OS_ROOT', 'LUMA_OS_PROFILE', 'LUMA_TARGET_ARCHITECTURE',
               'LUMA_OS_KEYS', 'LUMA_OS_SECRETS', 'LUMA_OS_SLICE',
               'CONTAINERS_STORAGE_CONF', 'LUMA_OS_GRAPH_TOOLS_IMAGE', 'LUMA_OS_TOOLS_IMAGE_NAME')
@@ -104,6 +106,26 @@ def protected_directory(path):
 
 
 @contextmanager
+def publication_lock():
+    # Serialize the entire timer window, not only repository writes inside its
+    # worker. Otherwise a second attempt could observe paused timers as inactive
+    # and later run while the first supervisor resumes them.
+    protected_directory(WINDOW_LOCK.parent)
+    fd = os.open(WINDOW_LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+            raise ValueError('publication window lock must be a private root-owned regular file')
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError('another publication window is active; no timer changed') from error
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextmanager
 def attempt_lock(directory):
     # Directory inode locking avoids an extra mutable lock path. Recovery may
     # inspect a retained attempt only after its supervisor has released this
@@ -120,6 +142,12 @@ def attempt_lock(directory):
 
 
 def supervise(control, unit, timers, command, directory, preflight=None):
+    # All paths acquire the shared window before their attempt lock.
+    with publication_lock():
+        return _start_supervision(control, unit, timers, command, directory, preflight)
+
+
+def _start_supervision(control, unit, timers, command, directory, preflight=None):
     # Keep the lock across STARTED, timer changes, worker cleanup and RESTORED.
     # A later recovery must not race a live supervisor before worker creation.
     if not directory.is_absolute():
@@ -185,9 +213,10 @@ def _supervise(control, unit, timers, command, directory, before, preflight=None
 
 
 def recover(control, directory):
-    protected_directory(directory)
-    with attempt_lock(directory):
-        return _recover(control, directory)
+    with publication_lock():
+        protected_directory(directory)
+        with attempt_lock(directory):
+            return _recover(control, directory)
 
 
 def _recover(control, directory):

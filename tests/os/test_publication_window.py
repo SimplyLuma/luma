@@ -39,6 +39,44 @@ class Control:
 
 @unittest.skipUnless(os.geteuid()==0,'publication supervision uses protected root-owned state')
 class PublicationWindow(unittest.TestCase):
+    def setUp(self):
+        self.lock_directory = tempfile.TemporaryDirectory()
+        self.original_window_lock = window.WINDOW_LOCK
+        window.WINDOW_LOCK = Path(self.lock_directory.name)/'window.lock'
+        self.addCleanup(self.lock_directory.cleanup)
+        self.addCleanup(setattr, window, 'WINDOW_LOCK', self.original_window_lock)
+
+    def test_second_attempt_and_recovery_refused_before_timer_snapshot(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = Path(root)/'interrupted'; p.mkdir(mode=0o700)
+            window.save(p, 'STARTED.json', {'worker_unit':UNIT,'timer_states':{TIMER:'active'}})
+            second = Control()
+            # The shared lock must be checked before even querying timer state.
+            def state_is_forbidden(unit):
+                self.fail('competing window queried timer or worker state')
+            second.state = state_is_forbidden
+            with window.publication_lock():
+                with self.assertRaisesRegex(ValueError, 'another publication window'):
+                    window.supervise(second, UNIT, [TIMER], ['fixture'], Path(root)/'second')
+                with self.assertRaisesRegex(ValueError, 'another publication window'):
+                    window.recover(second, p)
+            self.assertFalse(second.calls)
+            self.assertFalse((Path(root)/'second').exists())
+            # After release recovery takes shared then attempt lock and succeeds.
+            window.recover(Control(), p)
+            self.assertTrue((p/'RECOVERED.json').exists())
+
+    def test_shared_lock_rejects_symlink_and_unprotected_file(self):
+        target = window.WINDOW_LOCK.with_name('target')
+        target.write_text('')
+        window.WINDOW_LOCK.symlink_to(target)
+        with self.assertRaises(OSError):
+            with window.publication_lock(): self.fail('symlink accepted')
+        window.WINDOW_LOCK.unlink()
+        window.WINDOW_LOCK.write_text('');window.WINDOW_LOCK.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, 'private root-owned'):
+            with window.publication_lock(): self.fail('readable lock accepted')
+
     def test_metadata_preflight_refuses_timestamp_difference_and_symlinks(self):
         with tempfile.TemporaryDirectory() as root:
             left,right=Path(root)/'local.json',Path(root)/'verified.json'

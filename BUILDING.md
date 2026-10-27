@@ -159,7 +159,11 @@ The supervisor pauses only explicitly named, idle refresh timers, rechecks for
 racing refresh services, quiesces an interrupted/failed client worker, and restores
 previously active timers. Root-owned phase receipts distinguish worker failure,
 timer restoration and interrupted-supervisor recovery from release success.
-An exclusive attempt lock prevents recovery from racing a live supervisor,
+A protected shared window lock rejects competing supervisors before timer
+inspection or mutation, including attempts using different state directories.
+This does not replace the worker’s normal repository/signing locks. Both
+supervision and recovery acquire the shared lock before an exclusive attempt
+lock, which prevents recovery from racing a live supervisor,
 even before its worker has started. After a hard supervisor kill, `--recover ROOT_OWNED_ATTEMPT` restores timers only
 when the recorded worker is inactive. Neither worker exit zero nor recovery
 qualifies or publishes a release. The generic `run-capped.sh` keeps its existing
