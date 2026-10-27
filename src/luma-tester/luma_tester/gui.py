@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """LumaUI simulator workspace with shared navigation and a native guest display."""
 import os
+os.environ['LUMA_APPKIT_FIXED_DARK'] = '1'
 import json
 from pathlib import Path
 import platform
@@ -31,17 +32,18 @@ try:
     from luma_appkit.structure_layers import LayerHost
     from luma_appkit.widgets import AppWindow, IconButton, Island, IslandOverlaySplitView, NavigationSidebar, ScrollView, add_style_sheet
 except (ImportError, ValueError) as exc:
-    raise ImportError('Luma Tester requires the LumaUI runtime (luma-developer-platform).') from exc
+    raise ImportError('Try Luma requires the LumaUI runtime (luma-developer-platform).') from exc
 
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets, vm, experiences, device_profiles, image_library, host_devices
+from . import presets, vm, experiences, device_profiles, image_library, host_devices, updates
 
 
 def launch(state=None):
+    Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     GLib.set_prgname('io.luma.Tester')
-    GLib.set_application_name('Luma Tester')
+    GLib.set_application_name('Try Luma')
     Gtk.Window.set_default_icon_name('io.luma.Tester')
     class Application(Adw.Application):
         def __init__(self):
@@ -88,6 +90,9 @@ def launch(state=None):
             self.library_items = image_library.cached(data_root(state))
             self.library_loading = False
             self.library_error = None
+            self.update_checking = False
+            self.pending_update = None
+            self.update_preferences = data_root(state)/'update-preferences.json'
             self.selected_variants = {}
             try:
                 preferences=json.loads(self.preferences.read_text())
@@ -183,12 +188,13 @@ def launch(state=None):
                 Command('tester.back', 'Back', lambda: self.stack.set_visible_child_name('welcome'), icons.icon_name('chevron-left'), shortcut=('Alt', 'Left')),
                 Command('tester.open', 'Open Luma', self.start, icons.icon_name('play'), enabled=lambda: not self.active()),
                 Command('tester.advanced', 'Advanced…', self.show_advanced, icons.icon_name('settings')),
+                Command('tester.updates', 'Check for Updates…', lambda:self.check_app_updates(manual=True), icons.icon_name('download')),
                 Command('tester.pause', 'Pause or resume', self.pause, icons.icon_name('pause'), enabled=lambda: self.running()),
                 Command('tester.shutdown', 'Shut down', self.stop, icons.icon_name('power'), enabled=lambda: self.running()),
                 Command('tester.quit', 'Quit', self.window_close, icons.icon_name('log-out'), shortcut=('Ctrl', 'Q')),
             )),))
             Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(Path(__file__).parent))
-            self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Luma Tester',
+            self.window = AppWindow(application=self, app_id='io.luma.Tester', title='Try Luma',
                                     icon_name='io.luma.Tester', commands=self.commands,
                                     default_width=780, default_height=650,
                                     minimum_width=480, minimum_height=480)
@@ -219,6 +225,7 @@ def launch(state=None):
                 if restored in self.catalog_targets:self.select_target(restored)
             self.window.present()
             self.refresh_library()
+            self.check_app_updates()
             GLib.timeout_add_seconds(2, self.refresh)
 
         def build_sidebar(self):
@@ -485,22 +492,21 @@ def launch(state=None):
             if local:groups.append(CommandGroup('On this computer',tuple(local)))
             architecture=self.architectures.get(self.target,'auto')
             published=[item for item in self.library_items
-                if image_library.target(item)==('mobile' if self.target=='mobile' else 'desktop')
+                if image_library.listed(item,data_root(state)) and image_library.supports(item,self.target)
                 and (architecture=='auto' or item.get('arch')==architecture)]
             commands={'tester_image':[], 'os_image':[]}
             for index,item in enumerate(published):
                 kind=item.get('kind');entries=commands[kind]
                 downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if kind=='tester_image' else '.iso'))).is_file()
-                detail=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
+                detail=('ARM64 · ' if item['arch']=='aarch64' else 'x86-64 · ')
+                detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
                 detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
                 entries.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
             for kind,title in (('tester_image','Ready to try'),('os_image','Installation media')):
                 entries=commands[kind]
                 if not entries:continue
-                recent=entries[:3]
-                if len(entries)>3:recent.append(Command('image.older.'+kind,'Older Builds',lambda:None,children=tuple(entries[3:])))
-                groups.append(CommandGroup(title,tuple(recent)))
+                groups.append(CommandGroup(title,tuple(entries)))
             status='Checking for images…' if self.library_loading else self.library_error
             actions=[]
             if status:actions.append(Command('image.status',status,lambda:None,enabled=lambda:False))
@@ -677,7 +683,7 @@ def launch(state=None):
             self.stack.set_visible_child_name('live' if self.running() and self.graphical_ready else 'session')
 
         def connect_display(self):
-            if self.viewer or not self.session.display_path.is_socket():
+            if self.viewer or not self.session.display_available():
                 return
             self.viewer = GuestDisplay(self.session.display_path,
                 touch=self.session.touch if self.session.manifest['target'] == 'mobile' else None)
@@ -928,14 +934,14 @@ def launch(state=None):
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
             self.shutdown_button.set_visible(running)
-            self.device_button.set_visible(self.target=='mobile')
+            self.device_button.set_visible(self.target=='mobile' and not installer)
             capabilities = self.session.manifest.get('capabilities', {}) if self.session else {}
             if not running and selected:capabilities = read_manifest(selected).get('capabilities', {})
             self.device_button.set_sensitive(not self.busy and not self.device_busy and not self.shutting_down and
                 capabilities.get('dynamic_display', True) and
                 (not running or (self.graphical_ready and self.session.status()=='running')))
             self.device_button.set_tooltip_text(None if capabilities.get('dynamic_display', True) else 'This image uses a fixed phone display.')
-            self.home_button.set_visible(running and self.target == 'mobile' and capabilities.get('home', True))
+            self.home_button.set_visible(running and not installer and self.target == 'mobile' and capabilities.get('home', True))
             self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
@@ -959,6 +965,11 @@ def launch(state=None):
             self.ssh_row.set_sensitive(not self.ssh_busy and self.managed_guest())
             self.words(self.shutdown_button,'Force Stop' if self.force_stop_available else 'Shut Down')
             self.refresh_snapshots()
+            modal = getattr(self, 'sheet_handle', None)
+            if self.pending_update and not active and not self.closing and (modal is None or modal.closed):
+                artifact = self.pending_update
+                self.pending_update = None
+                self.show_app_update(artifact)
             if self.closing and not self.active():
                 self.window.close()
             return True
@@ -1471,6 +1482,77 @@ def launch(state=None):
                 GLib.idle_add(done,items,error)
             threading.Thread(target=worker,daemon=True).start()
 
+        def check_app_updates(self, manual=False):
+            if self.update_checking:return
+            self.update_checking=True
+            def done(artifact,error):
+                self.update_checking=False
+                if error:
+                    if manual:self.notify('Couldn’t check for updates. Try again later.')
+                elif artifact is None:
+                    if manual:self.notify('Try Luma is up to date.')
+                else:
+                    try:saved=json.loads(self.update_preferences.read_text())
+                    except (OSError,ValueError):saved={}
+                    shown=saved.get('offered_version') if isinstance(saved,dict) else None
+                    if manual or shown != updates.package_identity(artifact)[0]:
+                        self.pending_update=artifact
+                        self.refresh()
+                return False
+            def worker():
+                try:artifact=updates.check();error=None
+                except Exception as exc:artifact=None;error=str(exc)
+                GLib.idle_add(done,artifact,error)
+            threading.Thread(target=worker,daemon=True).start()
+
+        def show_app_update(self, artifact):
+            if self.active():
+                self.pending_update=artifact
+                return
+            release,_,_=updates.package_identity(artifact)
+            # Separate preferences do not rewrite workspace/snapshot selections.
+            try:vm.atomic_json(self.update_preferences,dict(offered_version=release))
+            except OSError:pass
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            body.append(self.label(f'Try Luma {release} is available.'))
+            body.append(self.label(f"{artifact['size_bytes']/10**6:.0f} MB · Download now and install when you’re ready.",muted=True))
+            buttons=Gtk.Box(spacing=12,homogeneous=True)
+            buttons.append(self.button('Later',self.close_sheet))
+            buttons.append(self.button('Download',lambda:self.download_app_update(artifact),primary=True,icon='download'))
+            body.append(buttons)
+            self.sheet('Update Try Luma',body,width=400)
+
+        def download_app_update(self, artifact):
+            if self.active():return
+            previous=self.stack.get_visible_child_name()
+            self.close_sheet();self.busy=True;self.transfer_progress=None
+            self.progress.set_fraction(0);self.progress.set_visible(True)
+            self.spinner.set_visible(True);self.spinner.start()
+            self.status_label.set_label('Downloading Try Luma…')
+            self.stack.set_visible_child_name('session');self.refresh()
+            def done(path,error):
+                self.busy=False;self.transfer_progress=None
+                self.progress.set_visible(False);self.spinner.stop();self.spinner.set_visible(False)
+                self.stack.set_visible_child_name(previous);self.refresh()
+                if error:self.notify(error)
+                else:
+                    self.notify('Update downloaded. Install it when you’re ready.')
+                    launcher=Gtk.FileLauncher.new(Gio.File.new_for_path(str(path)))
+                    def revealed(source,result):
+                        try:source.open_containing_folder_finish(result)
+                        except GLib.Error:self.notify('Update saved in '+str(path.parent))
+                    # Reveal the package. Never execute it or close a running VM.
+                    launcher.open_containing_folder(self.window,None,revealed)
+                return False
+            def worker():
+                try:
+                    path=updates.stage(artifact,data_root(state),
+                        report=lambda message:GLib.idle_add(self.status_label.set_label,message),
+                        progress=lambda value:GLib.idle_add(self.show_transfer_progress,value));error=None
+                except Exception as exc:path=None;error=str(exc)
+                GLib.idle_add(done,path,error)
+            threading.Thread(target=worker,daemon=True).start()
+
         def library_menu_closed(self, button, _property):
             if not button.get_active():
                 button.disconnect_by_func(self.library_menu_closed)
@@ -1478,6 +1560,9 @@ def launch(state=None):
 
         def download_image(self,artifact):
             if self.active():return
+            if not image_library.listed(artifact,data_root(state)):
+                self.notify('This image is no longer in the approved catalog.')
+                return
             self.busy=True
             self.transfer_progress=None
             self.close_sheet()

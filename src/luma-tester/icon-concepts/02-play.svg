@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Try Luma — Play</title>
+<defs>
+<linearGradient id="plate" x1="0.2" y1="0" x2="0.8" y2="1"><stop stop-color="#ff9a4b"/><stop offset="1" stop-color="#ed4b1b"/></linearGradient>
+<radialGradient id="light" cx=".26" cy=".12" r=".85"><stop stop-color="#fff" stop-opacity=".2"/><stop offset=".6" stop-color="#fff" stop-opacity=".025"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="orange" x1=".25" y1="0" x2=".75" y2="1"><stop stop-color="#ffad53"/><stop offset=".48" stop-color="#fe6819"/><stop offset="1" stop-color="#e44512"/></linearGradient>
+<radialGradient id="orbLight" cx=".3" cy=".17" r=".8"><stop stop-color="#fff2ce" stop-opacity=".48"/><stop offset=".55" stop-color="#fff2ce" stop-opacity="0"/></radialGradient>
+<linearGradient id="ivory" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dfe6f4"/></linearGradient>
+<linearGradient id="inside" x1="0" y1="0" x2=".7" y2="1"><stop stop-color="#293769"/><stop offset="1" stop-color="#172344"/></linearGradient>
+<filter id="shadow" x="-.5" y="-.5" width="2" height="2" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="20"/></filter>
+<clipPath id="tile"><rect x="82" y="82" width="860" height="860" rx="202"/></clipPath>
+</defs>
+<!-- Prairie's canonical 860px tile and dock-size transform. -->
+<g transform="translate(512 512) scale(1.12) translate(-512 -512)">
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#plate)"/>
+<rect x="82" y="82" width="860" height="860" rx="202" fill="url(#light)"/>
+<g clip-path="url(#tile)">
+<!-- Optical placement: nudge the complete play mark 16px left of its area-centered position. -->
+<g id="play-mark" transform="translate(-37.918965 -5.5)">
+<path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" transform="translate(5 26)" fill="#9e270b" opacity=".45" filter="url(#shadow)"/>
+<path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" transform="translate(0 11)" fill="#b9b8bc"/>
+<path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" fill="url(#ivory)"/>
+<path d="M434 349V677" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="5" stroke-linecap="round"/>
+</g>
+</g>
+</g></svg>

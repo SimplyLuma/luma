@@ -1,22 +1,20 @@
-# Luma Tester — Linux developer preview
+# Try Luma portable builds
 
-Open **Luma Tester**, choose **Try Luma** or **Develop for Luma**, then select a
-device and **Build**. Start, Pause, Home and Shut Down live in the floating bottom
-action bar. Devices without a build are marked Soon.
+Open **Try Luma**, choose Try or Developer, then Desktop, Tablet or Mobile.
+The bottom action bar selects architecture and installation media and controls
+the VM. Developer reveals SSH access, an agent prompt and sharing controls.
 
-The app includes LumaUI, QEMU and developer tools. Lightweight packages download
-checksum-verified guest disks from their configured HTTPS image URLs on first
-use. Private previews may supply a separate images directory beside the AppImage;
-offline packages embed their disks. Desktop and native Mobile use separate
-qualified image profiles. Replacing Tester preserves cached images and writable
-workspaces. Automatic latest-build prompts require a published image feed.
+The lightweight app downloads approved, checksum-verified images when needed.
+One ISO per architecture serves the experiences. Existing imported images,
+workspaces and snapshots remain available when the application is updated.
 
-For development, connect an app folder in Project and copy its development
-command. The watcher syncs changes and restarts the app. Try examples/Hello Luma
-with python3 main.py; edit message.txt to see the change in the guest.
-DEVELOPING.md includes the CLI and local agent workflow.
+The application ID `io.luma.Tester`, data directories and CLI command remain
+stable through the display-name change. Do not rename or delete existing user
+state. Generated packages use the **Try Luma** application name.
 
-This preview targets Linux x86_64. Native Mobile runs the real phone shell and
-keyboard; it does not reproduce Fairphone-specific hardware or qualify ARM
-binaries. GPU acceleration is selected when available. Read the exact build and
-qualification receipts before redistribution; this is not a published OS release.
+See `src/luma-tester/icon-concepts/README.md` for the icon directions, native
+formats and Windows resource-compiler build dependencies. The final selected
+icon must be embedded before package signing; changing it invalidates signatures.
+
+DEVELOPING.md contains the CLI and local agent workflow. VM CPU emulation does
+not reproduce the physical device's camera, modem or GPU drivers.
