@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: ready for review — Mac0.7.1 r8 open with native ARM Mobile qualified and registered; Linux r34 progress/installer UX qualified and delivered for next launch, existing Dell guest preserved. Public VM catalog publication pending.
+- Status: active — public ARM20261026.8 and x8620261026.9 fully downloaded/checksum verified; Linux0.7.2 r35 built,99 tests and native LumaUI catalog checks passed. Brief packaged QEMU boot probes running; Mac tunnel offline, native rebuild pending.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -14,6 +14,46 @@
   only. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+2026-10-27 launch prep: implementation6910be67a, Tester0.7.2. Public Hub
+now lists ARM20261026.8 and x8620261026.9. Both complete HTTPS bodies passed
+size/SHA256 verification through the actual Tester downloader with source=test;
+qualification public-isos-20261027/qualification.json on owned bulk. Existing
+exact release public gate records report actual installed/native boot pass for
+both; ARM backend native-m4-hvf, x86 KVM. No full OS gate repeated here.
+
+Shared installer ISOs now appear for Desktop/Tablet/Mobile, with explicit
+architecture captions and installer labels. Dedicated developer disks retain
+their target restrictions. Mobile ISO uses864x1920 to avoid ARM EDK2 console
+assertion; installer sessions hide unsupported Home/device SSH controls. Mac
+builder adds explicit --release attribution before signing. pyproject metadata
+aligned separately to0.7.2. No live-media conversion or OS rebuild performed.
+
+Linux lightweight release candidate:
+/srv/dev-storage/projects/luma-os/artifacts/codex-luma-tester-20261017/appimage-release-r35/Luma-Tester-0.7.2-linux-x86_64.AppImage
+SHA2568caa90be1ce6c376362c730a4194b41acb27decab04f5fa691779cfea70c740b,
+282MiB, source6910be67a, DOWNLOAD_SOURCE=tester, no private preview catalog or
+multi-GB guest image. Build52f54830 passed99 tests. Native LumaUI packaged
+catalog testf5ef8b6e passed all6 experience/architecture combinations against
+the real public catalog. UI evidence root-jobs/luma-tester-user-3686111662.
+
+Packaged QEMU startup smoke0d83344c passed process/QMP checks for both ISOs;
+x86KVM45sec screenshot shows Luma boot splash. ARMTCG45sec screenshot still
+has inactive display, though console reached ExitBootServices; not an ARM
+installed/graphical boot pass. Additional120sec ARM probe20d7de49 reached kernel/systemd but remained in
+dractut-initqueue at capture; no graphical ARM boot claim. Both short probes
+used3GiB guest RAM, below published4GiB minimum. Correct4GiB ARM probe75aaea85
+running under6GiB cap,240sec bound. Exact release native M4 boot gate remains
+the full ARM boot proof. f7f807c6e aligns pyproject0.7.2 and changes NEW workspace
+disk default32→64GiB to meet public40GiB minimum; existing saved settings retained.
+Final Linuxr36 rebuild pending the current probe closure.
+Mac route22442 refuses connection; no2244x listeners. Reconnection requested;
+private helper tester-mac-r9-build.py prepared for native0.7.2 --release build,
+NOT RUN. Existing Mac0.7.1 unchanged. No Tester public upload/index/signing,
+Mac native0.7.2 package, Intel Mac or Windows qualification claimed. Dell/user
+VMs/projects untouched. All private receipts under own artifacts/root-jobs.
+
+Previous Oct23 checkpoint (superseded for current launch prep):
 
 Latest: Mac app0.7.1 r8 is open at ~/Applications/Luma Tester.app with genuine
 ARM Mobile20261015.21 virtual adapterr6 installed in normal state. Native M4
