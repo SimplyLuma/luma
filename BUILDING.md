@@ -134,6 +134,14 @@ Resume produces built media and still runs every final runtime/EFI/font check;
 it does not reuse a qualification pass.
 
 
+Interactive media verification gives libvirt a disposable same-filesystem reflink
+of the ISO. It checks access as `LUMA_OS_QEMU_USER` (default `qemu`) before VM
+startup and verifies that the original inode, ownership, modes and timestamps
+remain unchanged afterward. Libvirt may relabel or chown only the fixture.
+The preflight fails if reflinks or reader traversal are unavailable; it never
+falls back to an unbudgeted full copy or widens ancestor permissions. This is
+a DAC preflight, not a substitute for the normal libvirt/SELinux boot check.
+
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
 ## Desktop architectures

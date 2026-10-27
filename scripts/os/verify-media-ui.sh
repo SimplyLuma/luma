@@ -58,27 +58,38 @@ install -d -m 0755 "$out" "$vm"
 exec > >(tee -a "$out/verify-ui.log") 2>&1
 domain="luma-os-media-ui-$run"
 image="$luma_os_repo_root/scripts/os/lib/screen_image.py"
+fixture_helper="$luma_os_repo_root/scripts/os/lib/media_vm_iso.py"
+fixture="$out/installer.iso"
+fixture_proof="$out/media-input.json"
 
 cleanup() {
   local status=$?
   set +e
   virsh destroy "$domain" >/dev/null 2>&1
+  if [ -f "$fixture_proof" ]; then
+    python3 "$fixture_helper" verify "$fixture_proof" || status=1
+  fi
   if [ "$keep" -eq 0 ]; then
     virsh undefine "$domain" --nvram >/dev/null 2>&1
     rm -rf "$vm"
+    rm -f -- "$fixture"
   fi
   exit "$status"
 }
 trap cleanup EXIT
 
 luma_os_gate_vm_preflight "$out/libvirt-capabilities.xml"
+# libvirt may chown/relabel even a failed launch. Isolate those changes on a
+# disposable inode and fail before VM startup if the real reader cannot reach it.
+python3 "$fixture_helper" prepare "$iso" "$fixture" "$fixture_proof" \
+  --reader "${LUMA_OS_QEMU_USER:-qemu}"
 qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "booting $(basename "$iso") interactively (no kickstart)"
 virt-install --connect qemu:///system --name "$domain" \
   --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
   --memory 6144 --vcpus 4 --cpu "$gate_cpu" --machine "$gate_machine" --boot "$gate_boot" \
   --disk "path=$vm/disk.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
-  --cdrom "$iso" --network none \
+  --cdrom "$fixture" --network none \
   --graphics vnc,listen=127.0.0.1 --video virtio --rng /dev/urandom \
   --os-variant fedora-unknown --noautoconsole --wait 0 >"$out/virt-install.log" 2>&1 ||
   luma_os_die 'the installer VM did not start'
