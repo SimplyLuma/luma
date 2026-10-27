@@ -15,8 +15,8 @@
 <rect x="82" y="82" width="860" height="860" rx="202" fill="url(#plate)"/>
 <rect x="82" y="82" width="860" height="860" rx="202" fill="url(#light)"/>
 <g clip-path="url(#tile)">
-<!-- Center the filled glyph, including its 11px depth, on the 512px tile center. -->
-<g id="play-mark" transform="translate(-21.918965 -5.5)">
+<!-- Optical placement: nudge the complete play mark 16px left of its area-centered position. -->
+<g id="play-mark" transform="translate(-37.918965 -5.5)">
 <path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" transform="translate(5 26)" fill="#9e270b" opacity=".45" filter="url(#shadow)"/>
 <path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" transform="translate(0 11)" fill="#b9b8bc"/>
 <path d="M452 322Q419 302 419 341V683Q419 722 452 702L722 534Q757 512 722 490Z" fill="url(#ivory)"/>

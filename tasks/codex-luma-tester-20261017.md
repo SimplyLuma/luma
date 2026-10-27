@@ -1954,3 +1954,10 @@ Mac notarization, native Windows runtime, final source publication and final
 public OS exact-ID/hash channel approval remain separate gates. Hub still
 served26 images at last check; curated images generation2 intentionally empty.
 All own image/boot/package/upload jobs are completed; none left stalled.
+
+2026-10-27 icon revision: user requested a left nudge after viewing selected
+play icon. Shifted complete glyph+depth+shadow 16 source pixels left, preserving
+vertical placement and tile styling. Updated both source SVGs and concept note.
+Native export normal e045f4b1 PASS; review preview and Mac/Windows/Linux assets
+in bulk/branding-play-left-r2-20261027. Previously uploaded draft binaries still
+contain prior placement; no package rebuild or draft replacement claimed here.

@@ -1,7 +1,7 @@
 # Try Luma icon directions
 
-Three source SVG options in the Prairie icon style. **Option 2, Play, is selected.** Its filled glyph and depth are centered on the
-tile. The selected source is also installed as `luma_tester/io.luma.Tester.svg`.
+Three source SVG options in the Prairie icon style. **Option 2, Play, is selected.** Its complete play mark is optically shifted 16px left of its area-centered
+position, with vertical alignment preserved. The selected source is also installed as `luma_tester/io.luma.Tester.svg`.
 
 1. **Luma Dot** — the orange Luma mark on a charcoal Prairie tile.
 2. **Play** — a raised white play symbol on an orange tile.
