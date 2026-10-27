@@ -6,6 +6,7 @@ runtime-version: '44'
 sdk: org.projectluma.Sdk
 command: luma-mods
 finish-args:
+  - --talk-name=org.project_luma.ShellState1
   - --metadata=X-Luma=min-host-mods=24
   - --metadata=X-Luma=min-host-installer=57
   - --metadata=X-Luma=app-data-schema=mods-host-v1

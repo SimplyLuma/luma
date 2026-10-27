@@ -8,6 +8,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-weather",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_WEATHER_STYLE_PATH=/app/share/prairie-core/weather.css",
     "--metadata=X-Luma=app-data-schema=weather-v1",
     "--metadata=X-Luma=min-host-installer=60",

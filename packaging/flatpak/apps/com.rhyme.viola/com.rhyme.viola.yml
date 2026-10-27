@@ -19,6 +19,7 @@
     "--talk-name=org.projectluma.AppData1",
     "--talk-name=org.projectluma.ViolaHost1",
     "--talk-name=org.projectluma.ApplicationDirectory1",
+    "--talk-name=org.project_luma.ShellState1",
     "--talk-name=org.freedesktop.portal.Flatpak"
   ],
   "modules": [

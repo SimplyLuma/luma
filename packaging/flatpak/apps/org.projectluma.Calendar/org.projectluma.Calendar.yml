@@ -8,6 +8,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-calendar",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_CALENDAR_STYLE_PATH=/app/share/prairie-core/calendar.css",
     "--metadata=X-Luma=app-data-schema=calendar-v1",
     "--metadata=X-Luma=min-host-installer=60",

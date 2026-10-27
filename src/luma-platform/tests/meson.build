@@ -19,6 +19,12 @@ context_test = executable(
 )
 test('context', context_test)
 
+adopted_context_test = executable('test-adopted-context', 'test-adopted-context.c', dependencies: ui_dep)
+test('adopted-context', adopted_context_test,
+  env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory', 'GTK_A11Y=none',
+        'LUMA_DEVICE_CLASS=desktop', 'LUMA_PRESENTATION_MODE=windowed',
+        'LUMA_INPUT_MODE=pointer'], timeout: 30)
+
 media_fader_test = executable(
   'test-luma-media-fader',
   'test-media-fader.c',

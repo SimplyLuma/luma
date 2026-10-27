@@ -7,6 +7,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "org.projectluma.Leaf",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=app-data-schema=leaf-v1",
     "--metadata=X-Luma=min-host-installer=60",
     "--share=ipc",
