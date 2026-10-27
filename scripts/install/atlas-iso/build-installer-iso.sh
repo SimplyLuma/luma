@@ -550,8 +550,7 @@ podman run --rm --umask=0022 "${builder_security[@]}" --arch "$architecture" --p
   python3 /w/templates/check-grub-fonts.py /w/tmp/iso-boot-proof/grub2/themes/luma
   cmp /w/lorax-out/boot/grub2/themes/luma/theme.txt /w/tmp/iso-boot-proof/grub2/themes/luma/theme.txt
   # The firmware's embedded FAT menu must match the visible ISO menu too.
-  xorriso -osirrox on -indev /w/output.iso.partial \
-    -extract /images/efiboot.img /w/tmp/iso-boot-proof/efiboot.img >/dev/null 2>&1
+  python3 /s/extract-iso-efi.py /w/output.iso.partial /w/tmp/iso-boot-proof/efiboot.img
   mcopy -i /w/tmp/iso-boot-proof/efiboot.img ::/EFI/BOOT/grub.cfg /w/tmp/iso-boot-proof/embedded-grub.cfg
   cmp /w/tmp/iso-boot-proof/efi-grub.cfg /w/tmp/iso-boot-proof/embedded-grub.cfg
   if [ '$credential_var' != none ]; then
