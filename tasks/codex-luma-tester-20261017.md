@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: active Windows port/build/native VM qualification; Linux0.7.2 r36 candidate retained, Mac rebuild awaits tunnel.
+- Status: active Windows native preview/startup qualification; Linux0.7.2 r37 dark-only UI passed, Mac rebuild awaits tunnel.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -1515,3 +1515,51 @@ used that source without altering shared refs or unrelated worktrees.
   Next: reconnect native Mac, build/package/test0.7.2 with --release, then
   authorized release publisher uploads app(s) and signs real Tester index.
   No publication, Windows/IntelMac, or ARM-TCG graphical qualification claimed.
+
+## 2026-10-27 Windows and fixed-dark checkpoint
+
+- Source e9326815e adds Windows host locking, private runtime ACLs, QMP named
+  pipes, authenticated loopback embedded VNC, WHPX capability detection and TCG
+  fallback, Windows firmware/audio selection, pure-Python NoCloud creation and
+  portable package assembly. d6f4aa950 fixes SSH null-device selection. Native
+  Windows functionality remains under qualification; no Windows OS boot pass.
+- de197756a makes Tester fixed dark in the shared entry point and LumaUI kit.
+  No light-mode option; host appearance is not changed. dbe5c2198 updates README
+  for this contract, public shared ISOs and current host packaging.
+- Linuxr37 build500219ca passed102 tests; source d6f4aa950. Final AppImage SHA
+  292c6bcac13847f021883b10736a78bf615d73adda5b079b25a16766e231289f,
+  appimage-release-r37 on owned bulk. Actual native LumaUI dark/catalog UI
+  qualification4b8e610d passed all6 experience/architecture combinations;
+  root-jobs/luma-tester-user-dead4d0249/qualification.json.
+- Windows dependencies resolved from official MSYS2 checksum metadata; qualified
+  old native LumaUI runtime reused read-only. Current native C/header kit source
+  byte-identical to the prior qualified Windows lane; current Python/CSS staged.
+  OpenSSH official release ZIP digest checked; pure pycdlib wheel verified.
+- Windows candidate-r2 build3682d0a6 PASS, source dbe5c2198, 0.7.2 unsigned ZIP
+  SHA076bb5e2d97ffcb20cdcedfe0273c8f374252893cd699ac93d2d05c1d7458264,
+  windows/candidate-r2 on owned bulk. No guest OS image bundled; DOWNLOAD_SOURCE
+  tester. Windows x64 candidate only; ARM64 Windows host unqualified.
+- Windows11 clone uses4GiB/2CPU, own disk/NVRAM/TPM, original VM remains off and
+  original chain read-only backing. Initial native QA confirmed Adw dark and
+  shared kit dark, then its screenshot harness failed on an absent render node.
+  Subsequent QA and actual EXE startup stalled before a visible window; do NOT
+  call native QEMU/VNC/snapshot checks passed. Native live control fixture is
+  unbootable firmware-only media, not Luma OS. WHPX disabled in this fixture.
+- Current Windows services: outer admission dev-tester-windows-vm-r4-a2b8e01c,
+  root luma-tester-win-95cd73b718 (deadline around15:23UTC); artifact HTTP
+  dev-tester-windows-artifact-http-53e04b6f (loopback8237, deadline15:22UTC).
+  Own clone reboot request15:16UTC failed SSH banner exchange, so no reboot claimed; original untouched.
+  Stop own fixture/HTTP normally after checks. Native Mac0.7.2 rebuild pending
+  offline22442 tunnel; existing0.7.1 untouched. No publication/signing performed.
+
+- Windows trace b441bfa9ac shows native gi._gi extension load stalled during
+  platform_boot._fresh_font_map. No visible native window or QEMU control gate
+  pass. Import-before-font-registration tried in disposable staging only, not
+  source or published ZIP; screenshot remained desktop. Own VM ended normally
+  at bounded deadline15:23:41UTC; HTTP ended at its deadline15:22. No live own
+  Windows fixture/HTTP left. Graceful ACPI request arrived after VM ended.
+- M4 reconnected15:21UTC with5.1GiB free. Cleanup a1b1b90c verified Mac r2..r6
+  DMG digests against server copies, no mounted/running consumers, and removed
+  only generated app/work/inputs staging; retained packages/receipts, r1 native
+  kit cache, r7/r8 and installed user app/VMs. Free space9,965,572,096bytes.
+  Starting native0.7.2 r9 dark-only build from committed source; outcome pending.
