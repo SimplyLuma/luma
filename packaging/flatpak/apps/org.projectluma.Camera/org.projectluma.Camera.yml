@@ -7,6 +7,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-camera",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_CAMERA_STYLE_PATH=/app/share/prairie-core/camera.css",
     "--metadata=X-Luma=app-data-schema=camera-v1",
     "--metadata=X-Luma=min-host-installer=60",

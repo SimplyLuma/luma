@@ -5,6 +5,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "org.projectluma.Ari",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=app-data-schema=ari-host-v1",
     "--metadata=X-Luma=min-host-installer=57",
     "--share=ipc",

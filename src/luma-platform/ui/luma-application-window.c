@@ -53,25 +53,38 @@ static void add_identity(LumaApplicationWindow *self);
 enum { PROP_0, PROP_CONTEXT, N_PROPERTIES };
 static GParamSpec *properties[N_PROPERTIES];
 
-static void apply_context(LumaApplicationWindow *self) {
-  if (self->context == NULL)
+static void apply_window_context(GtkWindow *window, GtkWidget *titlebar,
+                                 LumaContext *context) {
+  if (context == NULL)
     return;
   /* Windowed keeps the frame. Handheld fullscreen has none to keep: the shell
    * owns that surface's chrome, and the title row would be a second one. */
-  const gboolean decorated = luma_context_get_decorated(self->context);
-  luma_ui_set_css_class(GTK_WIDGET(self), "lumaui-tablet-mode",
-      g_str_equal(luma_context_get_experience(self->context), "tablet"));
+  const gboolean decorated = luma_context_get_decorated(context);
+  luma_ui_set_css_class(GTK_WIDGET(window), "lumaui-tablet-mode",
+      g_str_equal(luma_context_get_experience(context), "tablet"));
   if (decorated)
-    gtk_widget_remove_css_class(GTK_WIDGET(self), "lumaui-phone-device");
+    gtk_widget_remove_css_class(GTK_WIDGET(window), "lumaui-phone-device");
   else
-    gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-phone-device");
-  gtk_window_set_decorated(GTK_WINDOW(self), decorated);
-  gtk_widget_set_visible(self->titlebar, decorated);
-  gtk_widget_set_can_target(self->titlebar, decorated);
-  if (luma_context_get_touch_targets(self->context))
-    gtk_widget_add_css_class(GTK_WIDGET(self), "luma-touch");
+    gtk_widget_add_css_class(GTK_WIDGET(window), "lumaui-phone-device");
+  gtk_window_set_decorated(window, decorated);
+  gtk_widget_set_visible(titlebar, decorated);
+  gtk_widget_set_can_target(titlebar, decorated);
+  if (luma_context_get_touch_targets(context))
+    gtk_widget_add_css_class(GTK_WIDGET(window), "luma-touch");
   else
-    gtk_widget_remove_css_class(GTK_WIDGET(self), "luma-touch");
+    gtk_widget_remove_css_class(GTK_WIDGET(window), "luma-touch");
+}
+
+static void apply_context(LumaApplicationWindow *self) {
+  apply_window_context(GTK_WINDOW(self), self->titlebar, self->context);
+}
+
+static void adopted_context_changed(LumaContext *context, GParamSpec *pspec,
+                                    AdwApplicationWindow *window) {
+  (void)pspec;
+  GtkWidget *titlebar = g_object_get_data(G_OBJECT(window), "luma-adopted-titlebar");
+  if (titlebar != NULL)
+    apply_window_context(GTK_WINDOW(window), titlebar, context);
 }
 
 static void context_changed(LumaContext *context, GParamSpec *pspec,
@@ -396,14 +409,14 @@ GtkWidget *luma_application_window_frame_adopt(AdwApplicationWindow *window) {
   GtkWidget *identity = identity_new(application, GTK_WINDOW(window), menu);
   adw_header_bar_pack_start(ADW_HEADER_BAR(titlebar), identity);
   adw_header_bar_pack_end(ADW_HEADER_BAR(titlebar), window_controls_new(GTK_WIDGET(window)));
-  if (luma_ui_mobile_form_factor()) {
-    gtk_widget_add_css_class(GTK_WIDGET(window), "lumaui-phone-device");
-    gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
-    gtk_widget_set_visible(titlebar, FALSE);
-    gtk_widget_set_can_target(titlebar, FALSE);
-  }
   g_object_set_data(G_OBJECT(window), "luma-adopted-titlebar", titlebar);
   g_object_set_data(G_OBJECT(window), "luma-adopted-identity", identity);
+  /* Existing native windows adopt the same live context as LumaApplicationWindow.
+   * Keep the original content, toolbar and action bindings in place. */
+  LumaContext *context = luma_context_new_from_environment();
+  g_object_set_data_full(G_OBJECT(window), "luma-adopted-context", context, g_object_unref);
+  g_signal_connect_object(context, "notify", G_CALLBACK(adopted_context_changed), window, 0);
+  apply_window_context(GTK_WINDOW(window), titlebar, context);
   return titlebar;
 }
 

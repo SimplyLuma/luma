@@ -7,6 +7,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-tasks",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_TASKS_STYLE_PATH=/app/share/prairie-core/tasks.css",
     "--metadata=X-Luma=app-data-schema=tasks-v1",
     "--metadata=X-Luma=min-host-installer=64",
