@@ -375,8 +375,6 @@ class Session:
                 '-device', 'virtio-rng-pci', '-qmp', f'unix:{self.qmp_path},server=on,wait=off',
                 '-monitor', 'none', '-serial', 'file:' + str(self.directory / 'console.log'),
                 '-display', display]
-        if host.windows():
-            argv[argv.index('-qmp')+1] = 'pipe:' + self.pipe_name
         if os.environ.get('LUMA_TESTER_QEMU_DATA_DIR'):
             argv += ['-L', os.environ['LUMA_TESTER_QEMU_DATA_DIR']]
         if arch=='aarch64':
@@ -501,12 +499,7 @@ class Session:
                 self.display_path.unlink(missing_ok=True)
 
     def qmp(self, execute, arguments=None, timeout=5):
-        if host.windows():
-            with open('\\\\.\\pipe\\'+self.pipe_name, 'r+b', buffering=0) as stream:
-                return self.qmp_stream(stream, execute, arguments)
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.settimeout(timeout)
-            sock.connect(str(self.qmp_path))
+        with host.local_control_socket(self.qmp_path, timeout) as sock:
             with sock.makefile('rwb', buffering=0) as stream:
                 return self.qmp_stream(stream, execute, arguments)
 
