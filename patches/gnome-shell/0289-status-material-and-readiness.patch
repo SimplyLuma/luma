@@ -1,0 +1,141 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: align status slots and share island materials
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -8,6 +8,7 @@
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import * as AppFavorites from './appFavorites.js';
+ import * as PanelMenu from './panelMenu.js';
+ import {ShelfMedia} from './shelfMedia.js';
+ import {MediaIslandGuard} from './lumaMediaIslandGuard.js';
+@@ -519,7 +520,7 @@
+         // artwork is not clipped at its resting tile bounds.
+         const insets = this._content.has_style_class_name('luma-shelf-clock-button')
+             ? (this._vertical ? [padding,6,padding,6] : [0,padding,0,padding])
+-            : this._content._statusActive ? (this._vertical ? [8.5,6,8.5,6] : [8.5,10.5,8.5,9])
++            : this._content._statusActive ? (this._vertical ? [8.5,6,8.5,6] : [8.5,9,8.5,9])
+             : this._content._lumaDock
+             ? (this._vertical ? [padding, 0, padding, 0] : [0, padding, 0, padding])
+             : [padding, padding, padding, padding];
+@@ -1006,8 +1007,7 @@
+         this._initialPresentationId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
+             const groups = this._groups.filter(group => group.visible &&
+                 group.row.get_children().some(actor => actor.visible && actor.width > 0));
+-            const expected = this._shellSettings.get_strv('favorite-apps')
+-                .filter(id => Shell.AppSystem.get_default().lookup_app(id)).length;
++            const expected = AppFavorites.getAppFavorites().getFavorites().length;
+             const ready = !Main.layoutManager._startingUp && groups.length > 0 &&
+                 this._dash._box.get_children().length >= expected && !this._widthLaterId &&
+                 groups.every(group => group.has_allocation() && group.width > 0 && group.height > 0);
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1531,7 +1531,7 @@
+             const slot = new St.BoxLayout({style_class: 'luma-status-slot',
+                 y_align: Clutter.ActorAlign.CENTER});
+             slot.icon = new St.Icon({style_class: 'system-status-icon', icon_size: STATUS_GLYPH,
+-                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                x_expand: true, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+             slot.add_child(slot.icon);
+             if (name === 'battery') {
+                 slot.percentage = new St.Label({style_class: 'luma-secondary-status-text',
+@@ -1543,7 +1543,7 @@
+                 slot.dot = new St.Widget({style_class: 'luma-status-recording', visible: false,
+                     x_expand: true, y_expand: true,
+                     x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
+-                const glyph = new St.Widget({layout_manager: new Clutter.BinLayout()});
++                const glyph = new St.Widget({x_expand: true, layout_manager: new Clutter.BinLayout()});
+                 slot.remove_child(slot.icon);
+                 glyph.add_child(slot.icon);
+                 glyph.add_child(slot.dot);
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -275,14 +275,8 @@
+ .luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster {
+   background-color: transparent;
+ }
+-.luma-shelf-actions-island .luma-status-cluster:hover,
+-.luma-shelf-actions-island .luma-status-cluster:active {
+-  background-color: #22272b;
+-}
+-.luma-shelf-actions-island .luma-status-cluster:focus {
+-  background-color: #22272b;
+-  box-shadow: 0 0 0 2px #91b6d2;
+-}
++
++
+ .luma-status-cluster .system-status-icon { icon-size: 14px; padding: 0; margin: 0; }
+ .luma-status-cluster .panel-status-indicators-box { spacing: 0; }
+ /* _setStatusLineHeight pins each label's line box to exactly its font size, so
+@@ -341,9 +335,6 @@
+  * the build if another rule does, or if these values drift from the tokens.
+  * Text on the veil is plain; the veil carries its own contrast. */
+ .luma-shelf-material.luma-surface-frost,
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-frost,
+ .popup-menu.luma-surface-frost .popup-menu-content,
+ .popup-menu.luma-surface-frost .popup-menu-content.luma-quick-options,
+ .dash-label.luma-surface-frost,
+@@ -352,9 +343,6 @@
+   background-color: rgba(248, 249, 250, 0.90);
+   text-shadow: none; }
+ .luma-shelf-material.luma-surface-glass,
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-glass,
+ .popup-menu.luma-surface-glass .popup-menu-content,
+ .popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options,
+ .dash-label.luma-surface-glass,
+@@ -452,26 +440,13 @@
+   background-color: transparent;
+   color: #e7e9e8;
+ }
+-.luma-surface-light .luma-status-cluster:hover,
+-.luma-surface-light .luma-status-cluster:active,
+-.luma-surface-dark .luma-status-cluster:hover,
+-.luma-surface-dark .luma-status-cluster:active,
+-.luma-surface-frost .luma-status-cluster:hover,
+-.luma-surface-frost .luma-status-cluster:active,
+-.luma-surface-glass .luma-status-cluster:hover,
+-.luma-surface-glass .luma-status-cluster:active { background-color: transparent; }
++
+ 
+ /* In separate mode the quick-settings/status actor is the island's material
+  * owner, not a child inside another material. Match those co-located roles so
+  * the material fill cannot be erased by generic panel-button/status rules. */
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-light {
+-  background-color: #f1f2f3; }
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-dark {
+-  background-color: #21252b; }
++
++
+ 
+ /* Connected mode owns one material on the outer Shelf surface. */
+ .luma-shelf-root.luma-shelf-connected > .luma-shelf-group >
+@@ -2670,8 +2645,7 @@
+ .luma-status-cluster .luma-status-date { color: rgba(231,233,232,0.62); font-weight: 500; }
+ .luma-status-cluster.luma-surface-light .luma-status-date { color: rgba(43,48,54,0.62); }
+ .luma-status-slot .system-status-icon { icon-size: 15px; }
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group > .luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-light { background-color: #eceef1; }
++
+ .luma-shelf-dock-scroll { min-height: 40px; }
+ .luma-shelf-apps-divider { background-color: rgba(255,255,255,0.22); margin: 0 8px; }
+ .luma-surface-light .luma-shelf-apps-divider { background-color: rgba(30,34,39,0.22); }
+@@ -3011,9 +2985,6 @@
+  * saturation 1.4, lumaSurfaceMaterials.js). Light and Dark alike: Frost always
+  * carries dark ink. Pop-overs take the denser pop glass. */
+ .luma-shelf-material.luma-surface-smoke,
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-smoke,
+ .dash-label.luma-surface-smoke,
+ .luma-dock-preview.luma-surface-smoke,
+ .luma-dockf-surface.luma-surface-smoke {

@@ -1,0 +1,35 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: Keep standalone calendar island active while its menu is open
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -2448,6 +2448,21 @@
+ 
+     // The Well and the clock in islands of their own when they are not
+     // fused into Quick Options.
++    _bindCalendarState() {
++        const button = this._clockButton;
++        if (!button || button._lumaCalendarStateBound) return;
++        button._lumaCalendarStateBound = true;
++        const calendar = Main.panel.statusArea.dateMenu.menu;
++        const sync = () => {
++            if (calendar.isOpen && calendar.sourceActor === button)
++                button.add_style_pseudo_class('checked');
++            else
++                button.remove_style_pseudo_class('checked');
++        };
++        calendar.connectObject('open-state-changed', sync, button);
++        sync();
++    }
++
+     _syncStandaloneParts() {
+         const quick = this._actionsMaterial;
+         const wellAlone = !this._actionsParts.includes('well');
+@@ -2488,6 +2503,7 @@
+                     calendar.sourceActor = this._clockButton;
+                     calendar.toggle();
+                 });
++                this._bindCalendarState();
+                 this._clockIsland = new ShelfIsland('luma-shelf-clock-island', this._clockButton);
+                 this._registerIsland('clock', this._clockIsland);
+                 this._clockIsland.setBody(this._clockButton);

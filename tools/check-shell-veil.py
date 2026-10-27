@@ -46,9 +46,6 @@ MARKER = "The glass veil: the one definition."
 # Every surface the one rule must paint, per treatment. {t} is the treatment.
 SURFACES = (
     ".luma-shelf-material.luma-surface-{t}",
-    ".luma-shelf-root.luma-shelf-separate > .luma-shelf-group > "
-    ".luma-shelf-actions-island > "
-    ".luma-shelf-material.luma-status-cluster.luma-surface-{t}",
     ".popup-menu.luma-surface-{t} .popup-menu-content",
     ".popup-menu.luma-surface-{t} .popup-menu-content.luma-quick-options",
     ".dash-label.luma-surface-{t}",
@@ -131,9 +128,17 @@ def check(sheets, tokens, require_exclusive=True):
                 name, line, selectors, decls = rule
                 if rule in defining:
                     continue
-                if required & set(selectors) and (
+                # Status clusters inherit the common material rule. A more
+                # specific status selector must not introduce a second veil.
+                covered = required & set(selectors)
+                for selector in selectors:
+                    compound = re.split(r"[\s>+~]+", selector)[-1]
+                    classes = set(re.findall(r"\.([\w-]+)", compound))
+                    if {"luma-shelf-material", f"luma-surface-{t}"} <= classes:
+                        covered.add(selector)
+                if covered and (
                         "background-color" in decls or "background" in decls):
-                    hit = sorted(required & set(selectors))[0]
+                    hit = sorted(covered)[0]
                     failures.append(
                         f"{name}:{line}: a second rule paints {hit}; "
                         "the veil is stated once")
@@ -199,6 +204,15 @@ def self_test() -> int:
          [("a.css", good_sheet() +
            ".popup-menu.luma-surface-frost .popup-menu-content { background: #fff; }\n")],
          False),
+        ("a specific status cluster overriding the common material",
+         [("a.css", good_sheet() +
+           ".luma-shelf-actions-island > "
+           ".luma-shelf-material.luma-status-cluster.luma-surface-glass "
+           "{ background-color: red; }\n")], False),
+        ("a control inside a material can paint its own background",
+         [("a.css", good_sheet() +
+           ".luma-shelf-material.luma-surface-glass .button "
+           "{ background-color: red; }\n")], True),
         ("the shared rule no longer naming Quick Options",
          [("a.css", good_sheet(
              drop=".popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options"))],

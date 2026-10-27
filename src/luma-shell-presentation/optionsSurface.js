@@ -70,16 +70,19 @@ export class OptionsSurface {
         const core = [indicators._doNotDisturb, indicators._nightLight, indicators._powerProfiles, indicators._darkMode]
             .map(indicator => indicator.quickSettingsItems[0]);
         core[2].iconName = 'lumaui-leaf-symbolic';
-        for (const item of core) {
+        const primarySlots = core.map(item => {
             const slot = new St.Bin({x_expand: true});first.add_child(slot);
             item.get_parent()?.remove_child(item);slot.set_child(item);roundControl(item);
-        }
+            return slot;
+        });
+        this._compactToggleRow(first, primarySlots);
         const second = row();
-        // A late Tiling provider fills its own existing slot. Other slots never
-        // jump when an extension loads, unloads or is disabled.
+        // Keep provider slots stable while packing visible controls to the left.
+        // Any unused cells belong at the trailing edge of the row.
         this._secondarySlots = Array.from({length: 4}, () => {
             const slot = new St.Bin({x_expand: true});second.add_child(slot);return slot;
         });
+        this._compactToggleRow(second, this._secondarySlots);
         for (const [item, index] of [[indicators._rfkill.quickSettingsItems[0], 0],
             [indicators._cast.quickSettingsItems[0], 2]]) this._put(item, index);
         indicators._cast.quickSettingsItems[0].title = _('Cast Screen');
@@ -122,6 +125,35 @@ export class OptionsSurface {
         };
         menu.box.connect('style-changed', updateLevels);
         updateLevels();
+    }
+
+    _compactToggleRow(row, slots) {
+        const spacers = Array.from({length: 4}, () => {
+            const spacer = new St.Bin({x_expand: true, reactive: false});
+            row.add_child(spacer);
+            return spacer;
+        });
+        const sync = () => {
+            let count = 0;
+            for (const slot of slots) {
+                slot.visible = !!slot.get_child()?.visible;
+                if (slot.visible) count++;
+            }
+            spacers.forEach((spacer, index) => { spacer.visible = index < 4 - count; });
+        };
+        for (const slot of slots) {
+            const observe = () => {
+                const child = slot.get_child();
+                if (child && child !== slot._lumaObservedToggle) {
+                    slot._lumaObservedToggle = child;
+                    child.connectObject('notify::visible', sync, row);
+                }
+                sync();
+            };
+            slot.connectObject('notify::child', observe, row);
+            observe();
+        }
+        sync();
     }
 
     _fillLevel(item) {
