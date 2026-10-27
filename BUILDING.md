@@ -142,6 +142,24 @@ The preflight fails if reflinks or reader traversal are unavailable; it never
 falls back to an unbudgeted full copy or widens ancestor permissions. This is
 a DAC preflight, not a substitute for the normal libvirt/SELinux boot check.
 
+
+For targeted qualification that reuses an installed VM, account absence alone
+is not a valid first-run fixture. Prefer a fresh no-account installation. If a
+reviewed check deliberately rearms an explicitly disposable synthetic-person
+fixture, first retain its original configuration, account inventory and reset
+receipt. Stop its own user services, wait for its UID processes to exit, and
+check account-removal exit status. Inspect the installed distro's actual GDM
+conditions, including AccountsService, initial-setup session availability,
+GDM configuration/runtime markers and kernel overrides. Fedora additionally
+honors `/etc/sysconfig/anaconda` → `[General] post_install_tools_disabled`;
+a true value suppresses setup even with `InitialSetupEnable=true` and no users.
+Preserve that file before changing only this fixture flag when rearming is
+explicitly intended; retain unrelated keys and restore the normal GDM configuration.
+Never apply this reset to product images, customer installations or another
+job's VM. Require the real `gnome-initial-setup` greeter and healthy first boot
+afterward; neither deleting accounts nor toggling a flag is a passing result.
+There is no general-purpose account/first-run reset command in this workflow.
+
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
 ## Desktop architectures
