@@ -9,6 +9,7 @@ import sys
 
 base = Path(__file__).resolve().parent
 os.environ.update({
+    'LUMA_APP_NAME': 'Try Luma',
     'LUMA_TESTER_EXECUTABLE': os.environ.get('APPIMAGE', str(base / 'Try Luma')),
     'GI_TYPELIB_PATH': str(base / 'usr/lib64/girepository-1.0'),
     'GSETTINGS_SCHEMA_DIR': str(base / 'usr/share/glib-2.0/schemas'),

@@ -53,7 +53,7 @@ def launch(state=None):
             self.log = None
             self.busy = False
             self.intent = 'try'
-            self.target = 'mobile'
+            self.target = 'desktop'
             self.project = None
             self.closing = False
             self.settings = vm.load(data_root(state))
@@ -73,8 +73,6 @@ def launch(state=None):
                     self.catalog_targets.add(read_manifest(path)['target'])
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
-            if 'desktop' in self.catalog_targets:
-                self.target = 'desktop'
             self.catalog_targets.update(('tv','smart-device','tablet'))
             self.advanced = None
             self.viewer = None
@@ -458,9 +456,8 @@ def launch(state=None):
                 missing=(f'Choose a Luma {title} image in Images.' if architecture!='auto' else
                     'Add an ARM64 ISO or developer image.' if self.target in ('tv','smart-device') else f'Add a Luma {title} image.')
                 installer=bool(selected and read_manifest(selected).get('media')=='iso')
-                self.status_label.set_label('Installation media. Start the installer, or choose a ready-to-run image.' if installer else
-                    'Choose an image, then start exploring.' if selected else missing)
-                self.run_button.set_sensitive(bool(selected))
+                self.status_label.set_label('Ready to start.' if selected else 'Start to download Luma and open your workspace.')
+                self.run_button.set_sensitive(self.target not in experiences.COMING_SOON)
 
             self.refresh_preset_rows()
 
@@ -482,7 +479,9 @@ def launch(state=None):
                     seen.add(identity)
                     architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
                     session=Session(path,state)
-                    status=('Installer ISO · '+('Downloaded' if self.image_available(path) else 'Download')
+                    from . import provision
+                    status=('Workspace ready' if provision.ready(session) else
+                        'ISO · '+('Downloaded' if self.image_available(path) else 'Download')
                         if image.get('media')=='iso' else
                         'Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download')
                     local.append(Command('image.local.'+str(len(local)),image.get('build') or image['id'],
@@ -499,11 +498,11 @@ def launch(state=None):
                 kind=item.get('kind');entries=commands[kind]
                 downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if kind=='tester_image' else '.iso'))).is_file()
                 detail=('ARM64 · ' if item['arch']=='aarch64' else 'x86-64 · ')
-                detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else 'Installer ISO · ')
+                detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else '')
                 detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
                 entries.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
-            for kind,title in (('tester_image','Ready to try'),('os_image','Installation media')):
+            for kind,title in (('tester_image','Ready to try'),('os_image','Luma images')):
                 entries=commands[kind]
                 if not entries:continue
                 groups.append(CommandGroup(title,tuple(entries)))
@@ -699,6 +698,12 @@ def launch(state=None):
             def wait_for_graphics():
                 import time
                 try:
+                    from . import provision
+                    if provision.ready(session):
+                        session.wait_graphical(240)
+                        vm.configure_guest(session,vm.load(session.root))
+                        GLib.idle_add(self.reveal_display,session)
+                        return
                     if not session.manifest['cloud_init']:
                         deadline=time.monotonic()+60
                         while time.monotonic()<deadline and self.running():
@@ -808,7 +813,7 @@ def launch(state=None):
                 return
             path = self.select_image()
             if path is None:
-                self.status_label.set_label('Add a Luma image to start this experience.')
+                self.start_recommended()
                 return
             try:
                 self.session = Session(path, state)
@@ -897,6 +902,14 @@ def launch(state=None):
                     and time.monotonic() - self.transfer_updated >= 5):
                 self.status_label.set_label(self.transfer_progress.message + ' · Waiting for data…')
             running = self.running()
+            if self.child and self.child.poll() is None and not running and self.session:
+                try:
+                    setup=json.loads((self.session.directory/'setup.json').read_text())
+                    if setup.get('phase')=='preparing':
+                        self.status_label.set_label(setup['message'])
+                        self.spinner.set_visible(True);self.spinner.start()
+                        self.progress.set_visible(True);self.progress.pulse()
+                except (OSError,ValueError,KeyError,TypeError):pass
             if self.child and self.child.poll() is not None:
                 code = self.child.returncode
                 self.child = None
@@ -925,11 +938,11 @@ def launch(state=None):
             if self.pending_snapshot and not self.active():
                 name=self.pending_snapshot;self.pending_snapshot=None;self.create_snapshot(name)
             active = self.active()
-            self.run_button.set_sensitive(not active and self.select_image() is not None)
+            self.run_button.set_sensitive(not active and self.target not in experiences.COMING_SOON)
             selected = self.select_image()
             emulated = bool(selected and read_manifest(selected)['arch'] != host_arch())
             installer=bool(selected and read_manifest(selected).get('media')=='iso')
-            action='Start Installer' if installer else 'Start'
+            action='Start'
             self.words(self.run_button, action+' with Emulation' if emulated else action)
             self.run_button.set_visible(not active)
             self.pause_button.set_visible(running)
@@ -1183,9 +1196,10 @@ def launch(state=None):
             return False
 
         def managed_guest(self):
-            if self.running():return self.session.manifest['cloud_init']
+            from . import provision
+            if self.running():return self.session.manifest['cloud_init'] or provision.ready(self.session)
             path=self.select_image()
-            return not path or read_manifest(path)['cloud_init']
+            return not path or read_manifest(path)['cloud_init'] or provision.ready(Session(path,state))
 
         def refresh_ssh_details(self):
             self.ssh_details.set_visible(self.intent == 'develop' and self.settings['agent_ssh'])
@@ -1558,7 +1572,35 @@ def launch(state=None):
                 button.disconnect_by_func(self.library_menu_closed)
                 self.update_build_menu()
 
-        def download_image(self,artifact):
+        def start_recommended(self):
+            """Resolve approved media without sending a new user through menus."""
+            if self.active():return
+            target=self.target
+            architecture=self.architectures.get(target,'auto')
+            if architecture=='auto':architecture=experiences.preferred_arch(target,host_arch())
+            self.busy=True;self.stack.set_visible_child_name('session')
+            self.status_label.set_label('Finding the latest Luma image…')
+            self.spinner.set_visible(True);self.spinner.start();self.refresh()
+            def done(items,error):
+                self.busy=False
+                if self.closing:
+                    self.window.close();return False
+                if error:self.failed(error);return False
+                self.library_items=items
+                candidates=[item for item in items if item['arch']==architecture and image_library.supports(item,target)]
+                if not candidates:
+                    self.failed('No approved Luma image is available for '+architecture+'. Check your connection and try again.')
+                else:self.download_image(candidates[0],autostart=True)
+                return False
+            def worker():
+                try:items=image_library.refresh(data_root(state));error=None
+                except Exception as exc:
+                    items=image_library.cached(data_root(state))
+                    error=None if items else 'Couldn’t reach Luma downloads. Check your connection and try Start again.'
+                GLib.idle_add(done,items,error)
+            threading.Thread(target=worker,daemon=True).start()
+
+        def download_image(self,artifact,autostart=False):
             if self.active():return
             if not image_library.listed(artifact,data_root(state)):
                 self.notify('This image is no longer in the approved catalog.')
@@ -1579,7 +1621,9 @@ def launch(state=None):
                 self.spinner.stop()
                 self.spinner.set_visible(False)
                 if error:self.failed(error)
-                else:self.add_manifest(path)
+                else:
+                    self.add_manifest(path)
+                    if autostart and not self.closing:self.start()
                 return False
             def worker():
                 try:
@@ -1670,6 +1714,10 @@ def launch(state=None):
                 self.stack.set_visible_child_name('session')
                 if self.running() and not self.shutting_down:
                     self.stop()
+                elif self.child and self.child.poll() is None:
+                    # File cancellation also works on Windows, where killing
+                    # the supervisor would leave its setup QEMU running.
+                    (self.session.directory/'setup-cancel').touch()
                 return True
             if self.advanced:
                 self.advanced.close()

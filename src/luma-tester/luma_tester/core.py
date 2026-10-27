@@ -134,8 +134,12 @@ class Session:
         self.qmp_path = self.runtime / 'qmp'
         self.display_path = self.runtime / 'display'
         self.base = self.root / 'images' / (self.manifest['image']['sha256'] + ('.iso' if self.manifest.get('media') == 'iso' else '.qcow2'))
-        self.disk = self.directory / 'disk.qcow2'
         self.key = self.directory / 'developer-key'
+
+    @property
+    def disk(self):
+        from . import provision
+        return self.directory / ('workspace.qcow2' if provision.ready(self) else 'disk.qcow2')
 
     @contextlib.contextmanager
     def lock(self):
@@ -153,6 +157,11 @@ class Session:
         if self.manifest['cloud_init']:
             required += ['ssh-keygen', 'ssh']
             if not host.windows():required += ['xorriso']
+        elif self.manifest.get('media')=='iso':
+            from . import provision
+            if provision.approved(self):
+                required += ['ssh-keygen','ssh']
+                if not host.windows():required += ['xorriso']
         return {x: shutil.which(x) for x in required}
 
     def prepare(self, report=print, progress=None):
@@ -331,9 +340,11 @@ class Session:
         return None
 
     def command(self, port=2228, memory=None, cpus=None, headless=False, firmware=None, software=False, embedded=False,
-                graphics=None, render_node=None, experience=None):
+                graphics=None, render_node=None, experience=None, provisioning=False, disk_path=None):
         from . import vm
         from . import experiences
+        from . import provision
+        installed = not provisioning and provision.ready(self)
         experience = experience or self.manifest['target']
         if not experiences.compatible(experience,self.manifest):
             raise TesterError('This image cannot boot the selected experience.')
@@ -389,15 +400,15 @@ class Session:
                 self.windows_display = dict(port=host.free_port(), password=secrets.token_hex(4))
                 argv += ['-vnc', '127.0.0.1:'+str(self.windows_display['port']-5900)+',password=on', '-S']
             else:argv += ['-vnc', 'unix:' + str(self.display_path)]
-        disks=[('os',self.disk,'qcow2',False)]
+        disks=[('os',disk_path or (self.directory/'workspace.qcow2' if installed else self.disk),'qcow2',False)]
         if self.manifest['cloud_init']:
             disks.append(('seed',self.directory/'seed.iso','raw',True))
         for name, path, fmt, readonly in disks:
             block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
                      'file': {'driver': 'file', 'filename': str(path)}}
-            boot=(',bootindex='+('2' if settings['boot_iso'] else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
+            boot=(',bootindex='+('2' if settings['boot_iso'] and not installed else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
             argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}'+boot]
-        if self.manifest.get('media') == 'iso':
+        if self.manifest.get('media') == 'iso' and not installed:
             block={'driver':'raw','node-name':'installer','read-only':True,'file':{'driver':'file','filename':str(self.base)}}
             argv += ['-blockdev',json.dumps(block),'-device','virtio-scsi-pci,id=scsi','-device','scsi-cd,drive=installer,bootindex='+('1' if settings['boot_iso'] else '2')]
         bios = self.firmware(firmware)
@@ -442,7 +453,12 @@ class Session:
             raise TesterError('This launcher supports Linux, macOS and Windows hosts.')
         with self.lock() as lease:
             self.experience=options.get('experience') or self.manifest['target']
+            (self.directory/'setup-cancel').unlink(missing_ok=True)
             self._prepare(print)
+            from . import provision, vm
+            provision.check_cancel(self)
+            if provision.approved(self) and vm.load(self.root)['boot_iso']:
+                provision.prepare(self, lease, options)
             command = self.command(**options)
             self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
             (self.directory/'experience.json').write_text(json.dumps({'experience':options.get('experience') or self.manifest['target'],'arch':self.manifest['arch']})+'\n')
@@ -563,7 +579,8 @@ class Session:
             'org.project_luma.Tester1.ShowHome']), stdout=subprocess.DEVNULL, timeout=15)
 
     def shutdown(self):
-        if not self.manifest['cloud_init']:
+        from . import provision
+        if not self.manifest['cloud_init'] and not provision.ready(self):
             if self.status() in ('paused','prelaunch'):self.qmp('cont')
             self.qmp('system_powerdown')
             return
@@ -644,6 +661,22 @@ class Session:
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
         deadline = time.monotonic() + timeout
+        from . import provision
+        if provision.ready(self):
+            check = """import os, subprocess
+uid=str(os.getuid())
+display=subprocess.check_output(['loginctl','show-user',uid,'-p','Display','--value'],text=True).strip()
+assert display, 'Graphical login is not ready'
+properties=dict(line.split('=',1) for line in subprocess.check_output(
+    ['loginctl','show-session',display,'-p','Type','-p','Class','-p','Active'],text=True).splitlines())
+assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' and properties['Active']=='yes', properties
+assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
+"""
+            while time.monotonic()<deadline:
+                if subprocess.call(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)==0:
+                    return
+                time.sleep(2)
+            raise TesterError('The Luma desktop did not finish signing in. Inspect console.log.')
         check = """import json, os
 from pathlib import Path
 runtime = Path(os.environ['XDG_RUNTIME_DIR'])

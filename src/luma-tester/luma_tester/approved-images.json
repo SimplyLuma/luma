@@ -1,5 +1,14 @@
 {
   "schema": 1,
-  "generation": 2,
-  "images": []
+  "generation": 3,
+  "images": [
+    {
+      "artifact_id": "os/nightly/20261027.4/x86_64",
+      "sha256": "9eb954fc858cd3e801f395399e0c833e29791c25eb31de03de05cd9800f24604"
+    },
+    {
+      "artifact_id": "os/nightly/20261027.1/aarch64",
+      "sha256": "c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8"
+    }
+  ]
 }

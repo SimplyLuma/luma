@@ -38,7 +38,7 @@ def main():
         app_dir=str(repo/'src/luma-tester'),repo_root=str(repo),kit_dir=str(repo/'src/luma-platform/appkit/luma_appkit'),
         packages=['luma_tester'],extra_typelibs=['GVnc-1.0'],native_helpers={name:str(brew/'bin'/name) for name in required},
         resource_paths={'firmware':str(firmware),'share/qemu':str(brew/'share/qemu')},
-        icon=str(repo/'src/luma-tester/luma_tester/io.luma.Tester.svg'),env={'LUMA_PLATFORM':'macos'})
+        icon=str(repo/'src/luma-tester/luma_tester/io.luma.Tester.svg'),env={'LUMA_PLATFORM':'macos','LUMA_APP_NAME':'Try Luma'})
     file=out/'manifest.json';file.write_text(json.dumps(manifest,indent=2)+'\n')
     backend=repo/'tools/luma-port/mac/build'
     env=dict(os.environ,LUMA_PORT_NO_DMG='1',LUMA_BUILD_JOBS='2')
