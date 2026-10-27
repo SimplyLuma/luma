@@ -8,7 +8,8 @@ from .__main__ import main
 
 def launch():
     root = Path(__file__).resolve().parents[2]
-    os.environ['PATH'] = str(root/'helpers/openssh')+os.pathsep+str(root/'bin')+os.pathsep+os.environ.get('PATH','')
+    paths = (root/'helpers/openssh', root/'helpers/qemu', root/'bin')
+    os.environ['PATH'] = os.pathsep.join(map(str, paths))+os.pathsep+os.environ.get('PATH','')
     os.environ['LUMA_TESTER_FIRMWARE_DIR'] = str(root/'firmware')
     os.environ['LUMA_TESTER_QEMU_DATA_DIR'] = str(root/'share/qemu')
     if not sys.argv[1:]:sys.argv.append('gui')

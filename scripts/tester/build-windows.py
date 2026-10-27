@@ -15,6 +15,15 @@ import sys
 import zipfile
 
 
+def add_missing_tree(source, destination):
+    """Add a new runtime component without replacing the qualified UI closure."""
+    for path in source.rglob('*'):
+        target = destination / path.relative_to(source)
+        if path.is_file() and not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime',type=Path,required=True)
@@ -36,14 +45,21 @@ def main():
     shutil.copytree(args.runtime/'app/luma_appkit',root/'app/luma_appkit')
     # Executables in bin were deliberately excluded above; restore required Python/tools.
     for path in (args.runtime/'bin').glob('*.exe'):shutil.copy2(path,root/'bin'/path.name)
-    for path in (args.qemu_prefix/'bin').glob('*.dll'):shutil.copy2(path,root/'bin'/path.name)
+    # Windows resolves dependencies beside the executable first. Keep QEMU's
+    # complete DLL closure beside its tools; never replace GTK/Python's DLLs.
+    qemu=root/'helpers/qemu';qemu.mkdir(parents=True)
+    for path in (args.qemu_prefix/'bin').glob('*.dll'):
+        shutil.copy2(path,qemu/path.name)
+        if not (root/'bin'/path.name).exists():shutil.copy2(path,root/'bin'/path.name)
     if args.native_kit:
         for path in args.native_kit.rglob('libluma-*.dll'):shutil.copy2(path,root/'bin'/path.name)
     for name in ('qemu-img','qemu-system-x86_64','qemu-system-aarch64'):
-        shutil.copy2(args.qemu_prefix/('bin/'+name+'.exe'),root/('bin/'+name+'.exe'))
-    for relative in ('lib/girepository-1.0','lib/gio/modules','share/qemu','share/licenses'):
+        shutil.copy2(args.qemu_prefix/('bin/'+name+'.exe'),qemu/(name+'.exe'))
+    for relative in ('lib/girepository-1.0','lib/gio/modules','share/licenses'):
         source=args.qemu_prefix/relative
-        if source.exists():shutil.copytree(source,root/relative,dirs_exist_ok=True)
+        if source.exists():add_missing_tree(source,root/relative)
+    shutil.copytree(args.qemu_prefix/'share/qemu',root/'share/qemu',dirs_exist_ok=True)
+    shutil.copytree(args.qemu_prefix/'share/licenses',qemu/'licenses')
     if args.typelibs:
         for path in args.typelibs.glob('Luma*.typelib'):shutil.copy2(path,root/'lib/girepository-1.0'/path.name)
     schemas=root/'share/glib-2.0/schemas'
@@ -66,7 +82,7 @@ def main():
     launcher=next(args.runtime.glob('*.exe'));shutil.copy2(launcher,root/'Luma Tester.exe')
     command='''@echo off
 setlocal
-set "PATH=%~dp0helpers\\openssh;%~dp0bin;%SystemRoot%\\System32;%SystemRoot%"
+set "PATH=%~dp0helpers\\openssh;%~dp0helpers\\qemu;%~dp0bin;%SystemRoot%\\System32;%SystemRoot%"
 set "PYTHONHOME=%~dp0"
 set "PYTHONPATH=%~dp0app"
 set "PYTHONNOUSERSITE=1"
