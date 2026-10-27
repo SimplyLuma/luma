@@ -1563,3 +1563,33 @@ used that source without altering shared refs or unrelated worktrees.
   only generated app/work/inputs staging; retained packages/receipts, r1 native
   kit cache, r7/r8 and installed user app/VMs. Free space9,965,572,096bytes.
   Starting native0.7.2 r9 dark-only build from committed source; outcome pending.
+
+## 2026-10-27 native Mac0.7.2 delivery and Windows runtime separation
+
+- Macr9 build83943823 PASS, source6b944673d. DMG SHA256
+  9d5a9ccab4e482f719c9671ee5f87f9abdffbe86194d1d93201a54adcc47f06c.
+  Native qualification3547f3d7 PASS: fixed dark, real catalog for all6
+  Desktop/Tablet/Mobile x86/ARM combinations, ARM HVF and x86 TCG firmware-only
+  starts plus live snapshots with unchanged QEMU PID and paused-state retention.
+  No additional full OS boot claim. Evidence tester-mac-r9/qualification.json.
+- Mac mounted-DMG delivery93be70f5 PASS: every receipt file hash/size, deep strict
+  signatures and CLI version checked. Installed /Users/nick/Applications/Luma
+  Tester.app0.7.2 and OPEN; new DMG in Downloads. Known0.7.1 preserved under
+  tester-mac-r9/previous; no user guest or app data touched. Minimum macOS27.0,
+  ad-hoc signed, NOT notarized or publicly published. Delivery.json retained.
+- Windows source59464fe6a separates QEMU's DLL closure into helpers/qemu; adds
+  missing GVnc components without replacing qualified UI DLLs/typelibs/modules.
+  Windowsr3 build82f466c2 PASS,255MiB unsigned ZIP, SHA256
+  ed19b7c1a53d2f4832f44906851bb6045fb913c60e8a28b3ad3f1101cf41e5ec.
+  Native qualification still pending. This package supersedes r2 for testing.
+- Windows fixture r5 stopped15:36UTC after ACPI did not finish. r6 admitted6GiB
+  with4GiB guest and clock/Hyper-V CPU optimizations from original XML; original
+  VM remains off/unmodified. Root luma-tester-win-25e0dc5492, outer
+  dev-tester-windows-vm-r6-2d65bab3, deadline about15:54UTC. HTTP r3b
+  dev-tester-windows-http-r3b-e4d40bd0 bounded600sec from15:47.
+- Important fixture correction: quser Active does NOT mean unlocked.15:47
+  screenshot showed locked console; prior UI Run command went into masked login
+  field and did not run. Explicit unlock d708954c followed by desktop screenshot
+  proved unlocked at15:49; no credential output. SSH banner timeouts persist;
+  using an interactive Run setup to SHA-check/extract r3 and open its exact EXE.
+  Do not call Windows visible GUI or backend snapshots passed until verified.
