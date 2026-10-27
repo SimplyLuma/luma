@@ -1899,3 +1899,21 @@ branding-play-final-20261027:Mac ICNS+Retinaiconset,full Windows ICO,Linux
 hicolorSVG/PNGs,Try-Luma-icon.zip,alignment.json and darkpreview. SVG2+canonical
 mark complete silhouette area centroid512,512 including11px depth. Diffcheck
 clean; source rename's earlier110 tests unchanged (no redundant icon-only rerun).
+
+2026-10-27 19:28 UTC: actual ISO boot checks BOTH completed. x86 normal
+eea3b297 PASS, maintained interactive installer UEFI test took129.86s and three
+stable screenshots ui6/7/8 allSHA02f15f55d03ad61cdecadac18e6408423610815592a2c1c614b9a1bfadfb1ed5.
+Visually inspected ui6: actual language/keyboard/Continue page, no error screen.
+Own ARM r10 body exactSHA9fd8... transferred and digest-verified on M4, bundled
+QEMU/HVF3072MiB2CPU boot, normalf4cf0b5b PASS19:28:05 after five30/60/120/180/240s
+captures and ownVM cleanup. Visually inspected120s: same genuine installer UI.
+First30s display was inactive during startup, not classified as a bootfailure.
+Readable PNGs and actual visual-review receipt in account artifacts:
+try-luma-iso-boot-visual-review-20261027.json. Original rootBOOTED receipts retained
+in bulk/x86-iso-boot-20261027-r3 and bulk/arm-iso-native-boot-20261027-r1.
+This is installer-only validation; no full install repeated. Upstream adopted
+ARM r4 uses SHA c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8,
+same ECCd source/adf payload but DIFFERENT ISO bytes. Own ARM boot result MUST
+NOT be relabeled as canonical r4 exact-body validation. Hub catalog queried
+19:27 still serves previous26 images; curated channel stays empty until final
+public qualified exact ID+SHA pair. Publication is separate from built/booted.
