@@ -228,3 +228,24 @@ update qualification; signing alone does not authorize publication.
 
 The Prairie icon theme produces a noarch RPM on either native Fedora builder.
 Build it once and reuse the same RPM for both desktop architectures.
+
+### Public URLs and physical origin storage
+
+The root-only mode0600 `dl-origin.env` must describe the origin's actual public
+repository mapping. `DL_PUBLIC_REPO_DEST` defaults to `os/repo`. If the configured
+origin serves the public `/os/repo` URLs from physical `os/preview-repo`, set
+`DL_PUBLIC_REPO_DEST=os/preview-repo` in that protected environment. The logical
+client URL remains `/os/repo`, and publication still checks the served bytes
+through that URL. Record the verified mapping before publishing.
+
+`DL_PUBLIC_REPO_LINK_DEST=/os/repo` optionally reuses existing immutable origin
+objects when that reference tree is available. It applies only to the object
+transfer; refs, release metadata, summary and signatures retain their normal
+publication order. Keep the complete existing environment and credential values
+when adding these routing fields.
+
+When the public destination is physical `os/preview-repo`, publish it with
+`--only repo --only graph --only keys`. A single sync containing both `repo` and
+`preview` is deliberately rejected before uploading: two different source
+repositories cannot share one destination. Architecture, device and legacy
+graph files are each verified at their actual relative public paths.
