@@ -1,8 +1,8 @@
 # Tester image delivery and application updates
 
-Release preparation decision, October 27, 2026. This is a proposed delivery
-contract; it does not assert that the Hub has published these artifacts or that
-automatic app updates are implemented.
+Release preparation contract, October 27, 2026. Tester0.7.3 source implements
+curated image discovery and app-update download prompts. Release artifacts,
+native package signing and the signed public app index remain separate gates.
 
 ## Two OS images
 
@@ -24,6 +24,13 @@ Use the same artifact IDs and bodies as the website, such as
 field distinguishes Tester downloads from website downloads. Do not duplicate
 the bodies merely to count downloads. Every catalog item must provide its exact
 size, SHA-256, architecture, channel, version and immutable download URL.
+
+The curated policy lives in
+[SimplyLuma/try](https://github.com/SimplyLuma/try/blob/main/channels/images.json).
+It explicitly pins an artifact ID and SHA256 for each approved architecture.
+Increasing its generation replaces the pair without rebuilding Tester. Old
+catalog entries and an Older Builds submenu are excluded. The initially empty
+policy prevents advertising unfinished or superseded build IDs.
 
 An installer ISO remains installation media. The catalog must not call it an
 instant desktop, and a phone image is not an alternative generic boot image.

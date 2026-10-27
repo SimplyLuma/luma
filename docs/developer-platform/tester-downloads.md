@@ -60,9 +60,23 @@ use the same implementation. The release index must be published and signed by
 the authorized integrator before these artifacts exist. Downloading an update
 does not replace the running executable or migrate workspaces.
 
-Automatic update checks, native update prompts, ISO installation and a published
-ready-to-run developer-disk feed are not implemented by this integration.
-The existing offline/sidecar previews remain usable without Hub access.
+Tester0.7.3 adds a bounded background app-update check and Check for Updates
+in the app menu. Newer host-compatible packages offer Download/Later outside
+active VM operations. The normal downloader stages and verifies the package,
+then reveals it for installation; it does not execute or replace the app.
+Native package signing and the signed public release index remain publication
+requirements.
+
+Installation media is curated separately through
+`https://raw.githubusercontent.com/SimplyLuma/try/main/channels/images.json`.
+Only the approved artifact ID AND SHA256 are offered, with at most one ISO per
+architecture. Higher policy generations replace the offered pair; dates and
+the Hub's historical ordering never grant approval. Offline startup retains the
+last valid policy, and existing local workspaces remain usable. The initial
+policy is empty until the two current images pass validation and are published.
+
+Automatic ISO installation and a public ready-to-run developer-disk feed are
+not implemented. Existing offline/sidecar previews remain usable without Hub access.
 
 ## Validation
 

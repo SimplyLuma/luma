@@ -1,7 +1,7 @@
 # Luma Tester — Linux first
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: current-source x86/ARM ISO assembly queued on signed exports; media preflight passed. Linux/Mac0.7.2 locally qualified; Windowsr3 native qualification pending.
+- Status: Tester0.7.3 source update/curated-image flows validated; current-source ISO assembly waits on producer exports. Old own SSD preview relocation active. Public release remains unqualified.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -1660,3 +1660,44 @@ used that source without altering shared refs or unrelated worktrees.
   inspected through API: commits after PR77 concern origin delivery/graph
   metadata. PR76 is desktop touch scrolling/Shell state; PR78 is Wi-Fi artwork.
   Main remains older; no unreviewed installer delta selected.
+
+## 2026-10-27 curated images, updates and Try repository
+
+- User approved proceeding, explicitly requested Installation media contain only
+  the new approved CPU pair, and created SimplyLuma/try for cross-platform apps.
+  Added Tester0.7.3 app-update checks/download prompts and exact ISO curation.
+  updates.py selects by HOST OS/CPU, stages through the existing verified resumable
+  downloader, reveals a package and never executes/replaces it. GUI defers the
+  offer while active, remembers offered versions, and permits a manual recheck.
+- image_approval.py consumes the owner-controlled HTTPS Try channel with exact
+  artifact ID/SHA256, max one per architecture, monotonic generations and cached
+  offline fallback. Old catalog rows are filtered at load, refresh and render;
+  Older Builds removed. Local imports/workspaces are preserved. Embedded and
+  public generation2 intentionally EMPTY until actual final IDs/digests qualify;
+  reserved20261027.2 was superseded by retry4, so do not approve stale reservations.
+- SimplyLuma/try main c09b08f initialized/pushed with README and channels contract.
+  Source remains converged in OS; Try houses release assets/control metadata.
+  New own worktree /srv/dev/worktrees/luma-try/codex-release-home-20261027, task
+  codex-release-home-20261027 registered. No packages, signing keys or private
+  evidence uploaded. Its task file is ignored. Public image channel remains empty.
+- Final full unit job f84b34b4 PASS109. Focused channel af91988c PASS4 including
+  fresh higher-generation persistence, rollback rejection and origin rejection.
+  Final real LumaUI7efd5919 PASS: active deferral, once-per-version/manual recheck,
+  package staging/reveal without execution, existing snapshot preservation,
+  curated Installation media and absence of Older Builds. No real app update
+  downloaded because the signed app index is not published. GUI test uses a fixture.
+- Original x86 compose r3 failed its storage guard, not an image boot check.
+  Native ARM compose r2 succeeded; export r1 failed its40GiB storage preflight.
+  Current own assembly dev-tester-current-isos-r3-e3f32932 (bulk suffix-r3) scans
+  only completed signed exports for exact source eccd, selecting their actual
+  build IDs rather than stale reservations. No new ISO built/boot-qualified yet.
+- Own inactive /experiments/luma-tester-20261017 uses about18GB root SSD. Normal
+  relocation dab5e940 (2GiB/32GiB HDD) checks no mounts/active consumers, full SHA,
+  mode/owner/xattr/hardlink equality and source identity before preserving the
+  original path via symlink and retiring only the verified original. Private
+  receipts old-preview-storage-20261027-r1 on owned bulk. It is ACTIVE; never
+  claim space reclaimed until PASS.json exists. Other agents' data untouched.
+- Next: finish relocation, build0.7.3 packages from committed source, continue
+  actual ISO assembly/native boots, then pin only the two final approved bodies
+  in a higher Try channel generation. Native Windows qualification, Mac signing/
+  notarization and signed public app-index publication remain separate open gates.
