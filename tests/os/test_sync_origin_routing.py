@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import http.server
+import ssl
+import threading
+import shutil
 import os
 from pathlib import Path
 import subprocess
@@ -28,6 +32,7 @@ if name=='curl':
  if not path.is_file():sys.exit(22)
  output=sys.argv[sys.argv.index('--output')+1]
  if output!='/dev/null':pathlib.Path(output).write_bytes(path.read_bytes())
+ print('200')
 '''
   for name in ('rsync','curl','ostree'):
    p=bins/name;p.write_text(helper);p.chmod(0o755)
@@ -53,6 +58,39 @@ if name=='curl':
   for destination,link in [('os/other',''),('os/repo','/private'),('os/preview-repo','/outside')]:
    with self.subTest(destination=destination,link=link):
     result,calls=self.fixture(destination,link);self.assertEqual(result.returncode,2);self.assertEqual(calls,[])
+ @unittest.skipUnless(shutil.which('curl') and shutil.which('openssl'),'real HTTPS fixture needs curl and openssl')
+ def test_real_https_redirect_full_body_head_downgrade_and_virtual_host(self):
+  with tempfile.TemporaryDirectory() as directory:
+   root=Path(directory);key=root/'key.pem';cert=root/'cert.pem';calls=root/'curl-calls.jsonl';errors=root/'curl-errors.log'
+   subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1','-keyout',str(key),'-out',str(cert)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
+   class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self,*args):pass
+    def respond(self,head=False):
+     port=self.server.server_port
+     if self.path in ('/good','/bad','/downgrade'):
+      self.send_response(302)
+      suffix='/missing' if self.path=='/bad' else '/payload'
+      scheme='http' if self.path=='/downgrade' else 'https'
+      self.send_header('Location',f'{scheme}://localhost:{port}'+suffix);self.send_header('Content-Length','0');self.end_headers();return
+     if self.path=='/missing':self.send_response(404);self.send_header('Content-Length','0');self.end_headers();return
+     self.send_response(200);self.send_header('Content-Length',str(len(b'exact signed object body')));self.end_headers()
+     if not head:self.wfile.write(b'exact signed object body')
+    def do_GET(self):self.respond()
+    def do_HEAD(self):self.respond(True)
+   server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
+   context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(cert,key);server.socket=context.wrap_socket(server.socket,server_side=True)
+   thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+   try:
+    bins=root/'bin';bins.mkdir();wrapper=bins/'curl'
+    wrapper.write_text('#!/usr/bin/python3\nimport os,json,sys\nwith open(os.environ["CURL_CALLS"],"a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\nfd=os.open(os.environ["CURL_ERRORS"],os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600);os.dup2(fd,2)\nos.execv("/usr/bin/curl",["curl","--show-error","--noproxy","*","--cacert",os.environ["TEST_CA"],*sys.argv[1:]])\n');wrapper.chmod(0o755)
+    source=SCRIPT.read_text();block=source[source.index('request() {'):source.index('digest() {')]
+    env=os.environ|{'PATH':str(bins)+':'+os.environ['PATH'],'CURL_CALLS':str(calls),'CURL_ERRORS':str(errors),'TEST_CA':str(cert),'DL_HTTP_ORIGIN':f'https://127.0.0.1:{server.server_port}','DL_HOST_HEADER':f'localhost:{server.server_port}'}
+    target=root/'download';command=block+'\nfetch good "$1" && present good && ! present bad && ! fetch downgrade "$2"'
+    result=subprocess.run(['bash','-c',command,'https-fixture',str(target),str(root/'downgrade')],env=env,capture_output=True,text=True,timeout=20)
+    self.assertEqual(result.returncode,0,result.stderr+' CALLS '+(calls.read_text() if calls.exists() else 'NONE')+' ERRORS '+(errors.read_text() if errors.exists() else 'NONE'));self.assertEqual(target.read_bytes(),b'exact signed object body')
+    actual=[json.loads(line) for line in calls.read_text().splitlines()]
+    self.assertIn('-H',actual[0]);self.assertNotIn('-H',actual[1])
+   finally:server.shutdown();server.server_close();thread.join(timeout=3)
  def test_container_boundary_forwards_both_selected_routing_values(self):
   source=(ROOT/'scripts/os/sync-to-cdn.sh').read_text()
   block=source[source.index('    luma_os_tools env DL_RSYNC_DEST='):source.index('      <"$luma_os_repo_root/scripts/os/lib/sync-origin.sh"')]

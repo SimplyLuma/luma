@@ -127,16 +127,44 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failures=0
 fail() { log "$1"; failures=$((failures + 1)); }
-# fetch URL-PATH OUTPUT-FILE
-fetch() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --max-time 120 -H "Host: $DL_HOST_HEADER" --output "$2" 2>/dev/null
+# Follow only the reviewed HTTPS public object redirect contract. A direct-IP
+# origin needs its virtual Host on the first hop; never carry it to the CDN.
+request() {
+  local path=$1 output=$2 method=$3 url="$DL_HTTP_ORIGIN/$1" result status redirect authority hops=0
+  local headers=() options=()
+  local deadline=$((SECONDS + 120)) remaining
+  authority=${DL_HTTP_ORIGIN#*://}; authority=${authority%%/*}
+  [ "$authority" = "$DL_HOST_HEADER" ] || headers=(-H "Host: $DL_HOST_HEADER")
+  if [ "$method" = HEAD ]; then options=(--head); deadline=$((SECONDS + 60)); fi
+  while :; do
+    remaining=$((deadline - SECONDS)); [ "$remaining" -gt 0 ] || return 1
+    result=$(printf 'url = "%s"\n' "$url" |
+      curl --config - --fail --silent --max-time "$remaining" "${headers[@]}" "${options[@]}" \
+        --output "$output" --write-out '%{http_code}\n%{redirect_url}' 2>/dev/null) || return 1
+    status=${result%%$'\n'*}; redirect=${result#*$'\n'}
+    case "$status" in
+      2??) return 0 ;;
+      301|302|303|307|308) ;;
+      *) return 1 ;;
+    esac
+    hops=$((hops + 1)); [ "$hops" -le 3 ] || return 1
+    case "$redirect" in
+      *$'\n'*|*$'\r'*|*'"'*|*'\'*) return 1 ;;
+      https://*) ;;
+      *) return 1 ;;
+    esac
+    authority=${redirect#https://}; authority=${authority%%/*}
+    if [ "$authority" != "$DL_HOST_HEADER" ]; then
+      [ "$authority" = media.simplyluma.com ] || return 1
+      # Private preview credential paths must never cross to another host.
+      case "$path" in os/repo/objects/*|os/repo/deltas/*) ;; *) return 1 ;; esac
+    fi
+    url=$redirect; headers=()
+  done
 }
-# present URL-PATH: the origin answers 200 to HEAD
-present() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --head --max-time 60 -H "Host: $DL_HOST_HEADER" --output /dev/null 2>/dev/null
-}
+# Every URL stays on curl's standard input, including redirected URLs.
+fetch() { request "$1" "$2" GET; }
+present() { request "$1" /dev/null HEAD; }
 digest() { sha256sum <"$1" | cut -d' ' -f1; }
 # served URL-PATH LOCAL-FILE LABEL: the origin serves LOCAL-FILE byte for byte
 served() {
