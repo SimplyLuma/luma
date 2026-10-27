@@ -213,9 +213,10 @@ class Session:
             phase = 'copying' if urlparse(image['url']).scheme == 'file' else 'downloading'
             transfer.update('connecting', 0, force=True)
             # Unique temporary paths allow two different sessions to share this cache safely.
-            with tempfile.NamedTemporaryFile(dir=self.base.parent, delete=False) as output:
-                partial = Path(output.name)
-                try:
+            output = tempfile.NamedTemporaryFile(dir=self.base.parent, delete=False)
+            partial = Path(output.name)
+            try:
+                with output:
                     with build_opener(HTTPSRedirects).open(image['url'], timeout=30) as source:
                         if urlparse(image['url']).scheme == 'https' and urlparse(source.url).scheme != 'https':
                             raise TesterError('Refusing a download redirected away from HTTPS.')
@@ -232,16 +233,20 @@ class Session:
                             transfer.update(phase, count)
                     transfer.update(phase, count, force=True)
                     output.flush()
-                    transfer.update('verifying', count, force=True)
-                    if count != image['bytes'] or checksum.hexdigest() != image['sha256']:
-                        raise TesterError('Guest image size or SHA-256 mismatch.')
-                    self.validate_image(partial)
-                    partial.chmod(0o444)
-                    partial.replace(self.base)
-                    verified=True
-                    transfer.update('ready', count, force=True)
-                finally:
-                    partial.unlink(missing_ok=True)
+                # Windows cannot replace or remove a file while our writer is
+                # open. Close it before validation, promotion, or failure cleanup.
+                transfer.update('verifying', count, force=True)
+                if count != image['bytes'] or checksum.hexdigest() != image['sha256']:
+                    raise TesterError('Guest image size or SHA-256 mismatch.')
+                self.validate_image(partial)
+                partial.chmod(0o444)
+                partial.replace(self.base)
+                verified=True
+                transfer.update('ready', count, force=True)
+            finally:
+                if partial.exists():
+                    partial.chmod(0o600)
+                    partial.unlink()
         # Verify cached inputs too. Do not run a different image under a trusted build label.
         if self.base.stat().st_size != image['bytes'] or (not verified and transfer.digest(self.base) != image['sha256']):
             raise TesterError('Cached image changed; remove only that cache file and prepare again.')

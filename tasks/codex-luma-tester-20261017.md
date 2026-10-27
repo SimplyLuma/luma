@@ -2000,3 +2000,22 @@ and signed media metadata; Hub now exposes exact c0a68aeca... approved checksum.
 Public origin/readback still active at latest observation. x86 .4 publication
 and final website acceptance/channel generation3 remain pending; do not approve
 old x86 .9 or wrong ARM own-r10 body. No public app release PATCH yet.
+
+Final native Windows check exposed a real cross-platform image cache bug:
+core._prepare renamed/unlinked its NamedTemporaryFile while still open, which
+Windows rejects with WinError32 (actual launcher.log recovered in native-final-r11).
+Corrected writer lifecycle: exit with-block before hash validation/promotion,
+close before failure cleanup, clear read-only bit on a remaining owned temp file.
+Regression tests enforce Windows close-before-rename/unlink semantics using real
+files; corrected their initial invalid cloud_init fixture setup. Full112tests
+normal8b56562d PASS; firstfe5203e8 fixture errors retained. Native UI dark observed,
+but no Windows backend PASS until actual rerun with this correction.
+
+Own frozen x86 dispatcher515103e5 failed pre-publication predecessor comparison
+because earlier ARM origin metadata did not match its local canonical summary.
+No x86 ISO or OTA bytes were published by that attempt. All graph timers restored.
+ARM canonical ISO+signed media are genuinely public (Hub c0a68aeca...), while
+its subsequent OTA sync-origin13-check failure remains separately unqualified.
+Preparing legitimate MEDIA-ONLY publication for qualified x86 ISO using unchanged
+normal provenance manifest generator and frozen media prepare/signer/publisher;
+no OTA predecessor check removed and no OTA publication PASS fabricated.

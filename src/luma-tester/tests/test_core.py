@@ -320,6 +320,54 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(session.base.exists())
         self.assertFalse(session.disk.exists())
 
+    def test_image_writer_closes_before_cache_promotion(self):
+        session = self.fixture_disk()
+        opened = []
+        create = tempfile.NamedTemporaryFile
+        replace = Path.replace
+
+        def tracked_file(*args, **kwargs):
+            stream = create(*args, **kwargs)
+            opened.append(stream)
+            return stream
+
+        def windows_replace(path, destination):
+            self.assertTrue(opened)
+            self.assertTrue(all(stream.closed for stream in opened),
+                            'Windows cannot promote an open image file')
+            return replace(path, destination)
+
+        with patch('luma_tester.core.tempfile.NamedTemporaryFile', side_effect=tracked_file), \
+             patch.object(Path, 'replace', windows_replace):
+            session.prepare(lambda _: None)
+        self.assertEqual(digest(session.base), self.m['image']['sha256'])
+
+    def test_failed_image_transfer_closes_before_cleanup(self):
+        self.fixture_disk()
+        self.m['image']['sha256'] = '0' * 64
+        session = self.save()
+        opened = []
+        create = tempfile.NamedTemporaryFile
+        unlink = Path.unlink
+
+        def tracked_file(*args, **kwargs):
+            stream = create(*args, **kwargs)
+            opened.append(stream)
+            return stream
+
+        def windows_unlink(path, *args, **kwargs):
+            for stream in opened:
+                if path == Path(stream.name):
+                    self.assertTrue(stream.closed, 'Windows cannot remove an open image file')
+            return unlink(path, *args, **kwargs)
+
+        with patch('luma_tester.core.tempfile.NamedTemporaryFile', side_effect=tracked_file), \
+             patch.object(Path, 'unlink', windows_unlink), \
+             self.assertRaisesRegex(TesterError, 'SHA-256 mismatch'):
+            session.prepare(lambda _: None)
+        self.assertFalse(session.base.exists())
+        self.assertEqual(list(session.base.parent.iterdir()), [])
+
     def test_mobile_and_desktop_share_base_but_keep_separate_profiles(self):
         mobile = self.fixture_disk()
         mobile.prepare(lambda _: None)
