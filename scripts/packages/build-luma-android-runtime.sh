@@ -20,6 +20,7 @@ done
 }
 
 output_dir="$repo_root/build/packages/luma-android-runtime"
+install -d -m 0755 "$(dirname -- "$output_dir")"
 work_dir=$(mktemp -d "$output_dir.work.XXXXXX")
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/luma-android-runtime"
