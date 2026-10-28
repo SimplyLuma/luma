@@ -164,9 +164,11 @@ class GuestDisplay(Gtk.Picture):
 
     def updated(self, _connection, _x, _y, _width, _height):
         if self.framebuffer and not self.pending_frame:
-            self.pending_frame = self.add_tick_callback(self.paint_frame)
+            # The loading page keeps this widget unmapped. A GTK frame-clock
+            # callback would stall both texture updates and VNC requests there.
+            self.pending_frame = GLib.idle_add(self.paint_frame)
 
-    def paint_frame(self, _widget, _clock):
+    def paint_frame(self):
         self.pending_frame = 0
         if not self.ready or not self.framebuffer:
             return False
@@ -328,6 +330,6 @@ class GuestDisplay(Gtk.Picture):
     def close(self):
         self.release_input()
         if self.pending_frame:
-            self.remove_tick_callback(self.pending_frame)
+            GLib.source_remove(self.pending_frame)
             self.pending_frame = 0
         self.connection.shutdown()
