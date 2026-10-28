@@ -2569,3 +2569,19 @@ allDownloads/projects,installedTryLuma,liveDMGbackings,anduserVMworkspaces.
 NoQEMU/buildwasactive. Actualfreegain9,103,712,256B; finalavailable~9.22GB
 (8.6GiB). Remote receipt /Users/nick/Library/Application Support/Luma/Development/
 mac-space-cleanup-20261028.json; installedapp/download/sourcefoldersverifiedpresent.
+
+2026-10-28 bounded Mac window-drag performance investigation (owner asked
+quicklook, avoidbroadwork): read-onlyactualM4 session25144 is ARM aarch64
+with -accel hvf/-cpu host,4vCPU4096MiB,1920x1080 virtio-gpu-pci andprivate
+VNC. Currentmountedpublicapp /Volumes/Try Luma 2; existingISO-deriveduser
+workspace retained. graphics.json mode software; actualbundledQEMUdevicehelp
+hasONLYvirtio-gpu-device/pci (noGL/rutabaga), displayhelpnone/curses/cocoa/dbus
+(noegl-headless). GuestGNOMEjournal explicitlyEGLfailedDRI2/fallbackkms_swrast.
+Hostmemory_pressure reports60%free; guest~844MiBavailable/18MiBswapused.
+Noresource/machineconfigurationchanges, injections, restarts, orreleaseedits.
+DiagnosticglxinfocouldnotopenXdisplay; do notclaimGLXrenderermeasured.
+Viewer source also copiesfull8.3MB1080p framebuffer perpaint; notprofiled as
+primarybottleneckandnotmodifiedspeculatively. Immediateworkaroundlowerguest
+resolution; actualfixneeds GPU-capableMacQEMU/renderbackendqualification,
+notmerelyvirglsettingunsupportedbybundledruntime. OfficialQEMUvirtio-GPU
+docsconfirmdefault2Drequiressoftware3Drenderer. No performancefixclaimed.
