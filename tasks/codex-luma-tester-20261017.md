@@ -2606,3 +2606,25 @@ fallback); fixed stripping pflash0/1 from diskless machine and retaining-L;
 regression test added. Agent nativeUI rerun pending. Candidate isolated app:
 /Volumes/A016/Luma-Try-GPU-UI-Candidate-20261028-r1/Try Luma GPU QA.app.
 Release0.7.4 remains unchanged; corrective0.7.5 source integration in progress.
+
+
+2026-10-28 native Mac GPU correction and final sidebar integration:
+Metal/GLES prototype failed visual qualification (missing dock textures), despite
+functional input passing. Replaced with isolated patched QEMU native CGL desktop
+OpenGL 4.1 backend; exact source pin/build recipe/patch in scripts/tester/patches.
+No global Homebrew changes. Actual prepared ARM guest reports Accelerated:yes,
+virgl(Apple M3 Pro), GL4.1; correct colorful dock, raw VNC proof and clean QMPquit.
+Native app QA7101f8b9 rendered default GTK test window, moved it108x54 guestpixels
+via actual viewer input, native clipboard and both sidebar modes passed. Candidate
+left running privately for owner test; original user workspace not modified.
+Owner now reports dock animation without app opening, while Settings opens from
+right-click desktop menu. Dock-launch path investigation remains OPEN; do not
+publish GPU release until diagnosed. No performance benchmark claimed.
+Latest sidebar spacing agent8e1452b0d integrated471ffb518; shared inline TextButton
+removes old copy-icon gap and divider normalizes section styling. Native measured
+Preview login/Presets section gaps12px and same text right edge216px. QA app's
+wrong icon lookup corrected; actual approved ICNS artwork unchanged.
+149 component tests PASS4d416701 including AppleGL/GLES backend commands, explicit
+software fallback, x86 scope and headless selection. Exact pinned QEMU patch applies
+cleanly (dry-run). Corresponding source/build artifacts retained privately.
+Public0.7.4 unchanged;0.7.5 draft held for latest final packages/qualification.

@@ -16,10 +16,10 @@ def launch():
     gpu=resources/'mac-gpu'
     if (gpu/'runtime.json').is_file():
         runtime=json.loads((gpu/'runtime.json').read_text())
-        if runtime.get('backend')=='angle-metal' and (gpu/'Helpers/qemu-system-aarch64').is_file():
+        if runtime.get('backend') in ('angle-metal','apple-opengl') and (gpu/'Helpers/qemu-system-aarch64').is_file():
             os.environ['PATH']=str(gpu/'Helpers')+os.pathsep+os.environ['PATH']
-            os.environ['LUMA_TESTER_MAC_GPU']='angle-metal'
-            os.environ['ANGLE_DEFAULT_PLATFORM']='metal'
+            os.environ['LUMA_TESTER_MAC_GPU']=runtime['backend']
+            if runtime['backend']=='angle-metal':os.environ['ANGLE_DEFAULT_PLATFORM']='metal'
     if not sys.argv[1:]:sys.argv.append('gui')
     return main()
 

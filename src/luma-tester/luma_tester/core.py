@@ -367,13 +367,14 @@ class Session:
             raise TesterError('Use memory 1024–65536 MiB, CPUs 1–32, SSH port 1024–65535.')
         if graphics not in ('auto', 'virgl', 'software'):
             raise TesterError('Choose graphics auto, virgl or software.')
+        mac_backend = os.environ.get('LUMA_TESTER_MAC_GPU')
         mac_gpu = (platform.system() == 'Darwin' and self.manifest['arch'] == 'aarch64' and
-                   os.environ.get('LUMA_TESTER_MAC_GPU') == 'angle-metal')
+                   mac_backend in ('angle-metal', 'apple-opengl') and (embedded or headless))
         render = self.render_device(render_node) if graphics != 'software' and platform.system() == 'Linux' else None
         accelerated = graphics == 'virgl' or (graphics == 'auto' and not headless and (render is not None or mac_gpu))
         if accelerated and render is None and not mac_gpu:
             raise TesterError('Accelerated graphics needs an accessible GPU render device.')
-        display = (('egl-headless,gl=es' if embedded or headless else 'cocoa,gl=es') if accelerated and mac_gpu else
+        display = (('egl-headless,gl=core' if mac_backend == 'apple-opengl' else 'egl-headless,gl=es') if accelerated and mac_gpu else
                    'egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
                    'gtk,gl=on,zoom-to-fit=on' if accelerated else
                    'none' if headless or embedded else 'sdl' if host.windows() else 'cocoa' if platform.system() == 'Darwin' else 'gtk,zoom-to-fit=on')
@@ -489,7 +490,7 @@ class Session:
                     self.probe_graphics(command)
                     graphics = {'mode': 'virgl', 'render_node': self.render_device(options.get('render_node'))}
                     if platform.system() == 'Darwin':
-                        graphics['backend'] = 'angle-metal'
+                        graphics['backend'] = os.environ['LUMA_TESTER_MAC_GPU']
                 except (TesterError, subprocess.TimeoutExpired) as exc:
                     from . import vm
                     if (options.get('graphics') or vm.load(self.root)['graphics']) == 'virgl':
