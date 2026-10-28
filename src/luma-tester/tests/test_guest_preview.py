@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
@@ -7,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from luma_tester.guest_preview import CONFIGURE, supported
+from luma_tester.guest_preview import CONFIGURE, FLATPAK_REPAIR, supported
 
 
 class PreviewDefaultsTests(unittest.TestCase):
@@ -64,3 +65,41 @@ class PreviewDefaultsTests(unittest.TestCase):
             with patch.object(Path, 'home', return_value=home), patch.object(subprocess, 'run') as run, patch.object(subprocess, 'check_output', return_value='active\n'):
                 exec(CONFIGURE, {})
                 self.assertEqual([call.args[0] for call in run.call_args_list], [['systemctl', '--user', 'daemon-reload']])
+
+
+@unittest.skipUnless(shutil.which('ostree'), 'OSTree is needed for real repository checks')
+class FlatpakRepositoryTests(unittest.TestCase):
+    def test_config_only_user_repository_is_initialized_without_changing_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            repo = home/'.local/share/flatpak/repo'
+            repo.mkdir(parents=True)
+            config = repo/'config'
+            original = '[core]\nrepo_version=1\nmode=bare-user-only\n[remote "example"]\nurl=https://example.invalid/repo\ngpg-verify=true\n'
+            config.write_text(original)
+            with patch.object(Path, 'home', return_value=home):
+                exec(FLATPAK_REPAIR, {})
+                self.assertEqual(config.read_text(), original)
+                self.assertTrue((repo/'objects').is_dir())
+                subprocess.run(['ostree', '--repo='+str(repo), 'refs'], check=True, capture_output=True)
+                with patch.object(subprocess, 'run') as run:
+                    exec(FLATPAK_REPAIR, {})
+                    run.assert_not_called()
+
+    def test_existing_app_data_and_nonempty_repositories_are_not_modified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            repo = home/'.local/share/flatpak/repo'
+            repo.mkdir(parents=True)
+            (repo/'config').write_text('[core]\nmode=bare-user-only\n')
+            (repo/'objects').mkdir()
+            (repo/'objects/keep').write_text('app data')
+            with patch.object(Path, 'home', return_value=home), patch.object(subprocess, 'run') as run:
+                exec(FLATPAK_REPAIR, {})
+                run.assert_not_called()
+                self.assertEqual((repo/'objects/keep').read_text(), 'app data')
+                (repo/'objects/keep').unlink()
+                (repo/'objects').rmdir()
+                (repo/'refs').mkdir()
+                exec(FLATPAK_REPAIR, {})
+                run.assert_not_called()

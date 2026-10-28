@@ -1,0 +1,236 @@
+--- a/ui/egl-headless.c
++++ b/ui/egl-headless.c
+@@ -6,6 +6,61 @@
+ #include "ui/egl-helpers.h"
+ #include "ui/egl-context.h"
+ #include "ui/shader.h"
++#include "system/system.h"
++#include "system/system.h"
++
++/* Native desktop OpenGL for Darwin headless readback. ANGLE's GLES-only
++ * context cannot expose desktop GL features needed by modern Linux shells. */
++#ifdef CONFIG_DARWIN
++#include <OpenGL/OpenGL.h>
++static CGLPixelFormatObj headless_pixel;
++static CGLContextObj headless_cgl;
++static bool headless_use_cgl;
++
++static CGLContextObj headless_cgl_create(CGLContextObj shared)
++{
++    CGLContextObj context = NULL;
++    CGLError result = CGLCreateContext(headless_pixel, shared, &context);
++    if (result != kCGLNoError) {
++        error_report("cgl-headless: %s", CGLErrorString(result));
++        return NULL;
++    }
++    return context;
++}
++#endif
++
++static void headless_make_current(void)
++{
++#ifdef CONFIG_DARWIN
++    if (headless_use_cgl) {
++        CGLSetCurrentContext(headless_cgl);
++        return;
++    }
++#endif
++    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
++                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++}
++
++static void headless_destroy_context(DisplayGLCtx *ctx, QEMUGLContext context)
++{
++#ifdef CONFIG_DARWIN
++    if (headless_use_cgl) {
++        CGLDestroyContext((CGLContextObj)context);
++        return;
++    }
++#endif
++    qemu_egl_destroy_context(ctx, context);
++}
++
++static int headless_context_current(DisplayGLCtx *ctx, QEMUGLContext context)
++{
++#ifdef CONFIG_DARWIN
++    if (headless_use_cgl) {
++        return CGLSetCurrentContext((CGLContextObj)context) == kCGLNoError ? 0 : -1;
++    }
++#endif
++    return qemu_egl_make_context_current(ctx, context);
++}
+ 
+ typedef struct egl_dpy {
+     DisplayChangeListener dcl;
+@@ -45,6 +100,15 @@
+ static QEMUGLContext egl_create_context(DisplayGLCtx *dgc,
+                                         QEMUGLParams *params)
+ {
++#ifdef CONFIG_DARWIN
++    if (headless_use_cgl) {
++        if (params->major_ver > 4 ||
++            (params->major_ver == 4 && params->minor_ver > 1)) {
++            return NULL;
++        }
++        return headless_cgl_create(headless_cgl);
++    }
++#endif
+     return qemu_egl_create_context(dgc, params, qemu_egl_rn_ctx);
+ }
+ 
+@@ -52,8 +116,7 @@
+ {
+     egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     egl_fb_destroy(&edpy->guest_fb);
+     egl_fb_destroy(&edpy->blit_fb);
+ }
+@@ -71,8 +134,7 @@
+ 
+     edpy->y_0_top = backing_y_0_top;
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+ 
+     /* source framebuffer */
+     egl_fb_setup_for_tex(&edpy->guest_fb,
+@@ -93,8 +155,7 @@
+ {
+     uint32_t width, height, texture;
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     egl_dmabuf_import_texture(dmabuf);
+     texture = qemu_dmabuf_get_texture(dmabuf);
+     if (!texture) {
+@@ -115,8 +176,7 @@
+     uint32_t width, height, texture;
+     egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     if (dmabuf) {
+         egl_dmabuf_import_texture(dmabuf);
+         texture = qemu_dmabuf_get_texture(dmabuf);
+@@ -135,8 +195,7 @@
+ static void egl_release_dmabuf(DisplayChangeListener *dcl,
+                                QemuDmaBuf *dmabuf)
+ {
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     egl_dmabuf_release_texture(dmabuf);
+ }
+ 
+@@ -162,8 +221,7 @@
+     }
+     assert(surface_format(edpy->ds) == PIXMAN_x8r8g8b8);
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     if (edpy->cursor_fb.texture) {
+         /* have cursor -> render using textures */
+         egl_texture_blit(edpy->gls, &edpy->blit_fb, &edpy->guest_fb,
+@@ -215,8 +273,8 @@
+ static const DisplayGLCtxOps eglctx_ops = {
+     .dpy_gl_ctx_is_compatible_dcl = egl_is_compatible_dcl,
+     .dpy_gl_ctx_create       = egl_create_context,
+-    .dpy_gl_ctx_destroy      = qemu_egl_destroy_context,
+-    .dpy_gl_ctx_make_current = qemu_egl_make_context_current,
++    .dpy_gl_ctx_destroy      = headless_destroy_context,
++    .dpy_gl_ctx_make_current = headless_context_current,
+ };
+ 
+ static void early_egl_headless_init(DisplayOptions *opts)
+@@ -227,6 +285,30 @@
+         mode = opts->gl;
+     }
+ 
++#ifdef CONFIG_DARWIN
++    if (mode != DISPLAY_GL_MODE_ES) {
++        CGLPixelFormatAttribute attrs[] = {
++            kCGLPFAOpenGLProfile,
++            (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
++            kCGLPFAAccelerated, 0
++        };
++        GLint count = 0;
++        CGLError result = CGLChoosePixelFormat(attrs, &headless_pixel, &count);
++        if (result != kCGLNoError || !count) {
++            error_report("cgl-headless: no accelerated desktop GL pixel format");
++            exit(1);
++        }
++        headless_cgl = headless_cgl_create(NULL);
++        if (!headless_cgl) {
++            exit(1);
++        }
++        headless_use_cgl = true;
++        display_opengl = 1;
++        qemu_egl_mode = DISPLAY_GL_MODE_CORE;
++        headless_make_current();
++        return;
++    }
++#endif
+     egl_init(opts->u.egl_headless.rendernode, mode, &error_fatal);
+ }
+ 
+@@ -238,8 +320,7 @@
+ 
+     egl_dpys = g_ptr_array_new();
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     for (idx = 0;; idx++) {
+         DisplayGLCtx *ctx;
+ 
+@@ -265,8 +346,7 @@
+         return;
+     }
+ 
+-    eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE,
+-                   EGL_NO_SURFACE, qemu_egl_rn_ctx);
++    headless_make_current();
+     for (guint i = 0; i < egl_dpys->len; i++) {
+         egl_dpy *edpy = g_ptr_array_index(egl_dpys, i);
+ 
+@@ -281,6 +361,17 @@
+     }
+     g_clear_pointer(&egl_dpys, g_ptr_array_unref);
+ 
++#ifdef CONFIG_DARWIN
++    if (headless_use_cgl) {
++        CGLSetCurrentContext(NULL);
++        CGLDestroyContext(headless_cgl);
++        CGLDestroyPixelFormat(headless_pixel);
++        headless_cgl = NULL;
++        headless_pixel = NULL;
++        headless_use_cgl = false;
++        return;
++    }
++#endif
+     egl_cleanup();
+ }
+ 
+--- a/ui/shader.c
++++ b/ui/shader.c
+@@ -87,6 +87,13 @@
+     GLint status, length;
+     char *errmsg;
+ 
++    g_autofree char *desktop_source = NULL;
++    if (epoxy_is_desktop_gl() && g_str_has_prefix(src, "#version 300 es\n")) {
++        g_autofree char *versioned = g_strconcat("#version 140\n", src + strlen("#version 300 es\n"), NULL);
++        g_auto(GStrv) parts = g_strsplit(versioned, "mediump ", -1);
++        desktop_source = g_strjoinv("", parts);
++        src = desktop_source;
++    }
+     shader = glCreateShader(type);
+     glShaderSource(shader, 1, &src, 0);
+     glCompileShader(shader);

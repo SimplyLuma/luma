@@ -252,11 +252,11 @@ def launch(state=None):
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
             from . import guest_preview
-            self.preview_rows = [SidebarSection('Preview login')]
+            self.preview_rows = [SidebarSection('Preview login', divider=True)]
             username = SidebarRow('Username')
             username.set_trail(self.label(guest_preview.USER, 'caption'))
             password = SidebarRow('Password')
-            self.preview_password = TextButton(guest_preview.PASSWORD, style='plain', small=True,
+            self.preview_password = TextButton(guest_preview.PASSWORD, style='plain', small=True, inline=True,
                 on_click=lambda: self.window.get_clipboard().set(guest_preview.PASSWORD))
             apply_type(self.preview_password.label_widget, 'caption')
             self.preview_password.set_tooltip_text('Copy password')

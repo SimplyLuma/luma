@@ -19,7 +19,7 @@ def main():
     p.add_argument('--output',required=True,type=Path)
     p.add_argument('--source-commit',required=True)
     p.add_argument('--release',action='store_true',help='Attribute public downloads to Try Luma; previews default to test')
-    p.add_argument('--gpu-runtime',type=Path,help='Qualified, relocated Metal/VirGL prefix from stage-macos-gpu.py')
+    p.add_argument('--gpu-runtime',type=Path,help='Qualified, relocated macOS/VirGL prefix from stage-macos-gpu.py')
     a=p.parse_args()
     if sys.platform!='darwin' or os.uname().machine!='arm64':p.error('Build on an Apple Silicon Mac.')
     repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
@@ -47,8 +47,8 @@ def main():
     app=out/'Try Luma.app';contents=app/'Contents'
     if a.gpu_runtime:
         runtime=json.loads((a.gpu_runtime/'runtime.json').read_text())
-        if runtime.get('backend')!='angle-metal' or runtime.get('arch')!='aarch64':
-            p.error('Expected a qualified Apple Silicon Metal runtime.')
+        if runtime.get('backend') not in ('angle-metal','apple-opengl') or runtime.get('arch')!='aarch64':
+            p.error('Expected a qualified Apple Silicon graphics runtime.')
         shutil.copytree(a.gpu_runtime,contents/'Resources/mac-gpu',symlinks=True)
     if a.release:
         identity=contents/'Resources/app/luma_tester/__init__.py'

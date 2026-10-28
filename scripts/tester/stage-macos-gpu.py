@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Relocate a qualified Metal/VirGL runtime into an isolated app resource prefix.
+"""Relocate a qualified macOS/VirGL runtime into an isolated app resource prefix.
 
 Inputs must be pinned, checksummed release inputs with their licenses and source
 provenance. This does not install or replace the user's Homebrew tools.
@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--provenance',required=True,type=Path)
     parser.add_argument('--notices',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
+    parser.add_argument('--backend',choices=('apple-opengl','angle-metal'),default='apple-opengl')
     args=parser.parse_args()
     if sys.platform!='darwin':parser.error('Run on macOS.')
     if args.output.exists():parser.error('Output must be a new directory.')
@@ -59,7 +60,7 @@ def main():
     entitlements.write_bytes(plistlib.dumps({'com.apple.security.hypervisor':True,'com.apple.security.cs.allow-jit':True}))
     subprocess.run(['codesign','--force','--sign','-','--entitlements',str(entitlements),str(helper)],check=True)
     shutil.copytree(args.notices,root/'ThirdPartyNotices')
-    (root/'runtime.json').write_text(json.dumps(dict(schema=1,backend='angle-metal',arch='aarch64',provenance=provenance),indent=2)+'\n')
+    (root/'runtime.json').write_text(json.dumps(dict(schema=1,backend=args.backend,arch='aarch64',provenance=provenance),indent=2)+'\n')
     print(root)
 
 
