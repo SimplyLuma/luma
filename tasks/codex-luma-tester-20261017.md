@@ -2628,3 +2628,14 @@ wrong icon lookup corrected; actual approved ICNS artwork unchanged.
 software fallback, x86 scope and headless selection. Exact pinned QEMU patch applies
 cleanly (dry-run). Corresponding source/build artifacts retained privately.
 Public0.7.4 unchanged;0.7.5 draft held for latest final packages/qualification.
+
+2026-10-28 owner manual test caught real app launch failure after native GPUQA:
+actual guest Flatpak journal reports config-only user OSTree repo missing objects;
+all25 system Flatpak refs/apps remain valid. Context-menu system Settings opens.
+Narrow managed-preview repair initializes only config-only, non-symlink user repo
+using its existing bare-user mode, outside once-only markers; existing data-bearing
+repos remain untouched.151 component tests PASSfeda4878 includes real OSTree
+init/config-preservation/refs/idempotence and preservation of existing app data.
+Agent verifying actual dock+launchpad activation after repair in own MacQA.
+Source patch regenerated from actually built QEMU files for exact correspondence
+(includes harmless duplicate system.h include present in qualified binary build).

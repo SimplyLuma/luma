@@ -1,9 +1,10 @@
 --- a/ui/egl-headless.c
 +++ b/ui/egl-headless.c
-@@ -6,6 +6,60 @@
+@@ -6,6 +6,61 @@
  #include "ui/egl-helpers.h"
  #include "ui/egl-context.h"
  #include "ui/shader.h"
++#include "system/system.h"
 +#include "system/system.h"
 +
 +/* Native desktop OpenGL for Darwin headless readback. ANGLE's GLES-only
@@ -61,7 +62,7 @@
  
  typedef struct egl_dpy {
      DisplayChangeListener dcl;
-@@ -45,6 +99,15 @@
+@@ -45,6 +100,15 @@
  static QEMUGLContext egl_create_context(DisplayGLCtx *dgc,
                                          QEMUGLParams *params)
  {
@@ -77,7 +78,7 @@
      return qemu_egl_create_context(dgc, params, qemu_egl_rn_ctx);
  }
  
-@@ -52,8 +115,7 @@
+@@ -52,8 +116,7 @@
  {
      egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
  
@@ -87,7 +88,7 @@
      egl_fb_destroy(&edpy->guest_fb);
      egl_fb_destroy(&edpy->blit_fb);
  }
-@@ -71,8 +133,7 @@
+@@ -71,8 +134,7 @@
  
      edpy->y_0_top = backing_y_0_top;
  
@@ -97,7 +98,7 @@
  
      /* source framebuffer */
      egl_fb_setup_for_tex(&edpy->guest_fb,
-@@ -93,8 +154,7 @@
+@@ -93,8 +155,7 @@
  {
      uint32_t width, height, texture;
  
@@ -107,7 +108,7 @@
      egl_dmabuf_import_texture(dmabuf);
      texture = qemu_dmabuf_get_texture(dmabuf);
      if (!texture) {
-@@ -115,8 +175,7 @@
+@@ -115,8 +176,7 @@
      uint32_t width, height, texture;
      egl_dpy *edpy = container_of(dcl, egl_dpy, dcl);
  
@@ -117,7 +118,7 @@
      if (dmabuf) {
          egl_dmabuf_import_texture(dmabuf);
          texture = qemu_dmabuf_get_texture(dmabuf);
-@@ -135,8 +194,7 @@
+@@ -135,8 +195,7 @@
  static void egl_release_dmabuf(DisplayChangeListener *dcl,
                                 QemuDmaBuf *dmabuf)
  {
@@ -127,7 +128,7 @@
      egl_dmabuf_release_texture(dmabuf);
  }
  
-@@ -162,8 +220,7 @@
+@@ -162,8 +221,7 @@
      }
      assert(surface_format(edpy->ds) == PIXMAN_x8r8g8b8);
  
@@ -137,7 +138,7 @@
      if (edpy->cursor_fb.texture) {
          /* have cursor -> render using textures */
          egl_texture_blit(edpy->gls, &edpy->blit_fb, &edpy->guest_fb,
-@@ -215,8 +272,8 @@
+@@ -215,8 +273,8 @@
  static const DisplayGLCtxOps eglctx_ops = {
      .dpy_gl_ctx_is_compatible_dcl = egl_is_compatible_dcl,
      .dpy_gl_ctx_create       = egl_create_context,
@@ -148,7 +149,7 @@
  };
  
  static void early_egl_headless_init(DisplayOptions *opts)
-@@ -227,6 +284,30 @@
+@@ -227,6 +285,30 @@
          mode = opts->gl;
      }
  
@@ -179,7 +180,7 @@
      egl_init(opts->u.egl_headless.rendernode, mode, &error_fatal);
  }
  
-@@ -238,8 +319,7 @@
+@@ -238,8 +320,7 @@
  
      egl_dpys = g_ptr_array_new();
  
@@ -189,7 +190,7 @@
      for (idx = 0;; idx++) {
          DisplayGLCtx *ctx;
  
-@@ -265,8 +345,7 @@
+@@ -265,8 +346,7 @@
          return;
      }
  
@@ -199,7 +200,7 @@
      for (guint i = 0; i < egl_dpys->len; i++) {
          egl_dpy *edpy = g_ptr_array_index(egl_dpys, i);
  
-@@ -281,6 +360,17 @@
+@@ -281,6 +361,17 @@
      }
      g_clear_pointer(&egl_dpys, g_ptr_array_unref);
  
