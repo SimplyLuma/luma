@@ -499,7 +499,10 @@ class Session:
             child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
             if host.windows() and options.get('embedded'):
                 try:
-                    for _ in range(100):
+                    # Cold starts and host security scans can delay Windows'
+                    # control listener; retain a bounded wait and child checks.
+                    controls_deadline = time.monotonic() + 60
+                    while time.monotonic() < controls_deadline:
                         if child.poll() is not None:raise TesterError('QEMU stopped before opening its controls.')
                         try:
                             self.qmp('change-vnc-password', {'password':self.windows_display['password']})
