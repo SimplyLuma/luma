@@ -675,9 +675,11 @@ class SidebarSection(Gtk.ListBoxRow):
     __gtype_name__ = "LumaUISidebarSection"
 
     def __init__(self, label: str, *, action: tuple[str, str, Callable[[], None]] | None = None,
-                 subtitle: str | None = None, hue: float | None = None, ruled: bool = False) -> None:
+                 subtitle: str | None = None, hue: float | None = None, ruled: bool = False,
+                 divider: bool = False) -> None:
         """`subtitle` and `hue`: an account's heading (v71 Charlie .crnh): its dot in its hue, its name,
-        its address under it. `ruled`: a hairline above, as a heading with an action has."""
+        its address under it. `ruled`: a hairline and emphasized heading.
+        `divider`: action-heading spacing and hairline with the normal heading face."""
         super().__init__(selectable=False, activatable=False)
         self.add_css_class("luma-navigation-section")
         self.add_css_class("lumaui-row-section")
@@ -700,6 +702,8 @@ class SidebarSection(Gtk.ListBoxRow):
             self.add_css_class("account")
         else:
             line.append(heading)
+        if divider:
+            self.add_css_class("divided")
         if ruled or subtitle:
             self.add_css_class("ruled")
         self.action_button = None

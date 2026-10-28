@@ -35,7 +35,7 @@ class TextButton(Gtk.Button):
 
     def __init__(self, label: str, *, icon: str | None = None, style: str = "plain", small: bool = False,
                  danger: bool = False, on_click: Callable[[], None] | None = None, sensitive: bool = True,
-                 hero: bool = False, size: str = "regular") -> None:
+                 hero: bool = False, size: str = "regular", inline: bool = False) -> None:
         if size not in ("regular", "small", "hero", "large", "touch"):
             raise ValueError("text button size is regular, small, hero, large or touch")
         if size != "regular" and (small or hero):
@@ -43,8 +43,12 @@ class TextButton(Gtk.Button):
         small, hero = small or size == "small", hero or size == "hero"
         if style not in TEXT_BUTTON_STYLES:
             raise ValueError(f"style must be one of {', '.join(TEXT_BUTTON_STYLES)}, not {style!r}")
+        if inline and style != "plain":
+            raise ValueError("inline text buttons use the plain style")
         super().__init__(valign=Gtk.Align.CENTER, sensitive=sensitive)
         self.add_css_class("lumaui-text-button")
+        if inline:
+            self.add_css_class("inline")
         if size in ("large", "touch"):
             self.add_css_class(size)
         if style == "danger":

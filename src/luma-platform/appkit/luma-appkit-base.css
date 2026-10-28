@@ -2000,6 +2000,8 @@ button.lumaui-text-button.small {
   border-radius: var(--lumaui-text-button-small-radius); font-size: var(--lumaui-text-button-small-font-size); letter-spacing: 0.12px;
 }
 button.lumaui-text-button.small image { -gtk-icon-size: var(--lumaui-text-button-small-icon); }
+/* Inline value actions align their text with neighboring, noninteractive values. */
+button.lumaui-text-button.inline { padding-left: 0; padding-right: 0; }
 /* hero: a header's or hero's buttons (v70 .cfnowa .bt, .cfhda .bt.fill: 34, 11 round). */
 button.lumaui-text-button.hero { min-height: var(--lumaui-text-button-hero-height); border-radius: var(--lumaui-text-button-hero-radius); }
 /* v71 media hero actions: 40px, the standard 10px button radius. */

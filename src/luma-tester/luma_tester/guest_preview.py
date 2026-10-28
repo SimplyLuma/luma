@@ -15,7 +15,24 @@ assert 'passwordauthentication no' in settings and 'kbdinteractiveauthentication
 subprocess.run(['systemctl','reload','sshd'],check=True)
 '''
 
-CONFIGURE = '''import os, subprocess
+# Some generalized images contain only Flatpak's user-repository config. An
+# incomplete user repo prevents resolution of otherwise healthy system apps.
+# Initialize only that exact empty skeleton; never remove app data or repair an
+# existing object store implicitly. Existing workspaces need this check too.
+FLATPAK_REPAIR = '''import configparser, subprocess
+from pathlib import Path
+repo = Path.home()/'.local/share/flatpak/repo'
+config = repo/'config'
+if (not repo.is_symlink() and config.is_file() and not config.is_symlink()
+        and {p.name for p in repo.iterdir()} == {'config'}):
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(config)
+    mode = parser.get('core', 'mode', fallback='')
+    if mode in ('bare-user', 'bare-user-only'):
+        subprocess.run(['ostree', '--repo='+str(repo), 'init', '--mode='+mode], check=True)
+'''
+
+CONFIGURE = FLATPAK_REPAIR + '''import os, subprocess
 from pathlib import Path
 marker=Path.home()/'.local/state/try-luma/preview-configured-v2'
 if not marker.exists():
