@@ -2279,3 +2279,10 @@ Expectedresults windows/prepared-074-r6, currentremoteQAroot remainsr4. Publishe
 preparedNOTRUN; must waitnormaladf25cddresult0, inspectfinaldesktopPNG, writevisual
 proof, then execute gatedpublisher6. NativeLinux/Mac and sourceCI alreadyPASS,
 all3latestassetsstagedverified. Sidebarfeatureimplemented andvalidated.
+
+04:05UTC: UserrequestedWindowsstatus. Actualr6notPASS: cachedbaseverified,
+launcher reported 'QEMU did not open its controls' (Windows10secpoll exhausted,
+childhadnotexited). Stoppedownedrootr6 explicitly; no publication. Expandingonly
+Windowslistenerstartup tobounded60s withchildlivenesschecks; nativeverification
+required, do not claimfixqualified fromcodechangealone. Mac/Linuxpreviousruntime
+unaffected byWindows-onlyguard.
