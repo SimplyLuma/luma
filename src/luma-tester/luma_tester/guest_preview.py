@@ -26,6 +26,21 @@ if not marker.exists():
         subprocess.run(['gsettings','set',schema,key,value],env=env,check=True)
     marker.parent.mkdir(parents=True,exist_ok=True)
     marker.write_text('1\\n')
+# Emulated guests can exceed GNOME's default 45-second service startup limit.
+# Apply this separately so existing previews retain their password and settings.
+env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+str(os.getuid())+'/bus')
+startup_marker=Path.home()/'.local/state/try-luma/shell-startup-configured-v1'
+if not startup_marker.exists():
+    unit='org.gnome.Shell@user.service'
+    dropin=Path.home()/'.config/systemd/user'/ (unit+'.d')/'60-try-luma.conf'
+    dropin.parent.mkdir(parents=True,exist_ok=True)
+    dropin.write_text('[Service]\\nTimeoutStartSec=300\\n')
+    subprocess.run(['systemctl','--user','daemon-reload'],env=env,check=True)
+    state=subprocess.check_output(['systemctl','--user','show',unit,'-p','ActiveState','--value'],env=env,text=True).strip()
+    if state in ('activating','failed','deactivating'):
+        subprocess.run(['sudo','systemctl','--no-block','restart','gdm'],check=True)
+    startup_marker.parent.mkdir(parents=True,exist_ok=True)
+    startup_marker.write_text('1\\n')
 '''.replace('SSH_POLICY', repr(SSH_POLICY)).replace('PASSWORD_INPUT', repr(USER + ':' + PASSWORD + '\n'))
 
 

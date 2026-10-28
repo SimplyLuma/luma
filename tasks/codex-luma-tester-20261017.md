@@ -2226,3 +2226,12 @@ claimr2PASS. Old gatedpublisher e498b743 explicitly stopped; needsreplacement
 withr3 gate. Finaldraftrefresh e1178d8c active, replacesWindowsZIP/source/SHA,
 sourcearchivePLATFORM-SOURCES.json documents Mac/Linuxa915 andWindows0b1168.
 Trychannelgen4db32d8f live; bothpreparedfilespublicfullSHAverified.0.7.4stilldraft.
+
+03:31UTC: Windows r3 revealed real GNOME startup deadline failure: user unit
+started02:50:53, timed out02:51:38 after45s and was subsequently SIGABRT/SIGKILL.
+This is not OOM or proven CPU incompatibility. Live owned-guest diagnostic adds
+bounded TimeoutStartSec300 and restartsGDM; new shell currentlyactivating with
+5min allowance, still awaiting active/visual proof. App now independently applies
+this first-use override while preserving existingpassword/settings, readiness
+requires systemd GNOMEunit active.130 componenttestsPASS. No new releasepublished;
+old publisherd1f9 exited1 waitingWindows and must be replaced after actualPASS.

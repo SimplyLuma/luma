@@ -697,6 +697,8 @@ properties=dict(line.split('=',1) for line in subprocess.check_output(
     ['loginctl','show-session',display,'-p','Type','-p','Class','-p','Active'],text=True).splitlines())
 assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' and properties['Active']=='yes', properties
 assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
+env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+uid+'/bus')
+subprocess.run(['systemctl','--user','is-active','--quiet','org.gnome.Shell@user.service'],env=env,check=True)
 """
             while time.monotonic()<deadline:
                 try:
