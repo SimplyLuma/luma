@@ -1,7 +1,7 @@
-# Luma Tester — Linux first
+# Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Tester0.7.3 source update/curated-image flows validated; current-source ISO assembly waits on producer exports. Old own SSD preview relocation active. Public release remains unqualified.
+- Status: Try Luma0.7.5 published and public downloads verified on2026-10-28; Mac GPU performance follow-up active, experimental runtime held back.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -9,9 +9,9 @@
   localhost SSH, source sync/app restart workflow, image/agent documentation.
 - Owned: src/luma-tester, docs/developer-platform/tester*.md, README/BUILDING
   navigation, this task record. No app-porting source lanes modified.
-- No public publication, release signing or physical device operations. Existing
-  user projects and VMs preserved; authorized preview app/settings installation
-  only. Canonical integration checkout remains unchanged.
+- User authorized release publication/signing and native Mac tests. Preserve
+  existing user projects and VM disks; use isolated copies for GPU qualification.
+  No physical device operations. Canonical integration checkout remains unchanged.
 
 ## Current handoff
 
@@ -2658,3 +2658,18 @@ Hub signedreleaseindexupdate remainswebsite/Hubagenthandoff;GitHubpublication
 alone doesnotenablein-appupdateoffers. PreparedVMgeneration5unchanged.
 OwnerexplicitlyrequestedhandoffnowthencontinuedMacGPUwork;performbounded
 actualcurrent-sessiondiagnostics, donotclaimCGLperformancequalified.
+
+2026-10-28 17:00 UTC Mac follow-up: read-only observef279fc01 confirmed manual
+Hardware selection correctly uses HVF + virtio-gpu-gl + apple-opengl, no CPU
+emulation fallback. Guest availableRAM1138MiB, idleload0.08; not an established
+resource saturation issue. Log contains GLSL130blitter errors. Rebuilt pinned
+UTM VirGL with Apple-only GLSL150blitter correction (private venvPyYAML6.0.3,
+no global tools changed), builda5d13743/staged052f743PASS. New isolatedprefix
+relocated-cgl-r2 actualpreparedARMbootb9e05bcbPASS: Acceleratedyes GL4.1,
+correctdock screenshottry-cgl-desktop-r3.png inspected, shader130errorsabsent,
+QMPquit0. Performance notqualified and public0.7.5unchanged.
+User requested standard baseline; read officialUTM Linux/macOSgraphicsdocs,
+confirmed AppleCoreOpenGL4.1 native+SPICE IOSurfacepath documented. Standard
+stockQEMU/HVF/Cocoa2Dbaseline6ecb2e58bootedownprivateoverlay andnativewindow,
+guestllvmpipesoftwareasexpected; nativevslaunchercomparisonongoing.
+Useroptionalmanualquestionpending; no opinionassumed. Originaluserdiskunchanged.
