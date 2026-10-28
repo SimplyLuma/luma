@@ -2558,3 +2558,14 @@ absentbeforeexplicitstopofOWNR16rootunit. OriginalWindowsVM/diskuntouched.
 NoMacuserrunningapp/VMmodified. All3newpackagechannelsgen5 .qcow2 pair verified.
 Userwebsitehandoff: explicitversionedv0.7.4URLs; hostlabelsMacAppleSilicon,
 Windowsx86-64,Linuxx86-64. Bothguestarches inautomaticpreparedimagechannel.
+
+2026-10-28 owner-requested Mac space cleanup complete. Stale22442listener
+sshd-session3565719 verifiedownedaccountandONLY22442forward; terminatedafter
+banner timeout so ownercouldreconnect. Macinternalfree117,714,944B initially.
+Removedonlyinactiveownbuildoutputs r17/r18,obsolete signingr6/r7 bundlesand
+archives,oldownfirst-start074r1 ISOcache,pipcache,and3Oct21–23CodexSparkle
+installationcaches. PreservednewestOct24Sparklepackage/activeLauncher,
+allDownloads/projects,installedTryLuma,liveDMGbackings,anduserVMworkspaces.
+NoQEMU/buildwasactive. Actualfreegain9,103,712,256B; finalavailable~9.22GB
+(8.6GiB). Remote receipt /Users/nick/Library/Application Support/Luma/Development/
+mac-space-cleanup-20261028.json; installedapp/download/sourcefoldersverifiedpresent.
