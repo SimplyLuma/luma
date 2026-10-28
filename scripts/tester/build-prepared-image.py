@@ -167,6 +167,8 @@ WantedBy=multi-user.target
     (output / 'BUILD.json').write_text(json.dumps(receipt, indent=2) + '\n')
     raw.unlink()
     for path in output.iterdir():os.chown(path, args.owner, args.group)
+    os.chown(output,args.owner,args.group)
+    image.chmod(0o444)
     print(json.dumps(receipt), flush=True)
 
 
