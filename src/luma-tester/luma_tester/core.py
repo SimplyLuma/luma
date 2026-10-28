@@ -684,19 +684,8 @@ class Session:
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
         if self.manifest.get('guest_protocol') == 'luma-unified-v1':
-            # These are disposable previews with locked account passwords.
-            # Configure once, preserving later choices in a saved workspace.
-            preview = """import os, subprocess
-from pathlib import Path
-marker=Path.home()/'.local/state/try-luma/preview-configured'
-if not marker.exists():
-    env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+str(os.getuid())+'/bus')
-    for schema,key,value in [('org.gnome.desktop.screensaver','lock-enabled','false'),('org.gnome.desktop.session','idle-delay','0')]:
-        subprocess.run(['gsettings','set',schema,key,value],env=env,check=True)
-    marker.parent.mkdir(parents=True,exist_ok=True)
-    marker.write_text('1\\n')
-"""
-            run(self.ssh(['python3','-c',preview]),stdout=subprocess.DEVNULL,timeout=30)
+            from . import guest_preview
+            guest_preview.configure(self)
         deadline = time.monotonic() + timeout
         from . import provision
         if provision.ready(self) or self.manifest.get('guest_protocol') == 'luma-unified-v1':

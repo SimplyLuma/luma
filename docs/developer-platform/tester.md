@@ -449,3 +449,9 @@ Developer ID signing and notarization require their own release infrastructure.
 Intel Mac host packaging is not produced by this Apple Silicon recipe. Native
 window, control, firmware and live-checkpoint checks do not establish a complete
 Luma OS boot/install qualification; qualify the actual selected OS image too.
+
+Prepared previews sign in automatically. The local username is `luma` and the
+password is `TryLuma`, also shown under **Preview login** in the sidebar in Try
+and Developer modes. Use it for desktop app-installation authorization prompts.
+SSH accepts keys only. Fresh previews disable automatic locking and idle sleep;
+later settings changes in a saved workspace are preserved.
