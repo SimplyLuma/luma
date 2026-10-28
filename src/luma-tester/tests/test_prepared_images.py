@@ -2,13 +2,15 @@
 import importlib.util
 import json
 from pathlib import Path
+import shutil
+import subprocess
 from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from luma_tester import experiences, image_approval, image_library
-from luma_tester.core import TesterError, validate_manifest
+from luma_tester.core import Session, TesterError, validate_manifest
 
 
 def artifact(arch='x86_64'):
@@ -21,6 +23,23 @@ def artifact(arch='x86_64'):
 
 
 class PreparedImageTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('qemu-img'),'qemu-img required')
+    def test_saved_installation_reopens_without_redownloading_removed_iso_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);item=artifact()
+            manifest=dict(item['tester_profile'],image=dict(url='https://example.invalid/removed.iso',
+                sha256='a'*64,bytes=100),media='iso',cloud_init=False)
+            manifest.pop('guest_protocol')
+            path=root/'manifest.json';path.write_text(json.dumps(manifest))
+            session=Session(path,root/'state');session.directory.mkdir(parents=True,exist_ok=True)
+            disk=session.directory/'workspace.qcow2'
+            subprocess.run(['qemu-img','create','-q','-f','qcow2',str(disk),'32M'],check=True)
+            (session.directory/'setup.json').write_text(json.dumps(dict(phase='ready',sha256='a'*64)))
+            with patch.object(session,'tools',return_value={}),patch('luma_tester.core.build_opener',side_effect=AssertionError('Must not download')):
+                session.prepare(report=lambda message:None)
+            self.assertEqual(session.disk,disk)
+            self.assertFalse(session.base.exists())
+
     def test_only_two_architecture_images_support_all_three_interfaces(self):
         items=[artifact(arch) for arch in ('x86_64','aarch64')]
         policy=dict(schema=1,generation=100,images=[],workspaces=items)

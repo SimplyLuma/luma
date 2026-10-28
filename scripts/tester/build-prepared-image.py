@@ -23,22 +23,36 @@ def run(args, **kwargs):
 def build(args):
     source = args.source.resolve(strict=True)
     output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=False)
+    output.mkdir(parents=True, exist_ok=args.resume_raw)
     assert os.geteuid() == 0, 'Use a bounded root build worker'
     assert source.is_file() and source.suffix == '.qcow2'
     assert subprocess.run(['fuser', str(source)], capture_output=True).returncode == 1
     assert shutil.disk_usage(output).free > 50 * 1024**3
     raw = output / 'staging.raw'
-    run(['qemu-img', 'convert', '-p', '-f', 'qcow2', '-O', 'raw', source, raw])
-    loop = subprocess.check_output(['losetup', '--find', '--show', '--partscan', str(raw)], text=True).strip()
+    if args.resume_raw:
+        info=json.loads(subprocess.check_output(['qemu-img','info','--output=json',source],text=True))
+        assert raw.is_file() and raw.stat().st_size==info['virtual-size']
+        assert not (output/'BUILD.json').exists(), 'Never replace an exported image'
+        assert subprocess.run(['fuser',str(raw)],capture_output=True).returncode==1
+    else:
+        run(['qemu-img', 'convert', '-p', '-f', 'qcow2', '-O', 'raw', source, raw])
+    # Read GPT from the file directly. Loop partition nodes can lag behind
+    # --partscan in a busy worker; a bounded partition slice needs no udev scan.
+    table=json.loads(subprocess.check_output(['sfdisk','--json',raw],text=True))['partitiontable']
+    root_partition=max(table['partitions'],key=lambda p:p['size'])
+    sector=table.get('sectorsize',512)
+    assert root_partition['size']*sector>8*1024**3
     mount = output / 'root'
-    mount.mkdir()
+    mount.mkdir(exist_ok=args.resume_raw)
+    assert not os.path.ismount(mount) and not any(mount.iterdir()), 'Mount directory must be empty'
+    loop = subprocess.check_output(['losetup','--find','--show','--offset',str(root_partition['start']*sector),
+        '--sizelimit',str(root_partition['size']*sector),str(raw)], text=True).strip()
     mounted = False
     home_mount = None
     var_bind = None
     try:
-        devices = json.loads(subprocess.check_output(['lsblk', '-J', '-o', 'PATH,FSTYPE', loop], text=True))
-        partition = next(p['path'] for p in devices['blockdevices'][0]['children'] if p.get('fstype') == 'btrfs')
+        partition=loop
+        assert subprocess.check_output(['blkid','-p','-s','TYPE','-o','value',partition],text=True).strip()=='btrfs'
         run(['mount', '-o', 'subvolid=5', partition, mount]); mounted = True
         deployments = list(mount.glob('**/ostree/deploy/*/deploy/*.0'))
         assert len(deployments) == 1, deployments
@@ -118,7 +132,16 @@ WantedBy=multi-user.target
         remove(dbus);dbus.parent.mkdir(parents=True, exist_ok=True);dbus.symlink_to('/etc/machine-id')
         policy = sorted((deployment / 'etc/selinux/targeted/policy').glob('policy.*'))[-1]
         contexts = deployment / 'etc/selinux/targeted/contexts/files/file_contexts'
-        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts, deployment / 'etc'])
+        # Relabel only paths this exporter changed. Unrelated target-policy
+        # types (for example newer snapd types) need not exist in the host policy.
+        changed=['etc/try-luma','etc/gdm/custom.conf','etc/machine-id','etc/luma-tester-target',
+            'etc/systemd/system/try-luma-seed.service',
+            'etc/systemd/system/multi-user.target.wants/try-luma-seed.service',
+            'etc/systemd/system/multi-user.target.wants/sshd.service',
+            'etc/systemd/system/sshd.service.d','etc/systemd/system/gdm.service.d',
+            'etc/systemd/system/systemd-firstboot.service']
+        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts,
+             *[deployment / name for name in changed]])
         var_bind = deployment / 'var'
         assert not var_bind.is_symlink(), 'Unexpected OSTree var layout'
         var_bind.mkdir(exist_ok=True)
@@ -155,4 +178,5 @@ if __name__ == '__main__':
     parser.add_argument('--iso-sha256', required=True)
     parser.add_argument('--owner', type=int, default=os.getuid())
     parser.add_argument('--group', type=int, default=os.getgid())
+    parser.add_argument('--resume-raw', action='store_true',help='Resume this owned export after its raw copy completed')
     build(parser.parse_args())

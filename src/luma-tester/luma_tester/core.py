@@ -188,6 +188,13 @@ class Session:
                 raise TesterError('This id already belongs to another image. Use a new manifest id.')
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
+        from . import provision
+        if provision.ready(self):
+            # A completed installation is self-contained. Reopening saved work
+            # must not redownload installation media after cache cleanup.
+            self.validate_disk(self.disk)
+            report('Your saved Luma workspace is ready.')
+            return
         image = self.manifest['image']
         verified=False
         # Only published, explicitly associated artifacts contact the Hub.
