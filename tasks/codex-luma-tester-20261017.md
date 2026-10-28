@@ -1,7 +1,7 @@
 # Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Try Luma0.7.5 published and public downloads verified on2026-10-28; Mac GPU performance follow-up active, experimental runtime held back.
+- Status: Try Luma 0.7.6 published 2026-10-28 19:50 UTC; all five public release assets and both current prepared VM disks fully SHA256 verified. Website/Hub registration and analytics investigation handed off.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -14,6 +14,57 @@
   No physical device operations. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+2026-10-28 final release supersedes the historical GPU prototype notes below.
+Owner accepted the complete-frame Mac fix; source afb989fb17e15b1b30736c55e44508a5481e8308.
+Public source PR90 merged 97dde0dce840ddee22b1b0fbdc0d14b113e6b74b, all four
+CI checks passed (including real GTK/GVnc bindings for frame-stream tests).
+Mac uses HVF CPU virtualization and SOFTWARE guest graphics, not the rejected
+CGL/ANGLE prototype. Final app has no Resources/mac-gpu. Whole-frame worker
+stream presentation and pinned upstream QEMU11.1.0 VNC refresh patch are shipped.
+Final display.py SHA matches the owner's tested override byte-for-byte:
+5f8f991fcbb6a78855d0517c131343ff8fe19fa9e8f7aa0f979d8bc767e5d623.
+Exact corresponding QEMU tarball, patch, recipe and GPL license ship with source.
+
+All final packages were built from afb989fb1. Linux actual AppImage native
+sidebar/clipboard/version/source/channel QA passed. Windows ZIP CRC, source and
+runtime comparison passed; no new native Windows OS boot claimed. Windows
+runtime dependencies remain the previously qualified version. Mac Developer ID
+signing (160 Mach-O files), app+DMG notarization/stapling, download quarantine,
+native UI and hardened HVF/TCG QMP smoke passed. The final signed Mac app booted
+the new ARM disk twice with automatic login, three actual Flatpak app launches,
+persistence and clean shutdown; exact native evidence is release-final-076-r3/native-mac.
+Linux x86 KVM new-disk graphical auto-login/materials/three-app launch checks
+passed with normal startup settings and Flatpak repair disabled, confirming the
+image itself initializes its app repository before login. Earlier deliberately
+stripped-startup and short cold-app-deadline QA attempts failed; corrected final
+evidence is prepared-images-074/qa-final076-linux-r4/BOOT-PASS.json. No new image
+rebuild was needed to correct those QA fixtures.
+
+Published https://github.com/SimplyLuma/try/releases/tag/v0.7.6 at19:50:22UTC.
+AppImage SHA54872a8672416002c9a867340621d1a79830aada36d42f304e32c5eaacc328c4,
+Windows SHA6710a1d0cbd317e41e1822218894aa055f65cfba9d3c8614a7ff3fc6660ca7c2,
+Mac SHA8c86526464f74a7c6cbd29a1cd4f75773178965eadadc861f635eea6929b3c0d.
+Source and SHA256SUMS also passed anonymous full-body readback. Previous0.7.5
+asset IDs/digests/sizes unchanged. Publication job61cb0a8d passed; evidence
+release-final-076-r3/PUBLIC-DOWNLOADS-VERIFIED.json on owned bulk.
+Try repo main a9b115e published generation7 approved pair; docs-only808eaa6
+clarifies preserving the website's tracking routes. Exactly two ready4 standalone
+QCOW2 disks serve Desktop/Tablet/Mobile, publicly uploaded and fully read back:
+ARM e182b3e2cef32dc58f0df8a58fa59079bdfa847390bb62372dd5bbf67e2a7ca8,
+x86 d02987696cb0bfd692bdc15f6c3e328916731dfac1ff05230fc04f313037d4c2.
+Evidence prepared-images-074/publication-r4/*-PUBLIC-PASS.json.
+
+Website handoff: https://github.com/SimplyLuma/try/blob/main/docs/try-0.7.6-website-handoff.md
+Hub must register the three0.7.6 app artifacts, update tracked /get/app/try/*
+destinations and publish its signed tester update index. No website deployment
+or Hub data mutation performed here. At~19:47–19:51UTC, actual website routes
+delivered initial file bytes for current x86 and ARM OS nightlies, generic/FP6
+Mobile system+boot, Titan system+boot, and all three Try apps (still routed to
+0.7.5 then). No broad availability outage reproduced. A first ARM probe omitted
+/aarch64/ and returned404; actual website route includes it and passed. User
+reported only one completed download/hour; analytics ingestion, source filters,
+traffic and processing delay remain unverified and need Hub investigation.
 
 2026-10-27 launch prep: implementation6910be67a, Tester0.7.2. Public Hub
 now lists ARM20261026.8 and x8620261026.9. Both complete HTTPS bodies passed
