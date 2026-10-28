@@ -2286,3 +2286,13 @@ childhadnotexited). Stoppedownedrootr6 explicitly; no publication. Expandingonly
 Windowslistenerstartup tobounded60s withchildlivenesschecks; nativeverification
 required, do not claimfixqualified fromcodechangealone. Mac/Linuxpreviousruntime
 unaffected byWindows-onlyguard.
+
+04:10UTC: Windows-onlycoldcontrolwait bec89cfe7/public1183c6e0d,130tests+allCI
+PASS. Candidate18 build6b2245c3 PASS. Draftstage6 181c2950 PASS (Windows18/source/
+SHAupdated; Mac/Linuxunchanged source3929872c1). Finalr7 6910a50c active underroot
+luma-arm-desktop-try-preview-windows-final-r7-20261028T040621; outerSSH04:07:14.
+AddedisolatedbundledWinQEMU/AF_UNIXprobe beforeguestboot: actualtwo attemptsPASS
+3.246s/0.108s, query-statusprelaunch, cleanquit. Thus localcontroltransportworks;
+actualfullVM60sdeadline and2boots/visualstillpending. Probereceiptonremoteown
+C:\TryLumaQA-Prepared074-r4\state\CONTROL-PROBE-PASS.json; willcopyto
+windows/prepared-074-r7 afterQA. Publisher7preparedNOTRUN requiresr7PASS+visual.
