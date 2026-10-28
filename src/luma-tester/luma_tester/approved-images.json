@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generation": 5,
+  "generation": 6,
   "images": [
     {
       "artifact_id": "os/nightly/20261027.4/x86_64",
@@ -13,19 +13,19 @@
   ],
   "workspaces": [
     {
-      "artifact_id": "tester/preview/20261028-ready2/x86_64",
+      "artifact_id": "tester/preview/20261028-ready3/x86_64",
       "kind": "tester_image",
       "arch": "x86_64",
       "file": "try-luma-x86_64.qcow2",
-      "url": "https://media.simplyluma.com/tester/20261028-ready2/try-luma-x86_64.qcow2",
-      "sha256": "61ca6ea5de84051f1690cebecc99b268b598af1c2d45dfa9155cca8284f94640",
-      "size_bytes": 7549550592,
+      "url": "https://media.simplyluma.com/tester/20261028-ready3/try-luma-x86_64.qcow2",
+      "sha256": "41e920279b8abd57e73203e6ff008b89689d537accf25e06f33d51f49968ba6a",
+      "size_bytes": 7552827392,
       "channel": "preview",
-      "version": "20261028-ready2",
+      "version": "20261028-ready3",
       "label": "Luma \u2014 Ready to try",
       "tester_profile": {
         "schema": 1,
-        "id": "try-luma-ready2-x86-64",
+        "id": "try-luma-ready3-x86-64",
         "target": "desktop",
         "arch": "x86_64",
         "boot": "uefi",
@@ -41,19 +41,19 @@
       }
     },
     {
-      "artifact_id": "tester/preview/20261028-ready2/aarch64",
+      "artifact_id": "tester/preview/20261028-ready3/aarch64",
       "kind": "tester_image",
       "arch": "aarch64",
       "file": "try-luma-aarch64.qcow2",
-      "url": "https://media.simplyluma.com/tester/20261028-ready2/try-luma-aarch64.qcow2",
-      "sha256": "346ad5a79a0763b8a4b0b2708f972d2eec7685f6b0d63e487be0e7579f1c644b",
-      "size_bytes": 5489623040,
+      "url": "https://media.simplyluma.com/tester/20261028-ready3/try-luma-aarch64.qcow2",
+      "sha256": "ee3d5f6ff256324f2cd445c6626c6b9f49bf525d6475118bd00af6015bfb52be",
+      "size_bytes": 5492506624,
       "channel": "preview",
-      "version": "20261028-ready2",
+      "version": "20261028-ready3",
       "label": "Luma \u2014 Ready to try",
       "tester_profile": {
         "schema": 1,
-        "id": "try-luma-ready2-aarch64",
+        "id": "try-luma-ready3-aarch64",
         "target": "desktop",
         "arch": "aarch64",
         "boot": "uefi",

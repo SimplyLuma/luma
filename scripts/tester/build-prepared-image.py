@@ -126,7 +126,12 @@ WantedBy=multi-user.target
         home.mkdir(parents=True)
         (home / 'gnome-initial-setup-done').write_text('yes\n')
         account = next(line.split(':') for line in (deployment / 'etc/passwd').read_text().splitlines() if line.startswith('luma:'))
-        for path in (home.parent, home, home / 'gnome-initial-setup-done'):
+        # Export a complete user installation instead of leaving its first
+        # creation to competing shell/app-discovery processes at login.
+        user_repo = home.parent / '.local/share/flatpak/repo'
+        user_repo.mkdir(parents=True)
+        run(['ostree', '--repo=' + str(user_repo), 'init', '--mode=bare-user-only'])
+        for path in (home.parent, *home.parent.rglob('*')):
             os.chown(path, int(account[2]), int(account[3]))
         for key in ('secret_key', 'timestamps', 'seen-bssids'):
             remove(var / 'lib/NetworkManager' / key)

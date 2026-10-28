@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luma-tester"
-version = "0.7.3"
+version = "0.7.6"
 description = "Try Luma: LumaUI previews and development for Desktop, Tablet and Mobile"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}

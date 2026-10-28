@@ -23,6 +23,31 @@ def artifact(arch='x86_64'):
 
 
 class PreparedImageTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('ostree'), 'ostree required')
+    def test_firstboot_flatpak_initializes_before_login_and_preserves_real_data(self):
+        path=Path(__file__).resolve().parents[3]/'scripts/tester/prepared-firstboot.py'
+        spec=importlib.util.spec_from_file_location('prepared_flatpak',path)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            home=Path(directory);repo=home/'.local/share/flatpak/repo'
+            command=[sys.executable, '-c', module.FLATPAK_INIT, str(home)]
+            subprocess.run(command,check=True,capture_output=True)
+            self.assertTrue((repo/'objects').is_dir())
+            subprocess.run(['ostree','--repo='+str(repo),'refs'],check=True,capture_output=True)
+            original=(repo/'config').read_bytes()
+            data=repo/'objects/keep';data.write_text('preserve user data')
+            subprocess.run(command,check=True,capture_output=True)
+            self.assertEqual(data.read_text(),'preserve user data')
+            self.assertEqual((repo/'config').read_bytes(),original)
+        with tempfile.TemporaryDirectory() as directory:
+            home=Path(directory);repo=home/'.local/share/flatpak/repo';repo.mkdir(parents=True)
+            original='[core]\nrepo_version=1\nmode=bare-user-only\n[remote "local"]\nurl=https://example.invalid/repo\n'
+            (repo/'config').write_text(original)
+            subprocess.run([sys.executable,'-c',module.FLATPAK_INIT,str(home)],check=True,capture_output=True)
+            self.assertEqual((repo/'config').read_text(),original)
+            self.assertTrue((repo/'objects').is_dir())
+
     @unittest.skipUnless(shutil.which('qemu-img'),'qemu-img required')
     def test_saved_installation_reopens_without_redownloading_removed_iso_cache(self):
         with tempfile.TemporaryDirectory() as directory:
