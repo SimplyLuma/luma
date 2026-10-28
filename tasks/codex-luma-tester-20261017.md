@@ -2460,3 +2460,32 @@ x86upload111/225parts at06:21. Do notpublishchannelgen5 untilWindowsproof.
 Allfinalappassets+source/checksumsDRAFTverified2a2731b2, Linux51 Windows21 Mac12.
 Publishertry-seed-final-publish-r1.py PREPARED NOTRUN; requiresR14PASS+visual,
 newpublicimagereceiptsandgen5channel/maincommit. Oldpublishersobsolete.
+
+2026-10-28 13:34 UTC audited update: final Mac signed13/package24 PASS
+4fea36c8 (06:56:38), source37db08239, notarized/stapled/quarantine verified.
+Linux52 actual packaged UI PASS90324526; 136 component tests d973d08f PASS.
+Corrected ready2 ARM/x86 images public with full readback; channelgen5 live.
+Windows R15 db008f4f FAILED07:01:49: reached GRAPHICAL_AUTOLOGIN_READY
+iteration0 after517.6s, then a separate guest evidence SSH command timed out90s.
+No two-boot/persistence/shutdown PASS; no release publication. This falsifies
+the suspicion that the initial controls connect was stuck in this run.
+Own outer Windows fixture expired its bounded unit; inactive/22257 absent
+at13:32. Restarted only owned runtime-final-r15 overlay with bounded R16
+controller (no old R8 QA), normal9ba5b17b, max4200s, memory7GiB. Controller
+holds3600s after SSH readiness for focused native timeout diagnosis.
+No speculative AF_UNIX source changes made. Final candidate22 ZIP binding
+and native visual/persistence/shutdown acceptance remain required.
+
+13:53 UTC: R16 outer Windows screen independently inspected: first30%updates,
+then restart spinner; outer SSH ver subsequently succeeded Windows26200.9711.
+R16 native qualification now RUNNING ee7a04b6; root unit
+luma-arm-desktop-try-windows-native-r16-20261028T135121.service.
+Package21→22 ZIP diff13ac2498 PASS: exact same4632members, onlyexe/core/policy
+changed. R16 deploys delta and verifies SHA ofall3 before native two-boot QA;
+retrieves binding.jsonwithfinalZIPsha80eb519294d1eb993e637b3eefc0633e70d27ffbc665490497b755adc232ac0c.
+QA savesdesktopbeforeevidence and gives evidenceSSH300s (prior90sfailed);
+this is lab deadline only, no product change. Native/image/source still37db.
+Finaldraft restage989504ef PASS13:51:09: Linux52/Win22/Mac13 plus exact37db
+source archive/checksums, allGitHubassetdigests verified. Stilldraft.
+Publisher-r2 prepared/notrun: gatesactualR16PASS+binding+visualreview,
+Macsign13/LinuxUI52+nativeimages, currentpublicsourcef9477...,136tests.
