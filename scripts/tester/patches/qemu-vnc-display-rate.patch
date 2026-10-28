@@ -1,0 +1,32 @@
+--- a/ui/vnc.c	2026-10-28 13:37:35
++++ b/ui/vnc.c	2026-10-28 13:37:35
+@@ -58,9 +58,14 @@
+ #include "io/dns-resolver.h"
+ #include "monitor/monitor.h"
+ 
+-#define VNC_REFRESH_INTERVAL_BASE GUI_REFRESH_INTERVAL_DEFAULT
+-#define VNC_REFRESH_INTERVAL_INC  50
+-#define VNC_REFRESH_INTERVAL_MAX  GUI_REFRESH_INTERVAL_IDLE
++/*
++ * Local viewers present at display rate: poll at ~120 Hz while the screen
++ * changes, and back off only to ~30 Hz when idle so guest-initiated updates
++ * are not delayed by up to GUI_REFRESH_INTERVAL_IDLE.
++ */
++#define VNC_REFRESH_INTERVAL_BASE 8
++#define VNC_REFRESH_INTERVAL_INC  8
++#define VNC_REFRESH_INTERVAL_MAX  32
+ static const struct timeval VNC_REFRESH_STATS = { 0, 500000 };
+ static const struct timeval VNC_REFRESH_LOSSY = { 2, 0 };
+ 
+@@ -3272,10 +3277,7 @@
+     }
+ 
+     if (has_dirty && rects) {
+-        vd->dcl.update_interval /= 2;
+-        if (vd->dcl.update_interval < VNC_REFRESH_INTERVAL_BASE) {
+-            vd->dcl.update_interval = VNC_REFRESH_INTERVAL_BASE;
+-        }
++        vd->dcl.update_interval = VNC_REFRESH_INTERVAL_BASE;
+     } else {
+         vd->dcl.update_interval += VNC_REFRESH_INTERVAL_INC;
+         if (vd->dcl.update_interval > VNC_REFRESH_INTERVAL_MAX) {
