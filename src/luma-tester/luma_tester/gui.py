@@ -685,7 +685,7 @@ def launch(state=None):
             if self.viewer or not self.session.display_available():
                 return
             self.viewer = GuestDisplay(self.session.display_path,
-                touch=self.session.touch if self.session.manifest['target'] == 'mobile' else None)
+                touch=self.session.touch if self.target == 'mobile' else None)
             self.viewer.connect('display-error', self.display_failed)
             self.viewer.connect('connected', lambda _v: self.reveal_display(self.session) if self.graphical_ready else None)
             self.viewer_holder.append(self.viewer)
@@ -699,7 +699,7 @@ def launch(state=None):
                 import time
                 try:
                     from . import provision
-                    if provision.ready(session):
+                    if provision.ready(session) or session.manifest.get('guest_protocol') == 'luma-unified-v1':
                         # First boot can prepare bundled apps before the login session starts.
                         session.wait_graphical(1800)
                         vm.configure_guest(session,vm.load(session.root))

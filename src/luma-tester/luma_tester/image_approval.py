@@ -6,7 +6,7 @@ import re
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener
 
-from .core import HTTPSRedirects, TesterError
+from .core import HTTPSRedirects, TesterError, validate_manifest
 from .vm import atomic_json
 
 URL = 'https://raw.githubusercontent.com/SimplyLuma/try/main/channels/images.json'
@@ -27,6 +27,21 @@ def validate(document):
         architectures.add(match[2])
         if not re.fullmatch('[0-9a-f]{64}',str(item['sha256'])):
             raise TesterError('Invalid approved-image checksum.')
+    if 'workspaces' in document:
+        workspaces=document['workspaces']
+        if not isinstance(workspaces,list) or len(workspaces)>2:
+            raise TesterError('Approve at most one prepared image per architecture.')
+        architectures=set()
+        from .downloads import validate_artifact
+        for item in workspaces:
+            validate_artifact(item)
+            profile=validate_manifest(dict(item.get('tester_profile',{}),image=dict(
+                url=item['url'],bytes=item['size_bytes'],sha256=item['sha256'])))
+            if (item.get('kind')!='tester_image' or not str(item.get('file','')).endswith('.qcow2')
+                    or profile.get('guest_protocol')!='luma-unified-v1' or profile['arch']!=item.get('arch')
+                    or profile['arch'] in architectures):
+                raise TesterError('Invalid prepared-image channel entry.')
+            architectures.add(profile['arch'])
     return document
 
 

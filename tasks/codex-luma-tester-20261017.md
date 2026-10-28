@@ -2133,3 +2133,26 @@ not answer banners. Verified exactUID1003, only22442 listener, no child jobs;
 SIGTERM cleared only that stale connection. User restarted tunnel, pinnedSSH
 connected23:54. Rebuild finalMac after first-boot readiness bound before signing.
 Public0.7.4 remains draft, not released; no new signed/notarized release claim.
+
+User explicitly approved replacing default unattended ISO installation with
+exactly TWO prepared direct-boot images: ARM64 and x86-64, each shared across
+Desktop/Tablet/Mobile, with automatic login. New preparation active:
+ARM verified archive restoration487a5cdf PASS, sourceworkspace fullSHA08f421...;
+x86 source already autologin desktop-qualified. Guestfish inspectionff53f8b0
+failed appliance launch; switched to bounded private-mount raw-copy exporter.
+Both exports actually running d3b2d85d/x86 and8e0187e4/ARM (normal4GiB each,
+root3072MiB/7200s). Source disks unchanged; fresh raw copies only. At00:34UTC
+actual allocated rawbytes~5.4GB x86/~10.6GB ARM, both fresh writes.
+Cancelled ONLY owned obsolete installer Windows retrybd4e34e5/rootunit...234756
+because that flow no longer qualifies the requested default; retained all logs
+and Windows overlay, original Windows backing unchanged. This is NOT a Windows
+boot PASS. New prepared flow needs fresh Windows qualification after export.
+Added reproducible exporter + minimal private NoCloud key bootstrap under/etc,
+retains signed/usr OS content and system Flatpak baseline, removes QA home data,
+SSH hostkeys/machine identity/randomseed/logs, trims and compresses standalone
+QCOW2. New luma-unified-v1 manifest protocol lets samebytes cover all three
+interfaces and uses existing OS fw_cfg experience contract. Automatic GDM login
+included. Exact prepared catalog not published/approved until fresh boot proof.
+126 source unit checks411e296a PASS before final ISO-catalog suppression tweak.
+No new prepared disk qualified/published yet; current Mac0.7.4 installed package
+still prior613655bf1 source, do not claim it has the new prepared protocol.
