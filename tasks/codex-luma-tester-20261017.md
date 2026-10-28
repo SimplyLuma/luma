@@ -2184,3 +2184,45 @@ alreadyusesSSHSession.shutdown, correctedprivateharnessandfreshMacr3
 801313c4 active. Windows transfer server3650122 FD7pos5.39GB/7.55GB,
 Windowsdirreports0whileopen misleading. CorrectWindowsQAshutdowninplace
 beforecurlfinishes via shortPSfile.Replace, noappchanges. Neitherimagepublished.
+
+02:09UTC current release status: both prepared images PUBLIC full SHA readback
+PASS a102eab8, keys tester/20261027-ready1/try-luma-{aarch64,x86_64}.qcow2.
+Try channel generation4 approved/pushed db32d8f; legacy ISO approvals retained
+only for compatibility, new clients default prepared pair. Public app0.7.4 still
+DRAFT426082525. Draft staged files now Linuxr48/Windowsr15/sourcea915e4bba,
+normal eaeabf11 PASS; Mac+SHA256SUMS still missing, do not publish yet.
+Final private runtime6fb737613/publicPR87 a915e4bba allfourCI PASS,128unitsPASS.
+User requested known localpassword TryLuma andsidebarbothTry/Developer. Added
+Preview login username/password+Copy button, prepared-profileonly; native actual
+packaged LumaUI sidebar both modes be7e55b0 PASS. First-run localpassword set,
+SSHpassword+keyboard auth disabled/asserted, GSettings idle0/lockfalse onceonly
+preserving laterworkspacechoices. Linuxfreshpassword/autologin b0ab1708 PASS132s,
+passwdP and effectiveSSHno/no verified. Windowsliteralnewlines in SSH nowencoded
+one-line transport (roundtriptestPASS), allSSHreadinessprobes15s bounded.
+Macr20e8e589a6/LINUXr48ba45894c/Winr15fb598139 buildsPASS,source6fb737613.
+Windows previousQA a0? actualold3e79e068 failed on explicitstop: ShiftwokeLuma
+lockscreen, usercorrect aboutscreen sleep. No GPUfailureproven. NewQA a0af7692
+root luma-arm-desktop-try-preview-password-windows-r2-20261028T020439 active,
+candidate15, new thinworkspace/cachedbasehardlink,2CPU3GiBinnerguest,600s bounds.
+Macsignr9/nativeUI/HVF/TCGPASS, Apple+quarantine+retrieval pipeline71db8eabactive.
+Oldr8ApplePASS but quarantineattachfailedexternalmountpoint; r9usesinternalempty
+mountpoint, dataexternal. Macuser allowed PythonremovablevolumeTCC and signing
+resumed. NewnativeMacpasswordtwo-bootQAr4 started withsignedr9; userVMpreserved.
+
+02:40UTC: Final Mac pipeline71db8eab PASS including notarization, internal
+quarantinemount and full receivedDMG:65904143B SHA8a7dfbf403523c2da67032e24fc7d71abe88d341876304dcb9a489469f5d402f.
+Fresh signedMacr9 password two-boots/persistence/clean shutdown1bbeba58 PASS.
+Windowsr15 actualOSautologin/activeWayland/gnome-shell existed and password
+configured, idle0/screensaverfalse; old automatedcheck stuck on Win32OpenSSH
+nested quotes even after base64newlinewrapper. Numeric JSON argv transport
+native Windows probe returned activeWayland/Classuser/Activeyes in2.97s,
+no nested quotes. Corrected runtime Windows-only36331bd65,128unitsPASS and
+public0b1168390 fourCI PASS. Candidate-r16 normal220fa8ebPASS; package differs
+fromr15 onlycore.py and PEbuildtimestamp. Macr20/Linuxr48 unaffected, retain
+validated6fbsource. SupersededWindowsr2 QA now stopping after guestcleanpoweroff;
+next freshWindowsr3 controller usesactualcandidate16 and guestreboot in sameVM
+for persistence, avoiding repeated7.55GBcache rehash solelyforreboot. Do not
+claimr2PASS. Old gatedpublisher e498b743 explicitly stopped; needsreplacement
+withr3 gate. Finaldraftrefresh e1178d8c active, replacesWindowsZIP/source/SHA,
+sourcearchivePLATFORM-SOURCES.json documents Mac/Linuxa915 andWindows0b1168.
+Trychannelgen4db32d8f live; bothpreparedfilespublicfullSHAverified.0.7.4stilldraft.
