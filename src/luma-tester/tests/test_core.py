@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from luma_tester.core import Session, TesterError, digest, read_manifest
@@ -44,6 +45,16 @@ class SessionTests(unittest.TestCase):
         subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', str(self.source), '32M'], check=True)
         self.m['image'].update(sha256=digest(self.source), bytes=self.source.stat().st_size)
         return self.save()
+
+    def test_completed_legacy_installer_workspace_receives_preview_defaults(self):
+        self.m.update(media='iso', cloud_init=False)
+        session = self.save()
+        session.directory.mkdir(parents=True)
+        (session.directory/'workspace.qcow2').touch()
+        (session.directory/'setup.json').write_text(json.dumps(dict(phase='ready', sha256=self.m['image']['sha256'])))
+        with patch.object(session, 'wait'), patch.object(session, 'ssh', return_value=['ssh', 'fixture']), patch('luma_tester.guest_preview.configure') as configure, patch('luma_tester.host.run_ssh', return_value=SimpleNamespace(returncode=0)):
+            session.wait_graphical()
+        configure.assert_called_once_with(session)
 
     def test_mac_native_acceleration_and_cross_arch_emulation(self):
         with patch('luma_tester.core.platform.system',return_value='Darwin'),patch('luma_tester.core.platform.machine',return_value='arm64'):
@@ -149,6 +160,31 @@ class SessionTests(unittest.TestCase):
         self.assertIn('virtio-gpu-gl-pci,edid=on,xres=432,yres=960', argv)
         self.assertIn('egl-headless,rendernode=/dev/dri/renderD128', argv)
         self.assertTrue(argv[argv.index('-vnc') + 1].startswith('unix:'))
+
+    def test_mac_gpu_runtime_uses_metal_without_linux_render_node(self):
+        self.m.update(arch='aarch64', boot='uefi')
+        session = self.save()
+        with patch('luma_tester.core.platform.system', return_value='Darwin'), \
+             patch('luma_tester.core.platform.machine', return_value='arm64'), \
+             patch.dict(os.environ, {'LUMA_TESTER_MAC_GPU':'angle-metal'}), \
+             patch.object(session, 'render_device', return_value=None), \
+             patch.object(session, 'firmware', return_value='/test/firmware.fd'):
+            command = session.command(embedded=True)
+            self.assertIn('virtio-gpu-gl-pci,edid=on,xres=432,yres=960', command)
+            self.assertIn('egl-headless,gl=es', command)
+            self.assertEqual(command[command.index('-accel')+1], 'hvf')
+            self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', session.command(embedded=True, graphics='software'))
+            self.m.update(arch='x86_64', boot='bios')
+            self.assertIn('virtio-gpu-pci,edid=on,xres=432,yres=960', self.save().command(embedded=True))
+
+    def test_graphics_probe_does_not_reference_omitted_firmware_drives(self):
+        command = ['qemu-system-aarch64', '-machine', 'virt,gic-version=3,pflash0=fwcode,pflash1=fwvars',
+                   '-display', 'egl-headless,gl=es', '-L', '/bundled/qemu']
+        with patch('luma_tester.core.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='{"status":"prelaunch"}', stderr='')) as execute:
+            self.save().probe_graphics(command)
+        probe = execute.call_args.args[0]
+        self.assertEqual(probe[probe.index('-machine')+1], 'virt,gic-version=3')
+        self.assertEqual(probe[probe.index('-L')+1], '/bundled/qemu')
 
     def test_no_gpu_and_explicit_software_work_without_render_device(self):
         with patch.object(Session, 'render_device', return_value=None):

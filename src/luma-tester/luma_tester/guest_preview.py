@@ -44,6 +44,17 @@ if not startup_marker.exists():
 '''.replace('SSH_POLICY', repr(SSH_POLICY)).replace('PASSWORD_INPUT', repr(USER + ':' + PASSWORD + '\n'))
 
 
+def supported(session):
+    """Only launcher-managed Luma previews have the public local credentials.
+
+    Completed installer workspaces predate the unified image protocol, but
+    remain managed previews. Arbitrary imported images keep their own accounts.
+    """
+    from . import provision
+    return session.manifest.get('user') == USER and (
+        session.manifest.get('guest_protocol') == 'luma-unified-v1' or provision.ready(session))
+
+
 def configure(session):
     import subprocess
     from .core import run

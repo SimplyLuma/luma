@@ -367,11 +367,14 @@ class Session:
             raise TesterError('Use memory 1024–65536 MiB, CPUs 1–32, SSH port 1024–65535.')
         if graphics not in ('auto', 'virgl', 'software'):
             raise TesterError('Choose graphics auto, virgl or software.')
-        render = self.render_device(render_node) if graphics != 'software' else None
-        accelerated = graphics == 'virgl' or (graphics == 'auto' and not headless and render is not None)
-        if accelerated and render is None:
+        mac_gpu = (platform.system() == 'Darwin' and self.manifest['arch'] == 'aarch64' and
+                   os.environ.get('LUMA_TESTER_MAC_GPU') == 'angle-metal')
+        render = self.render_device(render_node) if graphics != 'software' and platform.system() == 'Linux' else None
+        accelerated = graphics == 'virgl' or (graphics == 'auto' and not headless and (render is not None or mac_gpu))
+        if accelerated and render is None and not mac_gpu:
             raise TesterError('Accelerated graphics needs an accessible GPU render device.')
-        display = ('egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
+        display = (('egl-headless,gl=es' if embedded or headless else 'cocoa,gl=es') if accelerated and mac_gpu else
+                   'egl-headless,rendernode=' + render if accelerated and (embedded or headless) else
                    'gtk,gl=on,zoom-to-fit=on' if accelerated else
                    'none' if headless or embedded else 'sdl' if host.windows() else 'cocoa' if platform.system() == 'Darwin' else 'gtk,zoom-to-fit=on')
         gpu = 'virtio-gpu-gl-pci' if accelerated else 'virtio-gpu-pci'
@@ -452,9 +455,13 @@ class Session:
         if not display.startswith('egl-headless'):
             render = self.render_device()
             display = 'egl-headless,rendernode=' + render
-        probe = [command[0], '-machine', command[command.index('-machine') + 1],
+        machine = ','.join(option for option in command[command.index('-machine') + 1].split(',')
+                           if not option.startswith(('pflash0=', 'pflash1=')))
+        probe = [command[0], '-machine', machine,
                  '-cpu', 'max', '-accel', 'tcg', '-m', '256', '-nodefaults', '-vga', 'none',
                  '-device', 'virtio-gpu-gl-pci', '-display', display, '-S', '-qmp', 'stdio']
+        if '-L' in command:
+            probe += ['-L', command[command.index('-L') + 1]]
         requests = ''.join(json.dumps({'execute': action}) + '\n' for action in
                            ('qmp_capabilities', 'query-status', 'quit'))
         result = subprocess.run(probe, input=requests, text=True, capture_output=True, timeout=10)
@@ -481,6 +488,8 @@ class Session:
                 try:
                     self.probe_graphics(command)
                     graphics = {'mode': 'virgl', 'render_node': self.render_device(options.get('render_node'))}
+                    if platform.system() == 'Darwin':
+                        graphics['backend'] = 'angle-metal'
                 except (TesterError, subprocess.TimeoutExpired) as exc:
                     from . import vm
                     if (options.get('graphics') or vm.load(self.root)['graphics']) == 'virgl':
@@ -733,8 +742,8 @@ class Session:
     def wait_graphical(self, timeout=180):
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
-        if self.manifest.get('guest_protocol') == 'luma-unified-v1':
-            from . import guest_preview
+        from . import guest_preview
+        if guest_preview.supported(self):
             guest_preview.configure(self)
         deadline = time.monotonic() + timeout
         from . import provision
