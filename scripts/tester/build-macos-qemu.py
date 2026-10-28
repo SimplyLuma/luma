@@ -54,6 +54,7 @@ def main():
     for name in ('qemu-system-aarch64', 'qemu-system-x86_64'):
         shutil.copy2(build / name, out / name)
         receipt['files'][name] = hashlib.file_digest((out / name).open('rb'), 'sha256').hexdigest()
+    shutil.copy2(source / 'COPYING', out / 'COPYING')
     (out / 'QEMU-BUILD.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print(out)
 

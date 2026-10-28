@@ -32,6 +32,9 @@ def main():
     data=subprocess.check_output([str(brew/'bin/qemu-img'),'--version'],text=True).split()[2]
     if qemu.get('patches')!=['qemu-vnc-display-rate.patch'] or qemu.get('version')!=data:
         p.error(f"Patched QEMU {qemu.get('version')} must match Homebrew QEMU data {data}.")
+    for name in ('qemu-system-aarch64','qemu-system-x86_64'):
+        if hashlib.file_digest((a.qemu/name).open('rb'),'sha256').hexdigest()!=qemu['files'][name]:
+            p.error('Patched QEMU binary changed: '+name)
     helpers={name:str(brew/'bin'/name) for name in required}
     helpers.update({name:str(a.qemu/name) for name in ('qemu-system-aarch64','qemu-system-x86_64')})
     sys.path.insert(0,str(repo/'src/luma-tester'))
@@ -68,6 +71,7 @@ def main():
     shutil.copy2(repo/'LICENSE.md',notices/'Luma-LICENSE')
     shutil.copy2(brew/'share/qemu/edk2-licenses.txt',notices/'edk2-licenses.txt')
     source=notices/'qemu-source';source.mkdir(exist_ok=True)
+    shutil.copy2(a.qemu/'COPYING',source/'COPYING')
     shutil.copy2(repo/'scripts/tester/patches/qemu-vnc-display-rate.patch',source)
     shutil.copy2(repo/'scripts/tester/build-macos-qemu.py',source)
     (source/'SOURCE.md').write_text(f"""QEMU {qemu['version']} system emulators are built from {qemu['url']}
