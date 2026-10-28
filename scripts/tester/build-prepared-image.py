@@ -101,7 +101,9 @@ ConditionVirtualization=vm
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /etc/try-luma/firstboot.py
-TimeoutStartSec=30
+TimeoutStartSec=300
+StandardOutput=journal+console
+StandardError=journal+console
 RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target

@@ -13,6 +13,7 @@ import pwd
 import re
 import subprocess
 import tempfile
+import time
 
 
 def seed_values(text):
@@ -38,11 +39,22 @@ def seed_values(text):
     return key, target
 
 
+def wait_seed(directory=Path('/dev/disk/by-label'), timeout=120):
+    # local-fs.target does not guarantee that udev has published the separate
+    # seed disk yet, especially during a cold software-emulated boot.
+    deadline = time.monotonic() + timeout
+    while True:
+        for name in ('cidata', 'CIDATA'):
+            seed = directory / name
+            if seed.exists():
+                return seed
+        if time.monotonic() >= deadline:
+            raise RuntimeError('The private workspace seed did not appear within its startup deadline')
+        time.sleep(0.2)
+
+
 def main():
-    seed = next((p for name in ('cidata', 'CIDATA')
-                 if (p := Path('/dev/disk/by-label') / name).exists()), None)
-    if seed is None:
-        raise RuntimeError('The private workspace seed is missing')
+    seed = wait_seed()
     with tempfile.TemporaryDirectory(prefix='try-luma-seed-', dir='/run') as mount:
         subprocess.run(['mount', '-o', 'ro,nosuid,nodev,noexec', str(seed), mount], check=True)
         try:
