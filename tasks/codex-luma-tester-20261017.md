@@ -2639,3 +2639,22 @@ init/config-preservation/refs/idempotence and preservation of existing app data.
 Agent verifying actual dock+launchpad activation after repair in own MacQA.
 Source patch regenerated from actually built QEMU files for exact correspondence
 (includes harmless duplicate system.h include present in qualified binary build).
+
+2026-10-28 16:48 UTC: Published Try Luma0.7.5 stable-renderer preview per owner:
+https://github.com/SimplyLuma/try/releases/tag/v0.7.5 . Exactall3appsource71ea4613d;
+publicsourcePR89mergedaab65580,4CIchecksPASS. Linuxc1403b80/018e355d,
+Windowse0709676/b765704e passedpackage/nativeLinuxUI/ZIPsource+runtimebinding.
+No newWindowsOSboot;2450native-qualified0.7.4runtimefilesunchanged.
+StockMacbuildbf713a3e/finalize98267778 passedDeveloperIDdeepverify,nativeUI,
+HVF/TCGcontrol,Appleapp+DMGAccepted,staple,quarantineGatekeeper,fullreceivedSHA.
+StockMacResources/mac-gpuABSENT;GPUprototypeexplicitlyheldbackafteruserreports
+severelag. Publish526cc760 PASS: all5publicdownloadsfullsize/SHAverified,
+0.7.4assetsunchanged. Evidence bulk/release-final-075-r2/PUBLIC-DOWNLOADS-VERIFIED.json.
+MacSHA39cb08f4dc5db48c1231467b5095eecbf9cc9a3f133c176095d27511fc665c94;
+Linuxbb550619fad1cae8f4e496b7133624c115ca169405e1706522edf07d7ce91b05;
+Windowsf9c18bbe4634e468d8a7e4a2230932b42f58c19da7c0810524872d93587590f5.
+Releasehomemaincdf5b2fupdatesdownloadsanddocs/try-0.7.5-website-handoff.md.
+Hub signedreleaseindexupdate remainswebsite/Hubagenthandoff;GitHubpublication
+alone doesnotenablein-appupdateoffers. PreparedVMgeneration5unchanged.
+OwnerexplicitlyrequestedhandoffnowthencontinuedMacGPUwork;performbounded
+actualcurrent-sessiondiagnostics, donotclaimCGLperformancequalified.
