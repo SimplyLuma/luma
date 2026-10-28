@@ -733,8 +733,8 @@ class Session:
     def wait_graphical(self, timeout=180):
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
-        if self.manifest.get('guest_protocol') == 'luma-unified-v1':
-            from . import guest_preview
+        from . import guest_preview
+        if guest_preview.supported(self):
             guest_preview.configure(self)
         deadline = time.monotonic() + timeout
         from . import provision

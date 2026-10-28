@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from luma_tester.core import Session, TesterError, digest, read_manifest
@@ -44,6 +45,16 @@ class SessionTests(unittest.TestCase):
         subprocess.run(['qemu-img', 'create', '-q', '-f', 'qcow2', str(self.source), '32M'], check=True)
         self.m['image'].update(sha256=digest(self.source), bytes=self.source.stat().st_size)
         return self.save()
+
+    def test_completed_legacy_installer_workspace_receives_preview_defaults(self):
+        self.m.update(media='iso', cloud_init=False)
+        session = self.save()
+        session.directory.mkdir(parents=True)
+        (session.directory/'workspace.qcow2').touch()
+        (session.directory/'setup.json').write_text(json.dumps(dict(phase='ready', sha256=self.m['image']['sha256'])))
+        with patch.object(session, 'wait'), patch.object(session, 'ssh', return_value=['ssh', 'fixture']), patch('luma_tester.guest_preview.configure') as configure, patch('luma_tester.host.run_ssh', return_value=SimpleNamespace(returncode=0)):
+            session.wait_graphical()
+        configure.assert_called_once_with(session)
 
     def test_mac_native_acceleration_and_cross_arch_emulation(self):
         with patch('luma_tester.core.platform.system',return_value='Darwin'),patch('luma_tester.core.platform.machine',return_value='arm64'):
