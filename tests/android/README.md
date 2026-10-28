@@ -43,7 +43,7 @@ identity, plain-text escaping, activation tokens, dismissal versus expiration,
 producer withdrawal, server restart and stale replacement. Its JSON result
 explicitly does not claim Android, compositor, ARM or hardware qualification.
 
-In a disposable graphical test session, `notification-observer.py --output
+In a disposable graphical test session, `python3 tests/android/notification-observer.py --output
 /private/path/fixture-notify.jsonl --seconds 180` can record the fixture's actual
 outgoing notification metadata. It records desktop identity, replacement and
 action IDs, without message text or other apps' notifications. This is a passive

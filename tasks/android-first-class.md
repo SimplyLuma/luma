@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-28T23:20:00+00:00
+- Updated: 2026-10-28T23:23:19+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 765a59e1c (plus the following idle-policy change)
+- Branch and last useful commit: codex/android-first-class; a7d895b01007bc1915589af71422f0b11bd6454e
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -53,3 +53,10 @@ an intended test into a passed result. Keep long logs in the artifact directory.
 - Product decision recorded explicitly: Android notifications use Luma styling, preserving Android semantics through structured bridges. Android custom RemoteViews must not execute as host UI.
 
 Active jobs at this update: dev-android-vm-r4-be5a1197 (own VM, automatic finite lifetime) and dev-android-source-recovery-r2-53b804ed (root unit luma-android-first-class-source-recovery-r2-20261028T223745.service). Recovery is running/thawed, capped at 3.5 GiB with low IO weight and 60M/s write limit; files had reached prebuilts/vndk. No complete image rebuild is claimed. Root staging and original retired archive remain private. Next: inspect recovered preparation state, arrange bounded matched-image build, then retest the reproduced resize deadlock and ordinary-APK admission on that image.
+
+2026-10-28T23:23Z follow-up:
+- dev-android-runtime-rpm-r3-b4fb3ebf built .82 from clean a7d895b01007bc1915589af71422f0b11bd6454e successfully. Actual package checks: 71 tests, zero skips/failures; peak 2 GiB. Binary SHA256 8500e1b773849cc7e2b1a4d559052a68f8a06a8596c59e0a247aa6d9b6a087ee; SRPM SHA256 973add20b62566da21ce2852674d5295226a65696615e3d6944051e3f69b7ff9. Output is the corresponding account artifact directory's source/build/packages/luma-android-runtime.
+- Installed .82 successfully only in the existing disposable VM overlay. The RPM transaction completed with exit 0; final query reports .82 only. Reloaded user units and restarted luma-android-session.service and luma-android.service; both report active. A concurrent query during update briefly showed both versions while update-mime-database was still running; that was not the final package state. No other VM/package/update policies changed.
+- Source recovery completed successfully at 23:20:33Z (42m47s, 3.5 GiB peak). dev-android-source-recovery-r2-53b804ed and its root unit are now inactive/success. The recovered out/ contains directory scaffolding without the prior Ninja graph or images; this is a cold build input, not a restored warm build.
+- Read-only recovered HEADs: hardware/waydroid 18e73d3882d97d909843925419ef25ea60f6a376 (old Prairie chrome commit on pinned 85f31a9); frameworks/base 79d859d0a657dc234241a56fb49279a0f448fe56; device/waydroid/waydroid 5ff343563d2ea187534c9791993137c61d198c0b; lineage-sdk 631dcfbbd15efcd44c970eb25e3c78f8d44b0283 (upstream Waydroid service patches). Vendor is vendor/extra, not vendor/waydroid. Prepared-state metadata is retained intact. Next build setup must verify the complete recorded snapshot before using the normal reset/preparation path; no reset or build has occurred.
+- Only the finite private VM lifetime job remains active. Full image build, resize acceptance and ordinary APK rejection are still open.
