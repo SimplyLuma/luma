@@ -2489,3 +2489,72 @@ Finaldraft restage989504ef PASS13:51:09: Linux52/Win22/Mac13 plus exact37db
 source archive/checksums, allGitHubassetdigests verified. Stilldraft.
 Publisher-r2 prepared/notrun: gatesactualR16PASS+binding+visualreview,
 Macsign13/LinuxUI52+nativeimages, currentpublicsourcef9477...,136tests.
+
+2026-10-28 14:29 UTC: Windows timeout isolated to native OpenSSH anonymous
+PIPE handles: s.ssh(['id']) stalls even with -vvv and plain command/absolute
+exe/no-window/close_fds=False; identical call with temporary output files exits0.
+Native probes in windows/ssh-diagnose-r17/{probe,pipes18,fixed19b}.log.
+R16 ee7a04b6 FAILED14:01:49 aftergraphical login; markedDIAGNOSTIC-ONLY;
+no release acceptance. R17 diagnostic f4058df6 stoppeditsguest cleanly.
+
+Source a5129def7 + binary-mode correction d0a5fe9e7 centralizes Windows
+noninteractive SSH output through private files. All internal capture users
+(readiness, experience/device updates, guest commands, CLI) use helper;
+POSIX delegates standard subprocess.run. Windows stdin uses batch SFTP to a
+0600 mktemp guest file, opens that file as remote stdin, removes it afterward;
+shared total deadline and cleanup. Native original failing evidence now~0.6s,
+256KiB binary upload SHA verified1.92s (fixed19b.log latest). Native large binary
+stdout echo stress still timed out; do not claim arbitrary binary SSH stdout
+qualified. Normal control/CLI output and binary uploads are the release scope.
+144 component tests PASS0ce5832a; publicsource e75c032062d6bedb6c575cce8bbe28c003aa8d7b
+PR87 all4CI PASS and mergeable. Mac/Linux remain exact validated37db packages.
+
+Build23 failedonly root Git dubiousownership afterassembly; no source failure.
+Scoped process-envsafe.directory build24 c8b3f756 PASS butpredatesbinaryfix.
+Final Windows25 source d0a5fe9e7 build4dff9147 PASS14:25:38.
+R21 221fd0b7 RUNNING, root luma-arm-desktop-try-windows-native-r21-20261028T142619.service:
+21→25 same-member ZIP diff/fullmemberSHAbinding deployed; native two boots,
+seed300success, persistentmarker, cleanstop, CLI capturedid. Correctedimage
+cache verifiedstockR14 reused. R20 diagnosticguest explicitlyquit; owned
+ssh-diagnose20.py stoppedbefore newQA topreventitsfinallytouchingnewguest.
+OldR16 screenshot archivedonlyifmtimebeforeR21start; avoidsdestinationcollision.
+
+Draftrestage r12 1ba2347b running: Linux52/Mac13 retained, Windows25 updated.
+Corresponding source rootd0a plus nested PINNED-LINUX-MACOS-SOURCE.tar.gz from
+37db; manifestrecords exactperplatformtrees. No unnecessaryMac/Linuxrebuild.
+Publisher-r3 PREPARED NOTRUN: gatesR21PASS+exact25ZIPbinding+actualvisualreview,
+lateststageddigests,144tests+CI, oldnativeMac/Linux+signedMac13proofs.
+OuterR16 privatefixture stillbounded4200s from13:32:56; controllertime.sleep
+ends~14:43:58. Finishqualificationbeforethen or explicitlyextendownbounded
+fixturewithoutdiscardingtest. Apprelease074stillDRAFT;0.7.3untouched.
+
+14:35UTC: R21 failedonlyQA leftover screenshotfilename collision afteractual
+graphicalautologin120.9s; no sourcefailure. Replacedreusedoutputnameswith
+newprivateqa-proof-r22 directory. R22 758a5ea7 active root
+luma-arm-desktop-try-windows-native-r22-20261028T143022.service. BothBOOT0
+andBOOT1 PASS files observed onWindows, savedmarkerretained; actualpackaged
+CLIcaptured id passedbothboots. Firstscreenshotdesktop0 retrievedandinspected:
+fullLuma wallpaper+dock (try-windows-r22-guest0.png). Finalshutdown+collection
+pending. Finaldraftrestage1ba2347b PASS14:28:16,source+5assetdigestsverified.
+Publisher-r4 prepared/notrun gated R22complete+actualsecondvisualreview.
+All3packagedchannels verifiedgen5 .qcow2 pair (WindowsZIP25, Linuxactual
+AppImageQAextraction52, Mac13signedsource37db receipt). NormalStartselects
+preparedworkspaces anddownload/verifies/bootsautomatic; public0.7.3stilloldflow.
+
+2026-10-28 14:38 UTC RELEASE COMPLETE: R22 native Windows758a5ea7 PASS
+14:35:36, boots127.46s/122.67s on nestedlab, graphicalautologin/persistentmarker/
+packagedCLI/actualcleanshutdown bothpass. Exactcandidate25ZIP binding
+80b7f1c805a2b8549cb8111683d961003f565f68129c3cc1674faf03c12e3813;
+actualdesktop0+desktop1 inspectedfullwallpaper+dock, visualreceiptwritten.
+Publicpublisher e2ea2e61 PASS14:36:45. PR87 merged c315aa9033ff331313ebd91423567825534df71b
+frompublic e75c032062d6bedb6c575cce8bbe28c003aa8d7b. Releasev0.7.4 PUBLIC
+(preview) https://github.com/SimplyLuma/try/releases/tag/v0.7.4; everypublic
+app/source/SHA256SUMS FULLdownloadsize+SHAverified. Receipt release-final-074/
+PUBLIC-DOWNLOADS-VERIFIED.json; previous0.7.3assetsunchanged.
+TryrepoREADME publicmainc477b0e linksall3newpackages,preparedVMs,credentials,
+channelgen5; appupdatesstillneed separateHub signedindexregistration asdocumented.
+OwnedouterWindows fixture gracefullyshutdown viaSSH(return0),22257listener
+absentbeforeexplicitstopofOWNR16rootunit. OriginalWindowsVM/diskuntouched.
+NoMacuserrunningapp/VMmodified. All3newpackagechannelsgen5 .qcow2 pair verified.
+Userwebsitehandoff: explicitversionedv0.7.4URLs; hostlabelsMacAppleSilicon,
+Windowsx86-64,Linuxx86-64. Bothguestarches inautomaticpreparedimagechannel.
