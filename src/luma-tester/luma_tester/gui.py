@@ -251,6 +251,21 @@ def launch(state=None):
                 self.sidebar.append_row(row)
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
+            from . import guest_preview
+            self.preview_rows = [SidebarSection('Preview login', ruled=True)]
+            username = SidebarRow('Username')
+            username.set_trail(self.label(guest_preview.USER, 'caption'))
+            password = SidebarRow('Password')
+            values = Gtk.Box(spacing=8)
+            value = self.label(guest_preview.PASSWORD, 'caption');value.set_selectable(True)
+            values.append(value)
+            values.append(IconOnlyButton('copy', 'Copy preview password', size='small',
+                on_click=lambda: self.window.get_clipboard().set(guest_preview.PASSWORD)))
+            password.set_trail(values)
+            note = Gtk.ListBoxRow(selectable=False, activatable=False)
+            note.set_child(self.label('Use this when installing apps.', 'caption', muted=True))
+            self.preview_rows.extend([username, password, note])
+            for row in self.preview_rows:self.sidebar.list.append(row)
             self.developer_heading = SidebarSection('Developer', ruled=True)
             self.sidebar.list.append(self.developer_heading)
             self.developer_rows.append(self.developer_heading)
@@ -971,6 +986,10 @@ def launch(state=None):
                 row.set_sensitive(True)
                 row.set_trailing('Coming soon' if name in experiences.COMING_SOON else '')
                 row.set_sensitive(name not in experiences.COMING_SOON)
+            path = self.select_image() if not self.session else None
+            preview = (self.session.manifest.get('guest_protocol') == 'luma-unified-v1' if self.session else
+                not path or read_manifest(path).get('guest_protocol') == 'luma-unified-v1')
+            for row in self.preview_rows:row.set_visible(preview)
             for row in self.developer_rows:
                 row.set_visible(self.intent == 'develop')
             self.ssh_switch.set_active(self.settings['agent_ssh'])

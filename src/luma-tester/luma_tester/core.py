@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import base64
 import hashlib
 import json
 import os
@@ -644,7 +645,14 @@ class Session:
                     '%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"',
                 self.manifest['user'] + '@127.0.0.1']
         # OpenSSH joins arguments into a shell command: quote every guest argument.
-        return argv + ([shlex.join(command)] if command else [])
+        remote = shlex.join(command) if command else ''
+        if host.windows() and ('\n' in remote or '\r' in remote):
+            # Win32 OpenSSH cannot reliably transport literal command newlines.
+            # Keep its command line on one line while preserving the exact argv.
+            encoded = base64.b64encode(remote.encode()).decode()
+            script = "import base64,os;os.execl('/bin/sh','sh','-c',base64.b64decode('" + encoded + "').decode())"
+            remote = 'python3 -c ' + shlex.quote(script)
+        return argv + ([remote] if command else [])
 
     def sync(self, source):
         source = Path(source).resolve()
@@ -663,11 +671,11 @@ class Session:
         while time.monotonic() < deadline:
             try:
                 result = subprocess.run(self.ssh(['true']), stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.PIPE, text=True)
+                                        stderr=subprocess.PIPE, text=True, timeout=15)
                 if result.returncode == 0:
                     return
                 last_error = result.stderr.strip()[-1024:] or 'SSH exited ' + str(result.returncode)
-            except TesterError as exc:
+            except (TesterError, subprocess.TimeoutExpired) as exc:
                 last_error = str(exc)
             time.sleep(2)
         raise TesterError('Guest SSH was not ready; inspect console.log. Last result: ' + last_error)
@@ -675,6 +683,9 @@ class Session:
     def wait_graphical(self, timeout=180):
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
+        if self.manifest.get('guest_protocol') == 'luma-unified-v1':
+            from . import guest_preview
+            guest_preview.configure(self)
         deadline = time.monotonic() + timeout
         from . import provision
         if provision.ready(self) or self.manifest.get('guest_protocol') == 'luma-unified-v1':
@@ -688,8 +699,11 @@ assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' a
 assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
 """
             while time.monotonic()<deadline:
-                if subprocess.call(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)==0:
-                    return
+                try:
+                    if subprocess.run(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL,timeout=15).returncode==0:
+                        return
+                except subprocess.TimeoutExpired:pass
                 time.sleep(2)
             raise TesterError('The Luma desktop did not finish signing in. Inspect console.log.')
         check = """import json, os
@@ -707,9 +721,11 @@ if ready['target'] == 'mobile':
     assert subprocess.check_output(['pgrep', '-u', str(os.getuid()), '-f', '^/opt/luma/phosh/libexec/phosh( |$)'], text=True).strip()
 """
         while time.monotonic() < deadline:
-            if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL) == 0:
-                return
+            try:
+                if subprocess.run(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL,timeout=15).returncode == 0:
+                    return
+            except subprocess.TimeoutExpired:pass
             time.sleep(1)
         raise TesterError('Luma graphical session was not ready; inspect the guest greetd journal.')
 
