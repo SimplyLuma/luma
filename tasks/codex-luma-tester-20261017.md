@@ -2585,3 +2585,24 @@ primarybottleneckandnotmodifiedspeculatively. Immediateworkaroundlowerguest
 resolution; actualfixneeds GPU-capableMacQEMU/renderbackendqualification,
 notmerelyvirglsettingunsupportedbybundledruntime. OfficialQEMUvirtio-GPU
 docsconfirmdefault2Drequiressoftware3Drenderer. No performancefixclaimed.
+
+2026-10-28 urgent Mac GPU + concurrent sidebar correction:
+Sidebar agent commit d3f9242b5 integrated cf15baaea. Shared managed-preview
+classifier now includes completed legacy installer workspaces, both Try/Developer
+show luma/TryLuma with unlock/install guidance; one-time defaults preserve later
+custom passwords. 147tests + native Mac/Linux UI passed; Mac receipt
+/srv/dev/accounts/second/artifacts/try-login-mac-ui-r1/PASS.json.
+Mac GPU prototype uses pinned QEMU fb806cdfca39542e59b2eae58c6fd6662afd3787
+from verified23MB bottle, UTM5.0.8 Metal ANGLE/virgl/Vulkan libraries; full input
+checksums and exact source pins in remote try-gpu-075-r1/relocated-r1/runtime.json.
+Original tap ANGLE crashed in AppleGL; its virgl emitted unsupported GLSL310.
+Qualified prototype combination r7 booted HVF ARM, guest glxinfo explicitly
+Accelerated:yes/Device:virgl/ES3.0, VNC frames219173colors, QMPquit exit0.
+QMPscreendump reports no surface forGL; existing VNC capture path works.
+Remote QA /Volumes/A016/Try-Luma-GPU-075-r1/angle-boot-r7; no userVM mutation.
+Relocated runtime private resource prefix probe+VNC passed withoutDYLD overrides.
+Native app QA caught probe's omitted pflash drive references (silent software
+fallback); fixed stripping pflash0/1 from diskless machine and retaining-L;
+regression test added. Agent nativeUI rerun pending. Candidate isolated app:
+/Volumes/A016/Luma-Try-GPU-UI-Candidate-20261028-r1/Try Luma GPU QA.app.
+Release0.7.4 remains unchanged; corrective0.7.5 source integration in progress.
