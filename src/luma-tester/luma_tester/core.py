@@ -671,11 +671,11 @@ class Session:
         while time.monotonic() < deadline:
             try:
                 result = subprocess.run(self.ssh(['true']), stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.PIPE, text=True)
+                                        stderr=subprocess.PIPE, text=True, timeout=15)
                 if result.returncode == 0:
                     return
                 last_error = result.stderr.strip()[-1024:] or 'SSH exited ' + str(result.returncode)
-            except TesterError as exc:
+            except (TesterError, subprocess.TimeoutExpired) as exc:
                 last_error = str(exc)
             time.sleep(2)
         raise TesterError('Guest SSH was not ready; inspect console.log. Last result: ' + last_error)
@@ -699,8 +699,11 @@ assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' a
 assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
 """
             while time.monotonic()<deadline:
-                if subprocess.call(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)==0:
-                    return
+                try:
+                    if subprocess.run(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL,timeout=15).returncode==0:
+                        return
+                except subprocess.TimeoutExpired:pass
                 time.sleep(2)
             raise TesterError('The Luma desktop did not finish signing in. Inspect console.log.')
         check = """import json, os
@@ -718,9 +721,11 @@ if ready['target'] == 'mobile':
     assert subprocess.check_output(['pgrep', '-u', str(os.getuid()), '-f', '^/opt/luma/phosh/libexec/phosh( |$)'], text=True).strip()
 """
         while time.monotonic() < deadline:
-            if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL) == 0:
-                return
+            try:
+                if subprocess.run(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL,timeout=15).returncode == 0:
+                    return
+            except subprocess.TimeoutExpired:pass
             time.sleep(1)
         raise TesterError('Luma graphical session was not ready; inspect the guest greetd journal.')
 
