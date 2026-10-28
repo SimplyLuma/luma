@@ -2673,3 +2673,20 @@ confirmed AppleCoreOpenGL4.1 native+SPICE IOSurfacepath documented. Standard
 stockQEMU/HVF/Cocoa2Dbaseline6ecb2e58bootedownprivateoverlay andnativewindow,
 guestllvmpipesoftwareasexpected; nativevslaunchercomparisonongoing.
 Useroptionalmanualquestionpending; no opinionassumed. Originaluserdiskunchanged.
+
+2026-10-28 Mac viewer bottleneck reproduced: owner reports native Cocoa baseline
+vastly smoother. Native baseline app launch issue repaired separately (plainQEMU
+bypassedlauncherbootstrap). Actual warmGTK/VNC animationA/B3a4824c5: idle path
+10120fullbuffercopies/10.28s,70.6%onecore;16mscoalescing316/10s,35.1%.
+Implementeddisplay-clockcoalescingwhenmapped plus16msfallbackwhenhidden,
+transferringpendingcallbacksacrossmap/unmap andcancelingbothonclose.
+RealLinuxQEMU/GVnc/GTKframe+pixelparity+input+hidden/mapped/hiddenregression
+PASSf4a412cc againstnewsource throughactualportablelibraries. InitialhostPython
+attemptf8300ca6 lackedGVnctypelib; correctedusingqualifiedbundledruntime.
+NativeMacactualnewsourcehashboundr5 measured idle16281copies/10.48s95.5%core
+versusframeclock578/10s50.6%core,correctedVirGLacceleratedGL4.1. Evidence
+/srv/dev/accounts/second/artifacts/try-mac-frame-clock-r5-PASS.json. Enclosing
+harness4c3c6a15 failedaftermeasurements dueexecnamespaceoverwritingpathvariable;
+independentfollowupverifiedmeasurementfile, exactdisplay.pySHA andownedQEMU
+88724stopped. Do notlabelthatwholeharnessPASS; measurementandcleanupareverified.
+Public0.7.5unchanged; preparingprivateintegratedMacusercandidatebeforeGPUrelease.

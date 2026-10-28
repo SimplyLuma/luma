@@ -50,6 +50,9 @@ class GuestDisplay(Gtk.Picture):
         self.ready = False
         self.frames = 0
         self.pending_frame = 0
+        self.pending_tick = 0
+        self.connect('map', self.mapped)
+        self.connect('unmap', self.unmapped)
         self.button_mask = 0
         self.last_pointer = (0, 0)
         self.pressed_keys = set()
@@ -163,10 +166,36 @@ class GuestDisplay(Gtk.Picture):
             self.resize_buffer(self.connection.get_width(), self.connection.get_height())
 
     def updated(self, _connection, _x, _y, _width, _height):
-        if self.framebuffer and not self.pending_frame:
-            # The loading page keeps this widget unmapped. A GTK frame-clock
-            # callback would stall both texture updates and VNC requests there.
-            self.pending_frame = GLib.idle_add(self.paint_frame)
+        if self.framebuffer and not self.pending_frame and not self.pending_tick:
+            self.schedule_frame()
+
+    def schedule_frame(self):
+        # GVnc emits damage per rectangle, not per display frame. Copying the
+        # entire buffer for every chunk can enqueue thousands of textures/sec.
+        if self.get_mapped():
+            self.pending_tick = self.add_tick_callback(self.paint_tick)
+        else:
+            # The loading page keeps the viewer unmapped. A frame clock alone
+            # would stop its first frame and the next VNC request indefinitely.
+            self.pending_frame = GLib.timeout_add(16, self.paint_frame)
+
+    def paint_tick(self, _widget, _clock):
+        self.pending_tick = 0
+        return self.paint_frame()
+
+    def mapped(self, _widget):
+        if self.pending_frame:
+            GLib.source_remove(self.pending_frame)
+            self.pending_frame = 0
+        if self.ready and self.framebuffer and not self.pending_tick:
+            self.schedule_frame()
+
+    def unmapped(self, _widget):
+        if self.pending_tick:
+            self.remove_tick_callback(self.pending_tick)
+            self.pending_tick = 0
+        if self.ready and self.framebuffer and not self.pending_frame:
+            self.pending_frame = GLib.timeout_add(16, self.paint_frame)
 
     def paint_frame(self):
         self.pending_frame = 0
@@ -329,6 +358,10 @@ class GuestDisplay(Gtk.Picture):
 
     def close(self):
         self.release_input()
+        self.ready = False
+        if self.pending_tick:
+            self.remove_tick_callback(self.pending_tick)
+            self.pending_tick = 0
         if self.pending_frame:
             GLib.source_remove(self.pending_frame)
             self.pending_frame = 0
