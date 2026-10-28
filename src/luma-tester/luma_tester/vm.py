@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .core import TesterError, run
+from . import host
 
 DEFAULTS = dict(memory=4096, cpus=4, disk_gib=64, graphics='auto', audio=True,
                 microphone=False, agent_ssh=False, boot_iso=True, folders=[], usb=[], device=None)
@@ -236,19 +237,19 @@ else:
  p.parent.mkdir(parents=True,exist_ok=True);p.write_text(expected);p.chmod(0o644)
 print('true')
 '''
-    changed=subprocess.check_output(session.ssh(['sudo','python3','-c',script,mode,legacy]),text=True,timeout=20).strip()
+    changed=host.ssh_output(session.ssh(['sudo','python3','-c',script,mode,legacy]),text=True,timeout=20).strip()
     if changed!='true':
         return False
-    old=subprocess.check_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
+    old=host.ssh_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
     # SSH may disconnect before systemctl returns. Verify a new boot below.
-    result=subprocess.run(session.ssh(['sudo','systemctl','--no-block','reboot']),
+    result=host.run_ssh(session.ssh(['sudo','systemctl','--no-block','reboot']),
                           capture_output=True,text=True,timeout=15)
     if result.returncode not in (0,255):
         raise TesterError('The simulator could not restart: '+result.stderr.strip())
     deadline=time.monotonic()+120
     while time.monotonic()<deadline:
         time.sleep(2)
-        value=subprocess.run(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
+        value=host.run_ssh(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
         if value.returncode==0 and value.stdout.strip()!=old:
             session.wait_graphical(120)
             return True
@@ -336,7 +337,7 @@ launcher=Path('/usr/libexec/luma-tester-mobile-session')
 configured=launcher.exists() and 'export LUMA_TESTER_DYNAMIC_MODES=1' in launcher.read_text()
 print(p.read_text().strip() if p.exists() and configured else '')
 """
-    previous=subprocess.check_output(session.ssh(['python3','-c',probe]),text=True,timeout=15).strip()
+    previous=host.ssh_output(session.ssh(['python3','-c',probe]),text=True,timeout=15).strip()
     if previous==manifest['sha256']:return False
     script=r"""import hashlib,os,subprocess,sys,tempfile
 from pathlib import Path
@@ -362,13 +363,13 @@ path.unlink(missing_ok=True)
 Path('/etc/luma/tester-display-modes').write_text(sys.argv[1]+'\n')
 """
     run(session.ssh(['sudo','python3','-c',script,manifest['sha256']]),input=package.read_bytes(),timeout=150,stdout=subprocess.DEVNULL)
-    old=subprocess.check_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
-    result=subprocess.run(session.ssh(['sudo','systemctl','--no-block','reboot']),capture_output=True,text=True,timeout=15)
+    old=host.ssh_output(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),text=True,timeout=10).strip()
+    result=host.run_ssh(session.ssh(['sudo','systemctl','--no-block','reboot']),capture_output=True,text=True,timeout=15)
     if result.returncode not in (0,255):raise TesterError('Could not restart the simulator after its display update.')
     deadline=time.monotonic()+120
     while time.monotonic()<deadline:
         time.sleep(2)
-        result=subprocess.run(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
+        result=host.run_ssh(session.ssh(['cat','/proc/sys/kernel/random/boot_id']),capture_output=True,text=True,timeout=10)
         if result.returncode==0 and result.stdout.strip()!=old:
             session.wait_graphical(120);return True
     raise TesterError('Simulator display update was installed; the guest has not restarted yet.')
