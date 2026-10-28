@@ -605,10 +605,24 @@ class Session:
         # An ACPI button press is therefore not a reliable shutdown request.
         if self.status() in ('paused', 'prelaunch'):
             self.qmp('cont')
-        result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                text=True, timeout=15)
-        if result.returncode == 255 or (host.windows() and result.returncode != 0):
+        try:
+            if host.windows():
+                # A disk-backed diagnostic stream avoids Win32 pipe-reader waits
+                # when OpenSSH disconnects as the guest powers off.
+                import tempfile
+                with tempfile.TemporaryFile() as errors:
+                    result = subprocess.run(self.ssh(['sudo','systemctl','--no-block','poweroff']),
+                                            stdout=subprocess.DEVNULL,stderr=errors,timeout=15)
+                    errors.seek(0)
+                    result.stderr = errors.read().decode('utf-8',errors='replace')
+            else:
+                result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                        text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            if not host.windows():raise
+            result = None
+        if result is None or result.returncode == 255 or (host.windows() and result.returncode != 0):
             # Windows OpenSSH can return a different nonzero status when the
             # remote machine powers off. Confirm actual VM state in either case.
             # SSH closes early in a normal shutdown; desktop services and disk
@@ -617,6 +631,8 @@ class Session:
             while time.monotonic()<deadline:
                 if self.status()=='stopped':return
                 time.sleep(.25)
+        if result is None:
+            raise TesterError('Could not confirm guest shutdown after SSH timed out.')
         if result.returncode != 0:
             raise TesterError('Could not request guest shutdown: ' + result.stderr.strip()[-1024:])
 
@@ -704,6 +720,10 @@ assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' a
 assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
 env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+uid+'/bus')
 subprocess.run(['systemctl','--user','is-active','--quiet','org.gnome.Shell@user.service'],env=env,check=True)
+# systemd READY can precede GNOME's interactive main loop under emulation.
+subprocess.run(['gdbus','call','--session','--dest','org.gnome.ScreenSaver',
+    '--object-path','/org/gnome/ScreenSaver','--method','org.gnome.ScreenSaver.GetActive'],
+    env=env,check=True,stdout=subprocess.DEVNULL,timeout=5)
 """
             while time.monotonic()<deadline:
                 try:
