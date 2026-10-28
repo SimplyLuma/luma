@@ -2391,3 +2391,37 @@ hardware-specificworkaround. Enhancedexistingdisplay_smoke checksframebeforemap.
 Needcommit/buildthissmallsharedfixandfinalWindowsvisualqualificationbeforepublish.
 Mac firstcapturecanprecedefirstpaint5sdespiteGNOMEservice+D-Busready; realQMP
 frame after5sfull desktop. Do not claimearlyinactiveframesasvisualPASS.
+
+2026-10-28 06:02UTC DEFINITIVE Windows cause: serial login and actual journal
+prove try-luma-seed.service Result=timeout; started05:33:26,killed05:33:55 SIGTERM.
+sshd/gdm Requires=seed then fail dependency, so waiting1800s cannot recover.
+RuntimeONLYdiagnostic /run serviceoverride300s +restartseed succeeded28.529s,
+Result=success/ActiveState=active, followedexplicitsshd/gdmstart. R11 now marked
+DIAGNOSTIC-ONLY.json and must NEVER qualify originalimage, eveniflaterPASS.
+Evidence windows/prepared-074-r11/{seed-service-journal.log,
+seed-service-timeout-recovery.log,guest-bootstrap-diagnosis.log}. Serialbackend
+changedviaQMP toWindowsloopback22391 fordiagnosticlogin (localpasswordworks).
+
+Sourceeef986826 adds300sseedallowance,120sboundedudevlabelwait, bootstrap
+journal+consoleoutput.133unitPASSdd628e39; publicsource69bb8daa399980e7a1bdf21a4d20a6d5e905e6ab
+PR87 all4CIpass. Sourceframefixe330d982d builtLinux51 acb5938e,
+Windows21 0c18b16c, Mac23 3198815b/sign12 b35201de ALLPASS; actualLinuxUI
+7d95c475PASS, MacsignedUI/HVF/TCG/notary+quarantine/fullDMGSHAallPASS.
+Draftstageupdatedassets/source 2a2731b2 running; archivepinnedprivateeef with
+exactapp/platforme330 andupdatedimageexporter, notnewerpublicplatform.
+
+Avoidedneedlessfullimageconversion: initialrootexport-r2 jobs d4cd4658 label
+underscorefailedbeforestart; retryc9c03307 andARM2dc7bfa3 startedbutexplicitly
+stopped at06:00 beforemount, retainedpartialraws. Fastercorrectedimageclones
+areRUNNING x86normal6b3fb110, ARMf7294649; privatehelper
+/srv/dev/accounts/second/artifacts/try-seed-image-patch-r3.py usesXFSreflinkclone
+ofunchangedpublicr1, privateNBDmount, changesONLYseedunit/bootstrap tosourceeef,
+preservesSELinuxlabels, unmount/disconnect/check/SHA, outputexport-r3.
+Loadednbdmodule (4devices requested, actualmax_part31), previouslynotloaded.
+OwnNBD0(x86)/NBD1(ARM) protectedwith/run/lock/try-luma-prepared-nbdN.lock,
+checkedunownedbeforeattach; cleanupmustdisconnectifjobfailure. No source disk
+oruserVMmodified. Rootjobs768MiB/900s normal1GiBeach. NeedfreshR3Windows+
+Linux/Macboot andnewimmutablepublickeys/channelgeneration BEFOREreleasepublish.
+Currentpublisher-r9obsoletepointsfailedR9; DO NOT RUN. Release074stillDRAFT.
+OuterWindowsfixturelifetimestill9000s until~06:51, pausedcontroller4025360
+cleanuprequired afterWindowschecks. OriginalWindowsVM/diskuntouched.
