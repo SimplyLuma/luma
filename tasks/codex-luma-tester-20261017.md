@@ -2361,3 +2361,33 @@ WindowscontinuousGVncviewerprivateclientconnected; terminateguestcleanly before
 newtestsession. Newfinalsource includesWinshutdownstderrTemporaryFile +actual
 poweroffconfirmationonSSHtimeout, andsharedinteractive-shellreadiness. Needs
 all3finalrebuilds +nativecheck; previousstage19 remainsdraft, no publication.
+
+2026-10-28 05:45UTC: Current final source0e61631a0 was built as Linux50,
+Windows20, Mac22/sign11; source PR87 public448bb77d79eb1c4eef9e0f952821692cdb3d3641
+and132unitchecksPASS. Mac notarization, native2boot/persistentmarker/cleanshutdown
+PASS; LinuxfreshbootandactualUIbothmodesPASS. GitHub0.7.4 remainsDRAFT426082525.
+PreparedARM/x86QCOWs publicverified unchanged. Sourcearchive nowpins exactprivate
+packagedtree0e61631a0 (publicsharedplatformhadunrelatednewerchanges); receipt
+release-final-074/FINAL-DRAFT-VERIFIED.json includesbothcommits.
+
+Windows R11 currently running normal44c8dbf4/root
+luma-arm-desktop-try-preview-windows-final-r11-rpc-20261028T052943.service,
+Windowscandidate20, outwindows/prepared-074-r11. Reusesfullyverifiedcache from
+priorchecks, stockguestcommand/readiness/shutdown,1800sgraphicalbound. No final
+PASS yet;05:44QMPframe inactive, guestserialttylogin, innerQEMUstillrunning.
+WHPX featureenableattempttimedout and capabilityremainsfalse afterownedfixture
+reboot; no accelerationqualificationclaimed. OriginalWindowsVM/diskuntouched.
+Outerfixturecontroller4025360 intentionallySIGSTOP aspreviousnote, QEMUalive.
+Extended ONLY its rootunit runtimeboundto9000s via
+/run/systemd/system/luma-arm-desktop-try-preview-windows-final-r8-20261028T042128.service.d/90-qualification-bound.conf
+(daemonreload/showverified2h30m; expires~06:51UTC). Same8GiBnormalreservation.
+Cleanupremoveownr8-diagnostic-holdthenSIGCONT4025360 AFTERfinaltest.
+
+Reproduced real frontendbug: GuestDisplay usedGTKtickcallback forVNCframepump;
+widgetunmappedbehindloadingpage=>frames0/no texture. ActualQEMU+bundledGVnc
+baseline a62c3489 failsassert; samefixture with GLib.idle_add/framepump+source
+cancellation passes8890ed31 HIDDEN_VIEWPORT_FRAME_PASS1. No emulatedguestOS or
+hardware-specificworkaround. Enhancedexistingdisplay_smoke checksframebeforemap.
+Needcommit/buildthissmallsharedfixandfinalWindowsvisualqualificationbeforepublish.
+Mac firstcapturecanprecedefirstpaint5sdespiteGNOMEservice+D-Busready; realQMP
+frame after5sfull desktop. Do not claimearlyinactiveframesasvisualPASS.
