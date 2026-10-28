@@ -1,5 +1,72 @@
 {
   "schema": 1,
-  "generation": 2,
-  "images": []
+  "generation": 5,
+  "images": [
+    {
+      "artifact_id": "os/nightly/20261027.4/x86_64",
+      "sha256": "9eb954fc858cd3e801f395399e0c833e29791c25eb31de03de05cd9800f24604"
+    },
+    {
+      "artifact_id": "os/nightly/20261027.1/aarch64",
+      "sha256": "c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8"
+    }
+  ],
+  "workspaces": [
+    {
+      "artifact_id": "tester/preview/20261028-ready2/x86_64",
+      "kind": "tester_image",
+      "arch": "x86_64",
+      "file": "try-luma-x86_64.qcow2",
+      "url": "https://media.simplyluma.com/tester/20261028-ready2/try-luma-x86_64.qcow2",
+      "sha256": "61ca6ea5de84051f1690cebecc99b268b598af1c2d45dfa9155cca8284f94640",
+      "size_bytes": 7549550592,
+      "channel": "preview",
+      "version": "20261028-ready2",
+      "label": "Luma \u2014 Ready to try",
+      "tester_profile": {
+        "schema": 1,
+        "id": "try-luma-ready2-x86-64",
+        "target": "desktop",
+        "arch": "x86_64",
+        "boot": "uefi",
+        "cloud_init": true,
+        "media": "disk",
+        "guest_protocol": "luma-unified-v1",
+        "user": "luma",
+        "build": "Luma prepared preview 20261028",
+        "capabilities": {
+          "home": false,
+          "dynamic_display": false
+        }
+      }
+    },
+    {
+      "artifact_id": "tester/preview/20261028-ready2/aarch64",
+      "kind": "tester_image",
+      "arch": "aarch64",
+      "file": "try-luma-aarch64.qcow2",
+      "url": "https://media.simplyluma.com/tester/20261028-ready2/try-luma-aarch64.qcow2",
+      "sha256": "346ad5a79a0763b8a4b0b2708f972d2eec7685f6b0d63e487be0e7579f1c644b",
+      "size_bytes": 5489623040,
+      "channel": "preview",
+      "version": "20261028-ready2",
+      "label": "Luma \u2014 Ready to try",
+      "tester_profile": {
+        "schema": 1,
+        "id": "try-luma-ready2-aarch64",
+        "target": "desktop",
+        "arch": "aarch64",
+        "boot": "uefi",
+        "cloud_init": true,
+        "media": "disk",
+        "guest_protocol": "luma-unified-v1",
+        "user": "luma",
+        "build": "Luma prepared preview 20261028",
+        "capabilities": {
+          "home": false,
+          "dynamic_display": false
+        }
+      }
+    }
+  ]
 }

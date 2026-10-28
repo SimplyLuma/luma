@@ -54,10 +54,13 @@ def main():
                     viewer = GuestDisplay(session.display_path)
                     viewer.connect('display-error', lambda _v, message: errors.append(RuntimeError(message)))
                     window.set_child(viewer)
-                    window.present()
+                    # The real launcher opens VNC behind its loading page.
+                    # Frames must flow before the viewer is ever mapped.
                     assert viewer.open()
                     phase = 1
                 elif phase == 1 and viewer.frames >= 1:
+                    assert not viewer.get_mapped()
+                    window.present()
                     session.qmp('stop')
                     last_frame = viewer.frames
                     viewer.connection.framebuffer_update_request(False, 0, 0,

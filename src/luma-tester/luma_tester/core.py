@@ -27,7 +27,8 @@ class TesterError(Exception):
 
 
 def run(argv, **kwargs):
-    return subprocess.run([str(x) for x in argv], check=True, **kwargs)
+    executor = host.run_ssh if Path(str(argv[0])).name.lower() in ('ssh', 'ssh.exe') else subprocess.run
+    return executor([str(x) for x in argv], check=True, **kwargs)
 
 
 def digest(path):
@@ -59,6 +60,8 @@ def validate_manifest(m):
         raise TesterError('Choose a developer disk or installation ISO.')
     if m.get('cloud_init') is not (m.get('media','disk') == 'disk'):
         raise TesterError('Developer disks require cloud-init; installation ISOs do not.')
+    if 'guest_protocol' in m and (m['guest_protocol'] != 'luma-unified-v1' or m.get('media', 'disk') != 'disk'):
+        raise TesterError('Unsupported prepared guest protocol.')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', m.get('user', '')):
         raise TesterError('Invalid guest user.')
     if 'display' in m:
@@ -134,8 +137,12 @@ class Session:
         self.qmp_path = self.runtime / 'qmp'
         self.display_path = self.runtime / 'display'
         self.base = self.root / 'images' / (self.manifest['image']['sha256'] + ('.iso' if self.manifest.get('media') == 'iso' else '.qcow2'))
-        self.disk = self.directory / 'disk.qcow2'
         self.key = self.directory / 'developer-key'
+
+    @property
+    def disk(self):
+        from . import provision
+        return self.directory / ('workspace.qcow2' if provision.ready(self) else 'disk.qcow2')
 
     @contextlib.contextmanager
     def lock(self):
@@ -153,6 +160,11 @@ class Session:
         if self.manifest['cloud_init']:
             required += ['ssh-keygen', 'ssh']
             if not host.windows():required += ['xorriso']
+        elif self.manifest.get('media')=='iso':
+            from . import provision
+            if provision.approved(self):
+                required += ['ssh-keygen','ssh']
+                if not host.windows():required += ['xorriso']
         return {x: shutil.which(x) for x in required}
 
     def prepare(self, report=print, progress=None):
@@ -177,6 +189,13 @@ class Session:
                 raise TesterError('This id already belongs to another image. Use a new manifest id.')
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
+        from . import provision
+        if provision.ready(self):
+            # A completed installation is self-contained. Reopening saved work
+            # must not redownload installation media after cache cleanup.
+            self.validate_disk(self.disk)
+            report('Your saved Luma workspace is ready.')
+            return
         image = self.manifest['image']
         verified=False
         # Only published, explicitly associated artifacts contact the Hub.
@@ -275,7 +294,8 @@ class Session:
                                  'ssh_authorized_keys': [Path(str(self.key) + '.pub').read_text().strip()]}],
                       'ssh_pwauth': False, 'disable_root': True,
                       'write_files': [{'path': '/etc/luma-tester-target', 'permissions': '0644',
-                                       'content': self.manifest['target'] + '\n'}]}
+                                       'content': (self.experience if self.manifest.get('guest_protocol') == 'luma-unified-v1'
+                                                   else self.manifest['target']) + '\n'}]}
             # cloud-init accepts JSON as a YAML subset.
             (self.directory / 'user-data').write_text('#cloud-config\n' + json.dumps(config))
             (self.directory / 'meta-data').write_text(json.dumps({'instance-id': self.manifest['id']}))
@@ -331,9 +351,11 @@ class Session:
         return None
 
     def command(self, port=2228, memory=None, cpus=None, headless=False, firmware=None, software=False, embedded=False,
-                graphics=None, render_node=None, experience=None):
+                graphics=None, render_node=None, experience=None, provisioning=False, disk_path=None):
         from . import vm
         from . import experiences
+        from . import provision
+        installed = not provisioning and provision.ready(self)
         experience = experience or self.manifest['target']
         if not experiences.compatible(experience,self.manifest):
             raise TesterError('This image cannot boot the selected experience.')
@@ -362,7 +384,8 @@ class Session:
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
         if experience == 'mobile' and self.manifest.get('display'):
             width, height = (self.manifest['display'][key] for key in ('width', 'height'))
-        if experience == 'mobile' and self.manifest.get('media') == 'iso':
+        if experience == 'mobile' and (self.manifest.get('media') == 'iso' or
+                                     self.manifest.get('guest_protocol') == 'luma-unified-v1'):
             # ARM EDK2 needs an 80-column console; 432px can assert before GRUB.
             width, height = 864, 1920
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
@@ -381,7 +404,8 @@ class Session:
             position=argv.index('-nic')
             argv[position:position+2]=['-netdev',f'user,id=network0,hostfwd=tcp:127.0.0.1:{port}-:22','-device','virtio-net-pci,netdev=network0,romfile=']
         argv += ['-fw_cfg','name=opt/luma/experience,string='+experiences.FLAGS.get(experience,experience)]
-        if self.manifest['target'] == 'mobile':
+        if self.manifest['target'] == 'mobile' or (experience == 'mobile' and
+                self.manifest.get('guest_protocol') == 'luma-unified-v1'):
             argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
             if host.windows():
@@ -389,19 +413,20 @@ class Session:
                 self.windows_display = dict(port=host.free_port(), password=secrets.token_hex(4))
                 argv += ['-vnc', '127.0.0.1:'+str(self.windows_display['port']-5900)+',password=on', '-S']
             else:argv += ['-vnc', 'unix:' + str(self.display_path)]
-        disks=[('os',self.disk,'qcow2',False)]
+        disks=[('os',disk_path or (self.directory/'workspace.qcow2' if installed else self.disk),'qcow2',False)]
         if self.manifest['cloud_init']:
             disks.append(('seed',self.directory/'seed.iso','raw',True))
         for name, path, fmt, readonly in disks:
             block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
                      'file': {'driver': 'file', 'filename': str(path)}}
-            boot=(',bootindex='+('2' if settings['boot_iso'] else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
+            boot=(',bootindex='+('2' if settings['boot_iso'] and not installed else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
+            if name=='os' and self.manifest.get('guest_protocol')=='luma-unified-v1':boot=',bootindex=1'
             argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}'+boot]
-        if self.manifest.get('media') == 'iso':
+        if self.manifest.get('media') == 'iso' and not installed:
             block={'driver':'raw','node-name':'installer','read-only':True,'file':{'driver':'file','filename':str(self.base)}}
             argv += ['-blockdev',json.dumps(block),'-device','virtio-scsi-pci,id=scsi','-device','scsi-cd,drive=installer,bootindex='+('1' if settings['boot_iso'] else '2')]
         bios = self.firmware(firmware)
-        if bios and (self.manifest.get('media') == 'iso' or
+        if bios and (self.manifest.get('media') == 'iso' or self.manifest.get('guest_protocol') == 'luma-unified-v1' or
                      (arch == 'x86_64' and platform.system() == 'Darwin')):
             code=Path(bios).with_name('QEMU_EFI-pflash.raw') if arch=='aarch64' else Path(bios)
             template=code.with_name('vars-template-pflash.raw' if arch=='aarch64' else 'OVMF_VARS.fd')
@@ -442,7 +467,12 @@ class Session:
             raise TesterError('This launcher supports Linux, macOS and Windows hosts.')
         with self.lock() as lease:
             self.experience=options.get('experience') or self.manifest['target']
+            (self.directory/'setup-cancel').unlink(missing_ok=True)
             self._prepare(print)
+            from . import provision, vm
+            provision.check_cancel(self)
+            if provision.approved(self) and vm.load(self.root)['boot_iso']:
+                provision.prepare(self, lease, options)
             command = self.command(**options)
             self.directory.mkdir(mode=0o700,parents=True,exist_ok=True)
             (self.directory/'experience.json').write_text(json.dumps({'experience':options.get('experience') or self.manifest['target'],'arch':self.manifest['arch']})+'\n')
@@ -467,20 +497,22 @@ class Session:
             (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
             print('Starting ' + self.manifest['build'] + '; acceleration: ' + command[command.index('-accel') + 1], flush=True)
             # Preserve the lease in QEMU if the supervisor dies unexpectedly.
-            child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
-            if host.windows() and options.get('embedded'):
-                try:
-                    for _ in range(100):
-                        if child.poll() is not None:raise TesterError('QEMU stopped before opening its controls.')
-                        try:
-                            self.qmp('change-vnc-password', {'password':self.windows_display['password']})
-                            break
-                        except OSError:time.sleep(.1)
-                    else:raise TesterError('QEMU did not open its controls.')
-                    self.display_path.write_text(json.dumps(self.windows_display))
-                    self.qmp('cont')
-                except BaseException:
-                    child.terminate();child.wait();raise
+            try:
+                child = self._start_qemu(command, lease, options.get('embedded'))
+            except (TesterError, OSError):
+                # Hypervisor presence does not guarantee a usable partition,
+                # particularly on virtualized or partially configured Windows.
+                if not (host.windows() and options.get('embedded')
+                        and command[command.index('-accel') + 1] == 'whpx'):
+                    raise
+                print('Hardware acceleration did not start. Using software emulation.', flush=True)
+                command = self.command(**dict(options, software=True))
+                self.qmp_path.unlink(missing_ok=True)
+                self.display_path.unlink(missing_ok=True)
+                (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
+                print('Starting ' + self.manifest['build'] + '; acceleration: '
+                      + command[command.index('-accel') + 1], flush=True)
+                child = self._start_qemu(command, lease, options.get('embedded'))
             previous = {}
             def forward(signum, _frame):
                 if child.poll() is None:
@@ -497,6 +529,35 @@ class Session:
                     child.wait()
                 self.qmp_path.unlink(missing_ok=True)
                 self.display_path.unlink(missing_ok=True)
+
+    def _start_qemu(self, command, lease, embedded):
+        child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
+        if not (host.windows() and embedded):
+            return child
+        try:
+            controls_deadline = time.monotonic() + 60
+            while time.monotonic() < controls_deadline:
+                if child.poll() is not None:
+                    raise TesterError('QEMU stopped before opening its controls.')
+                try:
+                    self.qmp('change-vnc-password', {'password': self.windows_display['password']})
+                    break
+                except OSError:
+                    time.sleep(.1)
+            else:
+                raise TesterError('QEMU did not open its controls.')
+            self.display_path.write_text(json.dumps(self.windows_display))
+            self.qmp('cont')
+            return child
+        except BaseException:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            raise
 
     def qmp(self, execute, arguments=None, timeout=5):
         with host.local_control_socket(self.qmp_path, timeout) as sock:
@@ -523,7 +584,8 @@ class Session:
 
     def touch(self, phase, x, y, width, height):
         """Deliver a real evdev touch contact through QEMU's multitouch device."""
-        if self.manifest['target'] != 'mobile' or phase not in ('begin', 'update', 'end', 'cancel'):
+        mobile=self.manifest['target']=='mobile' or (self.manifest.get('guest_protocol')=='luma-unified-v1' and self.experience=='mobile')
+        if not mobile or phase not in ('begin', 'update', 'end', 'cancel'):
             raise TesterError('Touch input requires a Mobile guest and a valid contact phase.')
         if not 1 < width <= 4096 or not 1 < height <= 4096:
             raise TesterError('Invalid touch viewport dimensions.')
@@ -563,7 +625,8 @@ class Session:
             'org.project_luma.Tester1.ShowHome']), stdout=subprocess.DEVNULL, timeout=15)
 
     def shutdown(self):
-        if not self.manifest['cloud_init']:
+        from . import provision
+        if not self.manifest['cloud_init'] and not provision.ready(self):
             if self.status() in ('paused','prelaunch'):self.qmp('cont')
             self.qmp('system_powerdown')
             return
@@ -571,15 +634,34 @@ class Session:
         # An ACPI button press is therefore not a reliable shutdown request.
         if self.status() in ('paused', 'prelaunch'):
             self.qmp('cont')
-        result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                text=True, timeout=15)
-        if result.returncode == 255:
-            # The guest can close SSH before the non-blocking poweroff reply.
-            deadline=time.monotonic()+5
+        try:
+            if host.windows():
+                # A disk-backed diagnostic stream avoids Win32 pipe-reader waits
+                # when OpenSSH disconnects as the guest powers off.
+                import tempfile
+                with tempfile.TemporaryFile() as errors:
+                    result = host.run_ssh(self.ssh(['sudo','systemctl','--no-block','poweroff']),
+                                            stdout=subprocess.DEVNULL,stderr=errors,timeout=15)
+                    errors.seek(0)
+                    result.stderr = errors.read().decode('utf-8',errors='replace')
+            else:
+                result = host.run_ssh(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                        text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            if not host.windows():raise
+            result = None
+        if result is None or result.returncode == 255 or (host.windows() and result.returncode != 0):
+            # Windows OpenSSH can return a different nonzero status when the
+            # remote machine powers off. Confirm actual VM state in either case.
+            # SSH closes early in a normal shutdown; desktop services and disk
+            # flushes can take considerably longer than the SSH connection.
+            deadline=time.monotonic()+60
             while time.monotonic()<deadline:
                 if self.status()=='stopped':return
                 time.sleep(.25)
+        if result is None:
+            raise TesterError('Could not confirm guest shutdown after SSH timed out.')
         if result.returncode != 0:
             raise TesterError('Could not request guest shutdown: ' + result.stderr.strip()[-1024:])
 
@@ -612,7 +694,15 @@ class Session:
                     '%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"',
                 self.manifest['user'] + '@127.0.0.1']
         # OpenSSH joins arguments into a shell command: quote every guest argument.
-        return argv + ([shlex.join(command)] if command else [])
+        remote = shlex.join(command) if command else ''
+        if host.windows() and command:
+            # Win32 OpenSSH can stall on nested shell quotes as well as literal
+            # newlines. A numeric JSON payload keeps the transport command to
+            # one simple quoted argument and preserves the original shell argv.
+            payload = list(json.dumps(['sh', 'sh', '-c', remote]).encode())
+            script = 'import json,os;os.execlp(*json.loads(bytes(' + repr(payload) + ')))'
+            remote = 'python3 -c ' + shlex.quote(script)
+        return argv + ([remote] if command else [])
 
     def sync(self, source):
         source = Path(source).resolve()
@@ -630,12 +720,12 @@ class Session:
         last_error = 'guest is still booting'
         while time.monotonic() < deadline:
             try:
-                result = subprocess.run(self.ssh(['true']), stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.PIPE, text=True)
+                result = host.run_ssh(self.ssh(['true']), stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE, text=True, timeout=15)
                 if result.returncode == 0:
                     return
                 last_error = result.stderr.strip()[-1024:] or 'SSH exited ' + str(result.returncode)
-            except TesterError as exc:
+            except (TesterError, subprocess.TimeoutExpired) as exc:
                 last_error = str(exc)
             time.sleep(2)
         raise TesterError('Guest SSH was not ready; inspect console.log. Last result: ' + last_error)
@@ -643,7 +733,35 @@ class Session:
     def wait_graphical(self, timeout=180):
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
+        if self.manifest.get('guest_protocol') == 'luma-unified-v1':
+            from . import guest_preview
+            guest_preview.configure(self)
         deadline = time.monotonic() + timeout
+        from . import provision
+        if provision.ready(self) or self.manifest.get('guest_protocol') == 'luma-unified-v1':
+            check = """import os, subprocess
+uid=str(os.getuid())
+display=subprocess.check_output(['loginctl','show-user',uid,'-p','Display','--value'],text=True).strip()
+assert display, 'Graphical login is not ready'
+properties=dict(line.split('=',1) for line in subprocess.check_output(
+    ['loginctl','show-session',display,'-p','Type','-p','Class','-p','Active'],text=True).splitlines())
+assert properties['Type'] in ('wayland','x11') and properties['Class']=='user' and properties['Active']=='yes', properties
+assert subprocess.run(['pgrep','-u',uid,'-x','gnome-shell'],stdout=subprocess.DEVNULL).returncode==0
+env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+uid+'/bus')
+subprocess.run(['systemctl','--user','is-active','--quiet','org.gnome.Shell@user.service'],env=env,check=True)
+# systemd READY can precede GNOME's interactive main loop under emulation.
+subprocess.run(['gdbus','call','--session','--dest','org.gnome.ScreenSaver',
+    '--object-path','/org/gnome/ScreenSaver','--method','org.gnome.ScreenSaver.GetActive'],
+    env=env,check=True,stdout=subprocess.DEVNULL,timeout=5)
+"""
+            while time.monotonic()<deadline:
+                try:
+                    if host.run_ssh(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL,timeout=15).returncode==0:
+                        return
+                except subprocess.TimeoutExpired:pass
+                time.sleep(2)
+            raise TesterError('The Luma desktop did not finish signing in. Inspect console.log.')
         check = """import json, os
 from pathlib import Path
 runtime = Path(os.environ['XDG_RUNTIME_DIR'])
@@ -659,9 +777,11 @@ if ready['target'] == 'mobile':
     assert subprocess.check_output(['pgrep', '-u', str(os.getuid()), '-f', '^/opt/luma/phosh/libexec/phosh( |$)'], text=True).strip()
 """
         while time.monotonic() < deadline:
-            if subprocess.call(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL) == 0:
-                return
+            try:
+                if host.run_ssh(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL,timeout=15).returncode == 0:
+                    return
+            except subprocess.TimeoutExpired:pass
             time.sleep(1)
         raise TesterError('Luma graphical session was not ready; inspect the guest greetd journal.')
 
@@ -690,7 +810,7 @@ if ready['target'] == 'mobile':
             snapshot.sort()
             if snapshot != previous:
                 self.sync(source)
-                subprocess.call(self.ssh(['systemctl', '--user', 'stop', 'luma-tester-app.service']))
+                host.run_ssh(self.ssh(['systemctl', '--user', 'stop', 'luma-tester-app.service']))
                 launch = ('exec systemd-run --user --collect --unit=luma-tester-app '
                           '--working-directory="$HOME/Projects/app" -- "$@"')
                 run(self.ssh(['sh', '-c', launch, 'luma-tester', *command]))

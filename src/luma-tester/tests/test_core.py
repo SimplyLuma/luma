@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from luma_tester.core import Session, TesterError, digest, read_manifest
 from luma_tester.__main__ import main
@@ -196,6 +196,44 @@ class SessionTests(unittest.TestCase):
                 session.start(embedded=True, graphics='virgl')
         child.assert_not_called()
 
+    def test_unusable_windows_hypervisor_retries_emulation_once(self):
+        session = self.save()
+        child = MagicMock()
+        child.wait.return_value = child.poll.return_value = 0
+        with patch.object(session, 'lock', return_value=contextlib.nullcontext()), \
+             patch.object(session, '_prepare'), \
+             patch('luma_tester.host.windows', return_value=True), \
+             patch.object(session, 'command', side_effect=[['qemu', '-accel', 'whpx'],
+                 ['qemu', '-accel', 'tcg,thread=multi']]) as command, \
+             patch.object(session, '_start_qemu', side_effect=[TesterError('controls timed out'), child]) as launch:
+            self.assertEqual(session.start(embedded=True, graphics='software'), 0)
+        self.assertEqual(launch.call_count, 2)
+        self.assertTrue(command.call_args.kwargs['software'])
+        self.assertIn('tcg,thread=multi', json.loads((session.directory/'command.json').read_text()))
+
+    def test_emulation_failure_does_not_loop_through_retries(self):
+        session = self.save()
+        with patch.object(session, 'lock', return_value=contextlib.nullcontext()), \
+             patch.object(session, '_prepare'), \
+             patch('luma_tester.host.windows', return_value=True), \
+             patch.object(session, 'command', return_value=['qemu', '-accel', 'tcg,thread=multi']), \
+             patch.object(session, '_start_qemu', side_effect=TesterError('controls timed out')) as launch:
+            with self.assertRaisesRegex(TesterError, 'controls timed out'):
+                session.start(embedded=True, software=True)
+        self.assertEqual(launch.call_count, 1)
+
+    def test_windows_control_timeout_stops_the_failed_process(self):
+        session = self.save()
+        child = MagicMock()
+        child.poll.return_value = None
+        with patch('luma_tester.host.windows', return_value=True), \
+             patch('subprocess.Popen', return_value=child), \
+             patch('time.monotonic', side_effect=[0, 61]):
+            with self.assertRaisesRegex(TesterError, 'did not open its controls'):
+                session._start_qemu(['qemu', '-accel', 'whpx'], None, True)
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=10)
+
     def test_cross_arch_never_uses_kvm(self):
         self.m.update(arch='aarch64', boot='uefi')
         with patch('platform.machine', return_value='x86_64'), patch('os.access', return_value=True):
@@ -246,6 +284,54 @@ class SessionTests(unittest.TestCase):
             session.shutdown()
         qmp.assert_called_once_with('cont')
         ssh.assert_called_once_with(['sudo', 'systemctl', '--no-block', 'poweroff'])
+
+    def test_shutdown_waits_for_vm_after_ssh_closes_early(self):
+        session=self.save()
+        with patch.object(session,'status',side_effect=['running']*10+['stopped']), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],255,stderr='Connection closed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=range(30)), \
+             patch('luma_tester.core.time.sleep'):
+            session.shutdown()
+
+    def test_ssh_disconnect_alone_does_not_prove_shutdown(self):
+        session=self.save()
+        with patch.object(session,'status',return_value='running'), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],255,stderr='Connection closed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
+            with self.assertRaises(TesterError):session.shutdown()
+
+    def test_windows_shutdown_disconnect_requires_actual_poweroff(self):
+        session=self.save()
+        for code in (-1,1,255):
+            with self.subTest(code=code), patch('luma_tester.core.host.windows',return_value=True), \
+                 patch.object(session,'status',side_effect=['running','stopped']), \
+                 patch.object(session,'ssh',return_value=['ssh']), \
+                 patch('subprocess.run',return_value=subprocess.CompletedProcess([],code,stderr='Connection closed')), \
+                 patch('luma_tester.core.time.monotonic',side_effect=range(10)):
+                session.shutdown()
+        with patch('luma_tester.core.host.windows',return_value=True), \
+             patch.object(session,'status',return_value='running'), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],1,stderr='Connection failed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
+            with self.assertRaises(TesterError):session.shutdown()
+
+    def test_windows_shutdown_timeout_requires_actual_poweroff(self):
+        session=self.save()
+        with patch('luma_tester.core.host.windows',return_value=True), \
+             patch.object(session,'status',side_effect=['running','stopped']), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',side_effect=subprocess.TimeoutExpired(['ssh'],15)), \
+             patch('luma_tester.core.time.monotonic',side_effect=range(10)):
+            session.shutdown()
+        with patch('luma_tester.core.host.windows',return_value=True), \
+             patch.object(session,'status',return_value='running'), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',side_effect=subprocess.TimeoutExpired(['ssh'],15)), \
+             patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
+            with self.assertRaises(TesterError):session.shutdown()
 
     def test_sync_rejects_home_or_root(self):
         session = self.save()

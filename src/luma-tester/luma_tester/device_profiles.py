@@ -2,6 +2,7 @@
 """Display geometry and posture independent of guest CPU and image identity."""
 from copy import deepcopy
 from .core import TesterError
+from . import host
 
 # Panel pixels follow manufacturer specifications; scale is a Tester UI density,
 # not Android's device density. Default stays compatible with existing sessions.
@@ -89,7 +90,7 @@ def apply(session, value):
         raise TesterError('This image uses a fixed phone display.')
     description=describe(value)
     script=Path(__file__).with_name('device_guest.py').read_text()
-    result=subprocess.run(session.ssh(['python3','-c',script]),input=json.dumps(description),
+    result=host.run_ssh(session.ssh(['python3','-c',script]),input=json.dumps(description),
         text=True,capture_output=True,timeout=65)
     if result.returncode:
         raise TesterError('Could not change the device: '+result.stderr.strip()[-1000:])

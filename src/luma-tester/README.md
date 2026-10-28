@@ -48,8 +48,14 @@ The Images dropdown lists public Hub downloads alongside local workspaces.
 Downloads show transfer and verification progress and are accepted only after
 size and SHA-256 verification. One public OS ISO per architecture can be used
 with Desktop, Tablet or Mobile; the OS's own presentation switcher also changes
-its interface. Current public ISOs boot the installer. Tester does not convert
-them to live Try images. Preinstalled developer disks are separate imports and
+its interface. Start automatically finds and downloads the approved image for
+the selected architecture. On its first start, Try Luma uses the ISO to set up
+a private persistent VM, then signs in to the desktop automatically. Setup can
+take several minutes; subsequent starts boot the saved workspace directly.
+The installer wizard is not shown. Only approved ISOs use automatic setup;
+other imported ISOs retain their normal boot behavior. Setup uses a separate
+staging disk and never reformats an existing workspace.
+Preinstalled developer disks are separate imports and
 may have narrower experience or developer-access capabilities.
 
 **Start**, **Pause/Resume**, and **Shut Down** stay in the bottom action bar.

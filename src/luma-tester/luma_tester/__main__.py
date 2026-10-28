@@ -173,6 +173,9 @@ def main():
             print(session.screenshot(args.path))
         elif args.action == 'ssh':
             command = args.command[1:] if args.command[:1] == ['--'] else args.command
+            if command:
+                from . import host
+                return host.run_ssh(session.ssh(command)).returncode
             return subprocess.call(session.ssh(command))
         elif args.action == 'sync':
             session.sync(args.path)

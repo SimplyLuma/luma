@@ -43,7 +43,8 @@ def target(artifact):
 def supports(artifact, experience):
     if artifact.get('kind') == 'os_image':
         return usable(artifact) and experience in ('desktop', 'tablet', 'mobile')
-    return target(artifact) == ('mobile' if experience == 'mobile' else 'desktop')
+    from .experiences import compatible
+    return compatible(experience, developer_profile(artifact))
 
 
 def cached(root):
@@ -56,14 +57,29 @@ def cached(root):
 
 def refresh(root,client=None):
     policy=image_approval.load(root,refresh=client is None)
-    items=[item for item in (client or HubClient()).catalog() if listed(item,root,policy)]
+    prepared=policy.get('workspaces', [])
+    try:
+        items=[item for item in (client or HubClient()).catalog() if listed(item,root,policy)]
+    except (OSError,ValueError,KeyError,TesterError):
+        if not prepared:raise
+        items=[]
+    identities={item['artifact_id'] for item in prepared}
+    items=[*prepared, *[item for item in items if item['artifact_id'] not in identities]]
     atomic_json(Path(root)/'download-catalog.json',items)
     return items
 
 
 def listed(artifact,root,policy=None):
-    return usable(artifact) and (artifact.get('kind')!='os_image'
-        or image_approval.allows(artifact,policy if policy is not None else image_approval.load(root)))
+    policy=policy if policy is not None else image_approval.load(root)
+    if not usable(artifact):return False
+    if artifact.get('kind')=='os_image':
+        # The Try catalog offers the ready pair. Installer ISOs remain usable
+        # through explicit local import and the normal OS/Imager downloads.
+        return not policy.get('workspaces') and image_approval.allows(artifact,policy)
+    if 'workspaces' in policy:
+        return any(item['artifact_id']==artifact.get('artifact_id') and item['sha256']==artifact.get('sha256')
+                   for item in policy['workspaces'])
+    return True
 
 
 def fetch(artifact,root,experience,report=lambda text:None,progress=None):
