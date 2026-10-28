@@ -2425,3 +2425,38 @@ Linux/Macboot andnewimmutablepublickeys/channelgeneration BEFOREreleasepublish.
 Currentpublisher-r9obsoletepointsfailedR9; DO NOT RUN. Release074stillDRAFT.
 OuterWindowsfixturelifetimestill9000s until~06:51, pausedcontroller4025360
 cleanuprequired afterWindowschecks. OriginalWindowsVM/diskuntouched.
+
+06:24UTC: Corrected standalone image pair export-r3 complete/checks+fullSHA:
+ARM5489623040B SHA346ad5a79a0763b8a4b0b2708f972d2eec7685f6b0d63e487be0e7579f1c644b
+(finalizer45a2ca58 PASS); x867549550592B SHA61ca6ea5de84051f1690cebecc99b268b598af1c2d45dfa9155cca8284f94640
+(finalizer300cbb0e PASS). Earlierx86patchfailedonlypost-disconnectlockrace;
+earlierfinalizersfailedonlyrootgitdubiousownershipafterchecks/hash. No image
+corruption; explicitfinalizerspassed, originalr1imagesunchanged. TemporaryNBD
+moduleunloadedafterall4devicespidabsent/refcnt0; nohostdeviceleftattached.
+
+Fresh MaccorrectedARM 2boots40s/38.6s (includesverification), persistentmarker,
+seed300sactive+success, cleanstopPASS d1fbdc6e. Proofsretrievedprepared-images-074/
+qa-mac-seed-r1; actualdesktop1 inspectedfullwallpaper+dock
+try-mac-corrected-image-desktop.png. LatestSigned12actualpackageused.
+Fresh Linuxcorrectedx86 88e99f29 PASS,364s includingHDDverification+GNOMEstart,
+seedactive; actualdesktop inspectedfullwallpaper+dock
+try-linux-corrected-image-desktop.png. Mac/Linuxnewimagequalificationcomplete.
+
+Windowsouterrebootedafterservicing (observedfirmware→PleaseWait→SSHreturns).
+R12 4ad114be failedBEFOREstaging dueouterSSHbanner; R13 23062f93 failedouter
+ver30stimeout, noinnerguestlaunched. R14 24a22b0d ACTIVE, root
+luma-arm-desktop-try-seed-windows-r14-20261028T061431.service,
+outwindows/prepared-074-r14, freshC:\TryLumaQA-Ready074-r14. Exactcandidate21ZIP
+SHAverified, all4632filesextracted; correctedx86downloadactual4.42GB/7.55GB at
+06:23. Nativeqa try-seed-native-qa-r12.py tests2separateQEMUstarts,2048MiBguest,
+actualstockcacheverification+seed300success+autologin+persistentmarker+shutdown,
+8svisualsettle. No runtimeoverrides. NeedbothPASSandactualvisualreview.
+Outerfixturecapnow14400s viaownruntimeoverride,expires~08:21UTC; same8GiB
+reservation, pausedcontroller4025360cleanupstillREQUIREDwhenfinished.
+
+Correctedimagepublication8a4d182c active, immutable20261028-ready2 keys.
+ARMFULLpublicreadbackPASS receiptpublication-r2/aarch64-PUBLIC-PASS.json;
+x86upload111/225parts at06:21. Do notpublishchannelgen5 untilWindowsproof.
+Allfinalappassets+source/checksumsDRAFTverified2a2731b2, Linux51 Windows21 Mac12.
+Publishertry-seed-final-publish-r1.py PREPARED NOTRUN; requiresR14PASS+visual,
+newpublicimagereceiptsandgen5channel/maincommit. Oldpublishersobsolete.
