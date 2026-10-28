@@ -608,7 +608,9 @@ class Session:
         result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                 text=True, timeout=15)
-        if result.returncode == 255:
+        if result.returncode == 255 or (host.windows() and result.returncode != 0):
+            # Windows OpenSSH can return a different nonzero status when the
+            # remote machine powers off. Confirm actual VM state in either case.
             # SSH closes early in a normal shutdown; desktop services and disk
             # flushes can take considerably longer than the SSH connection.
             deadline=time.monotonic()+60

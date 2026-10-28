@@ -264,6 +264,22 @@ class SessionTests(unittest.TestCase):
              patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
             with self.assertRaises(TesterError):session.shutdown()
 
+    def test_windows_shutdown_disconnect_requires_actual_poweroff(self):
+        session=self.save()
+        for code in (-1,1,255):
+            with self.subTest(code=code), patch('luma_tester.core.host.windows',return_value=True), \
+                 patch.object(session,'status',side_effect=['running','stopped']), \
+                 patch.object(session,'ssh',return_value=['ssh']), \
+                 patch('subprocess.run',return_value=subprocess.CompletedProcess([],code,stderr='Connection closed')), \
+                 patch('luma_tester.core.time.monotonic',side_effect=range(10)):
+                session.shutdown()
+        with patch('luma_tester.core.host.windows',return_value=True), \
+             patch.object(session,'status',return_value='running'), \
+             patch.object(session,'ssh',return_value=['ssh']), \
+             patch('subprocess.run',return_value=subprocess.CompletedProcess([],1,stderr='Connection failed')), \
+             patch('luma_tester.core.time.monotonic',side_effect=[0,61]):
+            with self.assertRaises(TesterError):session.shutdown()
+
     def test_sync_rejects_home_or_root(self):
         session = self.save()
         for source in [Path.home(), Path('/')]:
