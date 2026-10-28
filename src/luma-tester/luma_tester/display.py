@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Live GTK4 guest display over a private QEMU Unix VNC socket.
 
-GVnc owns protocol decoding and damage tracking. GTK4 draws immutable copies of
-its framebuffer; no screenshot polling, web view, or GTK3 viewer is involved.
+GVnc owns input. On Unix sockets a second shared connection streams whole
+framebuffer updates on a worker thread, so GTK4 only ever draws complete frames;
+GVnc writes rectangles as they arrive and a frame-clock copy of its buffer can
+catch an update half applied. Windows (TCP + VNC auth) keeps the GVnc framebuffer.
 """
 from __future__ import annotations
 from pathlib import Path
+import socket
+import struct
+import threading
 
 import gi
 
@@ -25,6 +30,137 @@ class Framebuffer(BaseFramebuffer):
     def texture(self):
         return Gdk.MemoryTexture.new(self.width, self.height, Gdk.MemoryFormat.R8G8B8X8,
                                      GLib.Bytes.new(self.buffer.raw), self.width * 4)
+
+
+class FrameStream(threading.Thread):
+    """Shared RFB client: RAW + DesktopSize, publishes only completed updates."""
+
+    def __init__(self, path, published):
+        super().__init__(daemon=True, name='luma-guest-frames')
+        self.path, self.published = str(path), published
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.lock = threading.Lock()
+        self.frame = None
+        self.closed = False
+
+    def read(self, view):
+        while len(view):
+            count = self.sock.recv_into(view)
+            if not count:
+                raise EOFError
+            view = view[count:]
+
+    def take(self, count):
+        data = bytearray(count)
+        self.read(memoryview(data))
+        return data
+
+    def allocate(self, width, height):
+        if not 1 <= width <= 4096 or not 1 <= height <= 4096:
+            raise ValueError('Guest display exceeds supported 4096×4096 dimensions.')
+        self.width, self.height = width, height
+        self.back = bytearray(width * height * 4)
+
+    def handshake(self):
+        self.sock.connect(self.path)
+        if not self.take(12).startswith(b'RFB 003.'):
+            raise RuntimeError('The private guest display is not an RFB server.')
+        self.sock.sendall(b'RFB 003.008\n')
+        if 1 not in self.take(self.take(1)[0]):
+            raise RuntimeError('The private guest display requested unexpected authentication.')
+        self.sock.sendall(b'\x01')
+        if struct.unpack('>I', self.take(4))[0]:
+            raise RuntimeError('The private guest display refused the frame stream.')
+        self.sock.sendall(b'\x01')  # shared: GVnc stays connected for input
+        width, height = struct.unpack('>HH', self.take(4))
+        bpp, _depth, big, true_colour, rmax, gmax, bmax, rshift, gshift, bshift = \
+            struct.unpack('>BBBBHHHBBB3x', self.take(16))
+        self.take(struct.unpack('>I', self.take(4))[0])
+        self.allocate(width, height)
+        if (bpp, big, true_colour, rmax, gmax, bmax, rshift, gshift, bshift) == \
+                (32, 0, 1, 255, 255, 255, 16, 8, 0):
+            self.format = Gdk.MemoryFormat.B8G8R8X8  # QEMU's native surface: no conversion
+        else:
+            self.sock.sendall(struct.pack('>B3xBBBBHHHBBB3x', 0, 32, 24, 0, 1,
+                                          255, 255, 255, 0, 8, 16))
+            self.format = Gdk.MemoryFormat.R8G8B8X8
+        self.sock.sendall(struct.pack('>BxHii', 2, 2, 0, -223))  # RAW, DesktopSize
+
+    def request(self, incremental):
+        self.sock.sendall(struct.pack('>BBHHHH', 3, incremental, 0, 0, self.width, self.height))
+
+    def run(self):
+        try:
+            self.handshake()
+            self.request(0)
+            while True:
+                kind = self.take(1)[0]
+                if kind == 0:
+                    self.update()
+                    self.request(1)
+                elif kind == 1:
+                    self.take(3)
+                    self.take(6 * struct.unpack('>H', self.take(2))[0])
+                elif kind == 2:
+                    pass
+                elif kind == 3:
+                    self.take(3)
+                    self.take(struct.unpack('>I', self.take(4))[0])
+                else:
+                    raise RuntimeError(f'Unexpected guest display message {kind}.')
+        except (OSError, EOFError, ValueError, RuntimeError, struct.error) as exc:
+            if not self.closed:
+                GLib.idle_add(self.published, None, str(exc))
+
+    def update(self):
+        self.take(1)
+        resized = False
+        for _ in range(struct.unpack('>H', self.take(2))[0]):
+            x, y, width, height, encoding = struct.unpack('>HHHHi', self.take(12))
+            if encoding == -223:
+                self.allocate(width, height)
+                resized = True
+            elif encoding == 0:
+                if x + width > self.width or y + height > self.height:
+                    raise ValueError('Guest display update exceeds the framebuffer.')
+                view, stride, span = memoryview(self.back), self.width * 4, width * 4
+                if x == 0 and width == self.width:
+                    self.read(view[y * stride:(y + height) * stride])
+                else:
+                    for row in range(y, y + height):
+                        start = row * stride + x * 4
+                        self.read(view[start:start + span])
+            else:
+                raise RuntimeError(f'Unexpected guest display encoding {encoding}.')
+        frame = (self.width, self.height, self.format, bytes(self.back))
+        with self.lock:
+            pending, self.frame = self.frame is not None, frame
+        if not pending:
+            GLib.idle_add(self.published, resized, None)
+        if resized:
+            self.request(0)
+
+    def latest(self):
+        with self.lock:
+            frame, self.frame = self.frame, None
+        return frame
+
+    def close(self):
+        self.closed = True
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
+
+
+class StreamFramebuffer:
+    def __init__(self, width, height, format, data):
+        self.width, self.height, self.format, self.data = width, height, format, data
+
+    def texture(self):
+        return Gdk.MemoryTexture.new(self.width, self.height, self.format,
+                                     GLib.Bytes.new(self.data), self.width * 4)
 
 
 class GuestDisplay(Gtk.Picture):
@@ -58,6 +194,7 @@ class GuestDisplay(Gtk.Picture):
         self.pressed_keys = set()
         self.scroll_x = self.scroll_y = 0.0
         self.connection.set_shared(True)
+        self.stream = None
         self.connection.connect('vnc-auth-choose-type', self.auth)
         if host.windows():
             self.connection.connect('vnc-auth-credential', lambda c, values:
@@ -141,9 +278,36 @@ class GuestDisplay(Gtk.Picture):
         connection.set_encodings([GVnc.ConnectionEncoding.COPY_RECT, GVnc.ConnectionEncoding.RAW,
                                   GVnc.ConnectionEncoding.HEXTILE, GVnc.ConnectionEncoding.ZRLE,
                                   GVnc.ConnectionEncoding.DESKTOP_RESIZE])
-        if self.resize_buffer(connection.get_width(), connection.get_height()):
+        if host.windows():
+            if self.resize_buffer(connection.get_width(), connection.get_height()):
+                self.ready = True
+                self.emit('connected')
+            return
+        # GVnc keeps a framebuffer but never requests updates: it is input only.
+        try:
+            self.input_framebuffer = Framebuffer(connection, connection.get_width(), connection.get_height())
+        except Exception as exc:
+            self.emit('display-error', str(exc))
+            connection.shutdown()
+            return
+        self.stream = FrameStream(self.socket_path, self.streamed)
+        self.stream.start()
+
+    def streamed(self, resized, error):
+        if error:
+            if self.stream and not self.stream.closed:
+                self.emit('display-error', error)
+            return False
+        frame = self.stream.latest() if self.stream else None
+        if not frame:
+            return False
+        self.framebuffer = StreamFramebuffer(*frame)
+        if not self.ready:
             self.ready = True
             self.emit('connected')
+        if not self.pending_frame and not self.pending_tick:
+            self.schedule_frame()
+        return False
 
     def resize_buffer(self, width, height):
         try:
@@ -158,15 +322,15 @@ class GuestDisplay(Gtk.Picture):
             return False
 
     def resized(self, _connection, width, height):
-        if self.ready:
+        if self.ready and not self.stream:
             self.resize_buffer(width, height)
 
     def format_changed(self, _connection, _format):
-        if self.ready:
+        if self.ready and not self.stream:
             self.resize_buffer(self.connection.get_width(), self.connection.get_height())
 
     def updated(self, _connection, _x, _y, _width, _height):
-        if self.framebuffer and not self.pending_frame and not self.pending_tick:
+        if not self.stream and self.framebuffer and not self.pending_frame and not self.pending_tick:
             self.schedule_frame()
 
     def schedule_frame(self):
@@ -201,10 +365,15 @@ class GuestDisplay(Gtk.Picture):
         self.pending_frame = 0
         if not self.ready or not self.framebuffer:
             return False
+        if self.stream:
+            frame = self.stream.latest()
+            if frame:
+                self.framebuffer = StreamFramebuffer(*frame)
         self.set_paintable(self.framebuffer.texture())
         self.frames += 1
-        self.connection.framebuffer_update_request(True, 0, 0,
-                                                   self.framebuffer.width, self.framebuffer.height)
+        if not self.stream:
+            self.connection.framebuffer_update_request(True, 0, 0,
+                                                       self.framebuffer.width, self.framebuffer.height)
         return False
 
     def coordinates(self, x, y):
@@ -352,6 +521,8 @@ class GuestDisplay(Gtk.Picture):
         return True
 
     def disconnected(self, _connection):
+        if self.stream:
+            self.stream.close()
         self.release_touch()
         self.ready = False
         self.emit('disconnected')
@@ -365,4 +536,6 @@ class GuestDisplay(Gtk.Picture):
         if self.pending_frame:
             GLib.source_remove(self.pending_frame)
             self.pending_frame = 0
+        if self.stream:
+            self.stream.close()
         self.connection.shutdown()

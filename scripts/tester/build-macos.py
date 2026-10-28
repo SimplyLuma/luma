@@ -20,6 +20,7 @@ def main():
     p.add_argument('--source-commit',required=True)
     p.add_argument('--release',action='store_true',help='Attribute public downloads to Try Luma; previews default to test')
     p.add_argument('--gpu-runtime',type=Path,help='Qualified, relocated macOS/VirGL prefix from stage-macos-gpu.py')
+    p.add_argument('--qemu',type=Path,required=True,help='qemu-system-* from build-macos-qemu.py (display-rate VNC patch)')
     a=p.parse_args()
     if sys.platform!='darwin' or os.uname().machine!='arm64':p.error('Build on an Apple Silicon Mac.')
     repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=True)
@@ -27,6 +28,15 @@ def main():
     required=['qemu-system-aarch64','qemu-system-x86_64','qemu-img','xorriso']
     for name in required:
         if not (brew/'bin'/name).exists():p.error('Missing Homebrew tool: '+name)
+    qemu=json.loads((a.qemu/'QEMU-BUILD.json').read_text())
+    data=subprocess.check_output([str(brew/'bin/qemu-img'),'--version'],text=True).split()[2]
+    if qemu.get('patches')!=['qemu-vnc-display-rate.patch'] or qemu.get('version')!=data:
+        p.error(f"Patched QEMU {qemu.get('version')} must match Homebrew QEMU data {data}.")
+    for name in ('qemu-system-aarch64','qemu-system-x86_64'):
+        if hashlib.file_digest((a.qemu/name).open('rb'),'sha256').hexdigest()!=qemu['files'][name]:
+            p.error('Patched QEMU binary changed: '+name)
+    helpers={name:str(brew/'bin'/name) for name in required}
+    helpers.update({name:str(a.qemu/name) for name in ('qemu-system-aarch64','qemu-system-x86_64')})
     sys.path.insert(0,str(repo/'src/luma-tester'))
     from luma_tester import __version__
     assets=out/'inputs';firmware=assets/'firmware';firmware.mkdir(parents=True,exist_ok=True)
@@ -37,7 +47,7 @@ def main():
     # VM images are obtained through the catalog; no multi-GB disk in the app.
     manifest=dict(app_id='io.luma.Tester',name='Try Luma',version=__version__,module='luma_tester.macos',
         app_dir=str(repo/'src/luma-tester'),repo_root=str(repo),kit_dir=str(repo/'src/luma-platform/appkit/luma_appkit'),
-        packages=['luma_tester'],extra_typelibs=['GVnc-1.0'],native_helpers={name:str(brew/'bin'/name) for name in required},
+        packages=['luma_tester'],extra_typelibs=['GVnc-1.0'],native_helpers=helpers,
         resource_paths={'firmware':str(firmware),'share/qemu':str(brew/'share/qemu')},
         icon=str(repo/'src/luma-tester/luma_tester/io.luma.Tester.svg'),env={'LUMA_PLATFORM':'macos','LUMA_APP_NAME':'Try Luma'})
     file=out/'manifest.json';file.write_text(json.dumps(manifest,indent=2)+'\n')
@@ -60,6 +70,14 @@ def main():
     notices=contents/'Resources/ThirdPartyNotices';notices.mkdir(exist_ok=True)
     shutil.copy2(repo/'LICENSE.md',notices/'Luma-LICENSE')
     shutil.copy2(brew/'share/qemu/edk2-licenses.txt',notices/'edk2-licenses.txt')
+    source=notices/'qemu-source';source.mkdir(exist_ok=True)
+    shutil.copy2(a.qemu/'COPYING',source/'COPYING')
+    shutil.copy2(repo/'scripts/tester/patches/qemu-vnc-display-rate.patch',source)
+    shutil.copy2(repo/'scripts/tester/build-macos-qemu.py',source)
+    (source/'SOURCE.md').write_text(f"""QEMU {qemu['version']} system emulators are built from {qemu['url']}
+(SHA256 {qemu['sha256']}) with qemu-vnc-display-rate.patch, using build-macos-qemu.py.
+The same files are attached to the Try Luma release on GitHub.
+""")
     formulae=subprocess.check_output([str(brew/'bin/brew'),'list','--formula'],text=True).splitlines()
     for formula in formulae:
         prefix=Path(subprocess.check_output([str(brew/'bin/brew'),'--prefix',formula],text=True).strip())
