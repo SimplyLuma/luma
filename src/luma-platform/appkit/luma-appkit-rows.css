@@ -117,6 +117,7 @@ row.lumaui-row.drop-inside { background: @luma_accent_soft; box-shadow: inset 0 
 /* Straight insertion indicators are painted by SidebarRow without changing its allocation. */
 
 /* Section headings with an action (Tasks' Lists +). */
+row.lumaui-row-section.divided box.luma-navigation-heading-line { min-height: var(--lumaui-section-action-button); }
 row.lumaui-row-section button.lumaui-section-action {
   min-width: var(--lumaui-section-action-button); min-height: var(--lumaui-section-action-button); padding: 0; margin: 0;
   border: none; border-radius: var(--lumaui-section-action-radius); background: none; box-shadow: none; color: @luma_frame_muted;
@@ -202,7 +203,8 @@ list.lumaui-content-list > row.luma-navigation-row + row.luma-navigation-row {
   margin: var(--lumaui-nav-destinations-heading-top) calc(2 * var(--lumaui-sidebar-edge)) var(--lumaui-nav-destinations-heading-bottom);
 }
 .luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row-section.ruled,
-.luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row-section.with-action {
+.luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row-section.with-action,
+.luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row-section.divided {
   margin: var(--lumaui-nav-destinations-action-heading-top) 0 var(--lumaui-nav-destinations-action-heading-bottom);
   padding: var(--lumaui-nav-destinations-action-heading-padding-top) var(--lumaui-sidebar-edge) 0 var(--lumaui-nav-destinations-action-heading-padding-start);
   border-top: 1px solid @luma_line;
