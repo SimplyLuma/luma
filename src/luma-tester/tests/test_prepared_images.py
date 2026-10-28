@@ -65,6 +65,18 @@ class PreparedImageTests(unittest.TestCase):
         self.assertTrue(image_library.listed(item,Path('/unused'),policy))
         self.assertFalse(image_library.listed(dict(item,sha256='c'*64),Path('/unused'),policy))
 
+    def test_bootstrap_waits_for_a_late_seed_disk_and_bounds_missing_media(self):
+        path=Path(__file__).resolve().parents[3]/'scripts/tester/prepared-firstboot.py'
+        spec=importlib.util.spec_from_file_location('prepared_firstboot_wait',path)
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            labels=Path(directory)
+            with patch.object(module.time,'sleep',side_effect=lambda _: (labels/'CIDATA').touch()):
+                self.assertEqual(module.wait_seed(labels,timeout=1),labels/'CIDATA')
+            (labels/'CIDATA').unlink()
+            with self.assertRaisesRegex(RuntimeError,'startup deadline'):
+                module.wait_seed(labels,timeout=0)
+
     def test_bootstrap_accepts_public_key_only_for_existing_luma_user(self):
         path=Path(__file__).resolve().parents[3]/'scripts/tester/prepared-firstboot.py'
         spec=importlib.util.spec_from_file_location('prepared_firstboot',path)
