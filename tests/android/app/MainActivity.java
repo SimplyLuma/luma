@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
         if (state != null && state.getString("uri") != null) document = Uri.parse(state.getString("uri"));
         layout.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
         button(layout, "Post notification", () -> postNotification());
+        button(layout, "Check privileged boundary", () -> BoundaryProbe.run(this));
         button(layout, "Open document", () -> {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("text/plain")
                     .addCategory(Intent.CATEGORY_OPENABLE)
@@ -53,8 +54,10 @@ public final class MainActivity extends Activity {
             } catch (Exception error) { throw new IllegalStateException(error); }
         });
         setContentView(layout);
+        layout.post(() -> receipt(this, "layout", layout.getWidth() + "x" + layout.getHeight()));
         receipt(this, "created", state == null ? "fresh" : "restored");
         if (state == null && getIntent().getBooleanExtra("post_notification", false)) postNotification();
+        if (state == null && getIntent().getBooleanExtra("probe_boundary", false)) BoundaryProbe.run(this);
     }
 
     private void button(LinearLayout layout, String text, Runnable action) {
@@ -93,6 +96,10 @@ public final class MainActivity extends Activity {
     private void postNotification() {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel("integration", "Integration fixture", NotificationManager.IMPORTANCE_DEFAULT));
+        if (!manager.areNotificationsEnabled()) {
+            receipt(this, "notification-blocked", "permission-or-channel");
+            return;
+        }
         PendingIntent content = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent read = PendingIntent.getBroadcast(this, 1,

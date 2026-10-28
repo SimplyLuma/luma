@@ -2,8 +2,9 @@
 
 The source-owned APK fixture is `org.projectluma.androidtest`. It contains DEX
 without native libraries, so the same artifact can exercise x86_64 and ARM64.
-It is a debuggable test app, not a bundled user application. It requests no
-Internet or privileged permissions and stores only its own synthetic events.
+It is a debuggable test app, not a bundled user application. It requests
+notification permission, no Internet or privileged permissions, and stores only
+its own synthetic events.
 
 Build in a disposable JDK environment with `aapt2`, D8/R8 and an Android public
 API JAR. `config/android/acceptance-tools.json` pins the official source URLs,
