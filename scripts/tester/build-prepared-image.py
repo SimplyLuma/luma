@@ -145,6 +145,7 @@ WantedBy=multi-user.target
         # Relabel only paths this exporter changed. Unrelated target-policy
         # types (for example newer snapd types) need not exist in the host policy.
         changed=['etc/try-luma','etc/gdm/custom.conf','etc/machine-id','etc/luma-tester-target',
+            'etc/environment.d/60-try-luma-materials.conf',
             'etc/systemd/system/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/sshd.service',

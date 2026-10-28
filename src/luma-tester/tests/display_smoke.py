@@ -63,8 +63,11 @@ def main():
                     window.present()
                     session.qmp('stop')
                     last_frame = viewer.frames
-                    viewer.connection.framebuffer_update_request(False, 0, 0,
-                        viewer.framebuffer.width, viewer.framebuffer.height)
+                    if viewer.stream:
+                        viewer.stream.request(False)
+                    else:
+                        viewer.connection.framebuffer_update_request(False, 0, 0,
+                            viewer.framebuffer.width, viewer.framebuffer.height)
                     phase = 2
                 elif phase == 2 and viewer.frames > last_frame:
                     assert viewer.ready
@@ -94,7 +97,7 @@ def main():
                     # A pending mapped tick must transfer to a timer when the
                     # viewer is hidden, or opening launcher controls stalls it.
                     last_frame = viewer.frames
-                    viewer.updated(None, 0, 0, viewer.framebuffer.width, viewer.framebuffer.height)
+                    viewer.schedule_frame()
                     assert viewer.pending_tick
                     window.set_visible(False)
                     assert not viewer.pending_tick
