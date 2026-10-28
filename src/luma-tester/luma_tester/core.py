@@ -27,7 +27,8 @@ class TesterError(Exception):
 
 
 def run(argv, **kwargs):
-    return subprocess.run([str(x) for x in argv], check=True, **kwargs)
+    executor = host.run_ssh if Path(str(argv[0])).name.lower() in ('ssh', 'ssh.exe') else subprocess.run
+    return executor([str(x) for x in argv], check=True, **kwargs)
 
 
 def digest(path):
@@ -639,12 +640,12 @@ class Session:
                 # when OpenSSH disconnects as the guest powers off.
                 import tempfile
                 with tempfile.TemporaryFile() as errors:
-                    result = subprocess.run(self.ssh(['sudo','systemctl','--no-block','poweroff']),
+                    result = host.run_ssh(self.ssh(['sudo','systemctl','--no-block','poweroff']),
                                             stdout=subprocess.DEVNULL,stderr=errors,timeout=15)
                     errors.seek(0)
                     result.stderr = errors.read().decode('utf-8',errors='replace')
             else:
-                result = subprocess.run(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
+                result = host.run_ssh(self.ssh(['sudo', 'systemctl', '--no-block', 'poweroff']),
                                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                         text=True, timeout=15)
         except subprocess.TimeoutExpired:
@@ -719,7 +720,7 @@ class Session:
         last_error = 'guest is still booting'
         while time.monotonic() < deadline:
             try:
-                result = subprocess.run(self.ssh(['true']), stdout=subprocess.DEVNULL,
+                result = host.run_ssh(self.ssh(['true']), stdout=subprocess.DEVNULL,
                                         stderr=subprocess.PIPE, text=True, timeout=15)
                 if result.returncode == 0:
                     return
@@ -755,7 +756,7 @@ subprocess.run(['gdbus','call','--session','--dest','org.gnome.ScreenSaver',
 """
             while time.monotonic()<deadline:
                 try:
-                    if subprocess.run(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
+                    if host.run_ssh(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL,timeout=15).returncode==0:
                         return
                 except subprocess.TimeoutExpired:pass
@@ -777,7 +778,7 @@ if ready['target'] == 'mobile':
 """
         while time.monotonic() < deadline:
             try:
-                if subprocess.run(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
+                if host.run_ssh(self.ssh(['python3', '-c', check]), stdout=subprocess.DEVNULL,
                                   stderr=subprocess.DEVNULL,timeout=15).returncode == 0:
                     return
             except subprocess.TimeoutExpired:pass
@@ -809,7 +810,7 @@ if ready['target'] == 'mobile':
             snapshot.sort()
             if snapshot != previous:
                 self.sync(source)
-                subprocess.call(self.ssh(['systemctl', '--user', 'stop', 'luma-tester-app.service']))
+                host.run_ssh(self.ssh(['systemctl', '--user', 'stop', 'luma-tester-app.service']))
                 launch = ('exec systemd-run --user --collect --unit=luma-tester-app '
                           '--working-directory="$HOME/Projects/app" -- "$@"')
                 run(self.ssh(['sh', '-c', launch, 'luma-tester', *command]))

@@ -9,6 +9,137 @@ import socket
 import subprocess
 
 
+def run_ssh(argv, **kwargs):
+    """Run a noninteractive SSH command without Win32 anonymous output pipes.
+
+    The bundled Windows OpenSSH can stall before writing even its debug banner
+    with Python PIPE handles. Private temporary files also support binary stdin
+    uploads, preserve exit status, and let subprocess enforce its normal timeout.
+    """
+    if not windows():
+        return subprocess.run(argv, **kwargs)
+    import contextlib
+    import locale
+    import shutil
+    import sys
+    import tempfile
+    options = dict(kwargs)
+    capture = options.pop('capture_output', False)
+    if capture:
+        if options.get('stdout') is not None or options.get('stderr') is not None:
+            raise ValueError('stdout and stderr cannot be combined with capture_output')
+        options.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    check = options.pop('check', False)
+    text = options.pop('text', False)
+    text = options.pop('universal_newlines', False) or text
+    encoding = options.pop('encoding', None)
+    errors = options.pop('errors', None)
+    text = text or encoding is not None or errors is not None
+    encoding = encoding or ('utf-8' if sys.flags.utf8_mode else locale.getencoding())
+    data = options.pop('input', None)
+    if data is not None and Path(str(argv[0])).name.lower() in ('ssh', 'ssh.exe'):
+        payload = data.encode(encoding, errors or 'strict') if text else data
+        return _ssh_upload_input(argv, payload, dict(options, check=check, text=text, encoding=encoding, errors=errors))
+    with contextlib.ExitStack() as stack:
+        outputs = {}
+        for name in ('stdout', 'stderr'):
+            target = options.get(name)
+            if target is None or target == subprocess.PIPE:
+                stream = stack.enter_context(tempfile.TemporaryFile())
+                outputs[name] = (stream, target)
+                options[name] = stream
+        if data is not None:
+            if 'stdin' in options:
+                raise ValueError('stdin and input cannot be combined')
+            stream = stack.enter_context(tempfile.TemporaryFile())
+            stream.write(data.encode(encoding, errors or 'strict') if text else data)
+            stream.seek(0)
+            options['stdin'] = stream
+        else:
+            options.setdefault('stdin', subprocess.DEVNULL)
+
+        def collect(name):
+            if name not in outputs:
+                return None
+            stream, target = outputs[name]
+            stream.seek(0)
+            if target == subprocess.PIPE:
+                body = stream.read()
+                return body.decode(encoding, errors or 'strict').replace('\r\n', '\n').replace('\r', '\n') if text else body
+            destination = getattr(sys, name)
+            if destination is not None:
+                if hasattr(destination, 'buffer'):
+                    shutil.copyfileobj(stream, destination.buffer)
+                    destination.buffer.flush()
+                else:
+                    destination.write(stream.read().decode(encoding, errors or 'replace'))
+                    destination.flush()
+            return None
+
+        try:
+            result = subprocess.run(argv, check=False, **options)
+        except subprocess.TimeoutExpired as exc:
+            exc.output, exc.stderr = collect('stdout'), collect('stderr')
+            raise
+        result.stdout, result.stderr = collect('stdout'), collect('stderr')
+        if check:
+            result.check_returncode()
+        return result
+
+
+def _ssh_upload_input(argv, payload, options):
+    """Use batch SFTP for Windows stdin: OpenSSH's inherited input also stalls."""
+    import re
+    import shutil
+    import tempfile
+    import time
+    deadline = time.monotonic() + options['timeout'] if options.get('timeout') is not None else None
+
+    def remaining():
+        if deadline is None:
+            return None
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise subprocess.TimeoutExpired(argv, options['timeout'])
+        return value
+
+    target = None
+    try:
+        created = run_ssh(list(argv[:-1]) + ['umask 077; mktemp /tmp/try-luma-input.XXXXXXXXXX'],
+                          capture_output=True, text=True, check=True, timeout=remaining())
+        target = created.stdout.strip()
+        if not re.fullmatch(r'/tmp/try-luma-input\.[A-Za-z0-9]{10}', target):
+            target = None
+            raise RuntimeError('Guest did not return a private input file.')
+        with tempfile.TemporaryDirectory(prefix='try-luma-input-') as directory:
+            local = Path(directory) / 'input'
+            local.write_bytes(payload)
+            batch = Path(directory) / 'upload.sftp'
+            batch.write_text('put "' + local.as_posix().replace('"', '\\"') + '" "' + target + '"\n', encoding='utf-8')
+            ssh = shutil.which(str(argv[0]))
+            if not ssh:
+                raise FileNotFoundError('Windows OpenSSH is unavailable.')
+            sftp = Path(ssh).with_name('sftp.exe')
+            if not sftp.is_file():
+                raise FileNotFoundError('Windows SFTP is unavailable.')
+            flags = ['-P' if flag == '-p' else flag for flag in argv[1:-2]]
+            run_ssh([str(sftp), '-b', str(batch), *flags, argv[-2]],
+                    capture_output=True, check=True, timeout=remaining())
+            options['timeout'] = remaining()
+            return run_ssh(list(argv[:-1]) + ['(' + argv[-1] + ') < ' + target], **options)
+    finally:
+        if target is not None:
+            try:
+                run_ssh(list(argv[:-1]) + ['rm -f -- ' + target],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
+def ssh_output(argv, **kwargs):
+    return run_ssh(argv, stdout=subprocess.PIPE, check=True, **kwargs).stdout
+
+
 def windows():
     return platform.system() == 'Windows'
 
