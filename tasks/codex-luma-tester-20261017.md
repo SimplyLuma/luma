@@ -2269,3 +2269,13 @@ tofile (noPIPE), persistencecheck usesremote'test', no test-onlycompoundloginctl
 Root luma-arm-desktop-try-preview-windows-final-r5-20261028T035114 active; outerSSH
 ready03:52:16, repeatbaseverification57%03:54. NoWindowsfinalPASS/visualyet.
 Do not claimreleasespublished. Gatedpublisher5prepared/notrun; usesr5results.
+
+03:58UTC: Caught duplicate screenshotdestination in private r5QA beforedesktop
+check completed; explicitly stoppedownedr5root (notPASS), correctedr6toonecapture
+perboot+resetONLYownoldBOOT/PASS/screenshotoutputs before rerun. Rootnormal
+adf25cdd active, helpertry-preview-windows-vm-r6.py, sameownedouterVM and unchanged
+candidate17. Privateharness now redirects'id' stdouttofile; no compoundloginctl.
+Expectedresults windows/prepared-074-r6, currentremoteQAroot remainsr4. Publisher6
+preparedNOTRUN; must waitnormaladf25cddresult0, inspectfinaldesktopPNG, writevisual
+proof, then execute gatedpublisher6. NativeLinux/Mac and sourceCI alreadyPASS,
+all3latestassetsstagedverified. Sidebarfeatureimplemented andvalidated.
