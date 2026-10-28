@@ -496,23 +496,22 @@ class Session:
             (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
             print('Starting ' + self.manifest['build'] + '; acceleration: ' + command[command.index('-accel') + 1], flush=True)
             # Preserve the lease in QEMU if the supervisor dies unexpectedly.
-            child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
-            if host.windows() and options.get('embedded'):
-                try:
-                    # Cold starts and host security scans can delay Windows'
-                    # control listener; retain a bounded wait and child checks.
-                    controls_deadline = time.monotonic() + 60
-                    while time.monotonic() < controls_deadline:
-                        if child.poll() is not None:raise TesterError('QEMU stopped before opening its controls.')
-                        try:
-                            self.qmp('change-vnc-password', {'password':self.windows_display['password']})
-                            break
-                        except OSError:time.sleep(.1)
-                    else:raise TesterError('QEMU did not open its controls.')
-                    self.display_path.write_text(json.dumps(self.windows_display))
-                    self.qmp('cont')
-                except BaseException:
-                    child.terminate();child.wait();raise
+            try:
+                child = self._start_qemu(command, lease, options.get('embedded'))
+            except (TesterError, OSError):
+                # Hypervisor presence does not guarantee a usable partition,
+                # particularly on virtualized or partially configured Windows.
+                if not (host.windows() and options.get('embedded')
+                        and command[command.index('-accel') + 1] == 'whpx'):
+                    raise
+                print('Hardware acceleration did not start. Using software emulation.', flush=True)
+                command = self.command(**dict(options, software=True))
+                self.qmp_path.unlink(missing_ok=True)
+                self.display_path.unlink(missing_ok=True)
+                (self.directory / 'command.json').write_text(json.dumps(command, indent=2))
+                print('Starting ' + self.manifest['build'] + '; acceleration: '
+                      + command[command.index('-accel') + 1], flush=True)
+                child = self._start_qemu(command, lease, options.get('embedded'))
             previous = {}
             def forward(signum, _frame):
                 if child.poll() is None:
@@ -529,6 +528,35 @@ class Session:
                     child.wait()
                 self.qmp_path.unlink(missing_ok=True)
                 self.display_path.unlink(missing_ok=True)
+
+    def _start_qemu(self, command, lease, embedded):
+        child = subprocess.Popen(command, **({} if host.windows() else dict(pass_fds=(lease.fileno(),))))
+        if not (host.windows() and embedded):
+            return child
+        try:
+            controls_deadline = time.monotonic() + 60
+            while time.monotonic() < controls_deadline:
+                if child.poll() is not None:
+                    raise TesterError('QEMU stopped before opening its controls.')
+                try:
+                    self.qmp('change-vnc-password', {'password': self.windows_display['password']})
+                    break
+                except OSError:
+                    time.sleep(.1)
+            else:
+                raise TesterError('QEMU did not open its controls.')
+            self.display_path.write_text(json.dumps(self.windows_display))
+            self.qmp('cont')
+            return child
+        except BaseException:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            raise
 
     def qmp(self, execute, arguments=None, timeout=5):
         with host.local_control_socket(self.qmp_path, timeout) as sock:
