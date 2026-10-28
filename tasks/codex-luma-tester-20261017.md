@@ -2308,3 +2308,33 @@ otherwisebounded60sfailure. Regressioncovers-1/1/255actualstopand1stillrunning.
 Nextnativecheckreopenssameworkspacewithpersistentmarkerandfinalpackage,
 retainsR7firstbootproofand capturessecondactualdesktop+cleanpoweroff. This
 checksrealclosing/reopeningwithoutdependingonSSHrebootreturncode. No release.
+
+04:40UTC IMPORTANT correction: Windows service-ready checks are insufficient.
+Retrieved r7desktop0 and r8desktop1 both visibly say 'Display output is not active'.
+No visualPASS; do NOT publish. Linux r3 actual screenshot visually inspected and
+shows full Luma desktop/dock, same x86base. Windows nativeGVnc authenticated and
+receivedfullframe (privatecontinuousviewer), so investigating guestpower/renderer.
+R8 actualsecondboot+persistedfilecontentPASS (BOOT1written), then actualpoweroff
+occurred but Session.shutdown raisedTimeoutExpired15s onWinSSHstderrPIPE.
+Uncommitted core/tests fix usesWindowsstderrTemporaryFile andacceptsSSHtimeout
+ONLYafteractualVMstopped;132testsPASS in try-windows-poweroff-tests.log. Notyet
+built/nativequalified. CurrentpublicPRheadf8d82605c/sourceprivate132e15ac2,
+Windows19stage7466d0e71PASS; Mac/Linuxretainedvalidatedsource3929872c1.
+
+Owned Windows outerfixture remainsALIVE for diagnostics under normalr8c4b41f48,
+root luma-arm-desktop-try-preview-windows-final-r8-20261028T042128, mainPID4025360.
+Afterr8failure04:30:51 controllerholds900s via runtime-final-r15/r8-diagnostic-hold,
+then shutsouterVM at~04:45:51 unless intentionallysuspended/handled. Rootunit has
+5400s cap until~05:51; normal8GiBreservation remainsactive. OriginalWindowsVM
+viola-windows-builder remainsOFF, originaldiskreadonlybacking preserved.
+Current diagnostic guest runs app19 actual Session.start with ONLY lab _prepare
+bypassed afteralreadyverified cache (notnewfirstbootqualification), firmware/data
+envexplicitlyset. Windowsprivate diagnostic-start.py/log in C:\TryLumaQA-Prepared074-r4.
+HeldSSH helper execsession84266 (later actualrun) starts it; endpoint22390/VMQMP
+sameownedruntime. WindowscontinuousGVncviewer helper exec66469 requestsincremental
+updateslikeactualGUI; nativeGVnc initializationworked. EarlierStart-Process children
+withclosedSSHparentwerekilled, fixedbyholdingSSHparent; notproductbug.
+Linuxroothelpertry-preview-windows-wake-diagnostic-r8.py exec2347 currentlyconnected
+throughouterSSH22490, waitsGNOMEunitactive thenprints ScreenSaver.GetActive,
+Mutter.PowerSaveMode, doesdiagnosticSetActivefalse, printsPowerSaveafter. Watchresult.
+Allhelpers /srv/dev/accounts/second/artifacts. Do not printprivatekey/VNCpassword.
