@@ -110,6 +110,14 @@ The first source change adds a Luma-owned notification transport, additive Andro
 dismissal/reset callbacks, original-action PendingIntent handling, and a kernel
 UID check on the privileged Android platform stub. Clean/incremental builders
 apply the same patches. Existing provider-owned Waydroid files remain intact.
+
+The root hardware Binder endpoint has a separate process-local admission
+adapter. It checks kernel caller credentials before the provider can unmarshal
+or dispatch a request. Only Android root and system-server UIDs are admitted
+under the current non-remapped ABI; the session user's numeric identity is not
+an extra root-hardware role. Its packaged systemd drop-in selects the adapter
+without replacing the provider's unit or Python implementation. This narrow
+boundary is not a complete isolation audit of the Android runtime.
 The runtime package preserves the derived GPL transport's license and attribution.
 
 A real mouse resize in the disposable x86 VM froze the baseline compositor.

@@ -62,6 +62,9 @@ chmod -R a+rX "$rpmbuild_dir"
     python3 -m py_compile usr/libexec/luma-waydroid-package-session
     test -x usr/lib/systemd/system-generators/luma-android-policy-generator
     test -x usr/libexec/luma-waydroid-package-session
+    test -x usr/libexec/luma-waydroid-container
+    grep -Fqx "ExecStart=/usr/libexec/luma-waydroid-container" \
+      usr/lib/systemd/system/waydroid-container.service.d/25-luma-hardware-admission.conf
     test -f usr/share/polkit-1/actions/org.projectluma.waydroid-package-session.policy
     test -f usr/share/dbus-1/services/org.projectluma.ApplicationInstaller1.service
     grep -Fq "application/vnd.android.package-archive" \

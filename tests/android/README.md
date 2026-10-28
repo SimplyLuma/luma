@@ -36,6 +36,12 @@ receipts distinguish notification dispatch, action receipt and saved state.
 The fixture's Reply button deliberately exposes the missing RemoteInput path;
 an action click without delivered text is not a reply pass.
 
+The `background_notification` launch extra schedules a local alarm 30 seconds
+ahead and removes the activity's task. Verify its scheduled/fired/posted receipts,
+the absence of app windows, an unfrozen runtime and actual host notification
+traffic. The fixture targets API 28 for this exact-alarm test. Passing it does
+not qualify network push, host suspend/wakeup or physical battery behavior.
+
 `dbus-run-session -- python3 tests/android/notification-dbus.py` exercises the
 production host transport over a real private D-Bus connection and a separate
 notification server process. Only its Binder listener is a fixture. It checks

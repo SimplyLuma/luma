@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.82.android20261028.1%{?dist}
+Release:        1.luma.83.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -58,6 +58,10 @@ install -D -m 0755 bin/luma-waydroid-package-session \
   %{buildroot}%{_libexecdir}/luma-waydroid-package-session
 install -D -m 0755 bin/luma-waydroid-session \
   %{buildroot}%{_libexecdir}/luma-waydroid-session
+install -D -m 0755 bin/luma-waydroid-container \
+  %{buildroot}%{_libexecdir}/luma-waydroid-container
+install -D -m 0644 data/25-luma-hardware-admission.conf \
+  %{buildroot}%{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 install -D -m 0755 bin/luma-waydroid-binder-compat \
   %{buildroot}%{_libexecdir}/luma-waydroid-binder-compat
 install -D -m 0755 bin/luma-waydroid-fp6-graphics-compat \
@@ -118,11 +122,13 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 40
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
 
 %postun
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
@@ -139,6 +145,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_prefix}/lib/systemd/system-generators/luma-android-policy-generator
 %{_libexecdir}/luma-waydroid-package-session
 %{_libexecdir}/luma-waydroid-session
+%{_libexecdir}/luma-waydroid-container
+%dir %{_unitdir}/waydroid-container.service.d
+%{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 %{_libexecdir}/luma-waydroid-binder-compat
 %{_libexecdir}/luma-waydroid-fp6-graphics-compat
 %{_libexecdir}/luma-waydroid-fp6-gpu-watchdog
@@ -163,6 +172,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.83.android20261028.1
+- Reject untrusted callers before root Android hardware IPC dispatch
+
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.82.android20261028.1
 - Apply the configured idle policy to Android's automatic container freeze
 

@@ -12,5 +12,6 @@
         <category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
     <receiver android:name=".ActionReceiver" android:exported="false"/>
+    <receiver android:name=".BackgroundReceiver" android:exported="false"/>
   </application>
 </manifest>
