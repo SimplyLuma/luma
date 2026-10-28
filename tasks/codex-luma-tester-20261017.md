@@ -2235,3 +2235,17 @@ bounded TimeoutStartSec300 and restartsGDM; new shell currentlyactivating with
 this first-use override while preserving existingpassword/settings, readiness
 requires systemd GNOMEunit active.130 componenttestsPASS. No new releasepublished;
 old publisherd1f9 exited1 waitingWindows and must be replaced after actualPASS.
+
+03:40UTC: Shared startupfix ceaa6632d/public3929872c1, allfourCI PASS130tests.
+New builds Linuxr4994645164/Windowsr174cc775be/Macr21f398826d PASS.
+PackagedLinuxsidebar2modes UI2ab8876f PASS; freshLinuxprepared strongerready
+34a0c7d2 PASS168s. Macr10 signed, nativeUI/HVF/TCG, Applebothnotaryaccepted,
+quarantineGatekeeper+receivedDMG allPASS c046? actualsuccessfulpipeline dcae813e.
+Earlierr10pipeline8eb/c046 failures were missing privateharnesspaths, corrected;
+no appfailure claimed. Macfresh2bootr5 4b2c0060 active. Windowsr3 diagnostic
+restartdidnotprove shellactive before stoppingoldstuckQA. Windowsr4 outerVM
+booted to Windows 'Please wait'; controller3minSSHdeadline expired3566b567;
+no innerguestbootattempt yet. Longerbounded bootretry52f7a10f active, sameowned
+outeroverlay, originalWindowsdiskreadonlyunchanged. Windowsnotqualified.
+Draftstage5 42894c2e active Linux49/Win17/Mac10/source3929872c1/checksums;
+publication script4 prepared but NOT RUN until WindowsPASS+visualreview.
