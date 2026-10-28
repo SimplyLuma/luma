@@ -32,7 +32,8 @@ class LibraryTests(unittest.TestCase):
         physical=dict(item,kind='os_image',file='userdata.sparse.zst')
         calls=[]
         def catalog(**filters):calls.append(filters);return [physical,item]
-        with tempfile.TemporaryDirectory() as name:
+        with tempfile.TemporaryDirectory() as name, patch(
+                "luma_tester.image_approval.load", return_value=dict(schema=1,generation=1,images=[])):
             self.assertEqual(image_library.refresh(Path(name),SimpleNamespace(catalog=catalog)),[item])
             self.assertEqual(image_library.cached(Path(name)),[item])
         self.assertEqual(calls,[{}])
