@@ -2156,3 +2156,31 @@ included. Exact prepared catalog not published/approved until fresh boot proof.
 126 source unit checks411e296a PASS before final ISO-catalog suppression tweak.
 No new prepared disk qualified/published yet; current Mac0.7.4 installed package
 still prior613655bf1 source, do not claim it has the new prepared protocol.
+
+00:59UTC: both prepared exports complete and disk checks PASS, ARM5486804992B
+SHAa50b1452f1a9f7690b65959135c89be24e4d2d7d6d424f32cbedb8199cd3cf02,
+x867547060224B SHA67ec675b7f7d951cf1a05ce3c59f210c541489d43456f4717361a33fb63cf6d7.
+Final export dirs ownership corrected; no original source disk altered.
+Linux fresh directboot5143fd6d active: newthinQAoverlay,3GiBguest, noinstaller.
+Mac ARM transferc0aeb65e active to ownA016QAroot, fullSHA required beforeboot.
+Initial transfere5fc8e3c refused75 samepathlock; retried separateownadmissiondir.
+Macr18b3961f2e/sign88ccbd57/signedQA f94d821c/notarization6ac6be87 PASS.
+Linuxr46 ea4bd977 and Windowsr13 a9bd6434 buildPASS. No prepared fresh graphical
+bootPASS yet, neither imagepublished, public0.7.4draft unchanged.
+
+01:15UTC: Linux prepared5143fd6d PASS actual graphical autologin111s
+including7.55GBchecksum, seedserviceactive, nativeOSdesktopflag. ARMtransfer
+c0aeb65e fullSHA PASS. Mac nativeQAe0add7bf active, signedr7Helpers/firmware
+entrypointenv explicitlyset inprivateharness afterr1 lacked qemu-imgPATH.
+Windows preparedQA3e79e068/root luma-arm-desktop-try-prepared-windows-r1-20261028T011246
+active; ownedouterVMSSH ready01:14:25UTC, stagingr13ZIP+newQCOW. Generic
+try-prepared-native-qa-r1.py verifiesgraphicalautologin+two reboots+persistedmarker,
+privateSSHkeysinternalMac/largeQCOWandthinQAoverlayexternalA016. ExistinguserVM
+untouched. NeitherMacnorWindowsdesktopPASSyet, no publicationclaim.
+
+01:19UTC: Macr2 two actual autologin desktops42s/34s, secondbootmarker
+persisted BOOT-1-PASS. HarnessoverallfailedACPIpowerdown120s; production
+alreadyusesSSHSession.shutdown, correctedprivateharnessandfreshMacr3
+801313c4 active. Windows transfer server3650122 FD7pos5.39GB/7.55GB,
+Windowsdirreports0whileopen misleading. CorrectWindowsQAshutdowninplace
+beforecurlfinishes via shortPSfile.Replace, noappchanges. Neitherimagepublished.
