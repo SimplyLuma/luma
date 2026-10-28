@@ -2,9 +2,9 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.80.creator20261007.1%{?dist}
+Release:        1.luma.81.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
-License:        Apache-2.0
+License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
 BuildArch:      noarch
 
@@ -20,6 +20,8 @@ Requires:       waydroid >= 1.6.3
 Requires:       python3
 Requires:       glib2
 Requires:       python3-gobject
+Requires:       python3-dbus
+Requires:       python3-gbinder
 Requires:       gtk4
 Requires:       libadwaita
 Requires:       luma-developer-platform >= 0.1.0-1.luma.46~preview.20260906.1
@@ -54,6 +56,8 @@ install -D -m 0755 bin/luma-android-policy-generator \
   %{buildroot}%{_prefix}/lib/systemd/system-generators/luma-android-policy-generator
 install -D -m 0755 bin/luma-waydroid-package-session \
   %{buildroot}%{_libexecdir}/luma-waydroid-package-session
+install -D -m 0755 bin/luma-waydroid-session \
+  %{buildroot}%{_libexecdir}/luma-waydroid-session
 install -D -m 0755 bin/luma-waydroid-binder-compat \
   %{buildroot}%{_libexecdir}/luma-waydroid-binder-compat
 install -D -m 0755 bin/luma-waydroid-fp6-graphics-compat \
@@ -125,6 +129,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 
 %files
 %license LICENSE.md
+%license COPYING.GPL-3.0
 %config(noreplace) %{_sysconfdir}/luma/android.conf
 %{_bindir}/luma-android
 %{_bindir}/luma-androidd
@@ -133,6 +138,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_bindir}/luma-android-session
 %{_prefix}/lib/systemd/system-generators/luma-android-policy-generator
 %{_libexecdir}/luma-waydroid-package-session
+%{_libexecdir}/luma-waydroid-session
 %{_libexecdir}/luma-waydroid-binder-compat
 %{_libexecdir}/luma-waydroid-fp6-graphics-compat
 %{_libexecdir}/luma-waydroid-fp6-gpu-watchdog
@@ -157,6 +163,10 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.81.android20261028.1
+- Track Android notification dismissal, replacement and notification-server restarts
+- Use Luma's notification transport for supervised Android sessions
+
 * Tue Sep 15 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.70.preview20260915.1
 - Never start the Android broker, session or compositor inside the GDM greeter
 - Let the sandboxed broker open dconf's runtime file so appearance sync stops warning

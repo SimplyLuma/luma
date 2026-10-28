@@ -1,0 +1,135 @@
+--- a/sdk/src/java/lineageos/waydroid/INotifications.aidl
++++ b/sdk/src/java/lineageos/waydroid/INotifications.aidl
+@@ -21,6 +21,9 @@
+ 
+     interface INotificationCallback {
+         void onActionInvoked(int notification_id, String action, String xdg_activation_token);
++        // Additive callbacks: existing action transaction remains number 1.
++        void onHostDismissed(int notification_id);
++        void onHostReset();
+     }
+ 
+     parcelable Action {
+--- a/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
++++ b/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
+@@ -281,6 +281,8 @@
+     private void registerNotificationListener() {
+         mNotificationIdMap.clear();
+         mNotificationActionsMap.clear();
++        final android.os.Handler notificationHandler =
++                new android.os.Handler(mContext.getMainLooper());
+         mSystemNotificationListener = new NotificationListenerService() {
+             private INotifications.ImageData getImageData(Notification notification) {
+                 Icon icon = notification.getLargeIcon();
+@@ -317,10 +319,15 @@
+             @Override
+             public void onListenerConnected() {
+                 Log.i(TAG, "Connected to system notification manager");
++                StatusBarNotification[] active = getActiveNotifications();
++                if (active != null) {
++                    for (StatusBarNotification item : active) onNotificationPosted(item);
++                }
+             }
+ 
+             @Override
+             public void onNotificationPosted(StatusBarNotification sbn) {
++                if (sbn.getUserId() != UserHandle.USER_SYSTEM) return;
+                 String key = sbn.getKey();
+                 String packageName = sbn.getPackageName();
+                 Notification notification = sbn.getNotification();
+@@ -330,8 +337,8 @@
+                 }
+ 
+                 String appName = _getAppName(packageName);
+-                String summary = notification.extras.getString(Notification.EXTRA_TITLE, "");
+-                String body = notification.extras.getString(Notification.EXTRA_TEXT, "");
++                String summary = String.valueOf(notification.extras.getCharSequence(Notification.EXTRA_TITLE, ""));
++                String body = String.valueOf(notification.extras.getCharSequence(Notification.EXTRA_TEXT, ""));
+ 
+                 List<INotifications.Action> hostActions = new LinkedList<INotifications.Action>();
+                 Map<String, PendingIntent> actionMap = new HashMap<String, PendingIntent>();
+@@ -362,7 +369,7 @@
+ 
+                 INotifications.ImageData image = getImageData(notification);
+ 
+-                String category = ""; // TODO: try to map Android category to FDO category
++                String category = notification.category == null ? "" : notification.category;
+                 boolean suppressSound = true; // TODO: consider playing the sound on the desktop and silencing android instead
+                 int expireTimeout = INotifications.TIMEOUT_DEFAULT;
+                 boolean isResident = true;
+@@ -378,6 +385,7 @@
+                     return;
+                 }
+ 
++                if (existingId != newId) mNotificationActionsMap.remove(existingId);
+                 mNotificationIdMap.put(key, newId);
+                 mNotificationActionsMap.put(newId, actionMap);
+             }
+@@ -405,20 +413,53 @@
+         mWaydroidNotifications.registerListener(new INotifications.INotificationCallback.Stub() {
+             @Override
+             public void onActionInvoked(int notificationId, String actionId, String xdgActivationToken) {
+-                Map<String, PendingIntent> innerMap = mNotificationActionsMap.get(notificationId);
+-                if (innerMap == null)
+-                    return;
+-                PendingIntent intent = innerMap.get(actionId);
+-                if (intent == null)
+-                    return;
+-
+-                try {
+-                    intent.send();
+-                } catch (PendingIntent.CanceledException e) {
+-                    Log.i(TAG, "Canceled notification action: " + e.getMessage());
+-                }
+-
+-                // TODO: Activate window through hwcomposer
++                notificationHandler.post(() -> {
++                    Map<String, PendingIntent> actions = mNotificationActionsMap.get(notificationId);
++                    PendingIntent intent = actions == null ? null : actions.get(actionId);
++                    if (intent == null) return;
++                    try {
++                        intent.send();
++                        if ("default".equals(actionId)) {
++                            StatusBarNotification[] active = mSystemNotificationListener.getActiveNotifications();
++                            if (active != null) for (StatusBarNotification item : active) {
++                                if (mNotificationIdMap.getOrDefault(item.getKey(), 0) == notificationId
++                                        && (item.getNotification().flags & Notification.FLAG_AUTO_CANCEL) != 0) {
++                                    mSystemNotificationListener.cancelNotification(item.getKey());
++                                    break;
++                                }
++                            }
++                        }
++                    } catch (PendingIntent.CanceledException error) {
++                        Log.i(TAG, "Notification action is no longer available");
++                    }
++                });
++            }
++
++            @Override
++            public void onHostDismissed(int notificationId) {
++                notificationHandler.post(() -> {
++                    StatusBarNotification[] active = mSystemNotificationListener.getActiveNotifications();
++                    if (active == null) return;
++                    for (StatusBarNotification item : active) {
++                        if (item.getUserId() == UserHandle.USER_SYSTEM && item.isClearable()
++                                && mNotificationIdMap.getOrDefault(item.getKey(), 0) == notificationId) {
++                            mSystemNotificationListener.cancelNotification(item.getKey());
++                            break;
++                        }
++                    }
++                });
++            }
++
++            @Override
++            public void onHostReset() {
++                notificationHandler.post(() -> {
++                    mNotificationIdMap.clear();
++                    mNotificationActionsMap.clear();
++                    StatusBarNotification[] active = mSystemNotificationListener.getActiveNotifications();
++                    if (active != null) for (StatusBarNotification item : active) {
++                        mSystemNotificationListener.onNotificationPosted(item);
++                    }
++                });
+             }
+         });
+     }

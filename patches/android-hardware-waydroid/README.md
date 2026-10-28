@@ -151,3 +151,14 @@ reduce the service's capacity. Both initializers now request the same existing
 four-thread ceiling. Genuine Binder failures and Wayland disconnect reporting
 remain intact. Actual repeated session restart and cold-boot qualification are
 required; the preceding image's startup tombstone remains a failed control.
+
+
+`0014` releases the per-window chrome lock before HWC adapter invalidation in
+xdg task, xdg display and legacy configure callbacks. A VM mouse-resize test
+reproduced an adapter/window lock inversion: configure waited for the adapter
+while present waited for the window. The strong callback owner retains the
+window while the lock is released. The patch-series check compiles these exact
+callback bodies against a two-thread adapter/window harness. A control which
+removes the unlock reproduces the cycle and exits with a bounded failure.
+Full Android compilation and a repeat of the real resize workload remain
+necessary; the host harness alone does not qualify graphics or smoothness.

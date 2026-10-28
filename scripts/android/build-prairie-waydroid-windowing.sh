@@ -31,7 +31,10 @@ task_lifetime_patch="$repo_root/patches/android-hardware-waydroid/0010-luma-auth
 initial_resize_patch="$repo_root/patches/android-hardware-waydroid/0011-luma-mandatory-initial-task-resize.patch"
 rpc_threadpool_patch="$repo_root/patches/android-hardware-waydroid/0012-luma-shared-composer-rpc-threadpool.patch"
 buffer_bounds_patch="$repo_root/patches/android-hardware-waydroid/0013-luma-software-buffer-allocation-bounds.patch"
+configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-configure-invalidation-lock-order.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
+lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
+lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -158,6 +161,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$hardware_root" apply "$initial_resize_patch"
   git -C "$hardware_root" apply "$rpc_threadpool_patch"
   git -C "$hardware_root" apply "$buffer_bounds_patch"
+  git -C "$hardware_root" apply "$configure_lock_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-window-callbacks.h" "$hardware_root/hwcomposer/luma-window-callbacks.h"
@@ -168,6 +172,10 @@ if [ "$incremental" = 0 ]; then
   done
   git -C "$framework_root" apply "$framework_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_task_lifetime_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_notification_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"
+  cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
+    "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   # Keep clean builds aligned with the prepared incremental tree. Without
   # inherited task ownership, child video surfaces can disappear when more
   # than one Android application is open.

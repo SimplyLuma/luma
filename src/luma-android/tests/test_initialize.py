@@ -293,7 +293,12 @@ class GraphicsCapabilityTest(unittest.TestCase):
             if path.parent == self.dri:
                 return SimpleNamespace(st_mode=stat.S_IFCHR | 0o660, st_uid=0,
                                        st_rdev=os.makedev(226, int(path.name[7:])))
-            return original(path)
+            actual = original(path)
+            if path.parent.name == 'device' and path.name.startswith('virtio'):
+                # Model kernel ownership while preserving the actual file
+                # type and permissions tested by the malformed-child cases.
+                return SimpleNamespace(st_mode=actual.st_mode, st_uid=0)
+            return actual
         with patch.object(Path, "lstat", metadata):
             return initialize._software_graphics_required(self.dri, self.sys_drm)
 

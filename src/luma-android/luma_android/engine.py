@@ -119,6 +119,13 @@ class AndroidDeviceProfile:
 class WaydroidEngine:
     def __init__(self, executable: str = "waydroid") -> None:
         self.executable = executable
+        self.lifecycle_lock = threading.RLock()
+
+    def session_command(self) -> list[str]:
+        adapter = Path('/usr/libexec/luma-waydroid-session')
+        if Path(self.executable).name == 'waydroid' and adapter.is_file():
+            return [str(adapter)]
+        return [self.executable, 'session', 'start']
 
     def available(self) -> bool:
         return shutil.which(self.executable) is not None
@@ -295,6 +302,14 @@ class WaydroidEngine:
     def ensure_ready(
         self, multi_window: bool | None = None, timeout: int = 120, detached: bool = False
     ) -> bool:
+        # Concurrent requests share one lifecycle transition in the resident
+        # broker. Never start duplicate session managers during a cold launch.
+        with self.lifecycle_lock:
+            return self._ensure_ready(multi_window, timeout, detached)
+
+    def _ensure_ready(
+        self, multi_window: bool | None, timeout: int, detached: bool
+    ) -> bool:
         """Make Android application services ready and report a cold start.
 
         A true return value means this call started (or rebound) the graphical
@@ -379,7 +394,7 @@ class WaydroidEngine:
                 log_root.mkdir(mode=0o700, parents=True, exist_ok=True)
                 with (log_root / "session.log").open("ab", buffering=0) as log:
                     return subprocess.Popen(
-                        [self.executable, "session", "start"],
+                        self.session_command(),
                         stdin=subprocess.DEVNULL,
                         stdout=log,
                         stderr=subprocess.STDOUT,
@@ -391,11 +406,8 @@ class WaydroidEngine:
             if detached:
                 session_process = start_detached_session()
             else:
-                os.execvpe(
-                    self.executable,
-                    [self.executable, "session", "start"],
-                    os.environ.copy(),
-                )
+                command = self.session_command()
+                os.execvpe(command[0], command, os.environ.copy())
             while time.monotonic() < deadline:
                 time.sleep(0.5)
                 status = self.status()
@@ -796,6 +808,10 @@ class WaydroidEngine:
         raise RuntimeUnavailableError("Android did not finish registering the application.")
 
     def launch(self, package: str) -> None:
+        with self.lifecycle_lock:
+            self._launch(package)
+
+    def _launch(self, package: str) -> None:
         _validate_package_name(package)
         _activate_fp6_software_presentation(timeout=30)
         if os.environ.get(FP6_SOFTWARE_PRESENTATION_ENV) == "1":
@@ -838,6 +854,10 @@ class WaydroidEngine:
         )
 
     def stop_session(self) -> None:
+        with self.lifecycle_lock:
+            self._stop_session()
+
+    def _stop_session(self) -> None:
         self._run("session", "stop", timeout=60, check=False)
         if is_fp6():
             subprocess.run(
@@ -852,8 +872,9 @@ class WaydroidEngine:
             )
 
     def restart_session(self, multi_window: bool | None = None) -> None:
-        self.stop_session()
-        self.ensure_ready(multi_window, timeout=180, detached=True)
+        with self.lifecycle_lock:
+            self.stop_session()
+            self.ensure_ready(multi_window, timeout=180, detached=True)
 
 
 def _host_booted_in_charger_mode() -> bool:
