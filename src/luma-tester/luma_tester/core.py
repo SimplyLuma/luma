@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import base64
 import hashlib
 import json
 import os
@@ -644,7 +645,14 @@ class Session:
                     '%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"',
                 self.manifest['user'] + '@127.0.0.1']
         # OpenSSH joins arguments into a shell command: quote every guest argument.
-        return argv + ([shlex.join(command)] if command else [])
+        remote = shlex.join(command) if command else ''
+        if host.windows() and ('\n' in remote or '\r' in remote):
+            # Win32 OpenSSH cannot reliably transport literal command newlines.
+            # Keep its command line on one line while preserving the exact argv.
+            encoded = base64.b64encode(remote.encode()).decode()
+            script = "import base64,os;os.execl('/bin/sh','sh','-c',base64.b64decode('" + encoded + "').decode())"
+            remote = 'python3 -c ' + shlex.quote(script)
+        return argv + ([remote] if command else [])
 
     def sync(self, source):
         source = Path(source).resolve()
@@ -675,6 +683,20 @@ class Session:
     def wait_graphical(self, timeout=180):
         """Wait for the real graphical session, not merely an open SSH port."""
         self.wait(timeout)
+        if self.manifest.get('guest_protocol') == 'luma-unified-v1':
+            # These are disposable previews with locked account passwords.
+            # Configure once, preserving later choices in a saved workspace.
+            preview = """import os, subprocess
+from pathlib import Path
+marker=Path.home()/'.local/state/try-luma/preview-configured'
+if not marker.exists():
+    env=dict(os.environ,DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/'+str(os.getuid())+'/bus')
+    for schema,key,value in [('org.gnome.desktop.screensaver','lock-enabled','false'),('org.gnome.desktop.session','idle-delay','0')]:
+        subprocess.run(['gsettings','set',schema,key,value],env=env,check=True)
+    marker.parent.mkdir(parents=True,exist_ok=True)
+    marker.write_text('1\\n')
+"""
+            run(self.ssh(['python3','-c',preview]),stdout=subprocess.DEVNULL,timeout=30)
         deadline = time.monotonic() + timeout
         from . import provision
         if provision.ready(self) or self.manifest.get('guest_protocol') == 'luma-unified-v1':

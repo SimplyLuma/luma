@@ -80,3 +80,19 @@ class PreparedImageTests(unittest.TestCase):
         config['users'][0]['ssh_authorized_keys']=['ssh-ed25519 AAAA']
         config['write_files'][0]['path']='/etc/passwd'
         with self.assertRaises(ValueError):parse()
+
+    def test_windows_remote_python_preserves_multiline_and_quoted_arguments(self):
+        import shlex
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);item=artifact()
+            manifest=dict(item['tester_profile'],image=dict(url=item['url'],sha256=item['sha256'],bytes=item['size_bytes']))
+            path=root/'manifest.json';path.write_text(json.dumps(manifest))
+            session=Session(path,root/'state');session.directory.mkdir(parents=True,exist_ok=True)
+            (session.directory/'connection.json').write_text(json.dumps(dict(port=2228)))
+            script="import sys\nprint(repr(sys.argv[1]))"
+            argument="one 'quoted' line\nand another"
+            with patch.object(session,'status',return_value='running'),patch('luma_tester.host.windows',return_value=True):
+                command=session.ssh(['python3','-c',script,argument])[-1]
+            self.assertNotIn('\n',command)
+            result=subprocess.check_output(shlex.split(command),text=True)
+            self.assertEqual(result,repr(argument)+'\n')
