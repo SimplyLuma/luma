@@ -43,9 +43,18 @@ def main():
     bundler.add_library(args.gles,'libGLESv2.dylib')
     bundler.rewrite_all()
     # ANGLE's EGL loader resolves its GLES implementation by framework name.
-    target=root/'Frameworks/GLESv2.framework/Versions/Current'
-    target.mkdir(parents=True)
-    (target/'GLESv2').symlink_to('../../../libGLESv2.dylib')
+    framework=root/'Frameworks/GLESv2.framework'
+    target=framework/'Versions/A';target.mkdir(parents=True)
+    library=root/'Frameworks/libGLESv2.dylib'
+    library.replace(target/'GLESv2')
+    library.symlink_to('GLESv2.framework/Versions/A/GLESv2')
+    (framework/'Versions/Current').symlink_to('A')
+    (framework/'GLESv2').symlink_to('Versions/Current/GLESv2')
+    resources=target/'Resources';resources.mkdir()
+    (resources/'Info.plist').write_bytes(plistlib.dumps(dict(CFBundleIdentifier='org.chromium.angle.GLESv2',
+        CFBundleExecutable='GLESv2',CFBundleName='GLESv2',CFBundlePackageType='FMWK',CFBundleVersion='1')))
+    (framework/'Resources').symlink_to('Versions/Current/Resources')
+    subprocess.run(['codesign','--force','--sign','-',str(framework)],check=True)
     entitlements=root/'qemu-entitlements.plist'
     entitlements.write_bytes(plistlib.dumps({'com.apple.security.hypervisor':True,'com.apple.security.cs.allow-jit':True}))
     subprocess.run(['codesign','--force','--sign','-','--entitlements',str(entitlements),str(helper)],check=True)
