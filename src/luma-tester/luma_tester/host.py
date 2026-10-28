@@ -39,7 +39,7 @@ def run_ssh(argv, **kwargs):
     data = options.pop('input', None)
     if data is not None and Path(str(argv[0])).name.lower() in ('ssh', 'ssh.exe'):
         payload = data.encode(encoding, errors or 'strict') if text else data
-        return _ssh_upload_input(argv, payload, dict(options, check=check, text=text, encoding=encoding, errors=errors))
+        return _ssh_upload_input(argv, payload, dict(options, check=check, text=text, encoding=encoding if text else None, errors=errors if text else None))
     with contextlib.ExitStack() as stack:
         outputs = {}
         for name in ('stdout', 'stderr'):
