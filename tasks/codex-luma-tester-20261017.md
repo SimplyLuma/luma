@@ -2338,3 +2338,26 @@ Linuxroothelpertry-preview-windows-wake-diagnostic-r8.py exec2347 currentlyconne
 throughouterSSH22490, waitsGNOMEunitactive thenprints ScreenSaver.GetActive,
 Mutter.PowerSaveMode, doesdiagnosticSetActivefalse, printsPowerSaveafter. Watchresult.
 Allhelpers /srv/dev/accounts/second/artifacts. Do not printprivatekey/VNCpassword.
+
+04:44UTC DEFINITIVE display result: diagnosticWindowsguest renderedfullLuma
+wallpaper+dock, inspected actualPNG try-windows-diagnostic-current.png. No input
+or successfulwakeAPI was needed; earlierwakeprobe timedoutbeforemutation. GNOME
+systemdunitREADY precededinteractiveJSmainloop; GetActive timedout20s while
+serviceactive, later responds(false), PowerSaveMode0, idle0/lockfalse. Added
+boundedGNOMEScreenSaver.GetActive response check to sharedwait_graphical so
+launcher waitsforinteractiveShell ratherthanservicealone.132unitPASS. Current
+Windowsnativefullstart took13.034s toopencontrols, definitivelyexceedingold10s;
+60sWindowscontrolbound fixedthisactualcase. NoGPU/image change needed.
+
+ROOTFIXTURELIFETIME: pausedONLYownedcontrollerPID4025360 withSIGSTOP after
+checkingexactcmdline. QEMUWindowsVMcontinuesrunningunderexisting7168MiB/root
+5400s cap,normal8GiBreservation. Prevents15mPythonfailureholdfromendingVMmid-
+diagnosis; systemd90mcapstillends~05:51UTC. MUSTCLEANUP: removeonly
+windows/vm-admission/runtime-final-r15/r8-diagnostic-hold thenSIGCONT4025360;
+oldr8willshutdownownouterVM andexit1 (previousfailure, neverPASS). Do thisonly
+AFTERnewqualificationusingthisVMfinishes. OriginalWindowsVMremainsuntouched.
+Currentinnerguest diagnosticstartapp19 running (nohashduringlabdebug only),
+WindowscontinuousGVncviewerprivateclientconnected; terminateguestcleanly before
+newtestsession. Newfinalsource includesWinshutdownstderrTemporaryFile +actual
+poweroffconfirmationonSSHtimeout, andsharedinteractive-shellreadiness. Needs
+all3finalrebuilds +nativecheck; previousstage19 remainsdraft, no publication.
