@@ -129,6 +129,7 @@ WantedBy=multi-user.target
         # Export a complete user installation instead of leaving its first
         # creation to competing shell/app-discovery processes at login.
         user_repo = home.parent / '.local/share/flatpak/repo'
+        user_repo.mkdir(parents=True)
         run(['ostree', '--repo=' + str(user_repo), 'init', '--mode=bare-user-only'])
         for path in (home.parent, *home.parent.rglob('*')):
             os.chown(path, int(account[2]), int(account[3]))

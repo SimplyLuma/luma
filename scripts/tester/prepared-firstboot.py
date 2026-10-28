@@ -36,6 +36,7 @@ if not entries or entries == {'config'}:
         mode = parser.get('core', 'mode', fallback='')
         if mode not in ('bare-user', 'bare-user-only'):
             raise RuntimeError('Unsupported preview Flatpak repository mode')
+    repo.mkdir(parents=True, exist_ok=True)
     subprocess.run(['ostree', '--repo='+str(repo), 'init', '--mode='+mode], check=True)
 subprocess.run(['ostree', '--repo='+str(repo), 'refs'], check=True)
 '''
