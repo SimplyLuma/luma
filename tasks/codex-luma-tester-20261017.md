@@ -2249,3 +2249,12 @@ no innerguestbootattempt yet. Longerbounded bootretry52f7a10f active, sameowned
 outeroverlay, originalWindowsdiskreadonlyunchanged. Windowsnotqualified.
 Draftstage5 42894c2e active Linux49/Win17/Mac10/source3929872c1/checksums;
 publication script4 prepared but NOT RUN until WindowsPASS+visualreview.
+
+03:42UTC: Maclatest signedr10 nativefresh2boot4b2c0060 PASS includingclean
+shutdown, strongerGNOMEready42.4s/31.4s+persistence. Draftstage5 42894c2e PASS
+all3latest packages/source3929872c1/Githubassetdigest+fullSHAverified. Windows
+retryouterready03:38:49, candidate17 launchedfreshQArootr4 and cached7.55GBbase
+hashing03:41; noinnerguestdesktopPASS yet. Currentrootunit
+luma-arm-desktop-try-preview-windows-final-r4-retry-20261028T033756, normal52f7a10f.
+Publisher4filegatesupdated but NOTRUN, visualreview stillrequired. Sidebarfeature
+complete, finalrelease stilldraft pendingWindows.
