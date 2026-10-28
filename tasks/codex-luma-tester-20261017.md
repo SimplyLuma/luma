@@ -2258,3 +2258,14 @@ hashing03:41; noinnerguestdesktopPASS yet. Currentrootunit
 luma-arm-desktop-try-preview-windows-final-r4-retry-20261028T033756, normal52f7a10f.
 Publisher4filegatesupdated but NOTRUN, visualreview stillrequired. Sidebarfeature
 complete, finalrelease stilldraft pendingWindows.
+
+03:55UTC: Windowsr4 actualstronggraphicalcheck PASS at462.8s elapsed including
+~200sbasehash, confirmed13088byteWindowsSSHCONFIGUREworked andlocalpassword+
+startupmarkers existed. Harnesssubsequentlyfailed collecting compounddiagnostic
+SSHstdout via check_output(timeout40), notgraphicalcheck; noBOOT-PASSfile/screenshot
+written because evidenceprecededcapture. Newr5df239657 reusesexactcandidate17/
+sameownedr4workspace; screenshotscapturedBEFOREsimple'id' diagnostic redirected
+tofile (noPIPE), persistencecheck usesremote'test', no test-onlycompoundloginctl.
+Root luma-arm-desktop-try-preview-windows-final-r5-20261028T035114 active; outerSSH
+ready03:52:16, repeatbaseverification57%03:54. NoWindowsfinalPASS/visualyet.
+Do not claimreleasespublished. Gatedpublisher5prepared/notrun; usesr5results.
