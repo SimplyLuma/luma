@@ -50,7 +50,22 @@ def main():
                     return found
                 labels = texts(app.sidebar)
                 assert 'luma' in labels and 'TryLuma' in labels
-                assert 'Use this to unlock Luma or install apps.' in labels
+                assert not any('Use this to unlock' in label for label in labels)
+                assert len(app.preview_rows) == 3
+                assert not app.preview_rows[0].has_css_class('ruled')
+                assert app.preview_password.get_focusable()
+                app.preview_password.grab_focus()
+                assert app.window.get_focus() is app.preview_password
+                assert not any(isinstance(child, Gtk.Image) for child in [app.preview_password.get_child()])
+                app.preview_password.emit('clicked')
+                clipboard = app.window.get_clipboard()
+                def copied(source, result):
+                    try:
+                        assert source.read_text_finish(result) == 'TryLuma'
+                    except BaseException as exc:
+                        failures.append(exc)
+                    app.quit()
+                clipboard.read_text_async(None, copied)
                 # An arbitrary imported installer must not advertise credentials.
                 (session.directory/'setup.json').unlink()
                 with patch.object(app, 'select_image', return_value=path):
@@ -58,7 +73,7 @@ def main():
                     assert not any(row.get_visible() for row in app.preview_rows)
             except BaseException as exc:
                 failures.append(exc)
-            app.quit()
+                app.quit()
             return False
 
         with patch('luma_tester.updates.check', return_value=None), patch.object(image_library, 'refresh', return_value=[]), patch.object(image_library, 'cached', return_value=[]):

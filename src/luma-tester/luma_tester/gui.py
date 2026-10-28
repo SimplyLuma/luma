@@ -252,19 +252,17 @@ def launch(state=None):
                 self.device_rows[target] = row
             self.sidebar.list.connect('row-activated', self.device_activated)
             from . import guest_preview
-            self.preview_rows = [SidebarSection('Preview login', ruled=True)]
+            self.preview_rows = [SidebarSection('Preview login')]
             username = SidebarRow('Username')
             username.set_trail(self.label(guest_preview.USER, 'caption'))
             password = SidebarRow('Password')
-            values = Gtk.Box(spacing=8)
-            value = self.label(guest_preview.PASSWORD, 'caption');value.set_selectable(True)
-            values.append(value)
-            values.append(IconOnlyButton('copy', 'Copy preview password', size='small',
-                on_click=lambda: self.window.get_clipboard().set(guest_preview.PASSWORD)))
-            password.set_trail(values)
-            note = Gtk.ListBoxRow(selectable=False, activatable=False)
-            note.set_child(self.label('Use this to unlock Luma or install apps.', 'caption', muted=True))
-            self.preview_rows.extend([username, password, note])
+            self.preview_password = TextButton(guest_preview.PASSWORD, style='plain', small=True,
+                on_click=lambda: self.window.get_clipboard().set(guest_preview.PASSWORD))
+            apply_type(self.preview_password.label_widget, 'caption')
+            self.preview_password.set_tooltip_text('Copy password')
+            self.preview_password.update_property([Gtk.AccessibleProperty.LABEL], ['Copy preview password'])
+            password.set_trail(self.preview_password)
+            self.preview_rows.extend([username, password])
             for row in self.preview_rows:self.sidebar.list.append(row)
             self.developer_heading = SidebarSection('Developer', ruled=True)
             self.sidebar.list.append(self.developer_heading)
