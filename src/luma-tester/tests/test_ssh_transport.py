@@ -76,3 +76,10 @@ class WindowsSSHTransportTests(unittest.TestCase):
         self.assertEqual(calls[2][0][-1], '(command) < /tmp/try-luma-input.a1b2c3d4e5')
         self.assertEqual(calls[3][0][-1], 'rm -f -- /tmp/try-luma-input.a1b2c3d4e5')
         self.assertLess(calls[2][1]['timeout'], 5)
+
+    def test_staged_binary_upload_does_not_enable_text_decoding(self):
+        with patch.object(host, 'windows', return_value=True), patch.object(host, '_ssh_upload_input') as upload:
+            host.run_ssh(['ssh', 'host', 'command'], input=b'\x81\x00', capture_output=True)
+        self.assertEqual(upload.call_args.args[1], b'\x81\x00')
+        self.assertFalse(upload.call_args.args[2]['text'])
+        self.assertIsNone(upload.call_args.args[2]['encoding'])
