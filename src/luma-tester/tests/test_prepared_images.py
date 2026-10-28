@@ -94,5 +94,9 @@ class PreparedImageTests(unittest.TestCase):
             with patch.object(session,'status',return_value='running'),patch('luma_tester.host.windows',return_value=True):
                 command=session.ssh(['python3','-c',script,argument])[-1]
             self.assertNotIn('\n',command)
+            self.assertNotIn(chr(34),command)
             result=subprocess.check_output(shlex.split(command),text=True)
             self.assertEqual(result,repr(argument)+'\n')
+            with patch.object(session,'status',return_value='running'),patch('luma_tester.host.windows',return_value=True):
+                builtin=session.ssh([':'])[-1]
+            subprocess.run(shlex.split(builtin),check=True)

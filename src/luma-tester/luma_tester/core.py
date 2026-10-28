@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import base64
 import hashlib
 import json
 import os
@@ -646,11 +645,12 @@ class Session:
                 self.manifest['user'] + '@127.0.0.1']
         # OpenSSH joins arguments into a shell command: quote every guest argument.
         remote = shlex.join(command) if command else ''
-        if host.windows() and ('\n' in remote or '\r' in remote):
-            # Win32 OpenSSH cannot reliably transport literal command newlines.
-            # Keep its command line on one line while preserving the exact argv.
-            encoded = base64.b64encode(remote.encode()).decode()
-            script = "import base64,os;os.execl('/bin/sh','sh','-c',base64.b64decode('" + encoded + "').decode())"
+        if host.windows() and command:
+            # Win32 OpenSSH can stall on nested shell quotes as well as literal
+            # newlines. A numeric JSON payload keeps the transport command to
+            # one simple quoted argument and preserves the original shell argv.
+            payload = list(json.dumps(['sh', 'sh', '-c', remote]).encode())
+            script = 'import json,os;os.execlp(*json.loads(bytes(' + repr(payload) + ')))'
             remote = 'python3 -c ' + shlex.quote(script)
         return argv + ([remote] if command else [])
 
