@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generation": 3,
+  "generation": 4,
   "images": [
     {
       "artifact_id": "os/nightly/20261027.4/x86_64",
@@ -9,6 +9,64 @@
     {
       "artifact_id": "os/nightly/20261027.1/aarch64",
       "sha256": "c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8"
+    }
+  ],
+  "workspaces": [
+    {
+      "artifact_id": "tester/preview/20261027-ready1/x86_64",
+      "kind": "tester_image",
+      "arch": "x86_64",
+      "file": "try-luma-x86_64.qcow2",
+      "url": "https://media.simplyluma.com/tester/20261027-ready1/try-luma-x86_64.qcow2",
+      "sha256": "67ec675b7f7d951cf1a05ce3c59f210c541489d43456f4717361a33fb63cf6d7",
+      "size_bytes": 7547060224,
+      "channel": "preview",
+      "version": "20261027-ready1",
+      "label": "Luma \u2014 Ready to try",
+      "tester_profile": {
+        "schema": 1,
+        "id": "try-luma-ready1-x86-64",
+        "target": "desktop",
+        "arch": "x86_64",
+        "boot": "uefi",
+        "cloud_init": true,
+        "media": "disk",
+        "guest_protocol": "luma-unified-v1",
+        "user": "luma",
+        "build": "Luma prepared preview 20261027",
+        "capabilities": {
+          "home": false,
+          "dynamic_display": false
+        }
+      }
+    },
+    {
+      "artifact_id": "tester/preview/20261027-ready1/aarch64",
+      "kind": "tester_image",
+      "arch": "aarch64",
+      "file": "try-luma-aarch64.qcow2",
+      "url": "https://media.simplyluma.com/tester/20261027-ready1/try-luma-aarch64.qcow2",
+      "sha256": "a50b1452f1a9f7690b65959135c89be24e4d2d7d6d424f32cbedb8199cd3cf02",
+      "size_bytes": 5486804992,
+      "channel": "preview",
+      "version": "20261027-ready1",
+      "label": "Luma \u2014 Ready to try",
+      "tester_profile": {
+        "schema": 1,
+        "id": "try-luma-ready1-aarch64",
+        "target": "desktop",
+        "arch": "aarch64",
+        "boot": "uefi",
+        "cloud_init": true,
+        "media": "disk",
+        "guest_protocol": "luma-unified-v1",
+        "user": "luma",
+        "build": "Luma prepared preview 20261027",
+        "capabilities": {
+          "home": false,
+          "dynamic_display": false
+        }
+      }
     }
   ]
 }

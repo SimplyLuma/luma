@@ -59,6 +59,8 @@ def validate_manifest(m):
         raise TesterError('Choose a developer disk or installation ISO.')
     if m.get('cloud_init') is not (m.get('media','disk') == 'disk'):
         raise TesterError('Developer disks require cloud-init; installation ISOs do not.')
+    if 'guest_protocol' in m and (m['guest_protocol'] != 'luma-unified-v1' or m.get('media', 'disk') != 'disk'):
+        raise TesterError('Unsupported prepared guest protocol.')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', m.get('user', '')):
         raise TesterError('Invalid guest user.')
     if 'display' in m:
@@ -186,6 +188,13 @@ class Session:
                 raise TesterError('This id already belongs to another image. Use a new manifest id.')
         # Pin identity before any disk/key mutation, including interrupted first preparation.
         saved.write_text(json.dumps(self.manifest, indent=2) + '\n')
+        from . import provision
+        if provision.ready(self):
+            # A completed installation is self-contained. Reopening saved work
+            # must not redownload installation media after cache cleanup.
+            self.validate_disk(self.disk)
+            report('Your saved Luma workspace is ready.')
+            return
         image = self.manifest['image']
         verified=False
         # Only published, explicitly associated artifacts contact the Hub.
@@ -284,7 +293,8 @@ class Session:
                                  'ssh_authorized_keys': [Path(str(self.key) + '.pub').read_text().strip()]}],
                       'ssh_pwauth': False, 'disable_root': True,
                       'write_files': [{'path': '/etc/luma-tester-target', 'permissions': '0644',
-                                       'content': self.manifest['target'] + '\n'}]}
+                                       'content': (self.experience if self.manifest.get('guest_protocol') == 'luma-unified-v1'
+                                                   else self.manifest['target']) + '\n'}]}
             # cloud-init accepts JSON as a YAML subset.
             (self.directory / 'user-data').write_text('#cloud-config\n' + json.dumps(config))
             (self.directory / 'meta-data').write_text(json.dumps({'instance-id': self.manifest['id']}))
@@ -373,7 +383,8 @@ class Session:
         width, height = (432, 960) if experience == 'mobile' else (1280, 800) if experience in ('tablet','smart-device') else (1920, 1080)
         if experience == 'mobile' and self.manifest.get('display'):
             width, height = (self.manifest['display'][key] for key in ('width', 'height'))
-        if experience == 'mobile' and self.manifest.get('media') == 'iso':
+        if experience == 'mobile' and (self.manifest.get('media') == 'iso' or
+                                     self.manifest.get('guest_protocol') == 'luma-unified-v1'):
             # ARM EDK2 needs an 80-column console; 432px can assert before GRUB.
             width, height = 864, 1920
         argv = ['qemu-system-' + arch, '-name', 'Luma ' + experiences.LABELS[experience],
@@ -392,7 +403,8 @@ class Session:
             position=argv.index('-nic')
             argv[position:position+2]=['-netdev',f'user,id=network0,hostfwd=tcp:127.0.0.1:{port}-:22','-device','virtio-net-pci,netdev=network0,romfile=']
         argv += ['-fw_cfg','name=opt/luma/experience,string='+experiences.FLAGS.get(experience,experience)]
-        if self.manifest['target'] == 'mobile':
+        if self.manifest['target'] == 'mobile' or (experience == 'mobile' and
+                self.manifest.get('guest_protocol') == 'luma-unified-v1'):
             argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
             if host.windows():
@@ -407,12 +419,13 @@ class Session:
             block = {'driver': fmt, 'node-name': name, 'read-only': readonly, 'discard': 'unmap',
                      'file': {'driver': 'file', 'filename': str(path)}}
             boot=(',bootindex='+('2' if settings['boot_iso'] and not installed else '1')) if name=='os' and self.manifest.get('media')=='iso' else ''
+            if name=='os' and self.manifest.get('guest_protocol')=='luma-unified-v1':boot=',bootindex=1'
             argv += ['-blockdev', json.dumps(block), '-device', f'virtio-blk-pci,drive={name}'+boot]
         if self.manifest.get('media') == 'iso' and not installed:
             block={'driver':'raw','node-name':'installer','read-only':True,'file':{'driver':'file','filename':str(self.base)}}
             argv += ['-blockdev',json.dumps(block),'-device','virtio-scsi-pci,id=scsi','-device','scsi-cd,drive=installer,bootindex='+('1' if settings['boot_iso'] else '2')]
         bios = self.firmware(firmware)
-        if bios and (self.manifest.get('media') == 'iso' or
+        if bios and (self.manifest.get('media') == 'iso' or self.manifest.get('guest_protocol') == 'luma-unified-v1' or
                      (arch == 'x86_64' and platform.system() == 'Darwin')):
             code=Path(bios).with_name('QEMU_EFI-pflash.raw') if arch=='aarch64' else Path(bios)
             template=code.with_name('vars-template-pflash.raw' if arch=='aarch64' else 'OVMF_VARS.fd')
@@ -539,7 +552,8 @@ class Session:
 
     def touch(self, phase, x, y, width, height):
         """Deliver a real evdev touch contact through QEMU's multitouch device."""
-        if self.manifest['target'] != 'mobile' or phase not in ('begin', 'update', 'end', 'cancel'):
+        mobile=self.manifest['target']=='mobile' or (self.manifest.get('guest_protocol')=='luma-unified-v1' and self.experience=='mobile')
+        if not mobile or phase not in ('begin', 'update', 'end', 'cancel'):
             raise TesterError('Touch input requires a Mobile guest and a valid contact phase.')
         if not 1 < width <= 4096 or not 1 < height <= 4096:
             raise TesterError('Invalid touch viewport dimensions.')
@@ -663,7 +677,7 @@ class Session:
         self.wait(timeout)
         deadline = time.monotonic() + timeout
         from . import provision
-        if provision.ready(self):
+        if provision.ready(self) or self.manifest.get('guest_protocol') == 'luma-unified-v1':
             check = """import os, subprocess
 uid=str(os.getuid())
 display=subprocess.check_output(['loginctl','show-user',uid,'-p','Display','--value'],text=True).strip()
