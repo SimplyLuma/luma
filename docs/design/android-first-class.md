@@ -68,6 +68,14 @@ signing-identity change, profile removal, revocation or runtime-generation chang
 | USB/Bluetooth/NFC/sensors | Shared controller/device arbitration, bounded rates and tested capability advertisement. |
 | Processes/resources | Verified package/process identity, PSS and CPU accounting, background policy and scoped app termination. A single aggregate Android row is insufficient for app attribution. |
 
+Android notifications use Luma's notification renderer, with Luma typography,
+spacing, colors and controls in both banners and the notification center.
+Android supplies structured content and behavior; it does not supply a second
+notification shade or Android system chrome. Preserve actions, inline replies,
+grouping, channels and privacy through the bridge. An application's custom
+RemoteViews layout must not become executable host UI; a semantic fallback and
+any isolated custom-content presentation need explicit compatibility tests.
+
 Retain Android's lifecycle, permission enforcement and per-app isolation. The
 [Android sandbox](https://source.android.com/docs/security/app-sandbox),
 [document-provider contract](https://developer.android.com/guide/topics/providers/document-provider)

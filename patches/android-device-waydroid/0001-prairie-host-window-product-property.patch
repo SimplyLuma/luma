@@ -2,7 +2,7 @@ diff --git a/system.prop b/system.prop
 index de8cf1d..f6aceea 100644
 --- a/system.prop
 +++ b/system.prop
-@@ -24,6 +24,11 @@ debug.sf.disable_backpressure=1
+@@ -24,6 +24,14 @@ debug.sf.disable_backpressure=1
  # Disable RescueParty
  persist.sys.disable_rescue=true
  
@@ -10,6 +10,9 @@ index de8cf1d..f6aceea 100644
 +# legacy app-side captions and WindowManager Shell decorations so Android
 +# content has one move/resize/control surface instead of nested decorations.
 +ro.luma.host_window_chrome=true
++# Luma owns pause/background policy. Keep Android jobs and notifications alive
++# when the last task closes; the host applies an explicit idle-freeze override.
++persist.waydroid.suspend=false
 +
  # LMKd
  ro.lmk.low=1001

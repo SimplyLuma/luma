@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.81.android20261028.1%{?dist}
+Release:        1.luma.82.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -163,6 +163,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.82.android20261028.1
+- Apply the configured idle policy to Android's automatic container freeze
+
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.81.android20261028.1
 - Track Android notification dismissal, replacement and notification-server restarts
 - Use Luma's notification transport for supervised Android sessions

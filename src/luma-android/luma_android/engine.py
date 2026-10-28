@@ -316,8 +316,9 @@ class WaydroidEngine:
         Waydroid session.  Callers can use that signal for cold-start-only
         presentation work without penalizing ordinary warm launches.
         """
+        runtime_config = load_runtime_config()
         if multi_window is None:
-            multi_window = load_runtime_config().multi_window
+            multi_window = runtime_config.multi_window
         _activate_fp6_software_presentation(timeout=min(timeout, 30))
         _prepare_interactive_windowing(timeout=min(timeout, 30))
         if os.environ.get(FP6_SOFTWARE_PRESENTATION_ENV) == "1":
@@ -437,6 +438,11 @@ class WaydroidEngine:
             )
         self.wait_for_boot_completion(deadline)
         self.wait_for_application_service(deadline)
+        # Waydroid's framework can freeze the entire runtime independently of
+        # our idle policy when its last window closes. Apply the supported
+        # framework property as well, so default background delivery continues.
+        self._run("prop", "set", "persist.waydroid.suspend",
+                  "true" if runtime_config.idle_freeze else "false", timeout=30)
         runtime_device_class = device_class()
         self._run(
             "prop",

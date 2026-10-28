@@ -21,12 +21,18 @@ The runtime has three distinct states:
 Luma never intentionally freezes Android during normal idle because that also
 freezes notification delivery. Waydroid may independently report a warm
 container as `FROZEN`; Luma thaws that state through Waydroid's public lifecycle
-API before boot-completion and application-service readiness probes.
+API before boot-completion and application-service readiness probes. Luma also
+sets the supported `persist.waydroid.suspend` framework property from the
+explicit `idle_freeze` configuration, which defaults to false. Otherwise the
+framework can freeze the runtime independently when the last window closes.
 Desktop and tablet may warm an installed runtime after sign-in. Handheld starts
 only when an Android application is opened or the user explicitly resumes it;
-after that, Android Doze remains responsible for idle applications until the
-runtime is paused or the login session ends. The handheld systemd scope also
-has explicit CPU, memory, IO, and task ceilings.
+after that, background delivery remains available until the runtime is paused
+or the login session ends. Keeping that delivery available does not establish
+an efficient idle state: the pinned Waydroid framework modifies AOSP's Doze and
+suspend paths. Host suspend coordination, wakeup delivery and physical battery
+measurements remain release gates. The handheld systemd scope also has
+explicit CPU, memory, IO, and task ceilings.
 
 The release image must pin and hash Android system/vendor image inputs. The
 development initializer may download from Waydroid's official image channel,
