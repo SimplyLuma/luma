@@ -63,8 +63,11 @@ def main():
                     window.present()
                     session.qmp('stop')
                     last_frame = viewer.frames
-                    viewer.connection.framebuffer_update_request(False, 0, 0,
-                        viewer.framebuffer.width, viewer.framebuffer.height)
+                    if viewer.stream:
+                        viewer.stream.request(False)
+                    else:
+                        viewer.connection.framebuffer_update_request(False, 0, 0,
+                            viewer.framebuffer.width, viewer.framebuffer.height)
                     phase = 2
                 elif phase == 2 and viewer.frames > last_frame:
                     assert viewer.ready
@@ -91,6 +94,18 @@ def main():
                     assert 0x61 in viewer.pressed_keys
                     viewer.key_released(None, 0x61, 0, 0)
                     assert not viewer.pressed_keys
+                    # A pending mapped tick must transfer to a timer when the
+                    # viewer is hidden, or opening launcher controls stalls it.
+                    last_frame = viewer.frames
+                    viewer.schedule_frame()
+                    assert viewer.pending_tick
+                    window.set_visible(False)
+                    assert not viewer.pending_tick
+                    viewer.connection.framebuffer_update_request(False, 0, 0,
+                        viewer.framebuffer.width, viewer.framebuffer.height)
+                    phase = 3
+                elif phase == 3 and viewer.frames > last_frame:
+                    assert not viewer.get_mapped()
                     viewer.close()
                     session.qmp('quit')
                     child.wait(timeout=10)
@@ -110,7 +125,7 @@ def main():
             loop.run()
             if errors:
                 raise errors[0]
-            assert phase == 2
+            assert phase == 3
             print('Private Unix VNC connection, real GTK4 frames, exact QMP pixel parity, coordinate mapping and input dispatch passed.')
         finally:
             if viewer:

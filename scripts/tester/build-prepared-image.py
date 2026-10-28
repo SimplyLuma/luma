@@ -116,6 +116,9 @@ WantedBy=multi-user.target
         write('etc/gdm/custom.conf', '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=luma\n')
         write('etc/machine-id', '', 0o444)
         write('etc/luma-tester-target', 'desktop\n')
+        # Previews render in software; keep the shell's real blur and
+        # translucent materials instead of its no-GPU fallback surfaces.
+        write('etc/environment.d/60-try-luma-materials.conf', 'LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1\n')
         write('etc/try-luma/image.json', json.dumps(dict(schema=1, arch=args.arch,
             protocol='luma-unified-v1', source_iso_sha256=args.iso_sha256)) + '\n')
         for key in (deployment / 'etc/ssh').glob('ssh_host_*'):remove(key)
@@ -126,7 +129,12 @@ WantedBy=multi-user.target
         home.mkdir(parents=True)
         (home / 'gnome-initial-setup-done').write_text('yes\n')
         account = next(line.split(':') for line in (deployment / 'etc/passwd').read_text().splitlines() if line.startswith('luma:'))
-        for path in (home.parent, home, home / 'gnome-initial-setup-done'):
+        # Export a complete user installation instead of leaving its first
+        # creation to competing shell/app-discovery processes at login.
+        user_repo = home.parent / '.local/share/flatpak/repo'
+        user_repo.mkdir(parents=True)
+        run(['ostree', '--repo=' + str(user_repo), 'init', '--mode=bare-user-only'])
+        for path in (home.parent, *home.parent.rglob('*')):
             os.chown(path, int(account[2]), int(account[3]))
         for key in ('secret_key', 'timestamps', 'seen-bssids'):
             remove(var / 'lib/NetworkManager' / key)
@@ -137,6 +145,7 @@ WantedBy=multi-user.target
         # Relabel only paths this exporter changed. Unrelated target-policy
         # types (for example newer snapd types) need not exist in the host policy.
         changed=['etc/try-luma','etc/gdm/custom.conf','etc/machine-id','etc/luma-tester-target',
+            'etc/environment.d/60-try-luma-materials.conf',
             'etc/systemd/system/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/sshd.service',

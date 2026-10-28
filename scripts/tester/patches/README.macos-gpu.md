@@ -73,3 +73,28 @@ Qualification requires an actual prepared ARM guest boot, accelerated VirGL
 renderer evidence, a correctly rendered dock and normal GTK application, native
 viewer input, and a clean shutdown. A successful diskless QMP probe alone is not
 sufficient. Use a private writable overlay, never the user's workspace.
+
+## Native VirGL blitter correction (unreleased)
+
+Apply `virgl-macos-core-blitter.patch` to the pinned UTM VirGL source above.
+Its archive SHA256 is
+`92a96c668a2ddc8a7e6846586554c4d45cba11cbf75557a39169ca58d71c81d2`.
+Apple core contexts reject the hard-coded GLSL 1.30 blitter shaders. The patch
+selects GLSL 1.50 and removes the ES precision qualifier on Apple desktop shaders;
+other hosts and GLES shaders retain their original source.
+
+Using the existing isolated epoxy pkg-config path, Python venv (with
+`PyYAML==6.0.3`) and macOS deployment target, build the source with:
+
+```sh
+meson setup build source --prefix="$PREFIX" --buildtype=release   '-Dplatforms=[]' -Dvenus=false -Dneptune=false -Dvtest=false   -Dvideo=false -Dtests=false
+ninja -C build -j3
+ninja -C build install
+```
+
+Point a private copy of the QEMU executable's VirGL install name at the newly
+built library, then relocate it into a new runtime prefix. Do not replace a
+library loaded by a running VM. The corrected prefix booted the prepared ARM
+guest with accelerated GL 4.1, a correctly rendered dock and no GLSL 1.30
+compilation errors; clean shutdown passed. Interactive performance remains
+unqualified. This runtime is not part of the public 0.7.5 packages.

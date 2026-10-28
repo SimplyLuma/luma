@@ -46,6 +46,6 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Tester contract dependencies
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y python3-gi gir1.2-glib-2.0 xorriso qemu-utils qemu-system-x86 qemu-system-arm ovmf qemu-efi-aarch64 openssh-client rsync
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y python3-gi gir1.2-glib-2.0 gir1.2-gtk-4.0 gir1.2-gtk-vnc-2.0 xorriso qemu-utils qemu-system-x86 qemu-system-arm ovmf qemu-efi-aarch64 openssh-client rsync
       - name: Tester workspace, download and VM contracts
         run: PYTHONPATH=src/luma-tester /usr/bin/python3 -B -m unittest discover -s src/luma-tester/tests -p 'test_*.py'

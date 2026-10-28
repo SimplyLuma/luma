@@ -16,6 +16,39 @@ import tempfile
 import time
 
 
+# Initialize before GDM can resolve any desktop launchers. A config-only OSTree
+# repository makes Flatpak reject even apps installed in the system repository.
+# Run as the workspace user, preserving existing remotes, objects and app data.
+FLATPAK_INIT = '''import configparser, subprocess, sys
+from pathlib import Path
+repo = Path(sys.argv[1])/'.local/share/flatpak/repo'
+if repo.is_symlink():
+    raise RuntimeError('Unexpected symlink for the preview Flatpak repository')
+entries = {p.name for p in repo.iterdir()} if repo.exists() else set()
+if not entries or entries == {'config'}:
+    mode = 'bare-user-only'
+    if entries:
+        config = repo/'config'
+        if config.is_symlink() or not config.is_file():
+            raise RuntimeError('Unexpected preview Flatpak configuration')
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.read(config)
+        mode = parser.get('core', 'mode', fallback='')
+        if mode not in ('bare-user', 'bare-user-only'):
+            raise RuntimeError('Unsupported preview Flatpak repository mode')
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['ostree', '--repo='+str(repo), 'init', '--mode='+mode], check=True)
+subprocess.run(['ostree', '--repo='+str(repo), 'refs'], check=True)
+'''
+
+
+def prepare_flatpak(user):
+    subprocess.run(['runuser', '-u', user.pw_name, '--', 'python3', '-c',
+                    FLATPAK_INIT, user.pw_dir], check=True)
+    subprocess.run(['runuser', '-u', user.pw_name, '--', 'flatpak', 'list',
+                    '--app', '--columns=application'], check=True)
+
+
 def seed_values(text):
     if not text.startswith('#cloud-config\n'):
         raise ValueError('Expected the launcher NoCloud configuration')
@@ -65,6 +98,7 @@ def main():
         finally:
             subprocess.run(['umount', mount], check=True)
     user = pwd.getpwnam('luma')
+    prepare_flatpak(user)
     directory = Path(user.pw_dir) / '.ssh'
     directory.mkdir(mode=0o700, exist_ok=True)
     directory.chmod(0o700)
