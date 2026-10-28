@@ -2296,3 +2296,15 @@ AddedisolatedbundledWinQEMU/AF_UNIXprobe beforeguestboot: actualtwo attemptsPASS
 actualfullVM60sdeadline and2boots/visualstillpending. Probereceiptonremoteown
 C:\TryLumaQA-Prepared074-r4\state\CONTROL-PROBE-PASS.json; willcopyto
 windows/prepared-074-r7 afterQA. Publisher7preparedNOTRUN requiresr7PASS+visual.
+
+04:18UTC: Actual Windows candidate18 r7 reachedstronggraphicalready422s,
+then screenshot0 +id-to-file +persistentmarker creation allPASS (BOOT-0-PASS
+written). Harnessfailedonlyonasserting SSHrebootexitcode0or255; WindowsSSH
+closedconnection with anothercode (oldassertdidnotprintcode). Do not claim
+rebootPASS. FullVMcontrolfilewritten5.391s afterprocesscreation; disklessprobes
+3.246/.108s. Windowscore shutdownalsoassumed255 fordisconnect; expandedONLY
+Windowshostnonzero handling toconfirmactualstoppedVM beforeacceptingsuccess,
+otherwisebounded60sfailure. Regressioncovers-1/1/255actualstopand1stillrunning.
+Nextnativecheckreopenssameworkspacewithpersistentmarkerandfinalpackage,
+retainsR7firstbootproofand capturessecondactualdesktop+cleanpoweroff. This
+checksrealclosing/reopeningwithoutdependingonSSHrebootreturncode. No release.
