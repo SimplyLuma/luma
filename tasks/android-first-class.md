@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T20:51:00+00:00
+- Updated: 2026-10-29T21:22:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -59,14 +59,71 @@ OR luma-project-aidl.squashfs: wrong backend.
 
 CURRENT BUILD: normal dev-android-images-build-vm-r9-e37c3216.service admitted
 20:50:11Z,26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Input verification
-in progress; no new image. Recovery observer
+passed20:55:41..43Z, VM boot20:55:44Z;
+source checks finished21:03:54Z. Full graph regeneration completed by21:19;
+actual Ninja-j8 MainPID21453. At21:21:51Z1044/9913 remaining actions completed,
+C++/Rust processes active and both actual Mesa configurations running. No image. Recovery observer
  dev-android-image-auto-highram-watch-0-e40f42bb.service; guard handoff
- dev-android-guard-build-handoff-2340ddfb.service. Live verifier
- dev-android-highram-live-verification-0fe08472.service pending; requires NEW
-attempt timestamp and4 operational overlay hashes plus Meson under env-i.
+ dev-android-guard-build-handoff-f7f6a184.service. Live verifier
+ dev-android-highram-live-verification-0fe08472.service PASSED20:57:26Z with
+NEW attempt timestamp,4 operational overlay hashes, actual24GiB/8CPU/8jobs,
+25GiB QEMU hard+combined and Meson1.9.2 under env-i. Actual repair completed
+20:57:24Z:915 logged outputs preserved in quarantine; both required ART outputs
+selected. Preserved unstripped ART header is zero bytes, not ELF; cause remains
+unproven beyond confirmed prior unclean VM teardown.
 Source manifest b0477f2e2dcda81c9ffee0257104da925e9ac5e10cf4a09b410c165bcb35e4fc.
-Guard manifest6ac681f2ff236ea64023906b4bf7606fd152d2d8a333c7e41646b8fcee61031b.
+Guard manifest a93c31066447a14353065d433597f8e3203331cf43a6eff85a2b79f2e7a78b7b
+(the former6ac681f2 manifest is superseded).
 Project7c13c192f/native patch set unchanged; still no SDK0005 reply image.
+
+
+HOST SHADER TOOL ADD-ON / REAL MESA CONFIGURATION:
+- First separate actual Mesa diagnostic63e09483 ran21:04..05:41: both32/64
+  configurations selected Meson1.9.2 but FAILED glslang minimum12.2; Ubuntu
+  binary11.8. Diagnostic job exited0 because its scope was collecting both
+  results. This is NOT a Mesa pass. Prior Meson-only preflight was insufficient.
+- Official Khronos16.6.0 Linux x86_64 archive normal0bdad353 downloaded/verified
+  against GitHub API published SHA2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce,
+  7,923,164B. Binary8,274,896B SHA30cdc0e1a09ccfe7164c4b9d3d82bcae6baf759bcd101b053ef087b5c82fade6.
+  ABI inspection requires GLIBC2.34/GLIBCXX3.4.29, compatible with guest.
+- Normal c120a553 PASSED21:14:15Z. Guest compiler unit frozen briefly BEFORE
+  primary image Ninja (asserted against fresh log), binary SHA verified, root
+  /root/luma-glslang-16.6.0 mounted readonly over guest-rootfs/usr/bin/glslangValidator.
+  Four input disks unchanged. Empty-environment version16.6.0 and actual
+  synthetic Vulkan1.2 vertex->SPIR-V magic check passed. Finally thaw executed;
+  FreezerState=running independently observed21:14:31Z. Main build never rebooted.
+- c120a553 then configured actual retained Mesa/cross files in SEPARATE temporary
+  output directories: BOTH obj64/445 targets and obj_x86/436 targets exit0.
+  Actual Meson1.9.2/Ninja1.10.1, target Clang14.0.6, host GCC11.4.0.
+  Configuration only; not Mesa compilation, final image, renderer or hardware pass.
+- Guest export includes root-created BUILD-HOST-TOOLS.json, SHA
+  22d0f6e5a534b01e9852a97bff47f27e6fe57042a4ef9df786a9bee80121eea9.
+  Metadata captures exact archive/binary/hash, version, phase and smoke check.
+  Its image-root SHA manifest will include it. Updated export inventory REQUIRES
+  this exact metadata/event/hash; it no longer accepts only the base4 overlays.
+  1e7da539 PASSED8 root inventory cases including unrecorded tool change refusal,
+  plus readonly inactive test-VM/source preflight. Current guard manifest above.
+- Waiting guard observer2340ddfb, then4ce9ddd0 were INTENTIONALLY stopped to
+  reallocate only this task's1GiB for diagnostics/add-on while another4GiB job
+  occupied the global budget. Compiler/recovery observer stayed active.
+  f7f6a184 rearmed21:14:53Z after controls; it is waiting on correct current unit.
+- Public preflight now checks Mesa's actual glslang declaration as well as Meson;
+  067a0554 PASSED4 version/environment fixtures, Bash syntax and diff checks.
+  This public helper update is for the NEXT project snapshot; current7c13
+  preparer overlay remains the previously recorded4 hashes, plus additive tool
+  metadata above. Do not mutate pinned live r11/recovery sources.
+- COLD-BOOT LIMIT: r11 does NOT automatically reapply the new glslang bind.
+  /root/luma-glslang-16.6.0 persists but its mount does not. Before another cold
+  build, prepare a validated next driver/tools input with this pin, or a fresh
+  recorded pre-Ninja activation. Existing add-on installer is one-shot and
+  refuses an already-existing export receipt. Do not blindly rerun it. A saved
+  whole-VM checkpoint should retain current mounts; root receipt/disk/source
+  checks still apply. No production reproducibility claim for this incremental
+  development candidate; full clean maintained-baseline builds remain A22.
+- Host cgroup read21:18:39/21:19:51: QEMU ancestor memory.max25GiB; global
+  machine.slice cpu.max800000/100000 (shared across VMs), nr_throttled6830
+  unchanged across samples. Guest15GiB available/no swap at21:19:51. No hidden
+  CPU bottleneck established and no shared cap was changed.
 
 Prior fdd0d35d FAILED20:44:19Z after48/9187 remaining actions, not a new89%.
 Source checks finished20:34:28Z; actual Ninja-j8 observed20:37. Dependency file

@@ -69,8 +69,10 @@ Record the actual executed/skipped counts. Sixteen initialization checks need
 root ownership semantics; the non-root run cannot substitute for them.
 
 `python3 tests/android/mesa-host-tools.py` checks the production Mesa preflight,
-including rejection of Meson 0.61.2 against Mesa's declared minimum 1.4.0 and
-the upstream `/usr/bin:/usr/local/bin` PATH precedence. The image builder runs
+including rejection of Meson 0.61.2 against Mesa's declared minimum 1.4.0,
+glslang 11.8 against the declared minimum 12.2, and the upstream
+`/usr/bin:/usr/local/bin` PATH precedence. The check removes `PYTHONPATH`,
+matching Soong's sanitized environment. The image builder runs
 the check before source preparation or compilation; a newer Meson elsewhere
 on PATH does not satisfy it when Mesa selects an older system copy. These are
 dependency-selection fixtures, not a graphics or image build qualification.

@@ -30,8 +30,29 @@ def verify(source, inherited_path):
     return actual
 
 
+def verify_glslang(source, inherited_path):
+    declaration = (Path(source) / 'external/mesa/meson.build').read_text()
+    match = re.search(r"_glslang_preamble_version\s*=\s*['\"](\d+(?:\.\d+)+)['\"]", declaration)
+    if not match:
+        raise RuntimeError('Cannot determine pinned Mesa glslang requirement')
+    required = match[1]
+    env = dict(os.environ, PATH='/usr/bin:/usr/local/bin:' + inherited_path)
+    env.pop('PYTHONPATH', None)
+    output = subprocess.check_output(['glslangValidator', '--version'], env=env, text=True, timeout=15)
+    match = re.search(r'Glslang Version:\s*\d+:(\d+(?:\.\d+)+)', output)
+    if not match:
+        raise RuntimeError('Cannot determine selected glslang version')
+    actual = match[1]
+    version = lambda text: tuple(int(part) for part in text.split('.'))
+    if version(actual) < version(required):
+        raise RuntimeError(f'Mesa selects glslang {actual}; requires >= {required}. Update the selected host tool before building.')
+    print(f'Mesa host tool verified: glslang {actual} (requires >= {required})', flush=True)
+    return actual
+
+
 if __name__ == '__main__':
     try:
         verify(sys.argv[1], os.environ['PATH'])
+        verify_glslang(sys.argv[1], os.environ['PATH'])
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         sys.exit('error: ' + str(error))
