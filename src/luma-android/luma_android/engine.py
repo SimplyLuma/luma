@@ -26,6 +26,7 @@ from .kernel import (
     fp6_software_presentation_active,
     fp6_software_service_admitted,
     is_fp6,
+    require_android_page_size,
 )
 
 
@@ -316,6 +317,7 @@ class WaydroidEngine:
         Waydroid session.  Callers can use that signal for cold-start-only
         presentation work without penalizing ordinary warm launches.
         """
+        require_android_page_size()
         runtime_config = load_runtime_config()
         if multi_window is None:
             multi_window = runtime_config.multi_window

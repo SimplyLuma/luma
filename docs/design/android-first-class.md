@@ -91,6 +91,16 @@ Prefer arm64-v8a on ARM64 and x86_64 on x86_64. Inspect the actual APK/split ABI
 set, not the filename. DEX-only packages are architecture-neutral at inspection;
 some applications later download native code. Same-family 32-bit support still
 requires a compatible runtime/CPU. ARM host page sizes need explicit admission.
+The current Android13 pair requires4KiB pages. User launch, initial setup and the
+root container entrypoint check the running kernel before changing presentation
+or starting Android, including when existing runtime state is present. Doctor
+reports the measured page size. The Surface Pro12 source kernel profile explicitly
+selects4KiB; that configuration is not a physical-device result. Android15 added
+4KiB/16KiB support, with native-library alignment requirements; a future rebase
+must qualify the image, native libraries and graphics at its actual page size.
+A namespace cannot change the shared kernel's base page size. See
+[AOSP page-size support](https://source.android.com/docs/core/architecture/16kb-page-size/16kb)
+and [Android native-library requirements](https://developer.android.com/guide/practices/page-sizes).
 
 Foreign instruction support is opt-in and appears only when its installed engine
 has been qualified for that direction. Digitalis is the ARM64-to-x86 candidate;

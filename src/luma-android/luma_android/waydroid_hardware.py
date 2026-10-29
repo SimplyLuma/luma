@@ -116,6 +116,8 @@ def main():
     import sys
     if os.getuid() != 0:
         raise SystemExit('The Android container service requires its system identity.')
+    from .kernel import require_android_page_size
+    require_android_page_size()
     verify_confinement(Path('/sys/fs/selinux/enforce'), Path('/proc/self/attr/current'))
     sys.path.insert(0, '/usr/lib/waydroid')
     import tools

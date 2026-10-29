@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T07:27:00+00:00
+- Updated: 2026-10-29T07:35:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 59aecadc4 (correct native HIDL admission/reconnect and .91 package)
+- Branch and last useful commit: codex/android-first-class; 6118eec17 (bounded native clipboard transfer and APKr12 controls)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,7 +12,7 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD59aecadc4. Current milestone
+Source/worktree isolated; canonical untouched. HEAD6118eec17. Current milestone
 adds APKr12 native-HIDL controls and bounded native clipboard transfer0016
 (worker/cache/header, both builders/state hashes and real pipe/callback tests).
 **DO NOT BUILD SNAPSHOT901d5f18c OR luma-project-aidl.squashfs**: wrong backend.
@@ -26,15 +26,33 @@ e6167a6ae3cebe0dc8e5ea71288b8edc2e8ee7f426bf1552324fe8496e33db92,
 source59aecadc4. Fresh upper-native-v1/work-native-v1 preserve older attempts.
 At07:03Z still maintained repo Git/LFS integrity preflight, git reading SquashFS,
 ~6.26GiB guest available/1MiB swap, build log0bytes. Not compilation or pass.
-Current snapshot does NOT contain in-progress clipboard transfer0016. Stop root
+Current snapshot does NOT contain committed clipboard transfer0016. Stop root
 unit first for deliberate cancellation; owner watchdog also protects job death.
 
 .91 clean RPM r14/cb8f4f4a PASSED84 actual tests, zero skips/failures/errors,
 profile directories755. Binary356b704556fadc48de60570cc784522349e594d31152ec5ec5ec41ea01bf9c76,
 SRPM72ca08e914f8d16da4f9f28de3d14143f5a5639916b9a10263b8c5566f7011dd,
-rpm-r10/source/build/candidate-91/build/packages/luma-android-runtime. Not yet
-installed/live-tested. HIDL SDK283a9cc5/native policyf03ebfd2 passed corrected
+rpm-r10/source/build/candidate-91/build/packages/luma-android-runtime. Installed
+in disposable VM overlay07:34:04Z, profile755, transaction completed; live tests pending. HIDL SDK283a9cc5/native policyf03ebfd2 passed corrected
 fixtures. APKr12 b142754e built; native HIDL reflection controls not run live.
+
+CURRENT RUNTIME: normal dev-android-runtime-vm-r7-1da16b36.service6GiB/10GiB,
+root luma-android-first-class-runtime-controller.service (new owner watchdog),
+VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. New intact XML backup
+created by runtime-prep12; current VM3GiB RAM/5GiB hard fits6GiB reservation.
+Original vm/domain.xml and restored b3f5031d... XML retained. This is the owned
+synthetic-user VM, not physical hardware. .91 installed in volatile /usr overlay.
+APK12 install plus ordinary native-HIDL old-image negative control are next.
+Stop root controller before normal job; restore original6GiB/8GiB XML only OFF.
+Do not run restored full-RAM VM under6GiB reservation (requires9GiB).
+
+Page-size gate .92 source candidate checks sysconf before user presentation,
+root init (even existing state) and root provider load; doctor reports/measures
+support. Current Android13 profile requires4KiB. Five tests executed inside this
+bounded x86 VM PASSED07:32:34Z, root unitpage-size-unit-20261029T073230; exact
+source hashes/result vm/page-size-unit-result.json. Tests simulate16/64KiB and
+unknown values; no ARM execution or .92 clean-package result yet. Full RPM next
+after stopping6GiB runtime lane (10+6 already fills account job budget).
 
 New transfer helper test e98dfcab PASSED real >pipe-capacity UTF-8 self roundtrip,
 partial I/O, timeout/cancellation, oversize/invalid UTF-8, EPIPE, bounded writes,
@@ -75,11 +93,9 @@ Updated32-case actual-method testda69c3a5 PASSED, unpatched negative control42.
 HIDL production SDK wrapper430cbf55 PASSED failure/reconnection/race fixture tests.
 Neither is real HwBinder proof. Root package .91/84-case check subsequently PASSED (current handoff above).
 
-Native WaydroidClipboard.cpp read_selection blocks Wayland event loop with an
-unbounded pipe read, and clipboard cache access crosses threads without a mutex.
-Next substantive work: bounded asynchronous native transfers + synchronized
-cache/focus ownership, with real stalled/partial/oversize pipe tests. Then source
-APK probe must exercise actual HIDL get/set with known nonempty trusted controls.
+Upstream native read_selection blocked the event loop and shared its cache
+without synchronization;6118eec17 fixes these source paths. Next real-image
+acceptance uses APKr12's raw HIDL controls with known nonempty trusted reads.
 Do not mistake ordinary-empty for denial when the trusted control is also empty.
 Keep all arbitrary clipboard contents out of logs; synthetic token classes only.
 
@@ -325,3 +341,13 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   Full pinned upstream series264ac866 passes. Android image/wire still unqualified.
 - Build r6 still in Git/LFS preflight at07:24Z (prebuilts ABI dumps/JDK and later
   projects advancing). Read-only project59aecadc4 has0015, not0016. Runtime VMoff.
+
+2026-10-29T07:35Z runtime/page-size progress:
+- Owned runtime r7/1da16b36 active under6GiB, root watchdog observes normal owner.
+  .91 transaction finished07:34:04Z, replacing.80 in disposable overlay; profiles755.
+  An early read-only RPM query during transaction reported lock contention and
+  both versions, not a completion result. Only terminal driver result accepted.
+- New .92 kernel-page preflight candidate passes5 source tests in own x86 VM;
+  full package89-case result not yet run. Surface source selects4KiB; primary
+  AOSP docs confirm Android15 introduced16KiB support, which is not evidence
+  that our older Android13 images or64KiB host kernels are compatible.

@@ -13,7 +13,10 @@ from .apk import inspect_android_package, stage_android_package, staged_package_
 from .config import device_class, load_runtime_config
 from .engine import WaydroidEngine
 from .errors import LumaAndroidError
-from .kernel import fp6_kernel_admission, fp6_software_presentation_active, is_fp6
+from .kernel import (
+    ANDROID_RUNTIME_PAGE_SIZE, fp6_kernel_admission,
+    fp6_software_presentation_active, is_fp6, runtime_page_size,
+)
 from .receipts import write_install_receipt
 
 
@@ -114,10 +117,13 @@ def main(argv: list[str] | None = None) -> int:
                     Path("/dev/vndbinder"),
                 )
             )
+            page_size = runtime_page_size()
             checks = {
                 "device_class": device_class(),
                 "engine": config.engine,
                 "engine_available": engine.available(),
+                "kernel_page_size": page_size,
+                "android_page_size_supported": page_size == ANDROID_RUNTIME_PAGE_SIZE,
                 "wayland_display": bool(__import__("os").environ.get("WAYLAND_DISPLAY")),
                 "binderfs_supported": Path("/sys/fs/binder").exists()
                 or Path("/dev/binderfs").exists()
@@ -136,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(checks, sort_keys=True))
             return 0 if (
                 checks["engine_available"]
+                and checks["android_page_size_supported"]
                 and checks["binderfs_supported"]
                 and (
                     checks.get("fp6_kernel_admitted", True)
