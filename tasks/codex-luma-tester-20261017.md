@@ -1,7 +1,7 @@
 # Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Try Luma 0.7.6 published; action-bar image deletion implemented and locally qualified, source publication in progress. No newer packaged release yet.
+- Status: Try Luma 0.7.6 published; action-bar image deletion implemented, locally qualified and merged via PR91. No newer packaged release yet.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -37,6 +37,12 @@ name; corrected accessibility/button selection passed. Screenshots in
 Owned source: image_storage.py, core.py, image_library.py, gui.py, README and
 tests/test_image_storage.py plus tests/image_delete_ui_smoke.py. Public0.7.6
 downloads remain the already published build; this feature needs a new package.
+Implementation b70ca83f2; curated public commit e413a6feae1f6bc68987ee792b9a03963f6ae402
+merged via https://github.com/SimplyLuma/luma/pull/91 as
+3fffd414165a61d3689d0d60a3b69deb251a56b8. All four source CI checks passed,
+including tester (run40807872062). Existing private turn-capture ref corruption
+caused ordinary fetch to report a bad object; unrelated refs were preserved and
+the public source commit was created from the existing verified main object.
 
 2026-10-28 final release supersedes the historical GPU prototype notes below.
 Owner accepted the complete-frame Mac fix; source afb989fb17e15b1b30736c55e44508a5481e8308.
