@@ -180,7 +180,8 @@ for name in tools:
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT __EGL_VENDOR_LIBRARY_DIRS
-unset VK_ICD_FILENAMES VK_ADD_DRIVER_FILES VK_LAYER_PATH VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS
+unset VK_ICD_FILENAMES VK_ADD_DRIVER_FILES VK_ADD_LAYER_PATH VK_ADD_IMPLICIT_LAYER_PATH
+unset VK_INSTANCE_LAYERS VK_LOADER_LAYERS_ENABLE VK_LOADER_LAYERS_ALLOW
 export QEMU_MODULE_DIR="$tester_dir/tools/modules"
 export PIPEWIRE_MODULE_DIR="$tester_dir/tools/pipewire"
 export SPA_PLUGIN_DIR="$tester_dir/tools/spa"
@@ -189,6 +190,8 @@ export __EGL_VENDOR_LIBRARY_FILENAMES="$tester_dir/tools/egl/50_mesa.json"
 export LIBGL_DRIVERS_PATH="$tester_dir/tools/dri"
 export __GLX_VENDOR_LIBRARY_NAME=mesa
 export VK_LOADER_LAYERS_DISABLE='*'
+export VK_LAYER_PATH="$tester_dir/tools/vulkan-layers"
+export VK_IMPLICIT_LAYER_PATH="$tester_dir/tools/vulkan-layers"
 export VK_DRIVER_FILES=$(printf '%s:' "$tester_dir"/tools/vulkan/*.json)
 exec "$tester_dir/tools/lib/ld-linux-x86-64.so.2" --inhibit-cache --library-path "$tester_dir/tools/lib" "$tester_dir/tools/raw/''' + real + '"' + extra + ' "$@"\n')
     wrapper.chmod(0o755)

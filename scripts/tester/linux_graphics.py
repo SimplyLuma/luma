@@ -14,6 +14,7 @@ def needed(path):
 def stage_ui_graphics(bundle):
     bundle = Path(bundle).resolve()
     ui, tools = bundle/'usr/lib64', bundle/'tools/lib'
+    (bundle/'tools/vulkan-layers').mkdir(exist_ok=True)
     # Mesa's internal ABI is not stable. Keep its EGL, GBM, Gallium and DRI
     # providers from one build; retain the UI's own loader, libc, GTK and GLib.
     seeds = ['libEGL_mesa.so.0', 'libGLX_mesa.so.0', 'libGL.so.1', 'libGLESv2.so.2', 'libgbm.so.1']

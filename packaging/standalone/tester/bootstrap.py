@@ -26,9 +26,12 @@ os.environ.update({
     'LIBGL_DRIVERS_PATH': str(base / 'tools/dri'),
     'VK_DRIVER_FILES': ':'.join(str(p) for p in sorted((base / 'tools/vulkan').glob('*.json'))),
     'VK_LOADER_LAYERS_DISABLE': '*',
+    'VK_LAYER_PATH': str(base / 'tools/vulkan-layers'),
+    'VK_IMPLICIT_LAYER_PATH': str(base / 'tools/vulkan-layers'),
 })
 for name in ('__EGL_VENDOR_LIBRARY_DIRS', 'VK_ICD_FILENAMES', 'VK_ADD_DRIVER_FILES',
-             'VK_LAYER_PATH', 'VK_ADD_LAYER_PATH', 'VK_INSTANCE_LAYERS', 'GTK_PATH', 'GTK_MODULES'):
+             'VK_ADD_LAYER_PATH', 'VK_ADD_IMPLICIT_LAYER_PATH', 'VK_INSTANCE_LAYERS',
+             'VK_LOADER_LAYERS_ENABLE', 'VK_LOADER_LAYERS_ALLOW', 'GTK_PATH', 'GTK_MODULES'):
     os.environ.pop(name, None)
 if not os.environ.get('SSL_CERT_FILE'):
     for candidate in ('/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/cert.pem'):
