@@ -1,11 +1,11 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r4 delivered for manual testing; visual conformance
+Status: server-qualified Ari2 r5 delivered for manual testing; visual conformance
 and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. The current independent Dell preview uses runtime source
-`6c2f6665a67ca13f7960fb2b0ec7b2172280df33`. Earlier checkpoints below are history.
+`8795dce3a9aa257de91fb27b700e73140c7ea91a`. Earlier checkpoints below are history.
 
 ## Application and development continuation
 
@@ -319,3 +319,25 @@ engine, actual MCP process and real Weather controls/store, including two
 approvals and two receipts. Direct adapter/MCP checks also passed. The model
 decisions in this test are scripted; actual ChatGPT account acceptance remains
 pending, and the supplied screenshot's exact remote response shape is unknown.
+
+## Stream correction delivered — 2026-10-29 20:37 UTC
+
+Runtime source: `8795dce3a9aa257de91fb27b700e73140c7ea91a`. All five CI checks
+passed. The Fedora 44 RPM/SRPM and Ari2 r5 export passed, including 162 tests in
+the package build. Actual isolated sign-in/keyring, launcher activation,
+extracted-package byte comparison/native flow, source contracts and r4-to-r5
+update/rollback checks passed in disposable server sessions.
+
+RPM SHA-256: `c2cda51be30ab24863c74282d8474fb384d33f985c9abcddc39fb930bc08627b`.
+SRPM SHA-256: `8cb160b17e06db24daf25e89b417eaa99fb0e49e3741e29b18a94d58fa6221ce`.
+Ari2 r5 archive SHA-256:
+`37a6fe940f492819c2f7e4071bb0d9a9cb18b7fb76a38d3ca845efc20a6e27f7`.
+
+After the owner closed Ari2 and its background service exited normally, the
+checksum-verified replacement updated its owned registrations and retained
+chats, settings and keyring entries. Candidate `ari2-chatgpt-8795dce-r5` launched
+in the Dell graphical session under
+`luma-preview-ari2-chatgpt-8795dce-r5-436461f9.service`. Read-only metadata showed
+active/running with UI and daemon D-Bus names owned. Manual Weather retry is
+pending; no automated Dell application tests ran. The screenshot failure is not
+declared resolved until live acceptance. Visual conformance still fails.
