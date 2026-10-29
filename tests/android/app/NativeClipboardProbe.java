@@ -77,12 +77,17 @@ public final class NativeClipboardProbe {
         }, "luma-native-clipboard-probe").start();
     }
 
-    /** Fixed read-only native-service control, run via app_process as UID1000. */
+    /** Fixed synthetic native-service controls, run via app_process as UID1000. */
     public static void main(String[] args) throws Exception {
         JSONObject result = new JSONObject();
         result.put("uid", Process.myUid());
-        if (args.length != 1 || !"read".equals(args[0])) {
-            throw new IllegalArgumentException("Only the fixed read control is supported");
+        if (args.length != 1 || !("read".equals(args[0]) || "seed".equals(args[0]))) {
+            throw new IllegalArgumentException("Only fixed read/seed controls are supported");
+        }
+        if ("seed".equals(args[0])) {
+            if (Process.myUid() != 1000) throw new SecurityException("Synthetic seed requires UID1000");
+            Class.forName(CLASS).getMethod("sendClipboardData", String.class)
+                    .invoke(service(), ANDROID);
         }
         try { result.put("state", read(service(), false)); }
         catch (Exception error) { result.put("state", "unavailable"); }

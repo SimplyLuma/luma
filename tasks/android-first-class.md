@@ -768,3 +768,27 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   a60a1149 PASSED16:07:24Z; no GTK/compositor/runtime execution claim. Runtime VM
   stays off while current guard image compiles. Builder19%,27842/143205 at
  16:07:33Z; pinned observer and original build still active. No focus gate closed.
+
+2026-10-29T16:25Z native guard qualification preparation:
+- New source-owned native-guard-qualification.py runs actual ordinary-APK raw
+  native clipboard read/write and task-name probes with UID1000 nonempty controls
+  before/after. Exact installed APK hash, kernel app UID/PID, unique run UUID
+  and unchanged init/system_server generations prevent stale/unavailable evidence
+  from passing. Scope excludes focus, task mutators and complete image/isolation
+  qualification. Its result always retains production_qualified=false.
+- Fixture can launch both native probes without coordinate clicks. Receipts now
+  include UID/PID and canonical guard_run UUID. A trusted-only fixed synthetic
+  clipboard seed avoids destructive or arbitrary clipboard controls; all use is
+  confined to the disposable test profile.
+- Evidence-classification e433a76d PASSED8 cases: expected denial, observed old
+  disclosure/write, missing/empty/unavailable controls, stale UUID or wrong
+  process, unavailable IPC, duplicate/missing receipts and isolated task-name
+  leakage. This is classification evidence, not actual rebuilt-image IPC.
+- APKr15 normal60701700 PASSED build/signature verification. SHA256
+  e54edd6f88584354cd472a50fe9fc879b87d9a9054b48cef7e0cde725db8b680,
+ 14893 bytes; apk-r15/build.json records exact source and verified tools. Not
+  installed or executed yet. Original APK14 evidence remains unchanged.
+- User correctly identified that build monitoring alone does not perform the
+  subsequent qualification. Preparing a bounded success-only handoff into the
+  owned disposable runtime VM under separate normal9GiB admission. Not active
+  or claimed qualified until that driver and its controls are validated.

@@ -1,15 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Read a fixed synthetic HIDL control as Android UID1000 in a disposable VM.
+"""Run a fixed synthetic HIDL control as Android UID1000 in a disposable VM.
 
 No arbitrary clipboard text or process environment is printed.
 """
 import argparse
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--service", choices=("clipboard", "task"), default="clipboard")
+parser.add_argument("--seed-fixture", action="store_true", help="Set only the fixed Android clipboard token before reading")
 parser.add_argument("--expect", required=True, choices=("android-fixture", "host-fixture", "forbidden-write-fixture", "fixture-label"))
 args=parser.parse_args()
 if (args.service == "task") != (args.expect == "fixture-label"):
     parser.error("Task requires fixture-label; clipboard requires a recognized text fixture")
+if args.seed_fixture and (args.service != "clipboard" or args.expect != "android-fixture"):
+    parser.error("Seeding is only supported for the fixed Android clipboard token")
 import json,pathlib,shlex,subprocess
 package='org.projectluma.androidtest'
 base=['lxc-attach','-P','/var/lib/waydroid/lxc','-n','waydroid','--clear-env','--']
@@ -37,7 +40,7 @@ for line in init_environment.splitlines():
         environment[fields[1]]=fields[2]
 assert 'BOOTCLASSPATH' in environment
 environment['CLASSPATH']=apk+':/system/framework/org.lineageos.platform.jar'
-command=[*base[:-1],'--uid=1000','--gid=1000','--','/system/bin/env',*[key+'='+value for key,value in sorted(environment.items())],'/system/bin/app_process','/system/bin','org.projectluma.androidtest.'+('NativeTaskProbe' if args.service=='task' else 'NativeClipboardProbe'),'read']
+command=[*base[:-1],'--uid=1000','--gid=1000','--','/system/bin/env',*[key+'='+value for key,value in sorted(environment.items())],'/system/bin/app_process','/system/bin','org.projectluma.androidtest.'+('NativeTaskProbe' if args.service=='task' else 'NativeClipboardProbe'),'seed' if args.seed_fixture else 'read']
 result=subprocess.run(command,text=True,capture_output=True,timeout=30)
 if result.returncode:
     raise RuntimeError('Trusted synthetic app_process control failed with exit '+str(result.returncode))

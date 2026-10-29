@@ -76,6 +76,7 @@ public final class MainActivity extends Activity {
         if (state == null && getIntent().getBooleanExtra("post_notification", false)) postNotification(this);
         if (state == null && getIntent().getBooleanExtra("probe_boundary", false)) BoundaryProbe.run(this);
         if (state == null && getIntent().getBooleanExtra("probe_native_task", false)) NativeTaskProbe.run(this);
+        if (state == null && getIntent().getBooleanExtra("probe_native_clipboard", false)) NativeClipboardProbe.run(this);
         if (state == null && getIntent().getBooleanExtra("background_notification", false)) {
             // The fixture targets API 28, so it needs no Android 12 exact-alarm
             // permission. This local alarm is not a network push/power test.
@@ -173,7 +174,16 @@ public final class MainActivity extends Activity {
     static synchronized void receipt(Context context, String event, String value) {
         try {
             JSONObject object = new JSONObject().put("event", event).put("value", value)
-                    .put("elapsed_ms", android.os.SystemClock.elapsedRealtime());
+                    .put("elapsed_ms", android.os.SystemClock.elapsedRealtime())
+                    .put("uid", android.os.Process.myUid()).put("pid", android.os.Process.myPid());
+            if (context instanceof Activity) {
+                String run = ((Activity)context).getIntent().getStringExtra("guard_run");
+                if (run != null) {
+                    if (run.length() != 36 || !java.util.UUID.fromString(run).toString().equals(run))
+                        throw new IllegalArgumentException("Noncanonical guard run ID");
+                    object.put("guard_run", run);
+                }
+            }
             try (OutputStream output = context.openFileOutput("events.jsonl", Context.MODE_APPEND)) {
                 output.write((object.toString() + "\n").getBytes(StandardCharsets.UTF_8));
             }

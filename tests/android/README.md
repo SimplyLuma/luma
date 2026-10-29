@@ -190,6 +190,23 @@ recognized nonempty fixture before and
 after the APK's empty reads/no-op write; unavailable or empty trusted controls
 cannot pass. A returned setter request indicates transport success, not admission.
 
+`native-guard-qualification.py --apk-sha256 EXACT_FIXTURE_SHA256 --output
+/private/new-result.json` automates that narrow native admission check as root
+inside the already running disposable VM. Stage `native-clipboard-control.py`
+beside it and install the current fixture first. It verifies the installed APK
+hash, ordinary kernel UID/PID and runtime generation, seeds only the fixed
+synthetic Android clipboard token through a UID1000 control, and requires
+nonempty clipboard/task-name controls before and after actual APK probes.
+Unique `guard_run` UUIDs keep old receipts from passing a new run. The fixture's
+`probe_native_clipboard` and `probe_native_task` launch extras avoid coordinate
+clicks. Missing/duplicate/stale/wrong-process receipts and unavailable controls
+are inconclusive; observed disclosure or the forbidden write is a failure.
+The output is private and exclusively created. Use an outer bounded job too.
+This deliberately does not qualify focus, task mutations, the whole sandbox or
+matching image provenance; the image-install driver must establish the latter.
+Run its evidence-classification controls with
+`python3 tests/android/test_native_guard_qualification.py`.
+
 The clipboard fixture copies only `luma-android-clipboard-fixture` and records
 only whether known host/Android fixture tokens matched on reads. Never use it in a
 personal profile. For the background negative control, select **Check after
