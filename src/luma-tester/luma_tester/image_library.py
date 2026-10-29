@@ -84,6 +84,12 @@ def listed(artifact,root,policy=None):
 
 def fetch(artifact,root,experience,report=lambda text:None,progress=None):
     if not usable(artifact):raise TesterError('This download is not supported installation media.')
+    from .image_storage import lease
+    with lease(root, artifact['sha256']):
+        return _fetch(artifact,root,experience,report,progress)
+
+
+def _fetch(artifact,root,experience,report,progress):
     root=Path(root)
     developer = artifact.get('kind') == 'tester_image'
     destination=root/'images'/(artifact['sha256']+('.qcow2' if developer else '.iso'))

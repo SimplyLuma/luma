@@ -1,7 +1,7 @@
 # Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Try Luma 0.7.6 published 2026-10-28 19:50 UTC; all five public release assets and both current prepared VM disks fully SHA256 verified. Website/Hub registration and analytics investigation handed off.
+- Status: Try Luma 0.7.6 published; action-bar image deletion implemented and locally qualified, source publication in progress. No newer packaged release yet.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -14,6 +14,29 @@
   No physical device operations. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+2026-10-28 image deletion follow-up (current owner/task): added an optional
+LumaUI trash button beside downloaded images in the action-bar Images menu.
+Selection and trash are separate controls. Confirmation names the image, size,
+dependent workspace count and affected presets; dependent saved files/snapshots
+are explicitly included. Cancel/close never delete data. Running/preparing or
+downloading images are protected by per-image and session leases, including
+other launcher processes. A changed dependency list requires reconfirmation.
+Deletion removes only managed cache, dependent session directories and managed
+registrations; external imports and shared host folders are preserved. Completed
+independent ISO installations survive removal of their installer. Selections and
+presets are reconciled so the next Start can download again. Shared source works
+through existing platform locks on Mac/Windows/Linux; no new native Mac/Windows
+deletion run claimed. Native Linux GTK/LumaUI picker/cancel/delete check passed
+a447584c; 163 host regression tests including 11 focused deletion tests passed
+f878d652, with a real qcow2 backing disk and internal snapshot. Earlier standalone
+regression harness lacked child PYTHONPATH; corrected final run passed. Native
+UI harness assertions initially searched the wrong modal subtree and button CSS
+name; corrected accessibility/button selection passed. Screenshots in
+/srv/dev/accounts/second/artifacts/dev-try-image-delete-ui-a447584c/.
+Owned source: image_storage.py, core.py, image_library.py, gui.py, README and
+tests/test_image_storage.py plus tests/image_delete_ui_smoke.py. Public0.7.6
+downloads remain the already published build; this feature needs a new package.
 
 2026-10-28 final release supersedes the historical GPU prototype notes below.
 Owner accepted the complete-frame Mac fix; source afb989fb17e15b1b30736c55e44508a5481e8308.

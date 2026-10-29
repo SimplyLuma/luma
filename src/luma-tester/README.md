@@ -81,6 +81,14 @@ launcher never writes to the supplied disk. Each new image/build needs a new
 manifest id; existing workspaces are not silently rebased. Downloads and prepare
 operations hold the session lock. A second launcher cannot reuse a running disk.
 
+To remove a downloaded image, open **Images** in the bottom action bar and use
+the trash button beside that image. The confirmation lists dependent workspaces
+and presets: deleting a prepared image also deletes those workspaces and their
+saved files and snapshots. Original imported files and shared host folders are
+kept. Removing an installer ISO preserves completed, independent installations.
+Images being downloaded, prepared or used by a running VM cannot be deleted.
+Published images remain available to download again.
+
 All state lives in `$XDG_DATA_HOME/luma-tester` (normally
 `~/.local/share/luma-tester`), override with `LUMA_TESTER_HOME` or `--state`.
 Do not share that folder: it contains guest data and developer SSH private keys.
