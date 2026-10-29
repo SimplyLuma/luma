@@ -100,6 +100,25 @@ with (out/'weather.log').open('w') as log:
   assert any(p.name.casefold()=='chicago' for p in places),places
   assert any('chicago' in row['name'].casefold() for row in inspect())
   print('Actual Weather accessibility search, stale-target refusal, result activation, persistent city and visible verification PASS',flush=True)
+  # Removal must use the app's existing exported command. No Weather-specific
+  # dispatch or datastore mutation exists in Ari's adapter.
+  snapshot=a.inspect_application({'application':token})['data']
+  command=next(row for row in snapshot['commands'] if row['name']=='weather-remove')
+  operation={'application':token,'target':command['target'],'operation':'command'}
+  assert a.act_in_application({**operation,'preview':True})['ok']
+  command_started=time.monotonic()
+  result=a.act_in_application(operation)
+  command_elapsed=time.monotonic()-command_started
+  assert result['ok'] and result['verification_required'] and not result['completed']
+  wait(lambda:not any(p.name.casefold()=='chicago' for p in PlaceStore().list()))
+  assert any(p.name.casefold()=='boston' for p in PlaceStore().list())
+  assert not any(row['name'].casefold()=='chicago' for row in inspect())
+  print(f'Generic native command removed exactly Chicago in {command_elapsed:.3f}s; Boston preserved; real store and visible verification PASS',flush=True)
+  snapshot=a.inspect_application({'application':token})['data']
+  undo=next(row for row in snapshot['commands'] if row['name']=='weather-undo')
+  assert a.act_in_application({'application':token,'target':undo['target'],'operation':'command'})['ok']
+  wait(lambda:any(p.name.casefold()=='chicago' for p in PlaceStore().list()))
+  print('Existing native undo command restored Chicago PASS',flush=True)
  finally:
   if client is not None:client.stop()
   process.terminate()

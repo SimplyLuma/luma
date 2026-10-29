@@ -86,6 +86,8 @@ def desktop_applications(arguments):
         _apps[token] = dict(object=app, name=name, query=query, pid=pid, started=started,
                             expires=time.monotonic()+300)
         rows.append({'application':token, 'name':name})
+    if len(rows) == 1:
+        rows[0]['snapshot'] = inspect_application({'application':rows[0]['application']})['data']
     return {'ok':True, 'summary':f'Found {len(rows)} accessible applications.',
             'data':rows, 'untrusted':True}
 
@@ -106,17 +108,198 @@ def _safe(node, Atspi):
     return True
 
 
+# GApplication exports the app's real commands on org.gtk.Actions. This is
+# a shared native protocol, not a per-app file writer or synthetic input path.
+# Targets bind discovery to the same process and unique bus owner as AT-SPI.
+def _session_bus():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    return Gio, GLib, Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+
+def _dbus_call(bus, destination, path, interface, method, parameters=None, timeout=750):
+    Gio, _, _ = _session_bus()
+    return bus.call_sync(destination, path, interface, method, parameters, None,
+                         Gio.DBusCallFlags.NO_AUTO_START, timeout, None)
+
+
+def _command_owner(bus, name):
+    _, GLib, _ = _session_bus()
+    return _dbus_call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (name,))).unpack()[0]
+
+
+def _command_pid(bus, name):
+    _, GLib, _ = _session_bus()
+    return _dbus_call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'GetConnectionUnixProcessID', GLib.Variant('(s)', (name,))).unpack()[0]
+
+
+def _command_endpoints(app):
+    _, _, bus = _session_bus()
+    deadline = time.monotonic() + 1.5
+    names = _dbus_call(bus, 'org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'ListNames').unpack()[0]
+    for name in names[:512]:
+        if time.monotonic() > deadline:
+            break
+        if name.startswith(':'):
+            continue
+        try:
+            owner = _command_owner(bus, name)
+            if _command_pid(bus, owner) != app['pid']:
+                continue
+            path = '/' + name.replace('.', '/').replace('-', '_')
+            commands = _dbus_call(bus, owner, path, 'org.gtk.Actions', 'DescribeAll').unpack()[0]
+            yield bus, owner, path, commands
+        except Exception:
+            continue  # An accessibility app need not be a GApplication.
+
+
+def _commands(token, app, query=''):
+    result = []
+    try:
+        context = _command_context(app, api())
+        for _bus, owner, path, commands in _command_endpoints(app):
+            for name, (enabled, parameter_type, state) in sorted(commands.items()):
+                # Bounded scalar arguments cover native app commands without
+                # inventing schemas for complex app-private variant types.
+                if parameter_type not in ('', 's', 'b', 'i', 'u', 'd') or not enabled:
+                    continue
+                label = name.replace('-', ' ')
+                if query and query not in label.casefold():
+                    continue
+                target = secrets.token_urlsafe(18)
+                _targets[target] = dict(application=token, command=name, owner=owner,
+                    bus_path=path, parameter_type=parameter_type, context=context,
+                    expires=time.monotonic()+120)
+                result.append({'target':target, 'name':name, 'parameter_type':parameter_type,
+                    'state':state, 'operation':'command'})
+                if len(result) >= 16 or len(json.dumps(result, ensure_ascii=False)) > 2300:
+                    return result
+    except Exception as error:
+        logging.getLogger(__name__).debug('Native commands unavailable: %s', error)
+    return result
+
+
+def _command_context(app, Atspi):
+    """Bind a menu command to the current document/selection, including approvals."""
+    pending = deque([(app['object'], 0)])
+    context, visited = [], 0
+    deadline = time.monotonic()+2
+    while pending and visited < 2000 and time.monotonic() < deadline:
+        node, depth = pending.popleft()
+        visited += 1
+        node.clear_cache()
+        role, name = node.get_role(), node.get_name() or ''
+        if role in (Atspi.Role.DIALOG, Atspi.Role.FRAME) and any(word in name.casefold()
+                for word in ('authentication required', 'unlock keyring', 'authenticate')):
+            raise ValueError('Authentication belongs to the person, not an application command.')
+        if not _safe(node, Atspi):
+            continue
+        states = node.get_state_set()
+        if states.contains(Atspi.StateType.EDITABLE) and node.get_editable_text_iface() is not None:
+            interface = node.get_text_iface()
+            if interface is None or interface.get_character_count() > 8000:
+                raise ValueError('The current application text cannot be verified safely.')
+            value = Atspi.Text.get_text(interface, 0, interface.get_character_count()) or ''
+            context.append((depth, 'editable', hashlib.sha256(value.encode()).hexdigest()))
+        selected = getattr(Atspi.StateType, 'SELECTED', None)
+        if role in (Atspi.Role.FRAME, Atspi.Role.WINDOW) or (selected is not None and states.contains(selected)):
+            if not name:
+                # GTK list rows often name their label child, not the row.
+                labels, children = [], deque([(node, 0)])
+                while children and len(labels)<6:
+                    child, child_depth = children.popleft()
+                    if not _safe(child, Atspi):
+                        continue
+                    label = child.get_name() or ''
+                    if label:
+                        labels.append(label[:100])
+                    if child_depth < 3:
+                        for index in range(min(child.get_child_count(), 16)):
+                            value = child.get_child_at_index(index)
+                            if value is not None:
+                                children.append((value, child_depth+1))
+                name = ' · '.join(labels)
+            context.append((depth, role.value_nick, name[:300]))
+        if depth < 48:
+            for index in range(min(node.get_child_count(), 2000, max(0, 4000-len(pending)))):
+                child = node.get_child_at_index(index)
+                if child is not None:
+                    pending.append((child, depth+1))
+    if pending:
+        raise ValueError('The application selection could not be verified in time.')
+    return context
+
+
+def _native_command(arguments, Atspi):
+    app = _application(arguments['application'])
+    row = _targets.get(arguments['target'])
+    if row is None or row.get('application') != arguments['application'] or 'command' not in row:
+        raise ValueError('That native command expired. Inspect the application again.')
+    _, GLib, bus = _session_bus()
+    if _command_pid(bus, row['owner']) != app['pid'] or _start(app['pid']) != app['started']:
+        raise ValueError('The application process changed. Find it again before acting.')
+    actual = _dbus_call(bus, row['owner'], row['bus_path'], 'org.gtk.Actions', 'DescribeAll').unpack()[0]
+    command = actual.get(row['command'])
+    if command is None or not command[0] or command[1] != row['parameter_type']:
+        raise ValueError('That native command changed or is disabled. Inspect again.')
+    if _command_context(app, Atspi) != row['context']:
+        raise ValueError('The active document or selection changed. Inspect again before acting.')
+    value = arguments.get('parameter')
+    kind = row['parameter_type']
+    if kind == '':
+        valid = value is None
+    elif kind == 's':
+        valid = isinstance(value, str) and len(value) <= 8000 and '\0' not in value
+    elif kind == 'b':
+        valid = type(value) is bool
+    elif kind in ('i','u'):
+        valid = type(value) is int and (-2**31 <= value < 2**31 if kind == 'i' else 0 <= value < 2**32)
+    else:
+        valid = type(value) in (int, float) and abs(value) < 1e100
+    if not valid:
+        raise ValueError('The parameter must match the native command’s advertised type.')
+    summary = f'Run {row["command"].replace("-", " ")} in {app["name"]}'
+    if arguments.get('preview'):
+        return {'ok':True, 'preview':summary, 'detail':summary+'\nCurrent document/selection: '+
+                '; '.join(item[2] for item in row['context'] if item[1]!='editable'),
+            'application_name':app['name'], 'requested_name':app['query'],
+            'application_scope':f'{app["pid"]}:{app["started"]}:{app["query"]}'}
+    parameters = [] if not kind else [GLib.Variant(kind, value)]
+    _dbus_call(bus, row['owner'], row['bus_path'], 'org.gtk.Actions', 'Activate',
+        GLib.Variant('(sava{sv})', (row['command'], parameters, {})), timeout=2000)
+    _invalidate(arguments['application'])
+    result = {'ok':True, 'summary':f'Requested {row["command"].replace("-", " ")} in {app["name"]}.',
+        'completed':False, 'verification_required':True}
+    if arguments.get('inspect_after', True):
+        time.sleep(.15)
+        try:
+            observed = inspect_application({'application':arguments['application']})
+            result.update(data=observed['data'], untrusted=True)
+        except Exception:
+            result['observation_unavailable'] = True
+    return result
+
+
+def _invalidate(application):
+    for key, row in list(_targets.items()):
+        if row['application'] == application:
+            del _targets[key]
+
+
 def inspect_application(arguments):
     Atspi = api()
     app = _application(arguments['application'])
-    for key, row in list(_targets.items()):
-        if row['application'] == arguments['application']:
-            del _targets[key]
+    _invalidate(arguments['application'])
     deadline = time.monotonic()+4
     pending = deque([(app['object'], (), 0)])
     rows, context = [], []
     visited = 0
     omitted_children = False
+    protected = False
     query = str(arguments.get('query', '')).strip().casefold()[:200]
     offset = arguments.get('offset', 0)
     if type(offset) is not int or not 0 <= offset <= 2000:
@@ -133,6 +316,7 @@ def inspect_application(arguments):
             name = (node.get_name() or '')[:300]
             if role in (Atspi.Role.DIALOG, Atspi.Role.FRAME) and any(
                     word in name.casefold() for word in ('authentication required', 'unlock keyring', 'authenticate')):
+                protected = True
                 continue
             # GTK layout containers can omit SHOWING even when their children
             # are visible. Traverse them; only expose visible controls.
@@ -178,16 +362,20 @@ def inspect_application(arguments):
             continue
     # Layout nodes and forecast prose must not crowd interactive suggestions
     # out of the model's result budget. Preserve whole JSON and paginate controls.
+    commands = [] if protected else _commands(arguments['application'], app, query)
+    selection = ([item for item in _targets[commands[0]['target']]['context'] if item[1]!='editable']
+                 if commands else [])
     chosen, used = [], 0
     for row in rows[offset:offset+40]:
         size = len(json.dumps(row, ensure_ascii=False))
-        if used+size > 7000:
+        if used+size > (4800 if commands else 7000):
             break
         chosen.append(row); used += size
     more = offset+len(chosen) < len(rows)
     return {'ok':True, 'summary':f'Read {len(chosen)} controls in {app["name"]}.',
-            'data':{'application':arguments['application'], 'name':app['name'], 'controls':chosen,
-                    'visible_text':context, 'truncated':bool(pending) or more or omitted_children,
+            'data':{'application':arguments['application'], 'name':app['name'], 'controls':chosen, 'commands':commands,
+                    'visible_text':context, 'selection':selection,
+                    'truncated':bool(pending) or more or omitted_children,
                     'scanned_nodes':visited,
                     'next_offset':offset+len(chosen) if more else None}, 'untrusted':True}
 
@@ -214,6 +402,8 @@ def _target(arguments, Atspi):
 
 def act_in_application(arguments):
     Atspi = api()
+    if arguments['operation'] == 'command':
+        return _native_command(arguments, Atspi)
     app, row, node = _target(arguments, Atspi)
     operation = arguments['operation']
     value = arguments.get('text','')
@@ -245,9 +435,7 @@ def act_in_application(arguments):
                 'requested_name':app['query'], 'application_scope':f'{app["pid"]}:{app["started"]}:{app["query"]}'}
     succeeded = (interface.set_text_contents(value) if operation == 'set_text'
                  else interface.do_action(names.index(action)))
-    for key, target in list(_targets.items()):
-        if target['application'] == arguments['application']:
-            del _targets[key]
+    _invalidate(arguments['application'])
     completed = ('Entered text'+summary[len('Enter text'):] if operation=='set_text'
                  else 'Activated'+summary[len('Activate'):])
     result = {'ok':bool(succeeded), 'summary':completed+'.' if succeeded else 'The application refused that control action.'}
@@ -264,9 +452,9 @@ def schema(properties, required=()):
     return {'type':'object','properties':properties,'required':list(required),'additionalProperties':False}
 STRING={'type':'string'}
 TOOLS={
- 'desktop_applications':('Find an open application by the friendly name the person used (for example Weather), using Linux accessibility. Use this fallback when an app has no broker actions. Returned IDs are short-lived and cannot be guessed.',schema({'name':STRING},['name']),desktop_applications),
- 'inspect_application':('Read an open application’s visible controls and actual action names. Use query to find a named control/result (such as Chicago); use next_offset to page if truncated. Layout containers are omitted. Protected fields are excluded; targets are short-lived. Changes already return a fresh snapshot; inspect again only if needed.',schema({'application':STRING,'query':STRING,'offset':{'type':'integer','minimum':0,'maximum':2000}},['application']),inspect_application),
- 'act_in_application':('Operate a visible application control using an exact inspected target. Use set_text to replace an editable field, or action with an advertised action name to activate a button/result. Returns fresh observed controls after the change, when read permission allows it. Verify the requested outcome; activation alone does not mean the whole task succeeded.',schema({'application':STRING,'target':STRING,'operation':{'type':'string','enum':['set_text','action']},'text':STRING,'action':STRING,'preview':{'type':'boolean'},'inspect_after':{'type':'boolean'}},['application','target','operation']),act_in_application),
+ 'desktop_applications':('Find an open application by the friendly name the person used (for example Weather), using Linux accessibility. Use this fallback when an app has no broker actions. A unique match includes its initial snapshot and native backend commands, saving another inspection. Returned IDs are short-lived and cannot be guessed.',schema({'name':STRING},['name']),desktop_applications),
+ 'inspect_application':('Read an open application’s visible controls and actual action names. Use query to find a named control/result (such as Chicago); use next_offset to page if truncated. Layout containers are omitted. Protected fields are excluded; targets are short-lived. Also returns native backend commands when exported. Prefer a matching command over menu navigation. Changes already return a fresh snapshot; inspect again only if needed.',schema({'application':STRING,'query':STRING,'offset':{'type':'integer','minimum':0,'maximum':2000}},['application']),inspect_application),
+ 'act_in_application':('Operate a visible application control using an exact inspected target. Use set_text to replace an editable field, or action with an advertised action name to activate a button/result. Use operation command with an exact commands target to invoke an app’s own backend command directly; parameter must match its advertised scalar type. A command acknowledgement is not completion. Returns fresh observed controls after the change, when read permission allows it. Verify the requested outcome; activation alone does not mean the whole task succeeded.',schema({'application':STRING,'target':STRING,'operation':{'type':'string','enum':['set_text','action','command']},'text':STRING,'action':STRING,'parameter':{},'preview':{'type':'boolean'},'inspect_after':{'type':'boolean'}},['application','target','operation']),act_in_application),
 }
 if __name__=='__main__':
     serve('ari-accessibility',TOOLS)

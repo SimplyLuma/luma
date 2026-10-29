@@ -22,6 +22,10 @@ class Workspace(unittest.TestCase):
             text = _tool_text({'ok': True, 'summary': 'Read the application.', 'data': data, 'untrusted': True})
             self.assertIn('[Data from outside Ari.', text)
             self.assertEqual(json.loads(text.split('Details: ', 1)[1]), data)
+        acknowledged=_tool_text({'ok':True,'summary':'Requested removal.', 'completed':False,
+                                 'verification_required':True})
+        self.assertIn('completion is not confirmed',acknowledged)
+        self.assertIn('Verify the requested outcome',acknowledged)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

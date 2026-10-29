@@ -34,6 +34,40 @@ class Node:
 
 
 class Accessibility(unittest.TestCase):
+    def test_native_commands_bind_process_selection_type_and_target_lifetime(self):
+        calls=[]
+        commands={'app-delete':(True,'',[]),'app-title':(True,'s',[]),'app-disabled':(False,'',[])}
+        variant=lambda kind,value:SimpleNamespace(unpack=lambda:value)
+        session=(SimpleNamespace(),SimpleNamespace(Variant=variant),object())
+        def call(bus,owner,path,interface,method,parameters=None,**kwargs):
+            calls.append((owner,method,parameters))
+            return variant('',(commands,))
+        with patch.object(a,'_session_bus',return_value=session), \
+             patch.object(a,'_command_endpoints',return_value=iter([(None,':1.42','/app',commands)])), \
+             patch.object(a,'_command_pid',return_value=1),patch.object(a,'_dbus_call',side_effect=call):
+            data=a.inspect_application({'application':self.application})['data']
+            self.assertEqual([row['name'] for row in data['commands']],['app-delete','app-title'])
+            target=data['commands'][0]['target']
+            args={'application':self.application,'target':target,'operation':'command','inspect_after':False}
+            self.assertTrue(a.act_in_application({**args,'preview':True})['ok'])
+            self.assertFalse(any(method=='Activate' for _,method,_ in calls))
+            self.frame.name='A different document'
+            with self.assertRaisesRegex(ValueError,'selection changed'):a.act_in_application(args)
+            self.frame.name='Weather'
+            self.entry.text='Someone edited the draft while approval was open'
+            with self.assertRaisesRegex(ValueError,'selection changed'):a.act_in_application(args)
+            self.entry.text='Existing text'
+            with patch.object(a,'_command_pid',return_value=2):
+                with self.assertRaises(ValueError):a.act_in_application(args)
+            with self.assertRaises(ValueError):a.act_in_application({**args,'parameter':'wrong type'})
+            result=a.act_in_application(args)
+            self.assertTrue(result['ok'])
+            self.assertFalse(result['completed'])
+            self.assertTrue(result['verification_required'])
+            self.assertEqual(sum(method=='Activate' for _,method,_ in calls),1)
+            self.assertEqual(calls[-1][0],':1.42')
+            with self.assertRaises(ValueError):a.act_in_application(args)
+
     def test_noninteractive_content_cannot_hide_later_controls_or_break_the_result_budget(self):
         import json
         self.frame.children=[Node('Forecast layout',Role.FRAME,[Node('Forecast text',Role.FRAME) for _ in range(600)]),self.entry]
@@ -61,9 +95,10 @@ class Accessibility(unittest.TestCase):
         self.desktop=Node('Desktop',Role.FRAME,[self.app])
         api=SimpleNamespace(Text=SimpleNamespace(get_text=lambda node,start,end:node.get_text(start,end)),Role=Role,StateType=SimpleNamespace(DEFUNCT='defunct',SHOWING='showing',ENABLED='enabled',SENSITIVE='sensitive',EDITABLE='editable'),get_desktop=lambda index:self.desktop)
         self.api=patch.object(a,'api',return_value=api);self.api.start()
+        self.endpoints=patch.object(a,'_command_endpoints',return_value=iter(()));self.endpoints.start()
         self.start=patch.object(a,'_start',return_value='original');self.start.start()
         self.application=a.desktop_applications({'name':'Weather'})['data'][0]['application']
-    def tearDown(self):self.start.stop();self.api.stop();a._apps.clear();a._targets.clear()
+    def tearDown(self):self.start.stop();self.api.stop();self.endpoints.stop();a._apps.clear();a._targets.clear()
     def operation(self):
         controls=a.inspect_application({'application':self.application})['data']['controls']
         self.assertFalse(any(row['name']=='Secret' for row in controls))

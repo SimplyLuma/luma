@@ -44,6 +44,52 @@ def settle(window, seconds):
 
 
 class FixtureRuntime(unittest.TestCase):
+    def test_streaming_follows_bottom_preserves_manual_scroll_and_stable_composer(self):
+        window=self.window
+        for width,height in ((1180,740),(390,844)):
+            window.set_default_size(width,height)
+            chat={'id':'scroll-test','t':'A conversation','day':'Today',
+                  'msgs':[{'u':'Message '+str(i)} if i%2==0 else {'a':'Reply '+str(i)} for i in range(40)]}
+            window.data['conversations']=[chat]
+            window.state.update(view='chat',cur='scroll-test',busy=False)
+            window.render();window.present();settle(window,.2)
+            entry=window.entry.widget
+            key=entry.key
+            initial=key.compute_bounds(window)[1]
+            first=window._chat_rows[0][1]
+            window.request='scroll-request'
+            window.state['busy']=True
+            for value in ('Starting', 'Working', 'Checking'):
+                window.on_event(window.request,json.dumps({'type':'working','label':value}))
+                settle(window,.1)
+                self.assertIs(window.entry.widget,entry)
+                self.assertIs(window._chat_rows[0][1],first)
+                bounds=key.compute_bounds(window)[1]
+                self.assertLessEqual(abs(bounds.get_width()-initial.get_width()),1)
+                self.assertLessEqual(abs(bounds.get_height()-initial.get_height()),1)
+                self.assertLessEqual(abs(bounds.get_y()-initial.get_y()),1)
+                last=window.page.get_last_child().compute_bounds(window)[1]
+                composer=window.bar.bar.compute_bounds(window)[1]
+                self.assertLessEqual(abs(last.get_y()+last.get_height()-composer.get_y()),2)
+            adjustment=window.scroll.get_vadjustment()
+            window._user_scroll(None,0,-1)
+            adjustment.set_value(adjustment.get_value()-200)
+            position=adjustment.get_value()
+            window.on_event(window.request,json.dumps({'type':'text','text':'An ongoing reply. '*30}))
+            settle(window,.2)
+            self.assertFalse(window._follow_end)
+            self.assertLessEqual(abs(adjustment.get_value()-position),1)
+            window._scroll_key(None,lumaui_app.Gdk.KEY_End,0,0)
+            settle(window,.2)
+            self.assertTrue(window._follow_end)
+            last=window.page.get_last_child().compute_bounds(window)[1]
+            composer=window.bar.bar.compute_bounds(window)[1]
+            self.assertLessEqual(abs(last.get_y()+last.get_height()-composer.get_y()),2)
+            window.on_event(window.request,json.dumps({'type':'done','text':'Finished'}))
+            settle(window,.1)
+            self.assertIs(window.entry.widget,entry)
+            self.assertEqual(entry.key.key_role,'send')
+
     def test_native_permissions_dialog_and_explicit_remember_choice(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -514,7 +560,9 @@ class FixtureRuntime(unittest.TestCase):
         self.window.stop()
         settle(self.window, 1.1)
         chat = next(chat for chat in self.source.data["conversations"] if chat["id"] == self.window.state["cur"])
-        self.assertEqual(chat["msgs"], [{"u": "Explain local models in two sentences"}])
+        self.assertEqual(len(chat['msgs']),1)
+        self.assertEqual(chat['msgs'][0]['u'], 'Explain local models in two sentences')
+        self.assertRegex(chat['msgs'][0]['at'], r'^\d{1,2}:\d{2} [AP]M$')
         self.assertFalse(self.window.state["busy"])
         self.assertIsNone(self.window.daemon)
 

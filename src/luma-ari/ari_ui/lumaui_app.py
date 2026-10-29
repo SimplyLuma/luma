@@ -43,7 +43,7 @@ from .fixture import (
     recipient_first_name, source_from_environment, trace_state, scripted_reply,
 )
 from . import lumaui_style
-from .live_data import live_capacity, stored_messages, stored_receipt, action_node
+from .live_data import live_capacity, stored_messages, stored_receipt, action_node, clock_time
 from .rich_text import blocks as reply_blocks, plain_text, safe_url
 from .model_families import FAMILIES, family_for, families
 
@@ -386,12 +386,34 @@ class AriWindow(AppWindow):
         self.connect("close-request", self._closing)
         self._scroll_clock = None
         self._scroll_handler = None
+        self._follow_end = True
+        self._chat_rows = {}
+        self._chat_key = None
+        self._bar_key = None
+        # Only a user's navigation stops following the conversation. Allocation,
+        # focus and content-size changes must not be mistaken for scrolling up.
+        navigation = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        navigation.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        navigation.connect('scroll', self._user_scroll)
+        self.scroll.add_controller(navigation)
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect('key-pressed', self._scroll_key)
+        self.scroll.add_controller(keys)
+        drag = Gtk.GestureDrag(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        drag.connect('drag-update', self._scroll_drag)
+        self.scroll.add_controller(drag)
+        scrollbar = self.scroll.get_vscrollbar()
+        scrollbar_click = Gtk.GestureClick(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        scrollbar_click.connect('pressed', lambda *_: setattr(self, '_follow_end', False))
+        scrollbar_click.connect('released', lambda *_: GLib.idle_add(self._resume_at_end))
+        scrollbar.add_controller(scrollbar_click)
         self.connect("map", lambda _window: self._scroll_after_layout())
         # The kit's phone safe area (bar height + 20) lands after the first layout; a thread
         # showing its end keeps showing it as the room below grows.
         adjustment = self.scroll.get_vadjustment()
         self._scroll_upper = adjustment.get_upper()
         adjustment.connect("notify::upper", self._scroll_upper_changed)
+        adjustment.connect('notify::page-size', lambda *_: self._scroll_after_layout())
         if self.fixture:
             self._capture_state(os.environ.get("LUMA_ARI_STATE", "budget"))
             self.render()
@@ -546,11 +568,17 @@ class AriWindow(AppWindow):
         # otherwise retain the old focused label during its next allocation.
         # The composer regains focus below; an open provider sheet keeps it.
         if focus is not None and any(focus is region or focus.is_ancestor(region)
-                                     for region in (self.sidebar, self.page, self.bar)):
+                                     for region in (self.sidebar, self.page)):
             self.set_focus(None)
         self._rendering = True
         self.render_sidebar()
-        clear(self.page)
+        chat_key = (self.state['cur'], self.phone) if self.state['view'] == 'chat' else None
+        if chat_key is None or chat_key != self._chat_key:
+            clear(self.page)
+            self._chat_rows.clear()
+            if chat_key is None or self._chat_key is None or chat_key[0] != self._chat_key[0]:
+                self._follow_end = True
+        self._chat_key = chat_key
         clear(self.models_header)
         if self.models_switch is not None:
             self.host.remove_overlay(self.models_switch)
@@ -589,7 +617,6 @@ class AriWindow(AppWindow):
             if typing:
                 self.entry.focus()
             # v70 arMain sets this before the replacement content is laid out.
-            self._scroll_to_end()
             self._scroll_after_layout()
 
     def _tier_changed(self, _watch, tier):
@@ -601,7 +628,7 @@ class AriWindow(AppWindow):
         self.render()
 
     def _scroll_after_layout(self):
-        if self.closed or not self.get_mapped() or self.state["view"] != "chat":
+        if self.closed or not self._follow_end or not self.get_mapped() or self.state["view"] != "chat":
             return
         if self._scroll_handler is not None:
             return
@@ -622,13 +649,46 @@ class AriWindow(AppWindow):
         clock.request_phase(Gdk.FrameClockPhase.AFTER_PAINT)
 
     def _scroll_upper_changed(self, adjustment, _pspec):
-        at_end = adjustment.get_value() >= self._scroll_upper - adjustment.get_page_size() - 1
         self._scroll_upper = adjustment.get_upper()
-        if at_end and not self.closed and self.state["view"] == "chat":
+        if self._follow_end and not self.closed and self.state["view"] == "chat":
             self._scroll_after_layout()
 
+    def _user_scroll(self, _controller, _dx, dy):
+        if dy < 0:
+            self._follow_end = False
+        elif dy > 0:
+            GLib.idle_add(self._resume_at_end)
+        return False
+
+    def _scroll_drag(self, _gesture, _dx, dy):
+        if dy > 0:
+            self._follow_end = False
+        elif dy < 0:
+            GLib.idle_add(self._resume_at_end)
+
+    def _scroll_key(self, _controller, key, _code, _modifiers):
+        if key in (Gdk.KEY_Page_Up, Gdk.KEY_Home, Gdk.KEY_Up):
+            self._follow_end = False
+        elif key == Gdk.KEY_End:
+            self._follow_end = True
+            self._scroll_after_layout()
+        elif key in (Gdk.KEY_Page_Down, Gdk.KEY_Down):
+            GLib.idle_add(self._resume_at_end)
+        return False
+
+    def _resume_at_end(self):
+        if not self.closed and self.state['view'] == 'chat':
+            last = self.page.get_last_child()
+            if last is not None:
+                located, content = last.compute_bounds(self)
+                placed, composer = self.bar.bar.compute_bounds(self)
+                if located and placed and content.get_y() + content.get_height() <= composer.get_y() + 24:
+                    self._follow_end = True
+                    self._scroll_after_layout()
+        return GLib.SOURCE_REMOVE
+
     def _scroll_layout_ready(self, clock):
-        if self.closed or self.state["view"] != "chat":
+        if self.closed or not self._follow_end or self.state["view"] != "chat":
             self._finish_scroll_layout(clock)
             return
         # The page's bottom margin reserves space for the floating composer.
@@ -769,6 +829,8 @@ class AriWindow(AppWindow):
     def render_chat(self):
         chat = next((chat for chat in self.data["conversations"] if chat["id"] == self.state["cur"]), None)
         if chat is None:
+            clear(self.page)
+            self._chat_rows.clear()
             welcome = named(box(vertical=True), "welcome")
             # .arinew uses 11vh: of Studio's 1000px reference viewport, or the phone's 874.
             welcome.set_margin_top(96 if self.phone else 110)
@@ -815,6 +877,23 @@ class AriWindow(AppWindow):
             welcome.append(grid)
             self.page.append(Adw.Clamp(maximum_size=580, tightening_threshold=580, child=welcome))
             return
+        previous, used = None, set()
+
+        def row(key, value, create):
+            nonlocal previous
+            cached = self._chat_rows.get(key)
+            if cached is None or cached[0] != value or cached[1].get_parent() is not self.page:
+                if cached is not None and cached[1].get_parent() is self.page:
+                    self.page.remove(cached[1])
+                widget = create()
+                self.page.insert_child_after(widget, previous)
+                self._chat_rows[key] = (copy.deepcopy(value), widget)
+            else:
+                widget = cached[1]
+                self.page.reorder_child_after(widget, previous)
+            used.add(key)
+            previous = widget
+
         if not self.phone:
             # On a phone the title island names the conversation (v71 hides .arihd under 560).
             title = ari_text(chat["t"], "heading", "assistant-title")
@@ -822,7 +901,7 @@ class AriWindow(AppWindow):
             day.set_valign(Gtk.Align.CENTER)
             heading = named(box(title, day, spacing=10), "chat-heading")
             heading.set_margin_bottom(6)
-            self.page.append(heading)
+            row('heading', (chat['t'], chat['day']), lambda: heading)
         for index, message in enumerate(chat["msgs"]):
             if "u" in message:
                 # v71: your words in the accent bubble on the right, as in Messages.
@@ -831,14 +910,23 @@ class AriWindow(AppWindow):
                 bubble.add_css_class("ari-user-bubble-phone" if self.phone else "ari-user-bubble")
                 bubble.label.remove_css_class("lumaui-message-text")
                 apply_type(bubble.label, "ari-user-phone" if self.phone else "ari-user")
-                self.page.append(named(bubble, "user-" + str(index)))
+                widget = named(bubble, 'user-' + str(index))
+                if message.get('at'):
+                    timestamp = text(message['at'], 'caption')
+                    timestamp.set_halign(Gtk.Align.END)
+                    widget = box(widget, timestamp, vertical=True, spacing=4)
+                row(index, message, lambda: widget)
             elif "a" in message:
-                self.page.append(named(self.reply_bubble(message), "reply-" + str(index)))
+                row(index, message, lambda: named(self.reply_bubble(message), 'reply-' + str(index)))
             elif "ch" in message and message["ch"] in self.data["activity"]:
                 # What Ari did spans the column (v71 .arisay.chain, no indent).
-                self.page.append(self.receipt(message["ch"]))
+                row(index, self.data['activity'][message['ch']], lambda: self.receipt(message['ch']))
             elif "think" in message:
-                self.page.append(named(text(message["think"], "lead", muted=True), "thinking"))
+                row(index, message, lambda: named(text(message['think'], 'lead', muted=True), 'thinking'))
+        for key in set(self._chat_rows) - used:
+            widget = self._chat_rows.pop(key)[1]
+            if widget.get_parent() is self.page:
+                self.page.remove(widget)
 
     def reply_bubble(self, message):
         """Ari's reply: the chip bubble on the left with no mark (a one-to-one thread), its
@@ -930,7 +1018,7 @@ class AriWindow(AppWindow):
         state, state_label = trace_state(receipt)
         if len(receipt["nodes"]) == 1 and state == "done" and receipt["undo"] == "none" and not receipt.get("ask"):
             line = named(box(self.receipt_lead(receipt["nodes"][0]),
-                             text(receipt["t"], "body", wrap=True, expand=True),
+                             text(receipt["t"], "body", wrap=True),
                              text(receipt["at"], "caption"), spacing=10), "receipt-" + identity)
             if receipt.get("target"):
                 line.append(self.button("Open", lambda: self.open_receipt(identity), size="tiny", appearance="quiet"))
@@ -1782,6 +1870,15 @@ class AriWindow(AppWindow):
     def render_bar(self):
         view = self.state["view"]
         phone = self.phone
+        key = (view, phone, self.state['model'], repr(self.model()), repr(self.effort_options(self.model()['id'])))
+        if view == 'chat' and key == self._bar_key and self.entry.widget.get_parent() is not None:
+            self.entry.set_busy(self.state['busy'])
+            self.entry.set_text(self.draft)
+            return
+        self._bar_key = key if view == 'chat' else None
+        focus = self.get_focus()
+        if focus is not None and focus.is_ancestor(self.bar):
+            self.set_focus(None)
         (self.bar.add_css_class if view == "models" else self.bar.remove_css_class)("ari-model-actions")
         if view == "chat":
             model = self.model()
@@ -1808,6 +1905,11 @@ class AriWindow(AppWindow):
             self.bar.show_bar([*controls, self.entry], fill=phone)
             self.model_button = named(self.bar.bar_row.get_first_child(), "model-picker-button")
             named(self.entry.widget, "composer")
+            # The kit's Stop glyph is smaller than Send; its slot in Ari's
+            # single-line composer stays the same size and alignment.
+            key_size = int(lumaui_tokens.BAR['entry']['send'])
+            self.entry.widget.key.set_size_request(key_size, key_size)
+            self.entry.widget.key.set_valign(Gtk.Align.CENTER)
         elif view == "activity":
             filters = [(value, value) for value in ("All", "Files", "People", "Apps", "Settings")]
             if phone:
@@ -2499,7 +2601,8 @@ class AriWindow(AppWindow):
             chat = {"id": "new-" + str(self.state["n"]), "t": title, "day": "Today", "msgs": []}
             self.data["conversations"].insert(0, chat)
             self.state["cur"] = chat["id"]
-        chat["msgs"].append({"u": value})
+        chat["msgs"].append({"u": value, 'at': clock_time()})
+        self._follow_end = True
         self.draft = ""
         self.state["busy"] = True
         self.render()
@@ -2667,7 +2770,7 @@ class AriWindow(AppWindow):
                 self.data["activity"].pop(previous, None)
                 messages[:] = [item for item in messages if item.get("ch") != previous]
             node, category = action_node(event["tool"], event["summary"], "ask" if kind == "approval" else "done")
-            self.data["activity"][identity] = {"t": event["summary"], "at": GLib.DateTime.new_now_local().format("%H:%M"), "day": "Today", "cats": [category],
+            self.data["activity"][identity] = {"t": event["summary"], "at": clock_time(), "day": "Today", "cats": [category],
                 "target": event.get("target"),
                 "undo": "can" if event.get("undo") else "none", "conv": chat["id"], "request": request,
                 "confirm_within": event.get("confirm_within"),
@@ -2835,7 +2938,7 @@ class AriWindow(AppWindow):
                 node, category = action_node(entry.get("tool", ""), entry.get("summary") or "Updated a preference",
                                              "undone" if state in ("undone", "reverted") else "done")
                 self.data["activity"][identity] = {"t": entry.get("summary") or entry.get("tool", ""), "day": day,
-                    "at": time.strftime("%H:%M", time.localtime(timestamp)) if timestamp is not None else "", "cats": [category],
+                    "at": clock_time(timestamp) if timestamp is not None else "", "cats": [category],
                     "conv": entry.get("conversation", ""), "undo": "can" if entry.get("undo") and state == "done" else "none",
                     "nodes": [node]}
             self.render()

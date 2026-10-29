@@ -7,6 +7,42 @@ Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. The current independent Dell preview uses runtime source
 `9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. Earlier checkpoints below are history.
 
+## October 29 follow-up: message stability and native commands
+
+The owner reports that delivered r6 added Chicago to Weather and installed and
+uninstalled applications successfully. The successful add took 34.1 seconds;
+removing Chicago failed after 43.3 seconds. Older errors in the supplied chat
+screenshots explicitly predate the last correction.
+
+The next source revision displays local 12-hour message/action times, places
+message times directly below their bubble and action times beside their text,
+retains the composer and unchanged message widgets during updates, reserves the
+same space for Send and Stop, and follows the conversation until the person
+scrolls away. Sending or navigating to the end resumes following. Desktop and
+phone streaming/manual-scroll/composer regressions pass in the full 50-test
+native Wayland cohort; the actual private OAuth/keyring/settings fixture also
+passes. This is functional evidence, not a visual-conformance pass.
+
+The generic accessibility adapter now discovers native `org.gtk.Actions`
+commands exported by the same application process. It invokes the existing app
+handler directly, with an opaque target bound to its unique bus owner, process
+start time, advertised parameter type, document/selection and editable-text
+fingerprints. It preserves Ari's action permissions and approval modes. It
+reports acknowledgement separately from completion and returns observed state
+for verification. Unique application discovery includes the first snapshot,
+avoiding a separate model inspection round trip. No Weather-specific dispatch,
+application-database writer or synthetic input was added.
+
+Real populated Weather tests remove exactly Chicago while retaining Boston and
+restore it through its existing Undo command, both directly and over actual MCP.
+Observed command-plus-inspection times are about 1.6–1.8 seconds on the server;
+these exclude hosted model latency. Scripted Responses decisions through the
+real agent remove Chicago in all three autonomy modes: Important asks once,
+Let Ari act asks zero times, Every time asks for discovery and action. These
+fixtures use real Weather controls/store and fixture forecast responses; they
+do not establish real hosted model decisions. The latest source suite passes
+174 unit/protocol/policy tests. The next r7 package/device update is pending.
+
 ## Application and development continuation
 
 The later owner request to complete Ari's action capabilities adds concrete

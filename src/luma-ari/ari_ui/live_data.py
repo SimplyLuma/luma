@@ -7,6 +7,12 @@ from pathlib import Path
 from .fixture import audit_timestamp
 
 
+def clock_time(value=None):
+    """Local message time, consistently including the AM/PM marker."""
+    stamp = time.time() if value is None else audit_timestamp(value)
+    return time.strftime('%I:%M %p', time.localtime(stamp)).lstrip('0') if stamp is not None else ''
+
+
 def action_node(tool, summary, state='done'):
     kind, category, detail = ('app', 'Apps', 'App') if tool == 'open_app' else ('setting', 'Settings', 'Preference')
     if tool in ('media_control', 'play_media'):
@@ -26,7 +32,7 @@ def stored_receipt(step, conversation, day):
     timestamp = audit_timestamp(step.get('created'))
     node, category = action_node(step['tool'], step['summary'], 'undone' if undone else 'done')
     return {'t': step['summary'], 'day': day,
-            'at': time.strftime('%H:%M', time.localtime(timestamp)) if timestamp is not None else '',
+            'at': clock_time(timestamp) if timestamp is not None else '',
             'cats': [category], 'conv': conversation,
             'undo': 'undone' if undone else 'can' if step.get('undo') else 'none',
             'kept': state == 'kept', 'target': step.get('target'),
@@ -43,6 +49,8 @@ def stored_messages(record):
     attached, result = set(), []
     for message in record.get('messages', []):
         entry = {'u' if message['role'] == 'user' else 'a': message['content']}
+        if message.get('created') is not None:
+            entry['at'] = clock_time(message['created'])
         metadata = message.get('meta') or {}
         if metadata.get('sources'):
             entry['sources'] = metadata['sources']

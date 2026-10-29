@@ -18,7 +18,7 @@ from ari.store import Store
 
 
 def exercise(client, directory):
-    state = {'stage': 0, 'requests': 0}
+    state = {'stage': 0, 'requests': 0, 'remove':False}
 
     def opened(_url, *, body, **_kwargs):
         state['requests'] += 1
@@ -29,7 +29,15 @@ def exercise(client, directory):
             assert 'Succeeded:' in last['output'], last
             details = last['output'].partition('Details: ')[2]
             data = json.loads(details) if details else None
-        if stage == 0:
+        if state['remove'] and stage == 1:
+            state['application']=data[0]['application']
+            command=next(row for row in data[0]['snapshot']['commands'] if row['name']=='weather-remove')
+            name,args='act_in_application',{'application':state['application'], 'target':command['target'], 'operation':'command'}
+        elif state['remove'] and stage == 2:
+            assert not any(row['name'].casefold()=='chicago' for row in data['controls']), data
+            assert any(row['name']=='Removed Chicago' for row in data['controls']), data
+            name,args=None,None
+        elif stage == 0:
             name, args = 'desktop_applications', {'name': 'Weather'}
         elif stage == 1:
             state['application'] = data[0]['application']
@@ -63,7 +71,7 @@ def exercise(client, directory):
         item = ({'type': 'function_call', 'status': 'completed', 'namespace': 'ari', 'name': name,
                  'call_id': f"call-{state['requests']}", 'arguments': json.dumps(args)} if name else
                 {'type': 'message', 'status': 'completed', 'role': 'assistant',
-                 'content': [{'type': 'output_text', 'text': 'Added Chicago to Weather.'}]})
+                 'content': [{'type': 'output_text', 'text': 'Removed Chicago from Weather.' if state['remove'] else 'Added Chicago to Weather.'}]})
         # Individual final output is intentionally absent from the terminal summary.
         events = [{'type': 'response.output_item.done', 'output_index': 0, 'item': item},
                   {'type': 'response.completed', 'response': {'status': 'completed', 'output': []}}]
@@ -94,5 +102,16 @@ def exercise(client, directory):
         from prairie_apps.weather_backend import PlaceStore
         assert any(place.name.casefold() == 'chicago' for place in PlaceStore().list())
         print(f'Scripted Responses → real agent/{policy.approval_mode} mode/{approvals} approvals → actual MCP → populated Weather saved Chicago PASS', flush=True)
+        events.clear()
+        state.update(stage=0, remove=True)
+        with patch('ari.agent._current_settings',return_value=''),patch('ari.agent.audit.record'):
+            removal=Turn(turn.conversation,'Remove Chicago from the Weather app',emit)
+            agent.answer(removal)
+        assert events[-1]['type']=='done' and events[-1]['text']=='Removed Chicago from Weather.',events
+        approvals=len([event for event in events if event['type']=='approval'])
+        assert approvals=={'all':2,'system':1,'never':0}[policy.approval_mode],events
+        assert not any(place.name.casefold()=='chicago' for place in PlaceStore().list())
+        assert any(place.name.casefold()=='boston' for place in PlaceStore().list())
+        print(f'Scripted Responses → real agent/{policy.approval_mode}/{approvals} approvals → generic native command → exactly Chicago removed, Boston preserved PASS',flush=True)
     finally:
         store.db.close()

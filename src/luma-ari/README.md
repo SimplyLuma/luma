@@ -61,8 +61,21 @@ person. Protected fields are excluded; stale controls and concurrent text
 changes are refused. Changes require Ari's normal action permission and preview.
 Ari returns compact, paginated controls after each change to verify the outcome.
 Layout and forecast prose cannot crowd action targets out of the result budget.
-No synthetic mouse/keyboard input
-is used, and apps must expose usable accessibility controls.
+A unique application match includes its initial snapshot. Native GApplication
+commands exported on `org.gtk.Actions` are also discovered and preferred over
+menu navigation. These invoke the application's existing command handlers,
+with advertised scalar parameter types, through its unique session-bus owner.
+Targets bind the process start time, command availability and current
+document/selection; a changed selection or expired target requires inspection
+again. Native commands use the same action permissions and approval modes as
+accessible controls. An acknowledgement is reported as a request, and the
+resulting state must verify completion. No synthetic mouse/keyboard input or
+direct writes to application databases are used. Apps must publish a suitable
+broker action, native command or accessible control for the requested operation.
+
+Chat timestamps use the local 12-hour clock. Streaming updates retain unchanged
+message widgets and the composer. The thread follows its latest content until
+the person scrolls away; sending a request or navigating to the end resumes it.
 
 Process tools find exact same-user processes by name/PID, retain short-lived
 identities and use pidfds with start-time revalidation for end/kill. The person
