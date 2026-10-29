@@ -61,6 +61,13 @@ def prepare(srpm, output, repository):
     text = text.replace("  GtkWidget *today_slot;", "  GtkWidget *today_slot;\n  GtkWidget *home_pages;", 1)
     text = text.replace("app_ids[i] && g_list_model_get_n_items (G_LIST_MODEL (priv->home_model)) < priv->home_slots", "app_ids[i]")
     text = text.replace('  g_signal_connect (priv->favs, "size-allocate", G_CALLBACK (on_home_grid_allocated), self);\n', "")
+    # The new homogeneous dock is a GtkGrid. Retain phone form sizing without
+    # invoking the former GtkBox API on the new container.
+    text = text.replace('  gtk_box_set_spacing (GTK_BOX (dock_box), pocket ? 10 : 2);',
+                        '  if (GTK_IS_GRID (dock_box))\n'
+                        '    gtk_grid_set_column_spacing (GTK_GRID (dock_box), pocket ? 10 : 2);\n'
+                        '  else\n'
+                        '    gtk_box_set_spacing (GTK_BOX (dock_box), pocket ? 10 : 2);')
     path.write_text(text)
     path = source / "src/meson.build"
     path.write_text(path.read_text().replace("  'luma-today.c',", "  'luma-today.c',\n  'luma-home-pages.c',", 1))

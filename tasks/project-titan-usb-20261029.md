@@ -1,6 +1,6 @@
 # Project Titan recovery and Mobile experience
 
-- Status: USB access delivered; newest merged Mobile shell ARM build in progress.
+- Status: delivered; native ARM Mobile experience and root USB SSH active on owner Titan.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -37,8 +37,19 @@ changes while retaining pocket/fold sizing, audio and hardware behavior. The
 Home pager header now declares its GType for the full shell's strict compiler.
 The source RPM and generated packages are operator inputs/outputs outside Git.
 
-Shared widget model and GTK3 tests pass on ARM. Full native ARM shell compilation
-is running; no live Mobile experience update or release qualification is claimed
-until actual deployment/readback. The independent card backup is verified.
-Current private units, artifacts and delivery actions are in the coordination
-handoff. Keep the original packaged shell for immediate rollback.
+Shared widget model and GTK3 tests pass on ARM. Full ARM shell and plugin builds
+pass. Final assembly replay passes against the exact input source RPM. The live
+phone runs the new native binary and shared widget libraries; Type=notify startup
+completed in 0.99 seconds with zero automatic restarts during observation. Wi-Fi
+and key-only root USB SSH remain connected.
+
+The physical startup check caught the phone form-size handler using GtkBox APIs
+on the new homogeneous GtkGrid dock. The compatibility recipe now preserves its
+spacing with the correct container API; incremental ARM build and device delivery
+passed, and that assertion is absent from the follow-up startup log.
+
+The candidate uses an independent private prefix and user service override. The
+packaged shell and verified independent card backup remain available for rollback.
+Human Home/gesture review and broader hardware coverage remain open; no general
+release or complete OS update qualification is claimed. Current private artifacts,
+exact delivery hashes and rollback details are in the coordination handoff.
