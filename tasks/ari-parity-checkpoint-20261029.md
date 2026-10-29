@@ -341,3 +341,38 @@ in the Dell graphical session under
 active/running with UI and daemon D-Bus names owned. Manual Weather retry is
 pending; no automated Dell application tests ran. The screenshot failure is not
 declared resolved until live acceptance. Visual conformance still fails.
+
+## Task autonomy continuation — implementation awaiting full qualification
+
+The owner's r5 manual retry opened Weather and entered Chicago, then stopped
+after 104 seconds despite visible matching suggestions. Completion failed.
+Prior empty-window fixtures did not reproduce the populated forecast layout.
+The old adapter returned layout nodes and forecast prose alongside controls;
+even a small 66-node snapshot exceeded the agent's 12 KB tool-result budget.
+
+The continuation implements compact, filtered and paginated actionable controls,
+with a fresh snapshot after a change. A populated Weather fixture now includes
+a saved city, 48 forecast hours and ten days. Normal approval is scoped to one
+requested task in one application/process identity. The private preview exporter
+also removes its forced Every-change default, restoring the normal source mode.
+
+Permissions and autonomy is exposed in the native app menu, model picker and
+settings command. Its three choices are Ask every time, Ask for important actions
+and Let Ari act. Advanced Allow/Ask/Block rules can be reviewed and removed;
+remembering an approval/decline requires an explicit checkbox. Remembered app
+text/control choices can be scoped to that app. Master/capability restrictions,
+administrator locks, broker consent and operating-system controls remain in
+force. Permission revocation is checked again before a pending change.
+
+Exact same-user process discovery and end/kill are connected through a new MCP
+server. Short-lived targets and pidfds prevent PID substitution; query and force
+intent must be named by the person. A sent signal is distinguished from verified
+exit. Ambiguous references to a selected item require actual app context or
+clarification; timer, phone, music and email routing does not invent app support.
+
+171 unit tests and eleven existing focused GTK checks passed during development,
+including a real disposable process termination and stale-identity refusal. The
+expanded native settings/restart checks, full UI suite and populated Weather
+checks in all three modes are pending server capacity. No r6 package or Dell
+replacement is yet qualified. Keep PR #92 draft; no live completion or visual
+conformance claim.

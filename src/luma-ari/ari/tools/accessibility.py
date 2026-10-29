@@ -7,7 +7,9 @@ The agent owns read/action permissions and approval of each change.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+from collections import deque
 from pathlib import Path
 import secrets
 import sys
@@ -110,11 +112,18 @@ def inspect_application(arguments):
     for key, row in list(_targets.items()):
         if row['application'] == arguments['application']:
             del _targets[key]
-    deadline = time.monotonic()+8
-    pending = [(app['object'], (), 0)]
-    rows = []
-    while pending and len(rows) < 300 and time.monotonic() < deadline:
-        node, path, depth = pending.pop()
+    deadline = time.monotonic()+4
+    pending = deque([(app['object'], (), 0)])
+    rows, context = [], []
+    visited = 0
+    omitted_children = False
+    query = str(arguments.get('query', '')).strip().casefold()[:200]
+    offset = arguments.get('offset', 0)
+    if type(offset) is not int or not 0 <= offset <= 2000:
+        raise ValueError('Use a control offset between 0 and 2000.')
+    while pending and visited < 2000 and time.monotonic() < deadline:
+        node, path, depth = pending.popleft()
+        visited += 1
         try:
             node.clear_cache()
             if not _safe(node, Atspi):
@@ -128,8 +137,10 @@ def inspect_application(arguments):
             # GTK layout containers can omit SHOWING even when their children
             # are visible. Traverse them; only expose visible controls.
             if depth < 48:
-                children = min(node.get_child_count(), 100)
-                for index in reversed(range(children)):
+                count = node.get_child_count()
+                children = min(count, 2000, max(0,4000-len(pending)))
+                omitted_children = omitted_children or children < count
+                for index in range(children):
                     child = node.get_child_at_index(index)
                     if child is not None:
                         pending.append((child, (*path,index), depth+1))
@@ -149,19 +160,36 @@ def inspect_application(arguments):
                 text = full[:1200]
                 if editable and count <= 8000:
                     text_digest = hashlib.sha256(full.encode()).hexdigest()
+            if not action_names and not editable:
+                if name and len(context) < 12 and (not query or query in name.casefold()):
+                    context.append(name[:100])
+                continue
+            if query and query not in (name+' '+text).casefold():
+                continue
             token = secrets.token_urlsafe(18)
             _targets[token] = dict(application=arguments['application'], object=node, path=path,
                                   name=name, role=role, text_digest=text_digest, expires=time.monotonic()+120)
-            rows.append({'target':token, 'role':role.value_nick, 'name':name, 'text':text,
+            rows.append({'target':token, 'role':role.value_nick, 'name':name[:160], 'text':text[:200],
                          'actions':action_names, 'editable':editable,
                          'enabled':states.contains(Atspi.StateType.SENSITIVE)})
         except Exception as error:
             logging.getLogger(__name__).debug("Accessibility control unavailable: %s", error)
             # One application may remove a widget while the snapshot is read.
             continue
-    return {'ok':True, 'summary':f'Read controls in {app["name"]}.',
-            'data':{'application':arguments['application'], 'name':app['name'], 'controls':rows,
-                    'truncated':bool(pending)}, 'untrusted':True}
+    # Layout nodes and forecast prose must not crowd interactive suggestions
+    # out of the model's result budget. Preserve whole JSON and paginate controls.
+    chosen, used = [], 0
+    for row in rows[offset:offset+40]:
+        size = len(json.dumps(row, ensure_ascii=False))
+        if used+size > 7000:
+            break
+        chosen.append(row); used += size
+    more = offset+len(chosen) < len(rows)
+    return {'ok':True, 'summary':f'Read {len(chosen)} controls in {app["name"]}.',
+            'data':{'application':arguments['application'], 'name':app['name'], 'controls':chosen,
+                    'visible_text':context, 'truncated':bool(pending) or more or omitted_children,
+                    'scanned_nodes':visited,
+                    'next_offset':offset+len(chosen) if more else None}, 'untrusted':True}
 
 
 def _target(arguments, Atspi):
@@ -213,7 +241,8 @@ def act_in_application(arguments):
     else:
         raise ValueError('Choose set_text or action.')
     if arguments.get('preview'):
-        return {'ok':True, 'preview':summary, 'detail':detail, 'application_name':app['name'], 'requested_name':app['query']}
+        return {'ok':True, 'preview':summary, 'detail':detail, 'application_name':app['name'],
+                'requested_name':app['query'], 'application_scope':f'{app["pid"]}:{app["started"]}:{app["query"]}'}
     succeeded = (interface.set_text_contents(value) if operation == 'set_text'
                  else interface.do_action(names.index(action)))
     for key, target in list(_targets.items()):
@@ -221,8 +250,14 @@ def act_in_application(arguments):
             del _targets[key]
     completed = ('Entered text'+summary[len('Enter text'):] if operation=='set_text'
                  else 'Activated'+summary[len('Activate'):])
-    return {'ok':bool(succeeded), 'summary':completed+'.' if succeeded else 'The application refused that control action.',
-            'data':{'application':arguments['application'],'verify':'Inspect the application again to verify the requested outcome.'}}
+    result = {'ok':bool(succeeded), 'summary':completed+'.' if succeeded else 'The application refused that control action.'}
+    if succeeded and arguments.get('inspect_after',True):
+        # Return observed controls with the mutation, saving another model round
+        # trip. Allow the app's debounced search to publish its result first.
+        time.sleep(.35)
+        observed = inspect_application({'application':arguments['application']})
+        result.update(data=observed['data'], untrusted=True)
+    return result
 
 
 def schema(properties, required=()):
@@ -230,8 +265,8 @@ def schema(properties, required=()):
 STRING={'type':'string'}
 TOOLS={
  'desktop_applications':('Find an open application by the friendly name the person used (for example Weather), using Linux accessibility. Use this fallback when an app has no broker actions. Returned IDs are short-lived and cannot be guessed.',schema({'name':STRING},['name']),desktop_applications),
- 'inspect_application':('Read an open application’s visible accessibility controls, current text and actual action names. Protected fields are excluded. Inspect again after every change; targets are short-lived.',schema({'application':STRING},['application']),inspect_application),
- 'act_in_application':('Operate a visible application control using an exact target from inspect_application. Use set_text to replace an editable field, or action with an advertised action name to activate a button/result. Ari asks before changes. Inspect afterward and verify the requested outcome; activation alone does not mean the whole task succeeded.',schema({'application':STRING,'target':STRING,'operation':{'type':'string','enum':['set_text','action']},'text':STRING,'action':STRING,'preview':{'type':'boolean'}},['application','target','operation']),act_in_application),
+ 'inspect_application':('Read an open application’s visible controls and actual action names. Use query to find a named control/result (such as Chicago); use next_offset to page if truncated. Layout containers are omitted. Protected fields are excluded; targets are short-lived. Changes already return a fresh snapshot; inspect again only if needed.',schema({'application':STRING,'query':STRING,'offset':{'type':'integer','minimum':0,'maximum':2000}},['application']),inspect_application),
+ 'act_in_application':('Operate a visible application control using an exact inspected target. Use set_text to replace an editable field, or action with an advertised action name to activate a button/result. Returns fresh observed controls after the change, when read permission allows it. Verify the requested outcome; activation alone does not mean the whole task succeeded.',schema({'application':STRING,'target':STRING,'operation':{'type':'string','enum':['set_text','action']},'text':STRING,'action':STRING,'preview':{'type':'boolean'},'inspect_after':{'type':'boolean'}},['application','target','operation']),act_in_application),
 }
 if __name__=='__main__':
     serve('ari-accessibility',TOOLS)

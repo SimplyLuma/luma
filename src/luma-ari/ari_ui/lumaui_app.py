@@ -296,6 +296,7 @@ class AriWindow(AppWindow):
         self.pending_download_events = []
         self.pending_request_events = []
         self.pending_approvals = set()
+        self.permissions_dialog = None
         self.read_generation = 0
         self.chatgpt_metadata_requested = False
         self.route_generation = 0
@@ -323,6 +324,7 @@ class AriWindow(AppWindow):
             Command("ari.new", "New chat", self.new_chat, "square-pen", shortcut=("Ctrl", "N")),
             Command("ari.find", "Search chats", lambda: self.foot.entry.grab_focus(), "search", shortcut=("Ctrl", "F")),
             Command("ari.stop", "Stop", self.stop, "square", shortcut=("Escape",)),
+            Command("ari.permissions", "Permissions and autonomy", self.show_permissions, "settings"),
             Command("ari.sidebar", "Show or hide sidebar", lambda: self.toggle.toggle(), "panel-left",
                     shortcut=("F9",)),
         ))])
@@ -1055,6 +1057,13 @@ class AriWindow(AppWindow):
                 reserve_draft_lines(draft_copy)
                 draft_copy.connect("map", reserve_draft_lines)
                 approval.append(draft_copy)
+            if not self.fixture and draft.get('permission'):
+                remember = Gtk.CheckButton(label='Remember this choice: '+draft.get('permission_label',''),
+                                           active=bool(draft.get('remember')))
+                remember.set_name('remember-'+identity)
+                remember.get_child().set_wrap(True)
+                remember.connect('toggled',lambda widget, value=draft: value.__setitem__('remember',widget.get_active()))
+                approval.append(remember)
             actions = box(spacing=6)
             actions.set_margin_top(8)
             actions.append(self.button("Don’t send" if self.fixture else "Decline", lambda: self.answer(identity, False),
@@ -1844,6 +1853,7 @@ class AriWindow(AppWindow):
         rows.append(named(PanelRow("Get more models…", icon="download", on_activate=self.get_more_models), "more-models"))
         if not self.fixture:
             rows.append(named(PanelRow("ChatGPT account and usage", icon="cloud", on_activate=self.show_chatgpt), "chatgpt-settings"))
+            rows.append(named(PanelRow("Permissions and autonomy", icon="settings", on_activate=self.show_permissions), "permissions-settings"))
         return named(panel_list(rows, label="Models"), "model-picker")
 
     def entry_text(self):
@@ -2397,7 +2407,8 @@ class AriWindow(AppWindow):
                 self.render()
                 if not success:
                     self.notify("The approval could not be sent", error=True)
-            self.daemon.call("Approve", "(sb)", (identity, approved), settled)
+            remember = bool(receipt.get('ask',{}).get('remember'))
+            self.daemon.call("ApproveRemembered" if remember else "Approve", "(sb)", (identity, approved), settled)
 
     def undo(self, identity):
         if self.fixture:
@@ -2662,7 +2673,8 @@ class AriWindow(AppWindow):
                 "confirm_within": event.get("confirm_within"),
                 "nodes": [node]}
             if kind == "approval":
-                self.data["activity"][identity]["ask"] = {"subj": event["summary"], "body": ["", event.get("detail", ""), ""]}
+                self.data["activity"][identity]["ask"] = {"subj": event["summary"], "body": ["", event.get("detail", ""), ""],
+                    'permission':event.get('permission',''),'permission_label':event.get('permission_label','')}
             messages[:] = [item for item in messages if "think" not in item]
             messages.append({"ch": identity})
         elif kind == "needs_model":
@@ -2680,6 +2692,26 @@ class AriWindow(AppWindow):
             self.data["computer"].update(value)
             self.render()
         return GLib.SOURCE_REMOVE
+
+    def show_permissions(self):
+        if self.fixture:
+            self.notify('Permissions are available in the live application')
+            return
+        if self.permissions_dialog is not None:
+            self.permissions_dialog.present(self)
+            return
+        from .settings import SettingsView
+        dialog = Adw.Dialog(title='Permissions and autonomy', content_width=680, content_height=650)
+        dialog.set_name('permissions-dialog')
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        settings = SettingsView(self)
+        view.set_content(settings)
+        dialog.set_child(view)
+        dialog.connect('closed',lambda *_:setattr(self,'permissions_dialog',None))
+        self.permissions_dialog = dialog
+        settings.show('permissions')
+        dialog.present(self)
 
     def retry_models(self):
         if self.closed or self.fixture:
@@ -2885,7 +2917,7 @@ class AriApplication(Adw.Application):
         self.add_main_option("popover", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE,
                              "Open Ari at a compact size", None)
         self.add_main_option("settings", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING,
-                             "Open models or activity", "PAGE")
+                             "Open models, activity or permissions", "PAGE")
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -2918,6 +2950,8 @@ class AriApplication(Adw.Application):
         window = window or AriWindow(self, self.source)
         if options.get("popover"):
             window.set_default_size(480, 620)
+        elif options.get("settings") == 'permissions':
+            window.show_permissions()
         elif options.get("settings") in ("models", "activity"):
             window.state["view"] = options["settings"]
             window.render()

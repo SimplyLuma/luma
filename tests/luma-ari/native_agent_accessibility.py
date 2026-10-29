@@ -6,6 +6,7 @@ only manual account testing can establish actual model decisions.
 """
 import io
 import json
+import os
 import time
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -73,7 +74,8 @@ def exercise(client, directory):
     tools = SimpleNamespace(available=client.tools, by_name={tool.name: (client, tool) for tool in client.tools}, call=client.call)
     store = Store(directory / 'agent.db')
     events = []
-    agent = Agent(store, tools, Policy(), model_provider=lambda: (provider, 'Fixture', 'fixture', 'unknown', 'large'))
+    policy=Policy();policy.approval_mode=os.environ.get('ARI_ACCESSIBILITY_AUTONOMY','system')
+    agent = Agent(store, tools, policy, model_provider=lambda: (provider, 'Fixture', 'fixture', 'unknown', 'large'))
 
     def emit(event):
         events.append(event)
@@ -86,10 +88,11 @@ def exercise(client, directory):
             agent.answer(turn)
         assert events[-1]['type'] == 'done', events[-1]
         assert events[-1]['text'] == 'Added Chicago to Weather.', events[-1]
-        assert len([event for event in events if event['type'] == 'approval']) == 2, events
+        approvals=len([event for event in events if event['type'] == 'approval'])
+        assert (approvals>=6 if policy.approval_mode=='all' else approvals=={'system':1,'never':0}[policy.approval_mode]), events
         assert len(store.steps(turn.conversation)) == 2, store.steps(turn.conversation)
         from prairie_apps.weather_backend import PlaceStore
         assert any(place.name.casefold() == 'chicago' for place in PlaceStore().list())
-        print('Scripted Responses → real agent/policy/approvals → actual MCP → Weather saved Chicago PASS', flush=True)
+        print(f'Scripted Responses → real agent/{policy.approval_mode} mode/{approvals} approvals → actual MCP → populated Weather saved Chicago PASS', flush=True)
     finally:
         store.db.close()

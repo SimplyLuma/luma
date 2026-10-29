@@ -7,6 +7,8 @@ import re
 from .mcp import Tool
 
 KEYWORDS = {
+    'find_processes':'process processes monitor cpu memory kill end terminate stop pid',
+    'control_process':'process processes monitor kill end terminate stop pid',
     "desktop_applications": "app application inside weather city cities note notes calendar task message browser",
     "inspect_application": "app application inside weather city cities note notes calendar task message browser read",
     "act_in_application": "app application inside weather city cities add create edit save write click press select note notes calendar task message browser",
@@ -81,7 +83,10 @@ def select(text: str, tools: list[Tool], limit: int) -> list[Tool]:
         bundle = {"create_project", "list_project", "read_project_file", "write_project_file", "run_project"}
         preferred = [tool for tool in tools if tool.name in bundle]
         chosen = (preferred + [tool for tool in chosen if tool not in preferred])[:limit]
-    elif re.search(r"\b(?:notes?|calendar|tasks?|messages?|contacts?|browser|email|weather)\b", text, re.I) or (
+    elif re.search(r'\b(?:process|processes|pid)\b',text,re.I):
+        preferred = [tool for tool in tools if tool.name in ('find_processes','control_process')]
+        chosen = (preferred+[tool for tool in chosen if tool not in preferred])[:limit]
+    elif re.search(r"\b(?:notes?|calendar|tasks?|messages?|contacts?|browser|email|weather|timer|alarm|phone|call|song|track|playlist|music)\b", text, re.I) or (
             re.search(r"\b(?:add|write|edit|create|save|delete|remove|change|set)\b", text, re.I)
             and re.search(r"\b(?:app|application)\b", text, re.I)):
         bundle = {"find_app", "open_app", "request_app_access", "app_surfaces", "app_action",

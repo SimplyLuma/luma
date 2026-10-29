@@ -38,9 +38,10 @@ class Parity(unittest.TestCase):
 
     def test_open_apps_has_separate_permission_without_approval(self):
         policy = Policy()
-        policy.approval_mode = 'all'
         self.assertEqual(policy.tier('open_app'), OPEN_APPS)
         self.assertFalse(policy.needs_approval('open_app'))
+        policy.approval_mode = 'all'
+        self.assertTrue(policy.needs_approval('open_app'))
         policy.enabled.discard(PERSONAL_SETTINGS)
         self.assertTrue(policy.check('open_app', calls_this_turn=0, after_untrusted=False).allowed)
         policy.enabled.discard(OPEN_APPS)
@@ -98,7 +99,7 @@ class Parity(unittest.TestCase):
             store = Store(Path(directory)/'ari.db')
             events = []
             policy = Policy()
-            policy.approval_mode = 'all'
+            policy.approval_mode = 'system'
             agent = Agent(store, tools, policy, model_provider=None)
             conversation = store.new_conversation()
             with patch('ari.agent.audit.record'):

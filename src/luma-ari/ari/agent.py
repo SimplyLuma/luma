@@ -22,7 +22,7 @@ from typing import Callable
 from . import audit, intents, router
 from .mcp import Client, Tool, ToolError
 from .persona import PROFILES, Profile, system_prompt
-from .policy import ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, CHANGE_FILES, OPEN_APPS, Policy
+from .policy import ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, CHANGE_FILES, OPEN_APPS, Policy, action_permission, ACTION_PERMISSIONS
 from .store import Store
 
 Emit = Callable[[dict], None]
@@ -59,6 +59,16 @@ class Turn:
     injection_seen: bool = False
     model_info: dict | None = None
     project_approvals: set[str] = field(default_factory=set)
+    application_approvals: set[str] = field(default_factory=set)
+
+
+def _requested_application(text, name):
+    if name and re.search(r'(?<!\w)'+re.escape(name)+r'(?!\w)',text,re.I):
+        return True
+    aliases = {'clock':r'\b(?:timer|alarm|stopwatch)\b', 'phone':r'\b(?:call|dial|phone)\b',
+               'tide':r'\b(?:song|track|music|playlist)\b', 'charlie':r'\b(?:email|mail|inbox)\b',
+               'monitor':r'\b(?:process|cpu|memory)\b'}
+    return bool(name in aliases and re.search(aliases[name],text,re.I))
 
 
 class Tools:
@@ -106,6 +116,8 @@ class Agent:
         self.model_provider_for = None
         self.revert_timers: dict[str, threading.Timer] = {}
         self.approvals: dict[str, list] = {}  # approval id: [event, answer]
+        self.approval_permissions = {}
+        self.on_permission = None
         self.describe_model: Callable[[], str] | None = None
         # Called with the dollars a hosted model reports for each reply.
         self.on_cost: Callable[[float], None] | None = None
@@ -123,13 +135,17 @@ class Agent:
         elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
             user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
         elif name in ("app_action", "act_in_application"):
-            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|delete|remove|play|pause|move|save|set|mark|schedule|book|do)\b", turn.text, re.I)
-                                 and re.search(r"\b(?:app|application|notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|weather)\b", turn.text, re.I))
+            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|reply|delete|remove|play|pause|move|save|set|mark|schedule|book|call|dial|start|do)\b", turn.text, re.I)
+                                 and re.search(r"\b(?:app|application|notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|song|track|weather|timer|alarm|phone|person)\b", turn.text, re.I))
+        elif name == 'control_process':
+            user_named_it = bool(re.search(r'\b(?:end|stop|kill|terminate)\b',turn.text,re.I))
         if name == "open_app" and turn.read_untrusted:
             app = str(arguments.get('name', '')).strip().casefold()
-            user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete)\b', turn.text, re.I)
-                                 and re.search(r'(?<!\w)' + re.escape(app) + r'(?!\w)', turn.text.casefold()))
+            user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete|reply|call|dial|play)\b', turn.text, re.I)
+                                 and _requested_application(turn.text,app))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
+        if self.policy.action_rule(name, arguments) == 'deny':
+            decision = type(decision)(False, decision.tier, 'This action is blocked in Ari’s advanced permissions.')
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
         if decision.allowed and turn.read_untrusted and decision.tier not in (ANSWER, READ_PERSONAL) and not user_named_it:
             decision = type(decision)(False, decision.tier,
@@ -144,17 +160,34 @@ class Agent:
             return {"ok": False, "summary": decision.reason, "refused": True}
         arguments = {k: v for k, v in arguments.items() if k != "preview"}
         action_preview = None
+        application = ''
+        application_scope = ''
         if name == "act_in_application":
             action_preview = self.tools.call(name, {**arguments, "preview": True})
             if not action_preview.get("ok"):
                 return action_preview
             requested = action_preview.get("requested_name", "")
-            if not requested or not re.search(r"(?<!\w)"+re.escape(requested)+r"(?!\w)",turn.text,re.I):
+            if not requested or not _requested_application(turn.text,requested):
                 return {"ok":False, "refused":True, "summary":"Name the application you want me to operate before I change it."}
+            application = requested.casefold()
+            application_scope = action_preview.get('application_scope', '')
+            if self.policy.action_rule(name, arguments, application) == 'deny':
+                return {'ok':False,'refused':True,'summary':'This action is blocked for this application in Ari’s advanced permissions.'}
+        if name == 'control_process':
+            action_preview = self.tools.call(name, {**arguments, 'preview':True})
+            if not action_preview.get('ok'): return action_preview
+            query = action_preview.get('requested_name','')
+            if (not user_named_it or not query or not re.search(r'(?<!\w)'+re.escape(query)+r'(?!\w)',turn.text,re.I)
+                    or (arguments.get('action')=='kill' and not re.search(r'\b(?:kill|force)\b',turn.text,re.I))):
+                return {'ok':False,'refused':True,'summary':'Specify the process name or PID and whether to end it or force kill it.'}
         approval = ""
         project = arguments.get("project") if decision.tier == CHANGE_FILES else None
-        project_granted = self.policy.approval_mode == "system" and project in turn.project_approvals
-        if self.policy.needs_approval(name) and not project_granted:
+        project_granted = (self.policy.approval_mode == "system" and project in turn.project_approvals
+                           and self.policy.action_rule(name, arguments) == 'default')
+        application_granted = (self.policy.approval_mode == 'system' and application_scope
+                               and application_scope in turn.application_approvals
+                               and self.policy.action_rule(name, arguments, application) == 'default')
+        if self.policy.needs_approval(name, arguments, application) and not project_granted and not application_granted:
             preview = action_preview or (self.tools.call(name, {**arguments, "preview": True}) if self._previews(name) else
                 {"ok": True, "preview": _describe(name, arguments)})
             if not preview.get("ok") or preview.get("unchanged"):
@@ -164,7 +197,18 @@ class Agent:
             detail = preview.get("detail", "")
             if project and self.policy.approval_mode == "system":
                 detail += "\nThis request may edit this project's source and run isolated checks/builds in it. Other files and the network stay inaccessible to build commands."
-            answer, approval = self._ask_approval(turn, name, preview.get("preview") or _describe(name, arguments), detail)
+            title = preview.get("preview") or _describe(name, arguments)
+            if application_scope and self.policy.approval_mode == 'system':
+                title = turn.text
+                detail = f'Complete this request in {preview.get("application_name", application)}. This approval covers its steps in this application for this request only.\n'+detail
+            permission = action_permission(name, arguments)
+            if application:
+                try:
+                    from .policy import validate_permission
+                    permission, _ = validate_permission(permission+'@'+application, 'allow')
+                except ValueError:
+                    permission = ''
+            answer, approval = self._ask_approval(turn, name, title, detail, permission=permission)
             if answer is not True:
                 reason = "person declined" if answer is False else "no answer"
                 audit.record({**entry, "decision": "refused", "reason": reason})
@@ -174,11 +218,18 @@ class Agent:
             entry["approved"] = True
             if project:
                 turn.project_approvals.add(project)
+            if application_scope:
+                turn.application_approvals.add(application_scope)
         if turn.stop.is_set():
             return {"ok": False, "summary": "Stopped before making the change.", "refused": True}
         if decision.tier not in self.policy.enabled:
             return {"ok": False, "summary": "This permission was turned off before the change, so I stopped.", "refused": True}
+        if self.policy.action_rule(name, arguments, application) == 'deny':
+            return {'ok':False,'refused':True,'summary':'This action was blocked before the change, so I stopped.'}
         turn.calls += 1
+        if name == 'act_in_application':
+            arguments['inspect_after'] = (READ_PERSONAL in self.policy.enabled
+                                          and self.policy.action_rule('inspect_application') != 'deny')
         turn.emit({"type": "tool", "name": name, "label": _running_label(name)})
         result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)
                   else self.tools.call(name, arguments))
@@ -210,12 +261,15 @@ class Agent:
         entry = self.tools.by_name.get(name)
         return bool(entry and "preview" in entry[1].input_schema.get("properties", {}))
 
-    def _ask_approval(self, turn: Turn, name: str, text: str, detail: str = "") -> tuple[bool | None, str]:
+    def _ask_approval(self, turn: Turn, name: str, text: str, detail: str = "", *, permission='') -> tuple[bool | None, str]:
         """Show what is about to happen and wait for the person. None if they never answer."""
         identity = uuid.uuid4().hex
         waiter = [threading.Event(), None]
         self.approvals[identity] = waiter
-        turn.emit({"type": "approval", "approval": identity, "tool": name, "summary": text, "detail": detail})
+        self.approval_permissions[identity] = permission
+        base, _, app = permission.partition('@')
+        turn.emit({"type": "approval", "approval": identity, "tool": name, "summary": text, "detail": detail,
+                   'permission':permission, 'permission_label':ACTION_PERMISSIONS.get(base,'')+(' in '+app if app else '')})
         deadline = time.monotonic() + self.approval_timeout
         try:
             while not waiter[0].wait(0.25):
@@ -223,13 +277,19 @@ class Agent:
                     break
         finally:
             self.approvals.pop(identity, None)
+            self.approval_permissions.pop(identity, None)
         turn.emit({"type": "approval_settled", "approval": identity, "approved": waiter[1] is True})
         return waiter[1], identity
 
-    def approve(self, identity: str, approved: bool) -> bool:
+    def approve(self, identity: str, approved: bool, *, remember=False) -> bool:
         waiter = self.approvals.get(identity)
         if waiter is None:
             return False
+        if remember:
+            permission = self.approval_permissions.get(identity)
+            if not permission or self.on_permission is None:
+                return False
+            self.on_permission(permission, 'allow' if approved else 'deny')
         waiter[1] = bool(approved)
         waiter[0].set()
         return True
@@ -324,7 +384,7 @@ class Agent:
         if router.development_request(routing_text):
             profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=24,
                               max_tokens=max(profile.max_tokens, 4096))
-        if re.search(r"\b(?:app|application|weather|notes?|calendar|tasks?|messages?|browser)\b", routing_text, re.I):
+        if re.search(r"\b(?:app|application|weather|notes?|calendar|tasks?|messages?|browser|timer|alarm|phone|call|email|song|track|music|process|pid)\b", routing_text, re.I):
             profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=max(profile.max_steps, 16))
         tools = router.select(routing_text,
                               self.tools.available, profile.max_tools)

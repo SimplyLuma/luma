@@ -34,6 +34,24 @@ class Node:
 
 
 class Accessibility(unittest.TestCase):
+    def test_noninteractive_content_cannot_hide_later_controls_or_break_the_result_budget(self):
+        import json
+        self.frame.children=[Node('Forecast layout',Role.FRAME,[Node('Forecast text',Role.FRAME) for _ in range(600)]),self.entry]
+        result=a.inspect_application({'application':self.application})['data']
+        self.assertGreater(result['scanned_nodes'],600)
+        self.assertEqual(len(result['controls']),1)
+        self.assertLess(len(json.dumps(result)),10000)
+        self.assertEqual(result['controls'][0]['name'],'City search')
+
+    def test_filtered_controls_are_paginated_and_json_is_complete(self):
+        import json
+        self.frame.children=[Node('City '+str(i),text='') for i in range(80)]
+        result=a.inspect_application({'application':self.application,'query':'City'})['data']
+        self.assertTrue(result['truncated'])
+        self.assertLess(len(json.dumps(result)),10000)
+        following=a.inspect_application({'application':self.application,'query':'City','offset':result['next_offset']})['data']
+        self.assertNotEqual(result['controls'][0]['name'],following['controls'][0]['name'])
+
     def setUp(self):
         a._apps.clear();a._targets.clear()
         self.entry=Node('City search',text='Existing text')

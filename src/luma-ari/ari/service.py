@@ -24,7 +24,7 @@ from gi.repository import Gio, GLib
 from . import BUS_NAME, OBJECT_PATH, audit, chatgpt, cloud, hardware, models, paths
 from .chatgpt_provider import ChatGPTProvider
 from .agent import Agent, Tools, Turn
-from .policy import APPROVAL_MODES, ENABLED_TIERS, TIER_NAMES, ANSWER, OPEN_APPS, PERSONAL_SETTINGS, Policy
+from .policy import APPROVAL_MODES, ACTION_PERMISSIONS, validate_permission, ENABLED_TIERS, TIER_NAMES, ANSWER, OPEN_APPS, PERSONAL_SETTINGS, Policy
 from .providers import OpenAICompatible
 from .persistence import update_json
 from .runtime import LocalRuntime, RuntimeError_, context_size
@@ -39,7 +39,7 @@ IDLE_UNLOAD_MINUTES = 1
 # starts it again with the next question.
 IDLE_EXIT_SECONDS = 120
 LOW_MEMORY_BYTES = 1_500_000_000
-TOOL_SERVERS = ("answers", "desktop", "system", "preferences", "applications", "workspace", "accessibility")
+TOOL_SERVERS = ("answers", "desktop", "system", "preferences", "applications", "workspace", "accessibility", "processes")
 SETTINGS_SCHEMA = "org.projectluma.Ari"
 
 
@@ -111,6 +111,10 @@ INTERFACE = """
       <arg name="ok" type="b" direction="out"/></method>
     <method name="Approve"><arg name="approval" type="s" direction="in"/><arg name="approved" type="b" direction="in"/>
       <arg name="ok" type="b" direction="out"/></method>
+    <method name="ApproveRemembered"><arg name="approval" type="s" direction="in"/><arg name="approved" type="b" direction="in"/>
+      <arg name="ok" type="b" direction="out"/></method>
+    <method name="SetActionPermission"><arg name="action" type="s" direction="in"/><arg name="choice" type="s" direction="in"/>
+      <arg name="ok" type="b" direction="out"/></method>
     <method name="Release"/>
     <method name="Activity"><arg name="limit" type="u" direction="in"/><arg name="json" type="s" direction="out"/></method>
     <signal name="Event"><arg name="request" type="s"/><arg name="json" type="s"/></signal>
@@ -168,6 +172,7 @@ class Daemon:
         self.tools = Tools(tool_commands(tool_dir,managed_app=BUS_NAME.removesuffix('1') if _session_manager_available() else ''))
         self.tools.start()
         self.agent = Agent(self.store, self.tools, Policy(), model_provider=self._model)
+        self.agent.on_permission = self._set_action_permission
         self.agent.model_provider_for = self._model_for
         if self.config.get("permissions_version", 1) < 2:
             disabled = {int(tier) for tier in self.config.get("turned_off_tiers", [])}
@@ -199,10 +204,34 @@ class Daemon:
     def enabled(self) -> bool:
         return self.settings.get_boolean("enabled") if self.settings is not None else True
 
+    def _set_action_permission(self, key, choice):
+        validate_permission(key, choice)
+        if self.settings is None or not self.settings.is_writable('approval-mode'):
+            raise Refused('Your administrator manages these permissions.')
+        rules = dict(self.agent.policy.action_rules)
+        if choice == 'default': rules.pop(key, None)
+        else: rules[key] = choice
+        if len(rules)>128:
+            raise ValueError('Remove an old remembered permission before adding another.')
+        self.config['action_permissions'] = rules
+        _save_config(self.config, ('action_permissions',))
+        self.agent.policy.action_rules = rules
+        audit.record({'tool':'set_action_permission','decision':'changed','action':key,'permission':choice})
+
     def _apply_settings(self) -> None:
         if self.settings is not None:
             mode = self.settings.get_string("approval-mode")
             self.agent.policy.approval_mode = mode if mode in APPROVAL_MODES else "system"
+        rules = {}
+        configured = self.config.get('action_permissions', {})
+        if self.settings is not None and self.settings.is_writable('approval-mode') and isinstance(configured, dict):
+            for key, choice in configured.items():
+                try:
+                    validate_permission(key, choice)
+                    if choice != 'default': rules[key] = choice
+                except ValueError:
+                    continue
+        self.agent.policy.action_rules = rules
         if not self.enabled:
             # Off means off: stop what is running, let the model go, stop the tools.
             for turn in list(self.requests.values()):
@@ -489,8 +518,8 @@ class Daemon:
         enabled = self.agent.policy.enabled
         descriptions = {0: "Answer questions, look things up and do sums.",
                         1: "Change your settings, sound, media, displays, time zone and connections.",
-                        2: "Read Ari projects and application data you grant through the system broker.",
-                        3: "Perform actions that applications publish, with their access and confirmation controls.",
+                        2: "Read Ari projects and application data through granted broker access or visible controls.",
+                        3: "Work in applications and control exact processes owned by you, using your autonomy choices.",
                         4: "Create and edit apps in Projects/Ari, and run isolated project checks and builds.",
                         5: "Install reviewed application packages and uninstall apps while keeping personal data.",
                         6: "Open an application you ask for, without changing its contents."}
@@ -500,6 +529,8 @@ class Daemon:
                        "adjustable": tier in ENABLED_TIERS and tier != 0} for tier in sorted(TIER_NAMES)],
             "keep_model_loaded_minutes": float(self.config.get("keep_model_loaded_minutes", IDLE_UNLOAD_MINUTES)),
             "enabled": self.enabled, "approval_mode": self.agent.policy.approval_mode,
+            'action_permissions':self.agent.policy.action_rules,
+            'action_permission_catalogue':ACTION_PERMISSIONS,
             "locked": self.settings is not None and not (self.settings.is_writable("enabled")
                                                          and self.settings.is_writable("approval-mode")),
             "schema": self.settings is not None,
@@ -705,10 +736,15 @@ class Daemon:
                     self._cancel_unload()
                     self.runtime.stop()
                 invocation.return_value(None)
-            elif method == "Approve":
+            elif method in ("Approve", "ApproveRemembered"):
                 if not self.owners.owns("approvals", args[0], _sender):
                     raise Refused("This approval belongs to another connection.")
-                invocation.return_value(self._bounded_reply(GLib.Variant("(b)", (self.agent.approve(args[0], bool(args[1])),))))
+                accepted = (self.agent.approve(args[0],bool(args[1]),remember=True) if method=='ApproveRemembered'
+                            else self.agent.approve(args[0],bool(args[1])))
+                invocation.return_value(self._bounded_reply(GLib.Variant("(b)", (accepted,))))
+            elif method == 'SetActionPermission':
+                self._set_action_permission(*args)
+                invocation.return_value(GLib.Variant('(b)',(True,)))
             elif method == "SetEnabled":
                 if self.settings is None or not self.settings.is_writable("enabled"):
                     raise Refused("Your administrator manages this setting.")

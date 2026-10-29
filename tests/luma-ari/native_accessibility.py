@@ -12,6 +12,17 @@ if '--weather' in sys.argv:
  weather.fetch_forecast=lambda *args,**kwargs:None
  weather.fetch_observation=lambda *args,**kwargs:None
  weather.fetch_alerts=lambda *args,**kwargs:None
+ if os.environ.get('ARI_ACCESSIBILITY_POPULATED') == '1':
+  from datetime import datetime,timedelta,timezone
+  from prairie_apps.weather_backend import PlaceStore,LocationSearch,new_place
+  from prairie_apps.weather_model import CityForecast,Current,HourPoint,DayPoint,write_cache,cache_directory
+  search=LocationSearch();search.load()
+  place=PlaceStore().add(new_place(search.search('Boston')[0]))
+  now=datetime.now(timezone.utc)
+  forecast=CityForecast(place,now.isoformat(),Current(22,'clearsky_day',humidity=60,wind_mps=3),
+   tuple(HourPoint((now+timedelta(hours=i)).isoformat(),22+i%5,'clearsky_day') for i in range(48)),
+   tuple(DayPoint((now+timedelta(days=i)).date().isoformat(),'clearsky_day',27,17) for i in range(10)))
+  write_cache(forecast,cache_directory())
  sys.exit(weather.main())
 client = None
 if os.environ.get('ARI_ACCESSIBILITY_MCP') == '1':
@@ -61,6 +72,7 @@ with (out/'weather.log').open('w') as log:
   token=app['application']
   def inspect():
    data=a.inspect_application({'application':token})['data']
+   assert len(json.dumps(data,ensure_ascii=False)) < 10000, 'Controls exceed the agent result budget'
    (out/'controls.json').write_text(json.dumps(data,indent=2))
    return data['controls']
   field=wait(lambda:next((row for row in inspect() if row['editable']),None))

@@ -40,7 +40,17 @@ have a separate on/off choice. Replies record the selected setting.
 
 Ari opens applications and changes personal settings through the existing
 settings catalogue and media controls. App opening has a separate permission
-and does not require approval for each launch.
+and opens directly in the normal autonomy mode.
+
+**Permissions and autonomy** is available in Ari's app menu and model picker,
+and with `ari --settings permissions`. Choose **Ask every time**, **Ask for
+important actions**, or **Let Ari act**. The normal mode approves an application
+task once for its steps in that app; Let Ari act skips Ari's own confirmations.
+Application/account controls, operating-system permissions and administrator
+locks still apply. Advanced Allow/Ask/Block choices override the mode's defaults;
+disabled capabilities remain blocked in every mode. A remembered permission
+requires selecting **Remember this choice** when approving or declining. These
+choices stay in Ari's own settings and can be reviewed or removed in Advanced.
 
 Application actions use the shared Semantic Broker: request the needed access,
 read the app's published objects/actions, and invoke their actual IDs. The
@@ -49,8 +59,15 @@ controls and use the app's own editable-text and button-action interfaces.
 Controls must come from a fresh inspection of an application named by the
 person. Protected fields are excluded; stale controls and concurrent text
 changes are refused. Changes require Ari's normal action permission and preview.
-Ari inspects again to verify the outcome. No synthetic mouse/keyboard input
+Ari returns compact, paginated controls after each change to verify the outcome.
+Layout and forecast prose cannot crowd action targets out of the result budget.
+No synthetic mouse/keyboard input
 is used, and apps must expose usable accessibility controls.
+
+Process tools find exact same-user processes by name/PID, retain short-lived
+identities and use pidfds with start-time revalidation for end/kill. The person
+must identify the target; an ambiguous “this process” is not guessed. Kill must
+be explicitly requested. Results distinguish a sent signal from verified exit.
 
 Development tools create native SDK projects under `~/Projects/Ari`, list/read
 and edit their files, and run checks/build commands. Replacing an existing file

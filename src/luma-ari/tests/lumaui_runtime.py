@@ -44,6 +44,43 @@ def settle(window, seconds):
 
 
 class FixtureRuntime(unittest.TestCase):
+    def test_native_permissions_dialog_and_explicit_remember_choice(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from ari.policy import ACTION_PERMISSIONS
+        window=self.window
+        window.fixture=False
+        data={'schema':True,'enabled':True,'enabled_writable':True,'approval_mode':'system',
+              'approval_mode_writable':True,'tiers':[],'action_permissions':{'enter_text@weather':'allow'},
+              'action_permission_catalogue':ACTION_PERMISSIONS}
+        calls=[]
+        def call(method,signature,args,callback=None):
+            calls.append((method,signature,args))
+            if callback:callback((json.dumps(data),) if method=='Settings' else (True,))
+        window.daemon=SimpleNamespace(call=call)
+        def descendants(widget):
+            yield widget
+            for child in _children(widget):yield from descendants(child)
+        for width,height in ((1180,740),(390,844)):
+            window.set_default_size(width,height);window.present();settle(window,.1)
+            window.show_permissions();settle(window,.1)
+            dialog=window.permissions_dialog
+            advanced=next(widget for widget in descendants(dialog) if widget.get_name()=='advanced-permissions')
+            advanced.set_expanded(True)
+            row=next(widget for widget in descendants(dialog) if widget.get_name()=='permission-enter_text@weather')
+            row.set_selected(3)
+            self.assertIn(('SetActionPermission','(ss)',('enter_text@weather','deny')),calls)
+            dialog.close();settle(window,.1)
+            self.assertIsNone(window.permissions_dialog)
+        window.request='remember-request'
+        window.on_event(window.request,json.dumps({'type':'approval','approval':'remember-test','tool':'act_in_application',
+            'summary':'Add Chicago to Weather','detail':'This request only','permission':'enter_text@weather',
+            'permission_label':'Entering text in Weather'}))
+        check=next(widget for widget in descendants(window.page) if widget.get_name()=='remember-remember-test')
+        check.set_active(True)
+        window.answer('remember-test',True)
+        self.assertIn(('ApproveRemembered','(sb)',('remember-test',True)),calls)
+
     def test_parity_models_pages_effort_and_safe_links(self):
         window = self.window
         window.present()

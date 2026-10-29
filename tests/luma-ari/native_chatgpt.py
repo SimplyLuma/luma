@@ -168,6 +168,16 @@ def main():
         assert window.effort_options("chatgpt:test-model")["levels"] == ["low", "high"]
         window.set_effort("chatgpt:test-model", "high")
         settle(lambda: window.chatgpt_data.get("efforts", {}).get("test-model") == "high")
+        permission_result=[]
+        window.daemon.call('SetActionPermission','(ss)',('enter_text@weather','allow'),permission_result.append)
+        settle(lambda:bool(permission_result))
+        assert permission_result[0] == (True,),permission_result
+        window.show_permissions()
+        settle(lambda:any(item.get_name()=='advanced-permissions' and item.get_mapped()
+                          for item in descendants(window.permissions_dialog)))
+        capture('permissions-autonomy')
+        window.permissions_dialog.close()
+        settle(lambda:window.permissions_dialog is None)
         previous_status = window.chatgpt_data
         service_process.terminate()
         service_process.wait(timeout=5)
@@ -178,6 +188,10 @@ def main():
         assert window.chatgpt_data["active"] == profile
         assert window.state["model"] == "chatgpt:test-model"
         assert window.chatgpt_data["efforts"]["test-model"] == "high"
+        permission_status=[]
+        window.daemon.call('Settings',None,(),permission_status.append)
+        settle(lambda:bool(permission_status))
+        assert json.loads(permission_status[0][0])['action_permissions']['enter_text@weather']=='allow'
         window.send("Tell me a short story about clouds")
         settle(lambda: not window.state["busy"])
         conversation = next(item for item in window.data["conversations"] if item["id"] == window.state["cur"])
@@ -204,7 +218,7 @@ def main():
         dialog.close()
         mode = "real Secret Service" if os.environ.get("ARI_TEST_KEYRING_DAEMON") else "in-memory credential fixture"
         print("ARI CHATGPT: private D-Bus, browser callback, signed identity, " + mode +
-              ", model selection, effort persistence/request, hosted search request, persona, daemon restart, completed inference, late limit failure, signout, returning login and cancellation PASS", flush=True)
+              ", model selection, effort persistence/request, hosted search request, persona, remembered permissions/UI and daemon restart, completed inference, late limit failure, signout, returning login and cancellation PASS", flush=True)
     finally:
         window.close()
         for process in reversed(children):

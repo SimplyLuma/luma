@@ -48,7 +48,8 @@ class BoundaryTests(unittest.TestCase):
         self.daemon.owners.event('request', {'type':'approval', 'approval':'approve'})
         turn = SimpleNamespace(stop=Mock()); self.daemon.requests['request'] = turn
         for method, args in [('Stop', GLib.Variant('(s)', ('request',))),
-                             ('Approve', GLib.Variant('(sb)', ('approve', True)))]:
+                             ('Approve', GLib.Variant('(sb)', ('approve', True))),
+                             ('ApproveRemembered', GLib.Variant('(sb)', ('approve', True)))]:
             self.assertEqual(self.call(method,args).return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
         turn.stop.set.assert_not_called(); self.daemon.agent.approve.assert_not_called()
     def test_download_cancel_cannot_cancel_a_chat_or_another_connection(self):
@@ -124,6 +125,10 @@ class BoundaryTests(unittest.TestCase):
         self.daemon.settings = Mock(); self.daemon.settings.is_writable.return_value = True
         self.call('SetApprovalMode', GLib.Variant('(s)', ('custom',))).return_dbus_error.assert_called_once()
         self.daemon.settings.set_string.assert_not_called()
+
+    def test_advanced_permissions_cannot_override_an_administrator_lock(self):
+        self.daemon.settings=Mock();self.daemon.settings.is_writable.return_value=False
+        self.call('SetActionPermission',GLib.Variant('(ss)',('enter_text@weather','allow'))).return_dbus_error.assert_called_once()
     def test_queued_cloud_setter_excludes_turn_and_other_setter(self):
         queued=[]
         def save(work): queued.append(work); return None
