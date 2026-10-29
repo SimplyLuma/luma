@@ -71,10 +71,10 @@ def trusted(service, seed=False, observe_after=False):
         args.append("--seed-fixture")
     result = subprocess.run(args, text=True, capture_output=True, timeout=60)
     record = json.loads(result.stdout)
-    if result.returncode and not (observe_after and service == "clipboard" and
-            record.get("uid") == 1000 and record.get("service") == service and
-            record.get("state") == "forbidden-write-fixture"):
-        raise RuntimeError("Trusted synthetic control unavailable")
+    if record.get("uid") != 1000 or record.get("service") != service or record.get("state") not in {
+            "empty", "host-fixture", "android-fixture", "forbidden-write-fixture", "other-content", "fixture-label", "other-label", "unavailable"}:
+        raise RuntimeError("Trusted synthetic control identity unavailable")
+    record["returncode"] = result.returncode
     return record
 
 
@@ -107,8 +107,12 @@ def run(expected_apk, report):
                   runtime_package=command("rpm", "-q", "luma-android-runtime"))
     android("am", "force-stop", PACKAGE)
     report["phase"] = "trusted-before-controls"
-    controls = {"before": {"clipboard": trusted("clipboard", seed=True), "task": trusted("task")}}
+    controls = {"before": {}}
     report["controls"] = controls
+    controls["before"]["clipboard"] = trusted("clipboard", seed=True)
+    controls["before"]["task"] = trusted("task")
+    if controls["before"]["clipboard"].get("state") != "android-fixture" or controls["before"]["task"].get("state") != "fixture-label":
+        raise RuntimeError("Nonempty trusted before-controls unavailable")
     report["phase"] = "ordinary-apk-probes"
     android("am", "start", "-W", "-n", PACKAGE + "/.MainActivity",
             "--ez", "probe_native_clipboard", "true", "--ez", "probe_native_task", "true",
@@ -138,9 +142,12 @@ def run(expected_apk, report):
     if kernel_uid is None or any(int(value) != uid for value in kernel_uid.groups()):
         raise RuntimeError("Fixture kernel identity mismatch")
     report["phase"] = "trusted-after-controls"
-    controls["after"] = {"clipboard": trusted("clipboard", observe_after=True), "task": trusted("task")}
     report["probe_receipts"] = [row for row in records if row.get("guard_run") == report["run_id"]
                                 and row.get("event") in EVENTS]
+    report["android_pid"] = int(pid)
+    controls["after"] = {}
+    controls["after"]["clipboard"] = trusted("clipboard", observe_after=True)
+    controls["after"]["task"] = trusted("task")
     if generation() != start:
         raise RuntimeError("Runtime generation changed during qualification")
     report.update(android_pid=int(pid), status=assess(records, report["run_id"], uid, int(pid), controls))

@@ -4,6 +4,8 @@ import copy
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location("native_guard_qualification", Path(__file__).with_name("native-guard-qualification.py"))
 gate = importlib.util.module_from_spec(spec)
@@ -68,6 +70,21 @@ class EvidenceTests(unittest.TestCase):
     def test_unchanged_empty_reads_cannot_hide_admitted_setter(self):
         self.controls["after"]["clipboard"]["state"] = "forbidden-write-fixture"
         self.assertEqual(self.verdict(), "failed")
+
+
+class ControlEvidenceTests(unittest.TestCase):
+    def test_unavailable_post_control_state_is_retained(self):
+        output = '{"uid":1000,"service":"clipboard","state":"empty"}'
+        with patch.object(gate.subprocess, "run", return_value=SimpleNamespace(stdout=output, returncode=1)):
+            record = gate.trusted("clipboard", observe_after=True)
+        self.assertEqual(record["state"], "empty")
+        self.assertEqual(record["returncode"], 1)
+
+    def test_wrong_control_identity_is_rejected(self):
+        output = '{"uid":10126,"service":"clipboard","state":"android-fixture"}'
+        with patch.object(gate.subprocess, "run", return_value=SimpleNamespace(stdout=output, returncode=0)):
+            with self.assertRaises(RuntimeError):
+                gate.trusted("clipboard")
 
 
 class InstalledPathTests(unittest.TestCase):

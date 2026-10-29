@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:07:00+00:00
+- Updated: 2026-10-29T23:12:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,25 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:12Z — actual native probes reached; post-control inconclusive:
+- 78667cb4 progressed past installed-path/hash/UID/generation checks. Ordinary
+  APK UID10126, Android init4365/start15621, system_server275/start16070.
+  Actual before controls BOTH nonempty UID1000: clipboardandroid-fixture and
+  taskfixture-label. Native raw APK probes ran; kernel process UID verified.
+- INCONCLUSIVE23:10:09 at trusted-after-controls: old helper raised on a
+  post-control state mismatch and discarded that state plus completed APK
+  receipts. Therefore actual denial/disclosure/write verdict unknown, NOT PASS.
+  Android SELinuxDisabled remains productionBLOCK. No inference from HIDL code.
+- Runner now records before/after controls incrementally, typed post-control
+  mismatches with return code and completed probe/UID/PID receipts before any
+  following failure. Wrong trusted UID/service/state schema still rejected.
+  96d6a101 PASSED13 runner/path/evidence tests. ef4a4c39 PASSED5+9+8 harness
+  checks+readonly source/VM preflight. Window-live/check.py prepared privately
+  only (keyboard resize/maximize/state), syntax checked, not executed/qualified.
+- CURRENT observer dev-android-guard-build-handoff-a1773142.service; manifest
+  8ac68e6d4b2d8c618c7fb31c22eb3dcee408cdc7df6b5ee6a8d3157ca845fbba.
+  Continue to actual child/native receipt, diagnose observed after-control state.
 
 OBSERVED23:07Z — native .94 reboot and normal-user APK operations PASSED:
 - ef606d67 booted .94 derived deployment f865bb9e...; previous base retained.
