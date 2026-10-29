@@ -181,6 +181,17 @@ removed after readiness or timeout; it does not keep an idle polling timer.
 This prevents a late compositor from consuming the Android session restart
 budget before a display exists.
 
+Packaged cold CLI launches ask the user manager to start that resident session
+unit. A separate process group alone does not escape a launcher's systemd cgroup.
+A real disposable-VM control confirmed that such a child dies with its transient
+caller while a managed child service survives. Failed manager starts return an
+error without spawning a caller-owned fallback. A live source-client test timed
+out waiting for the older Android image to boot, while its session remained
+active in the expected service cgroup after the caller exited. Android later
+reported boot completion, but a subsequent client command also timed out. This
+proves the lifetime boundary, not reliable cold or warm startup. Those failures
+remain release gates for the matched runtime/image test.
+
 A real mouse resize in the disposable x86 VM froze the baseline compositor.
 Native debuggerd stacks identified an adapter/window lock inversion. Patch 0014
 releases the window lock before adapter invalidation, with strong lifetime

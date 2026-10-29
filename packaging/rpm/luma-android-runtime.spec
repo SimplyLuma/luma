@@ -186,6 +186,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %changelog
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.92.android20261029.1
 - Check kernel page size before starting Android apps
+- Keep the shared Android session under its user service
 
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.91.android20261028.1
 - Use the native Android clipboard service and disable the unused host provider

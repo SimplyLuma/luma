@@ -16,7 +16,9 @@ from luma_android import initialize
 @unittest.skipUnless(os.geteuid() == 0, "package ownership checks require the RPM builder")
 class PackagedImagesTest(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(dir="/root")
+        # Atomic desktops can make /root a link to /var/roothome. Test the
+        # protected real ancestry; production must still reject input symlinks.
+        self.directory = tempfile.TemporaryDirectory(dir=Path("/root").resolve())
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         records = {}

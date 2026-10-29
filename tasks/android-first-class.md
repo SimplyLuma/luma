@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T07:35:00+00:00
+- Updated: 2026-10-29T08:41:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 6118eec17 (bounded native clipboard transfer and APKr12 controls)
+- Branch and last useful commit: codex/android-first-class; a90a770f6 (page-size guard),6118eec17 (bounded native clipboard)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,9 +12,9 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD6118eec17. Current milestone
-adds APKr12 native-HIDL controls and bounded native clipboard transfer0016
-(worker/cache/header, both builders/state hashes and real pipe/callback tests).
+Source/worktree isolated; canonical untouched. HEADa90a770f6. Uncommitted milestone
+adds a supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
+and canonical-root unit fixtures. Committed0016 remains source-qualified only.
 **DO NOT BUILD SNAPSHOT901d5f18c OR luma-project-aidl.squashfs**: wrong backend.
 
 CURRENT ACTIVE BUILD: normal dev-android-images-build-vm-r6-ae325a4f.service,
@@ -24,8 +24,10 @@ hashes verified06:33Z, guest startup06:33:26Z. Correct read-only project disk
 luma-project-native.squashfs70,553,600B SHA
 e6167a6ae3cebe0dc8e5ea71288b8edc2e8ee7f426bf1552324fe8496e33db92,
 source59aecadc4. Fresh upper-native-v1/work-native-v1 preserve older attempts.
-At07:03Z still maintained repo Git/LFS integrity preflight, git reading SquashFS,
-~6.26GiB guest available/1MiB swap, build log0bytes. Not compilation or pass.
+Git/LFS integrity preflight FINISHED about07:51Z. Build-tool bootstrap compiled
+399 steps. At08:03Z real soong_build graph process RSS~6.47GiB, guest available
+43MiB/internal swap1.2GiB of24GiB; normal10GiB admission/QEMU9GiB hard retained.
+At08:08Z graph remained active, guest swap~1.4GiB. No finished image exists.
 Current snapshot does NOT contain committed clipboard transfer0016. Stop root
 unit first for deliberate cancellation; owner watchdog also protects job death.
 
@@ -42,17 +44,54 @@ VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. New intact XML backup
 created by runtime-prep12; current VM3GiB RAM/5GiB hard fits6GiB reservation.
 Original vm/domain.xml and restored b3f5031d... XML retained. This is the owned
 synthetic-user VM, not physical hardware. .91 installed in volatile /usr overlay.
-APK12 install plus ordinary native-HIDL old-image negative control are next.
+APKr13 installed; real ordinary-HIDL old-image negative control completed08:01Z.
+Managed-cold92 test FAILED boot deadline08:13Z; service MainPID13327 remained
+active in its own luma-android-session.service cgroup after caller exit. Warm
+source-client retry FAILED runtime response timeout08:25Z; still not qualified.
+Runtime remains active while final root-stack evidence is captured, then stop it
+and restore original inactive XML before freeing its6GiB admission.
 Stop root controller before normal job; restore original6GiB/8GiB XML only OFF.
 Do not run restored full-RAM VM under6GiB reservation (requires9GiB).
 
-Page-size gate .92 source candidate checks sysconf before user presentation,
-root init (even existing state) and root provider load; doctor reports/measures
-support. Current Android13 profile requires4KiB. Five tests executed inside this
-bounded x86 VM PASSED07:32:34Z, root unitpage-size-unit-20261029T073230; exact
-source hashes/result vm/page-size-unit-result.json. Tests simulate16/64KiB and
-unknown values; no ARM execution or .92 clean-package result yet. Full RPM next
-after stopping6GiB runtime lane (10+6 already fills account job budget).
+Page-size gate .92 committed a90a770f6. Five page tests passed, then full89
+source tests passed07:49:41Z after test fixtures resolved Silverblue /root to
+its protected real directory and copied the required bin helper. Full91 now
+PASSED08:07:06Z after adding managed-cold handoff regressions, zero failures/errors/
+skips. Exact inputs/results vm/source-suite-92-managed-result.json. Earlier
+source-suite attempts failed before execution due root Git ownership/read count,
+then exposed missing helper (88 discovered) and /root symlink fixture assumptions;
+no floors or production ancestry checks relaxed. .92 RPM still not built.
+
+CRITICAL REAL NATIVE BASELINE: APKr12 could not load private vendor interface
+as an app (no registered org.lineageos.platform shared library); unavailable is
+not denial. Its UID1000 app_process control DID read the expected token after
+using /init.environ.rc plus /data/system/environ/classpath whitelist. New APKr13
+uses raw HIDL1.0 HwBinder/HwParcel (wire1 setter/2 getter), no private shared-lib
+permission and no hidden-API policy change. Actual Android UID10134 read the
+Android token and replaced it with fixed forbidden-write token; UID1000 control
+confirmed Android token before and forbidden token after. Exact evidence
+vm/native-clipboard-r13-old-image-negative.json. Probe reaches the real HAL;
+old image is NOT isolated/qualified. Actual guard0015 image must now deny read/
+write with the same nonempty trusted controls and preserve normal ClipboardManager.
+APKr13 SHA f99ed9e69ded19e2d497ddfcee20e0cdcc6185f5c0a1cc1c97da914e83afbf8a.
+Built offline07:57:21..26Z,275MiB peak, source JDK17/verified tools asUID1003 under
+384MiB root cap within existing6GiB VM reservation (VM5GiB hard+controllers fit).
+No Podman/package-runner bypass; unshare network, setpriv no-new-privileges,
+explicit clean compiler env/Xmx192m, normal owner job remained active.
+
+.91 root install finished07:34:04Z; first ordinary fixture remove failed after
+123.8s waiting for cold Android. Explicit supervised session then boot_completed1
+at07:41:54Z. APK12 normal retry remove/install/launch11.83/12.55/3.92s succeeded;
+APK13 later20.27/22.68/10.01s under graph I/O, not first-frame/performance evidence.
+The real harmless-sleeper user-systemd control08:04:34Z proved Popen setsid child
+is killed with its transient parent and separate managed child service survives.
+Current source uses existing user session unit for packaged detached cold launches;
+manager failure cannot spawn caller-owned fallback. Actual cold source test FAILED after182s with unit still active/MainPID13327
+in its service cgroup. Android reported boot_completed1 by08:22:26Z; later warm
+client still timed out. Native SF/composer stacks were captured; composer Wayland
+thread in normal dispatch, not evidence of a clipboard deadlock. Py-spy0.5.x
+metadata under vm/pyspy/receipt.json (use actual receipt version) dumped Python
+3.14 session idle in GLib loops; root-side stack next. No cold/warm restart pass.
 
 New transfer helper test e98dfcab PASSED real >pipe-capacity UTF-8 self roundtrip,
 partial I/O, timeout/cancellation, oversize/invalid UTF-8, EPIPE, bounded writes,
@@ -351,3 +390,39 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   full package89-case result not yet run. Surface source selects4KiB; primary
   AOSP docs confirm Android15 introduced16KiB support, which is not evidence
   that our older Android13 images or64KiB host kernels are compatible.
+
+2026-10-29T08:12Z native baseline and lifecycle progress:
+- Build r6 passed source checks and compiled bootstrap; real soong_build graph
+  now paging inside7GiB guest+24GiB internal swap, source snapshot59aecadc4 still
+  lacks0016. No matched image ready. Root/controller normal ownership intact.
+- Raw APK13 ordinaryUID10134 confirmed missing native-HIDL ACL in old image with
+  nonempty trusted before/after tokens. Corrected probe is executable and catches
+  the real gap; prior APK12 unavailable result was never accepted as denial.
+- Source suite91 passes including cold handoff manager failure/no-child tests;
+  full package .92 pending. Live managed-cold92 source test still active.
+
+2026-10-29T08:41Z source milestone / remaining gates:
+- APK13 raw-HIDL negative control passed as a probe08:01:25Z: ordinaryUID10134
+  read Android fixture and wrote forbidden fixture, UID1000 before/after agreed.
+  It proves the older image is vulnerable, never a security pass. New0015/0016
+  image still required. Source tool native-clipboard-control.py now reproduces
+  the fixed read-only trusted control with required nonempty --expect.
+- Current source91 tests passed08:07Z. Real cold client failed182s deadline; its
+  supervised unit survived. Android completed later, but warm command timed out.
+  These old-image restart failures remain explicit release gates.
+- Guest-only zram setup succeeded08:27:39Z: official Ubuntu kernel extras
+  5.15.0-198.208 SHA43528923613a77891402e3b722729e7a866ac24f76b087b63a02cdd7ae56134d,
+  wireless-regdb dependency SHA0c8f9893f577c890b3dd6d1f2b90a564b1627879dd58b2bf3ce17434d5ca17d0.
+  Download hashes checked against signed apt metadata; no host swap/limits changed.
+  lz4 zram4GiB virtual/1GiB compressed-memory cap, priority100; original24GiB disk
+  swap preserved. Receipt build-vm/zram-receipt.json. First setup guard stopped on
+  the small dependency; second hit Python3.10's missing hashlib.file_digest before
+  install; corrected streaming hash, third succeeded. At08:39Z ~640MiB original
+  data occupied~142MiB compressed,179MiB peak; no image/performance pass implied.
+- r6 soong_build graph is IO bound (~12m CPU/~46m elapsed, RSS~6GiB plus disk swap).
+  Plan next: save root runtime stack, stop owned runtime/restore XML; commit source,
+  clean-package .92 and pack latest0016 project snapshot. Checkpoint/stop r6 if
+  still incomplete, then use8GiB guest RAM within EXISTING9GiB hard/10GiB normal
+  reservation and guest zram from startup, preserving source/upper/output. No
+  hard-cap, host memory reserve or host swap increase. Current r6 is STILL ACTIVE
+  with7GiB guest and source59aecadc4; do not assume that plan already ran.

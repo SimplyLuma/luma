@@ -407,7 +407,24 @@ class WaydroidEngine:
                     )
 
             if detached:
-                session_process = start_detached_session()
+                if Path(self.executable).name == "waydroid":
+                    # setsid does not move a process out of a systemd cgroup.
+                    # The resident user unit owns the packaged runtime, so a
+                    # short-lived installer/launcher cannot kill other apps.
+                    try:
+                        subprocess.run(
+                            ["/usr/bin/systemctl", "--user", "start", "--no-block",
+                             "luma-android-session.service"],
+                            check=True, capture_output=True, text=True,
+                            timeout=min(timeout, 30),
+                        )
+                    except (OSError, subprocess.SubprocessError) as error:
+                        raise RuntimeUnavailableError(
+                            "The Android user session service could not be started."
+                        ) from error
+                else:
+                    # Explicit alternative engines keep their own launch ABI.
+                    session_process = start_detached_session()
             else:
                 command = self.session_command()
                 os.execvpe(command[0], command, os.environ.copy())

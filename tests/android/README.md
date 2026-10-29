@@ -169,10 +169,15 @@ It requires the executable's completion receipt and preserves its source/binary
 under DEV_ARTIFACT_DIR when set. This is not an Android or Wayland-server IPC test.
 
 The source APK's **Probe native clipboard HAL** button exercises raw HIDL from an
-ordinary app. Its optional org.lineageos.platform library exposes the generated
-interface without granting a privileged permission. A UID1000 `app_process`
-invocation of `org.projectluma.androidtest.NativeClipboardProbe read` provides a
-fixed read-only native control. Require a recognized nonempty fixture before and
+ordinary app through the HIDL1.0 wire ABI and reflected HwBinder/HwParcel methods.
+Hidden-API restrictions or unavailable transport leave this test inconclusive;
+never count those as a native UID denial. The image's platform jar is not a
+registered application shared library. A UID1000 `app_process` invocation of
+`org.projectluma.androidtest.NativeClipboardProbe read` provides a fixed read-only
+native control. `native-clipboard-control.py --expect android-fixture` runs that
+control inside a disposable VM, using only whitelisted public init/classpath
+exports and the explicit platform jar. It requires a nonempty match. Require a
+recognized nonempty fixture before and
 after the APK's empty reads/no-op write; unavailable or empty trusted controls
 cannot pass. A returned setter request indicates transport success, not admission.
 
