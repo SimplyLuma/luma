@@ -1,11 +1,11 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r5 delivered for manual testing; visual conformance
+Status: server-qualified Ari2 r6 delivered for manual testing; visual conformance
 and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. The current independent Dell preview uses runtime source
-`8795dce3a9aa257de91fb27b700e73140c7ea91a`. Earlier checkpoints below are history.
+`9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. Earlier checkpoints below are history.
 
 ## Application and development continuation
 
@@ -387,3 +387,34 @@ model decisions were controlled fixtures. Missing server Cairo bindings and
 temporary document-portal teardown were corrected in the test environment; no
 host package or real device state was changed by those tests. Package and Dell
 qualification remain the next gate; this is not live ChatGPT acceptance.
+
+## Autonomy preview delivered — 2026-10-29 21:36 UTC
+
+Runtime source: `9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. All five CI checks
+passed. The final Fedora 44 package passed 172 tests, including a real disposable
+process that ignored normal termination and was then force-killed with verified
+exit. The native settings panel, cold-start opening, remembered permissions and
+daemon restart passed; the broader cohort passed 49 Wayland UI tests. Populated
+Weather passed with all three approval modes and no Python callback failures.
+Forecasts and model decisions were fixtures, with the real city database,
+controls, MCP transport, approval engine and saved-city store.
+
+Exact r6 native sign-in/profile/keyring isolation, actual installed activation,
+RPM runtime byte comparison, extracted-package native flow, source contracts
+and r5-to-r6 update/rollback qualification passed. The private qualification
+expectations now check the intended Important-mode default rather than the old
+preview's forced Every-change default. No product permission checks were waived.
+
+RPM SHA-256: `bef99f9317c3454f4ed9fd6816a2b1e32cad4562f894715fdc297d581ba42d08`.
+SRPM SHA-256: `ec1ceb2c69a7bfb41f080a0deaea6914072e1a76125dd191c165e70dcc88d511`.
+Ari2 r6 archive SHA-256:
+`d98e55fa87f60a68a895a5618a53f25261988ae43a0a34236be91cdc527b62a5`.
+
+Both previous preview D-Bus names were unowned before replacement. The
+checksum-verified candidate updated its owned registrations and retained chats,
+settings and keyring entries. `ari2-chatgpt-9e726a4-r6` launched with
+`--settings permissions` in the Dell graphical session under
+`luma-preview-ari2-chatgpt-9e726a4-r6-1466daa3.service`; metadata showed it
+active/running with UI and daemon names owned. This was a requested launch,
+not an automated Dell application test. Live Weather/search acceptance and
+visual conformance remain open. PR #92 remains draft.
