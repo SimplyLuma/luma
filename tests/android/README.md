@@ -128,3 +128,10 @@ are reported as incomplete observations. Only the synthetic fixture gets app
 attribution; no command arguments or app data are recorded. This measures
 neither first presented frame nor physical battery power. Actual VM execution
 is a separate acceptance gate; compilation of this tool is not a metric result.
+
+`python3 tests/android/image-host-tools.py /path/to/build/make` tests the actual
+host-selection Make fragment. The explicit runtime-image flag removes unused
+Windows host-tool variants while retaining upstream defaults without the flag.
+The full builder must also prove its generated Soong configuration retains
+Android's target/secondary architectures and ABIs; this fragment test alone
+does not qualify an image or application compatibility.
