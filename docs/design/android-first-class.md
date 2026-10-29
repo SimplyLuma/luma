@@ -121,6 +121,17 @@ dismissal/reset callbacks, original-action PendingIntent handling, and a kernel
 UID check on the privileged Android platform stub. Clean/incremental builders
 apply the same patches. Existing provider-owned Waydroid files remain intact.
 
+The reply candidate extends Luma's existing native notification entry and send
+button. It negotiates a custom Shell capability before advertising a reply,
+binds each post to a registered Android listener and unpredictable host token,
+and exports the reply endpoint on the producer's Notify connection. Android
+uses the app's original mutable PendingIntent and RemoteInput contract; it never
+pretends an empty ordinary action is a reply. Unsupported input/authentication
+shapes use the app's own flow. Request receipts prevent duplicate dispatch and
+uncertain completion opens the source app for reconciliation. API compilation,
+production-method fixtures and private D-Bus tests qualify source contracts;
+matched-image native-UI delivery remains a separate acceptance gate.
+
 The root hardware Binder endpoint has a separate process-local admission
 adapter. It checks kernel caller credentials before the provider can unmarshal
 or dispatch a request. Only Android root and system-server UIDs are admitted

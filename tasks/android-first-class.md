@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T14:06:00+00:00
+- Updated: 2026-10-29T15:04:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 7c13c192f
+- Branch and last useful commit: codex/android-first-class; 3f5a44f8e; reply candidate pending commit
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,10 +12,63 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD7c13c192f. Current source
+Source/worktree isolated; canonical untouched. HEAD3f5a44f8e before reply commit. Current source
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+CURRENT BUILD: normal dev-android-images-build-vm-r9-a1c4e3af.service ACTIVE,
+10GiB/450GiB HDD, launched14:07:38Z. Rootcontroller unchanged unit name watches
+normal10GiB owner. Immutable4 inputs verified14:12:38Z, builder boot14:12:39Z,
+guest startup14:13:00Z PASSED actual zstd24GiB virtual/4GiB compressed cap.
+Project source7c13c192f, SFS849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
+includes0015..18. Guest8GiB/QEMU9GiB combined fixed. At15:01:15Z actual soong_build graph active10m19s/18m55s CPU, RSS~6.5GiB.
+Zram original4.5GB/compressed653MB/allocated683MB, cap4GiB unchanged.
+No completed image yet; the current image snapshot does NOT include replies.
+Runtime VM/rootcontroller/normal9GiB stopped14:07:08Z before this launch;
+full bounded6GiB/8GiB-combined XML retained (source original unchanged).
+
+REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
+- Host notification_reply.py/transport.py/dbus.py plus bridge/session integration;
+  SDK0005 plus NotificationReplyDispatcher.java; native Shell0286 extends0025 UI.
+  Runtime candidate.93; accepted OS/Shell package pins unchanged. Current image
+  source7c13c192f and installed .92 do not contain these changes.
+-45 notification component tests PASSED c767e61914:56:17Z.
+  Actual kernel credential/PID dispatch closure tested with explicit Binder
+  dependencies; no actual Binder claim. Includes8-worker C-userdata lifetime,
+  canonical request/token/text validation, generation revocation and deduplication.
+-Private reply endpoint878dc0ef PASSED14:38:38Z: separate real D-Bus connections,
+  Shell/foreign caller admission, replacements, owner loss and uncertain results.
+  Native-capability owner-epoch test3ecfc401 PASSED14:58:32Z: real private bus
+  + fixture server/listener; forwarder restart preserves Shell-held IDs/tokens;
+  Shell loss clears grants. Legacy d2f97939 PASSED15:02:56Z. No actual renderer.
+-Shell97558b26 PASSED14:51:01Z: exact verified Fedora50.3 source + spec-selected
+  patch list through0285, new0286 and updated spec apply. Production reply method
+  executed in Node with D-Bus fixtures: existing Messages/new Android fixed path
+  and interface routing, caller shape, tokens and cross-app/path denial.
+  Not a GJS/runtime/rendering test. Private effective-r4/ receipt retained.
+-Java latest4feddc80 PASSED15:03:07Z: pinned AIDL compiler confirms service1..3
+  and callback1..3 retained, new service4/5 and callback4. Generated AIDL and
+  production dispatcher compile against actual API33. Production helper JVM
+  fixtures test original RemoteInput payload, UID policy, text limits, receipts,
+  replacement/removal/reset, immutable/auth/multiple-input fallback, cancelled
+  queued work and a running send whose ACK arrives after the5s wait. Late receipt
+  reconciles without another send. Not Android IPC or a full SDK/image build.
+-Android callback checks captured host UID policy BEFORE AIDL unmarshalling.
+  Native input is the original mutable PendingIntent, one free-form RemoteInput;
+  unsupported shapes never become an empty-reply ordinary button. No new image
+  yet. Host service5 requires posting kernel PID match a live registered listener.
+-Host uses one strongly retained gbinder.Client per reply until C destroy,
+  including timed-out workers; global8 calls. libgbinder cancellation does not
+  stop the worker.15s host deadline /30s Shell deadline; uncertain is not retried.
+  Reply tokens bind post/listener/generation; same-connection endpoint requires
+  current Shell unique owner. Records retain hashes/receipts, no message text.
+-Source total124 tests DISCOVERED; this is not a full execution result. Candidate
+  RPM full124-test check pending. Source scripts bash syntax/diff whitespace pass.
+-TODO: clean-package .93, actual GJS/native UI and Binder/RemoteInput receipt in
+  a matched image/Shell pair; source-level full SDK image build; physical tests.
+  Update the next image snapshot after current native-guard image finishes or
+  is safely saved. Never replace its immutable project disk mid-build.
 
 FAILED BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
 10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
@@ -39,7 +92,7 @@ profile; durable r6-checkpoint.json/logs retained. No process-heap resume claim.
 r7 failed before compilation08:56Z due reading write-only zram mem_limit;
 no result claimed. r8 fixes startup. Immutable input verification remains intact.
 
-CURRENT RUNTIME: normal dev-android-runtime-full-r9-5706d8ea.service ACTIVE,
+COMPLETED RUNTIME (OFF since14:07:08Z): normal dev-android-runtime-full-r9-5706d8ea.service,
 9GiB/10GiB HDD; root luma-android-first-class-runtime-controller.service,
 VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. Guest6GiB RAM/
 QEMU8GiB hard AND combined RAM+swap, root128MiB+128swap, actual guest MemTotal
@@ -76,7 +129,7 @@ checked inside Android. Evidence native-task-live/result.json. Old-image name
 access is NOT isolated; no actual task mutation tested.0017 must deny ordinary
 reads while preserving trusted labels and normal native window controls.
 
-NEXT BUILDER PREPARED, NOT RUN: project luma-project-native-task.squashfs
+CURRENT BUILDER INPUT: project luma-project-native-task.squashfs
 70,582,272B SHA849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
 commit7c13c192faacdcaa32170fef1e68322c22e4a8d5, snapshot normal3d91c58f PASSED.
 Private build-vm-driver/{controller-r9.py,guest-build-r9.py,run-r9.sh} syntax
@@ -97,7 +150,7 @@ errors, payload/import/desktop/profile755 checks. Source3ff01af63. BinarySHA
 8d22a623638dea6d318ec86a794a97413e999e9fadc821f5ab546a6490207fae,
 SRPM94c22d4acf8083bc10956f1964ec513057e5b9b8345b8c0a89293e6e668187f0,
 rpm-r10/source/build/candidate-92/build/packages/luma-android-runtime.
-.92 NOT installed/live package tested. Full91 source tests passed08:07:06Z.
+.92 installed/live lifecycle tested as recorded above. Full91 source tests passed08:07:06Z.
 .91 clean RPM cb8f4f4a passed84 tests, installed07:34:04Z in disposable overlay.
 
 Runtime cold managed-source92 test FAILED deadline08:13Z; MainPID13327 stayed

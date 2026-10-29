@@ -24,6 +24,7 @@ XML = '''<node><interface name="org.freedesktop.Notifications">
 <arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/>
 <arg type="as" direction="in"/><arg type="a{sv}" direction="in"/><arg type="i" direction="in"/>
 <arg type="u" direction="out"/></method>
+<method name="GetCapabilities"><arg type="as" direction="out"/></method>
 <method name="CloseNotification"><arg type="u" direction="in"/></method>
 <signal name="ActionInvoked"><arg type="u"/><arg type="s"/></signal>
 <signal name="ActivationToken"><arg type="u"/><arg type="s"/></signal>
@@ -54,6 +55,9 @@ def server():
             bus.emit_signal(None, PATH, NAME, 'NotificationClosed',
                             GLib.Variant('(uu)', (values[0], 3)))
             invocation.return_value(None)
+        elif method == 'GetCapabilities':
+            capabilities = ['x-luma-android-inline-reply-v1'] if '--native' in sys.argv else []
+            invocation.return_value(GLib.Variant('(as)', (capabilities,)))
         elif method == 'Records':
             invocation.return_value(GLib.Variant('(s)', (json.dumps(records),)))
         elif method == 'Emit':
@@ -72,6 +76,7 @@ def server():
 
 
 def main():
+    import dbus
     import dbus.mainloop.glib
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     repo = Path(__file__).resolve().parents[2]
@@ -82,6 +87,10 @@ def main():
     args = SimpleNamespace()
     listener = Mock()
     processes = []
+    native = '--native' in sys.argv
+    shell = dbus.SessionBus(private=True) if native else None
+    if shell is not None:
+        shell.request_name('org.gnome.Shell', dbus.bus.NAME_FLAG_DO_NOT_QUEUE)
 
     def wait(predicate):
         deadline = time.monotonic() + 5
@@ -99,7 +108,8 @@ def main():
             None, Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
 
     def launch():
-        process = subprocess.Popen([sys.executable, __file__, '--server'])
+        process = subprocess.Popen([sys.executable, __file__, '--server',
+                                    *(['--native'] if native else [])])
         processes.append(process)
         wait(owner)
         return process
@@ -149,18 +159,48 @@ def main():
             assert listener.dismissed.call_count == 1
             stale = bridge.post(record)
             old_generation = bridge.generation
+            if native:
+                from dataclasses import replace
+                reply_record = replace(record, reply_action='read')
+                stale = bridge.post(reply_record, stale, listener)
+                reply_token = bridge.records[stale].reply_token
+                observed = json.loads(control('Records').unpack()[0])[-1]
+                assert observed['actions'] == ['default', '']
+                assert observed['hints']['x-luma-inline-reply-token'] == reply_token
+                assert observed['hints']['x-luma-inline-reply-path'] == '/org/projectluma/Android/Notifications'
             first.terminate()
             first.wait(timeout=5)
-            wait(lambda: bridge.generation > old_generation)
-            assert not bridge.records
-            launch()
-            wait(lambda: bridge.generation > old_generation + 1)
+            if native:
+                wait(lambda: not owner())
+                assert bridge.generation == old_generation
+                assert bridge.records[stale].reply_token == reply_token
+                assert bridge.resolve_reply(stale, reply_token) is not None
+                launch()
+                # Process both owner-watch events before testing stable IDs.
+                end = time.monotonic() + .2
+                while time.monotonic() < end:
+                    GLib.MainContext.default().iteration(False)
+                    time.sleep(.005)
+                assert bridge.generation == old_generation
+                assert bridge.records[stale].reply_token == reply_token
+                shell.release_name('org.gnome.Shell')
+                wait(lambda: bridge.generation > old_generation)
+                assert not bridge.records
+                assert bridge.reply_endpoint.owner is None
+                shell.request_name('org.gnome.Shell', dbus.bus.NAME_FLAG_DO_NOT_QUEUE)
+                wait(lambda: bridge.generation > old_generation + 1)
+            else:
+                wait(lambda: bridge.generation > old_generation)
+                assert not bridge.records
+                launch()
+                wait(lambda: bridge.generation > old_generation + 1)
             emit('ActionInvoked', stale, 'default')
             bridge.post(record, stale)
             observed = json.loads(control('Records').unpack()[0])[-1]
             assert observed['replacement'] == 0
             report = {'passed': True, 'transport': 'real private D-Bus',
                       'binder': 'fixture; not Android runtime qualification',
+                      'server': 'native capability / Shell-owner fixture' if native else 'legacy FDO fixture',
                       'checks': ['identity', 'image bytes', 'markup', 'action/token', 'expiry',
                                  'dismissal', 'withdrawal', 'server restart', 'stale replacement']}
             output = Path(os.environ.get('DEV_ARTIFACT_DIR', '.')) / 'notification-dbus.json'
@@ -174,6 +214,8 @@ def main():
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=5)
+        if shell is not None:
+            shell.close()
 
 
 if __name__ == '__main__':

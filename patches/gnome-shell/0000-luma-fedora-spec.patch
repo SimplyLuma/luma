@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,296 @@
+@@ -32,6 +32,297 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -280,6 +280,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1277:      0283-lucide-camera-privacy-indicator.patch
 +Patch1278:      0284-unified-shell-surfaces.patch
 +Patch1279:      0285-desktop-launcher-folders.patch
++Patch1280:      0286-android-native-notification-replies.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -311,7 +312,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +361,9 @@
+@@ -71,6 +362,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -321,7 +322,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +383,11 @@
+@@ -90,6 +384,11 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -333,7 +334,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +487,32 @@
+@@ -189,8 +488,32 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -366,7 +367,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +530,25 @@
+@@ -208,9 +531,25 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -392,7 +393,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +556,7 @@
+@@ -218,7 +557,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -401,7 +402,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +588,11 @@
+@@ -250,6 +589,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

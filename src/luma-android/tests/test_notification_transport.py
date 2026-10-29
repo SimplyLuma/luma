@@ -7,6 +7,72 @@ from luma_android import waydroid_notifications as transport
 
 
 class BinderNotificationTransport(unittest.TestCase):
+    def handle(self, bridge):
+        """Create the production dispatch closure with explicit Binder fixtures."""
+        local = Mock()
+        manager = Mock()
+        manager.new_local_object.return_value = local
+        manager.add_presence_handler.return_value = 0
+        binder = SimpleNamespace(ServiceManager=Mock(return_value=manager))
+        glib = SimpleNamespace(MainLoop=Mock())
+        helpers = SimpleNamespace(drivers=SimpleNamespace(loadBinderNodes=Mock()))
+        args = SimpleNamespace(BINDER_DRIVER='binder', SERVICE_MANAGER_PROTOCOL='aidl3',
+                               BINDER_PROTOCOL='aidl3')
+        modules = {'gbinder': binder, 'gi.repository': SimpleNamespace(GLib=glib),
+                   'tools': SimpleNamespace(helpers=helpers)}
+        with patch.dict('sys.modules', modules):
+            transport.add_service(args, bridge, SimpleNamespace(is_set=lambda: False))
+        return manager.new_local_object.call_args.args[1], local
+
+    def test_reply_capability_needs_both_negotiation_and_live_shell_owner(self):
+        for supported, owner, expected in ((False, ':1.4', 0), (True, None, 0),
+                                            (True, ':1.4', 1)):
+            bridge = SimpleNamespace(sink=SimpleNamespace(supports_inline_reply=supported),
+                                     reply_endpoint=SimpleNamespace(owner=owner))
+            handle, local = self.handle(bridge)
+            request = Mock()
+            request.sender_euid.return_value = 1000
+            reply, status = handle(request, 4, 0)
+            self.assertEqual(status, 0)
+            self.assertEqual([call.args for call in reply.append_int32.call_args_list],
+                             [(0,), (expected,)])
+
+    def test_reply_post_requires_same_kernel_pid_as_registered_live_listener(self):
+        record = SimpleNamespace(reply_action='')
+        # Use a real frozen dataclass for dataclasses.replace in production.
+        from luma_android.notification_bridge import Notification
+        record = Notification('org.example.Chat', 'Chat', 'Title', 'Body', (('r', 'Reply'),))
+        for registered_pid, dead, expected_status in ((91, False, 0), (92, False, -22),
+                                                     (91, True, -22)):
+            listener = SimpleNamespace(origin_pid=registered_pid, dead=dead)
+            bridge = Mock()
+            bridge.sink.supports_inline_reply = True
+            bridge.reply_endpoint.owner = ':1.4'
+            bridge.listeners = [listener]
+            bridge.post.return_value = 17
+            handle, _ = self.handle(bridge)
+            request = Mock()
+            request.sender_euid.return_value = 1000
+            request.sender_pid.return_value = 91
+            request.init_reader.return_value.read_string16.return_value = 'r'
+            with patch.object(transport, 'read_notification', return_value=(record, 0)):
+                reply, status = handle(request, 5, 0)
+            self.assertEqual(status, expected_status)
+            if expected_status == 0:
+                self.assertIs(bridge.post.call_args.args[2], listener)
+                self.assertEqual(bridge.post.call_args.args[0].reply_action, 'r')
+            else:
+                bridge.post.assert_not_called()
+
+    def test_dispatch_denies_application_uid_before_parsing_reply_text(self):
+        handle, _ = self.handle(Mock())
+        for code in (4, 5):
+            request = Mock()
+            request.sender_euid.return_value = 10001
+            _, status = handle(request, code, 0)
+            self.assertEqual(status, -1)
+            request.init_reader.assert_not_called()
+
     def test_kernel_uid_is_required_before_any_parcel_is_read(self):
         for uid in (0, 10000, 10001, None):
             request = Mock()
@@ -40,6 +106,40 @@ class BinderNotificationTransport(unittest.TestCase):
         with self.assertRaises(ValueError):
             transport.read_notification(reader)
         reader.read_byte_array.assert_not_called()
+
+
+class NotificationEpoch(unittest.TestCase):
+    def test_native_forwarder_restart_preserves_shell_ids_but_shell_restart_resets(self):
+        bridge, endpoint = Mock(), Mock()
+        bridge.sink.supports_inline_reply = True
+        epoch = transport.NotificationServerEpoch(bridge, endpoint)
+        epoch.changed('org.gnome.Shell', ':1.10')
+        epoch.changed('org.freedesktop.Notifications', ':1.11')
+        bridge.server_changed.reset_mock()
+        epoch.changed('org.freedesktop.Notifications', '')
+        epoch.changed('org.freedesktop.Notifications', ':1.12')
+        bridge.server_changed.assert_not_called()
+        epoch.changed('org.gnome.Shell', '')
+        epoch.changed('org.gnome.Shell', ':1.13')
+        self.assertEqual(bridge.server_changed.call_count, 2)
+        endpoint.set_owner.assert_called_with(':1.13')
+
+    def test_other_servers_follow_fdo_owner_and_capability_downgrade_resets(self):
+        bridge, endpoint = Mock(), Mock()
+        bridge.sink.supports_inline_reply = False
+        epoch = transport.NotificationServerEpoch(bridge, endpoint)
+        epoch.changed('org.freedesktop.Notifications', ':1.11')
+        bridge.server_changed.reset_mock()
+        epoch.changed('org.gnome.Shell', ':1.10')
+        bridge.server_changed.assert_not_called()
+        epoch.changed('org.freedesktop.Notifications', '')
+        bridge.server_changed.assert_called_once()
+        bridge.sink.supports_inline_reply = True
+        epoch.changed('org.freedesktop.Notifications', ':1.12')
+        bridge.server_changed.reset_mock()
+        bridge.sink.refresh_capabilities.side_effect = lambda: setattr(bridge.sink, 'supports_inline_reply', False)
+        epoch.changed('org.freedesktop.Notifications', ':1.13')
+        bridge.server_changed.assert_called_once()
 
 
 if __name__ == '__main__':

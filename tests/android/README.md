@@ -33,8 +33,10 @@ Framework's open/edit/write flow. The latter tests an actual host document bridg
 only when the selected provider is a host-backed provider; Android's internal
 document picker alone is not host-storage integration. Private `events.jsonl`
 receipts distinguish notification dispatch, action receipt and saved state.
-The fixture's Reply button deliberately exposes the missing RemoteInput path;
-an action click without delivered text is not a reply pass.
+The fixture's Reply action exercises the RemoteInput path. Require the exact
+synthetic text in its receipt; an action click without delivered text is not a
+reply pass. The rebuilt Android image, host runtime and native Shell reply patch
+must all be installed before claiming an end-to-end pass.
 
 The `background_notification` launch extra schedules a local alarm 30 seconds
 ahead and removes the activity's task. Verify its scheduled/fired/posted receipts,
@@ -232,3 +234,22 @@ fixture-label`, run as root inside the owned disposable VM. Require a recognized
 nonempty trusted label both before and after the ordinary request; unavailable
 transport is inconclusive. This read-only probe does not establish denial of
 focus/remove/remove-all mutations, which require controlled task fixtures.
+
+Reply source checks:
+
+```sh
+python3 tests/android/notification-reply-java.py --source-root /path/to/pinned/android
+python3 tests/android/notification-shell-reply.py /path/to/prepared/gnome-shell
+dbus-run-session -- python3 tests/android/notification-reply-dbus.py
+dbus-run-session -- python3 tests/android/notification-dbus.py --native
+```
+
+The Java check expects the preserved post-Waydroid/lifecycle SDK baseline,
+generates the additive AIDL with the pinned compiler, compiles against API33,
+and executes the production dispatcher with explicit Android dependencies.
+The Shell check executes the effective production admission/routing method in
+Node with D-Bus fixtures; it does not exercise GJS or rendering. Private-bus
+checks use real, separate connections, but a fixture Android listener and
+notification server. They check caller/token admission, duplicate requests,
+uncertain outcomes and native-Shell versus FDO-forwarder owner epochs. No
+fixture result replaces a normal APK reply through the actual native UI.

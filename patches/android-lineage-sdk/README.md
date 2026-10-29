@@ -39,9 +39,33 @@ by both builders and exercised by `tests/android/run-host-caller-policy.sh`.
 An old Android image retains action activation but cannot implement the added
 callbacks. A new image with an old host retains the original callback ABI.
 Source application and host-side tests do not qualify a matched image pair.
-Inline replies, channel settings, lock-screen privacy, activation-token delivery
+Channel settings, lock-screen privacy, activation-token delivery
 through HWC, multi-user runtimes, and mobile background delivery need additional
 implementation and end-to-end acceptance.
+
+`0005` negotiates inline reply capability before appending service transactions
+4/5 and callback transaction4. The host requires the registered system-server
+listener's kernel PID as well as UID1000. The Android callback checks the
+captured host UID policy before unmarshalling; the main looper owns each reply
+action and its original mutable PendingIntent. One free-form RemoteInput can be
+represented by Luma's entry. Authentication-required, immutable, multiple-input
+and unsupported reply actions retain the app-open flow and are never exposed
+as ordinary buttons that send an empty reply. No network-delivery guarantee is
+inferred from a successful PendingIntent handoff.
+
+The dispatcher bounds queued calls, text and request receipts. A repeated UUID
+with the same grant and text cannot send twice; replacements, removals and host
+reset revoke grants. A five-second Binder wait cancels queued work, but an
+already-running send can complete after the wait. Such outcomes remain uncertain
+and must not be automatically retried. Source/API compilation and dependency
+fixtures are not a matched Android/Shell runtime test.
+
+Native presentation extends Shell's existing inline reply UI through patch0286,
+not an Android-styled notification overlay. The producer exports its fixed
+reply object on the same D-Bus connection used for Notify. Shell validates the
+attested producer and fixed application/path pair; the producer requires the
+actual Shell unique owner and an opaque per-post token. The extra capability
+must be present before the Android SDK uses the new transactions.
 
 The host adapter derives from Waydroid 1.6.3's GPL-3.0-or-later notification
 transport, copyright 2025 Alessandro Astone. Its upstream license and attribution
