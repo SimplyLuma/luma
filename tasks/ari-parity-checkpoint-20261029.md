@@ -1,14 +1,12 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r7 is ready; Dell delivery awaits connection recovery.
-The installed r6 remains available. Visual conformance and live OpenAI
-qualification remain incomplete.
+Status: server-qualified Ari2 r7 delivered and launched on the Dell for manual
+testing. Visual conformance and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. Qualified r7 runtime source is
-`79b0c448a23c6063dec78f5487a3c6893920bc27`; the current independent Dell
-preview remains `9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. Earlier
-checkpoints below are history.
+`79b0c448a23c6063dec78f5487a3c6893920bc27`; the independent Dell preview
+now runs this revision. Earlier checkpoints below are history.
 
 ## October 29 follow-up: message stability and native commands
 
@@ -17,7 +15,7 @@ uninstalled applications successfully. The successful add took 34.1 seconds;
 removing Chicago failed after 43.3 seconds. Older errors in the supplied chat
 screenshots explicitly predate the last correction.
 
-The next source revision displays local 12-hour message/action times, places
+The delivered r7 displays local 12-hour message/action times, places
 message times directly below their bubble and action times beside their text,
 retains the composer and unchanged message widgets during updates, reserves the
 same space for Send and Stop, and follows the conversation until the person
@@ -52,8 +50,12 @@ contracts, and actual r6-to-r7 update/retention/rollback. Archive SHA-256:
 `660ca87d0136edc9aae7971e8758aec72e50e78ca01d6044ac6e5529a7e8450c`.
 RPM SHA-256: `df3a728394c69f47daabc3351e87f8dff2efc591a2b2b71e99c066ac7913e138`.
 SRPM SHA-256: `c066c50c4782c58b8a828a0324d65f6d36da8ffc775c70e6312d67bfb2be488a`.
-Dell SSH timed out during banner exchange; no update or launch was attempted.
-Delivery remains pending the owner's wake/unlock/close response.
+The owner restored the Dell connection. The archive checksum was verified before
+extraction; the updater ran after the old preview window and background service
+were both closed. It retained chats, settings and keyring entries. Ari2 r7 was
+launched in the active graphical session at 22:32 UTC on October 29; read-only
+metadata confirmed the launch unit running and both preview bus names owned.
+No automated Dell app/UI tests ran. Latest live ChatGPT acceptance remains manual.
 
 ## Application and development continuation
 
