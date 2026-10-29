@@ -122,6 +122,13 @@ SELinux module maps the adapter to the provider's existing entrypoint type; it
 adds no allow rules. The adapter verifies its execution domain on SELinux hosts
 before starting the service, so a missing policy/label fails closed.
 The runtime package preserves the derived GPL transport's license and attribution.
+The Luma-owned session also admits only kernel UID1000 at the host clipboard
+and user-monitor callbacks, before parcel parsing. Apps use Android's normal
+clipboard focus/permission checks and package APIs. Root hardware and session
+roles have distinct admission policies. Unknown read-only operations have typed
+control/denial replies for acceptance tests without touching clipboard contents
+or generating package events. Live validation of these session guards remains
+required; the root-hardware pass does not substitute for it.
 
 A real mouse resize in the disposable x86 VM froze the baseline compositor.
 Native debuggerd stacks identified an adapter/window lock inversion. Patch 0014

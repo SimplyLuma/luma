@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T00:59:00+00:00
+- Updated: 2026-10-29T01:10:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 083c9a97d9eb96d342069cd152fa49124421930f plus uncommitted .84 boundary/SELinux changes
+- Branch and last useful commit: codex/android-first-class; 1273cbaf5 (package permissions), 948b60930 (property guard), 0169f2ff5 (.84 hardware entrypoint)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -99,3 +99,14 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 2026-10-29T01:08Z installed-package findings:
 - .84 installed RPM's guarded root entrypoint booted Android and passes native typed root/app denial after starting the supervised session. First automated recheck found a stopped container and correctly failed; starting session explicitly restored the tested endpoint. Installed root service remains waydroid_t/Enforcing.
 - Found a separate real packaging defect in HDD builds: inherited private/setgid directory modes entered the RPM, including /usr/share/luma/android/profiles. Broker could not read its profile. Did not bypass permissions in the VM. Added .85 explicit RPM directory mode0755 and build verification for every packaged directory (including generated cache/license dirs). .84 package tests passed, but its user session integration is not accepted. New .85 build/retest needed.
+
+2026-10-29T01:10Z active build handoff:
+- .85 clean RPM build dev-android-runtime-rpm-r6-2bc2b668 passed77 tests, zero skips/failures, and header verification of every packaged directory0755. Binary e3d34f570731d11738eb91708b0ab9e8932e91ebefd81c008687e83e3cc24931; SRPM029b2baf9f4455d0537e1ba57edee1748a6b2a20893dd911dc7f5d1b3c6e16f8. Source1273cbaf5, task HDD rpm-r6/source/build/packages/luma-android-runtime. This fixes observed .84 profile traversal; .85 VM installation remains next.
+- Own VM shut down cleanly before its finite lifetime; dev-android-vm-r4-be5a1197 inactive/success. Original other VMs untouched. No VM should run concurrently with this account's10GiB full image worker without fresh normal admission.
+- Full matched-image builder job dev-android-images-x86-r2-d3916ea0 admitted01:09:38Z with10GiB/200GiB HDD reservation, two build jobs, GOGC20, offline unprivileged Bubblewrap. First attempt refused memory while own VM reservation remained; no override. It uses exact source snapshot948b609305be896cb7c0e78ad058608885aba6ed, tar SHA4d3639e426bdcbb224e1db90986448b8fb20046e5099a9c2a1814ec57b67dc03. This snapshot includes property admission and prior SDK/HWC changes; current runtime .85 packaging does not affect image code. Launcher own HDD source-builder/run.py; original source snapshot retained. Builder begins with maintained preparation/full cleanliness checks before compilation. No image completion claimed.
+- Source audit official Waydroid1.6.3 IClipboard/IUserMonitor shows unguarded host callback entrypoints too. Next independent source work is kernel-UID admission in Luma-owned session adapters before parcel reads, preserving Android clipboard focus policy. Do not read real user clipboards; test only synthetic VM content.
+
+2026-10-29T01:14Z independent session admission candidate:
+- Uncommitted .86 uses the same process-local constructor facade with distinct exact policies: root hardware allows0/1000, clipboard/user-monitor only1000. Repeat installation refuses policy drift. Luma session installs both adapters before upstream managers start; no provider file/global gbinder mutation. Android clipboard source still performs focus/lock/permission checks before system_server consults host clipboard.
+- Actual policy tests a185b02b ran8 focused tests successfully. Component7b3acbdf ran79 tests successfully with16 root-only skips. Package build still required for zero-skip count. New fixture unknown-operation probes do not access clipboard contents or create package events; its shared receipt writer is synchronized for the concurrent probes. Read-only native acceptance script supports service-specific trusted controls; actual clipboard/user-monitor VM checks remain open.
+- Full-image worker d3916ea0 has compiled the Soong build tools and is progressing into graph generation; this is not an image completion percentage. Current source includes property admission. Keep job normal10GiB, two compiler jobs/GOGC20; monitor actual result instead of raising memory/reserve or relaunching other VMs. .85 RPM mode validation passed but .85/.86 installation is deferred to next admitted test-VM lifetime after image build.

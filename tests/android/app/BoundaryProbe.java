@@ -14,6 +14,10 @@ final class BoundaryProbe {
         // real endpoint's permission denial with the root caller control.
         probe(context, "waydroidhardware", "lineageos.waydroid.IHardware",
                 0x00010000, "root-hardware-boundary");
+        probe(context, "waydroidclipboard", "lineageos.waydroid.IClipboard",
+                0x00010000, "host-clipboard-boundary");
+        probe(context, "waydroidusermonitor", "lineageos.waydroid.IUserMonitor",
+                0x00010000, "host-user-monitor-boundary");
     }
 
     private static void probe(Context context, String name, String descriptor,

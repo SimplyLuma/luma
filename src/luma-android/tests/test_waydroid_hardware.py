@@ -6,7 +6,7 @@ import tempfile
 
 from luma_android.waydroid_hardware import (
     GuardedGbinder, GuardedServiceManager, INTERFACE, EX_SECURITY,
-    SERVICE_NAME, install_guard,
+    SERVICE_NAME, install_guard, install_session_guards,
     verify_confinement, EX_UNSUPPORTED_OPERATION,
 )
 
@@ -68,7 +68,7 @@ class HardwareAdmission(TestCase):
                         self.assertEqual(result[1], 0)
                         self.assertEqual(result[0].values, [
                             ('int32', EX_SECURITY & 0xffffffff),
-                            ('string16', 'Android hardware access denied'),
+                            ('string16', 'Android host service access denied'),
                             ('int32', 0)])
                         provider.assert_not_called()
                     request.init_reader.assert_not_called()
@@ -125,3 +125,46 @@ class HardwareAdmission(TestCase):
         with self.assertRaises(RuntimeError):
             manager.new_local_object('changed', mock.Mock())
         backend.ServiceManager.return_value.new_local_object.assert_not_called()
+
+    def test_session_bridges_admit_only_system_server_before_parcel_read(self):
+        modules = []
+        for descriptor, name in (
+            ('lineageos.waydroid.IClipboard', 'waydroidclipboard'),
+            ('lineageos.waydroid.IUserMonitor', 'waydroidusermonitor'),
+        ):
+            local = SimpleNamespace(new_reply=Reply)
+            manager = mock.Mock()
+            manager.new_local_object.return_value = local
+            backend = SimpleNamespace(ServiceManager=mock.Mock(return_value=manager))
+            modules.append(SimpleNamespace(INTERFACE=descriptor, SERVICE_NAME=name,
+                                           gbinder=backend))
+        install_session_guards(*modules)
+        install_session_guards(*modules)
+        for module in modules:
+            provider = mock.Mock(return_value=('provider-reply', 0))
+            manager = module.gbinder.ServiceManager('/dev/binder')
+            manager.new_local_object(module.INTERFACE, provider)
+            handle = manager.manager.new_local_object.call_args.args[1]
+            for uid in (0, 1000, 1003, 2000, 10000, 10129, 99000, 101000, 110129):
+                for code in (1, 2, 65536):
+                    with self.subTest(service=module.SERVICE_NAME, uid=uid, code=code):
+                        provider.reset_mock()
+                        request = mock.Mock()
+                        request.sender_euid.return_value = uid
+                        result = handle(request, code, 0)
+                        if uid == 1000 and code in (1, 2):
+                            self.assertEqual(result, ('provider-reply', 0))
+                            provider.assert_called_once_with(request, code, 0)
+                        else:
+                            expected = EX_UNSUPPORTED_OPERATION if uid == 1000 else EX_SECURITY
+                            self.assertEqual(result[1], 0)
+                            self.assertEqual(result[0].values[0], ('int32', expected & 0xffffffff))
+                            provider.assert_not_called()
+                        request.init_reader.assert_not_called()
+
+    def test_a_second_install_cannot_silently_change_the_admission_role(self):
+        hardware = SimpleNamespace(INTERFACE=INTERFACE, SERVICE_NAME=SERVICE_NAME,
+                                   gbinder=SimpleNamespace())
+        install_guard(hardware)
+        with self.assertRaises(RuntimeError):
+            install_guard(hardware, allowed_uids=(1000,))

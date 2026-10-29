@@ -90,3 +90,8 @@ fixtures, tests application/isolated identities across Android users, and
 requires the unpatched negative control to fail. The source tree stays intact.
 This is not a complete init/image test; retain an ordinary-APK test plus native
 service positive controls on the rebuilt image before qualification.
+
+The same read-only probe accepts `--service clipboard` or `--service usermonitor`.
+Their positive control uses Android system UID1000; ordinary APK UIDs must be
+rejected before parsing. The APK also probes unknown operations on both endpoints,
+without reading/writing clipboard contents or creating package events.

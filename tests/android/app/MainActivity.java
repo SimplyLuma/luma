@@ -133,7 +133,7 @@ public final class MainActivity extends Activity {
         receipt(context, "notification-posted", "42");
     }
 
-    static void receipt(Context context, String event, String value) {
+    static synchronized void receipt(Context context, String event, String value) {
         try {
             JSONObject object = new JSONObject().put("event", event).put("value", value)
                     .put("elapsed_ms", android.os.SystemClock.elapsedRealtime());
