@@ -1,64 +1,44 @@
-# Task: project-titan-usb-20261029
+# Project Titan recovery and Mobile experience
 
-- Status: active
-- Owner: luma-dev-2 / Codex Project Titan chat
-- Project: luma-os
-- Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029
-- Branch: codex/project-titan-usb-20261029
+- Status: USB access delivered; newest merged Mobile shell ARM build in progress.
+- Owner: luma-dev-2 / Codex Project Titan chat.
+- Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
+- Branch: codex/project-titan-usb-20261029.
 
-## Scope
+## Owner-authorized scope
 
-Restore agent access to the owner's Titan via opt-in USB ECM and a dedicated,
-key-only SSH endpoint. The phone has no working Wi-Fi and its release image
-exposes no USB transport. Source changes belong to this task, preserving existing
-Titan owners. This is personal-device recovery, not a general release.
+Provide rapid personal-device recovery and source-backed hotfixes on the owner's
+Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
+working hardware stack. This does not publish a signed/general OS release.
 
-## Evidence and plan
+## Delivered access
 
-- Worktree based on cached origin/main f020713b6. Fetch attempted but failed due
-  to an unrelated invalid refs/codex/turn-diffs object; no refs repaired/deleted.
-- Owner explicitly authorizes phone recovery and setup, including card edits.
-- Card inspected read-only via Dell; installed deployment matches retained
-  Titan20261020.22. Private device identity/logs stay in coordination/evidence.
-- Matching kernel has built-in configfs ECM; no new kernel/boot image needed.
-- Saved Wi-Fi logs report WF MCU init and CONNSYS power-completion failures;
-  root cause remains unproven. Firmware/calibration files exist on card.
-- New access must bind only USB, admit only its dedicated public key and fixed
-  USB peer, preserve normal SSH policy and have an explicit removal path.
-- Source tests: nine tests PASS under admitted server unit
-  dev-titan-usb-access-checks-r3-c89c5a74.service, including actual sshd policy
-  parsing and systemd unit verification. Prior r1/r2 passed before added cases.
-- Actual device boot/SSH acceptance pending. Initial access files installed on
-  owner's card and verified against their manifest; original SSH config, Wi-Fi
-  helper and boot entry hashes unchanged. Filesystem journal recovery completed
-  after retaining a metadata-only backup outside Git.
+The opt-in recovery installer adds configfs ECM and key-only root SSH bound to
+the USB interface and fixed peer. Existing normal SSH policy is retained.
+Matching kernel review corrected the configfs interface template to titanusb%d.
+Physical Titan USB enumeration and root key authentication now pass.
 
-## Source and security boundary
+Actual Fedora udev policy marked gadget interfaces unmanaged, preventing profile
+autoconnection. The installer now adds a udev override matched only to the
+dedicated device MAC. The owner's phone has the rule and updated ten-file
+manifest. Eleven server tests pass, including actual SSH policy, systemd and
+udev parsers. Device keys, backups, logs and provisioning state remain outside Git.
 
-scripts/mobile/titan2e-usb-access contains the opt-in recovery tool and tests.
-It uses the existing kernel configfs ECM interface, fixed local MACs and /30
-addresses with no default route. Socket activation binds only the USB device;
-root administration requires the dedicated public key from the fixed USB peer.
-Normal SSH policy is not changed. This is explicitly owner-requested local
-recovery access, not a production default or qualified general release.
-Rollback removes only the manifest-listed newly added files and enable links.
+## Current Mobile experience
 
-Private provisioning state, key custody, exact card identity and captured logs
-are held outside Git in the existing coordination/account/device paths.
+The owner requests the newest applicable Mobile experience as a whole, using
+existing work and rapid physical testing. Merged source is not a finished Titan
+release. The exact installed Phosh83.1 source RPM retains newer phone-specific
+work than the public base package, so its stack is preserved.
 
-## Latest handoff
+prepare-titan2e-experience.py assembles that pinned source with merged patches
+0044–0051 and shared native Home widgets. It resolves bounded compatibility
+changes while retaining pocket/fold sizing, audio and hardware behavior. The
+Home pager header now declares its GType for the full shell's strict compiler.
+The source RPM and generated packages are operator inputs/outputs outside Git.
 
-- Final inspection of matching kernel u_ether.c caught a configfs interface-name
-  requirement: gether_set_ifname requires exactly one %d. Corrected the template
-  to titanusb%d and added a MAC-matched link file to preserve titanusb0.
-- Ten tests PASS under dev-titan-usb-access-checks-r4-1276b2ba.service, including
-  regression rejection of a fixed configfs name and actual SSH/systemd parsing.
-- The earlier installer had safely powered the reader off. The corrected source
-  is staged on Dell but is NOT applied to the card yet. A targeted reconnect of
-  only the reader's independently switched USB port re-enumerated the reader
-  with no media capacity; port state was restored. Physical reader reconnect is
-  required. Do not describe current card as ready for USB acceptance yet.
-- Next: user reconnects reader (card remains in reader); run the staged scoped
-  finalizer, which verifies the old manifest, applies only the two naming changes,
-  updates/verifies the manifest and safely unmounts. Then cold-boot the Titan and
-  prove USB enumeration/key authentication. Wi-Fi cause and repair remain open.
+Shared widget model and GTK3 tests pass on ARM. Full native ARM shell compilation
+is running; no live Mobile experience update or release qualification is claimed
+until actual deployment/readback. The independent card backup is verified.
+Current private units, artifacts and delivery actions are in the coordination
+handoff. Keep the original packaged shell for immediate rollback.

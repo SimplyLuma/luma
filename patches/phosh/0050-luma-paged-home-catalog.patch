@@ -728,12 +728,13 @@
 +}
 --- /dev/null
 +++ b/src/luma-home-pages.h
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,10 @@
 +/* SPDX-License-Identifier: GPL-3.0-or-later */
 +#pragma once
 +#include <gtk/gtk.h>
 +#include <gio/gio.h>
 +
++GType phosh_home_pages_get_type (void);
 +GtkWidget *phosh_home_pages_new (GListModel *model, GtkWidget *today,
 +                                GtkFlowBoxCreateWidgetFunc factory, gpointer data);
 +void phosh_home_pages_first (GtkWidget *pages);
