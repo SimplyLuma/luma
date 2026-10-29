@@ -149,10 +149,21 @@ focus after the host switched to GTK. A strict test published a fresh synthetic
 host token only after native focus and received unclassified Android content,
 not that target: neither a clean privacy pass nor confirmed fresh host disclosure.
 Earlier token matches could have been cached legitimately while Android focused.
-Read/write focus, cached-data ownership, rich MIME transfers and stalled/large
-sources need native-path acceptance. The inspected native receiver blocks the
-Wayland event loop with an unbounded pipe read; bounded asynchronous transfer is
-required before claiming robust clipboard behavior.
+Read/write focus, cached-data ownership and rich MIME transfers need native-path
+acceptance. Patch0016 replaces the inspected blocking receiver and single-write
+sender with one asynchronous poll worker per runtime. It bounds plain UTF-8 text
+to1MiB, transfers to2s and concurrent writes to16. Immutable source snapshots are
+bounded to8 with generation-token retirement: already admitted callbacks retain
+their immutable data, and stale queued callbacks cannot dereference a retired
+source. Later copies continue even if cancellation never arrives. A synchronized cache
+prevents late transfers from replacing newer selections. Idle workers sleep on
+eventfd; they do not poll on a timer. Partial writes, stalled peers, malformed or
+oversize input, SIGPIPE and shutdown have real-pipe tests, including ASan/UBSan.
+Complete production callbacks also run against explicit platform fixtures. These
+results do not qualify actual Wayland/HwBinder IPC, HIDL transaction-size limits,
+native focus ownership, rich MIME or image behavior. Rebuilt-image controls remain
+mandatory. Larger content needs a versioned descriptor transfer rather than a
+larger Binder string.
 
 The supervised user session waits for a listening, current-user Wayland socket
 with a bounded startup deadline. Its directory monitor and startup retry are

@@ -25,7 +25,9 @@ SERIES = ["0001-prairie-native-android-window-chrome.patch",
           "0011-luma-mandatory-initial-task-resize.patch",
           "0012-luma-shared-composer-rpc-threadpool.patch",
           "0013-luma-software-buffer-allocation-bounds.patch",
-          "0014-luma-configure-invalidation-lock-order.patch"]
+          "0014-luma-configure-invalidation-lock-order.patch",
+          "0015-luma-native-clipboard-caller-admission.patch",
+          "0016-luma-bounded-native-clipboard-transfer.patch"]
 
 
 def check_linkage(work):
@@ -125,6 +127,8 @@ def check(archive, link_check=False):
             raise ValueError("Effective authoritative task removal differs from native tested source")
         if (work / "hwcomposer/luma-rgb-copy-bounds.h").read_bytes() != (ROOT / "patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h").read_bytes():
             raise ValueError("Effective software copy bounds differ from native tested production source")
+        if (work / "hwcomposer/luma-clipboard-transfer.h").read_bytes() != (ROOT / "patches/android-hardware-waydroid/native/luma-clipboard-transfer.h").read_bytes():
+            raise ValueError("Effective clipboard transfer differs from tested production source")
         check_configure_lock_order(work)
         if link_check:
             check_linkage(work)

@@ -151,8 +151,33 @@ when data is denied. Real nonempty trusted and ordinary-APK HAL controls remain
 required on rebuilt images. The Python/AIDL clipboard probe covers a legacy
 endpoint and cannot qualify this native path.
 
+`clipboard-transfer.cpp`, compiled with C++17, pthreads and the include directory
+`patches/android-hardware-waydroid/native`, executes the actual transfer/cache
+helper. It tests a real pipe round trip larger than pipe capacity, independent
+send progress during a stalled receive, UTF-8/size limits, cancellation/deadlines,
+SIGPIPE handling, bounded descriptor ownership, concurrent submissions/shutdown
+and stale cache completion. Clang ASan/UBSan can be enabled with
+`-fsanitize=address,undefined -fno-omit-frame-pointer`.
+
+`python3 tests/android/native-clipboard-transfer.py /path/to/hardware/waydroid
+--sanitize --compiler clang++` applies0015/0016 to an independent copy and compiles
+the complete clipboard translation unit, substituting only platform includes
+with explicit HIDL/Wayland dependency fixtures. Its pipes and worker are real.
+It checks nonblocking selection dispatch, immutable source data, ordinary caller
+denial, bounded rapid-copy snapshots and late HAL calls after joined teardown.
+It requires the executable's completion receipt and preserves its source/binary
+under DEV_ARTIFACT_DIR when set. This is not an Android or Wayland-server IPC test.
+
+The source APK's **Probe native clipboard HAL** button exercises raw HIDL from an
+ordinary app. Its optional org.lineageos.platform library exposes the generated
+interface without granting a privileged permission. A UID1000 `app_process`
+invocation of `org.projectluma.androidtest.NativeClipboardProbe read` provides a
+fixed read-only native control. Require a recognized nonempty fixture before and
+after the APK's empty reads/no-op write; unavailable or empty trusted controls
+cannot pass. A returned setter request indicates transport success, not admission.
+
 The clipboard fixture copies only `luma-android-clipboard-fixture` and records
-only whether `luma-host-clipboard-fixture` matched on reads. Never use it in a
+only whether known host/Android fixture tokens matched on reads. Never use it in a
 personal profile. For the background negative control, select **Check after
 switching to a Luma app**, then focus a native host window within ten seconds.
 Keep evidence of the native focus transition and the delayed fixture receipt.

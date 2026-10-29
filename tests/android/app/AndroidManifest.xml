@@ -7,6 +7,7 @@
   <application android:label="Android Integration Test" android:debuggable="true"
       android:icon="@android:drawable/ic_dialog_info" android:allowBackup="false"
       android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <uses-library android:name="org.lineageos.platform" android:required="false"/>
     <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true">
       <intent-filter><action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/></intent-filter>

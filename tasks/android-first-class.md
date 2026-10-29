@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T06:18:00+00:00
+- Updated: 2026-10-29T07:27:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 901d5f18c (clipboard protocol), cc15bd5a2 (.90 package)
+- Branch and last useful commit: codex/android-first-class; 59aecadc4 (correct native HIDL admission/reconnect and .91 package)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,9 +12,48 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD21fe4ae23; native clipboard
-corrections are uncommitted and under validation. **DO NOT BUILD SNAPSHOT901d5f18c
-OR luma-project-aidl.squashfs**: it changes to the wrong clipboard backend.
+Source/worktree isolated; canonical untouched. HEAD59aecadc4. Current milestone
+adds APKr12 native-HIDL controls and bounded native clipboard transfer0016
+(worker/cache/header, both builders/state hashes and real pipe/callback tests).
+**DO NOT BUILD SNAPSHOT901d5f18c OR luma-project-aidl.squashfs**: wrong backend.
+
+CURRENT ACTIVE BUILD: normal dev-android-images-build-vm-r6-ae325a4f.service,
+10GiB/450GiB, root luma-android-first-class-build-controller.service, VM UUID
+809f0871-fd88-4770-83dd-624c90259c06/IP192.168.122.36. Started06:28Z, input
+hashes verified06:33Z, guest startup06:33:26Z. Correct read-only project disk
+luma-project-native.squashfs70,553,600B SHA
+e6167a6ae3cebe0dc8e5ea71288b8edc2e8ee7f426bf1552324fe8496e33db92,
+source59aecadc4. Fresh upper-native-v1/work-native-v1 preserve older attempts.
+At07:03Z still maintained repo Git/LFS integrity preflight, git reading SquashFS,
+~6.26GiB guest available/1MiB swap, build log0bytes. Not compilation or pass.
+Current snapshot does NOT contain in-progress clipboard transfer0016. Stop root
+unit first for deliberate cancellation; owner watchdog also protects job death.
+
+.91 clean RPM r14/cb8f4f4a PASSED84 actual tests, zero skips/failures/errors,
+profile directories755. Binary356b704556fadc48de60570cc784522349e594d31152ec5ec5ec41ea01bf9c76,
+SRPM72ca08e914f8d16da4f9f28de3d14143f5a5639916b9a10263b8c5566f7011dd,
+rpm-r10/source/build/candidate-91/build/packages/luma-android-runtime. Not yet
+installed/live-tested. HIDL SDK283a9cc5/native policyf03ebfd2 passed corrected
+fixtures. APKr12 b142754e built; native HIDL reflection controls not run live.
+
+New transfer helper test e98dfcab PASSED real >pipe-capacity UTF-8 self roundtrip,
+partial I/O, timeout/cancellation, oversize/invalid UTF-8, EPIPE, bounded writes,
+shutdown/FD ownership and cache generations. Helper concurrent submission/shutdown stress now passes ASan/UBSan and TSan
+(0d019389; separate asan.txt/tsan.txt preserve completion receipts). Initial
+612c2875 could not link GCC libasan, which is absent; Clang runtime is installed.
+A59191a4 command failed because systemd expanded a shell-array expression; private
+script corrected it. Complete production callbacks with explicit Wayland/HIDL
+fixtures pass91d70a0f ASan/UBSan and f4415ac5 TSan. These exercise real asynchronous
+pipes, denied callers, rapid immutable copies, retired queued callbacks and late
+HAL calls after joined teardown. Not actual Wayland/HwBinder IPC qualification.
+Full upstream patch series264ac866 passes through0016, exact header identity and
+configure-lock/linkage controls. Both builders hash/apply0016. Old raw listener
+payload eviction would race dispatch; final source uses existing generation-token
+registry, admits strong snapshots before retirement and bounds sources to8 while
+later copies continue. Queued stale sends close FDs; stale cancels touch no proxy.
+APK12 hashbf7e2aa3496aae6999f39f87b73e8617f6786423de1fddb009c313a6e4bc38b9;
+not installed/live-qualified. Native HIDL1MiB transaction-limit/large text, focus,
+rich MIME and actual image paths remain gates.
 
 Critical correction: actual installed framework DEX and hardware/waydroid source
 show Clipboard uses vendor.waydroid.clipboard@1.0 HIDL in native HWComposer,
@@ -34,7 +73,7 @@ callback. Initial94e78f80 fake-transport test did not model that contract; corre
 before any image build: denied read calls back empty once, denied write is no-op.
 Updated32-case actual-method testda69c3a5 PASSED, unpatched negative control42.
 HIDL production SDK wrapper430cbf55 PASSED failure/reconnection/race fixture tests.
-Neither is real HwBinder proof. Root package .91/84-case check still pending.
+Neither is real HwBinder proof. Root package .91/84-case check subsequently PASSED (current handoff above).
 
 Native WaydroidClipboard.cpp read_selection blocks Wayland event loop with an
 unbounded pipe read, and clipboard cache access crosses threads without a mutex.
@@ -44,7 +83,7 @@ APK probe must exercise actual HIDL get/set with known nonempty trusted controls
 Do not mistake ordinary-empty for denial when the trusted control is also empty.
 Keep all arbitrary clipboard contents out of logs; synthetic token classes only.
 
-ALL owned VMs and image jobs are now OFF. Stopped r5/09340d25 root controller and
+Historical06:18Z state (superseded by active r6 build above): ALL owned VMs and image jobs were OFF. Stopped r5/09340d25 root controller and
 admission before native-path correction. No completed replacement image exists.
 Own Luma VM original6GiB/8GiB config restored inactive05:54:45Z from intact
 vm/domain.xml; actual restored XML SHA
@@ -273,3 +312,16 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 
 2026-10-29T06:18Z source correction validation:
 - Added explicit libhwbinder_headers dependency for native UID API. Updated native policyf03ebfd2 passes32 source-body cases including exact callback-once/successful-return contract and unpatched negative42. SDK lifecycle283a9cc5 passes after removing misleading AIDL dependency fixtures; actual HIDL source remains unchanged in protocol. Adapter0a622f4d passes9 tests, including legacy provider suppression; first51ecc79f failed test import name and was corrected. .91 package check still next.
+
+2026-10-29T07:27Z native transfer milestone:
+- Added0016: one sleeping poll/eventfd worker per runtime,2s/1MiB text limits,
+  at most16 accepted writes, partial I/O, worker-local SIGPIPE mask, UTF-8 checks,
+  generation-checked synchronized cache and joined shutdown. Clipboard data source
+  snapshots use existing token registry to avoid listener-payload UAF during
+  Binder-side retirement; at most8 sources, later copies keep working.
+- Production-source dependency-fixture ASan/UBSan91d70a0f and TSan f4415ac5 pass;
+  real-helper stress ASan/UBSan and TSan receipts0d019389 pass800 concurrent read
+  submissions across shutdown with exactly800 callbacks and no descriptor leak.
+  Full pinned upstream series264ac866 passes. Android image/wire still unqualified.
+- Build r6 still in Git/LFS preflight at07:24Z (prebuilts ABI dumps/JDK and later
+  projects advancing). Read-only project59aecadc4 has0015, not0016. Runtime VMoff.

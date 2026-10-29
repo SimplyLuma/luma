@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
         layout.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
         button(layout, "Post notification", () -> postNotification(this));
         button(layout, "Check privileged boundary", () -> BoundaryProbe.run(this));
+        button(layout, "Check native clipboard boundary", () -> NativeClipboardProbe.run(this));
         button(layout, "Copy synthetic text to Luma", () -> {
             android.content.ClipboardManager clipboard =
                     (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
@@ -95,8 +96,13 @@ public final class MainActivity extends Activity {
         if (clip != null && clip.getItemCount() > 0) {
             CharSequence value = clip.getItemAt(0).coerceToText(this);
             // Never log arbitrary host clipboard contents.
-            result = "luma-host-clipboard-fixture".contentEquals(value == null ? "" : value)
-                    ? "matched-host-fixture" : "unexpected-content";
+            if ("luma-host-clipboard-fixture".contentEquals(value == null ? "" : value)) {
+                result = "matched-host-fixture";
+            } else if ("luma-android-clipboard-fixture".contentEquals(value == null ? "" : value)) {
+                result = "retained-android-fixture";
+            } else {
+                result = "unexpected-content";
+            }
         }
         receipt(this, event, result);
         receipt(this, "android-window-focus", hasWindowFocus() ? "focused" : "unfocused");
