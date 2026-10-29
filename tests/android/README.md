@@ -111,3 +111,20 @@ For property acceptance, initialize that key as an Android native service to a
 synthetic control value, run the fixture probe, verify its rejection and the
 unchanged native readback, then clear the key. A failed process launch or timeout
 is unavailable, not a property-permission pass. Never probe power/control keys.
+
+`python3 tests/android/blueprint-go-budget.py /path/to/build/blueprint
+/path/to/prebuilts/go/linux-x86/bin/go` compiles the actual Blueprint concurrency
+prelude with the pinned Go compiler. It requires the patched explicit budget and
+unchanged default behavior, and rejects the upstream override as a negative
+control. Run before the maintained builder applies the patch to that source tree.
+
+In the disposable VM, `sudo python3 tests/android/measure-runtime.py --seconds
+30 --interval 2 --output /root/android-runtime-sample.jsonl` records bounded
+read-only cgroup/PSS samples. It resolves the actual Android init cgroup and
+checks process/runtime generations. Output is a new private file; existing
+files and symlinks are refused. PSS counts shared pages proportionally, while
+memory.current includes page cache/kernel memory. Unreadable/changing processes
+are reported as incomplete observations. Only the synthetic fixture gets app
+attribution; no command arguments or app data are recorded. This measures
+neither first presented frame nor physical battery power. Actual VM execution
+is a separate acceptance gate; compilation of this tool is not a metric result.

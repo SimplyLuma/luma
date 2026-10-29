@@ -23,6 +23,7 @@ device_root="$source_root/device/waydroid/waydroid"
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
+blueprint_cpu_patch="$repo_root/patches/android-blueprint/0001-honor-host-go-concurrency.patch"
 property_admission_patch="$repo_root/patches/android-system-core/0001-luma-property-writer-admission.patch"
 hardware_patch="$repo_root/patches/android-hardware-waydroid/0001-prairie-native-android-window-chrome.patch"
 hardware_pointer_patch="$repo_root/patches/android-hardware-waydroid/0002-prairie-host-pointer-policy.patch"
@@ -124,6 +125,7 @@ write_state() {
     printf 'PROPERTY_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$property_admission_patch")"
     printf 'SOONG_GC_PATCH_SHA=%s\n' "$(patch_sha "$soong_gc_patch")"
     printf 'SOONG_CPU_PATCH_SHA=%s\n' "$(patch_sha "$soong_cpu_patch")"
+    printf 'BLUEPRINT_CPU_PATCH_SHA=%s\n' "$(patch_sha "$blueprint_cpu_patch")"
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
   } >"$temporary"
@@ -243,6 +245,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go GC tuning in the isolated compiler'
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go scheduler concurrency'
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
+  commit_patch "$source_root/build/blueprint" 'Honor explicit host Go scheduler concurrency'
   git -C "$source_root/system/core" apply "$property_admission_patch"
   commit_patch "$source_root/system/core" 'Reject Android application property writers'
   write_state
@@ -273,6 +277,15 @@ native_official_head=${NATIVE_OFFICIAL_HEAD:-$(git -C "$native_root" rev-parse H
 device_official_head=$DEVICE_OFFICIAL_HEAD
 
 changed=0
+if [ -n "${BLUEPRINT_CPU_PATCH_SHA:-}" ] && [ "$(patch_sha "$blueprint_cpu_patch")" != "$BLUEPRINT_CPU_PATCH_SHA" ]; then
+  printf 'error: Blueprint CPU policy changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${BLUEPRINT_CPU_PATCH_SHA:-}" ]; then
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
+  commit_patch "$source_root/build/blueprint" 'Honor explicit host Go scheduler concurrency'
+  changed=1
+fi
 if [ -n "${PROPERTY_ADMISSION_PATCH_SHA:-}" ] && [ "$(patch_sha "$property_admission_patch")" != "$PROPERTY_ADMISSION_PATCH_SHA" ]; then
   printf 'error: property admission changed; run a clean release build first\n' >&2
   exit 1

@@ -27,6 +27,7 @@ build_jobs=${LUMA_BUILD_JOBS:-}
 soong_gc=${LUMA_ANDROID_SOONG_GOGC:-20}
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
+blueprint_cpu_patch="$repo_root/patches/android-blueprint/0001-honor-host-go-concurrency.patch"
 property_admission_patch="$repo_root/patches/android-system-core/0001-luma-property-writer-admission.patch"
 chrome_ownership_patch="$repo_root/patches/android-hardware-waydroid/0009-luma-frame-buffer-thread-ownership.patch"
 task_lifetime_patch="$repo_root/patches/android-hardware-waydroid/0010-luma-authoritative-task-removal.patch"
@@ -66,6 +67,13 @@ export GOGC="$soong_gc"
 build_job_args=()
 if [[ -n $build_jobs ]]; then
   build_job_args+=("-j$build_jobs")
+fi
+if [[ -n $build_jobs && -z ${GOMAXPROCS:-} ]]; then
+  export GOMAXPROCS="$build_jobs"
+fi
+if [[ -n ${GOMAXPROCS:-} && ! $GOMAXPROCS =~ ^[1-9][0-9]*$ ]]; then
+  printf 'error: GOMAXPROCS must be a positive integer when supplied\n' >&2
+  exit 1
 fi
 
 command -v meson >/dev/null || {
@@ -187,6 +195,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
   git -C "$source_root/system/core" apply "$property_admission_patch"
 fi
 printf '%s  %s\n' "$expected_font_sha" \
