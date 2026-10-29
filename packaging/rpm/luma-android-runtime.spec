@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.84.android20261028.1%{?dist}
+Release:        1.luma.85.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -142,6 +142,9 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
 
 %files
+# Shared build storage may inherit private/setgid directory ACLs.
+# Runtime policy and Python directories must be traversable by session users.
+%defattr(-,root,root,0755)
 %license LICENSE.md
 %license COPYING.GPL-3.0
 %config(noreplace) %{_sysconfdir}/luma/android.conf
@@ -181,6 +184,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.85.android20261028.1
+- Install runtime policy directories with normal user-readable permissions
+
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.84.android20261028.1
 - Reuse the provider SELinux entrypoint type and verify the root service domain
 

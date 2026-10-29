@@ -50,6 +50,15 @@ chmod -R a+rX "$rpmbuild_dir"
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-android-runtime.spec
     rpm_path=$(find RPMS/noarch -name "luma-android-runtime-*.rpm" -print -quit)
     test -n "$rpm_path"
+    rpm -qp --qf "[%{FILEMODES:octal} %{FILENAMES}\n]" "$rpm_path" > payload-modes.txt
+    python3 - <<PY
+import pathlib, stat
+for line in pathlib.Path("payload-modes.txt").read_text().splitlines():
+    mode, name = line.split(" ", 1)
+    value = int(mode, 8)
+    if stat.S_ISDIR(value) and stat.S_IMODE(value) != 0o755:
+        raise SystemExit(f"Unexpected Android runtime directory permissions: {mode} {name}")
+PY
     verify=$(mktemp -d)
     cd "$verify"
     # Fedora rpm2cpio can receive SIGPIPE after cpio has consumed a valid
