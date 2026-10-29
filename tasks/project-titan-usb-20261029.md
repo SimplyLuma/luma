@@ -1,6 +1,6 @@
-# Project Titan recovery and Mobile experience
+# Project Titan recovery and shared shell
 
-- Status: delivered; native ARM Mobile experience and root USB SSH active on owner Titan.
+- Status: shared GNOME Tablet Home and compact native login running on owner Titan; final visual/Quick Options checks pending bridge recovery.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -10,6 +10,48 @@
 Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
+
+## Shared shell on Titan
+
+The owner requests the existing Tablet shell on the phone and a compact login,
+with rapid personal-device testing. The same GNOME Shell now starts on handheld
+hardware; the old LUMA_DEVICE_CLASS exclusion no longer suppresses Home. The
+upstream welcome tour no longer covers an existing account's first shared-shell
+session. Tablet presentation is explicitly selected on this owner device.
+
+Compact native login keeps GDM/PAM, password reveal, retry and Enter/submit.
+It centers the clock/date, hides the avatar/greeting and old top panel, and fits
+the floating password action bar inside narrow displays. Unlock starts with the
+clock; native swipe, tap and physical typing reveal the prompt. Wider displays
+retain their existing layout. Quick Options uses the available page on compact
+displays while retaining the shared native controls and detail models.
+
+Automatic on-screen input now follows physical keyboard presence and hotplug.
+The explicit accessibility override remains available. Handheld defaults no
+longer force that override on. A null native event actor no longer throws in
+keyboard handling and traps modal input.
+
+Actual device evidence: the native keyboard/PAM sign-in succeeded. Running
+GNOME reports Shelf present, Tablet presentation, Home/status visible and the
+old panel hidden. Native capabilities report keyboard and touchscreen present.
+Greeter geometry confirms a centered full-width clock allocation, hidden panel,
+and password field/submit button inside the 360-logical-pixel monitor. Actual
+visual review of Home, full-screen Quick Options and lock gestures remains open:
+the Dell bridge disconnected during capture retrieval. Do not equate actor
+visibility or source checks with complete visual or hardware acceptance.
+
+The retained native ARM Shell124/Mutter14/widget cohort is installed in a local
+OSTree deployment. The original kernel and pinned previous deployment remain.
+Source-backed resource overrides supply this candidate; they are development
+hotfixes, not a new published OS release. Temporary diagnostic capture hooks need
+removal when the bridge reconnects; exact private paths/rollback are in the
+coordination handoff.
+
+Validation: the complete pinned Shell patch series (265 patches) applies, modified
+login modules and package builder pass syntax checks. Nine input-policy/hotplug/
+null-event scenarios pass against the actual patched keyboard methods. The first
+fixture run missed a constant binding and failed; the corrected fixture passed.
+No full new RPM build or broader device qualification is claimed.
 
 ## Delivered access
 

@@ -32,7 +32,7 @@ for profile in "$shared_profile" "$handheld_profile"; do
 done
 
 # Refuse arbitrary dconf payloads: this tool is intentionally coupled to the
-# visible Luma identity and the minimal touch-only overlay.
+# visible Luma identity and the handheld capability overlay.
 grep -Fq "enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'tiling-toggle@project-luma.local']" \
   "$shared_profile"
 grep -Fq "color-scheme='prefer-light'" "$shared_profile"
@@ -40,7 +40,7 @@ grep -Fq "gtk-theme='Luma'" "$shared_profile"
 grep -Fq "picture-uri='file:///usr/share/backgrounds/luma/luma-prism.png'" \
   "$shared_profile"
 grep -Fq '[org/gnome/desktop/a11y/applications]' "$handheld_profile"
-grep -Fq 'screen-keyboard-enabled=true' "$handheld_profile"
+grep -Fq 'screen-keyboard-enabled=false' "$handheld_profile"
 grep -Fq 'idle-delay=uint32 60' "$handheld_profile"
 grep -Fq "power-button-action='nothing'" "$handheld_profile"
 grep -Fq "sleep-inactive-ac-type='nothing'" "$handheld_profile"
@@ -60,7 +60,7 @@ test "$(gsettings get org.gnome.desktop.interface color-scheme)" = "'prefer-ligh
 test "$(gsettings get org.gnome.desktop.interface gtk-theme)" = "'Luma'"
 test "$(gsettings get org.gnome.desktop.background picture-uri)" = \
   "'file:///usr/share/backgrounds/luma/luma-prism.png'"
-test "$(gsettings get org.gnome.desktop.a11y.applications screen-keyboard-enabled)" = true
+test "$(gsettings get org.gnome.desktop.a11y.applications screen-keyboard-enabled)" = false
 test "$(gsettings get org.gnome.desktop.session idle-delay)" = 'uint32 60'
 test "$(gsettings get org.gnome.settings-daemon.plugins.power power-button-action)" = "'nothing'"
 test "$(gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type)" = "'nothing'"

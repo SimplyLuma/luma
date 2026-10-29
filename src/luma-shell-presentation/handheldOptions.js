@@ -64,11 +64,15 @@ export class HandheldOptions {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) return;
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
-        // Desktop's 338px content / 372px outer width, reduced only if needed
-        // for a smaller screen. Keep every native style and material intact.
-        const width = Math.max(160, Math.min(338, monitor.width / scale - 48));
-        this.menu.box.set_style([this.original.style, `width: ${width}px; min-width: 0; max-width: ${width}px;`].filter(Boolean).join('; '));
-        this.scroll.set_style(`max-height: ${Math.max(120, monitor.height / scale - 112)}px;`);
+        // Compact displays use the full available page; larger Tablet displays
+        // retain the shared anchored menu. Controls and detail models are shared.
+        const compact = monitor.width / scale <= 700;
+        const width = compact ? Math.max(160, monitor.width / scale - 16)
+            : Math.max(160, Math.min(338, monitor.width / scale - 48));
+        const height = Math.max(120, monitor.height / scale - 64);
+        this.menu.box.set_style([this.original.style, `width: ${width}px; min-width: 0; max-width: ${width}px;`,
+            compact ? `height: ${height}px;` : null].filter(Boolean).join('; '));
+        this.scroll.set_style(`max-height: ${compact ? height - 16 : Math.max(120, monitor.height / scale - 112)}px;`);
         this.menu._boxPointer.setPosition(this.home._statusRight, 1);
     }
     open() { this.setEnabled(this.home.mode !== 'desktop'); if (this.enabled) this.menu.open(); }

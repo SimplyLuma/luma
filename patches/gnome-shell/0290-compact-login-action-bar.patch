@@ -1,0 +1,250 @@
+From: Luma Developers
+Subject: [PATCH] Use shared compact clock and authentication action bar
+
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -63,6 +63,15 @@
+     }
+ 
+     allocatePoster(width, height, cardWidth, scale, rtl) {
++        if (this._compactLogin) {
++            this._compactLogin = false;
++            this.x_align = Clutter.ActorAlign.START;
++            this.x_expand = false;
++            this._time.set_style(null);
++            this._date.set_style(null);
++            this._weekday.show();
++            this._updateClock();
++        }
+         const compact = width < 1100 * scale;
+         if (compact)
+             this.add_style_class_name('compact');
+@@ -97,8 +106,50 @@
+         this.allocate(box);
+     }
+ 
++    allocateCompact(width, height, scale, progress) {
++        this._compactLogin = true;
++        this.x_align = Clutter.ActorAlign.FILL;
++        this.x_expand = true;
++        this.visible = true;
++        this._posterScale = scale;
++        const fontSize = Math.max(48, Math.min(96, width / scale / 4.8));
++        this._time.set_style(`font-size: ${fontSize}px; font-weight: 300;`);
++        this._date.set_style('font-size: 17px; font-weight: 400; color: rgba(255,255,255,0.78);');
++        this._weekday.hide();
++        this._ampm.hide();
++        this._divider.hide();
++        const clockHeight = Math.min(height * 0.35, 160 * scale);
++        const center = height * (0.5 - 0.27 * progress);
++        this.allocate(new Clutter.ActorBox({x1: 16 * scale, x2: width - 16 * scale,
++            y1: Math.max(8 * scale, center - clockHeight / 2),
++            y2: Math.max(8 * scale, center - clockHeight / 2) + clockHeight}));
++    }
++
+     vfunc_allocate(box) {
+         this.set_allocation(box);
++        if (this._compactLogin) {
++            const [width, height] = box.get_size();
++            const scale = this._posterScale;
++            this._ampm.hide();
++            this._date.text = formatDateWithCFormatString(new Date(),
++                Shell.util_translate_time_string(N_('%A, %B %-d')));
++            for (const actor of [this._time, this._date])
++                actor.ensure_style();
++            const [, timeWidth] = this._timeRow.get_preferred_width(-1);
++            const [, timeHeight] = this._timeRow.get_preferred_height(timeWidth);
++            const rowWidth = Math.min(width, timeWidth);
++            this._timeRow.allocate(new Clutter.ActorBox({
++                x1: (width - rowWidth) / 2, x2: (width + rowWidth) / 2,
++                y1: 0, y2: Math.min(timeHeight, height)}));
++            const [, dateWidth] = this._date.get_preferred_width(-1);
++            const [, dateHeight] = this._date.get_preferred_height(width);
++            const actualDateWidth = Math.min(width, dateWidth);
++            const dateY = Math.min(timeHeight + 8 * scale, height - dateHeight);
++            this._date.allocate(new Clutter.ActorBox({
++                x1: (width - actualDateWidth) / 2, x2: (width + actualDateWidth) / 2,
++                y1: dateY, y2: dateY + dateHeight}));
++            return;
++        }
+         const width = box.x2 - box.x1;
+         const height = box.y2 - box.y1;
+         const scale = this._posterScale ?? 1;
+@@ -627,6 +678,21 @@
+         this.add_child(this._overlay);
+     }
+ 
++    setCompactProgress(progress) {
++        if (!this._compactA11y) {
++            this._compactA11y = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y.interface'});
++            this.connect('destroy', () => this._compactA11y.run_dispose());
++        }
++        const reduced = this._compactA11y.get_boolean('high-contrast');
++        if (!this._compactBlur) {
++            this._compactBlur = new Shell.BlurEffect({mode: Shell.BlurMode.ACTOR,
++                radius: 0, brightness: 1});
++            this._wallpaper.add_effect_with_name('compact-login-background', this._compactBlur);
++        }
++        this._compactBlur.radius = reduced ? 0 : 32 * progress;
++        this._compactBlur.enabled = !reduced && progress > 0;
++    }
++
+     settle() {
+         this._wallpaper.ease({
+             scale_x: 1,
+@@ -694,3 +760,69 @@
+     }
+     return Clutter.EVENT_PROPAGATE;
+ }
++
++
++// Layout responds to available space, independently of device and presentation.
++export function compactLogin(width, scale) {
++    return width / scale <= 700;
++}
++
++export function restoreCompactLogin(card) {
++    if (!card._compactLayout)
++        return;
++    card._compactLayout = false;
++    card.set_style(null);
++    card._status.show();
++    card._syncTransparency();
++    card.opacity = 255;
++    card.translation_y = 0;
++    card.reactive = true;
++    const auth = card._compactAuth;
++    if (auth) {
++        for (const actor of [auth, auth._inputWell, auth._inputRow, auth._mainBox, auth._submitButton])
++            actor.set_style(null);
++        auth._userWell.show();
++        auth._message.show();
++        auth._submitArrow.icon_name = 'lumaui-corner-down-left-symbolic';
++    }
++}
++
++export function allocateCompactLogin(clock, card, prompt, width, height, scale, progress = 1) {
++    const inset = 16 * scale;
++    const cardWidth = Math.max(0, width - 2 * inset);
++    card.configureSize(cardWidth, scale);
++    card._compactLayout = true;
++    card.set_style('background-color: transparent; border: 0; box-shadow: none; padding: 0;');
++    card._blur.enabled = false;
++    card._status.hide();
++    prompt.y_align = Clutter.ActorAlign.END;
++    prompt.x_expand = true;
++    prompt.x_align = Clutter.ActorAlign.FILL;
++    // The original AuthPrompt keeps PAM, retry, error and accessibility behavior.
++    const auth = prompt._entry ? prompt : prompt.get_children().find(child => child._entry);
++    if (auth) {
++        card._compactAuth = auth;
++        auth._userWell.hide();
++        auth._message.visible = auth._message.opacity > 0;
++        if (!auth._compactMessageHook) {
++            auth._compactMessageHook = true;
++            auth._message.connectObject('notify::opacity', () => {
++                auth._message.visible = !card._compactLayout || auth._message.opacity > 0;
++            }, auth);
++        }
++        const logicalWidth = Math.max(0, cardWidth / scale - 16);
++        auth.set_style(`width: ${logicalWidth}px; spacing: 12px;`);
++        auth._inputWell.set_style(`width: ${logicalWidth}px;`);
++        auth._inputRow.set_style(`width: ${Math.max(0, logicalWidth - 12)}px; padding: 6px; spacing: 6px; border-radius: 18px; background-color: rgba(30,30,36,0.72); border: 1px solid rgba(255,255,255,0.16);`);
++        auth._mainBox.set_style(`width: ${Math.max(0, logicalWidth - 82)}px; height: 44px; min-width: 0; padding: 0 8px; border-radius: 14px;`);
++        auth._submitButton.set_style('width: 44px; height: 44px; border-radius: 14px;');
++        auth._submitArrow.icon_name = 'go-next-symbolic';
++        auth._submitButton.accessible_name = _('Unlock');
++    }
++    card.allocate(new Clutter.ActorBox({x1: inset, x2: width - inset,
++        y1: Math.max(height * 0.4, inset), y2: Math.max(inset, height - inset)}));
++    card.opacity = Math.round(255 * progress);
++    card.translation_y = (1 - progress) * 48 * scale;
++    card.reactive = progress > 0;
++    clock.allocateCompact(width, height, scale, progress);
++}
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -170,6 +170,13 @@
+         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+         const actorBox = new Clutter.ActorBox();
+ 
++        if (PrairieLogin.compactLogin(width, scaleFactor)) {
++            const progress = container._compactProgress ?? 0;
++            PrairieLogin.allocateCompactLogin(this._clock, this._card,
++                this._card.get_children()[1], width, height, scaleFactor, progress);
++            return;
++        }
++        PrairieLogin.restoreCompactLogin(this._card);
+         const rtl = container.get_text_direction() === Clutter.TextDirection.RTL;
+         const inset = 20 * scaleFactor;
+         const cardWidth = Math.min(Math.max(0, width - 2 * inset),
+@@ -376,7 +383,15 @@
+         // Unmapped actors and disabled animation update the adjustment
+         // synchronously. Initialize transition targets and lifecycle hooks
+         // before starting the credential prompt and its authentication.
+-        this._showPrompt();
++        this._compactLogin = PrairieLogin.compactLogin(
++            Main.layoutManager.primaryMonitor.width,
++            St.ThemeContext.get_for_stage(global.stage).scaleFactor);
++        if (this._compactLogin) {
++            this._swipeTracker.enabled = true;
++            this._showClock();
++        } else {
++            this._showPrompt();
++        }
+     }
+ 
+     vfunc_key_press_event(event) {
+@@ -501,6 +516,7 @@
+             return;
+ 
+         this._activePage = this._promptBox;
++        this._authPrompt._entry.grab_key_focus();
+ 
+         this._adjustment.ease(1, {
+             duration: CROSSFADE_TIME,
+@@ -511,6 +527,12 @@
+     _setTransitionProgress(progress) {
+         this._promptBox.visible = progress > 0;
+         this._clock.visible = true;
++        if (this._compactLogin) {
++            this._stack._compactProgress = progress;
++            this._stack.queue_relayout();
++            for (const background of this._backgroundGroup.get_children())
++                background.setCompactProgress(progress);
++        }
+ 
+         this._otherUserButton.set({
+             reactive: progress > 0,
+@@ -590,6 +612,8 @@
+             onComplete: () => {
+                 if (this._activePage === this._clock)
+                     this._maybeDestroyAuthPrompt();
++                else
++                    this._authPrompt?._entry.grab_key_focus();
+             },
+         });
+     }
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -841,6 +841,20 @@
+         const width = dialogBox.x2 - dialogBox.x1;
+         const height = dialogBox.y2 - dialogBox.y1;
+         const scale = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
++        if (PrairieLogin.compactLogin(width, scale)) {
++            Main.panel.hide();
++            Main.layoutManager.panelBox.hide();
++            PrairieLogin.allocateCompactLogin(this._prairieClock, this._posterCard,
++                this._authPrompt, width, height, scale);
++            for (const background of this._prairieBackgrounds.get_children())
++                background.setCompactProgress(1);
++            for (const actor of [this._userSelectionBox, this._bottomButtonGroup, this._logoBin])
++                actor.allocate(new Clutter.ActorBox());
++            return;
++        }
++        PrairieLogin.restoreCompactLogin(this._posterCard);
++        Main.panel.show();
++        Main.layoutManager.panelBox.show();
+         const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
+         const inset = 20 * scale;
+         const cardWidth = Math.min(Math.max(0, width - 2 * inset),

@@ -1,9 +1,10 @@
 # Handheld-only Luma Shell defaults. Load this after the shared desktop profile.
 # Keep visual/product identity in config/desktop/dconf/db/luma.d/00-luma-desktop;
-# this overlay is only for capabilities required by a touch-only device.
+# this overlay supplies handheld defaults; native input capabilities decide OSK.
 
 [org/gnome/desktop/a11y/applications]
-screen-keyboard-enabled=true
+# Automatic OSK follows native input capabilities; accessibility remains opt-in.
+screen-keyboard-enabled=false
 
 [org/gnome/desktop/session]
 # An OLED handheld should never hold static Shell/app chrome indefinitely.

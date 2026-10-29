@@ -339,6 +339,8 @@ install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycl
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0290-compact-login-action-bar.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and-input.patch" "$rpmbuild_dir/SOURCES/"
 for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
