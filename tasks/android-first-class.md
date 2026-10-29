@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T17:27:00+00:00
+- Updated: 2026-10-29T18:15:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; d401599a9 (live guard fixture/runner), 497a61054 (runtime source); owner-authorized24GiB build migration; automatic post-build VM qualification armed
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -63,7 +63,8 @@ uses build-highram/controller-r11.py with the unchanged26GiB-owner watchdog.
 All four immutable inputs reverified before boot. Actual24GiB guest startup
 PASSED17:26:26Z: MemTotal25,195,495,424 bytes,8 CPUs,8-job launch marker;
 QEMU25GiB hard+combined/800% quota verified. GOGC20/GOMAXPROCS8. Compiler
-unit active MainPID1175; waiting for actual Ninja/compile progress, no speedup claim.
+unit active MainPID1175, but at18:05..18:14 still in full-source Git checks, not
+Ninja/C++ compilation. Last41% work retained; no new percentage/speedup claim.
 Project7c13c192f, same SFS849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
 includes0015..18, still lacks SDK0005 replies. No completed image yet.
 
@@ -881,3 +882,36 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   admission remains active; runtime VM stays off. This proves startup/settings,
   not eight simultaneous compiler processes, build completion or a speedup.
   Evidence artifacts/dev-android-highram-live-verification-26f58230/live-verification.json.
+
+2026-10-29T18:15Z actual post-resize progress diagnosis:
+- User asked whether done. Actual compiler log was still empty at18:05 and no
+  Ninja process existed: unit active/startup settings did NOT mean C++ work had
+  resumed. Worker had~23GiB available, no swap activity, and heavy source-disk
+  waits. Exact parent was maintained prep dirty_projects -> repo forall -> eight
+  concurrent git status checks across the full compressed source checkout.
+  LLVM check alone read~17GiB over~25min. Full-source checks after remount are a
+  distinct bottleneck; do not report a new compile percentage from service state.
+- Read-only core.checkStat/minimal + trustctime=false experiment5660e2cb timed
+  out30s and was NOT adopted. No persisted stat/ignore relaxation.
+- Scheduling-only probea5c7ddc5 paused seven status processes with exact PID/start
+  checks, then restored them in finally/alarm paths. Oldest LLVM process finished
+  during1s; causality/speedup NOT established. Boundedcc4d54ce caps status tasks
+  at2 for at most230s, then releases every original process. No source/index
+  mutations or checks skipped. Its completion receipt still pending at18:14Z.
+- Actual724de78d PASSED18:12:36Z: builder-only global core.preloadIndex=false
+  verified, original config retained in guest/root, owner1003 preserved. This
+  affects scheduling for subsequent Git processes, not Android sources or the
+  immutable project disk. No controller/source pins were changed live.
+- Canonical future preparation now uses bounded verification jobs default2 and
+  Git index preloading disabled. Added explicit progress messages and fixed the
+  false-clean error path: Git/repo failures propagate through all four initial,
+  incremental and destructive-reset callers. Git failure must never authorize
+  reset. Current immutable7c13c192f project does NOT include this source change.
+- Actual Bash/Git fixture058c36fc PASSED6 checks; repeat73579ac3 PASSED6 after
+  making the preserved broken-function control independent of Git HEAD/history.
+  Tracked/untracked/delete checks, failed Git/repo, explicit job bounds and all
+  call sites covered. Repo enumeration is an explicit fixture, not a full repo
+  Android execution claim. Need next source snapshot to carry this fix.
+- Build961d8dd3, source-pin observereca8b2c8 and post-build handoffeea5005f remain
+  active. No completed image and no actual new-image VM test yet; last completed
+  C++ work remains59947/143205 before the deliberate resize. Do not claim done.

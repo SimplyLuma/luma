@@ -68,6 +68,16 @@ PYTHONPATH=src/luma-platform/appkit python3 -m unittest discover -s tests/unit -
 Record the actual executed/skipped counts. Sixteen initialization checks need
 root ownership semantics; the non-root run cannot substitute for them.
 
+`python3 tests/android/source-preparation-cleanliness.py` executes the production
+Bash source-cleanliness functions with real Git repositories and an explicit
+repo-enumeration fixture. Tracked edits, deletions, untracked files, Git failures
+and repo failures must prevent preparation/reset. The old false-clean Git-error
+behavior is retained as a negative control. Source verification defaults to two
+projects at a time (`LUMA_ANDROID_VERIFY_JOBS=1..8`), independently of compiler
+parallelism, with Git index preloading disabled to reduce compressed-filesystem
+contention. This changes scheduling, while preserving file checks. It does not
+replace a full Android source or image qualification run.
+
 For system acceptance, retain the exact OS/runtime/image/APK hashes and CPU/GPU
 configuration. Measure command latency separately from first presented frame;
 count PSS instead of adding shared RSS; record allocated disk blocks rather than

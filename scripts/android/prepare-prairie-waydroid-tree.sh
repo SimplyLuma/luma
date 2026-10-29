@@ -76,11 +76,32 @@ tree_snapshot() {
 }
 
 dirty_projects() {
+  local verify_jobs=${LUMA_ANDROID_VERIFY_JOBS:-2}
+  case "$verify_jobs" in
+    1|2|3|4|5|6|7|8) ;;
+    *) printf 'error: LUMA_ANDROID_VERIFY_JOBS must be 1..8\n' >&2; return 2 ;;
+  esac
   (
     cd "$source_root"
-    repo forall -c \
-      'test -z "$(git status --porcelain)" || printf "%s\n" "$REPO_PATH"'
+    printf 'Checking Android source projects (verification jobs=%s)...\n' "$verify_jobs" >&2
+    # Parallel Git index preloads contend on compressed source filesystems.
+    # This changes scheduling only: retain tracked and untracked file checks.
+    repo forall -j "$verify_jobs" -e -c '
+      status=$(git -c core.preloadIndex=false status --porcelain) || {
+        printf "error: cannot inspect Android project %s\n" "$REPO_PATH" >&2
+        exit 2
+      }
+      test -z "$status" || printf "%s\n" "$REPO_PATH"
+    ' || return 2
+    printf 'Android source project checks completed.\n' >&2
   )
+}
+
+tree_is_clean() {
+  local dirty
+  # A failed Git/repo command must not become an empty, apparently clean tree.
+  dirty=$(dirty_projects) || return 2
+  test -z "$dirty"
 }
 
 official_input_sha() {
@@ -158,7 +179,7 @@ commit_patch() {
 
 reset_prepared_tree() {
   if [ ! -f "$state_file" ]; then
-    test -z "$(dirty_projects)" || {
+    tree_is_clean || {
       printf 'error: refusing to reset an untracked dirty Android tree\n' >&2
       exit 1
     }
@@ -171,7 +192,7 @@ reset_prepared_tree() {
     printf 'error: prepared Android tree drifted; refusing automatic reset\n' >&2
     exit 1
   }
-  test -z "$(dirty_projects)" || {
+  tree_is_clean || {
     printf 'error: prepared Android tree has uncommitted changes\n' >&2
     exit 1
   }
@@ -194,7 +215,7 @@ fi
 }
 
 if [ ! -f "$state_file" ]; then
-  test -z "$(dirty_projects)" || {
+  tree_is_clean || {
     printf 'error: Android source tree has uncommitted changes\n' >&2
     exit 1
   }
@@ -290,7 +311,7 @@ source "$state_file"
   printf 'error: prepared Android tree commit state drifted\n' >&2
   exit 1
 }
-test -z "$(dirty_projects)" || {
+tree_is_clean || {
   printf 'error: prepared Android tree has uncommitted changes\n' >&2
   exit 1
 }
