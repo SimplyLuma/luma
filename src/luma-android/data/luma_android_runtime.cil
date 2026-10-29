@@ -1,0 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Reuse the provider's existing entrypoint type and domain transition.
+; This module adds no allow rules.
+(filecon "/usr/libexec/luma-waydroid-container" file
+    (system_u object_r waydroid_exec_t ((s0) (s0))))

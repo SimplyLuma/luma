@@ -7,9 +7,21 @@ It is specific to the existing user-zero, non-UID-remapped Waydroid transport.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 INTERFACE = 'lineageos.waydroid.IHardware'
 SERVICE_NAME = 'waydroidhardware'
-PERMISSION_DENIED = -1
+EX_SECURITY = -1
+EX_UNSUPPORTED_OPERATION = -7
+
+
+def exception_reply(local, code, message):
+    reply = local.new_reply()
+    # python-gbinder accepts an unsigned word even for AIDL signed int32.
+    reply.append_int32(code & 0xffffffff)
+    reply.append_string16(message)
+    reply.append_int32(0)  # No remote stack trace payload.
+    return reply, 0
 
 
 def admitted(request) -> bool:
@@ -34,7 +46,13 @@ class GuardedServiceManager:
 
         def guarded(request, code, flags):
             if not admitted(request):
-                return local.new_reply(), PERMISSION_DENIED
+                # AIDL SecurityException, including the empty remote-stack
+                # header. Raw transport errors are normalized by libgbinder
+                # and cannot reliably distinguish permission from absence.
+                return exception_reply(local, EX_SECURITY, 'Android hardware access denied')
+            if code not in range(1, 8):
+                return exception_reply(local, EX_UNSUPPORTED_OPERATION,
+                                       'Unsupported Android hardware operation')
             return handler(request, code, flags)
 
         local = self.manager.new_local_object(interface, guarded)
@@ -59,11 +77,19 @@ def install_guard(hardware):
         hardware.gbinder = GuardedGbinder(hardware.gbinder)
 
 
+def verify_confinement(enforce: Path, current: Path):
+    if enforce.exists():
+        context = current.read_text().strip().split(':')
+        if len(context) < 4 or context[2] != 'waydroid_t':
+            raise RuntimeError('Android container is outside its Waydroid SELinux domain')
+
+
 def main():
     import os
     import sys
     if os.getuid() != 0:
         raise SystemExit('The Android container service requires its system identity.')
+    verify_confinement(Path('/sys/fs/selinux/enforce'), Path('/proc/self/attr/current'))
     sys.path.insert(0, '/usr/lib/waydroid')
     import tools
     from tools.interfaces import IHardware

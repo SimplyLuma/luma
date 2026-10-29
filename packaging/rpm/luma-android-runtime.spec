@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.83.android20261028.1%{?dist}
+Release:        1.luma.84.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -16,7 +16,10 @@ BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
 BuildRequires:  shared-mime-info
 BuildRequires:  systemd-rpm-macros
+%selinux_requires_min
 Requires:       waydroid >= 1.6.3
+Requires:       waydroid-selinux >= 1.6.3
+Requires(post): waydroid-selinux >= 1.6.3
 Requires:       python3
 Requires:       glib2
 Requires:       python3-gobject
@@ -60,6 +63,8 @@ install -D -m 0755 bin/luma-waydroid-session \
   %{buildroot}%{_libexecdir}/luma-waydroid-session
 install -D -m 0755 bin/luma-waydroid-container \
   %{buildroot}%{_libexecdir}/luma-waydroid-container
+install -D -m 0644 data/luma_android_runtime.cil \
+  %{buildroot}%{_datadir}/selinux/packages/luma_android_runtime.cil
 install -D -m 0644 data/25-luma-hardware-admission.conf \
   %{buildroot}%{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 install -D -m 0755 bin/luma-waydroid-binder-compat \
@@ -122,12 +127,15 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 40
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
+%selinux_modules_install -s targeted %{_datadir}/selinux/packages/luma_android_runtime.cil
+/usr/sbin/restorecon %{_libexecdir}/luma-waydroid-container >/dev/null 2>&1 || :
 /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
 
 %postun
+%selinux_modules_uninstall -s targeted luma_android_runtime
 /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
@@ -146,6 +154,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_libexecdir}/luma-waydroid-package-session
 %{_libexecdir}/luma-waydroid-session
 %{_libexecdir}/luma-waydroid-container
+%{_datadir}/selinux/packages/luma_android_runtime.cil
 %dir %{_unitdir}/waydroid-container.service.d
 %{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 %{_libexecdir}/luma-waydroid-binder-compat
@@ -172,6 +181,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.84.android20261028.1
+- Reuse the provider SELinux entrypoint type and verify the root service domain
+
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.83.android20261028.1
 - Reject untrusted callers before root Android hardware IPC dispatch
 

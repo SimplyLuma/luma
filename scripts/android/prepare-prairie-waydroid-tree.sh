@@ -47,6 +47,17 @@ test -d "$source_root/.repo" || {
 }
 test -x "$waydroid_patch_script"
 
+# The pinned WebView and Mesa projects contain LFS working files. Without the
+# filter a clean checkout appears dirty, after a costly full-tree scan.
+command -v git-lfs >/dev/null || {
+  printf 'error: Git LFS is required for the pinned Android source; install git-lfs and run git lfs install\n' >&2
+  exit 1
+}
+git -C "$source_root" config --get filter.lfs.process >/dev/null || {
+  printf 'error: configure the Android builder Git LFS filter with git lfs install before preparing source\n' >&2
+  exit 1
+}
+
 tree_snapshot() {
   (
     cd "$source_root"

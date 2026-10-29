@@ -117,7 +117,10 @@ or dispatch a request. Only Android root and system-server UIDs are admitted
 under the current non-remapped ABI; the session user's numeric identity is not
 an extra root-hardware role. Its packaged systemd drop-in selects the adapter
 without replacing the provider's unit or Python implementation. This narrow
-boundary is not a complete isolation audit of the Android runtime.
+boundary is not a complete isolation audit of the Android runtime. A label-only
+SELinux module maps the adapter to the provider's existing entrypoint type; it
+adds no allow rules. The adapter verifies its execution domain on SELinux hosts
+before starting the service, so a missing policy/label fails closed.
 The runtime package preserves the derived GPL transport's license and attribution.
 
 A real mouse resize in the disposable x86 VM froze the baseline compositor.

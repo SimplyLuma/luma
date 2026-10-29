@@ -46,7 +46,7 @@ chmod -R a+rX "$rpmbuild_dir"
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
     set -euo pipefail
-    dnf5 -y install desktop-file-utils rpm-build shared-mime-info systemd-rpm-macros python3-devel python3-gobject gtk4 libadwaita
+    dnf5 -y install desktop-file-utils rpm-build shared-mime-info systemd-rpm-macros systemd-devel selinux-policy-devel python3-devel python3-gobject gtk4 libadwaita
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-android-runtime.spec
     rpm_path=$(find RPMS/noarch -name "luma-android-runtime-*.rpm" -print -quit)
     test -n "$rpm_path"
@@ -63,6 +63,7 @@ chmod -R a+rX "$rpmbuild_dir"
     test -x usr/lib/systemd/system-generators/luma-android-policy-generator
     test -x usr/libexec/luma-waydroid-package-session
     test -x usr/libexec/luma-waydroid-container
+    test -f usr/share/selinux/packages/luma_android_runtime.cil
     grep -Fqx "ExecStart=/usr/libexec/luma-waydroid-container" \
       usr/lib/systemd/system/waydroid-container.service.d/25-luma-hardware-admission.conf
     test -f usr/share/polkit-1/actions/org.projectluma.waydroid-package-session.policy
