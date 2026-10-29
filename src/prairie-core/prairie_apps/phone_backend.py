@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+from .cellular_modem import choose_modem
 from .messages_backend import normalize_address
 
 
@@ -407,9 +408,10 @@ class ModemVoiceTransport:
     def dial(self,address:str)->str:
         capability=inspect_phone_capability()
         if not capability.available: raise RuntimeError(capability.reason)
-        address=normalize_address(address); listing=self.runner(["mmcli","-L"]); match=re.search(r"/Modem/(\d+)",listing)
-        if not match: raise RuntimeError("No cellular modem is ready.")
-        created=self.runner(["mmcli","-m",match.group(1),f"--voice-create-call=number={address}"]); call=re.search(r"/Call/(\d+)",created)
+        address=normalize_address(address)
+        _indexes,modem,_status=choose_modem(self.runner(["mmcli","-L"]),lambda index: self.runner(["mmcli","-m",index,"--output-keyvalue"]))
+        if modem is None: raise RuntimeError("No cellular modem is ready.")
+        created=self.runner(["mmcli","-m",modem,f"--voice-create-call=number={address}"]); call=re.search(r"/Call/(\d+)",created)
         if not call: raise RuntimeError("The modem did not start the call.")
         self.runner(["mmcli","-o",call.group(1),"--start"]); return f"/org/freedesktop/ModemManager1/Call/{call.group(1)}"
     def hangup(self,path:str)->None:
@@ -751,17 +753,15 @@ def inspect_phone_capability() -> PhoneCapability:
     mmcli = shutil.which("mmcli")
     if mmcli is None:
         return PhoneCapability(False, NO_MODEM_REASON, no_modem=True)
-    listing = _run([mmcli, "-L"])
-    modem_indexes = tuple(dict.fromkeys(re.findall(r"/Modem/(\d+)", listing)))
+    # Key/value status is parsed in memory and never logged. Newer ModemManager
+    # builds no longer expose the historical --simple-status action.
+    modem_indexes, modem, status = choose_modem(
+        _run([mmcli, "-L"]), lambda index: _run([mmcli, "-m", index, "--output-keyvalue"]))
     modem_count = len(modem_indexes)
     if modem_count == 0:
         return PhoneCapability(False, NO_MODEM_REASON, no_modem=True)
-    if modem_count != 1:
+    if modem is None:
         return PhoneCapability(False, "More than one modem needs selection.", modem_count=modem_count)
-
-    # Key/value status is parsed in memory and never logged. Newer ModemManager
-    # builds no longer expose the historical --simple-status action.
-    status = _run([mmcli, "-m", modem_indexes[0], "--output-keyvalue"])
     if "sim-missing" in status.lower():
         return PhoneCapability(False, "Insert a SIM card to place calls.", modem_count=1)
     values = {}

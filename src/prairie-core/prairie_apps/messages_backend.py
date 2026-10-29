@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .cellular_modem import choose_modem
+
 
 @dataclass(frozen=True)
 class ThreadRecord:
@@ -930,18 +932,20 @@ class ModemMessagingTransport:
             listing = self._runner(["mmcli", "-L"])
         except (OSError, subprocess.SubprocessError):
             return MessagingCapability(False, "This device can't send texts. Connect your phone in Luma Connect to text from here.")
-        indexes = tuple(dict.fromkeys(re.findall(r"/Modem/(\d+)", listing)))
-        if len(indexes) != 1:
+        def status_of(index: str) -> str | None:
+            try:
+                return self._runner(["mmcli", "-m", index, "--output-keyvalue"])
+            except (OSError, subprocess.SubprocessError):
+                return None
+
+        _indexes, modem, status = choose_modem(listing, status_of)
+        if modem is None:
             return MessagingCapability(False, "No cellular modem is ready.")
-        try:
-            status = self._runner(
-                ["mmcli", "-m", indexes[0], "--output-keyvalue"]
-            )
-        except (OSError, subprocess.SubprocessError):
-            return MessagingCapability(False, "The cellular modem is not ready.", indexes[0])
+        if status is None:
+            return MessagingCapability(False, "The cellular modem is not ready.", modem)
         lowered = status.lower()
         if "sim-missing" in lowered:
-            return MessagingCapability(False, "Insert a SIM card to send messages.", indexes[0])
+            return MessagingCapability(False, "Insert a SIM card to send messages.", modem)
         values = {}
         for line in status.splitlines():
             key, separator, value = line.partition(":")
@@ -955,8 +959,8 @@ class ModemMessagingTransport:
         # with Core.WrongState.  Require MM's explicit registration state (or
         # the corresponding 3GPP state) before exposing a send-capable UI.
         if modem_state != "registered" and registration not in {"home", "roaming"}:
-            return MessagingCapability(False, "Connect to a cellular network to send.", indexes[0])
-        return MessagingCapability(True, "Ready to send", indexes[0])
+            return MessagingCapability(False, "Connect to a cellular network to send.", modem)
+        return MessagingCapability(True, "Ready to send", modem)
 
     def send(self, address: str, body: str) -> str:
         capability = self.inspect()
