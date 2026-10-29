@@ -310,3 +310,12 @@ marker only releases the test gate; native IPC still comes from the ordinary
 APK process, whose kernel UID and PID are verified. This prevents
 the activity launch's clipboard selection changes from invalidating a pre-launch
 seed. It does not qualify focus policy or turn an empty post-control into a pass.
+
+`notification-reply-native.js` is a prepared installed-Shell integration probe.
+It waits for the real Android fixture notification, requires the negotiated reply
+entry, types with a compositor virtual keyboard and clicks the actual send
+button. Its result deliberately leaves Android delivery unqualified: the VM
+wrapper must require one fresh APK `action:reply` receipt with the exact unique
+synthetic text, plus the matched image/runtime/Shell/APK identities. Source syntax
+was checked with Node; installed GJS, rendering, input and Android delivery remain
+pending until this probe runs on the coherent reply-enabled candidate.

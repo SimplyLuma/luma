@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:46:00+00:00
+- Updated: 2026-10-29T23:58:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); current7c13 image exported and x86 scope tests passed; next SDK0005 image
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,27 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:58Z — r12 NINJA ACTIVE; PREPARED REAL NATIVE REPLY PROBE:
+- Source checks/SDK5 incremental refresh completed23:47Z. Soong graph regenerated
+  with actual soong_build using~6cores early; guest available~8GiB at graph peak,
+  zero swap. Target lineage_waydroid_x86_64 confirmed. Ninja started~23:55Z,
+  PID15330, dependency scanning; no compiler action/error reported yet.
+- Prepared public tests/android/notification-reply-native.js for installed
+  Shell124. Actual Android source/app identity and negotiated inline reply
+  required; opens Luma notification tray, locates mapped live entry/button,
+  uses compositor virtual pointer+keyboard to type/click, attempts internal Shell
+  screenshot. Does NOT synthesize a notification or call Reply transport directly.
+  JSresult ALWAYS leaves android_delivery_qualified=false; outside wrapper must
+  verify one fresh exact unique APK action:reply receipt with matched identities.
+- 8df213de PASSED Node ES-module syntax ONLY. No installed GJS/native UI/input or
+  Android reply claim yet. Private reply-vm-r12/README.txt records setup need;
+  actual VM update/test driver still to prepare. Shell124 main/common RPMs
+  are2,428,083B/16,746B; strict common dependency must be replaced together via
+  local rpm-ostree transaction, reboot to execute new Shell, retain rollback.
+- Active normal build e60f41b6 and policy guard e184fa82 unchanged; do not mutate
+  their pinned private helper files/inputs. Continue through build/export then
+  coherent runtime/Shell/image UI test. All broader gates remain open.
 
 OBSERVED23:46Z — r12 COLD TOOL PREFLIGHT PASSED; SOURCE CHECKS ACTIVE:
 - Four immutable inputs verified23:45:13Z; vdd project/vde tools replaced ONLY on
