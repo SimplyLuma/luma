@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:28:00+00:00
+- Updated: 2026-10-29T23:32:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
+- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); current7c13 image exported and x86 scope tests passed; next SDK0005 image
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -23,7 +23,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A01 Matched candidate | OPEN: current image7c13c192f lacks SDK0005 replies; host.94/Shell124 built separately | Finish guard image, run its controls, then build SDK0005 pair and test all matching components together. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
-| A04 Lifecycle/windows | Known old-image resize freeze; source fix only | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
+| A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
 | A06 Native notifications | Old-image native card and Mark read observed; new lifecycle/reply runtime OPEN | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
 | A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
@@ -35,7 +35,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A13 Contacts/calendar/telephony | OPEN consented providers | Native authoritative services via scoped grants; no private native database mounts or Android ownership of modem/controllers. |
 | A14 Other hardware | OPEN arbitration/qualification | USB/Bluetooth/NFC/sensors with native coexistence, real device reconnect/revocation and accurate capability advertisement. |
 | A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
-| A16 Privileged native services | Old native clipboard/task probes exposed real missing guards; source-only fixes | On rebuilt image, ordinary APK cannot read/write clipboard or focus/remove/read task metadata; preserve trusted control, normal native windows and property/platform/host-service negatives. |
+| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc; remaining methods/boundaries open | On rebuilt image, ordinary APK cannot read/write clipboard or focus/remove/read task metadata; preserve trusted control, normal native windows and property/platform/host-service negatives. |
 | A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
 | A18 CPU/page/GPU matrix | x86 VM baseline only; ARM/page config source checks | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
 | A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
@@ -56,6 +56,40 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+VERIFIED23:32Z — ACTUAL X86 WINDOW AND NATIVE GUARD MILESTONE PASSED:
+- dev-android-window-live-2ad2f9cc.service EXIT0 finished23:30:29.634923Z;
+  root window actor inactive; owned runtime VM observed SHUT OFF. No ongoing VM
+  actor or watcher remains. Same exact system/vendor7c13 pair, host.94 and APKr16
+  hashes verified before tests. Source/native provenance remains above; SDK4 only.
+- Window PASS: initial349x635, new1242x641 then459x635; two saved/restored activity
+  events retained `State survives resizing`; same processPID1541 and responsive
+  am-start after resize/maximize/restore. This exercises the old configure deadlock
+  path; no freeze observed in this case. Not full phone/tablet/window corpus.
+- Screenshot UNAVAILABLE all four attempts: QEMU screendump `no surface`.
+  Actual error retained. No rendered pixels, visual smoothness, first-frame or
+  physical/performance claim; actual client dimensions/state are the evidence.
+- Native PASS run29bf83a3-deab-495d-baec-ca8b35b4ad75: APKUID10128/PID1638,
+  both before/after UID1000 controls clipboardandroid-fixture/taskfixture-label
+  return0. Ordinary APK task-nameempty, clipboardempty/request-returned/empty.
+  Synthetic seeded clipboard unchanged; same Android init3062/start9151 and
+  system_server322/start13384. Actual kernel app UID/PID matched receipts.
+  Scope ONLY native clipboard read/write and task-name getter admission.
+  Focus/remove/resize mutators, platform/property/host-service boundaries open.
+- Android SELinuxDisabled STILL productionBLOCK; A15 not closed. Tests do not
+  establish identity namespace isolation or test-key/origin protection.
+- Private guard-vm-auto/latest.json explicitly records independent passed scope
+  with exact normal result/evidence digests; original failed runs unchanged.
+  Evidence: artifacts/dev-android-window-live-2ad2f9cc/{pipeline,window-qualification,
+  native-guard-result,result}.json andreadiness-output.txt. Prepared private
+  check/ready/driver/run/helpers pinned in window-live manifest. No PR/push/release.
+- NEXT: prepare current immutable project+verified Meson/glslang tool inputs and
+  coherent SDK0005 reply-enabled image; do not reuse old r11 cold driver as-is
+  (glslang mount missing, SDK4 preparation overlay, old128MiB bulk exporter).
+  Use bounded26/27GiB normal admission with24GiB/QEMU25, adequate controller cap,
+  explicit restored shared policy, sync before results/clean shutdown, and
+  separate or bounded-SFTP export. Then test image+host.94+Shell124 native reply
+  UI. Continue ARM/isolation/hardware/power/rights gates; no daily-use claim.
 
 LIVE23:28Z — WINDOW/NATIVE TESTS CONTINUE, no completed pass:
 - 431f4ddf verified booted.94/APKr16/native payloads; initial actual layout349x635,
