@@ -9,11 +9,40 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import threading
 import time
 from urllib.parse import urlsplit
 
 from .chatgpt import API, ChatGPTError, NetworkError, error_message
+
+
+_EVENT_TYPES = frozenset(("response.created", "response.in_progress", "response.output_item.added",
+    "response.output_item.done", "response.content_part.added", "response.content_part.done",
+    "response.output_text.delta", "response.output_text.done", "response.function_call_arguments.delta",
+    "response.function_call_arguments.done", "response.reasoning_summary_text.delta", "response.completed",
+    "response.failed", "response.incomplete", "error"))
+_ITEM_TYPES = frozenset(("message", "function_call", "reasoning", "web_search_call", "custom_tool_call",
+    "tool_search_call", "mcp_call", "computer_call"))
+
+
+def _count_shape(counts, value, allowed):
+    # Never log remote strings, arguments, text, identifiers or encrypted data.
+    key = value if isinstance(value, str) and value in allowed else "other"
+    counts[key] = counts.get(key, 0) + 1
+
+
+def _completed_output(result, finished_items):
+    if result.get("status") != "completed" or not isinstance(result.get("output"), list):
+        raise ValueError()
+    if result["output"] or not finished_items:
+        return result["output"]
+    # Some stream summaries omit the items already delivered individually. Only
+    # completed items in a contiguous output sequence can replace an empty list.
+    # They remain inert until the response itself has completed successfully.
+    if sorted(finished_items) != list(range(len(finished_items))):
+        raise ValueError()
+    return [finished_items[index] for index in range(len(finished_items))]
 
 
 def _input(messages):
@@ -97,6 +126,8 @@ class ChatGPTProvider:
         if self.reasoning:
             body["reasoning"] = {"effort": self.reasoning}
         completed, output, streamed, token = False, [], False, ""
+        finished_items, event_counts, item_counts = {}, {}, {}
+        terminal_count, usable = 0, False
         try:
             token = self.manager.access(self.profile)
             with self.manager.transport.open(API + "/responses", token=token, body=body, timeout=90) as response:
@@ -104,6 +135,7 @@ class ChatGPTProvider:
                     if stop is not None and stop.is_set():
                         return
                     kind = event.get("type")
+                    _count_shape(event_counts, kind, _EVENT_TYPES)
                     if kind in ("response.web_search_call.in_progress", "response.web_search_call.searching"):
                         yield {"type": "working", "label": "Searching the web…"}
                     elif kind == "response.output_item.added" and event.get("item", {}).get("type") == "web_search_call":
@@ -111,8 +143,15 @@ class ChatGPTProvider:
                     elif kind == "response.output_text.delta":
                         if not isinstance(event.get("delta"), str):
                             raise ValueError()
-                        streamed = True
+                        streamed = streamed or bool(event["delta"])
                         yield {"type": "text", "text": event["delta"]}
+                    elif kind == "response.output_item.done":
+                        index, item = event.get("output_index"), event.get("item")
+                        if (type(index) is not int or not 0 <= index < 256 or not isinstance(item, dict)
+                                or item.get("status") not in (None, "completed")
+                                or (index in finished_items and finished_items[index] != item)):
+                            raise ValueError()
+                        finished_items[index] = item
                     elif kind in ("response.failed", "error"):
                         error = event.get("response", {}).get("error") or event.get("error") or event
                         yield {"type": "error", "message": error_message(0, error.get("code", ""))}
@@ -121,9 +160,8 @@ class ChatGPTProvider:
                         raise ChatGPTError("ChatGPT's answer was incomplete. Try again or choose another model.")
                     elif kind == "response.completed":
                         result = event["response"]
-                        if result.get("status") != "completed" or not isinstance(result.get("output"), list):
-                            raise ValueError()
-                        output = result["output"]
+                        output = _completed_output(result, finished_items)
+                        terminal_count = len(result["output"])
                         completed = True
                         break
             if stop is not None and stop.is_set():
@@ -133,6 +171,7 @@ class ChatGPTProvider:
             calls, call_ids, final_text, sources = [], set(), [], []
             searched = False
             for item in output:
+                _count_shape(item_counts, item.get("type"), _ITEM_TYPES)
                 if item.get("type") == "function_call":
                     arguments = json.loads(item["arguments"])
                     if (not isinstance(arguments, dict) or not isinstance(item.get("call_id"), str)
@@ -154,8 +193,9 @@ class ChatGPTProvider:
                         sources.extend(citations)
                 elif item.get("type") == "web_search_call":
                     searched = True
-            if not calls and not final_text and not streamed:
+            if not calls and not any(piece.strip() for piece in final_text) and not streamed:
                 raise ChatGPTError("ChatGPT finished without returning a reply or an application action. Try again.")
+            usable = True
             self._history = input_items + output
             self._messages = copy.deepcopy(messages)
             if not streamed:
@@ -179,6 +219,10 @@ class ChatGPTProvider:
             yield {"type": "error", "message": str(error)}
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             yield {"type": "error", "message": "ChatGPT's answer could not be completed safely. Try again."}
+        finally:
+            logging.getLogger(__name__).log(logging.DEBUG if usable else logging.WARNING,
+                "Ari ChatGPT stream shape: completed=%s terminal_items=%d done_items=%d streamed_text=%s events=%s output=%s",
+                completed, terminal_count, len(finished_items), streamed, event_counts, item_counts)
 
 
 def _cited_text(part):

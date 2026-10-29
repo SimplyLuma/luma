@@ -54,6 +54,10 @@ with (out/'weather.log').open('w') as log:
    (out/'raw-controls.json').write_text(json.dumps(debug,indent=2))
    raise AssertionError('Timed out: '+str(fn))
   app=wait(lambda:next(iter(a.desktop_applications({'name':'weather'})['data']),None))
+  if os.environ.get('ARI_ACCESSIBILITY_AGENT') == '1':
+   from native_agent_accessibility import exercise
+   exercise(client,out)
+   sys.exit(0)
   token=app['application']
   def inspect():
    data=a.inspect_application({'application':token})['data']

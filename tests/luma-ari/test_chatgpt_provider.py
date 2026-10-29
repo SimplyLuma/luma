@@ -187,6 +187,69 @@ class Responses(unittest.TestCase):
         self.responses.append(stream(completed([{'type':'message','content':[{'type':'refusal','refusal':'I cannot perform that action.'}]}])))
         self.assertIn({'type':'text','text':'I cannot perform that action.'},list(self.provider.chat(self.messages)))
 
+    def test_done_items_survive_an_empty_terminal_summary_and_continue_the_tool_loop(self):
+        reasoning = {'type': 'reasoning', 'id': 'reason', 'encrypted_content': 'private-reasoning'}
+        call = {'type': 'function_call', 'status': 'completed', 'call_id': 'call', 'namespace': 'ari',
+                'name': 'now', 'arguments': '{}'}
+        self.responses.append(stream(
+            {'type': 'response.output_item.done', 'output_index': 0, 'item': reasoning},
+            {'type': 'response.output_item.done', 'output_index': 1, 'item': call}, completed([])))
+        self.assertEqual(list(self.provider.chat(self.messages, self.tools)),
+                         [{'type': 'tool_call', 'id': 'call', 'name': 'now', 'arguments': {}}])
+        self.messages += [{'role': 'assistant', 'content': None, 'tool_calls': [
+            {'id': 'call', 'function': {'name': 'now', 'arguments': '{}'}}]},
+            {'role': 'tool', 'tool_call_id': 'call', 'content': 'The current time'}]
+        self.responses.append(stream(completed([{'type': 'message', 'content': [
+            {'type': 'output_text', 'text': 'The answer'}]}])))
+        self.assertEqual(list(self.provider.chat(self.messages, self.tools)), [{'type': 'text', 'text': 'The answer'}])
+        inputs = self.requests[-1][1]['body']['input']
+        self.assertIn(reasoning, inputs)
+        self.assertEqual(sum(item.get('type') == 'function_call' for item in inputs), 1)
+        self.assertEqual(inputs[-1]['call_id'], 'call')
+
+    def test_done_message_keeps_citations_when_terminal_summary_is_empty(self):
+        message = {'type': 'message', 'status': 'completed', 'content': [
+            {'type': 'output_text', 'text': 'Read this', 'annotations': [
+                {'type': 'url_citation', 'url': 'https://example.org', 'title': 'Source',
+                 'start_index': 5, 'end_index': 9}]}]}
+        self.responses.append(stream({'type': 'response.output_item.done', 'output_index': 0, 'item': message}, completed([])))
+        result = list(self.provider.chat(self.messages))
+        self.assertIn({'type': 'text', 'text': 'Read [Source](https://example.org)'}, result)
+        self.assertIn({'type': 'sources', 'sources': [{'title': 'Source', 'url': 'https://example.org'}]}, result)
+
+    def test_terminal_output_does_not_duplicate_individual_done_calls(self):
+        call = {'type': 'function_call', 'call_id': 'call', 'name': 'now', 'arguments': '{}'}
+        self.responses.append(stream({'type': 'response.output_item.done', 'output_index': 0, 'item': call}, completed([call])))
+        self.assertEqual(len([event for event in self.provider.chat(self.messages, self.tools)
+                              if event['type'] == 'tool_call']), 1)
+
+    def test_incomplete_or_conflicting_done_sequences_never_release_actions(self):
+        call = {'type': 'function_call', 'call_id': 'call', 'name': 'now', 'arguments': '{}'}
+        good = {'type': 'response.output_item.done', 'output_index': 0, 'item': call}
+        for events in ([{**good, 'output_index': 1}], [{**good, 'output_index': True}],
+                       [good, {**good, 'item': {**call, 'arguments': '{"different":true}'}}],
+                       [{**good, 'item': {**call, 'status': 'incomplete'}}]):
+            self.responses.append(stream(*events, completed([])))
+            result = list(self.provider.chat(self.messages, self.tools))
+            self.assertEqual(result[-1]['type'], 'error')
+            self.assertFalse(any(event['type'] == 'tool_call' for event in result))
+
+    def test_empty_completion_diagnostics_never_log_remote_data(self):
+        self.responses.append(stream({'type': 'private-event-name', 'text': 'private-text'}, completed([
+            {'type': 'private-item-name', 'arguments': 'private-arguments', 'id': 'private-id'},
+            {'type': 'reasoning', 'encrypted_content': 'private-reasoning'}])))
+        with self.assertLogs('ari.chatgpt_provider', level='WARNING') as logs:
+            self.assertEqual(list(self.provider.chat(self.messages))[-1]['type'], 'error')
+        diagnostic = '\n'.join(logs.output)
+        self.assertNotIn('private-', diagnostic)
+        self.assertIn('terminal_items=2', diagnostic)
+        self.assertIn("'other': 1", diagnostic)
+
+    def test_empty_text_parts_are_not_a_successful_reply(self):
+        self.responses.append(stream({'type': 'response.output_text.delta', 'delta': ''}, completed([
+            {'type': 'message', 'content': [{'type': 'output_text', 'text': ''}]}])))
+        self.assertEqual(list(self.provider.chat(self.messages))[-1]['type'], 'error')
+
 
 if __name__ == "__main__":
     unittest.main()

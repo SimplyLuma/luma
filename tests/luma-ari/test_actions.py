@@ -9,13 +9,20 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from ari import policy, router
-from ari.agent import Agent, Turn
+from ari.agent import Agent, Turn, _tool_text
 from ari.mcp import Tool
 from ari.store import Store
 from ari.tools import applications, workspace
 
 
 class Workspace(unittest.TestCase):
+    def test_tool_results_preserve_list_and_scalar_data_for_the_next_model_call(self):
+        import json
+        for data in ([{'application': 'opaque', 'name': 'Weather'}], ['src/main.py'], 'source text', 7):
+            text = _tool_text({'ok': True, 'summary': 'Read the application.', 'data': data, 'untrusted': True})
+            self.assertIn('[Data from outside Ari.', text)
+            self.assertEqual(json.loads(text.split('Details: ', 1)[1]), data)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / 'Projects' / 'Ari'

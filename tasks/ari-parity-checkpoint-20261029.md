@@ -295,3 +295,27 @@ This was a requested launch, not an automated Dell application test. Manual
 confirmation remains pending for conversation retention, the effort picker,
 Weather changes and actual account hosted-search acceptance. The visual gate
 still fails and PR #92 remains draft.
+
+## Live Weather retry and stream integration correction
+
+The owner's r4 retry still returned a completed response without a reply/action.
+This is a failed live acceptance check. The earlier direct adapter and MCP tests
+did not establish that the hosted model would invoke those controls.
+
+The provider now retains individual completed output items when a successful
+terminal event has an empty output summary. Calls remain blocked until terminal
+success; incomplete, conflicting or discontinuous item sequences are refused.
+Reasoning and function-call items are retained for the subsequent tool result.
+Unexpected/empty streams emit only allowlisted event/item counts in diagnostics,
+without response text, identifiers, arguments, credentials or encrypted content.
+
+A separate action-loop bug was found: application discovery and several other
+tools return list data, while the tool-result formatter assumed a dictionary.
+The formatter now preserves list/scalar data for the next model call.
+
+162 unit tests and eleven focused GTK checks passed. The expanded native Weather
+test passed through a scripted Responses stream, the real agent and approval
+engine, actual MCP process and real Weather controls/store, including two
+approvals and two receipts. Direct adapter/MCP checks also passed. The model
+decisions in this test are scripted; actual ChatGPT account acceptance remains
+pending, and the supplied screenshot's exact remote response shape is unknown.
