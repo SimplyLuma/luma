@@ -75,9 +75,12 @@ class ReplyCalls:
             accepted = None
             if status == 0:
                 try:
-                    exception = reply.read_int32()
+                    # RemoteReply convenience methods each start at byte zero.
+                    # Use one cursor for the exception header and boolean body.
+                    reader = reply.init_reader()
+                    exception = reader.read_int32()
                     if exception == (True, 0):
-                        result = reply.read_int32()
+                        result = reader.read_int32()
                         if result == (True, 1):
                             accepted = True
                 except Exception:

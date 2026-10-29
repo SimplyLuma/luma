@@ -173,7 +173,9 @@ def read_notification(reader):
     suppress = number('read_bool')
     timeout = number()
     resident, transient = number('read_bool'), number('read_bool')
-    urgency = number('read_byte')
+    # AIDL/Parcel.writeByte writes a padded int32. A raw gbinder read_byte
+    # advances only one byte and corrupts the appended reply-action string.
+    urgency = number()
     if replacement < 0:
         raise ValueError('Invalid Android replacement ID')
     return Notification(package, app, summary, body, tuple(actions), category,

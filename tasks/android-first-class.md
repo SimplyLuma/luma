@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T15:04:00+00:00
+- Updated: 2026-10-29T15:12:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 3f5a44f8e; reply candidate pending commit
+- Branch and last useful commit: codex/android-first-class; b22ed165d; wire-decoding correction pending commit
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -63,8 +63,30 @@ REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
   stop the worker.15s host deadline /30s Shell deadline; uncertain is not retried.
   Reply tokens bind post/listener/generation; same-connection endpoint requires
   current Shell unique owner. Records retain hashes/receipts, no message text.
--Source total124 tests DISCOVERED; this is not a full execution result. Candidate
-  RPM full124-test check pending. Source scripts bash syntax/diff whitespace pass.
+-Candidate.93 clean RPM c06af05e PASSED15:05:09Z:124 tests/0 skips/failures/
+ errors, imports/desktop/payload/profile755 checks. Binarycb1f98535c45c163cc24b190d524a4a133118ff5c0c7fe4d3fe9ce48c805e306,
+ SRPMe0ba8094d11631b6edc757d4a0bcee29eae4d9ad3f6bf3a27df0e76b42ab8fbc,
+ under rpm-r10/source/build/candidate-93/build/packages/luma-android-runtime.
+ DO NOT use .93 for reply qualification: later wire audit found two bugs hidden
+ by inaccurate fixtures. Android Parcel.writeByte writes int32, gbinder.read_byte
+ advances1; appended reply_action misaligns. RemoteReply.read_int32 convenience
+ methods each start at0; use one init_reader cursor for header+ACK.
+-New realistic byte/cursor fixtures against preserved .93 failed as expected:
+ fe3bccf1,2 assertion failures+1 alignment error at15:10:45Z. Correctedsource
+ d07356fa PASSED47 component tests15:11:18Z. Candidate.94 full126-test RPM pending.
+-New reply project SFS ed446c6f PASSED15:08:27Z, sourceb22ed165d,
+ build-vm/luma-project-native-reply.squashfs70,615,040B,
+ SHAe6ed231917685db4321cb91d57ce249e1c333831af0fe370080c472aea7d7b02.
+ Android SDK0005 is unchanged by host-only .94 fixes; prefer latest host RPM.
+ Snapshot is NOT attached to current builder; never replace its input mid-build.
+-Native Shell candidate normalb4b733eb FAILED15:10:22Z in existing%check
+ st/test-symbolic-strokes: icon pixbuf loader/theme warning aborts. All290 native
+ build steps reached%check; no Shell RPM pass. Both actual Figtree/widgets
+ prerequisites built first. Private candidate-shell124 derivedb22ed165d changes
+ only release1.luma.124.android20261029.1 (acceptedpinsunchanged), bounded2jobs,
+ and two obsolete package assertions40->45 /16->18 matching existing0284 and
+ independently confirmed Surface task correction. No checks skipped. Source
+ receipt shell-r124/source-receipt.json. Next inspect real loader prerequisite.
 -TODO: clean-package .93, actual GJS/native UI and Binder/RemoteInput receipt in
   a matched image/Shell pair; source-level full SDK image build; physical tests.
   Update the next image snapshot after current native-guard image finishes or
@@ -572,3 +594,12 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   reservation and guest zram from startup, preserving source/upper/output. No
   hard-cap, host memory reserve or host swap increase. Current r6 is STILL ACTIVE
   with7GiB guest and source59aecadc4; do not assume that plan already ran.
+
+2026-10-29T15:12Z reply candidate milestone:
+- Sourceb22ed165d committed host/Android/Shell reply path; source/API/private-bus
+  checks pass with the exact limits above. .93 RPM124 tests passed but subsequent
+  byte/cursor negative controls exposed wire bugs; .94 correction is pending
+  commit/package and no .93 reply runtime pass exists. Native Shell build failed
+  existing icon-loader%check; preserving the failure, diagnosing prerequisites.
+- Main image r9 remains active source7c13c192f, graph CPU progressing with guest
+  zstd compression, no completed system/vendor images. No hardware/release claim.

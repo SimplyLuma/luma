@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.93.android20261029.1%{?dist}
+Release:        1.luma.94.android20261029.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -123,7 +123,7 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 124
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 126
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
@@ -184,6 +184,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94.android20261029.1
+- Correct Android reply parcel alignment and acknowledgement decoding
+
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.93.android20261029.1
 - Add capability-negotiated Android notification reply transport
 

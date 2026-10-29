@@ -107,6 +107,47 @@ class BinderNotificationTransport(unittest.TestCase):
             transport.read_notification(reader)
         reader.read_byte_array.assert_not_called()
 
+    def test_aidl_byte_padding_does_not_corrupt_appended_reply_action(self):
+        import struct
+        payload = bytearray()
+        def number(value):
+            payload.extend(struct.pack('<i', value))
+        def string(value):
+            number(len(value)); payload.extend(value.encode('utf-16le') + b'\0\0')
+            while len(payload) % 4: payload.append(0)
+        number(0)
+        for value in ('Chat', 'org.example.Chat', 'Title', 'Body'): string(value)
+        number(0)  # no actions in this parser-only control
+        number(0)  # no image
+        string('')
+        for value in (1, -1, 1, 0, 2): number(value)
+        # Parcel.writeByte(byte) writes an int32. libgbinder read_byte consumes
+        # one byte, whereas read_int32 consumes all four including padding.
+        string('reply-action')
+        class Reader:
+            offset = 0
+            def read_int32(self):
+                value, = struct.unpack_from('<i', payload, self.offset)
+                self.offset += 4
+                return True, value
+            def read_bool(self):
+                ok, value = self.read_int32(); return ok, bool(value)
+            def read_byte(self):
+                value = payload[self.offset]; self.offset += 1
+                return True, value
+            def read_string16(self):
+                _, size = self.read_int32()
+                if size < 0 or size * 2 > len(payload) - self.offset:
+                    raise ValueError('Invalid string length')
+                start = self.offset
+                self.offset = (start + (size + 1) * 2 + 3) // 4 * 4
+                return payload[start:start + size * 2].decode('utf-16le')
+        reader = Reader()
+        record, replacement = transport.read_notification(reader)
+        self.assertEqual((record.urgency, replacement), (2, 0))
+        self.assertEqual(reader.read_string16(), 'reply-action')
+        self.assertEqual(reader.offset, len(payload))
+
 
 class NotificationEpoch(unittest.TestCase):
     def test_native_forwarder_restart_preserves_shell_ids_but_shell_restart_resets(self):

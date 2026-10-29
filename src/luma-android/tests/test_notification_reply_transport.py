@@ -27,6 +27,17 @@ class Client:
         self.cancelled.append(transaction)
 
 
+class RemoteReply:
+    # Real GBinderRemoteReply convenience reads start at offset zero each time.
+    # Only init_reader() provides a cursor that advances across header + body.
+    def __init__(self, words):
+        self.words = words
+    def read_int32(self):
+        return self.words[0]
+    def init_reader(self):
+        return SimpleNamespace(read_int32=Mock(side_effect=self.words))
+
+
 class ReplyCallLifetime(unittest.TestCase):
     def setUp(self):
         self.clients = []
@@ -53,7 +64,14 @@ class ReplyCallLifetime(unittest.TestCase):
         self.pool.send(object(), 'fixed.interface', 42, 'reply-action',
                        'fixed-request-id', 'synthetic reply', done or self.done)
     def ack(self, client):
-        client.reply_func(SimpleNamespace(read_int32=Mock(side_effect=[(True, 0), (True, 1)])), 0)
+        client.reply_func(RemoteReply([(True, 0), (True, 1)]), 0)
+    def test_ack_uses_one_advancing_reader_instead_of_repeated_header_reads(self):
+        reply = RemoteReply([(True, 0), (True, 1)])
+        self.assertEqual(reply.read_int32(), (True, 0))
+        self.assertEqual(reply.read_int32(), (True, 0))
+        self.send()
+        self.clients[0]().reply_func(reply, 0)
+        self.done.assert_called_once_with(True)
     def test_concurrent_calls_keep_independent_callbacks_and_real_wire_layout(self):
         first, second = Mock(), Mock()
         self.send(first); self.send(second)
@@ -86,7 +104,7 @@ class ReplyCallLifetime(unittest.TestCase):
                               (0, [(True, 0), (False, 1)]),
                               (0, [(True, 0), (True, 2)])):
             done = Mock(); self.send(done); client = self.clients[-1]()
-            client.reply_func(SimpleNamespace(read_int32=Mock(side_effect=words)), status)
+            client.reply_func(RemoteReply(words), status)
             done.assert_called_once_with(None)
             client.destroy_notif()
     def test_close_is_bounded_and_retains_only_pending_c_lifetimes(self):
