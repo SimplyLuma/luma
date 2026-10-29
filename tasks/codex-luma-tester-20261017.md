@@ -1,7 +1,7 @@
 # Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Linux cross-distro graphics isolation and native-QEMU/viewer performance investigation active. Public0.7.6 unchanged; image deletion merged via PR91.
+- Status: Linux graphics compatibility fix merged and packaged candidate qualified; public0.7.6 unchanged. Image deletion merged via PR91. Release packaging/publication remains a separate next step.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -14,6 +14,31 @@
   No physical device operations. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+2026-10-29 final Linux candidate and source integration complete: private source
+2b3d294deca570a39700fe0c158641d23342d0a7; public PR93 merged as
+ af1663f844b608c22bb674f1355036b3ae846a14 (all four CI checks PASS, run40934266210).
+Source also initializes GTK before display-dependent services; actual earlier r3
+AppImage entry exposed this ordering failure, now corrected in r4. Added plain
+launcher-entry/missing-display smoke test, passed1b78a94e with final runtime.
+Final build888f99ff PASS; actual AppImage SHA/body/launch/quit/host-contamination
+and graphics mapping qualification219f50a4 PASS. Diskless physical nouveau
+render-node QEMU EGL init passed separately; this is not OS GPU performance.
+Final older-userspace Ubuntu22.04/glibc2.35 validation6ee89d1e PASS using private
+2.43 runtime, Vulkan renderer and OpenGL context, no external graphics libraries.
+
+Candidate (NOT published, DOWNLOAD_SOURCE=test, internal version0.7.6):
+/srv/dev-storage/projects/luma-os/artifacts/codex-luma-tester-20261017/appimage-linux-graphics-candidate-r4/Try-Luma-0.7.6-linux-x86_64.AppImage
+298301944 bytes; SHA256942d7599fa65ff3bebb176ab8332496990f66977e219da35caf63c04f7f75e44.
+Runtime prefix alongside appimage output: ../try-linux-graphics-r4.
+Final evidence under /srv/dev/accounts/second/artifacts/dev-try-linux-final-appimage-qa-219f50a4/
+and dev-try-linux-final-ubuntu-6ee89d1e/. All owned validation/build jobs complete.
+Public0.7.6 packages/channel/VM images were not changed. Next useful step for a
+public update: choose new version, rebuild with release attribution, run package
+qualification and publish through existing guarded release infrastructure; do
+not upload this test-attributed0.7.6 candidate as a replacement. No native Arch,
+Wayland or full-GNOME physical-GPU performance claim. Controlled QEMU/viewer
+comparison below found no viewer lag difference for its measured workload.
 
 2026-10-29 Linux isolation implementation: explicit GLVND front ends are now
 included in tools, the GTK closure gains matching Mesa/GBM/Gallium/Vulkan and
@@ -40,8 +65,8 @@ try-linux-frame-counter.S; result JSON/screenshots in their dev-job artifacts.
 Native benchmark initially lacked the optional std-VGA ROM; corrected fixture
 uses explicit system seavgabios input. Normal admission briefly refused new
 work when the shared RAM budget was reserved; no shared jobs/limits changed.
-Final tool-EGL front end and implicit Vulkan-layer isolation added after these
-initial candidate checks; a final staged AppImage and regression run remain.
+Final tool-EGL front end and implicit Vulkan-layer isolation were added after
+these initial checks; the final packaged and older-userspace checks above passed.
 
 2026-10-29 Linux feedback follow-up: user authorized a general compatibility and
 performance fix; do not depend on commenter-specific hardware/logs. Read-only
