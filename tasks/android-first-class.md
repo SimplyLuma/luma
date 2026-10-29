@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:24:00+00:00
+- Updated: 2026-10-29T23:28:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,24 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE23:28Z — WINDOW/NATIVE TESTS CONTINUE, no completed pass:
+- 431f4ddf verified booted.94/APKr16/native payloads; initial actual layout349x635,
+  PID1555. FAILED23:26:08 at initial virsh screenshot before any resize key.
+  Source traceback retained in root window unit journal; old wrapper omitted
+  command stdout. No resize regression verdict. No image/UI capture claimed.
+- Updated PRIVATE window helper records screenshot unavailability+actual error
+  and continues independent client-layout/saved-state/responsive checks; any
+  actual resize command/test failure still fails. It then executes corrected
+  native gate runner on same verified installed APK/images, avoiding another
+  cold boot. Both result files retained; aggregate succeeds ONLY if both pass.
+- CURRENT dev-android-window-live-2ad2f9cc.service normal9GiB, root same window
+  actor512MiB/CPU200/runtime1800. Same guest6/QEMU8 limits; no other VM actor.
+  Own private window-live manifest pins all six helper files. Syntax/bash checks
+  passed; actual screenshots/resize/native verdicts pending. Guard auto watchers
+  remain stopped; DO NOT arm guard or change window files during current actor.
+- Next read window pipeline/window-qualification/native-guard-result and actual
+  normal result, fix concrete errors, continue. Canonical source untouched.
 
 LIVE23:24Z — INDEPENDENT ACTUAL WINDOW TEST ACTIVE; gated native release repaired:
 - b80cd765 APKr16 installed/launched and reached focused private gate. Both
