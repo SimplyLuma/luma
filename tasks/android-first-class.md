@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T18:15:00+00:00
+- Updated: 2026-10-29T20:28:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; d401599a9 (live guard fixture/runner), 497a61054 (runtime source); owner-authorized24GiB build migration; automatic post-build VM qualification armed
+- Branch and last useful commit: codex/android-first-class; aa66507ad (prior handoff), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -57,16 +57,42 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
-CURRENT BUILD: normal dev-android-images-build-vm-r9-961d8dd3.service ACTIVE,
-kind build26GiB/450GiB HDD, launched17:20:52Z; MainPID610831. Root controller
-uses build-highram/controller-r11.py with the unchanged26GiB-owner watchdog.
-All four immutable inputs reverified before boot. Actual24GiB guest startup
-PASSED17:26:26Z: MemTotal25,195,495,424 bytes,8 CPUs,8-job launch marker;
-QEMU25GiB hard+combined/800% quota verified. GOGC20/GOMAXPROCS8. Compiler
-unit active MainPID1175, but at18:05..18:14 still in full-source Git checks, not
-Ninja/C++ compilation. Last41% work retained; no new percentage/speedup claim.
-Project7c13c192f, same SFS849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
-includes0015..18, still lacks SDK0005 replies. No completed image yet.
+CURRENT BUILD: previous normal961d8dd3 FAILED20:08:50Z; guest log shows
+75677/84730 (89%) then Mesa selected Ubuntu Meson0.61.2, requires>=1.4.0.
+The verified immutable tools already contain Meson1.9.2; upstream Mesa prepends
+/usr/bin to PATH and shadowed that bundle. Compile work remains on owned qcow2.
+Both prior observers terminated accurately; original shared policy restored.
+
+Recovery normal dev-android-images-build-vm-r9-fdd0d35d.service ADMITTED20:27:27Z,
+26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Await actual guest startup/tool
+verification and new compiler progress; service active alone is not evidence.
+Updated r11 guest binds verified bundle meson over guest-only/usr/bin/meson,
+checks actual Mesa selection before compilation, and mounts a recorded
+preparation-script overlay with c85ed1d81 bounded/error-propagating checks.
+Project7c13c192f SFS remains unchanged; native patches and SDK0004 stay exact.
+Operational overlays are separately hashed in build results and checked by
+export inventory. This does NOT add SDK0005 replies. Guest-driver SHA also binds
+new checkpoints; prior operational checkpoints cannot be restored silently.
+Private recovery sources were modified only after both old observers stopped,
+then fixtures/syntax passed and manifests refreshed before new admission.
+Source manifest82ecc1c599ec8a7f4bfbdf1c17401aa28b0fcde151b63a1314d7ba3256045fb0.
+Guard manifest e12ce5bdb13b9a93243603f68184a2ac5119dc42416dd37e330bb6276216737d.
+
+New recovery observer dev-android-image-auto-highram-watch-0-587b67e0.service;
+post-build VM handoff dev-android-guard-build-handoff-aa6f61f9.service. Current
+build latest.json verified watching new unit before qualification observer launch.
+Same4 checkpoint resumes/deadline2026-10-30T15:30Z; terminal policy restoration.
+Normal4a6f2f23 reapplication PASSED20:27:23Z: exact restored original matched
+root-owned backup; shared26GiB override active again with global/reserves intact.
+Recovery543d8448 PASSED9 watcher+4 root budget tests including real directory
+symlink alias/reapply/refusal of other-owner policy. Export4505f085 PASSED7 root
+inventory controls including missing/changed operational provenance + readonly
+inactive runtime VM/source preflight. Production Mesa preflight179fdeb0 PASSED2
+fixture tests including actual failed0.61.2 selection and PATH precedence.
+Source b35283a1 PASSED2 Mesa +6 cleanliness fixtures, Bash syntax and diff checks.
+Live startup verifier dev-android-highram-live-verification-d9b1a4be.service
+requires this attempt timestamp plus actual unprivileged/usr/bin-first Meson1.9.2.
+These are controls, not actual image/runtime qualification. No completed image.
 
 User explicitly authorized a larger allocation when spare RAM is available.
 At change time server had~34GiB available; only this builder plus three1GiB

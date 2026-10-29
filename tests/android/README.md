@@ -68,6 +68,13 @@ PYTHONPATH=src/luma-platform/appkit python3 -m unittest discover -s tests/unit -
 Record the actual executed/skipped counts. Sixteen initialization checks need
 root ownership semantics; the non-root run cannot substitute for them.
 
+`python3 tests/android/mesa-host-tools.py` checks the production Mesa preflight,
+including rejection of Meson 0.61.2 against Mesa's declared minimum 1.4.0 and
+the upstream `/usr/bin:/usr/local/bin` PATH precedence. The image builder runs
+the check before source preparation or compilation; a newer Meson elsewhere
+on PATH does not satisfy it when Mesa selects an older system copy. These are
+dependency-selection fixtures, not a graphics or image build qualification.
+
 `python3 tests/android/source-preparation-cleanliness.py` executes the production
 Bash source-cleanliness functions with real Git repositories and an explicit
 repo-enumeration fixture. Tracked edits, deletions, untracked files, Git failures

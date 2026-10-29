@@ -85,10 +85,7 @@ if [[ -n ${GOMAXPROCS:-} && ! $GOMAXPROCS =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-command -v meson >/dev/null || {
-  printf 'error: Meson is required to build the Waydroid Mesa image component\n' >&2
-  exit 1
-}
+python3 "$repo_root/scripts/android/verify-mesa-host.py" "$source_root"
 command -v glslangValidator >/dev/null || {
   printf 'error: glslangValidator is required to build Waydroid Mesa shaders\n' >&2
   exit 1
