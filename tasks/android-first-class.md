@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T22:33:00+00:00
+- Updated: 2026-10-29T22:44:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,25 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE FOLLOW-THROUGH22:44Z — image export remains verified; runtime boot untested:
+- d6f47577 FAILED22:34:09 before large upload. Actual RPM--test reported856KB
+  needed on immutable `/`, despite writable stage30,110,994,432B free and
+  MemAvailable4,332,576KiB. No missing dependency was established. Previous direct
+  rpm install failure still has no preserved RPM stdout, so same cause unproved.
+- Replaced private qualification harness direct ostree-unlock/rpm-Uvh with native
+  rpm-ostree override replace --cache-only LOCAL exact-hashed .94 RPM followed by
+  apply-live --allow-replacement, as upstream administrator handbook documents.
+  Refuse preexisting pending deployment; compare before/after package inventories
+  and require no changes outside runtime. Original OS rollback deployment retained.
+  Actual native transaction has NOT passed yet. Preflight JSON/errors retained on
+  failure. Guest qualification only asserts the exact preflight+installed identity.
+- b69ce5a8 PASSED5 stop/Atomic-guard fixtures,9 policy,8 inventory and readonly
+  inactive-VM/source/syntax preflight. These are harness checks, not an OS install.
+- CURRENT observer dev-android-guard-build-handoff-0392730f.service, admitted22:43Z;
+  manifest e10042f1fe0a9820bcbb7669e811c8331145383a0751967f060f353ea0542e7c.
+  Continue foreground through actual child outcome; next read guard-vm-auto/latest,
+  child pipeline/preflight/error/qualification. No native guard run has passed yet.
 
 LIVE HANDOFF22:33Z — IMAGE BUILT/VERIFIED; RUNTIME QUALIFICATION STILL OPEN:
 - Full Android m systemimage/vendorimage completed successfully at~22:01Z,
