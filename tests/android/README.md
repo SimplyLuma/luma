@@ -153,3 +153,13 @@ Keep evidence of the native focus transition and the delayed fixture receipt.
 `android-window-focus=focused` does not establish host focus; a matched host
 clipboard read after switching away leaves the privacy gate failed. Also test
 background writes before claiming a complete clipboard boundary.
+
+For a reproducible host-focus control, run `native-focus-fixture.py --output
+/run/user/UID/luma-android/native-focus.jsonl` as the disposable graphical user.
+Move its GTK window beside Android. It records only activation and boot-clock
+timestamps. First copy the Android token normally to clear the Android clipboard,
+then schedule the delayed read, focus the native control, and publish the host
+target **after** confirmed native focus. Confirm native activation spans the
+read. A token that was already available while Android was focused can have
+been cached and is not fresh host-disclosure proof. Keep unclassified content
+inconclusive; do not log it.
