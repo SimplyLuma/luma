@@ -25,6 +25,8 @@ import org.json.JSONObject;
 public final class MainActivity extends Activity {
     private EditText editor;
     private Uri document;
+    private volatile boolean nativeGuardArmed;
+    private boolean nativeGuardReady;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -75,8 +77,11 @@ public final class MainActivity extends Activity {
         receipt(this, "created", state == null ? "fresh" : "restored");
         if (state == null && getIntent().getBooleanExtra("post_notification", false)) postNotification(this);
         if (state == null && getIntent().getBooleanExtra("probe_boundary", false)) BoundaryProbe.run(this);
-        if (state == null && getIntent().getBooleanExtra("probe_native_task", false)) NativeTaskProbe.run(this);
-        if (state == null && getIntent().getBooleanExtra("probe_native_clipboard", false)) NativeClipboardProbe.run(this);
+        if (state == null && getIntent().getBooleanExtra("native_guard_wait", false)) {
+            armNativeGuard();
+        } else if (state == null) {
+            runNativeGuardProbes();
+        }
         if (state == null && getIntent().getBooleanExtra("background_notification", false)) {
             // The fixture targets API 28, so it needs no Android 12 exact-alarm
             // permission. This local alarm is not a network push/power test.
@@ -89,6 +94,47 @@ public final class MainActivity extends Activity {
             receipt(this, "background-notification-scheduled", "30 seconds");
             finishAndRemoveTask();
         }
+    }
+
+    private void runNativeGuardProbes() {
+        if (getIntent().getBooleanExtra("probe_native_task", false)) NativeTaskProbe.run(this);
+        if (getIntent().getBooleanExtra("probe_native_clipboard", false)) NativeClipboardProbe.run(this);
+    }
+
+    private void armNativeGuard() {
+        String run = getIntent().getStringExtra("guard_run");
+        if (run == null || !java.util.UUID.fromString(run).toString().equals(run))
+            throw new IllegalArgumentException("Canonical guard run required");
+        java.io.File trigger = new java.io.File(getFilesDir(), "native-guard-" + run + ".trigger");
+        if (trigger.exists()) throw new IllegalStateException("Guard trigger already exists");
+        nativeGuardArmed = true;
+        new Thread(() -> {
+            long deadline = android.os.SystemClock.elapsedRealtime() + 90000;
+            while (nativeGuardArmed && android.os.SystemClock.elapsedRealtime() < deadline) {
+                if (trigger.isFile()) {
+                    trigger.delete();
+                    receipt(this, "native-guard-released", "private-fixture-trigger");
+                    runNativeGuardProbes();
+                    return;
+                }
+                try { Thread.sleep(25); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); return; }
+            }
+            if (nativeGuardArmed) receipt(this, "native-guard-timeout", "not-released");
+        }, "luma-native-guard-gate").start();
+    }
+
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if (focused && nativeGuardArmed && !nativeGuardReady) {
+            nativeGuardReady = true;
+            receipt(this, "native-guard-ready", "focused-before-controls");
+        }
+    }
+
+    @Override public void onDestroy() {
+        nativeGuardArmed = false;
+        super.onDestroy();
     }
 
     private void checkSyntheticClipboard(String event) {

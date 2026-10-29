@@ -106,6 +106,26 @@ def run(expected_apk, report):
                   android_selinux=android("getenforce"),
                   runtime_package=command("rpm", "-q", "luma-android-runtime"))
     android("am", "force-stop", PACKAGE)
+    report["phase"] = "focused-fixture-before-controls"
+    android("am", "start", "-W", "-n", PACKAGE + "/.MainActivity",
+            "--ez", "probe_native_clipboard", "true", "--ez", "probe_native_task", "true",
+            "--ez", "native_guard_wait", "true", "--es", "guard_run", report["run_id"])
+    ready_deadline = time.monotonic() + 30
+    while time.monotonic() < ready_deadline:
+        raw = android("head", "-c", "2097153", "/data/user/0/" + PACKAGE + "/files/events.jsonl")
+        if len(raw.encode()) > 2097152:
+            raise RuntimeError("Synthetic receipt file exceeded its limit")
+        try:
+            ready = [json.loads(line) for line in raw.splitlines()]
+        except json.JSONDecodeError:
+            time.sleep(.1)
+            continue
+        if any(row.get("guard_run") == report["run_id"] and row.get("event") == "native-guard-ready"
+               and row.get("value") == "focused-before-controls" and row.get("uid") == uid for row in ready):
+            break
+        time.sleep(.1)
+    else:
+        raise RuntimeError("Focused fixture did not reach its private probe gate")
     report["phase"] = "trusted-before-controls"
     controls = {"before": {}}
     report["controls"] = controls
@@ -114,9 +134,7 @@ def run(expected_apk, report):
     if controls["before"]["clipboard"].get("state") != "android-fixture" or controls["before"]["task"].get("state") != "fixture-label":
         raise RuntimeError("Nonempty trusted before-controls unavailable")
     report["phase"] = "ordinary-apk-probes"
-    android("am", "start", "-W", "-n", PACKAGE + "/.MainActivity",
-            "--ez", "probe_native_clipboard", "true", "--ez", "probe_native_task", "true",
-            "--es", "guard_run", report["run_id"])
+    android("run-as", PACKAGE, "/system/bin/touch", "files/native-guard-" + report["run_id"] + ".trigger")
     deadline = time.monotonic() + 30
     records = []
     while time.monotonic() < deadline:

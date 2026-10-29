@@ -302,3 +302,9 @@ paths and checks the installed payload hash before probing. Its report names the
 failed setup phase, so an identity or trusted-control failure remains
 inconclusive. `test_native_guard_qualification.py` covers the randomized path,
 traversal/multiple-payload rejection and stale/unavailable evidence classification.
+
+For native admission probes, the fixture can wait at a private gate after its
+activity gains focus. The runner seeds the nonempty trusted control afterward
+and releases the fixed run-specific marker with Android `run-as`. This prevents
+the activity launch's clipboard selection changes from invalidating a pre-launch
+seed. It does not qualify focus policy or turn an empty post-control into a pass.

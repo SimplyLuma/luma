@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:12:00+00:00
+- Updated: 2026-10-29T23:18:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,28 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:18Z — actual controls reveal invalidated clipboard seed; gated fixture built:
+- e6471513 native report retained full evidence: ordinaryUID10127/PID1698 returned
+  clipboardempty/request-returned/empty and taskempty. Before UID1000 controls
+  clipboardandroid-fixture/taskfixture-label; after clipboardEMPTY(return1),
+  taskfixture-label(return0). VerdictINCONCLUSIVE, no clipboard denial/setter pass.
+  RunUUID8abddc0f-1e12-4e9d-b2ea-b91339c027d4; init4415/start15512,
+  system_server282/start16065. Focus transition invalidation suspected, not proved.
+- APKr16 adds explicit focused-ready/private-file release gate. Runner starts
+  ordinary activity, waits matching UID/run focused-ready, THEN seeds before
+  controls and releases probes via run-as fixed private trigger. No framework or
+  native guard/policy bypass; same ordinary app IPC. Actual behavior not run yet.
+- 5f9a2d7b PASS APKr16 Java/D8/build/signature,15,685B SHA
+  e681607bc91fb97b8267ef2689360c3ffb78b4632075e01d192727030c606318.
+  d95b5066 PASS13 runner+5 stop/Atomic+9 policy+8 inventory/readonly VM checks.
+- Private harness now reuses guest images ONLY after exact fullhash comparison;
+  cp --reflink=auto into stage and skip reinstall of already exact target pair.
+  Actual running native hashes still required. Avoid unnecessary backups/disk
+  copies across repeated same-image tests; original raw pair untouched.
+- CURRENT observer dev-android-guard-build-handoff-c93f147f.service; manifest
+  8a045fc81e8775f888ab300de5f9806587955735db628f5744b924950697df5f.
+  Next actual gated APK native controls; then independent resize/native UI test.
 
 OBSERVED23:12Z — actual native probes reached; post-control inconclusive:
 - 78667cb4 progressed past installed-path/hash/UID/generation checks. Ordinary
