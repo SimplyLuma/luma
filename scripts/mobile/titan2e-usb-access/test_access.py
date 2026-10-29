@@ -58,6 +58,12 @@ class AccessTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 gadget.select_controller(root)
 
+    def test_interface_name_obeys_gether_kernel_abi_and_socket_name(self):
+        self.assertEqual(gadget.interface_name(gadget.IFNAME_TEMPLATE), "titanusb0")
+        for invalid in ("titanusb0", "a%d%d", "bad/%d", "x" * 15 + "%d"):
+            with self.subTest(name=invalid), self.assertRaises(ValueError):
+                gadget.interface_name(invalid)
+
     def test_install_refuses_existing_configuration_before_writing(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -116,7 +122,7 @@ class AccessTests(unittest.TestCase):
             original.write_text("original policy")
             manifest = installer.install(root, KEY)
             self.assertEqual(original.read_text(), "original policy")
-            self.assertEqual(len(manifest["files"]), 8)
+            self.assertEqual(len(manifest["files"]), 9)
             for relative in manifest["files"]:
                 self.assertTrue((root / relative).is_file())
             self.assertEqual((root / "etc/project-titan/authorized_keys").stat().st_mode & 0o777, 0o600)

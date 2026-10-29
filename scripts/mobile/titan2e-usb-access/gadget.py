@@ -15,6 +15,7 @@ NAME = "luma-titan-admin"
 SERIAL = "luma-titan2e-project-titan"
 DEVICE_MAC = "02:54:49:54:41:01"
 HOST_MAC = "02:54:49:54:41:02"
+IFNAME_TEMPLATE = "titanusb%d"
 COMPATIBLE = b"unihertz,titan2-elite"
 CONFIGFS = Path("/sys/kernel/config")
 UDCS = Path("/sys/class/udc")
@@ -46,6 +47,16 @@ def put(path, value):
     path.write_text(str(value) + "\n")
 
 
+def interface_name(template):
+    # gether_set_ifname() requires exactly one %d, not a fixed interface name.
+    if template.count("%d") != 1 or "%" in template.replace("%d", ""):
+        raise ValueError("USB Ethernet interface name requires one %d")
+    name = template % 0
+    if len(name) >= 16 or any(c in name for c in "/: \n"):
+        raise ValueError("invalid USB Ethernet interface name")
+    return name
+
+
 def stop(parent):
     gadget = parent / NAME
     if not gadget.exists():
@@ -68,6 +79,7 @@ def remove_created(gadget):
 
 def start():
     check_board()
+    interface_name(IFNAME_TEMPLATE)
     if not os.path.ismount(CONFIGFS):
         subprocess.run(["mount", "-t", "configfs", "configfs", str(CONFIGFS)], check=True)
     parent = CONFIGFS / "usb_gadget"
@@ -94,7 +106,7 @@ def start():
         put(config / "strings/0x409/configuration", "Key-authenticated administration")
         function = gadget / "functions/ecm.admin"
         function.mkdir()
-        put(function / "ifname", "titanusb0")
+        put(function / "ifname", IFNAME_TEMPLATE)
         put(function / "dev_addr", DEVICE_MAC)
         put(function / "host_addr", HOST_MAC)
         (config / "ecm.admin").symlink_to(function)

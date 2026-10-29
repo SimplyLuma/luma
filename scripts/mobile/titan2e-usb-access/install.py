@@ -34,6 +34,14 @@ def payloads(key):
         "etc/project-titan/gadget.py": (Path(__file__).with_name("gadget.py").read_bytes(), 0o644),
         "etc/project-titan/authorized_keys": (authorized.encode(), 0o600),
         "etc/project-titan/enabled": (b"Owner opted in to physical USB administrative access.\n", 0o600),
+        "etc/systemd/network/10-project-titan-usb.link": (f"""[Match]
+MACAddress={DEVICE_MAC}
+
+[Link]
+NamePolicy=
+Name=titanusb0
+MACAddressPolicy=none
+""".encode(), 0o644),
         "etc/project-titan/sshd_config": (f"""# Endpoint is owned by project-titan-sshd.socket, not a listening daemon.
 Include /etc/crypto-policies/back-ends/opensshserver.config
 HostKey /etc/ssh/ssh_host_ed25519_key

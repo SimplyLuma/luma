@@ -28,8 +28,10 @@ Titan owners. This is personal-device recovery, not a general release.
 - Source tests: nine tests PASS under admitted server unit
   dev-titan-usb-access-checks-r3-c89c5a74.service, including actual sshd policy
   parsing and systemd unit verification. Prior r1/r2 passed before added cases.
-- Actual device boot/SSH acceptance pending. Card provisioning staged on Dell;
-  local polkit authentication currently pending. No card writes claimed yet.
+- Actual device boot/SSH acceptance pending. Initial access files installed on
+  owner's card and verified against their manifest; original SSH config, Wi-Fi
+  helper and boot entry hashes unchanged. Filesystem journal recovery completed
+  after retaining a metadata-only backup outside Git.
 
 ## Source and security boundary
 
@@ -43,3 +45,20 @@ Rollback removes only the manifest-listed newly added files and enable links.
 
 Private provisioning state, key custody, exact card identity and captured logs
 are held outside Git in the existing coordination/account/device paths.
+
+## Latest handoff
+
+- Final inspection of matching kernel u_ether.c caught a configfs interface-name
+  requirement: gether_set_ifname requires exactly one %d. Corrected the template
+  to titanusb%d and added a MAC-matched link file to preserve titanusb0.
+- Ten tests PASS under dev-titan-usb-access-checks-r4-1276b2ba.service, including
+  regression rejection of a fixed configfs name and actual SSH/systemd parsing.
+- The earlier installer had safely powered the reader off. The corrected source
+  is staged on Dell but is NOT applied to the card yet. A targeted reconnect of
+  only the reader's independently switched USB port re-enumerated the reader
+  with no media capacity; port state was restored. Physical reader reconnect is
+  required. Do not describe current card as ready for USB acceptance yet.
+- Next: user reconnects reader (card remains in reader); run the staged scoped
+  finalizer, which verifies the old manifest, applies only the two naming changes,
+  updates/verifies the manifest and safely unmounts. Then cold-boot the Titan and
+  prove USB enumeration/key authentication. Wi-Fi cause and repair remain open.
