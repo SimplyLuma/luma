@@ -104,3 +104,10 @@ Android mandatory-access or user-namespace identity gates are absent. Source
 presence and a Binder-ready log are never notification-delivery proof; native
 notification/fixture receipts are separate. Mapping samples do not substitute
 for a complete sandbox audit. Never use a personal user profile as this fixture.
+
+The fixture boundary button/extra also attempts only the volatile
+`luma.test.property_boundary=fixture-app` write from its ordinary app identity.
+For property acceptance, initialize that key as an Android native service to a
+synthetic control value, run the fixture probe, verify its rejection and the
+unchanged native readback, then clear the key. A failed process launch or timeout
+is unavailable, not a property-permission pass. Never probe power/control keys.

@@ -18,6 +18,37 @@ final class BoundaryProbe {
                 0x00010000, "host-clipboard-boundary");
         probe(context, "waydroidusermonitor", "lineageos.waydroid.IUserMonitor",
                 0x00010000, "host-user-monitor-boundary");
+        probeProperty(context);
+    }
+
+    // Fixed, volatile fixture key only. The test driver checks native-service
+    // positive controls and resets the key; no power or control key is touched.
+    private static void probeProperty(Context context) {
+        new Thread(() -> {
+            String outcome = "unavailable";
+            Process operation = null;
+            try {
+                operation = new ProcessBuilder("/system/bin/setprop",
+                        "luma.test.property_boundary", "fixture-app").redirectErrorStream(true).start();
+                if (operation.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    outcome = operation.exitValue() == 0 ? "accepted" :
+                            "rejected:" + operation.exitValue();
+                } else {
+                    outcome = "unavailable:timeout";
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                outcome = "unavailable:interrupted";
+            } catch (Exception unavailable) {
+                outcome = "unavailable:" + unavailable.getClass().getSimpleName();
+            } finally {
+                if (operation != null) {
+                    if (operation.isAlive()) operation.destroyForcibly();
+                    try { operation.getInputStream().close(); } catch (java.io.IOException ignored) {}
+                }
+            }
+            MainActivity.receipt(context, "property-boundary", outcome);
+        }, "fixture-property-probe").start();
     }
 
     private static void probe(Context context, String name, String descriptor,
