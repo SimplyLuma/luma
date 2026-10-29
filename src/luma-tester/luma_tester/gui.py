@@ -37,7 +37,28 @@ except (ImportError, ValueError) as exc:
 from .core import Session, TesterError, data_root, read_manifest
 from .display import GuestDisplay
 from .downloads import architecture_notice, host_arch
-from . import presets, vm, experiences, device_profiles, image_library, host_devices, updates
+from . import presets, vm, experiences, device_profiles, image_library, image_storage, host_devices, updates
+
+
+class ImageMenu(Menu):
+    """Keep selection and the optional delete action as separate LumaUI buttons."""
+    def __init__(self, registry, removals):
+        self.removals = removals
+        super().__init__(registry, variant='compact', keep_parent=True, phone_placement='popover')
+
+    def _custom_row(self, command):
+        row = super()._custom_row(command)
+        callback = self.removals.get(command.id)
+        if callback is None:
+            return row
+        line = Gtk.Box(spacing=4)
+        line.append(row)
+        delete = IconOnlyButton('trash-2', 'Delete '+command.label, size='small',
+            on_click=lambda:self._close_then(callback))
+        delete.set_sensitive(command.enabled())
+        delete.set_tooltip_text('Delete downloaded image…')
+        line.append(delete)
+        return line
 
 
 def launch(state=None):
@@ -483,7 +504,7 @@ def launch(state=None):
             return cached.is_file() or (local.scheme=='file' and Path(unquote(local.path)).is_file())
 
         def update_build_menu(self, names=None):
-            groups=[];local=[];seen=set();selected=self.select_image()
+            groups=[];local=[];seen=set();selected=self.select_image();removals={}
             for path in self.available_manifests():
                 try:
                     image=read_manifest(path)
@@ -497,7 +518,12 @@ def launch(state=None):
                         'ISO · '+('Downloaded' if self.image_available(path) else 'Download')
                         if image.get('media')=='iso' else
                         'Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download')
-                    local.append(Command('image.local.'+str(len(local)),image.get('build') or image['id'],
+                    command_id='image.local.'+str(len(local))
+                    label=image.get('build') or image['id']
+                    storage=dict(image['image'],media=image.get('media','disk'))
+                    if image_storage.cache_path(data_root(state),storage).is_file():
+                        removals[command_id]=lambda i=storage,n=label:self.confirm_delete_image(i,n)
+                    local.append(Command(command_id,label,
                         lambda p=path:self.use_image(p), description=architecture+' · '+status,
                         checked=lambda p=path:p==selected, enabled=lambda:not self.active()))
                 except (OSError,ValueError,TypeError,TesterError):continue
@@ -513,7 +539,12 @@ def launch(state=None):
                 detail=('ARM64 · ' if item['arch']=='aarch64' else 'x86-64 · ')
                 detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else '')
                 detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
-                entries.append(Command('image.remote.'+str(index),item.get('display_name') or item['file'],
+                command_id='image.remote.'+str(index)
+                label=item.get('display_name') or item['file']
+                if downloaded:
+                    storage=dict(sha256=item['sha256'],media='disk' if kind=='tester_image' else 'iso')
+                    removals[command_id]=lambda i=storage,n=label:self.confirm_delete_image(i,n)
+                entries.append(Command(command_id,label,
                     lambda a=item:self.download_image(a),description=detail,icon=icons.icon_name('download'),enabled=lambda:not self.active()))
             for kind,title in (('tester_image','Ready to try'),('os_image','Luma images')):
                 entries=commands[kind]
@@ -525,7 +556,59 @@ def launch(state=None):
             actions.extend((Command('image.file','Add from File…',self.choose_local_image,icon=icons.icon_name('folder'),enabled=lambda:not self.active()),
                 Command('image.refresh','Check for New Images',self.refresh_library,icon=icons.icon_name('refresh-cw'),enabled=lambda:not self.library_loading)))
             groups.append(CommandGroup(None,tuple(actions)))
-            self.build_menu.set_popover(Menu(CommandRegistry(groups),variant='compact',keep_parent=True))
+            self.build_menu.set_popover(ImageMenu(CommandRegistry(groups),removals))
+
+        def confirm_delete_image(self, image, name):
+            if self.active():return
+            try:
+                removal=image_storage.inspect(data_root(state),image)
+            except (OSError,ValueError,TesterError) as exc:
+                self.notify(str(exc));return
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            body.append(self.label(name,'group-heading'))
+            body.append(self.label(f'Remove the {removal.size/10**9:.1f} GB downloaded image from this computer?',muted=True))
+            if removal.workspaces:
+                count=len(removal.workspaces)
+                body.append(self.label(f'This also permanently deletes {count} saved workspace'+('s' if count!=1 else '')+', including saved files and snapshots.'))
+            if removal.presets:
+                body.append(self.label(f'{len(removal.presets)} saved preset'+('s' if len(removal.presets)!=1 else '')+' will also be removed.',muted=True))
+            body.append(self.label('Original imported files and shared folders are kept. Published images can be downloaded again.',muted=True))
+            buttons=Gtk.Box(spacing=12,homogeneous=True)
+            buttons.append(self.button('Cancel',self.close_sheet))
+            buttons.append(TextButton('Delete Image',style='danger',on_click=lambda:self.delete_image(removal)))
+            body.append(buttons)
+            self.sheet('Delete image?',body,width=420)
+            # Opening the sheet or pressing Return must never confirm deletion.
+            buttons.get_first_child().grab_focus()
+
+        def delete_image(self, removal):
+            if self.active():return
+            self.close_sheet();self.busy=True;self.refresh()
+            def done(error):
+                self.busy=False
+                if error:
+                    self.notify(error)
+                # A failed filesystem cleanup may still have removed some files.
+                # Reconcile selections from disk rather than keeping stale paths.
+                forgotten=set(removal.references) if not error else set()
+                def retained(path):return path.is_file() and str(path.resolve()) not in forgotten
+                self.imported=[p for p in self.imported if retained(p)]
+                self.selected_images={k:p for k,p in self.selected_images.items() if retained(p)}
+                self.selected_variants={k:p for k,p in self.selected_variants.items() if retained(p)}
+                self.saved_presets=presets.load(self.preset_path)
+                self.preset_selector.set_model(Gtk.StringList.new(['Choose a preset…']+[p['name'] for p in self.saved_presets]))
+                if self.session and not (self.session.directory/'manifest.json').is_file():
+                    self.session=None;self.graphical_ready=False
+                    if self.viewer:
+                        self.viewer.close();self.viewer_holder.remove(self.viewer);self.viewer=None
+                self.update_images();self.remember();self.refresh()
+                if not error:self.notify('Image deleted.')
+                return False
+            def worker():
+                try:image_storage.remove(data_root(state),removal);error=None
+                except Exception as exc:error=str(exc)
+                GLib.idle_add(done,error)
+            threading.Thread(target=worker,daemon=True).start()
 
         def use_image(self,path):
             if self.active():return
