@@ -6,23 +6,28 @@ from ari.tools import accessibility as a
 out=Path(os.environ['DEV_ARTIFACT_DIR'])
 if '--weather' in sys.argv:
  import gi
+ gi.require_foreign('cairo')
  gi.require_version('Gtk','4.0');gi.require_version('Adw','1')
  from gi.repository import GLib
  from prairie_apps import weather
- weather.fetch_forecast=lambda *args,**kwargs:None
  weather.fetch_observation=lambda *args,**kwargs:None
- weather.fetch_alerts=lambda *args,**kwargs:None
- if os.environ.get('ARI_ACCESSIBILITY_POPULATED') == '1':
-  from datetime import datetime,timedelta,timezone
-  from prairie_apps.weather_backend import PlaceStore,LocationSearch,new_place
-  from prairie_apps.weather_model import CityForecast,Current,HourPoint,DayPoint,write_cache,cache_directory
-  search=LocationSearch();search.load()
-  place=PlaceStore().add(new_place(search.search('Boston')[0]))
+ weather.fetch_alerts=lambda *args,**kwargs:()
+ from datetime import datetime,timedelta,timezone
+ from prairie_apps.weather_model import CityForecast,Current,HourPoint,DayPoint,write_cache,cache_directory
+ def sample_forecast(place,**kwargs):
   now=datetime.now(timezone.utc)
   forecast=CityForecast(place,now.isoformat(),Current(22,'clearsky_day',humidity=60,wind_mps=3),
    tuple(HourPoint((now+timedelta(hours=i)).isoformat(),22+i%5,'clearsky_day') for i in range(48)),
    tuple(DayPoint((now+timedelta(days=i)).date().isoformat(),'clearsky_day',27,17) for i in range(10)))
   write_cache(forecast,cache_directory())
+  if kwargs.get('on_forecast'):kwargs['on_forecast'](forecast)
+  return forecast
+ weather.fetch_forecast=sample_forecast
+ if os.environ.get('ARI_ACCESSIBILITY_POPULATED') == '1':
+  from prairie_apps.weather_backend import PlaceStore,LocationSearch,new_place
+  search=LocationSearch();search.load()
+  place=PlaceStore().add(new_place(search.search('Boston')[0]))
+  sample_forecast(place)
  sys.exit(weather.main())
 client = None
 if os.environ.get('ARI_ACCESSIBILITY_MCP') == '1':
@@ -100,3 +105,6 @@ with (out/'weather.log').open('w') as log:
   process.terminate()
   try:process.wait(timeout=5)
   except subprocess.TimeoutExpired:process.kill();process.wait()
+  log.flush()
+  logged=(out/'weather.log').read_text()
+  assert not any(error in logged for error in ('Traceback (most recent call last)','TypeError:','AttributeError:')), 'Unexpected Weather callback failure'

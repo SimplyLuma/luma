@@ -54,10 +54,10 @@ class FixtureRuntime(unittest.TestCase):
               'approval_mode_writable':True,'tiers':[],'action_permissions':{'enter_text@weather':'allow'},
               'action_permission_catalogue':ACTION_PERMISSIONS}
         calls=[]
-        def call(method,signature,args,callback=None):
+        def call(method,signature=None,args=(),callback=None):
             calls.append((method,signature,args))
             if callback:callback((json.dumps(data),) if method=='Settings' else (True,))
-        window.daemon=SimpleNamespace(call=call)
+        window.daemon=SimpleNamespace(call=call,close=lambda:None)
         def descendants(widget):
             yield widget
             for child in _children(widget):yield from descendants(child)

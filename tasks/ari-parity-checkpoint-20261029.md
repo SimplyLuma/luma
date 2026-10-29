@@ -376,3 +376,14 @@ expanded native settings/restart checks, full UI suite and populated Weather
 checks in all three modes are pending server capacity. No r6 package or Dell
 replacement is yet qualified. Keep PR #92 draft; no live completion or visual
 conformance claim.
+
+The expanded native checks subsequently passed: 49 Wayland UI tests, settings
+interaction at desktop/phone widths, actual private D-Bus remembered-permission
+persistence across daemon restart, and the populated Weather workflow through
+direct API/MCP and all three agent approval modes. The normal mode asked once,
+Let Ari act asked zero times, and Ask every time asked six times. The actual city
+database, controls and saved-city store were used; forecast HTTP responses and
+model decisions were controlled fixtures. Missing server Cairo bindings and
+temporary document-portal teardown were corrected in the test environment; no
+host package or real device state was changed by those tests. Package and Dell
+qualification remain the next gate; this is not live ChatGPT acceptance.

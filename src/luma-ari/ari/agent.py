@@ -144,7 +144,7 @@ class Agent:
             user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete|reply|call|dial|play)\b', turn.text, re.I)
                                  and _requested_application(turn.text,app))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
-        if self.policy.action_rule(name, arguments) == 'deny':
+        if name != 'act_in_application' and self.policy.action_rule(name, arguments) == 'deny':
             decision = type(decision)(False, decision.tier, 'This action is blocked in Ari’s advanced permissions.')
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
         if decision.allowed and turn.read_untrusted and decision.tier not in (ANSWER, READ_PERSONAL) and not user_named_it:

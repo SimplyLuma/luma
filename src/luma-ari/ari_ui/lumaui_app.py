@@ -1058,10 +1058,9 @@ class AriWindow(AppWindow):
                 draft_copy.connect("map", reserve_draft_lines)
                 approval.append(draft_copy)
             if not self.fixture and draft.get('permission'):
-                remember = Gtk.CheckButton(label='Remember this choice: '+draft.get('permission_label',''),
-                                           active=bool(draft.get('remember')))
+                remember = Gtk.CheckButton(active=bool(draft.get('remember')))
+                remember.set_child(Gtk.Label(label='Remember this choice: '+draft.get('permission_label',''),wrap=True,xalign=0))
                 remember.set_name('remember-'+identity)
-                remember.get_child().set_wrap(True)
                 remember.connect('toggled',lambda widget, value=draft: value.__setitem__('remember',widget.get_active()))
                 approval.append(remember)
             actions = box(spacing=6)

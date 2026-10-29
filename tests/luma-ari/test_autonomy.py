@@ -49,6 +49,8 @@ class Autonomy(unittest.TestCase):
                 agent.policy.action_rules={'activate_controls@weather':'ask'}
                 agent.run_tool(turn,tool.name,{**args,'operation':'action'})
                 self.assertEqual(sum(e['type']=='approval' for e in events),2)
+                agent.policy.action_rules={'enter_text':'deny','enter_text@weather':'allow'}
+                self.assertTrue(agent.run_tool(turn,tool.name,args)['ok'])
                 agent.policy.approval_mode='never'
                 agent.policy.action_rules={'enter_text@weather':'deny'}
                 before=tools.call.call_count
