@@ -132,6 +132,18 @@ roles have distinct admission policies. Unknown read-only operations have typed
 control/denial replies for acceptance tests without touching clipboard contents
 or generating package events. Live validation of these session guards remains
 required; the root-hardware pass does not substitute for it.
+The package requires the host clipboard provider's pyclip/wl-clipboard dependencies;
+an absent endpoint cannot count as permission denial. Android focus checks alone
+also do not establish host focus: the inspected HWC keyboard-leave callback only
+releases keys. Qualification must switch to a native host application and prove
+that the formerly focused APK cannot read or replace the host clipboard. Keep
+this privacy gate open until measured and enforced across both focus domains.
+
+The supervised user session waits for a listening, current-user Wayland socket
+with a bounded startup deadline. Its directory monitor and startup retry are
+removed after readiness or timeout; it does not keep an idle polling timer.
+This prevents a late compositor from consuming the Android session restart
+budget before a display exists.
 
 A real mouse resize in the disposable x86 VM froze the baseline compositor.
 Native debuggerd stacks identified an adapter/window lock inversion. Patch 0014
