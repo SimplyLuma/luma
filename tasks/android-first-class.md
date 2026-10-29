@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:18:00+00:00
+- Updated: 2026-10-29T23:24:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,26 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE23:24Z — INDEPENDENT ACTUAL WINDOW TEST ACTIVE; gated native release repaired:
+- b80cd765 APKr16 installed/launched and reached focused private gate. Both
+  before-controls UID1000 nonempty. INCONCLUSIVE23:22:15 at ordinary-apk-probes:
+  Android run-as trigger helper returned nonzero before release; no native probe
+  verdict. Cause inside run-as not captured. Replaced ONLY marker creation with
+  disposable VM administrator touch of fixed private runUUID file; native calls
+  still execute in ordinary APK and kernelUID/PID must match. b3d82dcd PASS13.
+- Current independent job dev-android-window-live-431f4ddf.service normal9GiB;
+  root luma-android-first-class-window-qualification.service512MiB/128swap/
+  CPU200/runtime1200, same guest6/QEMU8 profile. Helpers+exact image/APKr16/native
+  hashes in private window-live/manifest.json. Readiness and UI resize result
+  separate. Executes keyboard resize/maximize/restore, screenshots, actual client
+  layout dimension change, synthetic saved-state and responsive reactivation;
+  no first-frame/perf/focus/production claim. Syntax checked; actual test pending.
+- Guard watcher c93f147f/childb80 stopped before modifying guard sources. Next
+  guard manifest668d24bcfa871da55f7cb3d343c1194545829ea869a9bfeb1bfe4d7ed4914489.
+  DO NOT launch guard while window VM actor active. Continue foreground through
+  window child result and graceful off, then new normal guard run with corrected
+  marker. Window test may proceed independently of inconclusive security gate.
 
 OBSERVED23:18Z — actual controls reveal invalidated clipboard seed; gated fixture built:
 - e6471513 native report retained full evidence: ordinaryUID10127/PID1698 returned

@@ -305,6 +305,8 @@ traversal/multiple-payload rejection and stale/unavailable evidence classificati
 
 For native admission probes, the fixture can wait at a private gate after its
 activity gains focus. The runner seeds the nonempty trusted control afterward
-and releases the fixed run-specific marker with Android `run-as`. This prevents
+and creates the fixed run-specific marker as the disposable VM administrator. The
+marker only releases the test gate; native IPC still comes from the ordinary
+APK process, whose kernel UID and PID are verified. This prevents
 the activity launch's clipboard selection changes from invalidating a pre-launch
 seed. It does not qualify focus policy or turn an empty post-control into a pass.

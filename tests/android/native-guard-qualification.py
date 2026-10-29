@@ -134,7 +134,7 @@ def run(expected_apk, report):
     if controls["before"]["clipboard"].get("state") != "android-fixture" or controls["before"]["task"].get("state") != "fixture-label":
         raise RuntimeError("Nonempty trusted before-controls unavailable")
     report["phase"] = "ordinary-apk-probes"
-    android("run-as", PACKAGE, "/system/bin/touch", "files/native-guard-" + report["run_id"] + ".trigger")
+    android("touch", "/data/user/0/" + PACKAGE + "/files/native-guard-" + report["run_id"] + ".trigger")
     deadline = time.monotonic() + 30
     records = []
     while time.monotonic() < deadline:
