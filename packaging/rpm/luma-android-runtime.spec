@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.89.android20261028.1%{?dist}
+Release:        1.luma.90.android20261028.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -186,7 +186,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
-* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.89.android20261028.1
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.90.android20261028.1
 - Install the required Android clipboard provider and Wayland backend
 
 * Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.88.android20261028.1
