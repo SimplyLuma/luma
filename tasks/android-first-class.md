@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T01:50:00+00:00
+- Updated: 2026-10-29T02:58:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 9db3a1c96 (compiler budget and metrics), .88 payload changes pending commit
+- Branch and last useful commit: codex/android-first-class; 4b2a13bc9 (host graph policy test), 67143457b (image host policy), e01969db5 (.88 runtime)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,33 +12,51 @@
 
 ## Current handoff
 
-Source baseline is isolated from the canonical checkout. Research report:
-/srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
-Current worktree HEAD9db3a1c96; latest clean runtime package .87 (source12231bb40,
-79 real tests/zero skips; own HDD rpm-r8). Latest fixture APK r9/7cfb98fa.
+Source baseline/worktree remain isolated; canonical checkout untouched.
+Research: /srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
+HEAD4b2a13bc9. Latest runtime .88 (sourcee01969db5,80 actual package tests/zero
+skips, own HDD rpm-r9); latest fixture r9/7cfb98fa.
 
-Active: dev-android-images-x86-r4-c3c0c929.service, normally admitted10GiB/200GiB
-HDD, offline unprivileged Bubblewrap, source9db3a1c96 snapshot, GOGC5 and
-GOMAXPROCS2. It has reached the actual graph compiler with five threads/about
-3.65GiB RSS, after fixing Blueprint's forced CPU override. Previous attempts
-were stopped for measured page thrashing; no memory-limit/reserve changes.
-Own VM is shut off and be5a1197 inactive/success. Do not boot it alongside this
-10GiB job without fresh normal admission. Original VMs and archived source stay intact.
+Active normal jobs: dev-android-lowram-vm-07bfdd1b (6GiB reservation, own test
+VM3GiB RAM/5GiB hard,90-minute lifetime started02:12Z) and
+ dev-android-builder-source-pack-f50c7d55 (4GiB/160GiB HDD; source snapshot packing).
+All native full-image workers through a6965aee were stopped for measured
+MemoryHigh/file-refault pressure; no image completion. Do not raise server
+limits/reserves. New bounded build-VM preparation e67a90c1 passed; domain
+luma-android-first-class-build UUID809f0871-fd88-4770-83dd-624c90259c06 is INACTIVE,
+7GiB guest RAM/9GiB hard/four vCPUs, guest-only24GiB disk swap,280GiB virtual disk.
+Run it only under fresh normal10GiB admission with bounded root control and
+reliable own-domain cleanup. Private build infra, not a product backend change.
 
-Actual old-image VM evidence: native install/app drawer/window launch;
-Luma-styled notification Mark read delivered to APK; local alarm delivered after
-window closed with zero open windows/unfrozen runtime; real root-hardware
-read-only positive control and ordinary APK SecurityException. Source resize
-fix has exact-callback positive/negative controls, not a rebuilt-image pass.
+Test VM .88 RPM installed successfully in reboot-cleared ostree overlay; profile
+permissions now0755. Source APKr9 removed/reinstalled/launched normally at3GiB.
+Cold attempts timed out under severe disk load; preserve those failures. Later
+Android boot_completed=1 and warm operations succeeded. Current host-bridge
+validation FAILED its clipboard system-UID positive control; root hardware
+controls passed before it. Investigate actual clipboard provider/process before
+claiming session guards pass. Private script vm/qualify-host-bridges-88.py copied
+to /var/tmp/luma-android-qualification in guest. Pending read-only clipboard
+probe/provider source/journal result is the next useful diagnostic.
 
-Next: finish matched-image build, install current runtime and fixture in a newly
-admitted lifetime of only the owned test VM; retest resize, framework admission,
-notification dismissal/reset, new clipboard/user-monitor/property boundaries and
-PSS/CPU. No production isolation, maintained Android rebase, ARM/translation,
-hardware/documents/media/inline-reply or physical battery qualification claimed.
-Numeric-UID collisions, mandatory-access policy and protected platform signing
-remain shipping gates. Bulk artifacts must stay on the task-owned HDD bind;
-preserve20GiB disk and8GiB host-memory reserves.
+Original six-GiB test-VM config vm/domain.xml is intact (memory6291456KiB,
+hard8388608KiB). Newly attempted XML snapshot domain-before-lowram-20261029T020943.xml
+is EMPTY and must never be used for restoration. It was detected by hash/readback;
+original config remains usable. Restore original only when owned VM is inactive.
+
+Build-VM inputs under own HDD build-vm: official Canonical20261025 Ubuntu cloud
+image signature+SHA verified, original trusted prepared rootfs/tools/Luma source
+packed read-only. Android source.squashfs is still .partial; never attach it
+until pack success/hash receipt. Rootfs/tool receipts and domain-receipt.json
+are present. New SSH private key stays only /root/.ssh/luma-android-builder-20261029/ssh-key;
+never print/copy/commit it. No other VM/store/credentials/signing infra changed.
+
+Actual earlier old-image evidence remains native install/app drawer/window,
+Luma notification Mark read, no-window local alarm delivery and real ordinary-APK
+root-hardware SecurityException. No new-image resize/framework/notification
+lifecycle pass, complete isolation, maintained platform rebase, ARM/translation,
+hardware/media/documents/reply or physical battery qualification. Numeric UID
+collision/MAC/private platform-signing remain shipping gates. Preserve20GiB disk
+and8GiB host-memory reserves; bulk artifacts only on the task-owned HDD.
 
 ## Validation and artifacts
 
@@ -173,3 +191,9 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 
 2026-10-29T02:05Z host graph policy check:
 - abdb14d6 passed the patched cases but failed its negative-control assertion because the test supplied empty HOST_CROSS_OS on Make's command line, suppressing the upstream default. Corrected the fixture to supply the actual environment contract; 2d044c66 now passes all four real host-fragment/default comparisons and the upstream Windows control. Source policy and test fix are preserved separately. Generated full Soong configuration and graph fit remain next; no full image pass.
+
+2026-10-29T03:00Z live .88 boundary finding:
+- Missing clipboard positive control is endpoint absence, not a failed UID denial: real Waydroid clipboard_manager skips registration when pyclip is absent. VM has wl-clipboard2.2.1 but no python3-pyclip. User-monitor real system-UID control(-7) and ordinary UID10130 denial(-1) pass; root hardware had passed before the missing endpoint. No clipboard data read/written by those unknown-operation probes.
+- Added .89 required python3-pyclip + wl-clipboard and build import check, fixing the observed missing optional provider. New fixture controls copy only fixed synthetic Android text and record only whether a whitelisted synthetic host string matched; arbitrary clipboard contents are never logged. Compilation/package/live text-copy/paste checks pending; no broad MIME clipboard qualification claimed.
+- Low-RAM .88 source APKr9 normal remove/install/launch succeeded after Android completed its slow boot: command runtimes11.9/19.1/4.5s under concurrent HDD load, not benchmarks. Cold120s failures retained. No freeze (persist.waydroid.suspend=false); system_server later reports BOOT_COMPLETED. Earlier auto-warm session had started before the Wayland socket and exhausted its startup burst, another lifecycle issue to address.
+- Build VM cloud-image preparation e67a90c1 passed, inactive domain UUID809f0871-fd88-4770-83dd-624c90259c06. Private SSH key stays under/root/.ssh/luma-android-builder-20261029.9GiB hard/7GiB RAM/4vCPU profile is to run under fresh10GiB normal admission; source disk pending successful squashfs pack. Generic host limits unchanged; guest-only24GiB disk paging. Rootfs285081600B SHAe01d7eb66e4b3bc04b974438dba450435fc45adc73c9cd5dd01dea37b0276e7f; tools6316032B SHA224ab89186bdc083938e1372c6cb29b4a6a0715dced6a1a9a85dea3fc98ed202. Source packf50c7d55 remains active.
