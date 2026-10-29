@@ -1,11 +1,14 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r6 delivered for manual testing; visual conformance
-and live OpenAI qualification remain incomplete.
+Status: server-qualified Ari2 r7 is ready; Dell delivery awaits connection recovery.
+The installed r6 remains available. Visual conformance and live OpenAI
+qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. The current independent Dell preview uses runtime source
-`9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. Earlier checkpoints below are history.
+Review: draft PR #92. Qualified r7 runtime source is
+`79b0c448a23c6063dec78f5487a3c6893920bc27`; the current independent Dell
+preview remains `9e726a46aff06a1e7af6ac335e523d5d3bcd8c12`. Earlier
+checkpoints below are history.
 
 ## October 29 follow-up: message stability and native commands
 
@@ -41,7 +44,16 @@ real agent remove Chicago in all three autonomy modes: Important asks once,
 Let Ari act asks zero times, Every time asks for discovery and action. These
 fixtures use real Weather controls/store and fixture forecast responses; they
 do not establish real hosted model decisions. The latest source suite passes
-174 unit/protocol/policy tests. The next r7 package/device update is pending.
+174 unit/protocol/policy tests, repeated successfully in the final Fedora RPM.
+All five CI checks passed at runtime source `79b0c448a23c6063dec78f5487a3c6893920bc27`.
+The final r7 export passes account/profile/keyring isolation, installed launcher
+and D-Bus activation, RPM byte comparison and native flow, public source
+contracts, and actual r6-to-r7 update/retention/rollback. Archive SHA-256:
+`660ca87d0136edc9aae7971e8758aec72e50e78ca01d6044ac6e5529a7e8450c`.
+RPM SHA-256: `df3a728394c69f47daabc3351e87f8dff2efc591a2b2b71e99c066ac7913e138`.
+SRPM SHA-256: `c066c50c4782c58b8a828a0324d65f6d36da8ffc775c70e6312d67bfb2be488a`.
+Dell SSH timed out during banner exchange; no update or launch was attempted.
+Delivery remains pending the owner's wake/unlock/close response.
 
 ## Application and development continuation
 
