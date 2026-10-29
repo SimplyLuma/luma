@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T15:12:00+00:00
+- Updated: 2026-10-29T15:38:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; b22ed165d; wire-decoding correction pending commit
+- Branch and last useful commit: codex/android-first-class; 497a61054; native reply source/package milestone
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,7 +12,7 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD3f5a44f8e before reply commit. Current source
+Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Current source
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
@@ -31,7 +31,7 @@ full bounded6GiB/8GiB-combined XML retained (source original unchanged).
 REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
 - Host notification_reply.py/transport.py/dbus.py plus bridge/session integration;
   SDK0005 plus NotificationReplyDispatcher.java; native Shell0286 extends0025 UI.
-  Runtime candidate.93; accepted OS/Shell package pins unchanged. Current image
+  Runtime candidate.94; accepted OS/Shell package pins unchanged. Current image
   source7c13c192f and installed .92 do not contain these changes.
 -45 notification component tests PASSED c767e61914:56:17Z.
   Actual kernel credential/PID dispatch closure tested with explicit Binder
@@ -73,7 +73,7 @@ REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
  methods each start at0; use one init_reader cursor for header+ACK.
 -New realistic byte/cursor fixtures against preserved .93 failed as expected:
  fe3bccf1,2 assertion failures+1 alignment error at15:10:45Z. Correctedsource
- d07356fa PASSED47 component tests15:11:18Z. Candidate.94 full126-test RPM pending.
+ d07356fa PASSED47 component tests15:11:18Z. Candidate.94 full126-test RPM PASSED f468a1a6 at15:12:50Z; see below.
 -New reply project SFS ed446c6f PASSED15:08:27Z, sourceb22ed165d,
  build-vm/luma-project-native-reply.squashfs70,615,040B,
  SHAe6ed231917685db4321cb91d57ce249e1c333831af0fe370080c472aea7d7b02.
@@ -87,10 +87,73 @@ REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
  and two obsolete package assertions40->45 /16->18 matching existing0284 and
  independently confirmed Surface task correction. No checks skipped. Source
  receipt shell-r124/source-receipt.json. Next inspect real loader prerequisite.
--TODO: clean-package .93, actual GJS/native UI and Binder/RemoteInput receipt in
+-TODO: actual GJS/native UI and Binder/RemoteInput receipt in
   a matched image/Shell pair; source-level full SDK image build; physical tests.
   Update the next image snapshot after current native-guard image finishes or
   is safely saved. Never replace its immutable project disk mid-build.
+
+LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
+-.94 f468a1a6 PASSED15:12:50Z, source497a61054:126 tests/0 skips/failures/errors,
+ imports/desktop/payload/profile755. Binary3ba654b17f14cbee15f0c15c0acb851a7d024fd8c5a31a1a6f4c41d5aa0e1292,
+ SRPM71b10726c6967e46338e94b61193ee33d237cfa228b3cb31c5f77eca921875e7,
+ rpm-r10/source/build/candidate-94/build/packages/luma-android-runtime.
+ .94 NOT installed/live runtime tested; .92 remains last live lifecycle pass.
+-Native Shell124 retry a62273fe PASSED15:22:30Z; full ordinary rpmbuild + all
+ packaged checks (no short-circuit or skipped test). The existing symbolic SVG
+ test could not start Glycin sandbox inside rootless container. Diagnostic
+55ad7743 reproduced it with a fixed SVG; rsvg-pixbuf-loader is now a virtual
+ provide, not a separate native decoder (61b77658 correctly failed its query).
+ The exact compiled test passed natively under normal worker1GiB f8cb544b;
+ actual package%check then used a bounded private file-mailbox executor inside
+ the SAME normal package4GiB job, executing the exact compiled test/library on
+ native Fedora with Glycin sandbox enabled. No alternate decoder, sandbox/
+ policy disable, omitted check, host package install or production change.
+ Test exit0 and executable/library SHA before/after in
+ shell-r124/native-test-receipts.json; private source adaptations in
+ native-executor-source-receipt.json. The candidate SRPM includes the test
+ helper; absent the optional mailbox it executes normally inside the builder.
+ Sourceb22ed165d plus private release124/2-job/assertion corrections already
+ recorded. Accepted OS/Shell pins unchanged, no publication or device install.
+ ShellRPMf1eaec320bc57cde0b3c8ec15fd71c1cc52dfc55863ab245236b6d354a715e17,
+ commonf74a8a452ae2654bc31655feae9ee65d1ab10729252a374bfaaedecd69904626,
+ SRPMb9d823e1d842c6df1b2fd7f228902185037b384d2c8564c83582c509282df478,
+ rpm-r10/source/build/candidate-shell124/build/packages/gnome-shell.
+-Packaged reply resources3a23e032 PASSED15:26:17Z: actual ELF GResource bytes
+ equal prepared effective-r4 sources and production method/syntax checks pass.
+ Firste6311d1f failed because host lacks gresource CLI; corrected by parsing
+ ELF resource sections + actual Gio.Resource lookup, no package installed.
+ Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
+-Main image root r9 remains ACTIVE, normala1c4e3af10GiB, source7c13c192f.
+ Soong graph completed ~15:12Z. At15:36:29Z actual C++ compilation10781/143205,
+7%; no completed image. Transient SSH failure15:15 recovered by controller,
+ no lost heap. Fixed guest zstd handled graph within existing8GiB/9GiB cap.
+-Automatic bounded continuation ACTIVE:
+ dev-android-image-auto-watch-0-74758108.service, normal1GiB, PID271068 at15:36Z.
+ Private build-vm-auto/watch.py watches exact a1c4e3af result. Only exit75 with a
+ fresh, root-owned, complete/unconsumed own-UUID/source checkpoint can resume.
+ Each child is separately admitted normal10GiB/450GiB with same VM8GiB/QEMU9GiB
+ and root128/256 limits. No retry of compiler failures/cancellation. At most4
+ resumes; each watcher5.5h bounded, overall deadline2026-10-30T15:30:00Z.
+ Resource refusal waits at most30m, then stops. STOP file build-vm-auto/STOP
+ prevents NEW continuations; stop active root controller then its normal job
+ to terminate current work. Nothing installs or publishes resulting images.
+-Current root controller continues original controller-r9.py in memory. Future
+ resume wrapper build-vm-driver/run-resume-r9.sh uses controller-r10.py, same
+ one-shot RAM/disk/XML/4-input hash verification and owner watchdog. r10 changes
+ ONLY resumed guest budget rearming: an owned transient-unit drop-in plus
+ daemon-reload. Existing root6h deadline remains independent and unchanged.
+ Source hashes build-vm-auto/source-manifest.json; do not mutate them casually.
+-Resume prerequisite15b20427 FAILED safely: guest249 rejects RuntimeMaxSec via
+ set-property; original compiler deadline stayed20500s. Replacement actual guest
+ timer controlac3445e7 PASSED15:35:03Z: baseline stopped3s, drop-in/reload timer
+ survived4s and stopped8s. Compiler MainPID and original deadline unchanged;
+ synthetic unit/drop-in removed. Root checkpoint inventory returns null now.
+ Policy093cb68b passed cancellation/failure/success/no-resume and fresh/unconsumed
+ source/UUID selection fixtures. Actual compiler save/restore/r10 automation is
+ NOT yet exercised; original synthetic KVM save/restore result remains below.
+ New wrapper syntax and embedded Python/newline bytes checked before launch.
+-User ETA given as rough24–48h for an x86 Dell development build if compilation/
+ integration succeed, NOT a delivery promise or daily-use/ARM/power/security ETA.
 
 FAILED BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
 10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
@@ -603,3 +666,11 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   existing icon-loader%check; preserving the failure, diagnosing prerequisites.
 - Main image r9 remains active source7c13c192f, graph CPU progressing with guest
   zstd compression, no completed system/vendor images. No hardware/release claim.
+
+2026-10-29T15:38Z package/recovery milestone:
+- .94 runtime126 tests and native Shell124 full packaged checks passed, with
+  actual packaged reply-resource verification. Installed native reply/Binder/
+  APK text receipt and hardware gates remain open; no release/push/deployment.
+- Current image7c13c192f reached actual compiler10781/143205,7%. Bounded normal
+  checkpoint continuation watcher74758108 active; details and stop path above.
+  It never converts checkpoint/failure into an image pass or installs outputs.
