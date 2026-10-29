@@ -29,6 +29,7 @@ Requires:       python3-gobject
 Requires:       python3-jwt
 Requires:       python3-cryptography
 Requires:       libsecret
+Requires:       at-spi2-core
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
 Requires:       luma-developer-platform >= 0.1.0-1.luma.100.creator20261007.1

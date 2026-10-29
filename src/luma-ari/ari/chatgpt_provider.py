@@ -144,6 +144,9 @@ class ChatGPTProvider:
                     calls.append({"type": "tool_call", "id": item["call_id"], "name": item["name"], "arguments": arguments})
                 elif item.get("type") == "message":
                     for part in item.get("content", []):
+                        if part.get("type") == "refusal" and isinstance(part.get("refusal"), str):
+                            final_text.append(part["refusal"])
+                            continue
                         if part.get("type") != "output_text":
                             continue
                         value, citations = _cited_text(part)
@@ -151,6 +154,8 @@ class ChatGPTProvider:
                         sources.extend(citations)
                 elif item.get("type") == "web_search_call":
                     searched = True
+            if not calls and not final_text and not streamed:
+                raise ChatGPTError("ChatGPT finished without returning a reply or an application action. Try again.")
             self._history = input_items + output
             self._messages = copy.deepcopy(messages)
             if not streamed:

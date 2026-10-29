@@ -40,8 +40,8 @@ def build(_appearance):
     .ari-open-model { padding: 0; background: transparent; border: none; box-shadow: none; }
     .ari-model-assignments button { background: @luma_hover; border-radius: 10px; }
     .ari-model-assignments > button { min-height: 48px; border-radius: 0; }
-    .ari-task-add { padding: 0 16px; }
-    .ari-task-add image { margin-right: 28px; }
+    .ari-task-add { padding: 0 16px; color: @luma_ink_secondary; }
+    .ari-task-add image { margin-left: 14px; margin-right: 25px; }
     .ari-model-assignments button label, .ari-provider-row button label { font-weight: 600; }
     .ari-model-assignments button.icon { min-width: 28px; min-height: 28px; padding: 0; background: transparent; }
     .ari-size-rung { padding: 14px 16px; border-radius: 16px; background: @luma_chip; box-shadow: inset 0 0 0 1px @luma_line; }
@@ -56,6 +56,9 @@ def build(_appearance):
     .ari-recommended-card .lumaui-t-title-1 { font-size: 24px; font-weight: 760; }
     .ari-model-fit { padding: 14px 16px; border-radius: 16px; background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; }
     .ari-removal-fallback { padding: 12px 14px; border-radius: 14px; background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; }
+    .ari-provider-row button.ari-open-model { padding: 0; min-height: 0; background: transparent; }
+    button.ari-activity-source { min-height: 0; padding: 0; color: @luma_muted; }
+    button.ari-activity-source label { font-size: 12px; font-weight: 400; color: inherit; }
     """
     legacy = models + f"""
     .ari-connection {{ color: @luma_good; }}

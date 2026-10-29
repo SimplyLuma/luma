@@ -39,7 +39,7 @@ IDLE_UNLOAD_MINUTES = 1
 # starts it again with the next question.
 IDLE_EXIT_SECONDS = 120
 LOW_MEMORY_BYTES = 1_500_000_000
-TOOL_SERVERS = ("answers", "desktop", "system", "preferences", "applications", "workspace")
+TOOL_SERVERS = ("answers", "desktop", "system", "preferences", "applications", "workspace", "accessibility")
 SETTINGS_SCHEMA = "org.projectluma.Ari"
 
 

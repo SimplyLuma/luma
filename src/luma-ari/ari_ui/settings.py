@@ -33,6 +33,8 @@ TOOL_GLYPHS = {
     "set_permission": "channel-secure-symbolic",
 }
 TOOL_NAMES = {
+    "desktop_applications": "Found open applications", "inspect_application": "Read application controls",
+    "act_in_application": "Operated an application control",
     "app_surfaces": "Read application actions", "request_app_access": "Requested application access",
     "app_action": "Performed an application action", "installed_apps": "Checked installed apps",
     "inspect_package": "Reviewed a package", "install_package": "Installed an app", "remove_application": "Uninstalled an app",

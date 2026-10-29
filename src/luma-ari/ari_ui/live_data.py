@@ -11,7 +11,7 @@ def action_node(tool, summary, state='done'):
     kind, category, detail = ('app', 'Apps', 'App') if tool == 'open_app' else ('setting', 'Settings', 'Preference')
     if tool in ('media_control', 'play_media'):
         kind, category, detail = 'app', 'Apps', 'Playback'
-    if tool in ('app_action', 'install_package', 'install_software', 'remove_application', 'restore_system_application'):
+    if tool in ('app_action', 'act_in_application', 'install_package', 'install_software', 'remove_application', 'restore_system_application'):
         kind, category, detail = 'app', 'Apps', 'Application action'
     if tool in ('create_project', 'write_project_file', 'run_project'):
         kind, category, detail = 'file', 'Files', 'Project'

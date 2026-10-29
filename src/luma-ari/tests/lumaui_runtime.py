@@ -219,6 +219,11 @@ class FixtureRuntime(unittest.TestCase):
 
                     approval = next(w for w in descendants(window.page)
                                     if w.get_name() == "ari-approval-budget")
+                    if hasattr(lumaui_app.lumaui_tokens, "ARI"):
+                        metrics = lumaui_app.lumaui_tokens.ARI["approval"]
+                        self.assertEqual(approval.get_margin_start(),
+                                         metrics["margin_start"] if width > 560 else metrics["phone_margin_x"],
+                                         (window.get_width(), window.get_surface().get_width(), window.get_default_size()))
                     copies = [w for w in descendants(approval)
                               if isinstance(w, Gtk.TextView)
                               or w.has_css_class("ari-draft-copy")]
@@ -971,6 +976,35 @@ class FixtureRuntime(unittest.TestCase):
         self.assertEqual(self.window.state["cur"], "new")
         self.assertEqual(self.window.draft, "a draft while chats load")
         self.assertEqual(self.window.data["conversations"][0]["id"], "stored")
+
+    def test_catalogue_refresh_retains_loaded_and_streaming_conversation(self):
+        from unittest.mock import Mock
+        self.window.fixture = False
+        self.window.daemon = Mock()
+        messages = [{'u':'Find places in Kansas City'}, {'a':'Saved previous answer'},
+                    {'u':'Add Chicago to Weather'}, {'a':'Working', 'streaming':True}]
+        chat = {'id':'stored', 't':'Chat', 'day':'Today', 'msgs':messages}
+        self.window.data['conversations'] = [chat]
+        self.window.state.update(view='chat',cur='stored',busy=True)
+        self.window._live_ready(None)
+        callback = next(call.kwargs['callback'] for call in self.window.daemon.call.call_args_list
+                        if call.args[0]=='ListConversations')
+        callback((json.dumps([{'id':'stored','title':'Updated title','updated':1}]),))
+        self.assertIs(self.window.data['conversations'][0],chat)
+        self.assertIs(chat['msgs'],messages)
+        self.assertEqual(len(chat['msgs']),4)
+        self.window.daemon.call.reset_mock()
+        self.window._live_ready(None)
+        request = next(call for call in self.window.daemon.call.call_args_list if call.args[0]=='ChatGPT')
+        self.assertEqual(request.args[2],(False,))
+
+    def test_first_account_read_refreshes_old_model_capabilities(self):
+        from unittest.mock import Mock
+        self.window.fixture = False
+        self.window.daemon = Mock()
+        self.window._live_ready(None)
+        request = next(call for call in self.window.daemon.call.call_args_list if call.args[0]=='ChatGPT')
+        self.assertEqual(request.args[2],(True,))
 
     def test_stale_events_do_not_change_another_chat(self):
         import json

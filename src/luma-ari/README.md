@@ -44,9 +44,13 @@ and does not require approval for each launch.
 
 Application actions use the shared Semantic Broker: request the needed access,
 read the app's published objects/actions, and invoke their actual IDs. The
-broker owns consent, redaction, risk confirmation and provider dispatch. Apps
-must publish actions for Ari to use them; this does not simulate arbitrary
-mouse/keyboard interaction in applications without that interface.
+broker owns consent, redaction, risk confirmation and provider dispatch. If an app has no broker action, Ari can find its visible Linux accessibility
+controls and use the app's own editable-text and button-action interfaces.
+Controls must come from a fresh inspection of an application named by the
+person. Protected fields are excluded; stale controls and concurrent text
+changes are refused. Changes require Ari's normal action permission and preview.
+Ari inspects again to verify the outcome. No synthetic mouse/keyboard input
+is used, and apps must expose usable accessibility controls.
 
 Development tools create native SDK projects under `~/Projects/Ari`, list/read
 and edit their files, and run checks/build commands. Replacing an existing file

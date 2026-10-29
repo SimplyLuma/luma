@@ -291,3 +291,43 @@ class ActionPolicy(unittest.TestCase):
             self.assertEqual(tools.call.call_count,1)
             self.assertTrue(tools.call.call_args.args[1]['preview'])
             store.db.close()
+
+    def test_application_request_keeps_the_full_action_bundle(self):
+        names=('now','weather','find_app','open_app','request_app_access','app_surfaces','app_action','calculate','wikipedia')
+        tools=[Tool(name,name,{'type':'object'},'applications') for name in names]
+        chosen={tool.name for tool in router.select('Add Chicago to the weather app',tools,6)}
+        self.assertTrue({'find_app','open_app','request_app_access','app_surfaces','app_action'} <= chosen)
+
+    def test_followup_history_contains_receipts_without_duplicate_chat_bubbles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(Path(directory)/'ari.db')
+            tool=Tool('open_app','Open app',{'type':'object'},'desktop')
+            tools=SimpleNamespace(available=[tool],by_name={'open_app':(None,tool)},
+                                  call=Mock(return_value={'ok':True,'summary':'Opened Weather.'}))
+            provider=SimpleNamespace(model='fixture',hosted_search=True,chat=Mock(return_value=iter([{'type':'text','text':'Next step'}])))
+            agent=Agent(store,tools,policy.Policy(),model_provider=lambda:(provider,'Fixture','through your ChatGPT plan','date','large'))
+            identity=store.new_conversation()
+            with patch('ari.agent.audit.record'), patch('ari.agent._current_settings',return_value=''):
+                agent.answer(Turn(identity,'Open my Weather app',lambda event:None))
+                self.assertEqual(store.messages(identity)[-1]['content'],'')
+                agent.answer(Turn(identity,'Add Chicago to the weather app',lambda event:None))
+            submitted=provider.chat.call_args.args[0]
+            self.assertIn({'role':'assistant','content':'Opened Weather.'},submitted)
+            store.db.close()
+
+    def test_accessibility_cannot_retarget_an_unnamed_application_even_without_approval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(Path(directory)/'ari.db')
+            tool=Tool('act_in_application','Operate app',{'properties':{'preview':{'type':'boolean'}}},'accessibility')
+            tools=SimpleNamespace(available=[tool],by_name={'act_in_application':(None,tool)},
+                 call=Mock(return_value={'ok':True,'requested_name':'browser','preview':'Activate a browser control'}))
+            p=policy.Policy();p.approval_mode='never'
+            agent=Agent(store,tools,p,model_provider=None)
+            turn=Turn(store.new_conversation(),'Add Chicago to the Weather app',lambda event:None)
+            turn.read_untrusted=True
+            with patch('ari.agent.audit.record'):
+                result=agent.run_tool(turn,'act_in_application',{'application':'opaque','target':'opaque','operation':'action','action':'click'})
+            self.assertFalse(result['ok'])
+            self.assertEqual(tools.call.call_count,1)
+            self.assertTrue(tools.call.call_args.args[1]['preview'])
+            store.db.close()

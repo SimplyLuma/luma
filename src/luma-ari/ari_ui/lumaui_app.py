@@ -297,6 +297,7 @@ class AriWindow(AppWindow):
         self.pending_request_events = []
         self.pending_approvals = set()
         self.read_generation = 0
+        self.chatgpt_metadata_requested = False
         self.route_generation = 0
         self.closed = False
         self._capture_source = None
@@ -1004,7 +1005,7 @@ class AriWindow(AppWindow):
         card.append(steps)
         if state == "ask" and not compact and receipt.get("ask"):
             draft = receipt["ask"]
-            approval = named(box(vertical=True, spacing=8), "approval-" + identity)
+            approval = named(box(vertical=True, spacing=2), "approval-" + identity)
             approval.add_css_class("ari-draft")
             approval.append(ari_text(draft["subj"], "draft-title", "title-2"))
             body = " ".join(draft["body"][1:-1])
@@ -1014,10 +1015,27 @@ class AriWindow(AppWindow):
                 preview.add_css_class("ari-draft-copy")
                 approval.append(preview)
                 metrics = lumaui_tokens.ARI["approval"]
-                approval.set_margin_start(metrics["margin_start"] if self.get_width() > 560 else metrics["phone_margin_x"])
-                approval.set_margin_end(metrics["margin_end"] if self.get_width() > 560 else metrics["phone_margin_x"])
                 approval.set_margin_top(metrics["margin_top"])
-                approval.set_margin_bottom(metrics["margin_bottom"] if self.get_width() > 560 else metrics["phone_margin_bottom"])
+                def fit_approval(width=None):
+                    # Initial rendering precedes allocation; the kit measures
+                    # content width after layout, excluding compositor shadows.
+                    width = width or self.get_width() or self.get_default_size()[0]
+                    wide = width > 560
+                    approval.set_margin_start(metrics["margin_start"] if wide else metrics["phone_margin_x"])
+                    approval.set_margin_end(metrics["margin_end"] if wide else metrics["phone_margin_x"])
+                    approval.set_margin_bottom(metrics["margin_bottom"] if wide else metrics["phone_margin_bottom"])
+                watching = []
+                def watch_size(*_args):
+                    if not watching:
+                        watching.append(self.tier_watch.connect("width-changed", lambda _watch, width: fit_approval(width)))
+                    fit_approval()
+                def unwatch_size(*_args):
+                    for handler in watching:
+                        self.tier_watch.disconnect(handler)
+                    watching.clear()
+                card.connect("map", watch_size)
+                card.connect("unmap", unwatch_size)
+                fit_approval()
             else:
                 draft_copy = ParagraphField(body, label="Email draft" if self.fixture else "Change preview")
                 # arChain renders a preview; Edit is its separate action.
@@ -1037,13 +1055,18 @@ class AriWindow(AppWindow):
                 reserve_draft_lines(draft_copy)
                 draft_copy.connect("map", reserve_draft_lines)
                 approval.append(draft_copy)
-            actions = Adw.WrapBox(child_spacing=6, line_spacing=6)
-            actions.set_halign(Gtk.Align.END)
+            actions = box(spacing=6)
+            actions.set_margin_top(8)
+            actions.append(self.button("Don’t send" if self.fixture else "Decline", lambda: self.answer(identity, False),
+                                       name="decline-" + identity, appearance="quiet"))
+            actions.append(Gtk.Box(hexpand=True))
+            choices = Adw.WrapBox(child_spacing=6, line_spacing=6)
+            choices.set_halign(Gtk.Align.END)
             for button in (
-                self.button("Don’t send" if self.fixture else "Decline", lambda: self.answer(identity, False), name="decline-" + identity),
                 self.button("Edit", self.edit_approval, name="edit-" + identity),
                 self.button(f"Send to {recipient_first_name(receipt)}" if self.fixture else "Approve", lambda: self.answer(identity, True), primary=True, name="approve-" + identity)):
-                actions.append(button)
+                choices.append(button)
+            actions.append(choices)
             approval.append(actions)
             card.append(approval)
         return card
@@ -1075,7 +1098,12 @@ class AriWindow(AppWindow):
                 chat = next((chat for chat in self.data["conversations"] if chat["id"] == chat_id), None)
                 if chat:
                     source = self.button(f'From “{chat["t"]}”', lambda value=chat_id: self.open_chat(value), "message-circle", appearance="quiet")
+                    source.add_css_class("ari-activity-source")
                     source.set_halign(Gtk.Align.START)
+                    source.set_margin_start(16)
+                    image = source.get_child().get_first_child()
+                    if isinstance(image, Gtk.Image):
+                        image.set_pixel_size(13)
                     content.append(source)
                 else:
                     content.append(text("From a voice request", "caption"))
@@ -1295,12 +1323,13 @@ class AriWindow(AppWindow):
         self.models_change_button = self.button("Change", self.model_picker)
         use_rows = box(vertical=True, spacing=0)
         use_rows.append(box(self.model_mark(model, 44),
-                        box(text(model["n"], "title-2"), self.model_row_caption("For everything · On this computer" if model.get("local") else "For everything · Cloud"), vertical=True, hexpand=True),
+                        box(text(model["n"], "title-2"), self.model_row_caption("For everything · On this computer" if model.get("local") else "For everything · Cloud"), vertical=True, hexpand=True, valign=Gtk.Align.CENTER),
                         self.models_change_button, spacing=14))
         task_names = {"code": "Code", "hard": "Hard problems", "long": "Long reading", "writing": "Writing"}
         for task, identity in self.task_models.items():
             assigned = self.model(identity)
-            lead = box(icons.image("code" if task == "code" else "sliders-horizontal", pixel_size=18), width_request=44, height_request=40)
+            lead = icons.image("code" if task == "code" else "sliders-horizontal", pixel_size=18)
+            lead.set_size_request(44, 40)
             row = box(lead,
                       box(text(task_names.get(task, task), "title-2"), self.model_row_caption(assigned["n"] + (" · On this computer" if assigned.get("local") else " · Cloud")), vertical=True, hexpand=True),
                       self.icon_button("x", "Use the same as everything", lambda task=task: self.set_task_model(task, ""), size="tiny"),
@@ -1475,7 +1504,9 @@ class AriWindow(AppWindow):
         self.page.append(grid)
         if too_big and not self.show_large_models:
             amount = "one model" if len(too_big) == 1 else f"{len(too_big)} models"
-            self.page.append(self.button("Show " + amount + " too big for this computer", self.reveal_large_models))
+            reveal = self.button("Show " + amount + " too big for this computer", self.reveal_large_models)
+            reveal.set_halign(Gtk.Align.CENTER)
+            self.page.append(reveal)
         if not shown:
             self.page.append(text("No models match your search.", "caption"))
 
@@ -1670,7 +1701,7 @@ class AriWindow(AppWindow):
         if self.state["view"] == "models":
             line.get_first_child().add_css_class("ari-models-section")
         if subtitle:
-            line.append(text(subtitle, "caption", wrap=True))
+            line.append(text(subtitle, "caption", wrap=self.state["view"] != "models"))
         line.set_margin_top(20)
         self.page.append(line)
 
@@ -2720,8 +2751,18 @@ class AriWindow(AppWindow):
                 return
             import time
             rows = json.loads(value[0])
-            self.data["conversations"] = [{"id": row["id"], "t": row["title"],
-                "day": time.strftime("%b %-d", time.localtime(row["updated"])), "msgs": []} for row in rows]
+            # Model/account refreshes and daemon reconnection also reach here.
+            # Keep loaded messages (including a turn currently streaming).
+            existing = {chat["id"]: chat for chat in self.data["conversations"]}
+            merged = []
+            for row in rows:
+                chat = existing.pop(row["id"], {"id": row["id"], "msgs": []})
+                chat.update(t=row["title"], day=time.strftime("%b %-d", time.localtime(row["updated"])))
+                merged.append(chat)
+            for chat in existing.values():
+                if chat["id"] == self.state["cur"] or chat["id"].startswith("new-"):
+                    merged.insert(0, chat)
+            self.data["conversations"] = merged
             self.render()
             if (rows and self.generation == navigation_generation and self.state["view"] == "chat"
                     and self.state["cur"] == "new" and not self.draft):
@@ -2764,7 +2805,11 @@ class AriWindow(AppWindow):
         def chatgpt_loaded(value):
             if not self.closed and read_generation == self.read_generation and not isinstance(value, Exception):
                 self.chatgpt_loaded(json.loads(value[0]), route_generation)
-        self.daemon.call("ChatGPT", "(b)", (False,), chatgpt_loaded)
+            elif isinstance(value, Exception):
+                self.chatgpt_metadata_requested = False
+        refresh_capabilities = not self.chatgpt_metadata_requested
+        self.chatgpt_metadata_requested = True
+        self.daemon.call("ChatGPT", "(b)", (refresh_capabilities,), chatgpt_loaded)
         self.daemon.call("Cloud", "(b)", (False,), cloud_loaded)
         self.daemon.call("Activity", "(u)", (200,), activity_loaded)
         self.daemon.call("ListConversations", callback=chats_loaded)

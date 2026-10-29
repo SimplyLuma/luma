@@ -177,6 +177,16 @@ class Responses(unittest.TestCase):
             self.assertIn('turned off', self.requests[-1][1]['body']['input'][-1]['output'])
             store.db.close()
 
+    def test_completed_without_reply_or_action_reports_the_real_failure(self):
+        self.responses.append(stream(completed([{'type':'reasoning'}])))
+        events=list(self.provider.chat(self.messages))
+        self.assertEqual(events[0]['type'],'error')
+        self.assertIn('without returning a reply or an application action',events[0]['message'])
+
+    def test_refusal_text_is_not_lost_as_an_empty_answer(self):
+        self.responses.append(stream(completed([{'type':'message','content':[{'type':'refusal','refusal':'I cannot perform that action.'}]}])))
+        self.assertIn({'type':'text','text':'I cannot perform that action.'},list(self.provider.chat(self.messages)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -122,12 +122,12 @@ class Agent:
             user_named_it = bool(re.search(r"\b(?:build|create|develop|code|program|implement|fix|edit|test|run|make|customize)\b", turn.text, re.I))
         elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
             user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
-        elif name == "app_action":
+        elif name in ("app_action", "act_in_application"):
             user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|delete|remove|play|pause|move|save|set|mark|schedule|book|do)\b", turn.text, re.I)
-                                 and re.search(r"\b(?:notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music)\b", turn.text, re.I))
+                                 and re.search(r"\b(?:app|application|notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|weather)\b", turn.text, re.I))
         if name == "open_app" and turn.read_untrusted:
             app = str(arguments.get('name', '')).strip().casefold()
-            user_named_it = bool(app and re.search(r'(?:^|\b(?:and|then|please)\s+)(?:(?:can|could) you\s+)?(?:open|launch|start|run)\s+', turn.text, re.I)
+            user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete)\b', turn.text, re.I)
                                  and re.search(r'(?<!\w)' + re.escape(app) + r'(?!\w)', turn.text.casefold()))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
@@ -143,12 +143,20 @@ class Agent:
             audit.record({**entry, "decision": "refused", "reason": decision.reason})
             return {"ok": False, "summary": decision.reason, "refused": True}
         arguments = {k: v for k, v in arguments.items() if k != "preview"}
+        action_preview = None
+        if name == "act_in_application":
+            action_preview = self.tools.call(name, {**arguments, "preview": True})
+            if not action_preview.get("ok"):
+                return action_preview
+            requested = action_preview.get("requested_name", "")
+            if not requested or not re.search(r"(?<!\w)"+re.escape(requested)+r"(?!\w)",turn.text,re.I):
+                return {"ok":False, "refused":True, "summary":"Name the application you want me to operate before I change it."}
         approval = ""
         project = arguments.get("project") if decision.tier == CHANGE_FILES else None
         project_granted = self.policy.approval_mode == "system" and project in turn.project_approvals
         if self.policy.needs_approval(name) and not project_granted:
-            preview = self.tools.call(name, {**arguments, "preview": True}) if self._previews(name) else \
-                {"ok": True, "preview": _describe(name, arguments)}
+            preview = action_preview or (self.tools.call(name, {**arguments, "preview": True}) if self._previews(name) else
+                {"ok": True, "preview": _describe(name, arguments)})
             if not preview.get("ok") or preview.get("unchanged"):
                 audit.record({**entry, "decision": "ran", "ok": bool(preview.get("ok")),
                               "summary": preview.get("summary", "")})
@@ -316,6 +324,8 @@ class Agent:
         if router.development_request(routing_text):
             profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=24,
                               max_tokens=max(profile.max_tokens, 4096))
+        if re.search(r"\b(?:app|application|weather|notes?|calendar|tasks?|messages?|browser)\b", routing_text, re.I):
+            profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=max(profile.max_steps, 16))
         tools = router.select(routing_text,
                               self.tools.available, profile.max_tools)
         if getattr(provider, "hosted_search", False):
@@ -327,9 +337,18 @@ class Agent:
                                model_label=label, where=where, cutoff=cutoff, tools=tool_names)
         prompt += _current_settings() + _recent_changes(self.store.recent_steps(time.time() - RECENT_CHANGES_SECONDS))
         messages = [{"role": "system", "content": prompt}]
+        recorded_steps = {step["id"]: step for step in self.store.steps(turn.conversation)}
         for past in self.store.messages(turn.conversation, limit=profile.history_messages + 1)[:-1]:
             if past["role"] in ("user", "assistant"):
-                messages.append({"role": past["role"], "content": past["content"]})
+                content = past["content"]
+                if past["role"] == "assistant":
+                    completed = [recorded_steps[identity] for identity in past.get("meta", {}).get("steps", [])
+                                 if identity in recorded_steps]
+                    receipts = "\n".join(step["summary"] + _STEP_STATES.get(step["state"], "") for step in completed)
+                    if receipts and receipts not in content:
+                        content = (content + "\n" + receipts).strip()
+                if content:
+                    messages.append({"role": past["role"], "content": content})
         messages.append({"role": "user", "content": turn.text})
         if not getattr(provider, "hosted_search", False) and _TIME_SENSITIVE.search(turn.text) and "web_search" in self.tools.by_name:
             query = _lookup_query(turn.text)
@@ -491,7 +510,7 @@ def _failure(result: dict) -> str:
 # Settings whose value must come from the person. A model that can't find
 # "chartreuse" must ask, not quietly pick yellow (§7.2: never act beyond the
 # request). Words people use for each value count as naming it.
-_NAMED_VALUES = {"set_accent": "color", "set_dock_position": "edge"}
+_NAMED_VALUES = {"set_accent": "color", "set_dock_position": "edge", "desktop_applications":"name"}
 _VALUE_WORDS = {"slate": ("slate", "grey", "gray"), "purple": ("purple", "violet"),
                 "top": ("top", "up"), "bottom": ("bottom", "down"), "left": ("left",), "right": ("right",)}
 
@@ -501,6 +520,8 @@ def _value_named(text: str, tool: str, arguments: dict) -> bool:
     if key is None:
         return True
     value = str(arguments.get(key, "")).lower()
+    if tool == "desktop_applications":
+        return bool(value and re.search(r"(?<!\w)"+re.escape(value)+r"(?!\w)",text,re.I))
     words = set(re.findall(r"[a-z]+", text.lower()))
     return any(word in words for word in _VALUE_WORDS.get(value, (value,)))
 

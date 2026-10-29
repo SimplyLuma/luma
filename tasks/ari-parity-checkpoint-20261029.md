@@ -195,3 +195,64 @@ also passed, including visible phone action labels.
 These checks do not establish actual ChatGPT hosted-search acceptance, every
 application's action coverage, or visual conformance. The draft PR and Dell
 replacement remain gated as described above.
+
+## Functional preview delivery
+
+Exact runtime/source commit: `e5968174784210d96103b74851c39c1275f83a5d`.
+Its Fedora 44 RPM/SRPM build passed, including all 147 unit tests. All packaged
+runtime Python/SVG files matched source, and the extracted payload passed the
+private native OAuth flow and public source contracts. All five GitHub checks
+passed.
+
+RPM SHA-256: `155cf2dab576495deb7bf547433eae582c6a96af7a3c1b36a6da86f3d3cc21ec`.
+SRPM SHA-256: `0adf0a9019f48c916fe0dfa622bcbedaba49518b39f7adb960ccc4baed30e357`.
+
+The independent Ari2 r3 export also passed native account/profile/keyring
+isolation and actual launcher/D-Bus activation checks. Its updater passed
+running-UI/daemon refusal, altered-registration and corrupt-payload refusal,
+profile preservation and rollback in a disposable server session.
+Archive SHA-256: `c1520e496bc9011c4aaf0ef779384a74cb26fc2924e36ecab0d0102892ba808f`.
+
+The owner explicitly authorized a functional-test exception to the ZIP's visual
+gate: “Launch the functional-test build now.” After verifying the existing
+preview was closed and the transferred archive matched, the owned Ari2 launcher
+and activation registrations were updated and the candidate launched in the
+Dell's graphical session. Its profile and keyring were retained. No automated
+application testing ran on the Dell. This launch does not establish live account
+acceptance or visual conformance; those remain open, and the PR remains draft.
+
+## Manual-review corrections
+
+The functional preview exposed three issues: loaded chat messages disappeared
+when account/model metadata refreshed, Weather had no usable broker actions,
+and upgraded account caches lacked reasoning metadata.
+
+Conversation refresh now preserves loaded and streaming messages. Stored action
+receipts are also included in subsequent model context when the successful
+assistant text was deliberately omitted from the chat. Startup refreshes the
+account-specific model catalogue once, so old saved rows acquire their actual
+effort capabilities. A live catalogue refresh confirmed reasoning levels for
+the selected model; no credentials or private conversation text were collected.
+
+Applications without broker actions now have a Linux accessibility fallback.
+Ari finds an application explicitly named by the person, inspects its visible
+controls, and uses advertised button actions or editable-text interfaces.
+Protected fields are excluded. Targets expire and are checked against process
+start time, current tree position, object identity, name, role and sensitivity;
+changed text is preserved. Mutations retain normal policy/preview checks and
+require a fresh inspection afterward. No synthetic input is generated.
+
+Validation passed 155 unit/protocol/policy tests, 48 native Wayland UI tests,
+five capture-context checks, staged imports/schemas and private native account
+fixtures. Real Weather tests used its actual city database and persistent store
+in disposable server settings: enter Chicago, activate its result, then verify
+the saved city and visible controls. Both direct adapter and MCP paths passed.
+Forecast HTTP calls were stubbed; the actual Weather search, UI interaction and
+persistence were exercised. These tests did not run on the Dell.
+
+Completed ChatGPT responses without a reply/action now expose a specific error;
+provider refusal text is preserved. Weather and other in-app requests receive
+the full relevant tool bundle. Further visual fixes align approval insets and
+controls, Activity links, task icons and installed-model rows. Visual conformance
+still has no PASS claim. The replacement preview requires its own package,
+isolation, activation and profile-preserving update checks before delivery.

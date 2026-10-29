@@ -27,6 +27,8 @@ TOOL_TIERS = {
     "media_control": PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
     "app_surfaces": READ_PERSONAL, "request_app_access": READ_PERSONAL,
     "app_action": ACT_ON_BEHALF, "installed_apps": ANSWER, "inspect_package": ANSWER,
+    "desktop_applications": READ_PERSONAL, "inspect_application": READ_PERSONAL,
+    "act_in_application": ACT_ON_BEHALF,
     "install_package": CHANGE_SYSTEM, "remove_application": CHANGE_SYSTEM,
     "list_project": READ_PERSONAL, "read_project_file": READ_PERSONAL,
     "create_project": CHANGE_FILES, "write_project_file": CHANGE_FILES, "run_project": CHANGE_FILES,
@@ -37,7 +39,8 @@ TOOL_TIERS = {
 # clock, its connections -- are consequential (ADR-025): Ari asks first unless
 # the person chose "Don't ask".
 CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth", "install_package", "remove_application",
-                 "create_project", "write_project_file", "run_project", "install_software", "restore_system_application"}
+                 "create_project", "write_project_file", "run_project", "install_software", "restore_system_application",
+                 "act_in_application"}
 APPROVAL_MODES = ("system", "all", "never")
 # Only concrete adapters are registered; unknown tools still fail closed.
 ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, ACT_ON_BEHALF, CHANGE_FILES, CHANGE_SYSTEM, OPEN_APPS}
