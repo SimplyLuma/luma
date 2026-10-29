@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T21:22:00+00:00
+- Updated: 2026-10-29T22:33:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,85 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE HANDOFF22:33Z — IMAGE BUILT/VERIFIED; RUNTIME QUALIFICATION STILL OPEN:
+- Full Android m systemimage/vendorimage completed successfully at~22:01Z,
+  compiler report55:06. Guest packaging and sync completed; raw result exits0,
+  finished_unix1793311306.8638635. Root-owned raw result
+  build-vm/build-r9-result-20261029T220225Z.json SHA
+  df17ffeba44366d80a2bb4f6b49567b84a4b17edc2035f0f0d2cb914ec25aae9.
+- Original normal e37c3216 FAILED22:02:33Z during bulk artifact export: separately
+  capped root controller128MiB was OOM-killed. Guest24GiB was not the failed cap.
+  Guest outputs had been synced BEFORE publishing successful completion, so
+  no compilation rerun was needed. Preserve original failure/partial220225Z.
+  Shared policy restored automatically to original24cfbd91...; override is OFF.
+- Normal dev-android-image-export-recovery-1e0431d5.service PASSED22:08:43Z.
+  Dedicated normal7GiB/root1GiB actor temporarily cold-booted builder at4GiB,
+  QEMU5GiB hard+combined, bounded SFTP16x64KiB, COPIED completed output only.
+  Actual full export checksum verification passed. Guest sync/poweroff observed;
+  exact prior24/25GiB inactive builder XML restored by finally and stop hook.
+  Backups/helpers in export-recovery; domain-original.xml/SHA root-owned.
+  Actor backup already exists: do not blindly rerun one-shot driver.
+- VERIFIED export: build-vm/output-x86_64-r9-20261029T220751Z. Raw images,
+  system1,829,220,352B SHA88dbed302af8bd933e12c6e098bed9a9870db5f342ee59efaacb71bb30a76d09;
+  vendor566,210,560B SHA2a25f1e1c286b3108ba18a30e53f67fc5861fa17970c547e2bbe108112d05bb8.
+  Main manifest9899baf62d4f95be95cc380c6c6d0e90d84be8163ad4396e838e3fae16dee5de.
+  HWC60e4bc0a34cfcff9b9937ea553db946e1714141e890cfff4ea7946af44754e81;
+  task5a6fdb7734bdf8f2f89830984ea96ff9819ac73d662635deb3e3da7ad49c4041.
+  SystemUI551952bb9cee20aba677ad35372cf17059c46fff8efb251d2f1e5d170eb946df;
+  frameworkf4f69537c7f0438f4fa17f46a1cd2d72ac1e689b9c7915639f09a0a076de7996.
+  Host-tool metadata22d0f6... below remains required. No source/ABI/image test claim
+  beyond source7c13c192f/SDK0004 (no replies). ARM not built/qualified.
+- build-vm-auto/latest.json now EXPLICIT image_export_verified_pending_qualification
+  pointing to successful EXPORT recovery normal1e0431d5, retaining original
+  e37 failure identity and original successful guest result hash. Original job
+  result never rewritten. Guard watch accepts this separate phase only after
+  actual successful normal recovery result, original compile0 and exact export
+  manifest match. Controls66f1274c PASSED9 policy+8 root inventory checks+VM
+  preflight. No automatic compiler watcher remains active; e40f42bb terminated.
+- First guard childf0bca862 FAILED22:12:35Z copying system.img, scp255; failed
+  subprocess output was not preserved by old wrapper. No native controls ran.
+  Kernel OOM not established for this transfer; do not equate it with root
+  exporter OOM. Root128MiB cap was expanded to512MiB within normal9GiB/QEMU8;
+  bounded SCP buffers and60s keepalive, old runtime stop and storage preflight
+  now occur BEFORE uploading images; errors are retained.6dffbf91 PASSED3
+  stop-state fixtures+9 policy+8 root inventory+readonly VM/source preflight.
+- Guard child8beee6cf then staged images successfully. Actual preflight stock
+  runtime.80, both user units loaded/stopped, LXC STOPPED, MemAvailable~4.5GiB,
+ 32,497,623,040B free vs5,864,603,648B required. Therefore no storage shortage
+  was established. It FAILED22:24:29Z at rpm-Uvh .94 AFTER transient ostree
+  unlock, before images installed/Android boot/APK/native tests. Old guest
+  exception omitted RPM stdout: underlying transaction error still unknown.
+  Artifacts8beee6cf/guest-output.txt andqualification.json retain exact step.
+- New harness fixes: guest exception records full bounded transaction output;
+  pre-transfer RPM--test uses PRIVATE COPIED installed RPM DB (real DB unchanged)
+  to fail before large transfer; APK filename now unique under/var/tmp, outside
+  root-only stage (my earlier stage-local filename would have been unreadable
+  by normal user; it had not executed). Ordinary CLI list/remove/install/launch
+  still required; fixture cleanup uses actual pm package identity, not display
+  text.74d238fa PASSED3 stop fixtures+9 policy+8 root inventory+read-only preflight.
+- CURRENT observer dev-android-guard-build-handoff-27c1e556.service admitted
+ 22:32:10Z, waiting/running a fresh child. Guard manifest
+  f2f60c2d6ac96eb630208bbe6fec541af10313ac6f95727d9ead02c76e62c898.
+  NEXT: read latest.json/child pipeline and preserved RPM-test output, fix actual
+  package prerequisites WITHOUT bypassing dependency checks, continue same run
+  through real image boot/APK/native controls. Original raw image pair untouched.
+- Future main builds: do NOT reuse128MiB root bulk exporter; separate compile
+  and bounded export stages (the7GiB/1GiB transfer path is proven), or validate
+  a larger controller within normal reservation. Cold r11 also does not reapply
+  glslang addon; see notes below. Do not mutate pinned sources of live actors.
+
+HISTORICAL ACTUAL PROGRESS21:44:32Z:
+7511/9913 remaining Ninja actions (75%).
+The repaired unstripped libart.so is valid x86_64 ELF (observed21:24:30Z),
+buildID85b88bd9fe02d64f563ebd3e1295a245. BOTH actual main-build Mesa32/64
+.build.timestamp markers fresh21:28:10Z; these are created only after configure
+AND nested compilation succeed. So the Meson/glslang fixes passed actual Mesa
+builds, beyond earlier separate configure diagnostics. Main image remains
+in framework/Java packages, no completed/exported image yet. Source/R8 warnings
+have not stopped subsequent actions; no test/runtime claim. Guardf7f6a184 still
+armed for real post-build matched-image native controls. Continue foreground
+follow-through; do not end merely because the services remain active.
 
 CURRENT BUILD: normal dev-android-images-build-vm-r9-e37c3216.service admitted
 20:50:11Z,26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Input verification
