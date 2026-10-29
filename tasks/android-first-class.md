@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T16:07:33+00:00
+- Updated: 2026-10-29T16:32:13+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 330dfa78c (acceptance/recovery audit), 497a61054 (runtime source); focus-fixture correction active
+- Branch and last useful commit: codex/android-first-class; d401599a9 (live guard fixture/runner), 497a61054 (runtime source); automatic post-build VM qualification armed
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -164,8 +164,8 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  ELF resource sections + actual Gio.Resource lookup, no package installed.
  Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
 -Main image root r9 remains ACTIVE, normala1c4e3af10GiB, source7c13c192f.
- Soong graph completed ~15:12Z. At16:07:33Z actual C++ compilation27842/143205,
-19%; no completed image. Transient SSH failure15:15 recovered by controller,
+ Soong graph completed ~15:12Z. At16:32Z actual C++ compilation39521/143205,
+27%; no completed image. Transient SSH failure15:15 recovered by controller,
  no lost heap. Fixed guest zstd handled graph within existing8GiB/9GiB cap.
 -Automatic bounded continuation ACTIVE:
  dev-android-image-auto-pinned-watch-0-66408768.service, normal1GiB, replaced
@@ -199,6 +199,44 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  New wrapper syntax and embedded Python/newline bytes checked before launch.
 -User ETA given as rough24–48h for an x86 Dell development build if compilation/
  integration succeed, NOT a delivery promise or daily-use/ARM/power/security ETA.
+
+POST-BUILD GUARD VM HANDOFF ACTIVE:
+- Normal dev-android-guard-build-handoff-99f51328.service,1GiB, MainPID338079;
+  actual waiting heartbeat16:32:13Z in guard-vm-auto/latest.json. No runtime VM
+  started while builder runs. This extends build monitoring into actual tests;
+  it does not automatically implement remaining brokers or qualify a release.
+- Private guard-vm-auto/watch.py waits for successful final normal build result
+  and inactive build unit, follows bounded resume units, and stops on build/
+  recovery failures, cancellation, exhausted budget or deadline. Wait deadline
+ 2026-10-30T15:30Z. Normal admission refusal retries at most30min, without
+  changing limits. Each stage records structured status; no blind failure retry.
+- Then a separately admitted normal9GiB/20GiB-HDD job boots ONLY owned runtime
+  VM3c485515-a910-4f44-80a0-4189ec58cab8, guest6GiB/QEMU8GiB combined. Root
+  driver128MiB+128swap, CPU200%, IO25, RuntimeMax2400s, owner watchdog and
+  ExecStopPost own-UUID destruction; observer waits at most2700s for that child.
+- Inventory verifies a fresh root-owned successful7c13c192f export, safe manifest
+  paths, complete image/native payloads and every listed file hash. Staged files
+  are rehashed in the VM before changes. It stops the old runtime, installs host
+  .94 in a disposable /usr overlay, retains the old image pair through the source
+  deploy helper, cold-starts the runtime, replaces only the synthetic fixture
+  with APKr15, verifies boot/native payload hashes and runs actual native guards.
+  Results/logs are retained under that admitted child's artifact directory.
+- Passing status is native_guards_passed_pending_other_gates, with production
+  qualification and notification reply qualification explicitly false. Current
+  image7c13c192f lacks SDK0005; Shell124 is not installed by this narrow guard run.
+  Focus/task mutators/hardware/security/performance and reply pair remain open.
+  Both success/failure destroy only the owned disposable VM, retaining its disk.
+- Pins guard-vm-auto/manifest.json SHA
+  fb45a3d4d6f9574cb689cc4a84f33ec8dabbbfff435bea8891cc08359b547a89.
+  Do not change pinned scripts/artifacts under a live observer. STOP file
+  guard-vm-auto/STOP or build-vm-auto/STOP prevents a NEW qualification job.
+  Once admitted, stop root luma-android-first-class-guard-qualification.service
+  before stopping its normal job; stopping its observer alone does not kill it.
+- Policy4780fe1b PASSED7 tests; root export controls243c45ad PASSED6 actual
+  root-owned fixture cases plus read-only inactive-VM limits/source/syntax
+  preflight16:31:50Z. Altered/symlink/non-root-owned/escaping/wrong-source/failed
+  exports reject. These do NOT claim the new boot/install/qualification sequence
+  has executed; its first actual run waits for a completed compiled image.
 
 FAILED BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
 10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
