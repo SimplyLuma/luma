@@ -78,25 +78,38 @@ def trusted(service, seed=False, observe_after=False):
     return record
 
 
-def run(expected_apk, report):
-    paths = android("pm", "path", PACKAGE).splitlines()
-    if len(paths) != 1 or not re.fullmatch(r"package:/data/app/[A-Za-z0-9_=/+.-]+\.apk", paths[0]):
+def installed_apk_path(output):
+    paths = output.splitlines()
+    if len(paths) != 1 or not re.fullmatch(r"package:/data/app/[A-Za-z0-9_=/+.~\-]+\.apk", paths[0]):
         raise RuntimeError("Expected one installed fixture APK")
     apk = paths[0].removeprefix("package:")
-    if ".." in Path(apk).parts or android("sha256sum", apk).split()[0] != expected_apk:
+    if ".." in Path(apk).parts or "." in apk.split("/"):
+        raise RuntimeError("Installed fixture APK path traversal rejected")
+    return apk
+
+
+def run(expected_apk, report):
+    report["phase"] = "installed-apk-path"
+    apk = installed_apk_path(android("pm", "path", PACKAGE))
+    report["phase"] = "installed-apk-hash"
+    if android("sha256sum", apk).split()[0] != expected_apk:
         raise RuntimeError("Installed fixture APK hash mismatch")
+    report["phase"] = "ordinary-package-uid"
     package = android("dumpsys", "package", PACKAGE)
     matches = re.findall(r"\buserId=(\d+)\b", package)
     if len(matches) != 1 or not 10000 <= int(matches[0]) < 100000:
         raise RuntimeError("Ordinary fixture application UID unavailable")
     uid = int(matches[0])
+    report["phase"] = "runtime-generation"
     start = generation()
     report.update(android_uid=uid, apk_sha256=expected_apk, runtime_generation=start,
                   android_selinux=android("getenforce"),
                   runtime_package=command("rpm", "-q", "luma-android-runtime"))
     android("am", "force-stop", PACKAGE)
+    report["phase"] = "trusted-before-controls"
     controls = {"before": {"clipboard": trusted("clipboard", seed=True), "task": trusted("task")}}
     report["controls"] = controls
+    report["phase"] = "ordinary-apk-probes"
     android("am", "start", "-W", "-n", PACKAGE + "/.MainActivity",
             "--ez", "probe_native_clipboard", "true", "--ez", "probe_native_task", "true",
             "--es", "guard_run", report["run_id"])
@@ -124,6 +137,7 @@ def run(expected_apk, report):
                            android("cat", "/proc/" + pid + "/status"), re.M)
     if kernel_uid is None or any(int(value) != uid for value in kernel_uid.groups()):
         raise RuntimeError("Fixture kernel identity mismatch")
+    report["phase"] = "trusted-after-controls"
     controls["after"] = {"clipboard": trusted("clipboard", observe_after=True), "task": trusted("task")}
     report["probe_receipts"] = [row for row in records if row.get("guard_run") == report["run_id"]
                                 and row.get("event") in EVENTS]
@@ -149,6 +163,8 @@ def main():
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         # No raw command output, private process environment or clipboard text.
         report.update(status="inconclusive", error_type=type(error).__name__)
+        if isinstance(error, RuntimeError):
+            report["error"] = str(error)
     finally:
         with os.fdopen(descriptor, "w") as stream:
             json.dump(report, stream, indent=2)

@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:02:00+00:00
+- Updated: 2026-10-29T23:07:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,23 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:07Z — native .94 reboot and normal-user APK operations PASSED:
+- ef606d67 booted .94 derived deployment f865bb9e...; previous base retained.
+  Read-only pkcheck from UID1000 user-manager service returnedYES, no policy
+  modifications. Test user alreadywheel. This resolves harness context rejection.
+- Same candidate images booted. Resume34.936s; CLI remove8.595s, install12.335s,
+  launch4.787s returned0 from normal-user service. Command times only; no first
+  frame/performance claim. Actual running HWC/task-service hashes match export.
+- Native guard runner INCONCLUSIVE23:05:16 with RuntimeError before android_uid
+  recorded; no actual probe pass. Original report lacked message/phase. Found
+  installed-path validator excludes Android's randomized `~~` directory form;
+  fixed that source issue and added phase/fixed RuntimeError diagnostics. Actual
+  old failure cause not proved yet.72233dcb PASSED11 classifier/path tests.
+- 9ba8e7fd PASSED5+9+8 helper/read-only checks. Fresh observer
+  dev-android-guard-build-handoff-9e95810d.service; manifest
+  40745aace2146ca87607091ec343dbb359777554045c8a203cb5be3fa152600b.
+  Continue through actual native controls; exact failure phase now recorded.
 
 OBSERVED23:02Z — rebuilt Android boot PASSED; ordinary CLI authorization OPEN:
 - e3424e03 installed exact image pair and CLI resume returned0 in58.934s;

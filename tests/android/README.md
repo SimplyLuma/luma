@@ -296,3 +296,9 @@ checks use real, separate connections, but a fixture Android listener and
 notification server. They check caller/token admission, duplicate requests,
 uncertain outcomes and native-Shell versus FDO-forwarder owner epochs. No
 fixture result replaces a normal APK reply through the actual native UI.
+
+The native guard runner accepts Android's randomized `/data/app/~~…/base.apk`
+paths and checks the installed payload hash before probing. Its report names the
+failed setup phase, so an identity or trusted-control failure remains
+inconclusive. `test_native_guard_qualification.py` covers the randomized path,
+traversal/multiple-payload rejection and stale/unavailable evidence classification.

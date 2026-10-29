@@ -70,5 +70,22 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(self.verdict(), "failed")
 
 
+class InstalledPathTests(unittest.TestCase):
+    def test_randomized_android_package_directory(self):
+        path = "/data/app/~~Abc_012+==/org.projectluma.androidtest-Abc_12==/base.apk"
+        self.assertEqual(gate.installed_apk_path("package:" + path + "\n"), path)
+
+    def test_old_package_directory(self):
+        path = "/data/app/org.projectluma.androidtest-1/base.apk"
+        self.assertEqual(gate.installed_apk_path("package:" + path), path)
+
+    def test_paths_outside_package_root_and_multiple_payloads_rejected(self):
+        for value in ("package:/data/local/tmp/base.apk", "package:/data/app/../private/base.apk",
+                      "package:/data/app/./base.apk", "package:/data/app/x/base.apk\npackage:/data/app/x/split.apk",
+                      "package:/data/app/x/base.apk;echo", "", "package:/data/app/x/base.apk\nextra"):
+            with self.subTest(value=value), self.assertRaises(RuntimeError):
+                gate.installed_apk_path(value)
+
+
 if __name__ == "__main__":
     unittest.main()
