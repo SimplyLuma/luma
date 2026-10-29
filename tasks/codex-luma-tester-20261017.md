@@ -1,7 +1,7 @@
 # Try Luma — cross-platform launcher
 
 - Owner: Codex, luma-dev-2, current tester chat.
-- Status: Try Luma 0.7.6 published; action-bar image deletion implemented, locally qualified and merged via PR91. No newer packaged release yet.
+- Status: Linux cross-distro graphics isolation and native-QEMU/viewer performance investigation active. Public0.7.6 unchanged; image deletion merged via PR91.
 - Branch: codex/luma-tester, based on origin/main 925db44.
 - Worktree: /srv/dev/worktrees/luma-os/codex-luma-tester-20261017.
 - Scope: LumaUI Linux launcher, mobile-first and desktop profiles, x86_64 and
@@ -14,6 +14,48 @@
   No physical device operations. Canonical integration checkout remains unchanged.
 
 ## Current handoff
+
+2026-10-29 Linux isolation implementation: explicit GLVND front ends are now
+included in tools, the GTK closure gains matching Mesa/GBM/Gallium/Vulkan and
+missing dependencies without replacing its libc/GTK/GLib, and the builder checks
+actual ELF symbol versions plus private dependency resolution. Bootstrap and
+tool wrappers scope driver/GLVND/Vulkan discovery and preload/layer settings to
+the portable runtime. Four real ELF fixture tests passed8a35def6 (including
+incompatible symbol versions and an escaping graphics provider). Candidate
+try-linux-graphics-r1 on owned bulk passed496bb8f2 with invalid inherited host
+driver paths and zero host graphics mappings; GPU-disabled Cairo fallback
+passed016bbb46. Cached, network-free/capability-free Ubuntu22.04 container
+(glibc2.35, no host Mesa) ran the private2.43 GTK runtime using Vulkan plus an
+OpenGL context, zero outside graphics mappings, PASSebce17a0. Native LumaUI
+picker/confirmation/cancel/delete on default GL passedb3d08926. These are software
+GL/Xvfb checks, not a physical-GPU or all-Arch qualification.
+
+Actual KVM animated512-byte VBE guest,1024x768, native QEMU GTK3 and embedded
+GTK4 displayed simultaneously:2f36d434 both32.9149fps, ratio1.0. Idle/resume
+fixturece74ccbe kept matching counts and resumed together within8ms sampling
+resolution after5s idle. Do not call this a full GNOME/VirGL benchmark or prove
+every reported slideshow fixed. Controllers+assembly are private
+/srv/dev/accounts/second/artifacts/try-linux-display-benchmark.py and
+try-linux-frame-counter.S; result JSON/screenshots in their dev-job artifacts.
+Native benchmark initially lacked the optional std-VGA ROM; corrected fixture
+uses explicit system seavgabios input. Normal admission briefly refused new
+work when the shared RAM budget was reserved; no shared jobs/limits changed.
+Final tool-EGL front end and implicit Vulkan-layer isolation added after these
+initial candidate checks; a final staged AppImage and regression run remain.
+
+2026-10-29 Linux feedback follow-up: user authorized a general compatibility and
+performance fix; do not depend on commenter-specific hardware/logs. Read-only
+baseline a8fcde66 ran the actual0.7.6 UI loader with default GTK graphics (no
+Cairo override) under Xvfb. GL renderer worked, but /proc/self/maps proves it
+loaded host /usr/lib64 Mesa, Gallium, LLVM, GLES and Vulkan implementations with
+the private bundled libc. This is a reproduced isolation failure, not yet the
+commenter's exact glibc error. QEMU already has private Mesa/DRI; the UI prefix
+does not. UI and tool libc both expose2.43 but differ in build, so keep their ABI
+closures separate. Plan: include the dynamic UI graphics closure, pin private
+vendor/driver discovery, validate symbol resolution with the UI loader, exercise
+default GL plus deliberate host-configuration contamination, and compare native
+QEMU/embedded delivery using the same animated guest. Server has accessible
+nouveau renderD128 and KVM; no Dell automated tests. No new subagents requested.
 
 2026-10-28 image deletion follow-up (current owner/task): added an optional
 LumaUI trash button beside downloaded images in the action-bar Images menu.

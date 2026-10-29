@@ -19,7 +19,17 @@ os.environ.update({
     'LUMA_TESTER_FIRMWARE_DIR': str(base / 'tools/firmware'),
     'LUMA_TESTER_GUEST_UPDATES': str(base / 'guest-updates'),
     'PATH': str(base / 'tools/bin') + ':' + os.environ.get('PATH', '/usr/bin:/bin'),
+    # Do not combine this process's private libc/GTK with host Mesa, GLVND or
+    # Vulkan drivers, even when a desktop session exports alternate paths.
+    '__EGL_VENDOR_LIBRARY_FILENAMES': str(base / 'tools/egl/50_mesa.json'),
+    '__GLX_VENDOR_LIBRARY_NAME': 'mesa',
+    'LIBGL_DRIVERS_PATH': str(base / 'tools/dri'),
+    'VK_DRIVER_FILES': ':'.join(str(p) for p in sorted((base / 'tools/vulkan').glob('*.json'))),
+    'VK_LOADER_LAYERS_DISABLE': '*',
 })
+for name in ('__EGL_VENDOR_LIBRARY_DIRS', 'VK_ICD_FILENAMES', 'VK_ADD_DRIVER_FILES',
+             'VK_LAYER_PATH', 'VK_ADD_LAYER_PATH', 'VK_INSTANCE_LAYERS', 'GTK_PATH', 'GTK_MODULES'):
+    os.environ.pop(name, None)
 if not os.environ.get('SSL_CERT_FILE'):
     for candidate in ('/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/cert.pem'):
         if Path(candidate).is_file():
