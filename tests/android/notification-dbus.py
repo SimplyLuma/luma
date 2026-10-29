@@ -123,12 +123,15 @@ def main():
             bridge = args.luma_notifications[3]
             wait(lambda: bridge.generation > 0)
             record = Notification('org.example.Chat', 'Chat', 'Test', '<b>private & literal',
-                                  (('default', ''), ('read', 'Mark read')))
+                                  (('default', ''), ('read', 'Mark read')),
+                                  image=SimpleNamespace(width=2, height=2, rowstride=8,
+                                      has_alpha=True, data=bytes(range(16))))
             notification_id = bridge.post(record)
             observed = json.loads(control('Records').unpack()[0])[-1]
             assert observed['hints']['desktop-entry'] == 'waydroid.org.example.Chat'
             assert observed['body'] == '&lt;b&gt;private &amp; literal'
             assert observed['replacement'] == 0
+            assert observed['hints']['image-data'][6] == list(range(16))
             emit('ActivationToken', notification_id, 'verified-token')
             emit('ActionInvoked', notification_id, 'read')
             wait(lambda: listener.action.call_count == 1)
@@ -158,7 +161,7 @@ def main():
             assert observed['replacement'] == 0
             report = {'passed': True, 'transport': 'real private D-Bus',
                       'binder': 'fixture; not Android runtime qualification',
-                      'checks': ['identity', 'markup', 'action/token', 'expiry',
+                      'checks': ['identity', 'image bytes', 'markup', 'action/token', 'expiry',
                                  'dismissal', 'withdrawal', 'server restart', 'stale replacement']}
             output = Path(os.environ.get('DEV_ARTIFACT_DIR', '.')) / 'notification-dbus.json'
             output.write_text(json.dumps(report, indent=2) + '\n')

@@ -65,7 +65,7 @@ class Sink:
             image = record.image
             hints['image-data'] = dbus.Struct((image.width, image.height, image.rowstride,
                 image.has_alpha, 8, 4 if image.has_alpha else 3,
-                dbus.Array(image.data, signature='y')))
+                dbus.ByteArray(image.data)))
         return self.proxy.Notify(record.app_name, dbus.UInt32(replacement), '',
             record.summary, escaped_body(record),
             dbus.Array([value for pair in record.actions for value in pair], signature='s'),

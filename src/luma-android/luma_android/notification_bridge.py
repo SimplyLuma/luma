@@ -69,6 +69,14 @@ class Notification:
                 raise ValueError("Invalid Android notification image")
 
 
+@dataclass(frozen=True)
+class NotificationOwner:
+    # The native notification server owns presentation payloads after Notify.
+    # Retain only the authority needed for replacement and action dispatch.
+    package: str
+    actions: frozenset[str]
+
+
 class NotificationBridge:
     """Share exactly the Android-owned records with one host notification sink.
 
@@ -79,7 +87,7 @@ class NotificationBridge:
 
     def __init__(self, sink):
         self.sink = sink
-        self.records: dict[int, Notification] = {}
+        self.records: dict[int, NotificationOwner] = {}
         self.tokens: dict[int, str] = {}
         self.listeners = []
         self.lock = threading.RLock()
@@ -110,7 +118,8 @@ class NotificationBridge:
             if replacement and replacement != notification_id:
                 self.records.pop(replacement, None)
                 self.tokens.pop(replacement, None)
-            self.records[notification_id] = record
+            self.records[notification_id] = NotificationOwner(
+                record.package, frozenset(key for key, _ in record.actions))
             self.tokens.pop(notification_id, None)
             return notification_id
 
@@ -130,7 +139,7 @@ class NotificationBridge:
     def action(self, notification_id: int, action: str):
         with self.lock:
             record = self.records.get(notification_id)
-            if record is None or action not in {key for key, _ in record.actions}:
+            if record is None or action not in record.actions:
                 return
             token = self.tokens.pop(notification_id, "")
             listeners = tuple(self.listeners)

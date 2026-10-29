@@ -81,6 +81,29 @@ class NotificationLifecycle(unittest.TestCase):
         self.bridge.action(42, 'default')
         self.listener.action.assert_not_called()
 
+    def test_host_bridge_does_not_retain_delivered_image_or_message_payload(self):
+        import gc
+        import weakref
+        class Image:
+            width = 2
+            height = 2
+            rowstride = 8
+            has_alpha = True
+            data = bytes(range(16))
+        image = Image()
+        record = replace(self.record, image=image)
+        image_ref, record_ref = weakref.ref(image), weakref.ref(record)
+        bridge = NotificationBridge(SimpleNamespace(notify=lambda *args: 42))
+        bridge.post(record)
+        del image, record
+        gc.collect()
+        self.assertIsNone(image_ref())
+        self.assertIsNone(record_ref())
+        self.assertEqual(bridge.records[42].package, self.record.package)
+        self.assertEqual(bridge.records[42].actions, frozenset(('default', 'read')))
+        self.assertFalse(hasattr(bridge.records[42], 'body'))
+        self.assertFalse(hasattr(bridge.records[42], 'image'))
+
     def test_malformed_content_cannot_reach_the_host(self):
         image = SimpleNamespace(width=100, height=100, rowstride=4,
                                 has_alpha=True, data=b'\x00' * 400)

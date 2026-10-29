@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T01:10:00+00:00
+- Updated: 2026-10-29T01:50:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 1273cbaf5 (package permissions), 948b60930 (property guard), 0169f2ff5 (.84 hardware entrypoint)
+- Branch and last useful commit: codex/android-first-class; 9db3a1c96 (compiler budget and metrics), .88 payload changes pending commit
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,10 +12,33 @@
 
 ## Current handoff
 
-Source baseline is current observed GitHub main, isolated from canonical checkout.
-Research report: /srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
-Host notification transport, Android lifecycle/caller patches, a reproduced configure/present deadlock fix, and a source-owned APK fixture are under qualification. No complete subsystem or hardware pass claimed.
-Bulk outputs must use mounted HDD: root SSD has about32GiB free and secondary about22GiB; preserve20GiB reserves. No other task services running in this account at initial snapshot.
+Source baseline is isolated from the canonical checkout. Research report:
+/srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
+Current worktree HEAD9db3a1c96; latest clean runtime package .87 (source12231bb40,
+79 real tests/zero skips; own HDD rpm-r8). Latest fixture APK r9/7cfb98fa.
+
+Active: dev-android-images-x86-r4-c3c0c929.service, normally admitted10GiB/200GiB
+HDD, offline unprivileged Bubblewrap, source9db3a1c96 snapshot, GOGC5 and
+GOMAXPROCS2. It has reached the actual graph compiler with five threads/about
+3.65GiB RSS, after fixing Blueprint's forced CPU override. Previous attempts
+were stopped for measured page thrashing; no memory-limit/reserve changes.
+Own VM is shut off and be5a1197 inactive/success. Do not boot it alongside this
+10GiB job without fresh normal admission. Original VMs and archived source stay intact.
+
+Actual old-image VM evidence: native install/app drawer/window launch;
+Luma-styled notification Mark read delivered to APK; local alarm delivered after
+window closed with zero open windows/unfrozen runtime; real root-hardware
+read-only positive control and ordinary APK SecurityException. Source resize
+fix has exact-callback positive/negative controls, not a rebuilt-image pass.
+
+Next: finish matched-image build, install current runtime and fixture in a newly
+admitted lifetime of only the owned test VM; retest resize, framework admission,
+notification dismissal/reset, new clipboard/user-monitor/property boundaries and
+PSS/CPU. No production isolation, maintained Android rebase, ARM/translation,
+hardware/documents/media/inline-reply or physical battery qualification claimed.
+Numeric-UID collisions, mandatory-access policy and protected platform signing
+remain shipping gates. Bulk artifacts must stay on the task-owned HDD bind;
+preserve20GiB disk and8GiB host-memory reserves.
 
 ## Validation and artifacts
 
@@ -137,3 +160,8 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 - Added read-only bounded tests/android/measure-runtime.py for real cgroup CPU, memory.current, proportional memory and synthetic app attribution, with generation/incomplete-read checks and private exclusive output. Python compilation passes; actual VM measurement not yet run. No first-frame/battery claim.
 
 - c1196e84 passed in7.9s/115MiB: actual patched Blueprint prelude respects explicit concurrency2 and retains unset default; original prelude fails the positive test with expected42. Public builder derives Go concurrency from an explicit LUMA_BUILD_JOBS budget unless separately provided, and refuses invalid explicit GOMAXPROCS. New retry will verify the actual compiler environment plus running thread/memory behavior; policy test alone is not a full build.
+
+2026-10-29T01:50Z:
+- Full-image worker c3c0c929 uses source9db3a1c96 and actual GOGC5/GOMAXPROCS2. Verified compiler now five threads/~196% CPU, ~3.65GiB RSS (including17MiB file pages) and only4KiB read_bytes at the sampled graph point, rather than the earlier executable-page refault loop. Different cache states/stages make this operational evidence, not a comparative benchmark or completed image.
+- .88 source drops delivered notification body/image payloads from the ownership map, retains only package/action authority, and uses dbus.ByteArray instead of per-byte wrapper allocation. Weak-reference retention regression c53406cb passed9 tests. Real private-D-Bus a36830a1 passed9 checks including exact image bytes, actions/token, dismissal/expiration/withdrawal and server restart. Binder remains a fixture there; actual APK/image delivery requalification still required. Package .88 zero-skip checks next.
+- An attempted registry claim refresh refused because the existing own record already exists; it was not overwritten. Actual branch/path/owner remain explicit in this task note. No unrelated task was adopted.
