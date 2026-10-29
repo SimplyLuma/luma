@@ -95,3 +95,12 @@ The same read-only probe accepts `--service clipboard` or `--service usermonitor
 Their positive control uses Android system UID1000; ordinary APK UIDs must be
 rejected before parsing. The APK also probes unknown operations on both endpoints,
 without reading/writing clipboard contents or creating package events.
+
+`scripts/android/acceptance-desktop.sh` runs in an existing disposable graphical
+account with the source fixture, without replacing the compositor or modifying
+the user manager's display environment. It removes only the fixed synthetic
+fixture package. It collects functional observations but returns failure when
+Android mandatory-access or user-namespace identity gates are absent. Source
+presence and a Binder-ready log are never notification-delivery proof; native
+notification/fixture receipts are separate. Mapping samples do not substitute
+for a complete sandbox audit. Never use a personal user profile as this fixture.
