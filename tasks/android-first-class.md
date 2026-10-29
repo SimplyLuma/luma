@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T22:44:00+00:00
+- Updated: 2026-10-29T23:02:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,52 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:02Z — rebuilt Android boot PASSED; ordinary CLI authorization OPEN:
+- e3424e03 installed exact image pair and CLI resume returned0 in58.934s;
+  boot_completed=1 confirmed before package query. Android RUNNING independently
+  observed22:58Z. No first-frame or performance qualification inferred.
+- Failed22:59:15 at normal-user remove of existing synthetic APK: pkexec Not
+  authorized; no new APK/native probes executed. Source policy requires active,
+  local wheel user. Harness runuser from root SSH may carry remote/root session
+  context; exact cause remains to prove. No policy bypass or root APK install.
+- Native Atomic replace/apply succeeded again; new derived deployment f865bb9e...
+  Cleanup waited60s for graceful poweroff before fallback; VM off23:00:17.
+  Next harness allows180s to finish deployment finalization under actual HDD I/O.
+- New CLI invocation uses systemd-run --user --wait --pipe normal UID1000 desktop
+  user manager, plus read-only pkcheck before large image copies; existing policy
+  unchanged.5981acea PASSED5+9+8 harness checks/read-only source+VM preflight.
+- CURRENT observer dev-android-guard-build-handoff-b351bf16.service; manifest
+  2372ccfed2164e0d4bf2a3e661d8157f35dceb148f71ef14761e946ccff3f646.
+  Continue through actual desktop-context auth/APK/native controls; inspect child
+  preflight/qualification/errors. New image native binary live hashes/control
+  qualification still open. ARM/production/isolation/all acceptance gates remain.
+
+OBSERVED22:51Z — new images installed; qualification sequencing repaired:
+- f7901d90 FAILED22:49:46 AFTER exact image installation/target hash check,
+  before actual Android boot. Normal-user list returned0 in0.682s but only
+  metadata; my harness incorrectly called pm before starting the Android session.
+  lxc-attach failed `Failed to get init pid`. No native-control pass inferred.
+- New harness invokes normal-user CLI resume and requires actual boot_completed=1
+  before package inspection. Graceful sync/poweroff now precedes bounded destroy
+  fallback. Exact known pending .94 deployment62d5... may be reused; any other
+  pending deployment still rejected.1837f0bf PASSED5+9+8 checks/read-only preflight.
+- CURRENT observer dev-android-guard-build-handoff-519c61db.service;
+  child dev-android-guard-image-qualification-e3424e03.service passed Atomic
+  replacement22:57:22Z and now copying images; guest stage225230Z; manifest
+  0bb360b75c6ac9baf562daadb1ea409749b8a52b7bc07f704a58bea2e26f9300.
+  Read new child pipeline and continue through Android boot/native controls.
+
+OBSERVED22:49Z — f7901d90 native Atomic runtime replacement PASSED:
+- rpm-ostree local cache-only override and apply-live both exit0. Exact .94 RPM
+  digest/installed identity verified; before/after package inventory unchanged
+  outside luma-android-runtime. Base .80 retained; pending .94 derived deployment
+  62d5d9e5b2e5e0e9a399c0f30e5d473964bc47796eb42f7ffac87718611c419d,
+  live-replaced same. Host Enforcing. This establishes package installation ONLY.
+- Child now copying image pair; first staged system.img has full1,829,220,352B.
+  No Android boot/native-controls pass yet. Root qualification finally currently
+  destroys VM, so staged OS may not finalize: prefer bounded graceful poweroff
+  in next harness revision after current pinned actor stops. Do not mutate live.
 
 LIVE FOLLOW-THROUGH22:44Z — image export remains verified; runtime boot untested:
 - d6f47577 FAILED22:34:09 before large upload. Actual RPM--test reported856KB
