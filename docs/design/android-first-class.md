@@ -179,12 +179,26 @@ controls are still required. Numeric UID checks do not replace MAC/user namespac
 
 Clipboard focus is a separate integration gate. A native GTK control and Android
 fixture record boot-clock activation timestamps. Android retained its own window
-focus after the host switched to GTK. A strict test published a fresh synthetic
-host token only after native focus and received unclassified Android content,
+focus after the host switched to GTK. A test published a fresh synthetic host
+token after a GTK activation receipt and received unclassified Android content,
 not that target: neither a clean privacy pass nor confirmed fresh host disclosure.
+That receipt alone did not attest actual compositor input focus.
 Earlier token matches could have been cached legitimately while Android focused.
 Read/write focus, cached-data ownership and rich MIME transfers need native-path
-acceptance. Patch0016 replaces the inspected blocking receiver and single-write
+acceptance. The pinned composer records a keyboard-enter serial but its leave
+handler only releases pressed keys; clipboard methods do not consult host focus.
+Adding an `xdg_toplevel` activated-state check alone cannot close this gate: the
+[xdg-shell protocol](https://raw.githubusercontent.com/wayland-mirror/wayland-protocols/1.31/stable/xdg-shell/xdg-shell.xml)
+explicitly distinguishes that decoration state from actual keyboard or pointer
+focus. The bridge needs compositor-authoritative logical focus tied to the live
+surface and runtime generation, including touch-only profiles. Losing focus must
+revoke new host reads/writes, wake waiting readers and invalidate in-flight
+receive generations. It must preserve an already published immutable Android
+copy for a native app to paste after switching windows. A physical keyboard
+requirement, pointer hover or Android's internal foreground app is insufficient.
+This focus policy is not implemented by patches0015/0016 and remains open.
+
+Patch0016 replaces the inspected blocking receiver and single-write
 sender with one asynchronous poll worker per runtime. It bounds plain UTF-8 text
 to1MiB, transfers to2s and concurrent writes to16. Immutable source snapshots are
 bounded to8 with generation-token retirement: already admitted callbacks retain

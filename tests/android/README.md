@@ -201,13 +201,20 @@ background writes before claiming a complete clipboard boundary.
 
 For a reproducible host-focus control, run `native-focus-fixture.py --output
 /run/user/UID/luma-android/native-focus.jsonl` as the disposable graphical user.
-Move its GTK window beside Android. It records only activation and boot-clock
-timestamps. First copy the Android token normally to clear the Android clipboard,
-then schedule the delayed read, focus the native control, and publish the host
-target **after** confirmed native focus. Confirm native activation spans the
-read. A token that was already available while Android was focused can have
-been cached and is not fresh host-disclosure proof. Keep unclassified content
-inconclusive; do not log it.
+Move its GTK window beside Android. It records only `Gtk.Window:is-active` and
+boot-clock timestamps as `native-window-activation` events with `active` values.
+These events do not attest compositor input focus; the old `focused` field was
+misnamed and is no longer emitted. The qualification runner must also collect
+actual compositor seat/window focus for the same live surface generation. An
+activated decoration alone is insufficient, including on touch-only devices.
+First copy the Android token normally to clear the Android clipboard, then
+schedule the delayed read, focus the native control, and publish the host target
+**after** confirmed compositor focus. Confirm that focus spans the read. A token
+already available while Android was focused can have been cached and is not
+fresh host-disclosure proof. Keep unclassified content inconclusive; do not log
+it. Also check focus loss during a stalled read, denied background writes, focus
+regain, window removal, runtime/compositor restart, and pasting an existing
+Android copy into a native app after switching away.
 
 `python3 tests/android/native-task-admission.py /path/to/hardware/waydroid`
 compiles the complete task HAL source with explicit Binder/HIDL dependencies.

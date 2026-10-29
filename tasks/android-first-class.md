@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T16:03:27+00:00
+- Updated: 2026-10-29T16:07:33+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; b3cbec125 (notes), 497a61054 (runtime source); acceptance/recovery audit active
+- Branch and last useful commit: codex/android-first-class; 330dfa78c (acceptance/recovery audit), 497a61054 (runtime source); focus-fixture correction active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -27,7 +27,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
 | A06 Native notifications | Old-image native card and Mark read observed; new lifecycle/reply runtime OPEN | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
 | A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
-| A08 Clipboard | Plain text worked on old image; source transfer guards; focus test inconclusive | Actual new native-HIDL admission with nonempty trusted controls; host-focus read/write revocation, rich MIME, stalled/large transfers and lifetime/restart tests. |
+| A08 Clipboard | Plain text worked on old image; source transfer guards; focus policy unimplemented/test inconclusive | Actual new native-HIDL admission with nonempty trusted controls; compositor-attested logical focus including touch-only profiles; read/write revocation, rich MIME, stalled/large transfers and lifetime/restart tests. |
 | A09 Documents/share/drop | Android picker alone is insufficient; OPEN host broker | Scoped native file handles/URIs, seek/read/write-back, persist/revoke, reconnect, share/drop and denied paths; no whole-home mount. |
 | A10 Input/layout/accessibility | OPEN system qualification | Phone/tablet layouts, DPI/rotation, touch/stylus, IME/compose/keyboard, selection and actual accessibility roles/actions on desktop and mobile. |
 | A11 Audio/media | OPEN per-app native bridge | PipeWire stream identity/routing/focus/volume/interruptions and MediaSession transport controls with concurrent native apps. |
@@ -164,8 +164,8 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  ELF resource sections + actual Gio.Resource lookup, no package installed.
  Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
 -Main image root r9 remains ACTIVE, normala1c4e3af10GiB, source7c13c192f.
- Soong graph completed ~15:12Z. At16:03:27Z actual C++ compilation24579/143205,
-17%; no completed image. Transient SSH failure15:15 recovered by controller,
+ Soong graph completed ~15:12Z. At16:07:33Z actual C++ compilation27842/143205,
+19%; no completed image. Transient SSH failure15:15 recovered by controller,
  no lost heap. Fixed guest zstd handled graph within existing8GiB/9GiB cap.
 -Automatic bounded continuation ACTIVE:
  dev-android-image-auto-pinned-watch-0-66408768.service, normal1GiB, replaced
@@ -749,3 +749,22 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   repair or image installation/publication. Actual compiler restore still open.
 - Corrected design document's stale cold-launch statement to include qualified
   old-image .92/full6GiB command observations while preserving prior failures.
+
+2026-10-29T16:07Z clipboard focus audit:
+- Traced pinned native keyboard leave handler: releases pressed keys but does
+  not revoke clipboard access. Existing0015/0016 do not implement focus policy.
+- Primary xdg-shell1.31 protocol explicitly says activated decorations do not
+  guarantee keyboard/pointer focus. An activated-state-only guard would not
+  establish clipboard privacy. Logical seat/window focus must be attested by
+  the compositor for desktop and touch-only profiles; preserve existing Android
+  copies for native pastes while revoking new background reads/writes.
+- Corrected native-focus-fixture.py: records native-window-activation/active,
+  source Gtk.Window:is-active and input_focus_attested=false. It no longer emits
+  misleading focused fields. Old private r11 runner/receipts remain historical;
+  they must not be reused as compositor-focus proof or run against the changed
+  schema without adapting qualification. The old result remains inconclusive.
+- Updated design and acceptance instructions with this distinction, focus-loss
+  races, generation changes and copy-after-switch controls. Normal syntax job
+  a60a1149 PASSED16:07:24Z; no GTK/compositor/runtime execution claim. Runtime VM
+  stays off while current guard image compiles. Builder19%,27842/143205 at
+ 16:07:33Z; pinned observer and original build still active. No focus gate closed.
