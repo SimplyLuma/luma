@@ -153,6 +153,19 @@ Source-method tests do not establish actual HwBinder IPC or complete isolation.
 The SDK preserves HIDL and invalidates a failed cached proxy, with identity checks
 that prevent late old-proxy failures from discarding a newer connection.
 
+The native task HAL also authenticates the HwBinder caller as UID1000 before
+focus, close, remove-all or application-name forwarding. Denied methods preserve
+the HIDL callback/transport contract. Each admitted request resolves the current
+framework service with `checkService`; mutable proxies are not shared across
+HIDL threads and the resize listener, and failed mutations are not replayed.
+The internal resize method relies on the Unix listener's SO_PEERCRED check,
+not a nonexistent HIDL caller on that thread. The listener checks complete
+credentials and exact packet size, rejects nonzero reserved fields, and bounds
+socket reads/writes to250ms. These socket limits do not bound the framework's
+Binder execution. Source-method sanitizer tests and real Unix-socket tests with
+private user-namespace credentials pass; a rebuilt image and ordinary-APK HIDL
+controls are still required. Numeric UID checks do not replace MAC/user namespaces.
+
 Clipboard focus is a separate integration gate. A native GTK control and Android
 fixture record boot-clock activation timestamps. Android retained its own window
 focus after the host switched to GTK. A strict test published a fresh synthetic

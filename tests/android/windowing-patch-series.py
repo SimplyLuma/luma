@@ -27,7 +27,9 @@ SERIES = ["0001-prairie-native-android-window-chrome.patch",
           "0013-luma-software-buffer-allocation-bounds.patch",
           "0014-luma-configure-invalidation-lock-order.patch",
           "0015-luma-native-clipboard-caller-admission.patch",
-          "0016-luma-bounded-native-clipboard-transfer.patch"]
+          "0016-luma-bounded-native-clipboard-transfer.patch",
+          "0017-luma-native-task-caller-admission.patch",
+          "0018-luma-bound-task-channel-io.patch"]
 
 
 def check_linkage(work):

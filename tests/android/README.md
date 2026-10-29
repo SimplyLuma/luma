@@ -168,6 +168,13 @@ denial, bounded rapid-copy snapshots and late HAL calls after joined teardown.
 It requires the executable's completion receipt and preserves its source/binary
 under DEV_ARTIFACT_DIR when set. This is not an Android or Wayland-server IPC test.
 
+`python3 tests/android/bionic-clipboard-compile.py /path/to/android --output
+/path/to/artifacts` compiles the production transfer helper for ARM64 and x86_64
+using the pinned Clang and actual Bionic/libc++ headers, excluding host headers.
+It instantiates the worker/cache and checks the resulting64-bit ELF machine IDs.
+The report records commands, compiler version and hashes. This is compile-only;
+it does not qualify linking, Android IPC, execution or physical ARM hardware.
+
 The source APK's **Probe native clipboard HAL** button exercises raw HIDL from an
 ordinary app through the HIDL1.0 wire ABI and reflected HwBinder/HwParcel methods.
 Hidden-API restrictions or unavailable transport leave this test inconclusive;
@@ -199,3 +206,29 @@ target **after** confirmed native focus. Confirm native activation spans the
 read. A token that was already available while Android was focused can have
 been cached and is not fresh host-disclosure proof. Keep unclassified content
 inconclusive; do not log it.
+
+`python3 tests/android/native-task-admission.py /path/to/hardware/waydroid`
+compiles the complete task HAL source with explicit Binder/HIDL dependencies.
+Its64 method cases require successful transport/one name callback, UID1000-only
+forwarding and no service lookup for denied callers. Service replacement, missing
+services, failed resize without replay and concurrent HIDL/resize calls are checked.
+The unpatched control must fail42. `--compiler clang++ --sanitize address,undefined`
+or `--sanitize thread` adds sanitizer checks. This is not real HwBinder admission.
+
+`python3 tests/android/native-task-channel.py /path/to/hardware/waydroid` runs the
+exact production resize socket handler with real SOCK_SEQPACKET sockets and
+SO_PEERCRED. Private user namespaces map the test's own host identity to Android
+UID1000 or10000; no host account is changed. It checks malformed, oversized,
+short, stalled, closed and backpressured peers. The original oversized-prefix
+control must fail42. The resize implementation is a fixture; socket deadlines
+do not bound framework Binder execution. Linux unprivileged user namespaces are
+required for this check.
+
+The ordinary APK's **Check native task boundary** action performs the raw
+`vendor.waydroid.task@1.0` transaction4 name read for its fixed fixture package.
+It records only `fixture-label`, `empty`, `other-label` or `unavailable`.
+The trusted control is `native-clipboard-control.py --service task --expect
+fixture-label`, run as root inside the owned disposable VM. Require a recognized
+nonempty trusted label both before and after the ordinary request; unavailable
+transport is inconclusive. This read-only probe does not establish denial of
+focus/remove/remove-all mutations, which require controlled task fixtures.

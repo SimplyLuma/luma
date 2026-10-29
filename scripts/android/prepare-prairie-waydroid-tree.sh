@@ -40,6 +40,8 @@ hardware_buffer_bounds_patch="$repo_root/patches/android-hardware-waydroid/0013-
 hardware_configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-configure-invalidation-lock-order.patch"
 hardware_native_clipboard_patch="$repo_root/patches/android-hardware-waydroid/0015-luma-native-clipboard-caller-admission.patch"
 hardware_clipboard_transfer_patch="$repo_root/patches/android-hardware-waydroid/0016-luma-bounded-native-clipboard-transfer.patch"
+hardware_task_admission_patch="$repo_root/patches/android-hardware-waydroid/0017-luma-native-task-caller-admission.patch"
+hardware_task_channel_patch="$repo_root/patches/android-hardware-waydroid/0018-luma-bound-task-channel-io.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -116,6 +118,8 @@ write_state() {
     printf 'HARDWARE_CONFIGURE_LOCK_PATCH_SHA=%s\n' "$(patch_sha "$hardware_configure_lock_patch")"
     printf 'HARDWARE_NATIVE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$hardware_native_clipboard_patch")"
     printf 'HARDWARE_CLIPBOARD_TRANSFER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_clipboard_transfer_patch")"
+    printf 'HARDWARE_TASK_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_admission_patch")"
+    printf 'HARDWARE_TASK_CHANNEL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_channel_patch")"
     printf 'FRAMEWORK_OFFICIAL_HEAD=%s\n' "$framework_official_head"
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
@@ -226,6 +230,8 @@ if [ ! -f "$state_file" ]; then
   git -C "$hardware_root" apply "$hardware_configure_lock_patch"
   git -C "$hardware_root" apply "$hardware_native_clipboard_patch"
   git -C "$hardware_root" apply "$hardware_clipboard_transfer_patch"
+  git -C "$hardware_root" apply "$hardware_task_admission_patch"
+  git -C "$hardware_root" apply "$hardware_task_channel_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -377,7 +383,9 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_buffer_bounds_patch")" != "${HARDWARE_BUFFER_BOUNDS_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_configure_lock_patch")" != "${HARDWARE_CONFIGURE_LOCK_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_native_clipboard_patch")" != "${HARDWARE_NATIVE_CLIPBOARD_PATCH_SHA:-}" ] || \
-    [ "$(patch_sha "$hardware_clipboard_transfer_patch")" != "${HARDWARE_CLIPBOARD_TRANSFER_PATCH_SHA:-}" ]; then
+    [ "$(patch_sha "$hardware_clipboard_transfer_patch")" != "${HARDWARE_CLIPBOARD_TRANSFER_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_task_admission_patch")" != "${HARDWARE_TASK_ADMISSION_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_task_channel_patch")" != "${HARDWARE_TASK_CHANNEL_PATCH_SHA:-}" ]; then
   git -C "$hardware_root" reset --hard -q "$HARDWARE_OFFICIAL_HEAD"
   git -C "$hardware_root" clean -fdq
   git -C "$hardware_root" apply --binary "$hardware_patch"
@@ -394,6 +402,8 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   git -C "$hardware_root" apply "$hardware_configure_lock_patch"
   git -C "$hardware_root" apply "$hardware_native_clipboard_patch"
   git -C "$hardware_root" apply "$hardware_clipboard_transfer_patch"
+  git -C "$hardware_root" apply "$hardware_task_admission_patch"
+  git -C "$hardware_root" apply "$hardware_task_channel_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"

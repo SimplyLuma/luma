@@ -41,6 +41,7 @@ public final class MainActivity extends Activity {
         button(layout, "Post notification", () -> postNotification(this));
         button(layout, "Check privileged boundary", () -> BoundaryProbe.run(this));
         button(layout, "Check native clipboard boundary", () -> NativeClipboardProbe.run(this));
+        button(layout, "Check native task boundary", () -> NativeTaskProbe.run(this));
         button(layout, "Copy synthetic text to Luma", () -> {
             android.content.ClipboardManager clipboard =
                     (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
@@ -74,6 +75,7 @@ public final class MainActivity extends Activity {
         receipt(this, "created", state == null ? "fresh" : "restored");
         if (state == null && getIntent().getBooleanExtra("post_notification", false)) postNotification(this);
         if (state == null && getIntent().getBooleanExtra("probe_boundary", false)) BoundaryProbe.run(this);
+        if (state == null && getIntent().getBooleanExtra("probe_native_task", false)) NativeTaskProbe.run(this);
         if (state == null && getIntent().getBooleanExtra("background_notification", false)) {
             // The fixture targets API 28, so it needs no Android 12 exact-alarm
             // permission. This local alarm is not a network push/power test.

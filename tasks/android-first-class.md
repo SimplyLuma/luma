@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T08:41:00+00:00
+- Updated: 2026-10-29T13:50:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; a90a770f6 (page-size guard),6118eec17 (bounded native clipboard)
+- Branch and last useful commit: codex/android-first-class; 3ff01af63
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,55 +12,97 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEADa90a770f6. Uncommitted milestone
-adds a supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
-and canonical-root unit fixtures. Committed0016 remains source-qualified only.
-**DO NOT BUILD SNAPSHOT901d5f18c OR luma-project-aidl.squashfs**: wrong backend.
+Source/worktree isolated; canonical untouched. HEAD3ff01af63. Current source
+includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
+page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
+OR luma-project-aidl.squashfs: wrong backend.
 
-CURRENT ACTIVE BUILD: normal dev-android-images-build-vm-r6-ae325a4f.service,
-10GiB/450GiB, root luma-android-first-class-build-controller.service, VM UUID
-809f0871-fd88-4770-83dd-624c90259c06/IP192.168.122.36. Started06:28Z, input
-hashes verified06:33Z, guest startup06:33:26Z. Correct read-only project disk
-luma-project-native.squashfs70,553,600B SHA
-e6167a6ae3cebe0dc8e5ea71288b8edc2e8ee7f426bf1552324fe8496e33db92,
-source59aecadc4. Fresh upper-native-v1/work-native-v1 preserve older attempts.
-Git/LFS integrity preflight FINISHED about07:51Z. Build-tool bootstrap compiled
-399 steps. At08:03Z real soong_build graph process RSS~6.47GiB, guest available
-43MiB/internal swap1.2GiB of24GiB; normal10GiB admission/QEMU9GiB hard retained.
-At08:08Z graph remained active, guest swap~1.4GiB. No finished image exists.
-Current snapshot does NOT contain committed clipboard transfer0016. Stop root
-unit first for deliberate cancellation; owner watchdog also protects job death.
+CURRENT ACTIVE BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
+10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
+VM809f0871-fd88-4770-83dd-624c90259c06/IP192.168.122.36. Started09:01:21Z,
+startup passed09:06:41Z. Project luma-project-native-io.squashfs70,574,080B,
+SHA8b8ef91de1bfcb394a2b10b8325155cce958cd18195a4e0db72aad1120b18317,
+source3ff01af63 includes0016. Builder8GiB RAM/QEMU9GiB hard, 24GiB disk swap
+plus4GiB virtual zram with1GiB compressed cap, priority100. Source/out overlay
+upper-native-v1 reused. At13:35Z soong_build active~3h50m, RSS6.35GiB, total
+guest swap10.8GiB; severe memory pressure remains. No completed image exists.
+Guest startup verifies zram cap via mm_stat[3] (mem_limit is write-only).
+Root controller watches normal owner; ExecStopPost destroys only this VM.
+Deliberate cancellation: stop root controller before normal job.
 
-.91 clean RPM r14/cb8f4f4a PASSED84 actual tests, zero skips/failures/errors,
-profile directories755. Binary356b704556fadc48de60570cc784522349e594d31152ec5ec5ec41ea01bf9c76,
-SRPM72ca08e914f8d16da4f9f28de3d14143f5a5639916b9a10263b8c5566f7011dd,
-rpm-r10/source/build/candidate-91/build/packages/luma-android-runtime. Installed
-in disposable VM overlay07:34:04Z, profile755, transaction completed; live tests pending. HIDL SDK283a9cc5/native policyf03ebfd2 passed corrected
-fixtures. APKr12 b142754e built; native HIDL reflection controls not run live.
+r6 was deliberately frozen/synced/powered off08:46Z to take latest0016 and8GiB
+profile; durable r6-checkpoint.json/logs retained. No process-heap resume claim.
+r7 failed before compilation08:56Z due reading write-only zram mem_limit;
+no result claimed. r8 fixes startup. Immutable input verification remains intact.
 
-CURRENT RUNTIME: normal dev-android-runtime-vm-r7-1da16b36.service6GiB/10GiB,
-root luma-android-first-class-runtime-controller.service (new owner watchdog),
-VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. New intact XML backup
-created by runtime-prep12; current VM3GiB RAM/5GiB hard fits6GiB reservation.
-Original vm/domain.xml and restored b3f5031d... XML retained. This is the owned
-synthetic-user VM, not physical hardware. .91 installed in volatile /usr overlay.
-APKr13 installed; real ordinary-HIDL old-image negative control completed08:01Z.
-Managed-cold92 test FAILED boot deadline08:13Z; service MainPID13327 remained
-active in its own luma-android-session.service cgroup after caller exit. Warm
-source-client retry FAILED runtime response timeout08:25Z; still not qualified.
-Runtime remains active while final root-stack evidence is captured, then stop it
-and restore original inactive XML before freeing its6GiB admission.
-Stop root controller before normal job; restore original6GiB/8GiB XML only OFF.
-Do not run restored full-RAM VM under6GiB reservation (requires9GiB).
+CURRENT RUNTIME: OFF, controller/admission inactive; original6GiB RAM/8GiB
+hard XML restored OFF08:50Z, SHA
+b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5.
+Full runtime needs normal9GiB, cannot coexist builder10GiB in account16GiB.
+Temporary3GiB/5GiB hard profile fits normal6GiB if explicitly redefined whileOFF.
+Own VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35 has synthetic user.
+.91 /usr overlay disappears on reboot; APKr13 persists. Empty XML backup unusable.
 
-Page-size gate .92 committed a90a770f6. Five page tests passed, then full89
-source tests passed07:49:41Z after test fixtures resolved Silverblue /root to
-its protected real directory and copied the required bin helper. Full91 now
-PASSED08:07:06Z after adding managed-cold handoff regressions, zero failures/errors/
-skips. Exact inputs/results vm/source-suite-92-managed-result.json. Earlier
-source-suite attempts failed before execution due root Git ownership/read count,
-then exposed missing helper (88 discovered) and /root symlink fixture assumptions;
-no floors or production ancestry checks relaxed. .92 RPM still not built.
+.92 clean RPM r15/164b9abc PASSED08:47:48Z:91 actual tests, zero skips/failures/
+errors, payload/import/desktop/profile755 checks. Source3ff01af63. BinarySHA
+8d22a623638dea6d318ec86a794a97413e999e9fadc821f5ab546a6490207fae,
+SRPM94c22d4acf8083bc10956f1964ec513057e5b9b8345b8c0a89293e6e668187f0,
+rpm-r10/source/build/candidate-92/build/packages/luma-android-runtime.
+.92 NOT installed/live package tested. Full91 source tests passed08:07:06Z.
+.91 clean RPM cb8f4f4a passed84 tests, installed07:34:04Z in disposable overlay.
+
+Runtime cold managed-source92 test FAILED deadline08:13Z; MainPID13327 stayed
+in separate session-service cgroup after caller exit (lifetime boundary only).
+Android boot_completed1 by08:22:26Z; warm client FAILED response timeout08:25Z.
+No reliable cold/warm startup claim. Captured composer/SurfaceFlinger normal
+wait stacks and Python3.14 GLib loops do not establish root cause or rule out
+native callbacks. Py-spy actual version0.4.2, receipt vm/pyspy/receipt.json.
+Harmless sleeper cgroup control confirmed setsid insufficient and managed unit
+survives caller exit. Runtime stopped/root config restored after evidence capture.
+
+New Bionic compile check743a43b2 PASSED pinned AndroidClang14.0.6 r450784d:
+exact production clipboard helper compiled with actual Bionic/libc++ headers
+for ARM64(machine183) andx86_64(62), no host headers. Compile-only, not linking,
+execution, HwBinder or hardware qualification. Report under account artifacts
+/dev-android-bionic-clipboard-compile-743a43b2/bionic-clipboard-compile.json.
+Script and README await source commit.
+
+NEW AUDIT/FIXES (13:50Z):0017 adds actual HwBinder UID1000 admission to all4
+native task methods before framework lookup, successful HIDL Void/one denied
+empty getter callback. Replaces shared mutable sp caches with per-call local
+checkService proxies; no automatic mutation replay, no stale cached framework
+proxy across SystemServer replacement. Internal native resize relies on existing
+Unix SO_PEERCRED admission, not HIDL caller state. Actual composer rc user system
+confirmed. No ordinary-APK task exploit has been measured yet.
+64 production-method cases + replacement/missing registry/failure/concurrency
+PASSED ASan/UBSan485feeb9 and TSan f6cc0fc9, unpatched negative42.0018 rejects
+oversized packet prefixes/nonzero reserved fields and bounds accepted resize
+socket receive/send250ms. Real SOCK_SEQPACKET/SO_PEERCRED tests with private
+user namespaces mapped to1000/10000 PASSED a746000a, original oversize control42.
+No host account changes. Framework Binder work remains unbounded by socket limits.
+Full pinned patch series through0018 + configure-lock/linkage controls PASSED
+14f48ee7. Both builders and incremental patch-state hashes include0017/18.
+Current immutable image build remains0016; subsequent image required for fixes.
+Individual HAL checks do not replace outstanding Android MAC/userns isolation.
+
+APKr14 read-only raw task HIDL name probe BUILT/SIGNED13:48:21Z, normal2e75410f,
+252MiB peak, private user+network namespaces, pinned JDK17/tools, clean env/Xmx192m.
+SHA916d4214440eaeb55fb25852eb2dd657cf91ea72bb97d59136c8358d7b7a4755.
+No live execution yet. Earlier95acd51d failed unshare network without userns;
+no compiler ran. Trusted UID1000 read control shares raw wire request; expects
+nonempty fixed fixture label. Ordinary unavailable/other-label cannot pass.
+Read-only probe does NOT establish denial of destructive task mutations.
+New task button shifts all following UI coordinates; recapture before clicks.
+
+Builder-only tuning: normal87d3720f PASSED13:43:02Z adds zram1 virtual16GiB/
+compressed-memory cap3GiB, lz4, priority110. Existing4GiB/1GiB zram and24GiB disk
+retained, guest8GiB/QEMU9GiB/normal10GiB unchanged. zram-expand/receipt.json.
+Normal a2ca00dd ACTIVE13:46:57Z: bounded300s swapoff attempt relocates disk pages
+to new compressed capacity, finally re-enables disk fallback if off. Root128MiB/
+420s, log/receipt under zram-expand. Normal d7f080e0 PASSED13:49:20Z changes only
+guest vm.page-cluster3->6 for swap readahead; swap-readahead/receipt.json.
+At13:49Z soong_build still4h04 elapsed/29m32CPU, guest disk swap~6.77GiB,
+zram1~313MiB original/78MiB memory. No measured throughput improvement claimed.
 
 CRITICAL REAL NATIVE BASELINE: APKr12 could not load private vendor interface
 as an app (no registered org.lineageos.platform shared library); unavailable is
