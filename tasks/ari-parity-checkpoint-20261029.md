@@ -1,11 +1,11 @@
 # Ari search, actions and Models checkpoint
 
-Status: source implementation checkpoint; visual conformance and live OpenAI
-qualification remain incomplete. No updated Dell candidate is qualified.
+Status: server-qualified Ari2 r4 delivered for manual testing; visual conformance
+and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. The independent Ari2 preview already delivered from
-`7a2964d12` is not changed by this checkpoint.
+Review: draft PR #92. The current independent Dell preview uses runtime source
+`6c2f6665a67ca13f7960fb2b0ec7b2172280df33`. Earlier checkpoints below are history.
 
 ## Application and development continuation
 
@@ -279,3 +279,19 @@ Fresh desktop/phone captures and the unchanged standard comparison ran on the
 replacement source. Visual conformance still fails; no thresholds or accepted
 deviations were changed. The previously authorized exception permits functional
 manual testing, and does not establish visual or release acceptance.
+
+## Replacement delivered — 2026-10-29 20:25 UTC
+
+The owner restored the Dell connection and confirmed Ari2 was closed. After the
+old background service exited normally, the transferred r4 archive's SHA-256
+was verified and the qualified updater replaced r3's owned registrations. It
+reported retention of chats, settings and keyring entries. The candidate was
+launched in the Dell's real graphical session; read-only metadata showed the
+launch unit active/running and both Ari2 D-Bus names owned.
+
+Candidate: `ari2-chatgpt-6c2f666-r4`.
+Launch unit: `luma-preview-ari2-chatgpt-6c2f666-r4-c20e7531.service`.
+This was a requested launch, not an automated Dell application test. Manual
+confirmation remains pending for conversation retention, the effort picker,
+Weather changes and actual account hosted-search acceptance. The visual gate
+still fails and PR #92 remains draft.
