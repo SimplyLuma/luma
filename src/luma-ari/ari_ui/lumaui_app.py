@@ -215,7 +215,7 @@ class LiveDaemon:
             if callback:
                 callback(value)
         self.proxy.call(method, GLib.Variant(signature, arguments) if signature else None,
-                        Gio.DBusCallFlags.NONE, 30000, None, finish)
+                        Gio.DBusCallFlags.NONE, 120000 if "ChatGPT" in method else 30000, None, finish)
 
 
 class ModelChoice(RichMenuItem):
@@ -276,6 +276,8 @@ class AriWindow(AppWindow):
         self.models_loading = not self.fixture
         self.models_error = ""
         self.live_cloud_model = None
+        self.chatgpt_data = {"accounts": [], "active": "", "models": [], "model": "", "error": ""}
+        self.chatgpt_dialog = None
         self.generation = 0
         self.request = ""
         self.downloads = {}
@@ -734,6 +736,9 @@ class AriWindow(AppWindow):
             explanation.add_css_class("ari-welcome-copy")
             explanation.set_margin_bottom(26)
             welcome.append(Adw.Clamp(maximum_size=420, tightening_threshold=420, child=explanation))
+            if not self.fixture and not any(p.get("on") for p in self.data["providers"]) and not any(m.get("have") for m in self.data["local_models"]):
+                welcome.append(self.button("Use my ChatGPT plan", self.show_chatgpt, primary=True, name="welcome-chatgpt"))
+                welcome.append(self.button("Get a local model", self.show_models, name="welcome-local"))
             grid = Gtk.Grid(column_spacing=8, row_spacing=8, column_homogeneous=True)
             for index, (glyph, label, key) in enumerate(SUGGESTIONS):
                 if hasattr(lumaui_tokens, "ARI"):
@@ -1005,13 +1010,19 @@ class AriWindow(AppWindow):
                 if key == identity:
                     return {"id": key, "n": name, "local": False, "via": provider["n"], "pid": provider["id"]}
         if self.live_cloud_model and identity == self.live_cloud_model["id"]:
-            return {"id": identity, "n": self.live_cloud_model["name"], "local": False, "via": "OpenRouter", "pid": "openrouter"}
+            provider = self.live_cloud_model.get("provider", "openrouter")
+            return {"id": identity, "n": self.live_cloud_model["name"], "local": False,
+                    "via": "ChatGPT" if provider == "chatgpt" else "OpenRouter", "pid": provider}
+        if identity.startswith("chatgpt:"):
+            return {"id": identity, "n": "ChatGPT", "local": False, "via": "ChatGPT", "pid": "chatgpt"}
         return {"id": identity, "n": identity, "local": True}
 
     def model_mark(self, model, size=34):
         identity = "auto" if model["id"] == "auto" else model.get("pid") or model["id"]
         if identity == "anthropic" and model.get("pid"):
             identity = "claude"
+        if identity == "chatgpt":
+            identity = "openai"
         asset = Path(__file__).with_name("assets") / (identity + ".svg")
         if identity == "auto" or asset.is_file():
             image = (Gtk.Image.new_from_icon_name(APP_ID) if identity == "auto"
@@ -1109,6 +1120,8 @@ class AriWindow(AppWindow):
             header.append(ari_text(" · ".join(str(computer[key]) + (" GB free on disk" if key == "disk" else "")
                                              for key in ("n", "gpu", "disk") if key in computer), "description", "body", wrap=True, muted=True))
         self.page.append(header)
+        if not self.fixture:
+            self.page.append(self.button("Use my ChatGPT plan", self.show_chatgpt, name="models-chatgpt"))
         self.page.append(self.memory())
         if self.models_loading or self.models_error:
             message = ("Loading available models…" if self.models_loading else
@@ -1162,7 +1175,10 @@ class AriWindow(AppWindow):
                 child = child.get_next_sibling()
             row = box(self.model_mark(provider), details, spacing=12)
             row.add_css_class("ari-provider-card")
-            if provider.get("on"):
+            if provider["id"] == "chatgpt":
+                row.append(self.button("Manage" if provider.get("on") else "Connect", self.show_chatgpt,
+                                       name="provider-chatgpt"))
+            elif provider.get("on"):
                 row.append(self.button("Key", lambda key=provider.get("key"): self.notify(
                     f"Key {key} is in Luma’s keyring" if key else "The key is in Luma’s keyring"), "key-round"))
             else:
@@ -1273,7 +1289,7 @@ class AriWindow(AppWindow):
                 (", on this phone" if phone else " · stays on this computer") if local
                 else (", sent to " if phone else " · sent to ") + model.get("via", "the cloud"))
             # On a phone the house grows the bar into the model picker; on a computer it opens it by the button.
-            home = BarAction("house" if local else "cloud", tooltip=where,
+            home = BarAction("house" if local else "cloud", "Using ChatGPT plan" if model.get("pid") == "chatgpt" else "", tooltip=where,
                              on_activate=None if phone else self.model_picker,
                              panel=self.model_panel if phone else None, key="model")
             self.bar.show_bar([home, self.entry], fill=phone)
@@ -1321,6 +1337,8 @@ class AriWindow(AppWindow):
                                    on_activate=self.provider_sheet), "add-provider"))
         rows.append(None)
         rows.append(named(PanelRow("Get more models…", icon="download", on_activate=self.show_models), "more-models"))
+        if not self.fixture:
+            rows.append(named(PanelRow("ChatGPT account and usage", icon="cloud", on_activate=self.show_chatgpt), "chatgpt-settings"))
         return named(panel_list(rows, label="Models"), "model-picker")
 
     def entry_text(self):
@@ -1370,10 +1388,10 @@ class AriWindow(AppWindow):
         for provider in self.data["providers"]:
             if provider.get("on"):
                 for key, label in provider["models"]:
-                    yield (key, label, "Via " + provider["api"])
+                    yield (key, label, "Using ChatGPT plan" if provider["id"] == "chatgpt" else "Via " + provider["api"])
 
     def add_provider_note(self):
-        return "OpenAI, OpenRouter, Anthropic or your own" if self.fixture else "OpenRouter"
+        return "OpenAI, OpenRouter, Anthropic or your own" if self.fixture else "ChatGPT or OpenRouter"
 
     def model_picker(self):
         if self.popover is not None:
@@ -1390,6 +1408,8 @@ class AriWindow(AppWindow):
                                     lambda identity=identity: self.use_model(identity)))
         rows.extend([ModelAdd("Add a provider", "plus", "add-provider", self.provider_sheet, self.add_provider_note()),
                      None, ModelAdd("Get more models…", "download", "more-models", self.show_models)])
+        if not self.fixture:
+            rows.append(ModelAdd("ChatGPT account and usage", "cloud", "chatgpt-settings", self.show_chatgpt))
         menu = named(FloatingMenu(rows, label="Models"), "model-picker")
         content = box(vertical=True)
         child = menu.handle_bar.get_next_sibling()
@@ -1423,6 +1443,23 @@ class AriWindow(AppWindow):
             self.render()
             model = self.model(identity)
             self.notify(f'{model["n"]}: stays on this computer' if model.get("local") else f'{model["n"]}: conversations go to {model["via"]}')
+        elif identity.startswith("chatgpt:"):
+            def selected(result):
+                if not current():
+                    return
+                if isinstance(result, Exception) or not result[0]:
+                    self.notify("ChatGPT could not select that model. Open ChatGPT account settings.", error=True)
+                    return
+                def enabled(result):
+                    if not current():
+                        return
+                    if not isinstance(result, Exception) and result[0]:
+                        self.state["model"] = identity
+                        self.render()
+                    else:
+                        self.notify("ChatGPT plan usage could not be enabled", error=True)
+                self.daemon.call("SetBrain", "(s)", ("chatgpt",), enabled)
+            self.daemon.call("SetChatGPTModel", "(s)", (identity[len("chatgpt:"):],), selected)
         elif identity == "auto" or any(model["id"] == identity for model in self.data["local_models"]):
             if identity == "auto":
                 def local(result):
@@ -1472,16 +1509,22 @@ class AriWindow(AppWindow):
     def provider_sheet(self, identity=None):
         if self.popover:
             self.close_picker()
+        if not self.fixture and identity == "chatgpt":
+            self.show_chatgpt()
+            return
         if not self.fixture and identity not in (None, "openrouter"):
             self.notify("This provider is not available", error=True)
             return
         if not self.fixture and not self.data["provider_choices"]:
             self.notify("Providers are still loading")
             return
+        if not self.fixture and identity == "openrouter" and not any(p["id"] == "openrouter" for p in self.data["provider_choices"]):
+            self.notify("OpenRouter models are still loading")
+            return
         self.provider_generation += 1
         self.provider_state.update(step="key" if identity else "pick", prov=identity, key="", test=None, sel={})
         if not self.fixture and identity:
-            provider = self.data["provider_choices"][0]
+            provider = next(item for item in self.data["provider_choices"] if item["id"] == "openrouter")
             self.provider_state["sel"] = {key: index == 0 for index, (key, *_rest) in enumerate(provider["models"])}
         self._provider_render()
 
@@ -1497,7 +1540,7 @@ class AriWindow(AppWindow):
         sheet.add_css_class("ari-provider-sheet")
         if state["step"] == "pick":
             sheet.append(box(ari_text("Add a provider", "sheet-title", "title-1", expand=True), self.icon_button("x", "Close", self.close_sheet, size="small"), spacing=metrics["header_gap"] if metrics else 8))
-            description = ari_text("Use a model that runs somewhere else. Ari sends only the conversation you're in, never your files, and asks first.", "description", wrap=True)
+            description = ari_text("Use a model that runs somewhere else. Ari sends the current conversation and the results of its tools to the provider.", "description", wrap=True)
             if metrics:
                 description.set_margin_top(metrics["description_top"])
                 description.set_margin_bottom(metrics["description_bottom"])
@@ -1631,7 +1674,7 @@ class AriWindow(AppWindow):
         if self.fixture:
             state["sel"][identity] = not state["sel"].get(identity, True)
         else:
-            provider = self.data["provider_choices"][0]
+            provider = next(item for item in self.data["provider_choices"] if item["id"] == "openrouter")
             state["sel"] = {key: key == identity for key, *_rest in provider["models"]}
         self._provider_render()
 
@@ -1666,7 +1709,7 @@ class AriWindow(AppWindow):
 
     def _provider_add(self):
         if not self.fixture:
-            provider = self.data["provider_choices"][0]
+            provider = next(item for item in self.data["provider_choices"] if item["id"] == "openrouter")
             selected = next((key for key, *_rest in provider["models"] if self.provider_state["sel"].get(key, False)), None)
             self.close_sheet()
             if selected:
@@ -2068,7 +2111,7 @@ class AriWindow(AppWindow):
             if route_generation == self.route_generation:
                 self.live_cloud_model = data.get("cloud_model")
             self.data["local_models"] = local_models
-            if route_generation == self.route_generation:
+            if route_generation == self.route_generation and (data.get("brain") != "chatgpt" or self.live_cloud_model):
                 self.state["model"] = self.live_cloud_model["id"] if self.live_cloud_model else data.get("active") or "auto"
             self.render()
         def chats_loaded(value):
@@ -2089,10 +2132,10 @@ class AriWindow(AppWindow):
             choices = data.get("recommended", [])
             selected = next((item for item in data.get("models", []) if item["id"] == data.get("model")), None)
             shown = ([selected] if selected else []) + [item for item in choices if not selected or item["id"] != selected["id"]]
-            self.data["provider_choices"] = [{"id": "openrouter", "n": "OpenRouter", "mono": "O",
+            self.data["provider_choices"] = [p for p in self.data["provider_choices"] if p["id"] != "openrouter"] + [{"id": "openrouter", "n": "OpenRouter", "mono": "O",
                 "what": ", ".join(item["name"] for item in shown), "where": data.get("keys_page", "OpenRouter"), "key": "sk-or-…",
                 "models": [[item["id"], item["name"], item.get("cost_label", "")] for item in shown]}]
-            self.data["providers"] = [{"id": "openrouter", "n": "OpenRouter", "api": "OpenRouter", "on": bool(data.get("key_set")),
+            self.data["providers"] = [p for p in self.data["providers"] if p["id"] != "openrouter"] + [{"id": "openrouter", "n": "OpenRouter", "api": "OpenRouter", "on": bool(data.get("key_set")),
                                        "key": "", "models": [[item["id"], item["name"]] for item in shown]}]
             if route_generation == self.route_generation and data.get("brain") == "openrouter" and selected:
                 self.live_cloud_model = selected
@@ -2116,9 +2159,38 @@ class AriWindow(AppWindow):
                                "m": entry.get("tool", ""), "st": "undone" if state in ("undone", "reverted") else "done"}]}
             self.render()
         self.daemon.call("Models", callback=models_loaded)
+        def chatgpt_loaded(value):
+            if not self.closed and read_generation == self.read_generation and not isinstance(value, Exception):
+                self.chatgpt_loaded(json.loads(value[0]), route_generation)
+        self.daemon.call("ChatGPT", "(b)", (False,), chatgpt_loaded)
         self.daemon.call("Cloud", "(b)", (False,), cloud_loaded)
         self.daemon.call("Activity", "(u)", (200,), activity_loaded)
         self.daemon.call("ListConversations", callback=chats_loaded)
+
+    def show_chatgpt(self):
+        if self.fixture:
+            return
+        self.close_picker()
+        self.close_sheet(quiet=True)
+        if self.chatgpt_dialog is None:
+            from .chatgpt_settings import ChatGPTDialog
+            self.chatgpt_dialog = ChatGPTDialog(self)
+        self.chatgpt_dialog.present(self)
+
+    def chatgpt_loaded(self, data, route_generation=None):
+        if self.closed:
+            return
+        self.chatgpt_data = data
+        active = next((item for item in data.get("accounts", []) if item["id"] == data.get("active")), {})
+        models = [["chatgpt:" + item["id"], item["name"]] for item in data.get("models", [])]
+        provider = {"id": "chatgpt", "n": "ChatGPT", "api": "ChatGPT", "on": bool(active.get("signed_in") and active.get("plan_enabled")),
+                    "key": "", "note": active.get("label") or "Use your existing ChatGPT plan", "models": models}
+        self.data["providers"] = [p for p in self.data["providers"] if p["id"] != "chatgpt"] + [provider]
+        choice = {"id": "chatgpt", "n": "ChatGPT", "mono": "C", "what": "Use your existing ChatGPT plan", "models": []}
+        self.data["provider_choices"] = [p for p in self.data["provider_choices"] if p["id"] != "chatgpt"] + [choice]
+        if data.get("brain") == "chatgpt" and route_generation in (None, self.route_generation):
+            self.state["model"] = "chatgpt:" + data.get("model", "")
+        self.render()
 
     def copy(self, value):
         self.get_clipboard().set(value.replace("|", "\n"))
@@ -2128,6 +2200,9 @@ class AriWindow(AppWindow):
         Toast.show(self.host, message, kind="error" if error else "done")
 
     def _closing(self, *_):
+        if self.chatgpt_dialog:
+            self.chatgpt_dialog._closed()
+            self.chatgpt_dialog = None
         self.closed = True
         if self._scroll_handler is not None:
             self._scroll_clock.disconnect(self._scroll_handler)

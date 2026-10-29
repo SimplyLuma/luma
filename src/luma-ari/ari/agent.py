@@ -331,6 +331,7 @@ class Agent:
                     if self.on_cost is not None:
                         self.on_cost(event["cost"])
                 elif kind == "error":
+                    turn.emit({"type": "discard_text"})
                     return event["message"]
             if turn.stop.is_set():
                 return "Stopped."

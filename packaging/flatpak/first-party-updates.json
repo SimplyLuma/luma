@@ -27,7 +27,7 @@
       "qualification": "pending-installed-update-rollback-and-migration",
       "recipe": "packaging/flatpak/apps/org.projectluma.Ari/org.projectluma.Ari.yml",
       "minimum_host_packages": {
-        "luma-ari": 15,
+        "luma-ari": 21,
         "luma-application-installer": 57
       }
     },

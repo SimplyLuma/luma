@@ -2,8 +2,8 @@
 
 Name:           luma-ari
 Version:        0.1.0
-Release:        1.luma.19.creator20261019.3%{?dist}
-Summary:        Luma's assistant, running an open model on this computer
+Release:        1.luma.21.creator20261029.1%{?dist}
+Summary:        Luma's assistant with local and connected models
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/ari
 Source0:        luma-ari.tar.gz
@@ -12,6 +12,8 @@ Source1:        LICENSE.md
 BuildArch:      noarch
 BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.100.creator20261007.1
 BuildRequires:  python3-gobject-base
+BuildRequires:  python3-jwt
+BuildRequires:  python3-cryptography
 BuildRequires:  meson >= 1.3
 BuildRequires:  ninja-build
 BuildRequires:  python3-devel >= 3.11
@@ -24,6 +26,8 @@ BuildRequires:  dbus-daemon
 BuildRequires:  libXtst
 Requires:       python3 >= 3.11
 Requires:       python3-gobject
+Requires:       python3-jwt
+Requires:       python3-cryptography
 Requires:       libsecret
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
@@ -38,7 +42,8 @@ Recommends:     prairie-core-apps
 %description
 Ari answers questions and changes personal settings such as the dock, the
 theme, the wallpaper and the refresh rate. Every change is a step that can be
-undone. The daemon runs an open model locally through luma-ari-runtime, keeps
+undone. The daemon runs an open model locally through luma-ari-runtime or
+connects to your ChatGPT plan or OpenRouter. It keeps
 conversations and an append-only activity log in the person's own data folder,
 and decides in code which tools may run.
 
@@ -60,7 +65,7 @@ PYTHONPATH=$PWD dbus-run-session -- %{python3} ../../tests/luma-ari/native_host_
 appstream-util validate-relax --nonet data/org.projectluma.Ari.metainfo.xml
 %{python3} -m py_compile ari/*.py ari/tools/*.py ari_ui/*.py eval/run.py
 # Every module the daemon imports must be installed, not only present in the tree.
-PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -P -c "import ari.cloud, ari.service"
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -P -c "import jwt, cryptography, ari.chatgpt, ari.chatgpt_provider, ari.cloud, ari.service"
 glib-compile-schemas --strict --dry-run data
 %{python3} -c "import json; json.load(open('eval/cases.json'))"
 native_home=$(mktemp -d)
@@ -69,6 +74,7 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" 
 
 %files
 %license LICENSE.md
+%doc README.md
 %{_bindir}/ari
 %{_bindir}/org.projectluma.Ari
 %{_libexecdir}/luma-ari/ari-daemon
@@ -84,6 +90,9 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" 
 %{_userunitdir}/ari-daemon.service
 
 %changelog
+* Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21.creator20261029.1
+- Add ChatGPT plan sign-in, account management and model selection.
+
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19.creator20261019.3
 - Export the assistant interface before accepting activated requests.
 

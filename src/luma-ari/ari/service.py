@@ -20,7 +20,8 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 
-from . import BUS_NAME, OBJECT_PATH, audit, cloud, hardware, models, paths
+from . import BUS_NAME, OBJECT_PATH, audit, chatgpt, cloud, hardware, models, paths
+from .chatgpt_provider import ChatGPTProvider
 from .agent import Agent, Tools, Turn
 from .policy import APPROVAL_MODES, ENABLED_TIERS, TIER_NAMES, Policy
 from .providers import OpenAICompatible
@@ -63,6 +64,15 @@ INTERFACE = """
     <method name="SetCloudKey"><arg name="key" type="s" direction="in"/>
       <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
     <method name="ForgetCloudKey"/>
+    <method name="ChatGPT"><arg name="refresh" type="b" direction="in"/><arg name="json" type="s" direction="out"/></method>
+    <method name="StartChatGPTSignIn"><arg name="account" type="s" direction="in"/><arg name="json" type="s" direction="out"/></method>
+    <method name="CancelChatGPTSignIn"><arg name="attempt" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
+    <method name="SelectChatGPTAccount"><arg name="account" type="s" direction="in"/>
+      <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
+    <method name="SetChatGPTModel"><arg name="model" type="s" direction="in"/>
+      <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
+    <method name="SignOutChatGPT"><arg name="account" type="s" direction="in"/>
+      <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
     <method name="SetCloudModel"><arg name="model" type="s" direction="in"/><arg name="accept_cost" type="b" direction="in"/>
       <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
     <method name="SetBrain"><arg name="brain" type="s" direction="in"/>
@@ -117,6 +127,9 @@ class Daemon:
         self._model_mutation = None
         self._mutation_owner = None
         self.config = _load_config()
+        self.chatgpt = chatgpt.Manager()
+        self._chatgpt_login_owner = None
+        self._chatgpt_login_id = None
         self.hardware = hardware.cached(paths.data_dir() / "hardware.json")
         self.catalogue = models.catalogue()
         self.runtime = LocalRuntime(self.hardware)
@@ -166,6 +179,10 @@ class Daemon:
             self.tools.start()
 
     def _model_label(self) -> str:
+        if self.brain == "chatgpt":
+            state = self.chatgpt.cached
+            model = next((m for m in state["models"] if m["id"] == state["model"]), None)
+            return f"{model['name']} through your ChatGPT plan" if model else "your ChatGPT plan"
         if self.brain == "openrouter":
             model = self._cloud_model(offline=True)
             return f"{model.name} through OpenRouter" if model else ""
@@ -176,7 +193,8 @@ class Daemon:
 
     @property
     def brain(self) -> str:
-        return "openrouter" if self.config.get("brain") == "openrouter" else "local"
+        selected = self.config.get("brain")
+        return selected if selected in ("openrouter", "chatgpt") else "local"
 
     def _monthly_limit(self) -> float:
         return max(0.0, float(self.config.get("cloud_monthly_limit", cloud.DEFAULT_MONTHLY_LIMIT)))
@@ -286,14 +304,19 @@ class Daemon:
         return True, ""
 
     def set_brain(self, brain: str) -> tuple[bool, str]:
-        if brain not in ("local", "openrouter"):
+        if brain not in ("local", "openrouter", "chatgpt"):
             return False, "Unknown choice."
+        if brain == "chatgpt":
+            state = self.chatgpt.cached
+            account = next((item for item in state["accounts"] if item["id"] == state["active"]), {})
+            if not account.get("signed_in") or not account.get("plan_enabled") or not state["model"]:
+                return False, "Connect ChatGPT, allow plan usage and choose an available model first."
         self.config["brain"] = brain
         _save_config(self.config, ("brain",))
-        if brain == "openrouter":
+        if brain != "local":
             self.runtime.stop()  # the local model isn't needed while Ari thinks elsewhere
         audit.record({"tool": "set_brain", "tier": 0, "arguments": {"brain": brain}, "decision": "person changed",
-                      "summary": "Ari thinks through OpenRouter" if brain == "openrouter"
+                      "summary": "Ari uses your ChatGPT plan" if brain == "chatgpt" else "Ari thinks through OpenRouter" if brain == "openrouter"
                       else "Ari thinks on this computer"})
         return True, ""
 
@@ -315,6 +338,14 @@ class Daemon:
         return installed[0] if installed else None
 
     def _model(self):
+        if self.brain == "chatgpt":
+            state = self.chatgpt.status()
+            model = next((m for m in state["models"] if m["id"] == state["model"]), None)
+            if not model:
+                raise LookupError(state["error"] or "Connect your ChatGPT account in Models and choose a model.")
+            provider = ChatGPTProvider(self.chatgpt, state["active"], model["id"])
+            provider.hardware_summary = self.hardware.summary()
+            return provider, model["name"], "through your ChatGPT plan", "its training date", "large"
         if self.brain == "openrouter":
             return self._cloud_provider()
         model = self.active_model()
@@ -339,10 +370,17 @@ class Daemon:
         recommended = models.default_for_tier(self.hardware.tier, self.catalogue)
         suites = models.suite_results()
         cloud_model = self._cloud_model(offline=True) if self.brain == "openrouter" else None
+        hosted = {"id": cloud_model.id, "name": cloud_model.name, "cost_label": cloud.cost_label(cloud_model),
+                  "provider": "openrouter"} if cloud_model else None
+        if self.brain == "chatgpt":
+            state = self.chatgpt.cached
+            model = next((m for m in state["models"] if m["id"] == state["model"]), None)
+            if model:
+                hosted = {"id": "chatgpt:" + model["id"], "name": model["name"], "provider": "chatgpt",
+                          "cost_label": "Using ChatGPT plan"}
         return json.dumps({
             "brain": self.brain,
-            "cloud_model": {"id": cloud_model.id, "name": cloud_model.name, "cost_label": cloud.cost_label(cloud_model)}
-            if cloud_model else None,
+            "cloud_model": hosted,
             "hardware": self.hardware.as_dict(), "summary": self.hardware.summary(),
             "active": active.id if active else "", "recommended": recommended.id,
             "runtime_installed": paths.runtime_binary() is not None,
@@ -375,7 +413,8 @@ class Daemon:
             self.runtime.stop()
 
     def _busy(self) -> bool:
-        return bool(self.requests or self.downloads or self.agent.revert_timers or self.agent.approvals)
+        return bool(self.requests or self.downloads or self.agent.revert_timers or self.agent.approvals
+                    or self.chatgpt.signing_in or self._model_mutation)
 
     def _watch(self, loop: GLib.MainLoop) -> bool:
         """Every few seconds: give memory back when it runs short, and exit when idle."""
@@ -426,6 +465,8 @@ class Daemon:
     def _name_changed(self, _connection, _sender, _path, _interface, _signal, parameters):
         name, old, new = parameters.unpack()
         if name.startswith(":") and old and not new:
+            if getattr(self, "_chatgpt_login_owner", None) == name:
+                self.chatgpt.cancel(self._chatgpt_login_id)
             with self._model_lock:
                 if self._mutation_owner == name and self._model_mutation is not None:
                     self._model_mutation.set()
@@ -496,17 +537,20 @@ class Daemon:
             if parameters.get_size() > MAX_INPUT:
                 raise ValueError("This request is too large.")
             args = parameters.unpack()
-            if method in ("Ask", "InstallModel", "Cloud", "SetCloudKey", "SetCloudModel"):
+            chatgpt_mutations = ("StartChatGPTSignIn", "SelectChatGPTAccount", "SetChatGPTModel", "SignOutChatGPT")
+            if method in ("Ask", "InstallModel", "Cloud", "SetCloudKey", "SetCloudModel", "ChatGPT", *chatgpt_mutations):
                 self.admission.reserve()
                 reserved = True
             self.last_activity = time.monotonic()
-            mutations = ("SetActiveModel", "RemoveModel", "SetBrain", "SetCloudModel", "ForgetCloudKey", "SetCloudKey")
+            mutations = ("SetActiveModel", "RemoveModel", "SetBrain", "SetCloudModel", "ForgetCloudKey", "SetCloudKey", *chatgpt_mutations)
             with self._model_lock:
                 if method in (*mutations, "Ask", "InstallModel") and self._model_mutation is not None:
                     raise Busy("A model change is still in progress.")
                 if method in mutations and (self.requests or self.downloads):
                     raise Busy("Finish the current answer or download before changing its model.")
-                if method in ("SetCloudKey", "SetCloudModel"):
+                if method in (*mutations, "Ask", "InstallModel") and getattr(self, "chatgpt", None) and self.chatgpt.signing_in:
+                    raise Busy("Finish or cancel ChatGPT sign-in before continuing.")
+                if method in ("SetCloudKey", "SetCloudModel", *chatgpt_mutations):
                     mutation = threading.Event()
                     self._model_mutation, self._mutation_owner = mutation, _sender
             if method in ("Ask", "InstallModel") and not self.enabled:
@@ -611,6 +655,50 @@ class Daemon:
                 invocation.return_value(self._bounded_reply(GLib.Variant("(b)", (self.settings.set_string("approval-mode", args[0]),))))
             elif method == "Settings":
                 invocation.return_value(self._bounded_reply(GLib.Variant("(s)", (self.settings_json(),))))
+            elif method == "CancelChatGPTSignIn":
+                if self._chatgpt_login_owner != _sender or self._chatgpt_login_id != args[0]:
+                    raise Refused("This sign-in belongs to another connection.")
+                self.chatgpt.cancel(args[0])
+                invocation.return_value(GLib.Variant("(b)", (True,)))
+            elif method in ("ChatGPT", *chatgpt_mutations):
+                def work(method=method, args=args):
+                    try:
+                        if mutation is not None and mutation.is_set():
+                            raise chatgpt.ChatGPTError("Cancelled.")
+                        if method == "ChatGPT":
+                            result = GLib.Variant("(s)", (json.dumps({**self.chatgpt.status(bool(args[0])), "brain": self.brain}),))
+                        elif method == "StartChatGPTSignIn":
+                            self._chatgpt_login_owner = _sender
+                            value = self.chatgpt.start(args[0], mutation)
+                            self._chatgpt_login_id = value["id"]
+                            result = GLib.Variant("(s)", (json.dumps(value),))
+                        else:
+                            if mutation.is_set():
+                                raise chatgpt.ChatGPTError("Cancelled.")
+                            if method == "SelectChatGPTAccount":
+                                self.chatgpt.select(args[0])
+                                message = ""
+                            elif method == "SetChatGPTModel":
+                                self.chatgpt.select_model(args[0])
+                                message = ""
+                            else:
+                                message = self.chatgpt.sign_out(args[0])
+                            audit.record({"tool": method, "tier": 0, "arguments": {}, "decision": "person changed",
+                                          "summary": "Updated Ari's ChatGPT account settings"})
+                            result = GLib.Variant("(bs)", (True, message))
+                        GLib.idle_add(lambda result=self._bounded_reply(result): invocation.return_value(result) and False)
+                    except chatgpt.ChatGPTError as error:
+                        GLib.idle_add(lambda message=str(error): invocation.return_dbus_error("org.projectluma.Ari1.Error", message) and False)
+                    except Exception:
+                        GLib.idle_add(lambda: invocation.return_dbus_error("org.projectluma.Ari1.Error", "Ari could not update ChatGPT. Try again.") and False)
+                    finally:
+                        if mutation is not None:
+                            with self._model_lock:
+                                if self._model_mutation is mutation:
+                                    self._model_mutation = self._mutation_owner = None
+                reserved = False
+                self.admission.submit_reserved(work)
+                mutation_submitted = True
             elif method in ("Cloud", "SetCloudKey", "SetCloudModel"):
                 # These reach OpenRouter; answer from a worker so the bus stays responsive.
                 def work(method=method, args=args) -> None:
@@ -749,6 +837,8 @@ class Daemon:
             loop.run()
         finally:
             self._closed = True
+            if self.chatgpt.login:
+                self.chatgpt.cancel(self.chatgpt.login.id)
             with self._model_lock:
                 if self._model_mutation is not None: self._model_mutation.set()
             for turn in list(self.requests.values()): turn.stop.set()

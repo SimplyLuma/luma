@@ -122,4 +122,48 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(len(owners.vanished(':1.11')),4)
         owners.add('new', ':1.12')
 
+    def test_chatgpt_authentication_precedes_all_account_operations(self):
+        self.daemon.chatgpt = Mock(signing_in=False)
+        for method, params in (("ChatGPT", GLib.Variant('(b)', (False,))),
+                               ("StartChatGPTSignIn", GLib.Variant('(s)', ('',))),
+                               ("SelectChatGPTAccount", GLib.Variant('(s)', ('account',))),
+                               ("SignOutChatGPT", GLib.Variant('(s)', ('account',)))):
+            with patch.object(service, 'authenticate', side_effect=host_identity.Refused('no')):
+                result = self.call(method, params)
+                self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
+        self.daemon.chatgpt.assert_not_called()
+        self.assertEqual(self.daemon.chatgpt.mock_calls, [])
+
+    def test_chatgpt_signin_is_caller_owned_and_disconnect_cancels_it(self):
+        self.daemon.chatgpt = Mock(signing_in=True)
+        self.daemon._chatgpt_login_owner, self.daemon._chatgpt_login_id = ':1.11', 'attempt'
+        result = self.call('CancelChatGPTSignIn', GLib.Variant('(s)', ('attempt',)), sender=':1.12')
+        self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
+        self.daemon.chatgpt.cancel.assert_not_called()
+        self.daemon._name_changed(None,None,None,None,None,GLib.Variant('(sss)',(':1.11',':1.11','')))
+        self.daemon.chatgpt.cancel.assert_called_once_with('attempt')
+
+    def test_pending_chatgpt_signin_excludes_model_changes_and_inference(self):
+        self.daemon.chatgpt = Mock(signing_in=True)
+        for method, params in (("Ask", GLib.Variant('(ss)', ('', 'hello'))),
+                               ("SetBrain", GLib.Variant('(s)', ('local',))),
+                               ("SetChatGPTModel", GLib.Variant('(s)', ('model',)))):
+            result = self.call(method, params)
+            self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Busy')
+        self.daemon.store.new_conversation.assert_not_called()
+
+    def test_disconnected_queued_chatgpt_signin_does_not_open_a_listener(self):
+        self.daemon.chatgpt = Mock(signing_in=False)
+        queued, callbacks = [], []
+        with patch.object(self.daemon.admission, 'submit_reserved', side_effect=queued.append), \
+             patch.object(service.GLib, 'idle_add', side_effect=lambda callback: callbacks.append(callback) or 1):
+            result = self.call('StartChatGPTSignIn', GLib.Variant('(s)', ('',)))
+            self.daemon._name_changed(None,None,None,None,None,GLib.Variant('(sss)',(':1.11',':1.11','')))
+            queued.pop()()
+            callbacks.pop()()
+        self.daemon.chatgpt.start.assert_not_called()
+        self.assertIsNone(self.daemon._model_mutation)
+        self.assertEqual(result.return_dbus_error.call_args.args[1], 'Cancelled.')
+        self.daemon.admission.slots.release()
+
 if __name__ == '__main__': unittest.main()

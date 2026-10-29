@@ -979,6 +979,34 @@ class FixtureRuntime(unittest.TestCase):
         get_buttons[0].emit("clicked")
         self.assertEqual(window.daemon.call.call_args.args[0], "InstallModel")
 
+    def test_late_chatgpt_status_keeps_a_new_local_model_selection(self):
+        import json
+        from unittest.mock import Mock
+        window = self.window
+        window.fixture = False
+        window.daemon = Mock()
+        window._live_ready(None)
+        callback = next(call.args[3] for call in window.daemon.call.call_args_list if call.args[0] == "ChatGPT")
+        window.use_model("qwen30")
+        window.daemon.call.call_args.args[3]((True,))
+        window.daemon.call.call_args.args[3]((True, ""))
+        callback((json.dumps({"brain": "chatgpt", "active": "a", "accounts": [{"id": "a", "signed_in": True,
+                            "plan_enabled": True, "label": "Test account"}], "model": "old-model",
+                            "models": [{"id": "old-model", "name": "Old model"}]}),))
+        self.assertEqual(window.state["model"], "qwen30")
+        self.assertTrue(any(provider["id"] == "chatgpt" for provider in window.data["providers"]))
+
+    def test_chatgpt_choices_do_not_make_an_unloaded_openrouter_form_available(self):
+        from unittest.mock import Mock
+        window = self.window
+        window.fixture = False
+        window.daemon = Mock()
+        window.data["provider_choices"] = []
+        window.chatgpt_loaded({"accounts": [], "active": "", "models": [], "model": "", "brain": "local"})
+        window.provider_sheet("openrouter")
+        self.assertIsNone(window.modal)
+        window.daemon.call.assert_not_called()
+
     def test_disconnection_invalidates_late_reads_and_owner_recovery_reloads(self):
         from unittest.mock import Mock
         window = self.window
