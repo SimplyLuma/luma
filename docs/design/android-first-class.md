@@ -161,10 +161,10 @@ transport error here would violate the generated stub's assert/callback contract
 Acceptance requires a known nonempty trusted control plus ordinary-APK empty-read
 and unchanged-write tests; endpoint absence or an empty control cannot pass.
 Source-method tests do not establish actual HwBinder IPC or complete isolation.
-On2026-10-29, the rebuilt7c13c192f x86 image with host runtime.94 and
-fixture APKr16 passed actual native clipboard read/write and task-name admission
+On 2026-10-29, the rebuilt `7c13c192f` x86 image with host runtime `.94` and
+fixture APK `r16` passed actual native clipboard read/write and task-name admission
 checks. The ordinary APK's kernel UID/PID matched its fresh receipts; trusted
-UID1000 clipboard and task-name controls remained nonempty before and after.
+UID 1000 clipboard and task-name controls remained nonempty before and after.
 The clipboard fixture waits until its activity has focus before the control is
 seeded, preventing an activity launch from invalidating the synthetic selection.
 This verifies those methods only; it does not close host-focus policy or isolation.
@@ -182,7 +182,7 @@ credentials and exact packet size, rejects nonzero reserved fields, and bounds
 socket reads/writes to250ms. These socket limits do not bound the framework's
 Binder execution. Source-method sanitizer tests and real Unix-socket tests with
 private user-namespace credentials pass; a rebuilt image and ordinary-APK HIDL
-controls are required. The2026-10-29 actual task-name getter check passed on
+controls are required. The 2026-10-29 actual task-name getter check passed on
 that rebuilt x86 pair. Focus/remove/remove-all mutators and the other privileged
 boundaries still need actual negative and positive controls. Numeric UID checks
 do not replace MAC/user namespaces.
@@ -303,8 +303,8 @@ Android platform test keys are development inputs; production trust requires
 protected platform signing keys and a release image that rejects test-key
 privileged APKs. These remain shipping gates, alongside mandatory-access policy.
 
-The2026-10-29 rebuilt x86 VM also passed a bounded resize/maximize/restore check:
-client layouts changed from349×635 to1242×641 and459×635, the activity restored
+The 2026-10-29 rebuilt x86 VM also passed a bounded resize/maximize/restore check:
+client layouts changed from 349×635 to 1242×641 and 459×635, the activity restored
 its synthetic saved text twice, and the same app process remained responsive.
 This did not reproduce the old configure lock deadlock. QEMU screenshot capture
 reported no surface, so the result does not establish rendered pixels, visual

@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:44:00+00:00
+- Updated: 2026-10-29T23:46:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); current7c13 image exported and x86 scope tests passed; next SDK0005 image
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -20,7 +20,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | OPEN: current image7c13c192f lacks SDK0005 replies; host.94/Shell124 built separately | Finish guard image, run its controls, then build SDK0005 pair and test all matching components together. |
+| A01 Matched candidate | OPEN: current image7c13c192f lacks SDK0005 replies; host.94/Shell124 built separately | SDK4 image guards/resize passed. Finish current SDK0005 build and test image, host.94, Shell124 and fixture together through native reply UI. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
@@ -35,7 +35,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A13 Contacts/calendar/telephony | OPEN consented providers | Native authoritative services via scoped grants; no private native database mounts or Android ownership of modem/controllers. |
 | A14 Other hardware | OPEN arbitration/qualification | USB/Bluetooth/NFC/sensors with native coexistence, real device reconnect/revocation and accurate capability advertisement. |
 | A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
-| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc; remaining methods/boundaries open | On rebuilt image, ordinary APK cannot read/write clipboard or focus/remove/read task metadata; preserve trusted control, normal native windows and property/platform/host-service negatives. |
+| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc; remaining methods/boundaries open | Clipboard read/write and task-name getter passed on SDK4 x86 image. Require actual task focus/remove/remove-all negatives and trusted controls, plus property/platform/host-service boundaries and repeat on final image. |
 | A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
 | A18 CPU/page/GPU matrix | x86 VM baseline only; ARM/page config source checks | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
 | A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
@@ -56,6 +56,18 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED23:46Z — r12 COLD TOOL PREFLIGHT PASSED; SOURCE CHECKS ACTIVE:
+- Four immutable inputs verified23:45:13Z; vdd project/vde tools replaced ONLY on
+  owned stopped builder, then VM started. Guest current-attempt timestamp
+ 1793317538.6160452/source0c0cc1a9f, overlays{} and explicit verification2/build8/
+  GOMAXPROCS8/GOGC20. Root preboot XML24GiB/QEMU25/8CPU assertions passed.
+- Actual new guest env-i PATH=/usr/bin:/usr/local/bin:/bin preflight PASSED:
+  Meson1.9.2>=1.4 andglslang16.6.0>=12.2. Same versions also verified by actual
+  build entrypoint. No warm/manual glslang addon required. Current log
+  `Checking Android source projects (verification jobs=2)...`; Ninja not begun.
+- Main normal e60f41b6 and policy guard e184fa82 remain active. No image/reply
+  runtime pass; continue through source check/SDK5 build/export/real matching UI.
 
 LIVE23:44Z — REPLY-ENABLED IMAGE BUILD ADMITTED; STAY FOREGROUND:
 - CURRENT normal dev-android-reply-image-r12-e60f41b6.service27GiB/450GiB,
