@@ -3,12 +3,14 @@ from __future__ import annotations
 from .config import load_runtime_config
 from .engine import WaydroidEngine
 from .errors import LumaAndroidError
+from .display import wait_for_wayland
 
 
 def main() -> int:
     config = load_runtime_config()
     engine = WaydroidEngine(config.engine)
     try:
+        wait_for_wayland()
         engine.ensure_ready(config.multi_window, timeout=180, detached=False)
     except LumaAndroidError:
         return 1

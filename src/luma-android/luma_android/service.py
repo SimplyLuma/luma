@@ -95,7 +95,9 @@ class Service:
             LAUNCHER_STARTUP_RECONCILE_SECONDS,
             self.reconcile_launchers,
         )
-        GLib.timeout_add_seconds(4, self.start_warm_session_if_needed)
+        # The supervised session waits for a listening compositor itself.
+        # A fixed delay can exhaust its restart budget before display startup.
+        GLib.idle_add(self.start_warm_session_if_needed)
 
     def on_appearance_changed(self, settings, _key) -> None:
         appearance = surface_treatment()
