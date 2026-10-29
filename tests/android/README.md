@@ -136,14 +136,20 @@ The full builder must also prove its generated Soong configuration retains
 Android's target/secondary architectures and ABIs; this fragment test alone
 does not qualify an image or application compatibility.
 
-`python3 tests/android/clipboard-client.py --source-root /path/to/android
---android-jar /path/to/verified/android.jar` applies the SDK clipboard patch to
-an independent temporary copy, runs the pinned AIDL compiler, and compiles its
-actual output against the verified Android API. It executes the production SDK
-wrapper with explicit dependency/transport fixtures to test late registration,
-round trips, service death, read/write failure and concurrent reconnection.
-These host JVM checks do not qualify actual Android Binder IPC. The rebuilt
-image must repeat the real APK/native-host copy/paste tests.
+`python3 tests/android/clipboard-client.py --source-root /path/to/android`
+applies the SDK reconnect patch to an independent temporary copy and executes
+the production HIDL wrapper with explicit dependency/transport fixtures. It tests
+late registration, read/write failure and concurrent proxy replacement. These
+host JVM checks do not qualify actual Android HwBinder IPC.
+
+`python3 tests/android/native-clipboard-admission.py /path/to/hardware/waydroid`
+compiles the exact patched native HIDL method bodies with dependency fixtures.
+It checks32 read/write cases, including unchanged data/native calls for ordinary
+UIDs, and requires the unpatched negative control to fail. HIDL's getter callback
+must be called exactly once and the transport result must remain successful even
+when data is denied. Real nonempty trusted and ordinary-APK HAL controls remain
+required on rebuilt images. The Python/AIDL clipboard probe covers a legacy
+endpoint and cannot qualify this native path.
 
 The clipboard fixture copies only `luma-android-clipboard-fixture` and records
 only whether `luma-host-clipboard-fixture` matched on reads. Never use it in a

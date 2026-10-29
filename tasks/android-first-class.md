@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T05:47:00+00:00
+- Updated: 2026-10-29T06:18:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 901d5f18c (clipboard protocol), cc15bd5a2 (.90 package)
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -12,96 +12,103 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical checkout untouched. HEAD901d5f18c adds
-SDK clipboard AIDL/reconnection plus tests. One new native-focus fixture is
-pending commit, compiled and exercised as a real GTK control in the private VM.
-Research: /srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
+Source/worktree isolated; canonical untouched. HEAD21fe4ae23; native clipboard
+corrections are uncommitted and under validation. **DO NOT BUILD SNAPSHOT901d5f18c
+OR luma-project-aidl.squashfs**: it changes to the wrong clipboard backend.
 
-ACTIVE normal image job dev-android-images-build-vm-r5-09340d25,10GiB/450GiB HDD,
-started05:44:42Z. Root unit luma-android-first-class-build-controller.service
-(128MiB/6h, CPU200%, IOWeight25) watches actual admitted owner PID/start/UID,
-job cgroup and10GiB memory.max. New run.sh EXIT cleanup plus watchdog stop own
-root actor if the normal job disappears; ExecStopPost destroys ONLY own build
-UUID809f0871-fd88-4770-83dd-624c90259c06. Tests2dbfcc8d/4f675d66 show root actor
-stops within1s after forced death/normal stop; normal-stop test exercised the
-watchdog, not independent proof of shell trap. No admission limits/reserves changed.
+Critical correction: actual installed framework DEX and hardware/waydroid source
+show Clipboard uses vendor.waydroid.clipboard@1.0 HIDL in native HWComposer,
+not the host's legacy AIDL endpoint. sdkobserve2 captured/disassembled only the
+public framework jar (actual /system/framework/org.lineageos.platform.jar), then
+ran pinned dexdump asUID1003 under a256MiB capped root diagnostic within the6GiB
+VM reservation. Original93dd6267 used wrong system_ext path and failed. Exact
+proof sdk-image-observe/clipboard-class.txt. Legacy AIDL UID tests remain valid
+ONLY for that unused endpoint; they do not qualify native clipboard admission.
 
-Build VM7GiB RAM/9GiB hard,4vCPU, guest-only24GiB swap,280GiB root disk. Root SSH
-key stays /root/.ssh/luma-android-builder-20261029/ssh-key. Readonly Android SFS
-57,095,458,816B SHA48f1c8c31596993fc4ec10e97ab17c571d3eb9e1d32b06a709d9f4be8a76f7be.
-New project disk luma-project-aidl.squashfs70,545,408B SHA
-69f73cf8f08d0228accbe997a645bb7de136747a6f92a2a61ed24d20267a524b,
-commit901d5f18c; explicit empty build mountpoint. Packc0bdd344 passed. Original
-source/rootfs/tools/project disks preserved. Guest compiler runs UID1003 in
-chroot with no-new-privileges and private network namespace; host credentials
-never enter guest. Private build-vm-driver code and receipt paths remain on HDD.
+Source .91 now preserves HIDL, disables the unused Python/AIDL clipboard manager,
+removes its pyclip/wl-clipboard dependencies, adds native HwBinder UID1000 caller
+admission before cached-data read/mutation, and reconnects SDK failed proxies.
+Both builders/state hashes track native patch0015 and replacement SDK0004.
+Native HIDL generated stubs assert successful Return and exactly one getter
+callback. Initial94e78f80 fake-transport test did not model that contract; corrected
+before any image build: denied read calls back empty once, denied write is no-op.
+Updated32-case actual-method testda69c3a5 PASSED, unpatched negative control42.
+HIDL production SDK wrapper430cbf55 PASSED failure/reconnection/race fixture tests.
+Neither is real HwBinder proof. Root package .91/84-case check still pending.
 
-NO completed replacement Android images yet. Attempts throughr4 failed/stopped;
-r4/763bed83 correctly refused a prior interrupted build marker and cleaned up
-its VM before admission exited. r3 had entered the builder after mount setup
-(the earlier no-compilation assertion was not established; old log must be read).
-Current explicit resume permits archiving markers/logs ONLY from an earlier
-boot before reinitializing. It retains all prior attempts under/root/luma-build-attempts.
-Maintained Git HEAD/cleanliness/LFS/state checks remain intact. Current job is
-verifying inputs; inspect actual logs, never infer image completion from startup.
+Native WaydroidClipboard.cpp read_selection blocks Wayland event loop with an
+unbounded pipe read, and clipboard cache access crosses threads without a mutex.
+Next substantive work: bounded asynchronous native transfers + synchronized
+cache/focus ownership, with real stalled/partial/oversize pipe tests. Then source
+APK probe must exercise actual HIDL get/set with known nonempty trusted controls.
+Do not mistake ordinary-empty for denial when the trusted control is also empty.
+Keep all arbitrary clipboard contents out of logs; synthetic token classes only.
 
-ACTIVE runtime VM dev-android-runtime-vm-r6-7ef0192b,6GiB/10GiB admission,
-UUID3c485515-a910-4f44-80a0-4189ec58cab8,3GiB RAM/5GiB hard; IP192.168.122.35.
-Root luma-android-first-class-runtime-controller.service uses OLD run-r2.sh
-without owner watchdog; explicitly stop this root unit BEFORE stopping its
-normal admission. Bounded root6,000s/lifetime90min means expected end around06:00Z;
-stop by05:55Z. Future lowram-driver/run-r3.sh uses watchdog. Do not restore
-6GiB/8GiB config while active or run it under6GiB reservation. Original
-vm/domain.xml intact; EMPTY domain-before-lowram-20261029T020943.xml is unusable.
+ALL owned VMs and image jobs are now OFF. Stopped r5/09340d25 root controller and
+admission before native-path correction. No completed replacement image exists.
+Own Luma VM original6GiB/8GiB config restored inactive05:54:45Z from intact
+vm/domain.xml; actual restored XML SHA
+b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5.
+EMPTY domain-before-lowram-20261029T020943.xml remains unusable. Next full-RAM
+runtime lifetime needs normal9GiB reservation; do not run it under old6GiB budget.
+Its .90 usr overlay is gone on reboot; APKr11 remains installed on its disk.
 
-Installed .90 RPM db6e7408e591d25aa83713eaccf625a38d69052a652618fd9021894d3c570754;
+Build VM UUID809f0871-fd88-4770-83dd-624c90259c06 remains defined/off,7GiB RAM,
+9GiB hard/4vCPU/24GiB guest swap/280GiB root disk. Private SSH key only
+/root/.ssh/luma-android-builder-20261029/ssh-key. Root controller private path
+build-vm-driver/controller.py and run.sh now watch admitted parent PID/start/UID,
+cgroup/memory.max and have EXIT cleanup + own-UUID ExecStopPost. No limits/reserves
+changed. Synthetic forced death/normal stop tests2dbfcc8d/4f675d66 stopped root
+actor within1s; normal test exercised watchdog, primary trap alone not proved.
+
+Prior build attempts preserved, not image passes. r3 did create a startup marker
+and entered the builder; old log must establish how far it got. r4/763bed83 stopped
+on that marker and cleaned own VM. r5 uses explicit prior-boot resume: archives
+started/result/log files under/root/luma-build-attempts only if timestamp predates
+current boot. Before next build, pack a new corrected readonly project disk and
+switch away from luma-project-aidl; retain all old inputs/logs. Consider a fresh
+named overlay for this source correction, preserving old upper/work; original
+compressed source is unchanged and validated. Never weaken Git/LFS/HEAD gates.
+
+Android source SFS57,095,458,816B SHA
+48f1c8c31596993fc4ec10e97ab17c571d3eb9e1d32b06a709d9f4be8a76f7be.
+Rootfs/tools/original project disks retained. Compiler guest chroot UID1003,
+no-new-privileges, private network namespace. Build root actor128MiB/6h and
+QEMU9GiB hard fit normal10GiB/450GiB HDD admission; no host credentials enter VM.
+
+Latest installed test package .90 (now reboot-cleared) passed83 actual package
+checks/zero skips/failures, directory755/import/signature checks. Binary
+ db6e7408e591d25aa83713eaccf625a38d69052a652618fd9021894d3c570754,
 SRPMdaa21b8aa950cff398ecc063e0907d879ff542f5979ec98718d3c0da85bce38c.
-ff59a12f passed83 actual package tests/zero skips/failures, directory755 checks.
-Private ostree usr overlay install completed04:39:54Z; reboot clears it.
-Required signed pyclip RPM verified, Wayland clipboard module imports; source
-SDK AIDL generation/API compile/reconnect fixture tests14e4dee5 passed. Actual
-new-image Clipboard IPC still pending. Public-facing files/provider notices intact.
+Actual .90 root-hardware/user-monitor and LEGACY clipboard trusted/app controls
+passed; r10 APK UID10131 denied at all3 tested AIDL endpoints. Rootwaydroid_t,
+FedoraEnforcing; AndroidDisabled, old platform/property still allowed. Volatile
+fixture property cleared. No native-HIDL ordinary-APK admission pass yet.
 
-.90 real hardware/clipboard/user-monitor trusted/app controls all passed; r10
-APK UID10131 reports all3 host calls denied. Rootwaydroid_t/FedoraEnforcing;
-AndroidDisabled, old platform/property writes still allowed. Volatile test key
-cleared. Native UI plain-text clipboard round trip passed r10. Keep scope narrow:
-private old image, not isolation/hardware/performance/production qualification.
+Real native clipboard plain-text round trip r10 passed. r11 APK
+SHA862bf4e6e0d931c7c8e714c34eb3060c4d5410423fd8f442c1a85b9447c090eb
+was built17ec82d0, installed/launched normally. Native GTK focus control recorded
+actual activation/boottime. Initial native-app focus control opened too late;
+fixed-token background match might have been legitimately cached. Strong round:
+normal Android copy, confirmed native focus, fresh host token published after
+that, then delayed APK read returned unexpected-content, NOT fresh target, while
+Android hasWindowFocus remained true. vm/clipboard-focus-r11-result.json records
+neither privacy pass nor confirmed fresh disclosure. Native control stopped by
+its timer. Personal profiles never used; source/evidence only synthetic.
 
-Current APKr11 SHA862bf4e6e0d931c7c8e714c34eb3060c4d5410423fd8f442c1a85b9447c090eb
-built17ec82d0, normally installed/launched. New tests/android/native-focus-fixture.py
-records actual GTK activation with shared CLOCK_BOOTTIME timestamps. First
-background test was inconclusive (comparison app had not opened within deadline).
-Second fixed-token match could have been cached while Android focused, so not
-fresh-data disclosure proof. Stronger round: normal Android copy cleared cache,
-confirmed native focus, published target afterward, then delayed APK read returned
-unexpected-content (not target), with Android hasWindowFocus still true. Exact
-vm/clipboard-focus-r11-result.json: NO confirmed fresh host disclosure, NO privacy
-pass. Classify retained Android token and investigate actual image callback path.
-Unknown-operation UID denials alone cannot qualify clipboard privacy. Native
-control time-limited/exited; personal profiles never used, clipboard contents
-never logged beyond whitelisted synthetic classifications.
-
-Actual bounded sampler passed:16 samples over30.001s, runtime PSS204.95..205.25MiB,
-fixture20.396MiB, cgroup memory497.88..498.42MiB;175,266 CPUus =0.584% of one core,
-zero unreadable/changed or frozen samples. Own vm/observed-r90-20261029T0525.jsonl.
-These are VM observations including cache/kernel memory, NOT physical battery,
-first-frame latency, GPU memory completeness or baseline-comparison proof.
-
-Read-only SDK image diagnostic: first93dd6267 failed because jar is actually
-/system/framework/org.lineageos.platform.jar (not system_ext). Current root-capped
-sdkobserve2 reads only that public framework code, then drops toUID1003 for pinned
-DEX disassembly under active VM6GiB reservation (actor256MiB +VM5GiB +control128MiB
-fits). Output sdk-image-observe/clipboard-class.txt. Never log arbitrary clipboard
-contents; binder-reply observer prints only exception/token classification.
+Actual sampler:16 samples/30.001s, observed Android PSS204.95..205.25MiB including
+fixture20.396MiB; cgroup memory497.88..498.42MiB;175,266CPUus,0.584% of one core,
+zero unreadable/changed or frozen samples. vm/observed-r90-20261029T0525.jsonl.
+Not physical battery, first-frame/GPU-memory completeness or comparative proof.
 
 Open gates: maintained AOSP rebase (current Android13/security patch2026-02-01),
-real rebuilt-image resize/dismissal/platform/property denial, cross-domain focus,
-Android MAC/usernamespace/origin attestation/private platform keys, ARM/native
-and optional foreign ABIs, portals/hardware/media/reply/privacy, physical
-suspend/push/power. FP6 hardware gate and all other agents/devices untouched.
-Preserve20GiB disk/8GiB host-memory reserves. All bulk/evidence stays task HDD,
-not Git; no release/push/PR/deployment was performed.
+full-image native resize/dismissal/platform/property denial, actual clipboard
+HAL/IO/focus, MAC/usernamespace/origin attestation/private platform keys, ARM
+native/foreign ABIs, portals/hardware/media/reply and physical suspend/push/power.
+FP6 hardware gate/other agents/devices untouched. Preserve20GiB disk and8GiB host
+memory reserves. All bulk/private evidence stays task HDD, not Git. No release,
+push, PR, deployment or human sign-off. Research recommendation remains under
+/srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
 
 ## Validation and artifacts
 
@@ -260,3 +267,9 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 - Stopping normal build job158f8b65 did NOT initially stop its separate root controller. Found and manually stopped root controller/own UUID04:52:55Z; original/other domains untouched. New private build-vm-driver/run.sh has EXIT cleanup and job_owner.py watches actual admitted parent PID/start/UID/cgroup/memory limit; root actor terminates if owner disappears. Synthetic no-VM watcher tests: forcibly killed owner2dbfcc8d at04:55:58; root stopped04:55:59. Normal devctl stop4f675d66 also stopped root actor via watchdog within1s (primary trap alone not proven). ExecStopPost own-UUID shutdown already observed. No host limits/reserves changed. Future lowram driver run-r3.sh uses same watchdog; CURRENT runtime VM still uses old run-r2.sh, so stop its root unit explicitly before stopping admission.
 - r3 build VM did get past corrected kernel swap parser and into guest mount preparation, then was manually stopped for the protocol fix. No image compiled. All build VMs now INACTIVE. New controller logs every guest mount command; update readonly Luma project disk with source0004 before next full build. Android source/rootfs/tools disks retained unchanged.
 - New APKr11/17ec82d0 compiled/signed successfully SHA862bf4e6e0d931c7c8e714c34eb3060c4d5410423fd8f442c1a85b9447c090eb, adds10s delayed synthetic clipboard read plus actual Android focus receipt. Live host-focus negative control is next. Current live runtime6GiB admission7ef0192b continues, deadline about06:00Z; own build off.
+
+2026-10-29T06:12Z actual-path correction:
+- Corrected earlier AIDL-backend assumption after actual DEX plus composer implementation inspection. Never use901d5f18c project image; HIDL-native reconnect/admission source candidate replaces it. Legacy dependency/provider removed from .91 candidate. No prior claim that legacy endpoint guards protect native clipboard remains current. Actual HIDL generator assert/callback review caught and corrected a transport-error denial that would abort the service; da69c3a5 updated contract tests pass32 cases with negative42, 430cbf55 wrapper lifecycle passes. Full image/wire and blocked-transfer tests remain next.
+
+2026-10-29T06:18Z source correction validation:
+- Added explicit libhwbinder_headers dependency for native UID API. Updated native policyf03ebfd2 passes32 source-body cases including exact callback-once/successful-return contract and unpatched negative42. SDK lifecycle283a9cc5 passes after removing misleading AIDL dependency fixtures; actual HIDL source remains unchanged in protocol. Adapter0a622f4d passes9 tests, including legacy provider suppression; first51ecc79f failed test import name and was corrected. .91 package check still next.

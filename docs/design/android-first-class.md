@@ -125,19 +125,34 @@ Guest image-replacement transactions are rejected even from Android root or
 system. Luma's verified host update path owns the matched system/vendor pair;
 a guest-provided file path cannot authorize a privileged host image write.
 The runtime package preserves the derived GPL transport's license and attribution.
-The Luma-owned session also admits only kernel UID1000 at the host clipboard
-and user-monitor callbacks, before parcel parsing. Apps use Android's normal
-clipboard focus/permission checks and package APIs. Root hardware and session
-roles have distinct admission policies. Unknown read-only operations have typed
-control/denial replies for acceptance tests without touching clipboard contents
-or generating package events. Live validation of these session guards remains
-required; the root-hardware pass does not substitute for it.
-The package requires the host clipboard provider's pyclip/wl-clipboard dependencies;
-an absent endpoint cannot count as permission denial. Android focus checks alone
-also do not establish host focus: the inspected HWC keyboard-leave callback only
-releases keys. Qualification must switch to a native host application and prove
-that the formerly focused APK cannot read or replace the host clipboard. Keep
-this privacy gate open until measured and enforced across both focus domains.
+The Luma-owned session admits only kernel UID1000 at the user-monitor callback.
+Its old AIDL clipboard guard is defense for a legacy endpoint, not the path used
+by the matched Android image. Framework DEX inspection and composer source show
+that actual clipboard traffic uses native HIDL inside the Wayland composer. Luma
+preserves that native path and disables the unused Python/AIDL clipboard manager;
+pyclip and wl-clipboard are not runtime dependencies of native copy/paste.
+
+Native HIDL clipboard methods check the kernel HwBinder UID before accessing or
+mutating cached clipboard data. Only system_server UID1000 is admitted. HIDL v1
+requires a successful transport return and exactly one getter callback, so
+ordinary callers receive an empty getter result and a no-op setter. Throwing a
+transport error here would violate the generated stub's assert/callback contract.
+Acceptance requires a known nonempty trusted control plus ordinary-APK empty-read
+and unchanged-write tests; endpoint absence or an empty control cannot pass.
+Source-method tests do not establish actual HwBinder IPC or complete isolation.
+The SDK preserves HIDL and invalidates a failed cached proxy, with identity checks
+that prevent late old-proxy failures from discarding a newer connection.
+
+Clipboard focus is a separate integration gate. A native GTK control and Android
+fixture record boot-clock activation timestamps. Android retained its own window
+focus after the host switched to GTK. A strict test published a fresh synthetic
+host token only after native focus and received unclassified Android content,
+not that target: neither a clean privacy pass nor confirmed fresh host disclosure.
+Earlier token matches could have been cached legitimately while Android focused.
+Read/write focus, cached-data ownership, rich MIME transfers and stalled/large
+sources need native-path acceptance. The inspected native receiver blocks the
+Wayland event loop with an unbounded pipe read; bounded asynchronous transfer is
+required before claiming robust clipboard behavior.
 
 The supervised user session waits for a listening, current-user Wayland socket
 with a bounded startup deadline. Its directory monitor and startup retry are

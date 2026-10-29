@@ -168,3 +168,16 @@ class HardwareAdmission(TestCase):
         install_guard(hardware)
         with self.assertRaises(RuntimeError):
             install_guard(hardware, allowed_uids=(1000,))
+
+
+class LegacyClipboardSelection(TestCase):
+    def test_native_profile_disables_only_the_unused_legacy_provider(self):
+        from types import SimpleNamespace
+        from luma_android.waydroid_hardware import disable_legacy_clipboard
+        provider=SimpleNamespace(canClip=True)
+        independent=SimpleNamespace(canClip=True)
+        disable_legacy_clipboard(provider)
+        self.assertFalse(provider.canClip)
+        self.assertTrue(independent.canClip)
+        with self.assertRaises(RuntimeError):
+            disable_legacy_clipboard(SimpleNamespace())

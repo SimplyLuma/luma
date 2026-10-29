@@ -124,3 +124,11 @@ def main():
     sys.argv = ['waydroid', 'container', 'start']
     os.umask(0o022)
     return tools.main()
+
+
+def disable_legacy_clipboard(provider):
+    # Luma's matched image serves HIDL clipboard inside its native Wayland
+    # composer. Do not also publish the unused Python/AIDL host clipboard.
+    if not hasattr(provider, 'canClip'):
+        raise RuntimeError('Unsupported legacy Android clipboard provider')
+    provider.canClip = False

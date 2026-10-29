@@ -36,10 +36,11 @@ initial_resize_patch="$repo_root/patches/android-hardware-waydroid/0011-luma-man
 rpc_threadpool_patch="$repo_root/patches/android-hardware-waydroid/0012-luma-shared-composer-rpc-threadpool.patch"
 buffer_bounds_patch="$repo_root/patches/android-hardware-waydroid/0013-luma-software-buffer-allocation-bounds.patch"
 configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-configure-invalidation-lock-order.patch"
+native_clipboard_patch="$repo_root/patches/android-hardware-waydroid/0015-luma-native-clipboard-caller-admission.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
-lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-host-clipboard-aidl.patch"
+lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -176,6 +177,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$hardware_root" apply "$rpc_threadpool_patch"
   git -C "$hardware_root" apply "$buffer_bounds_patch"
   git -C "$hardware_root" apply "$configure_lock_patch"
+  git -C "$hardware_root" apply "$native_clipboard_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-window-callbacks.h" "$hardware_root/hwcomposer/luma-window-callbacks.h"

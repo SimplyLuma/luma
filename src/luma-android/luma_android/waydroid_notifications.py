@@ -232,9 +232,11 @@ def main():
     sys.path.insert(0, '/usr/lib/waydroid')
     import tools
     import tools.services.notification_manager as notifications
+    import tools.services.clipboard_manager as clipboard
     from tools.interfaces import IClipboard, IUserMonitor
-    from luma_android.waydroid_hardware import install_session_guards
+    from luma_android.waydroid_hardware import install_session_guards, disable_legacy_clipboard
     install_session_guards(IClipboard, IUserMonitor)
+    disable_legacy_clipboard(clipboard)
     notifications.start = start
     notifications.stop = stop
     sys.argv = ['waydroid', 'session', 'start']

@@ -1,27 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Executes the production SDK wrapper with transport/dependency fixtures.
 import android.content.Context;
-import android.os.IBinder;
 import android.os.RemoteException;
-import android.os.ServiceManager;
+import test.transport.Registry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import lineageos.waydroid.Clipboard;
-import lineageos.waydroid.IClipboard;
+import vendor.waydroid.clipboard.V1_0.IWaydroidClipboard;
 
 public final class ClipboardClientTest {
-    private static final class Endpoint implements IClipboard, IBinder {
+    private static final class Endpoint implements IWaydroidClipboard {
         volatile boolean alive = true;
         boolean readFails, writeFails;
         String text;
         int writes;
         CountDownLatch entered, release;
         Endpoint(String value) { text = value; }
-        public IBinder asBinder() { return this; }
-        public boolean isBinderAlive() { return alive; }
         public void sendClipboardData(String value) throws RemoteException {
             writes++;
-            if (writeFails) throw new RemoteException();
+            if (!alive || writeFails) throw new RemoteException();
             text = value;
         }
         public String getClipboardData() throws RemoteException {
@@ -30,7 +27,7 @@ public final class ClipboardClientTest {
                 try { release.await(); }
                 catch (InterruptedException error) { throw new AssertionError(error); }
             }
-            if (readFails) throw new RemoteException();
+            if (!alive || readFails) throw new RemoteException();
             return text;
         }
     }
@@ -42,25 +39,26 @@ public final class ClipboardClientTest {
         expect("".equals(client.getClipboardData()));
         client.sendClipboardData("not delivered before service registration");
         Endpoint first = new Endpoint("first");
-        ServiceManager.endpoint = first;
+        Registry.endpoint = first;
         expect("first".equals(client.getClipboardData()));
         client.sendClipboardData("written");
         expect(first.writes == 1 && "written".equals(first.text));
 
         first.alive = false;
         Endpoint second = new Endpoint("second");
-        ServiceManager.endpoint = second;
+        Registry.endpoint = second;
+        expect("".equals(client.getClipboardData()));
         expect("second".equals(client.getClipboardData()));
         second.readFails = true;
         expect("".equals(client.getClipboardData()));
         Endpoint third = new Endpoint("third");
-        ServiceManager.endpoint = third;
+        Registry.endpoint = third;
         expect("third".equals(client.getClipboardData()));
         third.writeFails = true;
         client.sendClipboardData("failed write");
         expect(third.writes == 1); // Never replay a failed transaction blindly.
         Endpoint fourth = new Endpoint(null);
-        ServiceManager.endpoint = fourth;
+        Registry.endpoint = fourth;
         expect("".equals(client.getClipboardData()));
         client.sendClipboardData("after restart");
         expect(fourth.writes == 1 && "after restart".equals(fourth.text));
@@ -74,16 +72,17 @@ public final class ClipboardClientTest {
         oldRead.setUncaughtExceptionHandler((thread, error) -> threadFailure.set(error));
         oldRead.start();
         fourth.entered.await();
-        fourth.alive = false;
+        fourth.writeFails = true;
+        client.sendClipboardData("failed old-proxy write");
         Endpoint fifth = new Endpoint("current");
-        ServiceManager.endpoint = fifth;
+        Registry.endpoint = fifth;
         expect("current".equals(client.getClipboardData()));
-        int lookups = ServiceManager.lookups;
+        int lookups = Registry.lookups;
         fourth.release.countDown();
         oldRead.join(2000);
         expect(!oldRead.isAlive() && threadFailure.get() == null);
         expect("current".equals(client.getClipboardData()));
-        expect(ServiceManager.lookups == lookups);
+        expect(Registry.lookups == lookups);
         System.out.println("production Clipboard: registration, round trip, death, read/write failure and concurrent reconnect passed");
     }
 }
