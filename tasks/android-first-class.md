@@ -2,13 +2,53 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T15:38:00+00:00
+- Updated: 2026-10-29T16:03:27+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 497a61054; native reply source/package milestone
+- Branch and last useful commit: codex/android-first-class; b3cbec125 (notes), 497a61054 (runtime source); acceptance/recovery audit active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
 - Related tasks and integration owner: this chat owns Android implementation; preserve active mobile/ARM/device/release tasks and device gates.
+
+## Acceptance audit
+
+Owner for every open gate: this Android task. No gate closes because a source
+unit test, baseline run or image build passed. Require the named behavior on a
+recorded matching OS/runtime/Shell/system/vendor/APK set, with actual architecture,
+profile and hardware scope. Failures and unavailable controls stay open. Package
+.94/126 tests and Shell124 compiled resources are component results only.
+
+| Gate | Current evidence/status | Required closure / next action |
+| --- | --- | --- |
+| A01 Matched candidate | OPEN: current image7c13c192f lacks SDK0005 replies; host.94/Shell124 built separately | Finish guard image, run its controls, then build SDK0005 pair and test all matching components together. |
+| A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
+| A04 Lifecycle/windows | Known old-image resize freeze; source fix only | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
+| A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
+| A06 Native notifications | Old-image native card and Mark read observed; new lifecycle/reply runtime OPEN | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
+| A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
+| A08 Clipboard | Plain text worked on old image; source transfer guards; focus test inconclusive | Actual new native-HIDL admission with nonempty trusted controls; host-focus read/write revocation, rich MIME, stalled/large transfers and lifetime/restart tests. |
+| A09 Documents/share/drop | Android picker alone is insufficient; OPEN host broker | Scoped native file handles/URIs, seek/read/write-back, persist/revoke, reconnect, share/drop and denied paths; no whole-home mount. |
+| A10 Input/layout/accessibility | OPEN system qualification | Phone/tablet layouts, DPI/rotation, touch/stylus, IME/compose/keyboard, selection and actual accessibility roles/actions on desktop and mobile. |
+| A11 Audio/media | OPEN per-app native bridge | PipeWire stream identity/routing/focus/volume/interruptions and MediaSession transport controls with concurrent native apps. |
+| A12 Camera/mic/location | OPEN per-app native bridge | Per-app permission/device choice, recording/location indicators, live revocation, denied/background cases and actual hardware. |
+| A13 Contacts/calendar/telephony | OPEN consented providers | Native authoritative services via scoped grants; no private native database mounts or Android ownership of modem/controllers. |
+| A14 Other hardware | OPEN arbitration/qualification | USB/Bluetooth/NFC/sensors with native coexistence, real device reconnect/revocation and accurate capability advertisement. |
+| A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
+| A16 Privileged native services | Old native clipboard/task probes exposed real missing guards; source-only fixes | On rebuilt image, ordinary APK cannot read/write clipboard or focus/remove/read task metadata; preserve trusted control, normal native windows and property/platform/host-service negatives. |
+| A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
+| A18 CPU/page/GPU matrix | x86 VM baseline only; ARM/page config source checks | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
+| A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
+| A20 Background/mobile power | Old-image local alarm/no-window observation only | Jobs/alarms/network push, suspend/resume/wakeup, Doze/wakelocks, idle drain and sustained physical energy/thermal measurements; no freeze shortcut. |
+| A21 Recovery/data lifecycle | Partial baseline lifetime/restart controls | Atomic runtime/image updates, rollback/data migration, corruption/out-of-space recovery and multi-user/profile removal without data leakage/loss. |
+| A22 Maintained platform/trust | Android13 repair baseline; rebase/trust OPEN | Maintained security baseline, pinned both-CPU sources and reproducible artifacts; protected production signing and rejection of test-key privileged apps. |
+| A23 Distribution/rights | Research/source notices retained; final payload review OPEN | Actual component licenses/NOTICE/corresponding source/offers, original APK signatures, branding/service/proprietary rights and authorized distribution infrastructure. |
+| A24 Build recovery/observation | Save/restore synthetic control; actual compiler restoration OPEN | One-shot validated compiler restore and exported-image checks; observe every final child; failure/cancellation/deadline/admission/budget exhaustion remain visible. |
+
+Order of immediate work: finish the current guard image, run real native negative
+and positive controls, build the reply-enabled pair, exercise actual native UI,
+then repeat the CPU/device matrix and implement/qualify the remaining brokers.
+An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
 
@@ -34,7 +74,7 @@ REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
   Runtime candidate.94; accepted OS/Shell package pins unchanged. Current image
   source7c13c192f and installed .92 do not contain these changes.
 -45 notification component tests PASSED c767e61914:56:17Z.
-  Actual kernel credential/PID dispatch closure tested with explicit Binder
+  Production dispatch closure tested with credential/PID fixtures and explicit Binder
   dependencies; no actual Binder claim. Includes8-worker C-userdata lifetime,
   canonical request/token/text validation, generation revocation and deduplication.
 -Private reply endpoint878dc0ef PASSED14:38:38Z: separate real D-Bus connections,
@@ -86,7 +126,7 @@ REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
  only release1.luma.124.android20261029.1 (acceptedpinsunchanged), bounded2jobs,
  and two obsolete package assertions40->45 /16->18 matching existing0284 and
  independently confirmed Surface task correction. No checks skipped. Source
- receipt shell-r124/source-receipt.json. Next inspect real loader prerequisite.
+ receipt shell-r124/source-receipt.json. Later retry resolved the build environment; see below.
 -TODO: actual GJS/native UI and Binder/RemoteInput receipt in
   a matched image/Shell pair; source-level full SDK image build; physical tests.
   Update the next image snapshot after current native-guard image finishes or
@@ -124,12 +164,14 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  ELF resource sections + actual Gio.Resource lookup, no package installed.
  Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
 -Main image root r9 remains ACTIVE, normala1c4e3af10GiB, source7c13c192f.
- Soong graph completed ~15:12Z. At15:36:29Z actual C++ compilation10781/143205,
-7%; no completed image. Transient SSH failure15:15 recovered by controller,
+ Soong graph completed ~15:12Z. At16:03:27Z actual C++ compilation24579/143205,
+17%; no completed image. Transient SSH failure15:15 recovered by controller,
  no lost heap. Fixed guest zstd handled graph within existing8GiB/9GiB cap.
 -Automatic bounded continuation ACTIVE:
- dev-android-image-auto-watch-0-74758108.service, normal1GiB, PID271068 at15:36Z.
- Private build-vm-auto/watch.py watches exact a1c4e3af result. Only exit75 with a
+ dev-android-image-auto-pinned-watch-0-66408768.service, normal1GiB, replaced
+ audited watcher d1ad8be9 after adding source pins; original image MainPID214317
+ remained active/unchanged. New observer MainPID277686; heartbeat16:02:48Z.
+ Private build-vm-auto/watch-v2.py watches exact a1c4e3af result. Only exit75 with a
  fresh, root-owned, complete/unconsumed own-UUID/source checkpoint can resume.
  Each child is separately admitted normal10GiB/450GiB with same VM8GiB/QEMU9GiB
  and root128/256 limits. No retry of compiler failures/cancellation. At most4
@@ -142,7 +184,10 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  one-shot RAM/disk/XML/4-input hash verification and owner watchdog. r10 changes
  ONLY resumed guest budget rearming: an owned transient-unit drop-in plus
  daemon-reload. Existing root6h deadline remains independent and unchanged.
- Source hashes build-vm-auto/source-manifest.json; do not mutate them casually.
+ Source hashes build-vm-auto/source-manifest-v2.json (earlier manifests retained);
+ SHA8a9f45d879f22381bb15d35b049517216a1001f2f9b4cc0a32b0dd634b769c43.
+ The watcher verifies the five operational scripts at startup and before resume;
+ accidental changes stop recovery. This is not a hostile-owner security boundary.
 -Resume prerequisite15b20427 FAILED safely: guest249 rejects RuntimeMaxSec via
  set-property; original compiler deadline stayed20500s. Replacement actual guest
  timer controlac3445e7 PASSED15:35:03Z: baseline stopped3s, drop-in/reload timer
@@ -674,3 +719,33 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 - Current image7c13c192f reached actual compiler10781/143205,7%. Bounded normal
   checkpoint continuation watcher74758108 active; details and stop path above.
   It never converts checkpoint/failure into an image pass or installs outputs.
+
+2026-10-29T15:58Z acceptance/recovery audit:
+- Added the24-gate current acceptance audit above. No component, old-image,
+  fixture or compiler result closes whole-system acceptance. Android MAC/UID
+  isolation is a known production blocker. Current guard image7c13c192f does
+  not contain SDK0005 replies, so its completion cannot qualify the new reply UI.
+- Found last-resume observer gap in private watcher. New watch-v2.py always
+  admits an observer for the last child, with zero further retries. Atomic
+  per-job records + task-wide build-vm-auto/latest.json retain terminal failure,
+  cancellation, deadline, admission refusal and budget exhaustion. Heartbeat60s.
+  Successful build is explicitly image_built_pending_qualification, never ready.
+- Policy95b0ee0b PASSED8 tests15:53:44Z. First3c510deb failed because its
+  temporary fixture omitted build-vm-auto parent; corrected setup, not assertions.
+  Tests cover actual final observer admission branch, terminal cases, no resume
+  after failure/success/cancellation, and atomic unqualified records.
+- Live systemd controls50d42f95 PASSED15:55:22Z: separately admitted synthetic
+  workers exited23/0; real observer processes recorded build_failed/
+  image_built_pending_qualification and exit1/0 respectively. Tests used a
+  separate state directory, no VM, Android image or restore claim.
+- Source-pin extension17ffac45 PASSED9 tests16:00:03Z, including rejecting a
+  modified synthetic controller. Startup of the actual pinned observer verified
+  its manifest and published that hash in the live heartbeat.
+- Old watchers74758108 and d1ad8be9 intentionally stopped; pinned watcher
+  dev-android-image-auto-pinned-watch-0-66408768.service active under normal1GiB.
+  Root controller r9/image normala1c4e3af uninterrupted. Same maximum4 resumes,
+ 24h outer deadline, unchanged reservations/caps and STOP path. Every observer
+  failure remains a failed normal job with structured status; no automatic code
+  repair or image installation/publication. Actual compiler restore still open.
+- Corrected design document's stale cold-launch statement to include qualified
+  old-image .92/full6GiB command observations while preserving prior failures.

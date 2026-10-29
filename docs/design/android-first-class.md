@@ -210,11 +210,14 @@ unit. A separate process group alone does not escape a launcher's systemd cgroup
 A real disposable-VM control confirmed that such a child dies with its transient
 caller while a managed child service survives. Failed manager starts return an
 error without spawning a caller-owned fallback. A live source-client test timed
-out waiting for the older Android image to boot, while its session remained
-active in the expected service cgroup after the caller exited. Android later
-reported boot completion, but a subsequent client command also timed out. This
-proves the lifetime boundary, not reliable cold or warm startup. Those failures
-remain release gates for the matched runtime/image test.
+out waiting for the older Android image to boot in the reduced-memory guest,
+while its session remained active in the expected service cgroup after the
+caller exited. A subsequent warm command also timed out. Later, packaged .92
+passed cold launch in the full6GiB guest in25.28s and a warm launch in3.17s,
+measured to command completion. The managed session survived the caller.
+These limited old-image observations neither identify the cause of the earlier
+failures nor establish first-frame latency, physical performance or reliability
+of the new matched runtime/image. Repeating that workload remains a gate.
 
 A real mouse resize in the disposable x86 VM froze the baseline compositor.
 Native debuggerd stacks identified an adapter/window lock inversion. Patch 0014
