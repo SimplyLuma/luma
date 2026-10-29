@@ -139,11 +139,9 @@ No authenticated history probe, unofficial endpoint, browser scraper or imported
 CLI session was used. A read-only `conversations.json` export importer is only a
 proposal and requires owner approval before implementation.
 
-Ari currently lacks general application-action, project-building, installation
-and removal tools. Policy tiers for future capabilities are explicitly disabled;
-changing that list alone would not implement them. Luma already has the Semantic
-Broker action interface, SDK scaffolding/checks, and installer workflows. Ari
-needs adapters and verified completion/receipt handling for those services.
+The continuation below supersedes the initial missing-adapter assessment. Ari now
+connects concrete application actions, project builds and software workflows.
+Unsupported actions still return their actual service error.
 
 Tide exposes MPRIS playback controls but no search action; its `OpenUri` method
 returns NotSupported. No song-search tool is claimed.
@@ -163,3 +161,37 @@ SRPM SHA-256:
 `76a90c961d33b32441e39a1725ddb3eea9d3a89b59dc41732ee9f27fae8a5d2c`.
 These are server test artifacts, not a published release or a Dell delivery.
 The visual and live-account gates above remain open.
+
+## Application and development continuation
+
+Ari now discovers published app surfaces, requests broker-owned access and invokes
+real application actions. It creates SDK projects, reads and edits project files
+with checksum conflict checks, and runs project builds/tests inside Bubblewrap
+without network, desktop bus or access to the rest of the home directory.
+
+Software tools search the Depot catalogue, review and install catalogue Flatpaks,
+inspect/install local packages, remove owned installations while keeping data,
+and remove/restore optional system-image apps through the existing trusted
+installer helper. Essential apps are protected. System changes report pending
+restart when appropriate. Actual package transactions and broker confirmations
+retain their owning service's checks. Arbitrary shell and synthetic GUI input
+are not exposed.
+
+Consequential changes produce previews and completion receipts. Project approval
+is scoped to one project within the current turn; permission revocation while a
+confirmation is open prevents the mutation. Stop cancels isolated project work.
+Activity can open actual project targets. Models now has installed-model menus,
+family details, removal task rows and visible phone Download/Remove labels.
+
+Validation: 147 unit/protocol/policy tests and source staging/import/schema checks
+passed. The preceding full cohort passed 46 Wayland UI tests, five form-factor
+checks, private OAuth/Secret Service fixtures, and four native action tests. The
+action tests exercised a real private broker/provider, actual SDK scaffolding,
+isolated Python builds, MCP stdio and portable-package install/removal with data
+retention. Catalogue and privileged system helpers use controlled boundary
+fixtures; no real system deployment was changed. Eleven focused GTK regressions
+also passed, including visible phone action labels.
+
+These checks do not establish actual ChatGPT hosted-search acceptance, every
+application's action coverage, or visual conformance. The draft PR and Dell
+replacement remain gated as described above.

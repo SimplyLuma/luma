@@ -123,7 +123,8 @@ class Agent:
         elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
             user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
         elif name == "app_action":
-            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|delete|remove|play|pause|move|save|set|mark|schedule|book|do)\b", turn.text, re.I))
+            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|delete|remove|play|pause|move|save|set|mark|schedule|book|do)\b", turn.text, re.I)
+                                 and re.search(r"\b(?:notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music)\b", turn.text, re.I))
         if name == "open_app" and turn.read_untrusted:
             app = str(arguments.get('name', '')).strip().casefold()
             user_named_it = bool(app and re.search(r'(?:^|\b(?:and|then|please)\s+)(?:(?:can|could) you\s+)?(?:open|launch|start|run)\s+', turn.text, re.I)
@@ -167,6 +168,8 @@ class Agent:
                 turn.project_approvals.add(project)
         if turn.stop.is_set():
             return {"ok": False, "summary": "Stopped before making the change.", "refused": True}
+        if decision.tier not in self.policy.enabled:
+            return {"ok": False, "summary": "This permission was turned off before the change, so I stopped.", "refused": True}
         turn.calls += 1
         turn.emit({"type": "tool", "name": name, "label": _running_label(name)})
         result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)

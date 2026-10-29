@@ -271,3 +271,23 @@ class ActionPolicy(unittest.TestCase):
             self.assertEqual(len([event for event in events if event['type']=='approval']),2)
             self.assertEqual(turn.project_approvals,{'calculator','another'})
             store.db.close()
+
+    def test_permission_revoked_while_approval_is_open_prevents_the_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(Path(directory)/'ari.db')
+            tool=Tool('create_project','Create app',{'properties':{'preview':{'type':'boolean'}}},'workspace')
+            tools=SimpleNamespace(available=[tool],by_name={'create_project':(None,tool)},
+                call=Mock(return_value={'ok':True,'preview':'Create app','summary':'Created app'}))
+            agent=Agent(store,tools,policy.Policy(),model_provider=None)
+            def receive(event):
+                if event['type']=='approval':
+                    agent.policy.enabled.discard(policy.CHANGE_FILES)
+                    agent.approve(event['approval'],True)
+            turn=Turn(store.new_conversation(),'Create an app',receive)
+            with patch('ari.agent.audit.record'):
+                result=agent.run_tool(turn,'create_project',{'project':'app','name':'App'})
+            self.assertFalse(result['ok'])
+            self.assertEqual(len(turn.steps),0)
+            self.assertEqual(tools.call.call_count,1)
+            self.assertTrue(tools.call.call_args.args[1]['preview'])
+            store.db.close()
