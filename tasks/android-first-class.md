@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T20:33:00+00:00
+- Updated: 2026-10-29T20:51:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -57,48 +57,66 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
-CURRENT BUILD: previous normal961d8dd3 FAILED20:08:50Z; guest log shows
-75677/84730 (89%) then Mesa selected Ubuntu Meson0.61.2, requires>=1.4.0.
-The verified immutable tools already contain Meson1.9.2; upstream Mesa prepends
-/usr/bin to PATH and shadowed that bundle. Compile work remains on owned qcow2.
-Both prior observers terminated accurately; original shared policy restored.
+CURRENT BUILD: normal dev-android-images-build-vm-r9-e37c3216.service admitted
+20:50:11Z,26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Input verification
+in progress; no new image. Recovery observer
+ dev-android-image-auto-highram-watch-0-e40f42bb.service; guard handoff
+ dev-android-guard-build-handoff-2340ddfb.service. Live verifier
+ dev-android-highram-live-verification-0fe08472.service pending; requires NEW
+attempt timestamp and4 operational overlay hashes plus Meson under env-i.
+Source manifest b0477f2e2dcda81c9ffee0257104da925e9ac5e10cf4a09b410c165bcb35e4fc.
+Guard manifest6ac681f2ff236ea64023906b4bf7606fd152d2d8a333c7e41646b8fcee61031b.
+Project7c13c192f/native patch set unchanged; still no SDK0005 reply image.
 
-Recovery normal dev-android-images-build-vm-r9-fdd0d35d.service ADMITTED20:27:27Z,
-26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Actual guest startup/tool
-verification PASSED20:33:04Z; await new compiler progress. Service active alone
-is not evidence of compilation.
-Updated r11 guest binds verified bundle meson over guest-only/usr/bin/meson,
-checks actual Mesa selection before compilation, and mounts a recorded
-preparation-script overlay with c85ed1d81 bounded/error-propagating checks.
-Project7c13c192f SFS remains unchanged; native patches and SDK0004 stay exact.
-Operational overlays are separately hashed in build results and checked by
-export inventory. This does NOT add SDK0005 replies. Guest-driver SHA also binds
-new checkpoints; prior operational checkpoints cannot be restored silently.
-Private recovery sources were modified only after both old observers stopped,
-then fixtures/syntax passed and manifests refreshed before new admission.
-Source manifest82ecc1c599ec8a7f4bfbdf1c17401aa28b0fcde151b63a1314d7ba3256045fb0.
-Guard manifest e12ce5bdb13b9a93243603f68184a2ac5119dc42416dd37e330bb6276216737d.
+Prior fdd0d35d FAILED20:44:19Z after48/9187 remaining actions, not a new89%.
+Source checks finished20:34:28Z; actual Ninja-j8 observed20:37. Dependency file
+out/soong/build.ninja11GiB, process mapped RSS temporarily13GiB, then~6GiB;
+16GiB available/no swap at20:41. The prior 961d8dd3 failed20:08:50Z at
+75677/84730 (89%) from Mesa selecting Meson0.61.2 while requiring>=1.4.0.
 
-New recovery observer dev-android-image-auto-highram-watch-0-587b67e0.service;
-post-build VM handoff dev-android-guard-build-handoff-aa6f61f9.service. Current
-build latest.json verified watching new unit before qualification observer launch.
-Same4 checkpoint resumes/deadline2026-10-30T15:30Z; terminal policy restoration.
-Normal4a6f2f23 reapplication PASSED20:27:23Z: exact restored original matched
-root-owned backup; shared26GiB override active again with global/reserves intact.
-Recovery543d8448 PASSED9 watcher+4 root budget tests including real directory
-symlink alias/reapply/refusal of other-owner policy. Export4505f085 PASSED7 root
-inventory controls including missing/changed operational provenance + readonly
-inactive runtime VM/source preflight. Production Mesa preflight179fdeb0 PASSED2
-fixture tests including actual failed0.61.2 selection and PATH precedence.
-Source b35283a1 PASSED2 Mesa +6 cleanliness fixtures, Bash syntax and diff checks.
-Live startup verifier dev-android-highram-live-verification-d9b1a4be.service
-PASSED20:33:04Z with this attempt timestamp, actual unprivileged/usr/bin-first
-Meson1.9.2, MemTotal25,195,511,808 bytes,8CPUs/8jobs and25GiB QEMU hard+combined.
-Actual guest journal shows bundle-only file bind and successful preflight20:32:58Z.
-At20:33:15Z unitMainPID1090 active, log explicitly checking source projects with
-verification jobs=2. No Ninja yet; no further percentage or speedup claim.
-All4 immutable input hashes passed20:32:34..35Z before VM boot20:32:36Z.
-These are controls, not actual image/runtime qualification. No completed image.
+Root cause of FAILED first tool recovery: binding the bundle launcher did not
+make its Python import self-contained. Preflight retained PYTHONPATH and saw
+Meson1.9.2, while Soong's sanitized Ninja environment imported system0.61.2.
+Do not describe d9b1a4be preflight as proof of actual Mesa compilation.
+New production preflight removes PYTHONPATH; guest operational launcher inserts
+verified/immutable bundle module directory itself. New root check runs env-i.
+Also observed retained ART unstripped88,707,664-byte libart.so classified as data,
+stripped95-byte output classified HFS resource, causing real link failures.
+Underlying cause of invalid contents not proven. Prior controller's terminal
+virsh-destroy without guest sync is confirmed; new boot journal marked unclean.
+Guest sync d3750127 PASSED20:44:05Z before fdd teardown. It cannot restore
+already invalid prior artifacts.
+
+New r11 guest preserves logged recent outputs since20:06:28Z (120s before the
+first failed compiler result) in out/.luma-quarantine-unflushed-20261029T200849Z,
+requiring both known invalid ART targets in its plan. Owner/path/scope guards,
+durable plan and one-time completion prevent silently reusing/repeatedly
+invalidating new work. Regenerate selected targets from source. Preparation
+scheduling/error-propagation overlay remains exact c85ed1d81 functions against
+7c13's native patch set; source checks not skipped. Four overlay source hashes
+are recorded in result and required by export inventory. Actual repair pending.
+Compiler completion now runs guest sync before writing/fsyncing result; normal
+root terminal success/failure flushes and powers off, waits<=90s, then returns.
+The old ExecStopPost destroy remains last-resort cleanup on abnormal controller
+exit; no claim that cancellation/host loss is a clean shutdown. New checkpoints
+remain tied to operational guest-driver SHA.
+
+Checks c33364fd PASSED2 production preflight fixtures/Bash syntax/diff checks,
+including PYTHONPATH removal. 1fe855c3 PASSED3 real-filesystem repair fixtures,
+3 production shutdown-function dependency fixtures,9 watcher cases,4 root
+budget cases (actual parent-directory symlink alias/reapply/refusal),7 root
+export cases and readonly inactive runtime VM/source preflight. These are not
+actual repair, clean terminal shutdown, image or runtime qualification.
+665da51d PASSED20:50:07Z: exact restored original shared policy matched root
+backup before reapplying26GiB; global32/host8/disk20 reserves unchanged.
+
+FOLLOW-THROUGH: user explicitly objected to repeated turn endings at background
+launch. Watchers record terminal failure and hand successful image to tests;
+they DO NOT wake a reasoning agent or repair compiler failures. No available
+standalone automation/wakeup tool was found; do not promise unconfigured future
+notifications/repairs. Stay with current run through the next actual compiler/
+image/test outcome and investigate failures in the same active run. An active
+unit, fixtures, or a past preflight is not evidence of compiler progress.
 
 User explicitly authorized a larger allocation when spare RAM is available.
 At change time server had~34GiB available; only this builder plus three1GiB

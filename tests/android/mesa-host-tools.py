@@ -22,13 +22,15 @@ class MesaHost(unittest.TestCase):
             mesa.mkdir(parents=True)
             (mesa / 'meson.build').write_text("project('mesa', meson_version : '>= 1.4.0')\n")
             for selected in ('0.61.2', '1.3.99', '1.4.0', '1.9.2'):
-                with patch.object(module.subprocess, 'check_output', return_value=selected+'\n') as call:
+                with patch.dict(os.environ, PYTHONPATH='/synthetic/new-meson/modules'), \
+                        patch.object(module.subprocess, 'check_output', return_value=selected+'\n') as call:
                     if selected in ('0.61.2', '1.3.99'):
                         with self.assertRaisesRegex(RuntimeError, 'requires >= 1.4.0'):
                             module.verify(source, '/synthetic/new-meson/bin')
                     else:
                         self.assertEqual(module.verify(source, '/synthetic/new-meson/bin'), selected)
                     self.assertEqual(call.call_args.kwargs['env']['PATH'], '/usr/bin:/usr/local/bin:/synthetic/new-meson/bin')
+                    self.assertNotIn('PYTHONPATH', call.call_args.kwargs['env'])
 
     def test_missing_requirement_or_malformed_version_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
