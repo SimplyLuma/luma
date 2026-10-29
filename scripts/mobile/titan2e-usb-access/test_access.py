@@ -104,6 +104,19 @@ class AccessTests(unittest.TestCase):
                     units.append(str(path))
             subprocess.run(["systemd-analyze", "verify", *units], check=True)
 
+    def test_udev_override_is_valid_and_limited_to_the_admin_function(self):
+        data, mode = installer.payloads(KEY)["etc/udev/rules.d/99-project-titan-usb.rules"]
+        rule = data.decode()
+        self.assertIn(f'ATTR{{address}}=="{installer.DEVICE_MAC}"', rule)
+        self.assertIn('SUBSYSTEM=="net"', rule)
+        self.assertIn('ENV{NM_UNMANAGED}="0"', rule)
+        self.assertNotIn('ATTR{address}=="*"', rule)
+        self.assertEqual(mode, 0o644)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "99-project-titan-usb.rules"
+            path.write_bytes(data)
+            subprocess.run(["udevadm", "verify", str(path)], check=True)
+
     def test_symlink_cannot_redirect_privileged_writes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -122,7 +135,7 @@ class AccessTests(unittest.TestCase):
             original.write_text("original policy")
             manifest = installer.install(root, KEY)
             self.assertEqual(original.read_text(), "original policy")
-            self.assertEqual(len(manifest["files"]), 9)
+            self.assertEqual(len(manifest["files"]), 10)
             for relative in manifest["files"]:
                 self.assertTrue((root / relative).is_file())
             self.assertEqual((root / "etc/project-titan/authorized_keys").stat().st_mode & 0o777, 0o600)

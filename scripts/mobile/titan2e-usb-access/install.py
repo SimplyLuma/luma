@@ -42,6 +42,10 @@ NamePolicy=
 Name=titanusb0
 MACAddressPolicy=none
 """.encode(), 0o644),
+        "etc/udev/rules.d/99-project-titan-usb.rules": (f"""# Fedora otherwise marks DEVTYPE=gadget interfaces unmanaged.
+# Admit only the owner's dedicated administrative Ethernet function.
+SUBSYSTEM=="net", ACTION=="add|change|move", ATTR{{address}}=="{DEVICE_MAC}", ENV{{NM_UNMANAGED}}="0"
+""".encode(), 0o644),
         "etc/project-titan/sshd_config": (f"""# Endpoint is owned by project-titan-sshd.socket, not a listening daemon.
 Include /etc/crypto-policies/back-ends/opensshserver.config
 HostKey /etc/ssh/ssh_host_ed25519_key

@@ -4,6 +4,8 @@ This is an owner-invoked recovery tool, not a default phone-image component.
 It adds USB ECM using the existing Titan kernel, a NetworkManager profile with
 no default route, and a socket bound only to `titanusb0`, `172.16.42.1:2222`.
 The USB peer uses `02:54:49:54:41:02` and `172.16.42.2/30`.
+An address-matched udev rule makes this one interface managed by NetworkManager;
+Fedora's default rule leaves USB gadget interfaces unmanaged.
 
 An explicitly supplied Ed25519 key admits root administration only from that
 USB peer. Password, keyboard-interactive and empty-password authentication,
