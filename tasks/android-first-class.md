@@ -915,3 +915,7 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
 - Build961d8dd3, source-pin observereca8b2c8 and post-build handoffeea5005f remain
   active. No completed image and no actual new-image VM test yet; last completed
   C++ work remains59947/143205 before the deliberate resize. Do not claim done.
+- Boundedcc4d54ce scheduling control completed18:15:08Z after230.86s; every
+  original status task released. No paused probe processes remain. Source
+  checks were still active at18:15:32Z; no measured end-to-end speedup or new
+  compile progress is established by that completed probe.
