@@ -256,3 +256,26 @@ the full relevant tool bundle. Further visual fixes align approval insets and
 controls, Activity links, task icons and installed-model rows. Visual conformance
 still has no PASS claim. The replacement preview requires its own package,
 isolation, activation and profile-preserving update checks before delivery.
+
+## Replacement candidate ready
+
+Runtime source: `6c2f6665a67ca13f7960fb2b0ec7b2172280df33` (all five CI checks
+passed). The Fedora 44 package and isolated Ari2 r4 export built successfully.
+Its native sign-in/isolation, launcher activation, extracted-package byte match,
+source contracts and r3-to-r4 update/rollback checks passed. A further real
+Weather test passed using the normal GTK accessibility defaults, without forcing
+the accessibility backend or enabling its status property.
+
+RPM SHA-256: `9e7dd7505d28a299d8d04f80a3a0e9b984faa2b5ab61fb575d7eff11b6fe0e0f`.
+SRPM SHA-256: `0ff0dd4f27ea949e6671848fc5df286cae6e460a80630df062e6916c1d7d3bd8`.
+Ari2 r4 archive SHA-256:
+`dfd0dddf9180fd18d2703576f8fc74a1b90550dc8aaa05732c9e6d4aeaa6fefd`.
+
+Delivery is pending: the Dell's preview connection timed out after this build
+was ready. The existing r3 installation has not been replaced. The owner was
+asked to wake/unlock the device and close Ari2 to preserve any draft.
+
+Fresh desktop/phone captures and the unchanged standard comparison ran on the
+replacement source. Visual conformance still fails; no thresholds or accepted
+deviations were changed. The previously authorized exception permits functional
+manual testing, and does not establish visual or release acceptance.
