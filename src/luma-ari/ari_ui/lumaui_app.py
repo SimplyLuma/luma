@@ -297,6 +297,7 @@ class AriWindow(AppWindow):
         self.pending_request_events = []
         self.pending_approvals = set()
         self.permissions_dialog = None
+        self.pending_permissions = False
         self.read_generation = 0
         self.chatgpt_metadata_requested = False
         self.route_generation = 0
@@ -2696,6 +2697,10 @@ class AriWindow(AppWindow):
         if self.fixture:
             self.notify('Permissions are available in the live application')
             return
+        if self.daemon is None or getattr(self.daemon,'proxy',True) is None:
+            self.pending_permissions = True
+            return
+        self.pending_permissions = False
         if self.permissions_dialog is not None:
             self.permissions_dialog.present(self)
             return
@@ -2742,6 +2747,8 @@ class AriWindow(AppWindow):
         if error:
             self.render()
             return
+        if self.pending_permissions:
+            self.show_permissions()
         navigation_generation = self.generation
         route_generation = self.route_generation
         def models_loaded(value):

@@ -122,10 +122,14 @@ def main():
     app = AriApplication()
     assert app.register(None)
     window = AriWindow(app)
+    window.show_permissions()  # A cold-start settings request waits for D-Bus.
     if os.environ.get("ARI_TEST_INSTALLED_SHARE"):
         Gtk.IconTheme.get_for_display(window.get_display()).add_search_path(
             str(Path(os.environ["ARI_TEST_INSTALLED_SHARE"]).parent / "icons"))
     window.present()
+    settle(lambda:window.permissions_dialog is not None)
+    window.permissions_dialog.close()
+    settle(lambda:window.permissions_dialog is None)
     launches = []
     complete_browser = [True]
     def browser(url, _context):
