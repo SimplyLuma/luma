@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T20:28:00+00:00
+- Updated: 2026-10-29T20:33:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; aa66507ad (prior handoff), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
+- Branch and last useful commit: codex/android-first-class; a31091d8b (Mesa preflight), c85ed1d81 (preparation safety), 497a61054 (runtime source); Mesa tool recovery and incremental image build active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -64,8 +64,9 @@ The verified immutable tools already contain Meson1.9.2; upstream Mesa prepends
 Both prior observers terminated accurately; original shared policy restored.
 
 Recovery normal dev-android-images-build-vm-r9-fdd0d35d.service ADMITTED20:27:27Z,
-26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Await actual guest startup/tool
-verification and new compiler progress; service active alone is not evidence.
+26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Actual guest startup/tool
+verification PASSED20:33:04Z; await new compiler progress. Service active alone
+is not evidence of compilation.
 Updated r11 guest binds verified bundle meson over guest-only/usr/bin/meson,
 checks actual Mesa selection before compilation, and mounts a recorded
 preparation-script overlay with c85ed1d81 bounded/error-propagating checks.
@@ -91,7 +92,12 @@ inactive runtime VM/source preflight. Production Mesa preflight179fdeb0 PASSED2
 fixture tests including actual failed0.61.2 selection and PATH precedence.
 Source b35283a1 PASSED2 Mesa +6 cleanliness fixtures, Bash syntax and diff checks.
 Live startup verifier dev-android-highram-live-verification-d9b1a4be.service
-requires this attempt timestamp plus actual unprivileged/usr/bin-first Meson1.9.2.
+PASSED20:33:04Z with this attempt timestamp, actual unprivileged/usr/bin-first
+Meson1.9.2, MemTotal25,195,511,808 bytes,8CPUs/8jobs and25GiB QEMU hard+combined.
+Actual guest journal shows bundle-only file bind and successful preflight20:32:58Z.
+At20:33:15Z unitMainPID1090 active, log explicitly checking source projects with
+verification jobs=2. No Ninja yet; no further percentage or speedup claim.
+All4 immutable input hashes passed20:32:34..35Z before VM boot20:32:36Z.
 These are controls, not actual image/runtime qualification. No completed image.
 
 User explicitly authorized a larger allocation when spare RAM is available.
