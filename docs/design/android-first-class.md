@@ -121,6 +121,9 @@ boundary is not a complete isolation audit of the Android runtime. A label-only
 SELinux module maps the adapter to the provider's existing entrypoint type; it
 adds no allow rules. The adapter verifies its execution domain on SELinux hosts
 before starting the service, so a missing policy/label fails closed.
+Guest image-replacement transactions are rejected even from Android root or
+system. Luma's verified host update path owns the matched system/vendor pair;
+a guest-provided file path cannot authorize a privileged host image write.
 The runtime package preserves the derived GPL transport's license and attribution.
 The Luma-owned session also admits only kernel UID1000 at the host clipboard
 and user-monitor callbacks, before parcel parsing. Apps use Android's normal
@@ -178,3 +181,14 @@ review. Play Integrity, hardware attestation and DRM remain app/service-specific
 compatibility limits. Preserve publisher APK signatures, entitlements and asset
 requirements. Release review must cover actual licenses, notices, source offers,
 trademarks and service terms; this engineering decision is not a legal opinion.
+
+Current caller checks reject ordinary APK UIDs; they do not establish complete
+runtime origin or sandboxing. The old non-remapped transport shares UID1000 with
+some host logins. Before production, move Android identities into a dedicated
+user namespace and authenticate bridge callers against the actual runtime
+instance; do not treat a numeric UID alone as proof of Android origin. Binder,
+Wayland/PipeWire socket access, GPU device access, id-mapped application storage,
+profile boundaries and host-service identities must be qualified together.
+Android platform test keys are development inputs; production trust requires
+protected platform signing keys and a release image that rejects test-key
+privileged APKs. These remain shipping gates, alongside mandatory-access policy.

@@ -49,7 +49,10 @@ class GuardedServiceManager:
             raise RuntimeError('Unexpected Android host service interface')
 
         def guarded(request, code, flags):
-            if not admitted(request, self.allowed_uids):
+            # Preinstalled images are replaced by Luma's verified host update
+            # path. Guest-supplied image paths never authorize host-root writes.
+            image_replacement = self.interface == INTERFACE and code in (5, 6)
+            if image_replacement or not admitted(request, self.allowed_uids):
                 # AIDL SecurityException, including the empty remote-stack
                 # header. Raw transport errors are normalized by libgbinder
                 # and cannot reliably distinguish permission from absence.

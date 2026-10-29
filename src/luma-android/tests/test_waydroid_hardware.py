@@ -61,7 +61,7 @@ class HardwareAdmission(TestCase):
                     request.sender_euid.return_value = uid
                     request.init_reader.side_effect = AssertionError('Untrusted parcel read')
                     result = handle(request, code, flags)
-                    if type(uid) is int and uid in (0, 1000):
+                    if type(uid) is int and uid in (0, 1000) and code not in (5, 6):
                         self.assertEqual(result, ('provider-reply', 0))
                         provider.assert_called_once_with(request, code, flags)
                     else:
