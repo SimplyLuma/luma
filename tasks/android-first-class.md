@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T13:50:00+00:00
+- Updated: 2026-10-29T14:06:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 3ff01af63
+- Branch and last useful commit: codex/android-first-class; 7c13c192f
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -12,12 +12,12 @@
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. HEAD3ff01af63. Current source
+Source/worktree isolated; canonical untouched. HEAD7c13c192f. Current source
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
-CURRENT ACTIVE BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
+FAILED BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
 10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
 VM809f0871-fd88-4770-83dd-624c90259c06/IP192.168.122.36. Started09:01:21Z,
 startup passed09:06:41Z. Project luma-project-native-io.squashfs70,574,080B,
@@ -25,7 +25,11 @@ SHA8b8ef91de1bfcb394a2b10b8325155cce958cd18195a4e0db72aad1120b18317,
 source3ff01af63 includes0016. Builder8GiB RAM/QEMU9GiB hard, 24GiB disk swap
 plus4GiB virtual zram with1GiB compressed cap, priority100. Source/out overlay
 upper-native-v1 reused. At13:35Z soong_build active~3h50m, RSS6.35GiB, total
-guest swap10.8GiB; severe memory pressure remains. No completed image exists.
+guest swap10.8GiB; severe memory pressure remains. No completed image exists. Build guest was destroyed by controller13:52:51Z
+after a30s SSH poll timeout during swap relocation. Heap work was NOT saved.
+Do NOT repeat swapoff on a memory-starved live compiler. Disk artifacts retained.
+Next startup needs compressed swap configured adequately BEFORE compilation,
+transient transport retry within bounded actor lifetime, and early state saving.
 Guest startup verifies zram cap via mm_stat[3] (mem_limit is write-only).
 Root controller watches normal owner; ExecStopPost destroys only this VM.
 Deliberate cancellation: stop root controller before normal job.
@@ -35,13 +39,58 @@ profile; durable r6-checkpoint.json/logs retained. No process-heap resume claim.
 r7 failed before compilation08:56Z due reading write-only zram mem_limit;
 no result claimed. r8 fixes startup. Immutable input verification remains intact.
 
-CURRENT RUNTIME: OFF, controller/admission inactive; original6GiB RAM/8GiB
-hard XML restored OFF08:50Z, SHA
-b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5.
-Full runtime needs normal9GiB, cannot coexist builder10GiB in account16GiB.
-Temporary3GiB/5GiB hard profile fits normal6GiB if explicitly redefined whileOFF.
-Own VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35 has synthetic user.
-.91 /usr overlay disappears on reboot; APKr13 persists. Empty XML backup unusable.
+CURRENT RUNTIME: normal dev-android-runtime-full-r9-5706d8ea.service ACTIVE,
+9GiB/10GiB HDD; root luma-android-first-class-runtime-controller.service,
+VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. Guest6GiB RAM/
+QEMU8GiB hard AND combined RAM+swap, root128MiB+128swap, actual guest MemTotal
+5844MiB. Original restored XML had no swap_hard_limit, so first0484888f refused
+BEFORE BOOT. Retry5706d8ea added ONLY combined cap while inactive; backup
+vm/domain-before-full-bounded-r8.xml SHA b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5,
+current vm/domain-full-bounded-r8.xml SHA
+5cfc05320de373e991c6f0ac143356876dd6b14a7d222f5d31abbc02d81427ca.
+Original6GiB RAM preserved. Stop root controller before normal job when done.
+No compiler runs concurrently. Runtime needs normal9GiB; builder10GiB cannot
+coexist in account16GiB. Private helper stages run separately under normal1GiB.
+
+.92 INSTALLED in disposable /usr overlay13:59:45Z, normal c6175059 PASSED,
+profiles755/import transaction completed. Earlier4585a133 failed waiting for
+SSH during early boot before mutation; bounded readiness retry corrected it.
+Initial cold39333e14 failed BEFORE launch because reset-failed named an unloaded
+unit. Retry28da51d2 removed that unnecessary setup command and PASSED14:02:20Z:
+packaged.92 after broker/session stop and root container-service restart,
+CLI launch exited0 in25.2808s, Android boot_completed1, MainPID6155 alive in
+luma-android-session.service cgroup after caller exit. This is full6GiB guest,
+old Android image, not first-frame/physical performance or proof of the cause
+of earlier3GiB failures. Evidence runtime-cold92-full/result-r2.json.
+Warm fixture14 normal de38a382 PASSED14:03:36Z: normal CLI remove4.660s,
+install8.103s, launch3.172s (command completion only). APK14 persists disk.
+Native screenshot native-task-live/fixture14-full.png shows rendered app with
+native titlebar; NOT timing evidence. New task button at(640,398), native
+clipboard now(640,344), copy remains(640,452); recapture before future clicks.
+
+REAL TASK HAL NEGATIVE e5fe4bee PASSED AS PROBE14:05:07Z: ordinary Android
+UID10135 raw transaction4 returned fixed fixture label. UID1000 trusted raw
+control returned known label before AND after; endpoint not unavailable.
+Actual installed APKsha916d4214440eaeb55fb25852eb2dd657cf91ea72bb97d59136c8358d7b7a4755
+checked inside Android. Evidence native-task-live/result.json. Old-image name
+access is NOT isolated; no actual task mutation tested.0017 must deny ordinary
+reads while preserving trusted labels and normal native window controls.
+
+NEXT BUILDER PREPARED, NOT RUN: project luma-project-native-task.squashfs
+70,582,272B SHA849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
+commit7c13c192faacdcaa32170fef1e68322c22e4a8d5, snapshot normal3d91c58f PASSED.
+Private build-vm-driver/{controller-r9.py,guest-build-r9.py,run-r9.sh} syntax
+passed. Same normal10GiB/guest8GiB/QEMU9GiB fixed budget. Guest configures zstd
+zram24GiB virtual/4GiB compressed cap BEFORE compilation, keeps disk swap24GiB,
+uses GOGC5/GOMAXPROCS2; no live swapoff. Controller retries up to6 transient SSH
+failures and saves VM RAM/disk identity before4.5h or repeated transport failures.
+One-shot restore verifies immutable inputs, disk bytes, XML, RAM-state SHA and
+marks consumed before restore. Restore driver not yet run against actual builder.
+Synthetic KVM control b826926d PASSED14:04:08Z: exact counter+marker unchanged
+across save/restore-paused, counter advances after resume. VM256MiB/QEMU512MiB
+combined under normal1GiB + root128/128, no network/data. SELinuxEnforcing retained;
+fixture domain destroyed/undefined. checkpoint-control/result.json. This tests
+KVM save semantics, NOT Android/compiler recovery or the full r9 controller.
 
 .92 clean RPM r15/164b9abc PASSED08:47:48Z:91 actual tests, zero skips/failures/
 errors, payload/import/desktop/profile755 checks. Source3ff01af63. BinarySHA
@@ -97,10 +146,12 @@ New task button shifts all following UI coordinates; recapture before clicks.
 Builder-only tuning: normal87d3720f PASSED13:43:02Z adds zram1 virtual16GiB/
 compressed-memory cap3GiB, lz4, priority110. Existing4GiB/1GiB zram and24GiB disk
 retained, guest8GiB/QEMU9GiB/normal10GiB unchanged. zram-expand/receipt.json.
-Normal a2ca00dd ACTIVE13:46:57Z: bounded300s swapoff attempt relocates disk pages
+Normal a2ca00dd FAILED13:52:47Z (350s SSH timeout): bounded300s swapoff attempt relocates disk pages
 to new compressed capacity, finally re-enables disk fallback if off. Root128MiB/
 420s, log/receipt under zram-expand. Normal d7f080e0 PASSED13:49:20Z changes only
 guest vm.page-cluster3->6 for swap readahead; swap-readahead/receipt.json.
+The bounded swapoff did not return a receipt before SSH transport failed; do not
+claim it was fully bounded or that disk fallback re-enable executed. VM is OFF.
 At13:49Z soong_build still4h04 elapsed/29m32CPU, guest disk swap~6.77GiB,
 zram1~313MiB original/78MiB memory. No measured throughput improvement claimed.
 
