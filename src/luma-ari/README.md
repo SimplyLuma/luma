@@ -38,18 +38,43 @@ per model and account, and are validated before use. No model-name lookup table
 invents reasoning levels. Local models explicitly marked as supporting thinking
 have a separate on/off choice. Replies record the selected setting.
 
-Ari's shipped action tools currently cover opening applications and personal
-settings, including the existing settings catalogue and media controls. Opening
-an app has a dedicated permission and does not require approval for each launch.
-Changing files, general in-app actions, building applications, and installing or
-removing applications are not implemented Ari tools. Their future policy tiers
-remain disabled; enabling a tier alone would not implement those operations.
+Ari opens applications and changes personal settings through the existing
+settings catalogue and media controls. App opening has a separate permission
+and does not require approval for each launch.
 
-The shared Semantic Broker already offers discoverable application surfaces and
-`InvokeAction`; the SDK supplies application scaffolding and contract checks,
-and the installer supplies reviewed install/removal workflows. Connecting those
-services to Ari is further implementation work. Each capability must use its
-actual backend and return a verified result rather than merely claiming success.
+Application actions use the shared Semantic Broker: request the needed access,
+read the app's published objects/actions, and invoke their actual IDs. The
+broker owns consent, redaction, risk confirmation and provider dispatch. Apps
+must publish actions for Ari to use them; this does not simulate arbitrary
+mouse/keyboard interaction in applications without that interface.
+
+Development tools create native SDK projects under `~/Projects/Ari`, list/read
+and edit their files, and run checks/build commands. Replacing an existing file
+requires the checksum from its last read. Builds run in Bubblewrap without
+network, the session bus, host credentials, other home files or system writes.
+Only the current project is writable. Dependencies must already be available;
+build failures are reported, and scaffolding alone is not a completed app.
+
+Software tools search Depot's catalogue and resolve supported Flatpak entries
+to their actual signature-checked remote, commit and sandbox permissions. A
+short-lived review is required to install; the owning backend rechecks the
+source and dependencies, and Ari verifies the final installed ref. Other
+catalogue backends remain available through Depot's own interface.
+
+Ari can also inspect a local package and retain a short-lived review of its
+publisher, permissions and warnings before installing through Valet. Valet
+rechecks package bytes and publishes the actual installation record. Removal
+uses the owning workflow, protects essential components and keeps personal
+settings/data. Staged system changes explicitly report the required restart.
+Optional applications supplied by Luma's system image use the existing
+polkit-guarded removal/restore helper. That helper rechecks its own trusted
+catalogue, essential-package floor, dependencies and staged deployment; Ari
+cannot supply an arbitrary privileged command or remove a protected component.
+There is no unrestricted root shell or automatic download of arbitrary code.
+
+These adapters have separate permission switches and successful-action
+receipts. Unknown tools remain denied; undo is offered only when a backend
+supplies a real undo operation. The SDK package and Bubblewrap are required.
 
 ## Credentials and transport
 
@@ -92,6 +117,7 @@ From the repository root, with the Python dependencies installed:
 ```sh
 PYTHONPATH=src/luma-ari python3 -m unittest discover -s tests/luma-ari -p 'test_*.py'
 bash tests/luma-ari/run-chatgpt-native.sh
+bash tests/luma-ari/run-actions-native.sh
 ```
 
 The native test additionally needs the Luma platform libraries/typelibs, GTK,
@@ -101,3 +127,7 @@ and the shared AppKit dependencies. `ARI_TEST_PYTHON` and
 isolated XDG directories and a new D-Bus session, exercises real Secret Service,
 GTK and loopback OAuth, and substitutes only the remote provider. Test provider
 replies do not establish live OpenAI account eligibility or inference success.
+The action runner uses a disposable home and private broker with fixture consent,
+then exercises actual SDK generation, isolated Python checks, reviewed portable
+installation, removal and preservation of private app data. It does not install
+or remove any of the developer's real applications.

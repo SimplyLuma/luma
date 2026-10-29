@@ -25,16 +25,24 @@ TOOL_TIERS = {
     "set_timezone": PERSONAL_SETTINGS, "set_volume": PERSONAL_SETTINGS, "set_do_not_disturb": PERSONAL_SETTINGS,
     "set_wifi": PERSONAL_SETTINGS, "set_bluetooth": PERSONAL_SETTINGS, "set_tiling": PERSONAL_SETTINGS,
     "media_control": PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
+    "app_surfaces": READ_PERSONAL, "request_app_access": READ_PERSONAL,
+    "app_action": ACT_ON_BEHALF, "installed_apps": ANSWER, "inspect_package": ANSWER,
+    "install_package": CHANGE_SYSTEM, "remove_application": CHANGE_SYSTEM,
+    "list_project": READ_PERSONAL, "read_project_file": READ_PERSONAL,
+    "create_project": CHANGE_FILES, "write_project_file": CHANGE_FILES, "run_project": CHANGE_FILES,
+    "search_software": ANSWER, "review_software": ANSWER, "install_software": CHANGE_SYSTEM,
+    "restore_system_application": CHANGE_SYSTEM,
 }
 # Changes that reach past this person's own desktop -- the whole machine's
 # clock, its connections -- are consequential (ADR-025): Ari asks first unless
 # the person chose "Don't ask".
-CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth"}
+CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth", "install_package", "remove_application",
+                 "create_project", "write_project_file", "run_project", "install_software", "restore_system_application"}
 APPROVAL_MODES = ("system", "all", "never")
-# Phase 1 runs Tiers 0 and 1. The rest exist so the refusal is honest.
-ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS, OPEN_APPS}
-MAX_CALLS_PER_TURN = 6
-MAX_CALLS_PER_MINUTE = 30
+# Only concrete adapters are registered; unknown tools still fail closed.
+ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, ACT_ON_BEHALF, CHANGE_FILES, CHANGE_SYSTEM, OPEN_APPS}
+MAX_CALLS_PER_TURN = 24
+MAX_CALLS_PER_MINUTE = 60
 
 
 @dataclass(frozen=True)
@@ -52,8 +60,10 @@ class Policy:
         self._recent: deque[float] = deque()
 
     def needs_approval(self, tool: str) -> bool:
-        if self.tier(tool) in (ANSWER, OPEN_APPS) or self.approval_mode == "never":
+        if self.tier(tool) in (ANSWER, OPEN_APPS, READ_PERSONAL) or self.approval_mode == "never":
             return False
+        if tool == "app_action":
+            return False  # The application broker owns its access and risk prompts.
         return self.approval_mode == "all" or tool in CONSEQUENTIAL
 
     def tier(self, tool: str) -> int:

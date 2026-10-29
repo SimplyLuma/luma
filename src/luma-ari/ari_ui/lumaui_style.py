@@ -11,9 +11,13 @@ def build(_appearance):
     card, action, foot = t.CARD, t.ACTION_CENTER, t.STRUCTURE["foot"]
     # App-owned Models geometry from the owner's take-73 Models stylesheet.
     models = """
-    .ari-filter-chip { padding: 0 12px; min-height: 34px; border-radius: 17px; background: @luma_chip; }
+    .ari-filter-chip { padding: 0 13px; min-height: 34px; border-radius: 11px; background: @luma_well; }
     .ari-filter-chip.selected { background: @luma_hover; box-shadow: inset 0 0 0 1px @luma_line; }
     .ari-models-page .lumaui-t-caption { font-size: 12.5px; color: @luma_ink_secondary; }
+    .ari-models-page .lumaui-t-caption, .ari-models-page .lumaui-t-body { font-weight: 400; }
+    .ari-model-actions button.lumaui-bar-button { min-height: 36px; padding-top: 0; padding-bottom: 0; }
+    .lumaui-phone .ari-model-actions button.lumaui-bar-button { min-height: 44px; }
+    .ari-provider-row button.icon { min-width: 32px; min-height: 32px; padding: 0; background: transparent; }
     .ari-models-page .lumaui-t-title-2 { font-size: 14px; font-weight: 650; }
     .ari-chatgpt-card .lumaui-t-title-2 { font-size: 17px; font-weight: 720; }
     .ari-chatgpt-card .lumaui-t-caption { font-size: 13.5px; }
@@ -23,18 +27,35 @@ def build(_appearance):
     .ari-models-page .ari-models-title { font-size: 32px; font-weight: 780; letter-spacing: -.8px; }
     .ari-models-page .ari-models-section { font-size: 18px; font-weight: 720; letter-spacing: -.18px; }
     .ari-assignments-card { padding: 0; }
-    .ari-model-assignments > box { padding: 14px 16px; min-height: 36px; }
-    .ari-model-assignments > box:first-child { min-height: 52px; }
+    .ari-model-assignments > box { padding: 10px 16px; min-height: 44px; }
+    .ari-model-assignments > box:first-child { min-height: 60px; }
+    .ari-model-assignments > box:first-child .lumaui-t-title-2 { font-size: 15.5px; }
     .ari-model-assignments > button { background: transparent; }
     .ari-providers-card { padding: 0; }
-    .ari-provider-row { padding: 12px 16px; min-height: 40px; }
+    .ari-provider-row { padding: 10px 16px; min-height: 44px; }
     .ari-provider-row button { background: @luma_hover; border-radius: 10px; }
-    .ari-chatgpt-card { padding: 20px; }
+    .ari-chatgpt-card { padding: 20px; border-radius: 20px; }
+    .ari-chatgpt-signin { min-height: 40px; padding: 0 18px; border-radius: 13px; }
+    .phone .ari-chatgpt-signin { min-height: 44px; }
     .ari-open-model { padding: 0; background: transparent; border: none; box-shadow: none; }
     .ari-model-assignments button { background: @luma_hover; border-radius: 10px; }
-    .ari-model-assignments > button { min-height: 48px; }
-    .ari-size-rung { padding: 16px; border-radius: 16px; background: @luma_chip; box-shadow: inset 0 0 0 1px @luma_line; }
+    .ari-model-assignments > button { min-height: 48px; border-radius: 0; }
+    .ari-task-add { padding: 0 16px; }
+    .ari-task-add image { margin-right: 28px; }
+    .ari-model-assignments button label, .ari-provider-row button label { font-weight: 600; }
+    .ari-model-assignments button.icon { min-width: 28px; min-height: 28px; padding: 0; background: transparent; }
+    .ari-size-rung { padding: 14px 16px; border-radius: 16px; background: @luma_chip; box-shadow: inset 0 0 0 1px @luma_line; }
     .ari-size-rung.selected { box-shadow: inset 0 0 0 2px @luma_ink; }
+    .ari-size-rung .lumaui-t-title-1 { font-size: 20px; font-weight: 760; }
+    .ari-size-rung .lumaui-t-body { font-size: 12.5px; font-weight: 500; color: @luma_faint; }
+    .ari-family-card { padding: 18px; border-radius: 20px; background: @luma_card_surface; box-shadow: inset 0 0 0 1px @luma_line; }
+    .ari-family-card:hover { background: @luma_hover; }
+    .ari-family-content .lumaui-t-title-2 { font-size: 16px; font-weight: 700; }
+    .ari-family-content > label { font-size: 13.5px; color: @luma_ink_secondary; min-height: 39px; }
+    .ari-recommended-card { padding: 24px; border-radius: 22px; background-image: linear-gradient(120deg, @luma_ari_hero_wash, @luma_card_surface 65%); }
+    .ari-recommended-card .lumaui-t-title-1 { font-size: 24px; font-weight: 760; }
+    .ari-model-fit { padding: 14px 16px; border-radius: 16px; background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; }
+    .ari-removal-fallback { padding: 12px 14px; border-radius: 14px; background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; }
     """
     legacy = models + f"""
     .ari-connection {{ color: @luma_good; }}

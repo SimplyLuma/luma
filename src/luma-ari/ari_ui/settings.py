@@ -33,6 +33,13 @@ TOOL_GLYPHS = {
     "set_permission": "channel-secure-symbolic",
 }
 TOOL_NAMES = {
+    "app_surfaces": "Read application actions", "request_app_access": "Requested application access",
+    "app_action": "Performed an application action", "installed_apps": "Checked installed apps",
+    "inspect_package": "Reviewed a package", "install_package": "Installed an app", "remove_application": "Uninstalled an app",
+    "list_project": "Read project files", "read_project_file": "Read a project file", "write_project_file": "Edited a project file",
+    "create_project": "Created an application project", "run_project": "Ran a project command",
+    "search_software": "Searched available software", "review_software": "Reviewed application permissions", "install_software": "Installed an application",
+    "restore_system_application": "Restored a system application",
     "now": "Checked the time", "calculate": "Worked something out", "convert": "Converted units",
     "weather": "Checked the weather", "web_search": "Searched the web", "fetch_page": "Read a page",
     "wikipedia": "Looked up Wikipedia",

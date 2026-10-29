@@ -8,9 +8,12 @@ Messages are newline-delimited JSON-RPC 2.0, as the MCP stdio transport says.
 from __future__ import annotations
 
 import json
+import os
+import selectors
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -38,18 +41,24 @@ class Client:
         self.env = env
         self.process: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._start_lock = threading.Lock()
+        self._read_buffer = b""
         self._next = 0
         self.tools: list[Tool] = []
 
     def start(self) -> None:
-        self.process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL, text=True, bufsize=1, env=self.env)
-        self._request("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {},
-                                     "clientInfo": {"name": "ari", "version": "0.1.0"}})
-        self._notify("notifications/initialized")
-        listed = self._request("tools/list", {})
-        self.tools = [Tool(t["name"], t.get("description", ""), t.get("inputSchema", {}), self.name)
-                      for t in listed.get("tools", [])]
+        with self._start_lock:
+            if self.process is not None and self.process.poll() is None:
+                return
+            self._read_buffer = b""
+            self.process = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL, text=True, bufsize=1, env=self.env)
+            self._request("initialize", {"protocolVersion": PROTOCOL_VERSION, "capabilities": {},
+                                         "clientInfo": {"name": "ari", "version": "0.1.0"}})
+            self._notify("notifications/initialized")
+            listed = self._request("tools/list", {})
+            self.tools = [Tool(t["name"], t.get("description", ""), t.get("inputSchema", {}), self.name)
+                          for t in listed.get("tools", [])]
 
     def _send(self, message: dict) -> None:
         assert self.process and self.process.stdin
@@ -59,7 +68,29 @@ class Client:
     def _notify(self, method: str, params: dict | None = None) -> None:
         self._send({"jsonrpc": "2.0", "method": method, **({"params": params} if params else {})})
 
-    def _request(self, method: str, params: dict) -> dict:
+    def _line(self, stop, deadline):
+        assert self.process and self.process.stdout
+        with selectors.DefaultSelector() as selector:
+            selector.register(self.process.stdout, selectors.EVENT_READ)
+            while b'\n' not in self._read_buffer:
+                if stop is not None and stop.is_set():
+                    self.stop()
+                    raise ToolError("Stopped the isolated project command. Check the project before continuing.")
+                if time.monotonic() >= deadline:
+                    raise ToolError(f"The {self.name} tools did not respond in time. Check the operation before retrying.")
+                if not selector.select(.1):
+                    continue
+                chunk = os.read(self.process.stdout.fileno(), 65536)
+                if not chunk:
+                    raise ToolError(f"The {self.name} tools stopped.")
+                self._read_buffer += chunk
+                if len(self._read_buffer) > 4 * 1024 * 1024:
+                    self.stop()
+                    raise ToolError("The tool response exceeded Ari's limit.")
+        line, self._read_buffer = self._read_buffer.split(b'\n',1)
+        return line.decode('utf-8')
+
+    def _request(self, method: str, params: dict, *, stop=None) -> dict:
         with self._lock:
             if self.process is None or self.process.poll() is not None:
                 raise ToolError(f"The {self.name} tools aren't running.")
@@ -67,13 +98,14 @@ class Client:
             identity = self._next
             self._send({"jsonrpc": "2.0", "id": identity, "method": method, "params": params})
             assert self.process.stdout
+            deadline = time.monotonic() + (1800 if method == 'tools/call' else 10)
             while True:
-                line = self.process.stdout.readline()
-                if not line:
-                    raise ToolError(f"The {self.name} tools stopped.")
+                line = self._line(stop, deadline)
                 try:
                     message = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(message, dict):
                     continue
                 if message.get("id") != identity:
                     continue
@@ -81,9 +113,9 @@ class Client:
                     raise ToolError(message["error"].get("message", "Tool error"))
                 return message.get("result", {})
 
-    def call(self, tool: str, arguments: dict) -> dict:
+    def call(self, tool: str, arguments: dict, *, stop=None) -> dict:
         """Returns the tool's structured result: {"ok", "summary", "undo"?, "data"?}."""
-        result = self._request("tools/call", {"name": tool, "arguments": arguments})
+        result = self._request("tools/call", {"name": tool, "arguments": arguments}, stop=stop)
         structured = result.get("structuredContent")
         if not isinstance(structured, dict):
             text = " ".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
@@ -92,9 +124,19 @@ class Client:
         return structured
 
     def stop(self) -> None:
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
+        process = self.process
         self.process = None
+        if process:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+            for stream in (process.stdin, process.stdout):
+                if stream:
+                    stream.close()
 
 
 # ── Server side ──────────────────────────────────────────────────────────
@@ -128,6 +170,8 @@ def serve(server_name: str, tools: dict[str, tuple[str, dict, Handler]]) -> None
                 continue
             try:
                 outcome = entry[2](params.get("arguments") or {})
+            except ImportError:
+                outcome = {"ok": False, "summary": "This operation needs a newer Luma component. Update Luma and try again."}
             except Exception as error:  # a tool never takes its server down
                 outcome = {"ok": False, "summary": f"{error}"}
             result = {"content": [{"type": "text", "text": outcome.get("summary", "")}],

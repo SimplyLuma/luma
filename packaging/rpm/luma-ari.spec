@@ -35,14 +35,18 @@ Requires:       luma-developer-platform >= 0.1.0-1.luma.100.creator20261007.1
 Requires:       luma-ari-runtime >= 0.4.0
 Requires:       luma-displays
 Requires:       dbus-common
-Requires:       luma-application-installer >= 0.1.0-1.luma.55.creator20261007.1
+Requires:       bubblewrap
+Requires:       luma-developer-platform-sdk >= 0.1.0-1.luma.100.creator20261007.1
+Requires:       luma-application-installer >= 0.1.0-1.luma.76
 # The weather tool reads the Weather app's forecast backend when it is there.
 Recommends:     prairie-core-apps
 
 %description
 Ari answers questions and changes personal settings such as the dock, the
-theme, the wallpaper and the refresh rate. Every change is a step that can be
-undone. The daemon runs an open model locally through luma-ari-runtime or
+theme, the wallpaper and the refresh rate. Application actions, SDK projects,
+isolated builds and reviewed software transactions use their owning services.
+Successful changes are recorded, with undo when the backend supports it.
+The daemon runs an open model locally through luma-ari-runtime or
 connects to your ChatGPT plan or OpenRouter. It keeps
 conversations and an append-only activity log in the person's own data folder,
 and decides in code which tools may run.
@@ -93,6 +97,7 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" 
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21.creator20261029.1
 - Add ChatGPT plan sign-in, account management and model selection.
 - Add hosted search requests, linked sources, effort controls and model family pages.
+- Connect application actions, isolated project builds and reviewed software installation and removal.
 
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19.creator20261019.3
 - Export the assistant interface before accepting activated requests.

@@ -58,9 +58,17 @@ class FixtureRuntime(unittest.TestCase):
             window.show_model_family('Qwen3', 'qwen8')
             settle(window, .1)
             self.assertEqual(window.selected_family_model()['id'], 'qwen8')
+            key = window.bar.bar_row.get_first_child()
+            self.assertTrue(key.bar_words.get_visible())
+            self.assertIn('Remove',key.bar_words.get_label())
             window.begin_remove('qwen8')
             self.assertEqual(window.bar.grown, 'remove-model')
             window.cancel_remove()
+            window.show_model_family('Qwen3','qwen14')
+            settle(window,.1)
+            key=window.bar.bar_row.get_first_child()
+            self.assertTrue(key.bar_words.get_visible())
+            self.assertIn('Download',key.bar_words.get_label())
             window.models_tab, window.model_family = 'yours', None
             window.state.update(view='chat', model='chatgpt:future')
             window.chatgpt_data = {'models':[{'id':'future','name':'Future',

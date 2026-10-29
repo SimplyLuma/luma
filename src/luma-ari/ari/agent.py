@@ -16,20 +16,20 @@ import re
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from . import audit, intents, router
 from .mcp import Client, Tool, ToolError
 from .persona import PROFILES, Profile, system_prompt
-from .policy import ANSWER, PERSONAL_SETTINGS, OPEN_APPS, Policy
+from .policy import ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, CHANGE_FILES, OPEN_APPS, Policy
 from .store import Store
 
 Emit = Callable[[dict], None]
 
 _THINK = re.compile(r"<think>.*?(</think>|$)", re.S)
 _CLAIM = re.compile(r"^\s*(?:(?:i\s+(?:have|'ve)\s+|i\s+|i've\s+)?(?:done|moved|changed|set|switched|opened|turned|"
-                    r"updated|applied|put|made)\b)", re.I)
+                    r"updated|applied|put|made|installed|uninstalled|created|saved|deleted|removed|sent|built)\b)", re.I)
 _CHANGE_REQUEST = re.compile(r"^(?:please\s+)?(?:can you\s+|could you\s+)?(?:show|hide|turn|switch|set|make|change|"
                              r"enable|disable|use|put|stop|start|let|increase|decrease|speed|slow)\b", re.I)
 # Questions whose answer changes over time. Their answer must come from a
@@ -58,6 +58,7 @@ class Turn:
     read_untrusted: bool = False
     injection_seen: bool = False
     model_info: dict | None = None
+    project_approvals: set[str] = field(default_factory=set)
 
 
 class Tools:
@@ -80,12 +81,13 @@ class Tools:
     def available(self) -> list[Tool]:
         return [tool for _client, tool in self.by_name.values()]
 
-    def call(self, name: str, arguments: dict) -> dict:
+    def call(self, name: str, arguments: dict, *, stop=None) -> dict:
         if name not in self.by_name:
             return {"ok": False, "summary": "That tool isn't running."}
         client, _tool = self.by_name[name]
         try:
-            return client.call(name, arguments)
+            client.start()
+            return client.call(name, arguments, stop=stop if client.name == 'workspace' else None)
         except ToolError as error:
             return {"ok": False, "summary": str(error)}
 
@@ -112,15 +114,23 @@ class Agent:
     # ── Running one tool through policy ──────────────────────────────────
 
     def run_tool(self, turn: Turn, name: str, arguments: dict, *, message: str = "") -> dict:
+        if turn.stop.is_set():
+            return {"ok": False, "summary": "Stopped.", "refused": True}
         user_named_it = bool(router.select(turn.text, [t for t in self.tools.available if t.name == name], 1)) \
             or intents.match(turn.text) is not None
+        if name in ("create_project", "write_project_file", "run_project"):
+            user_named_it = bool(re.search(r"\b(?:build|create|develop|code|program|implement|fix|edit|test|run|make|customize)\b", turn.text, re.I))
+        elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
+            user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
+        elif name == "app_action":
+            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|delete|remove|play|pause|move|save|set|mark|schedule|book|do)\b", turn.text, re.I))
         if name == "open_app" and turn.read_untrusted:
             app = str(arguments.get('name', '')).strip().casefold()
             user_named_it = bool(app and re.search(r'(?:^|\b(?:and|then|please)\s+)(?:(?:can|could) you\s+)?(?:open|launch|start|run)\s+', turn.text, re.I)
                                  and re.search(r'(?<!\w)' + re.escape(app) + r'(?!\w)', turn.text.casefold()))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
-        if decision.allowed and turn.read_untrusted and decision.tier > ANSWER and not user_named_it:
+        if decision.allowed and turn.read_untrusted and decision.tier not in (ANSWER, READ_PERSONAL) and not user_named_it:
             decision = type(decision)(False, decision.tier,
                                       "I read something that asked for a change you didn't ask for, so I didn't make it.")
         if decision.allowed and not _value_named(turn.text, name, arguments):
@@ -133,15 +143,19 @@ class Agent:
             return {"ok": False, "summary": decision.reason, "refused": True}
         arguments = {k: v for k, v in arguments.items() if k != "preview"}
         approval = ""
-        if self.policy.needs_approval(name):
+        project = arguments.get("project") if decision.tier == CHANGE_FILES else None
+        project_granted = self.policy.approval_mode == "system" and project in turn.project_approvals
+        if self.policy.needs_approval(name) and not project_granted:
             preview = self.tools.call(name, {**arguments, "preview": True}) if self._previews(name) else \
                 {"ok": True, "preview": _describe(name, arguments)}
             if not preview.get("ok") or preview.get("unchanged"):
                 audit.record({**entry, "decision": "ran", "ok": bool(preview.get("ok")),
                               "summary": preview.get("summary", "")})
                 return preview
-            answer, approval = self._ask_approval(turn, name, preview.get("preview") or _describe(name, arguments),
-                                        preview.get("detail", ""))
+            detail = preview.get("detail", "")
+            if project and self.policy.approval_mode == "system":
+                detail += "\nThis request may edit this project's source and run isolated checks/builds in it. Other files and the network stay inaccessible to build commands."
+            answer, approval = self._ask_approval(turn, name, preview.get("preview") or _describe(name, arguments), detail)
             if answer is not True:
                 reason = "person declined" if answer is False else "no answer"
                 audit.record({**entry, "decision": "refused", "reason": reason})
@@ -149,9 +163,14 @@ class Agent:
                         "summary": "You said no, so I left it as it is." if answer is False
                         else "I didn't hear back, so I left it as it is."}
             entry["approved"] = True
+            if project:
+                turn.project_approvals.add(project)
+        if turn.stop.is_set():
+            return {"ok": False, "summary": "Stopped before making the change.", "refused": True}
         turn.calls += 1
         turn.emit({"type": "tool", "name": name, "label": _running_label(name)})
-        result = self.tools.call(name, arguments)
+        result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)
+                  else self.tools.call(name, arguments))
         step_id = ""
         if result.get("source"):
             turn.sources.append(result["source"])
@@ -159,13 +178,14 @@ class Agent:
             turn.read_untrusted = True
             if _INJECTION.search(json.dumps(result.get("data", ""))):
                 turn.injection_seen = True
-        if result.get("ok") and decision.tier in (PERSONAL_SETTINGS, OPEN_APPS) and not result.get("unchanged"):
-            step_id = self.store.add_step(turn.conversation, message, name, result.get("summary", ""), result.get("undo"))
+        if result.get("ok") and decision.tier not in (ANSWER, READ_PERSONAL) and not result.get("unchanged"):
+            target = result.get("open_path") if name in ("create_project", "write_project_file") else None
+            step_id = self.store.add_step(turn.conversation, message, name, result.get("summary", ""), result.get("undo"), target=target)
             audit.record({**entry, "decision": "ran", "ok": True, "summary": result.get("summary", ""),
                           "undo": result.get("undo"), "step": step_id})
             step = {"type": "step", "step": step_id, "tool": name, "summary": result.get("summary", ""),
                     "undo": bool(result.get("undo")), "confirm_within": result.get("confirm_within"),
-                    "approval": approval}
+                    "approval": approval, "target": target}
             turn.steps.append(step)
             turn.emit(step)
             if result.get("confirm_within") and result.get("undo"):
@@ -289,7 +309,11 @@ class Agent:
         if getattr(provider, "reasoning", None):
             turn.model_info.update(effort=provider.reasoning, default_effort=getattr(provider, "default_reasoning", None))
         profile: Profile = PROFILES.get(profile_name, PROFILES["small"])
-        tools = router.select(_routing_text(turn.text, self.store.messages(turn.conversation, limit=3)),
+        routing_text = _routing_text(turn.text, self.store.messages(turn.conversation, limit=3))
+        if router.development_request(routing_text):
+            profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=24,
+                              max_tokens=max(profile.max_tokens, 4096))
+        tools = router.select(routing_text,
                               self.tools.available, profile.max_tools)
         if getattr(provider, "hosted_search", False):
             tools = [tool for tool in tools if tool.name not in ("web_search", "fetch_page", "wikipedia")]
@@ -520,6 +544,9 @@ def _describe(name: str, arguments: dict) -> str:
                  "set_do_not_disturb": "Turn Do Not Disturb {state}", "set_night_light": "Turn Night Light {state}",
                  "set_dock_position": "Move the dock to the {edge}", "set_wallpaper": "Change the wallpaper",
                  "change_setting": "Change {key}", "media_control": "Control playback: {action}"}
+    templates.update(create_project="Create {name}", write_project_file="Edit {path} in {project}",
+                     run_project="Run a project command in {project}", install_package="Install the reviewed package",
+                     remove_application="Uninstall {application_id}", app_action="Perform the requested application action")
     try:
         return templates.get(name, "Change the requested preference").format(**arguments)
     except (KeyError, ValueError):

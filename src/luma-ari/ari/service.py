@@ -39,8 +39,31 @@ IDLE_UNLOAD_MINUTES = 1
 # starts it again with the next question.
 IDLE_EXIT_SECONDS = 120
 LOW_MEMORY_BYTES = 1_500_000_000
-TOOL_SERVERS = ("answers", "desktop", "system", "preferences")
+TOOL_SERVERS = ("answers", "desktop", "system", "preferences", "applications", "workspace")
 SETTINGS_SCHEMA = "org.projectluma.Ari"
+
+
+def tool_commands(tool_dir, *, managed_app="", token=None):
+    commands = {name:[sys.executable,str(tool_dir/f'{name}.py')] for name in TOOL_SERVERS}
+    if managed_app:
+        # Match the same kernel cgroup identity contract as the SDK inspector.
+        # The broker, rather than a caller-supplied application ID, authenticates
+        # this scope and labels its access prompts as Ari. No scopes are granted
+        # by creating it; grants and risk confirmations remain broker-owned.
+        commands['applications'] = ['/usr/bin/systemd-run','--user','--scope','--quiet',
+            '--unit=app-gnome-'+managed_app+'-'+(token or uuid.uuid4().hex)+'.scope',
+            *commands['applications']]
+    return commands
+
+
+def _session_manager_available():
+    try:
+        connection=Gio.bus_get_sync(Gio.BusType.SESSION,None)
+        return connection.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus',
+            'NameHasOwner',GLib.Variant('(s)',('org.freedesktop.systemd1',)),GLib.VariantType.new('(b)'),
+            Gio.DBusCallFlags.NONE,2000,None).unpack()[0]
+    except GLib.Error:
+        return False
 
 INTERFACE = """
 <node>
@@ -142,7 +165,7 @@ class Daemon:
         self._runtime_selection_lock = threading.Lock()
         self.store = Store()
         tool_dir = Path(__file__).resolve().parent / "tools"
-        self.tools = Tools({name: [sys.executable, str(tool_dir / f"{name}.py")] for name in TOOL_SERVERS})
+        self.tools = Tools(tool_commands(tool_dir,managed_app=BUS_NAME.removesuffix('1') if _session_manager_available() else ''))
         self.tools.start()
         self.agent = Agent(self.store, self.tools, Policy(), model_provider=self._model)
         self.agent.model_provider_for = self._model_for
@@ -466,10 +489,10 @@ class Daemon:
         enabled = self.agent.policy.enabled
         descriptions = {0: "Answer questions, look things up and do sums.",
                         1: "Change your settings, sound, media, displays, time zone and connections.",
-                        2: "Read your calendar, messages and files to answer.",
-                        3: "Send messages and make bookings for you.",
-                        4: "Change your files and Luma's design.",
-                        5: "Install software and change system settings.",
+                        2: "Read Ari projects and application data you grant through the system broker.",
+                        3: "Perform actions that applications publish, with their access and confirmation controls.",
+                        4: "Create and edit apps in Projects/Ari, and run isolated project checks and builds.",
+                        5: "Install reviewed application packages and uninstall apps while keeping personal data.",
                         6: "Open an application you ask for, without changing its contents."}
         return json.dumps({
             "tiers": [{"tier": tier, "name": TIER_NAMES[tier], "description": descriptions[tier],

@@ -34,7 +34,7 @@ from luma_appkit import (
     SidebarFoot, SidebarToggle, TextField, TitleIsland, Toast, ToastHost, ParagraphField, ProgressLine, RowAction,
     add_style_builder, apply_type, icons, install_appkit, install_lumaui, lumaui_tokens, panel_list,
 )
-from luma_appkit.action_center import make_control
+from luma_appkit.action_center import make_control, BarWidget, SPACER
 from luma_appkit.action_bubble import FloatingMenu, MenuItem
 from luma_appkit.rows_menu import RichMenuItem
 from luma_appkit.lumaui import hue_class
@@ -347,7 +347,8 @@ class AriWindow(AppWindow):
         self.scroll = named(ScrollView(), "scroll")
         self.clamp = Adw.Clamp(maximum_size=740, tightening_threshold=600, child=self.page)
         self.models_header = box(vertical=True)
-        self.scroll_content = box(self.models_header, self.clamp, vertical=True)
+        self.models_header_clamp = Adw.Clamp(maximum_size=920, tightening_threshold=920, child=self.models_header)
+        self.scroll_content = box(self.models_header_clamp, self.clamp, vertical=True)
         self.scroll.set_child(self.scroll_content)
         self.island = named(Island(), "island")
         self.island.append(self.scroll)
@@ -924,9 +925,12 @@ class AriWindow(AppWindow):
         receipt = self.data["activity"][identity]
         state, state_label = trace_state(receipt)
         if len(receipt["nodes"]) == 1 and state == "done" and receipt["undo"] == "none" and not receipt.get("ask"):
-            return named(box(self.receipt_lead(receipt["nodes"][0]),
+            line = named(box(self.receipt_lead(receipt["nodes"][0]),
                              text(receipt["t"], "body", wrap=True, expand=True),
                              text(receipt["at"], "caption"), spacing=10), "receipt-" + identity)
+            if receipt.get("target"):
+                line.append(self.button("Open", lambda: self.open_receipt(identity), size="tiny", appearance="quiet"))
+            return line
         card = named(ari_surface("ari-receipt-surface", lambda: Card(padded=False)), "receipt-" + identity)
         card.add_css_class("ari-receipt")
         if compact:
@@ -957,6 +961,8 @@ class AriWindow(AppWindow):
             meta.append(note)
         if not compact:
             meta.append(ari_text(receipt["at"], "time", "caption"))
+        if receipt.get("target") or (self.fixture and compact and any(node['k'] in ('file','folder','app') and node['st']=='done' for node in receipt['nodes'])):
+            meta.append(self.button("Open", lambda: self.open_receipt(identity), size="tiny", appearance="quiet"))
         if receipt.get("confirm_within") and not receipt.get("kept"):
             meta.append(self.button("Keep", lambda: self.keep(identity), name="keep-" + identity, size="tiny", appearance="quiet"))
         card.append(heading)
@@ -1041,6 +1047,14 @@ class AriWindow(AppWindow):
             approval.append(actions)
             card.append(approval)
         return card
+
+    def open_receipt(self, identity):
+        receipt = self.data["activity"].get(identity, {})
+        target = receipt.get("target")
+        if self.fixture:
+            self.notify("Opened in this preview")
+        elif isinstance(target, str) and Path(target).is_absolute():
+            Gtk.FileLauncher.new(Gio.File.new_for_path(target)).launch(self, None, None)
 
     def render_activity(self):
         files = len(activity_items(self.data["activity"], "Files"))
@@ -1244,7 +1258,9 @@ class AriWindow(AppWindow):
         heading = ari_text("Get models" if self.models_tab == "store" else "Models", "page-title", "title-1")
         heading.add_css_class("ari-models-title")
         if self.models_tab == "store":
-            description = "Free models that run on this computer. Nothing you say to them leaves it."
+            machine = self.data["computer"].get("n", "this computer")
+            machine = machine[0].lower()+machine[1:] if machine.startswith("This ") else machine
+            description = "Free models that run on " + machine + ". Nothing you say to them leaves it."
         heading.set_hexpand(True)
         switch = ModeSwitch([("yours", "Yours"), ("store", "Get models")], current=self.models_tab,
                             on_change=self.switch_models_tab, label="Models")
@@ -1279,19 +1295,21 @@ class AriWindow(AppWindow):
         self.models_change_button = self.button("Change", self.model_picker)
         use_rows = box(vertical=True, spacing=0)
         use_rows.append(box(self.model_mark(model, 44),
-                        box(text(model["n"], "title-2"), text("For everything · On this computer" if model.get("local") else "For everything · Cloud", "caption"), vertical=True, hexpand=True),
+                        box(text(model["n"], "title-2"), self.model_row_caption("For everything · On this computer" if model.get("local") else "For everything · Cloud"), vertical=True, hexpand=True),
                         self.models_change_button, spacing=14))
         task_names = {"code": "Code", "hard": "Hard problems", "long": "Long reading", "writing": "Writing"}
         for task, identity in self.task_models.items():
             assigned = self.model(identity)
             lead = box(icons.image("code" if task == "code" else "sliders-horizontal", pixel_size=18), width_request=44, height_request=40)
             row = box(lead,
-                      box(text(task_names.get(task, task), "title-2"), text(assigned["n"] + (" · On this computer" if assigned.get("local") else " · Cloud"), "caption", wrap=True), vertical=True, hexpand=True),
-                      self.icon_button("x", "Use the same as everything", lambda task=task: self.set_task_model(task, "")),
+                      box(text(task_names.get(task, task), "title-2"), self.model_row_caption(assigned["n"] + (" · On this computer" if assigned.get("local") else " · Cloud")), vertical=True, hexpand=True),
+                      self.icon_button("x", "Use the same as everything", lambda task=task: self.set_task_model(task, ""), size="tiny"),
                       self.button("Change", lambda task=task: self.assign_task(task)), spacing=14)
             use_rows.append(Gtk.Separator())
             use_rows.append(row)
         self.models_task_button = self.button("Use a different model for a task", self.choose_task, "sliders-horizontal")
+        self.models_task_button.get_child().set_halign(Gtk.Align.START)
+        self.models_task_button.add_css_class("ari-task-add")
         use_rows.append(Gtk.Separator())
         use_rows.append(self.models_task_button)
         use_rows.add_css_class("ari-model-assignments")
@@ -1308,14 +1326,20 @@ class AriWindow(AppWindow):
                             "google":"Gemini, with an API key", "own":"Ollama, LM Studio or anything like them"}
             line = provider.get("note") if connected else ("Sign in and Ari can use the models in your ChatGPT plan. No API key." if is_chatgpt else descriptions.get(provider["id"], "Connect your account to use its models"))
             provider_title = "Use your ChatGPT account" if is_chatgpt and not connected else provider["n"]
-            details = box(text(provider_title, "title-2"), text(line or "Connected", "caption", wrap=True), vertical=True, hexpand=True, spacing=4)
+            promo = is_chatgpt and not connected
+            details = box(text(provider_title, "title-2"),
+                          text(line or "Connected", "caption", wrap=True) if promo else self.model_row_caption(line or "Connected"),
+                          vertical=True, hexpand=True, spacing=4 if promo else 2)
             if connected:
                 details.append(connection("Connected"))
-            promo = is_chatgpt and not connected
-            row = box(self.model_mark(provider, 56 if promo else 40), details, spacing=12)
+            row = box(self.model_mark(provider, 56 if promo else 40), details, spacing=18 if promo else 14)
             if is_chatgpt:
                 action = (self.icon_button("ellipsis", "ChatGPT account and usage", self.show_chatgpt) if connected else
                           self.button("Continue with ChatGPT", self.show_chatgpt, primary=True, name="provider-chatgpt"))
+                if promo:
+                    action.add_css_class("ari-chatgpt-signin")
+                    if self.phone:
+                        action.set_hexpand(True)
                 if self.phone and promo:
                     row = box(row, action, vertical=True, spacing=16)
                 else:
@@ -1340,27 +1364,66 @@ class AriWindow(AppWindow):
             self.section("On this computer", f'{len(installed)} ' + ("model" if len(installed) == 1 else "models") + " · " + gb(sum(item["sz"] for item in installed)))
             installed_rows = box(vertical=True, spacing=0)
             for model in installed:
-                row = box(self.model_mark(model), box(text(model["n"], "title-2"), text(gb(model["sz"]) + " on disk", "caption"), vertical=True, hexpand=True),
-                          icons.image("chevron-right", pixel_size=16), spacing=12)
-                card = Card(row)
-                button = Gtk.Button(child=card)
+                usage = (["everything"] if model["id"] == self.state["model"] or
+                         (self.state["model"] == "auto" and model == installed[0]) else []) + [
+                             task_names.get(task, task) for task, value in self.task_models.items() if value == model["id"]]
+                body = box(self.model_mark(model, 40), box(text(model["n"], "title-2"),
+                           self.model_row_caption("Used for " + ", ".join(usage) if usage else "Not in use"), vertical=True, hexpand=True), spacing=14)
+                button = Gtk.Button(child=body, hexpand=True)
                 button.add_css_class("ari-open-model")
                 button.connect("clicked", lambda _button, value=model: self.show_model_family(family_for(value), value["id"]))
-                installed_rows.append(button)
-            self.page.append(installed_rows)
+                row = box(button, spacing=10)
+                if not self.phone:
+                    row.append(text(gb(model["sz"]), "caption"))
+                options = self.icon_button("ellipsis", model["n"] + " options", lambda: None)
+                options.connect("clicked", lambda _button, value=model, anchor=options: self.model_options(value, anchor))
+                row.append(options)
+                row.add_css_class("ari-provider-row")
+                if installed_rows.get_first_child():
+                    installed_rows.append(Gtk.Separator())
+                installed_rows.append(row)
+            card = Card(installed_rows)
+            card.add_css_class("ari-providers-card")
+            self.page.append(card)
+            self.page.append(self.button("Get more models", lambda: self.switch_models_tab("store"), "download"))
         computer = self.data["computer"]
         if computer.get("disk") is not None:
             self.page.append(text(gb(computer["disk"]) + " free on disk", "caption"))
 
+    def model_row_caption(self, value):
+        label = text(value, "caption")
+        label.set_ellipsize(Pango.EllipsizeMode.END)
+        label.set_max_width_chars(1)
+        label.set_hexpand(True)
+        return label
+
+    def model_options(self, model, anchor):
+        self.close_picker()
+        def remove():
+            self.show_model_family(family_for(model), model["id"])
+            self.begin_remove(model["id"])
+        menu = FloatingMenu([
+            RichMenuItem("View model", icon="cpu", on_activate=lambda: self.show_model_family(family_for(model), model["id"])),
+            RichMenuItem("Remove", icon="trash-2", on_activate=remove)], label=model["n"])
+        self.popover = menu.popup(anchor)
+
     def render_model_store(self):
-        filters = Adw.WrapBox(child_spacing=6, line_spacing=6)
+        filters = box(spacing=6)
         for value, glyph in (("All", "layout-grid"), ("Code", "code"), ("Pictures", "image"), ("Hard problems", "lightbulb")):
             chip = self.button(value, lambda value=value: self.filter_models(value), glyph)
             chip.add_css_class("ari-filter-chip")
             if value == self.state["store"]:
                 chip.add_css_class("selected")
             filters.append(chip)
-        self.page.append(filters)
+        if self.phone:
+            filter_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+                vscrollbar_policy=Gtk.PolicyType.NEVER, child=filters, min_content_height=34,
+                propagate_natural_height=True)
+            self.page.append(filter_scroll)
+            filter_scroll.set_margin_bottom(8)
+        else:
+            self.page.append(filters)
+            filters.set_margin_bottom(8)
         groups = families(self.data["local_models"])
         capabilities = {"Code": "code", "Pictures": "pictures", "Hard problems": "think", "Images": "pictures", "Reasoning": "think"}
         shown = []
@@ -1377,24 +1440,36 @@ class AriWindow(AppWindow):
         available = [model for _name, sizes, _facts in shown for model in sizes if not model.get("have")]
         recommended = next((model for model in available if model.get("recommended")), None)
         if recommended is None:
-            recommended = next((model for model in available if self.fitting(model)[0] == "good"), None)
+            recommended = max((model for model in available if self.fitting(model)[0] == "good"),
+                              key=lambda model:model.get("mem",0), default=None)
         if recommended:
             machine = self.data["computer"].get("n", "this computer")
-            self.section("Best for " + machine.removeprefix("This ").removeprefix("this "))
-            self.page.append(named(Card(box(self.model_mark(recommended, 56),
-                box(text(recommended["n"], "title-2"), text(FAMILIES.get(family_for(recommended), {}).get("line", "Runs on this computer"), "body", wrap=True), vertical=True, hexpand=True, spacing=6),
-                self.button("Download · " + gb(recommended["sz"]), lambda value=recommended["id"]: self.download(value), "download", primary=True, name="get-" + recommended["id"]), vertical=self.phone, spacing=16)), "model-" + recommended["id"]))
+            machine = machine[0].lower()+machine[1:] if machine.startswith("This ") else machine
+            recommendation = (f'The largest Qwen3 that runs well with {self.data["computer"].get("mem", 0):g} GB of memory. A step up from the 8B you have.'
+                              if self.fixture else FAMILIES.get(family_for(recommended), {}).get("line", "Runs on this computer"))
+            info = box(text("Best for " + machine, "caption"),
+                       text(recommended["n"], "title-1"), text(recommendation, "body", wrap=True), vertical=True, hexpand=True, spacing=4)
+            action = self.button("Download · " + gb(recommended["sz"]), lambda value=recommended["id"]: self.download(value), "download", primary=True, name="get-" + recommended["id"])
+            if self.phone:
+                action.set_hexpand(True)
+            hero = named(Card(box(self.model_mark(recommended, 64), info, action, vertical=self.phone, spacing=22)), "model-" + recommended["id"])
+            hero.add_css_class("ari-recommended-card")
+            self.page.append(hero)
         grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                           min_children_per_line=1, max_children_per_line=1 if self.phone else 2, column_spacing=14, row_spacing=14)
+                           min_children_per_line=1 if self.phone or self.provider_columns == 1 else 3,
+                           max_children_per_line=1 if self.phone or self.provider_columns == 1 else 3, column_spacing=12, row_spacing=12)
         for name, sizes, facts in shown:
             best = next((model for model in sizes if self.fitting(model)[0] == "good"), sizes[0])
-            low, high = min(model["sz"] for model in sizes), max(model["sz"] for model in sizes)
-            content = box(box(self.model_mark(best, 40), box(text(name, "title-2"), text(facts.get("by", ""), "caption"), vertical=True, hexpand=True), spacing=12),
+            installed = next((model for model in sizes if model.get("have")), None)
+            fit = box(icons.image("circle-check" if installed else "circle", pixel_size=12),
+                      text("On this computer" if installed else self.fitting(best)[1], "caption"), spacing=5)
+            content = box(box(self.model_mark(best, 44), box(text(name, "title-2"), text(facts.get("by", ""), "caption"), vertical=True, hexpand=True, spacing=1), spacing=12),
                           text(facts.get("line", "Available for this computer"), "body", wrap=True),
-                          text(self.fitting(best)[1], "caption"), text(f'{len(sizes)} ' + ('size' if len(sizes) == 1 else 'sizes') + f' · {gb(low)}–{gb(high)}', "caption"),
-                          vertical=True, spacing=8)
-            button = Gtk.Button(child=Card(content))
-            button.add_css_class("flat")
+                          box(fit, Gtk.Box(hexpand=True), text(f'{len(sizes)} sizes' if len(sizes) > 1 else gb(sizes[0]["sz"]), "caption"), spacing=4),
+                          vertical=True, spacing=12)
+            content.add_css_class("ari-family-content")
+            button = Gtk.Button(child=content)
+            button.add_css_class("ari-family-card")
             button.connect("clicked", lambda _button, value=name: self.show_model_family(value))
             grid.append(named(button, "family-" + name.lower().replace(' ', '-')))
         self.page.append(grid)
@@ -1425,13 +1500,16 @@ class AriWindow(AppWindow):
         self.page.append(box(self.model_mark(model, 80), box(text(facts.get("by", ""), "caption"),
             family_title, text(facts.get("line", "A model on this computer"), "body", wrap=True),
             vertical=True, spacing=6), vertical=self.phone, spacing=20))
-        self.section("Sizes", "Bigger sizes need more memory")
+        self.section("Sizes", "Bigger sizes are smarter, and need more memory")
         sizes = Gtk.Grid(column_homogeneous=True, column_spacing=12, row_spacing=12)
         columns = 2 if self.phone or self.provider_columns == 1 else 4
         for index, option in enumerate(sorted(families(self.data["local_models"])[family], key=lambda item: item["sz"])):
-            subtitle = "On this computer" if option.get("have") else self.fitting(option)[1]
+            fit = self.fitting(option)[0]
+            subtitle = "On this computer" if option.get("have") else {"good":"Runs well", "ok":"Slower", "no":"Too big"}.get(fit, "Requirements unknown")
+            status = box(icons.image("circle", pixel_size=7), text(subtitle, "caption", wrap=True), spacing=6)
+            status.set_margin_top(8)
             rung = box(text(option.get("parameters") or option["n"].removeprefix(family).strip(), "title-1"),
-                       text(gb(option["sz"]), "body"), text(subtitle, "caption", wrap=True), vertical=True, spacing=10)
+                       text(gb(option["sz"]), "body"), status, vertical=True, spacing=2)
             button = Gtk.Button(child=rung, width_request=110, hexpand=True)
             button.add_css_class("ari-size-rung")
             if option["id"] == model["id"]:
@@ -1440,20 +1518,30 @@ class AriWindow(AppWindow):
             sizes.attach(button, index % columns, index // columns, 1, 1)
         self.page.append(sizes)
         computer = self.data["computer"]
-        estimate = f'About {gb(model["mem"])} of memory is needed. ' if model.get("mem") else "Memory requirements are not available. "
-        estimate += (f'This computer has {gb(computer["mem"])}. ' if computer.get("mem") else "") + self.fitting(model)[1] + "."
-        self.page.append(text(estimate, "body", wrap=True))
+        estimate = f'{model["n"]} needs about {gb(model["mem"])} of memory. ' if model.get("mem") else "Memory requirements are not available. "
+        estimate += (f'{computer.get("n", "This computer").capitalize()} has {gb(computer["mem"])}, so it ' +
+                     ("runs well." if self.fitting(model)[0] == "good" else "runs, but answers come slowly." if self.fitting(model)[0] == "ok" else "won’t run here.")
+                     if computer.get("mem") else self.fitting(model)[1] + ".")
+        if model.get("have"):
+            jobs = (["everything"] if self.state["model"] in (model["id"], "auto") else []) + [
+                task for task, value in self.task_models.items() if value == model["id"]]
+            estimate = "On this computer. " + ("Ari uses it for " + ", ".join(jobs) + "." if jobs else "Ari doesn’t use it yet.")
+        say = box(icons.image("circle-check" if model.get("have") else "memory-stick", pixel_size=18), text(estimate, "body", wrap=True, expand=True), spacing=12)
+        say.add_css_class("ari-model-fit")
+        self.page.append(say)
         self.section("What it can do")
         labels = {"chat": ("Chat and writing", "Questions, emails, summaries"), "code": ("Code", "Reads and writes code"),
                   "pictures": ("Pictures", "Reads pictures"), "think": ("Thinking mode", "Works a problem through before answering")}
         capabilities = Gtk.Grid(column_homogeneous=True, column_spacing=12, row_spacing=12)
         for index, capability in enumerate(facts.get("can", [])):
             label, line = labels[capability]
-            capabilities.attach(Card(box(text(label, "title-2"), text(line, "caption", wrap=True), vertical=True, spacing=4)),
+            glyph = {"chat":"message-circle", "code":"code", "pictures":"image", "think":"lightbulb"}[capability]
+            capabilities.attach(Card(box(icons.image(glyph, pixel_size=18), box(text(label, "title-2"), text(line, "caption", wrap=True), vertical=True, spacing=1), spacing=12)),
                                 0 if self.phone else index, index if self.phone else 0, 1, 1)
         self.page.append(capabilities)
         self.section("Details")
-        details = [("Reads at once", f'{model.get("context") or facts.get("context", 0):,} tokens'),
+        context = model.get("context") or facts.get("context", 0)
+        details = [("Reads at once", f'About {round(context / 650):,} pages' if context else "Not specified"),
                    ("Languages", facts.get("languages", "See the maker's model card")),
                    ("Licence", model.get("licence") or facts.get("licence", "See the model card")),
                    ("Released", facts.get("released", "See the model card")),
@@ -1461,7 +1549,8 @@ class AriWindow(AppWindow):
                    ("Privacy", "Runs on this computer. Nothing you say to it leaves")]
         detail_grid = Gtk.Grid(column_homogeneous=True, column_spacing=24, row_spacing=18)
         for index, (label, value) in enumerate(details):
-            detail_grid.attach(box(text(label, "caption"), text(value, "body", wrap=True), vertical=True, spacing=4),
+            glyph = ("book-open", "languages", "scale", "calendar", "building-2", "house")[index]
+            detail_grid.attach(box(icons.image(glyph, pixel_size=18), box(text(label, "caption"), text(value, "body", wrap=True), vertical=True, spacing=2), spacing=14),
                                0 if self.phone else index % 2, index if self.phone else index // 2, 1, 1)
         self.page.append(Card(detail_grid))
 
@@ -1479,16 +1568,23 @@ class AriWindow(AppWindow):
                     selected = self.model(active["id"])
             replacement = (remaining[0]["n"] if remaining else "no local model until you choose or download one") if selected["id"] == identity else selected["n"]
             jobs = [name for name, value in self.task_models.items() if value == identity]
-            fallback = (f'Ari will use {replacement} for ' + ', '.join(jobs + (["everything"] if selected["id"] == identity else [])) + '.') if jobs or selected["id"] == identity else "Ari's current model will stay the same."
-            confirm = box(text(f'Remove {model["n"]}?', "title-2", wrap=True),
+            confirm = box(box(self.model_mark(model, 36), box(text(f'Remove {model["n"]}?', "title-2", wrap=True),
                           text(f'Frees {gb(model["sz"])}. Your chats stay as they are.', "caption", wrap=True),
-                          text(fallback, "body", wrap=True),
-                          text("You can download it again from Get models.", "caption", wrap=True), vertical=True, spacing=8)
-            self.bar.show_bar([BarAction("", label="Cancel", on_activate=lambda: self.cancel_remove()),
-                              BarAction("trash-2", "Remove", on_activate=lambda: self.remove_model(identity), primary=True, danger=True)], fill=self.phone)
+                          vertical=True, hexpand=True, spacing=1),
+                          self.icon_button("x", "Close", self.cancel_remove), spacing=12), vertical=True, spacing=10)
+            labels = {"code":"Code", "hard":"Hard problems", "long":"Long reading", "writing":"Writing"}
+            if selected["id"] == identity:
+                confirm.append(self.removal_fallback_row("Everything", f'Ari will use {replacement} instead', "sparkles"))
+            for task in jobs:
+                confirm.append(self.removal_fallback_row(labels.get(task,task), "Goes back to the same as everything", "code" if task == "code" else "sliders-horizontal"))
+            confirm.append(box(icons.image("download", pixel_size=14), text("You can download it again any time.", "caption", wrap=True), spacing=7))
+            cancel = self.button("Cancel", self.cancel_remove, size="bar")
+            cancel.bar_span = (600, 12, 12)
+            self.bar.show_bar([SPACER, BarWidget(cancel),
+                              BarAction("trash-2", "Remove", on_activate=lambda: self.remove_model(identity), primary=True, danger=True, keep_label=True)], fill=self.phone)
             self.bar.grow("remove-model", confirm)
         elif model.get("have"):
-            self.bar.show_bar([BarAction("trash-2", "Remove", on_activate=lambda: self.begin_remove(identity), primary=True, danger=True)], fill=self.phone)
+            self.bar.show_bar([BarAction("trash-2", "Remove", on_activate=lambda: self.begin_remove(identity), primary=True, danger=True, fill=self.phone, keep_label=True)], fill=self.phone)
         elif model.get("dl") is not None:
             self.bar.show_bar([BarAction("", label=f'{round(model["dl"])}%', sensitive=False),
                               BarAction("pause", "Pause", on_activate=lambda: self.pause_download(identity)),
@@ -1500,7 +1596,13 @@ class AriWindow(AppWindow):
         elif self.fitting(model)[0] == "no":
             self.bar.show_bar([BarAction("", label="Too big for this computer", sensitive=False)])
         else:
-            self.bar.show_bar([BarAction("download", "Download · " + gb(model["sz"]), on_activate=lambda: self.download(identity), primary=True)], fill=self.phone)
+            self.bar.show_bar([BarAction("download", "Download · " + gb(model["sz"]), on_activate=lambda: self.download(identity), primary=True, fill=self.phone, keep_label=True)], fill=self.phone)
+
+    def removal_fallback_row(self, title, subtitle, glyph):
+        row = box(icons.image(glyph, pixel_size=18), box(text(title, "title-2"), text(subtitle, "caption", wrap=True),
+                  vertical=True, hexpand=True), spacing=12)
+        row.add_css_class("ari-removal-fallback")
+        return row
 
     def begin_remove(self, identity):
         self.removing_model = identity
@@ -1564,7 +1666,7 @@ class AriWindow(AppWindow):
         # v71 phone: the section's label stacks above its explanation.
         heading = ari_text(title, "section", "title-2")
         heading.set_hexpand(True)
-        line = box(heading, vertical=self.phone, spacing=2 if self.phone else 10)
+        line = box(heading, vertical=self.phone and self.state["view"] != "models", spacing=2 if self.phone else 10)
         if self.state["view"] == "models":
             line.get_first_child().add_css_class("ari-models-section")
         if subtitle:
@@ -1640,6 +1742,7 @@ class AriWindow(AppWindow):
     def render_bar(self):
         view = self.state["view"]
         phone = self.phone
+        (self.bar.add_css_class if view == "models" else self.bar.remove_css_class)("ari-model-actions")
         if view == "chat":
             model = self.model()
             local = model.get("local", True)
@@ -1747,7 +1850,8 @@ class AriWindow(AppWindow):
     def picker_choices(self):
         """The model picker's rows (v71 arPickHTML): (identity, name, subtitle), or (None, heading, None)."""
         installed = [model for model in self.data["local_models"] if model.get("have")]
-        yield ("auto", "Auto", "Local by default; task assignments can use the cloud" if installed else
+        default = next((model for model in installed if model['id'] == self.state['model']), installed[0] if installed else None)
+        yield ("auto", "Auto", f'Uses {default["n"]} here. Asks before using the cloud.' if default else
                "No local model installed. Choose a connected cloud model or get a local model.")
         if installed:
             yield (None, "On this computer", None)
@@ -1756,7 +1860,7 @@ class AriWindow(AppWindow):
                 # v70's sample speeds are fixture data, not host measurements.
                 subtitle = ("Quick" if model.get("mem", 0) <= 12 else "Slower, more capable") if self.fixture else "On this computer"
                 if model.get("mem"):
-                    subtitle += f" · {model['mem']} GB memory"
+                    subtitle += " · " + gb(model['mem']) + " memory"
                 yield (model["id"], model["n"], subtitle)
         for provider in self.data["providers"]:
             if provider.get("on") and provider["models"]:
@@ -2522,6 +2626,7 @@ class AriWindow(AppWindow):
                 messages[:] = [item for item in messages if item.get("ch") != previous]
             node, category = action_node(event["tool"], event["summary"], "ask" if kind == "approval" else "done")
             self.data["activity"][identity] = {"t": event["summary"], "at": GLib.DateTime.new_now_local().format("%H:%M"), "day": "Today", "cats": [category],
+                "target": event.get("target"),
                 "undo": "can" if event.get("undo") else "none", "conv": chat["id"], "request": request,
                 "confirm_within": event.get("confirm_within"),
                 "nodes": [node]}

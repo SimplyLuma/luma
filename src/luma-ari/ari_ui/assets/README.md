@@ -11,6 +11,10 @@ Continue with ChatGPT button.
 in Design Center revision `255e38cc874fce276114d18e49a1232432f41886`.
 Brand marks identify their respective model makers; they do not imply endorsement.
 
+The three additional symbolic glyphs in `icons/` (`building-2`, `lightbulb`
+and `scale`) come from the same Design Center revision. Their Lucide ISC
+license is retained at `icons/LUCIDE_LICENSE.txt`.
+
 The Ari application mark is the Luma artwork from that revision's
 `icons/luma-v4-ari.svg`, shared by the window and installed icon.
 

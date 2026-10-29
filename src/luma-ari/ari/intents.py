@@ -57,7 +57,7 @@ def _open(match):
     name = match.group(1).strip().rstrip(".")
     name = re.sub(r"^(?:my|the)\s+", "", name, flags=re.I)
     name = re.sub(r"\s+app$", "", name, flags=re.I)
-    if name.lower() in ("it", "that", "this"):
+    if name.lower() in ("it", "that", "this") or re.search(r'\b(?:and|then)\b',name,re.I):
         return None
     return Intent("open_app", {"name": name}, "{summary}.")
 

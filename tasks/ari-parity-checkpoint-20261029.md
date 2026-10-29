@@ -7,6 +7,56 @@ Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. The independent Ari2 preview already delivered from
 `7a2964d12` is not changed by this checkpoint.
 
+## Application and development continuation
+
+The later owner request to complete Ari's action capabilities adds concrete
+adapters for the previously missing permission tiers:
+
+- Semantic Broker application access, surface/object discovery and actual action
+  invocation. The broker owns grants, private-data redaction, risk confirmation
+  and dispatch. On an active user manager, the adapter runs in Ari's managed
+  application scope; private test buses retain transient session identity.
+- Native SDK project creation, source listing/reading and checksum-guarded
+  edits under `Projects/Ari`. Build commands run in an isolated Bubblewrap
+  workspace without network, other home files, credentials, session bus or
+  system writes. Project approval in the default mode covers only that project
+  in the current turn; All mode continues to ask for every change.
+- Depot catalogue search and Flatpak source/commit/permission review before
+  installation. The owning transaction rechecks the source; Ari verifies the
+  resulting installed ref. Other catalogue backends use Depot's own interface.
+- Exact local-package review and the existing installer workflow, plus removal
+  that retains personal settings/data and protects essential components.
+  Optional image applications use the existing polkit system helper, which
+  independently checks its trusted catalogue, dependencies and staged result.
+- Action receipts for these changes, persisted project targets with portal Open,
+  safe migration of existing steps, and cancellation/restart of isolated project
+  tool processes. Software transactions that need a restart report staging.
+
+Tool routing now offers discovery, access and action tools together for in-app
+work, and the complete workspace toolset for application development. Compound
+requests do not stop after a simple app-open shortcut. Unknown tools remain
+denied; no unrestricted privileged shell was added.
+
+Later validation: 146 unit/protocol/policy tests and 11 focused GTK tests pass.
+The full 46-test native Wayland suite, five form-factor checks and the actual
+private Secret Service/OAuth/inference fixture pass in the broader qualification
+cohort; the final managed-scope command assembly is additionally unit-tested.
+Four native action tests pass using an actual private broker/provider, SDK
+generation and MCP source edits, isolated Python tests/builds, and a real
+portable-app install/removal with retained data. Catalogue commit substitution,
+essential-component refusal and staged system changes use controlled boundary
+fixtures; no real system deployment or public app repository was changed.
+
+UI changes align the Models header, restore installed-model menus, correct
+caption truncation, family grids and capability/detail icons, expand removal
+task rows, and preserve labelled phone Download/Remove actions. Current captures
+still require final comparison; earlier comparisons fail without changed
+tolerances. OpenAI's required action wording remains Continue with ChatGPT,
+which differs from the supplied reference. No conformance or 95% claim.
+
+The implementation and evidence below describe the earlier checkpoint and
+remain its history; its missing action adapters are superseded by this section.
+
 ## Implemented
 
 - Request hosted ChatGPT web search, remove the local search/page-fetch tools
