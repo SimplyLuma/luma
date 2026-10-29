@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T16:32:13+00:00
+- Updated: 2026-10-29T17:27:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; d401599a9 (live guard fixture/runner), 497a61054 (runtime source); automatic post-build VM qualification armed
+- Branch and last useful commit: codex/android-first-class; d401599a9 (live guard fixture/runner), 497a61054 (runtime source); owner-authorized24GiB build migration; automatic post-build VM qualification armed
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -57,16 +57,41 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
-CURRENT BUILD: normal dev-android-images-build-vm-r9-a1c4e3af.service ACTIVE,
-10GiB/450GiB HDD, launched14:07:38Z. Rootcontroller unchanged unit name watches
-normal10GiB owner. Immutable4 inputs verified14:12:38Z, builder boot14:12:39Z,
-guest startup14:13:00Z PASSED actual zstd24GiB virtual/4GiB compressed cap.
-Project source7c13c192f, SFS849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
-includes0015..18. Guest8GiB/QEMU9GiB combined fixed. At15:01:15Z actual soong_build graph active10m19s/18m55s CPU, RSS~6.5GiB.
-Zram original4.5GB/compressed653MB/allocated683MB, cap4GiB unchanged.
-No completed image yet; the current image snapshot does NOT include replies.
-Runtime VM/rootcontroller/normal9GiB stopped14:07:08Z before this launch;
-full bounded6GiB/8GiB-combined XML retained (source original unchanged).
+CURRENT BUILD: normal dev-android-images-build-vm-r9-961d8dd3.service ACTIVE,
+kind build26GiB/450GiB HDD, launched17:20:52Z; MainPID610831. Root controller
+uses build-highram/controller-r11.py with the unchanged26GiB-owner watchdog.
+All four immutable inputs reverified before boot. Actual24GiB guest startup
+PASSED17:26:26Z: MemTotal25,195,495,424 bytes,8 CPUs,8-job launch marker;
+QEMU25GiB hard+combined/800% quota verified. GOGC20/GOMAXPROCS8. Compiler
+unit active MainPID1175; waiting for actual Ninja/compile progress, no speedup claim.
+Project7c13c192f, same SFS849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
+includes0015..18, still lacks SDK0005 replies. No completed image yet.
+
+User explicitly authorized a larger allocation when spare RAM is available.
+At change time server had~34GiB available; only this builder plus three1GiB
+admitted observers/server were reserved. Host8GiB reserve, combined32GiB job
+budget and every20GiB disk reserve remain unchanged. TEMPORARY SHARED policy
+override: build maximum26GiB/account budget32GiB, with the same GLOBAL32GiB
+cap; worker/server/container/package maxima remain10/2/4/4. The second tooling
+directory is a symlink to /srv/dev/tooling: both account aliases see this override,
+not separate policy files. Initial inode/hardlink interpretation was incorrect;
+actual post-change hashes resolved that. Build-kind default is now26 while the
+override is active: request smaller jobs explicitly. Original exact
+policy is root-owned build-highram/policy-original.json. New recovery watcher
+restores original bytes after a terminal build result, including failure, but
+retains this allocation across exit75 checkpoints. Refuse overwriting a policy
+changed by another owner. If observer is lost, restore with normally admitted
+root-capped build-highram/budget.py restore after stopping this builder.
+
+Old normala1c4e3af/root compiler stopped intentionally17:19Z for this resize.
+Native build reached59947/143205,41%; ~30GiB out tree retained. Guest compiler
+was stopped/synced and guest powered off cleanly. A root-owned XFS reflink copy
+of the47,742,976,000-byte qcow2 and original XML are under build-highram; the
+copy is NOT fully hash-verified. First migration13c60323 failed after shutdown:
+cp rejected incompatible reflink/sparse flags before creating any copy. Finish
+6a85c4c1 PASSED17:20:23Z using reflink alone, then verified inactive24/25GiB and
+8vCPU/800% settings. This is a cold incremental restart, not VM-heap restoration.
+Runtime VM remains off; its6GiB/QEMU8GiB profile is unchanged.
 
 REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
 - Host notification_reply.py/transport.py/dbus.py plus bridge/session integration;
@@ -163,31 +188,28 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  Firste6311d1f failed because host lacks gresource CLI; corrected by parsing
  ELF resource sections + actual Gio.Resource lookup, no package installed.
  Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
--Main image root r9 remains ACTIVE, normala1c4e3af10GiB, source7c13c192f.
- Soong graph completed ~15:12Z. At16:32Z actual C++ compilation39521/143205,
-27%; no completed image. Transient SSH failure15:15 recovered by controller,
- no lost heap. Fixed guest zstd handled graph within existing8GiB/9GiB cap.
+-Main image now uses root r11, normal961d8dd3 build26GiB, source7c13c192f.
+ Former8GiB attempt reached41%; deliberate clean restart preserves disk outputs.
 -Automatic bounded continuation ACTIVE:
- dev-android-image-auto-pinned-watch-0-66408768.service, normal1GiB, replaced
- audited watcher d1ad8be9 after adding source pins; original image MainPID214317
- remained active/unchanged. New observer MainPID277686; heartbeat16:02:48Z.
- Private build-vm-auto/watch-v2.py watches exact a1c4e3af result. Only exit75 with a
- fresh, root-owned, complete/unconsumed own-UUID/source checkpoint can resume.
- Each child is separately admitted normal10GiB/450GiB with same VM8GiB/QEMU9GiB
- and root128/256 limits. No retry of compiler failures/cancellation. At most4
- resumes; each watcher5.5h bounded, overall deadline2026-10-30T15:30:00Z.
+ dev-android-image-auto-highram-watch-0-eca8b2c8.service, normal1GiB,
+ MainPID611446; private build-vm-auto/watch-v3.py watches exact961d8dd3 result.
+ Original66408768 watcher intentionally stopped for migration. Only exit75 with
+ a fresh root-owned complete/unconsumed own-UUID/source checkpoint can resume.
+ Each child is separately admitted kind build26GiB/450GiB with VM24GiB/QEMU25GiB
+ and root128/256 limits. No retry of compiler failures/cancellation; at most4
+ resumes. Each watcher5.5h bounded, overall deadline2026-10-30T15:30:00Z.
  Resource refusal waits at most30m, then stops. STOP file build-vm-auto/STOP
- prevents NEW continuations; stop active root controller then its normal job
- to terminate current work. Nothing installs or publishes resulting images.
--Current root controller continues original controller-r9.py in memory. Future
- resume wrapper build-vm-driver/run-resume-r9.sh uses controller-r10.py, same
- one-shot RAM/disk/XML/4-input hash verification and owner watchdog. r10 changes
- ONLY resumed guest budget rearming: an owned transient-unit drop-in plus
- daemon-reload. Existing root6h deadline remains independent and unchanged.
- Source hashes build-vm-auto/source-manifest-v2.json (earlier manifests retained);
- SHA8a9f45d879f22381bb15d35b049517216a1001f2f9b4cc0a32b0dd634b769c43.
- The watcher verifies the five operational scripts at startup and before resume;
- accidental changes stop recovery. This is not a hostile-owner security boundary.
+ prevents NEW continuations; stop active root controller before its normal job.
+ Source manifest build-vm-auto/source-manifest-v3.json SHA
+ 8a71203e48f8039ad5d392915c5971d1fee7fb5801cec2ee300dd7372dc19696.
+ Seven operational scripts, including guest/budget helper, are pinned at startup
+ and before resume. This guards accidental edits, not a hostile owner. Previous
+ v2 scripts/manifests remain historical. Future resume wrapper is
+ build-highram/run-r11.sh; root6h deadline and bounded guest timer rearming remain.
+-Terminal v3 outcomes attempt original shared-policy restoration before
+ publishing completion/failure. A restoration conflict fails visibly; it never
+ overwrites another owner's policy. Policy/backup details above. Post-build VM
+ qualification is separately owned by the success-only handoff below.
 -Resume prerequisite15b20427 FAILED safely: guest249 rejects RuntimeMaxSec via
  set-property; original compiler deadline stayed20500s. Replacement actual guest
  timer controlac3445e7 PASSED15:35:03Z: baseline stopped3s, drop-in/reload timer
@@ -201,8 +223,8 @@ LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
  integration succeed, NOT a delivery promise or daily-use/ARM/power/security ETA.
 
 POST-BUILD GUARD VM HANDOFF ACTIVE:
-- Normal dev-android-guard-build-handoff-99f51328.service,1GiB, MainPID338079;
-  actual waiting heartbeat16:32:13Z in guard-vm-auto/latest.json. No runtime VM
+- Normal dev-android-guard-build-handoff-eea5005f.service,1GiB, MainPID614946;
+  restarted after the deliberate migration; actual waiting heartbeat17:21:48Z in guard-vm-auto/latest.json. No runtime VM
   started while builder runs. This extends build monitoring into actual tests;
   it does not automatically implement remaining brokers or qualify a release.
 - Private guard-vm-auto/watch.py waits for successful final normal build result
@@ -830,3 +852,32 @@ Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: packa
   subsequent qualification. Preparing a bounded success-only handoff into the
   owned disposable runtime VM under separate normal9GiB admission. Not active
   or claimed qualified until that driver and its controls are validated.
+
+
+2026-10-29T17:22Z owner-authorized build capacity increase:
+- User explicitly authorized using idle server memory. Verified x86_64 native
+  KVM host/guest/Android target (secondaryx86), not an emulated ARM build. Host
+  has16 logical CPUs/8 physical cores and~34GiB available before the resize.
+- Increased the admitted build profile as detailed above; no shared runner code,
+  global32GiB budget or host/disk reserve change. Policy is shared through a
+  tooling-directory symlink, so both account aliases see the temporary account32/
+  build26 values. Initial private-policy assumption corrected by actual hash/path
+  checks; original policy restoration remains automatic. Other1GiB server preserved. Actual helper c9fb1537 PASSED9
+  watcher tests +3 root policy-fixture cases, including hardlink separation,
+  exact restoration and rejecting another owner's intervening policy change.
+  The hardlink fixture did not model the real parent-directory symlink; do not
+  claim per-account policy separation from that test.
+- Intentionally stopped old recovery66408768 and VM handoff99f51328 before
+  stopping the compiler, then resumed with the same immutable project/disk
+  outputs. Migration failure and correction retained; no full output reset.
+- New admitted normal961d8dd3/controller-r11, source-pin observereca8b2c8 and
+  post-build handoffeea5005f are active. Waiting for input SHA verification,
+  actual24GiB boot, eight-job compiler activity and new throughput observation.
+  Do not report a speedup merely from the larger configured allocation.
+
+- Actual larger-builder verification26f58230 PASSED17:26:26Z: guest MemTotal
+ 25,195,495,424 bytes/8 CPUs, current started marker jobs8/source7c13c192f,
+  native KVM XML RAM24GiB/QEMU25GiB hard+combined/CPU800%. Normal26GiB
+  admission remains active; runtime VM stays off. This proves startup/settings,
+  not eight simultaneous compiler processes, build completion or a speedup.
+  Evidence artifacts/dev-android-highram-live-verification-26f58230/live-verification.json.
