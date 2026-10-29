@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Run the real image host-selection Make fragment and its default control."""
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,10 +35,11 @@ def main():
 probe:
 	@printf '%s|%s|%s|%s|%s|%s\\n' '$(BUILD_OS)' '$(HOST_CROSS_OS)' '$(HOST_CROSS_ARCH)' '$(HOST_CROSS_2ND_ARCH)' '$(TARGET_ARCH)' '$(TARGET_2ND_ARCH)'
 ''')
-            return subprocess.check_output(['make', '--no-print-directory', '-rR', '-f', str(unit),
-                'HOST_OS=' + host, 'HOST_CROSS_OS=' + cross, 'HOST_CROSS_ARCH=x86',
-                'HOST_CROSS_2ND_ARCH=x86_64', 'LUMA_ANDROID_IMAGE_HOST_ONLY=' + flag, 'probe'],
-                cwd=work, text=True, timeout=10).strip().split('|')
+            environment = dict(PATH=os.defpath, LANG='C.UTF-8', HOST_OS=host,
+                HOST_CROSS_OS=cross, HOST_CROSS_ARCH='x86', HOST_CROSS_2ND_ARCH='x86_64',
+                BUILD_HOST_static='', LUMA_ANDROID_IMAGE_HOST_ONLY=flag)
+            return subprocess.check_output(['make', '--no-print-directory', '-rR', '-f', str(unit), 'probe'],
+                cwd=work, env=environment, text=True, timeout=10).strip().split('|')
         patched = source.read_text()
         cases = (('linux', ''), ('linux', 'windows'), ('linux', 'linux_bionic'), ('darwin', ''))
         for host, cross in cases:
