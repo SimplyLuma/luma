@@ -172,6 +172,11 @@ class Session:
             self._prepare(report, progress)
 
     def _prepare(self, report, progress=None):
+        from .image_storage import lease
+        with lease(self.root, self.manifest['image']['sha256']):
+            return self._prepare_image(report, progress)
+
+    def _prepare_image(self, report, progress=None):
         from .transfers import TransferReporter
         transfer = TransferReporter(self.manifest['image']['bytes'], report, progress)
         missing = [k for k, v in self.tools().items() if not v]
