@@ -123,10 +123,11 @@ function dump({ winSel, groups, exclude, pairSels }) {
   const browser = await chromium.launch({ args: ['--font-render-hinting=none'] });
   // A state may hold for some themes only (Luma's Frost is one light appearance).
   const states = (phone ? scenario.states.filter(s => (scenario.phone_states || []).includes(s.name)) : scenario.states).filter(s => !s.themes || s.themes.includes(theme));
-  const meta = { app: scenario.app, theme, phone, url: base + scenario.spec.url, states: [] };
+  const specUrl = phone && scenario.spec.phone_url ? scenario.spec.phone_url : scenario.spec.url;
+  const meta = { app: scenario.app, theme, phone, url: base + specUrl, states: [] };
   for (const st of states) {
     // A state may ask for its own viewport (a maximized window fills the desk, so the desk sets its size).
-    const vp = st.viewport || scenario.spec.viewport || { width: 1600, height: 1000 };
+    const vp = st.viewport || (phone && scenario.spec.phone_viewport) || scenario.spec.viewport || { width: 1600, height: 1000 };
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, colorScheme: theme, reducedMotion: 'reduce' });
     const page = await ctx.newPage();
     // Serve the Studio's files from disk when its root is known (the dev server drops bursts
@@ -136,6 +137,15 @@ function dump({ winSel, groups, exclude, pairSels }) {
       let body = fs.existsSync(local) && fs.statSync(local).isFile() ? fs.readFileSync(local) : null;
       if (body == null) { for (let i = 0; i < 4 && body == null; i++) { try { const r = await route.fetch(); if (r.status() >= 400) return route.fulfill({ response: r }); body = await r.body(); } catch (e) { await new Promise(r => setTimeout(r, 150 * (i + 1))); } } }
       if (body == null) return route.abort();
+      // Take 73 loads Lucide marks in one JSON bundle. Preserve the same names
+      // that individual SVG fetches carry so these icons are measured too.
+      if (/\/icons\/_bundle\.json$/.test(u.pathname)) {
+        const bundle = JSON.parse(body.toString('utf8'));
+        for (const [name, svg] of Object.entries(bundle)) {
+          if (typeof svg === 'string' && /^[a-z0-9-]+$/.test(name)) bundle[name] = svg.replace('<svg', `<svg data-icon="${name}"`);
+        }
+        body = Buffer.from(JSON.stringify(bundle));
+      }
       if (/\/icons\/[^/]+\.svg$/.test(u.pathname)) body = Buffer.from(body.toString('utf8').replace('<svg', `<svg data-icon="${decodeURIComponent(u.pathname.split('/').pop().replace(/\.svg$/, ''))}"`));
       route.fulfill({ status: 200, contentType: TYPES[path.extname(u.pathname).toLowerCase()] || 'application/octet-stream', body }); });
     // A fixed clock (scenario.spec.clock, e.g. "2026-09-25T22:54:00") for pages that show the time.

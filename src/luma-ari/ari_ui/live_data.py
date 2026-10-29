@@ -7,17 +7,24 @@ from pathlib import Path
 from .fixture import audit_timestamp
 
 
+def action_node(tool, summary, state='done'):
+    kind, category, detail = ('app', 'Apps', 'App') if tool == 'open_app' else ('setting', 'Settings', 'Preference')
+    if tool in ('media_control', 'play_media'):
+        kind, category, detail = 'app', 'Apps', 'Playback'
+    return {'k': kind, 'n': summary, 'm': detail, 'v': '', 'st': state}, category
+
+
 def stored_receipt(step, conversation, day):
     state = step.get('state', 'done')
     undone = state in ('undone', 'reverted')
     timestamp = audit_timestamp(step.get('created'))
+    node, category = action_node(step['tool'], step['summary'], 'undone' if undone else 'done')
     return {'t': step['summary'], 'day': day,
             'at': time.strftime('%H:%M', time.localtime(timestamp)) if timestamp is not None else '',
-            'cats': ['Settings'], 'conv': conversation,
+            'cats': [category], 'conv': conversation,
             'undo': 'undone' if undone else 'can' if step.get('undo') else 'none',
             'kept': state == 'kept',
-            'nodes': [{'k': 'setting', 'n': step['summary'], 'm': step['tool'],
-                       'st': 'undone' if undone else 'done'}]}
+            'nodes': [node]}
 
 
 def stored_messages(record):
@@ -31,10 +38,13 @@ def stored_messages(record):
     for message in record.get('messages', []):
         entry = {'u' if message['role'] == 'user' else 'a': message['content']}
         metadata = message.get('meta') or {}
+        if metadata.get('sources'):
+            entry['sources'] = metadata['sources']
         model = metadata.get('model_info')
         if message['role'] != 'user' and isinstance(model, dict) and model.get('id') and isinstance(metadata.get('elapsed'), (int, float)):
             entry.update(m=model['id'], model_info=model, s=metadata['elapsed'])
-        result.append(entry)
+        if message['content'] or message['role'] == 'user':
+            result.append(entry)
         for identity in metadata.get('steps', []):
             if identity in steps and identity not in attached:
                 result.append({'ch': identity})
@@ -47,7 +57,7 @@ def stored_messages(record):
 
 
 def live_capacity(*, meminfo=Path("/proc/meminfo"), storage=None,
-                  product=Path("/sys/class/dmi/id/product_version")):
+                  product=Path("/sys/class/dmi/id/product_name")):
     """Read host capacity without creating a store or inventing measurements.
 
     Free uses the kernel's MemAvailable estimate; no model allocation is

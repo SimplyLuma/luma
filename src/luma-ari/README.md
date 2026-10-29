@@ -23,6 +23,34 @@ Paid or remotely hosted offerings require reviewing the separate
 [commercial integration process](https://developers.openai.com/siwc/request-client-id).
 This sign-in permission does not import ChatGPT conversations or memory.
 
+## Search, effort and current action scope
+
+The ChatGPT route requests hosted `web_search`, subject to the account,
+workspace and model accepting it. Ari does not offer its local search/page
+fetchers on that route or retry a rejected request through Wikipedia. Search
+progress and completed URL citations reach the native reply renderer. Turning
+off Answer tools also removes hosted search. On other routes, `web_search` is
+advertised only when a real search backend is configured; the separate
+`wikipedia` tool is explicitly an encyclopedia lookup.
+
+Effort choices come from the model list's advertised capabilities, are saved
+per model and account, and are validated before use. No model-name lookup table
+invents reasoning levels. Local models explicitly marked as supporting thinking
+have a separate on/off choice. Replies record the selected setting.
+
+Ari's shipped action tools currently cover opening applications and personal
+settings, including the existing settings catalogue and media controls. Opening
+an app has a dedicated permission and does not require approval for each launch.
+Changing files, general in-app actions, building applications, and installing or
+removing applications are not implemented Ari tools. Their future policy tiers
+remain disabled; enabling a tier alone would not implement those operations.
+
+The shared Semantic Broker already offers discoverable application surfaces and
+`InvokeAction`; the SDK supplies application scaffolding and contract checks,
+and the installer supplies reviewed install/removal workflows. Connecting those
+services to Ari is further implementation work. Each capability must use its
+actual backend and return a verified result rather than merely claiming success.
+
 ## Credentials and transport
 
 The daemon needs libsecret with its GObject typelib, an unlocked default Secret
@@ -43,8 +71,8 @@ Responses requests use the public `/v1/responses` route with `store: false` and
 released only after `response.completed` and still pass through Ari's existing
 tool policy and approval checks. Incomplete/failed streams do not execute tools.
 Current [preview restrictions](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
-exclude several hosted tools and voice APIs; those features are not implied by
-connecting a ChatGPT plan.
+and model/account capabilities still apply; connecting a ChatGPT plan does not
+by itself enable every hosted tool or voice API.
 
 ## CLI
 

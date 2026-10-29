@@ -23,6 +23,7 @@ KEYWORDS = {
     "convert": "convert how many in to miles km pounds kg celsius fahrenheit",
     "weather": "weather temperature rain forecast sunny cold hot outside umbrella",
     "web_search": "who what when where latest news current president price score release search look up find",
+    "wikipedia": "encyclopedia wikipedia background history explain what who",
     "fetch_page": "page website link url read http",
     "define": "define meaning definition word mean",
     "set_timezone": "timezone time zone eastern central pacific mountain utc gmt clock travel",
@@ -54,7 +55,7 @@ def select(text: str, tools: list[Tool], limit: int) -> list[Tool]:
     chosen = [tool for score, tool in scored if score > 0][:limit]
     # A question with no obvious tool still gets search, the time and maths:
     # those are how Ari avoids answering from stale memory.
-    for fallback in ("web_search", "now", "calculate"):
+    for fallback in ("web_search", "wikipedia", "now", "calculate"):
         if len(chosen) >= limit:
             break
         tool = next((t for t in tools if t.name == fallback), None)

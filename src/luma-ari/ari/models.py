@@ -39,6 +39,7 @@ class CatalogModel:
     knowledge_cutoff: str
     profile: str
     tiers: tuple[str, ...] = field(default_factory=tuple)
+    thinking: bool = False
 
     @property
     def label(self) -> str:
@@ -155,3 +156,9 @@ def remove(model: CatalogModel, root: Path | None = None) -> None:
     for suffix in ("", ".verified"):
         (model.path(root) if not suffix else model.path(root).with_suffix(suffix)).unlink(missing_ok=True)
     model.path(root).with_suffix(model.path(root).suffix + ".part").unlink(missing_ok=True)
+
+
+def discard_partial(model: CatalogModel, root: Path | None = None) -> None:
+    """Cancel a pending download without removing an installed model."""
+    target = model.path(root)
+    target.with_suffix(target.suffix + ".part").unlink(missing_ok=True)

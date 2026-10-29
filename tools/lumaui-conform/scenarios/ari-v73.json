@@ -1,0 +1,254 @@
+{
+  "app": "ari",
+  "title": "Ari \u2014 October 29 Models and ChatGPT parity",
+  "app_icon": {
+    "spec_src": "luma-v4-ari.svg",
+    "gtk": "^(ari|ari-app)$"
+  },
+  "spec": {
+    "url": "mockups/current.html?desktop=1&app=ari&ari=b&status=panel&mode=dark",
+    "window": "#w-ari",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ],
+    "ready": "#w-ari",
+    "before": [
+      {
+        "eval": "(() => { document.querySelector('#lshell')?.style.setProperty('display','none','important'); const w=document.querySelector('#w-ari'), phone=w.classList.contains('phone'); w.style.cssText += `left:0px;top:0px;width:${phone ? 390 : 1600}px;height:${phone ? 844 : 1000}px;transform:none`; })()"
+      }
+    ],
+    "viewport": {
+      "width": 1600,
+      "height": 1000
+    },
+    "phone_url": "mockups/current.html?phone=1&app=ari&ari=b&mode=dark",
+    "phone_viewport": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "gtk": {
+    "module": "ari_ui.lumaui_app",
+    "pythonpath": [
+      "src/luma-ari"
+    ],
+    "fixtures": [
+      "tests/fixtures/ari-v73.json",
+      "tests/fixtures/ari-v70-data"
+    ],
+    "env": {
+      "LUMA_ARI_FIXTURE": "{run}/fixtures/ari-v73.json",
+      "XDG_CONFIG_HOME": "{run}/fixture-config",
+      "XDG_DATA_HOME": "{run}/fixtures/ari-v70-data",
+      "XDG_STATE_HOME": "{run}/fixture-state"
+    }
+  },
+  "states": [
+    {
+      "name": "models-yours",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-yours"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-store",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-arx-view=\"store\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-store"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-page-download",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-arx-view=\"store\"]"
+        },
+        {
+          "click": "[data-arx-open=\"qwen3:qwen14\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-page-download"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-page-installed",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-arx-open=\"qwen3:qwen8\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-page-installed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-remove",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-arx-open=\"qwen3:qwen8\"]"
+        },
+        {
+          "click": "[data-arx-rm=\"qwen8\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-remove"
+          }
+        }
+      ]
+    },
+    {
+      "name": "budget",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "budget"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-picker",
+      "spec": [
+        {
+          "eval": "document.querySelector('#w-ari').querySelector(document.querySelector('#w-ari').classList.contains('phone') ? '[data-aripx=\"model\"]' : '[data-arimodel]').click()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-picker"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-all",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-all"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "models-yours",
+    "models-store",
+    "model-page-download",
+    "model-page-installed",
+    "model-remove",
+    "budget",
+    "model-picker",
+    "activity-all"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-ari > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#ari-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#ari-side .lfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#ari-side"
+    },
+    {
+      "name": "model picker",
+      "spec": "#ari-pop"
+    },
+    {
+      "name": "provider sheet",
+      "spec": "#ari-sheet.show"
+    },
+    {
+      "name": "receipt",
+      "spec": ".arich"
+    },
+    {
+      "name": "composer",
+      "spec": "#ari-bar"
+    },
+    {
+      "name": "page",
+      "spec": "#ari-body"
+    },
+    {
+      "name": "island",
+      "spec": "#ari-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#ari-side",
+      "gtk": "ari-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#ari-main",
+      "gtk": "ari-island",
+      "name": "island"
+    },
+    {
+      "spec": "#ari-bar",
+      "gtk": "ari-bar",
+      "name": "action bar"
+    }
+  ],
+  "reference_revision": "SimplyLuma/design-center@255e38cc874fce276114d18e49a1232432f41886"
+}

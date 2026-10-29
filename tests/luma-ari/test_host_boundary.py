@@ -51,6 +51,50 @@ class BoundaryTests(unittest.TestCase):
                              ('Approve', GLib.Variant('(sb)', ('approve', True)))]:
             self.assertEqual(self.call(method,args).return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
         turn.stop.set.assert_not_called(); self.daemon.agent.approve.assert_not_called()
+    def test_download_cancel_cannot_cancel_a_chat_or_another_connection(self):
+        self.daemon.owners.add('chat', ':1.11')
+        turn = SimpleNamespace(stop=Mock())
+        self.daemon.requests['chat'] = turn
+        self.call('CancelDownload', GLib.Variant('(s)', ('chat',))).return_dbus_error.assert_called_once()
+        turn.stop.set.assert_not_called()
+        self.daemon.owners.add('download', ':1.12')
+        download = threading.Event()
+        self.daemon.downloads['download'] = download
+        self.call('CancelDownload', GLib.Variant('(s)', ('download',))).return_dbus_error.assert_called_once()
+        self.assertFalse(download.is_set())
+        self.call('Stop', GLib.Variant('(s)', ('download',)), ':1.12').return_value.assert_called_once()
+        self.assertFalse(getattr(download, 'remove_partial', False))
+        download.clear()
+        self.call('CancelDownload', GLib.Variant('(s)', ('download',)), ':1.12').return_value.assert_called_once()
+        self.assertTrue(download.is_set())
+        self.assertTrue(download.remove_partial)
+
+    def test_download_pause_preserves_partial_and_cancel_discards_it(self):
+        from tempfile import TemporaryDirectory
+        for method, expected in (('Stop', 'download_paused'), ('CancelDownload', 'download_cancelled')):
+            with self.subTest(method=method), TemporaryDirectory() as directory:
+                model = service.models.catalogue()[0]
+                self.daemon.catalogue = [model]
+                self.daemon.config = {}
+                pending = []
+                self.daemon.emit = Mock()
+                self.daemon.admission.reserve()
+                def interrupted(*_args, **_kwargs):
+                    raise service.models.DownloadError('Download stopped.')
+                with patch.object(self.daemon.admission, 'submit_reserved', side_effect=pending.append), \
+                     patch.object(service.audit, 'record'), \
+                     patch.object(service.models, 'download', side_effect=interrupted), \
+                     patch.object(service.models, 'discard_partial') as discard:
+                    request = self.daemon.install(model.id, ':1.11')
+                    result = self.call(method, GLib.Variant('(s)', (request,)))
+                    result.return_value.assert_called_once()
+                    pending.pop()()
+                    self.daemon.emit.assert_called_once_with(request, {'type':expected, 'model':model.id})
+                    self.assertEqual(discard.call_count, method == 'CancelDownload')
+                    self.assertNotIn(request, self.daemon.downloads)
+                    self.assertFalse(self.daemon.owners.owns('requests', request, ':1.11'))
+                self.daemon.admission.slots.release()
+
     def test_owner_can_approve(self):
         self.daemon.owners.add('r', ':1.11')
         self.daemon.owners.event('r', {'type':'approval', 'approval':'a'})
@@ -127,6 +171,9 @@ class BoundaryTests(unittest.TestCase):
         for method, params in (("ChatGPT", GLib.Variant('(b)', (False,))),
                                ("StartChatGPTSignIn", GLib.Variant('(s)', ('',))),
                                ("SelectChatGPTAccount", GLib.Variant('(s)', ('account',))),
+                               ("SetChatGPTEffort", GLib.Variant('(ss)', ('model', 'high'))),
+                               ("SetLocalThinking", GLib.Variant('(sb)', ('model', True))),
+                               ("SetTaskModel", GLib.Variant('(ss)', ('code', 'model'))),
                                ("SignOutChatGPT", GLib.Variant('(s)', ('account',)))):
             with patch.object(service, 'authenticate', side_effect=host_identity.Refused('no')):
                 result = self.call(method, params)

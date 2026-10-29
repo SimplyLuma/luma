@@ -35,6 +35,7 @@ TOOL_GLYPHS = {
 TOOL_NAMES = {
     "now": "Checked the time", "calculate": "Worked something out", "convert": "Converted units",
     "weather": "Checked the weather", "web_search": "Searched the web", "fetch_page": "Read a page",
+    "wikipedia": "Looked up Wikipedia",
     "define": "Looked up a word", "find_app": "Looked for an app", "list_display_modes": "Checked displays",
     "install_model": "Downloaded a model", "remove_model": "Removed a model", "set_permission": "Permission changed",
 }

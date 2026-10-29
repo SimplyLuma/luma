@@ -119,6 +119,35 @@ class Accounts(unittest.TestCase):
         self.assertEqual(self.manager.pending()["status"], "complete")
         return self.manager.cached["active"]
 
+    def test_effort_is_persisted_per_model_and_account_and_revalidated(self):
+        first = self.connect()
+        with self.manager.vault() as vault:
+            vault['accounts'][first]['models'] = [{'id':'test-model', 'name':'Test',
+                'supported_reasoning_levels':[{'effort':'low'}, {'effort':'high'}],
+                'default_reasoning_level':'low'}]
+            self.keyring.save(vault)
+        self.manager.set_effort('test-model', 'high')
+        restored = chatgpt.Manager(keyring=self.keyring, transport=self.transport,
+                                  lock_path=Path(self.scratch.name)/'session')
+        restored.status()
+        self.assertEqual(restored.effort('test-model'), 'high')
+        with self.assertRaises(chatgpt.ChatGPTError):
+            restored.set_effort('test-model', 'unsupported')
+        self.transport.subject = 'different-person'
+        _, query = self.start()
+        self.callback(query, client_id='oaiapp_second_effort')
+        self.assertEqual(self.manager.pending()['status'], 'complete')
+        second = self.manager.cached['active']
+        self.assertNotEqual(first, second)
+        self.assertIsNone(self.manager.effort('test-model'))
+        self.manager.select(first)
+        self.assertEqual(self.manager.effort('test-model'), 'high')
+        # A changed capability list cannot send a stale saved level.
+        with self.manager.vault() as vault:
+            vault['accounts'][first]['models'][0]['supported_reasoning_levels'] = [{'effort':'low'}]
+            self.keyring.save(vault)
+        self.assertEqual(self.manager.effort('test-model'), 'low')
+
     def test_registration_pkce_identity_and_public_status(self):
         attempt, query = self.start()
         self.assertEqual(query["client_id"], ["dynamic_agent_client"])

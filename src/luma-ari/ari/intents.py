@@ -55,6 +55,8 @@ def _wallpaper(match):
 @_rule(r"^(?:please\s+)?(?:open|launch|start|run)\s+(?!the\s+(?:dock|dash))([\w .+-]{2,40})$")
 def _open(match):
     name = match.group(1).strip().rstrip(".")
+    name = re.sub(r"^(?:my|the)\s+", "", name, flags=re.I)
+    name = re.sub(r"\s+app$", "", name, flags=re.I)
     if name.lower() in ("it", "that", "this"):
         return None
     return Intent("open_app", {"name": name}, "{summary}.")

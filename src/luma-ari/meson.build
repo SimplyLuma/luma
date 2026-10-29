@@ -10,8 +10,8 @@ python.install_sources(
 )
 python.install_sources('ari/tools/__init__.py', 'ari/tools/answers.py', 'ari/tools/desktop.py',
                         'ari/tools/preferences.py', 'ari/tools/system.py', subdir: 'ari/tools')
-python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/chatgpt_settings.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
-                       'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', subdir: 'ari_ui')
+python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/chatgpt_settings.py', 'ari_ui/rich_text.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
+                       'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', 'ari_ui/model_families.py', subdir: 'ari_ui')
 
 install_subdir('ari_ui/assets', install_dir: python.get_install_dir() / 'ari_ui')
 

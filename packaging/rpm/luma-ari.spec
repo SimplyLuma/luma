@@ -92,6 +92,7 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" 
 %changelog
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21.creator20261029.1
 - Add ChatGPT plan sign-in, account management and model selection.
+- Add hosted search requests, linked sources, effort controls and model family pages.
 
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19.creator20261019.3
 - Export the assistant interface before accepting activated requests.

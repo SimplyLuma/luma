@@ -32,10 +32,21 @@ def daemon():
     def read(url, **kwargs):
         if url == DISCOVERY["token_endpoint"] and kwargs.get("form", {}).get("grant_type") == "authorization_code":
             transport.nonce = d.chatgpt.login.nonce
-        return original_json(url, **kwargs)
+        result = original_json(url, **kwargs)
+        if url == chatgpt.API + "/models":
+            result["models"][0].update(supported_reasoning_levels=[{"effort":"low"}, {"effort":"high"}], default_reasoning_level="low")
+        return result
     def opened(url, **kwargs):
         if url == chatgpt.API + "/responses":
-            inputs = kwargs["body"]["input"]
+            body = kwargs["body"]
+            assert {"type":"web_search"} in body["tools"]
+            assert body.get("reasoning") == {"effort":"high"}
+            assert "does not give you access to ChatGPT chats or memory" in body["instructions"]
+            if os.environ.get("ARI_CHATGPT_CAPTURE"):
+                Path(os.environ["ARI_CHATGPT_CAPTURE"], "request-capabilities.json").write_text(json.dumps({
+                    "fixture_only":True, "hosted_search":True, "reasoning":body["reasoning"],
+                    "persona_reaches_instructions":True, "store":body["store"], "stream":body["stream"]}))
+            inputs = body["input"]
             if any("limit" in str(item.get("content", "")) for item in inputs if item.get("role") == "user"):
                 return stream({"type": "response.output_text.delta", "delta": "Unfinished test reply"},
                               {"type": "response.failed", "response": {"error": {"code": "subscription_sharing_usage_limit_exceeded"}}})
@@ -152,7 +163,11 @@ def main():
             capture("chatgpt-connected-" + str(width))
         find(dialog, "use").emit("clicked")
         settle(lambda: window.state["model"] == "chatgpt:test-model" and window.chatgpt_dialog is None)
-        assert any(isinstance(item, Gtk.Label) and "Using ChatGPT plan" in item.get_text() for item in descendants(window.bar))
+        assert "ChatGPT" in window.model_button.get_tooltip_text()
+        assert not any(isinstance(item, Gtk.Label) and "Using ChatGPT plan" in item.get_text() for item in descendants(window.bar))
+        assert window.effort_options("chatgpt:test-model")["levels"] == ["low", "high"]
+        window.set_effort("chatgpt:test-model", "high")
+        settle(lambda: window.chatgpt_data.get("efforts", {}).get("test-model") == "high")
         previous_status = window.chatgpt_data
         service_process.terminate()
         service_process.wait(timeout=5)
@@ -162,6 +177,7 @@ def main():
         settle(lambda: window.daemon.proxy.get_name_owner() and window.chatgpt_data is not previous_status)
         assert window.chatgpt_data["active"] == profile
         assert window.state["model"] == "chatgpt:test-model"
+        assert window.chatgpt_data["efforts"]["test-model"] == "high"
         window.send("Tell me a short story about clouds")
         settle(lambda: not window.state["busy"])
         conversation = next(item for item in window.data["conversations"] if item["id"] == window.state["cur"])
@@ -188,7 +204,7 @@ def main():
         dialog.close()
         mode = "real Secret Service" if os.environ.get("ARI_TEST_KEYRING_DAEMON") else "in-memory credential fixture"
         print("ARI CHATGPT: private D-Bus, browser callback, signed identity, " + mode +
-              ", model selection, daemon restart, completed inference, late limit failure, signout, returning login and cancellation PASS", flush=True)
+              ", model selection, effort persistence/request, hosted search request, persona, daemon restart, completed inference, late limit failure, signout, returning login and cancellation PASS", flush=True)
     finally:
         window.close()
         for process in reversed(children):

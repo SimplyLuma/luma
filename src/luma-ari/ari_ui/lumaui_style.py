@@ -9,7 +9,34 @@ from luma_appkit import lumaui_tokens as t
 
 def build(_appearance):
     card, action, foot = t.CARD, t.ACTION_CENTER, t.STRUCTURE["foot"]
-    legacy = f"""
+    # App-owned Models geometry from the owner's take-73 Models stylesheet.
+    models = """
+    .ari-filter-chip { padding: 0 12px; min-height: 34px; border-radius: 17px; background: @luma_chip; }
+    .ari-filter-chip.selected { background: @luma_hover; box-shadow: inset 0 0 0 1px @luma_line; }
+    .ari-models-page .lumaui-t-caption { font-size: 12.5px; color: @luma_ink_secondary; }
+    .ari-models-page .lumaui-t-title-2 { font-size: 14px; font-weight: 650; }
+    .ari-chatgpt-card .lumaui-t-title-2 { font-size: 17px; font-weight: 720; }
+    .ari-chatgpt-card .lumaui-t-caption { font-size: 13.5px; }
+    .ari-model-assignments button, .ari-provider-row button { min-height: 32px; padding: 0 12px; }
+    .ari-models-description { font-size: 15px; color: @luma_ink_secondary; }
+    .ari-step-name { font-weight: 600; }
+    .ari-models-page .ari-models-title { font-size: 32px; font-weight: 780; letter-spacing: -.8px; }
+    .ari-models-page .ari-models-section { font-size: 18px; font-weight: 720; letter-spacing: -.18px; }
+    .ari-assignments-card { padding: 0; }
+    .ari-model-assignments > box { padding: 14px 16px; min-height: 36px; }
+    .ari-model-assignments > box:first-child { min-height: 52px; }
+    .ari-model-assignments > button { background: transparent; }
+    .ari-providers-card { padding: 0; }
+    .ari-provider-row { padding: 12px 16px; min-height: 40px; }
+    .ari-provider-row button { background: @luma_hover; border-radius: 10px; }
+    .ari-chatgpt-card { padding: 20px; }
+    .ari-open-model { padding: 0; background: transparent; border: none; box-shadow: none; }
+    .ari-model-assignments button { background: @luma_hover; border-radius: 10px; }
+    .ari-model-assignments > button { min-height: 48px; }
+    .ari-size-rung { padding: 16px; border-radius: 16px; background: @luma_chip; box-shadow: inset 0 0 0 1px @luma_line; }
+    .ari-size-rung.selected { box-shadow: inset 0 0 0 2px @luma_ink; }
+    """
+    legacy = models + f"""
     .ari-connection {{ color: @luma_good; }}
     .ari-welcome-copy {{ color: @luma_muted; }}
     /* v71 .arich > header: 11 16 10, the title on its own line */

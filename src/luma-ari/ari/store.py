@@ -57,7 +57,9 @@ class Store:
             return self.db.execute("SELECT 1 FROM conversations WHERE id = ?", (conversation,)).fetchone() is not None
 
     def rename_if_new(self, conversation: str, text: str) -> None:
-        title = " ".join(text.split())[:48] or "New conversation"
+        title = " ".join(text.split()) or "New conversation"
+        if len(title) > 48:
+            title = title[:48].rsplit(' ', 1)[0].rstrip('.,;:') + '…'
         with self.lock, self.db:
             self.db.execute("UPDATE conversations SET title = ? WHERE id = ? AND title = 'New conversation'",
                             (title, conversation))

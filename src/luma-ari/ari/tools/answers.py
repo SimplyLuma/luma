@@ -208,19 +208,21 @@ def _strip(markup: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def web_search(arguments: dict) -> dict:
+def _search(arguments: dict, *, wikipedia_only=False) -> dict:
     query = str(arguments.get("query", "")).strip()[:300]
     if not query:
         return {"ok": False, "summary": "Search needs a query."}
     backend = (_config().get("search") or {})
     try:
-        if backend.get("backend") == "searxng" and str(backend.get("url", "")).startswith(("http://", "https://")):
+        if not wikipedia_only and backend.get("backend") == "searxng" and str(backend.get("url", "")).startswith(("http://", "https://")):
             url = backend["url"].rstrip("/") + "/search?" + urllib.parse.urlencode({"q": query, "format": "json"})
             payload = json.loads(_get(url))
             results = [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")}
                        for r in payload.get("results", [])[:5]]
             source = "SearXNG"
         else:
+            if not wikipedia_only:
+                return {"ok": False, "summary": "Web search is not configured. A Wikipedia lookup cannot verify current web information."}
             topic = _topic(query)
             url = "https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
                 {"action": "query", "list": "search", "srsearch": topic, "srlimit": 4, "format": "json"})
@@ -359,6 +361,14 @@ def define(arguments: dict) -> dict:
             "untrusted": True}
 
 
+def web_search(arguments):
+    return _search(arguments)
+
+
+def wikipedia(arguments):
+    return _search(arguments, wikipedia_only=True)
+
+
 TOOLS = {
     "now": ("The current date, time and time zone on this machine.",
             {"type": "object", "properties": {}, "additionalProperties": False}, now),
@@ -377,6 +387,9 @@ TOOLS = {
                    "scores, or facts you are unsure of.",
                    {"type": "object", "properties": {"query": {"type": "string"}},
                     "required": ["query"], "additionalProperties": False}, web_search),
+    "wikipedia": ("Look up encyclopedia background on Wikipedia. This is not live web search and cannot verify current releases, prices, opening hours or local places.",
+                   {"type": "object", "properties": {"query": {"type": "string"}},
+                    "required": ["query"], "additionalProperties": False}, wikipedia),
     "fetch_page": ("Read the text of a public web page.",
                    {"type": "object", "properties": {"url": {"type": "string"}},
                     "required": ["url"], "additionalProperties": False}, fetch_page),
@@ -386,4 +399,7 @@ TOOLS = {
 }
 
 if __name__ == "__main__":
+    backend = _config().get("search") or {}
+    if backend.get("backend") != "searxng" or not str(backend.get("url", "")).startswith(("http://", "https://")):
+        TOOLS.pop("web_search")
     serve("ari-answers", TOOLS)

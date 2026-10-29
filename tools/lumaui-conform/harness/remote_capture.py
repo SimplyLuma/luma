@@ -143,6 +143,11 @@ def set_form_factor(env: dict, plan: dict) -> None:
     if type(phone) is not bool:
         raise ValueError("gtk capture plan phone must be a boolean")
     env["LUMA_FORM_FACTOR"] = "phone" if phone else "desktop"
+    # SessionContext uses the canonical device/presentation contract. Pin it
+    # too, otherwise its first callback reverses the legacy phone override.
+    env["LUMA_DEVICE_CLASS"] = "handheld" if phone else "desktop"
+    env["LUMA_PRESENTATION_MODE"] = "fullscreen-mobile" if phone else "windowed"
+    env["LUMA_INPUT_MODE"] = "touch" if phone else "pointer"
 
 
 def main() -> int:

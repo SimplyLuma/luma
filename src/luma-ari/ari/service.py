@@ -8,6 +8,7 @@ carrying JSON, keyed by the request they belong to.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import time
@@ -23,10 +24,10 @@ from gi.repository import Gio, GLib
 from . import BUS_NAME, OBJECT_PATH, audit, chatgpt, cloud, hardware, models, paths
 from .chatgpt_provider import ChatGPTProvider
 from .agent import Agent, Tools, Turn
-from .policy import APPROVAL_MODES, ENABLED_TIERS, TIER_NAMES, Policy
+from .policy import APPROVAL_MODES, ENABLED_TIERS, TIER_NAMES, ANSWER, OPEN_APPS, PERSONAL_SETTINGS, Policy
 from .providers import OpenAICompatible
 from .persistence import update_json
-from .runtime import LocalRuntime, RuntimeError_
+from .runtime import LocalRuntime, RuntimeError_, context_size
 from .store import Store
 from .host_identity import authenticate, Refused
 from .host_limits import Admission, Owners, Busy, MAX_INPUT, MAX_OUTPUT
@@ -47,6 +48,7 @@ INTERFACE = """
     <method name="Ask"><arg name="conversation" type="s" direction="in"/><arg name="text" type="s" direction="in"/>
       <arg name="conversation_out" type="s" direction="out"/><arg name="request" type="s" direction="out"/></method>
     <method name="Stop"><arg name="request" type="s" direction="in"/></method>
+    <method name="CancelDownload"><arg name="request" type="s" direction="in"/></method>
     <method name="Undo"><arg name="step" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
     <method name="KeepStep"><arg name="step" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
     <method name="NewConversation"><arg name="conversation" type="s" direction="out"/></method>
@@ -56,6 +58,8 @@ INTERFACE = """
     <method name="Models"><arg name="json" type="s" direction="out"/></method>
     <method name="InstallModel"><arg name="model" type="s" direction="in"/><arg name="request" type="s" direction="out"/></method>
     <method name="SetActiveModel"><arg name="model" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
+    <method name="SetLocalThinking"><arg name="model" type="s" direction="in"/><arg name="enabled" type="b" direction="in"/><arg name="ok" type="b" direction="out"/></method>
+    <method name="SetTaskModel"><arg name="task" type="s" direction="in"/><arg name="model" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
     <method name="RemoveModel"><arg name="model" type="s" direction="in"/><arg name="ok" type="b" direction="out"/></method>
     <method name="Settings"><arg name="json" type="s" direction="out"/></method>
     <method name="SetEnabled"><arg type="b" direction="in"/><arg type="b" direction="out"/></method>
@@ -70,6 +74,8 @@ INTERFACE = """
     <method name="SelectChatGPTAccount"><arg name="account" type="s" direction="in"/>
       <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
     <method name="SetChatGPTModel"><arg name="model" type="s" direction="in"/>
+      <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
+    <method name="SetChatGPTEffort"><arg name="model" type="s" direction="in"/><arg name="effort" type="s" direction="in"/>
       <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
     <method name="SignOutChatGPT"><arg name="account" type="s" direction="in"/>
       <arg name="ok" type="b" direction="out"/><arg name="message" type="s" direction="out"/></method>
@@ -133,11 +139,19 @@ class Daemon:
         self.hardware = hardware.cached(paths.data_dir() / "hardware.json")
         self.catalogue = models.catalogue()
         self.runtime = LocalRuntime(self.hardware)
+        self._runtime_selection_lock = threading.Lock()
         self.store = Store()
         tool_dir = Path(__file__).resolve().parent / "tools"
         self.tools = Tools({name: [sys.executable, str(tool_dir / f"{name}.py")] for name in TOOL_SERVERS})
         self.tools.start()
         self.agent = Agent(self.store, self.tools, Policy(), model_provider=self._model)
+        self.agent.model_provider_for = self._model_for
+        if self.config.get("permissions_version", 1) < 2:
+            disabled = {int(tier) for tier in self.config.get("turned_off_tiers", [])}
+            if PERSONAL_SETTINGS in disabled:
+                disabled.add(OPEN_APPS)  # Preserve a prior refusal that also covered opening apps.
+            self.config.update(permissions_version=2, turned_off_tiers=sorted(disabled))
+            _save_config(self.config, ("permissions_version", "turned_off_tiers"))
         self.agent.policy.enabled -= {int(t) for t in self.config.get("turned_off_tiers", [])}
         self.agent.describe_model = self._model_label
         self.ledger = cloud.Ledger()
@@ -213,13 +227,13 @@ class Daemon:
                 return None
             raise
 
-    def _cloud_provider(self):
+    def _cloud_provider(self, override=None):
         key = cloud.load_key()
         if not key:
             raise LookupError("I'm set to think through OpenRouter, but there's no key yet. "
                               "Add one in Ari's Models settings.")
         try:
-            model = self._cloud_model()
+            model = cloud.find(override, cloud.catalogue()) if override else self._cloud_model()
         except cloud.CloudError as error:
             raise LookupError(str(error)) from error
         if model is None:
@@ -337,30 +351,49 @@ class Daemon:
             return chosen
         return installed[0] if installed else None
 
-    def _model(self):
-        if self.brain == "chatgpt":
+    def _model_for(self, text):
+        task = ("code" if re.search(r'\b(code|python|javascript|typescript|debug|programming|function|compile|sql)\b', text, re.I)
+                else "hard" if re.search(r'\b(prove|proof|reason through|hard problem|think carefully)\b', text, re.I)
+                else "long" if len(text) > 6000
+                else "writing" if re.search(r'\b(write|rewrite|draft|edit|summarize|summarise)\b', text, re.I) else "")
+        override = self.config.get("task_models", {}).get(task)
+        return self._model(override)
+
+    def _model(self, override=None):
+        brain = ("chatgpt" if override.startswith("chatgpt:") else "local" if models.find(override, self.catalogue) else "openrouter") if override else self.brain
+        if brain == "chatgpt":
             state = self.chatgpt.status()
-            model = next((m for m in state["models"] if m["id"] == state["model"]), None)
+            identity = override.removeprefix("chatgpt:") if override else state["model"]
+            model = next((m for m in state["models"] if m["id"] == identity), None)
             if not model:
                 raise LookupError(state["error"] or "Connect your ChatGPT account in Models and choose a model.")
-            provider = ChatGPTProvider(self.chatgpt, state["active"], model["id"])
+            provider = ChatGPTProvider(self.chatgpt, state["active"], model["id"], reasoning=self.chatgpt.effort(model["id"]),
+                                       allow_search=ANSWER in self.agent.policy.enabled)
+            provider.default_reasoning = model.get("default_reasoning_level")
             provider.hardware_summary = self.hardware.summary()
             return provider, model["name"], "through your ChatGPT plan", "its training date", "large"
-        if self.brain == "openrouter":
-            return self._cloud_provider()
-        model = self.active_model()
+        if brain == "openrouter":
+            return self._cloud_provider(override)
+        model = models.find(override, self.catalogue) if override else self.active_model()
+        if override and model not in models.installed(self.catalogue):
+            raise LookupError("The model assigned to this task is not installed. Change the assignment in Models.")
         if model is None:
             recommended = models.default_for_tier(self.hardware.tier, self.catalogue)
             size = f"{recommended.size / 1e9:.1f} GB"
             raise LookupError(f"I need a model on this machine to answer that. {recommended.name} ({size}) "
                               "runs entirely here. Want me to download it?")
         try:
-            self.runtime.ensure(model)
+            with self._runtime_selection_lock:
+                if len(self.requests) > 1 and self.runtime.running() and self.runtime.model != model:
+                    raise LookupError("Ari can load only one local model at a time. Finish the other request before switching models.")
+                self.runtime.ensure(model)
         except RuntimeError_ as error:
             raise LookupError(str(error)) from error
-        # Qwen3 thinks aloud unless asked not to; Ari's answers don't need it.
+        thinking = bool(self.config.get("thinking", {}).get(model.id, False)) if model.thinking else False
         provider = OpenAICompatible(self.runtime.base_url, self.runtime.key, model.id,
-                                    extra={"chat_template_kwargs": {"enable_thinking": False}})
+                                    extra={"chat_template_kwargs": {"enable_thinking": thinking}} if model.thinking else {})
+        provider.reasoning = "high" if thinking else None
+        provider.default_reasoning = None
         provider.hardware_summary = self.hardware.summary()
         return provider, f"{model.name} {model.quantisation}", "on this machine", model.knowledge_cutoff, model.profile
 
@@ -380,14 +413,17 @@ class Daemon:
                           "cost_label": "Using ChatGPT plan"}
         return json.dumps({
             "brain": self.brain,
+            "task_models": self.config.get("task_models", {}),
             "cloud_model": hosted,
             "hardware": self.hardware.as_dict(), "summary": self.hardware.summary(),
             "active": active.id if active else "", "recommended": recommended.id,
             "runtime_installed": paths.runtime_binary() is not None,
             "models": [{"suite": suites.get(m.id), "id": m.id, "name": m.name, "family": m.family, "parameters": m.parameters,
                         "quantisation": m.quantisation, "licence": m.licence, "size": m.size,
+                        "context": context_size(m, self.hardware), "model_context": m.context, "ram": round(m.size / 1e9 + 1.5, 1),
+                        "thinking": m.thinking, "thinking_enabled": bool(self.config.get("thinking", {}).get(m.id, False)),
                         "source": m.source, "installed": m.id in installed, "where": "This machine",
-                        "badge": "Private", "downloading": m.id in self.downloads} for m in self.catalogue],
+                        "badge": "Private", "downloading": any(getattr(event, "model_id", None) == m.id for event in self.downloads.values())} for m in self.catalogue],
         })
 
     # A loaded model holds gigabytes that the rest of the machine shares. Let
@@ -429,11 +465,12 @@ class Daemon:
     def settings_json(self) -> str:
         enabled = self.agent.policy.enabled
         descriptions = {0: "Answer questions, look things up and do sums.",
-                        1: "Change your settings, sound, media, displays, time zone and connections, and open apps.",
+                        1: "Change your settings, sound, media, displays, time zone and connections.",
                         2: "Read your calendar, messages and files to answer.",
                         3: "Send messages and make bookings for you.",
                         4: "Change your files and Luma's design.",
-                        5: "Install software and change system settings."}
+                        5: "Install software and change system settings.",
+                        6: "Open an application you ask for, without changing its contents."}
         return json.dumps({
             "tiers": [{"tier": tier, "name": TIER_NAMES[tier], "description": descriptions[tier],
                        "available": tier in ENABLED_TIERS, "enabled": tier in enabled,
@@ -537,12 +574,12 @@ class Daemon:
             if parameters.get_size() > MAX_INPUT:
                 raise ValueError("This request is too large.")
             args = parameters.unpack()
-            chatgpt_mutations = ("StartChatGPTSignIn", "SelectChatGPTAccount", "SetChatGPTModel", "SignOutChatGPT")
+            chatgpt_mutations = ("StartChatGPTSignIn", "SelectChatGPTAccount", "SetChatGPTModel", "SetChatGPTEffort", "SignOutChatGPT")
             if method in ("Ask", "InstallModel", "Cloud", "SetCloudKey", "SetCloudModel", "ChatGPT", *chatgpt_mutations):
                 self.admission.reserve()
                 reserved = True
             self.last_activity = time.monotonic()
-            mutations = ("SetActiveModel", "RemoveModel", "SetBrain", "SetCloudModel", "ForgetCloudKey", "SetCloudKey", *chatgpt_mutations)
+            mutations = ("SetActiveModel", "SetLocalThinking", "SetTaskModel", "RemoveModel", "SetBrain", "SetCloudModel", "ForgetCloudKey", "SetCloudKey", *chatgpt_mutations)
             with self._model_lock:
                 if method in (*mutations, "Ask", "InstallModel") and self._model_mutation is not None:
                     raise Busy("A model change is still in progress.")
@@ -586,14 +623,19 @@ class Daemon:
                     with self.owners.lock: self.owners.requests.pop(request, None)
                     raise
                 invocation.return_value(self._bounded_reply(GLib.Variant("(ss)", (conversation, request))))
-            elif method == "Stop":
+            elif method in ("Stop", "CancelDownload"):
                 if not self.owners.owns("requests", args[0], _sender):
                     raise Refused("This request belongs to another connection.")
-                turn = self.requests.get(args[0])
-                if turn:
-                    turn.stop.set()
                 download = self.downloads.get(args[0])
+                if method == "CancelDownload" and download is None:
+                    raise Refused("This request is not an active model download.")
+                if method == "Stop":
+                    turn = self.requests.get(args[0])
+                    if turn:
+                        turn.stop.set()
                 if download:
+                    if method == "CancelDownload":
+                        download.remove_partial = True
                     download.set()
                 invocation.return_value(None)
             elif method == "Undo":
@@ -681,6 +723,9 @@ class Daemon:
                             elif method == "SetChatGPTModel":
                                 self.chatgpt.select_model(args[0])
                                 message = ""
+                            elif method == "SetChatGPTEffort":
+                                self.chatgpt.set_effort(args[0], args[1])
+                                message = ""
                             else:
                                 message = self.chatgpt.sign_out(args[0])
                             audit.record({"tool": method, "tier": 0, "arguments": {}, "decision": "person changed",
@@ -744,6 +789,32 @@ class Daemon:
                                   "decision": "person changed", "summary":
                                   f"{TIER_NAMES[tier]} turned {'on' if allowed else 'off'}"})
                 invocation.return_value(self._bounded_reply(GLib.Variant("(b)", (ok,))))
+            elif method == "SetTaskModel":
+                task, identity = args
+                if task not in ("code", "hard", "long", "writing"):
+                    raise ValueError("Unknown task")
+                valid = not identity or any(m.id == identity for m in models.installed(self.catalogue))
+                if identity.startswith("chatgpt:"):
+                    state = self.chatgpt.cached
+                    account = next((item for item in state["accounts"] if item["id"] == state["active"]), {})
+                    valid = account.get("signed_in") and account.get("plan_enabled") and any("chatgpt:" + row["id"] == identity for row in state["models"])
+                elif identity and not valid:
+                    row = cloud.find(identity, cloud.catalogue(offline=True))
+                    valid = bool(row and cloud.load_key() and (row.cost_class != "high" or identity in self.config.get("cloud_cost_accepted", [])))
+                if valid:
+                    if identity:
+                        self.config.setdefault("task_models", {})[task] = identity
+                    else:
+                        self.config.setdefault("task_models", {}).pop(task, None)
+                    _save_config(self.config, ("task_models",))
+                invocation.return_value(GLib.Variant("(b)", (bool(valid),)))
+            elif method == "SetLocalThinking":
+                model = models.find(args[0], self.catalogue)
+                ok = bool(model and model.thinking)
+                if ok:
+                    self.config.setdefault("thinking", {})[model.id] = bool(args[1])
+                    _save_config(self.config, ("thinking",))
+                invocation.return_value(GLib.Variant("(b)", (ok,)))
             elif method == "RemoveModel":
                 model = models.find(args[0], self.catalogue)
                 ok = model is not None and not (self.runtime.model == model and self.requests)
@@ -751,6 +822,10 @@ class Daemon:
                     if self.runtime.model == model:
                         self.runtime.stop()
                     models.remove(model)
+                    tasks = self.config.get("task_models", {})
+                    if any(value == model.id for value in tasks.values()):
+                        self.config["task_models"] = {task: value for task, value in tasks.items() if value != model.id}
+                        _save_config(self.config, ("task_models",))
                     if self.config.get("active_model") == model.id:
                         self.config.pop("active_model")
                         _save_config(self.config, removed=("active_model",))
@@ -781,6 +856,7 @@ class Daemon:
             request = uuid.uuid4().hex
             self.owners.add(request, sender)
             cancelled = threading.Event()
+            cancelled.model_id = model.id
             self.downloads[request] = cancelled
             audit.record({"tool": "install_model", "tier": 0, "arguments": {"model": model.id, "source": model.url},
                           "decision": "person agreed"})
@@ -805,7 +881,13 @@ class Daemon:
                 _save_config(self.config, defaults=("active_model",))
                 self.emit(request, {"type": "installed", "model": model.id})
             except models.DownloadError as error:
-                self.emit(request, {"type": "error", "message": str(error)})
+                if cancelled.is_set():
+                    remove = getattr(cancelled, "remove_partial", False)
+                    if remove:
+                        models.discard_partial(model)
+                    self.emit(request, {"type": "download_cancelled" if remove else "download_paused", "model": model.id})
+                else:
+                    self.emit(request, {"type": "error", "message": str(error)})
             finally:
                 self.downloads.pop(request, None)
                 with self.owners.lock: self.owners.requests.pop(request, None)

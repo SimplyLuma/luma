@@ -22,6 +22,11 @@ class RuntimeError_(RuntimeError):
     pass
 
 
+def context_size(model: CatalogModel, hardware: Hardware) -> int:
+    """The context Ari configures, rather than the model card maximum."""
+    return min(model.context, 8192 if hardware.tier in ("minimal", "standard") else 16384)
+
+
 def _free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -71,7 +76,7 @@ class LocalRuntime:
         self.key = secrets.token_urlsafe(24)
         # Working memory for the context grows with its length; Ari's turns are
         # short, and 16k cost Qwen3 4B about 2.4 GB of a 16 GB laptop.
-        context = min(model.context, 8192 if self.hardware.tier in ("minimal", "standard") else 16384)
+        context = context_size(model, self.hardware)
         command = [str(binary), "--model", str(model.path()), "--host", "127.0.0.1",
                    "--port", str(self.port), "--api-key", self.key, "--ctx-size", str(context),
                    "--jinja", "--no-webui", "--threads", str(max(2, self.hardware.cores // 2)),

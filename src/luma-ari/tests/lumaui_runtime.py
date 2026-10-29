@@ -44,6 +44,66 @@ def settle(window, seconds):
 
 
 class FixtureRuntime(unittest.TestCase):
+    def test_parity_models_pages_effort_and_safe_links(self):
+        window = self.window
+        window.present()
+        window.state['view'] = 'models'
+        for width, height in ((1600, 1000), (390, 844)):
+            window.set_default_size(width, height)
+            settle(window, .2)
+            for tab in ('yours', 'store'):
+                window.switch_models_tab(tab)
+                settle(window, .1)
+                self.assertTrue(window.page.get_first_child())
+            window.show_model_family('Qwen3', 'qwen8')
+            settle(window, .1)
+            self.assertEqual(window.selected_family_model()['id'], 'qwen8')
+            window.begin_remove('qwen8')
+            self.assertEqual(window.bar.grown, 'remove-model')
+            window.cancel_remove()
+            window.models_tab, window.model_family = 'yours', None
+            window.state.update(view='chat', model='chatgpt:future')
+            window.chatgpt_data = {'models':[{'id':'future','name':'Future',
+                'supported_reasoning_levels':[{'effort':'low'},{'effort':'high'}], 'default_reasoning_level':'low'}]}
+            window.render()
+            self.assertTrue(window.effort_options('chatgpt:future'))
+            self.assertIsNone(window.effort_options('auto'))
+            window.show_effort('chatgpt:future')
+            settle(window, .1)
+            window.close_picker()
+            bubble = window.reply_bubble({'a':'**Answer** with [source](https://example.org).',
+                'sources':[{'title':'Source','url':'https://example.org'}]})
+            self.assertIsNotNone(bubble)
+
+    def test_desktop_sidebar_command_keeps_navigation_available(self):
+        window = self.window
+        window.set_default_size(1180, 740)
+        window.present()
+        settle(window, .2)
+        self.assertTrue(window.toggle.shown)
+        window.toggle.toggle()
+        settle(window, .1)
+        self.assertFalse(window.toggle.shown)
+        window.toggle.toggle()
+        settle(window, .1)
+        self.assertTrue(window.toggle.shown)
+
+    def test_approval_becomes_one_step_in_chat_and_activity(self):
+        window = self.window
+        window.request = 'fixture-request'
+        window.state.update(view='chat', cur='budget')
+        conversation = next(item for item in window.data['conversations'] if item['id']=='budget')
+        conversation['msgs'] = [{'u':'Change the setting'}]
+        window.data['activity'] = {}
+        for event in (
+            {'type':'approval', 'approval':'a', 'tool':'set_theme', 'summary':'Change appearance'},
+            {'type':'step', 'step':'s', 'approval':'a', 'tool':'set_theme', 'summary':'Changed appearance', 'undo':True},
+            {'type':'done', 'text':''}):
+            window.on_event('fixture-request', json.dumps(event))
+        self.assertEqual(list(window.data['activity']), ['s'])
+        self.assertEqual(conversation['msgs'], [{'u':'Change the setting'}, {'ch':'s'}])
+        self.assertEqual(window.data['activity']['s']['nodes'][0]['st'], 'done')
+
     @classmethod
     def setUpClass(cls):
         Gtk.init()
@@ -86,7 +146,7 @@ class FixtureRuntime(unittest.TestCase):
                 if window.phone:
                     self.assertEqual(window.title_island.lead_button.get_allocated_width(), 48)
                 else:
-                    self.assertTrue(window.toggle.get_visible())
+                    self.assertTrue(window.toggle.shown)
 
     def test_all_capture_states_compose_without_real_services(self):
         scenario = json.loads((ROOT / "tools/lumaui-conform/scenarios/ari.json").read_text())
@@ -109,7 +169,7 @@ class FixtureRuntime(unittest.TestCase):
                         self.assertIsNone(window.daemon)
                         # v71: under 560 the phone shape; the title row's toggle steps aside for the island.
                         self.assertEqual(window.phone, width == 390)
-                        self.assertEqual(window.toggle.get_visible(), width != 390)
+                        self.assertEqual(window.toggle.shown, width != 390)
                         if state == "model-picker":
                             if width == 390:
                                 self.assertIsNone(window.popover)
@@ -277,16 +337,20 @@ class FixtureRuntime(unittest.TestCase):
                 window = lumaui_app.AriWindow(self.application, self.source)
                 try:
                     window.set_default_size(width, 844)
-                    window._capture_state("models-all")
+                    window._capture_state("models-store")
                     window.render()
                     window.present()
                     settle(window, .3)
                     self.assertEqual(window.get_width(), width)
-                    self.assertIsNotNone(window.hero_view)
-                    grid, mark, information, fitting, action = window.hero_view
+                    def descendants(widget):
+                        yield widget
+                        for child in _children(widget):
+                            yield from descendants(child)
+                    widgets = list(descendants(window.page))
+                    hero = next(item for item in widgets if item.get_name() == "ari-model-qwen14")
+                    action = next(item for item in widgets if item.get_name() == "ari-get-qwen14")
                     self.assertTrue(action.get_sensitive())
-                    for widget in (mark, information, fitting, action):
-                        self.assertIs(widget.get_parent(), grid)
+                    for widget in (hero, action):
                         self.assertGreater(widget.get_width(), 0)
                         ok, bounds = widget.compute_bounds(window)
                         self.assertTrue(ok)
@@ -974,9 +1038,12 @@ class FixtureRuntime(unittest.TestCase):
             callback((json.dumps({"models": rows, "hardware": {"ram_gb": 16}}),))
         self.assertEqual(window.models_error, "")
         self.assertFalse(window.models_loading)
-        get_buttons = [w for w in descendants(window.page) if w.get_name().startswith("ari-get-")]
-        self.assertEqual(len(get_buttons), len(rows))
-        get_buttons[0].emit("clicked")
+        window.switch_models_tab('store')
+        family = next(w for w in descendants(window.page) if w.get_name() == 'ari-family-qwen3')
+        family.emit('clicked')
+        self.assertEqual(window.model_family, 'Qwen3')
+        self.assertEqual(len(lumaui_app.families(window.data['local_models'])['Qwen3']), len(rows))
+        window.bar.bar_row.get_first_child().emit('clicked')
         self.assertEqual(window.daemon.call.call_args.args[0], "InstallModel")
 
     def test_late_chatgpt_status_keeps_a_new_local_model_selection(self):

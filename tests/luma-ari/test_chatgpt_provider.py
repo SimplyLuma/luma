@@ -21,6 +21,32 @@ def completed(output):
 
 
 class Responses(unittest.TestCase):
+    def test_hosted_search_replaces_local_web_tools_and_preserves_citations(self):
+        self.tools += [{"type":"function", "function":{"name":name,"parameters":{}}} for name in ('web_search','fetch_page','wikipedia')]
+        self.responses.append(stream({'type':'response.web_search_call.searching'},
+            {'type':'response.output_text.delta', 'delta':'Verified source'}, completed([
+                {'type':'web_search_call','status':'completed'},
+                {'type':'message','content':[{'type':'output_text','text':'Verified source', 'annotations':[
+                    {'type':'url_citation','url':'https://example.org/fedora','title':'Fedora','start_index':9,'end_index':15}]}]}])))
+        events = list(self.provider.chat(self.messages, self.tools))
+        names = [tool['name'] for tool in self.requests[-1][1]['body']['tools'][0]['tools']]
+        self.assertEqual(names, ['now'])
+        self.assertEqual(self.requests[-1][1]['body']['tools'][-1], {'type':'web_search'})
+        self.assertIn({'type':'working','label':'Searching the web…'}, events)
+        self.assertIn({'type':'final_text','text':'Verified [Fedora](https://example.org/fedora)'}, events)
+        self.assertIn({'type':'sources','sources':[{'url':'https://example.org/fedora','title':'Fedora'}]}, events)
+
+    def test_reasoning_is_sent_only_when_provided_by_validated_selection(self):
+        self.provider.reasoning = 'high'
+        self.responses.append(stream(completed([])))
+        list(self.provider.chat(self.messages))
+        self.assertEqual(self.requests[-1][1]['body']['reasoning'], {'effort':'high'})
+        self.provider.reasoning = None
+        self.messages[-1]['content'] = 'A different question'
+        self.responses.append(stream(completed([])))
+        list(self.provider.chat(self.messages))
+        self.assertNotIn('reasoning', self.requests[-1][1]['body'])
+
     def setUp(self):
         self.requests = []
         self.responses = []
@@ -46,6 +72,12 @@ class Responses(unittest.TestCase):
         self.assertEqual(body["tools"][0]["type"], "namespace")
         self.assertEqual(body["tools"][0]["name"], "ari")
         self.assertFalse(set(body) & {"temperature", "max_output_tokens", "max_tokens", "previous_response_id", "conversation"})
+
+    def test_hosted_search_honors_the_answer_tools_permission(self):
+        self.provider.allow_search = False
+        self.responses.append(stream(completed([])))
+        list(self.provider.chat(self.messages))
+        self.assertNotIn('tools', self.requests[0][1]['body'])
 
     def test_tool_calls_require_terminal_completion_and_valid_arguments(self):
         call = {"type": "function_call", "call_id": "call", "name": "now", "namespace": "ari", "arguments": "{}"}

@@ -47,6 +47,8 @@ class NetworkError(ChatGPTError):
 
 
 def error_message(status, code):
+    if code in ("unsupported_tool", "unsupported_tool_type", "unsupported_value", "invalid_request_error"):
+        return "ChatGPT rejected a requested tool or setting (" + code + "). This route may not allow hosted web search or the selected effort. No fallback was used."
     if code == "subscription_sharing_usage_limit_exceeded" or status == 429:
         return "A ChatGPT plan or Ari usage limit was reached. Manage usage in ChatGPT settings."
     if code == "subscription_sharing_user_not_eligible":
@@ -289,6 +291,7 @@ class Manager:
                                       "plan_enabled": PLAN_SCOPE in item.get("scopes", [])}
                                      for key, item in vault["accounts"].items()],
                        "active": vault["active"], "models": active.get("models", []), "model": active.get("model", ""),
+                       "efforts": active.get("efforts", {}),
                        "usage_url": USAGE_URL, "error": "", "pending": self.pending()}
 
     @property
@@ -365,7 +368,7 @@ class Manager:
         rows = value.get("models")
         if not isinstance(rows, list):
             raise ChatGPTError("ChatGPT returned an invalid model list.")
-        account["models"] = [{"id": row["slug"], "name": row["display_name"]} for row in rows
+        account["models"] = [_model_row(row) for row in rows
                              if isinstance(row, dict) and row.get("visibility") == "list"
                              and isinstance(row.get("slug"), str) and 0 < len(row["slug"]) <= 200
                              and isinstance(row.get("display_name"), str) and 0 < len(row["display_name"]) <= 200][:200]
@@ -379,6 +382,24 @@ class Manager:
                 raise ChatGPTError("Choose a saved ChatGPT account.")
             vault["active"] = profile
             self.keyring.save(vault)
+
+    def set_effort(self, model, level):
+        with self.vault() as vault:
+            account = vault["accounts"].get(vault["active"], {})
+            row = next((row for row in account.get("models", []) if row["id"] == model), {})
+            if level not in [entry["effort"] for entry in row.get("supported_reasoning_levels", [])]:
+                raise ChatGPTError("Choose an effort supported by this model. Refresh its model list if needed.")
+            account.setdefault("efforts", {})[model] = level
+            self.keyring.save(vault)
+
+    def effort(self, model):
+        state = self.cached
+        row = next((row for row in state["models"] if row["id"] == model), {})
+        levels = [entry["effort"] for entry in row.get("supported_reasoning_levels", [])]
+        chosen = state.get("efforts", {}).get(model)
+        if chosen not in levels:
+            chosen = row.get("default_reasoning_level")
+        return chosen if chosen in levels else None
 
     def select_model(self, model):
         with self.vault() as vault:
@@ -557,8 +578,30 @@ class Manager:
                 profile = p.profile or uuid.uuid4().hex
             email = claims.get("email") if isinstance(claims.get("email"), str) else ""
             label = (email or "ChatGPT account")[:200] + " · " + profile[:6]
+            saved_efforts = vault["accounts"].get(profile, {}).get("efforts", {})
             vault["accounts"][profile] = {**tokens, "client_id": client, "subject": claims["sub"], "issuer": ISSUER,
+                                          "efforts": saved_efforts,
                                           "email": email, "label": label, "models": [], "model": ""}
             vault["active"] = profile
             self.keyring.save(vault)
             p.account = profile
+
+
+def _model_row(row):
+    result = {"id": row["slug"], "name": row["display_name"]}
+    levels = []
+    values = row.get("supported_reasoning_levels")
+    for value in (values if isinstance(values, list) else [])[:20]:
+        effort = value.get("effort") if isinstance(value, dict) else value
+        if isinstance(effort, str) and 0 < len(effort) <= 32 and all(c.isascii() and (c.isalnum() or c == '_') for c in effort):
+            if effort not in [entry["effort"] for entry in levels]:
+                levels.append({"effort": effort})
+    if levels:
+        result["supported_reasoning_levels"] = levels
+        default = row.get("default_reasoning_level")
+        if default in [entry["effort"] for entry in levels]:
+            result["default_reasoning_level"] = default
+    description = row.get("description")
+    if isinstance(description, str) and len(description) <= 500:
+        result["description"] = description
+    return result

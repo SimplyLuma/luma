@@ -22,7 +22,7 @@ from typing import Callable
 from . import audit, intents, router
 from .mcp import Client, Tool, ToolError
 from .persona import PROFILES, Profile, system_prompt
-from .policy import ANSWER, PERSONAL_SETTINGS, Policy
+from .policy import ANSWER, PERSONAL_SETTINGS, OPEN_APPS, Policy
 from .store import Store
 
 Emit = Callable[[dict], None]
@@ -101,6 +101,7 @@ class Agent:
         self.tools = tools
         self.policy = policy
         self.model_provider = model_provider
+        self.model_provider_for = None
         self.revert_timers: dict[str, threading.Timer] = {}
         self.approvals: dict[str, list] = {}  # approval id: [event, answer]
         self.describe_model: Callable[[], str] | None = None
@@ -113,6 +114,10 @@ class Agent:
     def run_tool(self, turn: Turn, name: str, arguments: dict, *, message: str = "") -> dict:
         user_named_it = bool(router.select(turn.text, [t for t in self.tools.available if t.name == name], 1)) \
             or intents.match(turn.text) is not None
+        if name == "open_app" and turn.read_untrusted:
+            app = str(arguments.get('name', '')).strip().casefold()
+            user_named_it = bool(app and re.search(r'(?:^|\b(?:and|then|please)\s+)(?:(?:can|could) you\s+)?(?:open|launch|start|run)\s+', turn.text, re.I)
+                                 and re.search(r'(?<!\w)' + re.escape(app) + r'(?!\w)', turn.text.casefold()))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
         if decision.allowed and turn.read_untrusted and decision.tier > ANSWER and not user_named_it:
@@ -127,6 +132,7 @@ class Agent:
             audit.record({**entry, "decision": "refused", "reason": decision.reason})
             return {"ok": False, "summary": decision.reason, "refused": True}
         arguments = {k: v for k, v in arguments.items() if k != "preview"}
+        approval = ""
         if self.policy.needs_approval(name):
             preview = self.tools.call(name, {**arguments, "preview": True}) if self._previews(name) else \
                 {"ok": True, "preview": _describe(name, arguments)}
@@ -134,7 +140,7 @@ class Agent:
                 audit.record({**entry, "decision": "ran", "ok": bool(preview.get("ok")),
                               "summary": preview.get("summary", "")})
                 return preview
-            answer = self._ask_approval(turn, name, preview.get("preview") or _describe(name, arguments),
+            answer, approval = self._ask_approval(turn, name, preview.get("preview") or _describe(name, arguments),
                                         preview.get("detail", ""))
             if answer is not True:
                 reason = "person declined" if answer is False else "no answer"
@@ -153,12 +159,13 @@ class Agent:
             turn.read_untrusted = True
             if _INJECTION.search(json.dumps(result.get("data", ""))):
                 turn.injection_seen = True
-        if result.get("ok") and decision.tier == PERSONAL_SETTINGS and not result.get("unchanged"):
+        if result.get("ok") and decision.tier in (PERSONAL_SETTINGS, OPEN_APPS) and not result.get("unchanged"):
             step_id = self.store.add_step(turn.conversation, message, name, result.get("summary", ""), result.get("undo"))
             audit.record({**entry, "decision": "ran", "ok": True, "summary": result.get("summary", ""),
                           "undo": result.get("undo"), "step": step_id})
             step = {"type": "step", "step": step_id, "tool": name, "summary": result.get("summary", ""),
-                    "undo": bool(result.get("undo")), "confirm_within": result.get("confirm_within")}
+                    "undo": bool(result.get("undo")), "confirm_within": result.get("confirm_within"),
+                    "approval": approval}
             turn.steps.append(step)
             turn.emit(step)
             if result.get("confirm_within") and result.get("undo"):
@@ -172,7 +179,7 @@ class Agent:
         entry = self.tools.by_name.get(name)
         return bool(entry and "preview" in entry[1].input_schema.get("properties", {}))
 
-    def _ask_approval(self, turn: Turn, name: str, text: str, detail: str = "") -> bool | None:
+    def _ask_approval(self, turn: Turn, name: str, text: str, detail: str = "") -> tuple[bool | None, str]:
         """Show what is about to happen and wait for the person. None if they never answer."""
         identity = uuid.uuid4().hex
         waiter = [threading.Event(), None]
@@ -186,7 +193,7 @@ class Agent:
         finally:
             self.approvals.pop(identity, None)
         turn.emit({"type": "approval_settled", "approval": identity, "approved": waiter[1] is True})
-        return waiter[1]
+        return waiter[1], identity
 
     def approve(self, identity: str, approved: bool) -> bool:
         waiter = self.approvals.get(identity)
@@ -245,6 +252,8 @@ class Agent:
             text = f"Something went wrong on my side: {error}"
             turn.emit({"type": "error", "message": text})
         text = _normalise(text, turn)
+        if len(turn.steps) == 1 and text.rstrip('.').casefold() == turn.steps[0]['summary'].rstrip('.').casefold():
+            text = ""  # The receipt already contains the entire successful answer.
         meta = {"steps": [s["step"] for s in turn.steps], "sources": turn.sources}
         if turn.model_info is not None:
             meta.update(model_info=turn.model_info, elapsed=round(time.monotonic() - started, 1))
@@ -271,24 +280,31 @@ class Agent:
         if self.model_provider is None:
             return "I don't have a model to think with yet."
         try:
-            provider, label, where, cutoff, profile_name = self.model_provider()
+            provider, label, where, cutoff, profile_name = self.model_provider_for(turn.text) if self.model_provider_for else self.model_provider()
         except LookupError as error:
             turn.emit({"type": "needs_model", "message": str(error)})
             return str(error)
         turn.model_info = {"id": provider.model, "n": label, "local": where == "on this machine",
                            "via": "OpenRouter" if where == "through OpenRouter" else where}
+        if getattr(provider, "reasoning", None):
+            turn.model_info.update(effort=provider.reasoning, default_effort=getattr(provider, "default_reasoning", None))
         profile: Profile = PROFILES.get(profile_name, PROFILES["small"])
         tools = router.select(_routing_text(turn.text, self.store.messages(turn.conversation, limit=3)),
                               self.tools.available, profile.max_tools)
+        if getattr(provider, "hosted_search", False):
+            tools = [tool for tool in tools if tool.name not in ("web_search", "fetch_page", "wikipedia")]
+        tool_names = [t.name for t in tools]
+        if getattr(provider, "hosted_search", False) and getattr(provider, "allow_search", True):
+            tool_names.append("web_search")
         prompt = system_prompt(profile, hardware_summary=getattr(provider, "hardware_summary", "this computer"),
-                               model_label=label, where=where, cutoff=cutoff, tools=[t.name for t in tools])
+                               model_label=label, where=where, cutoff=cutoff, tools=tool_names)
         prompt += _current_settings() + _recent_changes(self.store.recent_steps(time.time() - RECENT_CHANGES_SECONDS))
         messages = [{"role": "system", "content": prompt}]
         for past in self.store.messages(turn.conversation, limit=profile.history_messages + 1)[:-1]:
             if past["role"] in ("user", "assistant"):
                 messages.append({"role": past["role"], "content": past["content"]})
         messages.append({"role": "user", "content": turn.text})
-        if _TIME_SENSITIVE.search(turn.text) and "web_search" in self.tools.by_name:
+        if not getattr(provider, "hosted_search", False) and _TIME_SENSITIVE.search(turn.text) and "web_search" in self.tools.by_name:
             query = _lookup_query(turn.text)
             result = self.run_tool(turn, "web_search", {"query": query})
             messages.append({"role": "assistant", "content": None, "tool_calls": [
@@ -324,6 +340,16 @@ class Agent:
                         streamer.feed(event["text"])
                 elif kind == "tool_call":
                     calls.append(event)
+                elif kind == "working":
+                    turn.emit(event)
+                elif kind == "final_text":
+                    text_parts = [event["text"]]
+                elif kind == "untrusted":
+                    turn.read_untrusted = True
+                elif kind == "sources":
+                    for source in event["sources"]:
+                        if source not in turn.sources:
+                            turn.sources.append(source)
                 elif kind == "usage":
                     turn.emit({"type": "working", "label": f"{label} is thinking",
                                "tokens_per_second": round(event["tokens_per_second"], 1)})
@@ -423,6 +449,7 @@ def _tool_text(result: dict, *, lookup: bool = False) -> str:
 
 def _running_label(name: str) -> str:
     return {"web_search": "Searching", "fetch_page": "Reading the page", "weather": "Checking the weather",
+            "wikipedia": "Looking up Wikipedia",
             "calculate": "Working it out", "open_app": "Opening", "list_display_modes": "Checking displays",
             "find_setting": "Looking through settings", "media_status": "Checking what's playing",
             "media_control": "Telling the player"}.get(
@@ -486,8 +513,17 @@ def _routing_text(text: str, recent: list[dict]) -> str:
 
 
 def _describe(name: str, arguments: dict) -> str:
-    shown = ", ".join(f"{k} {v}" for k, v in arguments.items() if v not in ("", None))
-    return f"{name.replace('_', ' ').capitalize()}" + (f": {shown}" if shown else "")
+    templates = {"open_app": "Open {name}", "set_theme": "Use the {theme} theme",
+                 "set_accent": "Set the accent to {color}", "set_volume": "Set volume to {level}",
+                 "set_brightness": "Set brightness to {level}", "set_timezone": "Set the time zone to {zone}",
+                 "set_wifi": "Turn Wi-Fi {state}", "set_bluetooth": "Turn Bluetooth {state}",
+                 "set_do_not_disturb": "Turn Do Not Disturb {state}", "set_night_light": "Turn Night Light {state}",
+                 "set_dock_position": "Move the dock to the {edge}", "set_wallpaper": "Change the wallpaper",
+                 "change_setting": "Change {key}", "media_control": "Control playback: {action}"}
+    try:
+        return templates.get(name, "Change the requested preference").format(**arguments)
+    except (KeyError, ValueError):
+        return "Apply the requested change"
 
 
 RECENT_CHANGES_SECONDS = 24 * 3600
@@ -508,9 +544,6 @@ _PREAMBLE = re.compile(r"^(?:(?:sure|certainly|of course|okay|ok)[,.!]\s*)?(?:(?
 
 def _normalise(text: str, turn: Turn) -> str:
     text = _THINK.sub("", text).strip()
-    # Ari speaks plain sentences; the thread doesn't render markdown emphasis.
-    text = re.sub(r"(\*\*|__)(.+?)\1", r"\2", text)
-    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.M)
     # A small model asked "which model are you" may recite its instructions. They stay private.
     from .persona import RULES
     if sum(1 for rule in RULES if rule[:40].lower() in text.lower()) >= 2:

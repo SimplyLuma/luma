@@ -11,15 +11,16 @@ from collections import deque
 from dataclasses import dataclass
 
 ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, ACT_ON_BEHALF, CHANGE_FILES, CHANGE_SYSTEM = range(6)
+OPEN_APPS = 6
 TIER_NAMES = {0: "Answer", 1: "Personal settings", 2: "Read personal data", 3: "Act on your behalf",
-              4: "Change your files and design", 5: "Change the system"}
+              4: "Change your files and design", 5: "Change the system", OPEN_APPS: "Open applications"}
 
 TOOL_TIERS = {
     "now": ANSWER, "calculate": ANSWER, "convert": ANSWER, "weather": ANSWER, "web_search": ANSWER,
-    "fetch_page": ANSWER, "define": ANSWER, "find_app": ANSWER, "list_display_modes": ANSWER,
+    "fetch_page": ANSWER, "wikipedia": ANSWER, "define": ANSWER, "find_app": ANSWER, "list_display_modes": ANSWER,
     "set_dock_position": PERSONAL_SETTINGS, "set_theme": PERSONAL_SETTINGS, "set_accent": PERSONAL_SETTINGS,
     "set_interface_scale": PERSONAL_SETTINGS, "set_night_light": PERSONAL_SETTINGS, "set_brightness": PERSONAL_SETTINGS,
-    "set_wallpaper": PERSONAL_SETTINGS, "set_refresh_rate": PERSONAL_SETTINGS, "open_app": PERSONAL_SETTINGS,
+    "set_wallpaper": PERSONAL_SETTINGS, "set_refresh_rate": PERSONAL_SETTINGS, "open_app": OPEN_APPS,
     "media_status": ANSWER, "find_setting": ANSWER,
     "set_timezone": PERSONAL_SETTINGS, "set_volume": PERSONAL_SETTINGS, "set_do_not_disturb": PERSONAL_SETTINGS,
     "set_wifi": PERSONAL_SETTINGS, "set_bluetooth": PERSONAL_SETTINGS, "set_tiling": PERSONAL_SETTINGS,
@@ -31,7 +32,7 @@ TOOL_TIERS = {
 CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth"}
 APPROVAL_MODES = ("system", "all", "never")
 # Phase 1 runs Tiers 0 and 1. The rest exist so the refusal is honest.
-ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS}
+ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS, OPEN_APPS}
 MAX_CALLS_PER_TURN = 6
 MAX_CALLS_PER_MINUTE = 30
 
@@ -51,7 +52,7 @@ class Policy:
         self._recent: deque[float] = deque()
 
     def needs_approval(self, tool: str) -> bool:
-        if self.tier(tool) == ANSWER or self.approval_mode == "never":
+        if self.tier(tool) in (ANSWER, OPEN_APPS) or self.approval_mode == "never":
             return False
         return self.approval_mode == "all" or tool in CONSEQUENTIAL
 
