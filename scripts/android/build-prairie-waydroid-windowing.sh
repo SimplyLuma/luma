@@ -26,6 +26,7 @@ expected_font_sha=26ad3db9b31ff7dde67a91ff515d022d2f495cd506590699cf264f0bfe6fb7
 build_jobs=${LUMA_BUILD_JOBS:-}
 soong_gc=${LUMA_ANDROID_SOONG_GOGC:-20}
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
+property_admission_patch="$repo_root/patches/android-system-core/0001-luma-property-writer-admission.patch"
 chrome_ownership_patch="$repo_root/patches/android-hardware-waydroid/0009-luma-frame-buffer-thread-ownership.patch"
 task_lifetime_patch="$repo_root/patches/android-hardware-waydroid/0010-luma-authoritative-task-removal.patch"
 initial_resize_patch="$repo_root/patches/android-hardware-waydroid/0011-luma-mandatory-initial-task-resize.patch"
@@ -184,6 +185,7 @@ if [ "$incremental" = 0 ]; then
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
+  git -C "$source_root/system/core" apply "$property_admission_patch"
 fi
 printf '%s  %s\n' "$expected_font_sha" \
   "$hardware_root/hwcomposer/fonts/Figtree-VF.ttf" | sha256sum --check --status

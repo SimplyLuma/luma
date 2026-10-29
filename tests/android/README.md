@@ -72,3 +72,21 @@ count PSS instead of adding shared RSS; record allocated disk blocks rather than
 sparse image size. Test native matching-CPU apps before optional translation.
 VM CPU or memory samples cannot establish physical battery drain, hardware
 capture quality, touch/stylus latency or suspend/push reliability.
+
+The read-only hardware admission check runs inside a disposable VM using
+Android's own Binder client. After confirming the container is running and
+unfrozen, run `python3 tests/android/hardware-binder-probe.py --uid 0 --expect
+control`, then repeat with the fixture's actual Android application UID and
+`--expect denied`. The fixed unknown operation has no hardware side effects;
+endpoint absence, empty replies and generic transport failures do not pass.
+Also trigger the fixture's `probe_boundary` extra or its boundary button and
+verify its own Java SecurityException receipt. This checks the privileged host
+hardware endpoint separately from Android's platform service.
+
+Before applying the property-writer patch to a Waydroid-prepared source tree,
+run `python3 tests/android/property-writer-admission.py /path/to/system/core`.
+It compiles the actual patched permission function with permissive policy
+fixtures, tests application/isolated identities across Android users, and
+requires the unpatched negative control to fail. The source tree stays intact.
+This is not a complete init/image test; retain an ordinary-APK test plus native
+service positive controls on the rebuilt image before qualification.
