@@ -97,3 +97,19 @@ needs adapters and verified completion/receipt handling for those services.
 
 Tide exposes MPRIS playback controls but no search action; its `OpenUri` method
 returns NotSupported. No song-search tool is claimed.
+
+## Packaged source checkpoint
+
+Runtime source commit: `ddd958bfed46dd6f60da76879f767f9d88f8ab5d`.
+Fedora 44 RPM/SRPM build and the spec's 126 tests, installed-module imports,
+identity refusal, metadata and responsive navigation/contrast checks passed.
+All packaged Python/SVG runtime files matched the source before a fresh native
+OAuth/inference fixture passed using the extracted payload. Public repository
+source contracts also passed.
+
+RPM SHA-256:
+`aa36e9fad1c4749403eadb82ac67c8242a59bbae5829aad90d8f666c1fa5f349`.
+SRPM SHA-256:
+`76a90c961d33b32441e39a1725ddb3eea9d3a89b59dc41732ee9f27fae8a5d2c`.
+These are server test artifacts, not a published release or a Dell delivery.
+The visual and live-account gates above remain open.
