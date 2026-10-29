@@ -47,18 +47,12 @@ public final class MainActivity extends Activity {
                     "Luma Android fixture", "luma-android-clipboard-fixture"));
             receipt(this, "clipboard-copy", "synthetic-android-text");
         });
-        button(layout, "Check synthetic Luma clipboard", () -> {
-            android.content.ClipboardManager clipboard =
-                    (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
-            android.content.ClipData clip = clipboard.getPrimaryClip();
-            String result = "empty";
-            if (clip != null && clip.getItemCount() > 0) {
-                CharSequence value = clip.getItemAt(0).coerceToText(this);
-                // Never log arbitrary host clipboard contents.
-                result = "luma-host-clipboard-fixture".contentEquals(value == null ? "" : value)
-                        ? "matched-host-fixture" : "unexpected-content";
-            }
-            receipt(this, "clipboard-read", result);
+        button(layout, "Check synthetic Luma clipboard",
+                () -> checkSyntheticClipboard("clipboard-read"));
+        button(layout, "Check after switching to a Luma app", () -> {
+            receipt(this, "clipboard-host-switch-scheduled", "10 seconds");
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    () -> checkSyntheticClipboard("clipboard-after-host-switch"), 10000);
         });
         button(layout, "Open document", () -> {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("text/plain")
@@ -91,6 +85,21 @@ public final class MainActivity extends Activity {
             receipt(this, "background-notification-scheduled", "30 seconds");
             finishAndRemoveTask();
         }
+    }
+
+    private void checkSyntheticClipboard(String event) {
+        android.content.ClipboardManager clipboard =
+                (android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+        android.content.ClipData clip = clipboard.getPrimaryClip();
+        String result = "empty";
+        if (clip != null && clip.getItemCount() > 0) {
+            CharSequence value = clip.getItemAt(0).coerceToText(this);
+            // Never log arbitrary host clipboard contents.
+            result = "luma-host-clipboard-fixture".contentEquals(value == null ? "" : value)
+                    ? "matched-host-fixture" : "unexpected-content";
+        }
+        receipt(this, event, result);
+        receipt(this, "android-window-focus", hasWindowFocus() ? "focused" : "unfocused");
     }
 
     private void button(LinearLayout layout, String text, Runnable action) {

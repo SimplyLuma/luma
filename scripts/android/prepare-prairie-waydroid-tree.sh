@@ -41,6 +41,7 @@ hardware_configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
+lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-host-clipboard-aidl.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
@@ -105,6 +106,7 @@ write_state() {
     printf 'LINEAGE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$lineage_task_lifetime_patch")"
     printf 'LINEAGE_NOTIFICATION_PATCH_SHA=%s\n' "$(patch_sha "$lineage_notification_patch")"
     printf 'LINEAGE_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$lineage_admission_patch")"
+    printf 'LINEAGE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$lineage_clipboard_patch")"
     printf 'HARDWARE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_lifetime_patch")"
     printf 'HARDWARE_INITIAL_RESIZE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_initial_resize_patch")"
     printf 'HARDWARE_RPC_THREADPOOL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_rpc_threadpool_patch")"
@@ -230,6 +232,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
   git -C "$lineage_root" apply "$lineage_notification_patch"
   git -C "$lineage_root" apply "$lineage_admission_patch"
+  git -C "$lineage_root" apply "$lineage_clipboard_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'
@@ -393,12 +396,14 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
 fi
 if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$lineage_notification_patch")" != "${LINEAGE_NOTIFICATION_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$lineage_admission_patch")" != "${LINEAGE_ADMISSION_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$lineage_admission_patch")" != "${LINEAGE_ADMISSION_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_clipboard_patch")" != "${LINEAGE_CLIPBOARD_PATCH_SHA:-}" ]; then
   git -C "$lineage_root" reset --hard -q "$lineage_official_head"
   git -C "$lineage_root" clean -fdq
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
   git -C "$lineage_root" apply "$lineage_notification_patch"
   git -C "$lineage_root" apply "$lineage_admission_patch"
+  git -C "$lineage_root" apply "$lineage_clipboard_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'

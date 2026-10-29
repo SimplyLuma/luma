@@ -135,3 +135,21 @@ Windows host-tool variants while retaining upstream defaults without the flag.
 The full builder must also prove its generated Soong configuration retains
 Android's target/secondary architectures and ABIs; this fragment test alone
 does not qualify an image or application compatibility.
+
+`python3 tests/android/clipboard-client.py --source-root /path/to/android
+--android-jar /path/to/verified/android.jar` applies the SDK clipboard patch to
+an independent temporary copy, runs the pinned AIDL compiler, and compiles its
+actual output against the verified Android API. It executes the production SDK
+wrapper with explicit dependency/transport fixtures to test late registration,
+round trips, service death, read/write failure and concurrent reconnection.
+These host JVM checks do not qualify actual Android Binder IPC. The rebuilt
+image must repeat the real APK/native-host copy/paste tests.
+
+The clipboard fixture copies only `luma-android-clipboard-fixture` and records
+only whether `luma-host-clipboard-fixture` matched on reads. Never use it in a
+personal profile. For the background negative control, select **Check after
+switching to a Luma app**, then focus a native host window within ten seconds.
+Keep evidence of the native focus transition and the delayed fixture receipt.
+`android-window-focus=focused` does not establish host focus; a matched host
+clipboard read after switching away leaves the privacy gate failed. Also test
+background writes before claiming a complete clipboard boundary.

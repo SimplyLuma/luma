@@ -39,6 +39,7 @@ configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-con
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
+lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-host-clipboard-aidl.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -187,6 +188,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/lineage-sdk" apply "$lineage_task_lifetime_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_notification_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_clipboard_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   # Keep clean builds aligned with the prepared incremental tree. Without
