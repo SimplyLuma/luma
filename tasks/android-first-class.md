@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:32:00+00:00
+- Updated: 2026-10-29T23:44:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); current7c13 image exported and x86 scope tests passed; next SDK0005 image
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,44 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE23:44Z — REPLY-ENABLED IMAGE BUILD ADMITTED; STAY FOREGROUND:
+- CURRENT normal dev-android-reply-image-r12-e60f41b6.service27GiB/450GiB,
+  admitted23:40:12Z; root luma-android-first-class-build-controller.service1GiB/
+ 128swap/CPU200/Runtime21600/TimeoutStop360, guest unchanged24GiB/QEMU25/8CPU/jobs8.
+  Hashing57,095,458,816B source input BEFORE VM boot; original inputs retained.
+  Root controller reported active1GiB cap (file-cache accounting included), not
+  OOM observed. Do not confuse current unit with old22:02 exporter OOM in journal.
+- Current immutable source0c0cc1a9f034c7048a7aef1947ac3ef33f34d23c now includes
+  SDK0005 replies and public source/Mesa checks. Source SFS70,651,904B SHA
+ 93501baab2f32578e64357a87cb67f8dc5a1bc8e474a133de51c662571adc780.
+  New immutable tools9,302,016B SHA9b19404bfd360b53596f977c4ab753eed969ba5524d0d67b37ecf02bc0ee8ac2;
+  old verified Meson bundle plus self-contained launcher468133..., exact glslang
+ 16.6.0 binary30cdc0... and preserved upstream LICENSE17e70c676e15... .
+  Cold guest binds both tools over actual /usr/bin selection; source checker
+  sanitizesPYTHONPATH. NO old SDK4 preparation overlay or one-time output repair.
+  Guest only publishes completion after sync. New metadata+full export manifest
+  verified; bounded SCP16x64KiB/root1GiB. Prior image export/proof stays separate.
+- a21ee3a0 PASSED source/tool input preparation. Initial79c90257 failed reading
+  qemu-owned old tools input;81e2ddf9 root copy asserted wrong owner(root vsactual
+  qemuUID107).60ab7899 exact-hash readable COPY succeeded, original unchanged.
+  Initial failed source archive/snapshot retained. No compilation pass yet.
+- Private helpers reply-image-r12/{guest,controller,budget,policy-guard}.py and
+  run.sh/run-policy-guard.sh, prepared.json/drivers.json pin source/tool/control
+  identities. Static syntax, guest destination/launch agreement and preservation
+  of global32GiB/host8GiB/disk20GiB reserve checks passed. Interrupt handler tries
+  sync/poweroff; actual compiler checkpoint restore remains unqualified.
+- POLICY GUARD CURRENT dev-android-reply-policy-e184fa82.service normal1GiB,
+  root luma-android-first-class-reply-policy-guard-20261029T234005.service128MiB.
+  It raised only shared per-account budget16->32/build10->27 (global32 unchanged),
+  waits for registered build e60f41b6 and restores exact original policy in
+  finally. Registration/build-admission.json published; policy-ready.json23:40Z.
+  Verify policy-restored.json + actual policy hash after build termination.
+  Source/AUDIT guard refuses overwriting another owner's policy changes.
+- NEXT: inspect root controller journal/current normal result, guest current
+  source0c0 startup/tool preflight then actual compiler. Stay through export and
+  actual matching .94/Shell124/image/APKr16 native reply UI tests; do not end on
+  launch. Latest7c13 guarded/resize-qualified image remains below, not SDK5 pass.
 
 VERIFIED23:32Z — ACTUAL X86 WINDOW AND NATIVE GUARD MILESTONE PASSED:
 - dev-android-window-live-2ad2f9cc.service EXIT0 finished23:30:29.634923Z;
