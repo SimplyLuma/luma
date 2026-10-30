@@ -25,7 +25,7 @@ BuildRequires:  shared-mime-info
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  gtk4
 BuildRequires:  libadwaita
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 BuildRequires:  dconf
@@ -36,7 +36,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman
