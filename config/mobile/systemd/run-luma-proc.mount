@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Opt in only on mobile boot profiles that replace /proc/cmdline.
+[Unit]
+Description=Unobstructed procfs for unprivileged application sandboxes
+ConditionPathIsMountPoint=/proc/cmdline
+Before=graphical.target
+
+[Mount]
+What=proc
+Where=/run/luma/proc
+Type=proc
+Options=nosuid,nodev,noexec
+
+[Install]
+WantedBy=multi-user.target
