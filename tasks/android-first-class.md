@@ -52,7 +52,22 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT05:13Z — cold graphical startup remains an independent gate:
+CURRENT05:15Z — SDK5 window scope passed; two probe issues remain:
+- R47 child3ab0ebc6/parent587b5fda FAILED overall; actual final results observed,
+  original policy/XML restored and fixture preferences restored/extension removed.
+- Same SDK5/96/127/APKr16 boot73188874: resize459x635 ->471x647 ->1242x641
+  ->581x647, two activity state restorations and same PID1360; responsive
+  activation passed. QEMU screenshot unavailable; no visual/performance claim.
+- Corrected reply probe did not crash Shell. Failed before virtual device input
+  because St.Widget.contains(null) rejects absent initial stage focus. Guard it
+  explicitly. Actual original-PendingIntent reply remains OPEN; token6c unused.
+- Native scope did not run: O_EXCL correctly rejected a reused output pathname
+  left by R44. Copied stale inconclusive report is not new runtime evidence.
+  Next run uses a unique native result path. No weakening of O_EXCL or IPC guards.
+- R48 will recreate only the removed owned extension offline; unchanged payloads,
+  same original unused reply token; active source/hash checked after fresh boot.
+
+HISTORICAL05:11Z — cold graphical startup remains an independent gate:
 - R46 preflight83347407 PASSED exact helper/package pins, syntax and4 isolated
   policy restoration cases. Offline owned active probe update passed actual
   checksum/owner/mode/SELinux-xattr readback with synchronous appliance shutdown.

@@ -102,7 +102,7 @@ export async function run(options = {}) {
             check(card && tray._card === card && tray.contains(card),
                 'Actual native reply controls are not mapped under their Luma owner');
             return {entry: bounds(card._replyEntry), button: bounds(card._replyButton),
-                focused: card._replyEntry.contains(global.stage.key_focus),
+                focused: global.stage.key_focus !== null && card._replyEntry.contains(global.stage.key_focus),
                 text: card._replyEntry.get_text()};
         }
         const initial = controls();
