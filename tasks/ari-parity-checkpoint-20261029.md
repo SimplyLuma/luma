@@ -1,11 +1,11 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r7 delivered and launched on the Dell for manual
+Status: server-qualified Ari2 r8 delivered and launched on the Dell for manual
 testing. Visual conformance and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. Qualified r7 runtime source is
-`79b0c448a23c6063dec78f5487a3c6893920bc27`; the independent Dell preview
+Review: draft PR #92. Qualified r8 runtime source is
+`f1b13b822a4e18a0c6d1b3af7dfb21abdfd00e51`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
 
 ## October 29 evening: direct application records and wheel scrolling
@@ -47,8 +47,20 @@ approval or zero in Let Ari act. Model decisions and private forecast/account
 fixtures do not establish actual hosted ChatGPT behavior.
 
 The app-model ABI was checked read-only on the Dell. No automated Dell app
-interaction or test ran. Packaging and delivery of this next r8 are pending;
-the installed preview remains r7. Messaging, calls, timers, invitations and
+interaction or test ran. The final r8 Fedora RPM repeats all 181 unit tests. All five CI checks pass at
+runtime source `f1b13b822a4e18a0c6d1b3af7dfb21abdfd00e51`. The exact export
+passes profile/keyring/production isolation, installed activation, RPM byte
+comparison and native flow, public source contracts, and r7-to-r8 retained-data
+update/rollback. Archive SHA-256:
+`4231075282a63902d2d61f1da7c8c9dd310d4c08fc5028cdfb8a1f481a653020`.
+RPM SHA-256: `fac79cea4548662c2ddd8f1dc53d53bfe2b89e38cbc865803ae9f78c6cfdb16d`.
+SRPM SHA-256: `ba64615cf4a0f702903a72c781e2619eed8c974dfbd05e230e39a19c8e894106`.
+
+Both old preview names were unowned before the updater ran. The checksum-verified
+r8 was updated and launched on the Dell at 7:42 PM Central on October 29
+(00:42 UTC October 30), retaining chats, settings and keyring entries. Read-only
+metadata confirms its launch unit running and both preview bus names owned.
+Latest real ChatGPT behavior remains subject to the owner's manual testing. Messaging, calls, timers, invitations and
 recurring/all-day edits still require their supported owner interfaces.
 Calendar/Weather windows may need refresh/reopening to show another client's
 provider change; completion here means the saved provider record was verified.
