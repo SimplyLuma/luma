@@ -116,4 +116,29 @@ for (const [needle, message] of [
 ])
     assert(keyboard.includes(needle), message);
 assert(!keyboard.includes('BACKSPACE_WORD_DELETE_THRESHOLD'), 'count-based word deletion is gone');
-console.log('PASS Keycap privacy, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history');
+
+// Captured events that reach no actor (a cancelled touch, say) must neither
+// throw nor be consumed by the keyboard's popups (the alternatives popup and
+// the preferences menu each watch captured events while open).
+const Clutter = {EventType: {BUTTON_PRESS: 0, TOUCH_BEGIN: 1, BUTTON_RELEASE: 2, TOUCH_END: 3, TOUCH_CANCEL: 4},
+    EVENT_PROPAGATE: false, EVENT_STOP: true};
+const strict = {contains(actor) { if (!actor) throw new Error('Argument descendant may not be null'); return false; }};
+const actorless = {stage: {get_event_actor: () => null}};
+const handlers = [];
+for (let at = keyboard.indexOf('    _onCapturedEvent('); at >= 0; at = keyboard.indexOf('    _onCapturedEvent(', at + 1)) {
+    const body = keyboard.indexOf('{', at);
+    handlers.push(keyboard.slice(body + 1, keyboard.indexOf('\n    }', body)));
+}
+assert(handlers.length === 2, 'both captured-event handlers found');
+for (const body of handlers) {
+    const handle = new Function('Clutter', 'global', 'actor', 'event', body);
+    let hidden = false;
+    const owner = {actor: strict, _boxPointer: {bin: strict}, _hideSubkeys() { hidden = true; }, close() {}};
+    for (const type of Object.values(Clutter.EventType)) {
+        const result = handle.call(owner, Clutter, actorless, null, {type: () => type});
+        assert(result === Clutter.EVENT_PROPAGATE, `actorless event ${type} propagates`);
+    }
+    if (body.includes('_hideSubkeys'))
+        assert(hidden, 'a cancelled touch closes the alternatives');
+}
+console.log('PASS Keycap privacy, actorless captured events, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history');
