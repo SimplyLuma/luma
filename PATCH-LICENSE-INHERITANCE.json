@@ -822,6 +822,16 @@
         "line": 33
       },
       "note": ""
+    },
+    {
+      "family": "android-system-libhidl",
+      "path": "patches/android-system-libhidl/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "Apache-2.0"
+      ],
+      "note": "The modified transport/ServiceManagement.cpp explicitly carries the 2016 Android Open Source Project copyright and Apache-2.0 notice. Preserve that upstream notice and the inherited Waydroid patch authorship."
     }
   ]
 }

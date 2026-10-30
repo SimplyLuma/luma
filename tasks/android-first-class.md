@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T22:16Z
+- Updated: 2026-10-30T22:21Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed Valet hotfix2bb7e2ed3 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -54,6 +54,22 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT22:21Z — HIDL strong-reference race source fix qualified on host:
+- Library patch retains the manager sp while its existing mutex is held. Keeps
+  upstream per-call refresh and host/container transport selection, no API/ABI
+  change. Integrated into clean and incremental Android builders with tracked
+  base/head/hash state. Did not edit the source-recovery candidate in place.
+- r287/c5b68d4b failed host link because GCC ASan library is missing. Existing
+  Clang ASan runtime used instead, no package installation. r288/d4a55d96 and
+  source-owned r289/7062b96c PASS: original extracted function's concurrent
+  positive control aborts with manager became null outside its lock; fixed
+  function retains320,000 references across16 threads. This uses host shared
+  references/mock Binder construction, not Android sp or a device codec pass.
+- Native library/device qualification remains OPEN. Next prepare immutable
+  source input and use the existing owned server Android build VM, under normal
+  bounded admission. No VM on Dell and no Android/game data reset. Preserve
+  SDK5 export and original VM profile; avoid another full source synchronization.
 
 CURRENT22:16Z — mislabeled TikTok source proven; media crash isolated:
 - Nick's TikTok39.3.15 download is an APKM ZIP renamed .apk. Source page claims

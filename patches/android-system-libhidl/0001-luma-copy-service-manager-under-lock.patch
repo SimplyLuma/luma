@@ -1,0 +1,24 @@
+From: Project Luma <engineering@projectluma.org>
+Subject: [PATCH] Retain the HIDL manager reference before releasing its lock
+
+Waydroid refreshes this shared strong reference for each host/container lookup.
+Copy the result while holding the same mutex as the reset. Otherwise concurrent
+codec/HAL lookups race a strong-pointer copy against destruction of its pointee.
+Keep upstream refresh behavior and transport selection; change no public ABI.
+The modified source retains its AOSP copyright and Apache-2.0 license.
+
+--- a/transport/ServiceManagement.cpp
++++ b/transport/ServiceManagement.cpp
+@@ -269,9 +269,10 @@ sp<IServiceManager1_2> defaultServiceManager1_2(bool useHostHwBinder) {
+                 sleep(1);
+             }
+         }
++        // Another lookup may reset the shared sp immediately after unlock.
++        // Retain our own reference before releasing the manager mutex.
++        return gDefaultServiceManager;
+     }
+-
+-    return gDefaultServiceManager;
+ }
+ 
+ static std::vector<std::string> findFiles(const std::string& path, const std::string& prefix,

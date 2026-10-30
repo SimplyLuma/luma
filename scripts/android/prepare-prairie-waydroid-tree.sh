@@ -22,6 +22,8 @@ native_root="$source_root/frameworks/native"
 device_root="$source_root/device/waydroid/waydroid"
 vendor_extra_root="$source_root/vendor/extra"
 vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
+libhidl_root="$source_root/system/libhidl"
+libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
@@ -166,6 +168,8 @@ write_state() {
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
     printf 'VENDOR_EXTRA_OFFICIAL_HEAD=%s\n' "$vendor_extra_official_head"
     printf 'VENDOR_EXTRA_PATCH_SHA=%s\n' "$(patch_sha "$vendor_extra_patch")"
+    printf 'LIBHIDL_OFFICIAL_HEAD=%s\n' "$libhidl_official_head"
+    printf 'LIBHIDL_PATCH_SHA=%s\n' "$(patch_sha "$libhidl_patch")"
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
@@ -243,6 +247,7 @@ if [ ! -f "$state_file" ]; then
   native_official_head=$(git -C "$native_root" rev-parse HEAD)
   device_official_head=$(git -C "$device_root" rev-parse HEAD)
   vendor_extra_official_head=$(git -C "$vendor_extra_root" rev-parse HEAD)
+  libhidl_official_head=$(git -C "$libhidl_root" rev-parse HEAD)
 
   git -C "$hardware_root" apply --binary "$hardware_patch"
   git -C "$hardware_root" apply "$hardware_pointer_patch"
@@ -288,6 +293,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$vendor_extra_root" apply "$vendor_extra_patch"
   commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
+  git -C "$libhidl_root" apply "$libhidl_patch"
+  commit_patch "$libhidl_root" 'Retain HIDL manager strong reference under lock'
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   commit_patch "$source_root/hardware/libhardware" 'Luma software-YUV allocator'
   git -C "$source_root/external/mesa" apply "$mesa_build_patch"
@@ -329,6 +336,7 @@ framework_official_head=$FRAMEWORK_OFFICIAL_HEAD
 native_official_head=${NATIVE_OFFICIAL_HEAD:-$(git -C "$native_root" rev-parse HEAD)}
 device_official_head=$DEVICE_OFFICIAL_HEAD
 vendor_extra_official_head=${VENDOR_EXTRA_OFFICIAL_HEAD:-$(git -C "$vendor_extra_root" rev-parse HEAD)}
+libhidl_official_head=${LIBHIDL_OFFICIAL_HEAD:-$(git -C "$libhidl_root" rev-parse HEAD)}
 
 changed=0
 if [ -n "${MAKE_HOST_PATCH_SHA:-}" ] && [ "$(patch_sha "$make_host_patch")" != "$MAKE_HOST_PATCH_SHA" ]; then
@@ -485,6 +493,14 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ]; then
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  changed=1
+fi
+
+if [ "$(patch_sha "$libhidl_patch")" != "${LIBHIDL_PATCH_SHA:-}" ]; then
+  git -C "$libhidl_root" reset --hard -q "$libhidl_official_head"
+  git -C "$libhidl_root" clean -fdq
+  git -C "$libhidl_root" apply "$libhidl_patch"
+  commit_patch "$libhidl_root" 'Retain HIDL manager strong reference under lock'
   changed=1
 fi
 

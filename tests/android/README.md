@@ -344,3 +344,10 @@ SHA256 verification, incremental sync, atomic publication without overwriting an
 existing file or symlink, and stream deadlines. The caller must own the output
 directory and supervise the producer. Stream deadlines do not interrupt blocked
 kernel filesystem writes or syncs. Retain unpublished partials as failed evidence.
+
+`hidl-manager-reference.py --source /prepared/system/libhidl --output /private/output`
+extracts the inherited manager function and applies its maintained lock patch
+in a temporary fixture. With Clang AddressSanitizer, it requires the original
+concurrent control to fail and the fixed function to retain320,000 references.
+Binder construction and strong references are host substitutes in this test;
+actual Android library, codec and game qualification remain separate.
