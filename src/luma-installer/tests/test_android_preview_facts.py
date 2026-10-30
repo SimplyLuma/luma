@@ -6,6 +6,8 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 from luma_installer.facts import compatibility_report
+from luma_installer.inspectors import architecture_is_compatible
+from luma_installer.model import PackageReport
 
 class AndroidPreviewFacts(unittest.TestCase):
     def setUp(self):
@@ -46,5 +48,16 @@ class AndroidPreviewFacts(unittest.TestCase):
         report=self.report()
         self.reader.assert_not_called()
         self.assertEqual(report.architecture,'universal');self.assertEqual(report.warnings,())
+
+    def test_android_abi_installation_authority_remains_with_runtime(self):
+        for host in ('x86_64', 'aarch64'):
+            for abi in ('universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'):
+                with self.subTest(host=host, abi=abi), patch('luma_installer.inspectors.host_architecture', return_value=host):
+                    report = PackageReport(Path('/owned/app.apk'), 'android', 'App', '', 1, 'a'*64, abi)
+                    self.assertTrue(architecture_is_compatible(report))
+        # Host-native packages still require a matching machine architecture.
+        with patch('luma_installer.inspectors.host_architecture', return_value='x86_64'):
+            report = PackageReport(Path('/owned/app.rpm'), 'rpm', 'App', '', 1, 'a'*64, 'aarch64')
+            self.assertFalse(architecture_is_compatible(report))
 
 if __name__=='__main__':unittest.main()

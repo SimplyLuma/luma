@@ -295,6 +295,10 @@ def host_architecture() -> str:
 
 
 def architecture_is_compatible(report: PackageReport) -> bool:
+    # Android ABIs are not host package architecture names. The runtime's
+    # advertised ABIs decide installation, including optional native bridges.
+    if report.kind == "android":
+        return True
     value = report.architecture.lower()
     host = host_architecture()
     if value in {"unknown", "runtime-selected", "bundle-declared", "package-declared", "all", "noarch", "any"}:

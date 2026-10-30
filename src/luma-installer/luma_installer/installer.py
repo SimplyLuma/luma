@@ -248,7 +248,11 @@ class InstallerWindow(AppWindow):
             self.closes_only = True
             self.card.primary.set_sensitive(True)
         else:
-            self.card.set_phase('ready', 'Install', message)
+            advice = '\n'.join(self.report.warnings) if self.report and self.report.kind == 'android' else ''
+            if advice:
+                self.card.set_phase('ready', 'Install', message or advice, warning=True)
+            else:
+                self.card.set_phase('ready', 'Install', message)
             self.card.primary.set_sensitive(self.report is not None and self.eligible)
         self.update_foot()
 
