@@ -21,15 +21,19 @@ export function homeLayout(width, height, mode, count, metrics = {}) {
         const dotsHeight = 16;
         const bottom = dockHeight + dockBottom + dotsHeight + 4;
         const availableHeight = Math.max(1, height - top - bottom);
-        const minimumRow = Math.max(56, metrics.cellHeight ?? 0);
+        // Phones show four icon columns (three on very narrow screens); rows
+        // keep cells near square and icons grow with the cell.
+        const contentWidth = width - 2 * inset;
+        const iconColumns = Math.max(3, Math.min(4, Math.floor(contentWidth / 80)));
+        const cellWidth = contentWidth / iconColumns;
+        const minimumRow = Math.max(56, metrics.cellHeight ?? 0, Math.round(cellWidth * 0.78));
         const rows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
         const rowHeight = availableHeight / rows;
-        const iconSize = Math.max(28, Math.min(40, rowHeight - 24, (width - 2 * inset) / 5 - 12));
-        const iconColumns = Math.max(3, Math.min(5, Math.floor((width - 2 * inset) / 56)));
+        const iconSize = Math.floor(Math.max(28, Math.min(64, rowHeight - 24, cellWidth * 0.66)));
         const columns = iconColumns;
         const capacity = rows * iconColumns;
         return {width, height, form: formOf(width, height), compact: true, inset,
-            contentWidth: width - 2 * inset, columns, iconColumns, appColumns: 1,
+            contentWidth, columns, iconColumns, appColumns: 1,
             widgetColumns: Math.floor(iconColumns / 2), top, bottom, dockHeight, dockBottom,
             dotsHeight, iconSize, cellHeight: rowHeight - 4, rowHeight,
             firstRows: rows, otherRows: rows, firstCapacity: capacity,

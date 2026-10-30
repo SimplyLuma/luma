@@ -68,7 +68,7 @@ composition/session profile and build/install the matched native cohort.
 ## Current behavior and remaining work
 
 Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
-screen, Home has five columns and four rows plus the dock; each widget spans
+screen, Home has four columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
 Notifications are pulled from the top island; Quick Options is pulled from the
 right status area. Full pages use the dock palette's opaque treatment for readable text.

@@ -965,7 +965,8 @@ export class Presentation {
             style: `padding: ${Math.max(0, gap - 1)}px; spacing: ${gap}px;`});
         for (const info of favorites) {
             const item = this._appButton(info, true);
-            item.get_child().get_first_child().icon_size = compact ? this._homeIconSize : size;
+            // The compact dock keeps its 44 px buttons; Home icons may be larger.
+            item.get_child().get_first_child().icon_size = compact ? Math.min(this._homeIconSize, size - 4) : size;
             item.set_size(size * scale, size * scale);
             dock.add_child(item);
             if (draggable) this._tasks.attachDrag(item, info);
