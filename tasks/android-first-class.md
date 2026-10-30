@@ -57,6 +57,23 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
+SOURCE00:31Z — installer activation delegation fixed; VM test unaffected:
+- Added installer_activation.py: RequestInstall asks the ordinary user manager
+  to launch the fixed graphical installer in its application context. Broker
+  NoNewPrivileges/read-only home/private tmp remain intact; the existing package
+  helper still performs native authorization. Only display/activation variables
+  are forwarded, filename stays one literal argv item, and failed manager launch
+  returns an explicit bounded error instead of silently accepting the request.
+- b83ac8dd PASSED2 focused tests (literal hostile filename, unique transient
+  units, limited environment, failure/timeout reporting). d0bf8867 PASSED128
+  discovered checks,16 skipped for root semantics;112 executed. This is source
+  component evidence, not a packaged or actual graphical install pass. Current
+  SDK5 reply VM remains pinned to installed host.94, which lacks this new fix.
+- Reply VM installed local Shell124 pair with existing runtime.94 override;
+  exact Mutter50.4/luma14 satisfied dependencies. SDK5 image pair installed,
+  original image backup retained. Original extension list preserved plus owned
+  test instrumentation. Now rebooting into actual new Shell; no reply pass yet.
+
 REVIEW00:26Z — installer D-Bus activation hardening needs an actual check:
 - service.py RequestInstall directly spawns luma-android-installer. That parent
   user service has NoNewPrivileges=yes, PrivateTmp=yes and ProtectHome=read-only;

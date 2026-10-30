@@ -21,6 +21,7 @@ from .config import load_device_profile, load_runtime_config
 from .engine import WaydroidEngine
 from .activation import activate_for_caller
 from .errors import LumaAndroidError
+from .installer_activation import launch_installer
 
 
 LAUNCHER_STARTUP_RECONCILE_SECONDS = 5
@@ -211,11 +212,7 @@ class Service:
                     # general-purpose process launcher for arbitrary files.
                     if not path.is_file() or path.is_symlink():
                         raise LumaAndroidError("The package is not a regular local file.")
-                    subprocess.Popen(
-                        ["/usr/bin/luma-android-installer", str(path)],
-                        start_new_session=True,
-                        close_fds=True,
-                    )
+                    launch_installer(path)
                     invocation.return_value(None)
                     return
             elif interface_name == "org.projectluma.Android1":
