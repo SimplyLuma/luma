@@ -344,6 +344,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and
 install -m 0644 "$repo_root/patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0293-mobile-lock-notification-island.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0294-keycap-keyboard.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0295-status-without-shelf-backdrop.patch" "$rpmbuild_dir/SOURCES/"
 for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
@@ -464,6 +465,8 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       gjs -m "$OLDPWD/SOURCES/media-selection.js" mediaSelection.js
       grep -Fq "lumaShelfWorkArea" luma-dash.js
       grep -Fq "affectsStruts: enabled" luma-dash.js
+      # Tablet and Mobile borrow Quick Settings without the Shelf backdrop.
+      grep -Fq "this._actionsIsland?.setSurfaceVisible(false, false);" luma-dash.js
       grep -Fq "Arrangement.reservations(this._monitors, reserve ? occupied : new Map(), metrics," luma-dash.js
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/shelfMetrics.js >shelfMetrics.js
