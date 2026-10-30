@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T23:43Z
+- Updated: 2026-10-30T23:59Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,46 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT23:59Z — native pair applied; game still exits; Dell kept awake:
+- User authenticated. r340/ae2885ea observed verified-packet/android-stopped;
+  r341/9c677e05 observed applied-awaiting-game-qualification and completed
+  launcher. Root installer checked boot completion and BOTH live library SHAs
+  against packet. OS and app data retained. This closes deployment only.
+- r345/4b02bf24 launched 8 Ball Pool normally, no login actions. Actual Dell
+  observations: host PID93963 present through5.51s, absent at6.55s and every
+  remaining sample through31.41s. Game failure remains OPEN; do not claim fixed.
+  Private result in r348/7760db9a/post-hidl-read.txt (also has codec journal).
+- r342/ab117be4 codec AFTER launch did NOT yield a codec result: local pkexec
+  timed out after120s awaiting authentication; user unit failed per journal.
+  Empty result is not a pass. systemctl show on a garbage-collected unit can
+  misleadingly return default inactive/success; inspect LoadState/journal/result.
+- r347/af67ee3a health-only diagnostic also needed separate local auth; no result
+  collected. Consolidated all remaining privileged diagnostics into ONE bounded
+  frozen full-native-checks-r350 bundle under dell-hotfix-r199. No credentials,
+  policy changes or permanent privileged agent. Scripts verify their own file
+  hashes; capture health/ordinary-UID provider, codec, HAL state, game library
+  mappings, normal-user relaunch/12s observation, app exit history and app-only
+  native crash blocks. No APK install/data reset/account actions.
+- r350/89717c30 transferred/launched native user unit
+  luma-preview-android-full-native-checks-r350-a4ef751c.service at23:54:15Z.
+  Launcher allows1500s for normal local auth+diagnostics, outer cap1800s.
+  Result ~/Downloads/Luma-Android-Hotfix-r199/full-native-checks-r350/full-result.json;
+  r352/5a6a45aa and r354/8bda1024 observed0 bytes (no diagnostic pass). Reader
+  dell-hotfix-r199/full_checks_read.sh; next action capture actual result.
+- User explicitly requested preventing Dell sleep during testing. r351/
+ 3a475600 verified logind inhibitor: Luma-Android-validation, Nick UID1000,
+  PID96118, sleep:idle BLOCK, held by native user unit
+  luma-preview-android-validation-awake-r351-f373218d.service for28800s/8h
+  from23:56Z. No persistent power settings changed. Stop ONLY that unit on Dell
+  when testing ends; renew before expiry if needed. Release inhibitor before
+  measuring idle/mobile power; no battery/power qualification while inhibited.
+- Independent static image inspection r353/5df334ad: allocator service binary
+  and rc present, OMX service and graphics allocators present; system/bin/timeout
+  symlink exists. This is image-content evidence, not proof services are running.
+- Next: collect full native diagnostic after its standard OS authentication,
+  identify actual new game failure/library mapping, then fix/retest. Network,
+  codec, Google-account flow and scaling after the new pair remain unqualified.
 
 CURRENT23:43Z — repaired images built/verified/transferred; Dell admin auth pending:
 - r309 compiler completed successfully19:11 (actual final build log). Original
