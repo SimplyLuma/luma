@@ -17,7 +17,7 @@ import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificati
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
-import {readDisplayGeometry, statusInsets} from './safeAreas.js';
+import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
@@ -61,12 +61,14 @@ export class Presentation {
         this._powerButton = new HandheldPowerButton();
         this._motion = new HandheldMotion(this);
         this._page = 0;
+        this._displayProfiles = null;
         this._displayGeometry = null;
+        this._displayGeometrySerial = 0;
         for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
             try {
                 const [ok, bytes] = GLib.file_get_contents(path);
-                if (ok) this._displayGeometry = readDisplayGeometry(new TextDecoder().decode(bytes));
-                if (this._displayGeometry) break;
+                if (ok) this._displayProfiles = readDisplayProfiles(new TextDecoder().decode(bytes));
+                if (this._displayProfiles) break;
             } catch { /* Displays without exclusions retain their normal insets. */ }
         }
         this._refreshDisplayGeometry();
@@ -341,22 +343,25 @@ export class Presentation {
         this._tasks.setMode();
     }
 
+    // Runs on every monitor change: the primary display's connector picks its
+    // profile (a foldable switches panels), and the transform is re-read.
     _refreshDisplayGeometry() {
-        if (!this._displayGeometry) return;
+        if (!this._displayProfiles) return;
+        const serial = ++this._displayGeometrySerial;
         Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
             'org.gnome.Mutter.DisplayConfig', 'GetCurrentState', null, null,
             Gio.DBusCallFlags.NONE, 3000, this._cancellable, (bus, result) => {
                 try {
                     const state = bus.call_finish(result).deep_unpack();
-                    if (this._destroyed) return;
+                    if (this._destroyed || serial !== this._displayGeometrySerial) return;
                     const monitor = Main.layoutManager.primaryMonitor;
                     const logical = state[2].find(entry => entry[0] === monitor?.x && entry[1] === monitor?.y);
                     const connector = logical?.[5]?.[0]?.[0];
                     const native = state[1].find(entry => entry[0][0] === connector);
                     const builtIn = native?.[2]?.['is-builtin']?.deep_unpack?.() ?? false;
-                    if (!builtIn || (this._displayGeometry.connector && connector !== this._displayGeometry.connector))
-                        this._displayGeometry = null;
-                    else if (logical) this._displayGeometry.transform = logical[3];
+                    const profile = selectDisplayProfile(this._displayProfiles, connector, builtIn, logical?.[3] ?? 0);
+                    if (JSON.stringify(profile) === JSON.stringify(this._displayGeometry)) return;
+                    this._displayGeometry = profile;
                     this._queueRebuild();
                 } catch (error) {
                     if (!this._destroyed) console.warn(`Display exclusion transform unavailable: ${error.message}`);

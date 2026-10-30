@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {homeLayout} from '../../../src/luma-shell-presentation/layout.js';
 import {reconcileGrid, overlaps} from '../../../src/luma-shell-presentation/grid.js';
-import {readDisplayGeometry, displayExclusions, statusInsets, avoidDisplayExclusions, surfaceInsets} from '../../../src/luma-shell-presentation/safeAreas.js';
+import {readDisplayGeometry, readDisplayProfiles, selectDisplayProfile, displayExclusions, statusInsets, avoidDisplayExclusions, surfaceInsets} from '../../../src/luma-shell-presentation/safeAreas.js';
 function assert(value, message) { if (!value) throw Error(message); }
 const layout=homeLayout(360,400,'tablet',50,{cellHeight:60});
 assert(layout.iconColumns===4 && layout.otherRows===4 && layout.iconSize===44,'Titan must fit four by four with cell-sized icons');
@@ -47,3 +47,23 @@ assert(cornerContent.left === 22 && cornerContent.top === 14, 'edge banner clear
 const centerContent = surfaceInsets(center, monitor, {x:30,y:0,width:300,height:80},14,8);
 assert(centerContent.left === 14 && centerContent.top === 48, 'center cutout moves banner content down');
 assert(surfaceInsets(null, monitor, {x:30,y:0,width:300,height:80},14).left === 14, 'unprofiled banner keeps its padding');
+
+const two={schema:2,displays:[{connector:'DSI-1',nativeWidth:1080,nativeHeight:2424,cutouts:[{x:0,y:0,width:104,height:104}]},
+    {connector:'DSI-2',nativeWidth:2076,nativeHeight:2152,cutouts:[{x:1980,y:0,width:96,height:96}]}]};
+const profiles=readDisplayProfiles(JSON.stringify(two));
+assert(profiles.length===2,'schema 2 reads every display');
+assert(selectDisplayProfile(profiles,'DSI-2',true,1).cutouts[0].x===1980 &&
+    selectDisplayProfile(profiles,'DSI-2',true,1).transform===1,'primary connector selects its profile and transform');
+assert(selectDisplayProfile(profiles,'HDMI-1',true)===null && selectDisplayProfile(profiles,'DSI-1',true).connector==='DSI-1',
+    'an unprofiled primary does not drop the other profiles');
+assert(selectDisplayProfile(profiles,'DSI-1',false)===null,'external displays use normal insets');
+assert(readDisplayProfiles(JSON.stringify({schema:1,nativeWidth:1080,nativeHeight:1200,cutouts:[]})).length===1,'schema 1 still reads');
+assert(selectDisplayProfile(readDisplayProfiles(JSON.stringify({schema:1,nativeWidth:1080,nativeHeight:1200,cutouts:[]})),'DSI-9',true)!==null,
+    'a schema 1 profile without a connector matches any built-in primary');
+assert(readDisplayProfiles(JSON.stringify({schema:2,displays:[two.displays[0],two.displays[0]]}))===null,'duplicate connectors rejected');
+assert(readDisplayProfiles(JSON.stringify({schema:2,displays:[{...two.displays[0],connector:undefined}]}))===null,'schema 2 requires connectors');
+assert(readDisplayProfiles(JSON.stringify({schema:2,displays:[]}))===null,'empty display list rejected');
+const outer={width:404,height:908};
+assert(statusInsets(selectDisplayProfile(profiles,'DSI-1',true,0),outer,44).left>12,'outer corner clears the clock');
+console.log('PASS multi-display profiles: schema 2, per-change selection, schema 1 compatibility');
+
