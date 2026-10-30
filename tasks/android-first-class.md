@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:04:34+00:00
+- Updated: 2026-10-30T03:12:54+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,29 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:04Z — verified copy complete; corrected native QA actor active:
+CURRENT03:12Z — diagnosed stale readiness; buffered VM profile test active:
+- r31 ec852439 FAILED1 at03:06:37Z before preparing Android/UI fixture. Exact
+ 127/95 triple booted, but actual UID1000 Shell process was absent despite the
+  socket. Original XML restored, raw alias unmounted, VM OFF before next work.
+- Offline raw evidence97e1a65e PASSED verified selected-journal/profile extraction.
+  Boot1f392b61 logs actual user Shell1509 startup timeout at140.744s, Wayland
+  socket created144.573s after termination began, then systemd SIGABRT145.748s.
+  This was not an unexplained spontaneous crash. Main thread was importing GJS
+  modules at abort. Native health had accepted a login session before Shell was
+  usable; its success alone is insufficient. No boot-health timeout/policy changed.
+- LIVE dev-android-reply-vm-r33-506ec195.service normal10GiB/root1GiB;
+  frozen reply-vm-r33. Same6GiB guest/8GiB QEMU/2CPU/GPU/reset watchdog. ONLY
+  diagnostic disk cache changed none->writeback (normal flushes retained).
+  Requires two consecutive actual UID1000 Shell/process/bus plus user service
+  ActiveStateactive/SubStaterunning/Resultsuccess observations before setup,
+  and rechecks the real user Shell service after fresh reboot before UI tests.
+  Generic failure journals collected even before guest staging exists.
+- Syntax/hash preflight7171ac6d PASSED. Native reply, Android SDK5 execution,
+  resize/guard repeat remain OPEN. Earlier r28 reached a user Shell process and
+  active manager/bus, but did NOT prove stable usable desktop/first frame; do not
+  upgrade those preliminary observations to complete GUI acceptance.
+
+HISTORICAL03:04Z — verified copy complete; corrected native QA actor active:
 - Full buffered qemu-img comparison56b49bea PASSED02:58:02Z, with unchanged
   source/target bytes during comparison. Standalone raw copy is guest-byte equal
   to original at that checkpoint; subsequent owned VM boots intentionally write
