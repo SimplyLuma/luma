@@ -57,6 +57,18 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
+REVIEW00:26Z — installer D-Bus activation hardening needs an actual check:
+- service.py RequestInstall directly spawns luma-android-installer. That parent
+  user service has NoNewPrivileges=yes, PrivateTmp=yes and ProtectHome=read-only;
+  child GUI inherits those restrictions, while package transactions invoke
+  pkexec. The ordinary CLI passed from the user manager, not this D-Bus route.
+  Do not claim this route works from CLI evidence. Exercise actual Filer/installer
+  activation and fix delegation to the normal graphical application context as
+  needed, preserving broker hardening and native package authorization.
+- Rechecked effective Shell124 source: uncertain reply already says Open app /
+  Open app to check delivery via0286; no hardcoded Messages label remains in
+  the effective candidate. Error-path actual runtime behavior remains open.
+
 OBSERVED00:23Z (Oct30 UTC) — SDK5 COMPILED/EXPORTED; NATIVE UI TEST ACTIVE:
 - Actual r12 m systemimage/vendorimage633/633 completed successfully in19:40;
   guest synced output and wrote exit0 at1793318999.528394. Immutable source
