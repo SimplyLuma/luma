@@ -16,6 +16,7 @@ import re
 import threading
 import time
 import uuid
+import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import Callable
 
@@ -82,6 +83,10 @@ def _requested_application(text, name):
     return bool(name in aliases and re.search(aliases[name],text,re.I))
 
 
+def _normal_title(text):
+    return ' ' + ' '.join(unicodedata.normalize('NFKC', text).casefold().split()) + ' '
+
+
 class Tools:
     """The running MCP servers and the tools they offer."""
 
@@ -146,16 +151,19 @@ class Agent:
         elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
             user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
         elif name in ("app_action", "act_in_application", 'change_application'):
-            user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|reply|delete|remove|play|pause|move|save|set|mark|schedule|book|call|dial|start|do)\b", turn.text, re.I)
+            user_named_it = bool(re.search(r"\b(?:open|close|quit|exit|add|create|write|edit|change|send|reply|delete|remove|play|pause|move|save|set|mark|schedule|book|call|dial|start|do)\b", turn.text, re.I)
                                  and re.search(r"\b(?:app|application|notes?|calendar|events?|appointments?|meetings?|tasks?|reminders?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|song|track|weather|timer|alarm|phone|person)\b", turn.text, re.I))
         elif name == 'control_process':
             user_named_it = bool(re.search(r'\b(?:end|stop|kill|terminate)\b',turn.text,re.I))
-        if name == "open_app" and turn.read_untrusted:
+        if name in ('open_app', 'close_app') and turn.read_untrusted:
             app = str(arguments.get('name', '')).strip().casefold()
-            user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete|reply|call|dial|play)\b', turn.text, re.I)
+            user_named_it = bool(app and re.search(r'\b(?:open|close|quit|exit|launch|start|run|add|create|write|edit|save|change|set|remove|delete|reply|call|dial|play)\b', turn.text, re.I)
                                  and _requested_application(turn.text,app))
+        if name == 'close_app':
+            user_named_it = bool(re.search(r'\b(?:close|quit|exit)\b', turn.text, re.I)
+                                 and _requested_application(turn.text, str(arguments.get('name', '')).casefold()))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
-        if name not in ('act_in_application','change_application') and self.policy.action_rule(name, arguments) == 'deny':
+        if name not in ('act_in_application','change_application','play_track') and self.policy.action_rule(name, arguments) == 'deny':
             decision = type(decision)(False, decision.tier, 'This action is blocked in Ari’s advanced permissions.')
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
         if decision.allowed and turn.read_untrusted and decision.tier not in (ANSWER, READ_PERSONAL) and not user_named_it:
@@ -166,6 +174,18 @@ class Agent:
             decision = type(decision)(False, decision.tier,
                                       f"You didn't ask for {wanted}, so I didn't choose it for you. "
                                       "Ask the person which they'd like.")
+        if decision.allowed and name == 'close_app' and not user_named_it:
+            decision = type(decision)(False, decision.tier, 'Name the application you want me to close.')
+        if decision.allowed and name == 'play_track' and not (
+                re.search(r'\bplay\b', turn.text, re.I)
+                and re.search(r'(?<!\w)'+re.escape(str(arguments.get('application', '')))+r'(?!\w)', turn.text, re.I)
+                and str(arguments.get('title', '')).strip()
+                and all(_normal_title(str(arguments[key])) in _normal_title(turn.text.replace('“','').replace('”','').replace('"',''))
+                        for key in ('title','artist','album') if arguments.get(key))):
+            decision = type(decision)(False, decision.tier, 'Specify the track and player you want me to use.')
+        if decision.allowed and name == 'play_track' and (
+                READ_PERSONAL not in self.policy.enabled or self.policy.action_rule('query_application') == 'deny'):
+            decision = type(decision)(False, decision.tier, 'Reading application data is turned off in Ari’s permissions.')
         if not decision.allowed:
             audit.record({**entry, "decision": "refused", "reason": decision.reason})
             return {"ok": False, "summary": decision.reason, "refused": True}
@@ -176,7 +196,7 @@ class Agent:
         action_preview = None
         application = ''
         application_scope = ''
-        if name in ('act_in_application','change_application'):
+        if name in ('act_in_application','change_application','play_track'):
             action_preview = self.tools.call(name, {**arguments, "preview": True})
             if not action_preview.get("ok"):
                 return action_preview
@@ -384,13 +404,24 @@ class Agent:
                 "I'm Ari, Luma's assistant. No model is set up yet."
         if intent is not None:
             result = self.run_tool(turn, intent.tool, intent.arguments)
+            if intent.tool == 'play_track' and result.get('needs_open'):
+                opened = self.run_tool(turn, 'open_app', {'name': intent.arguments['application']})
+                if not opened.get('ok'):
+                    return _failure(opened)
+                deadline = time.monotonic()+3
+                while not turn.stop.wait(.15):
+                    result = self.run_tool(turn, intent.tool, intent.arguments)
+                    if not result.get('needs_open') or time.monotonic() >= deadline:
+                        break
+                if turn.stop.is_set():
+                    return 'Stopped.'
             if result.get("declined"):
                 return result["summary"]
             if result.get("ok") and result.get("unchanged"):
                 return result.get("summary", "")
             if result.get("ok"):
                 return intent.done.format(summary=result.get("summary", "").rstrip("."))
-            if not result.get("refused") or self.model_provider is None:
+            if not result.get("refused") or self.model_provider is None or intent.tool in ('close_app', 'play_track'):
                 return _failure(result)
             # A refused fast path falls through to the model's judgement.
         if self.model_provider is None:
@@ -598,7 +629,8 @@ def _running_label(name: str) -> str:
             "wikipedia": "Looking up Wikipedia",
             "calculate": "Working it out", "open_app": "Opening", "list_display_modes": "Checking displays",
             "find_setting": "Looking through settings", "media_status": "Checking what's playing",
-            "media_control": "Telling the player"}.get(
+            "media_control": "Telling the player", 'play_track': 'Finding and playing the track',
+            'close_app': 'Closing the application'}.get(
         name, "Changing a setting" if name.startswith("set_") else "Working")
 
 

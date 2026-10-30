@@ -26,13 +26,13 @@ TOOL_TIERS = {
     "media_status": ANSWER, "find_setting": ANSWER,
     "set_timezone": PERSONAL_SETTINGS, "set_volume": PERSONAL_SETTINGS, "set_do_not_disturb": PERSONAL_SETTINGS,
     "set_wifi": PERSONAL_SETTINGS, "set_bluetooth": PERSONAL_SETTINGS, "set_tiling": PERSONAL_SETTINGS,
-    "media_control": PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
+    "media_control": PERSONAL_SETTINGS, 'play_track': PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
     "app_surfaces": READ_PERSONAL, "request_app_access": READ_PERSONAL,
     "app_action": ACT_ON_BEHALF, "installed_apps": ANSWER, "inspect_package": ANSWER,
     "desktop_applications": READ_PERSONAL, "inspect_application": READ_PERSONAL,
     "act_in_application": ACT_ON_BEHALF,
     'query_application': READ_PERSONAL, 'change_application': ACT_ON_BEHALF,
-    'find_processes':ANSWER, 'control_process':ACT_ON_BEHALF,
+    'find_processes':ANSWER, 'control_process':ACT_ON_BEHALF, 'close_app':ACT_ON_BEHALF,
     "install_package": CHANGE_SYSTEM, "remove_application": CHANGE_SYSTEM,
     "list_project": READ_PERSONAL, "read_project_file": READ_PERSONAL,
     "create_project": CHANGE_FILES, "write_project_file": CHANGE_FILES, "run_project": CHANGE_FILES,
@@ -54,6 +54,7 @@ ACTION_PERMISSIONS = {
     'edit_projects': 'Creating and editing project files', 'run_projects': 'Running project checks and builds',
     'install_software': 'Installing software', 'remove_software': 'Removing software',
     'process_control': 'Ending or killing a process',
+    'close_apps': 'Closing applications normally',
 }
 PERMISSION_CHOICES = ('default', 'allow', 'ask', 'deny')
 
@@ -69,9 +70,10 @@ def validate_permission(key, choice):
 
 
 def action_permission(tool, arguments=None):
-    if tool == 'act_in_application':
+    if tool in ('act_in_application', 'play_track'):
         return 'enter_text' if (arguments or {}).get('operation') == 'set_text' else 'activate_controls'
     if tool == 'open_app': return 'open_apps'
+    if tool == 'close_app': return 'close_apps'
     if tool in ('desktop_applications','inspect_application','app_surfaces','request_app_access','query_application'): return 'read_apps'
     if tool in ('read_project_file','list_project'): return 'read_projects'
     if tool in ('set_wifi','set_bluetooth','set_timezone'): return 'connections'

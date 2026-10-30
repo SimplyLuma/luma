@@ -13,6 +13,7 @@ import random
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -432,7 +433,71 @@ def open_app(arguments: dict) -> dict:
             "data": {"id": info.get_id(),"already_running":running}}
 
 
+def close_app(arguments: dict) -> dict:
+    """Ask the exact application's published quit action; never send a signal.
+
+    Pin the unique bus owner before discovery. A restarted application must
+    never receive a command intended for the previous instance.
+    """
+    name = str(arguments.get('name', '')).strip()
+    info = _match_app(name)
+    if info is None:
+        return {'ok': False, 'summary': f'{name} is not installed.'}
+    wanted = re.sub(r'^(?:the|my)\s+|\s+(?:app|application)$', '', name.casefold()).strip()
+    app_id = info.get_id().removesuffix('.desktop')
+    if wanted not in (info.get_name().casefold(), app_id.casefold()):
+        return {'ok': False, 'summary': f'Name the exact application to close. The closest installed match is {info.get_name()}.'}
+    if not Gio.dbus_is_name(app_id):
+        return {'ok': False, 'summary': f'{info.get_name()} does not publish a supported normal quit command.'}
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    def owner():
+        try:
+            return bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                'GetNameOwner', GLib.Variant('(s)', (app_id,)), GLib.VariantType.new('(s)'),
+                Gio.DBusCallFlags.NO_AUTO_START, 1000, None).unpack()[0]
+        except GLib.Error as error:
+            if Gio.DBusError.get_remote_error(error) == 'org.freedesktop.DBus.Error.NameHasNoOwner':
+                return ''
+            raise
+    unique = owner()
+    if not unique:
+        return {'ok': False, 'summary': f'I could not find a running {info.get_name()} with a supported quit command. I did not force quit it.'}
+    path = '/' + app_id.replace('.', '/').replace('-', '_')
+    try:
+        actions = bus.call_sync(unique, path, 'org.gtk.Actions', 'DescribeAll', None,
+            GLib.VariantType.new('(a{s(bgav)})'), Gio.DBusCallFlags.NO_AUTO_START, 1000, None).unpack()[0]
+        quit_action = actions.get('quit')
+        if not quit_action or not quit_action[0] or quit_action[1]:
+            return {'ok': False, 'summary': f'{info.get_name()} is running but does not offer an enabled normal quit command.'}
+        if arguments.get('preview'):
+            return {'ok': True, 'preview': f'Close {info.get_name()}',
+                    'detail': 'Use the application’s own Quit command. Any unsaved-work prompt stays with the application.'}
+        if DRY_RUN:
+            return {'ok': True, 'summary': f'Would request {info.get_name()} to quit.', 'completed': False}
+        if owner() != unique:
+            return {'ok': False, 'summary': f'{info.get_name()} restarted before the request. Try closing it again.'}
+        bus.call_sync(unique, path, 'org.gtk.Actions', 'Activate',
+            GLib.Variant('(sava{sv})', ('quit', [], {})), None, Gio.DBusCallFlags.NO_AUTO_START, 1500, None)
+    except GLib.Error:
+        # A clean exit can disconnect the owner before its method reply.
+        if owner() == unique:
+            return {'ok': False, 'summary': f'{info.get_name()} did not accept its Quit command. It is still running.'}
+    deadline = time.monotonic() + 1.0
+    current = owner()
+    while current == unique and time.monotonic() < deadline:
+        time.sleep(.05)
+        current = owner()
+    if current:
+        return {'ok': False, 'completed': False, 'summary':
+                f'{info.get_name()} restarted and is still running.' if current != unique else
+                f'Requested {info.get_name()} to quit; it is still running. Check it for an unsaved-work prompt.'}
+    return {'ok': True, 'verified': True, 'completed': True, 'summary': f'Closed {info.get_name()}.'}
+
+
 TOOLS = {
+    'close_app': ('Close an explicitly named installed application using its own published Quit action. Verifies exit; never force kills or guesses a process.',
+                  {'type': 'object', 'properties': {'name': {'type': 'string'}, 'preview': {'type': 'boolean'}},
+                   'required': ['name'], 'additionalProperties': False}, close_app),
     "set_dock_position": ("Move the Dash (the dock) to an edge of the screen.",
                           {"type": "object", "properties": {"edge": {"type": "string", "enum": list(EDGES)}},
                            "required": ["edge"], "additionalProperties": False}, set_dock_position),

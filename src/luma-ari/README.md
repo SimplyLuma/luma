@@ -54,6 +54,22 @@ and requests its window directly in the normal autonomy mode. An existing
 GApplication owner is reported as already running. A launch acknowledgement
 does not claim that a new window was opened or the requested task completed.
 
+`Close Tide` and other explicitly named GApplications use `close_app`: the
+application's published Quit action, followed by an exit check. This routine
+path needs no model call. It never sends a termination signal, and reports an
+unsaved-work prompt or an unsupported Quit command without claiming closure.
+The application's own unsaved-work handling and Ari's permissions still apply.
+
+Named Tide tracks can use `play_track`, backed by Tide's owner-side
+`org.projectluma.MediaLibrary1` interface. Exact unambiguous requests such as
+`Play Have a Cigar on Tide` bypass model inference and UI navigation entirely.
+The owner searches its library and uses its existing queue, audio controller
+and source authentication. Ambiguous recordings require clarification. A
+playing receipt requires a matching track and a playing controller state;
+loading or a command acknowledgement alone is not completion. This requires
+the updated Tide interface; it does not add library search to other MPRIS
+players. Complex wording can still use the model and the same direct tool.
+
 **Permissions and autonomy** is available in Ari's app menu and model picker,
 and with `ari --settings permissions`. Choose **Ask every time**, **Ask for
 important actions**, or **Let Ari act**. The normal mode approves an application

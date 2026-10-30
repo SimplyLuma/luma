@@ -41,6 +41,7 @@ KEYWORDS = {
     "set_refresh_rate": "refresh rate hz hertz display monitor screen lower higher smoother",
     "find_app": "installed app application have",
     "open_app": "open launch start run app application",
+    'close_app': 'close quit exit app application tide',
     "now": "time date today day clock timezone",
     "calculate": "calculate plus minus times divided percent sum math maths",
     "convert": "convert how many in to miles km pounds kg celsius fahrenheit",
@@ -57,6 +58,7 @@ KEYWORDS = {
     "set_tiling": "tiling tile tiled windows snap layout",
     "media_status": "playing song track music what now listening",
     "media_control": "play pause resume stop skip next previous song track music video tide spotify",
+    'play_track': 'play song track music tide artist album',
     "find_setting": "setting settings preference option clock seconds mouse touchpad keyboard speed sleep power "
                     "battery animations cursor font workspaces notifications hot corner show hide enable disable",
     "change_setting": "setting settings preference option clock seconds mouse touchpad keyboard speed sleep power "
@@ -96,7 +98,7 @@ def select(text: str, tools: list[Tool], limit: int) -> list[Tool]:
         direct = [tool for tool in tools if tool.name in ('query_application','change_application')]
         if re.search(r'\b(?:tide|spotify|song|track|playlist|music)\b',text,re.I) and not re.search(
                 r'\b(?:notes?|calendar|contacts?|tasks?|weather)\b',text,re.I):
-            direct = []
+            direct = [tool for tool in tools if tool.name == 'play_track']
         preferred = direct+[tool for tool in tools if tool.name in bundle]
         chosen = (preferred + [tool for tool in chosen if tool not in preferred])[:limit]
     elif re.search(r"\b(?:install|get|download)\b", text, re.I):
