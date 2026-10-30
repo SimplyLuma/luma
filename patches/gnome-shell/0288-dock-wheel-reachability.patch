@@ -3,20 +3,22 @@ Subject: [PATCH] Reach overflow dock apps with either mouse wheel axis
 
 A horizontal ScrollView ignores ordinary wheel-down input. Route either wheel
 axis to the dock orientation, retain horizontal and smooth input, and stop the
-handled event so the native ScrollView does not apply it twice. Name the user
+handled event during capture, before the native ScrollView default handler. Name the user
 surface Dock in the shared pin action.
 
 --- a/js/ui/shelf.js
 +++ b/js/ui/shelf.js
-@@ -762,6 +762,7 @@
+@@ -762,6 +762,9 @@
          this._dockPadding = new St.Bin({child: this._dockStrip});
          this._dockContent.add_child(this._dockPadding);
          this._dockScroll.set_child(this._dockContent);
-+        this._dockScroll.connect('scroll-event', (_view, event) => this._scrollDock(event));
++        this._dockScroll.connect('captured-event', (_view, event) =>
++            event.type() === Clutter.EventType.SCROLL
++                ? this._scrollDock(event) : Clutter.EVENT_PROPAGATE);
          this._dockScroll.x_expand = true;
          this._dockScroll.y_expand = true;
          // The applications scroll; the folders do not. A dock with more
-@@ -1904,6 +1905,38 @@
+@@ -1904,6 +1907,38 @@
          return null;
      }
  
