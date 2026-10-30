@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T04:38:15+00:00
+- Updated: 2026-10-30T05:05Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,22 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT04:38Z — single-boot continuation under larger accounted cache cap active:
+CURRENT05:05Z — correcting the actual probe lifecycle failure:
+- R44 child560f0a3a/guard489c58bc FAILED; both final results observed. Original
+  shared policy SHA24cfbd91 restored; VM off, original XML restored/raw unmounted.
+- Read-only crash evidence71c63c24 PASSED extraction/readback. Journal identifies
+  probe.js bounds() accessing an already disposed St.Entry after an await;
+  Shell then SEGV and graphical-session teardown stopped Android normally.
+  This is a probe crash, not evidence of an unexplained Android crash/OOM.
+- Public probe now waits for prior fixture withdrawal, reacquires live controls
+  after every yield and retains only values across awaits; virtual devices are
+  explicitly disposed in JS. Syntax b7a309fc PASSED. Actual reply still OPEN.
+- Preparing fresh single-boot r46: update only owned fixture probe while VM off,
+  preserve its metadata/xattrs and verify checksum; unchanged96/127/SDK5/APKr16.
+  Independent window/native scopes require verified runtime/same boot, even if
+  UI arming fails before obtaining the app PID. No new qualification claimed.
+
+HISTORICAL04:38Z — single-boot continuation under larger accounted cache cap active:
 - r41 f711e6d8 FAILED before Android/UI: fresh user Shell service timeout.
   No new reply/window/guard qualification. Its original source and unique token
  6c0944d9 remain unused; cleanup readback was inconclusive, so fixture remains
