@@ -10,4 +10,9 @@ activation = constructor.rindex('this._showPrompt();')
 assert constructor.count('this._showPrompt();') == 2  # scroll handler + final activation
 for target in ('this._otherUserButton =', 'this._idleWatchId =', "this.connect('destroy'"):
     assert constructor.index(target) < activation, target
-assert constructor[activation:].strip() == 'this._showPrompt();\n    }'
+# 0290 ends the constructor with a compact-login branch whose else arm is
+# the same final activation.
+assert constructor[activation:].strip() in (
+    'this._showPrompt();\n    }',
+    'this._showPrompt();\n        }\n    }',
+)

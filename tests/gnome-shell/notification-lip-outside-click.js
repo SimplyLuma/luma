@@ -14,7 +14,10 @@ const marker = "this._outsideId = this.connect('captured-event', ";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n        });', start);
 if (start < 0 || end < 0) throw new Error('Grabbed actor outside-click callback is missing');
-if (!source.includes('this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});'))
+// The Mobile lock screen keeps its own action mode for the same grab (0293).
+const grabLine = source.split('\n').find(line =>
+    line.trim().startsWith('this._grab = Main.pushModal(this, {actionMode: '));
+if (!grabLine || !grabLine.includes('Shell.ActionMode.POPUP}'))
     throw new Error('Client-window input must be redirected to the notification actor');
 if (!source.includes('if (this._outsideId) this.disconnect(this._outsideId);') ||
     !source.includes('if (this._grab) Main.popModal(this._grab);') ||
