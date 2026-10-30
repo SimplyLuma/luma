@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T15:08Z
+- Updated: 2026-10-30T15:45Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,36 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT15:45Z — preview packages qualified; ARM compile active; drawer actions in progress:
+- Metadata decoder2 package f1eac518 PASSED15:41:56Z from sourceb92d40c59.
+  Actual Rust helper x86 RPM SHA30849e8bc082d45a2ecf917b78e9ee420537bd1e53f2f1f3495563d18f0cb243;
+  binary5fd1a276... . Four binary/debug/source RPMs retained, normal frozen/offline
+  cargo build/test and RPM payload/header directory checks passed. No ARM helper
+  package or production qualification inferred.
+- Actual helper on official signature-verified F-Droid2.0.2 PASSED d5b3ba51:
+  labelF-Droid/version2.0.2/packageorg.fdroid.fdroid and four native ABI choices;
+  APK SHA19d51fad... unchanged. This corrects failed native harnessa024f279:
+  the helper is a SEPARATE RPM, not payload inside Installer80.
+- Installer81 full package90feb429 PASSED15:44:05Z:841tests/9skips, native6+7,
+  real GTK main-preview architecture warning/version/eligible-install controls,
+  cache/digest/header checks. RPM SHA718a88d8a721518fbc646b09c80f203ad952da0b74bcbf05e9fab6b222b200e4;
+  package-installer-r101/source/build/packages/luma-application-installer.
+  Requires now pins helper2 exactly; both-CPU input pins updated. Android ABIs
+  no longer accidentally rejected by host RPM architecture-name heuristics.
+  Version/signature facts remain separate, publisher not invented. This is
+  component qualification, not another whole-VM GUI install or ARM result.
+- Source drawer actions currently adds native AppMenu for right-click/hold/Menu/
+  ShiftF10; disposes menus before actor replacement and preserves primary-click
+  search behavior. New native drawer-app-actions scenario is NOT RUN yet;
+  build/real UI pin-unpin gate remains OPEN. Dock overflow remains separate.
+- ARM normal e83d2ad1/guard28a5035c at31%24031/75864 at15:44:40Z, live native
+  x86 host cross-compiling arm64. Existing24GiB VM/25GiBcap/8CPU/27+1admission,
+  policy756a... unchanged; require final export/VM-off/original24cf restore.
+- Retired ONLY completed disposable Installer79/80 build-cache images through
+  normal ec846dc7/5465b131 after retained RPM+SRPM/source/log/no-consumer proof.
+  Root~21GiB available; preserve20GiB floor. New native helper/Installer81 caches
+  may be retired only with equivalent artifact/custody proof before next build.
 
 CURRENT15:08Z — actual x86 direct-install GUI PASS; ARM24GiB build active:
 - R85 child7a7558bd PASSED14:51:01Z; parent1165077b PASSED14:51:04Z.
