@@ -1,0 +1,1406 @@
+From: Luma Developers
+Subject: [PATCH] Keycap on-screen keyboard
+
+The shared Keycap design and input tools (Stevia patch 0004) for the
+Shell keyboard: token-generated light/dark caps with travel, the tool
+strip, clipboard and cursor panels, preferences, sentence case, double
+space period, delete and space gestures, privacy for sensitive fields
+and Keycap sizing.
+
+diff --git a/data/gnome-shell-icons.gresource.xml b/data/gnome-shell-icons.gresource.xml
+--- a/data/gnome-shell-icons.gresource.xml
++++ b/data/gnome-shell-icons.gresource.xml
+@@ -57,6 +57,19 @@
+     <file preprocess="xml-stripblanks">scalable/status/keyboard-brightness-off-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/message-indicator-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/no-notifications-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-arrow-big-up-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-arrow-big-up-filled-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-arrow-right-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-chevron-down-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-chevron-left-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-chevron-right-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-chevron-up-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-clipboard-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-corner-down-left-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-delete-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-move-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-settings-2-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-keycap-smile-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/osk-caps-lock-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/osk-delete-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/osk-emoji-picker-symbolic.svg</file>
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -154,6 +154,37 @@
+     <child name="window-switcher" schema="org.gnome.shell.window-switcher"/>
+     <child name="world-clocks" schema="org.gnome.shell.world-clocks"/>
+     <child name="weather" schema="org.gnome.shell.weather"/>
++    <child name="keyboard" schema="org.gnome.shell.keyboard"/>
++  </schema>
++
++  <schema id="org.gnome.shell.keyboard" path="/org/gnome/shell/keyboard/"
++          gettext-domain="@GETTEXT_PACKAGE@">
++    <!-- The Keycap preferences, with the same names and defaults as
++         Stevia's mobi.phosh.osk keys, so one Settings page serves both. -->
++    <key name="suggestions" type="b">
++      <default>true</default>
++      <summary>Show word suggestions</summary>
++    </key>
++    <key name="key-preview" type="b">
++      <default>true</default>
++      <summary>Show pressed letter previews</summary>
++    </key>
++    <key name="sound" type="b">
++      <default>false</default>
++      <summary>Key press sound</summary>
++    </key>
++    <key name="haptics" type="b">
++      <default>true</default>
++      <summary>Key press vibration</summary>
++    </key>
++    <key name="auto-capitalise" type="b">
++      <default>true</default>
++      <summary>Capitalise sentences automatically</summary>
++    </key>
++    <key name="double-space-period" type="b">
++      <default>true</default>
++      <summary>Insert a period after two spaces</summary>
++    </key>
+   </schema>
+ 
+   <schema id="org.gnome.shell.keybindings" path="/org/gnome/shell/keybindings/"
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -169,6 +169,9 @@
+     <file>ui/lumaPresentation/launcherFolders.css</file>
+     <file>ui/lumaPresentation/launcher.svg</file>
+     <file>ui/lumaPresentation/frameTokens.js</file>
++    <file>ui/lumaPresentation/keycap.js</file>
++    <file>ui/lumaPresentation/keycapTokens.js</file>
++    <file>ui/lumaPresentation/keycap.css</file>
+     <file>ui/lumaPresentation/switcherDrag.js</file>
+     <file>ui/shelfMetrics.js</file>
+     <file>ui/shelfArrangement.js</file>
+diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
+--- a/js/misc/inputMethod.js
++++ b/js/misc/inputMethod.js
+@@ -382,6 +382,25 @@ export const InputMethod = GObject.registerClass({
+         return this._preeditVisible && this._preeditStr !== '' && this._preeditStr !== null;
+     }
+ 
++    // The word being composed, for the on-screen keyboard's literal choice.
++    get preeditText() {
++        return this.hasPreedit() ? this._preeditStr : null;
++    }
++
++    // Keep the composed word exactly as typed: the client receives it as a
++    // commit and the engine drops its own copy instead of correcting it.
++    commitPreeditText() {
++        if (!this.hasPreedit())
++            return false;
++        const text = this._preeditStr;
++        this.set_preedit_text(null, 0, 0, this._preeditCommitMode);
++        this._preeditStr = null;
++        this._preeditVisible = false;
++        this._context?.reset();
++        this.commit(text);
++        return true;
++    }
++
+     async handleVirtualKey(keyval) {
+         try {
+             if (!await this._context.process_key_event_async(
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -6,6 +6,7 @@ import Meta from 'gi://Meta';
+ import Graphene from 'gi://Graphene';
+ import IBus from 'gi://IBus';
+ import Shell from 'gi://Shell';
++import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ import * as Signals from '../misc/signals.js';
+ 
+@@ -16,6 +17,7 @@ import * as Main from './main.js';
+ import * as PageIndicators from './pageIndicators.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SwipeTracker from './swipeTracker.js';
++import * as Keycap from './lumaPresentation/keycap.js';
+ 
+ export const KEYBOARD_ANIMATION_TIME = 150;
+ const KEYBOARD_REST_TIME = KEYBOARD_ANIMATION_TIME * 2;
+@@ -29,7 +31,48 @@ const EMOJI_PAGE_SEPARATION = 32;
+ const KEY_SIZE = 2;
+ 
+ const KEY_RELEASE_TIMEOUT = 50;
+-const BACKSPACE_WORD_DELETE_THRESHOLD = 50;
++
++// Keycap (config/shared/design-tokens.json `keycap`): the shared keyboard
++// design, also used by Stevia on Phosh images. Its sheet is generated from the
++// tokens; its behaviour lives in lumaPresentation/keycap.js.
++const KEYCAP_STYLESHEET = 'resource:///org/gnome/shell/ui/lumaPresentation/keycap.css';
++const KEYCAP_SCHEMA = 'org.gnome.shell.keyboard';
++const KEYCAP_ICONS = {
++    'osk-shift-symbolic': 'luma-keycap-arrow-big-up-symbolic',
++    'osk-caps-lock-symbolic': 'luma-keycap-arrow-big-up-filled-symbolic',
++    'osk-delete-symbolic': 'luma-keycap-delete-symbolic',
++    'edit-clear-symbolic': 'luma-keycap-delete-symbolic',
++    'osk-enter-symbolic': 'luma-keycap-corner-down-left-symbolic',
++    'osk-hide-symbolic': 'luma-keycap-chevron-down-symbolic',
++    'osk-emoji-picker-symbolic': 'luma-keycap-smile-symbolic',
++};
++const KEYCAP_PREFERENCES = [
++    ['key-preview', N_('Key preview')],
++    ['haptics', N_('Haptics')],
++    ['sound', N_('Sound')],
++    ['auto-capitalise', N_('Auto-capitalise')],
++    ['double-space-period', N_('Double-space period')],
++    ['suggestions', N_('Suggestions')],
++];
++
++// The Keycap variant being painted ('light' or 'dark'), or null under High
++// Contrast, which keeps the platform keyboard's look. Keys and popups read it.
++let keycapVariant = null;
++
++function keycapIcon(name) {
++    return KEYCAP_ICONS[name] ?? name;
++}
++
++function setKeycapVariantClass(actor) {
++    for (const variant of ['light', 'dark'])
++        actor.remove_style_class_name(`luma-keycap-${variant}`);
++    if (keycapVariant)
++        actor.add_style_class_name(`luma-keycap-${keycapVariant}`);
++}
++
++function monotonicMs() {
++    return GLib.get_monotonic_time() / 1000;
++}
+ 
+ const AspectContainer = GObject.registerClass(
+ class AspectContainer extends St.Widget {
+@@ -129,8 +172,10 @@ class Suggestions extends St.BoxLayout {
+         this.show();
+     }
+ 
+-    add(word, callback) {
++    add(word, callback, styleClass = null) {
+         const button = new St.Button({label: word});
++        if (styleClass)
++            button.add_style_class_name(styleClass);
+         button.connect('button-press-event', () => {
+             callback();
+             return Clutter.EVENT_STOP;
+@@ -155,29 +200,12 @@ class Suggestions extends St.BoxLayout {
+     }
+ });
+ 
+-class LanguageSelectionPopup extends PopupMenu.PopupMenu {
++// A menu opened from the keyboard: it has no menu manager, so a press outside
++// closes it and the keyboard keeps the input focus.
++class KeyboardPopup extends PopupMenu.PopupMenu {
+     constructor(actor) {
+         super(actor, 0.5, St.Side.BOTTOM);
+-
+-        const inputSourceManager = InputSourceManager.getInputSourceManager();
+-        const inputSources = inputSourceManager.inputSources;
+-
+-        let item;
+-        for (const i in inputSources) {
+-            const is = inputSources[i];
+-
+-            item = this.addAction(is.displayName, () => {
+-                inputSourceManager.activateInputSource(is, true);
+-            });
+-            item.can_focus = false;
+-            item.setOrnament(is === inputSourceManager.currentSource
+-                ? PopupMenu.Ornament.DOT
+-                : PopupMenu.Ornament.NO_DOT);
+-        }
+-
+-        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-        item = this.addSettingsAction(_('Keyboard Settings'), 'gnome-keyboard-panel.desktop');
+-        item.can_focus = false;
++        setKeycapVariantClass(this.actor);
+ 
+         actor.connectObject('notify::mapped', () => {
+             if (!actor.is_mapped())
+@@ -216,6 +244,42 @@ class LanguageSelectionPopup extends PopupMenu.PopupMenu {
+     }
+ }
+ 
++class LanguageSelectionPopup extends KeyboardPopup {
++    constructor(actor, keycapSettings = null) {
++        super(actor);
++
++        const inputSourceManager = InputSourceManager.getInputSourceManager();
++        const inputSources = inputSourceManager.inputSources;
++
++        let item;
++        for (const i in inputSources) {
++            const is = inputSources[i];
++
++            item = this.addAction(is.displayName, () => {
++                inputSourceManager.activateInputSource(is, true);
++            });
++            item.can_focus = false;
++            item.setOrnament(is === inputSourceManager.currentSource
++                ? PopupMenu.Ornament.DOT
++                : PopupMenu.Ornament.NO_DOT);
++        }
++
++        if (keycapSettings) {
++            this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++            for (const [key, label] of KEYCAP_PREFERENCES) {
++                item = new PopupMenu.PopupSwitchMenuItem(_(label), keycapSettings.get_boolean(key));
++                item.can_focus = false;
++                item.connect('toggled', (_item, state) => keycapSettings.set_boolean(key, state));
++                this.addMenuItem(item);
++            }
++        }
++
++        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        item = this.addSettingsAction(_('Keyboard Settings'), 'gnome-keyboard-panel.desktop');
++        item.can_focus = false;
++    }
++}
++
+ const Key = GObject.registerClass({
+     Signals: {
+         'long-press': {},
+@@ -223,14 +287,17 @@ const Key = GObject.registerClass({
+         'released': {},
+         'keyval': {param_types: [GObject.TYPE_UINT]},
+         'commit': {param_types: [GObject.TYPE_STRING]},
++        // Pointer or touch movement since the press, in stage pixels.
++        'drag': {param_types: [GObject.TYPE_DOUBLE, GObject.TYPE_DOUBLE]},
+     },
+ }, class Key extends St.BoxLayout {
+     _init(params, extendedKeys = []) {
+-        const {label, iconName, commitString, keyval, hasAction} = {keyval: 0, ...params};
++        const {label, iconName, commitString, keyval, hasAction, hint} = {keyval: 0, ...params};
+         super._init({style_class: 'key-container'});
+ 
+         this._keyval = parseInt(keyval, 16);
+-        this.keyButton = this._makeKey(commitString, label, iconName);
++        this._consumed = false;
++        this.keyButton = this._makeKey(commitString, label, iconName, hint);
+ 
+         /* Add the key in a container, so keys can be padded without losing
+          * logical proportions between those.
+@@ -246,11 +313,49 @@ const Key = GObject.registerClass({
+     }
+ 
+     get iconName() {
+-        return this._icon.icon_name;
++        return this._iconName;
+     }
+ 
+     set iconName(value) {
+-        this._icon.icon_name = value;
++        this._iconName = value;
++        this._icon.icon_name = keycapIcon(value);
++    }
++
++    // An icon chosen for the field rather than the layout (Go for URLs).
++    setDisplayIcon(name) {
++        if (this._icon)
++            this._icon.icon_name = name;
++    }
++
++    // A gesture on the key (a swipe on space or delete) replaces its tap:
++    // releasing it then commits nothing and opens no alternatives.
++    consume() {
++        this._consumed = true;
++        if (this._pressTimeoutId !== 0) {
++            GLib.source_remove(this._pressTimeoutId);
++            this._pressTimeoutId = 0;
++        }
++    }
++
++    get consumed() {
++        return this._consumed;
++    }
++
++    // Keycap travel: the cap drops while its edge shadow shrinks by the
++    // same amount, so the foot stays put; release eases it back.
++    _capDown(button) {
++        button.remove_transition('translation-y');
++        button.translation_y = keycapVariant ? Keycap.keycap.geometry.travel : 0;
++    }
++
++    _capUp(button) {
++        if (!button.translation_y)
++            return;
++        button.ease({
++            translation_y: 0,
++            duration: Keycap.keycap.timing.release,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
+     }
+ 
+     _onDestroy() {
+@@ -281,6 +386,7 @@ const Key = GObject.registerClass({
+     }
+ 
+     _press(button) {
++        this._consumed = false;
+         if (button === this.keyButton) {
+             this._pressTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
+                 KEY_LONG_PRESS_TIME,
+@@ -309,7 +415,7 @@ const Key = GObject.registerClass({
+             this._pressTimeoutId = 0;
+         }
+ 
+-        if (this._pressed) {
++        if (this._pressed && !this._consumed) {
+             if (this._keyval && button === this.keyButton)
+                 this.emit('keyval', this._keyval);
+             else if (commitString)
+@@ -321,6 +427,7 @@ const Key = GObject.registerClass({
+         this.emit('released');
+         this._hideSubkeys();
+         this._pressed = false;
++        this._consumed = false;
+     }
+ 
+     cancel() {
+@@ -331,6 +438,7 @@ const Key = GObject.registerClass({
+         this._touchPressSlot = null;
+         this.keyButton.set_hover(false);
+         this.keyButton.fake_release();
++        this._capUp(this.keyButton);
+     }
+ 
+     _onCapturedEvent(actor, event) {
+@@ -352,6 +460,7 @@ const Key = GObject.registerClass({
+     }
+ 
+     _showSubkeys() {
++        setKeycapVariantClass(this._boxPointer);
+         this._boxPointer.open(BoxPointer.PopupAnimation.FULL);
+         global.stage.connectObject(
+             'captured-event', this._onCapturedEvent.bind(this), this);
+@@ -369,30 +478,67 @@ const Key = GObject.registerClass({
+         this._capturedPress = false;
+     }
+ 
+-    _makeKey(commitString, label, icon) {
++    _makeKey(commitString, label, icon, hint = null) {
+         const button = new St.Button({
+             style_class: 'keyboard-key',
+             x_expand: true,
+         });
+ 
+         if (icon) {
+-            const child = new St.Icon({icon_name: icon});
++            const child = new St.Icon({icon_name: keycapIcon(icon)});
+             button.set_child(child);
+             this._icon = child;
++            this._iconName = icon;
++        } else if (hint && (label || commitString)) {
++            // The long-press number shown in the cap's corner.
++            const child = new St.Widget({
++                layout_manager: new Clutter.BinLayout(),
++                x_expand: true,
++                y_expand: true,
++            });
++            child.add_child(new St.Label({
++                text: label || commitString,
++                style_class: 'luma-keycap-cap-label',
++                x_expand: true,
++                y_expand: true,
++                x_align: Clutter.ActorAlign.CENTER,
++                y_align: Clutter.ActorAlign.CENTER,
++            }));
++            child.add_child(new St.Label({
++                text: hint,
++                style_class: 'luma-keycap-hint',
++                x_expand: true,
++                y_expand: true,
++                x_align: Clutter.ActorAlign.END,
++                y_align: Clutter.ActorAlign.START,
++                style: 'margin: 3px 5px 0 0;',
++            }));
++            button.set_child(child);
+         } else if (label) {
+             button.set_label(label);
+         } else if (commitString) {
+             button.set_label(commitString);
+         }
+ 
+-        button.connect('button-press-event', () => {
++        button.connect('button-press-event', (actor, event) => {
++            [this._pressX, this._pressY] = event.get_coords();
+             this._press(button, commitString);
+             button.add_style_pseudo_class('active');
++            this._capDown(button);
+             return Clutter.EVENT_STOP;
+         });
++        button.connect('motion-event', (actor, event) => {
++            if (this._pressed && button === this.keyButton &&
++                (event.get_state() & Clutter.ModifierType.BUTTON1_MASK) !== 0) {
++                const [x, y] = event.get_coords();
++                this.emit('drag', x - this._pressX, y - this._pressY);
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
+         button.connect('button-release-event', () => {
+             this._release(button, commitString);
+             button.remove_style_pseudo_class('active');
++            this._capUp(button);
+             return Clutter.EVENT_STOP;
+         });
+         button.connect('touch-event', (actor, event) => {
+@@ -401,13 +547,24 @@ const Key = GObject.registerClass({
+             if (!this._touchPressSlot &&
+                 event.type() === Clutter.EventType.TOUCH_BEGIN) {
+                 this._touchPressSlot = slot;
++                [this._pressX, this._pressY] = event.get_coords();
+                 this._press(button, commitString);
+                 button.add_style_pseudo_class('active');
+-            } else if (event.type() === Clutter.EventType.TOUCH_END) {
++                this._capDown(button);
++            } else if (event.type() === Clutter.EventType.TOUCH_UPDATE) {
++                if (this._touchPressSlot === slot && this._pressed && button === this.keyButton) {
++                    const [x, y] = event.get_coords();
++                    this.emit('drag', x - this._pressX, y - this._pressY);
++                }
++            } else if (event.type() === Clutter.EventType.TOUCH_END ||
++                       event.type() === Clutter.EventType.TOUCH_CANCEL) {
+                 if (!this._touchPressSlot ||
+                     this._touchPressSlot === slot) {
++                    if (event.type() === Clutter.EventType.TOUCH_CANCEL)
++                        this.consume();
+                     this._release(button, commitString);
+                     button.remove_style_pseudo_class('active');
++                    this._capUp(button);
+                 }
+ 
+                 if (this._touchPressSlot === slot)
+@@ -1222,6 +1379,30 @@ export const Keyboard = GObject.registerClass({
+         Main.layoutManager.connectObject('monitors-changed',
+             this._relayout.bind(this), this);
+ 
++        this._keycapPolicy = new Keycap.KeycapPolicy({
++            purpose: Clutter.InputContentPurpose,
++            hint: Clutter.InputContentHintFlags,
++        });
++        this._keycapSettings = new Gio.Settings({schema_id: KEYCAP_SCHEMA});
++        this._keycapSettings.connectObject('changed',
++            this._onKeycapSettingsChanged.bind(this), this);
++        this._contentHint = 0;
++        this._panel = null;
++        this._candidates = [];
++        this._suggestionsShown = true;
++        this._shiftTaps = new Keycap.TapTracker();
++        this._spaceTap = 0;
++        this._spaceSteps = 0;
++        this._deleteTimer = 0;
++        this._deleteSelected = 0;
++        this._clipboardGeneration = 0;
++        this._wasSensitive = false;
++        this._feedbackAvailable = false;
++        this._feedbackWatch = Gio.bus_watch_name(Gio.BusType.SESSION,
++            'org.sigxcpu.Feedback', Gio.BusNameWatcherFlags.NONE,
++            () => (this._feedbackAvailable = true),
++            () => (this._feedbackAvailable = false));
++
+         this._setupKeyboard();
+ 
+         this.connect('destroy', this._onDestroy.bind(this));
+@@ -1242,6 +1423,24 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _onDestroy() {
++        this._destroyed = true;
++        this._clearDeleteTimer();
++        if (this._surroundingTextId) {
++            Main.inputMethod.disconnect(this._surroundingTextId);
++            this._surroundingTextId = 0;
++        }
++        Gio.bus_unwatch_name(this._feedbackWatch);
++        this._keycapSettings.disconnectObject(this);
++        global.display.get_selection().disconnectObject(this);
++        St.ThemeContext.get_for_stage(global.stage).disconnectObject(this);
++        this._clipPopup?.destroy();
++        this._clipPopup = null;
++        if (this._preview) {
++            Main.layoutManager.removeChrome(this._preview);
++            this._preview.destroy();
++            this._preview = null;
++        }
++
+         if (this._windowMovedId) {
+             this._focusTracker.disconnect(this._windowMovedId);
+             delete this._windowMovedId;
+@@ -1277,6 +1476,8 @@ export const Keyboard = GObject.registerClass({
+ 
+         this._suggestions = new Suggestions();
+         this.add_child(this._suggestions);
++        this._tools = this._createTools();
++        this.add_child(this._tools);
+ 
+         this._aspectContainer = new AspectContainer({
+             layout_manager: new Clutter.BinLayout(),
+@@ -1294,25 +1495,99 @@ export const Keyboard = GObject.registerClass({
+         this._emojiSelection.hide();
+         this._aspectContainer.add_child(this._emojiSelection);
+ 
++        this._clipboardPanel = this._createClipboardPanel();
++        this._aspectContainer.add_child(this._clipboardPanel);
++        this._cursorPanel = this._createCursorPanel();
++        this._aspectContainer.add_child(this._cursorPanel);
++
+         this._updateKeys();
+ 
+         this._keyboardController.connectObject(
+             'group-changed', this._onGroupChanged.bind(this),
+             'panel-state', this._onKeyboardStateChanged.bind(this),
+-            'purpose-changed', () => this._updateKeys(),
++            'purpose-changed', () => {
++                this._updateKeys();
++                this._syncPrivacy();
++            },
+             'content-hints-changed', this._onContentHintsChanged.bind(this),
+             this);
+         global.stage.connectObject('notify::key-focus',
+             this._onKeyFocusChanged.bind(this), this);
++        global.display.get_selection().connectObject('owner-changed',
++            this._onSelectionOwnerChanged.bind(this), this);
++        St.ThemeContext.get_for_stage(global.stage).connectObject('changed',
++            () => this._syncKeycapTheme(), this);
++        this._syncKeycapTheme();
++        this._syncPrivacy();
+ 
+         this._relayout();
+     }
+ 
++    // Keycap paints both system variants; High Contrast keeps the platform
++    // keyboard. Theme reloads keep the sheet (custom sheets carry over).
++    _syncKeycapTheme() {
++        const variant = St.Settings.get().high_contrast ? null
++            : Main.getStyleVariant?.() === 'dark' ? 'dark' : 'light';
++        const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
++        if (variant && !theme.get_custom_stylesheets().some(file => file.get_uri() === KEYCAP_STYLESHEET))
++            theme.load_stylesheet(Gio.File.new_for_uri(KEYCAP_STYLESHEET));
++        keycapVariant = variant;
++        setKeycapVariantClass(this);
++        if (this._preview)
++            setKeycapVariantClass(this._preview);
++    }
++
++    _isSensitive() {
++        return this._keycapPolicy.isSensitive(this._keyboardController.purpose, this._contentHint ?? 0);
++    }
++
++    _completionAllowed() {
++        return !this._isSensitive() && this._keycapSettings.get_boolean('suggestions');
++    }
++
++    // Sensitive fields get no suggestions, clipboard history, automatic case
++    // or double-space periods; a transition also voids clipboard reads that
++    // started on the other side of it.
++    _syncPrivacy() {
++        const sensitive = this._isSensitive();
++        if (sensitive !== this._wasSensitive) {
++            this._clipboardGeneration++;
++            this._wasSensitive = sensitive;
++        }
++        if (sensitive) {
++            this._spaceTap = 0;
++            if (this._panel === 'clipboard')
++                this._setPanel(null);
++        }
++        if (this._keyboardRequested)
++            this._keyboardController.setOskCompletion(this._completionAllowed());
++        this._renderSuggestions();
++    }
++
++    _onKeycapSettingsChanged(settings, key) {
++        if (key === 'suggestions') {
++            // Turning suggestions off keeps the word being typed as typed.
++            if (!settings.get_boolean(key) && !this._isSensitive())
++                Main.inputMethod.commitPreeditText();
++            this._syncPrivacy();
++        } else if (key === 'auto-capitalise') {
++            this._updateLevelFromHints(false);
++        }
++    }
++
+     _onContentHintsChanged(controller, contentHint) {
+         this._contentHint = contentHint;
++        this._syncPrivacy();
+         this._updateLevelFromHints(false);
+     }
+ 
++    _onLetterLevel() {
++        return !!this._currentPage && (this._currentPage === this._layers['default'] ||
++            this._currentPage === this._layers['shift']);
++    }
++
++    // Sentence case follows the field's purpose and hints (Keycap policy),
++    // never touches the symbol levels and never applies to sensitive text.
+     _updateLevelFromHints(userInputHappened) {
+         // If the latch is enabled, avoid level changes
+         if (this._latched)
+@@ -1323,52 +1598,37 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+ 
+-        if (!this._layers['shift'])
++        if (!this._layers['shift'] || !this._onLetterLevel())
+             return;
+ 
+-        if ((this._contentHint & Clutter.InputContentHintFlags.UPPERCASE) !== 0) {
++        const sensitive = this._isSensitive();
++        if (!sensitive && (this._contentHint & Clutter.InputContentHintFlags.UPPERCASE) !== 0) {
+             this._setActiveLevel('shift');
+             return;
+         }
+ 
+-        if ((this._contentHint &
+-             (Clutter.InputContentHintFlags.AUTO_CAPITALIZATION |
+-              Clutter.InputContentHintFlags.TITLECASE)) !== 0) {
+-            if (this._surroundingTextId)
+-                return;
+-
+-            this._surroundingTextId =
+-                Main.inputMethod.connect('surrounding-text-set', () => {
+-                    const [text, cursor] = Main.inputMethod.getSurroundingText();
+-                    if (!text || cursor === 0) {
+-                        // First character in the buffer
+-                        this._setActiveLevel('shift');
+-                        return;
+-                    }
+-
+-                    const beforeCursor = GLib.utf8_substring(text, 0, cursor);
+-
+-                    if ((this._contentHint & Clutter.InputContentHintFlags.TITLECASE) !== 0) {
+-                        if (beforeCursor.charAt(beforeCursor.length - 1) === ' ')
+-                            this._setActiveLevel('shift');
+-                        else
+-                            this._setActiveLevel('default');
+-                    } else if ((this._contentHint & Clutter.InputContentHintFlags.AUTO_CAPITALIZATION) !== 0) {
+-                        if (beforeCursor.charAt(beforeCursor.trimEnd().length - 1) === '.')
+-                            this._setActiveLevel('shift');
+-                        else
+-                            this._setActiveLevel('default');
+-                    }
+-
+-                    Main.inputMethod.disconnect(this._surroundingTextId);
+-                    this._surroundingTextId = 0;
+-                });
+-            Main.inputMethod.request_surrounding();
++        if (sensitive || !this._keycapSettings.get_boolean('auto-capitalise')) {
++            if (userInputHappened && this._currentPage === this._layers['shift'])
++                this._setActiveLevel('default');
+             return;
+         }
+ 
+-        if (userInputHappened && this._currentPage === this._layers['shift'])
+-            this._setActiveLevel('default');
++        if (this._surroundingTextId)
++            return;
++
++        this._surroundingTextId =
++            Main.inputMethod.connect('surrounding-text-set', () => {
++                Main.inputMethod.disconnect(this._surroundingTextId);
++                this._surroundingTextId = 0;
++                if (this._latched || !this._onLetterLevel())
++                    return;
++                const [text, cursor] = Main.inputMethod.getSurroundingText();
++                const capitalise = this._keycapPolicy.shouldCapitalise(
++                    this._keyboardController.purpose, this._contentHint ?? 0,
++                    text ?? '', text ? cursor : 0);
++                this._setActiveLevel(capitalise ? 'shift' : 'default');
++            });
++        Main.inputMethod.request_surrounding();
+     }
+ 
+     _onKeyFocusChanged() {
+@@ -1447,9 +1707,10 @@ export const Keyboard = GObject.registerClass({
+             levelLayout.mode = currentLevel.mode;
+ 
+             const rows = currentLevel.rows;
+-            rows.forEach(row => {
++            rows.forEach((row, rowIndex) => {
+                 levelLayout.appendRow();
+-                this._addRowKeys(row, levelLayout, emojiVisible);
++                this._addRowKeys(this._keycapRow(row, rowIndex, currentLevel.level),
++                    levelLayout, emojiVisible, purpose);
+             });
+ 
+             layers[currentLevel.level] = levelLayout;
+@@ -1463,7 +1724,40 @@ export const Keyboard = GObject.registerClass({
+         this._layers = layers;
+     }
+ 
+-    _addRowKeys(keys, layout, emojiVisible) {
++    // Keycap rows: hide lives in the tool strip and the language key appears
++    // only with several input sources (both widths go to space, which then
++    // names the language); the top letter row shows its long-press numbers.
++    _keycapRow(row, rowIndex, level) {
++        const inputSourceManager = InputSourceManager.getInputSourceManager();
++        const sources = Object.keys(inputSourceManager.inputSources).length;
++        let keys = row.map(key => ({...key, strings: key.strings ? [...key.strings] : key.strings}));
++        const space = keys.find(key => key.strings?.[0] === ' ');
++        if (space) {
++            let freed = 0;
++            keys = keys.filter(key => {
++                const drop = key.action === 'hide' || (key.action === 'languageMenu' && sources < 2);
++                if (drop)
++                    freed += key.width ?? 1;
++                return !drop;
++            });
++            space.width = (space.width ?? 1) + freed;
++            space.label = sources > 1 ? (inputSourceManager.currentSource?.shortName ?? '').toUpperCase() : '';
++        }
++        if (rowIndex === 0 && (level === 'default' || level === 'shift')) {
++            const letters = keys.filter(key => !key.action && !key.keyval && key.strings?.length);
++            if (letters.length >= 10 && letters.slice(0, 10).every(key =>
++                [...key.strings[0]].length === 1 && /\p{L}/u.test(key.strings[0]))) {
++                letters.slice(0, 10).forEach((key, i) => {
++                    const digit = String((i + 1) % 10);
++                    key.hint = digit;
++                    key.strings = [key.strings[0], digit, ...key.strings.slice(1).filter(s => s !== digit)];
++                });
++            }
++        }
++        return keys;
++    }
++
++    _addRowKeys(keys, layout, emojiVisible, purpose) {
+         let accumulatedWidth = 0;
+         for (let i = 0; i < keys.length; ++i) {
+             const key = keys[i];
+@@ -1487,10 +1781,29 @@ export const Keyboard = GObject.registerClass({
+                 iconName: key.iconName,
+                 keyval: key.keyval,
+                 hasAction: !!key.action,
++                hint: key.hint,
+             }, strings);
+ 
++            button.connect('pressed', () => {
++                this._keyFeedback();
++                if (!key.action && commitString && commitString !== ' ' && [...commitString].length === 1)
++                    this._showPreview(button, commitString);
++            });
++            button.connect('released', () => this._hidePreview());
++
++            if (parseInt(key.keyval, 16) === Clutter.KEY_Return || key.iconName === 'osk-enter-symbolic') {
++                button.keyButton.add_style_class_name('luma-keycap-enter');
++                if (purpose === Clutter.InputContentPurpose.URL)
++                    button.setDisplayIcon('luma-keycap-arrow-right-symbolic');
++            }
++
++            if (commitString === ' ')
++                this._setupSpaceKey(button);
++
+             if (key.action) {
+                 button.connect('released', () => {
++                    if (button.consumed)
++                        return;
+                     if (key.action === 'hide') {
+                         this.close(true);
+                         this._updateLevelFromHints(true);
+@@ -1505,10 +1818,19 @@ export const Keyboard = GObject.registerClass({
+                         this._keyboardController.toggleDelete(false);
+                         this._updateLevelFromHints(true);
+                     } else if (!this._longPressed && key.action === 'levelSwitch') {
+-                        this._setActiveLevel(key.level);
+-                        this._setLatched(
+-                            key.level === 1 &&
+-                                key.iconName === 'osk-caps-lock-symbolic');
++                        const shiftKey = key.iconName === 'osk-shift-symbolic';
++                        if (shiftKey && !this._latched && this._shiftTaps.tap(monotonicMs())) {
++                            // Two quick taps on shift lock capitals.
++                            this._setActiveLevel('shift');
++                            this._setLatched(true);
++                        } else {
++                            if (shiftKey)
++                                this._shiftTaps.reset();
++                            this._setActiveLevel(key.level);
++                            this._setLatched(
++                                key.level === 1 &&
++                                    key.iconName === 'osk-caps-lock-symbolic');
++                        }
+                     }
+ 
+                     this._longPressed = false;
+@@ -1521,6 +1843,10 @@ export const Keyboard = GObject.registerClass({
+                 });
+             } else {
+                 button.connect('commit', (_actor, str) => {
++                    if (this._doubleSpacePeriod(str)) {
++                        this._updateLevelFromHints(true);
++                        return;
++                    }
+                     this._keyboardController.commit(str, this._modifiers).then(() => {
+                         this._disableAllModifiers();
+                         this._updateLevelFromHints(true);
+@@ -1540,10 +1866,8 @@ export const Keyboard = GObject.registerClass({
+                 }
+             }
+ 
+-            if (key.action === 'delete') {
+-                button.connect('long-press',
+-                    () => this._keyboardController.toggleDelete(true));
+-            }
++            if (key.action === 'delete')
++                this._setupDeleteKey(button);
+ 
+             if (key.action === 'modifier') {
+                 const modifierKeys = this._modifierKeys[key.keyval] || [];
+@@ -1558,6 +1882,394 @@ export const Keyboard = GObject.registerClass({
+         }
+     }
+ 
++    _setupSpaceKey(button) {
++        button.keyButton.add_style_class_name('luma-keycap-space');
++        button.connect('pressed', () => (this._spaceSteps = 0));
++        button.connect('drag', (_key, dx, dy) => {
++            // A sideways swipe on space moves the caret instead of typing.
++            const steps = Keycap.spaceCursorSteps(dx, dy, this._spaceSteps);
++            if (!steps)
++                return;
++            button.consume();
++            this._spaceSteps += steps;
++            const keyval = steps > 0 ? Clutter.KEY_Right : Clutter.KEY_Left;
++            for (let i = 0; i < Math.abs(steps); i++)
++                this._sendShortcut(keyval, [], false);
++        });
++    }
++
++    _clearDeleteTimer() {
++        if (this._deleteTimer) {
++            GLib.source_remove(this._deleteTimer);
++            this._deleteTimer = 0;
++        }
++    }
++
++    // Delete: one tap deletes once; holding repeats characters after the
++    // repeat delay and whole words later; dragging left selects words
++    // backwards and releasing deletes the selection.
++    _setupDeleteKey(button) {
++        button.connect('pressed', () => {
++            this._deleteSelected = 0;
++            this._clearDeleteTimer();
++            this._deleteTimer = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++                Keycap.keycap.timing.delete_repeat_delay, () => {
++                    this._deleteTimer = 0;
++                    this._keyboardController.toggleDelete(true, this._isSensitive());
++                });
++        });
++        button.connect('released', () => {
++            this._clearDeleteTimer();
++            if (this._deleteSelected > 0)
++                this._sendShortcut(Clutter.KEY_BackSpace, [], false);
++            this._deleteSelected = 0;
++        });
++        button.connect('drag', (_key, dx) => {
++            const words = this._isSensitive() ? 0 : Keycap.deleteSelectWords(dx);
++            if (!words && !this._deleteSelected)
++                return;
++            if (!button.consumed) {
++                button.consume();
++                this._clearDeleteTimer();
++                this._keyboardController.toggleDelete(false);
++            }
++            const word = [Clutter.KEY_Control_L, Clutter.KEY_Shift_L];
++            for (; this._deleteSelected < words; this._deleteSelected++)
++                this._sendShortcut(Clutter.KEY_Left, word, false);
++            for (; this._deleteSelected > words; this._deleteSelected--)
++                this._sendShortcut(Clutter.KEY_Right, word, false);
++        });
++    }
++
++    _sendShortcut(keyval, modifiers = [], finishWord = true) {
++        if (finishWord && Main.inputMethod.hasPreedit())
++            Main.inputMethod.commitPreeditText();
++        for (const modifier of modifiers)
++            this._keyboardController.keyvalPress(modifier);
++        this._keyboardController.keyvalPress(keyval);
++        this._keyboardController.keyvalRelease(keyval);
++        for (const modifier of [...modifiers].reverse())
++            this._keyboardController.keyvalRelease(modifier);
++    }
++
++    // Two spaces after a word in ordinary text become a period and a space.
++    _doubleSpacePeriod(str) {
++        const now = monotonicMs();
++        const previous = this._spaceTap;
++        this._spaceTap = str === ' ' ? now : 0;
++        if (str !== ' ' || !previous || now - previous > Keycap.keycap.timing.double_space ||
++            this._modifiers.size > 0 || !Main.inputMethod.currentFocus || this._isSensitive() ||
++            !this._keycapSettings.get_boolean('double-space-period') ||
++            this._keyboardController.purpose !== Clutter.InputContentPurpose.NORMAL)
++            return false;
++        const [text, cursor] = Main.inputMethod.getSurroundingText();
++        if (!text || !Keycap.canEndSentence([...text].slice(0, cursor).join('')))
++            return false;
++        this._spaceTap = 0;
++        Main.inputMethod.delete_surrounding(-1, 1);
++        Main.inputMethod.commit('. ');
++        return true;
++    }
++
++    _keyFeedback() {
++        if (this._keycapSettings.get_boolean('sound'))
++            global.display.get_sound_player().play_from_theme('button-pressed', _('Key press'), null);
++        if (!this._feedbackAvailable || !this._keycapSettings.get_boolean('haptics'))
++            return;
++        Gio.DBus.session.call('org.sigxcpu.Feedback', '/org/sigxcpu/Feedback',
++            'org.sigxcpu.Feedback', 'TriggerFeedback',
++            new GLib.Variant('(ssa{sv}i)', ['org.gnome.Shell', 'button-pressed',
++                {profile: new GLib.Variant('s', 'quiet')}, -1]),
++            null, Gio.DBusCallFlags.NONE, -1, null, (bus, result) => {
++                try {
++                    bus.call_finish(result);
++                } catch {
++                    // Feedback is best effort; the press already happened.
++                }
++            });
++    }
++
++    _showPreview(key, text) {
++        if (!keycapVariant || !this._keycapSettings.get_boolean('key-preview'))
++            return;
++        if (!this._preview) {
++            this._preview = new St.Label({style_class: 'luma-keycap-preview', visible: false});
++            Main.layoutManager.addTopChrome(this._preview);
++        }
++        setKeycapVariantClass(this._preview);
++        this._preview.text = text;
++        const [x, y] = key.keyButton.get_transformed_position();
++        const [width] = key.keyButton.get_transformed_size();
++        const [, naturalWidth] = this._preview.get_preferred_width(-1);
++        const [, naturalHeight] = this._preview.get_preferred_height(-1);
++        const previewWidth = Math.max(naturalWidth, width);
++        const monitor = Main.layoutManager.keyboardMonitor;
++        let previewX = Math.round(x + (width - previewWidth) / 2);
++        if (monitor)
++            previewX = Math.clamp(previewX, monitor.x, monitor.x + monitor.width - previewWidth);
++        this._preview.set_size(previewWidth, naturalHeight);
++        this._preview.set_position(previewX, Math.round(y - naturalHeight - 4));
++        this._preview.show();
++    }
++
++    _hidePreview() {
++        this._preview?.hide();
++    }
++
++    _createTools() {
++        const tools = new St.BoxLayout({style_class: 'luma-keycap-tools', x_expand: true});
++        const add = (icon, name, callback) => {
++            const button = new St.Button({
++                accessible_name: name,
++                can_focus: false,
++                x_expand: true,
++                child: new St.Icon({icon_name: `luma-keycap-${icon}-symbolic`}),
++            });
++            button.connect('clicked', callback);
++            tools.add_child(button);
++            return button;
++        };
++        this._toolButtons = [
++            add('smile', _('Emoji'), () => this._togglePanel('emoji')),
++            add('clipboard', _('Clipboard'), () => this._togglePanel('clipboard')),
++            add('move', _('Cursor keys'), () => this._togglePanel('cursor')),
++            add('settings-2', _('Keyboard settings'), button => this._popupLanguageMenu(button)),
++            add('chevron-down', _('Hide keyboard'), () => this.close(true)),
++        ];
++        this._stripEnter = new St.Button({
++            style_class: 'luma-keycap-strip-enter',
++            accessible_name: _('Enter'),
++            can_focus: false,
++            child: new St.Icon({icon_name: 'luma-keycap-corner-down-left-symbolic'}),
++        });
++        this._stripEnter.connect('clicked', () => this._sendShortcut(Clutter.KEY_Return));
++        tools.add_child(this._stripEnter);
++        return tools;
++    }
++
++    // The strip shows suggestions while a word has them, and the tools
++    // otherwise; number pads keep hide and gain Enter.
++    _syncTools() {
++        if (!this._tools)
++            return;
++        const numeric = this._keycapPolicy.isNumeric(this._keyboardController.purpose);
++        this._toolButtons.forEach((button, i) => (button.visible = i === 4 || !numeric));
++        this._stripEnter.visible = numeric;
++        const suggesting = this._suggestionsShown && this._suggestions.get_n_children() > 0;
++        this._suggestions.visible = suggesting;
++        this._tools.visible = !suggesting;
++    }
++
++    _renderSuggestions() {
++        if (!this._suggestions)
++            return;
++        this._suggestions.clear();
++        if (this._completionAllowed()) {
++            const literal = Main.inputMethod.preeditText;
++            const slots = Keycap.suggestionSlots(literal, this._candidates.map(candidate => candidate.text));
++            for (const slot of slots) {
++                const same = this._candidates.find(candidate => candidate.text === slot.text);
++                const callback = slot.index >= 0 ? this._candidates[slot.index].callback
++                    : same?.callback ?? (() => Main.inputMethod.commitPreeditText());
++                this._suggestions.add(slot.label, callback, slot.kind === 'suggested' ? 'suggested' : null);
++            }
++        }
++        this._syncTools();
++    }
++
++    _setPanel(panel) {
++        this._panel = panel;
++        this._emojiActive = panel === 'emoji';
++        this._emojiSelection.visible = panel === 'emoji';
++        this._clipboardPanel.visible = panel === 'clipboard';
++        this._cursorPanel.visible = panel === 'cursor';
++        if (panel === 'clipboard')
++            this._fillClipboard();
++        this._updateCurrentPageVisible();
++    }
++
++    _togglePanel(panel) {
++        if (panel === 'clipboard' && this._isSensitive())
++            return;
++        if (panel !== this._panel && Main.inputMethod.hasPreedit())
++            Main.inputMethod.commitPreeditText();
++        this._setPanel(this._panel === panel ? null : panel);
++    }
++
++    _panelBackRow() {
++        const row = new St.BoxLayout({x_expand: true});
++        const back = new St.Button({label: 'ABC', can_focus: false, x_expand: true});
++        back.connect('clicked', () => this._setPanel(null));
++        row.add_child(back);
++        return row;
++    }
++
++    _createClipboardPanel() {
++        const panel = new St.BoxLayout({
++            style_class: 'luma-keycap-panel',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_expand: true,
++            visible: false,
++        });
++        this._clipList = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
++        const scroll = new St.ScrollView({
++            x_expand: true,
++            y_expand: true,
++            hscrollbar_policy: St.PolicyType.NEVER,
++            vscrollbar_policy: St.PolicyType.AUTOMATIC,
++        });
++        scroll.set_child(this._clipList);
++        panel.add_child(scroll);
++        panel.add_child(this._panelBackRow());
++        return panel;
++    }
++
++    _fillClipboard() {
++        this._clipPopup?.destroy();
++        this._clipPopup = null;
++        this._clipList.destroy_all_children();
++        const clips = this._isSensitive() ? [] : Keycap.clipboardHistory.list(monotonicMs());
++        if (clips.length === 0) {
++            this._clipList.add_child(new St.Label({
++                text: _('Copied text shows up here.'),
++                style_class: 'luma-keycap-empty',
++                x_align: Clutter.ActorAlign.CENTER,
++                y_align: Clutter.ActorAlign.CENTER,
++                x_expand: true,
++                y_expand: true,
++            }));
++            return;
++        }
++        for (const text of clips) {
++            const button = new St.Button({
++                label: text.replace(/\s+/g, ' ').slice(0, 200),
++                can_focus: false,
++                x_expand: true,
++            });
++            button.child.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++            if (Keycap.clipboardHistory.isPinned(text))
++                button.add_style_class_name('luma-keycap-pinned');
++            this._holdable(button, () => this._pasteClip(text), () => this._clipMenu(button, text));
++            this._clipList.add_child(button);
++        }
++    }
++
++    _holdable(button, tap, hold) {
++        let timer = 0;
++        let held = false;
++        button.connect('notify::pressed', () => {
++            if (button.pressed) {
++                held = false;
++                timer = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT, Keycap.keycap.timing.hold, () => {
++                    timer = 0;
++                    held = true;
++                    hold();
++                });
++            } else if (timer) {
++                GLib.source_remove(timer);
++                timer = 0;
++            }
++        });
++        button.connect('clicked', () => {
++            if (!held)
++                tap();
++            held = false;
++        });
++        button.connect('destroy', () => {
++            if (timer)
++                GLib.source_remove(timer);
++        });
++    }
++
++    _pasteClip(text) {
++        if (this._isSensitive() || !Keycap.clipboardHistory.has(text, monotonicMs())) {
++            this._fillClipboard();
++            return;
++        }
++        if (Main.inputMethod.hasPreedit())
++            Main.inputMethod.commitPreeditText();
++        this._keyboardController.commit(text).catch(console.error);
++    }
++
++    _clipMenu(button, text) {
++        if (this._isSensitive())
++            return;
++        this._clipPopup?.destroy();
++        const menu = new KeyboardPopup(button);
++        const pinned = Keycap.clipboardHistory.isPinned(text);
++        menu.addAction(pinned ? _('Unpin') : _('Pin'), () => {
++            Keycap.clipboardHistory.pin(text, !pinned);
++            this._fillClipboard();
++        });
++        menu.addAction(_('Delete'), () => {
++            Keycap.clipboardHistory.remove(text);
++            this._fillClipboard();
++        });
++        Main.layoutManager.addTopChrome(menu.actor);
++        menu.open(true);
++        this._clipPopup = menu;
++    }
++
++    _onSelectionOwnerChanged(selection, type, source) {
++        if (type !== Meta.SelectionType.SELECTION_CLIPBOARD || !source || this._isSensitive())
++            return;
++        const clipboard = St.Clipboard.get_default();
++        if (clipboard.get_mimetypes(St.ClipboardType.CLIPBOARD).includes(Keycap.SECRET_CLIPBOARD_TARGET))
++            return;
++        const generation = ++this._clipboardGeneration;
++        clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clipboard, text) => {
++            if (this._destroyed || generation !== this._clipboardGeneration || this._isSensitive() || !text)
++                return;
++            if (Keycap.clipboardHistory.add(text, monotonicMs()) && this._panel === 'clipboard')
++                this._fillClipboard();
++        });
++    }
++
++    _createCursorPanel() {
++        const panel = new St.BoxLayout({
++            style_class: 'luma-keycap-panel',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_expand: true,
++            visible: false,
++        });
++        const control = [Clutter.KEY_Control_L];
++        const key = (content, name, keyval, modifiers = []) => {
++            const button = new St.Button({accessible_name: name, can_focus: false, x_expand: true, y_expand: true});
++            if (content.endsWith('-symbolic'))
++                button.child = new St.Icon({icon_name: content});
++            else
++                button.label = content;
++            button.connect('clicked', () => {
++                // Editing shortcuts never act on a sensitive field's text.
++                if (modifiers.length && this._isSensitive())
++                    return;
++                this._sendShortcut(keyval, modifiers);
++            });
++            return button;
++        };
++        const row = buttons => {
++            const box = new St.BoxLayout({x_expand: true, y_expand: true});
++            buttons.forEach(button => box.add_child(button));
++            panel.add_child(box);
++        };
++        row([
++            key('luma-keycap-chevron-left-symbolic', _('Left'), Clutter.KEY_Left),
++            key('luma-keycap-chevron-up-symbolic', _('Up'), Clutter.KEY_Up),
++            key('luma-keycap-chevron-down-symbolic', _('Down'), Clutter.KEY_Down),
++            key('luma-keycap-chevron-right-symbolic', _('Right'), Clutter.KEY_Right),
++        ]);
++        row([
++            key(_('Select all'), _('Select all'), Clutter.KEY_a, control),
++            key(_('Copy'), _('Copy'), Clutter.KEY_c, control),
++            key(_('Paste'), _('Paste'), Clutter.KEY_v, control),
++            key(_('Cut'), _('Cut'), Clutter.KEY_x, control),
++        ]);
++        panel.add_child(this._panelBackRow());
++        return panel;
++    }
++
+     _setLatched(latched) {
+         this._latched = latched;
+         this._setCurrentLevelLatched(this._currentPage, this._latched);
+@@ -1587,24 +2299,22 @@ export const Keyboard = GObject.registerClass({
+         if (this._languagePopup)
+             this._languagePopup.destroy();
+ 
+-        this._languagePopup = new LanguageSelectionPopup(keyActor);
++        this._languagePopup = new LanguageSelectionPopup(keyActor, this._keycapSettings);
+         Main.layoutManager.addTopChrome(this._languagePopup.actor);
+         this._languagePopup.open(true);
+     }
+ 
+     _updateCurrentPageVisible() {
+         if (this._currentPage)
+-            this._currentPage.visible = !this._emojiActive;
++            this._currentPage.visible = !this._panel;
+     }
+ 
+     _setEmojiActive(active) {
+-        this._emojiActive = active;
+-        this._emojiSelection.visible = this._emojiActive;
+-        this._updateCurrentPageVisible();
++        this._setPanel(active ? 'emoji' : null);
+     }
+ 
+     _toggleEmoji() {
+-        this._setEmojiActive(!this._emojiActive);
++        this._togglePanel('emoji');
+     }
+ 
+     _setCurrentLevelLatched(layout, latched) {
+@@ -1640,12 +2350,12 @@ export const Keyboard = GObject.registerClass({
+ 
+         this.width = monitor.width;
+ 
+-        if (monitor.width > monitor.height)
+-            this.height = monitor.height / 3;
+-        else
+-            this.height = monitor.height / 4;
+-
+-        this.height = Math.clamp(this.height, minHeight, monitor.height / 2);
++        // Keycap rows: full-size caps on phones, compact rows in phone
++        // landscape, proportional height on larger screens, the tool strip
++        // above; never more than half the screen.
++        const rows = this._currentPage?.getRatio()[1] || 4;
++        this.height = Math.max(Keycap.keyboardHeight(monitor, rows),
++            Math.min(minHeight, monitor.height / 2));
+     }
+ 
+     _updateKeys() {
+@@ -1653,6 +2363,9 @@ export const Keyboard = GObject.registerClass({
+         const {purpose} = this._keyboardController;
+         this._updateLayout(group, purpose);
+         this._setActiveLevel('default');
++        this._syncTools();
++        if (this._keyboardVisible)
++            this._relayout();
+     }
+ 
+     _onGroupChanged() {
+@@ -1718,7 +2431,7 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+ 
+-        this._keyboardController.setOskCompletion(true);
++        this._keyboardController.setOskCompletion(this._completionAllowed());
+         this._clearKeyboardRestTimer();
+ 
+         if (immediate) {
+@@ -1742,7 +2455,7 @@ export const Keyboard = GObject.registerClass({
+         this._relayout();
+         this._animateShow();
+ 
+-        this._setEmojiActive(false);
++        this._setPanel(null);
+     }
+ 
+     close(immediate = false) {
+@@ -1788,7 +2501,7 @@ export const Keyboard = GObject.registerClass({
+         this.ease({
+             translation_y: -this.height,
+             opacity: 255,
+-            duration: KEYBOARD_ANIMATION_TIME,
++            duration: Keycap.keycap.timing.show,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onComplete: () => {
+                 this._animateShowComplete();
+@@ -1816,7 +2529,7 @@ export const Keyboard = GObject.registerClass({
+         this.ease({
+             translation_y: 0,
+             opacity: 0,
+-            duration: KEYBOARD_ANIMATION_TIME,
++            duration: Keycap.keycap.timing.show,
+             mode: Clutter.AnimationMode.EASE_IN_QUAD,
+             onComplete: () => {
+                 this._animateHideComplete();
+@@ -1855,19 +2568,18 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     resetSuggestions() {
+-        if (this._suggestions)
+-            this._suggestions.clear();
++        this._candidates = [];
++        this._renderSuggestions();
+     }
+ 
+     setSuggestionsVisible(visible) {
+-        this._suggestions?.setVisible(visible);
++        this._suggestionsShown = visible;
++        this._syncTools();
+     }
+ 
+     addSuggestion(text, callback) {
+-        if (!this._suggestions)
+-            return;
+-        this._suggestions.add(text, callback);
+-        this._suggestions.show();
++        this._candidates.push({text, callback});
++        this._renderSuggestions();
+     }
+ 
+     _clearShowIdle() {
+@@ -1908,7 +2620,7 @@ export const Keyboard = GObject.registerClass({
+ 
+         windowActor.ease({
+             y: finalY,
+-            duration: KEYBOARD_ANIMATION_TIME,
++            duration: Keycap.keycap.timing.show,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onStopped: () => {
+                 window.disconnect(winUnmanagedId);
+@@ -2134,12 +2846,14 @@ class KeyboardController extends Signals.EventEmitter {
+         return charPos;
+     }
+ 
+-    toggleDelete(enabled) {
++    toggleDelete(enabled, sensitive = false) {
+         if (this._deleteEnabled === enabled)
+             return;
+ 
+         this._deleteEnabled = enabled;
+         this._timesDeleted = 0;
++        this._deleteStarted = monotonicMs();
++        this._deleteSensitive = sensitive;
+ 
+         /* If there is no IM focus or are in the middle of preedit, fallback to
+          * keypresses */
+@@ -2170,7 +2884,7 @@ class KeyboardController extends Signals.EventEmitter {
+                 } else if (cursor < anchor) {
+                     offset = 0;
+                     len = anchor - cursor;
+-                } else if (this._timesDeleted < BACKSPACE_WORD_DELETE_THRESHOLD) {
++                } else if (Keycap.deleteMode(monotonicMs() - this._deleteStarted, this._deleteSensitive) === 'char') {
+                     offset = -1;
+                     len = 1;
+                 } else {

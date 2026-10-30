@@ -343,7 +343,8 @@ install -m 0644 "$repo_root/patches/gnome-shell/0290-compact-login-action-bar.pa
 install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0293-mobile-lock-notification-island.patch" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
+install -m 0644 "$repo_root/patches/gnome-shell/0294-keycap-keyboard.patch" "$rpmbuild_dir/SOURCES/"
+for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
@@ -366,6 +367,14 @@ install -m 0644 "$repo_root/tests/gnome-shell/seal-conversations.js" "$rpmbuild_
 install -m 0644 "$repo_root/tests/gnome-shell/dock-badges.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/android-existing-activation.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-input-source.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/keycap-policy.js" "$rpmbuild_dir/SOURCES/"
+# Keycap icons are derived from Stevia's outlines; refuse stale copies.
+python3 "$repo_root/scripts/developer/generate-keycap-shell-icons.py" --check
+(
+  cd "$repo_root/src/luma-shell-presentation/keycap-icons"
+  tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
+    -cf "$rpmbuild_dir/SOURCES/keycap-icons.tar" LICENSE luma-keycap-*-symbolic.svg
+)
 install -m 0644 "$repo_root/tests/gnome-shell/screen-sharing.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/search/ranking-gjs.js" "$rpmbuild_dir/SOURCES/search-ranking-gjs.js"
 install -m 0644 "$repo_root/tests/search/ranking-vectors.json" "$rpmbuild_dir/SOURCES/search-ranking-vectors.json"
@@ -524,6 +533,19 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       grep -Fq ".luma-handheld .keyboard-key:active" gnome-shell-light.css
       grep -Fxq ".luma-handheld .keyboard-key:active {" gnome-shell-light.css
       ! grep -Fq "  .luma-handheld .keyboard-key:active" gnome-shell-light.css
+      # Keycap: the keyboard loads the token-generated sheet, and the icons
+      # carry St symbolic classes (derived from Stevia by the builder check).
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/keyboard.js >keycap-keyboard.js
+      grep -Fq "lumaPresentation/keycap.js" keycap-keyboard.js
+      grep -Fq "commitPreeditText" keycap-keyboard.js
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/lumaPresentation/keycap.css >keycap.css
+      grep -Fq "#keyboard.luma-keycap-light .keyboard-key" keycap.css
+      grep -Fq "#keyboard.luma-keycap-dark .keyboard-key" keycap.css
+      gresource extract usr/share/gnome-shell/gnome-shell-icons.gresource \
+        /org/gnome/shell/icons/scalable/status/luma-keycap-delete-symbolic.svg >keycap-delete.svg
+      grep -Fq "foreground-stroke" keycap-delete.svg
       grep -Fq "transition-duration: 0ms" gnome-shell-light.css
       grep -Fq "background-color: #4d78b8" gnome-shell-light.css
       grep -Fq ".prairie-desktop-shortcut" gnome-shell-light.css

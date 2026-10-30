@@ -21,7 +21,7 @@ are separate historical paths.
 | Device display exclusions | `config/mobile/display-geometry/` |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The source candidate pins are Shell `1.luma.125.mobile20261030.1`, developer
+The source candidate pins are Shell `1.luma.126.keycap20261030.1`, developer
 platform `1.luma.116.mobile20261030.1`, core apps
 `1.luma.106.creator20261030.1` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in

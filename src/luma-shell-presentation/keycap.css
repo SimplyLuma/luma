@@ -1,0 +1,468 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * Generated from config/shared/design-tokens.json `keycap`; do not edit. */
+
+/* light */
+#keyboard.luma-keycap-light {
+  background-color: #c3c4ca;
+  background-gradient-direction: vertical;
+  background-gradient-start: #cfd0d5;
+  background-gradient-end: #c3c4ca;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14);
+  color: #26262b;
+  font-family: Figtree, sans-serif;
+}
+#keyboard.luma-keycap-light .key-container {
+  padding: 4px 3px 5px 2px;
+  spacing: 0;
+}
+#keyboard.luma-keycap-light .keyboard-key,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key,
+#keyboard.luma-keycap-light .keyboard-key:hover,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key:hover,
+#keyboard.luma-keycap-light .keyboard-key:focus,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key:focus {
+  color: #26262b;
+  background-color: #eeeef1;
+  background-gradient-direction: vertical;
+  background-gradient-start: #ffffff;
+  background-gradient-end: #eeeef1;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 600;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 3px 0 0 #9c9da5;
+  transition-duration: 0ms;
+}
+#keyboard.luma-keycap-light .keyboard-key.default-key,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.default-key,
+#keyboard.luma-keycap-light .keyboard-key.default-key:hover,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.default-key:hover,
+#keyboard.luma-keycap-light .keyboard-key.default-key:latched,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.default-key:latched {
+  color: #26262b;
+  background-color: #cdced4;
+  background-gradient-direction: vertical;
+  background-gradient-start: #dcdde2;
+  background-gradient-end: #cdced4;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-light .keyboard-key.luma-keycap-space,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.luma-keycap-space {
+  color: rgba(38, 38, 43, 0.45);
+  background-color: #eeeef1;
+  background-gradient-direction: vertical;
+  background-gradient-start: #ffffff;
+  background-gradient-end: #eeeef1;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-light .keyboard-key:active,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key:active,
+#keyboard.luma-keycap-light .keyboard-key.default-key:active,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.default-key:active,
+#keyboard.luma-keycap-light .keyboard-key.luma-keycap-space:active,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.luma-keycap-space:active,
+#keyboard.luma-keycap-light .keyboard-key:checked,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key:checked {
+  background-color: #f4f4f6;
+  background-gradient-direction: vertical;
+  background-gradient-start: #e6e6ea;
+  background-gradient-end: #f4f4f6;
+  box-shadow: 0 1px 0 0 #9c9da5;
+}
+#keyboard.luma-keycap-light .keyboard-key.luma-keycap-enter,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.luma-keycap-enter {
+  color: #ffffff;
+  background-color: #1577c8;
+  background-gradient-direction: vertical;
+  background-gradient-start: #4697e4;
+  background-gradient-end: #1577c8;
+  text-shadow: none;
+}
+#keyboard.luma-keycap-light .keyboard-key.luma-keycap-enter:active,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key.luma-keycap-enter:active {
+  background-color: #4697e4;
+  background-gradient-direction: vertical;
+  background-gradient-start: #1577c8;
+  background-gradient-end: #4697e4;
+  box-shadow: 0 1px 0 0 #9c9da5;
+}
+#keyboard.luma-keycap-light .keyboard-key StIcon,
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key StIcon {
+  icon-size: 21px;
+}
+#keyboard.luma-keycap-light .luma-keycap-hint {
+  color: rgba(38, 38, 43, 0.45);
+  text-shadow: none;
+  font-size: 10px;
+  font-weight: 600;
+}
+#keyboard.luma-keycap-light .luma-keycap-cap-label {
+  text-align: center;
+}
+#keyboard.luma-keycap-light .word-suggestions,
+#keyboard.luma-keycap-light .luma-keycap-tools {
+  min-height: 42px;
+  padding: 0;
+  spacing: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: #26262b;
+}
+#keyboard.luma-keycap-light .word-suggestions StButton,
+#keyboard.luma-keycap-light .luma-keycap-tools StButton,
+#keyboard.luma-keycap-light .word-suggestions StButton:hover,
+#keyboard.luma-keycap-light .luma-keycap-tools StButton:hover,
+#keyboard.luma-keycap-light .word-suggestions StButton:focus,
+#keyboard.luma-keycap-light .luma-keycap-tools StButton:focus {
+  color: #26262b;
+  background-color: transparent;
+  background-gradient-direction: none;
+  border: none;
+  box-shadow: none;
+  text-shadow: none;
+  border-radius: 8px;
+  padding: 0 6px;
+  margin: 0;
+  min-width: 30px;
+  min-height: 42px;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-light .word-suggestions StButton.suggested {
+  font-weight: 700;
+}
+#keyboard.luma-keycap-light .word-suggestions StButton:active,
+#keyboard.luma-keycap-light .luma-keycap-tools StButton:active {
+  background-color: rgba(38, 38, 43, 0.12);
+}
+#keyboard.luma-keycap-light .word-suggestions StIcon,
+#keyboard.luma-keycap-light .luma-keycap-tools StIcon {
+  icon-size: 21px;
+}
+#keyboard.luma-keycap-light .luma-keycap-tools StButton.luma-keycap-strip-enter,
+#keyboard.luma-keycap-light .luma-keycap-tools StButton.luma-keycap-strip-enter:hover {
+  color: #ffffff;
+  background-color: #1577c8;
+  background-gradient-direction: vertical;
+  background-gradient-start: #4697e4;
+  background-gradient-end: #1577c8;
+  min-width: 52px;
+  min-height: 36px;
+  margin: 3px;
+}
+#keyboard.luma-keycap-light .luma-keycap-panel StButton,
+#keyboard.luma-keycap-light .luma-keycap-panel StButton:hover {
+  color: #26262b;
+  background-color: #cdced4;
+  background-gradient-direction: vertical;
+  background-gradient-start: #dcdde2;
+  background-gradient-end: #cdced4;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 0 #9c9da5;
+  padding: 10px;
+  margin: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-light .luma-keycap-panel StButton:active {
+  background-color: #f4f4f6;
+  background-gradient-direction: vertical;
+  background-gradient-start: #e6e6ea;
+  background-gradient-end: #f4f4f6;
+  box-shadow: 0 1px 0 0 #9c9da5;
+}
+#keyboard.luma-keycap-light .luma-keycap-panel StButton.luma-keycap-pinned {
+  font-weight: 700;
+}
+#keyboard.luma-keycap-light .luma-keycap-panel .luma-keycap-empty {
+  color: rgba(38, 38, 43, 0.45);
+  font-size: 15px;
+}
+#keyboard.luma-keycap-light .emoji-page .keyboard-key,
+#keyboard.luma-keycap-light .emoji-page .keyboard-key:hover {
+  background-color: transparent;
+  background-gradient-direction: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+#keyboard.luma-keycap-light .emoji-page .keyboard-key:active {
+  background-color: rgba(38, 38, 43, 0.12);
+}
+#keyboard.luma-keycap-light .emoji-panel .keyboard-key:latched {
+  background-color: #f4f4f6;
+  background-gradient-direction: vertical;
+  background-gradient-start: #e6e6ea;
+  background-gradient-end: #f4f4f6;
+  box-shadow: 0 1px 0 0 #9c9da5;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-light {
+  -arrow-background-color: #eeeef1;
+  -arrow-border-width: 0;
+  -arrow-border-radius: 10px;
+  border-radius: 10px;
+  -boxpointer-gap: 4px;
+  color: #26262b;
+  font-family: Figtree, sans-serif;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-light .key-container {
+  padding: 4px;
+  spacing: 0;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-light .keyboard-key {
+  min-width: 34px;
+  min-height: 46px;
+  margin: 0 2px;
+}
+.luma-keycap-preview.luma-keycap-light {
+  color: #26262b;
+  background-color: #eeeef1;
+  background-gradient-direction: vertical;
+  background-gradient-start: #ffffff;
+  background-gradient-end: #eeeef1;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 0 #9c9da5;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  font-family: Figtree, sans-serif;
+  font-size: 30px;
+  font-weight: 600;
+  padding: 8px 10px 10px;
+  text-align: center;
+}
+
+/* dark */
+#keyboard.luma-keycap-dark {
+  background-color: #0c0c0e;
+  background-gradient-direction: vertical;
+  background-gradient-start: #141416;
+  background-gradient-end: #0c0c0e;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14);
+  color: #e9e9ee;
+  font-family: Figtree, sans-serif;
+}
+#keyboard.luma-keycap-dark .key-container {
+  padding: 4px 3px 5px 2px;
+  spacing: 0;
+}
+#keyboard.luma-keycap-dark .keyboard-key,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key,
+#keyboard.luma-keycap-dark .keyboard-key:hover,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key:hover,
+#keyboard.luma-keycap-dark .keyboard-key:focus,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key:focus {
+  color: #e9e9ee;
+  background-color: #2c2c31;
+  background-gradient-direction: vertical;
+  background-gradient-start: #3a3a40;
+  background-gradient-end: #2c2c31;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 600;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6);
+  box-shadow: 0 3px 0 0 #050506;
+  transition-duration: 0ms;
+}
+#keyboard.luma-keycap-dark .keyboard-key.default-key,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.default-key,
+#keyboard.luma-keycap-dark .keyboard-key.default-key:hover,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.default-key:hover,
+#keyboard.luma-keycap-dark .keyboard-key.default-key:latched,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.default-key:latched {
+  color: #e9e9ee;
+  background-color: #1d1d21;
+  background-gradient-direction: vertical;
+  background-gradient-start: #26262b;
+  background-gradient-end: #1d1d21;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-dark .keyboard-key.luma-keycap-space,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.luma-keycap-space {
+  color: rgba(233, 233, 238, 0.45);
+  background-color: #2c2c31;
+  background-gradient-direction: vertical;
+  background-gradient-start: #3a3a40;
+  background-gradient-end: #2c2c31;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-dark .keyboard-key:active,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key:active,
+#keyboard.luma-keycap-dark .keyboard-key.default-key:active,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.default-key:active,
+#keyboard.luma-keycap-dark .keyboard-key.luma-keycap-space:active,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.luma-keycap-space:active,
+#keyboard.luma-keycap-dark .keyboard-key:checked,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key:checked {
+  background-color: #34343a;
+  background-gradient-direction: vertical;
+  background-gradient-start: #2a2a2f;
+  background-gradient-end: #34343a;
+  box-shadow: 0 1px 0 0 #050506;
+}
+#keyboard.luma-keycap-dark .keyboard-key.luma-keycap-enter,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.luma-keycap-enter {
+  color: #ffffff;
+  background-color: #1577c8;
+  background-gradient-direction: vertical;
+  background-gradient-start: #4697e4;
+  background-gradient-end: #1577c8;
+  text-shadow: none;
+}
+#keyboard.luma-keycap-dark .keyboard-key.luma-keycap-enter:active,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key.luma-keycap-enter:active {
+  background-color: #4697e4;
+  background-gradient-direction: vertical;
+  background-gradient-start: #1577c8;
+  background-gradient-end: #4697e4;
+  box-shadow: 0 1px 0 0 #050506;
+}
+#keyboard.luma-keycap-dark .keyboard-key StIcon,
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key StIcon {
+  icon-size: 21px;
+}
+#keyboard.luma-keycap-dark .luma-keycap-hint {
+  color: rgba(233, 233, 238, 0.45);
+  text-shadow: none;
+  font-size: 10px;
+  font-weight: 600;
+}
+#keyboard.luma-keycap-dark .luma-keycap-cap-label {
+  text-align: center;
+}
+#keyboard.luma-keycap-dark .word-suggestions,
+#keyboard.luma-keycap-dark .luma-keycap-tools {
+  min-height: 42px;
+  padding: 0;
+  spacing: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: #e9e9ee;
+}
+#keyboard.luma-keycap-dark .word-suggestions StButton,
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton,
+#keyboard.luma-keycap-dark .word-suggestions StButton:hover,
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton:hover,
+#keyboard.luma-keycap-dark .word-suggestions StButton:focus,
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton:focus {
+  color: #e9e9ee;
+  background-color: transparent;
+  background-gradient-direction: none;
+  border: none;
+  box-shadow: none;
+  text-shadow: none;
+  border-radius: 8px;
+  padding: 0 6px;
+  margin: 0;
+  min-width: 30px;
+  min-height: 42px;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-dark .word-suggestions StButton.suggested {
+  font-weight: 700;
+}
+#keyboard.luma-keycap-dark .word-suggestions StButton:active,
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton:active {
+  background-color: rgba(233, 233, 238, 0.12);
+}
+#keyboard.luma-keycap-dark .word-suggestions StIcon,
+#keyboard.luma-keycap-dark .luma-keycap-tools StIcon {
+  icon-size: 21px;
+}
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton.luma-keycap-strip-enter,
+#keyboard.luma-keycap-dark .luma-keycap-tools StButton.luma-keycap-strip-enter:hover {
+  color: #ffffff;
+  background-color: #1577c8;
+  background-gradient-direction: vertical;
+  background-gradient-start: #4697e4;
+  background-gradient-end: #1577c8;
+  min-width: 52px;
+  min-height: 36px;
+  margin: 3px;
+}
+#keyboard.luma-keycap-dark .luma-keycap-panel StButton,
+#keyboard.luma-keycap-dark .luma-keycap-panel StButton:hover {
+  color: #e9e9ee;
+  background-color: #1d1d21;
+  background-gradient-direction: vertical;
+  background-gradient-start: #26262b;
+  background-gradient-end: #1d1d21;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 0 #050506;
+  padding: 10px;
+  margin: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+#keyboard.luma-keycap-dark .luma-keycap-panel StButton:active {
+  background-color: #34343a;
+  background-gradient-direction: vertical;
+  background-gradient-start: #2a2a2f;
+  background-gradient-end: #34343a;
+  box-shadow: 0 1px 0 0 #050506;
+}
+#keyboard.luma-keycap-dark .luma-keycap-panel StButton.luma-keycap-pinned {
+  font-weight: 700;
+}
+#keyboard.luma-keycap-dark .luma-keycap-panel .luma-keycap-empty {
+  color: rgba(233, 233, 238, 0.45);
+  font-size: 15px;
+}
+#keyboard.luma-keycap-dark .emoji-page .keyboard-key,
+#keyboard.luma-keycap-dark .emoji-page .keyboard-key:hover {
+  background-color: transparent;
+  background-gradient-direction: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+#keyboard.luma-keycap-dark .emoji-page .keyboard-key:active {
+  background-color: rgba(233, 233, 238, 0.12);
+}
+#keyboard.luma-keycap-dark .emoji-panel .keyboard-key:latched {
+  background-color: #34343a;
+  background-gradient-direction: vertical;
+  background-gradient-start: #2a2a2f;
+  background-gradient-end: #34343a;
+  box-shadow: 0 1px 0 0 #050506;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-dark {
+  -arrow-background-color: #2c2c31;
+  -arrow-border-width: 0;
+  -arrow-border-radius: 10px;
+  border-radius: 10px;
+  -boxpointer-gap: 4px;
+  color: #e9e9ee;
+  font-family: Figtree, sans-serif;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-dark .key-container {
+  padding: 4px;
+  spacing: 0;
+}
+.keyboard-subkeys-boxpointer.luma-keycap-dark .keyboard-key {
+  min-width: 34px;
+  min-height: 46px;
+  margin: 0 2px;
+}
+.luma-keycap-preview.luma-keycap-dark {
+  color: #e9e9ee;
+  background-color: #2c2c31;
+  background-gradient-direction: vertical;
+  background-gradient-start: #3a3a40;
+  background-gradient-end: #2c2c31;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 0 #050506;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6);
+  font-family: Figtree, sans-serif;
+  font-size: 30px;
+  font-weight: 600;
+  padding: 8px 10px 10px;
+  text-align: center;
+}
