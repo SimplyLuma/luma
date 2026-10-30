@@ -283,5 +283,10 @@
       <summary>Last screen-idle default projected by the presentation policy</summary>
       <description>Tracks ownership of the shared session idle setting. Explicit user preferences take precedence; -1 means the policy does not own it.</description>
     </key>
+    <key name="presentation-button-layout" type="ms">
+      <default>nothing</default>
+      <summary>Desktop window-control layout kept while Tablet or Mobile owns it</summary>
+      <description>Tablet and Mobile hide window controls through org.gnome.desktop.wm.preferences button-layout. This keeps the layout to restore on Desktop; an empty string restores the system default and nothing means the presentation policy does not own the setting.</description>
+    </key>
   </schema>
 </schemalist>

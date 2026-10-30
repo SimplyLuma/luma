@@ -73,8 +73,8 @@ luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
 luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
 luma-cast-googlecast-0.1.0-1.luma.2.fc44.x86_64
 luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
-luma-developer-platform-0.1.0-1.luma.116.mobile20261030.1.fc44.x86_64
-luma-developer-platform-sdk-0.1.0-1.luma.116.mobile20261030.1.fc44.noarch
+luma-developer-platform-0.1.0-1.luma.117.mobile20261030.1.fc44.x86_64
+luma-developer-platform-sdk-0.1.0-1.luma.117.mobile20261030.1.fc44.noarch
 luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
 luma-monitor-0.1.0-1.luma.17.creator20261010.1.fc44.noarch
 luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
@@ -83,7 +83,7 @@ luma-rfkill-guard-0.1.0-1.luma.2.fc44.noarch
 luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.9.fc44.noarch
 luma-home-widgets-0.1.0-1.luma.3.fc44.x86_64
-luma-shell-state-0.2.0-1.luma.36.presentation20261025.1.fc44.noarch
+luma-shell-state-0.2.0-1.luma.37.mobile20261030.1.fc44.noarch
 luma-os-remote-1.0.0-1.luma.19.fc44.noarch
 luma-update-1.0.0-1.luma.19.fc44.noarch
 prairie-core-apps-0.1.0-1.luma.106.creator20261030.1.fc44.noarch

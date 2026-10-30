@@ -190,6 +190,25 @@ class ShellStateModelTests(unittest.TestCase):
         with self.assertRaises(state.InvalidState):
             state.presentation_idle_default("automatic", None)
 
+    def test_handheld_presentations_hide_window_controls_and_desktop_restores(self):
+        layout = state.presentation_button_layout
+        for mode in ("tablet", "mobile"):
+            # No user value: hide, and restore the system default later.
+            self.assertEqual(layout(mode, None, None), (":", ""))
+            # A desktop customisation is kept for Desktop.
+            self.assertEqual(layout(mode, "close:", None), (":", "close:"))
+            # Already owned and still hidden: nothing to do.
+            self.assertEqual(layout(mode, ":", "close:"), (None, "close:"))
+            # Changed while handheld: the person's choice, ownership ends.
+            self.assertEqual(layout(mode, ":close", "close:"), (None, None))
+            # A person who already chose no controls is left alone.
+            self.assertEqual(layout(mode, ":", None), (None, None))
+        self.assertEqual(layout("desktop", ":", ""), ("", None))
+        self.assertEqual(layout("desktop", ":", "close:"), ("close:", None))
+        self.assertEqual(layout("desktop", ":minimize,maximize,close", None), (None, None))
+        with self.assertRaises(state.InvalidState):
+            layout("automatic", None, None)
+
     def test_idle_delay_accepts_off_or_phone_safe_interval(self):
         self.assertEqual(state.normalize_idle_delay(0), 0)
         self.assertEqual(state.normalize_idle_delay(60), 60)
