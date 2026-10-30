@@ -78,7 +78,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this.remove_transition('width'); this.remove_transition('height');
 -        this.ease({width, height, duration: St.Settings.get().enable_animations ? MORPH_TIME : 0,
 +        this.ease({width, height, duration: St.Settings.get().enable_animations ?
-+            (Main.presentation?.mode !== 'desktop' ? 260 : MORPH_TIME) : 0,
++            (Main.presentation?.mode !== 'desktop' && monitor.width / scale <= 700 ? 260 : MORPH_TIME) : 0,
              mode: Clutter.AnimationMode.EASE_OUT_QUART});
          for (const property of ['width', 'height'])
              this.get_transition(property)?.set_cubic_bezier_progress(
