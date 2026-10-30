@@ -2,7 +2,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.95.android20261030.1%{?dist}
+Release:        1.luma.96.android20261030.1%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -20,6 +20,7 @@ BuildRequires:  systemd-rpm-macros
 Requires:       waydroid >= 1.6.3
 Requires:       waydroid-selinux >= 1.6.3
 Requires(post): waydroid-selinux >= 1.6.3
+Requires(post): coreutils
 Requires:       python3
 Requires:       glib2
 Requires:       python3-gobject
@@ -123,11 +124,20 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 126
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 128
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
 %selinux_modules_install -s targeted %{_datadir}/selinux/packages/luma_android_runtime.cil
+# A file-context-only module need not change the binary policy checksum used
+# by rpm-ostree's inode cache. Give the entrypoint a fresh inode so the final
+# deployment policy labels it, preserving its bytes, mode and RPM timestamp.
+runtime_entrypoint=$(mktemp %{_libexecdir}/.luma-waydroid-container.XXXXXX) || exit 1
+if ! install -p -m 0755 -- %{_libexecdir}/luma-waydroid-container "$runtime_entrypoint" || \
+   ! mv -fT -- "$runtime_entrypoint" %{_libexecdir}/luma-waydroid-container; then
+    rm -f -- "$runtime_entrypoint"
+    exit 1
+fi
 /usr/sbin/restorecon %{_libexecdir}/luma-waydroid-container >/dev/null 2>&1 || :
 /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :

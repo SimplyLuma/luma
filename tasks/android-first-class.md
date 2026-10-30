@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:12:54+00:00
+- Updated: 2026-10-30T03:33:30+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,34 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:12Z — diagnosed stale readiness; buffered VM profile test active:
+CURRENT03:34Z — actual runtime label regression; candidate96 source prepared:
+- r33 506ec195 FAILED actual resume before Android started. Both real user Shell
+  boots passed running-service checks; fixture settings persisted and the native
+  extension initialized after reboot. Fresh health success and exact SDK5 image
+  hashes passed. Android refused startup outside waydroid_t; no reply qualified.
+  Cleanup restored settings/removed fixture, original XML restored/unmounted raw
+  alias, VM gracefully OFF. Original raw test disk retained for label diagnosis.
+- Offline e4b312ef/7bef6813 show new810ef deployment launcher xattr bin_t, while
+  declared policy and compiled contexts require waydroid_exec_t; older f865
+  launcher is correctly labeled. No local rule overrides. b13af7a8 copied actual
+  context files with SHA readback. Its automatic mode0100755 probes were invalid;
+  subsequent read-only matchpathcon -m file checks both binary/text context sets
+  and both return waydroid_exec_t. Do not count invalid probes as passing matches.
+- Inspected pinned official rpm-ostree2026.2 d5ef5f0c and libostree2026.4
+ 4f4445a8 sources. Binary-policy checksum excludes file_contexts; rpm-ostree can
+  treat cached inodes as canonical when that checksum is unchanged. This gives
+  a concrete candidate explanation for the observed label-only update failure,
+  not yet an experimentally closed root-cause claim.
+- Candidate96 spec gives ONLY the owned launcher a fresh inode after module
+  installation, preserving exact contents/mode/timestamp, before normal final
+  labeling. No new allow rules, permissive mode or bypass of confinement check.
+  Updated check floor128 includes both installer activation tests. Source change
+  remains UNQUALIFIED until package checks, real atomic replacement, correct
+  deployed xattr and actual waydroid_t startup/Android/UI tests pass.
+- No VM or compile currently active. Next: immutable96 package build, replace
+  ONLY95->96 in owned buffered raw VM, verify labels before native reply retry.
+
+HISTORICAL03:12Z — diagnosed stale readiness; buffered VM profile test active:
 - r31 ec852439 FAILED1 at03:06:37Z before preparing Android/UI fixture. Exact
  127/95 triple booted, but actual UID1000 Shell process was absent despite the
   socket. Original XML restored, raw alias unmounted, VM OFF before next work.
