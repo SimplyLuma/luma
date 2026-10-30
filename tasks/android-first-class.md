@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T14:03Z
+- Updated: 2026-10-30T14:23Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,59 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT14:03Z — real boot gate found OS selection mismatch; corrected78 run active:
+CURRENT14:23Z — actual Flatpak delivery fixed; installer79 verified; build active:
+- R69 parent3b35849b/child ec8ef23e FAILED14:11:08/09Z. Actual78 boot
+ 45042e53-5d9b-4455-bf0d-8971e089bf55 reached healthy graphical session and
+  exact installer78/Filer75/extension75 package receipt. No APK click occurred:
+  fresh-test setup failed before interactive inbox processing. Snapshot162a4e1c
+  was queued but never executed; client timed out, not a UI failure/pass.
+  GUI settings restored/fixture removed/VM off/XML/raw mount/policy24cf restored.
+- Read-only5a44bbea established why prior76 boot worked: its composed service
+  ExecStart=/usr/libexec/luma-app-baseline (new handoff); installer77/78 RPM
+  replaced it with old legacy seeder unit. Old/new Python validators themselves
+  identical. Source155516d7a makes package and image units identical to the OS
+  handoff, UMask0022/public app files, private StateDirectory0700 and30min bound.
+  Source-owned shipping-format contract restored unchanged24 entries; legacy
+  required app set23 matches after maintained Displays retirement. No global
+  native-baseline format change or fresh-image qualification claimed.
+- Source ownership checks e4bed435 PASSED6 component inventory cases+Filer
+  contract+actual package/image unit equality and selection after retirement.
+  Installer79 package9cb2f433 PASSED14:14:50Z,834tests/9skips+6native+7additional,
+  actual RPM metadata/digests passed. RPM SHA
+ f10b8267e65208b1682e8511a31219c8f0bcdb515789ef80c9de6c02bd347b64;
+  output private package-installer-r75/source/build/packages/luma-application-installer/RPMS/noarch.
+- Critical delivery finding: nautilus-main explicitly delegates host launch to
+  signed system Flatpak. Host RPM75 alone cannot update visible Filer. Actual
+  patched /app Flatpak build is required; no production role/signature bypass.
+- Private signed SDK intake75d30bb8 reached1GiB cap, intentionally stopped143;
+ 4GiB normal resume e6e5331a PASSED14:16:30 with downloaded data retained.
+  Private XDG dirs filer-sdk-r73, temp on HDD; no global Flatpak state changed.
+  Public signing069E001599679B49042FE40885FCC398C02A8BEE; Platform44bc70be6049c83e63fdccd46b368fab69730cd722127da3c8bee01dadc2ea8fa5;
+  SDK441134c28823bae0cd52c7343a57ddb91c48a9b6441c6ff8ee89c195e8774b3d56.
+  GL pin8a1fa656279c93fc5a817837fd6f8f20ee26048ebafba4802088c15d3a6ad8739590a6dc matches VM system GL.
+- Flatpak build0484dfbe FAILED14:20:31 after completing prerequisite modules:
+  GNU patch could not preserve unmapped inherited shared gid in its userns.
+  Source6773ac5ba normalizes ONLY freshly extracted owned working-copy groups
+  to current builder gid. Restricted worker regression c20ef3bc PASSED full
+ 160-patch prepare, exact resulting C7e2e8fb1 unchanged; contract test passed.
+  Its static receipt floor77 stale; e946ac63 separately verifies actual floor79.
+- LIVE Flatpak build39a1b3d4 normal package4GiB/10GiB disk, source6773ac5ba,
+  private filer-flatpak-r82, reflink copy of prior owned dependency cache; original
+  failed source/logs preserved. Observe final result, bundle SHA and app commit.
+- R80 GUI controller prepared, NOT launched/finalized. It will update to79,
+  install explicit unsigned USER android-test Filer branch plus pinned signed
+  user Platform44; preserve signed system app. Must verify exact app commit/
+  binary hash and system GL before actual double-click. No release signing or
+  publication. Fresh-app setup uses successful pm list-packages absence check
+  rather than erroneous pm path exit-code assertion; captures top-level errors.
+- Only disposable installer78 image4add4e17 removed after no-consumer+retained
+  RPM/SRPM/source/log proof34f75ee7 PASSED. Root reserve restored22GiB. No broad
+  pruning; runtime images, previous successful SDK/reply/GUI evidence preserved.
+- Next: finish actual /app Flatpak build, finalize R80 package/bundle/runtime
+  manifest and preflight, then observe actual GUI flow through final cleanup.
+  All ARM, production isolation/mobile power and broader gates remain open.
+
+HISTORICAL14:03Z — real boot gate found OS selection mismatch; corrected78 run active:
 - R55 parentf9287404/child3af3503d FAILED13:58:35/39Z. Atomic three-package
   replacement succeeded (candidate93f18d7fae643196f6e1d445e02f7a359d4ceef7e0fe4ffc1b0333d914d04fa7),
   but fresh boot GDM dependency luma-app-baseline.service rejected incomplete
