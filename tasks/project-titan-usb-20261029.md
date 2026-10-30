@@ -530,3 +530,29 @@ Normal DL0 routing, speaker profile, timing and audio services were restored;
 failed test clips removed. A clean reboot is the next comparison. Relevant
 exact-kernel sources were read from retained build evidence in bounded job
 7bf45d6b (exit0); no kernel rebuild or audio fix is claimed.
+
+### 2026-10-30 — selected-session boot health and recovery
+
+A clean-reboot comparison exposed the board's Phosh-only health check. It waits
+for greetd/Phoc/Phosh even after the phone switches to GDM/GNOME, leaving the
+candidate unacknowledged by the existing boot-attempt guard. The phone returned
+to its pinned original deployment during diagnostics. The older private startup
+rollback also restored the original display-manager/environment configuration.
+No kernel panic cause was established; avoid repeating the broad clock-summary
+read that coincided with lost connectivity.
+
+Added `scripts/mobile/session-healthcheck.py`: preserve the required update
+scripts, then validate the selected GDM/GNOME or greetd/Phosh session. Inactive,
+mismatched and unknown sessions fail; a working greeter cannot override a failed
+required update check. Bounded job 8d3f8dfd passes six focused cases. The Titan's
+candidate uses this source via a scoped service drop-in; its existing success,
+boot-bless and pinned fallback remain. No other board backend is replaced.
+
+Recovered the retained native deployment without replacing its kernel or user
+data. Its boot guard passed and wrote the corresponding successful deployment
+marker. Restored GDM selection and the previously tested source-backed overlay
+environment; removed old rollback-timer behavior. Native GNOME is running,
+required update plus selected-session checks pass on the phone, and the actual
+Home screenshot confirms the latest compact Home/widgets/status/dock returned.
+Future reboot acceptance of the restored GDM selection remains to be checked.
+Audio cutouts remain unresolved; no failed audio workaround is shipped.

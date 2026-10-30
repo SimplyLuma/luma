@@ -106,3 +106,14 @@ maintained source paths above, rather than copying the private override tree.
 
 Native Tide/Connect source synchronization repairs and the matching Tide build
 are documented in [Tide server sync](tide-connect-sync.md).
+
+Titan boot health: the older board check requires greetd, Phoc and Phosh.
+Migrating that phone to GDM/GNOME also requires a session-aware check, or the
+initramfs attempt counter can return it to the pinned older deployment.
+`scripts/mobile/session-healthcheck.py` preserves required update checks and
+validates the selected display manager and its corresponding shell. The
+development Titan uses this helper through a scoped
+`greenboot-healthcheck.service` drop-in. Retain the existing success/bless
+service and fallback mechanism; do not mark a candidate successful before its
+health check passes. This is a Titan operator integration, not a replacement
+for other boards' boot backends.
