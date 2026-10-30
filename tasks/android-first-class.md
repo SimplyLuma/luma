@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T00:38:00+00:00
+- Updated: 2026-10-30T00:57:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,32 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED00:57Z — root cause confirmed; Shell packaging fix/regression passed:
+- Read-only log jobs5b2df417 and23c7b0c4 PASSED, VMs powered off afterward.
+  Failed candidate boot journals explicitly show greenboot's display-manager
+  health check invoking reboot after repeated user/greeter session failures.
+  This failure was health-check initiated, not evidence of watchdog expiration.
+- FIRST Shell error: /usr/bin/gnome-shell could not open libshell-18.so, exit127.
+  Actual candidate124 RPM metadata gives /usr/lib64/gnome-shell and its typelib
+  directory mode42770 (setgid2770), denying ordinary-user traversal. RUNPATH is
+  correct and the library is present. Root package checks had not caught this.
+- Added final %install normalization of static system directories to0755 in
+ 0000-luma-fedora-spec.patch. Builder now checks directory modes in EVERY main/
+  common RPM header with source-owned check-rpm-directory-modes.py. Bad workspace
+  ACL/setgid modes must never become installed OS permissions.
+- Regression3d28a2b1 PASSED: rejects actual bad124 RPM, applies fixed patch to
+  exact original Fedora50.3 SRPM, verifies normalization after install, Bash
+  syntax passes. Earlier64370de8/ccf4baf4 failed because fixture extraction
+  requested gnome-shell.spec instead of ./gnome-shell.spec; retained, corrected
+  to assert extracted source is nonempty. No actual fixed Shell boot yet.
+- Runtime95 package0f0a3d09 PASSED00:49:37 with128 checks/0 skipped. Exact
+  RPM34713ac778e81bc6befa0999119cfeea90d93fedda6eec76e6dd21644ce9798c;
+  SRPM6e2aeaac10fa24c6c03f786e6f89c5b7bbd66d71a1dd692c56c3c215e370122d.
+  Source27371d18bd6cd5dc77773e00b9f4c1c5e306f3bd; rpm-r18 receipt/minimal
+  archive; output rpm-r10/source/build/candidate-95/build/packages/luma-android-runtime.
+  Native graphical install still unqualified. Preparing fresh Shell125 build,
+  preserve124 artifacts and full native Glycin sandbox-required check.
 
 OBSERVED00:44Z — automatic fallback confirmed; diagnostic cleanup complete:
 - Original d4e9f7f8 FAILED00:40:24 after graphical readiness failure and

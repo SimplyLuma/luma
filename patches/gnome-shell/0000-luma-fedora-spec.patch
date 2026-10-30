@@ -367,7 +367,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +531,25 @@
+@@ -208,9 +531,31 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -377,6 +377,12 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +# for offline/minimal-image transaction solvers.
 +sed -i '1s|^#!/usr/sbin/python3$|#!/usr/bin/python3|' \
 +  %{buildroot}%{_bindir}/gnome-shell-{extension,test}-tool
++
++# Shared build directories can inherit a setgid/default ACL that gives new
++# staging directories mode2770. RPM records those modes; ordinary sessions
++# then cannot traverse private libraries. Only static system directories are
++# staged here. Normalize after all install steps and before packaging.
++find %{buildroot} -type d -exec chmod 0755 {} +
 +
  %find_lang %{name}
  
@@ -393,7 +399,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +557,7 @@
+@@ -218,7 +563,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -402,7 +408,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +589,11 @@
+@@ -250,6 +595,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
