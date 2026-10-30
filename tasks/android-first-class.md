@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T02:54:00+00:00
+- Updated: 2026-10-30T03:04:34+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,30 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT02:54Z — buffered comparison active; success-only boot handoff waiting:
+CURRENT03:04Z — verified copy complete; corrected native QA actor active:
+- Full buffered qemu-img comparison56b49bea PASSED02:58:02Z, with unchanged
+  source/target bytes during comparison. Standalone raw copy is guest-byte equal
+  to original at that checkpoint; subsequent owned VM boots intentionally write
+  only the raw copy. Original qcow2 remains retained and unbooted in these runs.
+- Success-only handoff5f3891b0 launched r28 b0607261. Actual raw boot reached
+  user GNOME1501, active user manager/bus, and guest pressure showed storage waits
+  with near-zero CPU/memory pressure. No Android processes in recorded snapshot.
+  BUT observer tried /proc/pressure through MAC-confined guest-agent execution:
+  PermissionError made readiness fail. Actual socket-only correction verified
+  via agent, and separate actual SSH read verified manager/bus/pressure. No MAC
+  relaxation. r28 remains FAILED1, not Android qualification. End03:03:14Z;
+  original XML restored, diagnostic file bind unmounted, VM gracefully OFF.
+- LIVE dev-android-reply-vm-r31-ec852439.service normal10GiB/disk10GiB;
+  root luma-android-first-class-reply-vm-r31.service1GiB, raw VM6GiB/QEMU8.
+  Frozen reply-vm-r31 helpers. Readiness checks only readable socket/boot identity
+  via guest agent; actual user-manager/GNOME/bus and pressure verified through
+  real SSH after readiness. No change to APK authorization or production policy.
+  Preflight6fe5fad5 PASSED syntax and all helper/package manifest bytes.
+- Candidate remains95/127/SDK5/APKr16. Real native inline-reply execution, fresh
+  exact original PendingIntent receipt, repeated resize and native guards STILL
+  pending. Observe this child through final result and original-profile restore.
+
+HISTORICAL02:54Z — buffered comparison active; success-only boot handoff waiting:
 - r27 conversion completed (raw48GiB virtual,35,024,945,152 allocated bytes).
   Direct-read qemu-img comparison was slow on the same HDD; deliberately stopped
   original normalf0197be8 at02:50:20Z, result143. Original handoff962aa96c saw
