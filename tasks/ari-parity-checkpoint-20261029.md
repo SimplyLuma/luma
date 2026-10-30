@@ -1,12 +1,11 @@
 # Ari search, actions and Models checkpoint
 
-Status: r9 destination and capability corrections pass source/native tests;
-packaging and delivery pending. The Dell still runs r8. Visual conformance and
-live OpenAI qualification remain incomplete.
+Status: server-qualified Ari2 r9 delivered and launched on the Dell for manual
+testing. Visual conformance and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. Qualified r8 runtime source is
-`f1b13b822a4e18a0c6d1b3af7dfb21abdfd00e51`; the independent Dell preview
+Review: draft PR #92. Qualified r9 runtime source is
+`e12eb4380ad9690181cdb7536c7144d714f4ecb2`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
 
 ## October 29 follow-up: application ownership and truthful completion
@@ -34,6 +33,27 @@ Flatpak Notes libraries, independent durable readback, unchanged native data
 and refusal of a target whose application destination changed. A two-response
 model fixture proves tool schemas become available after discovery while
 disabled action tiers remain disabled. Hosted model acceptance remains manual.
+
+Final Fedora RPM/SRPM and exact r9 export pass 186 unit tests, installed
+activation, native OAuth/inference, production/profile/keyring isolation,
+runtime byte comparison, public source contracts and actual r8-to-r9
+retained-data update/rollback. All five CI jobs pass at the runtime source.
+Archive SHA-256:
+`dd2d43ba548e9fe1667a9a2945d6eb075d2296cfbdac58064f44a48bd93d0136`.
+RPM SHA-256:
+`b72adab7df206c81d56bfd50a3b7cbdc2adf7bb4ea245a1ac8cee1d6bda73b2d`.
+SRPM SHA-256:
+`47a625b0c5b85a3ecfac5ed0e2f7566a1f72bdd70c0611ba476adca131d24ab9`.
+
+The owner explicitly authorized stopping/relaunching Ari2 for updates without
+asking them to close it. Only the old preview was stopped, its bus names were
+released, and the checksum-verified r9 was updated and launched on the Dell.
+Read-only metadata confirms the launch running and both new preview names
+owned. Chats, settings and keyring entries were retained. No user-note migration
+or automated Dell app/UI test was performed. Real hosted-model acceptance,
+including the named Tide track, remains manual. No UI code changed for r9;
+the previous full 50-test Wayland and actual wheel evidence remains historical.
+
 
 ## October 29 evening: direct application records and wheel scrolling
 
