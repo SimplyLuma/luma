@@ -124,7 +124,7 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 128
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 135
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post

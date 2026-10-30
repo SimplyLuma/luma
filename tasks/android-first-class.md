@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T21:04Z
+- Updated: 2026-10-30T22:16Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; Valet hotfix delivered; network/YouTube diagnostics await local authentication
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed Valet hotfix2bb7e2ed3 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -44,6 +44,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A22 Maintained platform/trust | Android13 repair baseline; rebase/trust OPEN | Maintained security baseline, pinned both-CPU sources and reproducible artifacts; protected production signing and rejection of test-key privileged apps. |
 | A23 Distribution/rights | Research/source notices retained; final payload review OPEN | Actual component licenses/NOTICE/corresponding source/offers, original APK signatures, branding/service/proprietary rights and authorized distribution infrastructure. |
 | A24 Build recovery/observation | Save/restore synthetic control; actual compiler restoration OPEN | One-shot validated compiler restore and exported-image checks; observe every final child; failure/cancellation/deadline/admission/budget exhaustion remain visible. |
+| A25 Google-dependent services | OPEN: Dell vanilla image lacked GMS/Companion; verified microG evaluation packages installed; ordinary-UID certificate/authenticator/bind/Java HTTPS PASS; account flow OPEN | Verify certificate-restricted compatibility, account chooser and user-controlled Google sign-in/callback/cancellation in actual Reddit/YouTube versions; keep Play Integrity, certification, push, mobile power and distribution separate. |
 
 Order of immediate work: retain the failed combined GUI runs and restore owned
 fixtures; distinguish host I/O contention from stable Shell startup on a controlled
@@ -53,6 +54,126 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT22:16Z — mislabeled TikTok source proven; media crash isolated:
+- Nick's TikTok39.3.15 download is an APKM ZIP renamed .apk. Source page claims
+  all-CPU universal, but the actual98-entry bundle includes only ARM64/32-bit
+  ARM libraries. r286/889ce099 SHA exactly matches that page's public hash:
+ 625b357802228ecdca8bbe83520aebd4bb54187cc2a344465f8a90a0c2ff1297.
+  No x86 translation engine was enabled or claimed. This is a mislabeled
+  source listing as well as our filename-based inspection bug.
+- Runtime now validates contents to distinguish individual APKs/package sets
+  despite misleading Android suffixes; non-Android and invalid nested payloads
+  still fail. Valet inspection failure clears Reading application and stale
+  permission/trust presentation. r277/2522cea1 PASS135/16 environment skips;
+  r281/298ee910 existing APK validation/staging PASS13; real GTK widget checks
+  r278/940aa94f PASS including failure heading and disabled Install.
+- New91-file user overlay verified/delivered. Initial r279/001d4189 qualification
+  wrongly expected only ARM64; actual bundle also has32-bit ARM. Retained that
+  failed assertion. r280/b4294d61 actual preview PASS: TikTok39.3.15, correct
+  com.zhiliaoapp.musically, real icon, APKM semantics, both ARM ABIs and x86
+  warning,4.703s including two full inspections. Payload archive SHA
+ ddce708c473f9eb43d767239653ca85914669bbbd1148c7e4656b6accaeeaedb.
+- Fresh native Valet review launched r282/50f94184 as isolated preview identity
+  io.luma.Valet.AndroidPackagePreviewR282; older error window/process not killed.
+  Source update is delivered but existing already-imported Python windows need
+  reopening. Native input API introspected r283/ff5cce38: inactive session closed
+  on client disconnect. No input, clipboard or screen capture was enabled.
+- Nick reports8 Ball Pool exits after login. r284/b13f6b17/r285/1959870d actual
+  package56.34.0 uses native x86_64 (not translation). Foreground SIGSEGV in
+  stagefright thread at libutils RefBase::decStrong -> libhidlbase
+  defaultServiceManager1_2 -> HIDL allocator -> ACodec buffer allocation.
+  Native source clears a shared strong pointer under lock but copies it after
+  unlock, with one pointer shared between host/Android managers. This is a
+  candidate race requiring a source fix and matched-library reproduction;
+  not yet a proven recovery or an authentication/architecture diagnosis.
+- Next: repair and exercise the HIDL manager cache without unrelated audio or
+  desktop changes. Scaling/maximize, full Google callback and8 Ball Pool remain
+  open. No nightly promotion or publication; all global acceptance gates retained.
+
+CURRENT22:04Z — Google provider evaluation active:
+- r260/bb4ceee7/r261/4aa1d9f4 confirmed both GMS and Play Store absent;
+  filtered recent provider-error logs were empty. Treat Reddit Continue with
+  Google failure as consistent with this absence, not an observed stack trace.
+- Official microG v0.3.17.252432 API assets verified r265/b53389ec: Services
+ 252432034 SHAe5e6cba078bdec812b5450599350e5c1a12c8b7438da5bf77123af170f8c1a35;
+  Companion84022634 SHA9b8616011cc8f026bcbbe094df850794abb9d6d9f23214d7a8f8c4d1033ea012.
+  Both APK signatures match upstream platform's pinned microG signing certificate
+  SHA9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165.
+  GMS includes native x86_64 and ARM64, no translation used on Dell.
+- Initial fetch r262 failed because upstream release text names a stale asset;
+  corrected against actual release API. r263 failed missing Java on host PATH;
+  used existing pinned Android JDK11, no server Java/package installation.
+- Initial Dell preflight r267/r269 refused on ro.debuggable=0 without installing
+  anything. That was the wrong proxy: source hook depends on compile-time
+  ANDROID_DEBUGGABLE; userdebug builder is pinned. Corrected the preflight and
+  disclosed the mistake. Did not modify ro.debuggable or platform admission.
+- r270/6078e0a0 installation completed, captured r272/99aa3965: Services7.574s,
+  Companion5.475s, both new packages; no existing provider overwritten, no
+  automatic broad grants or account access. No proprietary GApps installed.
+- Separate source-owned ordinary-UID provider probe and builder selector added.
+  r271/3aa0eb6e final APK build/signature PASS; source/API tools pinned, ephemeral
+  fixture-only key. APK SHA f70e5b26cc21309faca002b85f20687c40bc922eccd39cd9a47e8fa1b2ba3d82.
+  Checks visible compatibility certificate, authenticator, sign-in service bind
+  and Android Java HTTPS; never requests accounts, tokens or credentials.
+  r273/a29be50b installed the test. Initial r274/bfa6b758 returned empty output,
+  not a pass: Java CLI lacked Android boot-classpath environment. Corrected only
+  the diagnostic environment from zygote's public Android classpath variables.
+  r275/2b0ad617, captured r276/dc523d37: ordinary UID10133 PASS, exact expected
+  visible certificate for both packages, Google authenticator present, sign-in
+  service resolves/binds, Java HTTPS204/TLS_AES_128_GCM_SHA256. No account access.
+  Production compile-mode policy and real user Google sign-in remain open.
+- Permanent mount guard byte equality r264/d07c00c5 PASS, same exact guarded
+  init SHA55d56275017e09124d286e97ea11436af6d5370a6ef94b11e8425a1974a03dd1.
+  Final reformatted policy tests r266/15f73109 PASS3. Scaling and actual Google
+  login/callback remain open. No OS reboot, image build, publication or push.
+
+CURRENT22:00Z — native Dell mount-storm repair and scoped recovery evidence:
+- Found repeated unchanged multi-window property writes replay Android init's
+  shared file bind mount. Actual Android namespace had65,665 mounts, including
+ 65,535 copies at the two PC feature XML paths. Reading its23MB mount table took
+ 43.716s. Android CLI clients stalled; netd was stopping, Ethernet work queued
+  for20min and no default network existed. Host namespace remained43 mounts.
+- Source now reads before setting multi-window policy. Vendor/extra init patch
+  adds a volatile once-per-boot guard; clean and incremental source builders
+  include that patch. Unit coverage checks unchanged/changed/unreadable policy.
+  r248/bec27da5 PASS131 tests/16 environment skips; both scripts bash -n and
+  exact upstream vendor/extra git apply --check passed. No new full image build.
+- Local administrator-authenticated repairr249/3bb09870 checked exact originals
+  and no active installs, stopped Android only, retained backup receipts, added
+  the init overlay guard and root-protected host engine bind, then restarted
+  Android. App data retained; no OS reboot or uninstall. Host engine bind lasts
+  until reboot; init overlay persists in Waydroid data. User override also
+  carries the new engine. Native rollback retains the original data backup.
+- Earlier netd-only recovery implicitly restarted Android zygote via its init
+  onrestart actions. Disclosed this to Nick; no claim that it fixed the issue.
+- r252/591fbb5c: mounts131, exactlyone PC mask bind;20 repeated direct same-value
+  property writes left counts unchanged. netd running; Ethernet CONNECTED and
+  VALIDATED/default network100; IP and DNS ping passed. Android wm and package
+  commands returned in milliseconds. Android DPI still180, size5088x1325.
+- Native same-file Reddit reinstall through normal PackageInstaller retained
+  data and returned correct identity/version in10.468s (r254/b0d0b1a8), versus
+  Nick's multi-minute failures. This is one measured reinstall, not corpus proof.
+- Root Android HTTPS to Google's public204 endpoint passed actual certificate
+  verification0 in0.063s (r256/0c8ec780). First raw dropped-UID probe omitted
+  inet3003 and failed DNS; retained as an invalid app-permission control. Correct
+  probe r259/3b6f0ac7 used WhatsApp UID10127 and inet3003, matched against its
+  actual process group list: HTTPS204, verify0,0.051s. This proves network under
+  that app UID/group, not WhatsApp activation or account sign-in.
+- Reopened WhatsApp: native initial frame1104x646; Android bounds1088x593 fit
+  content after chrome. Actual repeated resize/maximize/visual scaling remains
+  OPEN; no blind DPI change. Host text scale1, display scale1; external screen
+  scale1 and internal1.25. User's pre-repair half-scale/translucent screenshots
+  remain failed evidence until matching native controls are repeated.
+- Nick reports Reddit Continue with Google does nothing. GMS is absent; previous
+  YouTube logs explicitly report missing Play Store. Track provider-dependent
+  sign-in/YouTube separately from recovered general networking. No proprietary
+  GApps or broad signature spoofing installed; no account login attempted.
+- No publication/push or nightly pass. Android SELinux Disabled, production
+  identity/signing/maintained-platform, ARM hardware and native broker gates
+  remain open. Next: capture narrowly scoped Reddit provider diagnostics;
+  verify permanent init patch equals live guarded bytes; complete source commit
+  and repeat native window/scaling qualification without resetting user data.
 
 CURRENT21:04Z — native Dell candidate active; user reports and first hotfix:
 - Nick booted candidate6a673f5a; activation unit completed successfully at

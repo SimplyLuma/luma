@@ -194,23 +194,25 @@ def inspect_apk(path: Path, max_bytes: int) -> ApkInspection:
                 raise ApkValidationError("The selected file is not a valid APK archive.") from error
 
         suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_PACKAGE_SUFFIXES:
+            raise ApkValidationError("This is not a supported Android package format.")
         package_format = suffix.removeprefix(".")
         apk_entries: tuple[str, ...] = ()
-        if suffix == ".apk":
-            has_manifest = "AndroidManifest.xml" in names
-            if not has_manifest:
-                raise ApkValidationError("The archive has no Android application manifest.")
+        if "AndroidManifest.xml" in names:
+            # Download sites sometimes rename a package set to .apk, or a
+            # standalone APK to a bundle suffix. Determine the install shape
+            # from validated contents, not the suggested download filename.
+            package_format = "apk"
             signature = _has_signature_metadata(names)
             native_abis = _native_abis_from_members(members)
-        elif suffix in SUPPORTED_PACKAGE_SUFFIXES:
+        else:
             apk_entries = _bundle_apk_entries(members)
             if not apk_entries:
-                raise ApkValidationError("The Android bundle contains no APK payloads.")
+                raise ApkValidationError("The archive contains no Android application manifest or APK payloads.")
+            if suffix == ".apk":
+                package_format = "apkm" if "info.json" in names else "apks"
             signature = False
             native_abis = _inspect_nested_apks(path, apk_entries, max_bytes)
-            has_manifest = True
-        else:
-            raise ApkValidationError("This is not a supported Android package format.")
         return ApkInspection(
             source_path=str(path.absolute()),
             display_name=path.name,
@@ -345,6 +347,8 @@ def _bundle_apk_entries(members: list[zipfile.ZipInfo]) -> tuple[str, ...]:
         entries.append(name)
     if len(entries) > 256:
         raise ApkValidationError("The Android bundle contains too many APK payloads.")
+    if not entries:
+        return ()
     canonical = [name for name in entries if Path(name).name.lower() == "base.apk"]
     if len(canonical) > 1:
         raise ApkValidationError("The Android bundle contains multiple base APKs.")

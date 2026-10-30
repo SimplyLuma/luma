@@ -24,9 +24,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tools', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--fixture', choices=('integration', 'provider'), default='integration')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
-    source = root / 'tests/android/app'
+    source = root / ('tests/android/app' if args.fixture == 'integration'
+                     else 'tests/android/provider-probe')
+    package = ('org.projectluma.androidtest' if args.fixture == 'integration'
+               else 'org.projectluma.androidproviderprobe')
     manifest = json.loads((root / 'config/android/acceptance-tools.json').read_text())
     for name in ('android.jar', 'aapt2.jar', 'r8.jar'):
         path = args.tools / name
@@ -61,11 +65,12 @@ def main():
         run('keytool', '-genkeypair', '-storetype', 'JKS', '-keystore', key,
             '-storepass', 'fixture-only', '-keypass', 'fixture-only', '-alias', 'fixture',
             '-dname', 'CN=Luma Android integration fixture', '-keyalg', 'RSA', '-validity', '30')
-        apk = args.output / 'AndroidIntegrationTest.apk'
+        apk = args.output / ('AndroidIntegrationTest.apk' if args.fixture == 'integration'
+                             else 'AndroidProviderProbe.apk')
         run('jarsigner', '-keystore', key, '-storepass', 'fixture-only',
             '-keypass', 'fixture-only', '-signedjar', apk, unsigned, 'fixture')
         run('jarsigner', '-verify', apk)
-        report = {'schema': 1, 'package': 'org.projectluma.androidtest',
+        report = {'schema': 1, 'package': package,
                   'apk_sha256': digest(apk), 'apk_size': apk.stat().st_size,
                   'source': {path.name: digest(path) for path in sorted(source.iterdir()) if path.is_file()},
                   'tools': manifest, 'qualification': 'build/signature only; no execution claim'}

@@ -17,6 +17,7 @@ window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-de
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
+vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 hardware_root="$source_root/hardware/waydroid"
 framework_root="$source_root/frameworks/base"
 device_root="$source_root/device/waydroid/waydroid"
@@ -206,6 +207,7 @@ if [ "$incremental" = 0 ]; then
   # than one Android application is open.
   git -C "$source_root/frameworks/native" apply "$native_patch"
   git -C "$device_root" apply "$device_patch"
+  git -C "$source_root/vendor/extra" apply "$vendor_extra_patch"
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"

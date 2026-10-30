@@ -38,4 +38,12 @@ with patch('luma_installer.installer.iter_records', return_value=[]), \
     assert window.card.primary_label.get_label() == 'Open'
     assert window.card.primary_label.get_max_width_chars() == 24
     window.close()
+    unreadable = InstallerWindow(app, path=report.path)
+    unreadable.failed_inspection('The archive contains no Android application manifest or APK payloads.',
+                                 unreadable._inspect_generation)
+    assert unreadable.card.name.get_label() == 'Cannot read application'
+    assert not unreadable.inspecting
+    assert not unreadable.card.primary.get_sensitive()
+    assert unreadable.card.phase_label.has_css_class('error')
+    unreadable.close()
 print('PASS: Android architecture advice visible, install eligible, version shown, warning cleared')

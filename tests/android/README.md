@@ -6,6 +6,17 @@ It is a debuggable test app, not a bundled user application. It requests
 notification permission, no Internet or privileged permissions, and stores only
 its own synthetic events.
 
+The separate `provider-probe` fixture builds with the same verified tools using
+`--fixture provider`. Its package is `org.projectluma.androidproviderprobe`;
+it has no launcher, requests only Internet permission, and runs with
+`am instrument -w org.projectluma.androidproviderprobe/.ProviderProbe`.
+It checks the Google service compatibility certificate visible to an ordinary
+app, the Google account authenticator and sign-in service binding, plus verified
+HTTPS through Android's Java networking stack. It never enumerates accounts,
+requests tokens, submits credentials or changes permissions. Its report always
+marks account login untested; service availability alone does not pass Reddit
+login, OAuth callbacks, Play Integrity or Google certification.
+
 Build in a disposable JDK environment with `aapt2`, D8/R8 and an Android public
 API JAR. `config/android/acceptance-tools.json` pins the official source URLs,
 decoded byte sizes and SHA256 hashes. `scripts/android/build-acceptance-apk.py`

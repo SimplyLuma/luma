@@ -90,6 +90,13 @@
       "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
     },
     {
+      "family": "android-vendor-extra",
+      "path": "patches/android-vendor-extra/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before distribution; do not apply the original-Luma Apache default automatically."
+    },
+    {
       "family": "cage",
       "path": "patches/cage/",
       "status": "documented",

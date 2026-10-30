@@ -470,13 +470,7 @@ class WaydroidEngine:
             runtime_device_class,
             timeout=30,
         )
-        self._run(
-            "prop",
-            "set",
-            "persist.waydroid.multi_windows",
-            "true" if multi_window else "false",
-            timeout=30,
-        )
+        self.set_multi_window_policy(multi_window)
         self._run(
             "prop",
             "set",
@@ -566,6 +560,15 @@ class WaydroidEngine:
                 pass
             time.sleep(0.5)
         raise RuntimeUnavailableError("Android application services did not become ready in time.")
+
+    def set_multi_window_policy(self, enabled: bool) -> None:
+        # Android init runs this action even for an unchanged property value.
+        # Its PC-feature bind mount can clone existing shared mounts on every
+        # write. Never replay that action on each launch or installation.
+        expected = "true" if enabled else "false"
+        current = self._run("prop", "get", "persist.waydroid.multi_windows", timeout=15)
+        if current.stdout.strip() != expected:
+            self._run("prop", "set", "persist.waydroid.multi_windows", expected, timeout=30)
 
     def list_apps(self) -> str:
         return self._run("app", "list", timeout=30).stdout

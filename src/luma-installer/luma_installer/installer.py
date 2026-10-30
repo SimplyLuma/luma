@@ -597,6 +597,10 @@ class InstallerWindow(AppWindow):
 
     def failed(self, message):
         self.inspecting = False
+        if self.report is None:
+            self.card.name.set_label('Cannot read application')
+            self.card.set_subtitle('Choose a valid application package', '', verified=False)
+            self.card.set_permissions([])
         self.ready(message)
         self.card.phase_label.add_css_class('error')
         return False

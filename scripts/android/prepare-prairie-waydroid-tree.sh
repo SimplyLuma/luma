@@ -20,6 +20,8 @@ lineage_root="$source_root/lineage-sdk"
 framework_root="$source_root/frameworks/base"
 native_root="$source_root/frameworks/native"
 device_root="$source_root/device/waydroid/waydroid"
+vendor_extra_root="$source_root/vendor/extra"
+vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
@@ -162,6 +164,8 @@ write_state() {
     printf 'BLUEPRINT_CPU_PATCH_SHA=%s\n' "$(patch_sha "$blueprint_cpu_patch")"
     printf 'MAKE_HOST_PATCH_SHA=%s\n' "$(patch_sha "$make_host_patch")"
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
+    printf 'VENDOR_EXTRA_OFFICIAL_HEAD=%s\n' "$vendor_extra_official_head"
+    printf 'VENDOR_EXTRA_PATCH_SHA=%s\n' "$(patch_sha "$vendor_extra_patch")"
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
@@ -238,6 +242,7 @@ if [ ! -f "$state_file" ]; then
   framework_official_head=$(git -C "$framework_root" rev-parse HEAD)
   native_official_head=$(git -C "$native_root" rev-parse HEAD)
   device_official_head=$(git -C "$device_root" rev-parse HEAD)
+  vendor_extra_official_head=$(git -C "$vendor_extra_root" rev-parse HEAD)
 
   git -C "$hardware_root" apply --binary "$hardware_patch"
   git -C "$hardware_root" apply "$hardware_pointer_patch"
@@ -281,6 +286,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  git -C "$vendor_extra_root" apply "$vendor_extra_patch"
+  commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   commit_patch "$source_root/hardware/libhardware" 'Luma software-YUV allocator'
   git -C "$source_root/external/mesa" apply "$mesa_build_patch"
@@ -321,6 +328,7 @@ lineage_official_head=${LINEAGE_OFFICIAL_HEAD:-$(git -C "$lineage_root" rev-pars
 framework_official_head=$FRAMEWORK_OFFICIAL_HEAD
 native_official_head=${NATIVE_OFFICIAL_HEAD:-$(git -C "$native_root" rev-parse HEAD)}
 device_official_head=$DEVICE_OFFICIAL_HEAD
+vendor_extra_official_head=${VENDOR_EXTRA_OFFICIAL_HEAD:-$(git -C "$vendor_extra_root" rev-parse HEAD)}
 
 changed=0
 if [ -n "${MAKE_HOST_PATCH_SHA:-}" ] && [ "$(patch_sha "$make_host_patch")" != "$MAKE_HOST_PATCH_SHA" ]; then
@@ -477,6 +485,14 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ]; then
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  changed=1
+fi
+
+if [ "$(patch_sha "$vendor_extra_patch")" != "${VENDOR_EXTRA_PATCH_SHA:-}" ]; then
+  git -C "$vendor_extra_root" reset --hard -q "$vendor_extra_official_head"
+  git -C "$vendor_extra_root" clean -fdq
+  git -C "$vendor_extra_root" apply "$vendor_extra_patch"
+  commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
   changed=1
 fi
 
