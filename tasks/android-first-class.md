@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T00:30:00+00:00
+- Updated: 2026-10-30T00:23:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -57,7 +57,7 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
-OBSERVED00:30Z (Oct30 UTC) — SDK5 COMPILED/EXPORTED; NATIVE UI TEST ACTIVE:
+OBSERVED00:23Z (Oct30 UTC) — SDK5 COMPILED/EXPORTED; NATIVE UI TEST ACTIVE:
 - Actual r12 m systemimage/vendorimage633/633 completed successfully in19:40;
   guest synced output and wrote exit0 at1793318999.528394. Immutable source
  0c0cc1a9f034c7048a7aef1947ac3ef33f34d23c, no preparation overlay.
