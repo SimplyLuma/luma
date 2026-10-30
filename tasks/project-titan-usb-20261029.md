@@ -354,3 +354,26 @@ opaque treatment so underlying app/lock text cannot show through. Mobile lock
 also hides and restores the legacy native panel, preventing its clock from
 covering the notification heading. The condition excludes Greeter, Tablet and
 Desktop; normal handheld status borrowing resumes after unlock.
+
+## 2026-10-30 unlock status and notification edge follow-up
+
+Handheld status synchronization now coalesces a final idle pass after session
+and screen-shield transitions; returning Home also reconciles visibility. The
+pending pass cannot revive a destroyed presentation. Live Titan lock/unlock
+restored the clock and borrowed right-side controls, and a native right-status
+pull opened full-screen Quick Options.
+
+Mobile notification surfaces override the existing material selector explicitly.
+The attached pill has side/bottom borders and square top corners; the full-page
+tray has no border or shadow and an opaque background through all four edges.
+Unsupported CSS `:not()` selectors were replaced by positive rules and an explicit
+high-contrast override. Desktop/Tablet notification selectors are unchanged.
+Screenshot review confirmed the final flush, opaque Mobile tray. The owner-device
+boot overlay and live presentation both contain these changes; idle delay was
+restored after QA.
+
+Validation: bounded job cb2790a3 passed JavaScript syntax, final-unlock/status
+regression coverage, panel motion and lock/privacy policy tests, and diff checks.
+Native patches were not changed in this follow-up. The migration handoff now
+includes an explicit fetch/show command for agents whose checkout lacks the
+new sources. Existing Home frame-cadence limitation remains open.

@@ -7,6 +7,15 @@ shared Luma GNOME Shell with Mobile presentation, using the Desktop/Tablet
 services and native controls. The old GNOME Mobile 48 bake-off and Phosh renderer
 are separate historical paths.
 
+If a checkout cannot find these sources, inspect the development ref explicitly;
+they are not yet integrated into `main`. This does not switch or reset the
+receiving agent's worktree:
+
+```sh
+git fetch origin refs/heads/codex/project-titan-usb-20261029:refs/remotes/origin/codex/project-titan-usb-20261029
+git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/presentation.js
+```
+
 ## Source to carry over
 
 | Area | Maintained source |

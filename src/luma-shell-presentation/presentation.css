@@ -33,7 +33,7 @@
 .luma-converged-widget:hover, .luma-converged-widget:focus { border-color: rgba(255,255,255,0.5); }
 .luma-converged-dock,
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options,
-.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
+StWidget.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
   background-color: rgba(30,25,43,0.78);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 24px;
@@ -85,14 +85,21 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-compact-options .luma-options-main { spacing: 8px; }
 
 /* Mobile uses the Dock's single surface, without a second card/material frame. */
-.luma-notification-lip.luma-mobile-notifications .luma-lip-surface { box-shadow: none; }
-.luma-notification-lip.luma-mobile-notifications .notification-banner.luma-lip-card,
-.luma-notification-lip.luma-mobile-notifications .luma-lip-list .notification-banner.luma-lip-card {
+StWidget.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
+  box-shadow: none;
+  border-top-width: 0;
+  border-radius: 0 0 24px 24px;
+}
+StWidget.luma-notification-lip.luma-mobile-notifications.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
+StWidget.luma-notification-lip.luma-mobile-notifications.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
+StWidget.luma-notification-lip.luma-mobile-notifications.tray .luma-lip-surface { border-width: 0; }
+StWidget.luma-notification-lip.luma-mobile-notifications .notification-banner.luma-lip-card,
+StWidget.luma-notification-lip.luma-mobile-notifications .luma-lip-list .notification-banner.luma-lip-card {
   background-color: transparent; background-gradient-direction: none;
   border: 0; box-shadow: none;
 }
-.luma-notification-lip.luma-mobile-notifications.opaque .luma-lip-surface { background-color: #1e192b; }
-.luma-notification-lip.luma-mobile-notifications.high-contrast .luma-lip-surface {
+StWidget.luma-notification-lip.luma-mobile-notifications.opaque .luma-lip-surface { background-color: #1e192b; }
+StWidget.luma-notification-lip.luma-mobile-notifications.high-contrast .luma-lip-surface {
   background-color: #111111; border-color: white;
 }
 
@@ -101,7 +108,12 @@
 
 /* Full pages use the dock palette's opaque treatment, so underlying clocks
  * and application text cannot compete with their own headings and controls. */
-.luma-notification-lip.luma-mobile-notifications.tray:not(.high-contrast) .luma-lip-surface,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options:not(.high-contrast) {
+StWidget.luma-notification-lip.luma-mobile-notifications.tray .luma-lip-surface,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options {
   background-color: #1e192b;
+}
+
+StWidget.luma-notification-lip.luma-mobile-notifications.tray.high-contrast .luma-lip-surface,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.high-contrast {
+  background-color: #111111;
 }

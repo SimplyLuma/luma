@@ -228,7 +228,12 @@ export class Presentation {
                 }
             }
         });
-        this._connect(Main.sessionMode, 'updated', () => this._syncVisibility());
+        this._connect(Main.sessionMode, 'updated', () => {
+            this._syncVisibility();
+            this._queueVisibilitySync();
+        });
+        this._connect(Main.screenShield, 'locked-changed', () => this._queueVisibilitySync());
+        this._connect(Main.screenShield, 'active-changed', () => this._queueVisibilitySync());
         this._connect(Main.overview, 'showing', () => {
             if (this.mode !== 'desktop') {
                 Main.overview.hide();
@@ -590,6 +595,17 @@ export class Presentation {
         this._mobileLockPanel = null;
     }
 
+    _queueVisibilitySync() {
+        if (this._destroyed || this._visibilitySource) return;
+        // Session-mode listeners and the screen shield finish their transition
+        // in the same main-loop turn. Restore borrowed status actors afterwards.
+        this._visibilitySource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._visibilitySource = 0;
+            if (!this._destroyed) this._syncVisibility();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _syncVisibility() {
         const unlocked = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
         const mobileLock = this.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
@@ -697,6 +713,7 @@ export class Presentation {
     showHome() {
         if (this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        this._syncVisibility();
         this._tasks.beginLift();
         this._tasks.beforeHome();
         // State, app and monitor signals keep Home current while hidden. Reuse
@@ -1030,6 +1047,7 @@ export class Presentation {
         this._tasks.destroy();
         this._tasks = null;
         if (this._rebuildSource) GLib.source_remove(this._rebuildSource);
+        if (this._visibilitySource) GLib.source_remove(this._visibilitySource);
         for (const [object, id] of this._signals) object.disconnect(id);
         this._editor.destroy();
         this._pageSwipe.destroy();
