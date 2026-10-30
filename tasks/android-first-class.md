@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T14:42Z
+- Updated: 2026-10-30T15:08Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -21,7 +21,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
 | A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot/native hashes183e21f8 and real native reply818f9e4b passed; remaining scopes open | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
-| A02 Install and app identity | PARTIAL SDK5 x86: actual official F-Droid APK installed through Valet UI, exact installed SHA matched, app drawer close/relaunch observed on boot3264f49d; direct double-click still opens chooser | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A02 Install and app identity | PARTIAL SDK5 x86: actual patched Flatpak APK double-click -> Valet install -> matching APK/app drawer close/relaunch PASSED R85/5c3c4e30; dock pin and broader install matrix open | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
@@ -52,7 +52,46 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT14:42Z — corrected bundle installs; exact79 GUI retry active:
+CURRENT15:08Z — actual x86 direct-install GUI PASS; ARM24GiB build active:
+- R85 child7a7558bd PASSED14:51:01Z; parent1165077b PASSED14:51:04Z.
+  Same actual boot55637e9b-2b56-403b-82c0-0171df7fbd98, verified79/Filer75 native
+  pair/96/Shell127/SDK5 and exact unsigned USER Filer test ref e56aa0ca/binary2116a024.
+- Real pointer double-click dab8a44a on selected F-Droid APK d998daa0 opened
+  native Valet directly8d371fa4, no chooser. Pointer Install d5659605 produced
+  Ready in Applications268be02c. Installed APK SHA exactly19d51fad...; generated
+  native desktop file Exec=/usr/bin/luma-android launch org.fdroid.fdroid.
+  Pointer Open d6e147aa -> real phone window b7b40462; allowed notification
+  permission1126b760; actual window close f7b0d162 removed it. Actual Luma app
+  drawer1a136a8a, pointer F-Droid3311a4ba -> reopened8d3df299 with loaded real
+  repository content. AndroidPID1592, host Waydroid clientPID3658 shared; no
+  per-app host process attribution claim. Valet version/signer shown undeclared.
+- Independent qualification5c3c4e30 PASSED actual input-command/window/image
+  sequence, APK/desktop identity, three SDK5 native component hashes and final
+  child/parent cleanup. Evidence qualification.json includes exact PNG SHA/paths.
+  Corpus is UNIVERSAL with arm64-v8a/armeabi-v7a/x86/x86_64 native libs; do not
+  describe it as pure DEX. Native JNI load/maps not separately observed here.
+- Cleanup actual: settings restored, only owned GUI extension removed, VM off,
+  original XML/raw unmount and policy24cf restored. Private candidate/app and
+  test downloads retained on raw diagnostic disk. Scope one x86 VM/one APK;
+  unsigned development Filer branch, signed system app unchanged. No daily-use,
+  ARM, hardware-power or production-isolation qualification. Dock pin/UI,
+  metadata details and wider installation/recovery corpus remain open.
+- LIVE ARM guard28a5035c / normal build e83d2ad1 since15:07:49Z. New private
+  arm-image-r90 targets aarch64/lineage_waydroid_arm64_only-userdebug with SAME
+  immutable Android0c0cc1a9f source/tool squashfs inputs as SDK5 x86 build.
+  Native x86_64 build host cross-compiles ARM64; no APK translation claim.
+  Guest24GiB/QEMU25cap/8CPU/normal27GiB + separate1GiB guard; temporary BUILD
+  ceiling27 and account32 only, global32/reserve8/disk20 unchanged. Four isolated
+  restore/admission tests PASSED2a22d870. Temporary policy SHA756a9279...,
+  original24cf... must be restored after actual child end. Current phase verifies
+  immutable inputs before boot. New ARM logs/outputs preserve completed x86 ones.
+- ARM controller bounded5.5h, guest20500s/root21600s, observed guard6.25h;
+  streams image exports with size/digest checks, requires actual AArch64 ELF and
+  VM-off/XML unchanged. A compile/export pass is NOT ARM runtime/device proof.
+- Continue observing ARM job to final result; meanwhile finish first-class gaps
+  (APK preview metadata, dock pin interaction, safety/power/process integration).
+
+HISTORICAL14:42Z — corrected bundle installs; exact79 GUI retry active:
 - R80 parent8fd20a4a/child4132e7e2 FAILED14:36:15/16Z, cleanup observed:
   actual79 boot b3972fc5-a277-4ac6-9db4-cd21c5f3ada9 graphical session and exact
   three package versions passed; pinned signed user Platform44 installed. Local
