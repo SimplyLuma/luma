@@ -362,6 +362,11 @@ def inspect_application(arguments):
             continue
     # Layout nodes and forecast prose must not crowd interactive suggestions
     # out of the model's result budget. Preserve whole JSON and paginate controls.
+    # GTK also advertises clipboard/menu actions on ordinary labels. Keep
+    # those available on later pages, but prioritize inputs and real controls
+    # so opening search cannot hide its deep entry behind playback labels.
+    rows.sort(key=lambda row:0 if row['editable'] else 2 if row['role'] in
+              ('label','static','frame','window','application','panel','section') else 1)
     commands = [] if protected else _commands(arguments['application'], app, query)
     selection = ([item for item in _targets[commands[0]['target']]['context'] if item[1]!='editable']
                  if commands else [])

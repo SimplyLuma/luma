@@ -394,7 +394,21 @@ def find_app(arguments: dict) -> dict:
     if info is None:
         return {"ok": True, "summary": f"{arguments.get('name')} isn't installed.", "data": {"installed": False}}
     return {"ok": True, "summary": f"{info.get_name()} is installed.",
-            "data": {"installed": True, "name": info.get_name(), "id": info.get_id()}}
+            "data": {"installed": True, "name": info.get_name(), "id": info.get_id(),
+                     "running":_running_app(info)}}
+
+
+def _running_app(info):
+    # A positive GApplication owner is evidence of a running application.
+    # Absence is unknown: not every desktop app exports its desktop identity.
+    name=info.get_id().removesuffix('.desktop')
+    if not Gio.dbus_is_name(name):return None
+    try:
+        bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
+        running=bus.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus',
+            'NameHasOwner',GLib.Variant('(s)',(name,)),None,Gio.DBusCallFlags.NONE,1000,None).unpack()[0]
+        return True if running else None
+    except GLib.Error:return None
 
 
 def open_app(arguments: dict) -> dict:
@@ -403,14 +417,19 @@ def open_app(arguments: dict) -> dict:
         return {"ok": False, "summary": f"{arguments.get('name')} isn't installed on this machine.",
                 "data": {"installed": False}}
     if DRY_RUN:
-        return {"ok": True, "summary": f"Opened {info.get_name()}", "data": {"id": info.get_id(), "dry_run": True}}
+        return {"ok": True, "summary": f"Would request {info.get_name()} to open.",
+                "completed":False,"data": {"id": info.get_id(), "dry_run": True}}
+    running=_running_app(info)
     try:
         launched = info.launch([], None)
     except GLib.Error as error:
         return {"ok": False, "summary": f"{info.get_name()} didn't open: {error.message}"}
     if not launched:
         return {"ok": False, "summary": f"{info.get_name()} didn't open."}
-    return {"ok": True, "summary": f"Opened {info.get_name()}", "data": {"id": info.get_id()}}
+    return {"ok": True, "summary": (f"{info.get_name()} is already running; requested its window."
+                                    if running else f"Requested {info.get_name()} to open."),
+            "unchanged":running is True,"completed":False,"verification_required":True,
+            "data": {"id": info.get_id(),"already_running":running}}
 
 
 TOOLS = {

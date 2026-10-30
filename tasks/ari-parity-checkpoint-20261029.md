@@ -1,12 +1,56 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r9 delivered and launched on the Dell for manual
-testing. Visual conformance and live OpenAI qualification remain incomplete.
+Status: r10 launch receipts, recovery, progress and shared field visibility pass
+server checks; packaging/delivery pending. The Dell still runs r9. Visual
+conformance and live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. Qualified r9 runtime source is
 `e12eb4380ad9690181cdb7536c7144d714f4ecb2`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
+
+## October 29 follow-up: launch receipts, search fields and progress
+
+`open_app` previously described every accepted launch request as “Opened,” even
+when a GApplication was already running. A positive bus owner now reports an
+existing app and avoids creating a new-open receipt. Other launches report a
+request and require observation before claiming a window exists. App tasks
+prefer inspecting the existing window.
+
+Tide also exposed a shared toolkit bug: standalone `Gtk.Text` fields used by
+BarSearch defaulted to accessibility role `none`. A native fixture confirmed
+the search field was visibly mapped while absent from AT-SPI. The search,
+quick/command and collaboration-invite fields now have explicit text-box roles.
+Editable fields and buttons precede generic GTK label/clipboard actions in
+Ari's bounded snapshots. The fix is in the shared platform, with no Tide-only
+search handler or fabricated app API. Existing installed apps need to load
+the corrected toolkit before their fields become accessible.
+
+Known temporary ChatGPT service/connection failures retry at most twice before
+the attempt releases text or tools. Previously completed application actions
+are not replayed. Server retry delays are respected within the bounded wait;
+long/unparsed delays, usage/authentication/unknown failures remain explicit.
+Diagnostics log only allowlisted error categories and numeric HTTP status.
+
+Provider-supplied public reasoning-summary headings now feed Ari's existing
+progress line. Raw reasoning text and encrypted reasoning are never displayed.
+An explicit rejection of the optional summary parameter continues without
+summaries, preserving model, effort and tools. Native private-account fixtures
+verify the summary request and event path; live subscription/model support
+remains unconfirmed.
+
+Server evidence: 88 real shared-toolkit tests pass, including search keyboard
+activation, entry roles and invite behavior. The native Wayland suite passes
+50 tests; its additional X11 wheel case is skipped there. Native private
+OAuth/keyring/UI inference and summary-progress checks pass. Real populated
+Weather direct/MCP/agent checks pass in all three autonomy modes.
+
+The real Tide window, native command, accessibility adapter, MCP and agent
+fixture searches, enters a title and selects the exact track/artist with three
+mutations and zero approvals. A subsequent injected service error recovers
+without repeating actions. Its library, player and model decisions are fixtures:
+this does not prove live audio or actual hosted ChatGPT selection. It also
+verifies the real already-running GApplication launch acknowledgement.
 
 ## October 29 follow-up: application ownership and truthful completion
 

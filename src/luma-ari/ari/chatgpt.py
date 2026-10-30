@@ -41,16 +41,24 @@ class ChatGPTError(ValueError):
 
 
 class NetworkError(ChatGPTError):
-    def __init__(self, status=0, code=""):
+    def __init__(self, status=0, code="", param="", *, retry_after=None):
         self.status, self.code = status, code
+        self.param = param if param == 'reasoning.summary' else ''
+        self.retry_after = retry_after
         super().__init__(error_message(status, code))
 
 
 def error_message(status, code):
+    if code == 'connection_closed':
+        return "The ChatGPT connection ended before the answer completed. This task has not finished."
     if code in ("unsupported_tool", "unsupported_tool_type", "unsupported_value", "invalid_request_error"):
         return "ChatGPT rejected a requested tool or setting (" + code + "). This route may not allow hosted web search or the selected effort. No fallback was used."
     if code == "subscription_sharing_usage_limit_exceeded" or status == 429:
         return "A ChatGPT plan or Ari usage limit was reached. Manage usage in ChatGPT settings."
+    if code == 'rate_limit_exceeded':
+        return "ChatGPT's request limit was reached. Wait a moment before trying again."
+    if code in ('server_error','internal_error','service_unavailable','server_is_overloaded','overloaded_error') or status in (500,502,503,504):
+        return "ChatGPT returned a service error. This task has not finished. Try again shortly."
     if code == "subscription_sharing_user_not_eligible":
         return "ChatGPT plan usage is not available for this account or workspace. Choose another account."
     if status == 401:
@@ -93,10 +101,18 @@ class Transport:
         try:
             return self.opener.open(urllib.request.Request(url, data=data, headers=headers), timeout=timeout)
         except urllib.error.HTTPError as error:
-            code = ""
+            code, param, retry_after = "", "", None
+            header = error.headers.get('Retry-After') if error.headers else None
+            if header:
+                try:retry_after=float(header)
+                except ValueError:retry_after=-1
+                # Longer or unparsed waits are left to a later user attempt.
+                if not 0<=retry_after<=30:retry_after=-1
             try:
                 value = json.loads(error.read(MAX_JSON + 1))
                 candidate = value.get("error", "")
+                if isinstance(candidate,dict) and candidate.get('param')=='reasoning.summary':
+                    param='reasoning.summary'
                 code = candidate.get("code", "") if isinstance(candidate, dict) else candidate
                 if not isinstance(code, str) or len(code) > 100:
                     code = ""
@@ -104,7 +120,7 @@ class Transport:
                 pass
             finally:
                 error.close()
-            raise NetworkError(error.code, code) from None
+            raise NetworkError(error.code, code, param, retry_after=retry_after) from None
         except (OSError, ValueError):
             raise NetworkError() from None
 

@@ -8,7 +8,7 @@ from ari.tools import accessibility as a
 
 
 class Role(Enum):
-    APPLICATION='application';FRAME='frame';WINDOW='window';DIALOG='dialog';PASSWORD_TEXT='password';ENTRY='entry'
+    APPLICATION='application';FRAME='frame';WINDOW='window';DIALOG='dialog';PASSWORD_TEXT='password';ENTRY='entry';LABEL='label'
     @property
     def value_nick(self):return self.value
 
@@ -34,6 +34,15 @@ class Node:
 
 
 class Accessibility(unittest.TestCase):
+    def test_deep_search_entry_precedes_gtk_label_clipboard_actions(self):
+        actions=SimpleNamespace(get_n_actions=lambda:3,get_action_name=lambda i:('clipboard.copy','selection.delete','menu.popup')[i])
+        labels=[Node('Playback label '+str(i),Role.LABEL) for i in range(100)]
+        for node in labels:node.get_action_iface=lambda:actions
+        self.frame.children=[*labels,Node('Search layout',Role.FRAME,[self.entry])]
+        data=a.inspect_application({'application':self.application})['data']
+        self.assertTrue(data['controls'][0]['editable'])
+        self.assertEqual(data['controls'][0]['name'],'City search')
+        self.assertTrue(data['truncated'])
     def test_native_commands_bind_process_selection_type_and_target_lifetime(self):
         calls=[]
         commands={'app-delete':(True,'',[]),'app-title':(True,'s',[]),'app-disabled':(False,'',[])}

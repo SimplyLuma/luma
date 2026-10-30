@@ -387,7 +387,8 @@ class _EntryWidget(Gtk.Box):
         self.text_widget: Gtk.Widget = self.view
 
     def _build_line(self) -> None:
-        self.line = Gtk.Text(hexpand=True, valign=Gtk.Align.CENTER)
+        self.line = Gtk.Text(hexpand=True, valign=Gtk.Align.CENTER,
+                             accessible_role=Gtk.AccessibleRole.TEXT_BOX)
         self.line.add_css_class("lumaui-bar-entry-text")
         self.line.update_property([Gtk.AccessibleProperty.LABEL], [self.entry.label])
         if self.entry.kind == "command":

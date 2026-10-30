@@ -521,7 +521,8 @@ class ShareSheet(Gtk.Box):
         invite = bar_tokens.Well()
         invite.add_css_class("lumaui-share-invite")
         invite.append(icons.image("user-plus"))
-        self.invite = Gtk.Text(hexpand=True, placeholder_text="Add people by name or @username")
+        self.invite = Gtk.Text(hexpand=True, placeholder_text="Add people by name or @username",
+                               accessible_role=Gtk.AccessibleRole.TEXT_BOX)
         self.invite.set_width_chars(1)
         self.invite.set_sensitive(self.manage_access)
         self.invite.update_property([Gtk.AccessibleProperty.LABEL], ["Add people by name or @username"])

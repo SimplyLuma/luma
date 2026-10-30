@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from ari.chatgpt_provider import ChatGPTProvider
+from ari.chatgpt import NetworkError
 
 
 def stream(*events):
@@ -21,6 +22,103 @@ def completed(output):
 
 
 class Responses(unittest.TestCase):
+    def test_server_retry_delay_is_respected_and_long_wait_does_not_loop(self):
+        reply=stream(completed([{'type':'message','content':[{'type':'output_text','text':'Ready'}]}]))
+        with patch.object(self.provider.manager.transport,'open',side_effect=[NetworkError(503,retry_after=3),reply]), \
+                patch('ari.chatgpt_provider.threading.Event.wait',return_value=False) as wait:
+            self.assertIn({'type':'text','text':'Ready'},list(self.provider.chat(self.messages)))
+            wait.assert_called_once_with(3)
+        self.messages[-1]['content']='Another request'
+        with patch.object(self.provider.manager.transport,'open',side_effect=NetworkError(503,retry_after=-1)) as opened:
+            self.assertEqual(list(self.provider.chat(self.messages))[-1]['type'],'error')
+            opened.assert_called_once()
+
+    def test_truncated_stream_retries_and_cancellation_interrupts_backoff(self):
+        self.responses.extend([stream({'type':'response.created'}),stream(completed([
+            {'type':'message','content':[{'type':'output_text','text':'Recovered'}]}]))])
+        with patch('ari.chatgpt_provider.threading.Event.wait',return_value=False):
+            events=list(self.provider.chat(self.messages))
+        self.assertIn({'type':'text','text':'Recovered'},events)
+        self.assertEqual(len(self.requests),2)
+        self.requests.clear()
+        self.messages[-1]['content']='Second question'
+        self.responses.append(stream({'type':'error','code':'server_error'}))
+        stop=threading.Event()
+        def cancelled(_delay):stop.set();return True
+        with patch.object(stop,'wait',side_effect=cancelled):
+            events=list(self.provider.chat(self.messages,stop=stop))
+        self.assertEqual(len(self.requests),1)
+        self.assertFalse(any(event['type']=='tool_call' for event in events))
+
+    def test_transient_stream_retries_without_releasing_uncommitted_tools(self):
+        call={'type':'function_call','name':'now','call_id':'one','arguments':'{}'}
+        self.responses.extend([stream({'type':'response.output_item.done','output_index':0,'item':call},
+            {'type':'error','code':'server_error','message':'private-upstream-error'}),stream(completed([call]))])
+        with patch('ari.chatgpt_provider.threading.Event.wait',return_value=False), \
+                self.assertLogs('ari.chatgpt_provider',level='WARNING') as logs:
+            events=list(self.provider.chat(self.messages,self.tools))
+        self.assertEqual(sum(event['type']=='tool_call' for event in events),1)
+        self.assertEqual(len(self.requests),2)
+        self.assertEqual(self.requests[0],self.requests[1])
+        self.assertTrue(any(event.get('label')=='Retrying ChatGPT (1/2)' for event in events))
+        self.assertFalse(any(event['type']=='error' for event in events))
+        self.assertNotIn('private-upstream-error',str(events)+str(logs.output))
+        self.assertIn('failure_code=server_error',str(logs.output))
+
+    def test_retry_budget_and_partial_text_limits_do_not_hide_failure(self):
+        self.responses.extend([stream({'type':'error','code':'server_error'}) for _ in range(3)])
+        with patch('ari.chatgpt_provider.threading.Event.wait',return_value=False):
+            events=list(self.provider.chat(self.messages))
+        self.assertEqual(len(self.requests),3)
+        self.assertEqual(events[-1]['type'],'error')
+        self.assertIn('task has not finished',events[-1]['message'])
+        self.assertFalse(self.provider._history)
+        self.requests.clear()
+        self.responses.append(stream({'type':'response.output_text.delta','delta':'Partial'},
+            {'type':'error','code':'server_error'}))
+        events=list(self.provider.chat(self.messages))
+        self.assertEqual(len(self.requests),1)
+        self.assertEqual(events[-1]['type'],'error')
+
+    def test_usage_and_unknown_errors_never_retry_or_log_arbitrary_remote_codes(self):
+        for code in ('subscription_sharing_usage_limit_exceeded','private-error-code'):
+            self.requests.clear()
+            self.responses.append(stream({'type':'error','code':code,'message':'private-error-text'}))
+            with self.assertLogs('ari.chatgpt_provider',level='WARNING') as logs:
+                events=list(self.provider.chat(self.messages))
+            self.assertEqual(len(self.requests),1)
+            self.assertEqual(events[-1]['type'],'error')
+            self.assertNotIn('private-',str(events)+str(logs.output))
+
+    def test_only_explicit_summary_text_becomes_transient_progress(self):
+        self.provider.reasoning='low'
+        self.responses.append(stream(
+            {'type':'response.reasoning_text.delta','delta':'private-raw-reasoning'},
+            {'type':'response.reasoning_summary_text.delta','output_index':0,'summary_index':0,'delta':'**Searching your '},
+            {'type':'response.reasoning_summary_text.delta','output_index':0,'summary_index':0,'delta':'music library**\nLonger user-facing summary'},
+            completed([{'type':'reasoning','encrypted_content':'private-ciphertext'},
+                {'type':'message','content':[{'type':'output_text','text':'Finished'}]}])))
+        events=list(self.provider.chat(self.messages))
+        self.assertIn({'type':'working','label':'Searching your music library','source':'reasoning_summary'},events)
+        self.assertNotIn('private-',str(events))
+        self.assertNotIn('Longer user-facing summary',str(events))
+
+    def test_unsupported_summary_alone_falls_back_without_changing_effort_or_tools(self):
+        self.provider.reasoning='high'
+        requests=[]
+        def opened(url,**kwargs):
+            requests.append(copy.deepcopy(kwargs['body']))
+            if len(requests)==1:raise NetworkError(400,'unsupported_parameter','reasoning.summary')
+            return stream(completed([{'type':'message','content':[{'type':'output_text','text':'Ready'}]}]))
+        with patch.object(self.provider.manager.transport,'open',side_effect=opened):
+            events=list(self.provider.chat(self.messages,self.tools))
+        self.assertEqual(requests[0]['reasoning'],{'effort':'high','summary':'auto'})
+        self.assertEqual(requests[1]['reasoning'],{'effort':'high'})
+        self.assertEqual(requests[0]['tools'],requests[1]['tools'])
+        self.assertEqual(requests[0]['model'],requests[1]['model'])
+        self.assertIn({'type':'text','text':'Ready'},events)
+        self.assertFalse(self.provider._summaries_available)
+
     def test_hosted_search_replaces_local_web_tools_and_preserves_citations(self):
         self.tools += [{"type":"function", "function":{"name":name,"parameters":{}}} for name in ('web_search','fetch_page','wikipedia')]
         self.responses.append(stream({'type':'response.web_search_call.searching'},
@@ -40,7 +138,7 @@ class Responses(unittest.TestCase):
         self.provider.reasoning = 'high'
         self.responses.append(stream(completed([])))
         list(self.provider.chat(self.messages))
-        self.assertEqual(self.requests[-1][1]['body']['reasoning'], {'effort':'high'})
+        self.assertEqual(self.requests[-1][1]['body']['reasoning'], {'effort':'high','summary':'auto'})
         self.provider.reasoning = None
         self.messages[-1]['content'] = 'A different question'
         self.responses.append(stream(completed([])))

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 import threading
 import time
 from urllib.parse import urlsplit
@@ -24,6 +25,27 @@ _EVENT_TYPES = frozenset(("response.created", "response.in_progress", "response.
     "response.failed", "response.incomplete", "error"))
 _ITEM_TYPES = frozenset(("message", "function_call", "reasoning", "web_search_call", "custom_tool_call",
     "tool_search_call", "mcp_call", "computer_call"))
+_TRANSIENT_CODES = frozenset(('server_error','internal_error','service_unavailable','server_is_overloaded','overloaded_error','connection_closed'))
+_ERROR_CODES = _TRANSIENT_CODES | frozenset(('subscription_sharing_usage_limit_exceeded',
+    'subscription_sharing_user_not_eligible','rate_limit_exceeded','invalid_request_error',
+    'unsupported_tool','unsupported_tool_type','unsupported_value','unsupported_parameter','unknown_parameter'))
+
+
+def _failure_event(error, *, remote=False):
+    return {'type':'error','message':str(error),
+            'retryable':(error.code in _TRANSIENT_CODES or error.status in (500,502,503,504)
+                        or (not remote and error.status==0 and not error.code)) and error.retry_after != -1,
+            'retry_after':error.retry_after,
+            'summary_unavailable':error.status==400 and error.param=='reasoning.summary'
+                        and error.code in ('unsupported_value','unsupported_parameter','unknown_parameter','invalid_request_error')}
+
+
+def _progress_heading(summary):
+    # Display only the provider's explicit user-facing summary, never its raw
+    # reasoning_text or encrypted_content. One short plain-text line avoids
+    # dumping a reasoning transcript into the conversation or activity log.
+    first=next((line.strip() for line in summary.splitlines() if line.strip()),'')
+    return ' '.join(re.sub(r'^[#*\s]+|[*\s]+$', '', first.replace('\0','')).split())[:160]
 
 
 def _count_shape(counts, value, allowed):
@@ -95,8 +117,37 @@ class ChatGPTProvider:
         self.reasoning = reasoning
         self.allow_search = allow_search
         self._messages, self._history = [], []
+        self._summaries_available = True
 
     def chat(self, messages, tools=None, *, max_tokens=800, temperature=.4, stop: threading.Event | None = None):
+        summary=bool(self.reasoning and self._summaries_available)
+        retries=0
+        while stop is None or not stop.is_set():
+            streamed=False
+            failure=None
+            for event in self._chat_once(messages,tools,max_tokens=max_tokens,temperature=temperature,
+                                         stop=stop,reasoning_summary=summary):
+                if event['type']=='error':
+                    failure=event
+                    break
+                streamed = streamed or event['type'] in ('text','final_text','tool_call')
+                yield event
+            if failure is None:
+                return
+            if not streamed and summary and failure.get('summary_unavailable'):
+                self._summaries_available=summary=False
+                yield {'type':'working','label':'Continuing without reasoning summaries'}
+                continue
+            if not streamed and failure.get('retryable') and retries<2:
+                retries+=1
+                yield {'type':'working','label':f'Retrying ChatGPT ({retries}/2)'}
+                waiter=stop if stop is not None else threading.Event()
+                if waiter.wait(max(.5*retries,failure.get('retry_after') or 0)):return
+                continue
+            yield {'type':'error','message':failure['message']}
+            return
+
+    def _chat_once(self, messages, tools=None, *, max_tokens=800, temperature=.4, stop=None, reasoning_summary=False):
         # max_tokens and temperature belong to the shared interface but are not
         # supported request fields on the ChatGPT plan route.
         if stop is not None and stop.is_set():
@@ -125,9 +176,12 @@ class ChatGPTProvider:
             body.setdefault("tools", []).append({"type": "web_search"})
         if self.reasoning:
             body["reasoning"] = {"effort": self.reasoning}
+            if reasoning_summary:body['reasoning']['summary']='auto'
         completed, output, streamed, token = False, [], False, ""
         finished_items, event_counts, item_counts = {}, {}, {}
         terminal_count, usable = 0, False
+        failure_code, failure_status = '', 0
+        summaries={}
         try:
             token = self.manager.access(self.profile)
             with self.manager.transport.open(API + "/responses", token=token, body=body, timeout=90) as response:
@@ -145,6 +199,16 @@ class ChatGPTProvider:
                             raise ValueError()
                         streamed = streamed or bool(event["delta"])
                         yield {"type": "text", "text": event["delta"]}
+                    elif kind == 'response.reasoning_summary_text.delta':
+                        delta=event.get('delta')
+                        index,part=event.get('output_index'),event.get('summary_index')
+                        if not isinstance(delta,str) or type(index) is not int or type(part) is not int:
+                            continue
+                        if not (0<=index<256 and 0<=part<256):continue
+                        key=(index,part)
+                        summaries[key]=(summaries.get(key,'')+delta)[:2000]
+                        heading=_progress_heading(summaries[key])
+                        if heading:yield {'type':'working','label':heading,'source':'reasoning_summary'}
                     elif kind == "response.output_item.done":
                         index, item = event.get("output_index"), event.get("item")
                         if (type(index) is not int or not 0 <= index < 256 or not isinstance(item, dict)
@@ -154,7 +218,13 @@ class ChatGPTProvider:
                         finished_items[index] = item
                     elif kind in ("response.failed", "error"):
                         error = event.get("response", {}).get("error") or event.get("error") or event
-                        yield {"type": "error", "message": error_message(0, error.get("code", ""))}
+                        code=error.get('code','') if isinstance(error,dict) else ''
+                        failure_code=code if isinstance(code,str) and code in _ERROR_CODES else 'other'
+                        failure=NetworkError(0,code)
+                        result=_failure_event(failure,remote=True)
+                        if failure_code=='other':
+                            result['message']='ChatGPT returned an error while continuing this task. The task has not finished.'
+                        yield result
                         return
                     elif kind == "response.incomplete":
                         raise ChatGPTError("ChatGPT's answer was incomplete. Try again or choose another model.")
@@ -167,7 +237,7 @@ class ChatGPTProvider:
             if stop is not None and stop.is_set():
                 return
             if not completed:
-                raise ChatGPTError("The ChatGPT connection ended before the answer completed. Try again.")
+                raise NetworkError(0,'connection_closed')
             calls, call_ids, final_text, sources = [], set(), [], []
             searched = False
             for item in output:
@@ -193,6 +263,11 @@ class ChatGPTProvider:
                         sources.extend(citations)
                 elif item.get("type") == "web_search_call":
                     searched = True
+                elif item.get('type')=='reasoning' and not summaries:
+                    for part in item.get('summary',[])[:30]:
+                        if isinstance(part,dict) and part.get('type')=='summary_text' and isinstance(part.get('text'),str):
+                            heading=_progress_heading(part['text'])
+                            if heading:yield {'type':'working','label':heading,'source':'reasoning_summary'}
             if not calls and not any(piece.strip() for piece in final_text) and not streamed:
                 raise ChatGPTError("ChatGPT finished without returning a reply or an application action. Try again.")
             usable = True
@@ -209,20 +284,25 @@ class ChatGPTProvider:
                 yield {"type": "sources", "sources": sources[:100]}
             yield from calls
         except NetworkError as error:
+            failure_code=error.code if error.code in _ERROR_CODES else ('other' if error.code else '')
+            failure_status=error.status
             if error.status == 401 and token:
                 try:
                     self.manager.require_signin(self.profile, token)
                 except ChatGPTError:
                     pass
-            yield {"type": "error", "message": str(error)}
+            yield _failure_event(error)
         except ChatGPTError as error:
             yield {"type": "error", "message": str(error)}
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        except OSError:
+            failure_code='connection_closed'
+            yield _failure_event(NetworkError(0,'connection_closed'))
+        except (ValueError, KeyError, TypeError, AttributeError):
             yield {"type": "error", "message": "ChatGPT's answer could not be completed safely. Try again."}
         finally:
             logging.getLogger(__name__).log(logging.DEBUG if usable else logging.WARNING,
-                "Ari ChatGPT stream shape: completed=%s terminal_items=%d done_items=%d streamed_text=%s events=%s output=%s",
-                completed, terminal_count, len(finished_items), streamed, event_counts, item_counts)
+                "Ari ChatGPT stream shape: completed=%s terminal_items=%d done_items=%d streamed_text=%s events=%s output=%s failure_code=%s http_status=%d",
+                completed, terminal_count, len(finished_items), streamed, event_counts, item_counts, failure_code, failure_status)
 
 
 def _cited_text(part):

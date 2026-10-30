@@ -222,7 +222,8 @@ class BarSearch:
             word.add_css_class("lumaui-bar-search-word")
             well.append(word)
             well.word = word
-        entry = Gtk.Text(hexpand=True, placeholder_text=self.placeholder, width_chars=1)
+        entry = Gtk.Text(hexpand=True, placeholder_text=self.placeholder, width_chars=1,
+                         accessible_role=Gtk.AccessibleRole.TEXT_BOX)
         entry.update_property([Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.PLACEHOLDER],
                               [self.label, self.placeholder])
         entry.set_input_purpose(Gtk.InputPurpose.FREE_FORM)

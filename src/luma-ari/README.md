@@ -38,9 +38,21 @@ per model and account, and are validated before use. No model-name lookup table
 invents reasoning levels. Local models explicitly marked as supporting thinking
 have a separate on/off choice. Replies record the selected setting.
 
+When the ChatGPT connection supplies a public reasoning summary, its short
+heading appears as transient progress. Raw reasoning text and encrypted
+reasoning are never displayed or stored in the activity log. Ari requests
+`reasoning.summary=auto` with a supported effort setting; an explicit rejection
+of that optional field continues without summaries, preserving model, effort
+and tools. Support on a particular account/model remains provider-dependent.
+Known temporary service/connection failures retry at most twice, before any
+text or tool call from that attempt has been released. Earlier application
+actions are not replayed. Usage, authorization and unknown errors stay explicit.
+
 Ari opens applications and changes personal settings through the existing
 settings catalogue and media controls. App opening has a separate permission
-and opens directly in the normal autonomy mode.
+and requests its window directly in the normal autonomy mode. An existing
+GApplication owner is reported as already running. A launch acknowledgement
+does not claim that a new window was opened or the requested task completed.
 
 **Permissions and autonomy** is available in Ari's app menu and model picker,
 and with `ari --settings permissions`. Choose **Ask every time**, **Ask for

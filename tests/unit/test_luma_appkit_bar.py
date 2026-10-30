@@ -296,6 +296,7 @@ class Parts(unittest.TestCase):
                          on_close=lambda: closed.append(1))
         center.show_bar([entry])
         self.assertEqual(center.layout(1000)[1], 600)
+        self.assertEqual(entry.widget.line.get_accessible_role(), Gtk.AccessibleRole.TEXT_BOX)
         self.assertTrue(entry.widget.chip_box.get_visible())
         entry.set_chips([("clock", "3 pm"), "Tomorrow"])
         labels = []
@@ -522,6 +523,7 @@ class Sharing(unittest.TestCase):
                                    on_choice=lambda c, v: got.append((c, v)))
         _spin()
         self.assertEqual(sheet.mode, "work-together")
+        self.assertEqual(sheet.invite.get_accessible_role(), Gtk.AccessibleRole.TEXT_BOX)
         sheet.invite.set_text("no")
         self.assertTrue(sheet.suggestions.get_visible())
         sheet.invite.emit("activate")

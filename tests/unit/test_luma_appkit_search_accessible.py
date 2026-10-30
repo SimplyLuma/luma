@@ -35,10 +35,13 @@ class SearchAccessibility(unittest.TestCase):
             self.assertTrue(handled)
             self.assertTrue(center.searching)
             self.assertEqual(center._search[1].widget.get_accessible_role(), Gtk.AccessibleRole.SEARCH)
+            self.assertEqual(center._search[1].entry.get_accessible_role(), Gtk.AccessibleRole.TEXT_BOX)
             center.close_search()
             self.assertFalse(center.searching)
             window.close(); settle()
-        self.assertEqual(make_control(BarSearch()).get_accessible_role(), Gtk.AccessibleRole.SEARCH)
+        search=BarSearch()
+        self.assertEqual(make_control(search).get_accessible_role(), Gtk.AccessibleRole.SEARCH)
+        self.assertEqual(search.entry.get_accessible_role(), Gtk.AccessibleRole.TEXT_BOX)
 
 
 if __name__ == '__main__':

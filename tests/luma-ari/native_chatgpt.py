@@ -40,7 +40,7 @@ def daemon():
         if url == chatgpt.API + "/responses":
             body = kwargs["body"]
             assert {"type":"web_search"} in body["tools"]
-            assert body.get("reasoning") == {"effort":"high"}
+            assert body.get("reasoning") == {"effort":"high","summary":"auto"}
             assert "does not give you access to ChatGPT chats or memory" in body["instructions"]
             if os.environ.get("ARI_CHATGPT_CAPTURE"):
                 Path(os.environ["ARI_CHATGPT_CAPTURE"], "request-capabilities.json").write_text(json.dumps({
@@ -50,7 +50,9 @@ def daemon():
             if any("limit" in str(item.get("content", "")) for item in inputs if item.get("role") == "user"):
                 return stream({"type": "response.output_text.delta", "delta": "Unfinished test reply"},
                               {"type": "response.failed", "response": {"error": {"code": "subscription_sharing_usage_limit_exceeded"}}})
-            return stream({"type": "response.output_text.delta", "delta": "Hello from the test model."}, completed([
+            return stream({'type':'response.reasoning_summary_text.delta','output_index':0,'summary_index':0,
+                           'delta':'**Preparing a short story**\nProvider summary body'},
+                          {"type": "response.output_text.delta", "delta": "Hello from the test model."}, completed([
                 {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Hello from the test model."}]}]))
         return original_open(url, **kwargs)
     transport.json, transport.open = read, opened
@@ -196,10 +198,20 @@ def main():
         window.daemon.call('Settings',None,(),permission_status.append)
         settle(lambda:bool(permission_status))
         assert json.loads(permission_status[0][0])['action_permissions']['enter_text@weather']=='allow'
+        progress=[]
+        original_event=window.daemon.event
+        def observed_event(request,raw):
+            event=json.loads(raw)
+            if event.get('source')=='reasoning_summary':progress.append(event)
+            original_event(request,raw)
+        window.daemon.event=observed_event
         window.send("Tell me a short story about clouds")
         settle(lambda: not window.state["busy"])
         conversation = next(item for item in window.data["conversations"] if item["id"] == window.state["cur"])
         assert any(item.get("a") == "Hello from the test model." for item in conversation["msgs"])
+        assert any(event.get('label')=='Preparing a short story' for event in progress),progress
+        assert not any('think' in item for item in conversation['msgs'])
+        assert not any('Provider summary body' in str(item) for item in conversation['msgs'])
         window.send("Explain a usage limit")
         settle(lambda: not window.state["busy"])
         assert "Manage usage" in conversation["msgs"][-1].get("a", "")
