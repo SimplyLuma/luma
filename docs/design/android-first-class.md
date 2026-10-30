@@ -44,6 +44,17 @@ API implementation is never counted as compatibility.
 | [Drion](https://actinis.io/drion/how-it-works) | Author describes retained Android framework with native service replacements; public source/build qualification was unavailable in this investigation. | Interesting seam to investigate independently; vendor claims are not Luma test results. |
 | [Digitalis integration](https://github.com/DigitalisX64/digitalis/blob/e81431d67766f9a827b568b9137da131daecfa87/docs/integrating-digitalis.md) | Source-buildable ARM64-on-x86 Android Native Bridge candidate, tied to matching Android guest libraries/platform. | Evaluate after the platform rebase; do not insert Android 16 libraries into Android 13 images. |
 
+The October30 source intake records an Android16/Lineage23.2 evaluation in
+[`lineage-23.2-intake.json`](../../config/android/candidates/lineage-23.2-intake.json).
+It pins the upstream manifest, manifest fragments and33 local project revisions;
+the complete platform graph and builds are still unqualified. The upstream
+[manifest](https://github.com/WayDroid-ATV/android_vendor_waydroid/blob/dd850b3d341195f3a1924ce994d48d3f647988d6/manifest_scripts/manifests-36/02-waydroid.xml)
+includes four proprietary/service projects for Widevine, Google native
+translation and phone/TV GApps. Luma excludes those projects from this candidate;
+source availability does not establish redistribution rights. Port the Luma
+framework, graphics and host-service integration against this separate complete
+platform; retain matching system/vendor pairs and validate both CPUs.
+
 The current Luma source pins Android 13/Lineage 20. Repairing that baseline makes
 failures reproducible; it does not make it the final maintained shipping platform.
 Newer source/image candidates must be pinned, audited, ported and built for both

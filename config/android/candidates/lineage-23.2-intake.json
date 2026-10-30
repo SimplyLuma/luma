@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "candidate": "android16-lineage23.2",
+  "status": "evaluation-only",
+  "observed_utc": "2026-10-30T16:34:35.466568+00:00",
+  "base_manifest": {
+    "repository": "LineageOS/android",
+    "revision": "9776e518de506f610218c4caa6c1fddff46873af",
+    "branch": "lineage-23.2"
+  },
+  "local_manifest": {
+    "repository": "WayDroid-ATV/android_vendor_waydroid",
+    "revision": "dd850b3d341195f3a1924ce994d48d3f647988d6"
+  },
+  "manifest_files": [
+    {
+      "url": "https://raw.githubusercontent.com/WayDroid-ATV/android_vendor_waydroid/dd850b3d341195f3a1924ce994d48d3f647988d6/manifest_scripts/generate-manifest.sh",
+      "sha256": "0c03fc0743d4d46967a5f8f86c4930915c85d96965852305f97b7c9c49020127"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/WayDroid-ATV/android_vendor_waydroid/dd850b3d341195f3a1924ce994d48d3f647988d6/manifest_scripts/manifests-36/00-remotes.xml",
+      "sha256": "64afb87c9e12863354b75ab3df9c0b41abf19fd1e9e1da043515358bb80c4eaa"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/WayDroid-ATV/android_vendor_waydroid/dd850b3d341195f3a1924ce994d48d3f647988d6/manifest_scripts/manifests-36/01-removes.xml",
+      "sha256": "d0e13f5f6052d2af5aab0b1777251d4feb4f49891819e75537748bf7d24c0819"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/WayDroid-ATV/android_vendor_waydroid/dd850b3d341195f3a1924ce994d48d3f647988d6/manifest_scripts/manifests-36/02-waydroid.xml",
+      "sha256": "d8346aff2f551d95a50b61b0e5fb9e3e79e6b1bf93837e8e09ba8e6b64582d50"
+    }
+  ],
+  "projects": [
+    {
+      "path": "device/waydroid/waydroid",
+      "repository": "WayDroid-ATV/android_device_waydroid_waydroid",
+      "revision": "bebc2281d88ca9ef7e3924e0e8e7c520e82bd2a6",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "frameworks/waydroid",
+      "repository": "WayDroid-ATV/android_frameworks_waydroid",
+      "revision": "1c7df400790d10cea4c670d0ffd6ca445a7c6787",
+      "upstream_ref": "refs/heads/lineage-23.0"
+    },
+    {
+      "path": "hardware/waydroid",
+      "repository": "WayDroid-ATV/android_hardware_waydroid",
+      "revision": "3af187c1de514158de9cf9bd27334c2040e30f7b",
+      "upstream_ref": "refs/heads/lineage-23.0"
+    },
+    {
+      "path": "vendor/extra",
+      "repository": "WayDroid-ATV/android_vendor_waydroid",
+      "revision": "dd850b3d341195f3a1924ce994d48d3f647988d6",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "vendor/waydroid/init",
+      "repository": "WayDroid-ATV/android_vendor_waydroid_init",
+      "revision": "e97b43d97f70f0d647fdd9d477192f38273cd3e8",
+      "upstream_ref": "refs/heads/main"
+    },
+    {
+      "path": "packages/apps/WaydroidUpdater",
+      "repository": "WayDroid-ATV/android_packages_apps_WaydroidUpdater",
+      "revision": "e61d1230459830d1421f2bb330c7a8c4f49d597e",
+      "upstream_ref": "refs/heads/lineage-20"
+    },
+    {
+      "path": "external/libsndfile",
+      "repository": "WayDroid-ATV/android_external_libsndfile",
+      "revision": "52a8dee7e36ee12d4004f9f8c0b9905cb8f9d615",
+      "upstream_ref": "refs/heads/lineage-20"
+    },
+    {
+      "path": "external/pulseaudio",
+      "repository": "WayDroid-ATV/android_external_pulseaudio",
+      "revision": "633c06fce783825f85dab8a3875a06a1e89e8685",
+      "upstream_ref": "refs/heads/lineage-21"
+    },
+    {
+      "path": "external/drm_hwcomposer",
+      "repository": "android-generic/external_drm_hwcomposer",
+      "revision": "5875f8b4e36b0497b385a314276571a5f182426e",
+      "upstream_ref": "refs/heads/main"
+    },
+    {
+      "path": "external/mesa3d",
+      "repository": "WayDroid-ATV/android_external_mesa3d",
+      "revision": "d1861f7e541eaf563a64c11e6b6ce6d1507360ee",
+      "upstream_ref": "refs/heads/lineage-18.1"
+    },
+    {
+      "path": "external/minigbm",
+      "repository": "WayDroid-ATV/android_external_minigbm",
+      "revision": "9b85c0b9fd28abfb5f801cb8032621eee9ed3e42",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "external/libdrm",
+      "repository": "WayDroid-ATV/android_external_libdrm",
+      "revision": "f17f1cfe94096d49b56f37d7015d0aeb2cae84e6",
+      "upstream_ref": "refs/heads/lineage-20"
+    },
+    {
+      "path": "external/llvm-project",
+      "repository": "android-generic/external_llvm-project",
+      "revision": "bd650b421a8ba5c785ad6d8a2a64e304c6994e91",
+      "upstream_ref": "refs/heads/release_22.x"
+    },
+    {
+      "path": "external/rust/hbm",
+      "repository": "WayDroid-ATV/android_external_rust_hbm",
+      "revision": "92ad93a4d9418b065bf986d77460ef089cda7cdf",
+      "upstream_ref": "refs/heads/main"
+    },
+    {
+      "path": "external/ffmpeg",
+      "repository": "WayDroid-ATV/android_external_ffmpeg",
+      "revision": "0b23ebd27a384f9223335359e2304dbdf878fc64",
+      "upstream_ref": "refs/heads/release/7.1/14-x86"
+    },
+    {
+      "path": "external/stagefright-plugins",
+      "repository": "WayDroid-ATV/android_external_stagefright-plugins",
+      "revision": "1bc14018bd637bdd7f0869edf72cfaec6de10c76",
+      "upstream_ref": "refs/heads/14-x86/ffmpeg-7.1"
+    },
+    {
+      "path": "external/libva",
+      "repository": "WayDroid-ATV/android_external_libva",
+      "revision": "e575c67c1d3e9502be39d41a54d4da1b91477e63",
+      "upstream_ref": "refs/heads/14-x86"
+    },
+    {
+      "path": "external/libva-utils",
+      "repository": "intel/libva-utils",
+      "revision": "5896b6779d36f83bf483aff62da8aae30ba8d664",
+      "upstream_ref": "refs/tags/2.23.0"
+    },
+    {
+      "path": "vendor/intel/gmmlib",
+      "repository": "intel/gmmlib",
+      "revision": "0246660b2ade17afc1c9c4c510368fa649ca809f",
+      "upstream_ref": "refs/tags/intel-gmmlib-22.10.0"
+    },
+    {
+      "path": "vendor/intel/media-driver",
+      "repository": "intel/media-driver",
+      "revision": "1d2d8e96aeaba0471dc7fd0a7e85190519758fc5",
+      "upstream_ref": "refs/tags/intel-media-26.1.5"
+    },
+    {
+      "path": "vendor/intel/vaapi-driver",
+      "repository": "WayDroid-ATV/android_vendor_intel_vaapi-driver",
+      "revision": "8dd6659c53e66f787e92d38852393c28ba4e0360",
+      "upstream_ref": "refs/heads/14-x86"
+    },
+    {
+      "path": "external/rust/ninja-to-soong",
+      "repository": "WayDroid-ATV/android_external_rust_ninja-to-soong",
+      "revision": "10730924347d153e96c0a1ecc81796899df6770d",
+      "upstream_ref": "refs/heads/main"
+    },
+    {
+      "path": "prebuilts/mesa-tools",
+      "repository": "WayDroid/android_prebuilts_mesa-tools",
+      "revision": "b5de4e0af2f1e76b53b000fb70c18f1757c7e28f",
+      "upstream_ref": "refs/heads/main"
+    },
+    {
+      "path": "frameworks/av",
+      "repository": "WayDroid-ATV/android_frameworks_av",
+      "revision": "d73553c0e236482b85560f309489b5f00e3f79b4",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "frameworks/base",
+      "repository": "WayDroid-ATV/android_frameworks_base",
+      "revision": "b3581374be6fd65f530c29731ecdd9fb2bddc3ec",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "frameworks/native",
+      "repository": "WayDroid-ATV/android_frameworks_native",
+      "revision": "09fa177e726aeef8a12dacf39cbb6a3e031e8ea9",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "hardware/interfaces",
+      "repository": "WayDroid-ATV/android_hardware_interfaces",
+      "revision": "4afbf37703c54f617e73a9de9ae56c94fa4860ac",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "system/core",
+      "repository": "WayDroid-ATV/android_system_core",
+      "revision": "ad6a91f326d1cf3fc8aeb5141445fabdde5bb27c",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "system/vold",
+      "repository": "WayDroid-ATV/android_system_vold",
+      "revision": "f8dc9de87ca1cfb33c0da4e2e280e268317cc018",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "packages/apps/Settings",
+      "repository": "WayDroid-ATV/android_packages_apps_Settings",
+      "revision": "be45ddd9e5145d049fe9c7af2cb5e2f7f1b363ab",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "packages/apps/TvSettings",
+      "repository": "WayDroid-ATV/android_packages_apps_TvSettings",
+      "revision": "01f7b09b05ccad13213a3bc46502b3af87799332",
+      "upstream_ref": "refs/heads/lineage-23.2"
+    },
+    {
+      "path": "external/redroid-prebuilts",
+      "repository": "WayDroid-ATV/android_external_redroid-prebuilts",
+      "revision": "048531b1934af0e5785e93556c740005d3f7e7cb",
+      "upstream_ref": "refs/heads/master"
+    },
+    {
+      "path": "external/rust/android-crates-io",
+      "repository": "WayDroid-ATV/android_external_rust_android-crates-io",
+      "revision": "a0fe673b5f877fb0caff27afc014ed89a010cb0d",
+      "upstream_ref": "refs/heads/android16-qpr2-release"
+    }
+  ],
+  "excluded_projects": [
+    {
+      "path": "vendor/google/proprietary/widevine-prebuilt",
+      "repository": "supremegamers/vendor_google_proprietary_widevine-prebuilt",
+      "reason": "Proprietary/service payload; distribution rights are not assumed."
+    },
+    {
+      "path": "vendor/google/proprietary/ndk_translation-prebuilt",
+      "repository": "WayDroid-ATV/vendor_google_proprietary_ndk_translation-prebuilt",
+      "reason": "Proprietary/service payload; distribution rights are not assumed."
+    },
+    {
+      "path": "vendor/gapps",
+      "repository": "WayDroid-ATV/android_vendor_gapps",
+      "reason": "Proprietary/service payload; distribution rights are not assumed."
+    },
+    {
+      "path": "vendor/gapps_tv",
+      "repository": "WayDroid-ATV/android_vendor_gapps_tv",
+      "reason": "Proprietary/service payload; distribution rights are not assumed."
+    }
+  ],
+  "scope": "Pinned upstream manifest and local project metadata. The full platform project graph, product configuration, source patches, licenses and both CPU builds still require validation. Accepted runtime inputs are unchanged."
+}
