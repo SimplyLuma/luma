@@ -410,7 +410,7 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
   }
 )
 
-widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.1.fc44.$architecture.rpm"
+widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.3.fc44.$architecture.rpm"
 [ -f "$widgets_rpm" ] || {
   printf 'error: build the shared Home widget package first: %s\n' "$widgets_rpm" >&2
   exit 1
