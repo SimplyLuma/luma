@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T02:42:00+00:00
+- Updated: 2026-10-30T02:54:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,31 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT02:42Z — no usable-build or inline-reply qualification claim:
+CURRENT02:54Z — buffered comparison active; success-only boot handoff waiting:
+- r27 conversion completed (raw48GiB virtual,35,024,945,152 allocated bytes).
+  Direct-read qemu-img comparison was slow on the same HDD; deliberately stopped
+  original normalf0197be8 at02:50:20Z, result143. Original handoff962aa96c saw
+  that failure and exited1 WITHOUT booting. Neither is a passing qualification.
+- LIVE dev-android-runtime-raw-compare-56b49bea.service normal4GiB/root3GiB,
+  driver runtime-raw-compare-r29. Full qemu-img compare now uses buffered reads;
+  comparison.json and qemu-compare.log are its authoritative outcome. No Android
+  performance claim. Both owned VMs remain off during comparison.
+- LIVE dev-android-raw-qualification-handoff-5f3891b0.service normal1GiB,
+  private raw-qualification-handoff-r30. It requires exact comparison exit0 and
+  verified proof, then normally admits frozen reply-vm-r28 at10GiB/root1GiB/
+  VM6GiB/QEMU8GiB. Child result propagates; failure never starts a VM.
+- r28 readiness uses QEMU guest-agent read-only observations instead of repeated
+  PAM logins; records guest CPU/IO/memory pressure and domain counters. Disabled
+  agent commands fail explicitly. Real APK authorization still uses the actual
+  graphical user manager, not guest-agent execution. Frozen helper preflight
+ 6c3c5dec PASSED syntax and all manifest bytes; no UI/runtime pass yet.
+- Raw disk physical parents are private. r28 uses a temporary single-file bind
+  inside the existing owned VM image directory, not broader shared-parent ACLs.
+  It retains original XML/disk, checks alias inode and qemu readability, and
+  restores XML/unmounts after shutdown; wrapper has a fallback restore path.
+  Actual restored evidence still required. Do not modify pinned r28 once live.
+
+HISTORICAL02:42Z — no usable-build or inline-reply qualification claim:
 - Corrected runtime95/Shell127 and SDK5 images are installed. r20 ba8fb087
   booted actual user Shell127 with successful native boot health and no bootstrap
   mounts; the owned reply extension did not initialize. No Android reply reached.
