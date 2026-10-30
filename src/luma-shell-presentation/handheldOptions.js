@@ -4,7 +4,6 @@
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
-import {gettext as _} from 'gettext';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {statusInsets} from './safeAreas.js';
 import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
@@ -16,6 +15,8 @@ export class HandheldOptions {
         this.enabled = false;
         this._reposition = this.menu._boxPointer._reposition;
         this._updateFlip = this.menu._boxPointer._updateFlip;
+        this._pointerOpen = this.menu._boxPointer.open;
+        this._pointerClose = this.menu._boxPointer.close;
         this._pointerStyle = this.menu._boxPointer.get_style();
         // Closing a native detail page while its popup is unmapped must not
         // leave a fade queued on the next presentation's main page.
@@ -64,11 +65,6 @@ export class HandheldOptions {
                 adjustment.lower, Math.max(adjustment.lower, adjustment.upper - adjustment.page_size));
         });
         this.scroll.add_action(pan);
-        this.closeButton = new St.Button({label: _('Close'), accessible_name: _('Close Quick Options'),
-            can_focus: true, reactive: true, x_expand: true,
-            style: 'min-height: 44px; padding: 0; border-radius: 16px; background-color: rgba(128,128,128,0.14);'});
-        this.closeButton.connect('clicked', () => this.close());
-        this.menu.box.add_child(this.closeButton);
         // Native gestures belong to the painted popup, not its zero-sized
         // wrapper. Only a drag beginning on the bottom dismissal area qualifies.
         this._dismissGesture = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
@@ -110,8 +106,7 @@ export class HandheldOptions {
             `width: ${width}px; min-width: 0; max-width: ${width}px;`,
             compact ? `height: ${height}px; padding: 16px; border-width: 0; margin: 0; border-radius: 0;` : null].filter(Boolean).join('; '));
         this.scroll.y_expand = true;
-        this.closeButton.visible = compact;
-        this.scroll.set_style(`max-height: ${compact ? height - 52 : Math.max(120, monitor.height / scale - 112)}px;`);
+        this.scroll.set_style(`max-height: ${compact ? height : Math.max(120, monitor.height / scale - 112)}px;`);
         if (compact && this.menu._lumaHeader) {
             const safe = statusInsets(this.home._displayGeometry, monitor, 44 * scale, 16 * scale, 8 * scale);
             this.menu._lumaHeader.set_style(`padding: 0 ${Math.max(0, safe.right / scale - 16)}px 0 ${Math.max(0, safe.left / scale - 16)}px;`);
@@ -120,11 +115,38 @@ export class HandheldOptions {
         if (compact) {
             pointer.set_style('-arrow-rise: 0; -arrow-base: 0; -arrow-border-width: 0; -boxpointer-gap: 0;');
             pointer._reposition = box => {
-                box.x1 = monitor.x; box.y1 = monitor.y;
-                box.x2 = monitor.x + monitor.width; box.y2 = monitor.y + monitor.height;
+                const width = box.get_width(), height = box.get_height();
+                box.x1 = monitor.x + monitor.width - width; box.y1 = monitor.y;
+                box.x2 = box.x1 + width; box.y2 = box.y1 + height;
             };
             pointer._updateFlip = () => {};
+            pointer.clip_to_allocation = true;
+            pointer.open = (animation, complete) => {
+                pointer.remove_all_transitions();
+                pointer._muteKeys = false;
+                pointer._muteInput = true;
+                pointer.opacity = 255;
+                pointer.set_scale(1, 1);
+                pointer.translation_x = pointer.translation_y = 0;
+                pointer.set_size(Math.min(96 * scale, monitor.width), 44 * scale);
+                pointer.show();
+                pointer.ease({width: monitor.width, height: monitor.height,
+                    duration: animation && St.Settings.get().enable_animations ? 460 : 0,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUART,
+                    onComplete: () => {pointer._muteInput = false; complete?.();}});
+            };
+            pointer.close = (animation, complete) => {
+                if (!pointer.visible) return;
+                pointer.remove_all_transitions();
+                pointer._muteInput = pointer._muteKeys = true;
+                pointer.ease({width: Math.min(96 * scale, monitor.width), height: 44 * scale, opacity: 0,
+                    duration: animation && St.Settings.get().enable_animations ? 220 : 0,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUART,
+                    onComplete: () => {pointer.hide(); complete?.();}});
+            };
         } else {
+            pointer.open = this._pointerOpen; pointer.close = this._pointerClose;
+            pointer.set_size(-1, -1); pointer.clip_to_allocation = false;
             pointer._reposition = this._reposition;
             pointer._updateFlip = this._updateFlip;
             pointer.set_style(this._pointerStyle);
@@ -155,13 +177,16 @@ export class HandheldOptions {
         this.scroll.set_child(null);
         this.original.parent.insert_child_at_index(main, this.original.index);
         this.scroll.destroy();
-        this.closeButton.destroy();
         this.menu.actor.disconnect(this._backId);
         this.menu._boxPointer.remove_action(this._dismissGesture);
         this.menu.box.set_style(this.original.style);
         this.menu._lumaHeader?.set_style(this.original.headerStyle);
         this.menu.box.remove_style_class_name('lumaui-touch-options');
         this.menu._boxPointer.setPosition(this.menu.sourceActor, .5);
+        this.menu._boxPointer.open = this._pointerOpen;
+        this.menu._boxPointer.close = this._pointerClose;
+        this.menu._boxPointer.set_size(-1, -1);
+        this.menu._boxPointer.clip_to_allocation = false;
         this.menu._boxPointer._reposition = this._reposition;
         this.menu._boxPointer._updateFlip = this._updateFlip;
         this.menu._boxPointer.set_style(this._pointerStyle);

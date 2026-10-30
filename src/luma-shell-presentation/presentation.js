@@ -149,7 +149,8 @@ export class Presentation {
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter);
         homePan.connect('recognize', gesture => {
             this._homePanDistance = 0;
-            if (this.mode === 'tablet') this._tasks.beginNavigation(this._gestureBar, gesture);
+            this._tasks.beginNavigation(this._gestureBar, gesture);
+            this._tasks.beginLift();
         });
         homePan.connect('pan-update', gesture => {
             this._homePanDistance += gesture.get_delta_abs().get_y();
@@ -157,14 +158,14 @@ export class Presentation {
         });
         homePan.connect('end', () => {
             this._tasks.endNavigation();
-            if (this.mode === 'tablet') this._tasks.verticalEnd(this._homePanDistance);
-            else if (this._homePanDistance < -48) this.showHome();
+            this._tasks.verticalEnd(this._homePanDistance);
         });
         homePan.connect('cancel', () => {
             this._tasks.endNavigation();
             if (this._tasks._hold) GLib.source_remove(this._tasks._hold);
             this._tasks._hold = 0;
             this._tasks._held = false;
+            this._tasks.finishLift(false);
         });
         this._gestureBar.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
         this._connect(this._home, 'notify::visible', () => {
@@ -676,16 +677,19 @@ export class Presentation {
     showHome() {
         if (this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        this._tasks.beginLift();
         this._tasks.beforeHome();
         this._rebuild();
         for (const actor of global.get_window_actors()) {
             const window = actor.meta_window;
             if (window.get_window_type() === Meta.WindowType.NORMAL && !window.minimized) {
                 this._homeMinimized.add(window);
+                Main.wm.skipNextEffect(actor);
                 window.minimize();
             }
         }
         this._home.show();
+        this._tasks.finishLift(true);
         this._home.grab_key_focus();
         this._tasks.sync();
     }

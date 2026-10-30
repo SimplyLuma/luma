@@ -103,6 +103,7 @@ export class TabletTasks {
         ];
     }
 
+    get navigationEnabled() { return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get enabled() { return this.home.mode === 'tablet' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get monitor() { return Main.layoutManager.primaryMonitor; }
     focused() {
@@ -176,8 +177,39 @@ export class TabletTasks {
             this.verticalUpdate(this._vertical);
         }, () => this.verticalEnd(this._vertical, side));
     }
+    beginLift() {
+        if (this._navigationLift || this.home._home.visible) return;
+        const actor = this.focused()?.get_compositor_private();
+        if (!actor) return;
+        const [x, y] = actor.get_transformed_position();
+        const [width, height] = actor.get_transformed_size();
+        const clone = new Clutter.Clone({source: actor, x, y, width, height, reactive: false});
+        clone.set_pivot_point(.5, .5);
+        Main.uiGroup.add_child(clone);
+        this._navigationLift = clone;
+        this._navigationSource = actor;
+        actor.hide();
+    }
+    finishLift(home) {
+        const clone = this._navigationLift;
+        this._navigationLift = null;
+        const actor = this._navigationSource;
+        this._navigationSource = null;
+        if (actor && live(actor.meta_window) && !actor.meta_window.minimized) actor.show();
+        if (!clone) return;
+        clone.ease({scale_x: home ? .78 : 1, scale_y: home ? .78 : 1,
+            translation_y: home ? -64 * this.home._scale : 0, opacity: home ? 0 : 255,
+            duration: St.Settings.get().enable_animations ? (home ? 180 : 120) : 0,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => clone.destroy()});
+    }
     verticalUpdate(distance) {
-        if (!this.enabled || distance > -72 * this.home._scale || this._hold) return;
+        if (!this.navigationEnabled) return;
+        const progress = Math.clamp(-distance / (this.monitor.height * .6), 0, 1);
+        if (this._navigationLift) {
+            this._navigationLift.set_scale(1 - progress * .18, 1 - progress * .18);
+            this._navigationLift.translation_y = -progress * 40 * this.home._scale;
+        }
+        if (distance > -56 * this.home._scale || this._hold || this._held) return;
         this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
             this._hold = 0; this._held = true; this.openSwitcher(); return GLib.SOURCE_REMOVE;
         });
@@ -186,11 +218,11 @@ export class TabletTasks {
         if (this._hold) GLib.source_remove(this._hold);
         this._hold = 0;
         if (this._held) { this._held = false; return; }
-        if (distance < -140 * this.home._scale) {
+        if (distance < -(this.home.mode === 'mobile' ? 48 : 140) * this.home._scale) {
             if (side) this.showPaneHome(side);
             else this.home.showHome();
         }
-        else if (distance < -24 * this.home._scale) this.peek();
+        else { this.finishLift(false); if (distance < -24 * this.home._scale) this.peek(); }
     }
 
     _ink(window) {
@@ -686,7 +718,8 @@ export class TabletTasks {
         search.clutter_text.connect('text-changed', render); render(); search.grab_key_focus();
     }
     openSwitcher() {
-        if (!this.enabled) return;
+        if (!this.navigationEnabled) return;
+        this.finishLift(false);
         this.closeOverlay();
         this._returnHomeAfterSwitcher = this.home._home.visible;
         this.home._home.hide();
@@ -704,6 +737,7 @@ export class TabletTasks {
     }
     destroy() {
         this.endNavigation();
+        this.finishLift(false);
         this._destroyed = true;
         global.window_group.disconnect(this._windowGroupId);
         this._tracker.disconnect(this._trackerId);

@@ -7,7 +7,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
  import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
  import {peekCast} from './lumaCast.js';
  import {LumaIconMask} from './iconMask.js';
-+import {avoidDisplayExclusions, statusInsets} from './lumaPresentation/safeAreas.js';
++import {displayExclusions, statusInsets} from './lumaPresentation/safeAreas.js';
  
  const MORPH_TIME = 460;
  const RETRACT_TIME = 6500;
@@ -45,13 +45,13 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +            this._material?.setCornerRadii([0, 0, 0, 0]);
 +            const safe = statusInsets(Main.presentation?._displayGeometry, monitor, 60 * scale, 16 * scale, 8 * scale);
 +            this._surface.child.get_first_child().set_style(`padding: 16px ${safe.right / scale}px 8px ${safe.left / scale}px;`);
-+            this._scroll.set_style(`max-height: ${Math.max(80, monitor.height / scale - 120)}px;`);
++            this._scroll.set_style(`max-height: ${Math.max(80, monitor.height / scale - 88)}px;`);
 +            this._scroll.y_expand = true;
 +        }
          const unchanged = this._targetWidth === width && this._targetHeight === height;
          this._targetHeight = height;
          this._targetWidth = width;
-@@ -441,15 +459,23 @@
+@@ -441,15 +459,26 @@
          const monitor = Main.layoutManager.primaryMonitor;
          if (!monitor) return;
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
@@ -62,12 +62,15 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +            this.set_position(monitor.x + (monitor.width - this.width) / 2, monitor.y);
 +            return;
 +        }
-+        const box = avoidDisplayExclusions(Main.presentation?._displayGeometry, monitor, {
-+            x: this._rightAligned ? monitor.width - 30 * scale - this.width : (monitor.width - this.width) / 2,
-+            y: this._bottomAnchored ? monitor.height - this.height : (this._targetTop ?? monitor.y) - monitor.y,
-+            width: this.width, height: Math.max(this.height, 44 * scale),
-+        });
-+        this.set_position(monitor.x + box.x, monitor.y + box.y);
++        let x = this._rightAligned ? monitor.width - 30 * scale - this.width : (monitor.width - this.width) / 2;
++        let y = this._bottomAnchored ? monitor.height - this.height : (this._targetTop ?? monitor.y) - monitor.y;
++        // Preserve the island's shared center axis. Move banners below an
++        // intersecting cutout instead of shifting the entire surface sideways.
++        if (Main.presentation?.mode !== 'desktop') x = (monitor.width - this.width) / 2;
++        for (const r of displayExclusions(Main.presentation?._displayGeometry, monitor))
++            if (x < r.x + r.width && x + this.width > r.x && y < r.y + r.height && y + this.height > r.y)
++                y = r.y + r.height + 8 * scale;
++        this.set_position(monitor.x + x, monitor.y + y);
      }
      vfunc_allocate(box) {
          this.set_allocation(box);
@@ -78,7 +81,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
          const shoulderY = this._bottomAnchored ? height - 12 * scale : 0;
          this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: shoulderY, x2: 0, y2: shoulderY + 12 * scale}));
-@@ -507,7 +533,7 @@
+@@ -507,7 +536,7 @@
          this._fresh = false;
          this._state = 'tray';
          this._records = records();
@@ -87,15 +90,11 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
          header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
          this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
-@@ -526,6 +552,26 @@
+@@ -526,6 +555,21 @@
          this._scroll.set_child(this._list); column.add_child(this._scroll);
          this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
          column.add_child(this._empty);
 +        if (Main.layoutManager.primaryMonitor.width / St.ThemeContext.get_for_stage(global.stage).scale_factor <= 700 && Main.presentation?.mode !== 'desktop') {
-+            column.add_child(new St.Widget({y_expand: true}));
-+            const close = new St.Button({label: _('Close'), accessible_name: _('Close Notifications'),
-+                reactive: true, can_focus: true, style: 'min-height: 44px; margin: 8px 16px; padding: 0; border-radius: 16px; background-color: rgba(128,128,128,0.14);'});
-+            close.connect('clicked', () => this.close());
 +            const dismiss = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
 +            dismiss.set_begin_threshold(8);
 +            dismiss.connect('pan-update', gesture => { if (gesture.get_accumulated_delta().get_y() < -24) this.close(); });
@@ -109,11 +108,34 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +            if (this._dismissGesture) this.remove_action(this._dismissGesture);
 +            this._dismissGesture = dismiss;
 +            this.add_action_full('LumaNotificationsDismiss', Clutter.EventPhase.CAPTURE, dismiss);
-+            column.add_child(close);
 +        }
          this._setContent(column);
          this._cards.clear();
          this._syncTray(); this._render();
+@@ -560,7 +604,22 @@
+         this._records.forEach((n, index) => {
+             let frame = this._cards.get(n);
+             if (!frame) {
+-                frame = new TrayCard({child: this._createCard(n, true), x_expand: true});
++                frame = new TrayCard({child: this._createCard(n, true), x_expand: true, reactive: true});
++                const swipe = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.X});
++                swipe.set_begin_threshold(12);
++                swipe.connect('may-recognize', gesture => n.urgency !== MessageTray.Urgency.CRITICAL &&
++                    Math.abs(gesture.get_accumulated_delta().get_x()) > Math.abs(gesture.get_accumulated_delta().get_y()));
++                swipe.connect('recognize', () => frame.child.fake_release());
++                swipe.connect('pan-update', gesture => {frame.translation_x = gesture.get_accumulated_delta().get_x();});
++                swipe.connect('end', () => {
++                    const dismiss = Math.abs(frame.translation_x) > Math.min(80, frame.width * .25);
++                    frame.ease({translation_x: dismiss ? Math.sign(frame.translation_x) * frame.width : 0,
++                        opacity: dismiss ? 0 : 255, duration: St.Settings.get().enable_animations ? 160 : 0,
++                        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                        onComplete: () => {if (dismiss) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);}});
++                });
++                swipe.connect('cancel', () => {frame.translation_x = 0; frame.opacity = 255;});
++                frame.add_action_full('LumaNotificationDismiss', Clutter.EventPhase.CAPTURE, swipe);
+                 this._cards.set(n, frame); this._list.add_child(frame);
+             }
+             this._list.set_child_at_index(frame, index);
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
 @@ -152,6 +152,8 @@

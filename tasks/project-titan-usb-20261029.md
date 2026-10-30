@@ -25,7 +25,7 @@ Device metadata keeps the status clock and Quick Options header clear of the
 camera. Lock clock/date inherit shared Desktop/Tablet typography. Search opens
 the shared master search. The native notification island owns its pull target;
 only the right status controls own Quick Options. Both compact overlays fill the
-screen, scroll internally and provide Close/upward dismissal. The Home gesture
+screen, scroll internally and provide upward dismissal. The Home gesture
 area yields to open overlays. Native touch tests verify notification pull,
 Quick Options pull/scroll/Close/bottom swipe, notification Close/bottom swipe,
 and Quick Options Backspace. The owner confirms rearrangement now saves.
@@ -50,6 +50,33 @@ utility signal hookup error and the finer-grid save mismatch; both were correcte
 Native captures and private development tools stay outside Git. The initial
 one-shot screenshot hooks are removed; opt-in root-controlled live inspection
 remains available for subsequent owner-device iteration.
+
+## Gesture follow-up — 2026-10-29
+
+Removed the compact Quick Options and Notifications Close buttons. Quick
+Options expands from the top-right status controls over 460 ms; the native
+notification island retains its centered expansion. Notification banners stay
+centered and move below intersecting display cutouts instead of shifting
+sideways. Full-page header content still uses the metadata safe insets.
+Horizontal notification swipes dismiss through MessageTray; recognition releases
+the native button press so a swipe cannot also activate the notification.
+Critical notifications remain protected from swipe dismissal.
+
+Mobile now uses the same navigation/hold path as Tablet to open Desktop Grid.
+Going Home lifts a uniformly scaled foreground window clone and fades it away
+in 180 ms, suppressing only those windows' ordinary minimize effects. Split
+placement remains Tablet-specific. Reduced-motion settings disable timed effects.
+
+Actual Titan native-touch checks pass: upward dismissal on both panels, left
+and right notification dismissal while the tray remains open, swipe-and-hold
+opening the shared switcher, a cancelled partial lift restoring the client, and
+quick swipe returning Home. Private captures show the live foreground lift,
+full-page overlays at 360 × 400, and a centered 300-pixel notification banner at
+x=30 below the corner cutout. The source-backed resource overlay is updated for
+future logins; the current session was hot-reloaded without restarting it.
+Admitted job 3af8c1de passes all 266 pinned Shell patches, presentation syntax,
+package-builder syntax, compact/grid regressions and whitespace checks. Full
+Tablet/Desktop gesture regression and general release qualification were not run.
 
 ## Earlier shared-shell bootstrap (superseded)
 
