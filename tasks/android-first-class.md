@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T18:55Z
+- Updated: 2026-10-30T19:03Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 GUI qualification remains open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -45,12 +45,45 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A23 Distribution/rights | Research/source notices retained; final payload review OPEN | Actual component licenses/NOTICE/corresponding source/offers, original APK signatures, branding/service/proprietary rights and authorized distribution infrastructure. |
 | A24 Build recovery/observation | Save/restore synthetic control; actual compiler restoration OPEN | One-shot validated compiler restore and exported-image checks; observe every final child; failure/cancellation/deadline/admission/budget exhaustion remain visible. |
 
-Order of immediate work: finish the current guard image, run real native negative
-and positive controls, build the reply-enabled pair, exercise actual native UI,
-then repeat the CPU/device matrix and implement/qualify the remaining brokers.
+Order of immediate work: retain the failed combined GUI runs and restore owned
+fixtures; distinguish host I/O contention from stable Shell startup on a controlled
+run, then repeat the complete dock flow with loaded-resource proof. Production
+work must close runtime isolation, signing and maintained-platform gates before
+nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT19:03Z — tonight Android release NO-GO; R164 failed and all actors stopped:
+- R164 child060263d6 FAILED19:00:48Z; parentd4182075 FAILED19:00:49Z.
+  Exact seven130/81/helper2/Filer75/extensions75/Runtime96 packages verified;
+  already-exact-candidate, no update transaction. Host package inventory outside
+  candidate preserved and Enforcing checked before GUI setup. No APK UI phases
+  reached; complete19-phase verifier NOT run or passed.
+- Read-only session diagnosis46331ad5 PASSED as diagnostic18:58:30Z, not UI:
+  cold graphical login hit actual90s Shell and Evolution startup timeouts. Shell
+  was killed by systemd; captured1570 main stack was in open -> GLib key-file
+  load -> libwacom database -> Mutter backend setup, before Shell JS setup.
+  Heavy shared I/O is supported by samples, but no general startup reliability
+  or absence-of-code-defect claim is made.
+- Scoped recovery7a2d1e07 successfully restarted ONLY disposable guest gdm once
+  after attesting boot6a66b9e0-83a7-4690-8a7b-8330b35b28be and Shell130 package.
+  No timeout override, production host/session or other job changed. A Wayland
+  socket appeared, but actual Shell ActiveState/SubState/Result health assertion
+  still failed (driver line137, diagnostic22c0b56b). Recovery is NOT a UI pass.
+- Actual final cleanup verified: VM shut off, original6GiB/8GiB-cap XML restored,
+  raw test alias unmounted, policy SHA24cfbd91cb9af179dd1025f8344a87881a2c711e33f237eff84d078a5a5133db
+  restored. Both Android VMs off. No owned build/VM/diagnostic actor left active.
+  R164 extension was staged offline but never enabled; preserve/retire its two
+  exact byte-verified files on the next offline fixture preparation.
+- Release decision: do not promote Android feature into tonight's nightly.
+  Packaged130 graphical9+29 component passes, prior real x86 install/drawer/
+  Pin-Unpin and native reply evidence, and ARM image compilation remain useful;
+  they do not close failed combined acceptance or security/trust, ARM runtime,
+  native services, full app corpus and mobile power gates. Nothing published.
+  Next useful action: controlled startup/whole dock test with loaded-resource
+  proof after measured I/O contention, plus actual isolation/trust/platform work;
+  do not continue adding unbounded retries or promise a release ETA from builds.
 
 CURRENT18:55Z — combined startup/inventory failures retained; R164 active:
 - R158 childc8a6625e FAILED18:50:56Z before UI: read-only SSH readiness
