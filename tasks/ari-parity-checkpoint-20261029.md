@@ -1,12 +1,12 @@
 # Ari search, actions and Models checkpoint
 
-Status: r10 launch receipts, recovery, progress and shared field visibility pass
-server checks; packaging/delivery pending. The Dell still runs r9. Visual
-conformance and live OpenAI qualification remain incomplete.
+Status: server-qualified Ari2 r10 and the session-only Tide platform preview
+are running on the Dell for manual testing. Visual conformance and live OpenAI
+qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. Qualified r9 runtime source is
-`e12eb4380ad9690181cdb7536c7144d714f4ecb2`; the independent Dell preview
+Review: draft PR #92. Qualified r10 runtime source is
+`8f9954abce0fb5181d6f570f9a7d8bc9e3d18b36`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
 
 ## October 29 follow-up: launch receipts, search fields and progress
@@ -51,6 +51,32 @@ mutations and zero approvals. A subsequent injected service error recovers
 without repeating actions. Its library, player and model decisions are fixtures:
 this does not prove live audio or actual hosted ChatGPT selection. It also
 verifies the real already-running GApplication launch acknowledgement.
+
+Final source and Fedora RPM pass 197 unit/protocol/policy tests, staged imports,
+schema checks and nine focused GTK tests. All five CI jobs pass at the runtime
+source. Exact r10 export/RPM checks pass production/profile/keyring isolation,
+installed activation, native account/inference and progress, runtime byte
+comparison, public source contracts and r9-to-r10 update/retention/rollback.
+The exported shared field fixes match the committed source; the session-only
+Tide launcher passes shell syntax checks.
+Archive SHA-256:
+`ed008ccf094bfa7e777dc39c9ead32047038ef6168c146e72a90a91f63b7bbfa`.
+RPM SHA-256:
+`679e14749b1a3774a31857b909c360db7098b2c7a9be904ccd6deda46c9bc4ee`.
+SRPM SHA-256:
+`bb91024e31409d062f7920f094beb407a4e0786372109e7acefe6a5875b66cd4`.
+
+The checksum-verified r10 was updated and launched on the Dell, retaining the
+Ari2 profile, settings and keyring. Tide was closed through its own MPRIS Quit
+handler after verifying the exact Flatpak instance, then launched with a
+read-only preview-toolkit path for this session. Read-only metadata confirms
+both launch units running, the expected app/player bus names, Tide's original
+Flatpak/data identity and the preview PYTHONPATH. This does not modify its
+installed runtime or create a persistent Flatpak override. An ordinary Tide
+relaunch returns to the installed toolkit; the maintained platform release
+still needs to ship the fix. All app tests ran on the server. Live hosted
+selection/audio and summary availability remain manual acceptance gates.
+
 
 ## October 29 follow-up: application ownership and truthful completion
 
