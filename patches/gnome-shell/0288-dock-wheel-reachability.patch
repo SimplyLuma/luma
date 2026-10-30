@@ -1,27 +1,26 @@
 From: Luma Developers
 Subject: [PATCH] Reach overflow dock apps with either mouse wheel axis
 
-A horizontal ScrollView ignores ordinary wheel-down input. Route either wheel
-axis to the dock orientation, retain horizontal and smooth input, and stop the
-handled event during capture, before the native ScrollView default handler. Name the user
-surface Dock in the shared pin action.
+The native ScrollView handles its primary axis. Relay only the cross-axis
+wheel input it cannot use, preserving native primary-axis scrolling without
+applying it twice. Name the user surface Dock in the shared pin action.
 
 --- a/js/ui/shelf.js
 +++ b/js/ui/shelf.js
-@@ -762,6 +762,9 @@
+@@ -762,6 +762,7 @@
          this._dockPadding = new St.Bin({child: this._dockStrip});
          this._dockContent.add_child(this._dockPadding);
          this._dockScroll.set_child(this._dockContent);
-+        this._dockScroll.connect('captured-event', (_view, event) =>
-+            event.type() === Clutter.EventType.SCROLL
-+                ? this._scrollDock(event) : Clutter.EVENT_PROPAGATE);
++        this._dockScroll.connect('scroll-event', (_view, event) => this._scrollDock(event));
          this._dockScroll.x_expand = true;
          this._dockScroll.y_expand = true;
          // The applications scroll; the folders do not. A dock with more
-@@ -1904,6 +1907,38 @@
+@@ -1904,6 +1905,47 @@
          return null;
      }
  
++    // Native ScrollView owns its primary axis. Add only the missing cross-axis
++    // input, without repeating the native handler's primary-axis movement.
 +    _scrollDock(event) {
 +        const adjustment = this._vertical
 +            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
@@ -30,16 +29,23 @@ surface Dock in the shared pin action.
 +        let delta;
 +        switch (event.get_scroll_direction()) {
 +        case Clutter.ScrollDirection.UP:
-+        case Clutter.ScrollDirection.LEFT:
-+            delta = -1;
-+            break;
 +        case Clutter.ScrollDirection.DOWN:
++            if (this._vertical)
++                return Clutter.EVENT_PROPAGATE;
++            delta = event.get_scroll_direction() === Clutter.ScrollDirection.UP ? -1 : 1;
++            break;
++        case Clutter.ScrollDirection.LEFT:
 +        case Clutter.ScrollDirection.RIGHT:
-+            delta = 1;
++            if (!this._vertical)
++                return Clutter.EVENT_PROPAGATE;
++            delta = event.get_scroll_direction() === Clutter.ScrollDirection.LEFT ? -1 : 1;
 +            break;
 +        case Clutter.ScrollDirection.SMOOTH: {
 +            const [dx, dy] = event.get_scroll_delta();
-+            delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
++            const primary = this._vertical ? dy : dx;
++            if (primary !== 0)
++                return Clutter.EVENT_PROPAGATE;
++            delta = this._vertical ? dx : dy;
 +            break;
 +        }
 +        default:
