@@ -57,6 +57,27 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
+OBSERVED00:44Z — automatic fallback confirmed; diagnostic cleanup complete:
+- Original d4e9f7f8 FAILED00:40:24 after graphical readiness failure and
+  unresponsive graceful shutdown; ExecStopPost stopped ONLY owned VM. No reply
+  test executed and no production/new-image native gate closed.
+- Diagnostic24919723 PASSED its diagnostic scope: owned watchdog reset action
+  temporarily none, original runtime6GiB/QEMU8 inactive XML restored
+  exactly afterward with reset action. Guest graphical session reached. Restored
+  original extension settings and removed only owned temporary extension; explicit
+  extension-cleanup.json confirms both. Graceful shutdown completed.
+- Actual boot history shows repeated candidate boots00:31:35,00:33:23,00:35:05;
+  diagnostic boot00:41:31 ran original nightly Shell124, NOT reply Shell124.
+  Automatic fallback occurred. Do not attribute previous resets to watchdog from
+  this experiment: the booted deployment also changed. Need failed-boot journals.
+- CURRENT normal dev-android-reply-boot-logs-5b2df417.service10GiB; root
+  luma-android-first-class-reply-boot-logs-r14.service1GiB. Original reset
+  watchdog retained. Collecting specific failed boot journals and Atomic/boot
+  counter status. Observe normal final child and powered-off VM before updates.
+- Source installer delegation passes all128 root checks. Preparing distinct
+  candidate95 Android20261030 RPM identity; accepted OS pins unchanged. Not built
+  or installed yet; current installed.94 lacks installer activation fix.
+
 OBSERVED00:38Z — combined candidate installed; graphical boot gate FAILED:
 - d4e9f7f8 prepared local Shell124 main/common override alongside existing.94,
   matched SDK5 pair and retained image backup. Exact package dependencies resolved
