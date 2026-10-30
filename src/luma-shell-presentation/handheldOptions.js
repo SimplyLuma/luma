@@ -3,10 +3,19 @@
 // bounded viewport. Controls, appearance, models and detail pages are unchanged.
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {statusInsets} from './safeAreas.js';
 import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
+
+// A scrollable page keeps each native footer/control at its natural height.
+const NaturalPage = GObject.registerClass(class NaturalPage extends St.BoxLayout {
+    vfunc_get_preferred_height(width) {
+        const [, natural] = super.vfunc_get_preferred_height(width);
+        return [natural, natural];
+    }
+});
 
 export class HandheldOptions {
     constructor(home) {
@@ -47,11 +56,14 @@ export class HandheldOptions {
         this.menu.box.add_style_class_name('lumaui-touch-options');
         const parent = main.get_parent();
         this.original = {parent, index: parent.get_children().indexOf(main), style: this.menu.box.get_style(),
-            headerStyle: this.menu._lumaHeader?.get_style()};
+            headerStyle: this.menu._lumaHeader?.get_style(),
+            detailScrollPolicy: this.menu._pageScroll?.vscrollbar_policy};
         parent.remove_child(main);
+        this.viewport = new NaturalPage({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        this.viewport.add_child(main);
         this.scroll = new St.ScrollView({overlay_scrollbars: true,
-            hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.AUTOMATIC,
-            child: main});
+            hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.EXTERNAL,
+            child: this.viewport});
         parent.insert_child_at_index(this.scroll, this.original.index);
         this.pageBinding = main.bind_property('visible', this.scroll, 'visible', GObject.BindingFlags.SYNC_CREATE);
         const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
@@ -99,6 +111,11 @@ export class HandheldOptions {
         // Compact displays use the full available page; larger Tablet displays
         // retain the shared anchored menu. Controls and detail models are shared.
         const compact = monitor.width / scale <= 700;
+        this._setFooterPinned(compact);
+        this.menu.box.remove_style_class_name('lumaui-compact-options');
+        if (compact) this.menu.box.add_style_class_name('lumaui-compact-options');
+        if (this.menu._pageScroll) this.menu._pageScroll.vscrollbar_policy = compact
+            ? St.PolicyType.EXTERNAL : this.original.detailScrollPolicy;
         const width = compact ? monitor.width / scale - 32
             : Math.max(160, Math.min(338, monitor.width / scale - 48));
         const height = Math.max(120, monitor.height / scale - 32);
@@ -115,36 +132,65 @@ export class HandheldOptions {
         if (compact) {
             pointer.set_style('-arrow-rise: 0; -arrow-base: 0; -arrow-border-width: 0; -boxpointer-gap: 0;');
             pointer._reposition = box => {
-                const width = box.get_width(), height = box.get_height();
-                box.x1 = monitor.x + monitor.width - width; box.y1 = monitor.y;
-                box.x2 = box.x1 + width; box.y2 = box.y1 + height;
+                box.x1 = monitor.x; box.y1 = monitor.y;
+                box.x2 = monitor.x + monitor.width; box.y2 = monitor.y + monitor.height;
             };
             pointer._updateFlip = () => {};
             pointer.clip_to_allocation = true;
-            pointer.open = (animation, complete) => {
+            // Keep controls, text and material at their final allocation.
+            // Revealing a clip avoids restyling/reflowing the whole menu at
+            // every intermediate width, especially costly on handheld GPUs.
+            const reveal = (opening, animation, complete) => {
+                this._cancelRevealStart();
+                this._reveal?.stop(); this._reveal = null;
                 pointer.remove_all_transitions();
-                pointer._muteKeys = false;
-                pointer._muteInput = true;
-                pointer.opacity = 255;
+                pointer.set_size(monitor.width, monitor.height);
                 pointer.set_scale(1, 1);
                 pointer.translation_x = pointer.translation_y = 0;
-                pointer.set_size(Math.min(96 * scale, monitor.width), 44 * scale);
-                pointer.show();
-                pointer.ease({width: monitor.width, height: monitor.height,
-                    duration: animation && St.Settings.get().enable_animations ? 460 : 0,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUART,
-                    onComplete: () => {pointer._muteInput = false; complete?.();}});
+                pointer.opacity = 255;
+                pointer._muteKeys = !opening;
+                pointer._muteInput = true;
+                const initialWidth = Math.min(96 * scale, monitor.width);
+                const initialHeight = Math.min(44 * scale, monitor.height);
+                const paint = progress => {
+                    const amount = opening ? progress : 1 - progress;
+                    const width = initialWidth + (monitor.width - initialWidth) * amount;
+                    const height = initialHeight + (monitor.height - initialHeight) * amount;
+                    pointer.set_clip(monitor.width - width, 0, width, height);
+                };
+                const finish = () => {
+                    if (opening) {pointer.remove_clip(); pointer._muteInput = false;}
+                    else {pointer.hide(); pointer.remove_clip();}
+                    complete?.();
+                };
+                paint(0); pointer.show();
+                if (!animation || !St.Settings.get().enable_animations) {finish(); return;}
+                const timeline = this._reveal = new Clutter.Timeline({actor: pointer,
+                    duration: opening ? 320 : 200, progress_mode: Clutter.AnimationMode.EASE_OUT_QUART});
+                timeline.connect('new-frame', () => paint(timeline.get_progress()));
+                timeline.connect('completed', () => {
+                    if (this._reveal === timeline) this._reveal = null;
+                    finish();
+                });
+                // The first paint prepares native textures/materials. Starting
+                // time before it finishes can consume the entire animation.
+                this._revealStart = global.stage.connect_after('after-paint', () => {
+                    this._cancelRevealStart();
+                    this._revealIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                        this._revealIdle = 0;
+                        if (this._reveal === timeline) timeline.start();
+                        return GLib.SOURCE_REMOVE;
+                    });
+                });
             };
+            pointer.open = (animation, complete) => reveal(true, animation, complete);
             pointer.close = (animation, complete) => {
-                if (!pointer.visible) return;
-                pointer.remove_all_transitions();
-                pointer._muteInput = pointer._muteKeys = true;
-                pointer.ease({width: Math.min(96 * scale, monitor.width), height: 44 * scale, opacity: 0,
-                    duration: animation && St.Settings.get().enable_animations ? 220 : 0,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUART,
-                    onComplete: () => {pointer.hide(); complete?.();}});
+                if (pointer.visible) reveal(false, animation, complete);
             };
         } else {
+            this._cancelRevealStart();
+            this._reveal?.stop(); this._reveal = null;
+            pointer.remove_clip();
             pointer.open = this._pointerOpen; pointer.close = this._pointerClose;
             pointer.set_size(-1, -1); pointer.clip_to_allocation = false;
             pointer._reposition = this._reposition;
@@ -157,6 +203,28 @@ export class HandheldOptions {
 
     open() { this.setEnabled(this.home.mode !== 'desktop'); if (this.enabled) this.menu.open(); }
     close() { this.menu.close(); }
+    _setFooterPinned(pinned) {
+        const footer = this.menu._surfaceLayout?._footer;
+        if (!footer || pinned === Boolean(this._footerOriginal)) return;
+        if (pinned) {
+            const parent = footer.get_parent();
+            this._footerOriginal = {parent, index: parent.get_children().indexOf(footer), visible: footer.visible};
+            parent.remove_child(footer);
+            this.menu.box.add_child(footer);
+            this._footerBinding = this.menu._mainPage.bind_property('visible', footer, 'visible', GObject.BindingFlags.SYNC_CREATE);
+        } else {
+            this._footerBinding.unbind(); this._footerBinding = null;
+            footer.get_parent()?.remove_child(footer);
+            this._footerOriginal.parent.insert_child_at_index(footer, this._footerOriginal.index);
+            footer.visible = this._footerOriginal.visible;
+            this._footerOriginal = null;
+        }
+    }
+    _cancelRevealStart() {
+        if (this._revealStart) global.stage.disconnect(this._revealStart);
+        if (this._revealIdle) GLib.source_remove(this._revealIdle);
+        this._revealStart = this._revealIdle = 0;
+    }
     _finishMainPageTransition() {
         const main = this.menu._mainPage;
         if (!main) return;
@@ -168,13 +236,19 @@ export class HandheldOptions {
     _restore() {
         if (!this.enabled) return;
         this.menu.close(PopupAnimation.NONE);
+        this._cancelRevealStart();
+        this._reveal?.stop(); this._reveal = null;
+        this.menu._boxPointer.remove_clip();
         // Returning from a detail page starts the native main-page fade. A
         // presentation change can unmap it midway through that animation.
         // Finish that page transition before returning it to its native parent.
         const main = this.menu._mainPage;
         this._finishMainPageTransition();
+        this._setFooterPinned(false);
         this.pageBinding.unbind();
         this.scroll.set_child(null);
+        this.viewport.remove_child(main);
+        this.viewport.destroy();
         this.original.parent.insert_child_at_index(main, this.original.index);
         this.scroll.destroy();
         this.menu.actor.disconnect(this._backId);
@@ -182,6 +256,8 @@ export class HandheldOptions {
         this.menu.box.set_style(this.original.style);
         this.menu._lumaHeader?.set_style(this.original.headerStyle);
         this.menu.box.remove_style_class_name('lumaui-touch-options');
+        this.menu.box.remove_style_class_name('lumaui-compact-options');
+        if (this.menu._pageScroll) this.menu._pageScroll.vscrollbar_policy = this.original.detailScrollPolicy;
         this.menu._boxPointer.setPosition(this.menu.sourceActor, .5);
         this.menu._boxPointer.open = this._pointerOpen;
         this.menu._boxPointer.close = this._pointerClose;

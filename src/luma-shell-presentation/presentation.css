@@ -68,3 +68,16 @@
 .compact-home .luma-converged-widget-caption { font-size: 10px; }
 .compact-home .luma-converged-dock { border-radius: 18px; }
 .compact-home .luma-converged-page { height: 16px; }
+
+/* Touch footer retains full controls and scrolls with the native page. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-footer { min-height: 44px; padding: 2px 0; spacing: 8px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-actions { spacing: 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; color: rgba(238,240,244,.8); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-action StIcon { icon-size: 22px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode { min-height: 44px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode .quick-toggle-title { font-size: 14px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode .quick-toggle { min-height: 44px; }
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-options-system { min-height: 44px; height: auto; padding: 4px 0 0; margin: 0; }
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-compact-options .luma-options-main { spacing: 8px; }

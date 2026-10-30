@@ -36,7 +36,7 @@ export class TabletTasks {
         this._windowGroupId = global.window_group.connect('notify::visible', () => {
             if (!global.window_group.visible || !this._returnHomeAfterSwitcher) return;
             this._returnHomeAfterSwitcher = false;
-            if (this.enabled && ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
+            if (this.navigationEnabled && ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
                 this.home.showHome();
         });
         this.active = null;
@@ -534,7 +534,7 @@ export class TabletTasks {
         return {x: m.x + (this.pickerSide === 'right' ? half : 0), y: m.y,
             width: this.pickerSide === 'right' ? m.width - half : half, height: m.height};
     }
-    beforeHome() { this.pickerSide = null; this.closeOverlay(); }
+    beforeHome() { this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
     sync() {
         const pairVisible = this.enabled && this.active && !this._switcherPopup && !Main.sessionMode.isLocked &&
             (this.pickerSide || !this.home._home.visible);
@@ -608,7 +608,7 @@ export class TabletTasks {
         });
     }
     attachSwitcher(popup) {
-        if (!this.enabled || this._switcherPopup === popup) return;
+        if (!this.navigationEnabled || this._switcherPopup === popup) return;
         this._switcherPopup = popup;
         const returnHome = this.home._home.visible || this._returnHomeAfterSwitcher;
         this._returnHomeAfterSwitcher = returnHome;
@@ -618,13 +618,32 @@ export class TabletTasks {
         popup.connect('destroy', () => {
             if (this._switcherPopup === popup) this._switcherPopup = null;
             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                if (!this._destroyed && this.enabled && !this._switcherPopup &&
+                if (!this._destroyed && this.navigationEnabled && !this._switcherPopup &&
                     ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
                     this.home.showHome();
                 if (!this._destroyed) this.sync();
                 return GLib.SOURCE_REMOVE;
             });
         });
+        // The modal picker owns this sequence, including drags beginning
+        // in the bottom navigation area; chrome outside its grab cannot.
+        const home = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
+        home.set_begin_threshold(8);
+        home.connect('may-recognize', gesture => {
+            const event = gesture.get_point_event(0);
+            if (!event || popup.leaving) return false;
+            const delta = gesture.get_accumulated_delta();
+            const start = event.get_coords()[1] - delta.get_y();
+            return start >= this.monitor.y + this.monitor.height - 28 * this.home._scale &&
+                delta.get_y() < 0 && Math.abs(delta.get_y()) > Math.abs(delta.get_x());
+        });
+        home.connect('end', gesture => {
+            if (gesture.get_accumulated_delta().get_y() >= -24 * this.home._scale) return;
+            popup.destroy();
+            this.home.showHome();
+        });
+        popup.add_action_full('LumaGridHome', Clutter.EventPhase.CAPTURE, home);
+        if (!this.enabled) return; // Split placement belongs to Tablet only.
         for (const card of popup._cards) {
             if (!this.home._windows.has(card.window)) continue;
             this.attachDrag(card, null, card.window, {base,

@@ -7,7 +7,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
  import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
  import {peekCast} from './lumaCast.js';
  import {LumaIconMask} from './iconMask.js';
-+import {displayExclusions, statusInsets} from './lumaPresentation/safeAreas.js';
++import {displayExclusions, statusInsets, surfaceInsets} from './lumaPresentation/safeAreas.js';
  
  const MORPH_TIME = 460;
  const RETRACT_TIME = 6500;
@@ -29,10 +29,19 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
                  this.close();
                  this._rest();
                  return Clutter.EVENT_STOP;
-@@ -414,6 +417,21 @@
+@@ -411,8 +414,29 @@
+                 width = Math.min(width, PILL_MAX_WIDTH * scale);
+             }
+             width = Math.min(width, Math.max(1, monitor.width - 60 * scale));
++            if (this._state === 'card' && Main.presentation?.mode !== 'desktop') {
++                const safe = surfaceInsets(Main.presentation?._displayGeometry, monitor,
++                    {x: (monitor.width - width) / 2, y: top - monitor.y, width, height: 60 * scale}, 14 * scale, 8 * scale);
++                const style = `padding: ${safe.top / scale}px ${safe.right / scale}px 14px ${safe.left / scale}px;`;
++                if (this._surface.child.get_style() !== style) this._surface.child.set_style(style);
++            }
              [, height] = this._surface.child.get_preferred_height(width);
              height = Math.min(height, monitor.height - (top - monitor.y) - 24 * scale);
-         }
++        }
 +        const wasFullPage = this._fullPage;
 +        this._fullPage = this.isOpen && monitor.width / scale <= 700 && Main.presentation?.mode !== 'desktop';
 +        if (wasFullPage && !this._fullPage) {
@@ -47,11 +56,10 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +            this._surface.child.get_first_child().set_style(`padding: 16px ${safe.right / scale}px 8px ${safe.left / scale}px;`);
 +            this._scroll.set_style(`max-height: ${Math.max(80, monitor.height / scale - 88)}px;`);
 +            this._scroll.y_expand = true;
-+        }
+         }
          const unchanged = this._targetWidth === width && this._targetHeight === height;
          this._targetHeight = height;
-         this._targetWidth = width;
-@@ -441,15 +459,26 @@
+@@ -441,15 +465,29 @@
          const monitor = Main.layoutManager.primaryMonitor;
          if (!monitor) return;
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
@@ -64,9 +72,12 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +        }
 +        let x = this._rightAligned ? monitor.width - 30 * scale - this.width : (monitor.width - this.width) / 2;
 +        let y = this._bottomAnchored ? monitor.height - this.height : (this._targetTop ?? monitor.y) - monitor.y;
-+        // Preserve the island's shared center axis. Move banners below an
-+        // intersecting cutout instead of shifting the entire surface sideways.
-+        if (Main.presentation?.mode !== 'desktop') x = (monitor.width - this.width) / 2;
++        // Keep the island attached to its screen edge and shared center axis.
++        // Only its content insets avoid cutouts; the surface never floats.
++        if (Main.presentation?.mode !== 'desktop') {
++            this.set_position(monitor.x + (monitor.width - this.width) / 2, monitor.y + y);
++            return;
++        }
 +        for (const r of displayExclusions(Main.presentation?._displayGeometry, monitor))
 +            if (x < r.x + r.width && x + this.width > r.x && y < r.y + r.height && y + this.height > r.y)
 +                y = r.y + r.height + 8 * scale;
@@ -81,7 +92,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
          const shoulderY = this._bottomAnchored ? height - 12 * scale : 0;
          this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: shoulderY, x2: 0, y2: shoulderY + 12 * scale}));
-@@ -507,7 +536,7 @@
+@@ -507,7 +545,7 @@
          this._fresh = false;
          this._state = 'tray';
          this._records = records();
@@ -90,7 +101,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
          header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
          this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
-@@ -526,6 +555,21 @@
+@@ -526,6 +564,21 @@
          this._scroll.set_child(this._list); column.add_child(this._scroll);
          this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
          column.add_child(this._empty);
@@ -112,7 +123,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._setContent(column);
          this._cards.clear();
          this._syncTray(); this._render();
-@@ -560,7 +604,22 @@
+@@ -560,7 +613,22 @@
          this._records.forEach((n, index) => {
              let frame = this._cards.get(n);
              if (!frame) {

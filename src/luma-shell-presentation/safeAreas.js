@@ -55,3 +55,18 @@ export function avoidDisplayExclusions(profile, monitor, box, gap = 8) {
     return fits.length ? {...box, x: fits[0]} : {...box,
         y: Math.max(box.y, ...obstacles.map(r => r.y + r.height + gap))};
 }
+
+// Insets for content inside a surface whose edge/center anchor stays fixed.
+export function surfaceInsets(profile, monitor, box, edge = 16, gap = 8) {
+    const insets = {left: edge, right: edge, top: edge};
+    for (const r of displayExclusions(profile, monitor)) {
+        if (r.x >= box.x + box.width || r.x + r.width <= box.x ||
+            r.y >= box.y + box.height || r.y + r.height <= box.y) continue;
+        if (r.x < monitor.width / 3)
+            insets.left = Math.max(insets.left, r.x + r.width + gap - box.x);
+        else if (r.x + r.width > monitor.width * 2 / 3)
+            insets.right = Math.max(insets.right, box.x + box.width - r.x + gap);
+        else insets.top = Math.max(insets.top, r.y + r.height + gap - box.y);
+    }
+    return insets;
+}

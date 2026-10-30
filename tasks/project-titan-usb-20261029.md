@@ -11,6 +11,36 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
+## Compact overlay and picker follow-up — 2026-10-29
+
+Quick Options reveals its fixed allocation from the right using a paint clip;
+it waits for native texture preparation before starting its 320 ms timeline.
+It no longer relays out every control at each intermediate animation size.
+The compact native footer stays visible in a 53-pixel row with 44-pixel action
+hit targets and 22-pixel glyphs. Controls scroll above it without a scrollbar;
+default Titan text fits without scrolling. The native mode detail page remains
+accessible and still uses the shared controls. Home dots use 14-pixel spacing.
+Notification cards remain attached to the top edge, clearing camera metadata
+with content insets instead of shifting their whole surface downward.
+
+Mobile now tracks the existing Grid popup lifecycle, preventing the last visible
+window's closure from showing Home over the other switcher cards. A bottom-edge
+upward gesture belongs to the modal picker and returns Home. Tablet split/drop
+policy remains scoped to Tablet.
+
+Native evidence: reproduced and captured the Home-over-Grid failure; after the
+fix a card swipe reduced four cards to three while Home stayed hidden. An upward
+bottom swipe returned Home and released the modal picker. Inspected the full
+footer and mode page; all actions fit within the 360 × 400 screen. A real banner
+was centered at x=30,y=0,width=300 with inset content, and page dots measure 14 px.
+Paint instrumentation after native preparation records mostly 17–35 ms gaps
+(max51.3ms in the observed interval); the initial texture setup still took about
+0.7 seconds on this device. No fixed frame-rate guarantee is claimed.
+Admitted job 9ff0ff7d passes the 266-patch replay, presentation/builder syntax,
+compact/grid tests including corner/center banner content insets, and whitespace.
+Current session hot-reloaded without restart; clean resource sources persist for
+next login. Broader Desktop/Tablet gesture qualification remains open.
+
 ## Compact shared-shell checkpoint — 2026-10-29
 
 The same shared Home now runs with Mobile selected on the phone. At its actual

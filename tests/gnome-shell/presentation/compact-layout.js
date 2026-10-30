@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {homeLayout} from '../../../src/luma-shell-presentation/layout.js';
 import {reconcileGrid, overlaps} from '../../../src/luma-shell-presentation/grid.js';
-import {readDisplayGeometry, displayExclusions, statusInsets, avoidDisplayExclusions} from '../../../src/luma-shell-presentation/safeAreas.js';
+import {readDisplayGeometry, displayExclusions, statusInsets, avoidDisplayExclusions, surfaceInsets} from '../../../src/luma-shell-presentation/safeAreas.js';
 function assert(value, message) { if (!value) throw Error(message); }
 const layout=homeLayout(360,400,'tablet',50,{cellHeight:60});
 assert(layout.iconColumns===5 && layout.otherRows===4,'Titan must fit five by four');
@@ -38,3 +38,9 @@ assert(readDisplayGeometry('{bad')===null,'invalid metadata fallback');
 assert(readDisplayGeometry('{"schema":1,"nativeWidth":0,"nativeHeight":100,"cutouts":[]}')===null,'zero geometry rejected');
 assert(displayExclusions(null,monitor).length===0,'unprofiled screen unchanged');
 console.log('PASS compact grid density, migration, text sizing, widget spans, cutout corners/center/8 transforms');
+
+const cornerContent = surfaceInsets(profile, monitor, {x:30,y:0,width:300,height:80},14,8);
+assert(cornerContent.left === 22 && cornerContent.top === 14, 'edge banner clears corner using content only');
+const centerContent = surfaceInsets(center, monitor, {x:30,y:0,width:300,height:80},14,8);
+assert(centerContent.left === 14 && centerContent.top === 48, 'center cutout moves banner content down');
+assert(surfaceInsets(null, monitor, {x:30,y:0,width:300,height:80},14).left === 14, 'unprofiled banner keeps its padding');

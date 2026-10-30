@@ -871,8 +871,9 @@ export class Presentation {
         this._dots = null;
         if (this._layout.pages > 1) {
             const dots = new St.BoxLayout({style_class: 'luma-converged-pages'});
+            const spacing = 14;
             const count = Math.min(this._layout.pages,
-                Math.max(1, Math.floor((monitor.width / this._scale - 24) / 44)), 7);
+                Math.max(1, Math.floor((monitor.width / this._scale - 24) / spacing)), 7);
             const start = Math.clamp(this._page - Math.floor(count / 2), 0, this._layout.pages - count);
             for (let index = start; index < start + count; index++) {
                 const dot = button(_('Home page %d of %d').format(index + 1, this._layout.pages), () => {
@@ -882,15 +883,14 @@ export class Presentation {
                 dots.add_child(dot);
             }
             this._home.add_child(dots);
-            const width = count * 44 * this._scale;
+            const width = count * spacing * this._scale;
             const compact = this._layout.compact;
             const dotHeight = compact ? this._layout.dotsHeight : 44;
             dots.set_position((monitor.width - width) / 2, monitor.height -
                 (compact ? this._layout.dockBottom + this._layout.dockHeight + dotHeight : 156) * this._scale);
             dots.set_size(width, dotHeight * this._scale);
-            if (compact) {
-                for (const child of dots.get_children()) child.set_style(`height: ${dotHeight}px;`);
-            }
+            for (const child of dots.get_children())
+                child.set_style(`width: ${spacing}px; height: ${dotHeight}px; padding: 0; min-width: 0;`);
             this._dots = dots;
         }
     }
