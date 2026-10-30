@@ -379,10 +379,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +  %{buildroot}%{_bindir}/gnome-shell-{extension,test}-tool
 +
 +# Shared build directories can inherit a setgid/default ACL that gives new
-+# staging directories mode2770. RPM records those modes; ordinary sessions
++# staging directories mode 2770. RPM records those modes; ordinary sessions
 +# then cannot traverse private libraries. Only static system directories are
 +# staged here. Normalize after all install steps and before packaging.
-+find %{buildroot} -type d -exec chmod 0755 {} +
++find %{buildroot} -type d -exec chmod 00755 {} +
 +
  %find_lang %{name}
  

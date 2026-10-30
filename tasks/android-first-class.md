@@ -57,6 +57,22 @@ includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
 
+OBSERVED00:59Z — exact directory-mode normalization verified:
+- Direct Linux check found GNU chmod0755 preserves directory setgid (2755),
+  so canonical recipe now uses00755 to clear it explicitly. Regression78a0f186
+  PASSED actual2770 -> exact0755 directories, actual bad-RPM rejection, correct
+  original-source patch application and Bash syntax. Earlier3d28a2b1 did not
+  exercise the actual chmod semantics; do not treat it as that proof.
+- First Shell125 preparation070b84f6 FAILED before compilation: Figtree RPM/SRPM
+  manifests passed, but old Home widget build has NO SHA256SUMS. No source or
+  font digest mismatch. Prior note of a wrong manifest base path was an initial
+  diagnosis; actual issue is absent widget manifest. Rebuild widgets from pinned
+  source for the next candidate rather than claim missing input verification.
+- New Shell126 preparation will preserve125 failed source tree/artifacts and use
+  source with00755 normalization plus all-package header checks. Native compiled
+  symbolic-stroke test still required through same bounded host executor with
+  normal Glycin sandbox; no test skips or decoder/sandbox replacement.
+
 OBSERVED00:57Z — root cause confirmed; Shell packaging fix/regression passed:
 - Read-only log jobs5b2df417 and23c7b0c4 PASSED, VMs powered off afterward.
   Failed candidate boot journals explicitly show greenboot's display-manager
