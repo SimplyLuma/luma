@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T00:23:00+00:00
+- Updated: 2026-10-30T00:38:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,27 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED00:38Z — combined candidate installed; graphical boot gate FAILED:
+- d4e9f7f8 prepared local Shell124 main/common override alongside existing.94,
+  matched SDK5 pair and retained image backup. Exact package dependencies resolved
+  against Mutter50.4/luma14. This proves installation, not an executing Shell UI.
+- New boot never met the300s graphical readiness gate. pipeline.json records
+  qualification-failed-or-inconclusive/Graphical session readiness deadline.
+  NO native reply or new-image runtime qualification pass. Normal/root actor
+  still active in shutdown cleanup; observe final child before restarting VM.
+- Earlier root SSH uptime82s then later103s several minutes later suggests a
+  repeated boot; cause unconfirmed. Guest SSH intermittently refused/timed out,
+  last fetched GNOME Shell journal had no entries. Serial reached GDM startup.
+  Owned libvirt VM has an itco reset watchdog; evaluate boot history/watchdog
+  events, do not assume this caused the reboot or disable health checks to pass.
+- Finally's extension cleanup failed while SSH unavailable. Owned test extension
+  and original settings record must be restored on next reachable boot; do not
+  report cleanup completed. Original settings at d4e9f7f8 artifact and guest
+  /var/tmp/luma-android-reply-r12-a65b419f/original-extension-settings.json.
+- Independent source root check5750ac25 PASSED128 tests, ZERO skipped in1.794s
+  after installer delegation fix7e932221e. .94 installed VM lacks this fix;
+  updated runtime package/graphical install remain to build and test.
 
 SOURCE00:31Z — installer activation delegation fixed; VM test unaffected:
 - Added installer_activation.py: RequestInstall asks the ordinary user manager
