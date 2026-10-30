@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T05:23Z
+- Updated: 2026-10-30T05:33Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,34 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT05:23Z — SDK5 scoped guards passed; keyboard-path comparison active:
+CURRENT05:33Z — real-app GUI flow in one bounded persistent desktop session:
+- User correctly calls out ~48h without a usable build. Deliverable remains
+  incomplete; repeated recovery/probe work has consumed too much time. Immediate
+  milestone is actual APK double-click/install/launcher/window/dock in one boot,
+  while retaining all original broader acceptance gates and production blocks.
+- R49 child0e968f9d/parentae00480f FAILED; final results and cleanup observed.
+  Actual native guards passed again; notification did not arrive during the
+  150s receipt window, so host keyboard input was NEVER dispatched. This does
+  not compare hardware vs virtual keyboard yet. Window test observed no layout
+  change this run and failed; earlier SDK5 resize passes remain bounded evidence.
+- LIVE parent0727a2ae normal1GiB/root256MiB; child gui-vm-r50-2d0de28a
+  normal14GiB/root1GiB/QEMU12/guest6/2CPU. vm-cache-budget-r50 exact restoration
+  controls retained. New fixture luma-android-gui-r50@test.projectluma is limited
+  to native screenshots/windows and pointer input; host uses actual QEMU keys.
+- Private gui-vm-r50/inbox accepts owned0600 UUID JSON commands, records each
+  once, and keeps same VM session for at most1800s. Commands snapshot/click/keys/
+  fixed F-Droid text/state/finish. Source helpers/hash pins immutable while live.
+  Observe child and parent through cleanup/final results; never stop at launch.
+- Corpus F-Droid2.0.2 official signature/hash pin retained. Install must happen
+  through actual Filer and native installer. Finish requires actual matching
+  installed APK SHA, registered desktop file, running PID, visible Filer/
+  installer/Android app observations, dock favorite and SDK5 native components.
+  It does NOT claim ARM/mobile/performance/full image/security qualification.
+- Preflight846750c3 PASSED pins/syntax/4 restoration fixture cases; two small
+  prelaunch corrections removed duplicate record keyword and made Downloads via
+  actual user manager. Offline owned GUI extension creation/readback passed.
+
+HISTORICAL05:23Z — SDK5 scoped guards passed; keyboard-path comparison active:
 - R48 childfd38012d/parent3d2ffb62 FAILED overall, final results observed. Actual
   native clipboard read/write and task-name UID guards PASSED with ordinary
   UID10128/PID1670, unique run63d41267 and nonempty UID1000 controls before/after;
