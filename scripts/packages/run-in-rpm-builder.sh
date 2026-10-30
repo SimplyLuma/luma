@@ -55,7 +55,10 @@ container_workdir="/build/${host_workdir#"$build_root"/}"
 # Local package validation can use an existing Fedora development container
 # when nested image-loader sandboxes are unavailable in the pinned builder.
 if [ -n "${LUMA_RPM_BUILDER_EXISTING:-}" ]; then
+  # Builder commands read the target architecture (their verification
+  # unpacks RPMS/<architecture>); pass it as the other modes do.
   podman exec --user root --workdir "$host_workdir" \
+    --env "LUMA_RPM_BUILDER_ARCHITECTURE=${builder_architecture:-x86_64}" \
     "$LUMA_RPM_BUILDER_EXISTING" /bin/bash -lc "$builder_command"
   exit
 fi
