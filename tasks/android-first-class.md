@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T16:52Z
+- Updated: 2026-10-30T16:58Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -37,7 +37,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
 | A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc and SDK5 fd38012d; remaining methods/boundaries open | Clipboard read/write and task-name getter passed on SDK4 and SDK5 x86 images. Require actual task focus/remove/remove-all negatives and trusted controls, plus property/platform/host-service boundaries and repeat on final image. |
 | A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
-| A18 CPU/page/GPU matrix | x86 VM baseline only; ARM/page config source checks | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
+| A18 CPU/page/GPU matrix | PARTIAL: x86 VM baseline and native AArch64 image/export PASS e83d2ad1; ARM runtime/page/GPU/device tests OPEN | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
 | A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
 | A20 Background/mobile power | Old-image local alarm/no-window observation only | Jobs/alarms/network push, suspend/resume/wakeup, Doze/wakelocks, idle drain and sustained physical energy/thermal measurements; no freeze shortcut. |
 | A21 Recovery/data lifecycle | Partial baseline lifetime/restart controls | Atomic runtime/image updates, rollback/data migration, corruption/out-of-space recovery and multi-user/profile removal without data leakage/loss. |
@@ -51,6 +51,22 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT16:58Z — ARM native image/export PASS; combined x86 VM admission active:
+- Native x86 build host cross-compiled AArch64 target: all75864 steps completed
+  in1h37m36s. Actual final compile diagnostic85bd9673 PASS; measured guest559MiB
+  used/23063MiB available at finalization, swap8MiB (not peak instrumentation).
+- ARM child e83d2ad1 PASSED16:57:19Z; guard28a5035c PASSED16:57:23Z. Streamed
+  image/native component byte counts and SHA verified; HWC actualELF AArch64.
+  System1636896768B SHA8430150c6868de9c7821dc4080245ea63d2d1dafd1da893fc3d4d1b5c92ca565;
+  vendor237363200B SHA05d47bb167a87b99fe57481c73ff1b04aaa51fd9bd5f0a9ccd2be891b02421da.
+  Same SDK5 immutable integration0c0cc1a9f as x86. Output private arm-image-r90/
+  output-aarch64. ACTUAL builder off/XML unchanged/original shared policy24cf
+  restored. This closes this build/export run; ARM runtime/device gates stay OPEN.
+- R126 isolated guard4checks ce4ba4d8 PASSED16:57:32Z. Sealed27 inputs and syntax
+  reverified. Parent dev-android-highmem-reply-r126-6e17ee51 admitted normally;
+  dispatches exact seven-RPM x86 whole-OS test. Observe through actual APK GUI,
+  pointer Pin/Unpin and dock/drawer launch, then child/parent cleanup. No pass yet.
 
 CURRENT16:52Z — final packaged drawer29 PASS; both metadata CPU payloads PASS; ARM99%:
 - Final Shell129 normal package05c7d806 PASSED16:44:48Z from c621fa319,
