@@ -239,7 +239,6 @@ class AppDrawer extends St.Widget {
 
     _popupAppMenu(tile, app) {
         this._drag = null;
-        this._suppressClick = true;
         if (this._appMenuSource !== tile) {
             this._destroyAppMenu();
             this._appMenu = new AppMenu(tile, St.Side.TOP, {

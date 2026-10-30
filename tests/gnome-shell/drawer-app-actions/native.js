@@ -71,6 +71,15 @@ async function work() {
         check('keyboard Menu opens the native app menu', drawer._appMenu?.isOpen);
         await key(Clutter.KEY_Escape);
         check('Escape dismisses only the app menu', !drawer._appMenu?.isOpen && drawer.visible);
+        await key(Clutter.KEY_Return);
+        const launched = Shell.AppSystem.get_default().lookup_app(id);
+        await until(() => launched.get_windows().length > 0);
+        check('Enter still launches after dismissing the menu', !drawer.visible && launched.get_windows().length > 0);
+        for (const window of launched.get_windows()) window.delete(global.get_current_time());
+        await until(() => launched.get_windows().length === 0);
+        drawer.open(); await pause();
+        drawer._search.set_text('Luma Drawer Probe'); await pause();
+        tile = drawer._tiles[0];
         await click(tile, Clutter.BUTTON_PRIMARY, 1200);
         check('pointer hold opens the native app menu', drawer._appMenu?.isOpen);
         check('hold does not launch the app', Shell.AppSystem.get_default().lookup_app(id).get_windows().length === 0);
