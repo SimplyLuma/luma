@@ -3,11 +3,23 @@ import base64
 import hashlib
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 import tempfile
 import zipfile
+
+
+def _text(value, limit=256):
+    if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 for c in value):
+        return ''
+    return value.strip()
+
+
+def _package(value):
+    value = _text(value)
+    return value if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*', value) else ''
 
 
 def read_identity(path, helper='/usr/libexec/luma-apk-metadata'):
@@ -38,14 +50,19 @@ def read_identity(path, helper='/usr/libexec/luma-apk-metadata'):
                         raw = candidate
             except KeyError:
                 pass
-        return {'label': label.strip(), 'artwork': base64.b64encode(raw).decode('ascii')}
+        result = {'label': label.strip(), 'artwork': base64.b64encode(raw).decode('ascii')}
+        for key, value in (('version', _text(identity.get('version'))),
+                           ('package', _package(identity.get('package')))):
+            if value:
+                result[key] = value
+        return result
 
 
-def identity_for_package(path, digest):
+def metadata_for_package(path, digest):
     from .safety import _validate_fingerprint, fingerprint
     _validate_fingerprint(digest)
     root = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'luma/installer/artwork'
-    cache = root/(digest+'-apk-v1.json')
+    cache = root/(digest+'-apk-v2.json')
     try:
         result = json.loads(cache.read_text())
     except (OSError, ValueError):
@@ -61,8 +78,10 @@ def identity_for_package(path, digest):
             json.dump(result, stream)
             temporary = Path(stream.name)
         temporary.replace(cache)
+    if not isinstance(result, dict) or not isinstance(result.get('artwork', ''), str):
+        raise ValueError('APK identity cache is malformed')
     raw = base64.b64decode(result.get('artwork', ''), validate=True)
-    if len(raw) > 2*1024*1024:
+    if len(raw) > 2*1024*1024 or (raw and not raw.startswith(b'\x89PNG\r\n\x1a\n')):
         raise ValueError('APK artwork exceeds its limit')
     icon = ''
     if raw:
@@ -73,7 +92,13 @@ def identity_for_package(path, digest):
                 temporary = Path(stream.name)
             temporary.replace(destination)
         icon = str(destination)
-    return result.get('label', ''), icon
+    return {'label': _text(result.get('label')), 'icon': icon,
+            'version': _text(result.get('version')), 'package': _package(result.get('package'))}
+
+
+def identity_for_package(path, digest):
+    value = metadata_for_package(path, digest)
+    return value['label'], value['icon']
 
 
 if __name__ == '__main__':

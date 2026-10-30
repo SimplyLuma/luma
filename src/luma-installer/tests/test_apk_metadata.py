@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 import zipfile
-from luma_installer.apk_metadata import read_identity, identity_for_package
+from luma_installer.apk_metadata import read_identity, identity_for_package, metadata_for_package
 
 class ApkIdentityTests(unittest.TestCase):
     def fixture(self, root):
@@ -44,3 +44,38 @@ class ApkIdentityTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     identity_for_package(path,'a'*64)
             self.assertEqual(list(Path(root).rglob('*.json')),[])
+
+    def test_declared_version_and_package_are_read_without_execution(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.fixture(root)
+            result=types.SimpleNamespace(stdout=json.dumps({'label':'F-Droid','icon':'res/ap/a.png',
+                                                            'version':'2.0.2','package':'org.fdroid.fdroid'}))
+            with patch('luma_installer.apk_metadata.subprocess.run',return_value=result):
+                value=read_identity(path)
+            self.assertEqual(value['version'],'2.0.2')
+            self.assertEqual(value['package'],'org.fdroid.fdroid')
+
+    def test_invalid_declared_fields_are_not_presented_as_metadata(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=self.fixture(root)
+            for version,package in [('2.0\nInjected','../other'), ('x'*257,'bad package')]:
+                result=types.SimpleNamespace(stdout=json.dumps({'label':'App','version':version,'package':package}))
+                with patch('luma_installer.apk_metadata.subprocess.run',return_value=result):
+                    value=read_identity(path)
+                self.assertNotIn('version',value)
+                self.assertNotIn('package',value)
+
+    def test_old_artwork_only_cache_does_not_hide_new_version(self):
+        from luma_installer.safety import fingerprint
+        with tempfile.TemporaryDirectory() as root:
+            path=self.fixture(root);digest=fingerprint(path)[1]
+            cache=Path(root)/'luma/installer/artwork';cache.mkdir(parents=True)
+            (cache/(digest+'-apk-v1.json')).write_text(json.dumps({'label':'Old cached name','artwork':''}))
+            result=types.SimpleNamespace(stdout=json.dumps({'label':'F-Droid','artwork':'',
+                                                            'version':'2.0.2','package':'org.fdroid.fdroid'}))
+            with patch.dict('os.environ',{'XDG_CACHE_HOME':root}), \
+                 patch('luma_installer.apk_metadata.subprocess.run',return_value=result) as worker:
+                value=metadata_for_package(path,digest)
+            self.assertEqual(value['version'],'2.0.2')
+            self.assertEqual(value['label'],'F-Droid')
+            worker.assert_called_once()
