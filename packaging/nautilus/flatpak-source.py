@@ -9,6 +9,7 @@ GNOME identity and licenses.
 """
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -69,6 +70,16 @@ def prepare(root):
                               for member in members):
             raise ValueError('Unexpected upstream Nautilus archive root')
         archive.extractall(root, members=members, filter='data')
+    # A build mount may inherit a shared host group that is unmapped inside
+    # Flatpak's user namespace. GNU patch preserves file groups and rejects
+    # that unmapped gid. Normalize only this freshly extracted, owned copy to
+    # the builder's primary group; source archives and shared parents stay intact.
+    for path in [target, *target.rglob('*')]:
+        info = path.lstat()
+        if info.st_uid != os.getuid():
+            raise ValueError('Extracted Filer source has a foreign owner')
+        if info.st_gid != os.getgid():
+            os.chown(path, -1, os.getgid(), follow_symlinks=False)
     for patch in [root / 'upstream-filer/default-terminal.patch'] + [
             root / 'patches/nautilus' / name for name in names]:
         subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(patch)],
