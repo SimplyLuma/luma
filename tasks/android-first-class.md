@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T05:05Z
+- Updated: 2026-10-30T05:13Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,24 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT05:05Z — correcting the actual probe lifecycle failure:
+CURRENT05:13Z — cold graphical startup remains an independent gate:
+- R46 preflight83347407 PASSED exact helper/package pins, syntax and4 isolated
+  policy restoration cases. Offline owned active probe update passed actual
+  checksum/owner/mode/SELinux-xattr readback with synchronous appliance shutdown.
+- Actual R46 child4f688d3d FAILED graphical-readiness deadline before UI/Android
+  phase. Parent05be282c FAILED and restored original shared policy24cfbd91;
+  original VM XML restored/off. No reply token sent. The failure is preserved.
+- Guest full IO pressure~73-79%, user Shell startup failed and GDM returned to
+  greeter. Larger RAM limit did not establish a successful cold desktop start.
+- One immediate fresh-boot control r47 active under parent587b5fda with the
+  already verified probe/payloads; no repeated package/image changes. Compares
+  warm backing-file state after cold-start work. Same fixed graphical deadline;
+  no timeout/health-check relaxation. Continue observing both final job results.
+- Own stopped runtime89 container has only2.5GiB writable cache; SSDs~21GiB free
+  with20GiB reserve. Removing it alone cannot fit the33GiB VM disk, so no cache
+  removal or SSD copy attempted. Other owners' work preserved.
+
+HISTORICAL05:05Z — correcting the actual probe lifecycle failure:
 - R44 child560f0a3a/guard489c58bc FAILED; both final results observed. Original
   shared policy SHA24cfbd91 restored; VM off, original XML restored/raw unmounted.
 - Read-only crash evidence71c63c24 PASSED extraction/readback. Journal identifies
