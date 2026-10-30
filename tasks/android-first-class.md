@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:33:30+00:00
+- Updated: 2026-10-30T03:42:41+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,25 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:34Z — actual runtime label regression; candidate96 source prepared:
+CURRENT03:42Z — runtime96 packaged; actual atomic label/reply test active:
+- Candidate96 source52564ea7e. Initial generic build8249b3cd failed before
+  packaging: NoNewPrivileges prevented rootless UID mapping. Correct normal
+  --kind package one-shot a5c91e96 PASSED03:38:04.853083Z:128 tests/0 skips,
+  payload/Python/desktop/mode checks. No runner policy change or root bypass.
+- RPM25dc4ccb3e3dd50745c092df2d4d074090bc58ea07227a1802521e9e3b5679f1;
+  SRPMdf2d1ad6642b8eade9c926723038b780d4cc0d01eef2c258b9cd17596e88a104.
+  Immutable receipt rpm-r38/source-receipt.json; outputs beneath existing
+  rpm-r10/source/build/candidate-96/build/packages/luma-android-runtime.
+- LIVE dev-android-reply-vm-r39-183e21f8.service10GiB/root1GiB, frozen
+  reply-vm-r39. Same buffered raw6GiB/QEMU8/2CPU. Initial actual user Shell/bus
+  running checks passed; currently replacing95->96 with unchangedShell127/SDK5.
+  Fresh boot must prove launcher waydroid_exec_t AND real root process
+  waydroid_t under Enforcing before native APK reply/resize/guard qualification.
+  Preflight1e956766 PASSED syntax/pinned bytes. No end-to-end pass yet.
+- Cleanup7ec3652a PASSED removing ONLY owned completed one-shot builder image
+  b7076710, no force/pruning. RPM/SRPM/source receipts retained; main free~23GiB.
+
+HISTORICAL03:34Z — actual runtime label regression; candidate96 source prepared:
 - r33 506ec195 FAILED actual resume before Android started. Both real user Shell
   boots passed running-service checks; fixture settings persisted and the native
   extension initialized after reboot. Fresh health success and exact SDK5 image
