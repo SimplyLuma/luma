@@ -57,6 +57,7 @@ export async function run(options = {}) {
         } catch { report[name] = 'unavailable'; }
     }
     let pointer, keyboard;
+    let keyObserver = 0;
     const tray = getNotificationTray();
     try {
         report.boot_id = new TextDecoder().decode(GLib.file_get_contents('/proc/sys/kernel/random/boot_id')[1]).trim();
@@ -111,7 +112,8 @@ export async function run(options = {}) {
         report.button_bounds = initial.button;
         const seat = global.stage.context.get_backend().get_default_seat();
         pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
-        keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        if (options.keyboardInput !== 'host-evdev')
+            keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         async function click(kind) {
             let box = controls()[kind];
             pointer.notify_absolute_motion(GLib.get_monotonic_time(), box.x + box.width / 2, box.y + box.height / 2);
@@ -125,12 +127,32 @@ export async function run(options = {}) {
         }
         await click('entry');
         check(controls().focused, 'Native reply entry did not receive keyboard focus');
-        for (const character of text) {
-            keyboard.notify_keyval(GLib.get_monotonic_time(), character.codePointAt(0), Clutter.KeyState.PRESSED);
-            keyboard.notify_keyval(GLib.get_monotonic_time(), character.codePointAt(0), Clutter.KeyState.RELEASED);
-            await sleep(15);
+        report.input_events = [];
+        keyObserver = global.stage.connect('captured-event', (_actor, event) => {
+            if ([Clutter.EventType.KEY_PRESS, Clutter.EventType.KEY_RELEASE].includes(event.type()) &&
+                report.input_events.length < 200) {
+                report.input_events.push({type: event.type(), code: event.get_key_code(),
+                    symbol: event.get_key_symbol(), flags: event.get_flags()});
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        report.keyboard_input = options.keyboardInput === 'host-evdev' ? 'host-evdev' : 'clutter-keyval';
+        if (options.keyboardInput === 'host-evdev') {
+            const source = Main.inputMethod?._currentSource;
+            report.input_source = {type: source?.type, id: source?.id};
+            check(source?.type === 'xkb' && source?.id === 'us',
+                'Fixed host keycode fixture requires the actual US input source');
+            report.status = 'waiting-for-host-keyboard-input'; save();
+            for (let attempt = 0; attempt < 500 && controls().text !== text; attempt++)
+                await sleep(20);
+        } else {
+            for (const character of text) {
+                keyboard.notify_keyval(GLib.get_monotonic_time(), character.codePointAt(0), Clutter.KeyState.PRESSED);
+                keyboard.notify_keyval(GLib.get_monotonic_time(), character.codePointAt(0), Clutter.KeyState.RELEASED);
+                await sleep(15);
+            }
         }
-        // Virtual devices enqueue input; a timer can run before the next stage
+        // Input events enqueue work; a timer can run before the next stage
         // event dispatch. Require the editor's actual value, within a deadline.
         for (let attempt = 0; attempt < 100 && controls().text !== text; attempt++)
             await sleep(20);
@@ -149,6 +171,7 @@ export async function run(options = {}) {
         await capture('failed-state'); save(); throw error;
     } finally {
         // Dispose while JavaScript is running, rather than during GC.
+        if (keyObserver) global.stage.disconnect(keyObserver);
         try {
             keyboard?.run_dispose();
             pointer?.run_dispose();

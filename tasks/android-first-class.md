@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T05:13Z
+- Updated: 2026-10-30T05:23Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -20,10 +20,10 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot and native image hashes passed183e21f8; UI reply/other scopes pending | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
+| A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot and native image hashes passed183e21f8; UI reply/other scopes pending | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
-| A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
+| A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
 | A06 Native notifications | Old-image native card and Mark read observed; new lifecycle/reply runtime OPEN | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
 | A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
@@ -35,7 +35,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | A13 Contacts/calendar/telephony | OPEN consented providers | Native authoritative services via scoped grants; no private native database mounts or Android ownership of modem/controllers. |
 | A14 Other hardware | OPEN arbitration/qualification | USB/Bluetooth/NFC/sensors with native coexistence, real device reconnect/revocation and accurate capability advertisement. |
 | A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
-| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc; remaining methods/boundaries open | Clipboard read/write and task-name getter passed on SDK4 x86 image. Require actual task focus/remove/remove-all negatives and trusted controls, plus property/platform/host-service boundaries and repeat on final image. |
+| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc and SDK5 fd38012d; remaining methods/boundaries open | Clipboard read/write and task-name getter passed on SDK4 and SDK5 x86 images. Require actual task focus/remove/remove-all negatives and trusted controls, plus property/platform/host-service boundaries and repeat on final image. |
 | A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
 | A18 CPU/page/GPU matrix | x86 VM baseline only; ARM/page config source checks | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
 | A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
@@ -52,7 +52,26 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT05:15Z — SDK5 window scope passed; two probe issues remain:
+CURRENT05:23Z — SDK5 scoped guards passed; keyboard-path comparison active:
+- R48 childfd38012d/parent3d2ffb62 FAILED overall, final results observed. Actual
+  native clipboard read/write and task-name UID guards PASSED with ordinary
+  UID10128/PID1670, unique run63d41267 and nonempty UID1000 controls before/after;
+  trusted clipboard seed unchanged. Same actual96/127/SDK5/APKr16 parent boot.
+  Full origin/isolation/focus/mutators remain OPEN; Android SELinux Disabled.
+- SDK5 resize/state passed again. Reply probe reached real live entry, focus
+  and typing without a Shell crash, but each Clutter notify_keyval character
+  appeared twice. No Send and no Android reply receipt; original6c token unused.
+  Cause is not established as product or probe. Preserve this input-path failure.
+- Source probe now supports explicitly selected host-evdev keyboard input and
+  records bounded native key events. It requires actual xkb/us input source and
+  observed exact editor text; no text setter/clipboard injection. Next r49 sends
+  each QEMU Linux keycode once, with a before-first-event intent/count receipt;
+  no action retries. This compares physical-key delivery with virtual-keyval.
+- Preflightaddde270 PASSED pinned files/Python/Bash/JS syntax and4 isolated
+  restoration cases. r49 guarded normal14/root1/QEMU12 run dispatched; observe
+  both child and parent. Prior policy24cfbd91, XML and fixture settings restored.
+
+HISTORICAL05:15Z — SDK5 window scope passed; two probe issues remain:
 - R47 child3ab0ebc6/parent587b5fda FAILED overall; actual final results observed,
   original policy/XML restored and fixture preferences restored/extension removed.
 - Same SDK5/96/127/APKr16 boot73188874: resize459x635 ->471x647 ->1242x641
