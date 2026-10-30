@@ -1,12 +1,39 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r8 delivered and launched on the Dell for manual
-testing. Visual conformance and live OpenAI qualification remain incomplete.
+Status: r9 destination and capability corrections pass source/native tests;
+packaging and delivery pending. The Dell still runs r8. Visual conformance and
+live OpenAI qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
 Review: draft PR #92. Qualified r8 runtime source is
 `f1b13b822a4e18a0c6d1b3af7dfb21abdfd00e51`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
+
+## October 29 follow-up: application ownership and truthful completion
+
+The direct bridge previously accessed native Notes storage even when the
+launcher delegated to the Flatpak application. Its successful readback could
+therefore verify a different library from the visible app. It now resolves the
+launcher/OS role first, uses the owner's data directory for Notes and Weather,
+fails closed for a broken signed role and binds query targets to that
+destination. No credential access or app-identity impersonation is involved.
+Calendar deletion now requires a strict read proving the exact stored series
+is absent. Receipts explicitly distinguish saved-record and visible-window
+verification; existing Calendar windows can still display cached data.
+
+The Tide song request also exposed an overly narrow initial tool selection.
+Music app names now select the generic application execution tools, and
+`discover_tools` can load other installed tools while a turn is running. Each
+discovered action retains its own authorization. This broadens access to
+existing implementations; it does not establish universal app support or prove
+that a real hosted-model Tide playback request has passed.
+
+186 source tests, staged imports/schema checks and nine GTK regressions pass.
+Real isolated EDS/Notes/GWeather/MCP tests pass, including separate native and
+Flatpak Notes libraries, independent durable readback, unchanged native data
+and refusal of a target whose application destination changed. A two-response
+model fixture proves tool schemas become available after discovery while
+disabled action tiers remain disabled. Hosted model acceptance remains manual.
 
 ## October 29 evening: direct application records and wheel scrolling
 

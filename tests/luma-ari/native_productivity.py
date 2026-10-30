@@ -91,6 +91,26 @@ try:
     removed=invoke('change_application',{'application':'notes','operation':'remove','target':current['target']})
     assert store.get_note(current['id']).deleted_at
     invoke('change_application',{'application':'notes','operation':'restore','target':removed['data']['target']})
+    # The desktop can delegate to a Flatpak while Ari itself is native. Both
+    # libraries exist: a readback from the wrong one must never look successful.
+    native_count=len(store.list_notes())
+    destination={'application_id':'org.projectluma.Notes','storage':'flatpak',
+                 'data_home':str(Path(os.environ['XDG_DATA_HOME'])/'flatpak-owner')}
+    with patch.object(direct,'_application_destination',return_value=destination):
+        owner_note=direct.change_application({'application':'notes','operation':'create',
+            'fields':{'title':'Task List','body':'In the actual application library'}})
+        assert owner_note['verified'] and owner_note['data']['verification']['storage']=='flatpak'
+        owner_path=Path(destination['data_home'])/'luma/notes/notes.sqlite3'
+        owner_store=notes.NotesStore(owner_path)
+        assert owner_store.get_note(owner_note['data']['record']['id']).body=='In the actual application library'
+        assert len(store.list_notes())==native_count
+        owner_store.close()
+    with patch.object(direct,'_application_destination',return_value={**destination,'storage':'native'}):
+        try:
+            direct.change_application({'application':'notes','operation':'remove','target':owner_note['data']['target']})
+        except ValueError as error:assert 'destination changed' in str(error)
+        else:raise AssertionError('A stale target changed a different application library')
+    print('Actual separate Notes libraries: Flatpak destination, durable independent readback, native untouched, owner-change guard PASS',flush=True)
     assert store.get_note(current['id']).deleted_at is None
     store.close()
     print('Real Notes creation/readback, concurrent edit preservation, Trash and restore PASS',flush=True)

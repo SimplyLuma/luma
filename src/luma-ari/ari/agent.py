@@ -27,6 +27,14 @@ from .store import Store
 
 Emit = Callable[[dict], None]
 
+DISCOVER_TOOLS = Tool('discover_tools',
+    'Find and load more of Ari’s installed tools for this task. Use before saying a task is unsupported '
+    'because the initially offered tools are limited. Describe the needed capability, such as '
+    'application search and controls, software installation, development, or system settings. '
+    'Discovery does not grant permission or execute the discovered actions.',
+    {'type':'object','properties':{'query':{'type':'string'}},'required':['query'],
+     'additionalProperties':False}, 'ari')
+
 _THINK = re.compile(r"<think>.*?(</think>|$)", re.S)
 _CLAIM = re.compile(r"^\s*(?:(?:i\s+(?:have|'ve)\s+|i\s+|i've\s+)?(?:done|moved|changed|set|switched|opened|turned|"
                     r"updated|applied|put|made|installed|uninstalled|created|saved|deleted|removed|sent|built)\b)", re.I)
@@ -237,8 +245,17 @@ class Agent:
             arguments['inspect_after'] = (READ_PERSONAL in self.policy.enabled
                                           and self.policy.action_rule('inspect_application') != 'deny')
         turn.emit({"type": "tool", "name": name, "label": _running_label(name)})
-        result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)
-                  else self.tools.call(name, arguments))
+        if name == 'discover_tools':
+            query = arguments.get('query')
+            if not isinstance(query,str) or not query.strip() or len(query)>200:
+                result = {'ok':False,'summary':'Describe the capability to find in at most 200 characters.'}
+            else:
+                found = router.select(query,self.tools.available,12)
+                result = {'ok':True,'summary':'Loaded matching installed tools. Each action still uses its own permissions.',
+                          'data':{'tools':[{'name':tool.name,'description':tool.description[:600]} for tool in found]}}
+        else:
+            result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)
+                      else self.tools.call(name, arguments))
         if action_key and result.get('ok') and result.get('verified'):
             turn.action_results[action_key] = result
         step_id = ""
@@ -392,12 +409,13 @@ class Agent:
         if router.development_request(routing_text):
             profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=24,
                               max_tokens=max(profile.max_tokens, 4096))
-        if re.search(r"\b(?:app|application|weather|notes?|calendar|tasks?|messages?|browser|timer|alarm|phone|call|email|song|track|music|process|pid)\b", routing_text, re.I):
+        if re.search(r"\b(?:app|application|weather|notes?|calendar|tasks?|messages?|browser|timer|alarm|phone|call|email|song|track|music|tide|spotify|process|pid)\b", routing_text, re.I):
             profile = replace(profile, max_tools=max(profile.max_tools, 12), max_steps=max(profile.max_steps, 16))
         tools = router.select(routing_text,
                               self.tools.available, profile.max_tools)
         if getattr(provider, "hosted_search", False):
             tools = [tool for tool in tools if tool.name not in ("web_search", "fetch_page", "wikipedia")]
+        tools.append(DISCOVER_TOOLS)
         tool_names = [t.name for t in tools]
         if getattr(provider, "hosted_search", False) and getattr(provider, "allow_search", True):
             tool_names.append("web_search")
@@ -437,11 +455,11 @@ class Agent:
                              "\nNow call change_setting for the one the person means. Don't ask first."})
             if not any(t.name == "change_setting" for t in tools) and "change_setting" in self.tools.by_name:
                 tools = tools + [self.tools.by_name["change_setting"][1]]
-        schemas = [{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                     "parameters": t.input_schema}} for t in tools]
         for _step in range(profile.max_steps):
             if turn.stop.is_set():
                 return "Stopped."
+            schemas = [{"type":"function", "function":{"name":tool.name,"description":tool.description,
+                                                           "parameters":tool.input_schema}} for tool in tools]
             turn.emit({"type": "working", "label": f"{label} is thinking"})
             text_parts: list[str] = []
             calls: list[dict] = []
@@ -488,6 +506,12 @@ class Agent:
                     result = {"ok": False, "summary": "That tool wasn't offered for this request."}
                 else:
                     result = self.run_tool(turn, call["name"], call["arguments"])
+                if call['name']=='discover_tools' and result.get('ok'):
+                    found = {row['name'] for row in result['data']['tools']}
+                    offered = {tool.name for tool in tools}
+                    tools.extend(tool for tool in self.tools.available if tool.name in found and tool.name not in offered
+                                 and not (getattr(provider,'hosted_search',False)
+                                          and tool.name in ('web_search','fetch_page','wikipedia')))
                 messages.append({"role": "tool", "tool_call_id": call["id"], "content": _tool_text(result)})
         return "I stopped there: that took more steps than I allow for one request."
 
@@ -551,6 +575,10 @@ def _tool_text(result: dict, *, lookup: bool = False) -> str:
         lines.append('The application acknowledged the command; completion is not confirmed. '
                      'Verify the requested outcome from the returned state, or inspect again. '
                      'If observation is unavailable, report only that the command was requested.')
+    if isinstance(result.get('data'),dict) and result['data'].get('verification',{}).get('scope')=='saved-record':
+        lines.append('The saved record in the application’s resolved data store was verified. '
+                     'The visible window was not verified or refreshed; do not claim that it was. '
+                     'An already-open window may still show cached data.')
     data = result.get("data") or {}
     if isinstance(data, dict) and data.get("key_sentences"):
         lines.append("Most relevant sentences, from " + str(data.get("source", "the source"))

@@ -70,6 +70,14 @@ query target; repeated verified operations in a turn do not repeat their write.
 These tools use Ari's read/action tiers, autonomy modes and app-specific rules.
 Query results are bounded previews; unrequested fields remain intact.
 
+The bridge resolves the launcher’s application owner before accessing records.
+When that owner is a Flatpak, Notes and Weather use that application's data
+directory rather than creating a second native library. A signed OS role that
+cannot resolve fails before accessing a fallback store. Query targets bind to
+the resolved destination. Calendar deletion checks the exact stored series is
+absent; an empty date-range query alone is insufficient. Receipts distinguish
+saved-record verification from verification of the visible window.
+
 This path requires the corresponding application model to be installed.
 Recurring/all-day edits, invitations, permanent contact deletion, messaging,
 calls and timers need their supported owner interfaces; this adapter does not
@@ -95,6 +103,12 @@ accessible controls. An acknowledgement is reported as a request, and the
 resulting state must verify completion. No synthetic mouse/keyboard input or
 direct writes to application databases are used. Apps must publish a suitable
 broker action, native command or accessible control for the requested operation.
+
+`discover_tools` lets the model find and load additional installed tools during
+a turn, so the initial shortlist does not define the limit of Ari's capability.
+Discovery does not execute actions or grant permissions. Named music requests
+include application search/control tools, and resuming playback is explicitly
+insufficient proof that a requested track and artist are playing.
 
 Chat timestamps use the local 12-hour clock. Streaming updates retain unchanged
 message widgets and the composer. The thread follows its latest content until

@@ -8,11 +8,14 @@ Existing records require an expiring, revision-bound target from a query.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
 import dataclasses
+from functools import wraps
 import hashlib
 import importlib
 import json
+import os
 from pathlib import Path
 import secrets
 import sys
@@ -24,6 +27,7 @@ if __package__ in (None, ''):
 from ari.mcp import serve
 
 _targets = {}
+_destination = ContextVar('application_destination', default=None)
 APPLICATIONS = ('calendar', 'notes', 'contacts', 'weather', 'tasks')
 OPERATIONS = {
     'calendar': ('create', 'update', 'remove', 'restore'),
@@ -39,6 +43,66 @@ FIELDS = {
     'weather': set(),
     'tasks': {'title', 'body', 'due', 'completed'},
 }
+
+
+def _application_destination(application):
+    """Resolve the same owner as the launcher, never an empty native fallback.
+
+    Native model APIs run as Ari, with Ari's authorization. Selecting a store
+    does not run code as the application or grant its D-Bus/account identity.
+    """
+    app_id = 'org.projectluma.' + application.title()
+    flatpak = False
+    try:
+        from luma_installer import native_app_roles
+    except ImportError:
+        native_app_roles = None
+    if native_app_roles is not None and native_app_roles.required(app_id):
+        # Refuses missing/ambiguous/unsigned deployments rather than writing
+        # a second library when the real app needs repair.
+        native_app_roles.resolve_owned(app_id)
+        flatpak = True
+    else:
+        from gi.repository import Gio
+        try:
+            desktop = Gio.DesktopAppInfo.new(app_id + '.desktop')
+        except TypeError:  # PyGObject's nullable constructor raises when absent.
+            desktop = None
+        if desktop is not None:
+            owner = desktop.get_string('X-Flatpak')
+            if owner and owner != app_id:
+                raise ValueError('The application launcher has an unexpected owner.')
+            flatpak = owner == app_id
+    data = (Path.home()/'.var/app'/app_id/'data' if flatpak else
+            Path(os.environ.get('XDG_DATA_HOME') or Path.home()/'.local/share'))
+    return {'application_id':app_id, 'storage':'flatpak' if flatpak else 'native',
+            'data_home':str(data)}
+
+
+def _at_destination(function):
+    @wraps(function)
+    def invoke(arguments):
+        app = arguments['application']
+        if app not in APPLICATIONS:
+            raise ValueError('Choose a supported application.')
+        destination = _application_destination(app)
+        token = _destination.set(destination)
+        try:
+            result = function(arguments)
+            if result.get('verified'):
+                result['data']['verification'] = {
+                    'scope':'saved-record', 'display_verified':False,
+                    **{key:destination[key] for key in ('application_id','storage')}}
+            return result
+        finally:
+            _destination.reset(token)
+    return invoke
+
+
+def _place_store(module):
+    destination = _destination.get()
+    return (module.PlaceStore(Path(destination['data_home'])/'prairie/weather/places.json')
+            if destination and destination['storage']=='flatpak' else module.PlaceStore())
 
 
 def backend(application):
@@ -64,7 +128,7 @@ def _target(application, record, **extra):
         raise ValueError('Too many outstanding application targets. Query a smaller result set.')
     key = secrets.token_urlsafe(20)
     _targets[key] = dict(application=application, record=record, revision=_digest(record),
-                         expires=now+300, **extra)
+                         expires=now+300, destination=_destination.get(), **extra)
     return key
 
 
@@ -72,6 +136,8 @@ def _existing(application, token):
     row = _targets.get(token)
     if row is None or row['application'] != application or row['expires'] < time.monotonic():
         raise ValueError('That application target expired or belongs to another application. Query again.')
+    if row.get('destination') != _destination.get():
+        raise ValueError('The application data destination changed. Query the active application again.')
     return row
 
 
@@ -157,13 +223,16 @@ def _bounded(rows, budget):
 
 @contextmanager
 def _store(module):
-    store = module.NotesStore()
+    destination = _destination.get()
+    store = (module.NotesStore(Path(destination['data_home'])/'luma/notes/notes.sqlite3')
+             if destination and destination['storage']=='flatpak' else module.NotesStore())
     try:
         yield store
     finally:
         store.close()
 
 
+@_at_destination
 def query_application(arguments):
     app = arguments['application']
     module = backend(app)
@@ -190,7 +259,7 @@ def query_application(arguments):
         for contact in module.load_contacts(query)[:30]:
             records.append({**_contact_record(contact),'target':_target(app,contact)})
     elif app == 'weather':
-        saved=module.PlaceStore().list()
+        saved=_place_store(module).list()
         resources=[_place_record(place) for place in saved]
         if query:
             search=module.LocationSearch()
@@ -252,6 +321,11 @@ def _calendar(module, operation, fields, row, source, preview):
             before=module.component_text(selected.uid,original.uid)
             module.delete_event(selected.uid,original.uid)
             after=module.component_text(selected.uid,original.uid,allow_missing=True)
+            # list_events tolerates unavailable providers for Calendar's UI.
+            # Its empty result alone is therefore not proof of deletion.
+            # component_text is a strict owner read of this exact series.
+            if 'BEGIN:VEVENT' in after.splitlines():
+                raise RuntimeError('Calendar still contains the event; removal was not verified.')
             remaining=module.list_events(original.start-timedelta(days=1),original.end+timedelta(days=1),
                                          (selected,),timeout=5)
             if any(event.uid==original.uid for event in remaining):
@@ -344,7 +418,7 @@ def _contacts(module, operation, fields, row, _source_id, preview):
 def _weather(module, operation, fields, row, _source_id, preview):
     if row is None:raise ValueError('Search for and choose the exact city first.')
     place=row['record']
-    store=module.PlaceStore()
+    store=_place_store(module)
     summary={'add':'Add','remove':'Remove','restore':'Restore'}[operation]+' '+place.name+' in Weather'
     if operation=='remove':
         current=next((p for p in store.list() if p.uid==place.uid),None)
@@ -400,6 +474,7 @@ def _tasks(module, operation, fields, row, source, preview):
         repo.close()
 
 
+@_at_destination
 def change_application(arguments):
     app,operation=arguments['application'],arguments['operation']
     if app not in OPERATIONS or operation not in OPERATIONS[app]:

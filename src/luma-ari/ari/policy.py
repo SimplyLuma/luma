@@ -17,6 +17,7 @@ TIER_NAMES = {0: "Answer", 1: "Personal settings", 2: "Read personal data", 3: "
               4: "Change your files and design", 5: "Change the system", OPEN_APPS: "Open applications"}
 
 TOOL_TIERS = {
+    'discover_tools': ANSWER,
     "now": ANSWER, "calculate": ANSWER, "convert": ANSWER, "weather": ANSWER, "web_search": ANSWER,
     "fetch_page": ANSWER, "wikipedia": ANSWER, "define": ANSWER, "find_app": ANSWER, "list_display_modes": ANSWER,
     "set_dock_position": PERSONAL_SETTINGS, "set_theme": PERSONAL_SETTINGS, "set_accent": PERSONAL_SETTINGS,

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Typed app operations, authorization and once-per-turn write boundaries."""
 import tempfile
+import sys
 import time
 import unittest
 from pathlib import Path
@@ -19,6 +20,52 @@ from ari.tools import productivity as p
 class Productivity(unittest.TestCase):
     def tearDown(self):
         p._targets.clear()
+
+    def test_launcher_destination_uses_flatpak_owner_and_fails_closed_on_broken_role(self):
+        from gi.repository import Gio
+        roles=SimpleNamespace(required=Mock(return_value=False),resolve_owned=Mock())
+        desktop=SimpleNamespace(get_string=Mock(return_value='org.projectluma.Notes'))
+        with patch.dict(sys.modules,{'luma_installer':SimpleNamespace(native_app_roles=roles)}), \
+                patch.object(Gio.DesktopAppInfo,'new',return_value=desktop):
+            destination=p._application_destination('notes')
+            self.assertEqual(destination['storage'],'flatpak')
+            self.assertEqual(Path(destination['data_home']),Path.home()/'.var/app/org.projectluma.Notes/data')
+            roles.required.return_value=True
+            roles.resolve_owned.side_effect=ValueError('signed application needs repair')
+            with self.assertRaisesRegex(ValueError,'needs repair'):
+                p._application_destination('notes')
+
+    def test_changing_the_application_owner_invalidates_old_targets(self):
+        one={'storage':'native','data_home':'/one','application_id':'org.projectluma.Notes'}
+        two={**one,'storage':'flatpak','data_home':'/two'}
+        token=p._destination.set(one)
+        try:
+            target=p._target('notes',{'id':'same-in-two-libraries'})
+            p._destination.set(two)
+            with self.assertRaisesRegex(ValueError,'destination changed'):
+                p._existing('notes',target)
+        finally:p._destination.reset(token)
+
+    def test_calendar_delete_needs_exact_series_absence_not_an_empty_range(self):
+        from datetime import datetime,timedelta
+        from dataclasses import dataclass
+        @dataclass
+        class Event:
+            uid:str='one'; source_uid:str='local'; summary:str='Dog park'
+            start:object=datetime(2026,10,30,14,tzinfo=ZoneInfo('America/Chicago'))
+            end:object=datetime(2026,10,30,15,tzinfo=ZoneInfo('America/Chicago'))
+            recurring:bool=False;rid:str='';all_day:bool=False
+        event=Event()
+        source=SimpleNamespace(uid='local',writable=True,is_default=True)
+        module=SimpleNamespace(list_sources=lambda:[source],
+            list_events=Mock(side_effect=[(event,),()]),delete_event=Mock(),export_ics=Mock(),
+            component_text=Mock(return_value='BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:one\nEND:VEVENT\nEND:VCALENDAR'))
+        backup=SimpleNamespace(ensure_backup=Mock())
+        data=SimpleNamespace(EventDraft=object)
+        row=p._existing('calendar',p._target('calendar',event))
+        with patch.dict(sys.modules,{'prairie_apps.calendar_backup':backup,'prairie_apps.calendar_data':data}):
+            with self.assertRaisesRegex(RuntimeError,'still contains'):
+                p._calendar(module,'remove',{},row,'',False)
 
     def test_wall_times_offsets_and_dst_are_not_title_parsing(self):
         zone=ZoneInfo('America/Chicago')
@@ -72,6 +119,9 @@ class Productivity(unittest.TestCase):
         tools=[Tool(name,name,{},'productivity') for name in ('open_app','inspect_application','act_in_application','query_application','change_application')]
         for text in ('Create a note','Add a calendar event tomorrow','Add a contact','Remove Chicago from Weather'):
             self.assertEqual([tool.name for tool in router.select(text,tools,2)],['query_application','change_application'])
+        tools.extend([Tool('find_app','Find applications',{},'apps'),Tool('media_control','Resume music',{},'system')])
+        self.assertEqual([tool.name for tool in router.select('Play Coffee on Tide by Chappell Roan',tools,3)],
+                         ['open_app','inspect_application','act_in_application'])
 
     def test_modes_deduplicate_verified_writes_and_preserve_revocation(self):
         for mode,expected in (('system',1),('all',1),('never',0)):

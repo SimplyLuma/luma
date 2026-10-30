@@ -88,12 +88,15 @@ def select(text: str, tools: list[Tool], limit: int) -> list[Tool]:
     elif re.search(r'\b(?:process|processes|pid)\b',text,re.I):
         preferred = [tool for tool in tools if tool.name in ('find_processes','control_process')]
         chosen = (preferred+[tool for tool in chosen if tool not in preferred])[:limit]
-    elif re.search(r"\b(?:notes?|calendar|tasks?|messages?|contacts?|browser|email|weather|timer|alarm|phone|call|song|track|playlist|music)\b", text, re.I) or (
+    elif re.search(r"\b(?:notes?|calendar|tasks?|messages?|contacts?|browser|email|weather|timer|alarm|phone|call|song|track|playlist|music|tide|spotify)\b", text, re.I) or (
             re.search(r"\b(?:add|write|edit|create|save|delete|remove|change|set)\b", text, re.I)
             and re.search(r"\b(?:app|application)\b", text, re.I)):
         bundle = {"find_app", "open_app", "request_app_access", "app_surfaces", "app_action",
                   "desktop_applications", "inspect_application", "act_in_application"}
         direct = [tool for tool in tools if tool.name in ('query_application','change_application')]
+        if re.search(r'\b(?:tide|spotify|song|track|playlist|music)\b',text,re.I) and not re.search(
+                r'\b(?:notes?|calendar|contacts?|tasks?|weather)\b',text,re.I):
+            direct = []
         preferred = direct+[tool for tool in tools if tool.name in bundle]
         chosen = (preferred + [tool for tool in chosen if tool not in preferred])[:limit]
     elif re.search(r"\b(?:install|get|download)\b", text, re.I):
