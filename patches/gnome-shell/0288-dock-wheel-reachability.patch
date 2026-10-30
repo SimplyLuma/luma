@@ -15,13 +15,15 @@ applying it twice. Name the user surface Dock in the shared pin action.
          this._dockScroll.x_expand = true;
          this._dockScroll.y_expand = true;
          // The applications scroll; the folders do not. A dock with more
-@@ -1904,6 +1905,47 @@
+@@ -1904,6 +1905,53 @@
          return null;
      }
  
 +    // Native ScrollView owns its primary axis. Add only the missing cross-axis
 +    // input, without repeating the native handler's primary-axis movement.
 +    _scrollDock(event) {
++        if (event.get_flags() & Clutter.EventFlags.POINTER_EMULATED)
++            return Clutter.EVENT_STOP;
 +        const adjustment = this._vertical
 +            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
 +        if (!adjustment || adjustment.upper <= adjustment.page_size)
@@ -53,8 +55,12 @@ applying it twice. Name the user surface Dock in the shared pin action.
 +        }
 +        if (!Number.isFinite(delta) || delta === 0)
 +            return Clutter.EVENT_PROPAGATE;
++        if (!this._vertical &&
++            this._dockScroll.get_text_direction() === Clutter.TextDirection.RTL)
++            delta *= -1;
++        // Match St's native wheel distance; step_increment describes the bar.
 +        adjustment.value = Math.clamp(
-+            adjustment.value + delta * adjustment.step_increment,
++            adjustment.value + delta * Math.pow(adjustment.page_size, 2 / 3),
 +            adjustment.lower, Math.max(adjustment.lower,
 +                adjustment.upper - adjustment.page_size));
 +        return Clutter.EVENT_STOP;

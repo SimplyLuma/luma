@@ -4,6 +4,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Scripting from 'resource:///org/gnome/shell/ui/scripting.js';
 const out = GLib.getenv('LUMA_POLISH_OUTPUT'), results = [], observations = [];
@@ -24,6 +25,7 @@ function bounds(actor) {
 async function work() {
     await until(() => Main.shelf?._dockScroll && Main.shelf._dash?._box);
     const original = global.settings.get_strv('favorite-apps'), created = [];
+    let reference = null;
     const pointer = global.stage.context.get_backend().get_default_seat()
         .create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
     try {
@@ -61,16 +63,38 @@ async function work() {
             }
             await pause();
         };
-        await wheel(Clutter.ScrollDirection.DOWN);
+        reference = new St.ScrollView({width: first.page, height: 67,
+            hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.NEVER,
+            enable_mouse_scrolling: true});
+        const referenceContent = new St.BoxLayout();
+        referenceContent.add_child(new St.Widget({width: first.upper, height: 67, reactive: true}));
+        reference.set_child(referenceContent);
+        Main.uiGroup.add_child(reference); reference.set_position(20, 20);
+        await pause();
+        const refBounds = bounds(reference);
+        pointer.notify_absolute_motion(GLib.get_monotonic_time(), refBounds.x + refBounds.width / 2,
+            refBounds.y + refBounds.height / 2);
+        await pause(); await wheel(Clutter.ScrollDirection.RIGHT, 1);
+        const nativeStep = reference.hadjustment.value;
+        observations.push({name: 'native-scrollview-reference', offset: nativeStep,
+            page: reference.hadjustment.page_size, upper: reference.hadjustment.upper});
+        check('native reference has the same viewport and responds to one tick', nativeStep > 0 &&
+            reference.hadjustment.page_size === first.page);
+        reference.destroy(); reference = null;
+        pointer.notify_absolute_motion(GLib.get_monotonic_time(), viewport.x + viewport.width / 2,
+            viewport.y + viewport.height / 2);
+        await pause(); await wheel(Clutter.ScrollDirection.DOWN, 1);
+        const oneDown = sample('one-wheel-down');
+        check('ordinary wheel matches one native scroll step', Math.abs(oneDown.offset - first.offset - nativeStep) < 1);
+        await wheel(Clutter.ScrollDirection.DOWN, 11);
         const down = sample('wheel-down');
-        check('ordinary wheel advances the horizontal dock', down.offset > first.offset + 1);
         check('wheel reaches the last pinned app', down.target.x >= down.viewport.x - 1 &&
             down.target.x + down.target.width <= down.viewport.x + down.viewport.width + 1);
         await wheel(Clutter.ScrollDirection.UP);
         check('reverse wheel returns to the first apps', sample('wheel-up').offset <= first.offset + 1);
         await wheel(Clutter.ScrollDirection.RIGHT, 1);
         const right = sample('one-horizontal-tick');
-        check('horizontal wheel is applied once', Math.abs(right.offset - first.offset - first.step) < 1);
+        check('horizontal wheel is applied once', Math.abs(right.offset - first.offset - nativeStep) < 1);
         pointer.notify_scroll_continuous(GLib.get_monotonic_time(), 0, 1,
             Clutter.ScrollSource.FINGER, Clutter.ScrollFinishFlags.NONE);
         await pause();
@@ -89,6 +113,7 @@ async function work() {
         await until(() => app.get_windows().length === 0);
         check('activated fixture window closes normally', app.get_windows().length === 0);
     } finally {
+        reference?.destroy();
         global.settings.set_strv('favorite-apps', original);
         for (const path of created) Gio.File.new_for_path(path).delete(null);
         await pause(); pointer.run_dispose();
