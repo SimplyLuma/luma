@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T14:23Z
+- Updated: 2026-10-30T14:27Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,39 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT14:23Z — actual Flatpak delivery fixed; installer79 verified; build active:
+CURRENT14:27Z — real /app Filer bundle BUILT; exact development GUI test active:
+- Normal Flatpak package39a1b3d4 PASSED14:26:16Z source6773ac5ba. All recipe
+  dependencies built, complete160-patch preparation passed inside SDK sandbox,
+  native /app binary compiled, both required filename test programs passed,
+  normal export and unsigned development bundle completed. Prior0484dfbe kept
+  FAILED. Group normalization fixes the actual namespaced source path.
+- Private app ref app/org.gnome.Nautilus/x86_64/android-test commit
+ e56aa0ca31b44022e3b52f38b6155c0e4e76ccd144873e40cb570ee177e12846.
+  Bundle filer-flatpak-r82/Filer-Android-Test.flatpak SHA
+ 7edb99b689f4d4b93673665055e4fe82153f891faba9b75282790f6b14ddad49;
+  actual /app/files/bin/nautilus SHA
+ 2116a024528f0cbf6b75ebb8df13b9fe97be7148e062e891c4addd98d3074553.
+  API literal RequestDefaultInstall verified in binary. This is not GUI/ARM/
+  performance or production signing qualification.
+- R80 four isolated policy restoration fixtures PASSEDf3189c7e. Final input
+  manifest SHA d67b1060d96484df3bf95d67891e758e96a605b2614bb5167e0c49d4d72b710b
+  pins installer79, Filer75 native pair, exact new Flatpak bundle/commit/binary,
+  signed user Platform44bc70 and existing system GL279c, Shell127/96/SDK5.
+- LIVE parent8fd20a4a / child4132e7e2 since14:26:43. Normal guard1+worker14GiB,
+  root256MiB+1GiB/QEMU12/guest6, same exact restoration controls. First repairs
+  through normal atomic79 update/reboot; final GUI mandatory. It explicitly
+  installs unsigned USER android-test candidate and pinned signed user runtime,
+  preserving system signed Filer/trust. No publisher/signing keys or release.
+- Prepared gui-control-r80.py targets exact observed child. Do NOT submit UI
+  input before pipeline interactive-gui-session-ready; prior R69 snapshot never
+  executed. New fresh setup checks pm list-packages instead of failing on the
+  expected pm path absence status; records top-level command output on failure.
+- Next: observe current root/child to private-filer.json exact deployed binary
+  hash and interactive readiness, then actual APK pointer double-click -> Valet
+  install -> exact F-Droid APK/app drawer/window. Observe final cleanup/results.
+  Current build artifacts are reviewable; no usable daily-use/ARM claim yet.
+
+HISTORICAL14:23Z — actual Flatpak delivery fixed; installer79 verified; build active:
 - R69 parent3b35849b/child ec8ef23e FAILED14:11:08/09Z. Actual78 boot
  45042e53-5d9b-4455-bf0d-8971e089bf55 reached healthy graphical session and
   exact installer78/Filer75/extension75 package receipt. No APK click occurred:
