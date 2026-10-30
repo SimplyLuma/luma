@@ -58,6 +58,8 @@ platform; retain matching system/vendor pairs and validate both CPUs.
 
 The current Luma source pins Android 13/Lineage 20. Repairing that baseline makes
 failures reproducible; it does not make it the final maintained shipping platform.
+The evaluation [base-project inventory](../../config/android/candidates/lineage-23.2-base-projects.json) resolves all1,166 public base-manifest project revisions. Local device/profile overlays have not been assembled with it. This inventory is not a source-content, license, build, security or runtime admission.
+
 Newer source/image candidates must be pinned, audited, ported and built for both
 CPU architectures. A third-party image download alone is not that rebase.
 

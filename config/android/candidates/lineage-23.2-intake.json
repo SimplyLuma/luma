@@ -252,5 +252,10 @@
       "reason": "Proprietary/service payload; distribution rights are not assumed."
     }
   ],
-  "scope": "Pinned upstream manifest and local project metadata. The full platform project graph, product configuration, source patches, licenses and both CPU builds still require validation. Accepted runtime inputs are unchanged."
+  "scope": "Pinned upstream manifest and local project metadata. The full platform project graph, product configuration, source patches, licenses and both CPU builds still require validation. Accepted runtime inputs are unchanged.",
+  "base_project_inventory": {
+    "path": "lineage-23.2-base-projects.json",
+    "sha256": "a02380a8eeb3ecc6f66a1d67dbfb6fec003ad898ea58307520af40c269fad523",
+    "profile_overlays_applied": false
+  }
 }
