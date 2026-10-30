@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T23:20Z
+- Updated: 2026-10-30T23:43Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,54 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT23:43Z — repaired images built/verified/transferred; Dell admin auth pending:
+- r309 compiler completed successfully19:11 (actual final build log). Original
+  guest wrapper then FAILED while hashing exports: Python3.10 lacks
+  hashlib.file_digest. Preserve that failure, do not reclassify wrapper as PASS.
+  Automatic original account policy/24GiB VM profile restoration completed.
+- r326/f85bf9d9 export-only attempt refused before VM start because the strict
+  admitted-owner check does not accept package-mode delegated cgroups. Reused
+  the original build-mode owner check unchanged. r328/784b3a30 PASS normal4GiB
+  admission,2GiB export-only guest/QEMU hard3/root512MiB, no compilation and no
+  source/tool disks attached. Chunked SHA recovery preserved original error.
+  All12 exported files verified; VM powered off/original24/25 profile restored
+ 23:35:57Z. Root receipts: export-recovery.json, export-verified.json and
+  export-recovery-profile-restored.json under hidl-repair-r309.
+- r329/896612e5 PASS ELF identity, exports/imports, public-data sizes and dynamic
+  dependencies for both repaired libraries; extracted system-image bytes match
+  the exported libraries.32-bit1544 exports/248 imports,64-bit1540/248.
+  New32SHA46a045699f4523944a5227ad1afd8383bdbf79fbd26efd315be77f36490694f1;
+  new64SHA54615b1a3dac1035f53843c15d100f19667552bbff70beb6b347d6fe7b648ed7.
+  New BuildIDs868748f1d6104131471ff8b8b5de63b6 /f653ff39716c9d191a0d4aa8db1dc240.
+  Image system1,829,285,888 bytes SHA3888b4e35974b8ad70c82a8b62b72a28ea5f1eb7285c27bcab98384fafc50dc8;
+  vendor566,210,560 bytes SHAa77611c6a811f00e91884b7dedc1e4b0fa0c7e921e594a2fc95b804d9351c30b.
+- Delivery packet experiments/android-first-class/hidl-repair-r309/dell-packet,
+  payload SHAca4eea73471e24763a55dd822f01c4f1503500a9f1433d076ba119346571ad63.
+  Exact immutable image source remains d7b752da362ade4f153a6a12cda1aa4db6042dc9.
+  Export metadata recovery and device_tested=false explicitly retained in packet.
+- Dell reconnected r330/735e87d4 at23:37:08Z. r331/4736bdb7 transferred packet
+  to ~/Downloads/Luma-Android-HIDL-r309/packet and launched native user unit
+  luma-preview-android-hidl-native-repair-r331-b4572175.service at23:38:58.
+  As of23:42, user unit ACTIVE and pkexec PID89207 waiting at standard local
+  admin authentication; native-image-apply.log is empty. No image replacement
+  yet, no OS reboot or user data reset. Do not bypass authentication or claim
+  the launch is an applied hotfix. Parent delivery job exited0 only for launch.
+- r332/5ae09d80 PASS actual Dell91-file preview refresh, archive SHAfda19c6...
+  (full hash below), old payload user-payload.before-r319 retained, original
+  control backup unchanged. NON_UNIQUE preview change is now delivered.
+- r333/41630834 recovered OLD device codec control: UID10136, old64library
+ 849faa..., MediaCodec start failed after101ms, passed=false. This is a failing
+  control, not a HIDL race reproduction or codec success. Full private result
+  artifacts/dev-android-codec-original-result-r333-41630834/codec-before.json.
+- Status readers: hidl-repair-r309/read_delivery.sh and read_auth_status.sh
+  (Dell has no rg; bounded grep fallback fixed in r337/8b409f12). New private
+  codec-after launcher/driver under dell-hotfix-r199, not launched while image
+  auth pending. It reuses the installed synthetic fixture, applies Android-side
+ 28s hard timeout and stops only that fixture afterward; result codec-after-hidl-r309.json.
+- Next: observe actual Dell apply result/live32+64 hashes; then codec, 8 Ball Pool
+  native launch/crash history, network/provider and scaling qualification. Source
+  archive recognition/Valet refresh is delivered; no game fix or nightly claim.
 
 CURRENT23:20Z — compiler graph complete; native image job remains active:
 - Source milestone2466f9435 commits the preview NON_UNIQUE behavior, codec
