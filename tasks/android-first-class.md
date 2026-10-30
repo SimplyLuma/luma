@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T17:50Z
+- Updated: 2026-10-30T18:09Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,38 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT18:09Z — dock wheel source9 PASS; full130 package active; next matching VM prepared:
+- Source8d4778409 is the final tested patch0288 variant. Native source-overlay
+  4a73004c PASSED18:01:54Z,9 actual graphical checks with33 pinned apps, real
+  GTK last-app activation/close. A separate native St.ScrollView control gives
+  one-notch98.997483px; cross-axis and horizontal input both match it exactly;
+  ordinary/reverse/smooth input reveals last app without duplicate handling.
+  Scope: compiled129 Shell + exact patch0288 JS overlays under distribution
+  Mutter50.6, NOT compiled130/wholeOS/Android/hardware qualification.
+- Earlier source attempts6d088cfe/3bc9bcde FAILED horizontal comparison;
+  67fdf06e preserved primary axis but exposed incorrect test assumption that
+  step_increment is wheel distance. 30ac7685e adds a real native reference.
+  f6f183e3 then caught remaining duplicate relay. Diagnosticba6b50f0 observed
+  smooth flags32 + discrete flags0 at SAME timestamp; actual enum70e1405e
+  confirms FLAG_POINTER_EMULATED=32 (POINTER_EMULATED is undefined in GJS).
+  Final8d4778409 uses actual enum, native distance, RTL and primary-axis handling.
+  Earlier ae57721d enum probe failed missing explicit typelib path; no pass.
+- Full Shell130 job dev-android-shell130-package-d48bce89 ACTIVE since18:02Z.
+  Normal4GiB package/10GiB HDD reservation; immutable source8d4778409. Private
+  shell-r130-r150 build/host-native executor reuses ONLY owned completed129 HDD
+  Podman cache, configuration receipt retained; no global store/policy changes.
+  Snapshot rpm-r10/source/build/candidate-shell130-r150. Observe final native
+  compiled test + RPM guards/results; do not treat intermediate PASS/COMMIT as
+  package success. No130 RPM digest sealed yet.
+- R153 helpers PREPARED, NOT launched/sealed: same matched Installer81/helper2/
+  Filer75/private app/Runtime96/SDK5, upgrade Shell130/common130. Same10GiB guest/
+  12GiB QEMU cap/normal14+separate1guard and original policy24cf restoration.
+  New bounded hardware wheel action executes12 actual QMP mouse notches in the
+  existing admitted actor, records delivery once; native snapshots add read-only
+  dock viewport/adjustments/app bounds so dock click can be proven in bounds.
+  Waiting actual130 RPM hashes before sealing manifest and launching. Both VMs
+  off now. Other release gates unchanged; full nightly feature NOT admitted.
 
 CURRENT17:50Z — matched x86 install/drawer/pin-unpin PASS; dock wheel defect reproduced; source fix active:
 - R137 child9bb648b5 PASSED17:37:40Z; parenta0c2bd64 PASSED17:37:45Z.
