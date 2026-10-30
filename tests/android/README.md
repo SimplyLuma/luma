@@ -312,13 +312,21 @@ the activity launch's clipboard selection changes from invalidating a pre-launch
 seed. It does not qualify focus policy or turn an empty post-control into a pass.
 
 `notification-reply-native.js` is a prepared installed-Shell integration probe.
-It waits for the real Android fixture notification, requires the negotiated reply
-entry, types with a compositor virtual keyboard and clicks the actual send
-button. Its result deliberately leaves Android delivery unqualified: the VM
-wrapper must require one fresh APK `action:reply` receipt with the exact unique
-synthetic text, plus the matched image/runtime/Shell/APK identities. Source syntax
-was checked with Node; installed GJS, rendering, input and Android delivery remain
-pending until this probe runs on the coherent reply-enabled candidate.
+It waits for prior fixture withdrawal and a fresh real Android notification,
+requires its negotiated live reply entry, and clicks the actual Send button.
+It reacquires controls after asynchronous waits and explicitly disposes virtual
+input devices. The default input path uses a compositor virtual keyboard.
+An explicit `keyboardInput: 'host-evdev'` option instead arms a ten-second input
+window for the VM wrapper's emulated hardware keyboard; this fixed ASCII fixture
+requires the actual `xkb/us` source. The wrapper must inject its unique text once,
+record any partial input, and never retry a partially dispatched action. The probe
+records bounded key-event metadata only while entering the fixed synthetic text.
+
+Its result deliberately leaves Android delivery unqualified: the VM wrapper must
+require one fresh APK `action:reply` receipt with the exact unique synthetic text,
+plus the matched image/runtime/Shell/APK identities. A visible editor, submitted
+input or source syntax check alone does not qualify delivery. Both input paths
+need their own installed-Shell evidence.
 
 `python3 tests/android/export-stream.py` checks bounded artifact export: size and
 SHA256 verification, incremental sync, atomic publication without overwriting an
