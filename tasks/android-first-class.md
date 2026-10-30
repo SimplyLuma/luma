@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T01:42:00+00:00
+- Updated: 2026-10-30T02:42:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
+- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -20,7 +20,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f and host.95/Shell127 built/checked; current combined VM test active | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
+| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f and host.95/Shell127 built/checked; corrected triple booted once; subsequent graphical login/reply tests inconclusive | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
@@ -51,6 +51,35 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT02:42Z — no usable-build or inline-reply qualification claim:
+- Corrected runtime95/Shell127 and SDK5 images are installed. r20 ba8fb087
+  booted actual user Shell127 with successful native boot health and no bootstrap
+  mounts; the owned reply extension did not initialize. No Android reply reached.
+  Cleanup restored original extension settings and removed the owned extension.
+- r21 c35178cd failed user-bus setup; r22 cb96e24f failed graphical readiness.
+  Both preserved as failures. Offline evidence8ee98dd8 PASSED read-only extraction
+  with matching guest/host file hashes. Its journals show user-manager and other
+  system-service startup timeouts, and virtual CPU clock watchdog warnings;
+  neither Android causation nor a RAM bottleneck is established. kvm-clock was
+  already selected. VM and builder are OFF during disk-copy work.
+- LIVE normal dev-android-runtime-raw-copy-f0197be8.service4GiB/disk60GiB;
+  root luma-android-first-class-runtime-raw-copy-r27.service3GiB. One-shot raw
+  diagnostic copy on HDD, source original qcow2 retained/unmodified. Conversion
+  followed by full qemu-img guest-byte comparison is required. Domain has NOT
+  been switched. IMPORTANT: actual backing-chain inventory contains ONE qcow2,
+  so earlier commentary calling this a layered-disk comparison was inaccurate.
+  It compares raw versus qcow2 (and physical storage paths), not backing layers.
+- Private evidence: artifacts/dev-android-offline-runtime-evidence-8ee98dd8;
+  artifacts/dev-android-runtime-raw-copy-f0197be8/copy-proof.json. Private drivers
+  offline-runtime-evidence-r26 and runtime-raw-copy-r27. Observe exact copy job
+  to completion, then perform bounded boot comparison preserving original XML.
+- Native reply probe now permits a strictly named directory in Shell's own user
+  runtime directory. Syntax job a37c9165 PASSED; no actual GJS/UI/reply claim.
+  APKr16, SDK5 image and package hashes remain the previously recorded pins.
+
+HISTORICAL handoffs below retain prior attempts; their LIVE labels are dated
+history, not current jobs.
 
 Source/worktree isolated; canonical untouched. Current source is on this task branch; older immutable build sources are named below. Historical implementation497a61054
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,

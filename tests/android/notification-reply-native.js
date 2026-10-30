@@ -35,7 +35,11 @@ function findCard(actor, notification) {
 export async function run(options = {}) {
     const out = options.out ?? GLib.getenv('LUMA_ANDROID_REPLY_EVIDENCE');
     const text = options.text ?? GLib.getenv('LUMA_ANDROID_REPLY_TEXT');
-    check(/^\/var\/tmp\/luma-android-reply-ui-[A-Za-z0-9_-]+$/.test(out ?? ''), 'Private test output required');
+    const runtimePrefix = `${GLib.get_user_runtime_dir()}/luma-android-reply-ui-`;
+    const runtimeOutput = typeof out === 'string' && out.startsWith(runtimePrefix) &&
+        /^[A-Za-z0-9_-]+$/.test(out.slice(runtimePrefix.length));
+    check(runtimeOutput || /^\/var\/tmp\/luma-android-reply-ui-[A-Za-z0-9_-]+$/.test(out ?? ''),
+        'Private test output required');
     check(/^LumaAndroidReply-[0-9a-f]{8}$/.test(text ?? ''), 'Fixed synthetic reply text required');
     const save = () => GLib.file_set_contents(`${out}/native-ui.json`, JSON.stringify(report, null, 2));
     Gio._promisify(Shell.Screenshot.prototype, 'screenshot_stage_to_content');
