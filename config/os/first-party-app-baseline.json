@@ -12,6 +12,7 @@
     "org.projectluma.Connect",
     "org.projectluma.Contacts",
     "org.projectluma.Depot",
+    "org.projectluma.Displays",
     "org.projectluma.Imager",
     "org.projectluma.Leaf",
     "org.projectluma.Messages",

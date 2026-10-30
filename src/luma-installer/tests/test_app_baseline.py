@@ -63,6 +63,15 @@ class Inventory(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'incomplete'):
             baseline.inventory(self.root)
 
+    def test_package_service_uses_os_handoff_and_preserves_readable_system_apps(self):
+        unit = (Path(__file__).resolve().parents[1] / 'data/luma-app-baseline.service').read_text()
+        self.assertIn('ExecStart=/usr/libexec/luma-app-baseline\n', unit)
+        self.assertIn('UMask=0022\n', unit)
+        self.assertIn('StateDirectoryMode=0700\n', unit)
+        self.assertIn('RemainAfterExit=yes\n', unit)
+        self.assertIn('PrivateNetwork=yes\n', unit)
+        self.assertIn('ProtectSystem=strict\n', unit)
+
     def test_separate_product_cannot_be_added_to_os_inventory(self):
         row = dict(self.doc['bundles'][-1], ref='app/org.projectluma.Write/x86_64/beta')
         self.doc['bundles'].append(row)
