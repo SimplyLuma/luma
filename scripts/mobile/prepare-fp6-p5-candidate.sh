@@ -117,12 +117,17 @@ actual_policy=$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$policy")
 
 # shellcheck disable=SC1090
 . "$stevia_manifest"
-[ "${LUMA_STEVIA_BUNDLE_VERSION:-}" = 1 ] || die 'Luma Stevia manifest version mismatch'
+[ "${LUMA_STEVIA_BUNDLE_VERSION:-}" = 2 ] || die 'Luma Stevia manifest version mismatch'
 [ "${ARCHITECTURE:-}" = aarch64 ] || die 'Luma Stevia architecture mismatch'
 [ "${STEVIA_UPSTREAM_COMMIT:-}" = cd8cc1d33a701573af106c53ed4dc493ef68b88c ] || \
   die 'Luma Stevia source commit mismatch'
 [ "$(sha256sum "$stevia_dir/luma-phosh-osk-stevia" | awk '{print $1}')" = \
   "${BINARY_SHA256:-}" ] || die 'Luma Stevia binary checksum mismatch'
+[ "$(sha256sum "$stevia_dir/schemas/gschemas.compiled" | awk '{print $1}')" = "${SCHEMAS_SHA256:-}" ] || die 'Stevia schema checksum mismatch'
+[ "$(sha256sum "$stevia_dir/schemas/mobi.phosh.osk.gschema.xml" | awk '{print $1}')" = "${SCHEMA_XML_SHA256:-}" ] || die 'Stevia schema XML checksum mismatch'
+[ "$(sha256sum "$stevia_dir/schemas/mobi.phosh.osk.enums.xml" | awk '{print $1}')" = "${ENUM_XML_SHA256:-}" ] || die 'Stevia enum checksum mismatch'
+[ "$(sha256sum "$stevia_dir/fonts/Figtree.ttf" | awk '{print $1}')" = "${FONT_SHA256:-}" ] || die 'Stevia font checksum mismatch'
+
 (
   cd "$fingerprint_runtime"
   sha256sum -c manifest.sha256
@@ -290,6 +295,14 @@ install -D -m 0644 "$repo_root/src/luma-keyboard/luma-latinime.xml" \
   "$overlay/usr/share/ibus/component/luma-latinime.xml"
 install -D -m 0755 "$stevia_dir/luma-phosh-osk-stevia" \
   "$overlay/usr/local/libexec/luma-phosh-osk-stevia"
+install -d -m 0755 "$overlay/usr/local/share/luma-keyboard/schemas"
+install -m 0644 "$stevia_dir/schemas/gschemas.compiled" \
+  "$stevia_dir/schemas/mobi.phosh.osk.gschema.xml" \
+  "$stevia_dir/schemas/mobi.phosh.osk.enums.xml" \
+  "$overlay/usr/local/share/luma-keyboard/schemas/"
+install -D -m 0644 "$stevia_dir/fonts/Figtree.ttf" "$overlay/usr/local/share/fonts/luma-figtree/Figtree.ttf"
+install -D -m 0644 "$stevia_dir/fonts/OFL.txt" "$overlay/usr/local/share/fonts/luma-figtree/OFL.txt"
+
 install -D -m 0755 "$repo_root/extensions/luma-handheld/luma-power-key-broker.py" \
   "$overlay/usr/libexec/luma-power-key-broker"
 install -D -m 0644 "$repo_root/extensions/luma-handheld/luma-power-key-broker.service" \
