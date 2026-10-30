@@ -26,3 +26,13 @@ Wayland routing job: dev-keycap-wayland-routing-f7f261bd (exit0).
 No active phone services or deployment. Next: review the source, then build the
 ARM bundle and validate on a keyboardless phone, including real touch gestures,
 privacy transitions, lock-screen purpose and hardware-keyboard suppression.
+
+2026-10-30: Owner requested Keycap as default and authorized merge. Keycap now
+follows system appearance regardless of host GTK theme, preserving explicit
+light/dark variants and High Contrast. Added default-theme regression coverage;
+fixed the style manager's GTK settings signal lifetime exposed by that test.
+Reconciled patch0004 with main's corrected67-line patch0002 baseline. All eleven
+native suites passed (dev-keycap-default-native-r2-8777ec96 exit0); clean ordered
+replay matches all70 changed files. New test artifacts live on the shared HDD
+under projects/luma-os/artifacts/mobile-keycap-default-20261030 because SSD
+admission reserve was insufficient. Prior hardware/ARM limits remain open.

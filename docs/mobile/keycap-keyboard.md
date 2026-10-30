@@ -1,7 +1,10 @@
 # Shared Keycap keyboard
 
 This is a shared Stevia patch series for keyboardless phones, tablets and touch
-laptops. It does not change Titan hardware-keyboard policy. The source audit
+laptops. Keycap is the default appearance even when the host uses Adwaita or
+another GTK theme. It follows the system light/dark preference; explicit
+Luma-light/Luma-dark variants and High Contrast remain supported.
+It does not change Titan hardware-keyboard policy. The source audit
 preceded implementation: pinned Stevia 0.55.0
 `cd8cc1d33a701573af106c53ed4dc493ef68b88c`, existing Luma LatinIME and compact
 keyboard patches, then the existing main-branch theme-variant fix. The visual
@@ -67,6 +70,8 @@ Observed validation:
 - Eleven native Meson suites passed, including new policy/history, GTK key/drag/
   caps/pad/icon/layout checks and emoji recents/search tests. The eight existing
   component suites also passed.
+- Default-theme regression checks cover Adwaita, Luma, unrelated GTK themes,
+  explicit light/dark overrides and retained High Contrast selection.
 - Native light/dark captures checked at logical widths 360, 390 and 768; keys stay
   inside their allocation and touch rows meet the minimum.
 - A headless Phoc/Wayland fixture activated normal, sensitive PIN (hint mask 192)

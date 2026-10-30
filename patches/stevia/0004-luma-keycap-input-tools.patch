@@ -3352,7 +3352,7 @@ index 33ebfda..c3921be 100644
      phys_dz = (MIN_PORTRAIT_RATIO * screen_physical_height) - (osk_height * pixel_size);
      if (flags & PHOSH_OSK_SCALING_BOTTOM_DEAD_ZONE)
 diff --git a/src/pos-style-manager.c b/src/pos-style-manager.c
-index 80718e7..08de988 100644
+index 80718e7..2430f59 100644
 --- a/src/pos-style-manager.c
 +++ b/src/pos-style-manager.c
 @@ -114,7 +114,7 @@ on_accent_color_changed (PosStyleManager *self)
@@ -3375,11 +3375,15 @@ index 80718e7..08de988 100644
    self->theme_name = g_steal_pointer (&name);
    g_debug ("GTK theme: %s", self->theme_name);
  
-@@ -139,6 +137,12 @@ on_gtk_theme_name_changed (PosStyleManager *self, GParamSpec *pspec, GtkSettings
+@@ -139,6 +137,16 @@ on_gtk_theme_name_changed (PosStyleManager *self, GParamSpec *pspec, GtkSettings
    }
  
    style = pos_style_manager_get_stylesheet (self->theme_name);
-+  if (g_strcmp0 (self->theme_name, "Luma") == 0) {
++  /* Keycap is the default regardless of the host GTK theme. Keep explicit
++   * appearance variants and the accessibility theme as deliberate overrides. */
++  if (g_strcmp0 (self->theme_name, "HighContrast") != 0 &&
++      g_strcmp0 (self->theme_name, "Luma-light") != 0 &&
++      g_strcmp0 (self->theme_name, "Luma-dark") != 0) {
 +    gboolean dark = g_settings_get_enum (self->interface_settings, "color-scheme") ==
 +                    G_DESKTOP_COLOR_SCHEME_PREFER_DARK;
 +    style = dark ? "/mobi/phosh/stevia/stylesheet/luma-dark.css" :
@@ -3388,7 +3392,7 @@ index 80718e7..08de988 100644
  
    gtk_css_provider_load_from_resource (provider, style);
    gtk_style_context_add_provider_for_screen (gdk_screen_get_default (),
-@@ -204,14 +208,23 @@ pos_style_manager_class_init (PosStyleManagerClass *klass)
+@@ -204,23 +212,32 @@ pos_style_manager_class_init (PosStyleManagerClass *klass)
  }
  
  
@@ -3413,11 +3417,37 @@ index 80718e7..08de988 100644
  
    g_signal_connect_swapped (self->interface_settings,
                              "changed::" IF_KEY_ACCENT_COLOR,
+                             G_CALLBACK (on_accent_color_changed),
+                             self);
+-  g_signal_connect_swapped (gtk_settings,
+-                            "notify::gtk-theme-name",
+-                            G_CALLBACK (on_gtk_theme_name_changed),
+-                            self);
++  g_signal_connect_object (gtk_settings,
++                           "notify::gtk-theme-name",
++                           G_CALLBACK (on_gtk_theme_name_changed),
++                           self, G_CONNECT_SWAPPED);
+   on_gtk_theme_name_changed (self, NULL, gtk_settings);
+ }
+ 
+@@ -246,11 +263,10 @@ pos_style_manager_get_stylesheet (const char *theme_name)
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-hc-light.css";
+   else if (g_strcmp0 (theme_name, "Luma-light") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/luma-light.css";
+-  else if (g_strcmp0 (theme_name, "Luma") == 0 ||
+-           g_strcmp0 (theme_name, "Luma-dark") == 0)
++  else if (g_strcmp0 (theme_name, "Luma-dark") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/luma-dark.css";
+   else
+-    style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
++    style = "/mobi/phosh/stevia/stylesheet/luma-light.css";
+ 
+   return style;
+ }
 diff --git a/src/stylesheet/luma-dark.css b/src/stylesheet/luma-dark.css
-index cfe07a8..129053d 100644
 --- a/src/stylesheet/luma-dark.css
 +++ b/src/stylesheet/luma-dark.css
-@@ -1,57 +1,25 @@
+@@ -1,67 +1,25 @@
 -/* Project Luma's compact dark handheld keyboard palette. */
 -@define-color pos_key_fg_color #f4f5f6;
 -@define-color pos_key_bg_color #30363d;
@@ -3497,6 +3527,16 @@ index cfe07a8..129053d 100644
 -}
 -
 -pos-completion-bar button,
+-pos-completion-bar button label {
+-  color: #f4f5f6;
+-  background: transparent;
+-  text-shadow: none;
+-}
+-
+-pos-completion-bar button:active {
+-  color: #ffffff;
+-  background: #30363d;
+-}
 +@import url("resource:///mobi/phosh/stevia/stylesheet/luma-keycap.css");
 +pos-key { text-shadow: 0 -1px 0 rgba(0,0,0,.6); }
 diff --git a/src/stylesheet/luma-keycap.css b/src/stylesheet/luma-keycap.css
@@ -4487,10 +4527,10 @@ index 0000000..03c44c7
 +}
 diff --git a/tests/test-keycap-widget.c b/tests/test-keycap-widget.c
 new file mode 100644
-index 0000000..022d02d
+index 0000000..b1a29ac
 --- /dev/null
 +++ b/tests/test-keycap-widget.c
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,189 @@
 +/* SPDX-License-Identifier: GPL-3.0-or-later */
 +#include "pos-osk-widget.c"
 +#include "pos-main.h"
@@ -4598,6 +4638,29 @@ index 0000000..022d02d
 +  pos_keypad_set_decimal_separator_visible (POS_KEYPAD (pad), TRUE);
 +  gtk_widget_destroy (pad); g_object_unref (pad);
 +}
++static void test_default_theme (void) {
++  const char *themes[] = { "Adwaita", "Luma", "UnrelatedTheme", "Luma-light", "Luma-dark" };
++  g_autoptr (GSettings) settings = g_settings_new ("org.gnome.desktop.interface");
++  g_autoptr (PosStyleManager) style = pos_style_manager_new ();
++  PosOskWidget *osk = make_osk ();
++  for (guint i = 0; i < G_N_ELEMENTS (themes); i++) {
++    g_object_set (gtk_settings_get_default (), "gtk-theme-name", themes[i], NULL);
++    for (guint dark = 0; dark < 2; dark++) {
++      GdkRGBA actual, expected;
++      gboolean use_dark = g_str_equal (themes[i], "Luma-dark") ||
++                          (dark && !g_str_equal (themes[i], "Luma-light"));
++      g_settings_set_enum (settings, "color-scheme", dark ? G_DESKTOP_COLOR_SCHEME_PREFER_DARK : G_DESKTOP_COLOR_SCHEME_DEFAULT);
++      drain ();
++      g_assert_true (gtk_style_context_lookup_color (gtk_widget_get_style_context (GTK_WIDGET (osk)), "pos_bg_color", &actual));
++      gdk_rgba_parse (&expected, use_dark ? "#0c0c0e" : "#c3c4ca");
++      g_assert_true (gdk_rgba_equal (&actual, &expected));
++    }
++  }
++  g_assert_cmpstr (pos_style_manager_get_stylesheet ("HighContrast"), ==,
++                   "/mobi/phosh/stevia/stylesheet/adwaita-hc-light.css");
++  gtk_widget_destroy (GTK_WIDGET (osk)); g_object_unref (osk);
++}
++
 +static void test_skin_capture (void) {
 +  const char *out = g_getenv ("LUMA_KEYCAP_CAPTURE_DIR");
 +  const int widths[] = { 360, 390, 768 };
@@ -4653,6 +4716,7 @@ index 0000000..022d02d
 +  g_test_add_func ("/pos/keycap/widget/number-pad", test_numeric_pad);
 +  g_test_add_func ("/pos/keycap/widget/drag-gestures", test_drag_gestures);
 +  g_test_add_func ("/pos/keycap/widget/lucide-strokes", test_lucide_strokes);
++  g_test_add_func ("/pos/keycap/widget/default-theme", test_default_theme);
 +  g_test_add_func ("/pos/keycap/widget/native-skin", test_skin_capture);
 +  return g_test_run ();
 +}
