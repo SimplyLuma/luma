@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T14:27Z
+- Updated: 2026-10-30T14:42Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,36 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT14:27Z — real /app Filer bundle BUILT; exact development GUI test active:
+CURRENT14:42Z — corrected bundle installs; exact79 GUI retry active:
+- R80 parent8fd20a4a/child4132e7e2 FAILED14:36:15/16Z, cleanup observed:
+  actual79 boot b3972fc5-a277-4ac6-9db4-cd21c5f3ada9 graphical session and exact
+  three package versions passed; pinned signed user Platform44 installed. Local
+  candidate bundle install failed before APK activation. No APK/UI pass claimed.
+- Isolated host bundle install e2e82cec FAILED with actual error: private export
+  incorrectly used builder filesystem path as --runtime-repo URL. Corrected
+  export bd767c11 PASSED14:39:43Z, then actual isolated HOST user install passed
+  exact app commit e56aa0ca31b44022e3b52f38b6155c0e4e76ccd144873e40cb570ee177e12846.
+  No source/binary rebuild or trust relaxation. Runtime is explicitly provisioned
+  from pinned signed remote, so corrected export omits invalid URL field.
+- NEW usable bundle INPUT (not GUI-qualified yet):
+  private filer-bundle-export-r86/Filer-Android-Test.flatpak SHA
+ 77d64520a46e37fabaa75b6762cacf72a1afdf60e972ee86e9d088f7565d05c5.
+  Same actual binary2116a024... and source6773ac5ba. Old bundle7edb99b6 retained
+  FAILED installation artifact; do not supply it to further tests.
+- LIVE parent1165077b / child7a7558bd (R85) since14:41. Four guard fixtures
+ 93ee4fbd PASSED. Manifest d9ca6810b22e9fd0b946a257d571c4dd7803b8dceb9223ed6a4361ef9f2db2f7
+  pins corrected bundle,79/Filer75/96/127/SDK5, same matching signed runtime/GL.
+  If exact candidate is ALREADY booted, skips redundant override/reboot; still
+  requires actual healthy final graphical session and full package/hash checks.
+  Nested guest command failures now print/store actual captured child output.
+- gui-control-r85.py targets exact observed child via parent's capacity receipt.
+  Wait for interactive-gui-session-ready + private-filer.json deployed app/binary
+  verification before input. Earlier R69 queued snapshot never ran. Current R85
+  has not received any pointer/keyboard input yet. Observe final cleanup/results.
+- Next: real patched /app Filer APK double-click -> native Valet install ->
+  exact F-Droid APK/app drawer/window proof. No production/ARM/whole-gate claim.
+
+HISTORICAL14:27Z — real /app Filer bundle BUILT; exact development GUI test active:
 - Normal Flatpak package39a1b3d4 PASSED14:26:16Z source6773ac5ba. All recipe
   dependencies built, complete160-patch preparation passed inside SDK sandbox,
   native /app binary compiled, both required filename test programs passed,
