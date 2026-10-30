@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T13:45Z
+- Updated: 2026-10-30T14:03Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,42 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT13:45Z — Filer75 full package PASS; actual candidate GUI run active:
+CURRENT14:03Z — real boot gate found OS selection mismatch; corrected78 run active:
+- R55 parentf9287404/child3af3503d FAILED13:58:35/39Z. Atomic three-package
+  replacement succeeded (candidate93f18d7fae643196f6e1d445e02f7a359d4ceef7e0fe4ffc1b0333d914d04fa7),
+  but fresh boot GDM dependency luma-app-baseline.service rejected incomplete
+  inventory before graphical login. NO direct APK UI qualification occurred.
+  Original XML/off/raw unmount/policy24cf restoration verified in final receipts.
+- Actual root read-only diagnostics ef2dbd8c/cd1ae6ed captured boot failure,
+  manifest23 OS apps+3 runtimes and matching23-role contract. Runtime validator
+  required29 apps, including six Office/Creative products explicitly excluded
+  by source-owned bundle producer. Old76 and new77 validator/native-role source
+  are identical; do not claim this source mismatch was newly introduced by77.
+  Earlier successful boot's differing unit/cache behavior is not established.
+- Source682197ff0 fixes required OS APPS by excluding the same six separate
+  products; removes already-retired Displays from OS shipping selection. It
+  retains all ownership/hash/signature/core completeness checks. Regression
+ 21b1371b PASSED5 inventory tests+1 Filer contract+actual producer/runtime exact
+  selection23; missing core Notes and injected separate Write rejected.
+- Installer78 package4fb50ec3 PASSED14:01:29Z:833tests/9skips,6 native preview,
+ 7 additional tests, digest/header modes. Exact RPM SHA
+ 3965043c7ac0f1fefaa9bdde081a5b8aea4a6a8770a04906313c83dfc075e47b;
+  output private package-installer-r68/source/build/packages/luma-application-installer/RPMS/noarch.
+- Only completed disposable installer77 builder image431db544 removed normally
+  (no force) by83b727a3 after verifying no dependent containers and retaining
+  exact RPM/SRPM hashes, full source/build outputs/logs. Root free22GiB; no broad
+  pruning or other task cache changes.
+- LIVE new guarded parent3b35849b / gui-vm-r69 (child exact unit in parent's
+  capacity-handoff.json). Fresh helpers/manifests, four policy fixtures PASSED
+ d7ba63f3; only initial repair boot may use root SSH without GUI. Final78 reboot
+  STILL requires actual healthy graphical session and exact candidate packages.
+  It retires only byte-verified orphan R55 fixture created before failed boot;
+  all settings/health guards retained. Filer75 verified pair reused unchanged.
+- Next: observe current child to actual installer78 graphical boot and direct
+  Filer double-click/install/app drawer/window proof; keep final results/cleanup.
+  No usable build, ARM, production/security or whole24-gate completion claimed.
+
+HISTORICAL13:45Z — Filer75 full package PASS; actual candidate GUI run active:
 - Normal package cfb36e59 PASSED13:44:37Z source1b0bfc41e. Fresh full compile,
   all7 Meson test programs, packaged-content checks and all-RPM0755 header
   guard passed. Original74dc3463 FAILED one Glycin decode test in nested builder;
