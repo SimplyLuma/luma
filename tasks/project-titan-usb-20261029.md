@@ -600,3 +600,61 @@ Own private test evidence moved to the8TB drive after root disk admission refuse
 30,234 files verified by SHA256 and mode, original path preserved by symlink.
 No other task's data was moved or removed, and admission reserves were retained.
 Kernel headers/build scratch remain in own separate private experiment directory.
+
+
+### 2026-10-30 — home-network access and keyboard correction
+
+Reconnected directly to the Titan on the owner's other Wi-Fi after matching its
+saved SSH host identity. The Dell bridge is no longer needed on this LAN; access
+configuration stays private. Device is still on the native GNOME deployment.
+
+The live luma accessibility setting was explicitly true despite maintained
+false defaults. Cleared that user override with the real session bus and checked
+false readback. GDM's selected profile also reads false without dconf errors;
+there is no separate GDM user database to clear. Actual screenshots show the
+focused lock password and main Search fields without an OSK, and native keyboard
+login succeeded. Existing capability-based keyboard policy remains intact; no
+Titan model-name block or touch-only-device policy change was added.
+
+Recovered the completed CCF diagnostic: baseline amp PLL lock12/93 samples,
+held references324/324 locked, restored9/93 locked. Its service exited cleanly
+and diagnostic module is absent from lsmod. This supports the independent PLL
+ownership correction; the corrected kernel is still not installed or audibly
+accepted. The earlier unverified diagnostic/cleanup status is now superseded.
+
+
+### 2026-10-30 — compile and install independent PLL gates
+
+Extended0065 to correct MAINPLL/UNIVPLL/MMPLL shared-register bits6/5/3;
+the retained vendor MT6878 table independently confirms these assignments.
+Patch application check passes against exact retained running source. Full ARM64
+Image build passes in admitted jobdf3cb5bd (j8,3m26s,3.4GiB peak). Earlier Image
+jobecf429ed was deliberately stopped before the final descriptor correction.
+The new task-owned HDD scratch lane uses normal disk/memory admission; no other
+task's storage or runner security policy changed.
+
+Preserved the original built-in initramfs byte-for-byte, original DTB, and kernel
+config except relocated input paths. Jobcc29be8f verifies all13,092 previous
+built-in exported symbols remain; only mtk_pll_setclr_ops is added. UTS remains
+unchanged solely to reuse unchanged device modules on this development phone.
+Job512adc60 packs the Androidv4 image using checksum-pinned AOSP tools/public
+test key; both signature and payload verification pass. No release published.
+
+The owner's original boot_a was backed up and matched the retained server image.
+New boot_a SHA256e6f347b2bbb11674552c13baa16fd698938b05cf55c8f1e6851648bc2dc7bc11
+was written and independently read back in full. Reboot requested; actual new
+kernel startup, restored GDM boot health and audible playback are still pending.
+The longer pre-install clock-reference test remained electrically locked in all
+5,086 samples but was reported silent, so it is not audible acceptance. The
+module/service completed and Tide was paused; no permanent clock hold remains.
+
+
+Fresh corrected-kernel boot is verified: new mtk_pll_setclr_ops symbol and the
+new build timestamp are present in the running kernel. Wi-Fi/device modules,
+GDM, successful update/session health checks and boot-complete target are up;
+boot-success marker matches the native deployment. Native physical-keyboard
+login succeeds and actual compact Home screenshot matches the current shell.
+User keyboard override remains false across reboot. Initial normal Tide PCM
+check observed amplifier PLL locked50/50 samples, with no diagnostic module or
+reference-holding workaround. Thirty-second check completed with amplifier PLL locked in all1,391 samples
+(normal clocks, no reference workaround). Owner listening answer is pending. Normal speaker-only route restored (Speaker on/Earpiece off).

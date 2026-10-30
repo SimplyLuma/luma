@@ -117,3 +117,17 @@ development Titan uses this helper through a scoped
 service and fallback mechanism; do not mark a candidate successful before its
 health check passes. This is a Titan operator integration, not a replacement
 for other boards' boot backends.
+
+
+The restored native GDM selection has now passed a fresh reboot and required
+update/session health checks. Physical-keyboard login and the shared Home work.
+A legacy explicit `screen-keyboard-enabled=true` user setting was cleared on
+the Titan; maintained physical-keyboard detection and touch-only/accessibility
+behavior remain unchanged. Keep the shared false default when migrating old
+Phosh configurations; do not force-enable the OSK in recovery scripts.
+
+The MT6878 audio PLL correction is maintained separately under
+`patches/linux-mt6878/0065-clk-mediatek-mt6878-preserve-independent-PLL-gates.patch`.
+It is hardware-specific and belongs after the device branch's preceding kernel
+series. Its full kernel has booted on the owner's Titan; listening acceptance
+remains pending. It is not a desktop/tablet audio-policy change or OS release.

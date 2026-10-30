@@ -7,7 +7,9 @@ audio consumer still holds it. On Titan, PLLEN_ALL bit zero disappears
 throughout audible gaps while the hardware PCM and DMA keep running.
 
 Give each descriptor its declared gate bit and use set/clear operations
-whose prepared state reads that gate. Preserve audio tuner enable/disable
+whose prepared state reads that gate. The fence PLLs must also use their
+PLLEN_ALL bits 6/5/3 rather than the old local CON0 bit zero. These match
+the MT6878 vendor set/clear table. Preserve audio tuner enable/disable
 when using these helpers; unrelated clocks have no tuner registers.
 
 The clock changes are scoped to the MT6878 provider. No user-space rate,
@@ -34,6 +36,26 @@ diff --git a/drivers/clk/mediatek/clk-mt6878-apmixedsys.c b/drivers/clk/mediatek
  	.en_reg = PLLEN_ALL,					\
  	.en_set_reg = PLLEN_ALL_SET,				\
  	.en_clr_reg = PLLEN_ALL_CLR,				\
+@@ -145,16 +147,16 @@
+ 		0, 0, 0/*tuner*/,
+ 		CCIPLL_CON1, 0, 22/*pcw*/),
+ 	PLL_FENC(CLK_APMIXED_MAINPLL, "mainpll", MAINPLL_CON0/*base*/, FENC_STATUS_CON0,
+-		6, PLL_AO, MAINPLL_CON1, 24/*pd*/, MAINPLL_CON1, 0, 22, 0/*tuner*/),
++		6, PLL_AO, MAINPLL_CON1, 24/*pd*/, MAINPLL_CON1, 0, 22, 6/*PLLEN_ALL bit*/),
+ 	PLL_FENC(CLK_APMIXED_UNIVPLL, "univpll", UNIVPLL_CON0/*base*/, FENC_STATUS_CON0,
+-		 5, 0, UNIVPLL_CON1, 24/*pd*/, UNIVPLL_CON1, 0, 22, 0/*tuner*/),
++		 5, 0, UNIVPLL_CON1, 24/*pd*/, UNIVPLL_CON1, 0, 22, 5/*PLLEN_ALL bit*/),
+ 	PLL_SETCLR(CLK_APMIXED_MSDCPLL, "msdcpll",
+ 		4, 0, 0,
+ 		MSDCPLL_CON1, 24/*pd*/,
+ 		0, 0, 0/*tuner*/,
+ 		MSDCPLL_CON1, 0, 22/*pcw*/),
+ 	PLL_FENC(CLK_APMIXED_MMPLL, "mmpll", MMPLL_CON0/*base*/, FENC_STATUS_CON0,
+-		 3, 0, MMPLL_CON1, 24/*pd*/, MMPLL_CON1, 0, 22, 0/*tuner*/),
++		 3, 0, MMPLL_CON1, 24/*pd*/, MMPLL_CON1, 0, 22, 3/*PLLEN_ALL bit*/),
+ 	PLL_SETCLR(CLK_APMIXED_UFSPLL, "ufspll",
+ 		2, 0, 0,
+ 		UFSPLL_CON1, 24/*pd*/,
 diff --git a/drivers/clk/mediatek/clk-pll.c b/drivers/clk/mediatek/clk-pll.c
 --- a/drivers/clk/mediatek/clk-pll.c
 +++ b/drivers/clk/mediatek/clk-pll.c
