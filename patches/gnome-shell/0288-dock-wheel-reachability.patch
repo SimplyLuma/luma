@@ -1,0 +1,68 @@
+From: Luma Developers
+Subject: [PATCH] Reach overflow dock apps with either mouse wheel axis
+
+A horizontal ScrollView ignores ordinary wheel-down input. Route either wheel
+axis to the dock orientation, retain horizontal and smooth input, and stop the
+handled event so the native ScrollView does not apply it twice. Name the user
+surface Dock in the shared pin action.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -762,6 +762,7 @@
+         this._dockPadding = new St.Bin({child: this._dockStrip});
+         this._dockContent.add_child(this._dockPadding);
+         this._dockScroll.set_child(this._dockContent);
++        this._dockScroll.connect('scroll-event', (_view, event) => this._scrollDock(event));
+         this._dockScroll.x_expand = true;
+         this._dockScroll.y_expand = true;
+         // The applications scroll; the folders do not. A dock with more
+@@ -1904,6 +1905,38 @@
+         return null;
+     }
+ 
++    _scrollDock(event) {
++        const adjustment = this._vertical
++            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
++        if (!adjustment || adjustment.upper <= adjustment.page_size)
++            return Clutter.EVENT_PROPAGATE;
++        let delta;
++        switch (event.get_scroll_direction()) {
++        case Clutter.ScrollDirection.UP:
++        case Clutter.ScrollDirection.LEFT:
++            delta = -1;
++            break;
++        case Clutter.ScrollDirection.DOWN:
++        case Clutter.ScrollDirection.RIGHT:
++            delta = 1;
++            break;
++        case Clutter.ScrollDirection.SMOOTH: {
++            const [dx, dy] = event.get_scroll_delta();
++            delta = Math.abs(dx) > Math.abs(dy) ? dx : dy;
++            break;
++        }
++        default:
++            return Clutter.EVENT_PROPAGATE;
++        }
++        if (!Number.isFinite(delta) || delta === 0)
++            return Clutter.EVENT_PROPAGATE;
++        adjustment.value = Math.clamp(
++            adjustment.value + delta * adjustment.step_increment,
++            adjustment.lower, Math.max(adjustment.lower,
++                adjustment.upper - adjustment.page_size));
++        return Clutter.EVENT_STOP;
++    }
++
+     // A dock with more in it than fits scrolls. A surface that hangs from a
+     // dock item must never hang from one the pointer cannot see, so the item
+     // comes into the visible strip first.
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -488,7 +488,7 @@
+         const {id} = this._app;
+         this._toggleFavoriteItem.label.text = this._appFavorites.isFavorite(id)
+             ? _('Unpin')
+-            : _('Pin to Dash');
++            : _('Pin to Dock');
+     }
+ 
+     _updateGpuItem() {

@@ -341,6 +341,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patc
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0286-android-native-notification-replies.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0287-app-menu-section-ownership.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0288-dock-wheel-reachability.patch" "$rpmbuild_dir/SOURCES/"
 for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
