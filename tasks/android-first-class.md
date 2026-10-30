@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T05:33Z
+- Updated: 2026-10-30T06:04Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -21,11 +21,11 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
 | A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot and native image hashes passed183e21f8; UI reply/other scopes pending | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
-| A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A02 Install and app identity | PARTIAL SDK5 x86: actual official F-Droid APK installed through Valet UI, exact installed SHA matched, app drawer close/relaunch observed on boot3264f49d; direct double-click still opens chooser | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
-| A06 Native notifications | Old-image native card and Mark read observed; new lifecycle/reply runtime OPEN | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
+| A06 Native notifications | PARTIAL SDK5 x86: real Luma entry + hardware keyboard + Send -> original Android PendingIntent receipt passed818f9e4b once with correct UID/PID; virtual-keyval path remains faulty | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
 | A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
 | A08 Clipboard | Plain text worked on old image; source transfer guards; focus policy unimplemented/test inconclusive | Actual new native-HIDL admission with nonempty trusted controls; compositor-attested logical focus including touch-only profiles; read/write revocation, rich MIME, stalled/large transfers and lifetime/restart tests. |
 | A09 Documents/share/drop | Android picker alone is insufficient; OPEN host broker | Scoped native file handles/URIs, seek/read/write-back, persist/revoke, reconnect, share/drop and denied paths; no whole-home mount. |
@@ -52,7 +52,50 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT05:33Z — real-app GUI flow in one bounded persistent desktop session:
+CURRENT06:04Z — actual real-app install and native reply milestones:
+- Actual96/127/SDK5 boot3264f49d-e460-43be-b19d-9ad405ee8cca: real Filer APK
+  double-click opened chooser (defect still open). Choosing Valet opened actual
+  io.luma.Valet GUI; pointer Install succeeded. Installed F-Droid2.0.2 APK SHA
+  exactly19d51fad... matches official signature-verified corpus; native desktop
+  entry published. Actual app opened, loaded repository, closed and reopened by
+  pointer from Luma app drawer. Hardware typing F-Droid in native search correct.
+- Evidence GUI child2d0de28a: snapshot e3b92286 installation success; state
+ 5f5bc5c6 exact APK/desktop; dce4dd0d actual running window; c69059de closed;
+ a11f85c5/fd79fdef/a4f5456e app-drawer reopen; 9387bf3d actual correct search.
+  Full screenshot/JSON UUID filenames stay in that artifact directory.
+- Native reply actual PASS dev-android-gui-reply-verify-818f9e4b EXIT0 05:54:53Z.
+  Existing APK16 BackgroundReceiver local30s alarm removes foreground task,
+  then posts real notification. Sidecar4a6e84d2 verified96/127/SDK5 native hashes,
+  APK hash, same boot, UID10128/PID1780 and unique textLumaAndroidReply-207d821f.
+  Native pointer focused actual live Luma card; QEMU keys dispatched once per
+  character; snapshot01f6190a showed exact text; pointer Send66b17b7c. Original
+  ActionReceiver action:reply receipt exact text/UID/PID once, unchanged after3s.
+  No direct reply API invocation, text setter or clipboard injection. This closes
+  only one x86 synthetic hardware-input happy path, not lifecycle/mobile/power.
+- Foreground fixture posts did not show a banner; background local-alarm fixture
+  did. Earlier no-banner runs do not establish background notification failure.
+  Virtual notify_keyval duplication remains unqualified; physical input succeeds.
+- Dock backend favorite/reorder succeeded in owned test profile. Native menu
+  showed Unpin; pointer unpin worked. Pin interaction remains OPEN (long dock's
+  running app clipped; drawer tiles have no context menu). QMP wheel/shift/right
+  inputs were accepted but did not expose it; not evidence of working scrolling.
+- Explicit diagnostic preference sidecar8d544623 FAILED JSON parse after applying
+  changes. Readback fb39eb6b confirmed favorite and APK identity/PID1539; later
+  UI unpinned it. MIME canonical Valet default changed in this test profile;
+  double-click142fe5e1 STILL opened chooser. Do NOT claim canonical default fixes
+  it or change public defaults based on that hypothesis. Actual GIO queried in
+  Filer's exact XDG environment had resolved installer default even before change.
+- R50 main child/root/parent0727a2ae still active until bounded06:04-ish deadline;
+  its finish predicate mistakenly requires legacy org.projectluma.AndroidInstaller
+  while actual installed surface is io.luma.Valet. Do not alter frozen helpers or
+  claim overall pass. Observe final cleanup, VM off/original XML and policy24cf
+  restoration, then record independent successful scopes with their limits.
+- Next product fix: inspect Filer's actual default activation/portal path against
+  pinned50.2.2 source and existing ApplicationInstaller2 handoff; runtime GUI
+  itself demonstrably installs. Generic installer2 is ordinary session D-Bus Exec,
+  not the hardened Android broker; no evidence requiring a sandbox relaxation.
+
+HISTORICAL05:33Z — real-app GUI flow in one bounded persistent desktop session:
 - User correctly calls out ~48h without a usable build. Deliverable remains
   incomplete; repeated recovery/probe work has consumed too much time. Immediate
   milestone is actual APK double-click/install/launcher/window/dock in one boot,
