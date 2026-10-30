@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T01:05:00+00:00
+- Updated: 2026-10-30T01:14:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,39 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE01:14Z — corrected Shell127 fully packaged; coherent VM test active:
+- Normal dev-android-shell127-package-be016db1.service PASSED01:06:56.228019Z.
+  Fresh full build sourcea270220b0, immutable private127 release/bounded2CPU and
+  prior documented source assertions; freshly built Home widget prerequisite,
+  verified Figtree inputs. All native %check, packaged resources/fixtures and new
+  EVERY-RPM header directory guard passed. Glycin sandbox-enabled compiled
+  symbolic test receipt required and passed; no skipped native check.
+- Shell main694b36212a18e4bc2759bd47411b459f675365b22f9371ecdd0cc0a9fad0cd95;
+  common1922523a46e378bc7b3efbe1bb5f73e59d18c27d71c1c82f6621cfb29a88b513;
+  SRPM588b7ec03c9af42c1d9e1d7eb15dab0b074920cca3347405ce364a03eb617573.
+  Output rpm-r10/source/build/candidate-shell127/build/packages/gnome-shell.
+- CURRENT dev-android-reply-vm-r16-f390d264.service normal10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r16.service1GiB, owned6GiB/QEMU8 runtime.
+  Frozen reply-vm-r16/manifest.json pins helpers and exact95/127 RPM triple.
+  Original reset watchdog and boot health checks retained. Builder stays off.
+- Bad124 may still boot due trial recovery selection. Bootstrap is explicitly
+  nonqualifying: same-byte/context copies of only private Shell library/resource
+  subtrees with intended directory permissions, temporary read-only bind mounts
+  inside owned VM. No package payload changes or MAC/health-check relaxation.
+  These mounts must be absent after fresh corrected127/95 reboot, which must
+  also pass actual greenboot health checks. No bootstrap result counts as pass.
+- Actual image pair reused only after full SHA verification/reflink; otherwise
+  verified streaming transfer. Atomic cache-only triple update accepts ONLY
+  known task-owned fallback pending checksums and compares explicit package sets.
+- Native UI probe waits at a private boot-specific gate until Android/APK hashes
+  are verified and fixture force-stopped; then posts a fresh real notification.
+  Real pointer/keyboard, exact one fresh action:reply, then actual resize and
+  native clipboard/task-name guard checks. Finally restore original extension
+  settings/remove fixture and observe VM shutdown. None passed yet on this set.
+- Continue foreground through this child, retain failed runs/independent scopes.
+  All ARM, production isolation, physical power and remaining24-gate work stays
+  open. Source installer95 fix is packaged but actual Filer install still open.
 
 OBSERVED01:05Z — full126 build/native checks passed; final directory audit FAILED:
 - Normal768f4a04 built all Shell126 RPMs and ran the existing full %check,
