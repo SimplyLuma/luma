@@ -1437,9 +1437,13 @@ class TideWindow(AppWindow):
         self.pane_kind, self.source_id = None, None
 
     def _pane_navigated(self, place, _direction):
+        # A phone menu temporarily replaces the details drawer. Navigation
+        # owns presenting its destination again after that menu dismisses.
+        self.pane_kind = 'sources'
         self.source_id = place.subject
         self.editing = place.view == 'edit'
         self._fill_pane()
+        self.pane.open(subject='sources')
 
     def _open_source(self, identifier, edit=False):
         source = self.library.source(identifier)

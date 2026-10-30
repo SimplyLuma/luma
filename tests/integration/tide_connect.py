@@ -18,7 +18,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from luma_tide.credentials import LEGACY_SCHEMA_NAME, SCHEMA_NAME
+from luma_tide.credentials import LEGACY_SCHEMA_NAME, SCHEMA_NAME, SecretServiceStore
 from luma_tide.model import LibraryStore, SourceState
 from prairie_apps import connect_tide as tide
 from prairie_apps import connect_sync
@@ -115,19 +115,33 @@ class Integration(unittest.TestCase):
         self.addCleanup(self.run_patch.stop)
 
     def run_process(self, command, **kwargs):
+        sandbox = command[0] == 'flatpak'
+        if sandbox:
+            self.assertEqual(command[:4], ['flatpak', 'run', '--command=python3', 'org.projectluma.Tide'])
+            self.assertNotIn('--filesystem=host', command)
+            self.assertTrue(json.loads(kwargs['input'])['sandbox'])
         if command[-1] != tide._KEYRING_SCRIPT:
+            if sandbox:
+                env = dict(kwargs['env'])
+                env['XDG_DATA_HOME'] = str(self.database(self.sandbox_device).parent.parent)
+                kwargs['env'] = env
+                command = [sys.executable, '-c', command[-1]]
             return self.real_run(command, **kwargs)
         # Run the actual bridge and actual SecretServiceStore with an isolated
         # schema-aware libsecret backend for this simulated enrolled device.
-        code = next(code for code in self.vaults if kwargs['env']['PYTHONPATH'].startswith(code))
-        vault = self.vaults[code]
+        if sandbox:
+            vault = self.vault(self.sandbox_device)
+        else:
+            code = next(code for code in self.vaults if kwargs['env']['PYTHONPATH'].startswith(code))
+            vault = self.vaults[code]
         gi, repository = types.ModuleType('gi'), types.ModuleType('gi.repository')
         gi.require_version = lambda *_: None
         repository.GLib, repository.Secret = types.SimpleNamespace(Error=SecretError), vault
         output, errors, status = io.StringIO(), io.StringIO(), 0
         with patch.dict(sys.modules, {'gi': gi, 'gi.repository': repository}), \
                 patch.object(sys, 'stdin', io.StringIO(kwargs['input'])), \
-                contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors), \
+                (patch.object(SecretServiceStore, 'lookup_background', None) if sandbox else contextlib.nullcontext()):
             try:
                 exec(command[-1], {})
             except SystemExit as error:
@@ -190,6 +204,29 @@ class Integration(unittest.TestCase):
             self.assertEqual(store.sources(), [])
         self.assertTrue(download.exists())
         self.assertFalse(self.vault('tablet').values)
+
+    def test_flatpak_receiver_uses_sandbox_model_and_legacy_credential_api(self):
+        source = self.seed(); self.sync('phone')
+        env = self.env('tablet')
+        native = Path(env['XDG_DATA_HOME']) / 'luma-tide/library.db'
+        with LibraryStore(native) as store:
+            store.add_source('Local only', 'local-folder', self.root / 'music', local=True)
+        sandbox_home = Path(env['HOME']) / '.var/app/org.projectluma.Tide/data'
+        sandbox_home.mkdir(parents=True)
+        env['LUMA_TIDE_LIBRARY'] = str(sandbox_home / 'luma-tide/library.db')
+        self.sandbox_device = 'tablet'
+        from prairie_apps.app_installs import FLATPAK
+        installation = types.SimpleNamespace(kind=FLATPAK, data_home=sandbox_home)
+        selected_env = {k: v for k, v in env.items() if not k.startswith('LUMA_TIDE_')}
+        with patch('prairie_apps.app_installs.resolve', return_value=installation):
+            tide.sync_tide(address='https://hub.test', token='tablet', http=self.hub,
+                state=self.states['tablet'], scope='https://hub.test|tablet',
+                environment=selected_env, remote_changed=True)
+        with LibraryStore(self.database('tablet')) as store:
+            received = store.source(source.id)
+        self.assertEqual(self.vault('tablet').values[SCHEMA_NAME, received.auth_ref], 'synthetic-password')
+        with LibraryStore(native) as store:
+            self.assertTrue(all(s.local for s in store.sources()))
 
     def test_metadata_arriving_before_password_is_retried_without_another_revision(self):
         source = self.seed(); self.sync('phone')

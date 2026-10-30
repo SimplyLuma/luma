@@ -416,3 +416,39 @@ Final job ad56cba4 passed the same full focused set after the final changes,
 including eleven credential tests and seven cross-component exchanges. Both RPM
 specs parse and source candidate pins agree. Private deployment hashes were
 compared with maintained source; no user sign-in was available at this checkpoint.
+
+## 2026-10-30 Dell Flatpak and source Edit follow-up
+
+The Dell's active Tide is the signed system Flatpak; its retained native RPM was
+not the active library. The adapter now executes model/credential helpers in the
+active Flatpak sandbox, without granting new filesystem or bus permissions. A
+compatibility path reads older Tide schemas through metadata-only Secret Service
+search when the newer background API is absent. Native/Flatpak data ownership
+stays separate. Source-marker watch includes the sandbox data path; older Tide
+Flatpaks without the marker retain timer/Hub-event refresh until their app update.
+
+The phone's Sources > More menu replaces the details drawer. Edit rebuilt its
+contents but did not present the destination drawer, leaving Listen now visible.
+Source navigation now explicitly presents its destination. Device runtime tests
+reproduced the hidden form before the change and then passed the actual More >
+Edit button path with a mapped, focused password entry at 360x400. Only that
+method was patched into the phone's private UI, preserving its other layout work.
+The maintained runtime check is included in the Tide RPM check list; its desktop
+profile was not run on the physical phone.
+
+Dell delivery uses a private user prefix and unit drop-ins, preserving the
+existing autosync preview beneath the new adapter. Real Flatpak model execution
+succeeded. The authenticated signed Connect UI broker reports one Music server
+and a first successful source sync. Direct native broker probes are refused by
+the existing boundary; it was not weakened. Dell and Titan source URI, identity
+and account match. Neither has a readable sign-in for that source, so real
+password upload/download remains pending the owner's sign-in. The unrelated
+Hub credential was not assigned to it.
+
+Final bounded job b174166a passes the focused checks, including eight two-device
+integration cases with sandbox routing and older credential API coverage,
+install-selection, credentials, library, remote, recovery and shared sync tests,
+RPM spec parsing and paired pins. New candidates: core
+1.luma.124.mobile20261030.2, Tide 2.luma.36.mobile20261030.1. Physical phone runtime
+source_navigation_runtime.py also passes the real More/Edit/focus path. No
+published package/OTA or complete signed-in cross-device playback claim.

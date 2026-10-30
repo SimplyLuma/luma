@@ -17,6 +17,7 @@ Tide downloaded for offline play are left on disk.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import hmac
 import json
@@ -34,6 +35,11 @@ SECRET_PREFIX = "tide-source:"
 
 class TideSyncError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class FlatpakRuntime:
+    app_id: str
 
 
 # ── Where Tide keeps its library, and whose code writes to it ─────────────
@@ -55,7 +61,7 @@ def _remote_capable(path: Path) -> bool:
     return {"auth_ref", "account", "kind", "uri"} <= columns
 
 
-def library(environment: dict[str, str] | None = None) -> tuple[Path, str] | None:
+def library(environment: dict[str, str] | None = None) -> tuple[Path, str | FlatpakRuntime] | None:
     """The Tide library that can hold network sources, and the PYTHONPATH of
     the Tide code that goes with it ("" for the installed Tide).
 
@@ -71,6 +77,10 @@ def library(environment: dict[str, str] | None = None) -> tuple[Path, str] | Non
         if path.is_file() and not _remote_capable(path):
             raise TideSyncError("The selected Tide library does not support music servers.")
         return path, env.get("LUMA_TIDE_PYTHONPATH", "")
+    from .app_installs import FLATPAK, TIDE, resolve
+    installation = resolve(TIDE, environment)
+    if installation.kind == FLATPAK:
+        return installation.data_home / "luma-tide" / "library.db", FlatpakRuntime(TIDE)
     native = _data_home(environment) / "luma-tide" / "library.db"
     if native.is_file():
         return native, ""
@@ -90,11 +100,13 @@ def library(environment: dict[str, str] | None = None) -> tuple[Path, str] | Non
 
 
 _MODEL_SCRIPT = r"""
-import json, sys
+import json, os, sys
 from pathlib import Path
 request = json.load(sys.stdin)
 from luma_tide.model import LibraryStore
-store = LibraryStore(Path(request["database"]))
+path = (Path(os.environ["XDG_DATA_HOME"]) / "luma-tide/library.db"
+        if request.get("sandbox") else Path(request["database"]))
+store = LibraryStore(path)
 if request["op"] == "add":
     item = request["item"]
     store.add_source(item["name"], item["kind"], item["uri"], local=False,
@@ -109,15 +121,26 @@ print(json.dumps({"ok": True}))
 """
 
 
-def _model(database: Path, code: str, request: dict) -> None:
+def _run_tide(script: str, request: dict, code: str | FlatpakRuntime, *, timeout: int):
     env = dict(os.environ)
-    if code:
-        env["PYTHONPATH"] = code + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    completed = subprocess.run([sys.executable, "-c", _MODEL_SCRIPT], input=json.dumps({**request, "database": str(database)}),
-                               capture_output=True, text=True, timeout=60, env=env)
-    if completed.returncode != 0:
-        tail = (completed.stderr or "").strip().splitlines()[-1:] or ["no detail"]
-        raise TideSyncError(f"Tide could not update its library ({tail[0]}).")
+    if isinstance(code, FlatpakRuntime):
+        command = ["flatpak", "run", "--command=python3", code.app_id, "-c", script]
+        request = {**request, "sandbox": True}
+    else:
+        command = [sys.executable, "-c", script]
+        if code:
+            env["PYTHONPATH"] = code + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    return subprocess.run(command, input=json.dumps(request), capture_output=True,
+                          text=True, timeout=timeout, env=env)
+
+
+def _model(database: Path, code: str | FlatpakRuntime, request: dict) -> None:
+    try:
+        result = _run_tide(_MODEL_SCRIPT, {**request, "database": str(database)}, code, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        raise TideSyncError("Tide could not update its library. Try syncing again.") from None
+    if result.returncode != 0:
+        raise TideSyncError("Tide could not update its library. Update Tide and sync again.")
 
 
 # ── The keyring, through the matching Tide implementation ────────────────
@@ -131,7 +154,39 @@ try:
     operation = request["op"]
     result = None
     if operation == "lookup":
-        result = store.lookup_background(request["reference"])
+        background = getattr(store, "lookup_background", None)
+        if background is not None:
+            result = background(request["reference"])
+        else:
+            # Older independently updated Tide builds expose their schema but
+            # predate the background-read API. Search their actual schemas in
+            # their own sandbox, without requesting libsecret to unlock them.
+            Secret = store.Secret
+            service = Secret.Service.get_sync(Secret.ServiceFlags.OPEN_SESSION, None)
+            schemas = [store.schema]
+            if getattr(store, "_legacy_schema", None) is not None:
+                schemas.append(store._legacy_schema)
+            for schema in schemas:
+                locked = False
+                for item in service.search_sync(schema, {"reference": request["reference"]}, Secret.SearchFlags.ALL, None):
+                    if item.get_locked():
+                        locked = True
+                        continue
+                    item.load_secret_sync(None)
+                    if item.get_locked():
+                        locked = True
+                        continue
+                    value = item.get_secret()
+                    if value is None:
+                        raise ValueError("Unavailable credential")
+                    result = value.get_text()
+                    if not isinstance(result, str):
+                        raise ValueError("Invalid credential")
+                    break
+                if result is not None:
+                    break
+                if locked:
+                    raise ValueError("Locked credential")
     elif operation == "store":
         store.store(request["reference"], request["label"], request["secret"])
     elif operation == "clear":
@@ -146,14 +201,9 @@ except Exception:
 """
 
 
-def _keyring(request: dict, code: str = ""):
-    env = dict(os.environ)
-    if code:
-        env["PYTHONPATH"] = code + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+def _keyring(request: dict, code: str | FlatpakRuntime = ""):
     try:
-        result = subprocess.run([sys.executable, "-c", _KEYRING_SCRIPT],
-                                input=json.dumps(request), capture_output=True,
-                                text=True, timeout=10, env=env)
+        result = _run_tide(_KEYRING_SCRIPT, request, code, timeout=10)
         reply = json.loads(result.stdout) if result.returncode == 0 else {}
         if reply.get("ok"):
             return reply.get("value")
@@ -162,15 +212,15 @@ def _keyring(request: dict, code: str = ""):
     raise TideSyncError("Tide could not access its saved sign-in. Unlock the keyring and sync again.")
 
 
-def keyring_lookup(reference: str, code: str = "") -> str | None:
+def keyring_lookup(reference: str, code: str | FlatpakRuntime = "") -> str | None:
     return _keyring({"op": "lookup", "reference": reference}, code)
 
 
-def keyring_store(reference: str, label: str, secret: str, code: str = "") -> None:
+def keyring_store(reference: str, label: str, secret: str, code: str | FlatpakRuntime = "") -> None:
     _keyring({"op": "store", "reference": reference, "label": label, "secret": secret}, code)
 
 
-def keyring_clear(reference: str, code: str = "") -> None:
+def keyring_clear(reference: str, code: str | FlatpakRuntime = "") -> None:
     _keyring({"op": "clear", "reference": reference}, code)
 
 
@@ -201,7 +251,7 @@ def secret_ref(source_id: str) -> str:
     return f"{SECRET_PREFIX}{source_id}"
 
 
-def tide_collection(database: Path, code: str, *, fetch_secret, on_pulled) -> Collection:
+def tide_collection(database: Path, code: str | FlatpakRuntime, *, fetch_secret, on_pulled) -> Collection:
     def read(path: Path):
         try:
             rows = _rows(path)
@@ -244,16 +294,11 @@ def sync_tide(*, address: str, token: str, http, state: dict, scope: str,
     from .connect_collections import sync_collection
     from .connect_sync import HubResponseError
 
-    from .app_installs import FLATPAK, NONE, TIDE, resolve
+    from .app_installs import NONE, TIDE, resolve
 
     installation = resolve(TIDE, environment)
     if installation.kind == NONE and not (environment or os.environ).get("LUMA_TIDE_LIBRARY"):
         return "music sources: Tide is not installed, skipped"
-    if installation.kind == FLATPAK:
-        # The Flatpak Tide keeps server passwords in its own sandboxed keyring,
-        # which nothing outside the sandbox can write, and this release of it
-        # has no server sources. Its local folders never sync anyway.
-        return "music sources: Tide is installed as a Flatpak, which does not take server sources yet, skipped"
     found = library(environment)
     if found is None:
         # A receiving device need not launch Tide before its first sync.

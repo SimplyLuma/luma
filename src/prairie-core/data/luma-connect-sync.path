@@ -17,6 +17,7 @@ PathModified=%h/.var/app/org.projectluma.Notes/data/luma/notes
 PathModified=%h/.var/app/org.projectluma.Weather/data/prairie/weather
 PathModified=%h/.var/app/org.projectluma.Clock/data/prairie/clock
 PathModified=%h/.var/app/org.projectluma.Leaf/data/leaf
+PathChanged=%h/.var/app/org.projectluma.Tide/data/luma-tide/sources-changed
 # The top of the library; photos filed deeper are picked up by the timer.
 PathModified=%h/Pictures
 Unit=luma-connect-sync.service
