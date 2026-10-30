@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T18:09Z
+- Updated: 2026-10-30T18:46Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,35 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT18:46Z — compiled130 graphical component checks PASS; combined R158 active:
+- Full Shell130 package d48bce89 PASSED18:09:47Z from immutable8d4778409.
+  Main RPM SHA7670d9d7bc56455d6baecc023d43694348606e751be4126052d8ebbe0a44ce6d;
+  common SHA db3475e125ad70fdf73abf34af008e595373ae4c5537cb1810840ac5a20d7beb.
+  Actual compiled native test and RPM guards passed. Packaged/no-overlay graphical
+  dock r154/76aeaceb PASSED9 checks18:11:31Z; drawer r155/04246ea1 PASSED29
+  checks18:11:38Z. These are component results under distribution Mutter, not
+  whole-OS, physical input, ARM or production qualification.
+- Combined R153 child78ada9ef reproduced actual APK double-click, correct Valet
+  metadata/install/Open, native app close, drawer context Pin and real favorite.
+  QMP wheel accepted12 requests but dock offset remained0. Transport versus
+  compositor behavior unresolved: no dock activation pass. Explicit abort
+  3754bf1d-f6d6-4fcd-9da1-6fd1571b2b5c retained; child exit1 at18:34:44Z;
+  parent52e8f76e restored original policy24cf. Failed run is not a full GUI pass.
+- R158 guard4 checks aaf08d38 PASSED18:38:51Z. Parent b7f27351 / child c8a6625e
+  now active with same seven130/81/2/75/96 RPMs and SDK5. Adds bounded compositor
+  virtual pointer scroll, actual dock geometry/offset and loaded shelf.js/appMenu.js
+  resource hashes, compared with exact compiled130 resources. No internal app
+  activation or adjustment mutation. Full19-phase independent qualifier prepared,
+  not run; first VM readiness and actual dock interaction remain pending.
+  Private gui-vm-r158, vm-cache-budget-r158, gui-proof-r158 retain inputs/results.
+- Maintained base source inventory r156/95422111 PASSED18:18:09Z: all1,166
+  public base-manifest project refs resolved,0 errors. Public evaluation inventory
+  committed9db797f4f; no full content checkout, assembled device/profile overlays,
+  platform build, license/security admission or runtime qualification implied.
+- Nightly request remains conditional on readiness. Android internal SELinux
+  Disabled, shared identity baseline, test keys and unqualified ARM runtime/native
+  brokers/mobile power are actual open gates. No publication or promotion made.
 
 CURRENT18:09Z — dock wheel source9 PASS; full130 package active; next matching VM prepared:
 - Source8d4778409 is the final tested patch0288 variant. Native source-overlay
