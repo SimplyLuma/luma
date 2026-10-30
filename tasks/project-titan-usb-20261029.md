@@ -556,3 +556,47 @@ required update plus selected-session checks pass on the phone, and the actual
 Home screenshot confirms the latest compact Home/widgets/status/dock returned.
 Future reboot acceptance of the restored GDM selection remains to be checked.
 Audio cutouts remain unresolved; no failed audio workaround is shipped.
+
+### 2026-10-30 — isolate unexpected APLL2 shutdown
+
+The owner still hears cutouts, including occasional five-second clean stretches.
+An internal hardware DL0→UL0 crossbar test sampled a generated pseudo-random
+signal every millisecond: all 5,000 active sixteen-sample blocks matched at one
+constant offset, with no offset changes. The original crossbar was restored and
+generated recordings removed. This rejects stale/repeated DMA data for that test.
+
+Amplifier status register0 alternates 0x0040/0x0042; the stock driver's diagnostic
+identifies bit1 as PLL lock. GPIO42/43 stop toggling while lock is absent, with
+muxes and ETDM enable registers unchanged. During verified RUNNING Tide PCM,
+218 samples observed amplifier unlocked with PLLEN_ALL0x3fe, versus31 locked
+with0x3ff (one transitional unlocked/0x3ff). Keeping CPUs awake, forcing both
+ETDM1x clocks open, or switching audio_h toAPLL2 did not resolve the loss and
+all were restored. No amplifier protection was changed.
+
+The exact running source confirms PLL_SETCLR omits pll_en_bit and ops: unrelated
+PLLs default to APLL2 bit0 and ordinary power-register handling. Added scoped
+patch0065 under patches/linux-mt6878, intended after the devices/titan2elite
+series0001–0064. It assigns independent gate bits, selects correct set/clear
+operations, and preserves tuner handling. Actual patch application check passes
+against retained exact source. Bounded jobc8ba09f0 compiles both changed clock
+objects with exact running prepared headers/Clang22.1.8. No corrected kernel was
+installed, rebooted or audibly accepted; this is a source candidate.
+
+A separate twenty-second CCF-reference diagnostic module compiled in job0bc58d89
+and was sent to the phone with transient titan-ccf-hold-check.service. The Dell
+reverse SSH bridge then stopped returning its SSH banner, so module execution,
+cleanup and listening outcome are unverified. Its code auto-releases references
+after20s and the wrapper unloads it in finally; verify actual state on reconnect.
+The proposed SMC diagnostic was never loaded or run.
+
+Owner reports the on-screen keyboard returned and requires suppression on Titan.
+Maintained patch0291 still uses physical keyboard capabilities, and shared defaults
+remain screen-keyboard-enabled=false. Check whether boot recovery restored a
+legacy true override; do not weaken touch-only-device or accessibility policy.
+Prepared private idempotent correction for greeter/session dconf; not delivered
+while the Dell bridge is offline. Owner was asked to wake/reconnect the Dell.
+
+Own private test evidence moved to the8TB drive after root disk admission refused:
+30,234 files verified by SHA256 and mode, original path preserved by symlink.
+No other task's data was moved or removed, and admission reserves were retained.
+Kernel headers/build scratch remain in own separate private experiment directory.

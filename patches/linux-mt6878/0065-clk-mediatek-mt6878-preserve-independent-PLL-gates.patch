@@ -1,0 +1,84 @@
+Subject: [PATCH] clk: mediatek: mt6878: keep PLL gate ownership independent
+
+The MT6878 PLL_SETCLR descriptors omit pll_en_bit and ops, so every
+clock uses bit zero and the ordinary power-register helpers. Unpreparing
+MSDCPLL, UFSPLL or APLL1 can consequently clear the APLL2 gate while an
+audio consumer still holds it. On Titan, PLLEN_ALL bit zero disappears
+throughout audible gaps while the hardware PCM and DMA keep running.
+
+Give each descriptor its declared gate bit and use set/clear operations
+whose prepared state reads that gate. Preserve audio tuner enable/disable
+when using these helpers; unrelated clocks have no tuner registers.
+
+The clock changes are scoped to the MT6878 provider. No user-space rate,
+buffer, amplifier protection or presentation policy is changed.
+---
+diff --git a/drivers/clk/mediatek/clk-mt6878-apmixedsys.c b/drivers/clk/mediatek/clk-mt6878-apmixedsys.c
+--- a/drivers/clk/mediatek/clk-mt6878-apmixedsys.c
++++ b/drivers/clk/mediatek/clk-mt6878-apmixedsys.c
+@@ -73,7 +73,7 @@
+ #define MT6878_PLL_FMIN		(1500UL * MHZ)
+ #define MT6878_INTEGER_BITS	8
+ 
+-#define PLL_SETCLR(_id, _name, _en_set_reg,			\
++#define PLL_SETCLR(_id, _name, _en_bit,			\
+ 		   _en_clr_bit, _flags, _pd_reg,		\
+ 		   _pd_shift, _tuner_reg, _tuner_en_reg,	\
+ 		   _tuner_en_bit, _pcw_reg, _pcw_shift,		\
+@@ -81,6 +81,8 @@
+ 	.id = _id,						\
+ 	.name = _name,						\
+ 	.reg = 0,						\
++	.pll_en_bit = _en_bit,					\
++	.ops = &mtk_pll_setclr_ops,				\
+ 	.en_reg = PLLEN_ALL,					\
+ 	.en_set_reg = PLLEN_ALL_SET,				\
+ 	.en_clr_reg = PLLEN_ALL_CLR,				\
+diff --git a/drivers/clk/mediatek/clk-pll.c b/drivers/clk/mediatek/clk-pll.c
+--- a/drivers/clk/mediatek/clk-pll.c
++++ b/drivers/clk/mediatek/clk-pll.c
+@@ -290,6 +290,7 @@
+ 	struct mtk_clk_pll *pll = to_mtk_clk_pll(hw);
+ 
+ 	writel(BIT(pll->data->pll_en_bit), pll->en_set_addr);
++	__mtk_pll_tuner_enable(pll);
+ 
+ 	/* Wait 20us after enable for the PLL to stabilize */
+ 	udelay(20);
+@@ -301,6 +302,7 @@
+ {
+ 	struct mtk_clk_pll *pll = to_mtk_clk_pll(hw);
+ 
++	__mtk_pll_tuner_disable(pll);
+ 	writel(BIT(pll->data->pll_en_bit), pll->en_clr_addr);
+ }
+ 
+@@ -312,6 +314,17 @@
+ 	.determine_rate = mtk_pll_determine_rate,
+ 	.set_rate	= mtk_pll_set_rate,
+ };
++
++/* Set/clear PLL gates without a separate fence status register. */
++const struct clk_ops mtk_pll_setclr_ops = {
++	.is_prepared	= mtk_pll_is_prepared,
++	.prepare	= mtk_pll_prepare_setclr,
++	.unprepare	= mtk_pll_unprepare_setclr,
++	.recalc_rate	= mtk_pll_recalc_rate,
++	.determine_rate	= mtk_pll_determine_rate,
++	.set_rate	= mtk_pll_set_rate,
++};
++EXPORT_SYMBOL_GPL(mtk_pll_setclr_ops);
+ 
+ const struct clk_ops mtk_pll_fenc_clr_set_ops = {
+ 	.is_prepared	= mtk_pll_fenc_is_prepared,
+diff --git a/drivers/clk/mediatek/clk-pll.h b/drivers/clk/mediatek/clk-pll.h
+--- a/drivers/clk/mediatek/clk-pll.h
++++ b/drivers/clk/mediatek/clk-pll.h
+@@ -85,6 +85,7 @@
+ 			     struct clk_hw_onecell_data *clk_data);
+ 
+ extern const struct clk_ops mtk_pll_ops;
++extern const struct clk_ops mtk_pll_setclr_ops;
+ extern const struct clk_ops mtk_pll_fenc_clr_set_ops;
+ 
+ static inline struct mtk_clk_pll *to_mtk_clk_pll(struct clk_hw *hw)
