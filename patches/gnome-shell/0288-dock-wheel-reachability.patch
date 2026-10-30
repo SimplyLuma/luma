@@ -22,7 +22,7 @@ applying it twice. Name the user surface Dock in the shared pin action.
 +    // Native ScrollView owns its primary axis. Add only the missing cross-axis
 +    // input, without repeating the native handler's primary-axis movement.
 +    _scrollDock(event) {
-+        if (event.get_flags() & Clutter.EventFlags.POINTER_EMULATED)
++        if (event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED)
 +            return Clutter.EVENT_STOP;
 +        const adjustment = this._vertical
 +            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
