@@ -87,7 +87,7 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
 --- a/js/misc/inputMethod.js
 +++ b/js/misc/inputMethod.js
-@@ -382,6 +382,25 @@ export const InputMethod = GObject.registerClass({
+@@ -382,18 +382,38 @@ export const InputMethod = GObject.registerClass({
          return this._preeditVisible && this._preeditStr !== '' && this._preeditStr !== null;
      }
  
@@ -113,6 +113,23 @@ diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
      async handleVirtualKey(keyval) {
          try {
              if (!await this._context.process_key_event_async(
+                 keyval, 0, 0, -1, null))
+                 return false;
+-
+-            await this._context.process_key_event_async(
+-                keyval, 0, IBus.ModifierType.RELEASE_MASK, -1, null);
+-            return true;
+         } catch {
+             return false;
+         }
++        // The engine has taken the press; its release needs no answer before
++        // the next key, so typing waits for one round trip per key, not two.
++        this._context.process_key_event_async(
++            keyval, 0, IBus.ModifierType.RELEASE_MASK, -1, null).catch(() => {});
++        return true;
+     }
+ 
+     _fullReset() {
 diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 --- a/js/ui/keyboard.js
 +++ b/js/ui/keyboard.js
@@ -512,7 +529,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._setupKeyboard();
  
          this.connect('destroy', this._onDestroy.bind(this));
-@@ -1242,6 +1423,25 @@ export const Keyboard = GObject.registerClass({
+@@ -1242,6 +1423,24 @@ export const Keyboard = GObject.registerClass({
      }
  
      _onDestroy() {
@@ -530,7 +547,6 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        this._clipPopup?.destroy();
 +        this._clipPopup = null;
 +        if (this._preview) {
-+            Main.layoutManager.removeChrome(this._preview);
 +            this._preview.destroy();
 +            this._preview = null;
 +        }
@@ -538,7 +554,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (this._windowMovedId) {
              this._focusTracker.disconnect(this._windowMovedId);
              delete this._windowMovedId;
-@@ -1277,6 +1477,8 @@ export const Keyboard = GObject.registerClass({
+@@ -1277,6 +1476,8 @@ export const Keyboard = GObject.registerClass({
  
          this._suggestions = new Suggestions();
          this.add_child(this._suggestions);
@@ -547,7 +563,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          this._aspectContainer = new AspectContainer({
              layout_manager: new Clutter.BinLayout(),
-@@ -1294,25 +1496,101 @@ export const Keyboard = GObject.registerClass({
+@@ -1294,25 +1495,101 @@ export const Keyboard = GObject.registerClass({
          this._emojiSelection.hide();
          this._aspectContainer.add_child(this._emojiSelection);
  
@@ -650,7 +666,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      _updateLevelFromHints(userInputHappened) {
          // If the latch is enabled, avoid level changes
          if (this._latched)
-@@ -1323,52 +1601,37 @@ export const Keyboard = GObject.registerClass({
+@@ -1323,52 +1600,37 @@ export const Keyboard = GObject.registerClass({
              return;
          }
  
@@ -725,7 +741,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onKeyFocusChanged() {
-@@ -1447,9 +1710,10 @@ export const Keyboard = GObject.registerClass({
+@@ -1447,9 +1709,10 @@ export const Keyboard = GObject.registerClass({
              levelLayout.mode = currentLevel.mode;
  
              const rows = currentLevel.rows;
@@ -738,7 +754,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              });
  
              layers[currentLevel.level] = levelLayout;
-@@ -1463,7 +1727,40 @@ export const Keyboard = GObject.registerClass({
+@@ -1463,7 +1726,40 @@ export const Keyboard = GObject.registerClass({
          this._layers = layers;
      }
  
@@ -780,7 +796,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          let accumulatedWidth = 0;
          for (let i = 0; i < keys.length; ++i) {
              const key = keys[i];
-@@ -1487,10 +1784,29 @@ export const Keyboard = GObject.registerClass({
+@@ -1487,10 +1783,29 @@ export const Keyboard = GObject.registerClass({
                  iconName: key.iconName,
                  keyval: key.keyval,
                  hasAction: !!key.action,
@@ -810,7 +826,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                      if (key.action === 'hide') {
                          this.close(true);
                          this._updateLevelFromHints(true);
-@@ -1505,10 +1821,19 @@ export const Keyboard = GObject.registerClass({
+@@ -1505,10 +1820,19 @@ export const Keyboard = GObject.registerClass({
                          this._keyboardController.toggleDelete(false);
                          this._updateLevelFromHints(true);
                      } else if (!this._longPressed && key.action === 'levelSwitch') {
@@ -834,7 +850,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                      }
  
                      this._longPressed = false;
-@@ -1521,6 +1846,10 @@ export const Keyboard = GObject.registerClass({
+@@ -1521,6 +1845,10 @@ export const Keyboard = GObject.registerClass({
                  });
              } else {
                  button.connect('commit', (_actor, str) => {
@@ -845,7 +861,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                      this._keyboardController.commit(str, this._modifiers).then(() => {
                          this._disableAllModifiers();
                          this._updateLevelFromHints(true);
-@@ -1540,10 +1869,8 @@ export const Keyboard = GObject.registerClass({
+@@ -1540,10 +1868,8 @@ export const Keyboard = GObject.registerClass({
                  }
              }
  
@@ -858,7 +874,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
              if (key.action === 'modifier') {
                  const modifierKeys = this._modifierKeys[key.keyval] || [];
-@@ -1558,6 +1885,395 @@ export const Keyboard = GObject.registerClass({
+@@ -1558,6 +1884,398 @@ export const Keyboard = GObject.registerClass({
          }
      }
  
@@ -973,9 +989,12 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        if (!keycapVariant || !this._keycapSettings.get_boolean('key-preview'))
 +            return;
 +        if (!this._preview) {
++            // Painted only: tracked chrome would recompute the input region
++            // on every key press.
 +            this._preview = new St.Label({style_class: 'luma-keycap-preview', visible: false});
-+            Main.layoutManager.addTopChrome(this._preview);
++            Main.layoutManager.uiGroup.add_child(this._preview);
 +        }
++        Main.layoutManager.uiGroup.set_child_above_sibling(this._preview, null);
 +        setKeycapVariantClass(this._preview);
 +        this._preview.text = text;
 +        const [x, y] = key.keyButton.get_transformed_position();
@@ -1254,7 +1273,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      _setLatched(latched) {
          this._latched = latched;
          this._setCurrentLevelLatched(this._currentPage, this._latched);
-@@ -1587,24 +2303,22 @@ export const Keyboard = GObject.registerClass({
+@@ -1587,24 +2305,22 @@ export const Keyboard = GObject.registerClass({
          if (this._languagePopup)
              this._languagePopup.destroy();
  
@@ -1283,7 +1302,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _setCurrentLevelLatched(layout, latched) {
-@@ -1640,12 +2354,12 @@ export const Keyboard = GObject.registerClass({
+@@ -1640,12 +2356,12 @@ export const Keyboard = GObject.registerClass({
  
          this.width = monitor.width;
  
@@ -1302,7 +1321,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _updateKeys() {
-@@ -1653,6 +2367,9 @@ export const Keyboard = GObject.registerClass({
+@@ -1653,6 +2369,9 @@ export const Keyboard = GObject.registerClass({
          const {purpose} = this._keyboardController;
          this._updateLayout(group, purpose);
          this._setActiveLevel('default');
@@ -1312,7 +1331,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onGroupChanged() {
-@@ -1718,7 +2435,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1718,7 +2437,7 @@ export const Keyboard = GObject.registerClass({
              return;
          }
  
@@ -1321,7 +1340,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._clearKeyboardRestTimer();
  
          if (immediate) {
-@@ -1742,7 +2459,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1742,7 +2461,7 @@ export const Keyboard = GObject.registerClass({
          this._relayout();
          this._animateShow();
  
@@ -1330,7 +1349,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      close(immediate = false) {
-@@ -1788,7 +2505,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1788,7 +2507,7 @@ export const Keyboard = GObject.registerClass({
          this.ease({
              translation_y: -this.height,
              opacity: 255,
@@ -1339,7 +1358,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onComplete: () => {
                  this._animateShowComplete();
-@@ -1816,7 +2533,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1816,7 +2535,7 @@ export const Keyboard = GObject.registerClass({
          this.ease({
              translation_y: 0,
              opacity: 0,
@@ -1348,7 +1367,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_IN_QUAD,
              onComplete: () => {
                  this._animateHideComplete();
-@@ -1855,19 +2572,18 @@ export const Keyboard = GObject.registerClass({
+@@ -1855,19 +2574,18 @@ export const Keyboard = GObject.registerClass({
      }
  
      resetSuggestions() {
@@ -1374,7 +1393,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _clearShowIdle() {
-@@ -1908,7 +2624,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1908,7 +2626,7 @@ export const Keyboard = GObject.registerClass({
  
          windowActor.ease({
              y: finalY,
@@ -1383,7 +1402,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onStopped: () => {
                  window.disconnect(winUnmanagedId);
-@@ -2134,12 +2850,14 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2134,12 +2852,14 @@ class KeyboardController extends Signals.EventEmitter {
          return charPos;
      }
  
@@ -1399,7 +1418,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          /* If there is no IM focus or are in the middle of preedit, fallback to
           * keypresses */
-@@ -2170,7 +2888,7 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2170,7 +2890,7 @@ class KeyboardController extends Signals.EventEmitter {
                  } else if (cursor < anchor) {
                      offset = 0;
                      len = anchor - cursor;
