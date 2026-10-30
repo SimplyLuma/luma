@@ -505,3 +505,28 @@ Audio remains under investigation: user reports Tide/Doom severe stutter. Direct
 role loopbacks did not resolve user playback and was reverted. Shorter quantum
 and matching 44.1kHz are diagnostic comparisons, not qualified fixes. No general
 audio policy change is included in this source commit.
+
+### 2026-10-30 — isolate severe audio cutouts below the application
+
+Owner still reports severe intermittent Tide/Doom playback. Restored all failed
+PipeWire experiments: role bypass, forced rate/quantum, S16 hardware format,
+non-mmap transfer, and extra headroom did not resolve it. Keeping capture active
+also did not help. None of these changes is a source candidate.
+
+A fresh twelve-second source decode was prepared privately with the existing
+Tide credential/client helpers, leaving its library and queue unchanged. Its PCM
+contains no silent 100ms blocks. The owner still hears cutouts during continuous
+direct ALSA playback with PipeWire/Pulse/WirePlumber stopped, at S16/48kHz with
+6000-frame periods and a 24000-frame buffer. The alternate DL1 hardware channel
+also cuts out. This points below application decoding and sound-server routing;
+it does not yet identify the kernel or hardware cause. Earpiece-only playback
+was silent, so earlier uncertain tone output identification is not qualification.
+
+The amplifier diagnostic status remained DIGSTAT0007/AB0000 in eighty 100ms
+samples. No observed PCM underrun or reported amplifier fault establishes a
+cause. Existing power-supply lookup errors remain separately unproven. No
+amplifier protection, mixer gain, kernel module or boot artifact was changed.
+Normal DL0 routing, speaker profile, timing and audio services were restored;
+failed test clips removed. A clean reboot is the next comparison. Relevant
+exact-kernel sources were read from retained build evidence in bounded job
+7bf45d6b (exit0); no kernel rebuild or audio fix is claimed.
