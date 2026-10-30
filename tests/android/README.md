@@ -351,3 +351,11 @@ in a temporary fixture. With Clang AddressSanitizer, it requires the original
 concurrent control to fail and the fixed function to retain320,000 references.
 Binder construction and strong references are host substitutes in this test;
 actual Android library, codec and game qualification remain separate.
+
+The provider fixture also exports `.CodecProbe`: it requests100 OMX H264
+configure/start/stop/release cycles across four ordinary-UID threads with a
+20-second Java deadline. The caller must also bound the instrumentation process
+and stop this test package afterward, because native codec calls may block. It requests
+no accounts or media content and does not qualify decoded frames, playback or
+frame pacing. Capture the actual library hashes and instrumentation result;
+missing output or a transport failure is not a codec pass.

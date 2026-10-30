@@ -966,7 +966,12 @@ class FixtureWindow(AppWindow):
 class InstallerApplication(Adw.Application):
     def __init__(self, remove_id=None):
         app_id = 'io.luma.Valet.LumaUIPreview' if os.environ.get('LUMA_VALET_PREVIEW') else 'io.luma.Valet'
-        super().__init__(application_id=app_id, flags=Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        flags = Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        if os.environ.get('LUMA_VALET_PREVIEW'):
+            # A delivered preview may replace its modules while an older
+            # inspection window is open. New file opens must load the new code.
+            flags |= Gio.ApplicationFlags.NON_UNIQUE
+        super().__init__(application_id=app_id, flags=flags)
         self.remove_id = remove_id
 
     def do_command_line(self, command):

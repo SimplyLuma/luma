@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T22:21Z
+- Updated: 2026-10-30T23:11Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,134 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT23:11Z — source fixture and preview update ready; Dell tunnel unavailable:
+- r311/6a4d16b8 and r313/2f11a0ce confirm the actual24GiB guest,49,151MiB
+  virtual swap, no swap used, and active build. At23:10 it was running the
+  Soong TARGET_DEVICE dumpvar step; compilation/export completion remains open.
+- r310/4d83e8df now reports connection refused on pinned loopback22440 rather
+  than the earlier banner timeout. Dell transport remains unavailable. No
+  replacement images or final preview update have been applied.
+- r312/dc14424e prepared the91-file user overlay with NON_UNIQUE preview fix:
+  archive SHAfda19c672b74bd267bcb73b7fed1c1013926e1e6c82a105e0832fb52eb0931c5.
+  Private path experiments/android-first-class/dell-hotfix-r199/user-payload.tar.gz.
+- Codec instrumentation source built/signature-verified r297/e5932453; no actual
+  device codec pass. Private follow-up runner now has an Android-side28-second
+  hard timeout and finally stops only our own synthetic probe package. Original
+  r298 runner retained. Account/login/media content remains untouched.
+- User's APK.now TikTok page SHA exactly matches inspected Dell archive. Page
+  incorrectly advertises x86/x86_64; actual archive contains only arm64-v8a and
+  armeabi-v7a. Do not describe this file as native-compatible with x86 Dell.
+- This host preview/test milestone does not change immutable d7b752da3 image
+  input. Next: monitor real compiler/export, compare both library ABIs and stage
+  a coherent pair; deliver/retest on native Dell when the tunnel returns.
+
+CURRENT23:07Z — builder resized after actual memory pressure; native retry active:
+- r301/2ab3776b completed source checks/refreshed patches, then regenerated
+  globs and entered Soong graph analysis. r304/00b8e3d8 initially showed9GiB
+  available/no swap; later r307/c0ccfc35 measured soong_build RSS9.23GB, VM
+  free281MB and648MB swap: actual9GiB compiler cap was now a bottleneck. Our
+  incremental retry was undersized; disclosed this and stopped it via root
+  SIGINT so its normal admitted owner remained alive through clean shutdown.
+  Original24GiB XML and original account policy restored. Completed outputs
+  retained; unfinished graph analysis is restarted, not claimed restored.
+- r308/011e0263 safely carries the completed full source SHA through the
+  controlled libvirt read-only disk metadata transition. Same source device,
+  inode, size and mtime; changed ctime is within that actor's managed read-only
+  start interval. Root-owned checkpoint records no fresh full read claim.
+- CURRENT r309/4bad37d9 ACTIVE under normal28GiB admission; guard
+  r309/b089e2a6 ACTIVE. Private drivers/receipts hidl-repair-r309; root unit
+  luma-android-hidl-repair-r309-controller.service, guest unit
+  luma-android-hidl-repair-r309.service. Uses proven24GiB guest/QEMU hard25,
+  root2GiB,8 compiler jobs and original guest-local4GiB-cap zram/24GiB swap.
+  Account-only max32/build28; global32/host reserve8/disk reserve20 unchanged;
+  exact original policy/VM profile restore after terminal state. No build pass.
+- Original source image/template/tool hashes and d7b752da3 project input are
+  reused with protected checkpoint/metadata checks and fresh small-input hashes.
+  Root controller preserves the previous r301 partial build log on next boot.
+- r303/e2ea3db4 confirms Dell banner-exchange timeout, not just a missing result
+  file. Tunnel listener remains. Actual codec control result remains unavailable;
+  no new image pair applied and no OS reboot/user app data reset on Dell.
+- Fixed preview-only Valet process reuse: NON_UNIQUE loads newly delivered
+  modules for subsequent file opens while old windows remain intact. r305/
+  c25f12e3 tested two local previews; stronger r306/59107092 PASS with an actual
+  legacy unique owner: control redirects remotely, updated preview stays local.
+  This final preview change is not yet delivered because Dell is unreachable.
+  Source codec fixture/preview changes still need commit; image input remains d7.
+- Next: observe actual high-memory compiler/export result, compare native ABI,
+  prepare verified deliverable, retry Dell transport and complete device codec/
+  8 Ball Pool/scaling/Google flow qualification without deleting user data.
+
+CURRENT22:49Z — corrected native build active; latest Dell transport unavailable:
+- r293/55744732 passed full54GiB input SHA, booted the server VM, then stopped
+  on a controller polling bug: initial missing log made remote tail return1.
+  Clean guest poweroff/original24GiB XML and original account policy restored.
+  This was our operational error, not an Android compiler failure or device pass.
+- r295/d16077d7 verified all source inputs again, then refused an existing
+  identical project input before VM boot. Automatic policy restoration completed
+ 22:43:18Z. Preserve both failed attempts and original exports.
+- r300/1a0fb5ea root verification checkpoint ties the completed whole-file SHA
+  to authenticated root journal ordering and an unchanged source inode, device,
+  size, mtime and ctime. Reuse is explicitly not another full read. Future drift
+  falls back to full verification. The project input is rehashed and reused
+  with its managed root/qemu ownership; no existing payload was overwritten.
+- CURRENT r301/2ab3776b normal14GiB build ACTIVE; guard r301/5d796c48 ACTIVE.
+  Private drivers/receipts: experiments/android-first-class/hidl-repair-r301.
+  Root unit luma-android-hidl-repair-r301-controller.service; guest unit
+  luma-android-hidl-repair-r301.service on owned809f0871 server VM. Booted
+ 22:46:38Z at10GiB, root2GiB/QEMU hard11GiB within14GiB reservation. Source
+  checks active22:48:17Z; no compile/export pass yet. Child safely polls a
+  missing initial log; original VM settings/policy restore at terminal state.
+- r294/6b0f5554 independently verified original system image SHA and extracted
+  baseline libhidlbase32/64.64-bit BuildID79d76731f1cb197e877bb7ef6fe29f38
+  exactly matches the game's crash. SHA849faa585919484da75ed7fa73337e005cbb6e6c910411c8f6f1c6273f83a6e2;
+ 32-bit SHA390b047652c9ff30dd9cf63deae4aa2d1dd31f61122dc4b3be6dfe53507e4e51.
+  Baseline library symbols retained outside Git for ABI comparison.
+- Added bounded ordinary-UID OMX H264 allocation instrumentation:100 configure/
+  start/stop/release cycles across4 threads, no account/media content. r297/
+  e5932453 APK build/signature PASS; source test changes not yet committed and
+  do not alter immutable d7b752da3 image build input. r296 initially admission-
+  refused; normal retry succeeded after prior actors finished, no ledger bypass.
+- Dell r298/69381ca7 launched fixture replacement/diagnostic only (removes only
+  our launcher-less synthetic provider probe, not any user app). r299/f2a42362
+  copied an empty result before completion; no device-codec pass. r302/b9128581
+  subsequently could not connect to Dell (SSH255 after8s); server loopback tunnel
+  listener still exists. Cause/actual codec result unverified; do not attribute
+  transport loss to the test. r303 route diagnostic pending. No replacement
+  images or OS reboot applied on Dell. User app/account data retained.
+- Next observe actual Android build result; compare library exports/ABI and
+  package exact image hashes. Continue native Dell hotfix/codec/game retest only
+  when transport returns. Scaling and actual Google callback remain open.
+
+CURRENT22:28Z — native repair build active, immutable-input read verification:
+- Source milestone d7b752da362ade4f153a6a12cda1aa4db6042dc9 includes the minimal
+  HIDL lock fix and host concurrency control; da2364c63 earlier delivered host
+  mount/Valet/package-shape fix. No source push/publication.
+- Immutable project input r290/e54f2d7a PASS:70,799,360 bytes, squashfs SHA
+ d8bb9a7ce4aec66f79338aa2128b4a5ef863e45128226b5efcd5e806d12ff0d9.
+  New private operational drivers under experiments/android-first-class/
+  hidl-repair-r290; existing54GiB Android source, SDK5 intermediate cache and
+  matching tools retained. Guest uses network-isolated4-job incremental build.
+- r291 refused the14GiB request before launch (normal build max10). Account-only
+  guarded max temporarily14, preserving account16/global32/host reserve8/disk
+  reserve20. Automatic root guard restores original bytes after the build.
+  r292/e89aacd8 failed before root actor start because systemd-run --pipe could
+  not establish its transient service; no VM start. Original policy restored
+ 22:26:20Z (attempt-r292/policy-restored.json). Removed only --pipe.
+- Current normal build r293/55744732 ACTIVE under14GiB admission; root unit
+  luma-android-hidl-repair-r290-controller.service, root controller2GiB + planned
+  guest10GiB/QEMU hard11GiB. Guard r293/6c3248f4 ACTIVE (1GiB reservation).
+  Existing owned builder809f0871 checked shut off, ARM fixture checked shut off,
+  host SELinux Enforcing. Reading/verifying all54GiB immutable source before
+  boot;8GiB read by22:28. No compiler completion/image/device pass yet.
+- Controller will preserve original inactive24GiB/25GiB domain XML, boot the
+  owned server VM with10GiB only for this incremental build, build coherent
+  system/vendor images and both system libhidlbase variants, stream/hash export,
+  sync/power off and restore original VM profile. Stops on failed setup/compiler
+  or missing receipts. No VM on Dell, no user/app data reset or device reboot.
+- Next: observe root journal and admitted child to actual completion, capture
+  library ABI/export evidence, then bounded native Dell repair/8 Ball Pool
+  relaunch without touching account state. Scaling/manual Google flow still open.
 
 CURRENT22:21Z — HIDL strong-reference race source fix qualified on host:
 - Library patch retains the manager sp while its existing mutex is held. Keeps
