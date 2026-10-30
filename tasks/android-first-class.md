@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:54:09+00:00
+- Updated: 2026-10-30T03:59:39+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,18 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:53Z — actual96 label/domain/SDK5 boot passed; UI probe corrected:
+CURRENT03:59Z — corrected live-card probe active:
+- LIVE dev-android-reply-vm-r40-e6cc8f8e.service normal10GiB/root1GiB;
+  frozen reply-vm-r40, source probe940dad211. Preflight5ab3d228 PASSED all
+  helper/package hashes and Python/Bash/JS syntax. Same96/127/SDK5/APKr16.
+- First actual user Shell/bus and preparation passed; currently fresh reboot
+  before real live-card input. No history opening or hidden-editor mutation.
+  Repeats deployed label/root-domain checks and requires fresh exact Android
+  PendingIntent receipt, then actual resize/native guard scopes. All still pending.
+- Initial pressure: IO waits high, memory pressure0, CPU some~5%; no RAM/CPU
+  increase justified by these samples. Do not present VM timings as device perf.
+
+HISTORICAL03:53Z — actual96 label/domain/SDK5 boot passed; UI probe corrected:
 - r39 183e21f8 staged70093fa6fe77fb146b09b98c942fa4c2401964b1117f70af5c49e468efd9711d.
   Fresh96/127/SDK5 boot: actual user Shell running, health success, launcher
   waydroid_exec_t, root service PID1678 actually waydroid_t with host Enforcing.
