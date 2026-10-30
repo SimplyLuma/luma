@@ -5,13 +5,13 @@
  Name:           nautilus
  Version:        50.2.2
 -Release:        %autorelease
-+Release:        1.luma.74.creator20261021.1%{?dist}
++Release:        1.luma.75.android20261030.1%{?dist}
 +Requires:       prairie-icon-theme >= 0.1.0-1.luma.21
 +Requires:       luma-application-installer >= 0.1.0-1.luma.60
  Summary:        File manager for GNOME
  
  # Sources are GPL-3.0-or-later and Appdata is CC0-1.0.
-@@ -29,7 +31,179 @@
+@@ -29,7 +31,180 @@
  Source0:        https://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 +Source9004:     org.project_luma.shell-state.gschema.xml
  # https://pagure.io/fedora-workstation/issue/442
@@ -176,6 +176,7 @@
 +Patch1156:      0156-filer-applications-cache-and-columns.patch
 +Patch1157:      0157-filer-asynchronous-themed-application-icons.patch
 +Patch1158:      0158-filer-terminal-and-hover-open-menus.patch
++Patch1159:      0159-filer-android-default-install-handoff.patch
 +
 +BuildRequires:  luma-ui-reorder-feedback >= 1
 +Requires:       luma-ui-reorder-feedback >= 1
@@ -192,7 +193,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  gcc
  BuildRequires:  gettext
-@@ -74,6 +247,7 @@
+@@ -74,6 +248,7 @@
  # don't depend on soname, rather on exact version
  Requires:       %{name}-extensions%{_isa} = %{version}-%{release}
  # For the org.freedesktop.Tracker3.Miner.Files GSettings schema
@@ -200,7 +201,7 @@
  Requires:       localsearch
  
  Recommends:     glycin-thumbnailer%{_isa}
-@@ -117,12 +291,25 @@
+@@ -117,12 +292,25 @@
  
  %build
  %meson \
@@ -226,7 +227,7 @@
  %meson_build
  
  %install
-@@ -131,9 +318,18 @@
+@@ -131,9 +319,18 @@
  %find_lang %{name}
  
  %check
