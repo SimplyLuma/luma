@@ -14,7 +14,7 @@ export class SwitcherDrag {
     }
     attach(popup) {
         for (const card of popup._cards) this.attachDismiss(card, popup);
-        if (this.home.mode === 'tablet') {
+        if (this.home.mode !== 'desktop') {
             this.home._tasks.attachSwitcher(popup);
             return;
         }

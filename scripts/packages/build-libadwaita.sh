@@ -14,12 +14,12 @@ for tool in cpio mktemp podman rpm2cpio sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma libadwaita RPM on the canonical Linux/x86_64 host\n' >&2
+[ "$(uname -s)" = Linux ] || {
+  printf 'error: build the Luma libadwaita RPM on a Fedora Linux host\n' >&2
   exit 1
-fi
+}
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER
@@ -27,7 +27,7 @@ case "$architecture" in
     ;;
   aarch64)
     builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    package_nevra=$LIBADWAITA_AARCH64_NEVRA
+    package_nevra=libadwaita-1.9.3-${LIBADWAITA_LUMA_RELEASE}.fc44.aarch64
     ;;
   *)
     printf 'error: unsupported libadwaita target architecture: %s\n' "$architecture" >&2

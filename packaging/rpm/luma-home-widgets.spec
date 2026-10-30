@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 Name:           luma-home-widgets
 Version:        0.1.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.3%{?dist}
 Summary:        Shared native Weather and Calendar Home widgets
 License:        GPL-3.0-or-later
 URL:            https://github.com/SimplyLuma/luma
 Source0:        %{name}-%{version}.tar.gz
+Requires:       python3-gobject-base
+Requires:       prairie-core-apps >= 0.1.0-1.luma.106.creator20261030.1
+BuildRequires:  systemd-rpm-macros
 BuildRequires:  gcc
 BuildRequires:  python3-gobject-base
 BuildRequires:  dbus-daemon
@@ -18,8 +21,8 @@ BuildRequires:  pkgconfig(gtk+-3.0)
 
 %description
 One shared widget model for native Desktop, Tablet and Mobile hosts. Reads
-Weather's existing cache and native CalendarServer; no network helper or
-independent application database.
+Weather's existing cache and native CalendarServer. A bounded background job
+uses Weather's own provider to refresh its cache without opening the app.
 
 %package gtk3
 Summary:        GTK3 host for shared Home widgets
@@ -46,6 +49,10 @@ Headers, introspection metadata and pkg-config files for native widget hosts.
 %files
 %license LICENSE
 %doc README.md
+%{_libexecdir}/luma-weather-refresh
+%{_userunitdir}/luma-weather-refresh.service
+%{_userunitdir}/luma-weather-refresh.timer
+%{_userunitdir}/default.target.wants/luma-weather-refresh.timer
 %{_libdir}/libluma-home-widgets.so.0*
 %{_libdir}/girepository-1.0/LumaWidgets-1.0.typelib
 %files gtk3

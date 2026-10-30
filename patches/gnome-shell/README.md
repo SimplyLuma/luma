@@ -311,3 +311,11 @@ The Print-key defaults are removed. `luma-screenshot-shortcuts-migrate.service` 
 `0277-login-surfaces-and-dock-battery-percentage.patch` connects the custom dock status cells to the existing battery percentage presentation and measures their text in all dock orientations. Removes the login power separator gap and uses one solid login card surface.
 
 `0278-brightness-one-percent-and-idle-input.patch` uses 100 brightness steps where the backlight supports them, keeps coarser hardware steps, and clears idle dimming for explicit brightness key input. Existing ALL action-mode bindings and hardware state remain authoritative across lock/unlock.
+
+`0290-compact-login-action-bar.patch` gives narrow native GDM/unlock surfaces a
+centered clock and password action bar while retaining the real verifier.
+`0291-shared-handheld-startup-and-input.patch` starts the existing shared Home on
+handheld hardware, removes the upstream automatic welcome tour, and uses native
+physical-keyboard presence for automatic OSK behavior. Accessibility remains an
+explicit override; missing event actors propagate safely. These are shared Shell
+changes, with physical qualification tracked separately from source/package checks.

@@ -11,7 +11,7 @@
  Summary:        File manager for GNOME
  
  # Sources are GPL-3.0-or-later and Appdata is CC0-1.0.
-@@ -29,7 +31,179 @@
+@@ -29,7 +31,180 @@
  Source0:        https://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 +Source9004:     org.project_luma.shell-state.gschema.xml
  # https://pagure.io/fedora-workstation/issue/442
@@ -176,6 +176,7 @@
 +Patch1156:      0156-filer-applications-cache-and-columns.patch
 +Patch1157:      0157-filer-asynchronous-themed-application-icons.patch
 +Patch1158:      0158-filer-terminal-and-hover-open-menus.patch
++Patch1159:      0159-filer-fit-short-displays.patch
 +
 +BuildRequires:  luma-ui-reorder-feedback >= 1
 +Requires:       luma-ui-reorder-feedback >= 1

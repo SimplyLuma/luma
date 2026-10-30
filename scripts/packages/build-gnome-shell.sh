@@ -339,7 +339,11 @@ install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycl
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
-for source in presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
+install -m 0644 "$repo_root/patches/gnome-shell/0290-compact-login-action-bar.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and-input.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0293-mobile-lock-notification-island.patch" "$rpmbuild_dir/SOURCES/"
+for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
@@ -406,7 +410,7 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
   }
 )
 
-widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.1.fc44.$architecture.rpm"
+widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.3.fc44.$architecture.rpm"
 [ -f "$widgets_rpm" ] || {
   printf 'error: build the shared Home widget package first: %s\n' "$widgets_rpm" >&2
   exit 1
@@ -494,7 +498,7 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       # marked on their own; the shelf washes the whole island (0161).
       grep -q "controls\.remove_style_pseudo_class(.checked.)" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "DASH_TILE_SIZE = 40" shelfMetrics.js
+      grep -Fq "DASH_TILE_SIZE = 45" shelfMetrics.js
       grep -Fq "runningIndicatorGeometry" shelfMetrics.js
       grep -Fq "shelf-span-full" luma-dash.js
       grep -Fq "shelf-float-ends" luma-dash.js
@@ -812,7 +816,7 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       # Beam takes the island radius and is a slider (0141).
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/osdWindow.js >osdWindow-0141.js
-      grep -Fq "export const SHELF_ISLAND_RADIUS = 16;" shelfMetrics.js
+      grep -Fq "export const SHELF_ISLAND_RADIUS = 18;" shelfMetrics.js
       grep -Fq "cornerRadii: SHELF_ISLAND_RADIUS" osdWindow-0141.js
       grep -Fq "Atk.Role.SLIDER" osdWindow-0141.js
       grep -Fq "_syncHold()" osdWindow-0141.js

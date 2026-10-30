@@ -14,10 +14,17 @@ for tool in mktemp podman sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma shell-state RPM on the canonical Linux/x86_64 builder\n' >&2
+[ "$(uname -s)" = Linux ] || {
+  printf 'error: build the Luma shell-state RPM on a Fedora Linux builder\n' >&2
   exit 1
-fi
+}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported shell-state builder architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 
 output_dir="$repo_root/build/packages/luma-shell-state"
 mkdir -p "$(dirname "$output_dir")"
@@ -58,7 +65,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-shell-state.spec" \
 
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
-  "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$builder_container" '
     set -euo pipefail
     dnf5 -y install glib2-devel python3 rpm-build systemd-rpm-macros
     glib-compile-schemas --strict --dry-run SOURCES

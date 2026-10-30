@@ -31,7 +31,9 @@
 .luma-converged-home.high-contrast .luma-converged-widget.weather,
 .luma-converged-home.high-contrast .luma-converged-dock { background-color: #111111; border-color: white; }
 .luma-converged-widget:hover, .luma-converged-widget:focus { border-color: rgba(255,255,255,0.5); }
-.luma-converged-dock {
+.luma-converged-dock,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options,
+.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
   background-color: rgba(30,25,43,0.78);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 24px;
@@ -58,3 +60,48 @@
 
 
 .luma-tablet-task-backdrop { background: rgba(0,0,0,0.35); }
+
+/* Compact geometry keeps widget copy inside its two-row span. */
+.compact-home .luma-home-widget-content { padding: 8px; spacing: 2px; }
+.compact-home .luma-converged-widget { border-radius: 18px; }
+.compact-home .luma-converged-widget-heading { font-size: 10px; }
+.compact-home .luma-converged-widget.weather .luma-converged-widget-title { font-size: 28px; }
+.compact-home .luma-converged-widget.calendar .luma-converged-widget-title { font-size: 24px; }
+.compact-home .luma-converged-widget-caption { font-size: 10px; }
+.compact-home .luma-converged-dock { border-radius: 18px; }
+.compact-home .luma-converged-page { height: 16px; }
+
+/* Touch footer retains full controls and scrolls with the native page. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-footer { min-height: 44px; padding: 2px 0; spacing: 8px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-actions { spacing: 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-action { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; color: rgba(238,240,244,.8); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-quick-action StIcon { icon-size: 22px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode { min-height: 44px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode .quick-toggle-title { font-size: 14px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-footer-mode .quick-toggle { min-height: 44px; }
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-options-system { min-height: 44px; height: auto; padding: 4px 0 0; margin: 0; }
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-compact-options .luma-options-main { spacing: 8px; }
+
+/* Mobile uses the Dock's single surface, without a second card/material frame. */
+.luma-notification-lip.luma-mobile-notifications .luma-lip-surface { box-shadow: none; }
+.luma-notification-lip.luma-mobile-notifications .notification-banner.luma-lip-card,
+.luma-notification-lip.luma-mobile-notifications .luma-lip-list .notification-banner.luma-lip-card {
+  background-color: transparent; background-gradient-direction: none;
+  border: 0; box-shadow: none;
+}
+.luma-notification-lip.luma-mobile-notifications.opaque .luma-lip-surface { background-color: #1e192b; }
+.luma-notification-lip.luma-mobile-notifications.high-contrast .luma-lip-surface {
+  background-color: #111111; border-color: white;
+}
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.opaque { background-color: #1e192b; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.high-contrast { background-color: #111111; border-color: white; }
+
+/* Full pages use the dock palette's opaque treatment, so underlying clocks
+ * and application text cannot compete with their own headings and controls. */
+.luma-notification-lip.luma-mobile-notifications.tray:not(.high-contrast) .luma-lip-surface,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options:not(.high-contrast) {
+  background-color: #1e192b;
+}

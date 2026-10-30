@@ -129,6 +129,9 @@ class IncomingCallIndicator:
                             "resident": GLib.Variant("b", True),
                             "transient": GLib.Variant("b", False),
                             "category": GLib.Variant("s", "call.incoming"),
+                            # The daemon's Ringer is the ringtone; without this
+                            # the shell plays its own for call.incoming.
+                            "suppress-sound": GLib.Variant("b", True),
                             "desktop-entry": GLib.Variant(
                                 "s", "org.projectluma.Phone"
                             ),

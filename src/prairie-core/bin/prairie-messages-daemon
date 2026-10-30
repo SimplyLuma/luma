@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -s
 # SPDX-License-Identifier: Apache-2.0
 
-"""Event-driven native SMS import and delivery-state reconciliation."""
+"""Event-driven native SMS and MMS import and delivery-state reconciliation."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from prairie_apps.messages_backend import (  # noqa: E402
     ModemMessagingTransport,
     incoming_transport_id,
 )
+from prairie_apps.messages_mms import MmsMessagingTransport  # noqa: E402
+from prairie_apps.messages_native_mailbox import NativeMailbox, import_mms  # noqa: E402
 from prairie_apps.messages_reply import ReplyEndpoint
 
 
@@ -184,6 +186,8 @@ class MessageImporter:
         self.store = MessageStore()
         self.notifier = MessagesNotificationPublisher(self.store)
         self.transport = ModemMessagingTransport()
+        self.mms = MmsMessagingTransport()
+        self.mailbox: NativeMailbox | None = None
         self.loop = GLib.MainLoop()
         self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
         self.refresh_source = 0
@@ -223,6 +227,7 @@ class MessageImporter:
         GLib.unix_signal_add(
             GLib.PRIORITY_DEFAULT, signal.SIGINT, self.stop
         )
+        self.mms.start(self._mms_message, lambda _capability: None)
         self.schedule()
         self.loop.run()
 
@@ -274,6 +279,32 @@ class MessageImporter:
                 self.retry_source = GLib.timeout_add_seconds(2, self._retry)
         return GLib.SOURCE_REMOVE
 
+    def _mms_message(self, path: str, properties: dict) -> None:
+        """mmsd-tng keeps carrier MMS. Import a received one here so it
+        notifies while Messages is closed; Messages imports on open too, and
+        the store's unique transport id keeps one copy."""
+        if properties.get("Status") != "received":
+            return
+        native_id = "mmsd:" + path
+        if self.mailbox is None:
+            self.mailbox = NativeMailbox(self.store.path)
+        if self.mailbox.uid_for_transport(native_id) or self.mailbox.is_transport_deleted(native_id):
+            return
+        try:
+            import_mms(self.mailbox, path, properties)
+        except Exception:
+            return  # the original stays in mmsd-tng; Messages reports it on open
+        uid = self.mailbox.uid_for_transport(native_id)
+        if uid is None:
+            return
+        record = self.mailbox.message(uid)
+        thread = next((item for item in self.store.threads() if item.address == record.address), None)
+        self.notifier.publish(
+            record.address,
+            thread.display_name if thread is not None else record.address,
+            record.body or mms_summary(properties),
+        )
+
     def _retry(self) -> bool:
         self.retry_source = 0
         self.schedule()
@@ -290,8 +321,23 @@ class MessageImporter:
             GLib.source_remove(self.retry_source)
         for subscription in self.subscriptions:
             self.connection.signal_unsubscribe(subscription)
+        self.mms.stop()
+        if self.mailbox is not None:
+            self.mailbox.close()
         self.notifier.close()
         self.store.close()
+
+
+def mms_summary(properties: dict) -> str:
+    """Notification text for an MMS without text: what it carries."""
+    kinds = {str(part[1]).split("/", 1)[0] for part in properties.get("Attachments", ())}
+    if kinds == {"image"}:
+        return "Photo"
+    if kinds == {"video"}:
+        return "Video"
+    if kinds == {"audio"}:
+        return "Audio"
+    return "Attachment"
 
 
 def main() -> int:

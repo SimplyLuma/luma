@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.111.tester20261026.1%{?dist}
+Release:        1.luma.116.mobile20261030.1%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers

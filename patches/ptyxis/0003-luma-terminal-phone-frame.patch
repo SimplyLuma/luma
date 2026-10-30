@@ -1,0 +1,26 @@
+--- a/src/ptyxis-window.c
++++ b/src/ptyxis-window.c
+@@ -39,6 +39,7 @@
+ #include "ptyxis-profile-dialog.h"
+ #include "ptyxis-util.h"
+ #include "luma-tab-strip.h"
++#include <luma-ui.h>
+ #include "ptyxis-window.h"
+ #include "ptyxis-window-dressing.h"
+ 
+@@ -2176,6 +2177,15 @@
+   self->shortcuts = g_object_ref (ptyxis_application_get_shortcuts (PTYXIS_APPLICATION_DEFAULT));
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
++
++  /* Phone presentation owns the status inset through the shared island style.
++   * Configure it before mapping so fullscreen cannot reveal desktop controls. */
++  if (luma_ui_mobile_form_factor ())
++    {
++      gtk_widget_add_css_class (GTK_WIDGET (self), "lumaui-phone-device");
++      gtk_widget_set_visible (GTK_WIDGET (self->header_bar), FALSE);
++      gtk_widget_set_can_target (GTK_WIDGET (self->header_bar), FALSE);
++    }
+   luma_tab_strip_set_profile_popover (self->luma_tab_strip, self->new_terminal_popover);
+ 
+   /* The frame, the title row and the controls are the Application Kit's. */
