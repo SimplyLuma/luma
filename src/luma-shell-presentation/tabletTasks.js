@@ -776,6 +776,64 @@ export class TabletTasks {
 }
 
 // Handheld windows fade at final geometry; Desktop keeps dock travel.
+// Watch right-edge drags on the stage so a client's scrollbar cannot take the
+// sequence first. Taps and vertical scrolls still belong to the client.
+export class HandheldBackNavigation {
+    constructor(home) {
+        this.home = home;
+        this.gesture = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
+            pan_axis: Clutter.PanAxis.X});
+        this.gesture.set_begin_threshold(8);
+        this.gesture.connect('may-recognize', gesture => this.canBegin(gesture));
+        this.gesture.connect('recognize', () => { this.window = global.display.focus_window; });
+        this.gesture.connect('end', gesture => {
+            const delta = gesture.get_accumulated_delta_abs();
+            if (this.enabled && this.window === global.display.focus_window &&
+                delta.get_x() <= -48 * this.home._scale && -delta.get_x() > Math.abs(delta.get_y()) * 1.5)
+                this.goBack();
+            this.window = null;
+        });
+        this.gesture.connect('cancel', () => { this.window = null; });
+        global.stage.add_action_full('LumaMobileBack', Clutter.EventPhase.CAPTURE, this.gesture);
+    }
+    get enabled() {
+        return this.home.mode === 'mobile' && !this.home._home.visible &&
+            !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
+            Main.actionMode === Shell.ActionMode.NORMAL &&
+            this.home._windows.has(global.display.focus_window);
+    }
+    canBegin(gesture) {
+        if (!this.enabled) return false;
+        const event = gesture.get_point_event(0);
+        if (!event?.get_event_sequence()) return false;
+        const delta = gesture.get_accumulated_delta_abs();
+        const [x, y] = event.get_coords();
+        const m = this.home._tasks.monitor, scale = this.home._scale;
+        const startX = x - delta.get_x(), startY = y - delta.get_y();
+        return startX >= m.x + m.width - 24 * scale && startX < m.x + m.width &&
+            startY >= m.y + 44 * scale && startY < m.y + m.height - 28 * scale;
+    }
+    goBack() {
+        const app = Shell.WindowTracker.get_default().get_window_app(this.window);
+        const appId = app?.get_id() ?? '';
+        const wmClass = this.window.get_wm_class()?.toLowerCase() ?? '';
+        const android = appId.startsWith('waydroid.') || wmClass.startsWith('waydroid.') ||
+            wmClass === 'org.projectluma.android' || this.window.get_title() === 'Luma Android';
+        this.keyboard ??= global.stage.context.get_backend().get_default_seat()
+            .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        const time = GLib.get_monotonic_time();
+        const key = android ? Clutter.KEY_Escape : Clutter.KEY_Left;
+        if (!android) this.keyboard.notify_keyval(time, Clutter.KEY_Alt_L, Clutter.KeyState.PRESSED);
+        this.keyboard.notify_keyval(time, key, Clutter.KeyState.PRESSED);
+        this.keyboard.notify_keyval(time, key, Clutter.KeyState.RELEASED);
+        if (!android) this.keyboard.notify_keyval(time, Clutter.KEY_Alt_L, Clutter.KeyState.RELEASED);
+    }
+    destroy() {
+        global.stage.remove_action(this.gesture);
+        this.keyboard?.run_dispose();
+    }
+}
+
 export class HandheldMotion {
     constructor(home) {
         this.home = home;

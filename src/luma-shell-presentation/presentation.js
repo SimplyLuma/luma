@@ -22,7 +22,7 @@ import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
-import {TabletTasks, HandheldMotion} from './tabletTasks.js';
+import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
@@ -126,6 +126,7 @@ export class Presentation {
         Main.layoutManager.addChrome(this._gestureBar, {affectsStruts: false, trackFullscreen: false});
         this._gestureBar.hide();
         this._tasks = new TabletTasks(this);
+        this._backNavigation = new HandheldBackNavigation(this);
         this._gridDrag = new SwitcherDrag(this);
         this._pageSwipe = new SwipeTracker(this._home, Clutter.Orientation.HORIZONTAL,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, {
@@ -1051,6 +1052,7 @@ export class Presentation {
     destroy() {
         this._destroyed = true;
         global.stage.remove_action(this._homePan);
+        this._backNavigation.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
         this._motion.destroy();

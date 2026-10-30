@@ -15,8 +15,8 @@
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.59.dash20261026.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.59.dash20261026.1.fc44.noarch
-gnome-shell-50.3-1.luma.126.mobile20261030.1.fc44.x86_64
-gnome-shell-common-50.3-1.luma.126.mobile20261030.1.fc44.noarch
+gnome-shell-50.3-1.luma.126.mobile20261030.2.fc44.x86_64
+gnome-shell-common-50.3-1.luma.126.mobile20261030.2.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.14.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
@@ -116,7 +116,7 @@ luma-ari-0.1.0-1.luma.19.creator20261019.3.fc44.noarch
 luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
 luma-displays-0.1.0-1.luma.6.creator20261008.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
-luma-tide-0.1.0-2.luma.36.mobile20261030.1.fc44.noarch
+luma-tide-0.1.0-2.luma.36.mobile20261030.2.fc44.noarch
 luma-viewer-0.1.0-1.luma.17.creator20261007.1.fc44.noarch
 intel-crashlog-1.2.0-1.luma.1.fc44.x86_64
 luma-vitals-0.1.0-1.luma.14.creator20261005.1.fc44.noarch

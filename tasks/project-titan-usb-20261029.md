@@ -476,3 +476,32 @@ Admitted job 1782f13b passed syntax, bottom-edge regression, status restoration,
 panel motion/policy, page motion, compact layout and diff checks. Evidence stays
 under the private bottom-input experiment directory. Shell source candidate is
 1.luma.126.mobile20261030.1; no package build or OTA publication claimed.
+
+
+### 2026-10-30 — Tide edges and native Mobile Back
+
+Tide's phone breakpoint added an asymmetric 8px leading margin. Removed that
+margin rather than hiding a scrollbar. Mobile presentation also lacked the old
+extension's Back gesture. Native stage horizontal-pan arbitration now owns only
+right-edge touchscreen drags within the app area. A deliberate inward release
+sends the conventional Alt+Left chord to the same focused app; Android retains
+its Escape hardware-Back mapping. Taps, vertical scrolls, Home, modal panels,
+lock, Desktop and Tablet are excluded. No overlay reserves the app's edge.
+
+Tide's existing Back method now dismisses its topmost source drawer, Now Playing
+or phone search before changing its library trail; conventional inputs bind to
+that one method. Maintained runtime on the physical Titan passes flush leading
+edge, transient Back and Sources/More/Edit/focused password. Separate actual
+native touch test: right-edge swipe from a scrollable album returns to Albums,
+trail2->1 with scroll0; clean r86 is live and maintained two-file boot overlay
+updated. Diagnostics from r85 are not in source or clean r86. Candidate pins:
+Shell126.mobile.2 and Tide36.mobile.2; core's >=36.mobile.1 sync requirement stays
+satisfied. Admitted cb7d4ad9 passes focused edge/status/panel suites, syntax,
+Tide AST/spec and diff checks. No published RPM/OTA claim.
+
+Audio remains under investigation: user reports Tide/Doom severe stutter. Direct
+48kHz native tone reported smooth; PipeWire graph has no observed XRUNs. Captured
+16s synthetic Pulse tone monitor has no internal sample discontinuities. Bypassing
+role loopbacks did not resolve user playback and was reverted. Shorter quantum
+and matching 44.1kHz are diagnostic comparisons, not qualified fixes. No general
+audio policy change is included in this source commit.

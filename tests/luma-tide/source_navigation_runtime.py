@@ -41,6 +41,10 @@ assert app.register(None)
 install_appkit();install_lumaui();add_style_sheet(str(stylesheet))
 for width,height in ([(360,400)] if args.phone_only else [(360,400),(1180,740)]):
  w=TideWindow(app,FixtureLibrary(fixture));w.set_default_size(width,height);w.present();settle()
+ assert w.root.get_margin_start()==0, 'The phone content must reach its leading edge'
+ origin=w.trail.current
+ w.now_tab='next'
+ assert w.go_back() and w.now_tab is None and w.trail.current==origin, 'Back dismisses Now Playing before changing the library trail'
  w.show_section('home');w.open_sources();settle()
  source=next(s for s in w.library.sources if s.remote)
  w._source_menu(source.id);settle()
@@ -54,5 +58,8 @@ for width,height in ([(360,400)] if args.phone_only else [(360,400),(1180,740)])
  assert w.server_password.entry.get_mapped()
  focus=w.get_focus()
  assert focus is w.server_password.entry or focus is not None and focus.is_ancestor(w.server_password.entry)
- w.pane.close();settle();w.close();settle()
- print('PASS Sources > More > Edit keeps a focused password field',width,height,flush=True)
+ while w.pane_trail.can_go_back:
+  assert w.go_back()
+ assert w.go_back() and not w.pane.shown, 'Back returns through source details before closing the drawer'
+ settle();w.close();settle()
+ print('PASS flush content edge, transient Back and Sources > More > Edit with focused password',width,height,flush=True)

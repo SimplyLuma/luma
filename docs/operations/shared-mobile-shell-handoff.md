@@ -30,7 +30,7 @@ git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/pre
 | Device display exclusions | `config/mobile/display-geometry/` |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The source candidate pins are Shell `1.luma.126.mobile20261030.1`, developer
+The source candidate pins are Shell `1.luma.126.mobile20261030.2`, developer
 platform `1.luma.116.mobile20261030.1`, core apps
 `1.luma.124.mobile20261030.2` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
@@ -86,8 +86,9 @@ the finger and snap on release. Mobile lock uses the same notification anatomy,
 with lock visibility/redaction rules and authentication before app activation.
 Desktop/Tablet lock presentation remains separate. Mobile bottom-edge taps reach
 application controls; Home and the app switcher require an actual upward drag.
-The gesture observes the native stage instead of using a reactive button over
-the app. Tablet retains its explicit Home control.
+Home and right-edge Back observe the native stage instead of using a reactive
+button over the app. Back waits for a deliberate inward horizontal drag; ordinary
+scrolls and taps remain in the app. Tablet retains its explicit Home control.
 
 Home's interrupted-settle jump is corrected, but steady page animation remains
 around 30 painted FPS on the Titan's current 60 Hz mode. Hardware acceleration
