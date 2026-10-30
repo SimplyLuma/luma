@@ -1,13 +1,58 @@
 # Ari search, actions and Models checkpoint
 
-Status: server-qualified Ari2 r10 and the session-only Tide platform preview
-are running on the Dell for manual testing. Visual conformance and live OpenAI
+Status: r11 is server-qualified; Dell delivery is pending reconnection. The
+last delivered build remains r10. Visual conformance and live OpenAI
 qualification remain incomplete.
 
 Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. Qualified r10 runtime source is
-`8f9954abce0fb5181d6f570f9a7d8bc9e3d18b36`; the independent Dell preview
-now runs this revision. Earlier checkpoints below are history.
+Review: draft PR #92. Qualified r11 runtime source is
+`506354c6e`; earlier checkpoints below are history.
+
+## October 29 follow-up: direct music and normal exit
+
+Explicit normal-exit requests now recognize close/quit/exit after application
+inspection. `close_app` uses the named GApplication's published Quit action,
+pins its unique owner and verifies exit. It never sends a process signal.
+Normal exit has its own advanced permission. A running app or an unsaved-work
+prompt does not become a successful closed receipt.
+
+Tide exports an owner-side MediaLibrary1 search/play/status interface, using
+its existing library, queue, controller and source authentication. Search
+returns bounded metadata without source URLs or credentials. Single-use targets
+bind to the querying connection, track revision and expiry. Ari's `play_track`
+requires the requested player/title, rejects ambiguous recordings, retains
+its connection through approval and verifies the actual track/playing state.
+Exact simple requests use no model inference or UI navigation. Cold launch
+uses the ordinary application launcher, then the same owner interface.
+
+Server evidence at this revision:
+
+- 203 Ari unit/protocol/policy tests and nine GTK regressions passed. Tide ran
+  203 unit tests: 193 passed and ten optional tests skipped; its Meson install
+  includes the owner API. All five source CI checks passed, run 40999544711.
+- Actual TideApplication, SQLite library, GStreamer decoding, MCP and Agent
+  passed in all three autonomy modes. A generated silent WAV and fakesink
+  verify decoded PCM without personal music, accounts or speakers. No model
+  is used. The exact exported payload measured normal-mode play at 0.315 s,
+  normal exit at 0.249 s and cold launch/play at 0.781 s. Across modes play
+  took 0.315–1.216 s and exit 0.184–0.249 s. These are isolated server timings,
+  not a claim about live remote streams or Dell acceptance.
+- Exact r11 RPM/export passed native OAuth/keyring/production isolation,
+  installed activation, byte comparison, source contracts and the actual
+  r10-to-r11 retained-profile update/rollback cohort. The exported Tide API
+  files match committed source. Archive SHA-256:
+  `33fbc2dce93950c32c85d49f099ea59c03dc71d62d547c0ddff89ad5510ac63b`.
+- The candidate adds a session-only owner API overlay alongside the earlier
+  toolkit preview, through the genuine installed Tide Flatpak entry point.
+  Remaining Tide modules/resources and its account/library stay owned by that
+  installation. No production package, persistent Flatpak override or global
+  launcher is replaced. Ari2's own Tide launches use the same preview helper.
+
+Dell delivery has not occurred: its preview SSH connection timed out. The
+owner was asked to wake/unlock it. The existing functional-preview exception
+and permission to restart Ari2 still apply; no further close-window approval
+is required. Live streaming, arbitrary third-party application exit and broader
+application operations remain outside this qualification.
 
 ## October 29 follow-up: launch receipts, search fields and progress
 
