@@ -111,6 +111,12 @@ async function tabletStatusChecks() {
     for (let i = 0; i < 40 && presentation.mode !== 'tablet'; i++)
         await sleep(250);
     check('Tablet presentation', presentation.mode === 'tablet');
+    const wm = new Gio.Settings({schema_id: 'org.gnome.desktop.wm.preferences'});
+    const desktopLayout = settings.settings_schema.has_key('presentation-button-layout');
+    for (let i = 0; i < 20 && desktopLayout && wm.get_string('button-layout') !== ':'; i++)
+        await sleep(250);
+    check('Tablet hides window controls', !desktopLayout || wm.get_string('button-layout') === ':',
+        wm.get_string('button-layout'));
     presentation.showHome?.();
     await sleep(1500);
     await shot('tablet-home-status');
@@ -136,7 +142,11 @@ async function tabletStatusChecks() {
     await shot(`tablet-status-${treatment ?? 'default'}`);
     settings.reset('presentation-mode');
     settings.reset('surface-treatment');
-    await sleep(1000);
+    for (let i = 0; i < 20 && presentation.mode !== 'desktop'; i++)
+        await sleep(250);
+    await sleep(500);
+    check('Desktop restores window controls', !desktopLayout || wm.get_string('button-layout') !== ':',
+        wm.get_string('button-layout'));
 }
 
 async function work() {
