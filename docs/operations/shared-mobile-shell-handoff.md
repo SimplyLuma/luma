@@ -18,7 +18,9 @@ are separate historical paths.
 | Live Weather/Calendar models and background refresh | `src/luma-home-widgets/`, `src/prairie-core/prairie_apps/weather*.py` |
 | Maintained native Terminal and shared command action bar | `src/luma-terminal/` |
 | Mode/state service | `src/luma-shell-state/` |
-| Device display exclusions | `config/mobile/display-geometry/` |
+| Device display exclusions (schema 2 lists several panels by connector) | `config/mobile/display-geometry/` |
+| Keycap on-screen keyboard | `patches/gnome-shell/0294-keycap-keyboard.patch`, `src/luma-shell-presentation/keycap*`, `keycap` tokens; see `docs/mobile/keycap-keyboard.md` |
+| No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
 The source candidate pins are Shell `1.luma.126.keycap20261030.1`, developer
