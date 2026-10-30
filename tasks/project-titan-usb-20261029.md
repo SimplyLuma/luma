@@ -11,6 +11,27 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
+## Quick Options motion correction — 2026-10-29
+
+The prior paint-gap measurement did not measure the actual reveal. Pull-down
+callers omit the animation argument, which the compact adapter interpreted as
+no animation. Explicit NONE still skips motion; omitted flags now animate.
+Timing actual clip/progress values also exposed expensive live-control clipping
+and full-screen popup shadows. The compact transition caches one in-memory
+screen frame, animates that frame from the right, then restores native controls.
+Its clock starts after the cached frame's first GPU paint. Unchanged geometry
+no longer reapplies styles; full-page surfaces omit off-screen elevation/borders.
+Larger anchored menus retain their original edges and animation implementation.
+
+Actual Titan evidence: old opening painted only the end state; the corrected
+reveal paints 11 intermediate states over 320 ms (roughly 30 FPS), with a fixed right
+edge. First paint was 166 ms, movement visible by 280 ms and native controls restored
+at 700 ms in the observed run. These timings describe that run, not a performance
+guarantee. A native top-right pull and subsequent mode-detail tap work after the
+transition; upward dismissal also passes. All private timing/captures stay outside
+Git. Job 3ff26e00 passes 266-patch replay, presentation/builder syntax, compact/grid
+checks and whitespace. No new RPM or broader graphics qualification is claimed.
+
 ## Compact overlay and picker follow-up — 2026-10-29
 
 Quick Options reveals its fixed allocation from the right using a paint clip;

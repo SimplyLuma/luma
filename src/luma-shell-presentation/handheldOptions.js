@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // The existing Desktop Quick Options menu, with a handheld status anchor and
-// bounded viewport. Controls, appearance, models and detail pages are unchanged.
+// bounded viewport. Controls, models and detail pages remain shared.
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import Mtk from 'gi://Mtk';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {statusInsets} from './safeAreas.js';
@@ -27,6 +28,8 @@ export class HandheldOptions {
         this._pointerOpen = this.menu._boxPointer.open;
         this._pointerClose = this.menu._boxPointer.close;
         this._pointerStyle = this.menu._boxPointer.get_style();
+        this._edgeActors = [this.menu._boxPointer._lumaShadow, this.menu._boxPointer._border]
+            .filter(Boolean).map(actor => [actor, actor.visible]);
         // Closing a native detail page while its popup is unmapped must not
         // leave a fade queued on the next presentation's main page.
         this._showStudioPage = this.menu._showStudioPage;
@@ -108,10 +111,13 @@ export class HandheldOptions {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) return;
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+        const key = JSON.stringify([monitor.x, monitor.y, monitor.width, monitor.height, scale, this.home._displayGeometry]);
+        if (this._resizeKey === key) return;
         // Compact displays use the full available page; larger Tablet displays
         // retain the shared anchored menu. Controls and detail models are shared.
         const compact = monitor.width / scale <= 700;
         this._setFooterPinned(compact);
+        for (const [actor, visible] of this._edgeActors) actor.visible = !compact && visible;
         this.menu.box.remove_style_class_name('lumaui-compact-options');
         if (compact) this.menu.box.add_style_class_name('lumaui-compact-options');
         if (this.menu._pageScroll) this.menu._pageScroll.vscrollbar_policy = compact
@@ -121,7 +127,7 @@ export class HandheldOptions {
         const height = Math.max(120, monitor.height / scale - 32);
         this.menu.box.set_style([this.original.style,
             `width: ${width}px; min-width: 0; max-width: ${width}px;`,
-            compact ? `height: ${height}px; padding: 16px; border-width: 0; margin: 0; border-radius: 0;` : null].filter(Boolean).join('; '));
+            compact ? `height: ${height}px; padding: 16px; border-width: 0; margin: 0; border-radius: 0; box-shadow: none;` : null].filter(Boolean).join('; '));
         this.scroll.y_expand = true;
         this.scroll.set_style(`max-height: ${compact ? height : Math.max(120, monitor.height / scale - 112)}px;`);
         if (compact && this.menu._lumaHeader) {
@@ -142,6 +148,7 @@ export class HandheldOptions {
             // every intermediate width, especially costly on handheld GPUs.
             const reveal = (opening, animation, complete) => {
                 this._cancelRevealStart();
+                this._clearRevealSnapshot();
                 this._reveal?.stop(); this._reveal = null;
                 pointer.remove_all_transitions();
                 pointer.set_size(monitor.width, monitor.height);
@@ -156,9 +163,10 @@ export class HandheldOptions {
                     const amount = opening ? progress : 1 - progress;
                     const width = initialWidth + (monitor.width - initialWidth) * amount;
                     const height = initialHeight + (monitor.height - initialHeight) * amount;
-                    pointer.set_clip(monitor.width - width, 0, width, height);
+                    (this._revealSnapshot ?? pointer).set_clip(monitor.width - width, 0, width, height);
                 };
                 const finish = () => {
+                    this._clearRevealSnapshot();
                     if (opening) {pointer.remove_clip(); pointer._muteInput = false;}
                     else {pointer.hide(); pointer.remove_clip();}
                     complete?.();
@@ -178,17 +186,48 @@ export class HandheldOptions {
                     this._cancelRevealStart();
                     this._revealIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                         this._revealIdle = 0;
-                        if (this._reveal === timeline) timeline.start();
+                        if (this._reveal === timeline) {
+                            // Freeze the fully laid-out native page once. Moving
+                            // a clip across its many live children otherwise
+                            // rebuilds their paint pipelines on some GPUs.
+                            pointer.remove_clip();
+                            try {
+                                const rect = new Mtk.Rectangle({x: monitor.x, y: monitor.y,
+                                    width: monitor.width, height: monitor.height});
+                                const [, , , captureScale] = global.stage.get_capture_final_size(rect);
+                                const content = global.stage.paint_to_content(rect, captureScale, null, Clutter.PaintFlag.NO_CURSORS);
+                                this._revealSnapshot = new Clutter.Actor({content,
+                                    x: pointer.x, y: pointer.y, width: monitor.width,
+                                    height: monitor.height, reactive: false});
+                                this._revealChildren = pointer.get_children().map(child => [child, child.opacity]);
+                                pointer.get_parent().add_child(this._revealSnapshot);
+                                for (const [child] of this._revealChildren) child.opacity = 0;
+                            } catch (error) {
+                                this._clearRevealSnapshot();
+                                console.warn(`Unable to cache Quick Options transition: ${error.message}`);
+                            }
+                            paint(0);
+                            // Wait for the cached quad's first GPU paint too;
+                            // its setup must not consume the animation clock.
+                            this._revealStart = global.stage.connect_after('after-paint', () => {
+                                this._cancelRevealStart();
+                                if (this._reveal === timeline) timeline.start();
+                            });
+                            (this._revealSnapshot ?? pointer).queue_redraw();
+                        }
                         return GLib.SOURCE_REMOVE;
                     });
                 });
             };
-            pointer.open = (animation, complete) => reveal(true, animation, complete);
-            pointer.close = (animation, complete) => {
+            // Gesture and keyboard callers omit the flag; only explicit NONE
+            // requests disable the transition (for teardown/presentation changes).
+            pointer.open = (animation = PopupAnimation.FULL, complete) => reveal(true, animation, complete);
+            pointer.close = (animation = PopupAnimation.FULL, complete) => {
                 if (pointer.visible) reveal(false, animation, complete);
             };
         } else {
             this._cancelRevealStart();
+            this._clearRevealSnapshot();
             this._reveal?.stop(); this._reveal = null;
             pointer.remove_clip();
             pointer.open = this._pointerOpen; pointer.close = this._pointerClose;
@@ -199,6 +238,7 @@ export class HandheldOptions {
         }
         pointer.setPosition(this.home._statusRight, 1);
         pointer.queue_relayout();
+        this._resizeKey = key;
     }
 
     open() { this.setEnabled(this.home.mode !== 'desktop'); if (this.enabled) this.menu.open(); }
@@ -220,6 +260,11 @@ export class HandheldOptions {
             this._footerOriginal = null;
         }
     }
+    _clearRevealSnapshot() {
+        this._revealSnapshot?.destroy(); this._revealSnapshot = null;
+        for (const [child, opacity] of this._revealChildren ?? []) child.opacity = opacity;
+        this._revealChildren = null;
+    }
     _cancelRevealStart() {
         if (this._revealStart) global.stage.disconnect(this._revealStart);
         if (this._revealIdle) GLib.source_remove(this._revealIdle);
@@ -237,6 +282,7 @@ export class HandheldOptions {
         if (!this.enabled) return;
         this.menu.close(PopupAnimation.NONE);
         this._cancelRevealStart();
+        this._clearRevealSnapshot();
         this._reveal?.stop(); this._reveal = null;
         this.menu._boxPointer.remove_clip();
         // Returning from a detail page starts the native main-page fade. A
@@ -254,6 +300,7 @@ export class HandheldOptions {
         this.menu.actor.disconnect(this._backId);
         this.menu._boxPointer.remove_action(this._dismissGesture);
         this.menu.box.set_style(this.original.style);
+        for (const [actor, visible] of this._edgeActors) actor.visible = visible;
         this.menu._lumaHeader?.set_style(this.original.headerStyle);
         this.menu.box.remove_style_class_name('lumaui-touch-options');
         this.menu.box.remove_style_class_name('lumaui-compact-options');
@@ -267,6 +314,7 @@ export class HandheldOptions {
         this.menu._boxPointer._updateFlip = this._updateFlip;
         this.menu._boxPointer.set_style(this._pointerStyle);
         this.enabled = false;
+        this._resizeKey = null;
     }
     destroy() {
         this._restore();
