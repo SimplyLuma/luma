@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T23:11Z
+- Updated: 2026-10-30T23:20Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,33 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT23:20Z — compiler graph complete; native image job remains active:
+- Source milestone2466f9435 commits the preview NON_UNIQUE behavior, codec
+  fixture and factual operational notes. Image input remains immutable d7b752da3.
+- r309 actual24GiB VM passed Soong graph analysis and Kati rule generation;
+  ninja now loading the final systemimage/vendorimage graph. r321/0ad980c5
+  at23:19:44:16,563MiB available, no swap use, ninja RSS6.4GB. No image pass yet.
+  One transient guest SSH255 at23:17 recovered on next read; no restart occurred.
+- r315/97d2d5b2 parsed SHA-verified baseline ELF32/64 interfaces, respectively
+ 1544/1540 exports and248 imports each. New-vs-old comparison pending actual
+  exports. Private verifier hidl-repair-r309/verify_pair.py also checks image-
+  extracted libraries against exported bytes and coherent image hashes.
+- Prepared private native_image_hotfix.py/prepare_packet.py under that same
+  directory. They retain the original pair outside images/, preserve the native
+  preview ownership marker and user data, stop Android only, and reuse the
+  unchanged original protected installer after checking its exact SHA. Scripts
+  are preparation; no packet built or native image operation qualified yet.
+- r317/ffc195f4 PASS12 local staging guards including changed owner/image,
+  in-directory backup rejection, symlink rejection, real zstd decoding, size/
+  SHA mismatch and original-pair preservation. No actual OS-update test claimed.
+- r320/60cfd5ab PASS actual91-file preview refresh in a temporary ordinary-user
+  fixture, retaining old modules and original controls. Dell delivery driver
+  dell-hotfix-r199/deliver_preview_r319.sh is ready; not run against Dell.
+- Dell listener22440 is absent at23:18 (r310 earlier connection refused).
+  No new device deployment/codec pass/game retry. Continue normal r309 build
+  through export and automatic original policy/profile restoration; then run
+  bounded root pair verification/package and retry native Dell transport.
 
 CURRENT23:11Z — source fixture and preview update ready; Dell tunnel unavailable:
 - r311/6a4d16b8 and r313/2f11a0ce confirm the actual24GiB guest,49,151MiB
