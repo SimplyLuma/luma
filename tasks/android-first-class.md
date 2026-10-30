@@ -1,8 +1,8 @@
 # Task: android-first-class
 
-- Status: active
+- Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T17:13Z
+- Updated: 2026-10-30T17:50Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -21,7 +21,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
 | A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot/native hashes183e21f8 and real native reply818f9e4b passed; remaining scopes open | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
-| A02 Install and app identity | PARTIAL SDK5 x86: actual patched Flatpak APK double-click -> Valet install -> matching APK/app drawer close/relaunch PASSED R85/5c3c4e30; dock pin and broader install matrix open | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A02 Install and app identity | PARTIAL SDK5 x86: R137/eed270c0 matched81/helper2/129 install, version, close/drawer relaunch and actual Pin/Unpin PASS; full-dock wheel reachability defect reproduced, dock activation and broader matrix OPEN | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
@@ -51,6 +51,54 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT17:50Z — matched x86 install/drawer/pin-unpin PASS; dock wheel defect reproduced; source fix active:
+- R137 child9bb648b5 PASSED17:37:40Z; parenta0c2bd64 PASSED17:37:45Z.
+  Actual healthy bootc5a91f5a-24a6-4176-bb63-7511e59ec851 runs exact seven RPMs:
+  Shell129/common129,Installer81,metadata2,Filer75/extensions75,Runtime96,SDK5.
+  Atomic update succeeded with1200s bound; packages outside candidate unchanged,
+  hostEnforcing retained. Private Filer/runtime commits and binary verified and
+  skipped redundant install. Signed system Filer retained; development ref only.
+- Actual pointer APK double-click -> Valet directly, correct F-Droid icon/name/
+  version2.0.2 -> Install -> Ready in Applications -> Open -> native phone window;
+  hash19d51fad... preserved. AndroidPID1677, shared host client3267 (not per-app
+  host attribution). Actual Luma close -> drawer search -> right-click Pin ->
+  real favorite appended -> actual Unpin -> exact previous favorites preserved
+  -> primary drawer launch -> actual app window with real loaded repository.
+  Android notification PERMISSION prompt remains Android UI, distinct from the
+  native host-notification styling/reply bridge. No native permission claim.
+- Independent qualification eed270c0 PASSED17:39:02Z, explicitly
+  PASS_SCOPED_X86_APK_INSTALL_DRAWER_PIN_UNPIN_DOCK_OPEN. It checks17 native
+  screenshot/input stages, exact APK/desktop/three native SDK5 hashes, actual
+  child/parent cleanup. Private gui-proof-r137/observations.json retains IDs and
+  limits. Complete dock activation is NOT passed: new pin clipped in full dock;
+  QMP wheel-right12dbea728a /Shift+wheel-down12b01f9c48 did not reveal it.
+- ACTUAL cleanup: original settings/favorites restored, owned GUI extension
+  removed, VM off/XML restored/raw alias unmounted, policy24cf restored. Both
+  Android VMs now off; ARM build/export already completed. No release published.
+- Native packaged129 overflow diagnostic1f45a0b5 PASSED2checks:33 entries,
+  range1901/page985; actual horizontal input offset0->916 reveals last app.
+  Reduced ordinary wheel-down diagnostic35c47788 FAILED as expected (offset0
+  unchanged), nonempty range/control establishes the actual wheel-axis defect.
+  Expanded keyboard+scroll private diagnosticf2eeee88 crashed before completion;
+  cause unresolved, no pass inferred. Earlier e228da05 failed fixture GID/ACL
+  ownership before Shell; fixed with fresh staging before output creation.
+- Source2506147bf adds patch0288: route either wheel axis onto dock orientation,
+  consume handled input once; shared label Pin to Dock. Adds native dock-scroll
+  scenario8checks: ordinary/reverse/horizontal/smooth input, last app visibility,
+  real pointer activation and close. Candidate pins130, NOT built/qualified yet.
+  Private source-overlay6d088cfe ACTIVE: exact patch applied fuzz0 to extracted
+  packaged129 JS; source2506147bf. Observe final result, fix if needed, then full
+  Shell130 build + packaged native tests + actual matching VM dock activation.
+- Pinned Ika6fde114 primary metadata/code intakes7b98eecc/93d742b4 PASSED download
+  scope only. Initial broad video-path assumption corrected: modified scrcpy
+  app path selects direct Cuttlefish DMA-BUF frame transport. Launcher defaults
+  VMM enable_sandbox=false and app start force-stops target; no wholesale
+  adoption, upstream script execution, binary/security/performance admission.
+- Tonight's nightly remains BLOCKED for full Android feature: Android internal
+  MAC disabled/shared identities/test keys, ARM runtime/device results, maintained
+  platform rebase, native document/hardware/permission/power and other A gates
+  remain open. The prototype estimate never authorized treating these as passed.
 
 CURRENT17:13Z — conditional nightly target; combined VM timeout retained; bounded retry:
 - User wants tonight's nightly IF ready. Communicated clearly: next45–60min
