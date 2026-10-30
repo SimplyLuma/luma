@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T01:14:00+00:00
+- Updated: 2026-10-30T01:28:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -20,7 +20,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f compiled/exported; host.94/Shell124 combined runtime test active | SDK4 image guards/resize passed. Finish current SDK0005 build and test image, host.94, Shell124 and fixture together through native reply UI. |
+| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f and host.95/Shell127 built/checked; current combined VM test active | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
@@ -52,10 +52,36 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Current source
+Source/worktree isolated; canonical untouched. Current source is on this task branch; older immutable build sources are named below. Historical implementation497a61054
+includes
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE01:28Z — current matching VM update; prior harness attempts retained:
+- CURRENT normal dev-android-reply-vm-r18-08c5ab7c.service10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r18.service1GiB, VM6GiB/QEMU8. Frozen
+  reply-vm-r18 manifest, same verified95/127/imageSDK5/APKr16 candidates. Pipeline
+  is installing-local-candidate-triple-and-image. Builder remains OFF. Observe
+  this actual child through fresh reboot/tests/cleanup, do not stop at launch.
+- r16 f390d264 FAILED01:16:02 because native rpm-ostree Rollback transaction was
+  already running; override applied nothing. r17 d5664919 adds bounded180s wait
+  for ONLY that rollback, refuses other active transactions. No transaction
+  canceled or health policy weakened.
+- r17 booted bad124; temporary same-byte/context read-only copies corrected only
+  private-library/resource traversal and produced a healthy GDM greeter. Actual
+  greenboot Resultsuccess/SubStateexited. However GDM restart left the login
+  screen, so old preparation incorrectly waited for logged-in user Wayland.
+  No native Android test reached. Gracefully powered off01:24:35UTC; confirmed shut off01:25:22, then stopped obsolete admitted actor.
+  Retained result as failed/canceled, never pass; no force stop needed here.
+- r18 initial update setup now starts only the existing test user's manager/bus
+  as needed for settings/stopping units. It does NOT count this as an active
+  graphical session or run APK authorization tests there. Final reboot STILL
+  requires real user Wayland, no bootstrap bind mounts, matching RPM triple and
+  completed successful native boot-health unit before any reply qualification.
+- Root native reply fixture is boot/gate synchronized, no synthetic Shell
+  notification/direct Reply RPC. Fresh one exact Android action:reply required,
+  then actual resize and native clipboard/task-name controls; all still pending.
 
 LIVE01:14Z — corrected Shell127 fully packaged; coherent VM test active:
 - Normal dev-android-shell127-package-be016db1.service PASSED01:06:56.228019Z.
