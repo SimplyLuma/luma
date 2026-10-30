@@ -60,7 +60,7 @@ class AppDrawer extends St.Widget {
         this.connect('key-press-event', (_actor, event) => this._key(event));
         this.connect('scroll-event', (_actor, event) => this._wheel(event));
         this.connect('button-release-event', (_actor, event) => {
-            const source = event.get_source();
+            const source = global.stage.get_event_actor(event);
             if (source === this || source === this._background) this.close();
             return Clutter.EVENT_PROPAGATE;
         });
@@ -253,7 +253,8 @@ class AppDrawer extends St.Widget {
                 favoritesSection: true, showSingleWindows: true});
             this._appMenuSource = tile;
             this._appMenu.setApp(app);
-            Main.uiGroup.add_child(this._appMenu.actor);
+            if (!this._appMenu.actor.get_parent())
+                Main.uiGroup.add_child(this._appMenu.actor);
             this._menuManager.addMenu(this._appMenu);
         }
         this._appMenu.open();
@@ -307,10 +308,10 @@ class AppDrawer extends St.Widget {
         if (this._appMenu?.isOpen) return Clutter.EVENT_PROPAGATE;
         const type = event.type();
         const [x] = event.get_coords();
-        const source = event.get_source();
+        const source = global.stage.get_event_actor(event);
         const pressed = type === Clutter.EventType.TOUCH_BEGIN ||
             (type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY);
-        if (pressed && this._viewport.contains(source)) {
+        if (pressed && source && this._viewport.contains(source)) {
             this._suppressClick = false;
             if (!this._state.searching)
                 this._drag = {x, page: this._page, moved: false};

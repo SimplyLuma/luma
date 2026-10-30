@@ -57,6 +57,7 @@ async function work() {
         await click(tile, Clutter.BUTTON_SECONDARY);
         check('right click opens the native app menu', drawer._appMenu?.isOpen);
         check('right click leaves the drawer open', drawer.visible);
+        check('right click does not launch the app', Shell.AppSystem.get_default().lookup_app(id).get_windows().length === 0);
         check('native Pin action is visible', drawer._appMenu._toggleFavoriteItem.visible && !favorites.isFavorite(id));
         await shot('drawer-pin-menu');
         await click(drawer._appMenu._toggleFavoriteItem);
@@ -72,6 +73,11 @@ async function work() {
         await key(Clutter.KEY_Escape);
         check('Escape dismisses only the app menu', !drawer._appMenu?.isOpen && drawer.visible);
         check('Escape returns keyboard focus to the app tile', global.stage.get_key_focus() === tile || tile.contains(global.stage.get_key_focus()));
+        keyboard.notify_keyval(GLib.get_monotonic_time(), Clutter.KEY_Shift_L, Clutter.KeyState.PRESSED);
+        await key(Clutter.KEY_F10);
+        keyboard.notify_keyval(GLib.get_monotonic_time(), Clutter.KEY_Shift_L, Clutter.KeyState.RELEASED);
+        check('Shift F10 opens the native app menu', drawer._appMenu?.isOpen);
+        await key(Clutter.KEY_Escape);
         await key(Clutter.KEY_Return);
         print(JSON.stringify({afterEnter: {drawerVisible: drawer.visible, menuOpen: drawer._appMenu?.isOpen, suppressed: drawer._suppressClick}}));
         const launched = Shell.AppSystem.get_default().lookup_app(id);
@@ -90,10 +96,12 @@ async function work() {
         const oldMenu = drawer._appMenu;
         drawer._search.set_text('Luma Drawer'); await pause();
         check('search rebuild destroys the previous menu', drawer._appMenu === null && !oldMenu.isOpen);
+        check('search rebuild removes the menu from its manager', drawer._menuManager._menus.length === 0);
         tile = drawer._tiles[0]; await click(tile, Clutter.BUTTON_SECONDARY);
         drawer.close(); await pause();
         check('closing drawer destroys its app menu', !drawer.visible && drawer._appMenu === null);
         check('closing drawer releases the modal grab', !drawer._menuManager.activeMenu);
+        check('closing drawer leaves no managed menu', drawer._menuManager._menus.length === 0);
         drawer.open(); await pause();
         drawer._search.set_text('Luma Drawer Probe'); await pause();
         tile = drawer._tiles[0]; await click(tile);
