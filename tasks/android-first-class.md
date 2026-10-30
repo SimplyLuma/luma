@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T18:46Z
+- Updated: 2026-10-30T18:55Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,28 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT18:55Z — combined startup/inventory failures retained; R164 active:
+- R158 childc8a6625e FAILED18:50:56Z before UI: read-only SSH readiness
+  deadline. QGA was responsive, host DHCP still assigns correct MAC .35. Actual
+  VM off, original XML/raw alias and policy24cf restored. No APK/dock pass.
+  Diagnostic5eb4bd8d sampled guest about9.2GiB unused and zero swap I/O; its
+  attempted aggregate guest command failed at denied ip execution and lost prior
+  subprocess output, so it is not a guest service-health pass. Diagnosticfcbdb457
+  arrived after shutdown and cannot diagnose live services.
+- R162 guard a06eebe7 PASS4; parent705e8be7/childabda89e6 reached SSH on fresh
+  boot3e536776-e334-4109-b445-078c8dec4a2e but FAILED18:54Z at read-only rpm -qa
+  default30s timeout before UI. Installed130 is present in atomic status; no new
+  package transaction or UI pass. Actual VM off/XML restored/policy24cf restored.
+- Host vmstat sampled about27GiB free, zero swap I/O and no memory pressure;
+  I/O PSI some74.12/full72.30 avg10. Two root ostree processes were D state in
+  fold-delta-arm.service and another root session. Other owners/jobs untouched.
+  These samples support shared HDD contention, not an Android performance claim.
+- R164 guard3039b2a4 PASSED18:55:14Z; parentd4182075 launched same candidate.
+  Only harness read-only package inventory/SSH deadlines increased (bounded180s
+  reads,300s initial SSH readiness); actual GUI assertions unchanged. Observe
+  child/final cleanup and do not treat retry as proof of startup reliability.
+  Private gui-vm-r164/vm-cache-budget-r164/gui-proof-r164 retain exact inputs.
 
 CURRENT18:46Z — compiled130 graphical component checks PASS; combined R158 active:
 - Full Shell130 package d48bce89 PASSED18:09:47Z from immutable8d4778409.
