@@ -54,7 +54,30 @@ choices stay in Ari's own settings and can be reviewed or removed in Advanced.
 
 Application actions use the shared Semantic Broker: request the needed access,
 read the app's published objects/actions, and invoke their actual IDs. The
-broker owns consent, redaction, risk confirmation and provider dispatch. If an app has no broker action, Ari can find its visible Linux accessibility
+broker owns consent, redaction, risk confirmation and provider dispatch.
+
+Routine Calendar, Notes, Contacts, Tasks and Weather work also has a direct,
+structured application-model path. `query_application` exposes supported
+operations, resources and revision-bound record targets. `change_application`
+calls the same installed `prairie_apps` model APIs as those apps and reads back
+the saved result. Calendar creation takes separate title, ISO start/end and IANA
+time-zone fields. Notes uses its transactional store and conflict checks;
+Contacts preserves fields outside the requested change; Tasks uses its owning
+completion behavior; Weather uses its location database and saved-place model.
+No editor or application window is needed. Calendar writes retain the app's
+durable backups, and Notes removal uses Trash. Existing records need an expiring
+query target; repeated verified operations in a turn do not repeat their write.
+These tools use Ari's read/action tiers, autonomy modes and app-specific rules.
+Query results are bounded previews; unrequested fields remain intact.
+
+This path requires the corresponding application model to be installed.
+Recurring/all-day edits, invitations, permanent contact deletion, messaging,
+calls and timers need their supported owner interfaces; this adapter does not
+invent those operations or bypass owner authorization. Installed Calendar and
+Weather windows may need refresh/reopening to display changes from another
+client; a successful result means the saved provider record was verified.
+
+If an app has no usable structured action, Ari can find its visible Linux accessibility
 controls and use the app's own editable-text and button-action interfaces.
 Controls must come from a fresh inspection of an application named by the
 person. Protected fields are excluded; stale controls and concurrent text
@@ -76,6 +99,8 @@ broker action, native command or accessible control for the requested operation.
 Chat timestamps use the local 12-hour clock. Streaming updates retain unchanged
 message widgets and the composer. The thread follows its latest content until
 the person scrolls away; sending a request or navigating to the end resumes it.
+Following uses the real scroll extent including the space below the final
+message, without a recurring paint alignment that fights wheel gestures.
 
 Process tools find exact same-user processes by name/PID, retain short-lived
 identities and use pidfds with start-time revalidation for end/kill. The person

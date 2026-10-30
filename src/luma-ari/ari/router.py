@@ -7,6 +7,8 @@ import re
 from .mcp import Tool
 
 KEYWORDS = {
+    'query_application':'calendar event events appointment meeting notes note contacts contact tasks task reminder weather city cities',
+    'change_application':'calendar event events appointment meeting notes note contacts contact tasks task reminder weather city cities create add edit update remove delete save',
     'find_processes':'process processes monitor cpu memory kill end terminate stop pid',
     'control_process':'process processes monitor kill end terminate stop pid',
     "desktop_applications": "app application inside weather city cities note notes calendar task message browser",
@@ -91,7 +93,8 @@ def select(text: str, tools: list[Tool], limit: int) -> list[Tool]:
             and re.search(r"\b(?:app|application)\b", text, re.I)):
         bundle = {"find_app", "open_app", "request_app_access", "app_surfaces", "app_action",
                   "desktop_applications", "inspect_application", "act_in_application"}
-        preferred = [tool for tool in tools if tool.name in bundle]
+        direct = [tool for tool in tools if tool.name in ('query_application','change_application')]
+        preferred = direct+[tool for tool in tools if tool.name in bundle]
         chosen = (preferred + [tool for tool in chosen if tool not in preferred])[:limit]
     elif re.search(r"\b(?:install|get|download)\b", text, re.I):
         bundle = {"search_software", "review_software", "install_software", "inspect_package", "install_package"}

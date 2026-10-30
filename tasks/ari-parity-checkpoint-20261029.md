@@ -8,6 +8,51 @@ Review: draft PR #92. Qualified r7 runtime source is
 `79b0c448a23c6063dec78f5487a3c6893920bc27`; the independent Dell preview
 now runs this revision. Earlier checkpoints below are history.
 
+## October 29 evening: direct application records and wheel scrolling
+
+The owner's r7 test found that the wheel could not reach the padded end of the
+thread: the follow logic repeatedly aligned the final message against the
+composer. The replacement follows the actual adjustment extent, including
+padding, and stops following on manual wheel input. The full 50-test native
+Wayland suite passes. An additional actual XTest wheel regression on a private
+X11 display passes up/down scrolling, reaching the padding and remaining there.
+The test injects input only into its disposable server display; Ari's runtime
+still has no synthetic-input adapter.
+
+The owner's Calendar task took 112.9 seconds, created an incorrect event from
+its title field, and then removed it. A new typed bridge calls the installed
+application model APIs directly through `query_application` and
+`change_application`. Supported operations cover Calendar events, Notes,
+Contacts, Tasks and saved Weather locations. They do not open windows, inspect
+widgets or navigate forms. Calendar title, start, end and IANA time zone are
+separate fields; each write returns the verified saved record.
+
+The bridge retains read/action permissions, task-scoped approvals, named-app
+checks and Advanced rules. Existing records need expiring revision-bound query
+targets. Verified repeated writes in one turn are deduplicated. Notes retains
+its concurrent-edit checks and Trash. Calendar writes use its existing durable
+backup and deletion restoration APIs. Tasks completion uses its owning model
+behavior. Queries return bounded complete records, with explicit preview and
+truncation metadata. Unsupported operations remain explicit.
+
+Current server evidence: 181 unit/protocol/policy tests, staged Meson imports,
+schema checks and nine focused GTK tests pass. Real private EDS, Notes storage,
+GWeather, MCP and agent tests pass: the exact Dog park event is saved for
+October 30, 2–3 PM America/Chicago and read back with matching fields in about
+0.03–0.04 seconds on local EDS. Calendar update/delete/restore and durable
+backups, Notes conflict/Trash/restore, Contacts create/update, Tasks
+create/complete and Weather add/remove/restore pass. The real agent performs
+one typed operation and two scripted model responses, with one normal-mode
+approval or zero in Let Ari act. Model decisions and private forecast/account
+fixtures do not establish actual hosted ChatGPT behavior.
+
+The app-model ABI was checked read-only on the Dell. No automated Dell app
+interaction or test ran. Packaging and delivery of this next r8 are pending;
+the installed preview remains r7. Messaging, calls, timers, invitations and
+recurring/all-day edits still require their supported owner interfaces.
+Calendar/Weather windows may need refresh/reopening to show another client's
+provider change; completion here means the saved provider record was verified.
+
 ## October 29 follow-up: message stability and native commands
 
 The owner reports that delivered r6 added Chicago to Weather and installed and

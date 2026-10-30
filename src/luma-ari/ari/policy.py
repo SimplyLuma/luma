@@ -30,6 +30,7 @@ TOOL_TIERS = {
     "app_action": ACT_ON_BEHALF, "installed_apps": ANSWER, "inspect_package": ANSWER,
     "desktop_applications": READ_PERSONAL, "inspect_application": READ_PERSONAL,
     "act_in_application": ACT_ON_BEHALF,
+    'query_application': READ_PERSONAL, 'change_application': ACT_ON_BEHALF,
     'find_processes':ANSWER, 'control_process':ACT_ON_BEHALF,
     "install_package": CHANGE_SYSTEM, "remove_application": CHANGE_SYSTEM,
     "list_project": READ_PERSONAL, "read_project_file": READ_PERSONAL,
@@ -42,12 +43,12 @@ TOOL_TIERS = {
 # the person chose "Don't ask".
 CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth", "install_package", "remove_application",
                  "create_project", "write_project_file", "run_project", "install_software", "restore_system_application",
-                 "act_in_application", 'control_process'}
+                 "act_in_application", 'change_application', 'control_process'}
 APPROVAL_MODES = ("system", "all", "never")
 ACTION_PERMISSIONS = {
     'open_apps': 'Opening applications', 'read_apps': 'Reading application controls', 'read_projects':'Reading project files',
     'enter_text': 'Entering text in applications', 'activate_controls': 'Using application buttons and controls',
-    'app_actions': 'Using published application actions', 'personal_settings': 'Changing personal settings',
+    'app_actions': 'Working with application data', 'personal_settings': 'Changing personal settings',
     'connections':'Changing connections and the time zone',
     'edit_projects': 'Creating and editing project files', 'run_projects': 'Running project checks and builds',
     'install_software': 'Installing software', 'remove_software': 'Removing software',
@@ -61,7 +62,7 @@ def validate_permission(key, choice):
         raise ValueError('Unknown action permission.')
     base, _separator, app = key.partition('@')
     if (base not in ACTION_PERMISSIONS or choice not in PERMISSION_CHOICES or len(key)>160
-            or (app and (base not in ('enter_text','activate_controls') or not re.fullmatch(r'[\w .+\-]{1,100}',app)))):
+            or (app and (base not in ('enter_text','activate_controls','app_actions') or not re.fullmatch(r'[\w .+\-]{1,100}',app)))):
         raise ValueError('Unknown action permission.')
     return key, choice
 
@@ -70,10 +71,10 @@ def action_permission(tool, arguments=None):
     if tool == 'act_in_application':
         return 'enter_text' if (arguments or {}).get('operation') == 'set_text' else 'activate_controls'
     if tool == 'open_app': return 'open_apps'
-    if tool in ('desktop_applications','inspect_application','app_surfaces','request_app_access'): return 'read_apps'
+    if tool in ('desktop_applications','inspect_application','app_surfaces','request_app_access','query_application'): return 'read_apps'
     if tool in ('read_project_file','list_project'): return 'read_projects'
     if tool in ('set_wifi','set_bluetooth','set_timezone'): return 'connections'
-    if tool == 'app_action': return 'app_actions'
+    if tool in ('app_action','change_application'): return 'app_actions'
     if tool in ('create_project','write_project_file'): return 'edit_projects'
     if tool == 'run_project': return 'run_projects'
     if tool in ('install_package','install_software','restore_system_application'): return 'install_software'

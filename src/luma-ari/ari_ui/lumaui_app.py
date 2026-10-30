@@ -654,16 +654,16 @@ class AriWindow(AppWindow):
             self._scroll_after_layout()
 
     def _user_scroll(self, _controller, _dx, dy):
-        if dy < 0:
+        if dy:
             self._follow_end = False
-        elif dy > 0:
+        if dy > 0:
             GLib.idle_add(self._resume_at_end)
         return False
 
     def _scroll_drag(self, _gesture, _dx, dy):
-        if dy > 0:
+        if dy:
             self._follow_end = False
-        elif dy < 0:
+        if dy < 0:
             GLib.idle_add(self._resume_at_end)
 
     def _scroll_key(self, _controller, key, _code, _modifiers):
@@ -678,40 +678,20 @@ class AriWindow(AppWindow):
 
     def _resume_at_end(self):
         if not self.closed and self.state['view'] == 'chat':
-            last = self.page.get_last_child()
-            if last is not None:
-                located, content = last.compute_bounds(self)
-                placed, composer = self.bar.bar.compute_bounds(self)
-                if located and placed and content.get_y() + content.get_height() <= composer.get_y() + 24:
-                    self._follow_end = True
-                    self._scroll_after_layout()
+            adjustment = self.scroll.get_vadjustment()
+            end = max(adjustment.get_lower(), adjustment.get_upper()-adjustment.get_page_size())
+            # Follow the real end, including the space below the last message.
+            # Never align that message with the composer during a wheel gesture.
+            self._follow_end = end-adjustment.get_value() <= 24
         return GLib.SOURCE_REMOVE
 
     def _scroll_layout_ready(self, clock):
         if self.closed or not self._follow_end or self.state["view"] != "chat":
             self._finish_scroll_layout(clock)
             return
-        # The page's bottom margin reserves space for the floating composer.
-        # Scrolling to its padded end also hides content that already fits.
-        # Reveal the latest actual content above the composer instead.
-        last = self.page.get_last_child()
-        if last is None:
-            self._finish_scroll_layout(clock)
-            return
-        located, content = last.compute_bounds(self)
-        bar_located, composer = self.bar.bar.compute_bounds(self)
-        if located and bar_located:
-            adjustment = self.scroll.get_vadjustment()
-            target = adjustment.get_value() + content.get_y() + content.get_height() - composer.get_y()
-            target = max(adjustment.get_lower(), min(
-                target, adjustment.get_upper() - adjustment.get_page_size()))
-            if abs(adjustment.get_value() - target) > .5:
-                adjustment.set_value(target)
-                # Wrapped text can reflow during that scroll's allocation.
-                # Continue on actual paint frames until the placement settles.
-                self.queue_draw()
-                clock.request_phase(Gdk.FrameClockPhase.AFTER_PAINT)
-                return
+        # A single adjustment after layout. Later content-size changes schedule
+        # their own adjustment; user scrolling never starts a paint feedback loop.
+        self._scroll_to_end()
         self._finish_scroll_layout(clock)
 
     def _finish_scroll_layout(self, clock):

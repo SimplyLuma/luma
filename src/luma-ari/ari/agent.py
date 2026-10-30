@@ -60,6 +60,7 @@ class Turn:
     model_info: dict | None = None
     project_approvals: set[str] = field(default_factory=set)
     application_approvals: set[str] = field(default_factory=set)
+    action_results: dict[str, dict] = field(default_factory=dict)
 
 
 def _requested_application(text, name):
@@ -67,7 +68,9 @@ def _requested_application(text, name):
         return True
     aliases = {'clock':r'\b(?:timer|alarm|stopwatch)\b', 'phone':r'\b(?:call|dial|phone)\b',
                'tide':r'\b(?:song|track|music|playlist)\b', 'charlie':r'\b(?:email|mail|inbox)\b',
-               'monitor':r'\b(?:process|cpu|memory)\b'}
+               'monitor':r'\b(?:process|cpu|memory)\b', 'notes':r'\bnotes?\b',
+               'contacts':r'\bcontacts?\b', 'tasks':r'\b(?:tasks?|reminders?)\b',
+               'calendar':r'\b(?:calendar|events?|appointments?|meetings?)\b'}
     return bool(name in aliases and re.search(aliases[name],text,re.I))
 
 
@@ -134,9 +137,9 @@ class Agent:
             user_named_it = bool(re.search(r"\b(?:build|create|develop|code|program|implement|fix|edit|test|run|make|customize)\b", turn.text, re.I))
         elif name in ("install_package", "install_software", "remove_application", "restore_system_application"):
             user_named_it = bool(re.search(r"\b(?:install|uninstall|remove|restore)\b", turn.text, re.I))
-        elif name in ("app_action", "act_in_application"):
+        elif name in ("app_action", "act_in_application", 'change_application'):
             user_named_it = bool(re.search(r"\b(?:open|add|create|write|edit|change|send|reply|delete|remove|play|pause|move|save|set|mark|schedule|book|call|dial|start|do)\b", turn.text, re.I)
-                                 and re.search(r"\b(?:app|application|notes?|calendar|events?|tasks?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|song|track|weather|timer|alarm|phone|person)\b", turn.text, re.I))
+                                 and re.search(r"\b(?:app|application|notes?|calendar|events?|appointments?|meetings?|tasks?|reminders?|messages?|email|contacts?|browser|pages?|documents?|spreadsheet|tide|music|song|track|weather|timer|alarm|phone|person)\b", turn.text, re.I))
         elif name == 'control_process':
             user_named_it = bool(re.search(r'\b(?:end|stop|kill|terminate)\b',turn.text,re.I))
         if name == "open_app" and turn.read_untrusted:
@@ -144,7 +147,7 @@ class Agent:
             user_named_it = bool(app and re.search(r'\b(?:open|launch|start|run|add|create|write|edit|save|change|set|remove|delete|reply|call|dial|play)\b', turn.text, re.I)
                                  and _requested_application(turn.text,app))
         decision = self.policy.check(name, calls_this_turn=turn.calls, after_untrusted=turn.read_untrusted)
-        if name != 'act_in_application' and self.policy.action_rule(name, arguments) == 'deny':
+        if name not in ('act_in_application','change_application') and self.policy.action_rule(name, arguments) == 'deny':
             decision = type(decision)(False, decision.tier, 'This action is blocked in Ari’s advanced permissions.')
         entry = {"conversation": turn.conversation, "tool": name, "tier": decision.tier, "arguments": arguments}
         if decision.allowed and turn.read_untrusted and decision.tier not in (ANSWER, READ_PERSONAL) and not user_named_it:
@@ -159,10 +162,13 @@ class Agent:
             audit.record({**entry, "decision": "refused", "reason": decision.reason})
             return {"ok": False, "summary": decision.reason, "refused": True}
         arguments = {k: v for k, v in arguments.items() if k != "preview"}
+        action_key = json.dumps(arguments,sort_keys=True) if name=='change_application' else ''
+        if action_key in turn.action_results:
+            return {**turn.action_results[action_key], 'unchanged':True}
         action_preview = None
         application = ''
         application_scope = ''
-        if name == "act_in_application":
+        if name in ('act_in_application','change_application'):
             action_preview = self.tools.call(name, {**arguments, "preview": True})
             if not action_preview.get("ok"):
                 return action_preview
@@ -233,6 +239,8 @@ class Agent:
         turn.emit({"type": "tool", "name": name, "label": _running_label(name)})
         result = (self.tools.call(name, arguments, stop=turn.stop) if isinstance(self.tools, Tools)
                   else self.tools.call(name, arguments))
+        if action_key and result.get('ok') and result.get('verified'):
+            turn.action_results[action_key] = result
         step_id = ""
         if result.get("source"):
             turn.sources.append(result["source"])

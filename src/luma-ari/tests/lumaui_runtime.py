@@ -44,6 +44,57 @@ def settle(window, seconds):
 
 
 class FixtureRuntime(unittest.TestCase):
+    def test_real_wheel_reaches_padded_end_and_stays_there(self):
+        if self.window.get_display().__gtype__.name!='GdkX11Display':
+            self.skipTest('Actual XTest wheel check runs separately on the private X11 display')
+        import ctypes
+        import ctypes.util
+        gi.require_version('GdkX11','4.0')
+        from gi.repository import GdkX11
+        window=self.window
+        chat={'id':'wheel-test','t':'Wheel test','day':'Today',
+              'msgs':[{'u':'Message '+str(i)} if i%2==0 else {'a':'Reply '+str(i)} for i in range(40)]}
+        window.data['conversations']=[chat]
+        window.state.update(view='chat',cur='wheel-test',busy=False)
+        window.render();window.present();settle(window,.3)
+        xlib=ctypes.CDLL(ctypes.util.find_library('X11'))
+        xtest=ctypes.CDLL(ctypes.util.find_library('Xtst'))
+        xlib.XOpenDisplay.restype=ctypes.c_void_p
+        xlib.XDefaultRootWindow.argtypes=[ctypes.c_void_p];xlib.XDefaultRootWindow.restype=ctypes.c_ulong
+        xlib.XTranslateCoordinates.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_int,ctypes.c_int,
+                                            ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_ulong)]
+        xlib.XFlush.argtypes=[ctypes.c_void_p];xlib.XCloseDisplay.argtypes=[ctypes.c_void_p]
+        xtest.XTestFakeMotionEvent.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_ulong]
+        xtest.XTestFakeButtonEvent.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_int,ctypes.c_ulong]
+        display=xlib.XOpenDisplay(None)
+        self.assertTrue(display)
+        try:
+            x,y,child=ctypes.c_int(),ctypes.c_int(),ctypes.c_ulong()
+            bounds=window.scroll.compute_bounds(window)[1]
+            xlib.XTranslateCoordinates(display,GdkX11.X11Surface.get_xid(window.get_surface()),xlib.XDefaultRootWindow(display),
+                int(bounds.get_x()+bounds.get_width()*.6),int(bounds.get_y()+bounds.get_height()*.6),
+                ctypes.byref(x),ctypes.byref(y),ctypes.byref(child))
+            xtest.XTestFakeMotionEvent(display,-1,x.value,y.value,0)
+            def wheel(button,count):
+                for _ in range(count):
+                    xtest.XTestFakeButtonEvent(display,button,1,0)
+                    xtest.XTestFakeButtonEvent(display,button,0,0)
+                xlib.XFlush(display)
+                settle(window,.7)
+            adjustment=window.scroll.get_vadjustment()
+            end=adjustment.get_upper()-adjustment.get_page_size()
+            wheel(4,6)
+            self.assertLess(adjustment.get_value(),end-50)
+            self.assertFalse(window._follow_end)
+            wheel(5,20)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+            wheel(5,6)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+            settle(window,.7)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+        finally:
+            xlib.XCloseDisplay(display)
+
     def test_streaming_follows_bottom_preserves_manual_scroll_and_stable_composer(self):
         window=self.window
         for width,height in ((1180,740),(390,844)):
@@ -70,7 +121,9 @@ class FixtureRuntime(unittest.TestCase):
                 self.assertLessEqual(abs(bounds.get_y()-initial.get_y()),1)
                 last=window.page.get_last_child().compute_bounds(window)[1]
                 composer=window.bar.bar.compute_bounds(window)[1]
-                self.assertLessEqual(abs(last.get_y()+last.get_height()-composer.get_y()),2)
+                self.assertLessEqual(last.get_y()+last.get_height(),composer.get_y())
+                adjustment=window.scroll.get_vadjustment()
+                self.assertAlmostEqual(adjustment.get_value(),adjustment.get_upper()-adjustment.get_page_size(),delta=1)
             adjustment=window.scroll.get_vadjustment()
             window._user_scroll(None,0,-1)
             adjustment.set_value(adjustment.get_value()-200)
@@ -84,7 +137,14 @@ class FixtureRuntime(unittest.TestCase):
             self.assertTrue(window._follow_end)
             last=window.page.get_last_child().compute_bounds(window)[1]
             composer=window.bar.bar.compute_bounds(window)[1]
-            self.assertLessEqual(abs(last.get_y()+last.get_height()-composer.get_y()),2)
+            self.assertLessEqual(last.get_y()+last.get_height(),composer.get_y())
+            self.assertAlmostEqual(adjustment.get_value(),adjustment.get_upper()-adjustment.get_page_size(),delta=1)
+            # A downward wheel gesture may reveal the padded end. It must not
+            # snap upward to put the final message against the floating bar.
+            window._user_scroll(None,0,1)
+            end=adjustment.get_value()
+            settle(window,.2)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
             window.on_event(window.request,json.dumps({'type':'done','text':'Finished'}))
             settle(window,.1)
             self.assertIs(window.entry.widget,entry)
