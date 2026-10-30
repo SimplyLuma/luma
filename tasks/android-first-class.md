@@ -2,9 +2,9 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-29T23:58:00+00:00
+- Updated: 2026-10-30T00:30:00+00:00
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); current7c13 image exported and x86 scope tests passed; next SDK0005 image
+- Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -20,7 +20,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | OPEN: current image7c13c192f lacks SDK0005 replies; host.94/Shell124 built separately | SDK4 image guards/resize passed. Finish current SDK0005 build and test image, host.94, Shell124 and fixture together through native reply UI. |
+| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f compiled/exported; host.94/Shell124 combined runtime test active | SDK4 image guards/resize passed. Finish current SDK0005 build and test image, host.94, Shell124 and fixture together through native reply UI. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
@@ -56,6 +56,41 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED00:30Z (Oct30 UTC) — SDK5 COMPILED/EXPORTED; NATIVE UI TEST ACTIVE:
+- Actual r12 m systemimage/vendorimage633/633 completed successfully in19:40;
+  guest synced output and wrote exit0 at1793318999.528394. Immutable source
+ 0c0cc1a9f034c7048a7aef1947ac3ef33f34d23c, no preparation overlay.
+- Original normal e60f41b6 FAILED00:10:49: root1GiB controller OOM during
+  bulk export AFTER guest success. Guest compiler did not OOM. Original failed
+  result/partial export retained; do not relabel it passed.
+- Dedicated normal dev-android-reply-export-r12-49b74252.service PASSED.
+  Bounded4GiB root +4GiB guest/QEMU5 under normal10GiB reservation streamed
+ 64KiB chunks, synced every8MiB, checked size/SHA before atomic publication,
+  then independently read back every artifact. Owned VM powered off and exact
+ 24GiB/25GiB inactive builder profile restored. Shared policy original restored
+ 00:10:50; no temporary budget remains active.
+- Verified export build-vm/output-x86_64-r12-20261030T001611Z; manifest SHA256
+ 3fd927d110054b9db0673fbc13772933da819f1cce46421dc2d2db6044de8b1c;
+  system d721cbb27b6ee4c477fad225325e547391078acaaea8348bf3e4cff7a0ba9c26,
+  vendor2a25f1e1c286b3108ba18a30e53f67fc5861fa17970c547e2bbe108112d05bb8.
+  SystemUI99ad1201424eb672fcc1fec81c97dd7e2073e395b79e48c6c6bbb5028e958810.
+  Exact tool/source receipt verified, no clean reproducibility claim.
+- Public export-stream.py component tests a4bc2d7d PASSED5, including incremental
+  sync, size/checksum rejection, non-overwrite/symlinks and deadline. Actual
+  dedicated export used the same frozen helper d53936a4d9c0956712ad632d80af68b7ac460cd7f9c48f9633399d4e6cf8303d.
+- CURRENT dev-android-reply-vm-r12-d4e9f7f8.service normal10GiB/12GiB disk;
+  root luma-android-first-class-reply-vm-r12.service1GiB, owned runtime VM6GiB/
+  QEMU8. Private reply-vm-r12 helpers frozen by manifest. Streaming transfer,
+  local cache-only Shell124 main+common Atomic replacement, matched SDK5 pair,
+  reboot, temporary owned test extension and actual virtual pointer/keyboard.
+  Original extension settings restored/removal attempted in finally. APKr16
+  exact synthetic reply must arrive once through original PendingIntent; UI
+  report alone never qualifies delivery. No actual native UI pass yet.
+- Public probe options/boot identity syntax check73145d6f PASSED Node only.
+  Continue observing current child through final result/cleanup; do not stop at
+  admission. SDK4 native guards/resize evidence remains independent. All ARM,
+  full isolation, physical power and broader acceptance gates remain open.
 
 OBSERVED23:58Z — r12 NINJA ACTIVE; PREPARED REAL NATIVE REPLY PROBE:
 - Source checks/SDK5 incremental refresh completed23:47Z. Soong graph regenerated

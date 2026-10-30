@@ -32,9 +32,9 @@ function findCard(actor, notification) {
     }
     return null;
 }
-export async function run() {
-    const out = GLib.getenv('LUMA_ANDROID_REPLY_EVIDENCE');
-    const text = GLib.getenv('LUMA_ANDROID_REPLY_TEXT');
+export async function run(options = {}) {
+    const out = options.out ?? GLib.getenv('LUMA_ANDROID_REPLY_EVIDENCE');
+    const text = options.text ?? GLib.getenv('LUMA_ANDROID_REPLY_TEXT');
     check(/^\/var\/tmp\/luma-android-reply-ui-[A-Za-z0-9_-]+$/.test(out ?? ''), 'Private test output required');
     check(/^LumaAndroidReply-[0-9a-f]{8}$/.test(text ?? ''), 'Fixed synthetic reply text required');
     const save = () => GLib.file_set_contents(`${out}/native-ui.json`, JSON.stringify(report, null, 2));
@@ -54,9 +54,11 @@ export async function run() {
     let pointer, keyboard;
     const tray = getNotificationTray();
     try {
+        report.boot_id = new TextDecoder().decode(GLib.file_get_contents('/proc/sys/kernel/random/boot_id')[1]).trim();
+        report.started_unix_us = GLib.get_real_time();
         report.status = 'waiting-for-real-android-notification'; save();
         let notification;
-        for (let attempt = 0; attempt < 900 && !notification; attempt++) {
+        for (let attempt = 0; attempt < 2400 && !notification; attempt++) {
             notification = Main.messageTray.getSources().flatMap(source => source.notifications ?? []).find(item =>
                 item.source?.app?.get_id()?.replace(/\.desktop$/, '') === appId &&
                 item.title === 'Android integration fixture');

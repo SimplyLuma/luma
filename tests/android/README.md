@@ -319,3 +319,9 @@ wrapper must require one fresh APK `action:reply` receipt with the exact unique
 synthetic text, plus the matched image/runtime/Shell/APK identities. Source syntax
 was checked with Node; installed GJS, rendering, input and Android delivery remain
 pending until this probe runs on the coherent reply-enabled candidate.
+
+`python3 tests/android/export-stream.py` checks bounded artifact export: size and
+SHA256 verification, incremental sync, atomic publication without overwriting an
+existing file or symlink, and stream deadlines. The caller must own the output
+directory and supervise the producer. Stream deadlines do not interrupt blocked
+kernel filesystem writes or syncs. Retain unpublished partials as failed evidence.
