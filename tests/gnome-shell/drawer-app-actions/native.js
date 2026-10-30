@@ -71,7 +71,9 @@ async function work() {
         check('keyboard Menu opens the native app menu', drawer._appMenu?.isOpen);
         await key(Clutter.KEY_Escape);
         check('Escape dismisses only the app menu', !drawer._appMenu?.isOpen && drawer.visible);
+        check('Escape returns keyboard focus to the app tile', global.stage.get_key_focus() === tile || tile.contains(global.stage.get_key_focus()));
         await key(Clutter.KEY_Return);
+        print(JSON.stringify({afterEnter: {drawerVisible: drawer.visible, menuOpen: drawer._appMenu?.isOpen, suppressed: drawer._suppressClick}}));
         const launched = Shell.AppSystem.get_default().lookup_app(id);
         await until(() => launched.get_windows().length > 0);
         check('Enter still launches after dismissing the menu', !drawer.visible && launched.get_windows().length > 0);
