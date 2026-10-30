@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T00:57:00+00:00
+- Updated: 2026-10-30T01:05:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -56,6 +56,25 @@ Source/worktree isolated; canonical untouched. Implementation HEAD497a61054. Cur
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+OBSERVED01:05Z — full126 build/native checks passed; final directory audit FAILED:
+- Normal768f4a04 built all Shell126 RPMs and ran the existing full %check,
+  including native symbolic-stroke test through bounded same-job host executor;
+  native-test-receipts.json status0, Glycin sandbox enabled. Earlier commentary
+  that native checks had not completed was preliminary and incorrect.
+- New final all-RPM guard correctly rejected /usr/share/doc/gnome-shell mode
+ 40770. Private-library directories now normalized, but RPM creates doc/license
+  directories AFTER %install and inherited default ACLs survived chmod.
+  Original failed126 results/RPMs remain unqualified and preserved.
+- Canonical spec now BuildRequires acl, clears ONLY staged system-directory
+  default ACLs with setfacl -k, then chmod00755. No shared source/build ancestor
+  ACL change. Later RPM mkdir obeys umask022. e62e6be4 PASSED real inherited
+  setgid/default-ACL and later doc/license creation regression, prior bad-RPM
+  rejection, original SRPM patch application and builder syntax. Require full
+  package guard and actual ordinary-user graphical boot before claiming fixed.
+- Preparing fresh127 candidate from this source, retaining all native checks
+  and guard. Runtime95 already built/128checks passed; SDK5 images already
+  exported/installed. Actual new coherent native reply still OPEN.
 
 OBSERVED00:59Z — exact directory-mode normalization verified:
 - Direct Linux check found GNU chmod0755 preserves directory setgid (2755),

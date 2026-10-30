@@ -312,17 +312,18 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +362,9 @@
+@@ -71,6 +362,10 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
 +BuildRequires:  luma-home-widgets >= 0.1.0-1.luma.1
 +BuildRequires:  sassc
++BuildRequires:  acl
 +BuildRequires:  google-figtree-fonts >= 2.0.3-1.luma.4
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +384,11 @@
+@@ -90,6 +385,11 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -334,7 +335,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +488,32 @@
+@@ -189,8 +489,32 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -367,7 +368,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +531,31 @@
+@@ -208,9 +532,34 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -382,6 +383,9 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +# staging directories mode 2770. RPM records those modes; ordinary sessions
 +# then cannot traverse private libraries. Only static system directories are
 +# staged here. Normalize after all install steps and before packaging.
++# RPM creates doc/license directories after this section. Clear inherited
++# default ACLs too, so those later directories obey the normal build umask.
++find %{buildroot} -type d -exec setfacl -k {} +
 +find %{buildroot} -type d -exec chmod 00755 {} +
 +
  %find_lang %{name}
@@ -399,7 +403,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +563,7 @@
+@@ -218,7 +567,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -408,7 +412,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +595,11 @@
+@@ -250,6 +599,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
