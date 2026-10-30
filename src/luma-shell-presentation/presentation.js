@@ -101,10 +101,22 @@ export class Presentation {
         this._status.add_child(this._statusRight);
         Main.layoutManager.addChrome(this._status, {affectsStruts: false, trackFullscreen: false});
         this._connect(this._status, 'notify::visible', () => this._syncStatusCompositing());
+        // Quick Options belongs to the whole right side of the status bar,
+        // including its inset beside a rounded corner or camera, not only the
+        // indicators: that inset is where a thumb pulls from.
+        const quickOptionsPoint = gesture => {
+            const event = gesture.get_point_event(0);
+            if (!event) return false;
+            const [x] = event.get_coords();
+            const [statusX] = this._status.get_transformed_position();
+            const [rightX] = this._statusRight.get_transformed_position();
+            return x >= Math.min(rightX, statusX + this._status.width / 2);
+        };
         const settingsPan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
             pan_axis: Clutter.PanAxis.Y});
         settingsPan.set_begin_threshold(4);
-        settingsPan.connect('may-recognize', () => this.mode !== 'desktop' && !Main.sessionMode.isLocked);
+        settingsPan.connect('may-recognize', gesture => this.mode !== 'desktop' &&
+            !Main.sessionMode.isLocked && quickOptionsPoint(gesture));
         settingsPan.connect('recognize', () => {
             if (this.mode === 'mobile') this._handheldOptions.beginPull();
         });
@@ -115,12 +127,15 @@ export class Presentation {
         });
         settingsPan.connect('end', () => this._handheldOptions.endPull());
         settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
-        this._statusRight.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        this._status.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        // Indicators answer their own taps; the empty status area and its
+        // inset open Quick Options.
         const settingsTap = new Clutter.ClickGesture();
         settingsTap.connect('may-recognize', gesture => !Main.sessionMode.isLocked &&
-            global.stage.get_event_actor(gesture.get_point_event(0)) === this._statusRight);
+            [this._status, this._statusRight].includes(global.stage.get_event_actor(gesture.get_point_event(0))) &&
+            quickOptionsPoint(gesture));
         settingsTap.connect('recognize', () => Main.panel.statusArea.quickSettings.menu.toggle());
-        this._statusRight.add_action(settingsTap);
+        this._status.add_action(settingsTap);
         this._editor = new HomeEditor(this);
         this._gestureBar = button(_('Home'), () => this.showHome(), 'luma-converged-home-control');
         this._gestureBar.set_child(new St.Widget({style_class: 'luma-converged-home-pill',
@@ -500,6 +515,15 @@ export class Presentation {
         for (const actor of this._panelChildren) {
             this._statusLoans.set(actor, {x_expand: actor.x_expand,
                 x_align: actor.x_align, clip_to_allocation: actor.clip_to_allocation});
+            // Indicators open on release here, so a drag that starts on them
+            // is the status bar's pull rather than a press-time toggle.
+            for (const indicator of [actor, actor.child].filter(Boolean)) {
+                const click = indicator._clickGesture;
+                if (click?.get_recognize_on_press?.()) {
+                    click.set_recognize_on_press(false);
+                    (this._pressRecognizers ??= []).push(click);
+                }
+            }
             move(actor, this._statusRight);
             actor.set_size(-1, -1);
             actor.x_expand = false;
@@ -510,6 +534,9 @@ export class Presentation {
     }
 
     _releaseStatus() {
+        for (const click of this._pressRecognizers ?? [])
+            click.set_recognize_on_press(true);
+        this._pressRecognizers = [];
         for (const [actor, properties] of this._statusLoans ?? []) {
             if (actor.get_parent() === this._statusRight)
                 move(actor, Main.panel._rightBox);
