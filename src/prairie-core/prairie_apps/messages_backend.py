@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import re
@@ -907,6 +908,25 @@ class MessageStore:
         )
 
 
+MOBILE_DATA_MODE_REASON = (
+    "Calls and texts are off while mobile data is on. "
+    "Switch to Calls & texts in Quick Settings."
+)
+
+
+def mobile_data_mode() -> bool:
+    """A modem that carries one data connection at a time (Pixel 9 Pro Fold)
+    has calls and texts off in its mobile data mode; luma-fold-mobile-mode
+    publishes the mode here. Absent elsewhere."""
+    path = os.environ.get("LUMA_MOBILE_MODE_STATUS", "/run/luma/mobile-mode.json")
+    try:
+        with open(path, encoding="utf-8") as status:
+            data = json.load(status)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("calls") is False
+
+
 @dataclass(frozen=True)
 class MessagingCapability:
     available: bool
@@ -941,6 +961,8 @@ class ModemMessagingTransport:
         _indexes, modem, status = choose_modem(listing, status_of)
         if modem is None:
             return MessagingCapability(False, "No cellular modem is ready.")
+        if mobile_data_mode():
+            return MessagingCapability(False, MOBILE_DATA_MODE_REASON, modem)
         if status is None:
             return MessagingCapability(False, "The cellular modem is not ready.", modem)
         lowered = status.lower()

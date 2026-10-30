@@ -16,7 +16,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 from .cellular_modem import choose_modem
-from .messages_backend import normalize_address
+from .messages_backend import MOBILE_DATA_MODE_REASON, mobile_data_mode, normalize_address
 
 
 @dataclass(frozen=True)
@@ -762,6 +762,8 @@ def inspect_phone_capability() -> PhoneCapability:
         return PhoneCapability(False, NO_MODEM_REASON, no_modem=True)
     if modem is None:
         return PhoneCapability(False, "More than one modem needs selection.", modem_count=modem_count)
+    if mobile_data_mode():
+        return PhoneCapability(False, MOBILE_DATA_MODE_REASON, modem_count=modem_count)
     if "sim-missing" in status.lower():
         return PhoneCapability(False, "Insert a SIM card to place calls.", modem_count=1)
     values = {}
