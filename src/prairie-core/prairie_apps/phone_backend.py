@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
-from .cellular_modem import choose_modem
+from .cellular_modem import choose_modem, modem_indexes
 from .messages_backend import MOBILE_DATA_MODE_REASON, mobile_data_mode, normalize_address
 
 
@@ -755,15 +755,16 @@ def inspect_phone_capability() -> PhoneCapability:
         return PhoneCapability(False, NO_MODEM_REASON, no_modem=True)
     # Key/value status is parsed in memory and never logged. Newer ModemManager
     # builds no longer expose the historical --simple-status action.
-    modem_indexes, modem, status = choose_modem(
-        _run([mmcli, "-L"]), lambda index: _run([mmcli, "-m", index, "--output-keyvalue"]))
-    modem_count = len(modem_indexes)
-    if modem_count == 0:
+    listing = _run([mmcli, "-L"])
+    if not modem_indexes(listing):
         return PhoneCapability(False, NO_MODEM_REASON, no_modem=True)
+    if mobile_data_mode():
+        return PhoneCapability(False, MOBILE_DATA_MODE_REASON, modem_count=len(modem_indexes(listing)))
+    indexes, modem, status = choose_modem(
+        listing, lambda index: _run([mmcli, "-m", index, "--output-keyvalue"]))
+    modem_count = len(indexes)
     if modem is None:
         return PhoneCapability(False, "More than one modem needs selection.", modem_count=modem_count)
-    if mobile_data_mode():
-        return PhoneCapability(False, MOBILE_DATA_MODE_REASON, modem_count=modem_count)
     if "sim-missing" in status.lower():
         return PhoneCapability(False, "Insert a SIM card to place calls.", modem_count=1)
     values = {}
