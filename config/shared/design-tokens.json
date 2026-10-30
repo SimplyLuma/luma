@@ -437,6 +437,8 @@
       "popup_key_height": 46,
       "min_row": 44,
       "portrait_cap": 46,
+      "cap_width": 34,
+      "compact_width": 600,
       "landscape_cap": 38,
       "landscape_row": 47,
       "compact_landscape_height": 600

@@ -75,20 +75,42 @@ slots = Keycap.suggestionSlots(null, ['a', 'b', 'c', 'd']);
 assert(slots.length === 3 && slots[0].kind === 'suggested', 'without a literal the first candidate leads');
 
 const g = Keycap.keycap.geometry;
-const row = g.portrait_cap + g.gutter_top + g.gutter_bottom;
-assert(Keycap.keyboardHeight({width: 360, height: 800}, 4) === 4 * row + g.strip_height,
-    'phone portrait uses full Keycap rows');
-assert(Keycap.keyboardHeight({width: 404, height: 908}, 4) === 227 + g.strip_height,
-    'tall phones keep a quarter of the screen for keys');
-assert(Keycap.keyboardHeight({width: 908, height: 404}, 4) === 4 * g.landscape_row + g.strip_height,
+const gutters = g.gutter_top + g.gutter_bottom;
+// The us layout's widest row spans 11.5 key widths.
+const capFor = width => Math.min(g.portrait_cap, Math.round((width / 11.5 - g.gutter_x) * g.portrait_cap / g.cap_width));
+assert(Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5) ===
+    4 * Math.max(g.min_row, capFor(360) + gutters) + g.strip_height, 'phone caps keep the design proportion at their real width');
+assert(Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5) <= 4 * (g.portrait_cap + gutters) + g.strip_height,
+    'phone caps never exceed the design height');
+assert(Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5, 28) ===
+    Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5) + 28, 'the home gesture inset is added below the keys');
+assert(Keycap.keyboardHeight({width: 404, height: 908}, 4, 11.5) < 908 / 3, 'tall phones are not sized by screen height');
+assert(Keycap.keyboardHeight({width: 908, height: 404}, 4, 11.5) === 4 * g.landscape_row + g.strip_height,
     'phone landscape uses compact rows');
-assert(Keycap.keyboardHeight({width: 360, height: 400}, 4) === 200, 'never more than half the screen');
-assert(Keycap.keyboardHeight({width: 1920, height: 1080}, 4) === 360 + g.strip_height,
+assert(Keycap.keyboardHeight({width: 360, height: 400}, 4, 11.5) === 200, 'never more than half the screen');
+assert(Keycap.keyboardHeight({width: 1920, height: 1080}, 4, 11.5) === 360 + g.strip_height,
     'large screens keep proportional height');
-assert(Keycap.keyboardHeight({width: 1038, height: 1076}, 4) === 269 + g.strip_height,
+assert(Keycap.keyboardHeight({width: 1038, height: 1076}, 4, 11.5) === 269 + g.strip_height,
     'tablet portrait keeps proportional height');
 for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {width: 1280, height: 800}])
-    assert((Keycap.keyboardHeight(monitor, 4) - g.strip_height) / 4 >= g.min_row, 'touch-size rows');
+    assert((Keycap.keyboardHeight(monitor, 4, 11.5) - g.strip_height) / 4 >= g.min_row, 'touch-size rows');
+
+// The keyboard is re-sized for each screen; a height set for a larger screen
+// (the unfolded panel) must not floor the next one.
+{
+    const at = keyboard.indexOf('    _relayout() {');
+    const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
+    const relayout = new Function('Main', 'St', 'Keycap', 'global', body);
+    const actor = {height: 0, width: 0, _currentPage: {getRatio: () => [11.5, 4]},
+        set_style() {}, get_preferred_height: () => [actor.height, actor.height]};
+    const run = (width, height) => relayout.call(actor, {layoutManager: {keyboardMonitor: {width, height}},
+        presentation: {keyboardInset: () => 28}}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}});
+    run(1038, 1076);
+    const tablet = actor.height;
+    run(360, 808);
+    assert(actor.height < tablet && actor.height === Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5, 28),
+        `keyboard shrinks back on the folded screen (${tablet} -> ${actor.height})`);
+}
 
 const history = new Keycap.ClipboardHistory({max_clips: 10, max_bytes: 65536, ttl_seconds: 3600});
 for (let i = 0; i < 12; i++)
@@ -109,7 +131,8 @@ for (const [needle, message] of [
     ['Keycap.SECRET_CLIPBOARD_TARGET', 'password-manager copies are skipped'],
     ['generation !== this._clipboardGeneration || this._isSensitive()', 'stale clipboard reads are dropped'],
     ['St.Settings.get().high_contrast ? null', 'High Contrast keeps the platform keyboard'],
-    ['Keycap.keyboardHeight(monitor, rows)', 'Keycap sizing'],
+    ['Keycap.keyboardHeight({width: monitor.width / scale', 'Keycap sizing in logical pixels'],
+    ['this._queue = Promise.resolve();', 'keys reach the input method in order'],
     ['this._shiftTaps.tap(monotonicMs())', 'double-tap caps lock'],
     ['Keycap.deleteMode(monotonicMs() - this._deleteStarted', 'time-based word deletion'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
@@ -141,4 +164,4 @@ for (const body of handlers) {
     if (body.includes('_hideSubkeys'))
         assert(hidden, 'a cancelled touch closes the alternatives');
 }
-console.log('PASS Keycap privacy, actorless captured events, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history');
+console.log('PASS Keycap privacy, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history');

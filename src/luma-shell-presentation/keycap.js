@@ -104,27 +104,32 @@ export function suggestionSlots(literal, candidates) {
     ].filter(Boolean);
 }
 
-// Keyboard height in logical pixels for a monitor and a layout's row count.
-// Phone landscape uses compact rows, phone portrait full Keycap rows, and
-// larger screens keep the platform's proportional height with touch-size
-// rows; the strip sits above the keys.
-export function keyboardHeight(monitor, rows) {
+// Keyboard height in logical pixels for a monitor (logical size), a layout
+// of `rows` rows whose widest row spans `columns` key widths, and a bottom
+// inset the presentation keeps clear (the home gesture). Caps keep the
+// design's proportion (portrait_cap tall at cap_width wide) within the width
+// each key actually gets, never shorter than a touch row: on a narrow phone
+// that is shorter than the design's 46 px. Phone landscape uses compact rows;
+// screens at least compact_width wide keep a proportional height.
+export function keyboardHeight(monitor, rows, columns = 10, inset = 0) {
     const g = keycap.geometry;
     const gutters = g.gutter_top + g.gutter_bottom;
     const landscape = monitor.width > monitor.height;
     const compact = landscape && monitor.height < g.compact_landscape_height;
+    const capWidth = monitor.width / Math.max(1, columns) - g.gutter_x;
+    const cap = Math.min(g.portrait_cap, Math.round(capWidth * g.portrait_cap / g.cap_width));
+    const row = Math.max(g.min_row, cap + gutters);
     let keys;
     if (compact)
         keys = rows * Math.max(g.landscape_row, g.landscape_cap + gutters);
-    else if (landscape)
-        keys = Math.max(rows * g.min_row, monitor.height / 3);
+    else if (monitor.width < g.compact_width)
+        keys = rows * row;
     else
-        keys = Math.max(rows * (g.portrait_cap + gutters), monitor.height / 4);
-    keys = Math.max(keys, rows * g.min_row);
+        keys = Math.max(rows * row, monitor.height / (landscape ? 3 : 4));
     // A phone on its side cannot fit touch rows in half its height; it may
     // use up to two thirds, everything else at most half.
     const limit = monitor.height * (compact ? 2 / 3 : 1 / 2);
-    return Math.round(Math.min(keys + g.strip_height, limit));
+    return Math.round(Math.min(keys + g.strip_height + inset, limit));
 }
 
 // Horizontal drag on space moves the caret one character per step once the
