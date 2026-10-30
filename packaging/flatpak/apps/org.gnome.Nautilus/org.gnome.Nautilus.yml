@@ -6,7 +6,7 @@
   "command": "nautilus",
   "appstream-compose": false,
   "finish-args": [
-    "--metadata=X-Luma=min-host-installer=71",
+    "--metadata=X-Luma=min-host-installer=77",
     "--metadata=X-Luma=min-host-terminal=7",
     "--metadata=X-Luma=app-data-schema=filer-shared-v1",
     "--share=ipc",
