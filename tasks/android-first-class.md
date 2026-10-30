@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:42:41+00:00
+- Updated: 2026-10-30T03:54:09+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -20,7 +20,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
-| A01 Matched candidate | OPEN: SDK0005 image0c0cc1a9f and host.95/Shell127 built/checked; corrected triple booted once; subsequent graphical login/reply tests inconclusive | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
+| A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot and native image hashes passed183e21f8; UI reply/other scopes pending | SDK4 image guards/resize passed. Observe current matching SDK5/host95/Shell127/APKr16 test through actual native reply and repeated scope checks. |
 | A02 Install and app identity | Partial old-image CLI install/remove/launch | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual rebuilt x86 VM resize/maximize/restore, two state restorations and responsive activation passed2ad2f9cc; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
@@ -52,7 +52,25 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:42Z — runtime96 packaged; actual atomic label/reply test active:
+CURRENT03:53Z — actual96 label/domain/SDK5 boot passed; UI probe corrected:
+- r39 183e21f8 staged70093fa6fe77fb146b09b98c942fa4c2401964b1117f70af5c49e468efd9711d.
+  Fresh96/127/SDK5 boot: actual user Shell running, health success, launcher
+  waydroid_exec_t, root service PID1678 actually waydroid_t with host Enforcing.
+  Android boot completed; installed APKr16 and native SDK5 image component hashes
+  passed. Ordinary APK UID10128/PID1529 launched/posted real notification42.
+- Reply negotiation succeeded, but probe opened HISTORY (which deliberately
+  calls setInlineReplyVisible(false)) and then looked for a mapped editor. Test
+  FAILED1 at03:49:23Z, with no input sent and no reply receipt. No UI pass.
+  Cleanup restored original settings/removed fixture; XML restored/alias unmounted.
+- Corrected source probe observes the daemon's actual LIVE Luma notification
+  card, its real ownership/policy and mapped controls. No private presentation
+  calls, toggling hidden editors, synthetic card or direct transport. Adds failed
+  screenshot for diagnosis. Normal syntaxeab65098 PASSED; actual input still open.
+- Runtime96 label-copyup change now has actual atomic install/start evidence;
+  this does not close Android internal SELinux/shared-UID production gate A15.
+  No VM currently active. Next freeze a new probe run against same96/127/SDK5.
+
+HISTORICAL03:42Z — runtime96 packaged; actual atomic label/reply test active:
 - Candidate96 source52564ea7e. Initial generic build8249b3cd failed before
   packaging: NoNewPrivileges prevented rootless UID mapping. Correct normal
   --kind package one-shot a5c91e96 PASSED03:38:04.853083Z:128 tests/0 skips,

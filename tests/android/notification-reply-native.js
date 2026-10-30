@@ -70,9 +70,23 @@ export async function run(options = {}) {
         }
         check(notification, 'Actual Android fixture notification did not arrive');
         check(notification.inlineReply?.send, 'Installed notification has no negotiated native reply');
-        tray.open(); await sleep(750);
-        const card = findCard(global.stage, notification);
+        report.surface = 'live-notification-card';
+        report.notification_policy = {dnd: tray.dnd,
+            show_banners: notification.source.policy.showBanners};
+        check(!tray.isOpen && !tray.dnd && notification.source.policy.showBanners,
+            'Live notification presentation is unavailable under the current policy');
+        // History intentionally hides inline editors. Observe the real daemon
+        // presentation instead of replacing its live card with the history UI.
+        let card;
+        for (let attempt = 0; attempt < 25 && !card; attempt++) {
+            card = findCard(global.stage, notification);
+            if (!card) await sleep(100);
+        }
+        report.presentation_state = tray.state;
         check(card, 'Actual native reply entry is not mapped');
+        check(tray._current === notification && tray._card === card && tray.contains(card),
+            'The actual Luma notification owner did not map the matching reply card');
+        await sleep(500);
         report.entry_bounds = bounds(card._replyEntry);
         report.button_bounds = bounds(card._replyButton);
         const seat = global.stage.context.get_backend().get_default_seat();
@@ -104,6 +118,7 @@ export async function run(options = {}) {
         // host acknowledgement. Only the APK receipt establishes delivery.
         await capture('after-send'); save();
     } catch (error) {
-        report.status = 'failed-or-inconclusive'; report.error = error.message; save(); throw error;
-    } finally { tray.close(); }
+        report.status = 'failed-or-inconclusive'; report.error = error.message;
+        await capture('failed-state'); save(); throw error;
+    }
 }
