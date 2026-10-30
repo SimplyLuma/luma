@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T16:26Z
+- Updated: 2026-10-30T16:52Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,34 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT16:52Z — final packaged drawer29 PASS; both metadata CPU payloads PASS; ARM99%:
+- Final Shell129 normal package05c7d806 PASSED16:44:48Z from c621fa319,
+  including existing guards and actual compiled sandbox-enabled native test.
+  Main SHA c2e590d7d0286b567784fb739fce5df95ece6115423017b15de4ffdfe1e9815f;
+  common SHA12f47bcd6c7c9eafab842d292dcdeea4518146d536abe0a0c1b37312fe38dadb.
+- Actual PACKAGED Shell129 drawer graphical qualification9dc5df4f PASSED
+  16:45:31Z:29 checks, resource_overlay=None. Actual pointer Pin/Unpin, keyboard
+  Menu/ShiftF10/Escape/focus/Enter, hold, replacement and close/modal cleanup.
+  Scope remains distribution Mutter50.6 software headless fixture; APK dock
+  pin on matched whole OS awaits R126. No device/performance inference.
+- ARM64 decoder2 package503fd468 PASSED16:35:20Z, sourceb92d40c59, under QEMU
+  ARM Fedora. RPM SHA019477155004687e6d58b24bfb3eaeb2a4ee1c30581fb4f4af77e9bee50379ef.
+  Actual extracted AArch64 helper on unchanged official F-Droid2.0.2 PASSED
+  525c1c59 at16:45:22Z; ELF machine183, correct package/label/version. No ARM
+  hardware speed or Android runtime result inferred. All generated outputs HDD.
+- R126 seven-package manifest SEALED fc1b867adba89aed4a1d1967e6fe239f30fe2ab72a4af5e7ee05c06f1a8f7cc5:
+  Shell129/common129,Installer81,metadata2x86,Filer75/extensions75,Runtime96;
+  SAME SDK5 x86 images. Private existing Filer/runtime refs verified and skipped
+  if already exact, no redundant install. Test favorites saved/restored. New
+  read-only drawer/menu bounds observation supports actual pointer Pin/Unpin.
+  NOT LAUNCHED: must wait ARM final export, VM-off and original24cf policy.
+- ARM e83d2ad1/guard28a5035c ACTIVE99%75840/75864 at16:51:37Z. Require actual
+  complete/export/ELF/hash/cleanup receipts; percentage is not qualification.
+- Maintained Android16 candidate metadata audit fb52914e PASSED16:34:35Z:
+  33 immutable local-project revisions and4 excluded proprietary/service slots;
+  config/android/candidates/lineage-23.2-intake.json is evaluation only. Complete
+  platform graph, build, license/distribution and runtime gates stay OPEN.
 
 CURRENT16:26Z — native drawer actions29 PASS; ARM74%; final Shell package pending:
 - Public sourcec621fa319 includes DrawerAppMenu (keeps Enter/Space launching),
