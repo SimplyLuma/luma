@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T20:32Z
+- Updated: 2026-10-30T21:04Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate staged; awaits next normal reboot
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; Valet hotfix delivered; network/YouTube diagnostics await local authentication
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -53,6 +53,86 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT21:04Z — native Dell candidate active; user reports and first hotfix:
+- Nick booted candidate6a673f5a; activation unit completed successfully at
+  20:41:30Z. Actual seven130/81/2/75/96 package queries and private Filer
+  e56aa0ca commit match. Image files require administrator read access on Dell;
+  independent post-boot image SHA reread not completed. No claim beyond the
+  activation success and retained server cohort qualification.
+- Nick reports smooth Reddit/WhatsApp windows, resize and input; these are his
+  physical observations, not an automated performance measurement. Reports
+  APKM extracting by default, successful Reddit install followed by unresolved
+  identity, missing bundle names/icons, huge Open label, no network in all
+  three apps, YouTube exiting and translucent notification-permission UI.
+  Subsequent cutout report was withdrawn and belongs to another agent; no
+  audio work or service changes were made for it.
+- User explicitly authorizes iterative native Dell diagnostics/testing and
+  targeted hotfixes; builds stay on server where needed. Existing app data,
+  signed OS/system Filer, unrelated apps and other agents' work preserved.
+- Source fix: workflow now consumes the manifest Package identifier field that
+  inspection actually publishes; existing-app reinstall no longer requires a
+  newly discovered app. Static metadata reads the bounded unambiguous base APK
+  from split bundles, supports PNG/WebP, and may use an installed owner's
+  rendered adaptive icon. Current owner name/icon refreshes after install.
+  Open action is short and its label is bounded. APKX follows validated split
+  archive handling in runtime/Valet/MIME/Filer source. Android MIME definitions
+  use suffixes+ZIP inheritance, without identifying unrelated ZIPs by magic.
+- r206/14a2ab6f broad host suite FAILED795/8errors/4skips: trusted deployment
+  fixtures reject shared ancestor ownership and GUI import lacks Luma AppKit.
+  No broad-suite pass claimed. Focusedr208/9e0129bf PASS28 +runtime128/16skips.
+  Initial GUIr209/5c0a5dd1 failed missing host LumaAppearance typelib. Extracted
+  existing coherent SDK117 read-only for server GUI; r211/6efee6f9 and final
+  r217/25546bfa GTK checks PASS. Final focusedr226/bc682e59 PASS30 including
+  actual APKX bundle validation, ambiguous base rejection, WebP and reinstall
+  identity. Maintained Filer patches parse with git apply --numstat; no new
+  Filer binary rebuild/physical APKX double-click qualification claimed.
+- Reversible user override r214/864c3cf1 delivered with exact-file checks:
+  isolated Valet preview identity and Python path, user host-broker activation,
+  MIME databases/defaults for Android only, and selection of already-qualified
+  private Filer. Existing production Valet process/profile not killed/reset.
+  r219/4f04c948 refresh caught a self-including payload manifest; fixed producer
+  exclusion and retained failure. r220/73cb8f8a refresh PASS20:58:39Z, final
+  tarSHAebca8dfa533efe5281430f1d2d8febb06167c0a8cac28b2180ac151f546ac904.
+  Actual downloads now report Reddit2026.44.0, YouTube21.40.161 and
+  WhatsApp2.26.43.70, all manifest IDs and real artwork. YouTube's XML adaptive
+  icon uses its existing owner's rendered PNG; standalone pre-install adaptive
+  XML rendering remains unsupported. No APKs, app data or private captures in Git.
+- User-control backup/undo is in private Dell Hotfix-r199 folder; restore
+  launcher first runs native OS rollback, then restores original user controls.
+  Undo refuses intervening control edits before changing anything; actual
+  temporary-filesystem tests r222/347e75c9 PASS2. No data deletion. Exact
+  user-control/hash/default proof r224/5fb16d59 PASS21:00:53Z, all91 payload
+  file hashes true, both Android MIME defaults Valet. Earlier root image hash
+  reads r221/c9193fab and r223/494f862a failed EACCES; permission not weakened.
+- Actual native Dell Reddit same-file reinstall through normal shipped
+  PackageInstaller/polkit path r225 launchbfc40344; captured r227/578fa074
+  PASS21:02:54Z: PASS_NATIVE_DELL_REINSTALL_IDENTITY,10.724s, correct package,
+  name and2026.44.0. PackageInstaller -r, no uninstall/data reset. This proves
+  the reported existing-package identity case, not the entire APK corpus.
+- Root diagnosticr200/d1326f76 completed (collectedr201/fc45c12f): IP assigned,
+  host forwarding1 and nft LXC masquerade present, Android connectivity has no
+  active default network; IP ping unreachable and DNS lookup fails. Do not
+  diagnose this as simply missing host NAT. Startup system_server repeatedly
+  crashed in notification Binder notify with IllegalArgumentException before
+  stabilizing; this is not yet attributed to YouTube's later exit. GMS package
+  absent; do not assume that proves the YouTube failure or install proprietary
+  Google services as a shortcut.
+- Deeper Ethernet/netd/log/YouTube-exit read-only diagnostic launchedr202/706a0d65:
+  Dell unitluma-preview-android-hotfix-diagnostics-r202-95208246.service,
+  root_diag2_launcher PID27099 ->pkexec PID27101. Latest r224/r227: still
+  waiting for normal local administrator authentication; output0bytes.
+  Generic SSH sudo requires password. No auth bypass, no new root keys, no
+  silent firewall/route change or claimed connectivity repair. Enter the local
+  Dell administrator password at the existing prompt to obtain the evidence.
+- Next: collect private Hotfix-r199/root-diag2.json after local auth; inspect
+  Ethernet/IpClient/netd and actual YouTube exit before targeted root repair.
+  Revalidate DNS+network validation+HTTPS inside Android and real app loading;
+  reproduce permission-window translucency separately. UI defaults/reinstall
+  changes delivered; network/YouTube/translucency remain open. The prompt is
+  the only live local diagnostic actor; server build/test jobs are final.
+  Production/nightly isolation, trust, maintained platform, ARM, brokers,
+  power and distribution gates remain open. No release/push/publication.
 
 CURRENT20:32Z — Dell native candidate staged; next normal reboot required:
 - Nick completed the normal reboot. Dell now boots the previously pending

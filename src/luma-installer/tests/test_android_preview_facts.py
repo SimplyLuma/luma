@@ -42,11 +42,13 @@ class AndroidPreviewFacts(unittest.TestCase):
         self.assertTrue(report.warnings)
         self.assertEqual(report.details['Processor compatibility'],'This APK contains ARM64 native libraries.')
 
-    def test_package_set_does_not_treat_outer_archive_as_one_manifest(self):
+    def test_package_set_reads_identity_from_the_base_apk(self):
         self.inspection.package_format='apks';self.inspection.native_abis=()
         self.apk.architecture_notice.return_value=''
         report=self.report()
-        self.reader.assert_not_called()
+        self.reader.assert_called_once_with(Path('/owned/download.apk'),'a'*64)
+        self.assertEqual(report.title,'F-Droid')
+        self.assertEqual(report.details['Package identifier'],'org.fdroid.fdroid')
         self.assertEqual(report.architecture,'universal');self.assertEqual(report.warnings,())
 
     def test_android_abi_installation_authority_remains_with_runtime(self):

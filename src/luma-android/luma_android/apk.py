@@ -17,7 +17,7 @@ from .errors import ApkValidationError
 
 MAX_ZIP_MEMBERS = 100_000
 MAX_EXPANDED_BYTES = 8 * 1024 * 1024 * 1024
-SUPPORTED_PACKAGE_SUFFIXES = frozenset({".apk", ".apks", ".xapk", ".apkm"})
+SUPPORTED_PACKAGE_SUFFIXES = frozenset({".apk", ".apks", ".xapk", ".apkx", ".apkm"})
 SUPPORTED_PACKAGE_MIME_TYPES = frozenset(
     {
         "application/vnd.android.package-archive",

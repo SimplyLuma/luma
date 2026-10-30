@@ -1,9 +1,11 @@
 """Bounded static APK identity; independent of Android runtime availability."""
 import base64
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -22,8 +24,39 @@ def _package(value):
     return value if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*', value) else ''
 
 
+def raster_extension(raw):
+    if raw.startswith(b'\x89PNG\r\n\x1a\n'):
+        return '.png'
+    if len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+        return '.webp'
+    return ''
+
+
+@contextmanager
+def identity_archive(path):
+    """Read the base APK of a split archive without extracting other payloads."""
+    with zipfile.ZipFile(path) as outer:
+        if 'AndroidManifest.xml' in outer.namelist():
+            yield outer
+            return
+        members = outer.infolist()
+        if len(members) > 100_000:
+            raise ValueError('Android package has too many entries')
+        apks = [m for m in members if not m.is_dir() and m.filename.lower().endswith('.apk')]
+        bases = [m for m in apks if PurePosixPath(m.filename).name.lower() == 'base.apk']
+        if not bases:
+            bases = [m for m in apks if not PurePosixPath(m.filename).name.lower().startswith(('config.', 'split_config.'))]
+        if len(bases) != 1 or not 0 < bases[0].file_size <= 256*1024*1024:
+            raise ValueError('Android package has no bounded unambiguous base APK')
+        with tempfile.TemporaryFile() as base, outer.open(bases[0]) as source:
+            shutil.copyfileobj(source, base, length=1024*1024)
+            base.seek(0)
+            with zipfile.ZipFile(base) as archive:
+                yield archive
+
+
 def read_identity(path, helper='/usr/libexec/luma-apk-metadata'):
-    with zipfile.ZipFile(path) as archive, tempfile.TemporaryDirectory(prefix='luma-apk-identity-') as root:
+    with identity_archive(path) as archive, tempfile.TemporaryDirectory(prefix='luma-apk-identity-') as root:
         for member, target, limit in [('AndroidManifest.xml', 'manifest', 4*1024*1024),
                                       ('resources.arsc', 'resources', 64*1024*1024)]:
             info = archive.getinfo(member)
@@ -46,7 +79,7 @@ def read_identity(path, helper='/usr/libexec/luma-apk-metadata'):
                 if 0 < info.file_size <= 2*1024*1024:
                     candidate = archive.read(info)
                     # Raster resources only; adaptive/vector XML is not executable artwork.
-                    if candidate.startswith(b'\x89PNG\r\n\x1a\n'):
+                    if raster_extension(candidate):
                         raw = candidate
             except KeyError:
                 pass
@@ -62,7 +95,7 @@ def metadata_for_package(path, digest):
     from .safety import _validate_fingerprint, fingerprint
     _validate_fingerprint(digest)
     root = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'luma/installer/artwork'
-    cache = root/(digest+'-apk-v2.json')
+    cache = root/(digest+'-apk-v4.json')
     try:
         result = json.loads(cache.read_text())
     except (OSError, ValueError):
@@ -81,11 +114,11 @@ def metadata_for_package(path, digest):
     if not isinstance(result, dict) or not isinstance(result.get('artwork', ''), str):
         raise ValueError('APK identity cache is malformed')
     raw = base64.b64decode(result.get('artwork', ''), validate=True)
-    if len(raw) > 2*1024*1024 or (raw and not raw.startswith(b'\x89PNG\r\n\x1a\n')):
+    if len(raw) > 2*1024*1024 or (raw and not raster_extension(raw)):
         raise ValueError('APK artwork exceeds its limit')
     icon = ''
     if raw:
-        destination = root/(hashlib.sha256(raw).hexdigest()+'.png')
+        destination = root/(hashlib.sha256(raw).hexdigest()+raster_extension(raw))
         if not destination.exists():
             with tempfile.NamedTemporaryFile(dir=root, delete=False) as stream:
                 stream.write(raw)
@@ -106,7 +139,7 @@ if __name__ == '__main__':
     # Applied inside this dedicated worker, never preexec_fn in the GTK process.
     resource.setrlimit(resource.RLIMIT_AS, (512*1024*1024, 512*1024*1024))
     resource.setrlimit(resource.RLIMIT_CPU, (6, 6))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (68*1024*1024, 68*1024*1024))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (256*1024*1024, 256*1024*1024))
     try:
         print(json.dumps(read_identity(sys.argv[1])))
     except Exception as error:

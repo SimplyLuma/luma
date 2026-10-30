@@ -253,7 +253,7 @@ def compatibility_report(path, kind, size, digest):
                        "Permissions": "Manifest permission details are unavailable from this inspector"}
             title, icon, version = value.display_name, "application-x-executable", ""
             notice = architecture_notice(value.native_abis)
-            if value.package_format == "apk":
+            if value.package_format in {"apk", "apks", "apkm", "xapk", "apkx"}:
                 from .apk_metadata import metadata_for_package
                 try:
                     metadata = metadata_for_package(path, digest)
@@ -261,6 +261,12 @@ def compatibility_report(path, kind, size, digest):
                     version = metadata["version"]
                     if metadata["package"]:
                         details["Package identifier"] = metadata["package"]
+                        if icon == "application-x-executable":
+                            # An installed owner may already have rendered an
+                            # adaptive icon that the static inspector cannot.
+                            from .workflow import installed_icon
+                            icon = installed_icon({"format": "android",
+                                                   "package": metadata["package"], "icon": icon})
                 except (OSError, ValueError, subprocess.SubprocessError):
                     # Identification is optional; never prevent a validated install.
                     pass

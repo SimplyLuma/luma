@@ -424,6 +424,12 @@ class InstallerWindow(AppWindow):
     def completed(self, result):
         self.busy = False; self.done = True
         if not self.removing: self.record = result
+        if not self.removing and self.report.kind == 'android' and result.get('name'):
+            from dataclasses import replace
+            self.report = replace(self.report, title=result['name'])
+            self.card.name.set_label(self.report.title)
+            if result.get('icon'):
+                self.card.set_icon(result['icon'])
         if not self.removing and self.report.kind in {'rpm', 'snap'} and self.report.requires_system_change:
             from dataclasses import replace
             from .backends import system_restart_required
@@ -433,7 +439,7 @@ class InstallerWindow(AppWindow):
             self.card.name.set_label(self.report.title + ' is gone')
             self.card.set_gone(True)
         pending = bool(self.report.requires_restart)
-        label = 'Done' if self.removing or pending or self.report.kind == 'flatpakrepo' else 'Open ' + self.report.title
+        label = 'Done' if self.removing or pending or self.report.kind == 'flatpakrepo' else 'Open'
         line = '' if self.removing else 'Ready in Applications'
         if self.report.kind == 'flatpakrepo' and not self.removing: line = 'Application source added'
         if pending:

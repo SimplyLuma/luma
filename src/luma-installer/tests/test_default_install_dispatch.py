@@ -30,7 +30,7 @@ class DefaultInstallDispatch(unittest.TestCase):
                     launch.assert_not_called()
 
     def test_split_packages_query_their_separate_default(self):
-        for suffix in ('.apks', '.XAPK', '.apkm'):
+        for suffix in ('.apks', '.XAPK', '.APKX', '.apkm'):
             with self.subTest(suffix=suffix), patch.object(service.Gio.AppInfo, 'get_default_for_type', return_value=None) as default:
                 self.assertFalse(service.default_android_install(Path('/tmp/test' + suffix)))
                 default.assert_called_once_with('application/vnd.projectluma.android-package-set', False)

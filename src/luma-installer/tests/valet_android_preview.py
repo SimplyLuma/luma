@@ -31,5 +31,11 @@ with patch('luma_installer.installer.iter_records', return_value=[]), \
     window.card.set_phase('working', 'Install', 'Installing')
     assert not window.card.phone_warning(), 'Warning leaked into installation progress'
     assert not window.card.phase_label.has_css_class('valet-warning')
+    long_name = 'com.google.android.youtube.' + 'longname' * 20
+    window.report = PackageReport(report.path, 'android', long_name, 'Android application', 1234, 'a'*64)
+    window.completed({'name': 'YouTube', 'package': 'com.google.android.youtube'})
+    assert window.card.name.get_label() == 'YouTube'
+    assert window.card.primary_label.get_label() == 'Open'
+    assert window.card.primary_label.get_max_width_chars() == 24
     window.close()
 print('PASS: Android architecture advice visible, install eligible, version shown, warning cleared')

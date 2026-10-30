@@ -256,6 +256,8 @@ class ValetTicket(Gtk.Overlay):
         primary_line = self.primary.get_child()
         primary_line.get_first_child().set_visible(False)
         self.primary_label = primary_line.get_last_child()
+        self.primary_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.primary_label.set_max_width_chars(24)
         self.primary.set_size_request(84, 42)
         self.actions.append(self.primary)
         self.secondary = Gtk.Button(label="Cancel")

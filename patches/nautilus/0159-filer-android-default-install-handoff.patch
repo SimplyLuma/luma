@@ -19,7 +19,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
                                      GList             *files,
                                      NautilusOpenFlags  flags,
                                      gboolean           confirm_multiple)
-@@ -1396,6 +1396,126 @@
+@@ -1396,6 +1396,127 @@
                                    confirm_multiple);
  
      g_free (path);
@@ -118,6 +118,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 +        (g_str_has_suffix (lower_path, ".apk") ||
 +         g_str_has_suffix (lower_path, ".apks") ||
 +         g_str_has_suffix (lower_path, ".xapk") ||
++         g_str_has_suffix (lower_path, ".apkx") ||
 +         g_str_has_suffix (lower_path, ".apkm")))
 +    {
 +        connection = g_application_get_dbus_connection (g_application_get_default ());
