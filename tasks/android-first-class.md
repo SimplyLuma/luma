@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T19:03Z
+- Updated: 2026-10-30T19:24Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 GUI qualification remains open
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell bundle staged only
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -21,7 +21,7 @@ profile and hardware scope. Failures and unavailable controls stay open. Package
 | Gate | Current evidence/status | Required closure / next action |
 | --- | --- | --- |
 | A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot/native hashes183e21f8 and real native reply818f9e4b passed; remaining scopes open | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
-| A02 Install and app identity | PARTIAL SDK5 x86: R137/eed270c0 matched81/helper2/129 install, version, close/drawer relaunch and actual Pin/Unpin PASS; full-dock wheel reachability defect reproduced, dock activation and broader matrix OPEN | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A02 Install and app identity | PARTIAL SDK5 x86: R171/8a4fde27 matched81/helper2/130 install, version, native close, drawer Pin/Unpin, scroll-to-dock activation and drawer relaunch PASS; broader matrix/input reliability/hardware OPEN | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
 | A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
 | A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
 | A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
@@ -53,6 +53,58 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT19:24Z — native Dell files delivered; full scoped server install/drawer/dock PASS:
+- User explicitly requests native Dell manual test and rejects a VM/degraded
+  preview. No VM, emulation wrapper, automated UI test or OS change was delivered
+  or run on Dell. Only connection/package/session metadata and received-file/hash
+  checks ran there. Existing native OS and active Android runtime are unchanged.
+- Dell reachable as nick, x86_64, Fedora44/Luma20261027.4, hostEnforcing,
+  kernel7.2.8; active local Wayland session. Existing runtime80/images9,
+  Shell125/Installer76/helper1/Filer74. Shared Platform44 commitbc70be60 already
+  matches the private Filer requirement. Existing real per-user Android data.
+  A separate OS deployment4320c7e9 is staged; bootedf1dfcbc1 and prior rollback
+  de4d98d1 preserved. sudo -n requires local password. Do not overwrite pending
+  deployment, reset Android data, interrupt desktop or reboot remotely.
+- Native bundle: ~/Downloads/Luma-Android-Native-20261030-r172 on Dell.
+  Seven exact130/81/helper2/75/extensions75/Runtime96 RPMs, compressed coherent
+  SDK5 x86 image pair, private Filer app, official F-Droid and synthetic probe,
+  payload.json, control hashes, read-only checker and READ-ME-FIRST.txt.
+  About930MB compressed; final manifest SHA
+  798daa38eb07bf5e3af69041861daa04e8fc5c888b2e150a00b287082fb6c2d5.
+  r172/e9524cca payload generation PASS19:15:04Z; r175/cca2c2fa upload and actual
+  Dell full payload + decoded image SHA checks PASS19:19:03Z. Native/not installed.
+  No installer/rollback automation is included or claimed tested: native install
+  must follow existing pending-change reboot, local admin authentication, pinned
+  rollback and quiescent backups of root AND per-user Android state.
+- Earlier r170/ec3e8642 failed before image compression because exported images
+  live in images/ subdirectory; retained. First upload worker r173/ef491bcd
+  failed255 before any remote directory was created. Diagnosticr174/17800cfb
+  found worker namespace SSH system-config ownership check failure. Normal
+  package-kind r175 used existing account key/host pin successfully; no key,
+  host pin, policy or shared SSH config changed. No failed transfer pass claimed.
+- Server-only R171 guard9440ed27 PASS4; childa5028d52 PASS19:21:41Z and parent
+  c12fa4fe PASS19:21:45Z. Same coherent130/81/2/75/96/SDK5 and private Filer;
+  bounded health polling retains strict active/running/success checks, actual
+  loaded shelf.js/appMenu.js SHA matches compiled130. Actual compositor wheel
+  scroll0 ->646, F-Droid icon x733..778 within dock viewport27..846, real pointer
+  dock activation opens native F-Droid phone window. Actual Unpin restores all
+  23 original favorites; drawer primary launch opens loaded real repository.
+- Independent full19-phase qualifier r176/8a4fde27 PASS19:22:35Z, explicitly
+  PASS_SCOPED_X86_APK_INSTALL_DRAWER_DOCK, production_qualified=false. APK hash,
+  launcher Exec, three native SDK5 component hashes and cleanup match. Private
+  gui-proof-r171/observations.json and artifactqualification.json preserve exact
+  input/screenshot IDs, limits and additional actions. Early scrolled-dock click
+  activated Contacts and another early drawer click did not open drawer; later
+  observed drawer/pin/relaunch succeeded. No error-free/physical-input claim.
+- Actual cleanup: settings/favorites restored, owned extension removed, VM off,
+  XML restored, raw alias unmounted, original policy24cf restored. All owned
+  payload/transfer/qualification/VM actors finished. Nightly/security/ARM/native
+  services/power/distribution gates remain open; no release promoted or published.
+- Next device step is Nick's normal saved-work reboot to finish the EXISTING
+  pending OS change, then local admin authentication for native install. Recheck
+  actual state before proceeding, pin existing OS and preserve Android data;
+  current bundle is staged only and must not be described as a usable Dell build.
 
 CURRENT19:03Z — tonight Android release NO-GO; R164 failed and all actors stopped:
 - R164 child060263d6 FAILED19:00:48Z; parentd4182075 FAILED19:00:49Z.
