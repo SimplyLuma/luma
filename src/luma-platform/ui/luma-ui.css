@@ -210,11 +210,12 @@ box.lumaui-dialog.phone label.lumaui-dialog-body { margin: 6px 0 0; padding: 0 6
 box.lumaui-dialog.phone box.lumaui-dialog-buttons { margin-top: 16px; border-spacing: 8px; }
 box.lumaui-dialog.phone box.lumaui-dialog-buttons button { min-height: 48px; border-radius: 20px; font-size: 15px; }
 
-/* A bottom-attached phone bar keeps its gesture reserve outside the painted
- * surface. Controls retain the shared touch size; the reserve stays clear. */
-.lumaui-action-center.pocket.phone.home box.lumaui-ac-bar,
-.lumaui-action-center.pocket.phone.home box.lumaui-ac-split > box.lumaui-ac-bar {
+/* Compact physical phone screens attach their bars to the bottom edge.
+ * The shared kit supplies the pocket class from monitor geometry, never from
+ * a narrow desktop window. Gesture recognition does not require a blank strip. */
+.lumaui-action-center.pocket.phone box.lumaui-ac-bar,
+.lumaui-action-center.pocket.phone box.lumaui-ac-split > box.lumaui-ac-bar {
+  margin: 0;
   padding-bottom: var(--lumaui-ac-phone-bar-padding);
-  margin-bottom: var(--lumaui-phone-frame-home);
-  border-radius: var(--lumaui-ac-phone-bar-radius);
+  border-radius: var(--lumaui-ac-phone-bar-radius) var(--lumaui-ac-phone-bar-radius) 0 0;
 }

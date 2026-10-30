@@ -11,6 +11,40 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
+## Owner review correction: attached compact bars — 2026-10-29
+
+The previous pass misread the required compact presentation. Moving the home
+reserve outside the painted bar created an unwanted gap. Compact phone bars now
+meet the bottom edge with square bottom corners and rounded top corners. Both
+native and Python Action Center implementations select this from the physical
+phone monitor (long side below 600 logical pixels), not app identity or a narrow
+desktop window. Taller phones and tablets retain the existing bar placement.
+The shared structural stylesheet removes the obsolete compact home reserve.
+
+Fullscreen AppWindow minimums are capped to the monitor. Clock, Contacts,
+Calendar, Photos, Tide and Terminal had requested 420 pixels on the 400-pixel
+Titan; they now report a 400-pixel minimum. Apps keep smaller declared minimums
+and desktop minimums remain unchanged. The Python policy is shared and pure;
+the native Action Center uses the matching monitor classification.
+
+The device previously launched legacy Ptyxis. The existing maintained Luma
+Terminal source was delivered instead, with its actual shared Action Center and
+command field; no new Terminal UI was invented. Native touchscreen and keyboard
+input ran `pwd` successfully through that field. Nine app captures were reviewed:
+Notes, Clock, Contacts, Calendar, Photos, Tide, Luma Terminal, Settings and Filer.
+Their bars meet the bottom edge; Tide's former left edge line is absent. A low
+Clock tab tap reaches Alarms. Earlier "attached-terminal" QA captured Tide during
+a failed activation; the corrected Terminal capture and real command run are the
+evidence, not that mislabeled image.
+
+Five compact-policy regressions and seven existing desktop window-opening tests
+pass. They cover rotated short screens, regular phones, tablet dimensions,
+narrow desktop windows, unknown monitors and bounded minimums. ARM native C
+syntax and Python parsing pass (05f4a9bc). No full platform RPM build or physical
+qualification of other phone models is claimed. Device delivery uses an isolated
+copy of its newer installed Python kit with only these shared changes, plus the
+shared stylesheet override; its native platform library remains installed.
+
 ## Shared app frames and action bars — 2026-10-29
 
 Phone frame geometry now lives in the shared structural provider above app
