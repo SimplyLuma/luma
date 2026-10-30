@@ -12,7 +12,7 @@ class FilerTerminalHostContract(unittest.TestCase):
         args = manifest['finish-args']
         self.assertIn('--talk-name=org.projectluma.Terminal', args)
         self.assertIn('--metadata=X-Luma=min-host-terminal=7', args)
-        self.assertIn('--metadata=X-Luma=min-host-installer=77', args)
+        self.assertIn('--metadata=X-Luma=min-host-installer=78', args)
 
 if __name__ == '__main__':
     unittest.main()

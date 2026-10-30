@@ -19,7 +19,13 @@ import time
 from .native_app_roles import APPS as MAINTAINED_APPS, CONTRACT, SIGNING_FINGERPRINTS, verify_deployed_commit
 from .retired_apps import RETIRED
 
-APPS = MAINTAINED_APPS - RETIRED
+# Office and Creative are separate products. Keep the mandatory OS inventory
+# aligned with config/os/first-party-app-baseline.json and its bundle producer.
+SEPARATE_PRODUCTS = frozenset({
+    'org.projectluma.Write', 'org.projectluma.Grid', 'org.projectluma.Stage',
+    'org.projectluma.Session', 'org.projectluma.Reel', 'org.projectluma.Darkroom',
+})
+APPS = MAINTAINED_APPS - RETIRED - SEPARATE_PRODUCTS
 
 ROOT = Path('/usr/share/luma/app-baseline')
 STATE = Path('/var/lib/luma/app-baseline')
