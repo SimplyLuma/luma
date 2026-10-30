@@ -3,7 +3,8 @@ Description=Keep Home weather current without opening Weather
 
 [Timer]
 OnStartupSec=5s
-OnUnitInactiveSec=30min
+OnCalendar=*-*-* *:0/15:00
+Persistent=true
 RandomizedDelaySec=20s
 AccuracySec=20s
 Unit=luma-weather-refresh.service

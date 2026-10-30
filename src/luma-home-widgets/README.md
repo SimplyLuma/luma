@@ -7,8 +7,11 @@ protocol. It preserves freshness, units, week-ahead events, file/timezone
 monitoring, bounded reads and cancellation. It makes no forecast requests,
 creates no app data or second event database. A bounded user timer refreshes the
 saved widget city through Weather’s existing provider and atomic cache every
-30 minutes, including while its window is closed. Fresh forecasts obey the
-provider’s existing refresh policy; offline failures preserve the cache. The
+15 minutes, including while its window is closed. Fresh forecasts obey the
+provider’s existing refresh policy (30 minutes for forecasts, 15 for shared
+station observations); offline failures preserve the cache. The
+widget advances cached forecast hours without network requests, and monitors
+Weather’s shared atomic station-reading cache for immediate app updates. The
 installed Weather launcher selects native or Flatpak storage/provider ownership.
 
 `LumaWidgets.Model` provides definitions and display fields through

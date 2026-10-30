@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Pango from 'gi://Pango';
 import LumaWidgets from 'gi://LumaWidgets?version=1.0';
@@ -20,6 +21,30 @@ export class HomeWidgets {
         St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(this.stylesheet);
         this._changed = this.model.connect('changed', () => this._render());
         this.snapshot = JSON.parse(this.model.dup_snapshot());
+        this._weatherCancel = new Gio.Cancellable();
+        this._weatherRefresh = 0;
+        this._network = Gio.NetworkMonitor.get_default();
+        this._networkChanged = this._network.connect('network-changed', (_network, available) => {
+            if (available) this._queueWeatherRefresh();
+        });
+        if (this._network.network_available) this._queueWeatherRefresh();
+    }
+
+    _queueWeatherRefresh() {
+        if (this._weatherRefresh) return;
+        // A bounded service owns requests/cache TTLs. Reconnection catches up
+        // after offline/suspended time; it never creates a second provider.
+        this._weatherRefresh = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
+            this._weatherRefresh = 0;
+            Gio.DBus.session.call('org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                'org.freedesktop.systemd1.Manager', 'StartUnit',
+                new GLib.Variant('(ss)', ['luma-weather-refresh.service', 'replace']),
+                null, Gio.DBusCallFlags.NO_AUTO_START, 5000, this._weatherCancel,
+                (connection, result) => {
+                    try {connection.call_finish(result);} catch { /* Optional host service may be absent. */ }
+                });
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     definitions() {
@@ -69,6 +94,9 @@ export class HomeWidgets {
     }
 
     destroy() {
+        if (this._weatherRefresh) GLib.source_remove(this._weatherRefresh);
+        this._weatherCancel.cancel();
+        this._network.disconnect(this._networkChanged);
         this.model.disconnect(this._changed);
         this.model.run_dispose();
         St.ThemeContext.get_for_stage(global.stage).get_theme().unload_stylesheet(this.stylesheet);

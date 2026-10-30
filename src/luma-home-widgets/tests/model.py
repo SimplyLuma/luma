@@ -32,6 +32,27 @@ assert data['weather']['title'] == 'Saved city' and data['weather']['value'] == 
 assert data['weather']['desktop_id'] == 'org.projectluma.Weather.desktop'
 assert data['calendar']['desktop_id'] == 'org.projectluma.Calendar.desktop'
 assert all(data[id]['columns'] == data[id]['rows'] == 2 for id in ('weather','calendar'))
+observation = cache.with_name('place-observation.json')
+reading = {'version': 1, 'place_uid': 'place', 'observation': {
+    'temperature_c': 24, 'symbol': 'cloudy', 'observed_at': datetime.now(timezone.utc).isoformat()}}
+observation.write_text(json.dumps(reading))
+assert snapshot()['weather']['value'] == '24°', 'fresh shared station reading must match Weather'
+reading['observation']['observed_at'] = (datetime.now(timezone.utc) - timedelta(minutes=91)).isoformat()
+observation.write_text(json.dumps(reading))
+assert snapshot()['weather']['value'] == '20°', 'old station reading must fall back to forecast'
+reading['observation']['observed_at'] = datetime.now(timezone.utc).isoformat()
+reading['place_uid'] = 'other city'
+observation.write_text(json.dumps(reading))
+assert snapshot()['weather']['value'] == '20°', 'a different city reading must be ignored'
+observation.unlink()
+# Cached forecasts advance through their hourly data without network polling.
+hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+payload['hours'] = [{'time': (hour - timedelta(hours=1)).isoformat(), 'temperature_c': 20, 'symbol': 'clearsky_day'},
+                    {'time': hour.isoformat(), 'temperature_c': 22, 'symbol': 'cloudy'}]
+cache.write_text(json.dumps(payload))
+assert snapshot()['weather']['value'] == '22°', 'widget must advance to the current forecast hour'
+payload.pop('hours')
+cache.write_text(json.dumps(payload))
 places.write_text(places.read_text().replace('metric', 'imperial'))
 assert snapshot()['weather']['value'] == '68°'
 payload['fetched_at'] = (datetime.now(timezone.utc)-timedelta(hours=7)).isoformat()

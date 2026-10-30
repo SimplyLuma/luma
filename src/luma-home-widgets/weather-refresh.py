@@ -13,10 +13,13 @@ def refresh_saved_city(backend=None):
     if not places:
         return False
     place = places[0]
-    if not backend.needs_refresh(backend.cached_forecast(place)):
-        return False
-    backend.fetch_forecast(place)
-    return True
+    refreshed = backend.needs_refresh(backend.cached_forecast(place))
+    if refreshed:
+        backend.fetch_forecast(place)
+    # The app and widget use the same atomic station reading. Its own TTL
+    # coalesces app/timer requests, including failures and unsupported places.
+    backend.current_observation(place)
+    return refreshed
 
 
 def main():

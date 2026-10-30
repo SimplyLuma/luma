@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 Name:           luma-home-widgets
 Version:        0.1.0
-Release:        1.luma.2%{?dist}
+Release:        1.luma.3%{?dist}
 Summary:        Shared native Weather and Calendar Home widgets
 License:        GPL-3.0-or-later
 URL:            https://github.com/SimplyLuma/luma
 Source0:        %{name}-%{version}.tar.gz
 Requires:       python3-gobject-base
-Requires:       prairie-core-apps
+Requires:       prairie-core-apps >= 0.1.0-1.luma.106.creator20261030.1
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  gcc
 BuildRequires:  python3-gobject-base
