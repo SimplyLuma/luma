@@ -13,6 +13,14 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as SurfaceMaterials from 'resource:///org/gnome/shell/ui/lumaSurfaceMaterials.js';
 import {appCells, catalogPage, PAGE_SIZE} from './launcherModel.js';
 
+class DrawerAppMenu extends AppMenu {
+    _onKeyPress() {
+        // App tiles retain Enter/Space for launching after opening a menu.
+        // The drawer handles Menu and Shift+F10 explicitly.
+        return Clutter.EVENT_PROPAGATE;
+    }
+}
+
 export const AppDrawer = GObject.registerClass(
 class AppDrawer extends St.Widget {
     _init(owner) {
@@ -241,7 +249,7 @@ class AppDrawer extends St.Widget {
         this._drag = null;
         if (this._appMenuSource !== tile) {
             this._destroyAppMenu();
-            this._appMenu = new AppMenu(tile, St.Side.TOP, {
+            this._appMenu = new DrawerAppMenu(tile, St.Side.TOP, {
                 favoritesSection: true, showSingleWindows: true});
             this._appMenuSource = tile;
             this._appMenu.setApp(app);
