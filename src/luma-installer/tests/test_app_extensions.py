@@ -97,4 +97,24 @@ class RuntimeMount(unittest.TestCase):
             with patch(name,side_effect=ValueError('untrusted')):
                 with self.assertRaises(ValueError): subject._runtime_mount(self.installation,subject.OFFICE,'x86_64','44',COMMIT,123,'lib/office')
 
+
+    def test_group_writable_deployment_parent_is_refused(self):
+        parent = self.files.parent
+        mode = parent.stat().st_mode & 0o777
+        try:
+            parent.chmod(mode | 0o020)
+            with self.assertRaises(MigrationError):
+                self.call()
+        finally:
+            parent.chmod(mode)
+
+    @unittest.skipUnless(os.geteuid() == 0, 'actual owner transition requires root')
+    def test_foreign_deployment_owner_is_refused(self):
+        try:
+            os.chown(self.files, 65534, -1)
+            with self.assertRaises(MigrationError):
+                self.call()
+        finally:
+            os.chown(self.files, 0, -1)
+
 if __name__=='__main__': unittest.main()

@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.71.creator20261021.1%{?dist}
+Release:        1.luma.74.nightly20261026.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -15,6 +15,9 @@ Source2:        org.project_luma.shell-state.gschema.xml
 BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  flatpak-libs
+# Live-instance authority tests validate the maintained sandbox executables.
+BuildRequires:  xdg-dbus-proxy
+BuildRequires:  bubblewrap
 BuildRequires:  ostree-libs
 BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
@@ -116,6 +119,14 @@ install -D -m 0644 data/org.projectluma.Depot.service \
   %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.Depot.service
 install -D -m 0644 data/org.projectluma.SoftwareUpdate.desktop \
   %{buildroot}%{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
+# Retire obsolete applications automatically for system and per-user installs.
+# Immutable wants links also enable this on upgrades where presets do not run.
+install -D -m 0644 data/luma-retired-apps.service %{buildroot}%{_userunitdir}/luma-retired-apps.service
+install -d %{buildroot}%{_userunitdir}/default.target.wants
+ln -s ../luma-retired-apps.service %{buildroot}%{_userunitdir}/default.target.wants/luma-retired-apps.service
+install -D -m 0644 data/luma-retired-system-apps.service %{buildroot}%{_unitdir}/luma-retired-system-apps.service
+install -d %{buildroot}%{_unitdir}/multi-user.target.wants
+ln -s ../luma-retired-system-apps.service %{buildroot}%{_unitdir}/multi-user.target.wants/luma-retired-system-apps.service
 install -D -m 0644 data/luma-depot-provision.service %{buildroot}%{_userunitdir}/luma-depot-provision.service
 install -D -m 0644 data/luma-depot-app-updates.service %{buildroot}%{_userunitdir}/luma-depot-app-updates.service
 install -D -m 0644 data/luma-depot-app-updates.timer %{buildroot}%{_userunitdir}/luma-depot-app-updates.timer
@@ -216,6 +227,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_datadir}/luma/installer/depot-catalog-4.json
 %{_datadir}/dbus-1/services/org.projectluma.Depot.service
 %{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
+%{_userunitdir}/luma-retired-apps.service
+%{_userunitdir}/default.target.wants/luma-retired-apps.service
+%{_unitdir}/luma-retired-system-apps.service
+%{_unitdir}/multi-user.target.wants/luma-retired-system-apps.service
 %{_userunitdir}/luma-depot-provision.service
 %{_userunitdir}/luma-depot-app-updates.service
 %{_userunitdir}/luma-depot-app-updates.timer
@@ -254,6 +269,15 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
+- Package the October 26 shared source updates.
+
+* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.73.creator20261024.1
+- Remove retired Displays installations automatically while preserving app data.
+
+* Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.72.creator20261023.1
+- Declare ARM support for the bundled applications in the Depot catalogue.
+
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.70.creator20261020.1
 - Deliver Filer and Ari updates through their installed signed Flatpaks.
 

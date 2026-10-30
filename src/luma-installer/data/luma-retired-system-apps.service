@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Remove retired system Luma apps while keeping their data
+After=local-fs.target dbus.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 -B -m luma_installer.retired_apps --system
+Restart=on-failure
+RestartSec=5min
+TimeoutStartSec=2min
+RuntimeMaxSec=2min
+UMask=0077
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

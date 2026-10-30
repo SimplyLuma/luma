@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T06:04Z
+- Updated: 2026-10-30T06:21Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,33 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT06:04Z — actual real-app install and native reply milestones:
+CURRENT06:21Z — session cleaned up; source fix and baseline alignment:
+- R50 child2d0de28a/parent0727a2ae FAILED at bounded session deadline; both
+  results observed06:04:18/19Z. Actual cleanup restored extension preferences,
+  removed only owned extension, powered VM off, restored exact original XML,
+  unmounted raw alias and restored original shared policy SHA24cfbd91. No VM or
+  owned build active. Successful independent reply818f9e4b remains scoped PASS.
+- Dock explicit test-preference write8d544623 applied but its output JSON parse
+  failed. Readback confirmed it; actual menu showed Unpin18884c91 and pointer
+  unpin62835972 worked. Pin-menu flow remains open; no false overall GUI pass.
+- New optional ApplicationInstaller2.RequestDefaultInstall returns handled=true
+  only for APK/split packages whose actual host default is a Valet identity.
+  Custom/missing/default legacy Android handlers decline without launching;
+  malformed/local-symlink/remote inputs rejected. Focused dc445cf7 PASSED7 cases.
+- Filer client0159 source written, not compiled/qualified yet: async host handoff,
+  original activation on explicit decline/absent optional API, weak view lifetime,
+  no second launch after ambiguous errors. Existing D-Bus talk permission reused.
+- Before building, aligned installer component/spec/build recipe with recorded
+  Nightly source2319c9b86df26b89f57b1c750916441f3ffb5fc2. This restores newer
+  app-baseline/private-listing/retirement guards and tests missing on this branch;
+  avoids shipping old71 contents over the installed76 package. Existing service
+  source is unchanged between those baselines; new handoff/test kept separately.
+  Baseline source release74 is not claimed byte-identical to installed76.
+- Next: compile/check Filer0159 against exact admitted source RPM SHA d3204c26,
+  run focused/full relevant installer checks, produce new candidate releases,
+  then actual direct APK activation in owned VM. No release/signing/publication.
+
+HISTORICAL06:04Z — actual real-app install and native reply milestones:
 - Actual96/127/SDK5 boot3264f49d-e460-43be-b19d-9ad405ee8cca: real Filer APK
   double-click opened chooser (defect still open). Choosing Valet opened actual
   io.luma.Valet GUI; pointer Install succeeded. Installed F-Droid2.0.2 APK SHA

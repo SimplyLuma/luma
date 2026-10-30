@@ -103,4 +103,24 @@ class DeploymentIdentity(unittest.TestCase):
             with self.assertRaises(MigrationError): self.validate(info)
 
 
+    def test_group_writable_deployment_parent_is_refused(self):
+        parent = self.files.parent
+        mode = parent.stat().st_mode & 0o777
+        try:
+            parent.chmod(mode | 0o020)
+            with self.assertRaises(MigrationError):
+                self.validate(self.info())
+        finally:
+            parent.chmod(mode)
+
+    @unittest.skipUnless(os.geteuid() == 0, 'actual owner transition requires root')
+    def test_foreign_deployment_owner_is_refused(self):
+        try:
+            os.chown(self.files, 65534, -1)
+            with self.assertRaises(MigrationError):
+                self.validate(self.info())
+        finally:
+            os.chown(self.files, 0, -1)
+
+
 if __name__ == '__main__': unittest.main()

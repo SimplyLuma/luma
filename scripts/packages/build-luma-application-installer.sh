@@ -13,7 +13,7 @@ platform_rpm=${LUMA_PLATFORM_RPM:-$repo_root/build/packages/luma-developer-platf
   exit 1
 }
 
-for tool in mktemp podman sha256sum tar; do
+for tool in mktemp podman python3 sha256sum tar; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required application-installer build tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -56,6 +56,10 @@ mkdir -p "$work_dir/luma-application-installer/tests/fixtures"
 cp -R "$repo_root/tests/fixtures/valet-v70.json" "$work_dir/luma-application-installer/tests/fixtures/"
 cp -R "$repo_root/tests/fixtures/valet-v70" "$work_dir/luma-application-installer/tests/fixtures/"
 cp -R "$repo_root/tests/fixtures/depot-v70.json" "$work_dir/luma-application-installer/tests/fixtures/"
+# Tests retain only the public identity projection, not private listing data.
+python3 "$repo_root/src/luma-installer/tests/public_first_party_policy.py" \
+  --data "$repo_root/src/luma-installer/data" \
+  --output "$source_dir/tests/fixtures/depot-public-first-party.json"
 rm -f "$source_dir/data/depot-first-party.json" "$source_dir/data/depot-verified.json"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/luma-application-installer.tar.gz" \
   luma-application-installer
@@ -69,7 +73,13 @@ chmod -R a+rX "$rpmbuild_dir"
 bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
     set -euo pipefail
-    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
+    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs xdg-dbus-proxy bubblewrap ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
+    # GitHub mounts HOME as a shared writable volume. Trust-boundary tests
+    # need actual private ancestors; keep their files inside this container.
+    check_home=$(mktemp -d /root/luma-installer-check.XXXXXX)
+    trap "rm -rf \"$check_home\"" EXIT
+    export HOME="$check_home"
+    umask 022
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-application-installer.spec
     rpm_path=$(find RPMS/noarch -name "luma-application-installer-*.rpm" -print -quit)
     test -n "$rpm_path"

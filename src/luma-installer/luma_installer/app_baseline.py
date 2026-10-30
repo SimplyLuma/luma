@@ -16,7 +16,10 @@ import stat
 import subprocess
 import tempfile
 import time
-from .native_app_roles import APPS, CONTRACT, SIGNING_FINGERPRINTS, verify_deployed_commit
+from .native_app_roles import APPS as MAINTAINED_APPS, CONTRACT, SIGNING_FINGERPRINTS, verify_deployed_commit
+from .retired_apps import RETIRED
+
+APPS = MAINTAINED_APPS - RETIRED
 
 ROOT = Path('/usr/share/luma/app-baseline')
 STATE = Path('/var/lib/luma/app-baseline')
@@ -101,6 +104,8 @@ def write_state(path, doc):
 
 def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
     if os.getuid()!=0: raise PermissionError('Only the signed OS baseline owner may seed system apps.')
+    from .retired_apps import reconcile_current
+    reconcile_current(system=True)
     doc, records, key = inventory(root)  # all bytes are admitted before writes
     protected(CONTRACT)
     if digest(CONTRACT) != doc['role_contract_sha256']:

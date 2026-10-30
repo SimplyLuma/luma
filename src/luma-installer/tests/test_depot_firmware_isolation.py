@@ -7,6 +7,8 @@ tests/depot/fwupd-container.sh.
 """
 
 import json
+import signal
+import subprocess
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -44,7 +46,14 @@ class Probe:
         self.log = directory / "calls.log"
         self.script = directory / "probe.py"
         self.script.write_text(textwrap.dedent(f"""\
-            import json, os, sys, time
+            import ctypes, json, os, sys, time
+            def abort_without_core():
+                # Keep real SIGABRT, without waiting for a host core collector.
+                if sys.platform.startswith("linux"):
+                    libc = ctypes.CDLL(None, use_errno=True)
+                    if libc.prctl(4, 0, 0, 0, 0) != 0:  # PR_SET_DUMPABLE
+                        raise OSError(ctypes.get_errno(), "Cannot disable fixture core dumps")
+                os.abort()
             args = sys.argv[1:]
             with open({str(self.log)!r}, "a") as log:
                 log.write(" ".join(args) + "\\n")
@@ -56,6 +65,14 @@ class Probe:
 
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
+
+
+class FixtureCrash(unittest.TestCase):
+    def test_probe_really_aborts_without_waiting_for_core_collection(self):
+        with TemporaryDirectory() as directory:
+            probe = Probe(Path(directory), "abort_without_core()\n")
+            result = subprocess.run(probe.command, capture_output=True, timeout=3)
+            self.assertEqual(result.returncode, -signal.SIGABRT)
 
 
 class ProbeCase(unittest.TestCase):
@@ -94,7 +111,7 @@ class Checking(ProbeCase):
         self.assertNotIn("gi.repository.Fwupd", sys.modules)
 
     def test_a_crashing_probe_leaves_a_calm_problem(self):
-        firmware = self.firmware("print('{\"progress\"'); sys.stdout.flush(); os.abort()\n")
+        firmware = self.firmware("print('{\"progress\"'); sys.stdout.flush(); abort_without_core()\n")
         firmware.updates = (su._firmware_update(UPDATE),)
         firmware.load()
         self.assertTrue(pump(lambda: firmware.loaded))
@@ -145,7 +162,7 @@ class Checking(ProbeCase):
     def test_a_success_after_a_problem_clears_it(self):
         flag = self.dir / "second"
         firmware = self.firmware(f"import pathlib\nflag = pathlib.Path({str(flag)!r})\n"
-                                 "if not flag.exists():\n    flag.touch(); os.abort()\n"
+                                 "if not flag.exists():\n    flag.touch(); abort_without_core()\n"
                                  "print(json.dumps({'ok': True, 'updates': []}))\n")
         firmware.load()
         self.assertTrue(pump(lambda: firmware.loaded))
@@ -196,7 +213,7 @@ class Installing(ProbeCase):
         self.assertEqual(firmware.error, failure.body)
 
     def test_a_crash_mid_install_is_reported_calmly(self):
-        firmware, progress = self.install("print(json.dumps({'progress': 0.4}), flush=True)\nos.abort()\n")
+        firmware, progress = self.install("print(json.dumps({'progress': 0.4}), flush=True)\nabort_without_core()\n")
         self.assertEqual(progress, [0.4])
         self.assertEqual(firmware.error, su.FIRMWARE_INSTALL_STOPPED)
         self.assertEqual(firmware.problem, "")
