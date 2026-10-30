@@ -810,6 +810,14 @@ class LibraryStore:
     def _now(db: sqlite3.Connection) -> int:
         return int(db.execute("SELECT unixepoch()").fetchone()[0])
 
+    def _notify_source_change(self) -> None:
+        # A dedicated marker lets Connect observe configuration edits without
+        # waking up for queue, playback, artwork or library-indexing writes.
+        try:
+            self.path.with_name("sources-changed").touch(mode=0o600)
+        except OSError:
+            _log.warning("Could not signal changed music sources to Connect")
+
     def add_source(
         self,
         name: str,
@@ -852,6 +860,7 @@ class LibraryStore:
                     account,
                 ),
             )
+        self._notify_source_change()
         return self.source(stable_id)
 
     @staticmethod
@@ -934,6 +943,7 @@ class LibraryStore:
             result = db.execute("UPDATE sources SET account=? WHERE id=?", (account, source_id))
             if result.rowcount != 1:
                 raise KeyError(source_id)
+        self._notify_source_change()
 
     def set_sync_marker(self, source_id: str, marker: str | None) -> None:
         with self.transaction() as db:
@@ -972,6 +982,7 @@ class LibraryStore:
                    AND NOT EXISTS (SELECT 1 FROM playlist_items i WHERE i.track_id=tracks.id)
                 """
             )
+        self._notify_source_change()
         return downloads
 
     def upsert_copy(self, source_id: str, metadata: MediaMetadata) -> tuple[Track, str]:

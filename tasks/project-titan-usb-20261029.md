@@ -377,3 +377,42 @@ regression coverage, panel motion and lock/privacy policy tests, and diff checks
 Native patches were not changed in this follow-up. The migration handoff now
 includes an explicit fetch/show command for agents whose checkout lacks the
 new sources. Existing Home frame-cadence limitation remains open.
+
+## 2026-10-30 Tide / Connect repair
+
+Connect now delegates credential access to Tide's matching implementation, reads
+current/preview sign-ins without background unlock prompts, preserves opaque
+credential refs on metadata edits, and retries missing credentials without a new
+Hub revision. Missing sign-ins are reported instead of silently claiming complete
+sync. Native receiving libraries initialize through Tide's model before first
+launch; retained previews cannot displace a canonical native library by mtime.
+Tide source edits emit a dedicated marker watched by Connect, excluding ordinary
+playback/indexing/network-state churn. Matching Tide/core source candidate pins
+and a conditional native dependency are updated. Flatpak server sync remains
+explicitly unsupported by the existing adapter.
+
+Owner-device deployment preserves newer private Connect workspace/transport code;
+only the source-stamp change was applied to that installed module. The targeted
+adapter plus a private clone of installed Tide with the new model/credential API
+are active. Tide was restarted, the path/watch units are active, and touching the
+source marker started the existing sync service. Source and SQLite rollback
+copies are private. No general RPM/OTA release is claimed.
+
+Live authenticated Hub reads and targeted source sync succeeded for the existing
+server list. Its saved sign-in is absent under both Tide schemas, and its exact
+Hub secret route returns 404. A different Tide secret metadata record exists but
+has no proven association with this source; it was left untouched. Owner was
+asked to sign into the server once. Real password upload and a second physical
+device sign-in remain unverified until that credential is available.
+
+Bounded job 3d24bfc4 passed seven two-device integration cases using Tide's actual
+SQLite model and credential class (isolated Hub/libsecret fixtures), existing
+Tide credentials/library/source-marker/remote/sign-in recovery tests, Connect
+exporter/watch/install/shared-collection tests, RPM spec parsing and paired pin
+checks. Final focused follow-up receipts and exact deployment paths are recorded
+in the private coordination handoff. Hub code was not changed.
+
+Final job ad56cba4 passed the same full focused set after the final changes,
+including eleven credential tests and seven cross-component exchanges. Both RPM
+specs parse and source candidate pins agree. Private deployment hashes were
+compared with maintained source; no user sign-in was available at this checkpoint.

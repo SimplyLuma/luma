@@ -32,7 +32,7 @@ git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/pre
 
 The source candidate pins are Shell `1.luma.125.mobile20261030.1`, developer
 platform `1.luma.116.mobile20261030.1`, core apps
-`1.luma.106.creator20261030.1` and widgets `1.luma.3`. These identify requested
+`1.luma.124.mobile20261030.1` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
 the receiving branch/device; the Titan's private development install includes
 newer unrelated platform UI work, so do not downgrade an installed package tuple
@@ -99,3 +99,6 @@ Validation and physical-device evidence are recorded in
 keys, user data, raw backups, captures, generated libraries/RPMs and diagnostic
 scripts are intentionally excluded. All product implementation belongs in the
 maintained source paths above, rather than copying the private override tree.
+
+Native Tide/Connect source synchronization repairs and the matching Tide build
+are documented in [Tide server sync](tide-connect-sync.md).

@@ -86,7 +86,7 @@ luma-home-widgets-0.1.0-1.luma.3.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.36.presentation20261025.1.fc44.noarch
 luma-os-remote-1.0.0-1.luma.19.fc44.noarch
 luma-update-1.0.0-1.luma.19.fc44.noarch
-prairie-core-apps-0.1.0-1.luma.106.creator20261030.1.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.124.mobile20261030.1.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.38.creator20261006.1.fc44.noarch
 
@@ -116,7 +116,7 @@ luma-ari-0.1.0-1.luma.19.creator20261019.3.fc44.noarch
 luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
 luma-displays-0.1.0-1.luma.6.creator20261008.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
-luma-tide-0.1.0-2.luma.34.creator20261012.1.fc44.noarch
+luma-tide-0.1.0-2.luma.35.mobile20261030.1.fc44.noarch
 luma-viewer-0.1.0-1.luma.17.creator20261007.1.fc44.noarch
 intel-crashlog-1.2.0-1.luma.1.fc44.x86_64
 luma-vitals-0.1.0-1.luma.14.creator20261005.1.fc44.noarch

@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.106.creator20261030.1%{?dist}
+Release:        1.luma.124.mobile20261030.1%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -55,6 +55,8 @@ Requires:       evolution-data-server
 Requires:       gtk4 >= 4.22
 Requires:       ibm-plex-mono-fonts
 Requires:       libadwaita >= 1.9
+# Native Tide owns the non-interactive credential API used by Connect.
+Requires:       (luma-tide >= 0.1.0-2.luma.35.mobile20261030.1 if luma-tide)
 Requires:       luma-developer-platform >= 0.1.0-1.luma.102.creator20261007.1
 # Messages' glyphs are Prairie's Lucide set by standard name (1.luma.27).
 Requires:       prairie-icon-theme >= 0.1.0-1.luma.28

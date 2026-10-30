@@ -28,8 +28,8 @@ with tempfile.TemporaryDirectory() as directory:
                 c.execute("DELETE FROM sources WHERE id=?", (request["id"],))
 
     tide._model = model
-    tide.keyring_store = lambda reference, label, secret: keyring.__setitem__(reference, secret)
-    tide.keyring_clear = lambda reference: keyring.pop(reference, None)
+    tide.keyring_store = lambda reference, label, secret, code="": keyring.__setitem__(reference, secret)
+    tide.keyring_clear = lambda reference, code="": keyring.pop(reference, None)
     pulled = {}
     collection = tide.tide_collection(database, "", fetch_secret=lambda uid: "hunter2", on_pulled=lambda uid, s: pulled.__setitem__(uid, s))
     items, raw = collection.read(database)

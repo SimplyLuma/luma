@@ -28,7 +28,6 @@ import sys
 
 from .connect_collections import Collection
 
-SCHEMA_NAME = "org.projectluma.Tide.SourcePassword"
 REFERENCE_PREFIX = "secret-service:"
 SECRET_PREFIX = "tide-source:"
 
@@ -60,16 +59,22 @@ def library(environment: dict[str, str] | None = None) -> tuple[Path, str] | Non
     """The Tide library that can hold network sources, and the PYTHONPATH of
     the Tide code that goes with it ("" for the installed Tide).
 
-    A Tide development build keeps its own data beside its source tree
-    (`<root>/data/luma-tide/library.db`, `<root>/src/luma_tide`); until that
-    build ships, its library is the one with network sources in it.
+    An explicit development override wins. Otherwise the installed app's
+    canonical library wins over retained preview libraries, regardless of
+    modification times. A preview is used only if no native library exists.
     """
     env = os.environ if environment is None else environment
     candidates: list[tuple[Path, str]] = []
     override = env.get("LUMA_TIDE_LIBRARY", "")
     if override:
-        candidates.append((Path(override), env.get("LUMA_TIDE_PYTHONPATH", "")))
-    candidates.append((_data_home(environment) / "luma-tide" / "library.db", ""))
+        path = Path(override)
+        if path.is_file() and not _remote_capable(path):
+            raise TideSyncError("The selected Tide library does not support music servers.")
+        return path, env.get("LUMA_TIDE_PYTHONPATH", "")
+    native = _data_home(environment) / "luma-tide" / "library.db"
+    if native.is_file():
+        return native, ""
+    candidates.append((native, ""))
     development = _data_home(environment) / "luma-dev"
     try:
         for root in development.iterdir():
@@ -115,31 +120,64 @@ def _model(database: Path, code: str, request: dict) -> None:
         raise TideSyncError(f"Tide could not update its library ({tail[0]}).")
 
 
-# ── The keyring, in Tide's own schema ─────────────────────────────────────
+# ── The keyring, through the matching Tide implementation ────────────────
 
-def _secret_api():
-    import gi
-    gi.require_version("Secret", "1")
-    from gi.repository import Secret
-    schema = Secret.Schema.new(SCHEMA_NAME, Secret.SchemaFlags.NONE,
-                               {"reference": Secret.SchemaAttributeType.STRING})
-    return Secret, schema
+_KEYRING_SCRIPT = r"""
+import json, sys
+request = json.load(sys.stdin)
+try:
+    from luma_tide.credentials import SecretServiceStore
+    store = SecretServiceStore()
+    operation = request["op"]
+    result = None
+    if operation == "lookup":
+        result = store.lookup_background(request["reference"])
+    elif operation == "store":
+        store.store(request["reference"], request["label"], request["secret"])
+    elif operation == "clear":
+        store.clear(request["reference"])
+    else:
+        raise ValueError("Unknown credential operation")
+    print(json.dumps({"ok": True, "value": result}))
+except Exception:
+    # Never forward a provider exception or traceback containing credentials.
+    print(json.dumps({"ok": False}))
+    sys.exit(1)
+"""
 
 
-def keyring_lookup(reference: str) -> str | None:
-    Secret, schema = _secret_api()
-    return Secret.password_lookup_sync(schema, {"reference": reference}, None)
+def _keyring(request: dict, code: str = ""):
+    env = dict(os.environ)
+    if code:
+        env["PYTHONPATH"] = code + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    try:
+        result = subprocess.run([sys.executable, "-c", _KEYRING_SCRIPT],
+                                input=json.dumps(request), capture_output=True,
+                                text=True, timeout=10, env=env)
+        reply = json.loads(result.stdout) if result.returncode == 0 else {}
+        if reply.get("ok"):
+            return reply.get("value")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    raise TideSyncError("Tide could not access its saved sign-in. Unlock the keyring and sync again.")
 
 
-def keyring_store(reference: str, label: str, secret: str) -> None:
-    Secret, schema = _secret_api()
-    if not Secret.password_store_sync(schema, {"reference": reference}, Secret.COLLECTION_DEFAULT, label, secret, None):
-        raise TideSyncError("The keyring would not save the music server password. Unlock it and sync again.")
+def keyring_lookup(reference: str, code: str = "") -> str | None:
+    return _keyring({"op": "lookup", "reference": reference}, code)
 
 
-def keyring_clear(reference: str) -> None:
-    Secret, schema = _secret_api()
-    Secret.password_clear_sync(schema, {"reference": reference}, None)
+def keyring_store(reference: str, label: str, secret: str, code: str = "") -> None:
+    _keyring({"op": "store", "reference": reference, "label": label, "secret": secret}, code)
+
+
+def keyring_clear(reference: str, code: str = "") -> None:
+    _keyring({"op": "clear", "reference": reference}, code)
+
+
+def source_marker(environment: dict[str, str] | None = None) -> Path:
+    found = library(environment)
+    database = found[0] if found else _data_home(environment) / "luma-tide" / "library.db"
+    return database.with_name("sources-changed")
 
 
 # ── The shared list ───────────────────────────────────────────────────────
@@ -177,22 +215,23 @@ def tide_collection(database: Path, code: str, *, fetch_secret, on_pulled) -> Co
         if current is None or current[1] != expected:
             return False
         local = dict(current[0])
+        auth_refs = {uid: auth for uid, _data, auth in _rows(path)}
         wanted = dict(merged)
         for uid, data in merged:
             if local.get(uid) == data:
                 continue
-            reference = f"{REFERENCE_PREFIX}{uid}"
+            reference = auth_refs.get(uid) or f"{REFERENCE_PREFIX}{uid}"
             if uid not in local:
                 secret = fetch_secret(uid)
                 if secret:
-                    keyring_store(reference, f"Tide: {data['name']}", secret)
+                    keyring_store(reference, f"Tide: {data['name']}", secret, code)
                     on_pulled(uid, secret)
             _model(path, code, {"op": "add", "item": {**data, "id": uid, "auth_ref": reference}})
         for uid in local:
             if uid not in wanted:
                 _model(path, code, {"op": "remove", "id": uid})
                 try:
-                    keyring_clear(f"{REFERENCE_PREFIX}{uid}")
+                    keyring_clear(auth_refs.get(uid) or f"{REFERENCE_PREFIX}{uid}", code)
                 except Exception:
                     pass
         return True
@@ -205,17 +244,23 @@ def sync_tide(*, address: str, token: str, http, state: dict, scope: str,
     from .connect_collections import sync_collection
     from .connect_sync import HubResponseError
 
-    from .app_installs import FLATPAK, TIDE, resolve
+    from .app_installs import FLATPAK, NONE, TIDE, resolve
 
-    if resolve(TIDE, environment).kind == FLATPAK:
+    installation = resolve(TIDE, environment)
+    if installation.kind == NONE and not (environment or os.environ).get("LUMA_TIDE_LIBRARY"):
+        return "music sources: Tide is not installed, skipped"
+    if installation.kind == FLATPAK:
         # The Flatpak Tide keeps server passwords in its own sandboxed keyring,
         # which nothing outside the sandbox can write, and this release of it
         # has no server sources. Its local folders never sync anyway.
         return "music sources: Tide is installed as a Flatpak, which does not take server sources yet, skipped"
     found = library(environment)
     if found is None:
-        return "music sources: no Tide library with network sources, skipped"
+        # A receiving device need not launch Tide before its first sync.
+        found = (_data_home(environment) / "luma-tide" / "library.db", "")
     database, code = found
+    if not database.is_file() or not _remote_capable(database):
+        _model(database, code, {"op": "init"})
     key = f"{scope}|tide-secrets"
     digests: dict[str, str] = dict(state.get(key, {}))
 
@@ -238,17 +283,18 @@ def sync_tide(*, address: str, token: str, http, state: dict, scope: str,
                              environment=environment, remote_changed=remote_changed)
 
     # Passwords: send one this device changed; take one another device changed.
-    sent = received = 0
+    sent = received = unavailable = 0
     remote = {}
-    if remote_changed or any(uid not in digests for uid, _d, _a in _rows(database)):
+    rows = _rows(database)
+    local_secrets = {uid: keyring_lookup(auth, code) for uid, _data, auth in rows
+                     if auth.startswith(REFERENCE_PREFIX)}
+    if remote_changed or any(uid not in digests or not local_secrets.get(uid) for uid, _d, _a in rows):
         remote = {item["ref"]: item for item in http.get_json(f"{address}/api/hub/sync/secrets", token=token).get("items", [])}
-    for uid, data, auth in _rows(database):
+    for uid, data, auth in rows:
         if not auth.startswith(REFERENCE_PREFIX):
+            unavailable += 1
             continue
-        try:
-            secret = keyring_lookup(auth)
-        except Exception:
-            continue  # a locked keyring: try again next time, never send a guess
+        secret = local_secrets[uid]
         ref = secret_ref(uid)
         if secret and digest(secret) != digests.get(uid):
             http_put = getattr(http, "put_json", None)
@@ -257,12 +303,18 @@ def sync_tide(*, address: str, token: str, http, state: dict, scope: str,
             http_put(f"{address}/api/hub/sync/secrets/{ref}", {"secret": secret}, token=token)
             digests[uid] = digest(secret)
             sent += 1
-        elif remote_changed and ref in remote and remote[ref].get("updated_by") != scope.rsplit("|", 1)[-1]:
+        elif ref in remote and (not secret or remote_changed and
+                remote[ref].get("updated_by") != scope.rsplit("|", 1)[-1]):
             fresh = fetch_secret(uid)
-            if fresh and digest(fresh) != digests.get(uid):
-                keyring_store(auth, f"Tide: {data['name']}", fresh)
+            if fresh and (not secret or digest(fresh) != digests.get(uid)):
+                keyring_store(auth, f"Tide: {data['name']}", fresh, code)
                 digests[uid] = digest(fresh)
                 received += 1
+                secret = fresh
+        if not secret:
+            unavailable += 1
     state[key] = digests
+    if unavailable:
+        raise TideSyncError(f"{unavailable} music server(s) need a saved sign-in. Sign into the server in Tide and sync again.")
     extra = [part for part in (f"sent {sent} password(s)" if sent else "", f"received {received} password(s)" if received else "") if part]
     return status + (", " + ", ".join(extra) if extra else "")

@@ -40,6 +40,8 @@ class _FakeSecret:
 
     SchemaAttributeType = types.SimpleNamespace(STRING=0)
     SchemaFlags = types.SimpleNamespace(NONE=0)
+    ServiceFlags = types.SimpleNamespace(OPEN_SESSION=1)
+    SearchFlags = types.SimpleNamespace(ALL=1)
     COLLECTION_DEFAULT = "default"
 
     class Schema:
@@ -55,6 +57,18 @@ class _FakeSecret:
         # once, as separate secrets.
         self._vault: dict[tuple[str, str], str] = {}
         self.fail_next_store = False
+        self.locked = False
+        self.Service = types.SimpleNamespace(get_sync=lambda *_: self)
+
+    def search_sync(self, schema, attributes, flags, _cancellable):
+        assert flags == self.SearchFlags.ALL
+        self.calls.append(("search", attributes["reference"], schema.name))
+        key = schema.name, attributes["reference"]
+        if key not in self._vault:
+            return []
+        return [types.SimpleNamespace(get_locked=lambda: self.locked,
+            load_secret_sync=lambda _: None,
+            get_secret=lambda: types.SimpleNamespace(get_text=lambda: self._vault[key]))]
 
     def password_store_sync(self, schema, attributes, collection, label, secret, _cancellable):
         self.calls.append(("store", attributes["reference"], label, schema.name))
@@ -91,6 +105,24 @@ class SecretServiceStoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop("gi", None)
         sys.modules.pop("gi.repository", None)
+
+    def test_background_read_uses_metadata_search_and_preserves_preview_entry(self) -> None:
+        store = SecretServiceStore()
+        reference = new_reference()
+        self.secret._vault[LEGACY_SCHEMA_NAME, reference] = "synthetic-password"
+        self.assertEqual(store.lookup_background(reference), "synthetic-password")
+        self.assertEqual([call[0] for call in self.secret.calls], ["search", "search"])
+        self.assertIn((LEGACY_SCHEMA_NAME, reference), self.secret._vault)
+        self.assertNotIn((SCHEMA_NAME, reference), self.secret._vault)
+
+    def test_background_locked_item_is_an_error_not_a_missing_password(self) -> None:
+        store = SecretServiceStore()
+        reference = new_reference()
+        self.secret._vault[SCHEMA_NAME, reference] = "synthetic-password"
+        self.secret.locked = True
+        with self.assertRaises(CredentialUnavailable):
+            store.lookup_background(reference)
+        self.assertEqual([call[0] for call in self.secret.calls], ["search"])
 
     def test_store_and_lookup_round_trip_through_the_schema(self) -> None:
         store = SecretServiceStore()

@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync to the Luma Hub when Notes, Contacts, Photos, Clocks, Weather or Books change
+Description=Sync to the Luma Hub when Notes, Contacts, Photos, Clocks, Weather, Books or Music servers change
 
 [Path]
 # Directories, so SQLite journal and WAL writes count. PathModified, not
@@ -9,6 +9,8 @@ PathModified=%h/.local/share/luma/notes
 PathModified=%h/.local/share/prairie/weather
 PathModified=%h/.local/share/prairie/clock
 PathModified=%h/.local/share/leaf
+# Tide signals server edits separately from playback and indexing writes.
+PathChanged=%h/.local/share/luma-tide/sources-changed
 # The same apps installed as Flatpaks keep their data in their sandbox's data
 # directory.
 PathModified=%h/.var/app/org.projectluma.Notes/data/luma/notes
