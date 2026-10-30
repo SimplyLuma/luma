@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T16:58Z
+- Updated: 2026-10-30T17:13Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,26 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT17:13Z — conditional nightly target; combined VM timeout retained; bounded retry:
+- User wants tonight's nightly IF ready. Communicated clearly: next45–60min
+  estimate meant tested x86 DEVELOPMENT candidate, not production/nightly release.
+  ARM runtime, internal Android MAC/identity isolation, wider hardware/power and
+  remaining acceptance gates are release blockers. Do not publish by assumption.
+- R126 child920c539c FAILED17:10:56Z before APK testing: rpm-ostree replace
+  reached its600s timeout during post-install scripts. Diagnostics401f02c7 /
+  3acbc61b /e4ba570c /3bb19583 show actual progress, Installer post189471ms,
+  shared MIME cache update waiting in rofiles-fuse. Guest~8.3GiB available/no
+  swap, so no RAM bottleneck observed. No GUI/candidate pass inferred.
+- Actual child/profile restored and parent6e17ee51 restored original24cf policy;
+  inactive offline-created R126 extension retained for exact-hash cleanup.
+- NEW R137 same seven RPM hashes, fresh one-shot guest/profile/extension paths,
+  longer BOUNDED update1200s/SSH1300s; root4500s/guard4800s observation. Old
+  R126 evidence untouched. Offline preparation retires only byte/owner/xattr
+  verified R55/R126 task-owned fixture files, preserving all other extensions.
+  Manifest d31fa94894dc94205685606ec73aad28693945cc87749a77e32f864121298aad.
+  Guard4fixture681cef20 PASSED17:12:21Z; parent dev-android-highmem-reply-r137-a0c2bd64
+  admitted normally. Continue observing its actual child to final result.
 
 CURRENT16:58Z — ARM native image/export PASS; combined x86 VM admission active:
 - Native x86 build host cross-compiled AArch64 target: all75864 steps completed
