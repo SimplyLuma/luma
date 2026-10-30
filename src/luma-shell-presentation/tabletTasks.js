@@ -199,7 +199,7 @@ export class TabletTasks {
         if (!clone) return;
         clone.ease({scale_x: home ? .78 : 1, scale_y: home ? .78 : 1,
             translation_y: home ? -64 * this.home._scale : 0, opacity: home ? 0 : 255,
-            duration: St.Settings.get().enable_animations ? (home ? 180 : 120) : 0,
+            duration: St.Settings.get().enable_animations ? 120 : 0,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => clone.destroy()});
     }
     verticalUpdate(distance) {
@@ -208,6 +208,8 @@ export class TabletTasks {
         if (this._navigationLift) {
             this._navigationLift.set_scale(1 - progress * .18, 1 - progress * .18);
             this._navigationLift.translation_y = -progress * 40 * this.home._scale;
+            // Fade follows the finger from the first movement, not only release.
+            this._navigationLift.opacity = Math.round(255 * (1 - progress * .9));
         }
         if (distance > -56 * this.home._scale || this._hold || this._held) return;
         this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
@@ -769,5 +771,104 @@ export class TabletTasks {
         this._chrome = [];
         for (const {actions, signals} of this._actions.values()) signals.forEach(id => actions.disconnect(id));
         this._actions.clear();
+    }
+}
+
+// Handheld windows fade at final geometry; Desktop keeps dock travel.
+export class HandheldMotion {
+    constructor(home) {
+        this.home = home;
+        this.wm = Main.wm;
+        this._open = this.wm._lumaPlayOpen;
+        this._target = this.wm._lumaDockTarget;
+        this._actors = new Set();
+        this._surfaceReveals = new Map();
+        this._openOverride = async (actor, done) => {
+            if (!this._handles(actor)) return this._open.call(this.wm, actor, done);
+            actor._lumaLaunchRect = null;
+            actor.remove_all_transitions();
+            actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0, opacity: 0});
+            actor.show();
+            this._actors.add(actor);
+            // Same native completion contract, including interrupted effects.
+            actor.ease({opacity: 255,
+                duration: St.Settings.get().enable_animations ? 160 : 0,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: () => {this._actors.delete(actor); done();}});
+        };
+        this._targetOverride = window => this._handles(window.get_compositor_private())
+            ? null : this._target.call(this.wm, window);
+        if (this._open) this.wm._lumaPlayOpen = this._openOverride;
+        if (this._target) this.wm._lumaDockTarget = this._targetOverride;
+    }
+    // Full-page notifications keep their final layout throughout the reveal.
+    // Reflowing every card at every intermediate width is costly and changes
+    // text wrapping in flight. Only the cached frame's centered clip moves.
+    revealNotification(actor, startWidth, startHeight) {
+        this.cancelReveal(actor);
+        if (!St.Settings.get().enable_animations) return;
+        const width = actor.width, height = actor.height;
+        const state = {paint: 0, idle: 0, snapshot: null, children: null, timeline: null};
+        const paint = amount => {
+            const w = startWidth + (width - startWidth) * amount;
+            const h = startHeight + (height - startHeight) * amount;
+            (state.snapshot ?? actor).set_clip((width - w) / 2, 0, w, h);
+        };
+        state.cancel = () => {
+            if (state.paint) global.stage.disconnect(state.paint);
+            if (state.idle) GLib.source_remove(state.idle);
+            state.timeline?.stop();
+            state.snapshot?.destroy();
+            for (const [child, opacity] of state.children ?? []) child.opacity = opacity;
+            actor.remove_clip();
+            this._surfaceReveals.delete(actor);
+        };
+        this._surfaceReveals.set(actor, state);
+        paint(0);
+        state.paint = global.stage.connect_after('after-paint', () => {
+            global.stage.disconnect(state.paint); state.paint = 0;
+            state.idle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                state.idle = 0;
+                try {
+                    actor.remove_clip();
+                    const [x, y] = actor.get_transformed_position();
+                    const rect = new Mtk.Rectangle({x, y, width, height});
+                    const [, , , scale] = global.stage.get_capture_final_size(rect);
+                    const content = global.stage.paint_to_content(rect, scale, null, Clutter.PaintFlag.NO_CURSORS);
+                    state.snapshot = new Clutter.Actor({content, x: actor.x, y: actor.y,
+                        width, height, reactive: false});
+                    const parent = actor.get_parent();
+                    parent.insert_child_above(state.snapshot, actor);
+                    state.children = actor.get_children().map(child => [child, child.opacity]);
+                    for (const [child] of state.children) child.opacity = 0;
+                    paint(0);
+                    state.timeline = new Clutter.Timeline({actor, duration: 240,
+                        progress_mode: Clutter.AnimationMode.EASE_OUT_QUART});
+                    state.timeline.connect('new-frame', () => paint(state.timeline.get_progress()));
+                    state.timeline.connect('completed', () => this.cancelReveal(actor));
+                    state.paint = global.stage.connect_after('after-paint', () => {
+                        global.stage.disconnect(state.paint); state.paint = 0;
+                        state.timeline.start();
+                    });
+                    state.snapshot.queue_redraw();
+                } catch (error) {
+                    this.cancelReveal(actor);
+                    console.warn(`Unable to cache notification reveal: ${error.message}`);
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+    }
+    cancelReveal(actor) { this._surfaceReveals.get(actor)?.cancel(); }
+    _handles(actor) {
+        return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked &&
+            !Main.sessionMode.isGreeter && actor?.meta_window.get_window_type() === Meta.WindowType.NORMAL;
+    }
+    destroy() {
+        if (this.wm._lumaPlayOpen === this._openOverride) this.wm._lumaPlayOpen = this._open;
+        if (this.wm._lumaDockTarget === this._targetOverride) this.wm._lumaDockTarget = this._target;
+        for (const actor of [...this._surfaceReveals.keys()]) this.cancelReveal(actor);
+        for (const actor of [...this._actors]) actor.remove_all_transitions();
+        this._actors.clear();
     }
 }

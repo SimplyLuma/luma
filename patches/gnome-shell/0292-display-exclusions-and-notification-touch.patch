@@ -59,7 +59,30 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          }
          const unchanged = this._targetWidth === width && this._targetHeight === height;
          this._targetHeight = height;
-@@ -441,15 +465,29 @@
+@@ -427,10 +451,21 @@
+             this._anchor();
+             return;
+         }
++        if (!this._fullPage) Main.presentation?._motion?.cancelReveal(this);
++        if (this._fullPage && Main.presentation?._motion) {
++            const fromWidth = this.width, fromHeight = this.height;
++            this.remove_transition('width'); this.remove_transition('height');
++            this.set_size(width, height);
++            this._anchor();
++            if (!wasFullPage)
++                Main.presentation._motion.revealNotification(this, fromWidth, fromHeight);
++            return;
++        }
+         this._anchor();
+         if (unchanged) return;
+         this.remove_transition('width'); this.remove_transition('height');
+-        this.ease({width, height, duration: St.Settings.get().enable_animations ? MORPH_TIME : 0,
++        this.ease({width, height, duration: St.Settings.get().enable_animations ?
++            (Main.presentation?.mode !== 'desktop' ? 260 : MORPH_TIME) : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUART});
+         for (const property of ['width', 'height'])
+             this.get_transition(property)?.set_cubic_bezier_progress(
+@@ -441,15 +476,29 @@
          const monitor = Main.layoutManager.primaryMonitor;
          if (!monitor) return;
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
@@ -92,7 +115,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
          const shoulderY = this._bottomAnchored ? height - 12 * scale : 0;
          this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: shoulderY, x2: 0, y2: shoulderY + 12 * scale}));
-@@ -507,7 +545,7 @@
+@@ -507,7 +556,7 @@
          this._fresh = false;
          this._state = 'tray';
          this._records = records();
@@ -101,7 +124,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
          header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
          this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
-@@ -526,6 +564,21 @@
+@@ -526,6 +575,21 @@
          this._scroll.set_child(this._list); column.add_child(this._scroll);
          this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
          column.add_child(this._empty);
@@ -123,7 +146,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._setContent(column);
          this._cards.clear();
          this._syncTray(); this._render();
-@@ -560,7 +613,22 @@
+@@ -560,7 +624,22 @@
          this._records.forEach((n, index) => {
              let frame = this._cards.get(n);
              if (!frame) {

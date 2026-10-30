@@ -174,7 +174,7 @@ export class HandheldOptions {
                 paint(0); pointer.show();
                 if (!animation || !St.Settings.get().enable_animations) {finish(); return;}
                 const timeline = this._reveal = new Clutter.Timeline({actor: pointer,
-                    duration: opening ? 320 : 200, progress_mode: Clutter.AnimationMode.EASE_OUT_QUART});
+                    duration: opening ? 220 : 160, progress_mode: Clutter.AnimationMode.EASE_OUT_QUART});
                 timeline.connect('new-frame', () => paint(timeline.get_progress()));
                 timeline.connect('completed', () => {
                     if (this._reveal === timeline) this._reveal = null;

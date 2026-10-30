@@ -22,7 +22,7 @@ import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
-import {TabletTasks} from './tabletTasks.js';
+import {TabletTasks, HandheldMotion} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
@@ -59,6 +59,7 @@ export class Presentation {
         this._statusActionSignals = [];
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
         this._powerButton = new HandheldPowerButton();
+        this._motion = new HandheldMotion(this);
         this._page = 0;
         this._displayGeometry = null;
         for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
@@ -679,7 +680,13 @@ export class Presentation {
             return;
         this._tasks.beginLift();
         this._tasks.beforeHome();
-        this._rebuild();
+        // State, app and monitor signals keep Home current while hidden. Reuse
+        // its actors on return instead of rebuilding every icon and widget on
+        // the same frame as the navigation animation.
+        const rect = this._tasks.homeRect() ?? Main.layoutManager.primaryMonitor;
+        if (rect && (!this._layout || this._home.x !== rect.x || this._home.y !== rect.y ||
+            this._home.width !== rect.width || this._home.height !== rect.height))
+            this._rebuild();
         for (const actor of global.get_window_actors()) {
             const window = actor.meta_window;
             if (window.get_window_type() === Meta.WindowType.NORMAL && !window.minimized) {
@@ -978,6 +985,7 @@ export class Presentation {
         this._destroyed = true;
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
+        this._motion.destroy();
         this._cancellable.cancel();
         this.mode = 'desktop';
         Main.shelf?.setPresentationMode?.('desktop');

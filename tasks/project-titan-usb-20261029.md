@@ -11,6 +11,38 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
+## Handheld animation pass — 2026-10-29
+
+Handheld app windows fade at their final geometry instead of using Desktop's
+bottom/dock travel. Desktop and dialogs delegate to the existing native motion;
+interrupted effects retain the native completion callbacks. Swipe-to-Home fades
+with the finger from the first movement and finishes in 120 ms. Returning Home
+reuses its icon/widget actors when its bounds are unchanged; existing state,
+installed-app and monitor signals still rebuild changed layouts.
+
+Quick Options retains its fixed right-side cached reveal, shortened to 220 ms
+opening / 160 ms closing. Full-screen notifications allocate their cards once
+and reveal a cached frame from the centered notification island, avoiding text
+rewrapping at every intermediate width. Native controls return after the reveal;
+cancellation removes pending paints/idle work, clips and the temporary frame.
+Larger anchored/desktop notification layouts retain their existing animation.
+
+Actual Titan traces show constant app scale/position while opacity changes, and
+drag opacity decreasing before release. Home actor identity survives the return.
+The notification cache paints ten intermediate reveal states; the preceding
+live-layout trace painted one. Preparation still takes several hundred ms in
+observed runs, and motion is not consistently 60 FPS. Direct live clipping,
+opacity-only and lower-resolution capture trials did not improve this device;
+those experiments were discarded. No GPU governor change was retained.
+
+Native touchscreen Quick Options open/upward dismissal and notification upward
+dismissal pass. Bounded device checks pass for cancellation before first paint,
+cancellation during preparation/motion, reduced-motion overlays, Desktop motion
+delegation and Home reuse. All 266 pinned Shell patches apply and modified JS /
+builder syntax pass (5ac349ce); compact/grid checks pass (c843693b). Clean source
+resource overrides persist the delivery without restarting Shell or changing the
+kernel. No general OS release or physical qualification of other devices is claimed.
+
 ## Owner review correction: attached compact bars — 2026-10-29
 
 The previous pass misread the required compact presentation. Moving the home
