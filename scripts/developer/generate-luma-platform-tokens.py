@@ -792,6 +792,18 @@ def render_keycap_shell_css() -> str:
         return ("background-color: " + bottom, "background-gradient-direction: vertical",
                 "background-gradient-start: " + top, "background-gradient-end: " + bottom)
 
+    # Structure shared by every appearance, High Contrast included: the strip,
+    # tool icons and number hints keep Keycap's sizes while the theme colours.
+    base = "#keyboard.luma-keycap"
+    lines.append("\n/* every appearance */")
+    rule([f"{base} .word-suggestions", f"{base} .luma-keycap-tools"],
+         f"min-height: {g['strip_height']}px", "padding: 0", "spacing: 0")
+    rule([f"{base} .luma-keycap-tools StButton"], f"min-width: {g['strip_button']}px",
+         f"min-height: {g['strip_height']}px", "padding: 0 6px")
+    rule([f"{base} .luma-keycap-tools StIcon"], f"icon-size: {g['icon']}px")
+    rule([f"{base} .luma-keycap-hint"], f"font-size: {g['hint_size']}px",
+         f"font-weight: {g['hint_weight']}")
+
     for mode in ("light", "dark"):
         c = {key: (_keycap_colour(value) if isinstance(value, str) else value)
              for key, value in tokens[mode].items()}

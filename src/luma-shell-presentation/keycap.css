@@ -1,6 +1,26 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
  * Generated from config/shared/design-tokens.json `keycap`; do not edit. */
 
+/* every appearance */
+#keyboard.luma-keycap .word-suggestions,
+#keyboard.luma-keycap .luma-keycap-tools {
+  min-height: 42px;
+  padding: 0;
+  spacing: 0;
+}
+#keyboard.luma-keycap .luma-keycap-tools StButton {
+  min-width: 30px;
+  min-height: 42px;
+  padding: 0 6px;
+}
+#keyboard.luma-keycap .luma-keycap-tools StIcon {
+  icon-size: 21px;
+}
+#keyboard.luma-keycap .luma-keycap-hint {
+  font-size: 10px;
+  font-weight: 600;
+}
+
 /* light */
 #keyboard.luma-keycap-light {
   background-color: #c3c4ca;
