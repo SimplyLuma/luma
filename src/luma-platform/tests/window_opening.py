@@ -18,6 +18,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Adw, Gio, GLib
 from luma_appkit import AppWindow, CommandRegistry
 from luma_appkit import window_policy
+from luma_appkit import session_context as session_context_module
 
 # The kit's own record is the fallback store; this test is about the kit, not
 # about Tiling Shell's window memory, so the kit keeps its geometry here.
@@ -136,7 +137,10 @@ with tempfile.TemporaryDirectory() as root:
 
     # 6. On a handheld the shell draws the surface chrome, so the phone layout
     #    is right to hide the row and the guarantee stays out of the way.
+    # The session broker keeps the context it read when the first window
+    # subscribed; start a new one so it reads the handheld environment.
     os.environ['LUMA_PRESENTATION_MODE'] = 'fullscreen-mobile'
+    session_context_module._broker = None
     try:
         handheld = window()
         assert not handheld.get_decorated()
@@ -145,6 +149,7 @@ with tempfile.TemporaryDirectory() as root:
         settle()
     finally:
         del os.environ['LUMA_PRESENTATION_MODE']
+        session_context_module._broker = None
 
 print('PASS: opening size from the shared rule, wider than the window’s own '
       'phone layout; remembered narrow size, an outright hide and a resize all '
