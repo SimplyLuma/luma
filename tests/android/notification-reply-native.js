@@ -108,8 +108,12 @@ export async function run(options = {}) {
             keyboard.notify_keyval(GLib.get_monotonic_time(), character.codePointAt(0), Clutter.KeyState.RELEASED);
             await sleep(15);
         }
-        check(card._replyEntry.get_text() === text, 'Virtual keyboard text did not reach the native editor');
-        report.typed_text = text;
+        // Virtual devices enqueue input; a timer can run before the next stage
+        // event dispatch. Require the editor's actual value, within a deadline.
+        for (let attempt = 0; attempt < 100 && card._replyEntry.get_text() !== text; attempt++)
+            await sleep(20);
+        report.typed_text = card._replyEntry.get_text();
+        check(report.typed_text === text, 'Virtual keyboard text did not reach the native editor');
         await capture('before-send');
         await click(card._replyButton);
         await sleep(500);

@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T03:59:39+00:00
+- Updated: 2026-10-30T04:06:35+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,23 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT03:59Z — corrected live-card probe active:
+CURRENT04:06Z — actual Luma card/input reached; dispatch observation corrected:
+- r40 e6cc8f8e failed at editor text comparison before Send. Actual96 label and
+  waydroid_t process under Enforcing passed again; SDK5/APKr16 hashes and app UID/
+  PID matched. Real live Luma card, policy(dndfalse/bannertrue), matching native
+  owner, mapped entry/button and actual pointer focus all passed. Failed-state.png
+  captured real Luma card/editor with synthetic text, not a mock or injected card.
+- No Send click and no Android reply receipt. Observer previously compared text
+  immediately after queued virtual keyboard events. Source now waits at most2s
+  for actual editor contents and records observed text; no direct set_text, input
+  bypass or fabricated receipt. Still UNQUALIFIED until actual runtime pass.
+- r40 cleanup restored settings/removed owned extension, original XML restored/
+  raw alias unmounted. No VM active at this note. Next run also records window
+  and native guard results independently of UI failure so separate gates progress;
+  any incomplete scope still makes the overall job fail. Same immutable96/127/
+  SDK5/APKr16 payloads, no package/image rebuild required for probe-only change.
+
+HISTORICAL03:59Z — corrected live-card probe active:
 - LIVE dev-android-reply-vm-r40-e6cc8f8e.service normal10GiB/root1GiB;
   frozen reply-vm-r40, source probe940dad211. Preflight5ab3d228 PASSED all
   helper/package hashes and Python/Bash/JS syntax. Same96/127/SDK5/APKr16.
