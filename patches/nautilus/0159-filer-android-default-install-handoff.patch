@@ -1,0 +1,148 @@
+From: Project Luma <engineering@projectluma.org>
+Subject: [PATCH] Filer: ask the host installer to handle default APK activation
+
+Use the same host package service already permitted for package drops. The host
+checks its actual default application; custom handlers and older hosts retain
+the normal open path. Never duplicate a launch after an uncertain D-Bus reply,
+and keep asynchronous view lifetime safe.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -1315,7 +1315,7 @@
+ }
+ 
+ static void
+-nautilus_files_view_activate_files (NautilusFilesView *view,
++nautilus_files_view_activate_files_without_installer (NautilusFilesView *view,
+                                     GList             *files,
+                                     NautilusOpenFlags  flags,
+                                     gboolean           confirm_multiple)
+@@ -1396,6 +1396,126 @@
+                                   confirm_multiple);
+ 
+     g_free (path);
++}
++
++
++/* A sandboxed file manager cannot resolve the host's default application.
++ * Ask its existing package broker before the generic OpenURI chooser. The
++ * host declines when someone selected another handler; that path stays intact.
++ */
++typedef struct
++{
++    GWeakRef view;
++    GList *files;
++    NautilusOpenFlags flags;
++    gboolean confirm_multiple;
++} DefaultInstallRequest;
++
++static void
++default_install_requested (GObject      *source,
++                           GAsyncResult *result,
++                           gpointer      user_data)
++{
++    DefaultInstallRequest *request = user_data;
++    g_autoptr (NautilusFilesView) view = g_weak_ref_get (&request->view);
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source),
++                                                             result, &error);
++    gboolean handled = FALSE;
++
++    if (reply != NULL)
++    {
++        g_variant_get (reply, "(b)", &handled);
++    }
++
++    if (view != NULL)
++    {
++        if ((reply != NULL && !handled) ||
++            g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD) ||
++            g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN) ||
++            g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_NAME_HAS_NO_OWNER))
++        {
++            /* An explicit decline or absent optional method did not launch
++             * anything. Fall back once, without re-entering this handoff. */
++            nautilus_files_view_activate_files_without_installer (view, request->files,
++                                                                  request->flags,
++                                                                  request->confirm_multiple);
++        }
++        else if (error != NULL)
++        {
++            GtkWindow *window = nautilus_files_view_get_containing_window (view);
++            if (window != NULL)
++            {
++                g_autofree char *message = g_strdup_printf (
++                    _("The application installer request could not be confirmed: %s"),
++                    error->message);
++                nautilus_show_ok_dialog (_("Installation unavailable"), message,
++                                         GTK_WIDGET (window));
++            }
++            /* A lost reply can follow a successful launch. Do not open a
++             * second installer through the portal after an uncertain result. */
++        }
++    }
++
++    g_weak_ref_clear (&request->view);
++    nautilus_file_list_free (request->files);
++    g_free (request);
++}
++
++static void
++nautilus_files_view_activate_files (NautilusFilesView *view,
++                                    GList             *files,
++                                    NautilusOpenFlags  flags,
++                                    gboolean           confirm_multiple)
++{
++    g_autoptr (GFile) location = NULL;
++    g_autofree char *path = NULL;
++    g_autofree char *lower_path = NULL;
++    GDBusConnection *connection = NULL;
++
++    if (files != NULL && files->next == NULL &&
++        !nautilus_file_is_directory (files->data))
++    {
++        location = nautilus_file_get_location (files->data);
++        if (g_file_is_native (location))
++        {
++            path = g_file_get_path (location);
++        }
++        if (path != NULL)
++        {
++            lower_path = g_ascii_strdown (path, -1);
++        }
++    }
++
++    if (lower_path != NULL &&
++        (g_str_has_suffix (lower_path, ".apk") ||
++         g_str_has_suffix (lower_path, ".apks") ||
++         g_str_has_suffix (lower_path, ".xapk") ||
++         g_str_has_suffix (lower_path, ".apkm")))
++    {
++        connection = g_application_get_dbus_connection (g_application_get_default ());
++    }
++
++    if (connection != NULL)
++    {
++        g_autofree char *uri = g_file_get_uri (location);
++        DefaultInstallRequest *request = g_new0 (DefaultInstallRequest, 1);
++        g_weak_ref_init (&request->view, view);
++        request->files = nautilus_file_list_copy (files);
++        request->flags = flags;
++        request->confirm_multiple = confirm_multiple;
++        g_dbus_connection_call (connection,
++                                "org.projectluma.ApplicationInstaller2",
++                                "/org/projectluma/ApplicationInstaller2",
++                                "org.projectluma.ApplicationInstaller2",
++                                "RequestDefaultInstall", g_variant_new ("(s)", uri),
++                                G_VARIANT_TYPE ("(b)"), G_DBUS_CALL_FLAGS_NONE, 10000,
++                                NULL, default_install_requested, request);
++        return;
++    }
++
++    nautilus_files_view_activate_files_without_installer (view, files, flags,
++                                                          confirm_multiple);
+ }
+ 
+ void

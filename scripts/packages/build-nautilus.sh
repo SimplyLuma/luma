@@ -20,8 +20,8 @@ platform_release=${LUMA_FILER_PLATFORM_RELEASE_OVERRIDE:-$LUMA_DEVELOPER_PLATFOR
 # The Filer release carries patches 0001 through filer_series_last in filename
 # order; later files stay in the tree for the next release and are held with
 # the reason below. filer_series_holds names any other held file, with why.
-filer_series_last=0158
-filer_series_hold_reason='beyond the complete creator series through 0158'
+filer_series_last=0159
+filer_series_hold_reason='beyond the complete creator series through 0159'
 filer_series_holds=()
 for tool in cpio git mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
@@ -35,7 +35,7 @@ done
   exit 1
 }
 
-architecture=${LUMA_TARGET_ARCHITECTURE:-x86_64}
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$architecture" in
   x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
   aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
@@ -48,14 +48,8 @@ output_dir="$repo_root/build/packages/nautilus"
 mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$NAUTILUS_SRPM"
-if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null 2>&1 || {
-    printf 'error: dnf5 is required when the admitted Nautilus SRPM is not cached\n' >&2
-    exit 1
-  }
-  dnf5 download --source --destdir "$cache_dir" \
-    "nautilus-50.2.2-2.fc44"
-fi
+bash "$repo_root/scripts/packages/fetch-source-rpm.sh" "$srpm" "$NAUTILUS_SRPM_SHA256" \
+  "https://media.simplyluma.com/sources/srpm/$NAUTILUS_SRPM_SHA256/nautilus-50.2.2-2.fc44.src.rpm"
 
 printf '%s  %s\n' "$NAUTILUS_SRPM_SHA256" "$srpm" |
   sha256sum --check --status || {
