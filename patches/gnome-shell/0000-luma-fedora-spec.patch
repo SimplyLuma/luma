@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.123.dash20261026.1%{?dist}
++Release:        1.luma.125.mobile20261030.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,301 @@
+@@ -32,6 +32,302 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -283,6 +283,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1280:      0290-compact-login-action-bar.patch
 +Patch1281:      0291-shared-handheld-startup-and-input.patch
 +Patch1282:      0292-display-exclusions-and-notification-touch.patch
++Patch1283:      0293-mobile-lock-notification-island.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

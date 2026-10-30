@@ -11,6 +11,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as LumaGrid from 'resource:///org/gnome/shell/ui/lumaGrid.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
+import {PanelReveal} from './handheldOptions.js';
 import {gettext as _} from 'gettext';
 
 function control(name, run, icon = null) {
@@ -806,60 +807,24 @@ export class HandheldMotion {
     // text wrapping in flight. Only the cached frame's centered clip moves.
     revealNotification(actor, startWidth, startHeight) {
         this.cancelReveal(actor);
-        if (!St.Settings.get().enable_animations) return;
-        const width = actor.width, height = actor.height;
-        const state = {paint: 0, idle: 0, snapshot: null, children: null, timeline: null};
-        const paint = amount => {
-            const w = startWidth + (width - startWidth) * amount;
-            const h = startHeight + (height - startHeight) * amount;
-            (state.snapshot ?? actor).set_clip((width - w) / 2, 0, w, h);
-        };
-        state.cancel = () => {
-            if (state.paint) global.stage.disconnect(state.paint);
-            if (state.idle) GLib.source_remove(state.idle);
-            state.timeline?.stop();
-            state.snapshot?.destroy();
-            for (const [child, opacity] of state.children ?? []) child.opacity = opacity;
-            actor.remove_clip();
-            this._surfaceReveals.delete(actor);
-        };
-        this._surfaceReveals.set(actor, state);
-        paint(0);
-        state.paint = global.stage.connect_after('after-paint', () => {
-            global.stage.disconnect(state.paint); state.paint = 0;
-            state.idle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                state.idle = 0;
-                try {
-                    actor.remove_clip();
-                    const [x, y] = actor.get_transformed_position();
-                    const rect = new Mtk.Rectangle({x, y, width, height});
-                    const [, , , scale] = global.stage.get_capture_final_size(rect);
-                    const content = global.stage.paint_to_content(rect, scale, null, Clutter.PaintFlag.NO_CURSORS);
-                    state.snapshot = new Clutter.Actor({content, x: actor.x, y: actor.y,
-                        width, height, reactive: false});
-                    const parent = actor.get_parent();
-                    parent.insert_child_above(state.snapshot, actor);
-                    state.children = actor.get_children().map(child => [child, child.opacity]);
-                    for (const [child] of state.children) child.opacity = 0;
-                    paint(0);
-                    state.timeline = new Clutter.Timeline({actor, duration: 240,
-                        progress_mode: Clutter.AnimationMode.EASE_OUT_QUART});
-                    state.timeline.connect('new-frame', () => paint(state.timeline.get_progress()));
-                    state.timeline.connect('completed', () => this.cancelReveal(actor));
-                    state.paint = global.stage.connect_after('after-paint', () => {
-                        global.stage.disconnect(state.paint); state.paint = 0;
-                        state.timeline.start();
-                    });
-                    state.snapshot.queue_redraw();
-                } catch (error) {
-                    this.cancelReveal(actor);
-                    console.warn(`Unable to cache notification reveal: ${error.message}`);
+        const reveal = new PanelReveal(actor, {
+            width: actor.width, height: actor.height, initialWidth: startWidth,
+            initialHeight: startHeight, contents: [actor._surface.child], done: target => {
+                this._surfaceReveals.delete(actor);
+                if (!target) {
+                    actor.set_size(startWidth, startHeight);
+                    actor.close();
                 }
-                return GLib.SOURCE_REMOVE;
-            });
-        });
+            }});
+        this._surfaceReveals.set(actor, reveal);
+        reveal.begin(actor._pullStart ?? 0, actor._pulling ? null : 1);
     }
-    cancelReveal(actor) { this._surfaceReveals.get(actor)?.cancel(); }
+    updateNotificationPull(actor, delta) {this._surfaceReveals.get(actor)?.update(delta);}
+    endNotificationPull(actor, cancel = false) {this._surfaceReveals.get(actor)?.release(cancel);}
+    cancelReveal(actor) {
+        this._surfaceReveals.get(actor)?.cancel();
+        this._surfaceReveals.delete(actor);
+    }
     _handles(actor) {
         return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked &&
             !Main.sessionMode.isGreeter && actor?.meta_window.get_window_type() === Meta.WindowType.NORMAL;

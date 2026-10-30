@@ -16,7 +16,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {homeLayout} from './layout.js';
+import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
 import {readDisplayGeometry, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
@@ -103,12 +103,16 @@ export class Presentation {
             pan_axis: Clutter.PanAxis.Y});
         settingsPan.set_begin_threshold(4);
         settingsPan.connect('may-recognize', () => this.mode !== 'desktop' && !Main.sessionMode.isLocked);
-        settingsPan.connect('recognize', () => { this._settingsPanDistance = 0; });
-        settingsPan.connect('pan-update', gesture => {
-            this._settingsPanDistance += gesture.get_delta_abs().get_y();
-            if (this._settingsPanDistance > 24 * (this._scale ?? 1))
-                Main.panel.statusArea.quickSettings.menu.open();
+        settingsPan.connect('recognize', () => {
+            if (this.mode === 'mobile') this._handheldOptions.beginPull();
         });
+        settingsPan.connect('pan-update', gesture => {
+            const delta = gesture.get_accumulated_delta_abs().get_y();
+            if (this.mode === 'mobile') this._handheldOptions.updatePull(delta);
+            else if (delta > 24 * (this._scale ?? 1)) Main.panel.statusArea.quickSettings.menu.open();
+        });
+        settingsPan.connect('end', () => this._handheldOptions.endPull());
+        settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
         this._statusRight.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
         const settingsTap = new Clutter.ClickGesture();
         settingsTap.connect('may-recognize', gesture => !Main.sessionMode.isLocked &&
@@ -133,9 +137,10 @@ export class Presentation {
         this._connect(this._pageSwipe, 'begin', tracker => {
             if (!this._layout || this._layout.pages < 2) return;
             this._strip.remove_all_transitions();
-            for (const page of this._pageViews) page.show();
+            const progress = this._paintedPage();
+            this._syncPageViews(progress);
             tracker.confirmSwipe(this._home.width,
-                this._pageViews.map((_page, index) => index), this._page, this._page);
+                this._pageViews.map((_page, index) => index), progress, Math.round(progress));
         });
         this._connect(this._pageSwipe, 'update', (_tracker, progress) => {
             this._strip.translation_x = this._pageOffset(progress);
@@ -666,12 +671,13 @@ export class Presentation {
     _syncAccessibilityStyles() {
         const highContrast = St.Settings.get().high_contrast;
         const opaque = highContrast || this._settings.get_boolean('reduce-transparency');
-        for (const actor of [this._home, this._options].filter(Boolean)) {
+        for (const actor of [this._home, this._options, peekNotificationLip()].filter(Boolean)) {
             if (highContrast) actor.add_style_class_name('high-contrast');
             else actor.remove_style_class_name('high-contrast');
         }
         if (opaque) this._home.add_style_class_name('opaque');
         else this._home.remove_style_class_name('opaque');
+        this._handheldOptions?.syncAccessibility();
         this._queueRebuild();
     }
 
@@ -863,7 +869,10 @@ export class Presentation {
                     : new Clutter.Clone({source: item}));
             }
         }
+        this._pageVisibilityKey = null;
+        this._strip.connect('notify::translation-x', () => this._syncPageViews(this._paintedPage()));
         this._strip.translation_x = this._pageOffset(this._page);
+        this._syncPageViews(this._page);
         this._buildDock({...monitor, x: 0, y: 0});
         this._buildPageIndicators(monitor);
         this._pageSwipe.enabled = this._home.visible && layout.pages > 1;
@@ -968,15 +977,28 @@ export class Presentation {
             this._home.width;
     }
 
+    _paintedPage() {
+        return pageProgress(this._strip.translation_x, this._home.width, this._layout.pages,
+            Clutter.get_default_text_direction() === Clutter.TextDirection.RTL);
+    }
+
+    _syncPageViews(progress) {
+        const [first, last] = visiblePageRange(progress, this._pageViews.length);
+        const key = `${first}:${last}`;
+        if (key === this._pageVisibilityKey) return;
+        this._pageVisibilityKey = key;
+        this._pageViews.forEach((view, index) => {view.visible = index >= first && index <= last;});
+    }
+
     _settlePage(page, duration) {
         if (!this._strip || !this._layout) return;
         this._page = Math.clamp(page, 0, this._layout.pages - 1);
-        for (const view of this._pageViews) view.show();
+        this._syncPageViews(this._paintedPage());
         this._strip.ease({translation_x: this._pageOffset(this._page),
             duration: St.Settings.get().enable_animations ? duration : 0,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             onComplete: () => {
-                this._pageViews.forEach((view, index) => { view.visible = index === this._page; });
+                this._syncPageViews(this._page);
             }});
         this._buildPageIndicators({width: this._home.width, height: this._home.height});
     }

@@ -3,15 +3,42 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 
 --- a/js/ui/lumaNotificationBeacon.js
 +++ b/js/ui/lumaNotificationBeacon.js
-@@ -16,6 +16,7 @@
+@@ -16,16 +16,33 @@
  import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
  import {peekCast} from './lumaCast.js';
  import {LumaIconMask} from './iconMask.js';
++import {notificationAccess} from './lumaPresentation/layout.js';
 +import {displayExclusions, statusInsets, surfaceInsets} from './lumaPresentation/safeAreas.js';
  
  const MORPH_TIME = 460;
  const RETRACT_TIME = 6500;
-@@ -55,6 +56,8 @@
+ const PILL_MAX_WIDTH = 392;
+ 
++function mobileLock() {
++    return Main.presentation?.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
++}
++function policyFor(source = null) {
++    return notificationAccess({mode: Main.presentation?.mode, locked: Main.sessionMode.isLocked,
++        greeter: Main.sessionMode.isGreeter, hasNotifications: Main.sessionMode.hasNotifications,
++        showOnLock: lockSettings().get_boolean('show-in-lock-screen'),
++        sourceEnabled: source?.policy.enable ?? true, sourceOnLock: source?.policy.showInLockScreen ?? true,
++        detailsOnLock: source?.policy.detailsInLockScreen ?? true});
++}
++function notificationsAvailable() {return policyFor().visible;}
++let _lockSettings;
++function lockSettings() {
++    return _lockSettings ??= new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
++}
+ function records() {
+     const CLOSED = new Set([MessageTray.NotificationLifecycleState.ACTED,
+         MessageTray.NotificationLifecycleState.DISMISSED, MessageTray.NotificationLifecycleState.EXPIRED]);
+     return Main.messageTray.getSources().filter(s => s.policy.enable).flatMap(s => s.notifications)
+-        .filter(n => !CLOSED.has(n.lifecycleState))
++        .filter(n => !CLOSED.has(n.lifecycleState) && (!Main.sessionMode.isLocked || policyFor(n.source).visible))
+         .sort((a, b) => (b.datetime && a.datetime ? b.datetime.compare(a.datetime) : 0) ||
+             b.sortSequence - a.sortSequence);
+ }
+@@ -55,6 +72,8 @@
              can_focus: true, track_hover: true, accessible_name: _('Notifications'),
              accessible_role: Atk.Role.PUSH_BUTTON});
          this._state = 'idle';
@@ -20,8 +47,54 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._sources = new Map();
          this._notifications = new Set();
          this._cards = new Map();
-@@ -119,7 +122,7 @@
-         pull.connect('recognize', () => this.open());
+@@ -85,13 +104,8 @@
+         for (const s of Main.messageTray.getSources())
+             this._watch(s);
+         Main.layoutManager.connectObject('monitors-changed', () => this._place(), this);
+-        Main.sessionMode.connectObject('updated', () => {
+-            if (Main.sessionMode.isLocked || Main.sessionMode.isGreeter || !Main.sessionMode.hasNotifications) {
+-                this.close();
+-                this._rest();
+-            }
+-            this._place();
+-        }, this);
++        Main.sessionMode.connectObject('updated', () => this._syncLockState(), this);
++        lockSettings().connectObject('changed::show-in-lock-screen', () => this._syncLockState(), this);
+         St.ThemeContext.get_for_stage(global.stage).connectObject('notify::scale-factor', () => this._render(), this);
+         global.stage.connectObject('notify::key-focus', () => this._engagementChanged(), this);
+         this.connect('notify::width', () => this._anchor());
+@@ -100,8 +114,7 @@
+         // Native gesture arbitration recognizes a tap on release, so a finger
+         // that starts on the nub can instead pull down without firing a click.
+         // Notification cards and tray buttons keep their own input owners.
+-        const nubReady = () => ['idle', 'pill'].includes(this._state) &&
+-            Main.sessionMode.hasNotifications && !Main.sessionMode.isLocked;
++        const nubReady = () => ['idle', 'pill'].includes(this._state) && notificationsAvailable();
+         const tap = new Clutter.ClickGesture();
+         tap.connect('may-recognize', nubReady);
+         tap.connect('recognize', gesture => {
+@@ -109,17 +122,20 @@
+                 this.open();
+         });
+         this.add_action(tap);
+-        const pull = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        const pull = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
+         pull.set_begin_threshold(12);
+-        pull.connect('may-recognize', gesture => {
+-            const delta = gesture.get_accumulated_delta();
+-            return nubReady() && delta.get_y() * (this._bottomAnchored ? -1 : 1) > 0 &&
+-                Math.abs(delta.get_y()) > Math.abs(delta.get_x());
+-        });
+-        pull.connect('recognize', () => this.open());
++        // may-recognize runs at the initial point, before displacement exists.
++        // Axis arbitration and the reversible progress handle direction later.
++        const pullReady = () => nubReady() || (Main.presentation?.mode === 'mobile' &&
++            this._state === 'card' && notificationsAvailable());
++        pull.connect('may-recognize', pullReady);
++        pull.connect('recognize', () => this._beginPull(false));
++        pull.connect('pan-update', gesture => this._updatePull(gesture.get_accumulated_delta_abs().get_y()));
++        pull.connect('end', () => this._endPull());
++        pull.connect('cancel', () => this._endPull(true));
          this.add_action(pull);
          this.connect('key-press-event', (_a, e) => {
 -            if (e.get_key_symbol() === Clutter.KEY_Escape) {
@@ -29,7 +102,130 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
                  this.close();
                  this._rest();
                  return Clutter.EVENT_STOP;
-@@ -411,8 +414,29 @@
+@@ -158,10 +174,14 @@
+         if (this._sources.has(source)) return;
+         this._sources.set(source, true);
+         source.policy.connectObject('notify', () => {
+-            if (this._current?.source === source && !source.policy.showBanners) this._rest();
++            if (mobileLock()) {this.close(); this._rest();}
++            else if (this._current?.source === source && !source.policy.showBanners) this._rest();
+             this._queueSync();
+         }, this);
+-        source.connectObject('notification-added', () => this._queueSync(),
++        source.connectObject('notification-added', (_source, notification) => {
++            this._queueSync();
++            if (mobileLock() && notificationsAvailable() && source.policy.showInLockScreen) this.receive(notification);
++        },
+             'notification-removed', () => this._queueSync(), 'notify::count', () => this._queueSync(), this);
+         this._queueSync();
+     }
+@@ -204,6 +224,7 @@
+     // Called at the existing MessageTray presentation boundary, after app
+     // identity and notification policy have been resolved by the daemon.
+     receive(notification, quiet = false) {
++        if (mobileLock() && (!notificationsAvailable() || !notification.source.policy.showInLockScreen)) return;
+         this._fresh = true;
+         this._queueSync();
+         if (this.isOpen || quiet || !notification.source.policy.showBanners || this.dnd) {
+@@ -232,11 +253,39 @@
+     }
+ 
+     _createCard(n, tray) {
+-        const card = new MessageList.NotificationMessage(n);
++        // Reuse the same card anatomy, but no application invocation, links or
++        // reply/actions are reachable before authentication. Privacy remains
++        // owned by the existing global/per-application lock-screen policies.
++        const locked = mobileLock();
++        const card = locked ? new MessageList.Message(n.source) : new MessageList.NotificationMessage(n);
++        if (locked) {
++            const details = policyFor(n.source).details;
++            card.set({title: details ? n.title : n.source.title,
++                body: details ? n.body : _('New notification'),
++                icon: n.gicon ?? n.source.icon, datetime: n.datetime, use_body_markup: false});
++        }
+         card.add_style_class_name('notification-banner');
+         card.add_style_class_name('luma-lip-card');
+         card.useCardLayout();
+-        card.setInlineReplyVisible(!tray);
++        card.setInlineReplyVisible?.(!tray);
++        if (locked) {
++            card._header.closeButton.hide();
++            const passive = actor => {
++                for (const child of actor.get_children()) {
++                    child.reactive = false;
++                    if ('can_focus' in child) child.can_focus = false;
++                    passive(child);
++                }
++            };
++            passive(card);
++            card.expand(false);
++            card._header.closeButton.hide();
++            card.connect('clicked', () => {
++                this.close();
++                Main.screenShield._dialog?._showPrompt();
++            });
++            return card;
++        }
+         if (MessageList.isIncomingCallNotification(n)) {
+             card.add_style_class_name('luma-notification-urgent');
+             const ring = new St.Widget({style_class: 'luma-lip-call-ring',
+@@ -333,7 +382,8 @@
+         box.add_child(stack);
+         const count = this._records?.length ?? 0;
+         const title = new St.Label({style_class: 'luma-lip-pill-title',
+-            text: big ? this._records[0].title : String(count), y_align: Clutter.ActorAlign.CENTER,
++            text: big ? (mobileLock() && !this._records[0].source.policy.detailsInLockScreen
++                ? this._records[0].source.title : this._records[0].title) : String(count), y_align: Clutter.ActorAlign.CENTER,
+             x_expand: true, x_align: Clutter.ActorAlign.FILL});
+         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         title.clutter_text.single_line_mode = true;
+@@ -353,7 +403,7 @@
+             else this.remove_style_class_name(state);
+         }
+         this._surface.opacity = this._state === 'idle' ? 217 : 255;
+-        this._left.visible = this._right.visible = this._state !== 'idle';
++        this._left.visible = this._right.visible = this._state !== 'idle' && Main.presentation?.mode !== 'mobile';
+         this.accessible_role = this.isOpen ? Atk.Role.DIALOG : Atk.Role.PUSH_BUTTON;
+         this.accessible_name = this._records?.length
+             ? _('%d notifications').format(this._records.length) : _('Notifications');
+@@ -371,11 +421,35 @@
+             return GLib.SOURCE_REMOVE;
+         });
+     }
++    _syncLockState() {
++        const key = `${Main.presentation?.mode}:${Main.sessionMode.isLocked}:${Main.sessionMode.isGreeter}:${Main.sessionMode.hasNotifications}:${lockSettings().get_boolean('show-in-lock-screen')}`;
++        if (key === this._lockStateKey) return false;
++        this._lockStateKey = key;
++        this.close(); this._rest(false);
++        this._records = records();
++        const host = Main.layoutManager.screenShieldGroup;
++        if (mobileLock() && host && !this._onLockScreen) {
++            Main.layoutManager.removeChrome(this);
++            host.add_child(this);
++            this._onLockScreen = true;
++        } else if (!mobileLock() && this._onLockScreen) {
++            this.get_parent()?.remove_child(this);
++            Main.layoutManager.addChrome(this, {affectsStruts: false, trackFullscreen: true});
++            this._onLockScreen = false;
++        }
++        this._material?.setEnabled(Main.presentation?.mode !== 'mobile');
++        if (Main.presentation?.mode === 'mobile') this.add_style_class_name('luma-mobile-notifications');
++        else this.remove_style_class_name('luma-mobile-notifications');
++        Main.screenShield?._dialog?._notificationsBox?._rebuild();
++        this._render();
++        return true;
++    }
+     _place() {
+         if (this._destroying) return;
++        if (this._syncLockState()) return;
+         const monitor = Main.layoutManager.primaryMonitor;
+         if (!monitor) return;
+-        this.visible = Main.sessionMode.hasNotifications && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
++        this.visible = notificationsAvailable() &&
+             !peekCast()?.isMonitorCaptured(monitor.index);
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const bottom = Main.shelf?.edgeOfIsland('dock') === 'top';
+@@ -411,8 +485,29 @@
                  width = Math.min(width, PILL_MAX_WIDTH * scale);
              }
              width = Math.min(width, Math.max(1, monitor.width - 60 * scale));
@@ -59,7 +255,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          }
          const unchanged = this._targetWidth === width && this._targetHeight === height;
          this._targetHeight = height;
-@@ -427,10 +451,21 @@
+@@ -427,10 +522,21 @@
              this._anchor();
              return;
          }
@@ -82,7 +278,7 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
              mode: Clutter.AnimationMode.EASE_OUT_QUART});
          for (const property of ['width', 'height'])
              this.get_transition(property)?.set_cubic_bezier_progress(
-@@ -441,15 +476,29 @@
+@@ -441,15 +547,50 @@
          const monitor = Main.layoutManager.primaryMonitor;
          if (!monitor) return;
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
@@ -105,6 +301,27 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +            if (x < r.x + r.width && x + this.width > r.x && y < r.y + r.height && y + this.height > r.y)
 +                y = r.y + r.height + 8 * scale;
 +        this.set_position(monitor.x + x, monitor.y + y);
++    }
++    _touchNub() {
++        return Main.presentation?.mode === 'mobile' && ['idle', 'pill'].includes(this._state);
++    }
++    vfunc_get_paint_volume(volume) {
++        if (!super.vfunc_get_paint_volume(volume)) return false;
++        if (this._touchNub()) {
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            volume.set_height(Math.max(volume.get_height(), 44 * scale));
++        }
++        return true;
++    }
++    vfunc_pick(context) {
++        super.vfunc_pick(context);
++        // A five-pixel visual nub still has a full touch target. Include its
++        // pick volume explicitly; a transparent overflow child paints nothing.
++        if (this._touchNub()) {
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            context.log_pick(new Clutter.ActorBox({x1: 0, y1: 0,
++                x2: this.width, y2: Math.max(this.height, 44 * scale)}), this);
++        }
      }
      vfunc_allocate(box) {
          this.set_allocation(box);
@@ -115,7 +332,14 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
          const shoulderY = this._bottomAnchored ? height - 12 * scale : 0;
          this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: shoulderY, x2: 0, y2: shoulderY + 12 * scale}));
-@@ -507,7 +556,7 @@
+@@ -502,12 +643,13 @@
+     }
+     toggle() { if (this.isOpen) this.close(); else this.open(); }
+     open() {
+-        if (this.isOpen || !Main.sessionMode.hasNotifications || Main.sessionMode.isLocked) return;
++        if (this.isOpen || !notificationsAvailable()) return;
++        this._restingSize = [this.width, this.height];
+         this._rest(false);
          this._fresh = false;
          this._state = 'tray';
          this._records = records();
@@ -124,19 +348,22 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
          header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
          this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
-@@ -526,6 +575,21 @@
+@@ -526,6 +668,24 @@
          this._scroll.set_child(this._list); column.add_child(this._scroll);
          this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
          column.add_child(this._empty);
 +        if (Main.layoutManager.primaryMonitor.width / St.ThemeContext.get_for_stage(global.stage).scale_factor <= 700 && Main.presentation?.mode !== 'desktop') {
 +            const dismiss = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
 +            dismiss.set_begin_threshold(8);
-+            dismiss.connect('pan-update', gesture => { if (gesture.get_accumulated_delta().get_y() < -24) this.close(); });
++            dismiss.connect('recognize', () => this._beginPull(true));
++            dismiss.connect('pan-update', gesture => this._updatePull(gesture.get_accumulated_delta_abs().get_y()));
++            dismiss.connect('end', () => this._endPull());
++            dismiss.connect('cancel', () => this._endPull(true));
 +            dismiss.connect('may-recognize', gesture => {
 +                const event = gesture.get_point_event(0);
 +                const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
-+                const delta = gesture.get_accumulated_delta().get_y();
-+                return !!event && this._fullPage && delta < 0 &&
++                const delta = gesture.get_accumulated_delta_abs().get_y();
++                return !!event && this._fullPage &&
 +                    event.get_coords()[1] - delta >= this.y + this.height - 64 * scale;
 +            });
 +            if (this._dismissGesture) this.remove_action(this._dismissGesture);
@@ -146,7 +373,29 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._setContent(column);
          this._cards.clear();
          this._syncTray(); this._render();
-@@ -560,7 +624,22 @@
+@@ -543,14 +703,19 @@
+             }
+             return Clutter.EVENT_PROPAGATE;
+         });
+-        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
++        if (!this._pulling) this._grabTray();
++    }
++    _grabTray() {
++        if (this._grab || !this.isOpen) return;
++        this._grab = Main.pushModal(this, {actionMode: mobileLock() ? Shell.ActionMode.LOCK_SCREEN : Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+     }
+     _syncTray() {
+         if (!this.isOpen || !this._list) return;
+         this._count.text = this._records.length ? String(this._records.length) : '';
+-        this._clear.visible = this._records.some(n => n.urgency !== MessageTray.Urgency.CRITICAL);
++        this._clear.visible = !mobileLock() && this._records.some(n => n.urgency !== MessageTray.Urgency.CRITICAL);
+         this._dndButton.checked = this.dnd;
++        this._dndButton.visible = !mobileLock();
+         this._empty.visible = !this._records.length;
+         this._scroll.visible = !!this._records.length;
+         const keep = new Set(this._records);
+@@ -560,14 +725,52 @@
          this._records.forEach((n, index) => {
              let frame = this._cards.get(n);
              if (!frame) {
@@ -155,9 +404,9 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
 +                const swipe = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.X});
 +                swipe.set_begin_threshold(12);
 +                swipe.connect('may-recognize', gesture => n.urgency !== MessageTray.Urgency.CRITICAL &&
-+                    Math.abs(gesture.get_accumulated_delta().get_x()) > Math.abs(gesture.get_accumulated_delta().get_y()));
++                    Math.abs(gesture.get_accumulated_delta_abs().get_x()) > Math.abs(gesture.get_accumulated_delta_abs().get_y()));
 +                swipe.connect('recognize', () => frame.child.fake_release());
-+                swipe.connect('pan-update', gesture => {frame.translation_x = gesture.get_accumulated_delta().get_x();});
++                swipe.connect('pan-update', gesture => {frame.translation_x = gesture.get_accumulated_delta_abs().get_x();});
 +                swipe.connect('end', () => {
 +                    const dismiss = Math.abs(frame.translation_x) > Math.min(80, frame.width * .25);
 +                    frame.ease({translation_x: dismiss ? Math.sign(frame.translation_x) * frame.width : 0,
@@ -170,6 +419,36 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
                  this._cards.set(n, frame); this._list.add_child(frame);
              }
              this._list.set_child_at_index(frame, index);
+         });
+         this._place();
+     }
++    _beginPull(closing = false) {
++        if (Main.presentation?.mode !== 'mobile') {if (closing) this.close(); else this.open(); return;}
++        this._pulling = true;
++        this._pullStart = closing ? 1 : 0;
++        if (closing) {
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const [width, height] = this._restingSize ?? [44 * scale, 5 * scale];
++            Main.presentation._motion.revealNotification(this, width, height);
++        }
++        else this.open();
++    }
++    _updatePull(delta) {if (this._pulling) Main.presentation?._motion.updateNotificationPull(this, delta);}
++    _endPull(cancel = false) {
++        if (!this._pulling) return;
++        this._pulling = false;
++        Main.presentation?._motion.endNotificationPull(this, cancel);
++        this._pullStart = 0;
++        // The touchscreen retains its implicit grab while pulling. Taking a
++        // modal grab during recognition cancels that same native gesture.
++        this._grabTray();
++    }
+     close() {
++        this._pulling = false; this._pullStart = 0;
++        Main.presentation?._motion?.cancelReveal(this);
+         if (!this.isOpen) return;
+         if (this._outsideId) this.disconnect(this._outsideId);
+         this._outsideId = 0;
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
 @@ -152,6 +152,8 @@

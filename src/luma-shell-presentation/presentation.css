@@ -31,7 +31,9 @@
 .luma-converged-home.high-contrast .luma-converged-widget.weather,
 .luma-converged-home.high-contrast .luma-converged-dock { background-color: #111111; border-color: white; }
 .luma-converged-widget:hover, .luma-converged-widget:focus { border-color: rgba(255,255,255,0.5); }
-.luma-converged-dock {
+.luma-converged-dock,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options,
+.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
   background-color: rgba(30,25,43,0.78);
   border: 1px solid rgba(255,255,255,0.16);
   border-radius: 24px;
@@ -81,3 +83,18 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-options-system { min-height: 44px; height: auto; padding: 4px 0 0; margin: 0; }
 
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-compact-options .luma-options-main { spacing: 8px; }
+
+/* Mobile uses the Dock's single surface, without a second card/material frame. */
+.luma-notification-lip.luma-mobile-notifications .luma-lip-surface { box-shadow: none; }
+.luma-notification-lip.luma-mobile-notifications .notification-banner.luma-lip-card,
+.luma-notification-lip.luma-mobile-notifications .luma-lip-list .notification-banner.luma-lip-card {
+  background-color: transparent; background-gradient-direction: none;
+  border: 0; box-shadow: none;
+}
+.luma-notification-lip.luma-mobile-notifications.opaque .luma-lip-surface { background-color: #1e192b; }
+.luma-notification-lip.luma-mobile-notifications.high-contrast .luma-lip-surface {
+  background-color: #111111; border-color: white;
+}
+
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.opaque { background-color: #1e192b; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.high-contrast { background-color: #111111; border-color: white; }

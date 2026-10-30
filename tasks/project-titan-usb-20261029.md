@@ -306,3 +306,44 @@ packaged shell and verified independent card backup remain available for rollbac
 Human Home/gesture review and broader hardware coverage remain open; no general
 release or complete OS update qualification is claimed. Current private artifacts,
 exact delivery hashes and rollback details are in the coordination handoff.
+
+
+## 2026-10-30 live Mobile panels, Weather and Home motion
+
+Owner-device candidate uses the shared Mobile shell. Notifications and Quick
+Options now share a reversible, screen-space drag and a live rounded GPU mask.
+The full page is allocated once; opening no longer captures the stage or waits
+for a readback. Content enters from the growing surface's edge and fades in.
+The lower edge follows finger displacement directly, with distance/velocity
+snap on release. Mobile notification touch targeting includes the small visual
+nub's full 44-pixel hit area. The native modal grab waits until the opening
+finger releases. Mobile materials match the dock without nested card frames.
+
+Mobile lock uses the same notification island, with global and per-source
+lock visibility/details policy. Locked cards do not activate apps or expose
+inline actions. The former poster notification panel is hidden only in Mobile.
+Desktop and Tablet retain their existing lock presentation.
+
+Weather app, widget and bounded background service now share the same atomic
+station observation cache. App cache monitors and widget file monitors propagate
+updates; cached forecasts advance hourly. The timer checks every 15 minutes,
+coalesces requests by existing provider TTLs and catches up after resume/network
+reconnection without waking the device. User units and private native ARM
+widget library are installed; no general RPM/release publication is claimed.
+
+Home paging continues from the painted fractional position when a new swipe
+interrupts settling and maps only the pages currently crossing the viewport.
+Actual Titan probing measured roughly 30 painted FPS on the exposed 60 Hz mode.
+The Mali-G615/Panfrost renderer works. Hiding content/effects, page redirection,
+and a brief higher GPU floor did not reliably fix cadence; the original GPU
+policy was restored. No VRR range or faster mode is exposed by the current
+kernel. Stable 60 FPS paging is still unresolved; the interruption correction
+is not evidence that the cadence problem is solved.
+
+Validation: full pinned Shell series (267 patches), JavaScript/builder syntax,
+compact layout/grid tests, Weather cache/provider/monitor/refresh tests pass.
+Native ARM widget library and all three Meson tests pass. Live controller tests
+cover reversal, short flicks, cancellation, reduced motion and teardown. Native
+phone touches verified panel opening/closing; screenshot review confirmed the
+rounded partial reveal. Private diagnostics, captures, deployment/rollback and
+exact job receipts remain in the task coordination handoff.

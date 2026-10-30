@@ -58,3 +58,34 @@ export function pageRange(layout, page, count) {
     const capacity = page === 0 ? layout.firstCapacity : layout.laterCapacity;
     return [start, Math.min(count, start + capacity)];
 }
+
+// A panel follows displacement in both directions; release alone decides the
+// endpoint. Velocity is pixels/second, ignored after a stationary hold.
+export function panelProgress(start, delta, travel) {
+    return Math.max(0, Math.min(1, start + delta / Math.max(1, travel)));
+}
+export function panelSnap(progress, velocity = 0) {
+    if (Math.abs(velocity) >= 600) return velocity > 0 ? 1 : 0;
+    return progress >= .35 ? 1 : 0;
+}
+
+// Lock-screen visibility is Mobile-only, and never grants app activation.
+export function notificationAccess({mode, locked, greeter, hasNotifications,
+    showOnLock = false, sourceEnabled = true, sourceOnLock = true, detailsOnLock = true}) {
+    const visible = !greeter && sourceEnabled && (locked
+        ? mode === 'mobile' && showOnLock && sourceOnLock : hasNotifications);
+    return {visible: Boolean(visible), details: Boolean(visible && (!locked || detailsOnLock)),
+        activate: Boolean(visible && !locked)};
+}
+
+// Read the painted position when a finger interrupts an in-flight settle.
+export function pageProgress(translation, width, pages, rtl = false) {
+    if (width <= 0 || pages < 2) return 0;
+    const progress = rtl ? translation / width + pages - 1 : -translation / width;
+    return Math.max(0, Math.min(pages - 1, progress));
+}
+
+export function visiblePageRange(progress, pages) {
+    const bounded = Math.max(0, Math.min(pages - 1, progress));
+    return [Math.floor(bounded), Math.ceil(bounded)];
+}
