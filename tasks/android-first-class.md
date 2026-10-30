@@ -2,9 +2,9 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T19:24Z
+- Updated: 2026-10-30T20:32Z
 - Project: luma-os
-- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell bundle staged only
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate staged; awaits next normal reboot
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
 - Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
 - Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
@@ -53,6 +53,54 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT20:32Z — Dell native candidate staged; next normal reboot required:
+- Nick completed the normal reboot. Dell now boots the previously pending
+  deployment4320c7e9, boot92f3f709; no foreign pending deployment/transaction
+  existed immediately before delivery. Native Dell only, no VM on device.
+- Private backend native_install.py SHA8f8b2ed3ad780b4f85d5d80e00c3a85073fb175f02912dd9777fc0481ace4565
+  and frontend b17727fb5fcea9894b5894008dc344334d7ab0496e8133f413bdb259b3cdb578.
+  Final server tests r191/3d1b94d3 PASS20:15:54Z:19 tests including actual archive
+  attributes, full mocked-stage/cancel and preservation of preexisting launchers,
+  native app entries and private Filer. No Flatpak data removal.
+- Actual server R182 stage/backups/reboot/activation passed; original rollback
+  lost SSH (cause unresolved; no host OOM found) and run failed. R187 recovery
+  failed at guestfish listen pipe capture before boot; fixed with regular-file
+  output. R189 reached rollback but its offline fixture-only service mask had
+  unlabeled_t; PID1 refused unmask. Retained failures, no full-pass substitution.
+- R193 fixes only fixture mask labeling with restorecon, preserves Enforcing,
+  actual rollback selection and subsequent baseline-boot archive restoration
+  passed. Childdce92906 PASS20:25:35Z, parent54c462cb PASS20:25:36Z:
+  PASS_ACTUAL_SERVER_ROLLBACK_DATA_RESTORE. Backup SHA+tar comparison verified;
+  preview data retained. Container held inactive for restore proof, restart
+  afterward and physical-device rollback remain unqualified. Original XML6/8,
+  VM off, alias unmounted, shared policy24cf restored.
+- Controls transfer r194/a57a1865 PASS20:29:49Z; all received SHA checks pass.
+  Added native_setup frontend/backend, instructions and app drawer Setup/APKs/
+  Restore launchers to existing private930MB Dell kit. Payload manifest798daa38
+  unchanged. Earlier staging-only README superseded by NATIVE-SETUP.txt.
+- r195/a06f1181 PASS20:29:56Z launched actual local user-manager unit
+  luma-preview-android-native-install-r180-eb1b5fca.service, with normal local
+  Polkit authentication. No credentials requested in chat or bypassed.
+- r196/12ee8bfd metadata: native installer root process running, OS4320 pinned,
+  UpdateDeployment transaction active; frontend stage_succeeded still false,
+  stdout empty while transaction running. Do not call staging done yet.
+- Final Dell staging r198/23a401a8 PASS20:31:30Z: transactionnull,
+  stage_succeeded=true, native-stage.log confirms verified original Android
+  backup. Actual rpm-ostree db diff shows exactly seven upgrades and no other
+  changes. Candidate6a673f5a1ddb0fd0e114299a7612d72501daa6a8cde2219772f5b5bda71d6628
+  pending; booted4320 pinned; olderf1df retained. Android container inactive
+  pending new-OS activation. This is staged, not yet booted/physically qualified.
+- Immediate next: Nick saves work and restarts normally once more. On reconnect,
+  verify candidate boot+all seven packages, activation unit, SDK5 image hashes
+  and private Filer commit. Then manual Android Preview APKs launch/double-click
+  F-Droid in private Filer. Native activation after this physical reboot remains
+  unobserved. Never reboot Dell remotely or run automated app/UI tests there.
+- All server child/parent/guard and transfer/launch/metadata jobs observed final;
+  no owned build/VM watcher left active. Dell local setup frontend completed;
+  next activity is boot-triggered native activation, not a background test.
+- All production isolation/security, maintained-platform/signing, ARM hardware,
+  native broker/power/distribution gates remain open; no nightly promotion.
 
 CURRENT19:24Z — native Dell files delivered; full scoped server install/drawer/dock PASS:
 - User explicitly requests native Dell manual test and rejects a VM/degraded
