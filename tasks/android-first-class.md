@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T13:40Z
+- Updated: 2026-10-30T13:45Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,36 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT13:40Z — installer77 package verified; Filer75 native build active:
+CURRENT13:45Z — Filer75 full package PASS; actual candidate GUI run active:
+- Normal package cfb36e59 PASSED13:44:37Z source1b0bfc41e. Fresh full compile,
+  all7 Meson test programs, packaged-content checks and all-RPM0755 header
+  guard passed. Original74dc3463 FAILED one Glycin decode test in nested builder;
+  six other programs passed. No test/source assertion or sandbox was disabled.
+- Exact compiled test-properties-about diagnostic cb7d1be1 PASSED5 cases on
+  Fedora host with normal Glycin sandbox after privately extracting signature-
+  verified required runtime libs. First diagnostic9c482a09 failed missing libs.
+  Fresh full package cfb36e59 used bounded optional private executor in SAME
+  admitted4GiB job for that exact test; all7 still ran, native SHA before/after
+  and private recipe/client source deltas recorded. This is a build-environment
+  adaptation, not VM or production qualification.
+- Filer75 main RPM SHA4bd2f649e31ebc618be2e94132d5bb3abd04dca5d7f5696545cba4203d5aefd8;
+  extensions75 SHAcea7f9927bdf4a5726477f41491fa85f66bef564c3a37bd8bec016383821a594;
+  output private package-filer-r58/source/build/packages/nautilus/RPMS/x86_64.
+- Sourcecf206712c also advances Flatpak source preparer through159 and required
+  host installer77. Actual full Flatpak source preparation + host-contract test
+ 48c38dab PASSED13:44:46Z; final C SHA7e2e8fb1 matches prior application check.
+  Worker dd325fa4/2b1be55f failed GNU patch preserving shared group inside worker
+  namespace (EINVAL); normal package job retains build group mappings and passed.
+  No Flatpak binary/build/GUI success claimed by source preparation.
+- LIVE r55 parentf9287404 / child3af3503d: guarded normal1+14GiB, capped root
+ 256MiB+1GiB and QEMU12GiB/guest6, temporary worker ceiling14 only; original
+  policy and VM XML restoration retained. Exact candidate manifest pins verified
+  installer77 + Filer75/extension75, Shell127/runtime96/SDK5 and helpers. Atomic
+  update/reboot and real double-click/install/launcher/window still pending.
+- Continue observing exact child through actual GUI operations and cleanup.
+  ARM/security/mobile power/all broader gates remain open, no release action.
+
+HISTORICAL13:40Z — installer77 package verified; Filer75 native build active:
 - Source fdfb4b3f5 aligns installer baseline with recorded2319, includes optional
   RequestDefaultInstall and20 focused checks, declares release77 consistently,
   and requires toolkit generation111+ for the existing Depot layout dependency.
