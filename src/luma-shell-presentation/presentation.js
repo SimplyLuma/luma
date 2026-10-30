@@ -246,6 +246,8 @@ export class Presentation {
             }
         });
         this._connect(Main.sessionMode, 'updated', () => this._syncVisibility());
+        if (Main.keyboard)
+            this._connect(Main.keyboard, 'visibility-changed', () => this._syncGestureVisibility());
         this._connect(Main.overview, 'showing', () => {
             if (this.mode !== 'desktop') {
                 Main.overview.hide();
@@ -354,6 +356,8 @@ export class Presentation {
                 this._enterHandheld();
             this._rebuild();
             this._syncVisibility();
+            // Mobile and Tablet place windows differently; re-place them.
+            for (const window of this._windows.keys()) this._queueKeep(window);
         }
         this._tasks.setMode();
     }
@@ -559,6 +563,8 @@ export class Presentation {
             if (!window.get_compositor_private()) continue;
             window.disconnect(saved.unmanagedId);
             window.disconnect(saved.identityId);
+            saved.keepIds?.forEach(id => window.disconnect(id));
+            if (saved.keepSource) GLib.source_remove(saved.keepSource);
             if (!saved.fullscreen) window.unmake_fullscreen();
             if (!saved.maximized) window.unmaximize();
             if (!saved.fullscreen && !saved.maximized)
@@ -574,6 +580,24 @@ export class Presentation {
         Main.shelf?._sync();
     }
 
+    _queueKeep(window) {
+        const saved = this._windows.get(window);
+        if (!saved || saved.keepSource) return;
+        saved.keepSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            saved.keepSource = 0;
+            if (!this._destroyed && this.mode !== 'desktop' && !Main.sessionMode.isLocked &&
+                this._windows.has(window) && !window.minimized && window.get_compositor_private())
+                this._manage(window);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // Logical pixels the on-screen keyboard keeps clear at its bottom for
+    // the home gesture, which stays above it.
+    keyboardInset() {
+        return this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter ? 0 : 28;
+    }
+
     _manage(window) {
         if (window.get_window_type() !== Meta.WindowType.NORMAL || window.is_override_redirect() ||
             window.is_skip_taskbar())
@@ -583,6 +607,9 @@ export class Presentation {
                 maximized: window.get_maximize_flags(), rect: window.get_frame_rect()});
             const unmanagedId = window.connect('unmanaged', () => {
                 window.disconnect(this._windows.get(window).identityId);
+                const kept = this._windows.get(window);
+                kept.keepIds?.forEach(id => window.disconnect(id));
+                if (kept.keepSource) GLib.source_remove(kept.keepSource);
                 this._tasks.unmanaged(window);
                 this._windows.delete(window);
                 this._homeMinimized.delete(window);
@@ -599,6 +626,11 @@ export class Presentation {
             this._windows.get(window).identityId = window.connect('notify::gtk-application-id', () => {
                 if (this._tasks.pending) this._tasks.manage(window);
             });
+            // Handheld windows are placed by the Shell. A window that leaves
+            // its place (a client or a stray move unfullscreens or
+            // unmaximizes it) is put back.
+            this._windows.get(window).keepIds = ['notify::fullscreen', 'notify::maximized-horizontally',
+                'notify::maximized-vertically'].map(signal => window.connect(signal, () => this._queueKeep(window)));
         }
         if (!this._tasks.manage(window)) window.make_fullscreen();
         return true;
@@ -668,6 +700,10 @@ export class Presentation {
         this._gestureBar.visible = !this._destroyed && this.mode !== 'desktop' &&
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
             !Main.panel.statusArea.quickSettings.menu.isOpen && !peekNotificationLip()?.isOpen;
+        // The home gesture stays reachable above the on-screen keyboard,
+        // which keeps keyboardInset() clear for it.
+        if (this._gestureBar.visible && this._gestureBar.get_parent() === Main.layoutManager.keyboardBox.get_parent())
+            this._gestureBar.get_parent().set_child_above_sibling(this._gestureBar, Main.layoutManager.keyboardBox);
     }
 
     _setStatusWindow(window) {
