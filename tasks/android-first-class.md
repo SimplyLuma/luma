@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T04:06:35+00:00
+- Updated: 2026-10-30T04:38:15+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,39 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT04:06Z — actual Luma card/input reached; dispatch observation corrected:
+CURRENT04:38Z — single-boot continuation under larger accounted cache cap active:
+- r41 f711e6d8 FAILED before Android/UI: fresh user Shell service timeout.
+  No new reply/window/guard qualification. Its original source and unique token
+ 6c0944d9 remain unused; cleanup readback was inconclusive, so fixture remains
+  owned/recoverable. No claim that all preferences were restored by that run.
+- Host observation showed guest pressure alone misses QEMU cache reclaim:
+  old8GiB cap hit392 times, no OOM; anon~6GiB/file~1.6GiB. Host had~46GiB
+  available with VM off. This supports a controlled cap trial, not a proven
+  primary cause. Guest remains6GiB, CPU2/GPU unchanged; QEMU cap now12GiB.
+- LIVE parent dev-android-highmem-reply-489c58bc.service normal1GiB/root256MiB,
+  vm-cache-budget-r44 guard; child dev-android-reply-vm-r44-560f0a3a.service
+  normal14GiB/root1GiB/QEMU12. TEMPORARY SHARED policy changes ONLY worker
+  ceiling10->14; account16/global32/host8/disk20 reserves unchanged. Original
+  policy SHA24cfbd91..., expandedb38b7783...; exact-byte automatic restoration
+  and refusal to overwrite foreign edits. Root guard stops child/restores owned
+  XML, and has a separate ExecStopPost restore fallback. Observe BOTH final jobs.
+- Earlier guard245d18fb failed absent absolute devctl path before child; real
+  original policy restoration passed. R43 guard e22344e4/child9d79cf4a then
+  failed initial SSH master connection, before fixture recovery. Both restored
+  XML and original policy. Actual live memtune12 verified, but no speedup claim.
+- Frozen r44 uses ONE fresh OS boot and the exact preexisting r41 helper/probe/
+  candidate hashes. Enables ONLY that already discovered owned extension via
+  actual user manager, requires exact same boot/payload/unused reply-token checks,
+  then real UI plus independent window/native scopes. No action retries; only
+  idempotent SSH true readiness retries. Preflight585480f9 PASSED syntax/hashes
+  and4 isolated capacity restoration/alias/foreign-change cases. Fixture tests
+  do not mutate live policy; live mutation occurs only in the guarded parent.
+- F-Droid2.0.2 downloaded/fully APK-signature verified e51c8898 PASS.12,569,951B,
+  SHA19d51fad482239f6df6a99120e34513667e9a86d136dafdc4a211a68c3327b52,
+  certificate matches published43238d51...; minSDK24,target37. Private corpus-
+  fdroid-r42/download-proof.json. NOT installed/launched/integration-qualified.
+
+HISTORICAL04:06Z — actual Luma card/input reached; dispatch observation corrected:
 - r40 e6cc8f8e failed at editor text comparison before Send. Actual96 label and
   waydroid_t process under Enforcing passed again; SDK5/APKr16 hashes and app UID/
   PID matched. Real live Luma card, policy(dndfalse/bannertrue), matching native
