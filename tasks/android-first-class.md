@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T06:21Z
+- Updated: 2026-10-30T13:40Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -52,7 +52,34 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT06:21Z — session cleaned up; source fix and baseline alignment:
+CURRENT13:40Z — installer77 package verified; Filer75 native build active:
+- Source fdfb4b3f5 aligns installer baseline with recorded2319, includes optional
+  RequestDefaultInstall and20 focused checks, declares release77 consistently,
+  and requires toolkit generation111+ for the existing Depot layout dependency.
+- Installer r51 f8669aa8 failed stale declared host release; r52 ad713809 failed
+  old toolkit108 missing _LayoutWatch. Both defects corrected without skipped
+  checks. Exact qualified toolkit117 input hashes retained in source receipt.
+- Installer r53 build92df5ccc ran831 tests OK (9skips),6 native preview tests,
+ 7 additional tests and packaged successfully; overall wrapper FAILED because
+  RPM mode verifier was incorrectly given raw RPM bytes. Corrected read-only
+  postverification ce46a56c PASSED13:33:37Z: actual header dirs0755 and digest OK.
+  Installer77 RPM1214298B SHA6d71c338964a40366d1326685baeb62246b5c9c3c01b5267c3320b84d60f3a25;
+  path private package-installer-r53/source/build/packages/luma-application-installer/RPMS/noarch/.
+  Neither wrapper failure nor component success is whole-OS qualification.
+- Filer r53 build8bc06b08 FAILED before compile: complete spec still release74
+  and missing patch0159. Source1b0bfc41e corrects release75 and includes0159.
+  New normal package build74dc3463 ACTIVE,4GiB reservation,2 compiler jobs;
+  applied full160-patch series, reached native linking. Observe final checks.
+- Fresh owned r55 GUI controller prepared, not launched. It verifies exact new
+  installer/Filer RPM hashes, atomic replacement and reboot with no unrelated
+  package changes; removes only hash-verified owned F-Droid corpus app, restores
+  only diagnostic APK MIME lines, and qualifies actual direct install/launcher/
+  window separately from still-open dock pin UI. Four isolated policy restore
+  fixtures PASSED4a32c244. Original shared policy unchanged; VM remains off.
+- Next: observe Filer build through final result, finish exact candidate manifest,
+  run owned r55 VM GUI test; do not stop at job launch or claim ARM readiness.
+
+HISTORICAL06:21Z — session cleaned up; source fix and baseline alignment:
 - R50 child2d0de28a/parent0727a2ae FAILED at bounded session deadline; both
   results observed06:04:18/19Z. Actual cleanup restored extension preferences,
   removed only owned extension, powered VM off, restored exact original XML,
