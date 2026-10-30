@@ -10,6 +10,20 @@ window.luma-app-window.lumaui-tablet-mode .luma-window-body.lumaui-frame-sidebar
 window.luma-app-window.lumaui-tablet-mode .luma-island {
   padding-top: 0; border-radius: var(--lumaui-tablet-frame-island-radius);
 }
+/* Phone clients use the whole surface, with one shared status inset. Keep
+ * frame ownership here too: an app's legacy island margin must not override
+ * it just because its composition stylesheet loads above the toolkit sheet. */
+window.luma-app-window.lumaui-phone-device:not(.lumaui-tablet-mode) .luma-window-body,
+window.luma-app-window.lumaui-phone-device:not(.lumaui-tablet-mode) .luma-window-body.lumaui-frame-sidebar {
+  padding: 0;
+}
+window.luma-app-window.lumaui-phone-device:not(.lumaui-tablet-mode) .luma-island {
+  margin: 0; border-radius: 0; box-shadow: none;
+  padding-top: var(--lumaui-phone-frame-status);
+}
+window.luma-app-window.lumaui-phone-device.lumaui-bleed:not(.lumaui-tablet-mode) .luma-island {
+  padding-top: 0;
+}
 /* A legacy phone bleed request does not transfer Tablet safe-area ownership.
  * Edge-to-edge clients explicitly opt in and inset their own interactive UI. */
 window.luma-app-window.lumaui-tablet-mode.lumaui-edge-to-edge .luma-window-body { padding: 0; }
@@ -195,3 +209,13 @@ box.lumaui-dialog.phone label.lumaui-dialog-title { margin: 0; padding: 0 6px; f
 box.lumaui-dialog.phone label.lumaui-dialog-body { margin: 6px 0 0; padding: 0 6px; font-size: 14px; }
 box.lumaui-dialog.phone box.lumaui-dialog-buttons { margin-top: 16px; border-spacing: 8px; }
 box.lumaui-dialog.phone box.lumaui-dialog-buttons button { min-height: 48px; border-radius: 20px; font-size: 15px; }
+
+/* Compact physical phone screens attach their bars to the bottom edge.
+ * The shared kit supplies the pocket class from monitor geometry, never from
+ * a narrow desktop window. Gesture recognition does not require a blank strip. */
+.lumaui-action-center.pocket.phone box.lumaui-ac-bar,
+.lumaui-action-center.pocket.phone box.lumaui-ac-split > box.lumaui-ac-bar {
+  margin: 0;
+  padding-bottom: var(--lumaui-ac-phone-bar-padding);
+  border-radius: var(--lumaui-ac-phone-bar-radius) var(--lumaui-ac-phone-bar-radius) 0 0;
+}

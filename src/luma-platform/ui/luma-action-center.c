@@ -1509,12 +1509,28 @@ static void center_apply_share(LumaActionCenter *self) {
   }
 }
 
+/* Match compact_layout.bottom_attached(): physical phone geometry, not a
+ * narrow desktop window, selects the bottom-attached action surface. */
+static gboolean center_is_compact_screen(LumaActionCenter *self) {
+  if (!luma_ui_mobile_form_factor()) return FALSE;
+  GtkNative *native = gtk_widget_get_native(GTK_WIDGET(self));
+  GdkSurface *surface = native != NULL ? gtk_native_get_surface(native) : NULL;
+  if (surface == NULL) return FALSE;
+  GdkMonitor *monitor = gdk_display_get_monitor_at_surface(gtk_widget_get_display(GTK_WIDGET(self)), surface);
+  if (monitor == NULL) return FALSE;
+  GdkRectangle geometry;
+  gdk_monitor_get_geometry(monitor, &geometry);
+  return MIN(geometry.width, geometry.height) > 0 && MAX(geometry.width, geometry.height) < 600;
+}
+
 static void center_apply_width(LumaActionCenter *self) {
   gboolean phone;
   int wanted, top, bottom;
   center_layout(self, center_host_width(self), &phone, &wanted, &top, &bottom);
   self->phone = phone;
   luma_ui_set_css_class(GTK_WIDGET(self), "phone", phone);
+  luma_ui_set_css_class(GTK_WIDGET(self), "pocket", center_is_compact_screen(self) &&
+      (g_str_equal(self->state, "bar") || g_str_equal(self->state, "double") || g_str_equal(self->state, "split")));
   gboolean field = FALSE;
   for (guint i = 0; i < self->shown_items->len; i++) {
     LumaBarItem *item = g_ptr_array_index(self->shown_items, i);
@@ -1597,6 +1613,11 @@ static gboolean center_position(GtkOverlay *overlay, GtkWidget *widget, GdkRecta
   if (wanted < 0)
     wanted = MIN(natural_w, MAX(0, host_w - 24)); /* v70: a bar is at most the island less 24 */
   int width = MAX(minimum_w, wanted);
+  if (center_is_compact_screen(self) && (g_str_equal(self->state, "bar") ||
+      g_str_equal(self->state, "double") || g_str_equal(self->state, "split"))) {
+    width = MAX(minimum_w, host_w);
+    bottom = 0;
+  }
   int minimum_h = 0, natural_h = 0;
   gtk_widget_measure(widget, GTK_ORIENTATION_VERTICAL, width, &minimum_h, &natural_h, NULL, NULL);
   int height = MAX(minimum_h, MIN(natural_h, host_h - top - bottom));

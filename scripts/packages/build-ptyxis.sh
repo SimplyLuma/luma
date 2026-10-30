@@ -52,7 +52,8 @@ mv "$extract_dir/ptyxis.spec" "$rpmbuild_dir/SPECS/"
 find "$extract_dir" -maxdepth 1 -type f -exec mv -t "$rpmbuild_dir/SOURCES" {} +
 for patch in \
   "$repo_root/patches/ptyxis/0001-luma-terminal-native-kit.patch" \
-  "$repo_root/patches/ptyxis/0002-luma-terminal-flat-toolbar.patch"; do
+  "$repo_root/patches/ptyxis/0002-luma-terminal-flat-toolbar.patch" \
+  "$repo_root/patches/ptyxis/0003-luma-terminal-phone-frame.patch"; do
   install -m 0644 "$patch" "$rpmbuild_dir/SOURCES/"
 done
 

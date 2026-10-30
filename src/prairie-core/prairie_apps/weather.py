@@ -15,7 +15,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 gi.require_version('PangoCairo', '1.0')
-from gi.repository import Adw, Gdk, GLib, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from luma_appkit import (
     ActionCenter, BarAction, BarTile, BarTiles, PanelChoices, PanelRow, SPACER, panel_list,
@@ -32,8 +32,9 @@ from .weather_layout import ForecastLayout
 from .weather_places import WeatherPlaces
 from .weather_fixture import fixture_from_environment
 from .weather_model import Place, UNITS_IMPERIAL, UNITS_METRIC, measurement_from_locale, resolve_units
-from .weather_model import parse_time
-from .weather_observation import MAX_AGE_SECONDS, fetch_alerts, fetch_observation
+from .weather_model import cache_directory, cache_path
+from .weather_observation import fetch_alerts
+from .weather_observation_cache import cached_observation, current_observation
 
 ICON_NAME = 'org.projectluma.Weather'
 # The Prairie preview launcher overrides APP_ID before main(); the application
@@ -63,8 +64,6 @@ class WeatherWindow(AppWindow):
         self.generation = 0
         self._refresh_serial = {}
         self._observation_lock = threading.Lock()
-        self._observation_checked = {}
-        self._observation_cache = {}
         self._alert_checked = {}
         self._alert_cache = {}
         self.phone = False
@@ -79,6 +78,9 @@ class WeatherWindow(AppWindow):
         self._rendering = False
         self._fixture_started = False
         self._refresh_source = 0
+        self._cache_monitor = None
+        self._cache_refresh_source = 0
+        self._cache_changed_uids = set()
         self.search_provider = self.fixture or WeatherPlaces()
         self.units = UNITS_IMPERIAL if self.fixture else measurement_from_locale(os.environ.get('LC_MEASUREMENT', os.environ.get('LANG', '')))
         if self.store is not None:
@@ -201,6 +203,7 @@ class WeatherWindow(AppWindow):
 
         if not self.fixture:
             self._refresh_source = GLib.timeout_add_seconds(60, self._refresh_minute)
+            self._watch_weather_cache()
 
     def _refresh_minute(self):
         if self.closed or self.fixture:
@@ -210,6 +213,40 @@ class WeatherWindow(AppWindow):
         for place in tuple(self.places):
             self._queue_refresh(self.generation, place)
         return True
+
+    def _watch_weather_cache(self):
+        # Atomic provider writes notify both views. There is no UI polling loop
+        # and no new request when another process has already refreshed data.
+        root = cache_directory()
+        try:
+            root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self._cache_monitor = Gio.File.new_for_path(str(root)).monitor_directory(
+                Gio.FileMonitorFlags.WATCH_MOVES, None)
+            self._cache_monitor.connect('changed', self._weather_cache_changed)
+        except (OSError, GLib.Error):
+            self._cache_monitor = None
+
+    def _weather_cache_changed(self, _monitor, file, other, event):
+        if self.closed or event not in (Gio.FileMonitorEvent.CHANGES_DONE_HINT,
+                Gio.FileMonitorEvent.MOVED_IN, Gio.FileMonitorEvent.RENAMED, Gio.FileMonitorEvent.CREATED):
+            return
+        names = {value.get_basename() for value in (file, other) if value}
+        root = cache_directory()
+        for place in tuple(self.places):
+            if names.intersection((cache_path(place.uid, root).name,
+                                   cache_path(place.uid + '-observation', root).name)):
+                self._cache_changed_uids.add(place.uid)
+        if self._cache_changed_uids and not self._cache_refresh_source:
+            self._cache_refresh_source = GLib.timeout_add(150, self._refresh_changed_weather)
+
+    def _refresh_changed_weather(self):
+        self._cache_refresh_source = 0
+        changed, self._cache_changed_uids = self._cache_changed_uids, set()
+        if not self.closed:
+            for place in tuple(self.places):
+                if place.uid in changed:
+                    self._queue_refresh(self.generation, place)
+        return False
 
     def _queue_refresh(self, generation, place):
         serial = self._refresh_serial.get(place.uid, 0) + 1
@@ -223,6 +260,12 @@ class WeatherWindow(AppWindow):
         if self._refresh_source:
             GLib.source_remove(self._refresh_source)
             self._refresh_source = 0
+        if self._cache_monitor:
+            self._cache_monitor.cancel()
+            self._cache_monitor = None
+        if self._cache_refresh_source:
+            GLib.source_remove(self._cache_refresh_source)
+            self._cache_refresh_source = 0
         self._stop_radar()
         self.foot.close_list()
         if hasattr(self, 'phone_search'): self.phone_search.close_list()
@@ -421,7 +464,7 @@ class WeatherWindow(AppWindow):
 
     def _refresh_place(self, generation, place, serial=None):
         def publish(forecast):
-            snapshot = snapshot_from_forecast(forecast, self.units)
+            snapshot = snapshot_from_forecast(forecast, self.units, observation=cached_observation(place))
             GLib.idle_add(self._refreshed, generation, place.uid, snapshot, serial)
 
         try:
@@ -451,26 +494,7 @@ class WeatherWindow(AppWindow):
         GLib.idle_add(self._refreshed, generation, place.uid, snapshot, serial)
 
     def _current_observation(self, place):
-        """Poll NWS at most every ten minutes; never reuse an old reading."""
-        with self._observation_lock:
-            last = self._observation_checked.get(place.uid, 0)
-            cached = self._observation_cache.get(place.uid)
-            if time.monotonic() - last >= 10 * 60:
-                self._observation_checked[place.uid] = time.monotonic()
-                refresh = True
-            else:
-                refresh = False
-        if refresh:
-            try:
-                cached = fetch_observation(place)
-            except (OSError, ValueError, KeyError, TypeError):
-                cached = None
-            with self._observation_lock:
-                self._observation_cache[place.uid] = cached
-        observed_at = parse_time(cached.observed_at) if cached else None
-        if observed_at is None or not 0 <= (datetime.now(timezone.utc) - observed_at).total_seconds() <= MAX_AGE_SECONDS:
-            return None
-        return cached
+        return current_observation(place)
 
     def _current_alerts(self, place):
         """NWS warnings, polled at most every ten minutes; outside its coverage there are none."""

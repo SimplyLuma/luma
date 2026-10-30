@@ -11,6 +11,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as LumaGrid from 'resource:///org/gnome/shell/ui/lumaGrid.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
+import {PanelReveal} from './handheldOptions.js';
 import {gettext as _} from 'gettext';
 
 function control(name, run, icon = null) {
@@ -36,7 +37,7 @@ export class TabletTasks {
         this._windowGroupId = global.window_group.connect('notify::visible', () => {
             if (!global.window_group.visible || !this._returnHomeAfterSwitcher) return;
             this._returnHomeAfterSwitcher = false;
-            if (this.enabled && ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
+            if (this.navigationEnabled && ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
                 this.home.showHome();
         });
         this.active = null;
@@ -103,6 +104,7 @@ export class TabletTasks {
         ];
     }
 
+    get navigationEnabled() { return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get enabled() { return this.home.mode === 'tablet' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get monitor() { return Main.layoutManager.primaryMonitor; }
     focused() {
@@ -176,8 +178,41 @@ export class TabletTasks {
             this.verticalUpdate(this._vertical);
         }, () => this.verticalEnd(this._vertical, side));
     }
+    beginLift() {
+        if (this._navigationLift || this.home._home.visible) return;
+        const actor = this.focused()?.get_compositor_private();
+        if (!actor) return;
+        const [x, y] = actor.get_transformed_position();
+        const [width, height] = actor.get_transformed_size();
+        const clone = new Clutter.Clone({source: actor, x, y, width, height, reactive: false});
+        clone.set_pivot_point(.5, .5);
+        Main.uiGroup.add_child(clone);
+        this._navigationLift = clone;
+        this._navigationSource = actor;
+        actor.hide();
+    }
+    finishLift(home) {
+        const clone = this._navigationLift;
+        this._navigationLift = null;
+        const actor = this._navigationSource;
+        this._navigationSource = null;
+        if (actor && live(actor.meta_window) && !actor.meta_window.minimized) actor.show();
+        if (!clone) return;
+        clone.ease({scale_x: home ? .78 : 1, scale_y: home ? .78 : 1,
+            translation_y: home ? -64 * this.home._scale : 0, opacity: home ? 0 : 255,
+            duration: St.Settings.get().enable_animations ? 120 : 0,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: () => clone.destroy()});
+    }
     verticalUpdate(distance) {
-        if (!this.enabled || distance > -72 * this.home._scale || this._hold) return;
+        if (!this.navigationEnabled) return;
+        const progress = Math.clamp(-distance / (this.monitor.height * .6), 0, 1);
+        if (this._navigationLift) {
+            this._navigationLift.set_scale(1 - progress * .18, 1 - progress * .18);
+            this._navigationLift.translation_y = -progress * 40 * this.home._scale;
+            // Fade follows the finger from the first movement, not only release.
+            this._navigationLift.opacity = Math.round(255 * (1 - progress * .9));
+        }
+        if (distance > -56 * this.home._scale || this._hold || this._held) return;
         this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
             this._hold = 0; this._held = true; this.openSwitcher(); return GLib.SOURCE_REMOVE;
         });
@@ -186,11 +221,11 @@ export class TabletTasks {
         if (this._hold) GLib.source_remove(this._hold);
         this._hold = 0;
         if (this._held) { this._held = false; return; }
-        if (distance < -140 * this.home._scale) {
+        if (distance < -(this.home.mode === 'mobile' ? 48 : 140) * this.home._scale) {
             if (side) this.showPaneHome(side);
             else this.home.showHome();
         }
-        else if (distance < -24 * this.home._scale) this.peek();
+        else { this.finishLift(false); if (distance < -24 * this.home._scale) this.peek(); }
     }
 
     _ink(window) {
@@ -502,7 +537,7 @@ export class TabletTasks {
         return {x: m.x + (this.pickerSide === 'right' ? half : 0), y: m.y,
             width: this.pickerSide === 'right' ? m.width - half : half, height: m.height};
     }
-    beforeHome() { this.pickerSide = null; this.closeOverlay(); }
+    beforeHome() { this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
     sync() {
         const pairVisible = this.enabled && this.active && !this._switcherPopup && !Main.sessionMode.isLocked &&
             (this.pickerSide || !this.home._home.visible);
@@ -576,7 +611,7 @@ export class TabletTasks {
         });
     }
     attachSwitcher(popup) {
-        if (!this.enabled || this._switcherPopup === popup) return;
+        if (!this.navigationEnabled || this._switcherPopup === popup) return;
         this._switcherPopup = popup;
         const returnHome = this.home._home.visible || this._returnHomeAfterSwitcher;
         this._returnHomeAfterSwitcher = returnHome;
@@ -586,13 +621,32 @@ export class TabletTasks {
         popup.connect('destroy', () => {
             if (this._switcherPopup === popup) this._switcherPopup = null;
             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                if (!this._destroyed && this.enabled && !this._switcherPopup &&
+                if (!this._destroyed && this.navigationEnabled && !this._switcherPopup &&
                     ![...this.home._windows.keys()].some(window => live(window) && !window.minimized))
                     this.home.showHome();
                 if (!this._destroyed) this.sync();
                 return GLib.SOURCE_REMOVE;
             });
         });
+        // The modal picker owns this sequence, including drags beginning
+        // in the bottom navigation area; chrome outside its grab cannot.
+        const home = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
+        home.set_begin_threshold(8);
+        home.connect('may-recognize', gesture => {
+            const event = gesture.get_point_event(0);
+            if (!event || popup.leaving) return false;
+            const delta = gesture.get_accumulated_delta();
+            const start = event.get_coords()[1] - delta.get_y();
+            return start >= this.monitor.y + this.monitor.height - 28 * this.home._scale &&
+                delta.get_y() < 0 && Math.abs(delta.get_y()) > Math.abs(delta.get_x());
+        });
+        home.connect('end', gesture => {
+            if (gesture.get_accumulated_delta().get_y() >= -24 * this.home._scale) return;
+            popup.destroy();
+            this.home.showHome();
+        });
+        popup.add_action_full('LumaGridHome', Clutter.EventPhase.CAPTURE, home);
+        if (!this.enabled) return; // Split placement belongs to Tablet only.
         for (const card of popup._cards) {
             if (!this.home._windows.has(card.window)) continue;
             this.attachDrag(card, null, card.window, {base,
@@ -686,7 +740,8 @@ export class TabletTasks {
         search.clutter_text.connect('text-changed', render); render(); search.grab_key_focus();
     }
     openSwitcher() {
-        if (!this.enabled) return;
+        if (!this.navigationEnabled) return;
+        this.finishLift(false);
         this.closeOverlay();
         this._returnHomeAfterSwitcher = this.home._home.visible;
         this.home._home.hide();
@@ -704,6 +759,7 @@ export class TabletTasks {
     }
     destroy() {
         this.endNavigation();
+        this.finishLift(false);
         this._destroyed = true;
         global.window_group.disconnect(this._windowGroupId);
         this._tracker.disconnect(this._trackerId);
@@ -716,5 +772,68 @@ export class TabletTasks {
         this._chrome = [];
         for (const {actions, signals} of this._actions.values()) signals.forEach(id => actions.disconnect(id));
         this._actions.clear();
+    }
+}
+
+// Handheld windows fade at final geometry; Desktop keeps dock travel.
+export class HandheldMotion {
+    constructor(home) {
+        this.home = home;
+        this.wm = Main.wm;
+        this._open = this.wm._lumaPlayOpen;
+        this._target = this.wm._lumaDockTarget;
+        this._actors = new Set();
+        this._surfaceReveals = new Map();
+        this._openOverride = async (actor, done) => {
+            if (!this._handles(actor)) return this._open.call(this.wm, actor, done);
+            actor._lumaLaunchRect = null;
+            actor.remove_all_transitions();
+            actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0, opacity: 0});
+            actor.show();
+            this._actors.add(actor);
+            // Same native completion contract, including interrupted effects.
+            actor.ease({opacity: 255,
+                duration: St.Settings.get().enable_animations ? 160 : 0,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: () => {this._actors.delete(actor); done();}});
+        };
+        this._targetOverride = window => this._handles(window.get_compositor_private())
+            ? null : this._target.call(this.wm, window);
+        if (this._open) this.wm._lumaPlayOpen = this._openOverride;
+        if (this._target) this.wm._lumaDockTarget = this._targetOverride;
+    }
+    // Full-page notifications keep their final layout throughout the reveal.
+    // Reflowing every card at every intermediate width is costly and changes
+    // text wrapping in flight. Only the cached frame's centered clip moves.
+    revealNotification(actor, startWidth, startHeight) {
+        this.cancelReveal(actor);
+        const reveal = new PanelReveal(actor, {
+            width: actor.width, height: actor.height, initialWidth: startWidth,
+            initialHeight: startHeight, contents: [actor._surface.child], done: target => {
+                this._surfaceReveals.delete(actor);
+                if (!target) {
+                    actor.set_size(startWidth, startHeight);
+                    actor.close();
+                }
+            }});
+        this._surfaceReveals.set(actor, reveal);
+        reveal.begin(actor._pullStart ?? 0, actor._pulling ? null : 1);
+    }
+    updateNotificationPull(actor, delta) {this._surfaceReveals.get(actor)?.update(delta);}
+    endNotificationPull(actor, cancel = false) {this._surfaceReveals.get(actor)?.release(cancel);}
+    cancelReveal(actor) {
+        this._surfaceReveals.get(actor)?.cancel();
+        this._surfaceReveals.delete(actor);
+    }
+    _handles(actor) {
+        return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked &&
+            !Main.sessionMode.isGreeter && actor?.meta_window.get_window_type() === Meta.WindowType.NORMAL;
+    }
+    destroy() {
+        if (this.wm._lumaPlayOpen === this._openOverride) this.wm._lumaPlayOpen = this._open;
+        if (this.wm._lumaDockTarget === this._targetOverride) this.wm._lumaDockTarget = this._target;
+        for (const actor of [...this._surfaceReveals.keys()]) this.cancelReveal(actor);
+        for (const actor of [...this._actors]) actor.remove_all_transitions();
+        this._actors.clear();
     }
 }

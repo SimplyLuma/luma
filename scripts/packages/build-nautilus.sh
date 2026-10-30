@@ -20,8 +20,8 @@ platform_release=${LUMA_FILER_PLATFORM_RELEASE_OVERRIDE:-$LUMA_DEVELOPER_PLATFOR
 # The Filer release carries patches 0001 through filer_series_last in filename
 # order; later files stay in the tree for the next release and are held with
 # the reason below. filer_series_holds names any other held file, with why.
-filer_series_last=0158
-filer_series_hold_reason='beyond the complete creator series through 0158'
+filer_series_last=0159
+filer_series_hold_reason='beyond the complete creator series through 0159'
 filer_series_holds=()
 for tool in cpio git mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {

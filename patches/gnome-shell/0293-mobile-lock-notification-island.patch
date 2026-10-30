@@ -1,0 +1,16 @@
+From: Luma Developers
+Subject: [PATCH] Use the shared notification island on Mobile lock screens
+
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -98,6 +98,10 @@
+ 
+     _rebuild() {
+         this._well.destroy_all_children();
++        if (Main.presentation?.mode === 'mobile') {
++            this.hide();
++            return;
++        }
+         const entries = [];
+         for (const source of this._sources.keys()) {
+             const pending = [...(this._pending.get(source) ?? [])]

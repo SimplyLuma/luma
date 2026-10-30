@@ -1,6 +1,6 @@
 --- a/ptyxis.spec
 +++ b/ptyxis.spec
-@@ -19,13 +19,15 @@
+@@ -19,13 +19,16 @@
  
  Name:		ptyxis
  Version:	50.1
@@ -14,6 +14,7 @@
  Source1:	org.gnome.Ptyxis.fedora.gschema.override
 +Patch1000:	0001-luma-terminal-native-kit.patch
 +Patch1001:	0002-luma-terminal-flat-toolbar.patch
++Patch1002:	0003-luma-terminal-phone-frame.patch
  
  BuildRequires:	pkgconfig(gio-unix-2.0) >= %{glib2_version}
  BuildRequires:	pkgconfig(gtk4) >= %{gtk4_version}

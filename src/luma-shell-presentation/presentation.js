@@ -13,13 +13,16 @@ import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {homeLayout} from './layout.js';
+import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
+import {readDisplayGeometry, statusInsets} from './safeAreas.js';
+import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
-import {TabletTasks} from './tabletTasks.js';
+import {TabletTasks, HandheldMotion} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
@@ -55,7 +58,18 @@ export class Presentation {
         this._statusWindowSignals = [];
         this._statusActionSignals = [];
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
+        this._powerButton = new HandheldPowerButton();
+        this._motion = new HandheldMotion(this);
         this._page = 0;
+        this._displayGeometry = null;
+        for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
+            try {
+                const [ok, bytes] = GLib.file_get_contents(path);
+                if (ok) this._displayGeometry = readDisplayGeometry(new TextDecoder().decode(bytes));
+                if (this._displayGeometry) break;
+            } catch { /* Displays without exclusions retain their normal insets. */ }
+        }
+        this._refreshDisplayGeometry();
         this._liveWidgets = widgets === null ? new HomeWidgets(this) : null;
         this._widgetHosts = new Map((widgets ?? this._liveWidgets.definitions()).map(widget => [widget.id, widget]));
         this._appSystem = Shell.AppSystem.get_default();
@@ -73,15 +87,15 @@ export class Presentation {
         this._time = new St.Label({text: this._clock.clock.trim(),
             x_expand: true, x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER});
-        const clockButton = button(_('Quick options'), () =>
-            Main.panel.statusArea.quickSettings.menu.toggle(), 'luma-converged-clock');
+        const clockButton = button(_('Calendar'), () =>
+            Main.panel.statusArea.dateMenu.menu.toggle(), 'luma-converged-clock');
         clockButton.x_expand = false;
         clockButton.set_child(this._time);
         this._status.add_child(clockButton);
         this._clockButton = clockButton;
         this._status.add_child(new St.Widget({x_expand: true,
             style: 'background-color: transparent; border: 0; box-shadow: none;'}));
-        this._statusRight = new St.BoxLayout({y_align: Clutter.ActorAlign.CENTER});
+        this._statusRight = new St.BoxLayout({reactive: true, y_align: Clutter.ActorAlign.FILL});
         this._status.add_child(this._statusRight);
         Main.layoutManager.addChrome(this._status, {affectsStruts: false, trackFullscreen: false});
         this._connect(this._status, 'notify::visible', () => this._syncStatusCompositing());
@@ -89,13 +103,22 @@ export class Presentation {
             pan_axis: Clutter.PanAxis.Y});
         settingsPan.set_begin_threshold(4);
         settingsPan.connect('may-recognize', () => this.mode !== 'desktop' && !Main.sessionMode.isLocked);
-        settingsPan.connect('recognize', () => { this._settingsPanDistance = 0; });
-        settingsPan.connect('pan-update', gesture => {
-            this._settingsPanDistance += gesture.get_delta_abs().get_y();
-            if (this._settingsPanDistance > 24 * (this._scale ?? 1))
-                Main.panel.statusArea.quickSettings.menu.open();
+        settingsPan.connect('recognize', () => {
+            if (this.mode === 'mobile') this._handheldOptions.beginPull();
         });
-        this._status.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        settingsPan.connect('pan-update', gesture => {
+            const delta = gesture.get_accumulated_delta_abs().get_y();
+            if (this.mode === 'mobile') this._handheldOptions.updatePull(delta);
+            else if (delta > 24 * (this._scale ?? 1)) Main.panel.statusArea.quickSettings.menu.open();
+        });
+        settingsPan.connect('end', () => this._handheldOptions.endPull());
+        settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
+        this._statusRight.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        const settingsTap = new Clutter.ClickGesture();
+        settingsTap.connect('may-recognize', gesture => !Main.sessionMode.isLocked &&
+            global.stage.get_event_actor(gesture.get_point_event(0)) === this._statusRight);
+        settingsTap.connect('recognize', () => Main.panel.statusArea.quickSettings.menu.toggle());
+        this._statusRight.add_action(settingsTap);
         this._editor = new HomeEditor(this);
         this._gestureBar = button(_('Home'), () => this.showHome(), 'luma-converged-home-control');
         this._gestureBar.set_child(new St.Widget({style_class: 'luma-converged-home-pill',
@@ -114,9 +137,10 @@ export class Presentation {
         this._connect(this._pageSwipe, 'begin', tracker => {
             if (!this._layout || this._layout.pages < 2) return;
             this._strip.remove_all_transitions();
-            for (const page of this._pageViews) page.show();
+            const progress = this._paintedPage();
+            this._syncPageViews(progress);
             tracker.confirmSwipe(this._home.width,
-                this._pageViews.map((_page, index) => index), this._page, this._page);
+                this._pageViews.map((_page, index) => index), progress, Math.round(progress));
         });
         this._connect(this._pageSwipe, 'update', (_tracker, progress) => {
             this._strip.translation_x = this._pageOffset(progress);
@@ -131,7 +155,8 @@ export class Presentation {
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter);
         homePan.connect('recognize', gesture => {
             this._homePanDistance = 0;
-            if (this.mode === 'tablet') this._tasks.beginNavigation(this._gestureBar, gesture);
+            this._tasks.beginNavigation(this._gestureBar, gesture);
+            this._tasks.beginLift();
         });
         homePan.connect('pan-update', gesture => {
             this._homePanDistance += gesture.get_delta_abs().get_y();
@@ -139,14 +164,14 @@ export class Presentation {
         });
         homePan.connect('end', () => {
             this._tasks.endNavigation();
-            if (this.mode === 'tablet') this._tasks.verticalEnd(this._homePanDistance);
-            else if (this._homePanDistance < -48) this.showHome();
+            this._tasks.verticalEnd(this._homePanDistance);
         });
         homePan.connect('cancel', () => {
             this._tasks.endNavigation();
             if (this._tasks._hold) GLib.source_remove(this._tasks._hold);
             this._tasks._hold = 0;
             this._tasks._held = false;
+            this._tasks.finishLift(false);
         });
         this._gestureBar.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
         this._connect(this._home, 'notify::visible', () => {
@@ -166,6 +191,7 @@ export class Presentation {
         this._connect(Gio.AppInfoMonitor.get(), 'changed', () => this._queueRebuild());
         this._connect(Main.layoutManager, 'monitors-changed', () => {
             this._editor.cancel();
+            this._refreshDisplayGeometry();
             this._tasks.layout();
             this._queueRebuild();
         });
@@ -313,6 +339,29 @@ export class Presentation {
             this._syncVisibility();
         }
         this._tasks.setMode();
+    }
+
+    _refreshDisplayGeometry() {
+        if (!this._displayGeometry) return;
+        Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig', 'GetCurrentState', null, null,
+            Gio.DBusCallFlags.NONE, 3000, this._cancellable, (bus, result) => {
+                try {
+                    const state = bus.call_finish(result).deep_unpack();
+                    if (this._destroyed) return;
+                    const monitor = Main.layoutManager.primaryMonitor;
+                    const logical = state[2].find(entry => entry[0] === monitor?.x && entry[1] === monitor?.y);
+                    const connector = logical?.[5]?.[0]?.[0];
+                    const native = state[1].find(entry => entry[0][0] === connector);
+                    const builtIn = native?.[2]?.['is-builtin']?.deep_unpack?.() ?? false;
+                    if (!builtIn || (this._displayGeometry.connector && connector !== this._displayGeometry.connector))
+                        this._displayGeometry = null;
+                    else if (logical) this._displayGeometry.transform = logical[3];
+                    this._queueRebuild();
+                } catch (error) {
+                    if (!this._destroyed) console.warn(`Display exclusion transform unavailable: ${error.message}`);
+                }
+            });
     }
 
     _reportInput() {
@@ -473,6 +522,7 @@ export class Presentation {
         this._syncStatusCompositing();
         this._gestureBar.hide();
         this._releaseStatus();
+        this._restoreMobileLockPanel();
         for (const [window, saved] of this._windows) {
             if (!window.get_compositor_private()) continue;
             window.disconnect(saved.unmanagedId);
@@ -534,8 +584,20 @@ export class Presentation {
         this._statusComposited = visible;
     }
 
+    _restoreMobileLockPanel() {
+        if (!this._mobileLockPanel) return;
+        Main.panel.visible = this._mobileLockPanel.visible;
+        this._mobileLockPanel = null;
+    }
+
     _syncVisibility() {
         const unlocked = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+        const mobileLock = this.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+        if (!mobileLock) this._restoreMobileLockPanel();
+        else {
+            this._mobileLockPanel ??= {visible: Main.panel.visible};
+            Main.panel.hide();
+        }
         if (!unlocked && !this._lockSnapshot && this.mode !== 'desktop') {
             this._lockSnapshot = {home: this._home.visible,
                 minimized: [...this._windows.keys()].filter(window => window.minimized)};
@@ -563,11 +625,17 @@ export class Presentation {
             else this._releaseStatus();
         }
         this._status.visible = this.mode !== 'desktop' && unlocked;
-        this._gestureBar.visible = this.mode !== 'desktop' && unlocked;
+        this._syncGestureVisibility();
         if (!unlocked) { this._home.hide(); this._handheldOptions.close(); }
         if (!unlocked) this._editor.setEditing(false);
         this._editor.syncVisibility();
         this._tasks.setMode();
+    }
+
+    _syncGestureVisibility() {
+        this._gestureBar.visible = !this._destroyed && this.mode !== 'desktop' &&
+            !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
+            !Main.panel.statusArea.quickSettings.menu.isOpen && !peekNotificationLip()?.isOpen;
     }
 
     _setStatusWindow(window) {
@@ -608,7 +676,7 @@ export class Presentation {
         const darkSurface = treatment ? treatment === 'dark' : this._state?.appearance === 'prefer-dark';
         this._statusInk = this._home.visible ? 'light' :
             ['light', 'dark'].includes(hint) ? hint : darkSurface ? 'light' : 'dark';
-        this._status.set_style(`padding: 0 ${this._statusInset ?? this._layout?.inset ?? 24}px;` +
+        this._status.set_style(`padding: 0 ${this._safeStatus?.right ?? this._statusInset ?? 24}px 0 ${this._safeStatus?.left ?? this._statusInset ?? 24}px;` +
             `color: ${this._statusInk === 'light' ? '#ffffff' : '#191b1f'};`);
         this._tasks?.updateInk();
     }
@@ -616,28 +684,38 @@ export class Presentation {
     _syncAccessibilityStyles() {
         const highContrast = St.Settings.get().high_contrast;
         const opaque = highContrast || this._settings.get_boolean('reduce-transparency');
-        for (const actor of [this._home, this._options].filter(Boolean)) {
+        for (const actor of [this._home, this._options, peekNotificationLip()].filter(Boolean)) {
             if (highContrast) actor.add_style_class_name('high-contrast');
             else actor.remove_style_class_name('high-contrast');
         }
         if (opaque) this._home.add_style_class_name('opaque');
         else this._home.remove_style_class_name('opaque');
+        this._handheldOptions?.syncAccessibility();
         this._queueRebuild();
     }
 
     showHome() {
         if (this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        this._tasks.beginLift();
         this._tasks.beforeHome();
-        this._rebuild();
+        // State, app and monitor signals keep Home current while hidden. Reuse
+        // its actors on return instead of rebuilding every icon and widget on
+        // the same frame as the navigation animation.
+        const rect = this._tasks.homeRect() ?? Main.layoutManager.primaryMonitor;
+        if (rect && (!this._layout || this._home.x !== rect.x || this._home.y !== rect.y ||
+            this._home.width !== rect.width || this._home.height !== rect.height))
+            this._rebuild();
         for (const actor of global.get_window_actors()) {
             const window = actor.meta_window;
             if (window.get_window_type() === Meta.WindowType.NORMAL && !window.minimized) {
                 this._homeMinimized.add(window);
+                Main.wm.skipNextEffect(actor);
                 window.minimize();
             }
         }
         this._home.show();
+        this._tasks.finishLift(true);
         this._home.grab_key_focus();
         this._tasks.sync();
     }
@@ -673,13 +751,22 @@ export class Presentation {
             dock ? 'luma-converged-dock-app' : 'luma-converged-app');
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.CENTER, style_class: 'luma-converged-app-content'});
-        box.add_child(new St.Icon({gicon: info.get_icon(), icon_size: 60,
+        box.add_child(new St.Icon({gicon: info.get_icon(), icon_size: this._homeIconSize ?? 60,
             x_align: Clutter.ActorAlign.CENTER}));
         if (!dock) {
             const caption = new St.Label({text: info.get_display_name(),
                 style_class: 'luma-converged-app-label', x_align: Clutter.ActorAlign.CENTER});
             caption.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             box.add_child(caption);
+        }
+        if (this._layout?.compact) {
+            box.set_style('spacing: 3px;');
+            box.x_align = Clutter.ActorAlign.FILL;
+            for (const child of box.get_children()) {
+                if (child instanceof St.Label) child.set_style('font-size: 10px;');
+            }
+            result.set_style('padding: 2px; min-width: 0; min-height: 0;');
+            result.clip_to_allocation = true;
         }
         result.set_child(box);
         return result;
@@ -711,10 +798,24 @@ export class Presentation {
         this._home.set_size(monitor.width, monitor.height);
         this._status.set_position(display.x, display.y);
         this._status.set_size(display.width, 44 * scale);
+        const lip = peekNotificationLip();
+        if (lip && lip !== this._gestureLip) {
+            this._gestureLip = lip;
+            this._connect(lip, 'notify::height', () => this._syncGestureVisibility());
+        }
+        if (lip?.get_parent() === Main.uiGroup) {
+            Main.uiGroup.set_child_above_sibling(lip, this._status);
+            lip._place();
+        }
         this._setHandheldQuickOptions(true);
         this._gestureBar.set_position(display.x, display.y + display.height - 28 * scale);
         this._gestureBar.set_size(display.width, 28 * scale);
         this._apps = this._catalog();
+        this._layout = homeLayout(monitor.width / scale, monitor.height / scale,
+            this.mode, this._apps.length);
+        this._homeIconSize = this._layout.iconSize ?? 60;
+        if (this._layout.compact) this._home.add_style_class_name('compact-home');
+        else this._home.remove_style_class_name('compact-home');
         let metrics = {};
         if (this._apps.length) {
             const probe = this._appButton(this._apps[0]);
@@ -728,9 +829,14 @@ export class Presentation {
         const layout = homeLayout(monitor.width / scale, monitor.height / scale,
             this.mode, this._apps.length, metrics);
         this._layout = layout;
-        const definitions = [...this._widgetHosts.values()].map(widget => ({id: widget.id,
-            kind: 'widget', w: widget.columns ?? 2, h: widget.rows ?? 2}));
-        definitions.push(...this._apps.map(info => ({id: info.get_id(), kind: 'app', w: 1, h: 1})));
+        const safe = statusInsets(this._displayGeometry, display, 44 * scale,
+            (layout.compact ? 12 : this._statusInset) * scale, 8 * scale);
+        this._safeStatus = {left: safe.left / scale, right: safe.right / scale};
+        this._status.set_style(`padding: 0 ${safe.right / scale}px 0 ${safe.left / scale}px;` +
+            `color: ${this._statusInk === 'light' ? '#ffffff' : '#191b1f'};`);
+        const definitions = [...this._widgetHosts.values()].map((widget, index) => ({id: widget.id,
+            kind: 'widget', w: layout.compact ? (index % 2 ? layout.columns - layout.widgetColumns : layout.widgetColumns) : widget.columns ?? 2, h: widget.rows ?? 2}));
+        definitions.push(...this._apps.map(info => ({id: info.get_id(), kind: 'app', w: layout.appColumns ?? 1, h: 1})));
         const columns = Math.min(32, layout.columns);
         const rows = Math.min(32, Math.max(1, layout.otherRows));
         layout.columns = columns;
@@ -745,16 +851,16 @@ export class Presentation {
         this._updateStatusStyle();
         this._page = Math.min(this._page, layout.pages - 1);
         const viewport = new St.Widget({clip_to_allocation: true,
-            width: monitor.width, height: monitor.height - 120 * scale});
+            width: monitor.width, height: monitor.height - (layout.compact ? layout.bottom : 120) * scale});
         this._home.add_child(viewport);
         this._strip = new St.Widget({width: monitor.width * layout.pages,
-            height: monitor.height - 120 * scale});
+            height: monitor.height - (layout.compact ? layout.bottom : 120) * scale});
         viewport.add_child(this._strip);
         this._pageViews = [];
         const cellWidth = layout.contentWidth / layout.columns;
         const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
         for (let page = 0; page < layout.pages; page++) {
-            const pageView = new St.Widget({width: monitor.width, height: monitor.height - 120 * scale,
+            const pageView = new St.Widget({width: monitor.width, height: monitor.height - (layout.compact ? layout.bottom : 120) * scale,
                 visible: page === this._page});
             pageView.set_position((rtl ? layout.pages - 1 - page : page) * monitor.width, 0);
             this._pageViews.push(pageView);
@@ -764,18 +870,22 @@ export class Presentation {
                 const info = this._apps.find(app => app.get_id() === record.id);
                 const host = this._widgetHosts.get(record.id);
                 const item = record.kind === 'app' ? this._appButton(info) : host.createActor();
+                item.clip_to_allocation = true;
                 pageView.add_child(item);
-                const inset = record.kind === 'widget' ? (host.gap ?? 12) / 2 : 0;
+                const inset = record.kind === 'widget' ? (layout.compact ? 3 : (host.gap ?? 12) / 2) : 0;
                 item.set_position((layout.inset + (rtl ? layout.columns - record.x - record.w : record.x) * cellWidth + inset) * scale,
                     (gridTop + record.y * layout.rowHeight + inset) * scale);
                 item.set_size((cellWidth * record.w - inset * 2) * scale,
                     (layout.rowHeight * record.h - 8 - inset * 2) * scale);
                 if (!this._tasks.pickerSide) this._editor.attach(item, record, () => record.kind === 'app'
-                    ? new St.Icon({gicon: info.get_icon(), icon_size: 60})
+                    ? new St.Icon({gicon: info.get_icon(), icon_size: this._homeIconSize ?? 60})
                     : new Clutter.Clone({source: item}));
             }
         }
+        this._pageVisibilityKey = null;
+        this._strip.connect('notify::translation-x', () => this._syncPageViews(this._paintedPage()));
         this._strip.translation_x = this._pageOffset(this._page);
+        this._syncPageViews(this._page);
         this._buildDock({...monitor, x: 0, y: 0});
         this._buildPageIndicators(monitor);
         this._pageSwipe.enabled = this._home.visible && layout.pages > 1;
@@ -790,8 +900,9 @@ export class Presentation {
         this._dots = null;
         if (this._layout.pages > 1) {
             const dots = new St.BoxLayout({style_class: 'luma-converged-pages'});
+            const spacing = 14;
             const count = Math.min(this._layout.pages,
-                Math.max(1, Math.floor((monitor.width / this._scale - 24) / 44)), 7);
+                Math.max(1, Math.floor((monitor.width / this._scale - 24) / spacing)), 7);
             const start = Math.clamp(this._page - Math.floor(count / 2), 0, this._layout.pages - count);
             for (let index = start; index < start + count; index++) {
                 const dot = button(_('Home page %d of %d').format(index + 1, this._layout.pages), () => {
@@ -801,9 +912,14 @@ export class Presentation {
                 dots.add_child(dot);
             }
             this._home.add_child(dots);
-            const width = count * 44 * this._scale;
-            dots.set_position((monitor.width - width) / 2, monitor.height - 156 * this._scale);
-            dots.set_size(width, 44 * this._scale);
+            const width = count * spacing * this._scale;
+            const compact = this._layout.compact;
+            const dotHeight = compact ? this._layout.dotsHeight : 44;
+            dots.set_position((monitor.width - width) / 2, monitor.height -
+                (compact ? this._layout.dockBottom + this._layout.dockHeight + dotHeight : 156) * this._scale);
+            dots.set_size(width, dotHeight * this._scale);
+            for (const child of dots.get_children())
+                child.set_style(`width: ${spacing}px; height: ${dotHeight}px; padding: 0; min-width: 0;`);
             this._dots = dots;
         }
     }
@@ -819,7 +935,7 @@ export class Presentation {
 
     _appendHomePage() {
         const monitor = {width: this._home.width, height: this._home.height};
-        const view = new St.Widget({width: monitor.width, height: monitor.height - 120 * this._scale});
+        const view = new St.Widget({width: monitor.width, height: monitor.height - (this._layout.compact ? this._layout.bottom : 120) * this._scale});
         this._strip.add_child(view);
         this._pageViews.push(view);
         this._layout.pages = this._pageViews.length;
@@ -839,8 +955,9 @@ export class Presentation {
         const slots = Math.max(1, Math.min(5, Math.floor((available - 8) / 52)));
         const favorites = ids.map(id => this._apps.find(info => info.get_id() === id)).filter(Boolean).slice(0, slots - 1);
         const count = favorites.length + 1;
-        const gap = Math.min(14, Math.max(0, (available - 44 * count) / (count + 1)));
-        const size = Math.min(60, Math.floor((available - gap * (count + 1)) / count));
+        const compact = this._layout?.compact;
+        const gap = compact ? 6 : Math.min(14, Math.max(0, (available - 44 * count) / (count + 1)));
+        const size = compact ? 44 : Math.min(60, Math.floor((available - gap * (count + 1)) / count));
         const width = count * size + (count + 1) * gap;
         const height = size + 2 * gap;
         const dock = new St.BoxLayout({style_class: 'luma-converged-dock',
@@ -848,20 +965,19 @@ export class Presentation {
             style: `padding: ${Math.max(0, gap - 1)}px; spacing: ${gap}px;`});
         for (const info of favorites) {
             const item = this._appButton(info, true);
-            item.get_child().get_first_child().icon_size = size;
+            item.get_child().get_first_child().icon_size = compact ? this._homeIconSize : size;
             item.set_size(size * scale, size * scale);
             dock.add_child(item);
             if (draggable) this._tasks.attachDrag(item, info);
         }
-        const search = button(_('Search'), () => this.mode === 'tablet'
-            ? this._tasks.openLibrary() : Main.lumaSearch?.open(), 'luma-converged-dock-search');
+        const search = button(_('Search'), () => Main.lumaSearch?.open(), 'luma-converged-dock-search');
         search.set_style(`width: ${size}px; height: ${size}px; border-radius: ${size * 16 / 60}px;`);
         search.set_size(size * scale, size * scale);
         search.set_child(new St.Icon({icon_name: 'system-search-symbolic', icon_size: Math.round(size * 28 / 60)}));
         dock.add_child(search);
         host.add_child(dock);
         dock.set_size(width * scale, height * scale);
-        dock.set_position((monitor.width - width * scale) / 2, monitor.height - (height + 20) * scale);
+        dock.set_position((monitor.width - width * scale) / 2, monitor.height - (height + (compact ? this._layout.dockBottom : 20)) * scale);
     }
 
     _changePage(delta) {
@@ -874,15 +990,28 @@ export class Presentation {
             this._home.width;
     }
 
+    _paintedPage() {
+        return pageProgress(this._strip.translation_x, this._home.width, this._layout.pages,
+            Clutter.get_default_text_direction() === Clutter.TextDirection.RTL);
+    }
+
+    _syncPageViews(progress) {
+        const [first, last] = visiblePageRange(progress, this._pageViews.length);
+        const key = `${first}:${last}`;
+        if (key === this._pageVisibilityKey) return;
+        this._pageVisibilityKey = key;
+        this._pageViews.forEach((view, index) => {view.visible = index >= first && index <= last;});
+    }
+
     _settlePage(page, duration) {
         if (!this._strip || !this._layout) return;
         this._page = Math.clamp(page, 0, this._layout.pages - 1);
-        for (const view of this._pageViews) view.show();
+        this._syncPageViews(this._paintedPage());
         this._strip.ease({translation_x: this._pageOffset(this._page),
             duration: St.Settings.get().enable_animations ? duration : 0,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
             onComplete: () => {
-                this._pageViews.forEach((view, index) => { view.visible = index === this._page; });
+                this._syncPageViews(this._page);
             }});
         this._buildPageIndicators({width: this._home.width, height: this._home.height});
     }
@@ -890,6 +1019,8 @@ export class Presentation {
     destroy() {
         this._destroyed = true;
         this._liveWidgets?.destroy();
+        this._powerButton.destroy();
+        this._motion.destroy();
         this._cancellable.cancel();
         this.mode = 'desktop';
         Main.shelf?.setPresentationMode?.('desktop');

@@ -11,6 +11,30 @@ export function formOf(width, height) {
 }
 
 export function homeLayout(width, height, mode, count, metrics = {}) {
+    // Widgets and apps share the same whole icon-cell grid.
+    // Density depends on usable geometry, independently of device or mode.
+    if (width <= 480 && height >= 280) {
+        const inset = 8;
+        const top = 44;
+        const dockHeight = 56;
+        const dockBottom = 6;
+        const dotsHeight = 16;
+        const bottom = dockHeight + dockBottom + dotsHeight + 4;
+        const availableHeight = Math.max(1, height - top - bottom);
+        const minimumRow = Math.max(56, metrics.cellHeight ?? 0);
+        const rows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
+        const rowHeight = availableHeight / rows;
+        const iconSize = Math.max(28, Math.min(40, rowHeight - 24, (width - 2 * inset) / 5 - 12));
+        const iconColumns = Math.max(3, Math.min(5, Math.floor((width - 2 * inset) / 56)));
+        const columns = iconColumns;
+        const capacity = rows * iconColumns;
+        return {width, height, form: formOf(width, height), compact: true, inset,
+            contentWidth: width - 2 * inset, columns, iconColumns, appColumns: 1,
+            widgetColumns: Math.floor(iconColumns / 2), top, bottom, dockHeight, dockBottom,
+            dotsHeight, iconSize, cellHeight: rowHeight - 4, rowHeight,
+            firstRows: rows, otherRows: rows, firstCapacity: capacity,
+            laterCapacity: capacity, pages: Math.max(1, Math.ceil(count / capacity))};
+    }
     const tablet = mode === 'tablet';
     const inset = tablet ? Math.min(56, width / 16) : 20;
     const contentWidth = Math.max(1, width - 2 * inset);
@@ -33,4 +57,35 @@ export function pageRange(layout, page, count) {
     const start = page === 0 ? 0 : layout.firstCapacity + (page - 1) * layout.laterCapacity;
     const capacity = page === 0 ? layout.firstCapacity : layout.laterCapacity;
     return [start, Math.min(count, start + capacity)];
+}
+
+// A panel follows displacement in both directions; release alone decides the
+// endpoint. Velocity is pixels/second, ignored after a stationary hold.
+export function panelProgress(start, delta, travel) {
+    return Math.max(0, Math.min(1, start + delta / Math.max(1, travel)));
+}
+export function panelSnap(progress, velocity = 0) {
+    if (Math.abs(velocity) >= 600) return velocity > 0 ? 1 : 0;
+    return progress >= .35 ? 1 : 0;
+}
+
+// Lock-screen visibility is Mobile-only, and never grants app activation.
+export function notificationAccess({mode, locked, greeter, hasNotifications,
+    showOnLock = false, sourceEnabled = true, sourceOnLock = true, detailsOnLock = true}) {
+    const visible = !greeter && sourceEnabled && (locked
+        ? mode === 'mobile' && showOnLock && sourceOnLock : hasNotifications);
+    return {visible: Boolean(visible), details: Boolean(visible && (!locked || detailsOnLock)),
+        activate: Boolean(visible && !locked)};
+}
+
+// Read the painted position when a finger interrupts an in-flight settle.
+export function pageProgress(translation, width, pages, rtl = false) {
+    if (width <= 0 || pages < 2) return 0;
+    const progress = rtl ? translation / width + pages - 1 : -translation / width;
+    return Math.max(0, Math.min(pages - 1, progress));
+}
+
+export function visiblePageRange(progress, pages) {
+    const bounded = Math.max(0, Math.min(pages - 1, progress));
+    return [Math.floor(bounded), Math.ceil(bounded)];
 }

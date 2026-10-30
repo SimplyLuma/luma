@@ -1,0 +1,11 @@
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -174,7 +174,7 @@
+ 
+ template $NautilusWindow: Adw.ApplicationWindow {
+   width-request: 360;
+-  height-request: 480;
++  height-request: 320;
+   show-menubar: false;
+   title: bind template.active-slot as <$NautilusWindowSlot>.title;
+ 
