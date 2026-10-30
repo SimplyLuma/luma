@@ -452,3 +452,27 @@ RPM spec parsing and paired pins. New candidates: core
 1.luma.124.mobile20261030.2, Tide 2.luma.36.mobile20261030.1. Physical phone runtime
 source_navigation_runtime.py also passes the real More/Edit/focus path. No
 published package/OTA or complete signed-in cross-device playback claim.
+
+
+### 2026-10-30 — bottom app taps no longer trigger Home
+
+The Mobile Home control was an invisible full-width reactive button covering
+28 logical pixels at the bottom of applications. Mobile now makes that control
+nonreactive and observes a native stage PanGesture instead. Normal application
+taps pass through; movement must cross an 8-pixel threshold before recognition.
+Initial edge bounds and normal action-mode eligibility exclude app interiors,
+modal panels, lock and Desktop. Tablet retains its existing explicit Home tap
+control. The stage action is removed on presentation teardown.
+
+Actual Titan input verification used a temporary native GTK window with three
+bottom buttons inside the old overlay area: left/middle/right taps each incremented
+only the intended app counter, with Home still hidden. Taps at the outer bottom
+edge also left the app open. Upward swipe returned Home, and upward swipe plus
+hold opened the native switcher. Private runtime r82 included a diagnostic monitor;
+clean maintained source r83 replaces it and the same presentation source is saved
+in the boot overlay. Temporary QA service stopped and idle delay restored.
+
+Admitted job 1782f13b passed syntax, bottom-edge regression, status restoration,
+panel motion/policy, page motion, compact layout and diff checks. Evidence stays
+under the private bottom-input experiment directory. Shell source candidate is
+1.luma.126.mobile20261030.1; no package build or OTA publication claimed.

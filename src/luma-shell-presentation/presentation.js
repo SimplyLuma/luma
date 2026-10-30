@@ -150,9 +150,19 @@ export class Presentation {
         });
         const homePan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
             pan_axis: Clutter.PanAxis.Y});
-        homePan.set_begin_threshold(4);
-        homePan.connect('may-recognize', () => this.mode !== 'desktop' &&
-            !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter);
+        homePan.set_begin_threshold(8);
+        homePan.connect('may-recognize', gesture => {
+            if (!this._gestureBar.visible || Main.actionMode !== Shell.ActionMode.NORMAL ||
+                !this._tasks.navigationEnabled) return false;
+            const event = gesture.get_point_event(0);
+            if (!event) return false;
+            const delta = gesture.get_accumulated_delta_abs();
+            const [x, y] = event.get_coords();
+            const [left, top] = this._gestureBar.get_transformed_position();
+            const [width, height] = this._gestureBar.get_transformed_size();
+            return x - delta.get_x() >= left && x - delta.get_x() < left + width &&
+                y - delta.get_y() >= top && y - delta.get_y() < top + height;
+        });
         homePan.connect('recognize', gesture => {
             this._homePanDistance = 0;
             this._tasks.beginNavigation(this._gestureBar, gesture);
@@ -173,7 +183,11 @@ export class Presentation {
             this._tasks._held = false;
             this._tasks.finishLift(false);
         });
-        this._gestureBar.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
+        // Observe the edge without a reactive overlay above client controls.
+        // Clutter cancels the client sequence only after a pan is recognized;
+        // stationary taps therefore remain ordinary application input.
+        global.stage.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
+        this._homePan = homePan;
         this._connect(this._home, 'notify::visible', () => {
             this._pageSwipe.enabled = this._home.visible && (this._layout?.pages ?? 1) > 1;
             this._updateStatusStyle();
@@ -649,6 +663,7 @@ export class Presentation {
     }
 
     _syncGestureVisibility() {
+        this._gestureBar.reactive = this.mode !== 'mobile';
         this._gestureBar.visible = !this._destroyed && this.mode !== 'desktop' &&
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
             !Main.panel.statusArea.quickSettings.menu.isOpen && !peekNotificationLip()?.isOpen;
@@ -1035,6 +1050,7 @@ export class Presentation {
 
     destroy() {
         this._destroyed = true;
+        global.stage.remove_action(this._homePan);
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
         this._motion.destroy();
