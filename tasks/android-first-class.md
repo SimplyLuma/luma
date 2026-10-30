@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T01:28:00+00:00
+- Updated: 2026-10-30T01:42:00+00:00
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported, combined reply UI test active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -53,10 +53,33 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 Source/worktree isolated; canonical untouched. Current source is on this task branch; older immutable build sources are named below. Historical implementation497a61054
-includes
 includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
 page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
 OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE01:42Z — corrected triple staged/booted; current native fixture setup:
+- CURRENT dev-android-reply-vm-r20-ba8fb087.service normal10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r20.service1GiB. Frozen reply-vm-r20
+  helpers, same127/95/SDK5/APKr16. Pipeline installing-local-candidate-triple-
+  and-image (setup phase). Builder OFF; original watchdog/health checks intact.
+- r18 08c5ab7c successfully staged ALL3 local candidates: derived checksum
+ 810efb5672e9b92a153056d0d058d59de09843181d8a9597f26d62b2a7e101a2.
+  Native transaction upgraded nightlyShell124 -> AndroidShell127 and runtime94
+  ->95. THEN harness settings JSON parse failed; no reply test. Error preserved.
+- r19 e849e30c booted actual127 (bootstrap mounts EMPTY), exact existing triple
+  reused. Settings reader now captures stdout/stderr separately and pins Gio2;
+  actual diagnostics retained. First95a8f9bb launch failed before VM boot because
+  missing manifest after a Python quoting/syntax preflight failure; fixed only
+  after actors inactive. Never reported either failed attempt as passed.
+- r19 stopped because recovery profile globally disabled extensions. Original
+  enabled-list/disabled flag restored and test extension absent per cleanup.json.
+  r20 temporarily selects ONLY the owned fixture when globally disabled, then
+  enables it; unrelated extensions remain disabled. Finally restores BOTH exact
+  original settings and removes only owned fixture. This is test instrumentation,
+  not production UI code. No ordinary-user reply pass yet.
+- Latest source public task branch a4ed46942 before this handoff. Root source/
+  payload hash pins unchanged; no new image/package rebuild. Observe fresh native
+  GUI health, original PendingIntent receipt, resize/admission checks and cleanup.
 
 LIVE01:28Z — current matching VM update; prior harness attempts retained:
 - CURRENT normal dev-android-reply-vm-r18-08c5ab7c.service10GiB/10GiB disk;
