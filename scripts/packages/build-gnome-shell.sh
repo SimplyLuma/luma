@@ -503,7 +503,7 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       # marked on their own; the shelf washes the whole island (0161).
       grep -q "controls\.remove_style_pseudo_class(.checked.)" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "DASH_TILE_SIZE = 40" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_SIZE = 45;" shelfMetrics.js
       grep -Fq "runningIndicatorGeometry" shelfMetrics.js
       grep -Fq "shelf-span-full" luma-dash.js
       grep -Fq "shelf-float-ends" luma-dash.js
@@ -821,7 +821,7 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       # Beam takes the island radius and is a slider (0141).
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/osdWindow.js >osdWindow-0141.js
-      grep -Fq "export const SHELF_ISLAND_RADIUS = 16;" shelfMetrics.js
+      grep -Fq "export const SHELF_ISLAND_RADIUS = 18;" shelfMetrics.js
       grep -Fq "cornerRadii: SHELF_ISLAND_RADIUS" osdWindow-0141.js
       grep -Fq "Atk.Role.SLIDER" osdWindow-0141.js
       grep -Fq "_syncHold()" osdWindow-0141.js
