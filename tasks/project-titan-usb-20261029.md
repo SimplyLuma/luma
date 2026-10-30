@@ -11,6 +11,33 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
+## Shared app frames and action bars — 2026-10-29
+
+Phone frame geometry now lives in the shared structural provider above app
+composition, like Tablet's existing frame rules. Legacy island margins cannot
+reintroduce side/bottom gutters or override the one status inset; explicit bleed
+still owns its inset, and Tablet keeps its separate rules. Terminal opts into
+this existing phone frame before mapping and hides its desktop title controls.
+Filer's minimum height is 320 rather than 480, allowing its own native layout to
+fit a short display without moving its title or clipping its action bar.
+
+The shared Action Center compatibility rule places its bottom gesture reserve
+outside the painted bar, retaining the common control size. Filer and Settings
+inherit this rule; neither has an app-specific bar-height override. The current
+phone's newer platform remains installed; resource overlays deliver the shared
+CSS and the equivalent app UI changes for rapid testing, without a library or
+whole-app rebuild. Future package recipes include both app patches.
+
+Actual Titan captures verify Terminal's prompt below status and removal of its
+old edge gutters; Filer's title and complete bar fit; Settings' painted bar is
+compact. Native ARM GTK checks at 360×400, 390×844 and 430×932 preserve a 60-pixel
+painted bar and 48-pixel search control, with controls inside the window
+(job 0d3efa15). These are layout fixtures, not physical qualification of other
+phones. Focused app patch application, spec patch parsing/inclusion, builder
+syntax and whitespace pass (3187be9b). A broader replay found an existing first
+hunk failure in Filer patch 0158 against the upstream tarball; it is unchanged.
+No complete app RPM build or wider Desktop/Tablet qualification was performed.
+
 ## Quick Options motion correction — 2026-10-29
 
 The prior paint-gap measurement did not measure the actual reveal. Pull-down
