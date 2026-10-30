@@ -2,7 +2,7 @@
 
 - Status: active
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T15:45Z
+- Updated: 2026-10-30T16:26Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 89cde87b0 (gated probe runner), d1601ca0b (focused fixture), 1d6510a8a (Mesa preflight); SDK4 x86 scope tests passed; SDK0005 compiled/exported; corrected host packages installed; graphical-login diagnosis active
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -51,6 +51,45 @@ then repeat the CPU/device matrix and implement/qualify the remaining brokers.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT16:26Z — native drawer actions29 PASS; ARM74%; final Shell package pending:
+- Public sourcec621fa319 includes DrawerAppMenu (keeps Enter/Space launching),
+  Menu/ShiftF10/right-click/hold, menu cleanup before tile replacement and native
+  captured-event actor selection/null guards. Patch0287 fixes a real shared-menu
+  defect: window section was parented once early and again in the group loop.
+- Native source-overlay qualification17ee6ef2 PASSED16:22:19Z,29 checks: actual
+  pointer Pin/Unpin modifies real favorites; Menu/ShiftF10/Escape/focus/Enter,
+  hold without launch, search replacement and full close/modal cleanup, ordinary
+  primary launch. No captured null-descendant or duplicate-parent warnings in
+  this final run. Exact source/module/RPM proofs in qualification.json.
+  Scope: extracted Shell128 payload + current source overlays, disposable native
+  headless container with distribution Mutter50.6/GLib2.88.4/GTK4.22.5/GJS1.88.1.
+  NOT another matched OS/Android boot, APK dock result or hardware/performance
+  test. Source fixes require full Shell129 build (prepared shell-r129-r125).
+- Shell128 full packagecef4e079 PASSED15:56:13Z from80aca776a: native compiled
+  sandbox-enabled symbolic test + all existing checks. MainSHAe252ef06..., common
+  97ca33d8... . Earlier owned30df0c5d intentionally stopped143 before compiling;
+  a372dd14 compiled then FAILED private native-executor mount path. R106 fixed
+  the one-shot /build mapping. No failed attempt was counted as qualification.
+- Native fixtures first exposed actual Enter opening a menu, then confirmed fix.
+  R120 all25 behavior checks passed but runner failed inherited28-count floor;
+  added useful ShiftF10/no-launch/no-orphan controls to29, final R121/R124 passed.
+  Earlier ownership/missing runtime deps/library duplicate/readability failures
+  remain retained. Runner result.json now exclusively devctl-owned; separate
+  native-result.json retains scenario result. R122 diagnostic escape error was
+  stopped; not a product/runtime failure or a qualified result.
+- ARM imagee83d2ad1/guard28a5035c ACTIVE74%56489/75864 at16:25Z, actual ARM64
+  target/native x86 compiler. Last measured guest24GiB used7.2GiB/available16.4GiB,
+  swap0 (72ca2e5e). Require final export, VM-off and original24cf policy restore.
+- Separate ARM64 metadata2 RPM build503fd468 ACTIVE, emulated aarch64 Fedora
+  package builder (not native hardware performance), sourceb92d40c59,2GiB normal
+  reservation. Actual release compilation completed; required debug cargo checks
+  still running. Private container store/TMP on owned HDD; no extra host SSD load.
+- R126 one-shot combined VM helpers PREPARED only; no VM started. Preserve exact
+  runtime96/SDK5/Filer75 private Flatpak; upgrade Installer81 + helper2 + Shell129.
+  Guest10GiB/QEMU12cap/admission14+guard1; original6GiB XML restored. Manifest and
+  package hashes must be sealed after Shell129 exists, then wait ARM cleanup.
+  Original-policy worker14 guard cannot run while ARM owns temporary policy.
 
 CURRENT15:45Z — preview packages qualified; ARM compile active; drawer actions in progress:
 - Metadata decoder2 package f1eac518 PASSED15:41:56Z from sourceb92d40c59.
