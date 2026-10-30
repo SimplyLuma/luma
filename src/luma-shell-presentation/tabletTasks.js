@@ -248,7 +248,7 @@ export class TabletTasks {
         this.home._clockButton?.set_style(`color: ${color(left)};`);
         this.home._statusRight.set_style(`color: ${color(right)};`);
         this.home._gestureBar.get_child()?.set_style(`background-color: ${color(this.home._statusInk)};`);
-        this._bars.forEach((bar, i) => bar.get_child().set_style(`background-color: ${color(i ? right : left)};`));
+        this._bars.forEach((bar, i) => bar.get_child()?.set_style(`background-color: ${color(i ? right : left)};`));
     }
 
     setMode() {
