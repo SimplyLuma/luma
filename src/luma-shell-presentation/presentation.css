@@ -98,3 +98,10 @@
 
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.opaque { background-color: #1e192b; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.high-contrast { background-color: #111111; border-color: white; }
+
+/* Full pages use the dock palette's opaque treatment, so underlying clocks
+ * and application text cannot compete with their own headings and controls. */
+.luma-notification-lip.luma-mobile-notifications.tray:not(.high-contrast) .luma-lip-surface,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options:not(.high-contrast) {
+  background-color: #1e192b;
+}

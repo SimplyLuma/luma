@@ -40,7 +40,10 @@ just to match an older base.
    `build-luma-developer-platform.sh`, `build-prairie-core-apps.sh` and
    `build-luma-home-widgets.sh`. Check each builder's architecture support;
    never relabel an x86 package as ARM. The noarch shell-state service must also
-   be present. The Shell builder installs the presentation sources and all
+   be present. For the shared Terminal action bar, build/install the maintained
+   `luma-terminal` with `scripts/packages/build-luma-terminal.sh` and its
+   `org.projectluma.Terminal.desktop` launcher; the Titan replaced legacy Ptyxis
+   through a local launcher alias. The Shell builder installs the presentation sources and all
    registered native patches, including 0293.
 3. Use a normal Wayland GNOME session with GDM where that device supports it.
    The existing `scripts/mobile/luma-shell-session` and
@@ -68,7 +71,8 @@ Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
 screen, Home has five columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
 Notifications are pulled from the top island; Quick Options is pulled from the
-right status area. Both fill the screen, scroll internally, follow/reverse with
+right status area. Full pages use the dock palette's opaque treatment for readable text.
+Both fill the screen, scroll internally, follow/reverse with
 the finger and snap on release. Mobile lock uses the same notification anatomy,
 with lock visibility/redaction rules and authentication before app activation.
 Desktop/Tablet lock presentation remains separate.

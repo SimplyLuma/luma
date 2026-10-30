@@ -347,3 +347,10 @@ cover reversal, short flicks, cancellation, reduced motion and teardown. Native
 phone touches verified panel opening/closing; screenshot review confirmed the
 rounded partial reveal. Private diagnostics, captures, deployment/rollback and
 exact job receipts remain in the task coordination handoff.
+
+
+Final screenshot follow-up: Mobile full-screen panels use the dock palette's
+opaque treatment so underlying app/lock text cannot show through. Mobile lock
+also hides and restores the legacy native panel, preventing its clock from
+covering the notification heading. The condition excludes Greeter, Tablet and
+Desktop; normal handheld status borrowing resumes after unlock.

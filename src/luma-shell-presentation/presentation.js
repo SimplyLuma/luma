@@ -522,6 +522,7 @@ export class Presentation {
         this._syncStatusCompositing();
         this._gestureBar.hide();
         this._releaseStatus();
+        this._restoreMobileLockPanel();
         for (const [window, saved] of this._windows) {
             if (!window.get_compositor_private()) continue;
             window.disconnect(saved.unmanagedId);
@@ -583,8 +584,20 @@ export class Presentation {
         this._statusComposited = visible;
     }
 
+    _restoreMobileLockPanel() {
+        if (!this._mobileLockPanel) return;
+        Main.panel.visible = this._mobileLockPanel.visible;
+        this._mobileLockPanel = null;
+    }
+
     _syncVisibility() {
         const unlocked = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+        const mobileLock = this.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+        if (!mobileLock) this._restoreMobileLockPanel();
+        else {
+            this._mobileLockPanel ??= {visible: Main.panel.visible};
+            Main.panel.hide();
+        }
         if (!unlocked && !this._lockSnapshot && this.mode !== 'desktop') {
             this._lockSnapshot = {home: this._home.visible,
                 minimized: [...this._windows.keys()].filter(window => window.minimized)};
