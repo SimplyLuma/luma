@@ -82,7 +82,7 @@ luma-quick-view-46.0-1.luma.18.lumaui20260928.fc44.x86_64
 luma-rfkill-guard-0.1.0-1.luma.2.fc44.noarch
 luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.9.fc44.noarch
-luma-home-widgets-0.1.0-1.luma.1.fc44.x86_64
+luma-home-widgets-0.1.0-1.luma.2.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.36.presentation20261025.1.fc44.noarch
 luma-os-remote-1.0.0-1.luma.19.fc44.noarch
 luma-update-1.0.0-1.luma.19.fc44.noarch

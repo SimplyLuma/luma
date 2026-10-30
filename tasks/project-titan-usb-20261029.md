@@ -1,6 +1,6 @@
 # Project Titan recovery and shared shell
 
-- Status: shared GNOME Tablet Home and compact native login running on owner Titan; final visual/Quick Options checks pending bridge recovery.
+- Status: shared Mobile presentation active on owner Titan; compact Home, full-screen overlays, power-button lock/blank and background Weather verified. Source candidate ready for integration.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -11,7 +11,47 @@ Provide rapid personal-device recovery and source-backed hotfixes on the owner's
 Titan 2 Elite. Preserve the converged source tree, the phone-specific kernel and
 working hardware stack. This does not publish a signed/general OS release.
 
-## Shared shell on Titan
+## Compact shared-shell checkpoint — 2026-10-29
+
+The same shared Home now runs with Mobile selected on the phone. At its actual
+360 × 400 logical size it fits five columns and four rows plus the bottom dock.
+Weather spans two columns × two rows; Calendar spans three columns × two rows.
+Two further rows hold ten app icons. Widgets and apps use the existing integer
+cell/save contract; resizing repacks sparse layouts while preserving arrangements
+at unchanged dimensions. Taller phones gain additional rows. Larger Tablet
+geometry and unprofiled status insets retain their existing behavior.
+
+Device metadata keeps the status clock and Quick Options header clear of the
+camera. Lock clock/date inherit shared Desktop/Tablet typography. Search opens
+the shared master search. The native notification island owns its pull target;
+only the right status controls own Quick Options. Both compact overlays fill the
+screen, scroll internally and provide Close/upward dismissal. The Home gesture
+area yields to open overlays. Native touch tests verify notification pull,
+Quick Options pull/scroll/Close/bottom swipe, notification Close/bottom swipe,
+and Quick Options Backspace. The owner confirms rearrangement now saves.
+
+A handheld-scoped native accelerator locks before blanking the display, and wakes
+without unlocking. Native key testing reports PowerSaveMode 0 → 3 → 0, with the
+session locked. Asynchronous display queries avoid blocking touch input. This
+implements display sleep; full-system suspend/modem wake is not qualified here.
+
+Weather now refreshes through its existing provider/cache using a bounded user
+timer while the window is closed. A saved Wi-Fi name mismatch was corrected on
+this owner device, and a real forecast populated Home. Fresh-cache, empty-city,
+stale-cache and failure paths have unit coverage; a real stale-cache background
+refresh passed on the phone, producing a fresh forecast without opening Weather. Widget package source/pins advance
+to 1.luma.2; this is not a rebuilt or published OS/package release.
+
+Validation: admitted final-delivery job 9761c231 passes compact geometry/grid
+checks, 25 shared-state tests, four refresh tests, the full 266-patch pinned Shell
+series, all presentation-module syntax, package-builder syntax, Meson parsing,
+RPM spec expansion and diff whitespace checks. Earlier iterations exposed a
+utility signal hookup error and the finer-grid save mismatch; both were corrected.
+Native captures and private development tools stay outside Git. The initial
+one-shot screenshot hooks are removed; opt-in root-controlled live inspection
+remains available for subsequent owner-device iteration.
+
+## Earlier shared-shell bootstrap (superseded)
 
 The owner requests the existing Tablet shell on the phone and a compact login,
 with rapid personal-device testing. The same GNOME Shell now starts on handheld

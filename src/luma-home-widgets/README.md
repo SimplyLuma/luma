@@ -5,7 +5,11 @@ model is extracted from Mobile's `PhoshLumaToday`, retaining GPL-3.0-or-later.
 It reads the same owned Weather place/cache files and native CalendarServer
 protocol. It preserves freshness, units, week-ahead events, file/timezone
 monitoring, bounded reads and cancellation. It makes no forecast requests,
-creates no app data, and starts no polling helper or second event database.
+creates no app data or second event database. A bounded user timer refreshes the
+saved widget city through Weather’s existing provider and atomic cache every
+30 minutes, including while its window is closed. Fresh forecasts obey the
+provider’s existing refresh policy; offline failures preserve the cache. The
+installed Weather launcher selects native or Flatpak storage/provider ownership.
 
 `LumaWidgets.Model` provides definitions and display fields through
 `dup_snapshot()` and a coalesced `changed` signal. Definitions own widget IDs,

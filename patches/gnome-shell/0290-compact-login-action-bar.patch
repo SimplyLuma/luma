@@ -30,7 +30,7 @@ Subject: [PATCH] Use shared compact clock and authentication action bar
 +        this.visible = true;
 +        this._posterScale = scale;
 +        const fontSize = Math.max(48, Math.min(96, width / scale / 4.8));
-+        this._time.set_style(`font-size: ${fontSize}px; font-weight: 300;`);
++        this._time.set_style(`font-size: ${fontSize}px;`);
 +        this._date.set_style('font-size: 17px; font-weight: 400; color: rgba(255,255,255,0.78);');
 +        this._weekday.hide();
 +        this._ampm.hide();

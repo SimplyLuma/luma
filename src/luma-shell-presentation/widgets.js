@@ -29,7 +29,7 @@ export class HomeWidgets {
 
     _create(id) {
         const actor = new St.Button({style_class: `luma-converged-widget ${id}`,
-            can_focus: true, reactive: true, accessible_name: this.snapshot[id].name});
+            clip_to_allocation: true, can_focus: true, reactive: true, accessible_name: this.snapshot[id].name});
         const content = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
             style_class: 'luma-home-widget-content', x_expand: true, y_expand: true});
         const heading = label('', 'luma-converged-widget-heading');

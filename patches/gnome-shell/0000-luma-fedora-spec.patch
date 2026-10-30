@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,298 @@
+@@ -32,6 +32,301 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -282,6 +282,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1279:      0285-desktop-launcher-folders.patch
 +Patch1280:      0290-compact-login-action-bar.patch
 +Patch1281:      0291-shared-handheld-startup-and-input.patch
++Patch1282:      0292-display-exclusions-and-notification-touch.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -310,6 +311,8 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9025:     launcherModel.js
 +Source9026:     launcherFolders.css
 +Source9027:     launcher.svg
++Source9028:     safeAreas.js
++Source9029:     powerButton.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
@@ -335,7 +338,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +487,32 @@
+@@ -189,8 +487,34 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -361,6 +364,8 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9025} js/ui/lumaPresentation/launcherModel.js
 +cp %{SOURCE9026} js/ui/lumaPresentation/launcherFolders.css
 +cp %{SOURCE9027} js/ui/lumaPresentation/launcher.svg
++cp %{SOURCE9028} js/ui/lumaPresentation/safeAreas.js
++cp %{SOURCE9029} js/ui/lumaPresentation/powerButton.js
  
  %build
 +sh data/theme/luma-notifications/verify-generated.sh

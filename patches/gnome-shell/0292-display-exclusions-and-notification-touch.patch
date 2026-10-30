@@ -1,0 +1,127 @@
+From: Luma Developers
+Subject: [PATCH] Adapt notification island and display exclusions to compact displays
+
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -16,6 +16,7 @@
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {peekCast} from './lumaCast.js';
+ import {LumaIconMask} from './iconMask.js';
++import {avoidDisplayExclusions, statusInsets} from './lumaPresentation/safeAreas.js';
+ 
+ const MORPH_TIME = 460;
+ const RETRACT_TIME = 6500;
+@@ -55,6 +56,8 @@
+             can_focus: true, track_hover: true, accessible_name: _('Notifications'),
+             accessible_role: Atk.Role.PUSH_BUTTON});
+         this._state = 'idle';
++        this._pullTarget = new St.Widget({reactive: true, style: 'background-color: transparent;'});
++        this.add_child(this._pullTarget);
+         this._sources = new Map();
+         this._notifications = new Set();
+         this._cards = new Map();
+@@ -119,7 +122,7 @@
+         pull.connect('recognize', () => this.open());
+         this.add_action(pull);
+         this.connect('key-press-event', (_a, e) => {
+-            if (e.get_key_symbol() === Clutter.KEY_Escape) {
++            if ([Clutter.KEY_Escape, Clutter.KEY_BackSpace, Clutter.KEY_Back].includes(e.get_key_symbol())) {
+                 this.close();
+                 this._rest();
+                 return Clutter.EVENT_STOP;
+@@ -414,6 +417,21 @@
+             [, height] = this._surface.child.get_preferred_height(width);
+             height = Math.min(height, monitor.height - (top - monitor.y) - 24 * scale);
+         }
++        const wasFullPage = this._fullPage;
++        this._fullPage = this.isOpen && monitor.width / scale <= 700 && Main.presentation?.mode !== 'desktop';
++        if (wasFullPage && !this._fullPage) {
++            this._surface.set_style(bottom ? 'border-radius: 22px 22px 0 0;' : null);
++            this._material?.setCornerRadii(bottom ? [22, 22, 0, 0] : [0, 0, 22, 22]);
++        }
++        if (this._fullPage) {
++            width = monitor.width; height = monitor.height; top = monitor.y;
++            this._surface.set_style('border-radius: 0;');
++            this._material?.setCornerRadii([0, 0, 0, 0]);
++            const safe = statusInsets(Main.presentation?._displayGeometry, monitor, 60 * scale, 16 * scale, 8 * scale);
++            this._surface.child.get_first_child().set_style(`padding: 16px ${safe.right / scale}px 8px ${safe.left / scale}px;`);
++            this._scroll.set_style(`max-height: ${Math.max(80, monitor.height / scale - 120)}px;`);
++            this._scroll.y_expand = true;
++        }
+         const unchanged = this._targetWidth === width && this._targetHeight === height;
+         this._targetHeight = height;
+         this._targetWidth = width;
+@@ -441,15 +459,23 @@
+         const monitor = Main.layoutManager.primaryMonitor;
+         if (!monitor) return;
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        this.set_position(this._rightAligned
+-            ? monitor.x + monitor.width - 30 * scale - this.width
+-            : monitor.x + (monitor.width - this.width) / 2, this._bottomAnchored ? monitor.y + monitor.height - this.height : (this._targetTop ?? monitor.y));
++        if (this._fullPage) {
++            this.set_position(monitor.x + (monitor.width - this.width) / 2, monitor.y);
++            return;
++        }
++        const box = avoidDisplayExclusions(Main.presentation?._displayGeometry, monitor, {
++            x: this._rightAligned ? monitor.width - 30 * scale - this.width : (monitor.width - this.width) / 2,
++            y: this._bottomAnchored ? monitor.height - this.height : (this._targetTop ?? monitor.y) - monitor.y,
++            width: this.width, height: Math.max(this.height, 44 * scale),
++        });
++        this.set_position(monitor.x + box.x, monitor.y + box.y);
+     }
+     vfunc_allocate(box) {
+         this.set_allocation(box);
+         this._hasInitialAllocation = true;
+         const width = box.get_width(), height = box.get_height();
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._pullTarget.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: Math.max(height, 44 * scale)}));
+         this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
+         const shoulderY = this._bottomAnchored ? height - 12 * scale : 0;
+         this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: shoulderY, x2: 0, y2: shoulderY + 12 * scale}));
+@@ -507,7 +533,7 @@
+         this._fresh = false;
+         this._state = 'tray';
+         this._records = records();
+-        const column = new St.BoxLayout({style_class: 'luma-lip-tray', orientation: Clutter.Orientation.VERTICAL, x_expand: true});
++        const column = new St.BoxLayout({style_class: 'luma-lip-tray', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
+         const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
+         header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
+         this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
+@@ -526,6 +552,26 @@
+         this._scroll.set_child(this._list); column.add_child(this._scroll);
+         this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
+         column.add_child(this._empty);
++        if (Main.layoutManager.primaryMonitor.width / St.ThemeContext.get_for_stage(global.stage).scale_factor <= 700 && Main.presentation?.mode !== 'desktop') {
++            column.add_child(new St.Widget({y_expand: true}));
++            const close = new St.Button({label: _('Close'), accessible_name: _('Close Notifications'),
++                reactive: true, can_focus: true, style: 'min-height: 44px; margin: 8px 16px; padding: 0; border-radius: 16px; background-color: rgba(128,128,128,0.14);'});
++            close.connect('clicked', () => this.close());
++            const dismiss = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.Y});
++            dismiss.set_begin_threshold(8);
++            dismiss.connect('pan-update', gesture => { if (gesture.get_accumulated_delta().get_y() < -24) this.close(); });
++            dismiss.connect('may-recognize', gesture => {
++                const event = gesture.get_point_event(0);
++                const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++                const delta = gesture.get_accumulated_delta().get_y();
++                return !!event && this._fullPage && delta < 0 &&
++                    event.get_coords()[1] - delta >= this.y + this.height - 64 * scale;
++            });
++            if (this._dismissGesture) this.remove_action(this._dismissGesture);
++            this._dismissGesture = dismiss;
++            this.add_action_full('LumaNotificationsDismiss', Clutter.EventPhase.CAPTURE, dismiss);
++            column.add_child(close);
++        }
+         this._setContent(column);
+         this._cards.clear();
+         this._syncTray(); this._render();
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -152,6 +152,8 @@
+     <file>ui/shelf.js</file>
+     <file>ui/lumaPresentation/presentation.js</file>
+     <file>ui/lumaPresentation/layout.js</file>
++    <file>ui/lumaPresentation/safeAreas.js</file>
++    <file>ui/lumaPresentation/powerButton.js</file>
+     <file>ui/lumaPresentation/grid.js</file>
+     <file>ui/lumaPresentation/homeEditor.js</file>
+     <file>ui/lumaPresentation/widgets.js</file>

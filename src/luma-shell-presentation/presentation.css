@@ -58,3 +58,13 @@
 
 
 .luma-tablet-task-backdrop { background: rgba(0,0,0,0.35); }
+
+/* Compact geometry keeps widget copy inside its two-row span. */
+.compact-home .luma-home-widget-content { padding: 8px; spacing: 2px; }
+.compact-home .luma-converged-widget { border-radius: 18px; }
+.compact-home .luma-converged-widget-heading { font-size: 10px; }
+.compact-home .luma-converged-widget.weather .luma-converged-widget-title { font-size: 28px; }
+.compact-home .luma-converged-widget.calendar .luma-converged-widget-title { font-size: 24px; }
+.compact-home .luma-converged-widget-caption { font-size: 10px; }
+.compact-home .luma-converged-dock { border-radius: 18px; }
+.compact-home .luma-converged-page { height: 16px; }

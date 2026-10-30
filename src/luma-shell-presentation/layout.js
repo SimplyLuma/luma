@@ -11,6 +11,30 @@ export function formOf(width, height) {
 }
 
 export function homeLayout(width, height, mode, count, metrics = {}) {
+    // Widgets and apps share the same whole icon-cell grid.
+    // Density depends on usable geometry, independently of device or mode.
+    if (width <= 480 && height >= 280) {
+        const inset = 8;
+        const top = 44;
+        const dockHeight = 56;
+        const dockBottom = 6;
+        const dotsHeight = 16;
+        const bottom = dockHeight + dockBottom + dotsHeight + 4;
+        const availableHeight = Math.max(1, height - top - bottom);
+        const minimumRow = Math.max(56, metrics.cellHeight ?? 0);
+        const rows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
+        const rowHeight = availableHeight / rows;
+        const iconSize = Math.max(28, Math.min(40, rowHeight - 24, (width - 2 * inset) / 5 - 12));
+        const iconColumns = Math.max(3, Math.min(5, Math.floor((width - 2 * inset) / 56)));
+        const columns = iconColumns;
+        const capacity = rows * iconColumns;
+        return {width, height, form: formOf(width, height), compact: true, inset,
+            contentWidth: width - 2 * inset, columns, iconColumns, appColumns: 1,
+            widgetColumns: Math.floor(iconColumns / 2), top, bottom, dockHeight, dockBottom,
+            dotsHeight, iconSize, cellHeight: rowHeight - 4, rowHeight,
+            firstRows: rows, otherRows: rows, firstCapacity: capacity,
+            laterCapacity: capacity, pages: Math.max(1, Math.ceil(count / capacity))};
+    }
     const tablet = mode === 'tablet';
     const inset = tablet ? Math.min(56, width / 16) : 20;
     const contentWidth = Math.max(1, width - 2 * inset);

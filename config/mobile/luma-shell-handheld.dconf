@@ -131,3 +131,7 @@ extend-height=false
 height-fraction=0.984
 dash-max-icon-size=48
 icon-size-fixed=true
+
+[org/gnome/settings-daemon/plugins/media-keys]
+# Shared Shell owns handheld lock-and-blank; avoid a competing static grab.
+power-static=@as []
