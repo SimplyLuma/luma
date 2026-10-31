@@ -658,3 +658,21 @@ User keyboard override remains false across reboot. Initial normal Tide PCM
 check observed amplifier PLL locked50/50 samples, with no diagnostic module or
 reference-holding workaround. Thirty-second check completed with amplifier PLL locked in all1,391 samples
 (normal clocks, no reference workaround). Owner listening answer is pending. Normal speaker-only route restored (Speaker on/Earpiece off).
+
+
+### 2026-10-30 — owner confirms smooth playback
+
+After the corrected-kernel reboot, owner requested Tide playback and confirms
+music has no chopping. Owner describes the output as the earpiece. The active
+route reads Speaker Switch=on, Earpiece Switch=off, RCV Mux=Open, and the external
+FS19xx amplifier is active. The manufacturer's Titan2 Elite User Manual V1.0
+(202605), physical page1/PDF page6, places the loudspeaker on the top edge beside
+the receiver, with only USB/microphone on the bottom. The previous operator
+assumption of a bottom loudspeaker was wrong; no output switching or UCM label
+change is justified. The existing smooth route remains active. Official manual:
+https://www.unihertz.com/pages/titan-2-elite-user-manual
+
+Tide listening acceptance now passes with the corrected kernel. The electrical
+30-second stable-lock result is complemented by owner listening; no CCF hold or
+other failed audio workaround is left installed/running. Doom and telephone
+call-path listening have not been checked after this fix and are not claimed.

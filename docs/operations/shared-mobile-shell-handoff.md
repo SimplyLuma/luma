@@ -129,5 +129,5 @@ Phosh configurations; do not force-enable the OSK in recovery scripts.
 The MT6878 audio PLL correction is maintained separately under
 `patches/linux-mt6878/0065-clk-mediatek-mt6878-preserve-independent-PLL-gates.patch`.
 It is hardware-specific and belongs after the device branch's preceding kernel
-series. Its full kernel has booted on the owner's Titan; listening acceptance
-remains pending. It is not a desktop/tablet audio-policy change or OS release.
+series. Its full kernel has booted on the owner's Titan, and the owner confirms
+Tide playback is smooth. Doom/call-path listening checks remain untested. It is not a desktop/tablet audio-policy change or OS release.
