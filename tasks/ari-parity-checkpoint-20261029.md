@@ -1,12 +1,18 @@
 # Ari search, actions and Models checkpoint
 
-Status: r11 is server-qualified; Dell delivery is pending reconnection. The
-last delivered build remains r10. Visual conformance and live OpenAI
-qualification remain incomplete.
+Status: Ari 0.2.0 is merged on GitHub and selected for the next coordinated
+Nightly. Production publication and installed-update qualification are pending;
+this is a source handoff, not a released app update.
 
-Owner: Codex, Ari ChatGPT task. Branch: `agent/1003/ari-chatgpt-20261029`.
-Review: draft PR #92. Qualified r11 runtime source is
-`506354c6e`; earlier checkpoints below are history.
+Owner: Codex, Ari ChatGPT task. Feature source merged through
+[PR #92](https://github.com/SimplyLuma/luma/pull/92), merge commit
+`91e4a6d4eedf421d071280d6536cb674ff44449b`. The r11 feature runtime is
+`506354c6e`; production packaging is `01bfb62c8`.
+
+The [Nightly handoff](../docs/operations/ari-0.2-nightly-handoff.md) records
+required host generation 21, the shared platform/runtime update, the companion
+Tide update, validation and remaining release gates. Earlier preview delivery
+notes below are historical; Ari2 overlays are not production release inputs.
 
 ## October 29 follow-up: direct music and normal exit
 

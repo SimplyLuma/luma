@@ -97,6 +97,10 @@ Keep pending migrations explicitly pending until those checks run. Document any
 OS-only application exception and its reason. Routine delivery must follow the
 component's declared owner, not an operator's choice on a particular release.
 
+For the next Ari 0.2.0 cohort, use the
+[Ari Nightly handoff](ari-0.2-nightly-handoff.md) for the coordinated host,
+shared-runtime and app requirements.
+
 ## Application updates
 
 The signed application feed has its own publication and compatibility checks.

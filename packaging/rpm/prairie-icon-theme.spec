@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.39%{?dist}
+Release:        1.luma.43.creator20261030.1%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
@@ -144,6 +144,9 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.43.creator20261030.1
+- Keep the shared icon package and image pins ahead of the published baseline.
+
 * Mon Oct 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.36.creator20261005.1
 - Resolve the Disks Preview launcher through the canonical rounded Disks artwork.
 
