@@ -34,7 +34,9 @@ from pathlib import Path
 from textwrap import dedent
 
 from flatpak_module_tools.build_context import BuildContext
-from flatpak_module_tools.container_builder import ContainerBuilder, InnerExcutor
+from flatpak_module_tools.container_builder import (
+    ContainerBuilder, InnerExcutor, FlatpakBuilder, PackageFlatpakSourceInfo,
+)
 from flatpak_module_tools.container_spec import ContainerSpec
 from flatpak_module_tools.flatpak_builder import FLATPAK_METADATA_BOTH
 from flatpak_module_tools.utils import Arch
@@ -139,6 +141,35 @@ class LumaContainerBuilder(ContainerBuilder):
     def __init__(self, context, runtime_packages):
         super().__init__(context, flatpak_metadata=FLATPAK_METADATA_BOTH)
         self.runtime_packages = runtime_packages
+
+    def _run_build(self, executor, *, workdir, resultdir):
+        # Fedora's native-only orchestration constructs FlatpakBuilder without
+        # oci_arch, which defaults back to the tools CPU. Select it explicitly
+        # for package selection, /usr mapping, metadata and OCI export together.
+        self.executor = executor
+        flatpak = FlatpakBuilder(
+            PackageFlatpakSourceInfo(self.context.flatpak_spec, None), workdir, ".",
+            flatpak_metadata=self.flatpak_metadata, oci_arch=self.context.arch.oci,
+        )
+        self._add_labels_to_builder(flatpak, *self.context.nvr.rsplit("-", 2))
+        executor.init()
+        self._write_dnf_conf()
+        self._install_packages(flatpak)
+        self._cleanup_tree(flatpak)
+        command = ["tar", "cf", "-", "--anchored", "--exclude=./sys/*",
+                   "--exclude=./proc/*", "--exclude=./dev/*", "--exclude=./run/*", "."]
+        with executor.popen(command, cwd=executor.installroot, stdout=subprocess.PIPE) as process:
+            filesystem, _ = flatpak._export_from_stream(process.stdout, close_stream=False)
+            status = process.wait()
+            if status:
+                raise subprocess.CalledProcessError(status, command)
+        _, oci = flatpak.build_container(filesystem, tar_outfile=False)
+        output = resultdir / f"{self.context.nvr}.{self.context.arch.rpm}.oci"
+        subprocess.run(["tar", "-cnf", str(output) + ".tar",
+                        *(path.name for path in Path(oci).iterdir())], cwd=oci, check=True)
+        self._create_rpm_manifest(output)
+        self._copy_manifest_and_config(oci, output)
+        return str(output) + ".tar"
 
     def _install_packages(self, builder):
         installroot = self.executor.installroot
