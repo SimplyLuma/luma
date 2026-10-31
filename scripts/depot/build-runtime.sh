@@ -51,6 +51,7 @@ for component in "${components[@]}"; do
       --containerspec "$spec" \
       --nvr "$name-$DEPOT_RUNTIME_BRANCH-$build_id" \
       --fedora-release "$DEPOT_FEDORA_RELEASE" \
+      --architecture "$DEPOT_ARCH" \
       --local-repo "$depot_rpms" \
       --workdir "$DEPOT_ROOT/work/runtime/$component.work" \
       --resultdir "$result" \

@@ -74,11 +74,11 @@ class ReleaseProfile:
 
 class LumaBuildContext(BuildContext):
     def __init__(self, *, container_spec, nvr, fedora_release, mirror, local_repo,
-                 runtime_packages):
+                 runtime_packages, architecture=None):
         # local_repo stays None for the base class: flatpak-module-tools would
         # otherwise try to bind-mount it into a mock chroot. dnf runs in this
         # container with --installroot, so the host path is used directly.
-        super().__init__(profile=ReleaseProfile(), arch=Arch(),
+        super().__init__(profile=ReleaseProfile(), arch=Arch(rpm=architecture) if architecture else Arch(),
                          container_spec=container_spec, local_repo=None)
         self._luma_repo = local_repo
         self._nvr = nvr
@@ -152,7 +152,7 @@ class LumaContainerBuilder(ContainerBuilder):
                 mount --rbind $i {installroot}/$i
                 mount --make-rslave {installroot}/$i
             done
-            dnf --installroot={installroot} install -y {package_str}
+            dnf --forcearch={self.context.arch.rpm} --installroot={installroot} install -y {package_str}
             """)
         self.executor.write_file(Path("/tmp/install.sh"), install_sh)
         self.executor.check_call(["/bin/bash", "-ex", "/tmp/install.sh"], enable_network=True)
@@ -193,6 +193,8 @@ def main() -> int:
     parser.add_argument("--nvr", required=True,
                         help="name-version-release label, e.g. luma-platform-44-20260915.1")
     parser.add_argument("--fedora-release", default="44")
+    parser.add_argument("--architecture", choices=("x86_64", "aarch64"),
+                        help="Runtime payload CPU; independent of the tools CPU")
     parser.add_argument("--mirror", default=FEDORA_MIRROR)
     parser.add_argument("--local-repo", type=Path, required=True,
                         help="createrepo_c repository with Luma RPMs for this architecture")
@@ -229,6 +231,7 @@ def main() -> int:
         mirror=args.mirror,
         local_repo=args.local_repo.resolve(),
         runtime_packages=runtime_packages,
+        architecture=args.architecture,
     )
     builder = LumaContainerBuilder(context, runtime_packages)
     executor = InnerExcutor(
