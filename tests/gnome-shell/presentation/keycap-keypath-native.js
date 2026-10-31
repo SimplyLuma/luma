@@ -246,6 +246,14 @@ async function work() {
         .map(a => a.get_theme_node());
     let restyled = 0;
     let presses = 0;
+    // Mutter's own profiler records the paint of each press frame, with the
+    // Cogl journal flushes inside it (each one a separate GPU batch).
+    const capture = `${out}/press.syscap`;
+    const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+        capture, '9'], Gio.SubprocessFlags.STDOUT_PIPE);
+    const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+    await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+    await sleep(300);
     for (const letter of 'thequickbrownfoxjumpsoverthelazydog') {
         const key = keyFor(letter);
         const [x, y] = centre(key);
@@ -266,6 +274,18 @@ async function work() {
     keyboard.handleKeyEvent = handle;
     for (const [name, original] of geometry)
         Clutter.Actor.prototype[name] = original;
+    await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+    const pressTimes = `${out}/press-times.txt`;
+    GLib.file_set_contents(pressTimes, tapTimes.filter((_t, i) => i % 2 === 0).join('\n'));
+    const [, analysis] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+        capture, pressTimes], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+    const pressPaints = JSON.parse(analysis || '{"presses": []}').presses.slice(1);
+    const worstFlushes = Math.max(...pressPaints.map(p => p.flushes));
+    const flushCounts = pressPaints.map(p => p.flushes);
+    check('a press frame draws in at most 5 GPU batches (Cogl journal flushes)',
+        pressPaints.length > 20 && worstFlushes <= 5,
+        `flushes per press frame: median ${[...flushCounts].sort((a, b) => a - b)[Math.floor(flushCounts.length / 2)]}, ` +
+        `worst ${worstFlushes} over ${pressPaints.length} (${flushCounts.join(' ')})`);
     await sleep(300);
     const sortedPress = [...pressHandling].sort((a, b) => a - b);
     const pressMedian = sortedPress[Math.floor(sortedPress.length / 2)] ?? Infinity;
@@ -308,6 +328,287 @@ async function work() {
     check('a stand-in feedbackd was activated and asked for a quiet tick per press',
         await until(() => read(feedbackLog).split('\n').filter(l => l.includes('button-pressed quiet')).length >= 30, 3000),
         `${read(feedbackLog).split('\n').filter(l => l.includes('button-pressed')).length} feedback calls; direct call ${direct}`);
+
+    // 1b. A press draws over the cached key grid and never invalidates it:
+    // keys around the pressed one (the row the preview overlaps, its
+    // neighbours) are not painted again for a press or its release.
+    {
+        keyboard._setActiveLevel('default');
+        keyboard._latched = true;
+        await sleep(300);
+        const probes = [];
+        for (const letter of 'qwertyuiopadfghjkl') {
+            const probe = new PaintProbe();
+            keyFor(letter).keyButton.add_effect(probe);
+            probes.push(probe);
+        }
+        await sleep(500);
+        probes.forEach(probe => (probe.samples = []));
+        const [sx, sy] = centre(keyFor('s'));
+        let gridPaints = 0;
+        for (let i = 0; i < 5; i++) {
+            down(0, sx, sy);
+            await sleep(70);
+            up(0);
+            await sleep(150);
+        }
+        gridPaints = probes.reduce((sum, probe) => sum + probe.samples.length, 0);
+        probes.forEach(probe => probe.actor?.remove_effect(probe));
+        check('a press and its release repaint no other key (the grid stays cached)', gridPaints === 0,
+            `${gridPaints} paints of the 18 neighbouring keys over 5 taps on s`);
+        await sleep(300);
+    }
+
+    // 1c. The first press of a freshly built keyboard creates and renders
+    // nothing new: everything a press shows was made and drawn once when the
+    // keyboard was built and opened.
+    {
+        a11y.set_boolean('screen-keyboard-enabled', false);
+        await until(() => !Main.keyboard.keyboardActor, 3000);
+        a11y.set_boolean('screen-keyboard-enabled', true);
+        await until(() => Main.keyboard.keyboardActor, 3000);
+        window.activate(global.get_current_time());
+        Main.keyboard.open(Main.layoutManager.primaryIndex);
+        await until(() => Main.keyboard.visible, 3000);
+        await sleep(1500);
+        keyboard = Main.keyboard.keyboardActor;
+        const before = descendants(Main.layoutManager.uiGroup, () => true).length;
+        const firstFrames = [];
+        let started = 0;
+        const ids = [
+            global.stage.connect('before-paint', () => (started = now())),
+            global.stage.connect('after-paint', () => firstFrames.push({at: started, ms: (now() - started) / 1000})),
+        ];
+        const handle = keyboard.handleKeyEvent;
+        let firstHandling = null;
+        keyboard.handleKeyEvent = function (event) {
+            const start = now();
+            try {
+                return handle.call(this, event);
+            } finally {
+                if (event.type() === Clutter.EventType.TOUCH_BEGIN && firstHandling === null)
+                    firstHandling = (now() - start) / 1000;
+            }
+        };
+        const key = keyFor('t');
+        const [tx, ty] = centre(key);
+        const pressedAt = now();
+        down(0, tx, ty);
+        await sleep(70);
+        const after = descendants(Main.layoutManager.uiGroup, () => true).length;
+        up(0);
+        await sleep(300);
+        keyboard.handleKeyEvent = handle;
+        ids.forEach(id => global.stage.disconnect(id));
+        const pressFrame = firstFrames.find(frame => frame.at >= pressedAt);
+        check('the first press of a fresh keyboard creates no actor', after === before,
+            `${after - before} actors created by the first press`);
+        check('the first press of a fresh keyboard is handled and painted within a frame',
+            firstHandling !== null && firstHandling < 2 && pressFrame && pressFrame.ms < 16.7,
+            `TOUCH_BEGIN ${firstHandling?.toFixed(3)} ms, press frame ${pressFrame?.ms.toFixed(2)} ms`);
+        await sleep(300);
+    }
+
+    // 1d. A layer switch (sentence case after '. ', lowercase again after
+    // a capital, the shift key) only swaps which cached layer is shown: no
+    // layer is laid out, shown, hidden or drawn again, and the frame costs
+    // no more GPU batches than one that redraws the keyboard from its cache.
+    {
+        await reset();
+        keyboard._setLatched(false);
+        keyboard._updateLevelFromHints(true);
+        await sleep(400);
+        const layers = keyboard._layers;
+        const letterKeys = layer => layer.get_children().filter(key => key.keyButton && key.character);
+        const probes = [];
+        for (const level of ['default', 'shift']) {
+            for (const key of letterKeys(layers[level]).slice(0, 12)) {
+                const probe = new PaintProbe();
+                key.keyButton.add_effect(probe);
+                probes.push(probe);
+            }
+        }
+        // Adding the probes redrew both grids; draw them into their caches
+        // again the way the keyboard does when it is shown.
+        keyboard._coolLayers();
+        await sleep(500);
+        probes.forEach(probe => (probe.samples = []));
+        const switches = [];
+        let touching = null;
+        const setActiveLevel = keyboard._setActiveLevel;
+        keyboard._setActiveLevel = function (level) {
+            const before = this._currentPage;
+            const result = setActiveLevel.call(this, level);
+            if (this._currentPage !== before)
+                switches.push({at: now(), to: level, during: touching});
+            return result;
+        };
+        const watched = ['queue_relayout', 'show', 'hide'].map(name => [name, Clutter.Actor.prototype[name]]);
+        const layoutCalls = [];
+        let watching = false;
+        for (const [name, original] of watched) {
+            Clutter.Actor.prototype[name] = function (...args) {
+                if (watching)
+                    layoutCalls.push(`${name} ${this.constructor.name}`);
+                return original.apply(this, args);
+            };
+        }
+        const capture = `${out}/switch.syscap`;
+        const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+            capture, '6'], Gio.SubprocessFlags.STDOUT_PIPE);
+        const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+        await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+        await sleep(300);
+        // Frames that redraw the whole keyboard from its cache and change
+        // nothing else: the current layer's opacity nudged and restored.
+        const cachedRedraws = [];
+        for (let i = 0; i < 3; i++) {
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 254;
+            await sleep(120);
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 255;
+            await sleep(120);
+        }
+        // lowercase -> Shift -> lowercase with no key down.
+        const direct = [];
+        watching = true;
+        keyboard._setActiveLevel('default');
+        await sleep(120);
+        for (let i = 0; i < 3; i++) {
+            direct.push(now());
+            keyboard._setActiveLevel('shift');
+            await sleep(120);
+            direct.push(now());
+            keyboard._setActiveLevel('default');
+            await sleep(120);
+        }
+        watching = false;
+        const directPaints = probes.reduce((sum, probe) => sum + probe.samples.length, 0);
+        // Typed: 'a. b' switches on the release of a, of the full stop
+        // (sentence case follows the mark) and of b.
+        keyboard._updateLevelFromHints(true);
+        await sleep(200);
+        switches.length = 0;
+        const releases = [];
+        for (const character of 'a. bc d') {
+            const [x, y] = centre(keyFor(character));
+            touching = `${JSON.stringify(character)} down`;
+            down(0, x, y);
+            await sleep(50);
+            touching = `${JSON.stringify(character)} up`;
+            const releasedAt = now();
+            up(0);
+            await sleep(120);
+            releases.push({at: releasedAt, character,
+                switched: switches.some(s => s.at >= releasedAt && s.at - releasedAt < 50000)});
+            if (character === 'b') {
+                await sleep(300);
+                check('typing a. b gives A. B (sentence case)', appText() === 'A. B', JSON.stringify(appText()));
+            }
+        }
+        await sleep(400);
+        keyboard._setActiveLevel = setActiveLevel;
+        for (const [name, original] of watched)
+            Clutter.Actor.prototype[name] = original;
+        probes.forEach(probe => probe.actor?.remove_effect(probe));
+        await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+        const times = [...cachedRedraws, ...direct, ...releases.map(r => r.at)];
+        const timesFile = `${out}/switch-times.txt`;
+        GLib.file_set_contents(timesFile, times.join('\n'));
+        const [, result] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+            capture, timesFile], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+        const paints = JSON.parse(result || '{"presses": []}').presses;
+        const cached = paints.slice(0, cachedRedraws.length);
+        const switched = paints.slice(cachedRedraws.length, cachedRedraws.length + direct.length);
+        const typed = paints.slice(cachedRedraws.length + direct.length);
+        const flushes = list => list.map(p => p.flushes);
+        const baseline = Math.max(...flushes(cached));
+        check('a lowercase -> Shift -> lowercase switch costs no extra GPU batch (journal flush)',
+            switched.length === direct.length && cached.length === cachedRedraws.length &&
+            Math.max(...flushes(switched)) <= baseline,
+            `switch frames ${flushes(switched).join(' ')} flushes, ${switched.map(p => p.paint_ms.toFixed(2)).join(' ')} ms; ` +
+            `cached redraw frames ${flushes(cached).join(' ')}`);
+        check('a layer switch draws no key again (both layers stay cached)', directPaints === 0,
+            `${directPaints} key paints over ${direct.length} switches`);
+        check('a layer switch lays out, shows and hides nothing',
+            layoutCalls.length === 0 && switched.every(p => p.relayout_ms < 0.5),
+            `${layoutCalls.slice(0, 6).join(', ') || 'no calls'}; relayout ${switched.map(p => p.relayout_ms.toFixed(2)).join(' ')} ms`);
+        const typedSwitch = typed.filter((_p, i) => releases[i]?.switched);
+        const typedPlain = typed.filter((_p, i) => releases[i] && !releases[i].switched);
+        check('a release that switches layer costs no more GPU batches than one that does not',
+            typedSwitch.length === 3 && typedPlain.length > 0 &&
+            Math.max(...flushes(typedSwitch)) <= Math.max(...flushes(typedPlain)),
+            `switching releases (${releases.filter(r => r.switched).map(r => JSON.stringify(r.character)).join(' ')}) ` +
+            `${flushes(typedSwitch).join(' ')} flushes; others ${flushes(typedPlain).join(' ')}; ` +
+            `switches ${switches.map(s => `${s.to} on ${s.during}`).join(', ')}; text ${JSON.stringify(appText())}`);
+        await sleep(300);
+    }
+
+    // 1e. Every show draws the layers into their caches during the slide-in
+    // (mapping an actor redraws it): show, type "Hi", hide, five times, and
+    // no release after the first show costs more GPU batches than a frame
+    // redrawn from the cache, the capital's release (a switch to lowercase)
+    // included.
+    {
+        const capture = `${out}/sessions.syscap`;
+        const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+            capture, '14'], Gio.SubprocessFlags.STDOUT_PIPE);
+        const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+        await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+        await sleep(300);
+        const cachedRedraws = [];
+        for (let i = 0; i < 2; i++) {
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 254;
+            await sleep(120);
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 255;
+            await sleep(120);
+        }
+        const releases = [];
+        const texts = [];
+        for (let session = 0; session < 5; session++) {
+            Main.keyboard.close();
+            await until(() => !Main.layoutManager.keyboardBox.visible, 3000);
+            await sleep(200);
+            await reset();
+            window.activate(global.get_current_time());
+            Main.keyboard.open(Main.layoutManager.primaryIndex);
+            await until(() => Main.keyboard.visible, 3000);
+            keyboard = Main.keyboard.keyboardActor;
+            keyboard._setLatched(false);
+            keyboard._updateLevelFromHints(true);
+            // The slide-in (200 ms) and a few idle frames.
+            await sleep(450);
+            for (const character of 'Hi') {
+                const [x, y] = centre(keyFor(character));
+                down(0, x, y);
+                await sleep(50);
+                releases.push({at: now(), session, character});
+                up(0);
+                await sleep(150);
+            }
+            await sleep(200);
+            texts.push(appText());
+        }
+        await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+        const timesFile = `${out}/session-times.txt`;
+        GLib.file_set_contents(timesFile, [...cachedRedraws, ...releases.map(r => r.at)].join('\n'));
+        const [, result] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+            capture, timesFile], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+        const paints = JSON.parse(result || '{"presses": []}').presses;
+        const cached = paints.slice(0, cachedRedraws.length).map(p => p.flushes);
+        const released = paints.slice(cachedRedraws.length);
+        const baseline = Math.max(...cached);
+        check('every release after a fresh show draws from the cached layers (show, "Hi", hide, 5 times)',
+            released.length === releases.length && cached.length === cachedRedraws.length &&
+            released.every(p => p.flushes <= baseline),
+            `release flushes ${released.map((p, i) => `${releases[i].character}${p.flushes}`).join(' ')}; ` +
+            `paint ${released.map(p => p.paint_ms.toFixed(1)).join(' ')} ms; cached redraw ${cached.join(' ')}`);
+        check('each session types Hi', texts.every(text => text === 'Hi'), JSON.stringify(texts));
+        await sleep(300);
+    }
 
     // 2. Commit at once: a release commits within the event that ended it,
     // also with the main loop kept busy at the frame clock's priority (as

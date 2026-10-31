@@ -356,6 +356,11 @@ install -m 0644 "$repo_root/patches/gnome-shell/0295-status-without-shelf-backdr
 install -m 0644 "$repo_root/patches/gnome-shell/0296-shelf-presentation-wait-desktop-only.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0297-keycap-key-path.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0298-keycap-press-path-and-lock-screen.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0299-single-layer-shadows.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0300-keycap-cached-grid-and-press-overlay.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0301-keycap-layer-switch-swaps-cached-layers.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0302-keycap-warm-layers-after-every-show.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
 for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
@@ -582,7 +587,17 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
       # measuring, and the keyboard serves only a visible unlock entry.
       grep -Fq "page.transform_stage_point(x, y)" keycap-keyboard.js
       grep -Fq "_lockedWithoutEntry()" keycap-keyboard.js
+      # Cached grid and press overlay (0300).
+      grep -Fq "levelLayout.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS" keycap-keyboard.js
+      grep -Fq "_showPressedCap(cell, cap)" keycap-keyboard.js
       ! grep -q "this.keyButton.add_style_pseudo_class(.active.)" keycap-keyboard.js
+      # Layer switches swap cached layers by opacity (0301).
+      grep -Fq "levelLayout.opacity = 0;" keycap-keyboard.js
+      grep -Fq "this._gridRatio = [columns, rows];" keycap-keyboard.js
+      ! grep -Fq "this._currentPage.hide();" keycap-keyboard.js
+      # Layers are drawn into their caches again after every show (0302).
+      grep -Fq "_warmLayerStep() {" keycap-keyboard.js
+      grep -Fq "warm.drawn = !this._inputSincePaint" keycap-keyboard.js
       ! grep -Fq "this._flushId = GLib.idle_add(GLib.PRIORITY_LOW" keycap-keyboard.js
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/layout.js >keycap-layout.js
@@ -687,6 +702,16 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
           /org/gnome/shell/theme/gnome-shell-$variant.css >gnome-shell-$variant.css
       done
       python3 "$OLDPWD/SOURCES/verify-shell-search-theme.py" gnome-shell-{light,dark,high-contrast}.css
+      # St paints one shadow per actor (0299): no stylesheet may list more.
+      for sheet in optionsSurface.css presentation.css launcherFolders.css keycap.css; do
+        gresource extract usr/lib64/gnome-shell/libshell-18.so \
+          /org/gnome/shell/ui/lumaPresentation/$sheet >shadow-$sheet
+      done
+      gresource extract usr/share/gnome-shell/gnome-shell-theme.gresource \
+        /org/gnome/shell/theme/luma-shelf.css >shadow-luma-shelf.css
+      python3 "$OLDPWD/SOURCES/check-shell-shadows.py" gnome-shell-{light,dark,high-contrast}.css \
+        shadow-luma-shelf.css shadow-optionsSurface.css shadow-presentation.css \
+        shadow-launcherFolders.css shadow-keycap.css
       gjs -m lumaSearch.js >lumaSearch-parse.log 2>&1 || true
       ! grep -Fq "SyntaxError" lumaSearch-parse.log
       grep -aFq "addProvider(provider)" \

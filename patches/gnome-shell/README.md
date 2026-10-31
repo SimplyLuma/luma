@@ -336,3 +336,28 @@ frame, tail-only surrounding text), and on the lock screen the keyboard serves
 only the visible unlock entry, closes on lock and keeps the compact prompt
 above it. Tests: `keycap-keypath-native.js`, `keycap-lock-native.js`.
 Shell .133.
+
+`0299-single-layer-shadows.patch`: every multi-layer shadow (lock/login
+poster card, avatar, password field and focus ring, away well, Quick Options
+radio hover, dock icons, detached dock folder) reduced to the single layer St
+paints, ending the "Ignoring excess values in shadow definition" journal
+flood; `tools/check-shell-shadows.py` guards it in the build.
+
+`0300-keycap-cached-grid-and-press-overlay.patch`: key layers cached as one
+texture, the pressed cap drawn over them, previews without offscreen text
+caches shown by opacity above their keys, a warm-up that runs on a timer
+after the keyboard shows, and a vocabulary built in 3 ms slices. Shell .137.
+
+`0301-keycap-layer-switch-swaps-cached-layers.patch`: every key layer stays
+shown and laid out at opacity 0 and the current one is opaque, so a layer
+switch (sentence case, shift, symbols) reuses both cached textures; the grid
+ratio, which re-pages the emoji panel and relays out the keyboard, is set only
+when it changes; shift keys are restyled only when their latch changes; the
+warm-up draws every layer into its cache. Shell .137.
+
+`0302-keycap-warm-layers-after-every-show.patch`: Clutter queues a redraw of
+every actor it maps, so each keyboard show invalidated every layer's cache and
+the first layer switch after it (the first capital's release) drew a whole
+layer. Layers are marked cold when the keyboard is mapped, its stage views
+change or its layout is rebuilt, and drawn again one per frame while it
+slides in or sits idle, never in a frame that handles a touch. Shell .137.
