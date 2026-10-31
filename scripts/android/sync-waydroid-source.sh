@@ -60,7 +60,10 @@ cat > .repo/local_manifests/99-luma-pins.xml <<EOF
 <manifest>
   <remote name="freedesktop" fetch="https://gitlab.freedesktop.org" />
   <remove-project name="WayDroid/android_external_mesa3d" />
+  <remove-project name="WayDroid/android_external_libdrm" />
+  <project path="external/libdrm" name="mesa/libdrm" remote="freedesktop" revision="$LUMA_ANDROID_LIBDRM_REVISION" clone-depth="1" />
   <project path="external/mesa" name="mesa/mesa" remote="freedesktop" revision="$LUMA_ANDROID_MESA_REVISION" clone-depth="1" />
+  <project path="external/mesa/subprojects/venus-protocol-1.1.3" name="virgl/venus-protocol" remote="freedesktop" revision="$LUMA_ANDROID_VENUS_PROTOCOL_REVISION" clone-depth="1" />
   <extend-project name="WayDroid/android_hardware_waydroid" revision="$LUMA_WAYDROID_HARDWARE_REVISION" />
   <extend-project name="WayDroid/android_vendor_waydroid" revision="$LUMA_WAYDROID_VENDOR_REVISION" />
   <extend-project name="WayDroid/android_device_waydroid_waydroid" revision="$LUMA_WAYDROID_DEVICE_REVISION" />
@@ -77,6 +80,8 @@ test "$(git -C vendor/extra rev-parse HEAD)" = \
   "$LUMA_WAYDROID_VENDOR_REVISION"
 test "$(git -C external/mesa rev-parse HEAD)" = \
   "$LUMA_ANDROID_MESA_REVISION"
+test "$(git -C external/libdrm rev-parse HEAD)" = \
+  "$LUMA_ANDROID_LIBDRM_REVISION"
 
 install -d -m 0755 "$repo_root/build/android/manifests"
 repo manifest -r -o \
