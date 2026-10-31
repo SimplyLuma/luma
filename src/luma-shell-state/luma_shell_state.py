@@ -237,6 +237,30 @@ def presentation_idle_default(mode: str, user_value: int | None, owned_value: in
     return {"desktop": 300, "tablet": 120, "mobile": 60}[mode]
 
 
+HANDHELD_BUTTON_LAYOUT = ":"
+
+
+def presentation_button_layout(mode: str, user_value: str | None, saved: str | None) -> tuple[str | None, str | None]:
+    """Window controls per presentation, without losing a person's desktop layout.
+
+    Tablet and Mobile navigation own close and switching, so their windows show
+    no minimize/maximize/close; Desktop keeps the person's layout. `saved` is
+    the desktop layout kept while a handheld presentation owns the setting
+    ("" means it had no user value). Returns (layout, saved): layout None
+    leaves the setting alone, "" resets it to the system default. A layout
+    chosen while handheld is the person's and ends the ownership.
+    """
+    if mode not in {"desktop", "tablet", "mobile"}:
+        raise InvalidState("an effective presentation is required")
+    if mode == "desktop":
+        return (None, None) if saved is None else (saved, None)
+    if saved is not None:
+        return (None, saved) if user_value == HANDHELD_BUTTON_LAYOUT else (None, None)
+    if user_value == HANDHELD_BUTTON_LAYOUT:
+        return None, None
+    return HANDHELD_BUTTON_LAYOUT, user_value or ""
+
+
 def normalize_idle_delay(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise InvalidState("idle delay must be an integer")

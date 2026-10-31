@@ -6,11 +6,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.125.mobile20261030.1%{?dist}
++Release:        1.luma.131.keycap20261030.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
-+License:        GPL-2.0-or-later AND CC-BY-SA-4.0
++License:        GPL-2.0-or-later AND CC-BY-SA-4.0 AND ISC
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
@@ -289,6 +289,9 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1269:      0291-shared-handheld-startup-and-input.patch
 +Patch1270:      0292-display-exclusions-and-notification-touch.patch
 +Patch1271:      0293-mobile-lock-notification-island.patch
++Patch1284:      0294-keycap-keyboard.patch
++Patch1285:      0295-status-without-shelf-backdrop.patch
++Patch1286:      0296-shelf-presentation-wait-desktop-only.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -319,10 +322,15 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9027:     launcher.svg
 +Source9028:     safeAreas.js
 +Source9029:     powerButton.js
++Source9030:     keycap.js
++Source9031:     keycapTokens.js
++Source9032:     keycap.css
++Source9033:     keycap-policy.js
++Source9034:     keycap-icons.tar
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +361,9 @@
+@@ -71,6 +375,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -332,7 +340,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +383,11 @@
+@@ -90,6 +397,14 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -341,10 +349,13 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Requires:       mutter >= 50.4-1.luma.8.preview20260919.1
 +Requires:       libtinysparql%{?_isa}
 +Recommends:     localsearch
++# On-screen keyboard words: spelling and frequency ranking.
++Recommends:     hunspell-en-US
++Recommends:     python3-pyspellchecker
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +487,34 @@
+@@ -189,8 +504,40 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -372,6 +383,12 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9027} js/ui/lumaPresentation/launcher.svg
 +cp %{SOURCE9028} js/ui/lumaPresentation/safeAreas.js
 +cp %{SOURCE9029} js/ui/lumaPresentation/powerButton.js
++cp %{SOURCE9030} js/ui/lumaPresentation/keycap.js
++cp %{SOURCE9031} js/ui/lumaPresentation/keycapTokens.js
++cp %{SOURCE9032} js/ui/lumaPresentation/keycap.css
++# Keycap icons, derived from Stevia's Lucide outlines (generate-keycap-shell-icons.py).
++tar -xf %{SOURCE9034} -C data/icons/scalable/status --exclude=LICENSE
++tar -xOf %{SOURCE9034} LICENSE > LUCIDE-KEYCAP-LICENSE.txt
  
  %build
 +sh data/theme/luma-notifications/verify-generated.sh
@@ -379,17 +396,18 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +530,25 @@
+@@ -207,10 +554,27 @@
+ # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
- 
++
 +# Keep generated helper shebangs on Fedora's canonical binary path. Native
 +# AArch64 build hosts may resolve python3 through the merged-/usr /usr/sbin
 +# symlink, which otherwise creates an unsatisfiable literal file dependency
 +# for offline/minimal-image transaction solvers.
 +sed -i '1s|^#!/usr/sbin/python3$|#!/usr/bin/python3|' \
 +  %{buildroot}%{_bindir}/gnome-shell-{extension,test}-tool
-+
+ 
  %find_lang %{name}
  
  %check
@@ -402,19 +420,20 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9004} js/ui/panel.js
 +gjs -m %{SOURCE9005} js/ui/lumaAndroidActivation.js
 +gjs -m %{SOURCE9006} js/ui/shellDBus.js
++gjs -m %{SOURCE9033} js/ui/lumaPresentation/keycap.js js/ui/keyboard.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +556,7 @@
+@@ -218,7 +582,7 @@
  %endif
  
  %files -f %{name}.lang
 -%license COPYING
-+%license COPYING CC-BY-SA-4.0.txt
++%license COPYING CC-BY-SA-4.0.txt LUCIDE-KEYCAP-LICENSE.txt
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +588,11 @@
+@@ -250,6 +614,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

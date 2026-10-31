@@ -287,24 +287,28 @@ static void controls_width_changed(GtkWidget *window G_GNUC_UNUSED, int width, g
   gtk_widget_set_visible(GTK_WIDGET(data), width <= 0 || width > LUMA_UI_WINDOW_CONTROLS_HIDE_MAX_WIDTH);
 }
 
-static GtkWidget *window_controls_new(GtkWidget *widget) {
+/* Builds the buttons for the current decoration layout. A layout whose end is
+ * explicitly empty (":", which Tablet and Mobile set) asks for no controls at
+ * all; any other layout keeps Close. Rebuilt live when the layout changes. */
+static void window_controls_fill(GtkWidget *box) {
   static const struct { const char *name, *glyph, *label, *action; } buttons[] = {
     {"minimize", "lumaui-minus-symbolic", "Minimize", "window.minimize"},
     {"maximize", "lumaui-maximize-2-symbolic", "Zoom", "window.toggle-maximized"},
     {"close", "lumaui-x-symbolic", "Close", "window.close"},
   };
+  GtkWidget *child;
+  while ((child = gtk_widget_get_first_child(box)) != NULL)
+    gtk_box_remove(GTK_BOX(box), child);
   g_autofree char *layout = NULL;
-  g_object_get(gtk_settings_get_for_display(gtk_widget_get_display(widget)),
+  g_object_get(gtk_settings_get_for_display(gtk_widget_get_display(box)),
                "gtk-decoration-layout", &layout, NULL);
   const char *end = layout != NULL && strchr(layout, ':') != NULL ? strchr(layout, ':') + 1
                     : (layout != NULL ? layout : "minimize,maximize,close");
+  g_autofree char *trimmed = g_strstrip(g_strdup(end));
+  gboolean none = layout != NULL && strchr(layout, ':') != NULL && trimmed[0] == '\0';
   g_auto(GStrv) parts = g_strsplit(end, ",", -1);
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0); /* 2 px is the sheet's border-spacing */
-  gtk_widget_set_name(box, "lumaui-window-controls");
-  gtk_widget_add_css_class(box, "lumaui-window-controls");
-  gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
   gboolean has_close = FALSE;
-  for (guint i = 0; parts[i] != NULL; i++) {
+  for (guint i = 0; parts[i] != NULL && !none; i++) {
     g_strstrip(parts[i]);
     for (guint j = 0; j < G_N_ELEMENTS(buttons); j++) {
       if (g_strcmp0(parts[i], buttons[j].name) != 0)
@@ -323,7 +327,7 @@ static GtkWidget *window_controls_new(GtkWidget *widget) {
       has_close = has_close || j == 2;
     }
   }
-  if (!has_close) {
+  if (!has_close && !none) {
     GtkWidget *button = gtk_button_new_from_icon_name(buttons[2].glyph);
     gtk_widget_set_name(button, "lumaui-window-close");
     gtk_widget_add_css_class(button, "lumaui-window-control");
@@ -334,6 +338,22 @@ static GtkWidget *window_controls_new(GtkWidget *widget) {
                                    buttons[2].label, -1);
     gtk_box_append(GTK_BOX(box), button);
   }
+}
+
+static void window_controls_layout_changed(GObject *settings G_GNUC_UNUSED,
+                                           GParamSpec *pspec G_GNUC_UNUSED, gpointer box) {
+  window_controls_fill(GTK_WIDGET(box));
+}
+
+static GtkWidget *window_controls_new(GtkWidget *widget) {
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0); /* 2 px is the sheet's border-spacing */
+  gtk_widget_set_name(box, "lumaui-window-controls");
+  gtk_widget_add_css_class(box, "lumaui-window-controls");
+  gtk_widget_set_valign(box, GTK_ALIGN_CENTER);
+  window_controls_fill(box);
+  g_signal_connect_object(gtk_settings_get_for_display(gtk_widget_get_display(widget)),
+                          "notify::gtk-decoration-layout",
+                          G_CALLBACK(window_controls_layout_changed), box, 0);
   if (luma_ui_mobile_form_factor())
     luma_ui_width_watch(widget, controls_width_changed, box, LUMA_UI_WINDOW_CONTROLS_HIDE_MAX_WIDTH);
   return box;

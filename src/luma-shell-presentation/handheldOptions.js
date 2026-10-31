@@ -176,6 +176,11 @@ export class HandheldOptions {
                     if (target) {pointer.show(); pointer._muteInput = false;}
                     else pointer.hide();
                     complete?.();
+                    const pulled = this._pullOpening;
+                    this._pullOpening = false;
+                    // A pull reveals the panel before the menu opens; the
+                    // menu (and its modal grab) follows once the finger lifts.
+                    if (target && pulled && !this.menu.isOpen) this.menu.open(PopupAnimation.NONE);
                     if (!target && this.menu.isOpen) this.menu.close(PopupAnimation.NONE);
                 };
                 pointer.show();
@@ -238,8 +243,11 @@ export class HandheldOptions {
     beginPull(closing = false) {
         if (this.home.mode !== 'mobile' || !this.enabled || !this.menu._boxPointer.clip_to_allocation) {this.open(); return;}
         this._pullRequested = true;
-        if (!this.menu.isOpen) this.menu.open();
-        else this.menu._boxPointer.open(PopupAnimation.FULL);
+        // Opening the menu takes a modal grab, and a grab cancels the very
+        // gesture that is pulling. Reveal the panel under the finger first;
+        // the menu opens when the pull settles open.
+        this._pullOpening = !this.menu.isOpen;
+        this.menu._boxPointer.open(PopupAnimation.FULL);
         if (closing && this._panelReveal) {
             this._panelReveal.start = 1;
             this._panelReveal.seek(1);

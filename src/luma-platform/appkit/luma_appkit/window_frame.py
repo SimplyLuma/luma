@@ -497,9 +497,14 @@ class WindowControls(Gtk.Box):
         self._build()
 
     def layout(self) -> list[str]:
-        """The buttons the desktop asks for, in its order, with Close kept."""
+        """The buttons the desktop asks for, in its order, with Close kept.
+
+        An explicitly empty end (":", set by Tablet and Mobile, whose
+        navigation owns closing) asks for no controls."""
         text = self._settings.get_property("gtk-decoration-layout") or ":minimize,maximize,close"
         end = text.split(":", 1)[1] if ":" in text else text
+        if ":" in text and not end.strip():
+            return []
         names = [name for name in (part.strip() for part in end.split(",")) if name in self.BUTTONS]
         names = list(dict.fromkeys(names))
         if "close" not in names:

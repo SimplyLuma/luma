@@ -1,0 +1,6 @@
+<!-- Lucide geometry, ISC (keycap-icons/LICENSE); derived from Stevia's Keycap icons
+     by scripts/developer/generate-keycap-shell-icons.py for St symbolic recolouring. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect class="foreground-stroke transparent-fill" width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+  <path class="foreground-stroke transparent-fill" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+</svg>

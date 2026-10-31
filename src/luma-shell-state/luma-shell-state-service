@@ -24,6 +24,7 @@ from luma_shell_state import (
     normalize_app_ids,
     normalize_appearance,
     normalize_idle_delay,
+    presentation_button_layout,
     presentation_idle_default,
     normalize_shelf,
     normalize_wallpaper_uri,
@@ -92,6 +93,7 @@ class ShellStateService:
         self._session = Gio.Settings.new("org.gnome.desktop.session")
         self._a11y = Gio.Settings.new("org.gnome.desktop.a11y.applications")
         self._luma = Gio.Settings.new("org.project_luma.shell-state")
+        self._wm = Gio.Settings.new("org.gnome.desktop.wm.preferences")
         self._capabilities = {}
         self._posture_source = 0
         self._profile = read_presentation_profile()
@@ -109,12 +111,32 @@ class ShellStateService:
             (self._session, "power"),
             (self._a11y, "input"),
             (self._luma, "luma"),
+            (self._wm, "wm"),
         )
         for settings, group in watched:
             settings.connect("changed", self._on_settings_changed, group)
         self._sync_gtk3_theme()
         self._project_favorites_to_phosh()
         self._sync_idle_default()
+        self._sync_button_layout()
+
+    def _sync_button_layout(self) -> None:
+        if not self._luma.props.settings_schema.has_key("presentation-button-layout"):
+            return
+        mode = presentation_state(self._luma.get_string("presentation-mode"),
+            profile=self._profile, capabilities=self._capabilities)["effective"]
+        current = self._wm.get_user_value("button-layout")
+        kept = self._luma.get_value("presentation-button-layout").get_maybe()
+        saved = kept.get_string() if kept is not None else None
+        layout, next_saved = presentation_button_layout(
+            mode, current.get_string() if current is not None else None, saved)
+        # Record ownership before writing, so the change notification agrees.
+        if next_saved != saved:
+            self._luma.set_value("presentation-button-layout", GLib.Variant("ms", next_saved))
+        if layout == "":
+            self._wm.reset("button-layout")
+        elif layout is not None:
+            self._wm.set_string("button-layout", layout)
 
     def _sync_idle_default(self) -> None:
         if not self._luma.props.settings_schema.has_key("presentation-idle-default"):
@@ -282,6 +304,9 @@ class ShellStateService:
     def _on_settings_changed(self, _settings: Gio.Settings, key: str, group: str) -> None:
         if (group == "luma" and key == "presentation-mode") or group == "presentation":
             self._sync_idle_default()
+            self._sync_button_layout()
+        if group == "wm" and key == "button-layout":
+            self._sync_button_layout()
         if group == "power" and key == "idle-delay" and self._luma.props.settings_schema.has_key("presentation-idle-default"):
             if self._session.get_uint("idle-delay") != self._luma.get_int("presentation-idle-default"):
                 self._luma.set_int("presentation-idle-default", -1)

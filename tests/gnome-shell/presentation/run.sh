@@ -26,6 +26,11 @@ enabled-extensions=[]
 disable-user-extensions=true
 welcome-dialog-last-shown-version='999'
 EOF
+if [ -n "${PRESENTATION_INITIAL_MODE:-}" ]; then
+    # Start the session already in this presentation, as a phone or tablet does.
+    printf "[org/project_luma/shell-state]\npresentation-mode='%s'\n" "$PRESENTATION_INITIAL_MODE" \
+        >> "$HOME/.config/glib-2.0/settings/keyfile"
+fi
 if [ "${PRESENTATION_DESKTOP_DRAG_ONLY:-0}" = 1 ] || [ "${PRESENTATION_OPTIONS_ONLY:-0}" = 1 ]; then
     sed -i "s/enabled-extensions=\[\]/enabled-extensions=['tilingshell@ferrarodomenico.com','tiling-toggle@project-luma.local']/; s/disable-user-extensions=true/disable-user-extensions=false/" "$HOME/.config/glib-2.0/settings/keyfile"
 fi

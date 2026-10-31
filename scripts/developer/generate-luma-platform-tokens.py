@@ -747,6 +747,158 @@ def render_surface_recipes() -> str:
     return "\n".join(lines + ["};", ""])
 
 
+KEYCAP_CSS_OUTPUT = ROOT / "src/luma-shell-presentation/keycap.css"
+KEYCAP_JS_OUTPUT = ROOT / "src/luma-shell-presentation/keycapTokens.js"
+
+
+def _keycap_colour(value: str, alpha: float | None = None) -> str:
+    """St-safe colour: rgba() with leading zeros, or a hex ink at an alpha."""
+    value = value.strip()
+    if alpha is not None:
+        hexa = value.lstrip("#")
+        if len(hexa) == 3:
+            hexa = "".join(c * 2 for c in hexa)
+        r, g, b = (int(hexa[i:i + 2], 16) for i in (0, 2, 4))
+        return f"rgba({r}, {g}, {b}, {alpha:g})"
+    match = re.fullmatch(r"rgba\(([^)]*)\)", value.replace(" ", ""))
+    if not match:
+        return value
+    parts = match.group(1).split(",")
+    return "rgba(" + ", ".join(("0" + part) if part.startswith(".") else part for part in parts) + ")"
+
+
+def render_keycap_shell_css() -> str:
+    """The Shell's Keycap sheet: one rule set per system variant.
+
+    St paints one box-shadow per actor, so a cap is its face gradient over a
+    hard edge shadow; pressing translates the cap by `travel` while the edge
+    shrinks by the same amount, keeping the cap's foot still (keyboard.js).
+    The horizontal gutter is split into whole pixels because St rounds padding.
+    """
+    tokens = load_document()["keycap"]
+    g = tokens["geometry"]
+    family = load_document()["typography"]["family"]
+    left = g["gutter_x"] // 2
+    right = g["gutter_x"] - left
+    lines = ["/* SPDX-License-Identifier: GPL-2.0-or-later",
+             " * Generated from config/shared/design-tokens.json `keycap`; do not edit. */"]
+
+    def rule(selectors, *declarations):
+        lines.append(",\n".join(selectors) + " {")
+        lines.extend(f"  {declaration};" for declaration in declarations)
+        lines.append("}")
+
+    def gradient(top, bottom):
+        return ("background-color: " + bottom, "background-gradient-direction: vertical",
+                "background-gradient-start: " + top, "background-gradient-end: " + bottom)
+
+    # Structure shared by every appearance, High Contrast included: the strip,
+    # tool icons and number hints keep Keycap's sizes while the theme colours.
+    base = "#keyboard.luma-keycap"
+    lines.append("\n/* every appearance */")
+    rule([f"{base} .word-suggestions", f"{base} .luma-keycap-tools"],
+         f"min-height: {g['strip_height']}px", "padding: 0", "spacing: 0")
+    rule([f"{base} .luma-keycap-tools StButton"], f"min-width: {g['strip_button']}px",
+         f"min-height: {g['strip_height']}px", "padding: 0 6px")
+    rule([f"{base} .luma-keycap-tools StIcon"], f"icon-size: {g['icon']}px")
+    rule([f"{base} .luma-keycap-hint"], f"font-size: {g['hint_size']}px",
+         f"font-weight: {g['hint_weight']}")
+
+    for mode in ("light", "dark"):
+        c = {key: (_keycap_colour(value) if isinstance(value, str) else value)
+             for key, value in tokens[mode].items()}
+        root = f"#keyboard.luma-keycap-{mode}"
+        popup = f".keyboard-subkeys-boxpointer.luma-keycap-{mode}"
+        muted = _keycap_colour(tokens[mode]["ink"], g["muted_alpha"])
+        pressed = _keycap_colour(tokens[mode]["ink"], g["pressed_alpha"])
+        edge = f"box-shadow: 0 {g['edge']}px 0 0 {c['edge']}"
+        edge_down = f"box-shadow: 0 {g['edge'] - g['travel']}px 0 0 {c['edge']}"
+        text = f"text-shadow: 0 {c['text_glint_offset']}px 0 {c['text_glint']}"
+        lines.append(f"\n/* {mode} */")
+        rule([root], *gradient(c["tray_top"], c["tray_bottom"]),
+             "box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14)",
+             f"color: {c['ink']}", f"font-family: {family}, sans-serif")
+        rule([f"{root} .key-container"],
+             f"padding: {g['gutter_top']}px {right}px {g['gutter_bottom']}px {left}px", "spacing: 0")
+        keys = [f"{root} .keyboard-key", f"{popup} .keyboard-key"]
+        rule(keys + [k + ":hover" for k in keys] + [k + ":focus" for k in keys],
+             f"color: {c['ink']}", *gradient(c["cap_top"], c["cap_bottom"]), "border: none",
+             f"border-radius: {g['radius']}px", "padding: 0",
+             f"font-size: {g['letter_size']}px", f"font-weight: {g['letter_weight']}",
+             text, edge, "transition-duration: 0ms")
+        functions = [k + ".default-key" for k in keys]
+        rule(functions + [k + ":hover" for k in functions] + [k + ":latched" for k in functions],
+             f"color: {c['ink']}", *gradient(c["fn_top"], c["fn_bottom"]),
+             f"font-size: {g['function_size']}px", f"font-weight: {g['function_weight']}")
+        space = [k + ".luma-keycap-space" for k in keys]
+        rule(space, f"color: {muted}", *gradient(c["cap_top"], c["cap_bottom"]),
+             f"font-size: {g['function_size']}px", f"font-weight: {g['function_weight']}")
+        down = [k + ":active" for k in keys + functions + space] + [k + ":checked" for k in keys]
+        rule(down, *gradient(c["down_top"], c["down_bottom"]), edge_down)
+        enter = [k + ".luma-keycap-enter" for k in keys]
+        rule(enter, f"color: {c['enter_ink']}", *gradient(c["enter_top"], c["enter_bottom"]),
+             "text-shadow: none")
+        rule([k + ":active" for k in enter], *gradient(c["enter_bottom"], c["enter_top"]), edge_down)
+        rule([k + " StIcon" for k in keys], f"icon-size: {g['icon']}px")
+        rule([f"{root} .luma-keycap-hint"], f"color: {muted}", "text-shadow: none",
+             f"font-size: {g['hint_size']}px", f"font-weight: {g['hint_weight']}")
+        rule([f"{root} .luma-keycap-cap-label"], "text-align: center")
+        strip = [f"{root} .word-suggestions", f"{root} .luma-keycap-tools"]
+        rule(strip, f"min-height: {g['strip_height']}px", "padding: 0", "spacing: 0",
+             "background-color: transparent", "box-shadow: none", f"color: {c['ink']}")
+        buttons = [s + " StButton" for s in strip]
+        rule(buttons + [b + ":hover" for b in buttons] + [b + ":focus" for b in buttons],
+             f"color: {c['ink']}", "background-color: transparent", "background-gradient-direction: none",
+             "border: none", "box-shadow: none", "text-shadow: none",
+             f"border-radius: {g['radius']}px", "padding: 0 6px", "margin: 0",
+             f"min-width: {g['strip_button']}px", f"min-height: {g['strip_height']}px",
+             f"font-size: {g['function_size']}px", f"font-weight: {g['function_weight']}")
+        rule([f"{root} .word-suggestions StButton.suggested"], "font-weight: 700")
+        rule([b + ":active" for b in buttons], f"background-color: {pressed}")
+        rule([s + " StIcon" for s in strip], f"icon-size: {g['icon']}px")
+        strip_enter = [f"{root} .luma-keycap-tools StButton.luma-keycap-strip-enter",
+                       f"{root} .luma-keycap-tools StButton.luma-keycap-strip-enter:hover"]
+        rule(strip_enter, f"color: {c['enter_ink']}", *gradient(c["enter_top"], c["enter_bottom"]),
+             f"min-width: {g['strip_enter_width']}px", f"min-height: {g['strip_enter_height']}px",
+             "margin: 3px")
+        panel = [f"{root} .luma-keycap-panel StButton", f"{root} .luma-keycap-panel StButton:hover"]
+        rule(panel, f"color: {c['ink']}", *gradient(c["fn_top"], c["fn_bottom"]), "border: none",
+             f"border-radius: {g['radius']}px", edge, "padding: 10px", "margin: 4px",
+             f"font-size: {g['function_size']}px", f"font-weight: {g['function_weight']}")
+        rule([f"{root} .luma-keycap-panel StButton:active"],
+             *gradient(c["down_top"], c["down_bottom"]), edge_down)
+        rule([f"{root} .luma-keycap-panel StButton.luma-keycap-pinned"], "font-weight: 700")
+        rule([f"{root} .luma-keycap-panel .luma-keycap-empty"], f"color: {muted}",
+             f"font-size: {g['function_size']}px")
+        emoji = [f"{root} .emoji-page .keyboard-key", f"{root} .emoji-page .keyboard-key:hover"]
+        rule(emoji, "background-color: transparent", "background-gradient-direction: none",
+             "box-shadow: none", "text-shadow: none")
+        rule([f"{root} .emoji-page .keyboard-key:active"], f"background-color: {pressed}")
+        rule([f"{root} .emoji-panel .keyboard-key:latched"], *gradient(c["down_top"], c["down_bottom"]),
+             edge_down)
+        rule([popup], f"-arrow-background-color: {c['cap_bottom']}", "-arrow-border-width: 0",
+             f"-arrow-border-radius: {g['popup_radius']}px", f"border-radius: {g['popup_radius']}px",
+             "-boxpointer-gap: 4px", f"color: {c['ink']}", f"font-family: {family}, sans-serif")
+        rule([f"{popup} .key-container"], "padding: 4px", "spacing: 0")
+        rule([f"{popup} .keyboard-key"], f"min-width: {g['popup_key_width']}px",
+             f"min-height: {g['popup_key_height']}px", f"margin: 0 {left}px")
+        rule([f".luma-keycap-preview.luma-keycap-{mode}"], f"color: {c['ink']}",
+             *gradient(c["cap_top"], c["cap_bottom"]), f"border-radius: {g['popup_radius']}px",
+             edge, text, f"font-family: {family}, sans-serif",
+             f"font-size: {g['preview_size']}px", f"font-weight: {g['letter_weight']}",
+             "padding: 8px 10px 10px", "text-align: center")
+    return "\n".join(lines) + "\n"
+
+
+def render_keycap_js() -> str:
+    tokens = load_document()["keycap"]
+    value = {key: {k: v for k, v in tokens[key].items() if not k.startswith("_")}
+             for key in ("geometry", "timing", "clipboard", "prediction")}
+    return ("// SPDX-License-Identifier: GPL-2.0-or-later\n"
+            "// Generated from config/shared/design-tokens.json `keycap`; do not edit.\n"
+            "export const keycap = Object.freeze(" + json.dumps(value, sort_keys=True) + ");\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -774,6 +926,8 @@ def main() -> int:
         '// Generated from shared tablet_frame tokens; do not edit.\n'
         'export const tabletFrame = Object.freeze(' + json.dumps(load_document()['lumaui']['tablet_frame'], sort_keys=True) + ');\n')
     expected_frame = render_frame_tokens()
+    expected_keycap_css = render_keycap_shell_css()
+    expected_keycap_js = render_keycap_js()
     expected_icons = render_icon_tokens()
     expected = render("light")
     expected_dark = render("dark")
@@ -791,6 +945,8 @@ def main() -> int:
                     (empty_header, expected_empty_header),
                     (FRAME_OUTPUT, expected_frame),
                     (frame_js, expected_frame_js),
+                    (KEYCAP_CSS_OUTPUT, expected_keycap_css),
+                    (KEYCAP_JS_OUTPUT, expected_keycap_js),
                     (ICON_OUTPUT, expected_icons),
                     (OUTPUT, expected),
                     (DARK_OUTPUT, expected_dark),
@@ -818,6 +974,8 @@ def main() -> int:
     FRAME_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     FRAME_OUTPUT.write_text(expected_frame, encoding="utf-8")
     frame_js.write_text(expected_frame_js, encoding="utf-8")
+    KEYCAP_CSS_OUTPUT.write_text(expected_keycap_css, encoding="utf-8")
+    KEYCAP_JS_OUTPUT.write_text(expected_keycap_js, encoding="utf-8")
     ICON_OUTPUT.write_text(expected_icons, encoding="utf-8")
     OUTPUT.write_text(expected, encoding="utf-8")
     DARK_OUTPUT.write_text(expected_dark, encoding="utf-8")
