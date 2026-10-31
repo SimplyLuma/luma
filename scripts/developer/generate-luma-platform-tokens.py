@@ -907,6 +907,10 @@ def render_keycap_shell_css() -> str:
         rule([f"{popup} .key-container"], "padding: 4px", "spacing: 0")
         rule([f"{popup} .keyboard-key"], f"min-width: {g['popup_key_width']}px",
              f"min-height: {g['popup_key_height']}px", f"margin: 0 {left}px")
+        # A pressed cap: one tint actor moved over it (keyboard.js), so a press
+        # restyles no cap.
+        rule([f".luma-keycap-press.luma-keycap-{mode}"], f"background-color: {pressed}",
+             f"border-radius: {g['radius']}px")
         # Under the keys while applications resize above the keyboard.
         rule([f".luma-keycap-reserve.luma-keycap-{mode}"], *gradient(c["tray_top"], c["tray_bottom"]))
         rule([f".luma-keycap-preview.luma-keycap-{mode}"], f"color: {c['ink']}",

@@ -347,6 +347,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0294-keycap-keyboard.patch" "$rp
 install -m 0644 "$repo_root/patches/gnome-shell/0295-status-without-shelf-backdrop.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0296-shelf-presentation-wait-desktop-only.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0297-keycap-key-path.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0298-keycap-press-path-and-lock-screen.patch" "$rpmbuild_dir/SOURCES/"
 for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
@@ -559,6 +560,11 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       grep -Fq "Clutter.Event.add_filter(global.stage" keycap-keyboard.js
       grep -Fq "GLib.idle_add(GLib.PRIORITY_DEFAULT + 2" keycap-keyboard.js
       grep -Fq "set_input_panel_inset" keycap-keyboard.js
+      # Press path and lock screen (0298): no per-press restyle or key
+      # measuring, and the keyboard serves only a visible unlock entry.
+      grep -Fq "page.transform_stage_point(x, y)" keycap-keyboard.js
+      grep -Fq "_lockedWithoutEntry()" keycap-keyboard.js
+      ! grep -q "this.keyButton.add_style_pseudo_class(.active.)" keycap-keyboard.js
       ! grep -Fq "this._flushId = GLib.idle_add(GLib.PRIORITY_LOW" keycap-keyboard.js
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/layout.js >keycap-layout.js

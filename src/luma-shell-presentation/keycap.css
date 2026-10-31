@@ -217,6 +217,10 @@
   min-height: 46px;
   margin: 0 2px;
 }
+.luma-keycap-press.luma-keycap-light {
+  background-color: rgba(38, 38, 43, 0.12);
+  border-radius: 8px;
+}
 .luma-keycap-reserve.luma-keycap-light {
   background-color: #c9cad0;
   background-gradient-direction: none;
@@ -430,6 +434,10 @@
   min-width: 34px;
   min-height: 46px;
   margin: 0 2px;
+}
+.luma-keycap-press.luma-keycap-dark {
+  background-color: rgba(233, 233, 238, 0.12);
+  border-radius: 8px;
 }
 .luma-keycap-reserve.luma-keycap-dark {
   background-color: #101012;

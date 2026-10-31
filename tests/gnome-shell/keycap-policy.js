@@ -115,6 +115,23 @@ assert(mirror.before === 'ElsewheX', 'deletions count characters');
 assert(!mirror.report('Elsewhe') && !mirror.report('ElsewheX') && !mirror.pending,
     'a replacement reported as deletion then insertion is its own echo');
 assert(policy.shouldCapitalise(purpose.NORMAL, 0, 'Hi. ', [...'Hi. '].length), 'case decided from the mirror text');
+
+// Only the tail before the caret is read from a surrounding text, whatever
+// the document's length, and the caret counts characters.
+assert(Keycap.textBeforeCursor('Hello world', 5) === 'Hello', 'text before the caret');
+assert(Keycap.textBeforeCursor('a😀b😀c', 4) === 'a😀b😀', 'the caret counts characters, not code units');
+assert(Keycap.textBeforeCursor('', 3) === '' && Keycap.textBeforeCursor('abc', 0) === '', 'empty cases');
+{
+    const long = `${'x'.repeat(500000)}End. `;
+    const tail = Keycap.textBeforeCursor(long, long.length);
+    assert(tail.endsWith('End. ') && tail.length <= 4 * 48, 'a long document yields a bounded tail');
+    const emoji = `${'😀'.repeat(300)}Ok`;
+    const tailEmoji = Keycap.textBeforeCursor(emoji, [...emoji].length);
+    assert(tailEmoji.endsWith('😀Ok') && !/^[\uDC00-\uDFFF]/.test(tailEmoji), 'a tail never splits a surrogate pair');
+    const big = new Keycap.TextMirror();
+    big.reset(long);
+    assert(big.before.length <= 4 * 48 && !big.report(long), 'the mirror keeps a bounded tail of long reports');
+}
 assert(Keycap.deleteSelectWords(-19) === 0 && Keycap.deleteSelectWords(-30) === 1 &&
     Keycap.deleteSelectWords(-95) === 3 && Keycap.deleteSelectWords(-5000) === 32, 'delete drag words');
 assert(Keycap.spaceCursorSteps(8, 0, 0) === 0 && Keycap.spaceCursorSteps(9, 13, 0) === 0,
@@ -241,7 +258,7 @@ for (const [needle, message] of [
     ['this._keyboardController.setOskCompletion(false);', 'taps never switch to a completion engine'],
     ['GLib.idle_add(GLib.PRIORITY_LOW, () => {', 'suggestions are computed off the key path'],
     ['analysis?.word !== this._word || !analysis.correction', 'autocorrect never waits for analysis'],
-    ["this._keycapSettings.get_boolean('auto-correct')", 'autocorrect has an owner setting'],
+    ['this._prefs.auto_correct', 'autocorrect has an owner setting'],
     ['Keycap.SECRET_CLIPBOARD_TARGET', 'password-manager copies are skipped'],
     ['generation !== this._clipboardGeneration || this._isSensitive()', 'stale clipboard reads are dropped'],
     ['St.Settings.get().high_contrast ? null', 'High Contrast keeps the platform keyboard'],
@@ -256,6 +273,11 @@ for (const [needle, message] of [
     ['global.display.set_input_panel_inset(monitor', 'applications resize above the keyboard'],
     ['reactive: false,\n            track_hover: false,', 'caps are drawn only; the tracker owns input'],
     ["this._preview.opacity = 0;", 'the preview hides without a relayout'],
+    ['_cellsFor(page) {', 'key geometry is cached per layer allocation'],
+    ['page.transform_stage_point(x, y)', 'a press maps the touch once instead of measuring every key'],
+    ['Keycap.textBeforeCursor(text, cursor)', 'surrounding reports read only the tail'],
+    ['this._letterPriors?.word === this._word', 'letter priors are computed off the key path'],
+    ['_lockedWithoutEntry()', 'the locked screen opens the keyboard only for a visible entry'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
 ])
     assert(keyboard.includes(needle), message);
@@ -267,6 +289,9 @@ for (const [needle, message] of [
     ['KEY_LONG_PRESS_TIME,', 'no timer-owned long press'],
     ["global.stage.connectObject(\n            'captured-event', this._onCapturedEvent.bind(this), this);\n        this.keyButton", 'alternatives take no stage grab'],
     ['setKeycapVariantClass(this._preview);\n        this._preview.text', 'no per-press restyle of the preview'],
+    ["this.keyButton.add_style_pseudo_class('active');", 'a press restyles no cap'],
+    ["[...text].slice(0, cursor).join('')", 'no whole-document copy per surrounding report'],
+    ['this._suggester.prefixMass(word + cell.letter)', 'no word-model lookups on a press'],
 ])
     assert(!keyboard.includes(needle), message);
 

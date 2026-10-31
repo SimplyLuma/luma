@@ -106,7 +106,8 @@ person chose (Pinyin, Hangul and so on) still composes the keys.
 ## Key path
 
 Rules for everything between a finger touching a cap and the glyph reaching
-the application (patch `0297-keycap-key-path.patch`, Mutter 0023–0025). They
+the application (patches `0297-keycap-key-path.patch` and
+`0298-keycap-press-path-and-lock-screen.patch`, Mutter 0023–0025). They
 come from an on-device investigation of the Pixel 9 Pro Fold, where each press
 or release cost about 270 ms of Shell CPU, and from Android LatinIME
 (`PointerTracker`), iOS and Stevia.
@@ -126,6 +127,21 @@ opacity; the suggestion strip reuses its buttons; and the letter layers, a
 pressed cap of each kind and the preview are drawn once, nearly transparent,
 right after the keyboard opens. Measured headless at 360x808 scale 3: press
 frames median 3.9 ms (was 343 ms), release frames 1.6 ms.
+
+**The press path is a translation.** Handling a TOUCH_BEGIN must stay well
+under 2 ms on a phone (it was 7.1 ms on the Fold in keycap6). A press reads no
+style and measures no key: cells (each key's whole cell and its cap) are
+cached per layer allocation in layer coordinates, the touch is mapped once
+with `transform_stage_point()`, and one stage position places the visuals.
+The cap travels by translation; the pressed look is one tint actor moved over
+the cap (`.luma-keycap-press`); each character has its own preview label,
+made ahead of time and only moved and shown in one layer above the UI. Word
+priors for near-boundary touches are computed in an idle after the word
+changes, never on a press; preferences are cached; the haptic is one prebuilt
+fire-and-forget message sent right after the frame that shows the press.
+Surrounding-text reports read only the tail before the caret, whatever the
+document's length. Headless at 360x808 scale 3: TOUCH_BEGIN handling median
+0.12 ms, p90 0.24 ms.
 
 **Pointers.** One tracker on the keyboard owns input; caps are drawn only.
 Each touch sequence (and the primary button) is a pointer bound to the key it
@@ -189,10 +205,19 @@ The keyboard's colour fills the strip under it while applications resize.
 Desktop, the lock screen and the Shell's own entries keep sliding the focused
 window.
 
-**Haptics.** Each press calls feedbackd's `TriggerFeedback` (`button-pressed`,
-quiet profile) with D-Bus activation. feedbackd plays nothing where there is
-no vibrator; a missing or failing service is left alone for a minute or
-until its name appears.
+**Haptics.** Each press sends feedbackd's `TriggerFeedback` (`button-pressed`,
+quiet profile) as a fire-and-forget message the bus can D-Bus activate,
+right after the press frame. feedbackd plays nothing where there is no
+vibrator; without feedbackd nothing happens and nothing is logged.
+
+**Lock screen.** While locked (and on the greeter) the keyboard serves only a
+visible Shell entry: locking closes a keyboard opened for an application, an
+application's text-input request never opens it, and the unlock prompt's
+entry opens it once the curtain is lifted and the entry is on screen. The
+unlock content is laid out in the height the keyboard leaves, so the compact
+Prairie prompt stays above the keys. `keycap-lock-native.js` drives the real
+path headless (ScreenShield, curtain, swipe, UnlockDialog, AuthPrompt, with a
+stand-in GDM verifier).
 
 **IBus.** With a keyboard-layout (xkb) input source IBus is not sent the
 caret rectangle or surrounding text on every keystroke, and typing-booster is
@@ -208,7 +233,9 @@ release-to-commit with the main loop kept busy, several commits in one turn,
 rollover order, gutter and margin taps, held and grabbed delete, long press
 then taps, sentence case under fast typing, a lock-screen password entry and
 an entry under a modal grab, adjustResize, a D-Bus activated stand-in
-feedbackd and IBus traffic. Mutter's `/frame-clock/unpresented-rate`
+feedbackd, IBus traffic, the press-path budget (TOUCH_BEGIN handling time, one
+geometry read and no restyle per press), a 300k-unit surrounding-text report
+and word-analysis time. Mutter's `/frame-clock/unpresented-rate`
 conformance test runs in the Mutter package's `%check`; Stevia's
 `test-osk-widget` gains `backspace_held`.
 
