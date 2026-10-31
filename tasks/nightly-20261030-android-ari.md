@@ -52,3 +52,24 @@ currently disconnected; native package CI on GitHub supplies both CPU runners.
 Physical free: main23.15GB, secondary20.40GB (below20GiB floor), HDD1.92TB.
 Use dedicated HDD pipeline/storage and resolve the secondary reserve before
 compose; no arbitrary old-cache deletion or shared global prune.
+
+## Build checkpoint, October30 22:23 Chicago
+
+PR102 is pushed with the combined source; PR41/83/99/101 remain retained until
+integration lands. GitHub source checks passed on both CPUs. Toolkit run
+41163229722 is building both native CPUs. UI/browser attempts stopped early
+on missing Platform120; rerun affected consumers after toolkit success. Broad
+unchanged WebKit, GTK3/Search and all-component matrices were cancelled to avoid
+redundant expensive rebuilds. Selected affected packages will run explicitly.
+
+ARM Android r469 actual guest compiler exit0 was recorded03:21UTC; verified
+export/controller finalization remains pending. Source229a7a3ed remains the
+Android compiler input, while the full OS packaging source includes Ari.
+
+The canonical old Nightly21 pipeline is an unmounted empty placeholder; retained
+HDD/volume cache recovery is being inspected before compose. Storage relocation
+job3518e703 preserves one inactive Oct11 ISO on HDD and its original pathname,
+with full verification before retiring only its old SSD inode. No cache prune.
+
+Final source-cohort alignment includes Shell spec132 and installer compatibility
+constant82, matching the already updated pins. No full image acceptance claimed.
