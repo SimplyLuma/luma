@@ -76,14 +76,15 @@ if a.providers_only or a.run_id:
     keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER') + (() if a.providers_only else ('LUMA_DEVELOPER_PLATFORM_',)))]
     assert keys and all(prior[key] == current.get(key) for key in keys), 'toolkit provider pin changed'
 reviewed_driver_equivalence = {}
-if a.providers_only:
+if a.providers_only or a.run_id:
     # These exact driver edits leave the already-built provider payloads and
     # pinned compiler inputs unchanged. All unlisted changes still fail closed.
     equivalence = json.loads(Path('config/os/desktop-toolkit-provider-driver-equivalence.json').read_text())
     changed = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--name-only', source, 'HEAD', '--', *paths], text=True).splitlines()
     for name in changed:
-        assert equivalence['source_revision'] == source
-        row = equivalence['reviewed_driver_changes'][name]
+        reviewed = (equivalence['reviewed_driver_changes'] if equivalence['source_revision'] == source
+                    else equivalence.get('additional_sources', {}).get(source, {}))
+        row = reviewed[name]
         old = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'show', f'{source}:{name}'])
         assert hashlib.sha256(old).hexdigest() == row['from_sha256']
         assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == row['to_sha256']

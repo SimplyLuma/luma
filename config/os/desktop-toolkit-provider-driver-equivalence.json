@@ -16,5 +16,14 @@
       "to_sha256": "9ef87edcf294199a28f414ddb9a91177d82c77724922955bd875033ae4b6ee5a",
       "reason": "Forwards target architecture and labels newly staged files only for explicitly selected local containers; native direct CI path is unchanged."
     }
+  },
+  "additional_sources": {
+    "16fb63171b7dbad2dd12b3433a12faea17e1c62d": {
+      "scripts/packages/run-in-rpm-builder.sh": {
+        "from_sha256": "21fe02580fd46105b3662c9c15938915a672e7fa3237853fbd29e330eb58a1bd",
+        "to_sha256": "9ef87edcf294199a28f414ddb9a91177d82c77724922955bd875033ae4b6ee5a",
+        "reason": "Local-container input labelling only; the native direct producer that built this toolkit returns before this branch."
+      }
+    }
   }
 }
