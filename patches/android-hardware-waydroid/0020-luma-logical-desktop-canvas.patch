@@ -162,9 +162,10 @@ index ea47835..97290ce 100644
  
      if (pthread_create(&display->wayland_thread, nullptr, hwc_wayland_thread, display->display) != 0) {
          ALOGE("Couldn't create wayland thread");
-@@ -2573,6 +2649,14 @@ destroy_display(struct display *display)
+@@ -2573,7 +2649,15 @@ destroy_display(struct display *display)
      pthread_kill(display->wayland_thread, SIGTERM);
      pthread_join(display->wayland_thread, nullptr);
+     luma_clipboard_shutdown(display);
  
 +    for (const auto& entry : display->logical_outputs) {
 +        const auto& output = entry.second;
