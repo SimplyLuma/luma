@@ -52,7 +52,7 @@ export function reconcileGrid(saved, definitions, columns, rows) {
     const seen = new Set();
     const sameSize = saved?.columns === columns && saved?.rows === rows;
     for (const [pageIndex, page] of (saved?.pages ?? []).entries()) {
-        if (!grid.pages[pageIndex]) grid.pages[pageIndex] = [];
+        if (sameSize && !grid.pages[pageIndex]) grid.pages[pageIndex] = [];
         for (const original of page) {
             const definition = available.get(original.id);
             if (!definition || seen.has(original.id)) continue;
@@ -62,7 +62,7 @@ export function reconcileGrid(saved, definitions, columns, rows) {
             if (sameSize && fits(grid, grid.pages[pageIndex], item))
                 grid.pages[pageIndex].push(item);
             else
-                append(grid, item, pageIndex);
+                append(grid, item, sameSize ? pageIndex : 0);
         }
     }
     for (const definition of definitions) {

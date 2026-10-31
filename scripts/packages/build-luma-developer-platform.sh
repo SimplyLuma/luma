@@ -96,9 +96,10 @@ if [ "$toolkit_copied" -lt 2 ]; then
     "$toolkit_copied" "$libadwaita_rpms" "$LIBADWAITA_NEVRA" >&2
   exit 1
 fi
-if [ ! -f "$rpmbuild_dir/luma-toolkit/$LIBADWAITA_NEVRA.rpm" ]; then
+libadwaita_nevra=libadwaita-1.9.3-${LIBADWAITA_LUMA_RELEASE}.fc44.$architecture
+if [ ! -f "$rpmbuild_dir/luma-toolkit/$libadwaita_nevra.rpm" ]; then
   printf 'error: %s is not among the built toolkit RPMs in %s\n' \
-    "$LIBADWAITA_NEVRA" "$libadwaita_rpms" >&2
+    "$libadwaita_nevra" "$libadwaita_rpms" >&2
   exit 1
 fi
 

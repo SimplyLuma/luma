@@ -559,13 +559,14 @@ class PhoneDaemon:
             number = str(info.get("number", "")) if info else ""
             connected = int(info.get("connected", 0)) if info else 0
             self._indicator.publish(self._caller_for(number), connected)
+        if call_id == self._call_id and state == "active":
+            # Answered on the call surface, from the notification or in Phone.
+            self._ringer.stop()
         if call_id != self._call_id or self._window is None:
             return
         self._last_reason = reason
-        if state == "active":
-            if not self._connected_at:
-                self._connected_at = int(time.time())
-            self._ringer.stop()
+        if state == "active" and not self._connected_at:
+            self._connected_at = int(time.time())
         self._window.show_state(state)
 
     def _on_ended(self, call_id: str) -> None:

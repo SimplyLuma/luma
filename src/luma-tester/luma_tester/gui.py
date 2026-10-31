@@ -62,6 +62,10 @@ class ImageMenu(Menu):
 
 
 def launch(state=None):
+    # CLI/AppImage entry has not constructed a widget yet. Initialize GDK
+    # before style managers, icons or the shared toolkit consult its display.
+    if not Gtk.init_check():
+        raise TesterError('Try Luma needs an active desktop session.')
     Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
     GLib.set_prgname('io.luma.Tester')
     GLib.set_application_name('Try Luma')

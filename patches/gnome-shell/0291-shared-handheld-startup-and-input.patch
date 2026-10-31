@@ -1,0 +1,75 @@
+From: Luma Developers
+Subject: [PATCH] Start shared Home on handhelds and follow physical input capabilities
+
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -56,10 +56,6 @@
+ import * as Util from '../misc/util.js';
+ import * as LumaSurfaceMaterials from './lumaSurfaceMaterials.js';
+ 
+-const WELCOME_DIALOG_LAST_SHOWN_VERSION = 'welcome-dialog-last-shown-version';
+-// Make sure to mention the point release, otherwise it will show every time
+-// until this version is current
+-const WELCOME_DIALOG_LAST_TOUR_CHANGE = '40.beta';
+ const LOG_DOMAIN = 'GNOME Shell';
+ const GNOMESHELL_STARTED_MESSAGE_ID = 'f3ea493c22934e26811cd62abe8e203a';
+ 
+@@ -328,8 +324,7 @@
+     // have an overview. Initial setup has none: building the Shelf there threw
+     // during start-up, GDM gave up, and a machine without an account never
+     // reached a login screen.
+-    if (!sessionMode.isGreeter && sessionMode.hasOverview &&
+-        GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld') {
++    if (!sessionMode.isGreeter && sessionMode.hasOverview) {
+         // Guarded for the same reason as the note stack below: a Shelf that
+         // cannot be built is a missing dock, never a missing session.
+         try {
+@@ -468,11 +463,8 @@
+ }
+ 
+ function _handleShowWelcomeScreen() {
+-    const lastShownVersion = global.settings.get_string(WELCOME_DIALOG_LAST_SHOWN_VERSION);
+-    if (Util.GNOMEversionCompare(WELCOME_DIALOG_LAST_TOUR_CHANGE, lastShownVersion) > 0) {
+-        openWelcomeDialog();
+-        global.settings.set_string(WELCOME_DIALOG_LAST_SHOWN_VERSION, Config.PACKAGE_VERSION);
+-    }
++    // Luma first-user setup owns onboarding; the upstream tour must not
++    // cover the shared Home when an existing account changes compositor.
+ }
+ 
+ async function _handleLockScreenWarning() {
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1053,6 +1053,8 @@
+ 
+         this._seat = global.stage.context.get_backend().get_default_seat();
+         this._seat.connect('notify::touch-mode', this._syncEnabled.bind(this));
++        this._seat.connect('device-added', this._syncEnabled.bind(this));
++        this._seat.connect('device-removed', this._syncEnabled.bind(this));
+ 
+         this._lastDevice = null;
+         global.backend.connect('last-device-changed', (backend, device) => {
+@@ -1096,7 +1098,13 @@
+ 
+     _syncEnabled() {
+         const enableKeyboard = this._a11yApplicationsSettings.get_boolean(SHOW_KEYBOARD);
+-        const autoEnabled = this._seat.get_touch_mode() && this._lastDeviceIsTouchscreen();
++        // Physical keyboard presence controls automatic OSK behavior. The
++        // explicit accessibility setting remains available on every device.
++        const physicalKeyboard = this._seat.list_devices().some(device =>
++            device.get_device_type() === Clutter.InputDeviceType.KEYBOARD_DEVICE &&
++            !!device.get_device_node());
++        const autoEnabled = !physicalKeyboard && this._seat.get_touch_mode() &&
++            this._lastDeviceIsTouchscreen();
+         const enabled = enableKeyboard || autoEnabled;
+ 
+         if (!enabled && !this._keyboard)
+@@ -1155,6 +1163,8 @@
+             return false;
+ 
+         const actor = global.stage.get_event_actor(event);
++        if (!actor)
++            return false;
+ 
+         if (Main.layoutManager.keyboardBox.contains(actor) ||
+             !!actor._extendedKeys || !!actor.extendedKey) {

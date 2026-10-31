@@ -2090,6 +2090,12 @@ class ActionCenter(Gtk.Box):
             self._host.queue_allocate()
         self._queue_safe_area()
 
+    def _set_compact_bar(self, dock: bool) -> bool:
+        lumaui.set_css_class(self, "pocket", dock)
+        if self._host is not None:
+            self._host.queue_allocate()
+        return False
+
     def _position(self, host: Gtk.Overlay, widget: Gtk.Widget, allocation: Gdk.Rectangle) -> bool:
         """Place the action center in its host (the overlay asks on every layout)."""
         if widget is not self:
@@ -2108,6 +2114,12 @@ class ActionCenter(Gtk.Box):
             wanted = min(natural, max(0, host_w - inset))  # v70 .fbar max-width: 100% - 24 (a phone too; Notes' scrolling bar is its own case)
         minimum_w = self.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
         width = max(minimum_w, wanted)
+        from .compact_layout import compact_bar
+        dock = compact_bar(self) and self._state in ("bar", "double", "split")
+        if dock != self.has_css_class("pocket"):
+            GLib.idle_add(self._set_compact_bar, dock)
+        if dock:
+            width, bottom = host_w, 0
         minimum_h, natural_h, _b1, _b2 = self.measure(Gtk.Orientation.VERTICAL, width)
         height = max(minimum_h, min(natural_h, host_h - top - bottom))
         allocation.x = int((host_w - width) / 2)

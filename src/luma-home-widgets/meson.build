@@ -39,3 +39,13 @@ if gtk3.found()
     test('gtk3-view', bus, args: ['--', xvfb, '-a', gtk_test])
   endif
 endif
+
+# Weather owns provider requests and the atomic cache; this bounded user job
+# keeps that same cache current even when its application window is closed.
+install_data('weather-refresh.py', rename: 'luma-weather-refresh',
+  install_dir: get_option('libexecdir'), install_mode: 'rwxr-xr-x')
+user_units = get_option('prefix') / 'lib/systemd/user'
+install_data('luma-weather-refresh.service', 'luma-weather-refresh.timer', install_dir: user_units)
+install_symlink('luma-weather-refresh.timer', pointing_to: '../luma-weather-refresh.timer',
+  install_dir: user_units / 'default.target.wants')
+test('weather-refresh', python, args: files('tests/refresh.py'))

@@ -231,6 +231,31 @@ class PhoneCapabilityTests(unittest.TestCase):
 
     @mock.patch("prairie_apps.phone_backend.shutil.which", return_value="/usr/bin/tool")
     @mock.patch("prairie_apps.phone_backend._run")
+    def test_mobile_data_mode_disables_calls_and_texts(self, run: mock.Mock, _which: mock.Mock) -> None:
+        from prairie_apps.messages_backend import ModemMessagingTransport
+        with tempfile.TemporaryDirectory() as root:
+            status = Path(root) / "mobile-mode.json"
+            with mock.patch.dict("os.environ", {"LUMA_MOBILE_MODE_STATUS": str(status)}):
+                status.write_text('{"mode": "data", "state": "ready", "calls": false, "data": true}\n')
+                run.side_effect = ["/Modem/0"]
+                result = inspect_phone_capability()
+                self.assertFalse(result.available)
+                self.assertEqual(result.reason, "Calls and texts are off while mobile data is on. "
+                                 "Switch to Calls & texts in Quick Settings.")
+                texts = ModemMessagingTransport(lambda args: "/Modem/0").inspect()
+                self.assertFalse(texts.available)
+                self.assertIn("mobile data is on", texts.reason)
+                # calls mode, a broken file and no file leave the usual checks in charge
+                for content in ('{"mode": "calls", "calls": true}', "{not json", None):
+                    if content is None:
+                        status.unlink()
+                    else:
+                        status.write_text(content)
+                    run.side_effect = ["/Modem/0", "modem.generic.state-failed-reason: sim-missing"]
+                    self.assertIn("SIM", inspect_phone_capability().reason)
+
+    @mock.patch("prairie_apps.phone_backend.shutil.which", return_value="/usr/bin/tool")
+    @mock.patch("prairie_apps.phone_backend._run")
     def test_sim_missing_disables_call(self, run: mock.Mock, _which: mock.Mock) -> None:
         run.side_effect = ["/Modem/0", "modem.generic.state-failed-reason: sim-missing"]
         result = inspect_phone_capability()

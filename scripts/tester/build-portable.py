@@ -128,6 +128,8 @@ copy(Path('/usr/share/pipewire/client.conf'), 'tools/pipewire-config/client.conf
 # EGL/GBM loads its Mesa drivers dynamically, beyond ldd's dependency graph.
 # Keep these in the tools ABI, separate from the UI's qualified native runtime.
 graphics = [Path('/usr/lib64/libEGL_mesa.so.0'), Path('/usr/lib64/libvulkan.so.1')]
+# GLVND/epoxy opens these by name; ldd alone cannot discover them.
+graphics += [Path('/usr/lib64')/name for name in ('libEGL.so.1', 'libGL.so.1', 'libGLX_mesa.so.0', 'libGLESv2.so.2')]
 graphics += list(Path('/usr/lib64').glob('libgallium-*.so'))
 for driver in ('intel', 'intel_hasvk', 'radeon', 'nouveau', 'lvp', 'virtio'):
     graphics.append(Path('/usr/lib64/libvulkan_' + driver + '.so'))
@@ -177,12 +179,19 @@ for name in tools:
     wrapper.write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT __EGL_VENDOR_LIBRARY_DIRS
+unset VK_ICD_FILENAMES VK_ADD_DRIVER_FILES VK_ADD_LAYER_PATH VK_ADD_IMPLICIT_LAYER_PATH
+unset VK_INSTANCE_LAYERS VK_LOADER_LAYERS_ENABLE VK_LOADER_LAYERS_ALLOW
 export QEMU_MODULE_DIR="$tester_dir/tools/modules"
 export PIPEWIRE_MODULE_DIR="$tester_dir/tools/pipewire"
 export SPA_PLUGIN_DIR="$tester_dir/tools/spa"
 export PIPEWIRE_CONFIG_DIR="$tester_dir/tools/pipewire-config"
 export __EGL_VENDOR_LIBRARY_FILENAMES="$tester_dir/tools/egl/50_mesa.json"
 export LIBGL_DRIVERS_PATH="$tester_dir/tools/dri"
+export __GLX_VENDOR_LIBRARY_NAME=mesa
+export VK_LOADER_LAYERS_DISABLE='*'
+export VK_LAYER_PATH="$tester_dir/tools/vulkan-layers"
+export VK_IMPLICIT_LAYER_PATH="$tester_dir/tools/vulkan-layers"
 export VK_DRIVER_FILES=$(printf '%s:' "$tester_dir"/tools/vulkan/*.json)
 exec "$tester_dir/tools/lib/ld-linux-x86-64.so.2" --inhibit-cache --library-path "$tester_dir/tools/lib" "$tester_dir/tools/raw/''' + real + '"' + extra + ' "$@"\n')
     wrapper.chmod(0o755)
@@ -239,10 +248,13 @@ for path in sorted(a.catalog.glob('*.json')):
     (dest / 'catalog').mkdir(exist_ok=True)
     (dest / 'catalog' / path.name).write_text(json.dumps(manifest, indent=2) + '\n')
 
+from linux_graphics import stage_ui_graphics
+ui_graphics = stage_ui_graphics(dest)
+
 (dest / 'python').write_text('''#!/bin/sh
 set -eu
 tester_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-unset PYTHONHOME PYTHONPATH LD_LIBRARY_PATH
+unset PYTHONHOME PYTHONPATH LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT
 exec "$tester_dir/usr/lib64/ld-linux-x86-64.so.2" --inhibit-cache --library-path "$tester_dir/usr/lib64" "$tester_dir/usr/bin/python3.14" "$tester_dir/bootstrap.py" "$@"
 ''')
 (dest / 'Try Luma').write_text('''#!/bin/sh
@@ -258,6 +270,7 @@ for path in dest.rglob('*'):
         path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
 dest.chmod(0o755)
 receipt = {'schema': 1, 'host': 'linux-x86_64',
+    'ui_graphics_closure': ui_graphics,
     'app_version': tomllib.loads((REPO / 'src/luma-tester/pyproject.toml').read_text())['project']['version'],
     'download_source': 'tester' if a.release else 'test',
     'source_commit': subprocess.check_output(['git', '-C', str(REPO), 'rev-parse', 'HEAD'], text=True).strip(),

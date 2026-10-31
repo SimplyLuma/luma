@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import mimetypes
 import os
 import re
@@ -17,6 +18,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from .cellular_modem import choose_modem
 
 
 @dataclass(frozen=True)
@@ -905,6 +908,25 @@ class MessageStore:
         )
 
 
+MOBILE_DATA_MODE_REASON = (
+    "Calls and texts are off while mobile data is on. "
+    "Switch to Calls & texts in Quick Settings."
+)
+
+
+def mobile_data_mode() -> bool:
+    """A modem that carries one data connection at a time (Pixel 9 Pro Fold)
+    has calls and texts off in its mobile data mode; luma-fold-mobile-mode
+    publishes the mode here. Absent elsewhere."""
+    path = os.environ.get("LUMA_MOBILE_MODE_STATUS", "/run/luma/mobile-mode.json")
+    try:
+        with open(path, encoding="utf-8") as status:
+            data = json.load(status)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("calls") is False
+
+
 @dataclass(frozen=True)
 class MessagingCapability:
     available: bool
@@ -930,18 +952,22 @@ class ModemMessagingTransport:
             listing = self._runner(["mmcli", "-L"])
         except (OSError, subprocess.SubprocessError):
             return MessagingCapability(False, "This device can't send texts. Connect your phone in Luma Connect to text from here.")
-        indexes = tuple(dict.fromkeys(re.findall(r"/Modem/(\d+)", listing)))
-        if len(indexes) != 1:
+        def status_of(index: str) -> str | None:
+            try:
+                return self._runner(["mmcli", "-m", index, "--output-keyvalue"])
+            except (OSError, subprocess.SubprocessError):
+                return None
+
+        _indexes, modem, status = choose_modem(listing, status_of)
+        if modem is None:
             return MessagingCapability(False, "No cellular modem is ready.")
-        try:
-            status = self._runner(
-                ["mmcli", "-m", indexes[0], "--output-keyvalue"]
-            )
-        except (OSError, subprocess.SubprocessError):
-            return MessagingCapability(False, "The cellular modem is not ready.", indexes[0])
+        if mobile_data_mode():
+            return MessagingCapability(False, MOBILE_DATA_MODE_REASON, modem)
+        if status is None:
+            return MessagingCapability(False, "The cellular modem is not ready.", modem)
         lowered = status.lower()
         if "sim-missing" in lowered:
-            return MessagingCapability(False, "Insert a SIM card to send messages.", indexes[0])
+            return MessagingCapability(False, "Insert a SIM card to send messages.", modem)
         values = {}
         for line in status.splitlines():
             key, separator, value = line.partition(":")
@@ -955,8 +981,8 @@ class ModemMessagingTransport:
         # with Core.WrongState.  Require MM's explicit registration state (or
         # the corresponding 3GPP state) before exposing a send-capable UI.
         if modem_state != "registered" and registration not in {"home", "roaming"}:
-            return MessagingCapability(False, "Connect to a cellular network to send.", indexes[0])
-        return MessagingCapability(True, "Ready to send", indexes[0])
+            return MessagingCapability(False, "Connect to a cellular network to send.", modem)
+        return MessagingCapability(True, "Ready to send", modem)
 
     def send(self, address: str, body: str) -> str:
         capability = self.inspect()

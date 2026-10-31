@@ -44,6 +44,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import uuid
 
+from .weather_observation_cache import current_observation
+
 from .weather_model import (
     CityForecast, Current, DayPoint, HourPoint, Place, cache_directory,
     forget_cache, parse_time, pressure_trend, read_cache, write_cache,

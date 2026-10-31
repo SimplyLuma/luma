@@ -267,6 +267,7 @@ refresh_weather (LumaWidgetsModel *self)
 {
   g_autoptr (JsonParser) places = NULL;
   g_autoptr (JsonParser) forecast = NULL;
+  g_autoptr (JsonParser) observation = NULL;
   g_autoptr (GDateTime) fetched = NULL;
   g_autoptr (GDateTime) now = g_date_time_new_now_utc ();
   g_autofree char *filename = NULL;
@@ -279,6 +280,8 @@ refresh_weather (LumaWidgetsModel *self)
   const char *uid = NULL, *name = NULL, *stamp;
   double version, degrees, high, low;
   gint64 age;
+  guint next_update;
+  const char *symbol;
 
   g_clear_handle_id (&self->expiry_id, g_source_remove);
   set_text (self, &self->weather_place, _("Weather"));
@@ -348,9 +351,55 @@ refresh_weather (LumaWidgetsModel *self)
   age = g_date_time_difference (now, fetched) / G_TIME_SPAN_SECOND;
   if (age < -300 || age >= WEATHER_MAX_AGE)
     return;
+  /* Match Weather's current-hour selection without a network request. */
+  symbol = json_string (current, "symbol");
+  next_update = MIN (WEATHER_MAX_AGE - MIN (age, WEATHER_MAX_AGE) + 1,
+                     3600 - (g_date_time_to_unix (now) % 3600) + 1);
+  JsonNode *hours_node = json_object_get_member (root, "hours");
+  if (hours_node && JSON_NODE_HOLDS_ARRAY (hours_node)) {
+    JsonArray *hours = json_node_get_array (hours_node);
+    for (guint i = 0; i < MIN (json_array_get_length (hours), 512); i++) {
+      JsonNode *hour_node = json_array_get_element (hours, i);
+      if (!JSON_NODE_HOLDS_OBJECT (hour_node)) continue;
+      JsonObject *hour = json_node_get_object (hour_node);
+      const char *time = json_string (hour, "time");
+      g_autoptr (GDateTime) at = time ? g_date_time_new_from_iso8601 (time, NULL) : NULL;
+      if (!at) continue;
+      gint64 offset = g_date_time_difference (now, at) / G_TIME_SPAN_SECOND;
+      double hourly;
+      if (offset >= 0 && offset < 3600 &&
+          (i > 0 || g_date_time_compare (at, fetched) > 0) &&
+          json_number (hour, "temperature_c", &hourly) && hourly >= -100 && hourly <= 100) {
+        degrees = hourly;
+        symbol = json_string (hour, "symbol");
+      }
+    }
+  }
+  /* Station observations belong to Weather, not to a second widget provider. */
+  g_autofree char *observation_uid = g_strconcat (uid, "-observation", NULL);
+  g_autofree char *observation_file = cache_filename (observation_uid);
+  g_autofree char *observation_path = g_build_filename (self->cache_path, observation_file, NULL);
+  observation = read_json (observation_path);
+  if (observation && JSON_NODE_HOLDS_OBJECT (json_parser_get_root (observation))) {
+    JsonObject *reading_root = json_node_get_object (json_parser_get_root (observation));
+    JsonObject *reading = json_child (reading_root, "observation");
+    const char *observed = reading ? json_string (reading, "observed_at") : NULL;
+    g_autoptr (GDateTime) at = observed ? g_date_time_new_from_iso8601 (observed, NULL) : NULL;
+    double observed_degrees, reading_version;
+    gint64 observed_age = at ? g_date_time_difference (now, at) / G_TIME_SPAN_SECOND : -1;
+    if (reading && at && observed_age >= 0 && observed_age < 90 * 60 &&
+        json_number (reading_root, "version", &reading_version) && reading_version == 1 &&
+        g_strcmp0 (json_string (reading_root, "place_uid"), uid) == 0 &&
+        json_number (reading, "temperature_c", &observed_degrees) &&
+        observed_degrees >= -100 && observed_degrees <= 100) {
+      degrees = observed_degrees;
+      symbol = json_string (reading, "symbol");
+      next_update = MIN (next_update, 90 * 60 - observed_age + 1);
+    }
+  }
   temp = temperature (self, degrees);
   set_text (self, &self->weather_value, temp);
-  set_text (self, &self->weather_condition, condition (json_string (current, "symbol")));
+  set_text (self, &self->weather_condition, condition (symbol));
   if (json_number (current, "high_c", &high) && json_number (current, "low_c", &low) &&
       high >= low && high <= 100 && low >= -100) {
     g_autofree char *hi = temperature (self, high);
@@ -360,7 +409,7 @@ refresh_weather (LumaWidgetsModel *self)
     range = g_strdup (_("Cached forecast"));
   }
   set_text (self, &self->weather_detail, range);
-  self->expiry_id = g_timeout_add_seconds (WEATHER_MAX_AGE - MIN (age, WEATHER_MAX_AGE) + 1,
+  self->expiry_id = g_timeout_add_seconds (next_update,
                                            weather_expired, self);
 }
 

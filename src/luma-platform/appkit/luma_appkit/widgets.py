@@ -1691,6 +1691,11 @@ class AppWindow(Adw.ApplicationWindow):
         self._geometry_app_id = app_id
         self._geometry_scope = geometry_scope
         self._geometry_state = self._scoped_geometry_state(geometry_scope)
+        from .compact_layout import minimum_size
+        screen = _current_screen(self.get_display())
+        minimum_width, minimum_height = minimum_size(
+            minimum_width, minimum_height, screen.width, screen.height,
+            self.context.presentation is not PresentationMode.WINDOWED)
         self._geometry_minimum = (minimum_width, minimum_height)
         # What the application asked for is its shape, not its opening size:
         # one shared rule turns shape into pixels for every Luma window

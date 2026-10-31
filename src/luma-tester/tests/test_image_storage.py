@@ -14,7 +14,8 @@ class ImageStorageTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)/'state'
+        self.directory = Path(self.temp.name).resolve()
+        self.root = self.directory/'state'
         self.image = dict(sha256='a'*64, media='disk')
         self.base = image_storage.cache_path(self.root, self.image)
         self.base.parent.mkdir(parents=True)
@@ -46,8 +47,8 @@ class ImageStorageTests(unittest.TestCase):
         session=self.workspace();other=self.workspace('other','b'*64)
         imported=self.root/'imported-images/first.json';vm.atomic_json(imported,self.manifest)
         pinned=self.root/'preset-images/first.json';vm.atomic_json(pinned,self.manifest)
-        original=Path(self.temp.name)/'original.qcow2';original.write_bytes(b'original')
-        shared=Path(self.temp.name)/'project';shared.mkdir();(shared/'app.py').write_text('important')
+        original=self.directory/'original.qcow2';original.write_bytes(b'original')
+        shared=self.directory/'project';shared.mkdir();(shared/'app.py').write_text('important')
         (session.directory/'shared-project').symlink_to(shared,target_is_directory=True)
         vm.atomic_json(self.root/'presets.json',[dict(name='Phone',manifest=str(pinned),target='mobile',intent='try',image=self.manifest['image'])])
         vm.atomic_json(self.root/'preferences.json',dict(images=[str(imported)],selected_images={'desktop':str(imported)},selected_variants={'desktop:x86_64':str(imported)},other_setting=True))
@@ -87,7 +88,7 @@ class ImageStorageTests(unittest.TestCase):
         self.assertFalse(self.base.exists());self.assertTrue(session.disk.exists())
 
     def test_linked_cache_and_workspace_are_refused(self):
-        original=Path(self.temp.name)/'original';original.write_bytes(b'keep')
+        original=self.directory/'original';original.write_bytes(b'keep')
         self.base.unlink();self.base.symlink_to(original)
         with self.assertRaises(TesterError):image_storage.inspect(self.root,self.image)
         self.base.unlink();self.base.write_bytes(b'base')
@@ -104,7 +105,7 @@ class ImageStorageTests(unittest.TestCase):
         with self.assertRaises(TesterError):image_storage.inspect(self.root,dict(sha256='../original'))
 
     def test_external_manifest_is_forgotten_but_original_file_is_never_deleted(self):
-        original=Path(self.temp.name)/'original.json';vm.atomic_json(original,self.manifest)
+        original=self.directory/'original.json';vm.atomic_json(original,self.manifest)
         vm.atomic_json(self.root/'preferences.json',dict(images=[str(original)],selected_images={'desktop':str(original)}))
         plan=image_storage.inspect(self.root,self.image)
         self.assertIn(str(original),plan.references)

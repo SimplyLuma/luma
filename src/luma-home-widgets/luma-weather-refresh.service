@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Weather data for Home widgets
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-weather-refresh
+TimeoutStartSec=45
+NoNewPrivileges=yes

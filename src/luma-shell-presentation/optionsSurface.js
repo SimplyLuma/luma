@@ -67,19 +67,23 @@ export class OptionsSurface {
             return result;
         };
         const first = row();
+        this._utilitySlots = [];
         const core = [indicators._doNotDisturb, indicators._nightLight, indicators._powerProfiles, indicators._darkMode]
             .map(indicator => indicator.quickSettingsItems[0]);
         core[2].iconName = 'lumaui-leaf-symbolic';
         for (const item of core) {
-            const slot = new St.Bin({x_expand: true});first.add_child(slot);
+            const slot = new St.Bin({x_expand: true});first.add_child(slot);this._utilitySlots.push(slot);
             item.get_parent()?.remove_child(item);slot.set_child(item);roundControl(item);
         }
         const second = row();
-        // A late Tiling provider fills its own existing slot. Other slots never
-        // jump when an extension loads, unloads or is disabled.
+        // Providers retain their native slots; visible controls pack from the left.
         this._secondarySlots = Array.from({length: 4}, () => {
             const slot = new St.Bin({x_expand: true});second.add_child(slot);return slot;
         });
+        this._utilitySlots.push(...this._secondarySlots);
+        this._utilityRows = [first, second];
+        this._utilityParking = new St.BoxLayout({visible: false});
+        utilities.add_child(this._utilityParking);
         for (const [item, index] of [[indicators._rfkill.quickSettingsItems[0], 0],
             [indicators._cast.quickSettingsItems[0], 2]]) this._put(item, index);
         indicators._cast.quickSettingsItems[0].title = _('Cast Screen');
@@ -122,6 +126,34 @@ export class OptionsSurface {
         };
         menu.box.connect('style-changed', updateLevels);
         updateLevels();
+        for (const slot of this._utilitySlots) {
+            slot.connectObject('notify::child', () => this._watchUtility(slot), menu.box);
+            this._watchUtility(slot);
+        }
+    }
+
+    _watchUtility(slot) {
+        slot._visibleSource?.disconnectObject(slot);
+        slot._visibleSource = slot.get_child();
+        slot._visibleSource?.connectObject('notify::visible', () => this._packUtilities(),
+            'destroy', () => { slot._visibleSource = null; }, slot);
+        this._packUtilities();
+    }
+
+    _packUtilities() {
+        if (!this._utilityRows || this._packingUtilities) return;
+        this._packingUtilities = true;
+        const visible = this._utilitySlots.filter(slot => slot.get_child()?.visible);
+        for (const slot of this._utilitySlots) slot.get_parent()?.remove_child(slot);
+        for (const row of this._utilityRows) row.destroy_all_children();
+        for (const [index, slot] of visible.entries()) this._utilityRows[Math.floor(index / 4)].add_child(slot);
+        for (const slot of this._utilitySlots.filter(slot => !visible.includes(slot))) this._utilityParking.add_child(slot);
+        for (const [index, row] of this._utilityRows.entries()) {
+            row.visible = visible.length > index * 4;
+            while (row.visible && row.get_n_children() < 4)
+                row.add_child(new St.Widget({x_expand: true}));
+        }
+        this._packingUtilities = false;
     }
 
     _fillLevel(item) {

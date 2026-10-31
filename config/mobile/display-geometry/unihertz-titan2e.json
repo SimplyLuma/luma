@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "connector": "DSI-1",
+  "nativeWidth": 1080,
+  "nativeHeight": 1200,
+  "cutouts": [{"x": 0, "y": 0, "width": 132, "height": 132}],
+  "provenance": "Conservative camera and corner exclusion from owner-device visual calibration; refine independently of shared shell layout."
+}
