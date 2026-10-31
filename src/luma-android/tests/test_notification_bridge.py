@@ -108,6 +108,7 @@ class NotificationLifecycle(unittest.TestCase):
         image = SimpleNamespace(width=100, height=100, rowstride=4,
                                 has_alpha=True, data=b'\x00' * 400)
         for record in (replace(self.record, package='../native'),
+                       replace(self.record, package='native'),
                        replace(self.record, body='\x00'),
                        replace(self.record, actions=(('a', 'A'), ('a', 'B'))),
                        replace(self.record, urgency=3),
@@ -116,6 +117,12 @@ class NotificationLifecycle(unittest.TestCase):
                 self.bridge.post(record)
         self.sink.notify.assert_not_called()
         self.assertEqual(escaped_body(replace(self.record, body='<b>& image')), '&lt;b&gt;&amp; image')
+
+    def test_framework_notifications_reach_the_host(self):
+        # Android's own notifications come from the single-segment platform
+        # package; rejecting them failed the transaction and crashed system_server.
+        self.bridge.post(replace(self.record, package='android'))
+        self.sink.notify.assert_called_once()
 
 
 if __name__ == '__main__':

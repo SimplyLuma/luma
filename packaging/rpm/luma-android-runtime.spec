@@ -202,6 +202,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %changelog
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
 - Declare the Android state directory 0755 so setup accepts it
+- Forward notifications from the Android framework package
 
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94.android20261029.1
 - Correct Android reply parcel alignment and acknowledgement decoding
