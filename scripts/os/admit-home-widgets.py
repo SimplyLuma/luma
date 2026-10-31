@@ -13,6 +13,7 @@ import zipfile
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--architecture', required=True, choices=['x86_64', 'aarch64'])
+p.add_argument('--run-id', type=int, help='Successful matching native Home widget producer')
 a = p.parse_args()
 repo = 'SimplyLuma/luma'
 run = 40354455921
@@ -29,7 +30,14 @@ def api(path):
             if attempt == 2:
                 raise
             time.sleep(2 * (attempt + 1))
+if a.run_id:
+    run = a.run_id
 record = api(f'actions/runs/{run}')
+if a.run_id:
+    source = record['head_sha']
+    assert len(source) == 40 and all(c in '0123456789abcdef' for c in source)
+    assert record['conclusion'] == 'success' and record['event'] == 'workflow_dispatch'
+    subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'merge-base', '--is-ancestor', source, 'HEAD'], check=True)
 assert record['head_sha'] == source and record['path'] == '.github/workflows/desktop-components.yml'
 jobs = api(f'actions/runs/{run}/jobs?per_page=100')['jobs']
 assert any('home-widgets' in job['name'] and a.architecture in job['name'] and job['conclusion'] == 'success' for job in jobs)
@@ -38,7 +46,15 @@ paths = ['src/luma-home-widgets', 'scripts/packages/build-luma-home-widgets.sh',
          'scripts/packages/run-in-rpm-builder.sh', 'scripts/developer/generate-home-widget-styles.py',
          'config/shared/design-tokens.d/home-widgets.json', 'packaging/rpm/luma-home-widgets.spec']
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
-artifact, digest = identities[a.architecture]
+if a.run_id:
+    artifacts = api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts']
+    selected = [row for row in artifacts if row['name'] == f'desktop-home-widgets-{a.architecture}']
+    assert len(selected) == 1, 'ambiguous Home widget artifact'
+    artifact = selected[0]['id']
+    digest = selected[0]['digest'].removeprefix('sha256:')
+    assert len(digest) == 64 and all(c in '0123456789abcdef' for c in digest)
+else:
+    artifact, digest = identities[a.architecture]
 metadata = api(f'actions/artifacts/{artifact}')
 assert not metadata['expired'] and metadata['workflow_run']['id'] == run
 assert metadata['name'] == f'desktop-home-widgets-{a.architecture}' and metadata['digest'] == 'sha256:' + digest
@@ -64,10 +80,15 @@ with tempfile.TemporaryDirectory() as temporary:
     extracted = directory / 'extracted'
     receipts = list(extracted.rglob('SOURCE-REVISION'))
     assert len(receipts) == 1 and receipts[0].read_text().strip() == source
-    native = list(extracted.glob(f'packages/luma-home-widgets/RPMS/{a.architecture}/luma-home-widgets-0.1.0-1.luma.1.fc44.{a.architecture}.rpm'))
+    if a.run_id:
+        pins = dict(line.split('=', 1) for line in Path('config/desktop/inputs.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
+        expected = pins[f'LUMA_HOME_WIDGETS_{a.architecture.upper()}_NEVRA']
+    else:
+        expected = f'luma-home-widgets-0.1.0-1.luma.1.fc44.{a.architecture}'
+    native = list(extracted.glob(f'packages/luma-home-widgets/RPMS/{a.architecture}/{expected}.rpm'))
     assert len(native) == 1
     identity = subprocess.check_output(['rpm', '-qp', '--nosignature', '--qf', '%{NEVRA}', str(native[0])], text=True)
-    assert identity == f'luma-home-widgets-0.1.0-1.luma.1.fc44.{a.architecture}'
+    assert identity == expected
     output = Path('build/packages/luma-home-widgets')
     assert not output.exists(), 'refuse to overwrite another provider'
     output.parent.mkdir(parents=True, exist_ok=True)
