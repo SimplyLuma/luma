@@ -262,6 +262,7 @@ raise SystemExit(23)
                 buffer+=part
         self.assertIn(needle.encode(),buffer,buffer.decode(errors='replace'))
 
+    @unittest.skipUnless(ADMITTED, 'only an admitted launcher can reach the display spare')
     def test_display_spare_draws_real_window_and_exits(self):
         self.start(warm=True);self.wait_log('display spare ready')
         result=self.run_app(True)
