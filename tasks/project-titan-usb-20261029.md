@@ -761,3 +761,13 @@ gesture1→0 and retained the screen lock. Reblank rearms1. The physical test ha
 been requested again after this shell correction; no physical success is yet
 claimed. Fresh boot/system suspend/battery-life remain untested. Lift-to-wake
 still requires motion/hub driver support. Accepted audio kernel is unchanged.
+
+### 2026-10-30 — physical double-tap wake accepted
+
+Owner answered “Yes, it wakes” after the explicit shell wake-handler fix.
+Readback shows wake count6 (previously5), gesture mode0, and both
+project-titan-touch-wake-driver.service and luma-touch-wake-policy.service
+active/enabled. Retain the current source-backed setup. No additional runtime
+change or reboot was needed. This confirms physical double-tap waking from
+display blank; it does not qualify system suspend, a fresh boot or battery life.
+Lift-to-wake remains unavailable without a low-power motion event backend.

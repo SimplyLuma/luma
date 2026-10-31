@@ -57,8 +57,10 @@ separating the wake input device did not resolve that failure. After the explici
 shell wake handler was added, three consecutive injected wake events on the
 actual driver input turned the display on, disarmed gesture mode and retained
 the lock. Driver build eb790b7e and patch/source provenance check6f85f52e pass.
-Owner verification of the revised physical wake, a fresh boot, real system
-suspend/resume and longer battery measurements remain pending. The policy has no
+The owner confirmed physical double-tap wake on October30. The recognition
+counter advanced5→6 and normal touch resumed (gesture mode0); both live services
+remain active/enabled. A fresh boot, real system suspend/resume and longer
+battery measurements remain pending. The policy has no
 periodic work; earlier idle checks measured zero service CPU time.
 
 Lift-to-wake is not implemented: this build exposes a PMIC ADC but no usable

@@ -149,7 +149,8 @@ XF86WakeUp as wake-only, including while locked: relying on ordinary input idle
 activity was inconsistent after manual display blank. Physical recognition was
 observed, but the initial implementation failed to unblank. Three consecutive
 injected events now pass with the revised shell handler and keep the lock.
-Owner physical acceptance, fresh boot and system-sleep/battery qualification
-remain pending. Lift-to-wake requires a real motion event backend, which this
+The owner confirmed physical double-tap wake on October30; counter5→6 and
+gesture mode0 corroborate the wake. Both services remain active/enabled. Fresh
+boot and system-sleep/battery qualification remain pending. Lift-to-wake requires a real motion event backend, which this
 Titan build does not expose. Idle policy checks have measured zero service CPU;
 this is not a whole-device battery-life measurement.
