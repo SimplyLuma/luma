@@ -75,6 +75,20 @@ if a.providers_only or a.run_id:
     current = values(Path('config/desktop/inputs.env').read_text())
     keys = [key for key in prior if key.startswith(('GTK4_', 'LIBADWAITA_', 'FIGTREE_', 'FEDORA_RPM_BUILD_CONTAINER') + (() if a.providers_only else ('LUMA_DEVELOPER_PLATFORM_',)))]
     assert keys and all(prior[key] == current.get(key) for key in keys), 'toolkit provider pin changed'
+reviewed_driver_equivalence = {}
+if a.providers_only:
+    # These exact driver edits leave the already-built provider payloads and
+    # pinned compiler inputs unchanged. All unlisted changes still fail closed.
+    equivalence = json.loads(Path('config/os/desktop-toolkit-provider-driver-equivalence.json').read_text())
+    changed = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--name-only', source, 'HEAD', '--', *paths], text=True).splitlines()
+    for name in changed:
+        assert equivalence['source_revision'] == source
+        row = equivalence['reviewed_driver_changes'][name]
+        old = subprocess.check_output(['git', '-c', f'safe.directory={Path.cwd()}', 'show', f'{source}:{name}'])
+        assert hashlib.sha256(old).hexdigest() == row['from_sha256']
+        assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == row['to_sha256']
+        reviewed_driver_equivalence[name] = row
+    paths = [name for name in paths if name not in reviewed_driver_equivalence]
 subprocess.run(['git', '-c', f'safe.directory={Path.cwd()}', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
 if a.run_id:
     candidates = api(f'actions/runs/{run}/artifacts?per_page=100')['artifacts']
@@ -142,5 +156,5 @@ if a.providers_only:
     if platform.exists():
         shutil.rmtree(platform)
     (a.output / 'SOURCE-REVISION').unlink()
-    (a.output / 'REUSED-TOOLKIT-PROVIDERS.json').write_text(json.dumps({'run': run, 'source': source, 'receipt_source': merge, 'artifact_id': artifact_id, 'archive_sha256': digest, 'platform_reused': False}, indent=2) + '\n')
+    (a.output / 'REUSED-TOOLKIT-PROVIDERS.json').write_text(json.dumps({'run': run, 'source': source, 'receipt_source': merge, 'artifact_id': artifact_id, 'archive_sha256': digest, 'platform_reused': False, 'reviewed_driver_equivalence': reviewed_driver_equivalence}, indent=2) + '\n')
 print(f'Admitted {len(rpms)} checked {a.architecture} toolkit RPMs from successful run {run}')

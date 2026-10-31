@@ -1,0 +1,20 @@
+{
+  "source_revision": "094fa5f941e92281553e11c52b8751811b42b516",
+  "reviewed_driver_changes": {
+    "scripts/packages/build-libadwaita.sh": {
+      "from_sha256": "55cc1a8c24442341520ef586bf0577bd26a70d9bb210fc130f91bcc121fb4870",
+      "to_sha256": "43ad92e02e4a988b53eb7b8e23b81dd5c3d2e3cd7632aa581b53335394f2baaf",
+      "reason": "Equivalent Linux guard and ARM package filename expansion for the unchanged pinned libadwaita version/release."
+    },
+    "scripts/packages/fetch-source-rpm.sh": {
+      "from_sha256": "139f1cb1edcba7f234b40253257f8b0492b318c76a95e4d4a460307669d4586a",
+      "to_sha256": "139f1cb1edcba7f234b40253257f8b0492b318c76a95e4d4a460307669d4586a",
+      "reason": "Executable permission repair; identical file bytes."
+    },
+    "scripts/packages/run-in-rpm-builder.sh": {
+      "from_sha256": "eac37d4e47417f61e9f3ce7b2b556387911e79008ef870bb5d8f08fc47b6e563",
+      "to_sha256": "21fe02580fd46105b3662c9c15938915a672e7fa3237853fbd29e330eb58a1bd",
+      "reason": "Forwards the existing target architecture only to explicitly selected local containers; native direct CI path is unchanged."
+    }
+  }
+}
