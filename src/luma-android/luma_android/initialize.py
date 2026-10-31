@@ -54,6 +54,15 @@ RENDER_DRIVERS = frozenset({
 })
 
 
+# The ARM image ships no SwiftShader; its ANGLE and pastel renderers are the
+# software path there.
+SOFTWARE_GRAPHICS = {
+    "x86_64": "ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n",
+    "aarch64": ("ro.hardware.gralloc=default\nro.hardware.egl=angle\n"
+                "ro.hardware.vulkan=pastel\n"),
+}
+
+
 def _graphics_selection(dri: Path = Path("/dev/dri"),
                         sys_drm: Path = Path("/sys/class/drm")) -> tuple[bool, Path | None]:
     """Return (software, drm_device) for Waydroid's initial configuration.
@@ -113,8 +122,7 @@ def _seed_initial_graphics(state: Path) -> None:
     if software:
         # Supported Waydroid properties, consumed by its ordinary initial init.
         # https://docs.waydro.id/faq/get-waydroid-to-work-through-a-vm
-        payload = ("[waydroid]\n\n[properties]\n"
-                   "ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n")
+        payload = "[waydroid]\n\n[properties]\n" + SOFTWARE_GRAPHICS[platform.machine()]
     elif device is not None:
         # Waydroid's own override, kept by init and read again at each start.
         payload = f"[waydroid]\ndrm_device = {device}\n"

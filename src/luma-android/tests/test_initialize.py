@@ -226,6 +226,7 @@ class PackagedImagesTest(unittest.TestCase):
                 (lxc / name).write_text("finished configuration")
             (state / "waydroid_base.prop").write_text("finished properties")
         with patch.object(initialize, "STATE", state), \
+                patch.object(initialize.platform, "machine", return_value="x86_64"), \
                 patch.object(initialize, "verify_images"), \
                 patch.object(initialize, "is_fp6", return_value=False), \
                 patch.object(initialize, "_graphics_selection", return_value=(True, None)), \
@@ -270,6 +271,16 @@ class PackagedImagesTest(unittest.TestCase):
             self.assertFalse(state.exists())
             if fp6:
                 probe.assert_not_called()
+
+    def test_arm_software_fallback_uses_the_renderers_its_image_ships(self):
+        state = self.root / "arm-software-state"
+        with patch.object(initialize, "is_fp6", return_value=False), \
+                patch.object(initialize.platform, "machine", return_value="aarch64"), \
+                patch.object(initialize, "_graphics_selection", return_value=(True, None)):
+            initialize._seed_initial_graphics(state)
+        self.assertEqual((state / "waydroid.cfg").read_text(),
+                         "[waydroid]\n\n[properties]\nro.hardware.gralloc=default\n"
+                         "ro.hardware.egl=angle\nro.hardware.vulkan=pastel\n")
 
     def test_gpu_behind_display_only_node_is_named_for_waydroid(self):
         state = self.root / "gpu-state"
