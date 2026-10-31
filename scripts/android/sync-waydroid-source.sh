@@ -58,6 +58,9 @@ trap - EXIT
 
 cat > .repo/local_manifests/99-luma-pins.xml <<EOF
 <manifest>
+  <remote name="freedesktop" fetch="https://gitlab.freedesktop.org" />
+  <remove-project name="WayDroid/android_external_mesa3d" />
+  <project path="external/mesa" name="mesa/mesa" remote="freedesktop" revision="$LUMA_ANDROID_MESA_REVISION" clone-depth="1" />
   <extend-project name="WayDroid/android_hardware_waydroid" revision="$LUMA_WAYDROID_HARDWARE_REVISION" />
   <extend-project name="WayDroid/android_vendor_waydroid" revision="$LUMA_WAYDROID_VENDOR_REVISION" />
   <extend-project name="WayDroid/android_device_waydroid_waydroid" revision="$LUMA_WAYDROID_DEVICE_REVISION" />
@@ -72,6 +75,8 @@ test "$(git -C hardware/waydroid rev-parse HEAD)" = \
   "$LUMA_WAYDROID_HARDWARE_REVISION"
 test "$(git -C vendor/extra rev-parse HEAD)" = \
   "$LUMA_WAYDROID_VENDOR_REVISION"
+test "$(git -C external/mesa rev-parse HEAD)" = \
+  "$LUMA_ANDROID_MESA_REVISION"
 
 install -d -m 0755 "$repo_root/build/android/manifests"
 repo manifest -r -o \

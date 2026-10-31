@@ -24,7 +24,7 @@ hardware_root="$source_root/hardware/waydroid"
 framework_root="$source_root/frameworks/base"
 device_root="$source_root/device/waydroid/waydroid"
 waydroid_patch_script="$source_root/vendor/extra/waydroid-patches/apply-patches.sh"
-mesa_tool_root="$source_root/prebuilts/mesa-tools"
+mesa_tool_root=${LUMA_ANDROID_MESA_TOOLS:-$source_root/prebuilts/mesa-tools}
 expected_font_sha=26ad3db9b31ff7dde67a91ff515d022d2f495cd506590699cf264f0bfe6fb714
 build_jobs=${LUMA_BUILD_JOBS:-}
 soong_gc=${LUMA_ANDROID_SOONG_GOGC:-20}
@@ -103,6 +103,11 @@ test -x "$mesa_tool_root/mesa_clc" || {
   printf 'error: pinned Waydroid mesa_clc wrapper is missing\n' >&2
   exit 1
 }
+# Mesa runs its host compilers only from the identical source version.
+grep -Fqx "MESA_VERSION=$(cat "$source_root/external/mesa/VERSION")" "$mesa_tool_root/BUILD-INFO" 2>/dev/null || {
+  printf 'error: Mesa host tools do not match external/mesa; build them with scripts/android/build-mesa-host-tools.sh and set LUMA_ANDROID_MESA_TOOLS\n' >&2
+  exit 1
+}
 
 test -d "$source_root/.repo" || {
   printf 'error: synchronize the pinned Android source first\n' >&2
@@ -157,7 +162,7 @@ fi
 # compilers through this directory. LineageOS 20 does not add that directory to
 # the shell PATH inherited by external/mesa/android/mesa3d_cross.mk, so make the
 # upstream-pinned wrappers explicit rather than substituting a host binary.
-export PATH="$source_root/prebuilts/build-tools/path/linux-x86:$PATH"
+export PATH="$mesa_tool_root:$source_root/prebuilts/build-tools/path/linux-x86:$PATH"
 command -v mesa_clc >/dev/null || {
   printf 'error: official Waydroid mesa_clc PATH patch was not applied\n' >&2
   exit 1
@@ -218,6 +223,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/system/libhidl" apply "$libhidl_patch"
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
+  git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
   git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
