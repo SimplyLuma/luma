@@ -23,7 +23,7 @@ are separate historical paths.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The source candidate pins are Shell `1.luma.134.keycap20261030.1`, Mutter
+The source candidate pins are Shell `1.luma.135.keycap20261030.1`, Mutter
 `1.luma.15.keycap20261030.1` (text-input, frame-clock and input panel inset
 patches the keyboard relies on), developer
 platform `1.luma.117.mobile20261030.1`, core apps

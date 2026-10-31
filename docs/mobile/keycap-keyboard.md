@@ -150,8 +150,14 @@ a press: the pressed cap is one small group above the keyboard (a
 tray-coloured cover over the resting cap, a clone of the cap lowered by the
 travel with its edge clipped by as much, and the tint), and each character's
 preview label stays above its key, draws its text directly (no St.Label
-offscreen cache) and is shown by opacity. Everything a press can show (the
-letter layers, every preview, the pressed cap) is made when the layout is
+offscreen cache) and is shown by opacity. Every layer stays shown and laid
+out at opacity 0 with the current one opaque: a layer switch (sentence case,
+shift, symbols) is two opacity changes that reuse both cached textures, with
+no relayout (the grid ratio, which re-pages the emoji panel, is set only when
+it changes) and no restyle (shift keys change only with their latch). Hiding
+and showing layers drew the target layer anew on every switch: 42 journal
+flushes headless, 29-47 ms frames on the Fold. Everything a press can show
+(every layer, every preview, the pressed cap) is made when the layout is
 built and drawn once, with a whole-stage repaint, on a timer after the
 keyboard is shown; the show animation's onComplete is not relied on (a
 relayout stops it, which is how keycap7's warm-up never ran and each new
@@ -253,7 +259,9 @@ an entry under a modal grab, adjustResize, a D-Bus activated stand-in
 feedbackd, IBus traffic, the press-path budget (TOUCH_BEGIN handling time, one
 geometry read and no restyle per press), Cogl journal flushes per press frame
 (Mutter's profiler, through `profile-shell.py` and `frame-flushes.py`), no
-repaint of neighbouring keys (the cached grid), the first press of a freshly
+repaint of neighbouring keys (the cached grid), layer switches (no extra
+journal flush, no key repainted, no relayout, 'a. b' typed as 'A. B'), the
+first press of a freshly
 built keyboard, a 300k-unit surrounding-text report and word-analysis time.
 
 **Shadows.** St paints one shadow per actor and parses one layer; extra layers

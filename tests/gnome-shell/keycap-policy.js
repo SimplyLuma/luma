@@ -282,6 +282,8 @@ for (const [needle, message] of [
     ['_showPressedCap(cell, cap)', 'the pressed cap is drawn over the cached grid'],
     ['offscreen_redirect: 0', 'previews render no offscreen text cache'],
     ['this._warmTimeoutId = GLib.timeout_add', 'the warm-up runs even when the show animation is stopped'],
+    ['levelLayout.opacity = 0;', 'every layer stays laid out and cached; a switch swaps opacity'],
+    ['this._gridRatio = [columns, rows];', 'a switch sets the grid ratio only when it changes'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
 ])
     assert(keyboard.includes(needle), message);
@@ -295,6 +297,8 @@ for (const [needle, message] of [
     ['setKeycapVariantClass(this._preview);\n        this._preview.text', 'no per-press restyle of the preview'],
     ["this.keyButton.add_style_pseudo_class('active');", 'a press restyles no cap'],
     ['    _capDown(button) {', 'a press moves nothing inside the cached grid'],
+    ['            levelLayout.hide();', 'a layer switch shows or hides no layer'],
+    ['this._currentPage.hide();', 'a layer switch shows or hides no layer'],
     ["[...text].slice(0, cursor).join('')", 'no whole-document copy per surrounding report'],
     ['this._suggester.prefixMass(word + cell.letter)', 'no word-model lookups on a press'],
 ])

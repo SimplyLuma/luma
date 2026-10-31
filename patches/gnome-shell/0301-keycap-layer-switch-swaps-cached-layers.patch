@@ -1,0 +1,134 @@
+From: Luma Developers
+Subject: [PATCH] Keycap: a layer switch swaps cached layers
+
+On the Fold every slow frame was a switch between the lowercase and Shift
+layers (sentence case, a capital's release): 29-47 ms with relayout and two
+long journal flushes over the whole keyboard. Hiding the old layer and
+showing the new one queued a redraw of the new layer's cached texture, so it
+was drawn anew on every switch (42 journal flushes headless), and each
+switch also set the grid ratio again, which relays out the keyboard and
+re-pages and re-attaches the whole emoji panel inside the press event.
+
+Every layer now stays shown and laid out at opacity 0 and the current one
+is opaque, so a switch is two opacity changes that reuse both cached
+textures. The ratio is set only when it changes, shift keys are restyled
+only when their latch changes, and the warm-up draws every layer (letters
+and symbols) into its cache.
+
+---
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -2398,10 +2398,15 @@
+             // The key grid is drawn once into its own texture and reused:
+             // a press draws over it and never invalidates it, so a frame
+             // paints the grid as one quad instead of every cap and label.
++            // Every layer stays shown and laid out; only the current one is
++            // opaque. A layer switch (sentence case, shift, symbols) is then
++            // two opacity changes that reuse both textures: hiding a layer
++            // and showing it again would lay it out and draw it anew.
+             levelLayout.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS;
++            levelLayout.opacity = 0;
++            levelLayout._latchedShown = false;
+             layers[currentLevel.level] = levelLayout;
+             layout.add_child(levelLayout);
+-            levelLayout.hide();
+         });
+ 
+         this._aspectContainer.add_child(layout);
+@@ -3338,6 +3343,10 @@
+     }
+ 
+     _setCurrentLevelLatched(layout, latched) {
++        // Restyling a shift key would redraw its layer's cached grid.
++        if (!layout || layout._latchedShown === latched)
++            return;
++        layout._latchedShown = latched;
+         for (let i = 0; i < layout.shiftKeys.length; i++) {
+             const key = layout.shiftKeys[i];
+             key.setLatched(latched);
+@@ -3447,21 +3456,36 @@
+             return;
+         }
+ 
+-        if (this._currentPage != null) {
+-            this._setCurrentLevelLatched(this._currentPage, false);
+-            this._currentPage.disconnect(this._currentPage._destroyID);
+-            this._currentPage.hide();
+-            delete this._currentPage._destroyID;
++        // A switch only swaps which cached layer is opaque: no layer is
++        // shown, hidden, restyled or laid out, and the grid ratio (which
++        // re-pages the emoji panel and relays out the keyboard) is set only
++        // when it changes.
++        const previous = this._currentPage;
++        if (previous != null) {
++            this._setCurrentLevelLatched(previous, false);
++            previous.disconnect(previous._destroyID);
++            delete previous._destroyID;
++            previous.opacity = 0;
++            if (!previous.visible)
++                previous.show();
+         }
+ 
+-        this._disableAllModifiers();
++        if (this._modifiers.size > 0)
++            this._disableAllModifiers();
+         this._currentPage = currentPage;
+-        this._currentPage._destroyID = this._currentPage.connect('destroy', () => {
++        currentPage._destroyID = currentPage.connect('destroy', () => {
+             this._currentPage = null;
+         });
++        currentPage.opacity = 255;
+         this._updateCurrentPageVisible();
+-        this._aspectContainer.setRatio(...this._currentPage.getRatio());
+-        this._emojiSelection.setRatio(...this._currentPage.getRatio());
++        const [columns, rows] = currentPage.getRatio();
++        if (this._gridRatio?.[0] !== columns || this._gridRatio?.[1] !== rows ||
++            this._gridRatioLayout !== this._currentLayout) {
++            this._gridRatio = [columns, rows];
++            this._gridRatioLayout = this._currentLayout;
++            this._aspectContainer.setRatio(columns, rows);
++            this._emojiSelection.setRatio(columns, rows);
++        }
+     }
+ 
+     _clearKeyboardRestTimer() {
+@@ -3648,21 +3672,19 @@
+     }
+ 
+     // Everything a key press shows for the first time is drawn once, nearly
+-    // transparent, right after the keyboard opens: the letter layers it
+-    // swaps between by itself (sentence case), the press tint and the key
+-    // preview. The first press of a session, or the first swap to
++    // transparent, right after the keyboard opens: every layer's grid (the
++    // letter layers it swaps between by itself, symbols), the press tint and
++    // the key preview. The first press of a session, or the first swap to
+     // a layer, then lays out and rasterises nothing new in its frame.
+     _warmLayers() {
+         if (!this._layers || this._warmedLayers === this._layers || !this._keyboardVisible)
+             return;
+         this._warmedLayers = this._layers;
+         this._preparePreviews();
+-        const cold = ['default', 'shift'].map(level => this._layers[level])
+-            .filter(layer => layer && layer !== this._currentPage && !layer.visible);
+-        for (const layer of cold) {
++        const cold = Object.values(this._layers)
++            .filter(layer => layer && layer !== this._currentPage && layer.visible);
++        for (const layer of cold)
+             layer.opacity = 1;
+-            layer.show();
+-        }
+         const cell = this._currentPage && this._cellsFor(this._currentPage).find(c => c.key.character);
+         if (cell)
+             this._showPress({cell, page: this._currentPage}, false);
+@@ -3696,9 +3718,8 @@
+             for (const label of shown)
+                 label.opacity = 0;
+             for (const layer of cold) {
+-                layer.opacity = 255;
+                 if (layer !== this._currentPage)
+-                    layer.hide();
++                    layer.opacity = 0;
+             }
+         });
+     }

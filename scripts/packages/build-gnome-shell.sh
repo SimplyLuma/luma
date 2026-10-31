@@ -350,6 +350,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0297-keycap-key-path.patch" "$rp
 install -m 0644 "$repo_root/patches/gnome-shell/0298-keycap-press-path-and-lock-screen.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0299-single-layer-shadows.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0300-keycap-cached-grid-and-press-overlay.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0301-keycap-layer-switch-swaps-cached-layers.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
 for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
@@ -571,6 +572,10 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       grep -Fq "levelLayout.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS" keycap-keyboard.js
       grep -Fq "_showPressedCap(cell, cap)" keycap-keyboard.js
       ! grep -q "this.keyButton.add_style_pseudo_class(.active.)" keycap-keyboard.js
+      # Layer switches swap cached layers by opacity (0301).
+      grep -Fq "levelLayout.opacity = 0;" keycap-keyboard.js
+      grep -Fq "this._gridRatio = [columns, rows];" keycap-keyboard.js
+      ! grep -Fq "this._currentPage.hide();" keycap-keyboard.js
       ! grep -Fq "this._flushId = GLib.idle_add(GLib.PRIORITY_LOW" keycap-keyboard.js
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/layout.js >keycap-layout.js
