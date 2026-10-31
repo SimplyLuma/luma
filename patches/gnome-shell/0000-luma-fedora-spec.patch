@@ -333,11 +333,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +375,10 @@
+@@ -71,6 +375,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
-+BuildRequires:  luma-home-widgets >= 0.1.0-1.luma.1
 +BuildRequires:  sassc
 +BuildRequires:  acl
 +BuildRequires:  google-figtree-fonts >= 2.0.3-1.luma.4
@@ -349,7 +348,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
 +Requires:       luma-shell-state >= 0.2.0-1.luma.36
-+Requires:       luma-home-widgets >= 0.1.0-1.luma.1
++Requires:       luma-home-widgets >= 0.1.0-1.luma.3
 +Requires:       mutter >= 50.4-1.luma.8.preview20260919.1
 +Requires:       libtinysparql%{?_isa}
 +Recommends:     localsearch

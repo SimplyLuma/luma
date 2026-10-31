@@ -5,7 +5,7 @@
  Name:           nautilus
  Version:        50.2.2
 -Release:        %autorelease
-+Release:        1.luma.75.android20261030.1%{?dist}
++Release:        1.luma.76.nightly20261030.1%{?dist}
 +Requires:       prairie-icon-theme >= 0.1.0-1.luma.21
 +Requires:       luma-application-installer >= 0.1.0-1.luma.60
  Summary:        File manager for GNOME

@@ -184,20 +184,20 @@ ln -s ../luma-depot-appstream.timer \
 install -D -m 0644 data/selinux/luma_application.cil %{buildroot}%{_datadir}/selinux/packages/luma_application.cil
 
 %check
-PYTHONPATH=. python3 -c 'from luma_installer.app_host_compatibility import SUPPORTED_INSTALLER_RELEASE; assert SUPPORTED_INSTALLER_RELEASE == int("%{release}".split(".luma.", 1)[1].split(".", 1)[0]), "Installer host declaration differs from its actual package release"'
-PYTHONPATH=. python3 -m unittest discover -s tests -p "test_*.py" -v
-PYTHONPATH=. dbus-run-session -- python3 -B tests/runtime_app_preferences.py
-PYTHONPATH=. dbus-run-session -- python3 -B tests/runtime_app_native_owner.py
+PYTHONPATH=.:tests/dependencies python3 -c 'from luma_installer.app_host_compatibility import SUPPORTED_INSTALLER_RELEASE; assert SUPPORTED_INSTALLER_RELEASE == int("%{release}".split(".luma.", 1)[1].split(".", 1)[0]), "Installer host declaration differs from its actual package release"'
+PYTHONPATH=.:tests/dependencies python3 -m unittest discover -s tests -p "test_*.py" -v
+PYTHONPATH=.:tests/dependencies dbus-run-session -- python3 -B tests/runtime_app_preferences.py
+PYTHONPATH=.:tests/dependencies dbus-run-session -- python3 -B tests/runtime_app_native_owner.py
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 # Depot notifies when first-boot apps finish installing, so Settings must list
 # it under Notifications.
 grep -qx 'X-GNOME-UsesNotifications=true' \
   %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
 python3 -m py_compile %{buildroot}%{python3_sitelib}/luma_installer/*.py
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/smoke.py
-GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib} GSK_RENDERER=cairo timeout --kill-after=5s 30s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/valet_android_preview.py
+PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies python3 tests/smoke.py
+GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies GSK_RENDERER=cairo timeout --kill-after=5s 30s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/valet_android_preview.py
 # Real widgets must retain scrolling while installation progress arrives.
-GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib} LUMA_DEPOT_STYLE_PATH=%{buildroot}%{_datadir}/luma-depot/depot.css GSK_RENDERER=cairo timeout --kill-after=5s 60s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/native_depot_preview.py
+GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies LUMA_DEPOT_STYLE_PATH=%{buildroot}%{_datadir}/luma-depot/depot.css GSK_RENDERER=cairo timeout --kill-after=5s 60s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/native_depot_preview.py
 grep -qx 'NoDisplay=true' %{buildroot}%{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
 
 %post

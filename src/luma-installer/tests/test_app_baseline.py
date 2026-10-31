@@ -97,7 +97,7 @@ class Inventory(unittest.TestCase):
 
     def test_package_service_uses_os_handoff_and_preserves_readable_system_apps(self):
         unit = (Path(__file__).resolve().parents[1] / 'data/luma-app-baseline.service').read_text()
-        self.assertIn('ExecStart=/usr/libexec/luma-app-baseline\n', unit)
+        self.assertIn('ExecStart=/usr/bin/luma-seed-app-baseline\n', unit)
         self.assertIn('UMask=0022\n', unit)
         self.assertIn('StateDirectoryMode=0700\n', unit)
         self.assertIn('RemainAfterExit=yes\n', unit)

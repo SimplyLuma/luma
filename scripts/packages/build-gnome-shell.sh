@@ -430,13 +430,8 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
   }
 )
 
-widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.3.fc44.$architecture.rpm"
-[ -f "$widgets_rpm" ] || {
-  printf 'error: build the shared Home widget package first: %s\n' "$widgets_rpm" >&2
-  exit 1
-}
-install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
-
+# Home widgets are imported dynamically by the running Shell, not linked by
+# its compiler. The image installs the normal required widget/Core packages.
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
   "$builder_container" '
@@ -450,7 +445,7 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       printf "VERIFY FAILED at line %s: %s\n" "$1" "$2" >&2
     }
     trap "luma_verify_failed \$LINENO \"\$BASH_COMMAND\"" ERR
-    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm SOURCES/luma-home-widgets-*.rpm
+    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm
     dnf5 -y builddep SPECS/gnome-shell.spec
     rpmbuild -ba --noclean --define "_lto_cflags -flto=2" --define "_topdir $PWD" SPECS/gnome-shell.spec
 

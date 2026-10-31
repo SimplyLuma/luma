@@ -122,15 +122,6 @@ jobs:
           args=()
           if [ -n "$TOOLKIT_RUN" ]; then args+=(--run-id "$TOOLKIT_RUN"); fi
           python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" "${args[@]}"
-      - name: Admit matching native Home widgets
-        if: matrix.component == 'gnome-shell'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HOME_WIDGETS_RUN: ${{ inputs.home_widgets_run }}
-        run: |
-          args=()
-          if [ -n "$HOME_WIDGETS_RUN" ]; then args+=(--run-id "$HOME_WIDGETS_RUN"); fi
-          python3 scripts/os/admit-home-widgets.py --architecture "$LUMA_TARGET_ARCHITECTURE" "${args[@]}"
       - name: Build and check UI component
         run: |
           git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION

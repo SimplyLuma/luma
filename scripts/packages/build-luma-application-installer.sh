@@ -40,6 +40,12 @@ cp -R "$repo_root/src/luma-installer/luma_installer" "$source_dir/"
 cp -R "$repo_root/src/luma-installer/bin" "$repo_root/src/luma-installer/data" \
   "$repo_root/src/luma-installer/tests" "$source_dir/"
 cp -R "$repo_root/src/luma-depot/luma_depot" "$source_dir/"
+# Exercise the optional Android integration against its actual source without
+# introducing a circular installed build dependency or shipping it in Valet.
+mkdir -p "$source_dir/tests/dependencies"
+cp -R "$repo_root/src/luma-android/luma_android" "$source_dir/tests/dependencies/"
+install -m0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/tests/dependencies/COPYING.GPL-3.0"
+
 cp "$repo_root/src/luma-depot/data/depot.css" "$source_dir/data/depot.css"
 # Depot's code ships inside this package, so Depot's tests have to come with
 # it. They did not, which meant the only package that ships luma_depot could
