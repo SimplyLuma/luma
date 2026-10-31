@@ -1033,7 +1033,15 @@ export class Presentation {
         const key = `${first}:${last}`;
         if (key === this._pageVisibilityKey) return;
         this._pageVisibilityKey = key;
-        this._pageViews.forEach((view, index) => {view.visible = index >= first && index <= last;});
+        this._pageViews.forEach((view, index) => {
+            const visible = index >= first && index <= last;
+            // Moving an unchanged page composites one cached layer rather than
+            // traversing every icon mask, label and widget for every frame.
+            // Hidden pages release their cache; model updates invalidate it.
+            view.set_offscreen_redirect(visible ? Clutter.OffscreenRedirect.ALWAYS :
+                Clutter.OffscreenRedirect.AUTOMATIC_FOR_OPACITY);
+            view.visible = visible;
+        });
     }
 
     _settlePage(page, duration) {

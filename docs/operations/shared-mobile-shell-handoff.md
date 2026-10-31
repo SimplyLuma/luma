@@ -22,7 +22,7 @@ git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/pre
 | --- | --- |
 | Home, dock, paging, widgets, shared search, gestures and app motion | `src/luma-shell-presentation/` |
 | Compact login, automatic hardware-keyboard/OSK behavior | `patches/gnome-shell/0290-compact-login-action-bar.patch`, `0291-shared-handheld-startup-and-input.patch` |
-| Notification island, full-screen Mobile tray, lock privacy and touch target | `patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch`, `0293-mobile-lock-notification-island.patch` |
+| Notification island, full-screen Mobile tray, lock privacy and touch target | `patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch`, `0293-mobile-lock-notification-island.patch`, `0294-notification-dismissal-policy.patch` |
 | Shared window geometry, safe areas and app action bars | `src/luma-platform/appkit/luma_appkit/`, `src/luma-platform/ui/` and maintained app/Mutter patches |
 | Live Weather/Calendar models and background refresh | `src/luma-home-widgets/`, `src/prairie-core/prairie_apps/weather*.py` |
 | Maintained native Terminal and shared command action bar | `src/luma-terminal/` |
@@ -154,3 +154,16 @@ gesture mode0 corroborate the wake. Both services remain active/enabled. Fresh
 boot and system-sleep/battery qualification remain pending. Lift-to-wake requires a real motion event backend, which this
 Titan build does not expose. Idle policy checks have measured zero service CPU;
 this is not a whole-device battery-life measurement.
+
+
+2026-10-30 input/inventory follow-up: patch0294 restores descendant picking in
+the drawer and touch-down gesture eligibility. Clear all and swipes share the
+native card's incoming-call protection instead of excluding all critical alerts.
+Phone composition now selects Luma Monitor and enforces shared default-app
+exclusions for Tour, Help/Yelp, GNOME System Monitor, Reel and Darkroom. Desktop
+already excludes these; Creative offerings remain optional Depot installs.
+Visible Home pages cache unchanged content, and opening reveal work owns and
+cancels its first-paint preparation. Performance is still unqualified: the Titan
+has a60Hz reported mode but even a minimal compositor rectangle often paints
+around30FPS through its simpledrm/Panfrost path. Do not promise60FPS or fixed
+90Hz battery behavior from these changes. No CPU/GPU performance floor remains.

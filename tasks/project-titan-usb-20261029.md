@@ -771,3 +771,63 @@ active/enabled. Retain the current source-backed setup. No additional runtime
 change or reboot was needed. This confirms physical double-tap waking from
 display blank; it does not qualify system suspend, a fresh boot or battery life.
 Lift-to-wake remains unavailable without a low-power motion event backend.
+
+### 2026-10-30 — drawer input, default apps and animation investigation
+
+Owner reported broken horizontal dismissal and Clear all. Native picking
+identified the notification container instead of its descendant cards/buttons.
+Clutter's default pick vfunc deliberately skips child traversal when overridden;
+0294 explicitly picks children. Horizontal may-recognize now checks eligibility
+at touch-down, leaving axis arbitration to PanGesture. Swipe/Clear all match the
+existing NotificationMessage.canClose policy: critical errors may be dismissed,
+while incoming calls stay protected. A source-backed temporary Effect supplied
+child picking to the old live singleton; after restarting GDM, the actual fixed
+class is loaded without that compatibility effect. Actual native left/right
+swipes and a Clear all touch passed during initial delivery. After the GDM
+restart, the actual fixed class also passed:3→2→1 records after left/right, a
+short swipe retained the last card at its original position, and the Clear all
+touch removed the remaining critical test alert while keeping the drawer open.
+All six native lifecycle checks passed again in that clean session.
+
+Shared phone roles now request Luma Monitor instead of GNOME System Monitor.
+A shared default-app exclusion list prevents Tour, Yelp/Help, System Monitor,
+Reel and Darkroom from entering phone composition, and optional Darkroom was
+removed from both composers' mandatory local RPM inputs. Desktop's existing
+removed-packages policy already excludes all five. Inventory/smoke assertions
+now reflect optional Creative apps instead of requiring their default install.
+
+Installed the verified existing noarch Monitor17 RPM, SHA437e0433de7d14be47afa67b7953bee2664971cbf2af3de768bc8aae31530a43.
+Staged deployment56c2d5c50ac35aaed11fc1294d5751d82e64846bc8857d284d5a86c021be55ce
+removes Darkroom/Reel/System Monitor/Yelp and omits Tour after disabling weak
+package recommendations on this device. rpm-ostree apply-live completed; rpm
+confirms all five absent and Monitor installed. Default gtk-launch Monitor
+produced the real Monitor window; screenshot reviewed. A transient Cairo
+comparison was stopped by the session restart; the verified final launch used
+the default renderer. No launcher-specific renderer override remains.
+
+The repeated connection errors came from Mobile data autoconnect registration
+timeouts, not Wi-Fi. Device-only autoconnect was disabled for that saved profile.
+The modem supplies a SIM identity, but no EID/SIM-type/eSIM status; physical versus
+eSIM cannot be determined from this backend. No cellular identity was recorded.
+
+Animation work caches bounded visible Home pages and releases hidden-page
+caches. Opening waits for one native control-cache paint before starting its
+clock; cancellation/reduced-motion paths release callbacks/effects and restore
+original actor state. First opening remains slow; a warm trace showed seven
+intermediate opening frames, but neither this nor Home is consistently60FPS.
+Do not label this performance work complete. Current mode reports60Hz; DRM
+vblank intervals sampled near16.64ms, but simpledrm timing is not an independent
+panel-refresh measurement. A minimal single-color animation still often paints
+around30FPS. KMS uses simpledrm while rendering uses Mali-G615 Panfrost, narrowing
+remaining investigation to compositor/presentation cost rather than grid alone.
+Brief CPU/GPU floor comparisons did not resolve it; both floors were restored.
+No fixed high-refresh/performance governor or polling loop was retained.
+
+Final pinned268-patch application/module syntax check07b0b792 passes in fresh
+scratch (earlier reused scratch failed due retained added files, then fixed).
+Inventory12tests pass779466e0. Native lifecycle checks cover cancel before/during
+paint, reduced motion for both panels, effect cleanup and Home reuse. Full
+mobile-convergence smoke09103955 is NOT passing: it references two absent old ADR
+files and its unit-launch command used the wrong working directory; its updated
+Monitor/package-role assertions passed. No full image build/reboot qualification
+is claimed. Private diagnostics remain outside Git under titan-ui-20261030.
