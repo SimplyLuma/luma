@@ -69,6 +69,15 @@ CURRENT — combined image build r453 active; Dell remains on r309:
   r454/764f481e refused the active build path lease; reran in separate guard
   lane without bypass. No actual device update/mount claimed by these fixtures.
   Delivery remains pending actual export, pair/component checks and manifest pin.
+- Success-only post-build b20505f0 is waiting for the exact45a20ee1 result.
+  On success it requires the full source229a pin/export proof, checks actual
+  image components and ABI, builds/pins the packet and starts normal native Dell
+  delivery. Root packet driver768MiB/1200s; parent1GiB/7800s. Private
+  window-controls-build-r453/post_build.py; receipt/hash output remains private.
+  Any build/verification failure stops delivery. Normal Polkit applies.
+- r457/7e5e3acf actual guest observation02:18Z: Ninja graph processing active,
+  ~1.8GiB RSS, ~22GiB available, no swap and all memory.events zero. No C++
+  percentage or complete image claimed. Guest target is native x86_64 jobs8.
 - Earlier attempts below are retained history, not current live jobs:
 - r441 Android COMPILATION PASSED23:59 at02:02Z, both images generated. The
   canonical script then failed writing its prior root-owned SHA256SUMS; outer
