@@ -55,7 +55,21 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT — native settings/resize source prepared; incremental image build next:
+CURRENT — combined image build r453 active; Dell remains on r309:
+- Source229a7a3ed57a4f69cca3778b68e9151b29f3c473 includes native settings,
+  logical desktop canvas, Jelly callback consumption and atomic checksums.
+  Frozen project SHA f8bc303b84afb342ed3982917b65e9c8cd9ee12bab143a6062c5c34c3b7f05c5.
+  Normal build45a20ee1, policy c85b7633 and progress monitor a437ad64 active.
+  Root controller luma-android-window-controls-build-r453-controller.service;
+  private window-controls-build-r453/progress.log. Full immutable input hashes
+  passed and builder booted02:12Z; normal source preparation active02:14Z.
+  Keep original image pair/host cohort until verified export and delivery guards.
+- r455/14139656 passed16 delivery/cohort guards on current private updater;
+  syntax passed for updater, verifier, packet builder and normal-user launcher.
+  r454/764f481e refused the active build path lease; reran in separate guard
+  lane without bypass. No actual device update/mount claimed by these fixtures.
+  Delivery remains pending actual export, pair/component checks and manifest pin.
+- Earlier attempts below are retained history, not current live jobs:
 - r441 Android COMPILATION PASSED23:59 at02:02Z, both images generated. The
   canonical script then failed writing its prior root-owned SHA256SUMS; outer
   job correctly failed, VM/profile and account policy restored. r451/5796cc50
@@ -66,7 +80,7 @@ CURRENT — native settings/resize source prepared; incremental image build next
   Next combined build must include checksum fix plus browser9f509e3c0 changes,
   reuse compiled outputs and pass actual export/image/host-cohort verification.
   Private r449 snapshot9f509e3c0 prepared but not started; keep it immutable.
-- Current build r441/40c3cf35 ACTIVE, source9d0b562d0; guard r441/62cb6736,
+- Earlier build r441/40c3cf35, source9d0b562d0; guard r441/62cb6736,
   monitor r441/371068ea. Private window-controls-build-r441/progress.log.
   Recovery succeeded and normal preparation refreshed patches; Android build
   setup/glob generation active at01:42Z. No new image exported/deployed yet.
@@ -86,7 +100,7 @@ CURRENT — native settings/resize source prepared; incremental image build next
   r445 found app/Android.bp. Test setup r446 wrong compiler path and r447 source
   permissions failed without source/runtime changes, corrected in r448.
   Never copy/log live authorization callback query data from user screenshots.
-- Current ACTIVE build r437/d8b0f57f, guard r437/1afd5d00, monitor
+- Earlier build r437/d8b0f57f, guard r437/1afd5d00, monitor
   r437/5f4e232d. Immutable9d0b562d0/input
   SHA7cd03f9ff18aea273e578948f094f8157b757613c58b3a50fde78dfca18c33b1.
   Root unit luma-android-window-controls-build-r437-controller.service;
@@ -102,7 +116,7 @@ CURRENT — native settings/resize source prepared; incremental image build next
   shut down the VM and restored profile/policy; no Dell deployment occurred.
 - r428/fc4bcbda host suite:143 discovered,127 executed passed,16 root-only skipped.
   r431/15fc790f desktop GetWindows access denied; no permission/policy change.
-- Superseding build ACTIVE r425/05643043; guard r425/9061396c. Private
+- Earlier build r425/05643043; guard r425/9061396c. Private
   window-controls-build-r425 includes required empty build mount directory in
   frozen project input SHA60cb195f086b782b07ae96909c3648287c41335a0ff330a1e9174bc6b040cbf2,
   source remains410a362a7. Root unit
