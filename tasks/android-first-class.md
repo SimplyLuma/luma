@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-31T00:17Z
+- Updated: 2026-10-31; native settings and desktop-canvas build preparation
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,34 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT — native settings/resize source prepared; incremental image build next:
+- Card Wars responds to actual Android touchscreen input: r383/cb12745e
+  confirmed its age popup dismissed via the in-game X. No age submitted.
+  Ordinary-user per-package fake-touch applied/reopened r384/962a57df;
+  r388/026aadb8 confirms the new ViewRoot loaded that setting. User subsequently
+  reached the tutorial. This is not a complete host-pointer qualification.
+- Quiet Android media was STREAM_MUSIC5/15 while the host stream was100%.
+  r389/5b0ba30f changed only Android media to15; r391/a3dda3fa confirms it.
+  Host volume unchanged. Product default now15; no per-window volume slider.
+- Luma-styled cog and native App Kit panel expose only mouse-as-touch input.
+  Presentation uses a separate bounded system-UID channel/Binder endpoint;
+  preference writes remain explicit ordinary-user operations. New images use
+  per-package properties; legacy wildcard rules are preserved by fallback.
+- Initial logical desktop union is6800x2598 on Dell; Android currently calibrates
+  to1408x2528 from one portrait output, clipping wider windows. Patch0020 uses
+  xdg-output logical bounds at initial calibration. Hotplug/dynamic density and
+  actual new-image resize behavior remain OPEN.
+- r398/4e449d49 passed native bounds/protocol/shared-frame/glyph and production
+  redraw concurrency checks, including the expected failing unlocked control.
+  r401/86ad7ce6 passed8 preference/request tests and9 notification tests.
+  r400/a017bc27 native Dell panel preview read the actual Card Wars setting with
+  a real Luma switch; no scripted preference mutation. Build/deployment and
+  actual cog activation remain pending. Bash syntax and patch parse passed;
+  ViewRoot source reverse/apply preflight passed, not Java compilation.
+- Private workspace: experiments/android-first-class/window-controls-r390,
+  HDD directory bind. Build must use a fresh immutable source commit and normal
+  guarded resource admission. Preserve current r309 image pair as rollback.
 
 CURRENT00:15Z — actual repaired-image component results; OBB import in progress:
 - r357/75be031e collected the completed r350 native diagnostic. CodecProbe

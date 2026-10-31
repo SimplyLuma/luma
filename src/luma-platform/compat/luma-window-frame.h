@@ -170,6 +170,14 @@ static inline LumaFrameRect luma_frame_back(LumaWindowFrame f)
     return (LumaFrameRect){controls.x - LUMA_FRAME_BACK_GAP - LUMA_FRAME_CONTROL_SIZE,
                           controls.y, LUMA_FRAME_CONTROL_SIZE, LUMA_FRAME_CONTROL_SIZE};
 }
+/* Optional application compatibility action. Ordinary native window controls
+ * keep their existing geometry and hit targets. Android opts into this slot. */
+static inline LumaFrameRect luma_frame_settings(LumaWindowFrame f)
+{
+    LumaFrameRect back = luma_frame_back(f);
+    back.x -= LUMA_FRAME_CONTROL_GAP + LUMA_FRAME_CONTROL_SIZE;
+    return back;
+}
 /* 0 Minimize, 1 Maximize, 2 Close, 3 Android Back. */
 static inline LumaFrameRect luma_frame_control(LumaWindowFrame f, unsigned index)
 {

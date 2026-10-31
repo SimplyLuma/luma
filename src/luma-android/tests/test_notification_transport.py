@@ -22,7 +22,9 @@ class BinderNotificationTransport(unittest.TestCase):
                    'tools': SimpleNamespace(helpers=helpers)}
         with patch.dict('sys.modules', modules):
             transport.add_service(args, bridge, SimpleNamespace(is_set=lambda: False))
-        return manager.new_local_object.call_args.args[1], local
+        notification = next(call for call in manager.new_local_object.call_args_list
+                            if call.args[0] == transport.INTERFACE)
+        return notification.args[1], local
 
     def test_reply_capability_needs_both_negotiation_and_live_shell_owner(self):
         for supported, owner, expected in ((False, ':1.4', 0), (True, None, 0),

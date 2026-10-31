@@ -29,6 +29,18 @@ one Wayland toplevel with one lifecycle and one input coordinate space.
 
 ## Effective build order
 
+`0019` adds the shared Luma settings glyph beside Android Back. It sends only a
+package-scoped presentation request through a bounded, system-UID-only channel;
+the host opens the native Luma compatibility panel. Normal sound controls remain
+in Luma. The initial panel exposes mouse-as-touch input and explicitly reopens
+the app after a preference change.
+
+`0020` collects xdg-output logical monitor geometry before initial display
+calibration. In multiwindow mode the canvas covers the logical desktop union,
+so a window is not clipped to the first portrait output. Runtime monitor changes
+and per-monitor density transitions still require separate implementation and
+device qualification.
+
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
 3. `0003-luma-appkit-content-island.patch`

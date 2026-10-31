@@ -241,13 +241,18 @@ def add_service(args, bridge, stopped):
         return reply, 0
 
     local = manager.new_local_object(INTERFACE, handle)
+    from .app_settings_transport import SERVICE as SETTINGS_SERVICE, export as export_settings
+    settings_local, settings_requests = export_settings(manager, GLib)
+    args.luma_app_settings = (settings_local, settings_requests)
     loop = GLib.MainLoop()
     args.notificationLoop = loop
 
     def presence(*_):
         if stopped.is_set() or not manager.is_present():
             return
-        if manager.add_service_sync('waydroidnotifications', local):
+        notifications_ready = manager.add_service_sync('waydroidnotifications', local)
+        settings_ready = manager.add_service_sync(SETTINGS_SERVICE, settings_local)
+        if notifications_ready and settings_ready:
             loop.quit()
 
     presence()

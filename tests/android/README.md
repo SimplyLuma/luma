@@ -1,5 +1,12 @@
 # Android integration qualification
 
+`desktop-canvas.cpp` checks the production logical desktop bounds helper and
+settings request layout, including negative monitor positions, invalid spans,
+and package names. Compile with C++17 and the native patch include directory.
+These component checks do not qualify resized surfaces or cog activation on a
+device. `test_app_preferences.py` checks per-package touch preferences, preserved
+legacy rules, request admission and bounded native-panel launch arguments.
+
 The source-owned APK fixture is `org.projectluma.androidtest`. It contains DEX
 without native libraries, so the same artifact can exercise x86_64 and ARM64.
 It is a debuggable test app, not a bundled user application. It requests
