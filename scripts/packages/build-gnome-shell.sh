@@ -413,6 +413,12 @@ figtree_rpm="$repo_root/build/packages/figtree-fonts/RPMS/noarch/$FIGTREE_NEVRA.
 }
 install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
 
+# Preserve the specification's historical dependency order. Include every
+# declared patch even when its legacy filename differs from its sequence ID.
+while IFS= read -r patch_name; do
+  install -m0644 "$repo_root/patches/gnome-shell/$patch_name" "$rpmbuild_dir/SOURCES/"
+done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p' "$repo_root/patches/gnome-shell/0000-luma-fedora-spec.patch")
+
 (
   cd "$rpmbuild_dir/SPECS"
   # Inside a Git work tree (a build tree that is a clone, not an rsync) git

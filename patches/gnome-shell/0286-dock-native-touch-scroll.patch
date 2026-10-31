@@ -1,17 +1,19 @@
 From: Project Luma <builds@project-luma.local>
 Subject: [PATCH] shell: scroll overflowing dock with a native one-finger pan
 
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 24c7a77..ad9af84 100644
 --- a/js/ui/shelf.js
 +++ b/js/ui/shelf.js
-@@ -763,6 +763,7 @@
+@@ -762,6 +762,7 @@ export const Shelf = GObject.registerClass({
          this._dockPadding = new St.Bin({child: this._dockStrip});
          this._dockContent.add_child(this._dockPadding);
          this._dockScroll.set_child(this._dockContent);
 +        this._installDockPan();
+         this._dockScroll.connect('scroll-event', (_view, event) => this._scrollDock(event));
          this._dockScroll.x_expand = true;
          this._dockScroll.y_expand = true;
-         // The applications scroll; the folders do not. A dock with more
-@@ -1907,6 +1908,38 @@
+@@ -1955,6 +1956,38 @@ export const Shelf = GObject.registerClass({
      // A dock with more in it than fits scrolls. A surface that hangs from a
      // dock item must never hang from one the pointer cannot see, so the item
      // comes into the visible strip first.

@@ -36,7 +36,7 @@ diff --git a/js/ui/shelf.js b/js/ui/shelf.js
 +            }
              const groups = this._groups.filter(group => group.visible &&
                  group.row.get_children().some(actor => actor.visible && actor.width > 0));
-             const expected = this._shellSettings.get_strv('favorite-apps')
+             const expected = AppFavorites.getAppFavorites().getFavorites().length;
 @@ -1016,7 +1029,7 @@ export const Shelf = GObject.registerClass({
              this._initialLayoutFrames = ready && key === this._initialLayoutKey
                  ? this._initialLayoutFrames + 1 : 0;
