@@ -31,7 +31,7 @@ index 0000000..4063a20
 +}
 +}
 diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
-index ea47835..7d64673 100644
+index ea47835..97290ce 100644
 --- a/hwcomposer/wayland-hwc.cpp
 +++ b/hwcomposer/wayland-hwc.cpp
 @@ -34,6 +34,8 @@
@@ -106,7 +106,7 @@ index ea47835..7d64673 100644
  static void
  registry_handle_global(void *data, struct wl_registry *registry,
                 uint32_t id, const char *interface, uint32_t version)
-@@ -2362,9 +2411,22 @@ registry_handle_global(void *data, struct wl_registry *registry,
+@@ -2362,10 +2411,24 @@ registry_handle_global(void *data, struct wl_registry *registry,
  		d->shm = (struct wl_shm *)wl_registry_bind(registry, id,
                  &wl_shm_interface, 1);
      } else if (strcmp(interface, "wl_output") == 0) {
@@ -115,6 +115,7 @@ index ea47835..7d64673 100644
          d->output = (struct wl_output*)wl_registry_bind(registry, id,
                  &wl_output_interface, std::min(version, 3U));
          wl_output_add_listener(d->output, &output_listener, d);
+-        wl_display_roundtrip(d->display);
 +        auto output = std::make_shared<logical_output>();
 +        output->owner = d; output->output = d->output;
 +        output->token = output_callbacks().attach(output);
@@ -126,10 +127,12 @@ index ea47835..7d64673 100644
 +                &zxdg_output_manager_v1_interface, std::min(version, 3U));
 +        for (const auto& entry : d->logical_outputs)
 +            attach_logical_output(d, entry.second);
-         wl_display_roundtrip(d->display);
++        // Initial roundtrips run in create_display, outside outputsMutex:
++        // logical output callbacks acquire that same mutex.
      } else if (strcmp(interface, "wp_presentation") == 0) {
          bool no_presentation = property_get_bool("persist.waydroid.no_presentation", false);
-@@ -2422,8 +2484,18 @@ registry_handle_global(void *data, struct wl_registry *registry,
+         if (!no_presentation) {
+@@ -2422,8 +2485,18 @@ registry_handle_global(void *data, struct wl_registry *registry,
  }
  
  static void
@@ -149,7 +152,7 @@ index ea47835..7d64673 100644
  }
  
  static const struct wl_registry_listener registry_listener = {
-@@ -2554,6 +2626,9 @@ create_display(const char *gralloc)
+@@ -2554,6 +2627,9 @@ create_display(const char *gralloc)
      wl_registry_add_listener(display->registry,
                   &registry_listener, display);
      wl_display_roundtrip(display->display);
@@ -159,7 +162,7 @@ index ea47835..7d64673 100644
  
      if (pthread_create(&display->wayland_thread, nullptr, hwc_wayland_thread, display->display) != 0) {
          ALOGE("Couldn't create wayland thread");
-@@ -2573,6 +2648,14 @@ destroy_display(struct display *display)
+@@ -2573,6 +2649,14 @@ destroy_display(struct display *display)
      pthread_kill(display->wayland_thread, SIGTERM);
      pthread_join(display->wayland_thread, nullptr);
  
