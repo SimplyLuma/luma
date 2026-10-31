@@ -353,7 +353,7 @@ export class PanelReveal {
         // First map can upload icons/text and allocate the native controls.
         // Warm their cached layers before starting the opening clock, otherwise
         // that first expensive paint consumes most of the animation's duration.
-        this._warming = start === 0 && St.Settings.get().enable_animations;
+        this._warming = start === 0 && target !== 0 && St.Settings.get().enable_animations;
         for (const [child] of this._contentState)
             child.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
         this.ready = !this._warming;
