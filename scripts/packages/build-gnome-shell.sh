@@ -354,6 +354,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0293-mobile-lock-notification-is
 install -m 0644 "$repo_root/patches/gnome-shell/0294-keycap-keyboard.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0295-status-without-shelf-backdrop.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0296-shelf-presentation-wait-desktop-only.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0297-keycap-key-path.patch" "$rpmbuild_dir/SOURCES/"
 for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
@@ -567,6 +568,19 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
         /org/gnome/shell/ui/lumaPresentation/keycap.css >keycap.css
       grep -Fq "#keyboard.luma-keycap-light .keyboard-key" keycap.css
       grep -Fq "#keyboard.luma-keycap-dark .keyboard-key" keycap.css
+      # Key path (0297): nothing St blurs or rasterises on the CPU per key, no
+      # hover restyle of the keyboard box, commits never wait at idle
+      # priority, and every tracked touch end is seen.
+      ! grep -Fq "box-shadow: inset" keycap.css
+      ! grep -Fq "background-gradient-start" keycap.css
+      ! grep -Fq "text-shadow: 0" keycap.css
+      grep -Fq "Clutter.Event.add_filter(global.stage" keycap-keyboard.js
+      grep -Fq "GLib.idle_add(GLib.PRIORITY_DEFAULT + 2" keycap-keyboard.js
+      grep -Fq "set_input_panel_inset" keycap-keyboard.js
+      ! grep -Fq "this._flushId = GLib.idle_add(GLib.PRIORITY_LOW" keycap-keyboard.js
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/layout.js >keycap-layout.js
+      ! grep -A3 "name: .keyboardBox.," keycap-layout.js | grep -Fq "track_hover"
       gresource extract usr/share/gnome-shell/gnome-shell-icons.gresource \
         /org/gnome/shell/icons/scalable/status/luma-keycap-delete-symbolic.svg >keycap-delete.svg
       grep -Fq "foreground-stroke" keycap-delete.svg

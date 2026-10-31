@@ -34,6 +34,13 @@ export class TabletTasks {
             if (this.enabled && this.pending)
                 for (const window of this.home._windows.keys()) this.manage(window);
         });
+        // The on-screen keyboard keeps the bottom of the display clear
+        // (Mutter's input panel inset): a side-by-side pair is laid out
+        // again above it, as full-screen windows already are by Mutter.
+        this._workAreaId = global.display.connect('workareas-changed', () => {
+            if (this.enabled && this.active && this._windowHeight() !== this._laidOutHeight)
+                this.layout(this._layoutSplit);
+        });
         this._windowGroupId = global.window_group.connect('notify::visible', () => {
             if (!global.window_group.visible || !this._returnHomeAfterSwitcher) return;
             this._returnHomeAfterSwitcher = false;
@@ -107,6 +114,11 @@ export class TabletTasks {
     get navigationEnabled() { return this.home.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get enabled() { return this.home.mode === 'tablet' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter; }
     get monitor() { return Main.layoutManager.primaryMonitor; }
+    // Height applications get: the display less what the keyboard keeps.
+    _windowHeight() {
+        const inset = global.display.get_input_panel_inset?.(Main.layoutManager.primaryIndex) ?? 0;
+        return this.monitor.height - inset;
+    }
     focused() {
         const focused = global.display.focus_window;
         return this.home._windows.has(focused) ? focused : this.home._lastFocusedWindow;
@@ -507,6 +519,7 @@ export class TabletTasks {
             ...[this.active.left, this.active.right].filter(live).map(window => this._minimumFrameWidth(window) + gap / 2));
         const seam = Math.round(Math.clamp(split, minimum, m.width - minimum));
         this._layoutSplit = seam;
+        const height = this._laidOutHeight = this._windowHeight();
         for (const side of ['left', 'right']) {
             const window = this.active[side]; if (!live(window)) continue;
             if (window.is_fullscreen()) window.unmake_fullscreen();
@@ -514,8 +527,8 @@ export class TabletTasks {
             const x = side === 'left' ? m.x : m.x + seam + gap / 2;
             const width = side === 'left' ? seam - gap / 2 : m.width - seam - gap / 2;
             const rect = window.get_frame_rect();
-            if (rect.x !== Math.round(x) || rect.y !== m.y || rect.width !== Math.round(width) || rect.height !== m.height)
-                window.move_resize_frame(false, Math.round(x), m.y, Math.round(width), m.height);
+            if (rect.x !== Math.round(x) || rect.y !== m.y || rect.width !== Math.round(width) || rect.height !== height)
+                window.move_resize_frame(false, Math.round(x), m.y, Math.round(width), height);
         }
         this._seam.set_position(m.x + seam - 22 * this.home._scale, m.y + 44 * this.home._scale);
         this._seam.set_size(44 * this.home._scale, m.height - 72 * this.home._scale);
@@ -762,6 +775,7 @@ export class TabletTasks {
         this.finishLift(false);
         this._destroyed = true;
         global.window_group.disconnect(this._windowGroupId);
+        global.display.disconnect(this._workAreaId);
         this._tracker.disconnect(this._trackerId);
         this._activeDrag?._cancelDrag(global.get_current_time());
         this._activeDrag = null;

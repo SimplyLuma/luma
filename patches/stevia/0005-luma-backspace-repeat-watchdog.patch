@@ -1,0 +1,287 @@
+From: Luma Developers
+Subject: [PATCH] Backspace repeat only while delete is held
+
+Stevia's backspace repeat is its own GLib timer, stopped only by key-up,
+key-cancelled or the next key-down. When no key-up reaches the widget (its
+touch sequence was replaced, the surface hid or resized mid-press, a
+compositor gesture took the touch) it kept deleting until the field was
+empty. Every repeat tick and the long-press timeout now check that delete is
+still down on the mapped, visible keyboard (pos_osk_widget_is_key_held()) and
+stop otherwise; any touch sequence ending while delete is held ends the hold;
+unmapping the keyboard cancels its press. Both timers decide only after the
+input already queued (gtk_events_pending()), so a key-up delayed by a busy
+main loop (the synchronous completer) is not outrun by the repeat.
+test-osk-widget's backspace_held case checks the held state across release,
+another finger lifting and hiding the keyboard.
+
+diff --git a/src/pos-input-surface.c b/src/pos-input-surface.c
+index 93e856f..a9ed30b 100644
+--- a/src/pos-input-surface.c
++++ b/src/pos-input-surface.c
+@@ -273,11 +273,44 @@ pos_input_surface_delete_last_word (PosInputSurface *self)
+ }
+ 
+ 
++/*
++ * Repeat watchdog: delete repeats only while delete is really down on the
++ * visible keyboard. A key-up that never arrives (its sequence was replaced,
++ * the surface hid or resized mid-press, a compositor gesture took the touch)
++ * then stops the repeat at its next tick instead of deleting until the field
++ * is empty. Input already queued is handled before a repeat decides, so a
++ * late key-up (the main loop blocked by the completer) is not outrun.
++ */
++static gboolean
++bs_repeat_alive (PosInputSurface *self)
++{
++  GtkWidget *osk_widget = hdy_deck_get_visible_child (self->deck);
++
++  return gtk_widget_get_mapped (GTK_WIDGET (self)) && POS_IS_OSK_WIDGET (osk_widget) &&
++         pos_osk_widget_is_key_held (POS_OSK_WIDGET (osk_widget), "KEY_BACKSPACE");
++}
++
++static void
++bs_repeat_stop (PosInputSurface *self)
++{
++  /* Called from the repeat source itself: it is removed by returning. */
++  self->bs_repeat_id = 0;
++  pos_input_surface_set_backspace_mode (self, POS_BACKSPACE_MODE_CHAR);
++}
++
+ static gboolean
+ on_bs_key_repeat (gpointer data)
+ {
+   PosInputSurface *self = data;
+ 
++  if (gtk_events_pending ())
++    return G_SOURCE_CONTINUE;
++  if (!bs_repeat_alive (self)) {
++    g_debug ("Backspace repeat without a held key, stopping");
++    bs_repeat_stop (self);
++    return G_SOURCE_REMOVE;
++  }
++
+   if (self->bs_mode == POS_BACKSPACE_MODE_CHAR &&
+       g_get_monotonic_time () - self->bs_pressed_at >= 2000000 &&
+       pos_input_method_get_active (self->input_method) && !self->emoji_search_active && !keycap_sensitive (self)) {
+@@ -292,17 +325,29 @@ on_bs_key_repeat (gpointer data)
+ }
+ 
+ 
+-static void
++static gboolean
+ on_bs_long_press_timeout (gpointer data)
+ {
+   PosInputSurface *self = data;
+   guint interval;
+ 
++  /* Decide after the input that is already waiting: its key-up may say the
++   * press was a tap. */
++  if (gtk_events_pending ()) {
++    self->bs_repeat_id = g_timeout_add (5, on_bs_long_press_timeout, self);
++    return G_SOURCE_REMOVE;
++  }
++  if (!bs_repeat_alive (self)) {
++    bs_repeat_stop (self);
++    return G_SOURCE_REMOVE;
++  }
++
+   interval = BS_KEY_REPEAT_INTERVAL_CHAR;
+   pos_input_surface_set_backspace_mode (self, POS_BACKSPACE_MODE_CHAR);
+ 
+   self->bs_repeat_id = g_timeout_add (interval, on_bs_key_repeat, self);
+   g_source_set_name_by_id (self->bs_repeat_id, "[pos-bs-key-repeat]");
++  return G_SOURCE_REMOVE;
+ }
+ 
+ 
+@@ -320,9 +365,9 @@ pos_input_surface_set_backspace_pressed (PosInputSurface *self, const char *symb
+ 
+   if (!self->bs_repeat_id) {
+     self->bs_pressed_at = g_get_monotonic_time ();
+-    self->bs_repeat_id = g_timeout_add_once (BS_KEY_REPEAT_DELAY,
+-                                             on_bs_long_press_timeout,
+-                                             self);
++    self->bs_repeat_id = g_timeout_add (BS_KEY_REPEAT_DELAY,
++                                        on_bs_long_press_timeout,
++                                        self);
+     g_source_set_name_by_id (self->bs_repeat_id, "[pos-bs-long-press-timeout]");
+   }
+ 
+diff --git a/src/pos-osk-widget.c b/src/pos-osk-widget.c
+index 81d6544..a0937c8 100644
+--- a/src/pos-osk-widget.c
++++ b/src/pos-osk-widget.c
+@@ -1257,8 +1257,14 @@ pos_osk_widget_touch_event (GtkWidget *widget, GdkEventTouch *event)
+     return GDK_EVENT_STOP;
+   }
+ 
+-  if (event->sequence != self->sequence)
++  if (event->sequence != self->sequence) {
++    /* A finger lifting anywhere while delete is held ends the hold: a lost
++     * end of delete's own sequence must never leave it repeating. */
++    if ((event->type == GDK_TOUCH_END || event->type == GDK_TOUCH_CANCEL) && self->current &&
++        g_strcmp0 (pos_osk_key_get_symbol (self->current), "KEY_BACKSPACE") == 0)
++      pos_osk_widget_cancel_press (self);
+     return GDK_EVENT_PROPAGATE;
++  }
+ 
+   if (event->type == GDK_TOUCH_END || event->type == GDK_TOUCH_CANCEL) {
+     if (self->current) {
+@@ -1294,6 +1300,15 @@ pos_osk_widget_touch_event (GtkWidget *widget, GdkEventTouch *event)
+ }
+ 
+ 
++static void
++pos_osk_widget_unmap (GtkWidget *widget)
++{
++  /* A hidden keyboard holds no key down. */
++  pos_osk_widget_cancel_press (POS_OSK_WIDGET (widget));
++  GTK_WIDGET_CLASS (pos_osk_widget_parent_class)->unmap (widget);
++}
++
++
+ static gboolean
+ pos_osk_widget_motion_notify_event (GtkWidget *widget, GdkEventMotion *event)
+ {
+@@ -1805,6 +1820,7 @@ pos_osk_widget_class_init (PosOskWidgetClass *klass)
+   widget_class->button_release_event = pos_osk_widget_button_release_event;
+   widget_class->motion_notify_event = pos_osk_widget_motion_notify_event;
+   widget_class->touch_event = pos_osk_widget_touch_event;
++  widget_class->unmap = pos_osk_widget_unmap;
+   widget_class->get_preferred_height = pos_osk_widget_get_preferred_height;
+   widget_class->get_preferred_width = pos_osk_widget_get_preferred_width;
+ 
+@@ -2225,6 +2241,24 @@ pos_osk_widget_set_mode (PosOskWidget *self, PosOskWidgetMode mode)
+ }
+ 
+ 
++/**
++ * pos_osk_widget_is_key_held:
++ * @self: The osk widget
++ * @symbol: A key symbol such as `KEY_BACKSPACE`
++ *
++ * Whether a key with @symbol is down on a mapped widget right now. A repeat
++ * checks this on every tick, so it can never outlive the press.
++ */
++gboolean
++pos_osk_widget_is_key_held (PosOskWidget *self, const char *symbol)
++{
++  g_return_val_if_fail (POS_IS_OSK_WIDGET (self), FALSE);
++
++  return self->current && gtk_widget_get_mapped (GTK_WIDGET (self)) &&
++         g_strcmp0 (pos_osk_key_get_symbol (self->current), symbol) == 0;
++}
++
++
+ PosOskWidgetMode
+ pos_osk_widget_get_mode (PosOskWidget *self)
+ {
+diff --git a/src/pos-osk-widget.h b/src/pos-osk-widget.h
+index 3cb2c3e..b5c6746 100644
+--- a/src/pos-osk-widget.h
++++ b/src/pos-osk-widget.h
+@@ -48,4 +48,6 @@ void pos_osk_widget_set_enter_icon (PosOskWidget *self, const char *icon);
+ 
+ void pos_osk_widget_set_language_label (PosOskWidget *self, gboolean show);
+ 
++gboolean pos_osk_widget_is_key_held (PosOskWidget *self, const char *symbol);
++
+ G_END_DECLS
+diff --git a/tests/test-osk-widget.c b/tests/test-osk-widget.c
+index 1655343..f9a9d49 100644
+--- a/tests/test-osk-widget.c
++++ b/tests/test-osk-widget.c
+@@ -117,6 +117,85 @@ test_switch_layer (void)
+ 
+ }
+ 
++static PosOskKey *
++find_backspace (PosOskWidget *osk_widget)
++{
++  PosOskWidgetKeyboardLayer *layer = pos_osk_widget_get_current_layer (osk_widget);
++
++  for (guint r = 0; r < layer->n_rows; r++) {
++    PosOskWidgetRow *row = pos_osk_widget_get_row (osk_widget, r);
++
++    for (guint k = 0; k < row->keys->len; k++) {
++      PosOskKey *key = g_ptr_array_index (row->keys, k);
++
++      if (g_strcmp0 (pos_osk_key_get_symbol (key), "KEY_BACKSPACE") == 0)
++        return key;
++    }
++  }
++  return NULL;
++}
++
++
++static void
++touch (PosOskWidget *osk_widget, GdkEventType type, gpointer sequence, double x, double y)
++{
++  g_autoptr (GdkEvent) event = gdk_event_new (type);
++
++  event->touch.sequence = sequence;
++  event->touch.x = x;
++  event->touch.y = y;
++  pos_osk_widget_touch_event (GTK_WIDGET (osk_widget), &event->touch);
++}
++
++
++/* Luma 0005: delete is held only while its own touch is down on a mapped
++ * keyboard, so Stevia's backspace repeat can never outlive the press. */
++static void
++test_backspace_held (void)
++{
++  g_autoptr (GError) err = NULL;
++  PosOskWidget *osk_widget = pos_osk_widget_new (PHOSH_OSK_FEATURE_DEFAULT);
++  GtkWidget *window = gtk_offscreen_window_new ();
++  const GdkRectangle *box;
++  PosOskKey *bs;
++  double x, y;
++
++  g_assert_true (pos_osk_widget_set_layout (osk_widget, "us", "us", "English (US)", "us", NULL, &err));
++  g_assert_no_error (err);
++  gtk_container_add (GTK_CONTAINER (window), GTK_WIDGET (osk_widget));
++  gtk_window_set_default_size (GTK_WINDOW (window), 360, 300);
++  gtk_widget_show_all (window);
++  while (gtk_events_pending ())
++    gtk_main_iteration ();
++
++  bs = find_backspace (osk_widget);
++  g_assert_nonnull (bs);
++  box = pos_osk_key_get_box (bs);
++  x = box->x + box->width / 2.0;
++  y = box->y + box->height / 2.0;
++
++  touch (osk_widget, GDK_TOUCH_BEGIN, GINT_TO_POINTER (1), x, y);
++  g_assert_true (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++  g_assert_false (pos_osk_widget_is_key_held (osk_widget, "KEY_A"));
++  touch (osk_widget, GDK_TOUCH_END, GINT_TO_POINTER (1), x, y);
++  g_assert_false (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++
++  /* Another finger lifting ends the hold even if delete's own end is lost. */
++  touch (osk_widget, GDK_TOUCH_BEGIN, GINT_TO_POINTER (2), x, y);
++  g_assert_true (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++  touch (osk_widget, GDK_TOUCH_END, GINT_TO_POINTER (3), 1, 1);
++  g_assert_false (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++
++  /* Hiding the keyboard mid-press ends it. */
++  touch (osk_widget, GDK_TOUCH_BEGIN, GINT_TO_POINTER (4), x, y);
++  g_assert_true (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++  gtk_widget_hide (window);
++  g_assert_false (pos_osk_widget_is_key_held (osk_widget, "KEY_BACKSPACE"));
++  g_assert_null (osk_widget->current);
++  /* The offscreen window is left to process exit: destroying it trips an
++   * unrelated GTK 3 offscreen unrealize critical under Xvfb. */
++}
++
+ 
+ int
+ main (int argc, char *argv[])
+@@ -128,6 +207,7 @@ main (int argc, char *argv[])
+   pos_init ();
+ 
+   g_test_add_func ("/pos/osk-widget/switch_layer", test_switch_layer);
++  g_test_add_func ("/pos/osk-widget/backspace_held", test_backspace_held);
+ 
+   ret = g_test_run ();
+ 

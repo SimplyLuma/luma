@@ -592,6 +592,13 @@ export class Presentation {
         });
     }
 
+    // Mobile and Tablet resize applications above the on-screen keyboard
+    // (Android's adjustResize) rather than sliding them under it; Desktop,
+    // the lock screen and the greeter keep the platform behaviour.
+    keyboardResizesWindows() {
+        return this.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+    }
+
     // Logical pixels the on-screen keyboard keeps clear at its bottom for
     // the home gesture, which stays above it.
     keyboardInset() {

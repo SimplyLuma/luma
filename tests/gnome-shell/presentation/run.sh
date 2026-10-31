@@ -26,6 +26,12 @@ enabled-extensions=[]
 disable-user-extensions=true
 welcome-dialog-last-shown-version='999'
 EOF
+if [ -n "${PRESENTATION_SCALE:-}" ]; then
+    # A phone's integer UI scale (the Fold's outer panel is 360x808 at 3),
+    # applied from the start like a device's own monitor scale.
+    printf "[org/gnome/desktop/interface]\nscaling-factor=uint32 %s\n" "$PRESENTATION_SCALE" \
+        >> "$HOME/.config/glib-2.0/settings/keyfile"
+fi
 if [ -n "${PRESENTATION_INITIAL_MODE:-}" ]; then
     # Start the session already in this presentation, as a phone or tablet does.
     printf "[org/project_luma/shell-state]\npresentation-mode='%s'\n" "$PRESENTATION_INITIAL_MODE" \

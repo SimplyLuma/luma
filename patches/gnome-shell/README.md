@@ -319,3 +319,12 @@ handheld hardware, removes the upstream automatic welcome tour, and uses native
 physical-keyboard presence for automatic OSK behavior. Accessibility remains an
 explicit override; missing event actors propagate safely. These are shared Shell
 changes, with physical qualification tracked separately from source/package checks.
+
+`0297-keycap-key-path.patch`: the Keycap key path from the Fold investigation
+(no per-key restyle or relayout of the keyboard, no hover on `keyboardBox`, one
+pointer tracker over whole cells with touch correction, press-order rollover,
+frame-time long press and repeat from event timestamps, repeat bound to a live
+touch, grab-free alternatives, commits at once, sentence case from the
+keyboard's own text, adjustResize through Mutter 0025, D-Bus activated haptics,
+no per-key IBus traffic with layout sources). Rules and tests:
+`docs/mobile/keycap-keyboard.md` ("Key path"). Shell .132.

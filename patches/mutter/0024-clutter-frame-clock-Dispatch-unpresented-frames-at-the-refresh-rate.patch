@@ -1,0 +1,196 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 30 Oct 2026 22:00:00 -0500
+Subject: [PATCH] clutter/frame-clock: Dispatch unpresented frames at the
+ refresh rate
+
+After a dispatch that painted nothing (CLUTTER_FRAME_RESULT_IDLE or
+IGNORED) no presentation follows, so the presentation-based schedule sees an
+idle period since the last, old presentation and updates again at once.
+Anything that keeps scheduling updates without damage, such as a timeline
+over content that does not paint, then dispatches at main-loop speed: on a
+phone this measured 5,000 to 56,000 dispatches in ten seconds with a few
+hundred paints, burning a core and starving idle sources.
+
+Such a dispatch now comes no sooner than one refresh interval after the
+previous one; dispatches after a presentation, and the first one after a
+real idle period, are unchanged. The unpresented-rate conformance test
+drives a vsynced presentation followed by frames that paint nothing and
+checks the dispatch rate.
+---
+ clutter/clutter/clutter-frame-clock.c   | 38 +++++++++++
+ src/tests/clutter/conform/frame-clock.c | 86 +++++++++++++++++++++++++
+ 2 files changed, 124 insertions(+)
+
+diff --git a/clutter/clutter/clutter-frame-clock.c b/clutter/clutter/clutter-frame-clock.c
+index feac00b..707ea7b 100644
+--- a/clutter/clutter/clutter-frame-clock.c
++++ b/clutter/clutter/clutter-frame-clock.c
+@@ -152,6 +152,10 @@ struct _ClutterFrameClock
+   gboolean pending_reschedule;
+   gboolean pending_reschedule_now;
+ 
++  /* The last dispatch painted nothing (CLUTTER_FRAME_RESULT_IDLE or
++   * IGNORED), so no presentation will follow it. */
++  gboolean last_dispatch_unpresented;
++
+   int inhibit_count;
+ 
+   GList *timelines;
+@@ -1072,6 +1076,34 @@ calculate_next_update_time_us (ClutterFrameClock *frame_clock,
+     next_presentation_time_us - frame_clock->vblank_duration_us;
+ }
+ 
++/*
++ * After a dispatch that painted nothing there is no presentation to wait for,
++ * and the presentation-based schedule sees an "idle period" (the last
++ * presentation is old) and dispatches again at once. With something that
++ * keeps scheduling updates without damage (a timeline over content that does
++ * not paint) that repeats at main-loop speed: thousands of dispatches a
++ * second with nothing on screen. Such dispatches follow the refresh rate
++ * instead: the next one comes no sooner than one refresh interval after the
++ * previous one.
++ */
++static int64_t
++limit_unpresented_dispatch_rate (ClutterFrameClock *frame_clock,
++                                 int64_t            next_update_time_us)
++{
++  const Frame *last_dispatch = frame_clock->prev_dispatch;
++  int64_t earliest_us;
++
++  if (!frame_clock->last_dispatch_unpresented ||
++      !last_dispatch || !last_dispatch->dispatch_time_us)
++    return next_update_time_us;
++
++  earliest_us = last_dispatch->dispatch_time_us -
++                last_dispatch->dispatch_lateness_us +
++                frame_clock->refresh_interval_us;
++
++  return MAX (next_update_time_us, earliest_us);
++}
++
+ static void
+ calculate_next_variable_update_time_us (ClutterFrameClock *frame_clock,
+                                         int64_t           *out_next_update_time_us,
+@@ -1363,6 +1395,9 @@ clutter_frame_clock_schedule_update (ClutterFrameClock *frame_clock)
+ 
+   g_warn_if_fail (next_update_time_us != -1);
+ 
++  next_update_time_us = limit_unpresented_dispatch_rate (frame_clock,
++                                                         next_update_time_us);
++
+   frame_clock->next_update_time_us = next_update_time_us;
+   g_source_set_ready_time (frame_clock->source, next_update_time_us);
+ }
+@@ -1755,6 +1790,9 @@ clutter_frame_clock_dispatch (ClutterFrameClock *frame_clock,
+   result = iface->frame (frame_clock, frame, frame_clock->listener.user_data);
+   COGL_TRACE_END (ClutterFrameClockFrame);
+ 
++  frame_clock->last_dispatch_unpresented =
++    result != CLUTTER_FRAME_RESULT_PENDING_PRESENTED;
++
+   switch (result)
+     {
+     case CLUTTER_FRAME_RESULT_PENDING_PRESENTED:
+diff --git a/src/tests/clutter/conform/frame-clock.c b/src/tests/clutter/conform/frame-clock.c
+index 3e89e9c..4f3f0fc 100644
+--- a/src/tests/clutter/conform/frame-clock.c
++++ b/src/tests/clutter/conform/frame-clock.c
+@@ -838,6 +838,91 @@ frame_clock_notify_ready (void)
+   clutter_frame_clock_destroy (frame_clock);
+ }
+ 
++typedef struct _UnpresentedRateTest
++{
++  GMainLoop *main_loop;
++  ClutterFrameClock *frame_clock;
++  int dispatches;
++  gboolean presented_once;
++} UnpresentedRateTest;
++
++static gboolean
++unpresented_rate_present (gpointer user_data)
++{
++  UnpresentedRateTest *test = user_data;
++  int64_t now_us = g_get_monotonic_time ();
++  ClutterFrameInfo frame_info = {
++    .presentation_time = now_us,
++    .refresh_rate = refresh_rate,
++    .flags = CLUTTER_FRAME_INFO_FLAG_VSYNC,
++    .kms_ready_time_us = now_us - 1000,
++  };
++
++  clutter_frame_clock_notify_presented (test->frame_clock, &frame_info);
++  clutter_frame_clock_schedule_update (test->frame_clock);
++  return G_SOURCE_REMOVE;
++}
++
++static ClutterFrameResult
++unpresented_rate_frame (ClutterFrameClock *frame_clock,
++                        ClutterFrame      *frame,
++                        gpointer           user_data)
++{
++  UnpresentedRateTest *test = user_data;
++
++  if (!test->presented_once)
++    {
++      /* One real, vsynced presentation with timings, as on hardware. */
++      test->presented_once = TRUE;
++      g_idle_add (unpresented_rate_present, test);
++      return CLUTTER_FRAME_RESULT_PENDING_PRESENTED;
++    }
++
++  /* Then a timeline-like client keeps asking for frames that paint nothing. */
++  test->dispatches++;
++  clutter_frame_clock_schedule_update (frame_clock);
++  return CLUTTER_FRAME_RESULT_IDLE;
++}
++
++static const ClutterFrameListenerIface unpresented_rate_listener_iface = {
++  .frame = unpresented_rate_frame,
++};
++
++static gboolean
++unpresented_rate_quit (gpointer user_data)
++{
++  g_main_loop_quit (user_data);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++frame_clock_unpresented_rate (void)
++{
++  UnpresentedRateTest test = { 0 };
++  const int duration_ms = 250;
++  int limit;
++
++  test.main_loop = g_main_loop_new (NULL, FALSE);
++  test.frame_clock = clutter_frame_clock_new (refresh_rate,
++                                              0,
++                                              NULL,
++                                              &unpresented_rate_listener_iface,
++                                              &test);
++  clutter_frame_clock_schedule_update (test.frame_clock);
++  g_timeout_add (duration_ms, unpresented_rate_quit, test.main_loop);
++  g_main_loop_run (test.main_loop);
++
++  /* At most one dispatch per refresh interval, with a little slack. */
++  limit = (int) (duration_ms * 1000 / refresh_interval_us) + 3;
++  g_test_message ("%d unpresented dispatches in %d ms (limit %d)",
++                  test.dispatches, duration_ms, limit);
++  g_assert_cmpint (test.dispatches, <=, limit);
++  g_assert_cmpint (test.dispatches, >=, 2);
++
++  g_main_loop_unref (test.main_loop);
++  clutter_frame_clock_destroy (test.frame_clock);
++}
++
+ CLUTTER_TEST_SUITE (
+   CLUTTER_TEST_UNIT ("/frame-clock/schedule-update", frame_clock_schedule_update)
+   CLUTTER_TEST_UNIT ("/frame-clock/immediate-present", frame_clock_immediate_present)
+@@ -849,4 +934,5 @@ CLUTTER_TEST_SUITE (
+   CLUTTER_TEST_UNIT ("/frame-clock/reschedule-on-idle", frame_clock_reschedule_on_idle)
+   CLUTTER_TEST_UNIT ("/frame-clock/destroy-signal", frame_clock_destroy_signal)
+   CLUTTER_TEST_UNIT ("/frame-clock/notify-ready", frame_clock_notify_ready)
++  CLUTTER_TEST_UNIT ("/frame-clock/unpresented-rate", frame_clock_unpresented_rate)
+ )

@@ -1,0 +1,227 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 30 Oct 2026 22:00:00 -0500
+Subject: [PATCH] wayland/text-input: Keep every commit and deletion until done
+
+text-input-v3 applies one deletion and one commit string per done, and a
+second commit_string before the done replaces the first (mutter#5087), so an
+input method that commits twice in one main-loop turn lost text. Commits are
+now appended and sent with the done; a deletion after a pending commit or
+deletion sends that done first, keeping the order the input method used.
+
+The surrounding text Mutter keeps for converting character offsets to bytes
+is advanced by what each done sends, so a deletion that follows before the
+client reports its text again is measured against the text the client will
+act on. Pending text is flushed to the old focus before a focus change, and
+a deletion with no reported surrounding text is refused instead of reading
+a null string.
+---
+ src/wayland/meta-wayland-text-input.c | 133 +++++++++++++++++++++++---
+ 1 file changed, 121 insertions(+), 12 deletions(-)
+
+diff --git a/src/wayland/meta-wayland-text-input.c b/src/wayland/meta-wayland-text-input.c
+index af57974..74e76be 100644
+--- a/src/wayland/meta-wayland-text-input.c
++++ b/src/wayland/meta-wayland-text-input.c
+@@ -122,6 +122,19 @@ struct _MetaWaylandTextInput
+   } cursor_update;
+ 
+   guint done_idle_id;
++
++  /* Changes for the client that wait for the next done. A text-input-v3
++   * done applies one deletion and then one commit string, and a second
++   * commit_string before it replaces the first (mutter#5087): commits are
++   * therefore appended here and sent with the done, and a deletion after a
++   * commit (which the client would apply first) sends the pending done. */
++  struct
++  {
++    GString *commit;
++    uint32_t delete_before;
++    uint32_t delete_after;
++    gboolean has_delete;
++  } pending_ops;
+ };
+ 
+ struct _MetaWaylandTextInputFocus
+@@ -182,16 +195,86 @@ increment_serial (MetaWaylandTextInput *text_input,
+                        GUINT_TO_POINTER (serial + 1));
+ }
+ 
++/* Keep the surrounding text in step with what the client is about to apply,
++ * so a deletion that follows before the client reports its text again is
++ * converted to bytes against the text it will act on. The client's next
++ * report replaces this. */
++static void
++apply_pending_ops_to_surrounding (MetaWaylandTextInput *text_input)
++{
++  const char *text = text_input->surrounding.text;
++  uint32_t cursor = text_input->surrounding.cursor;
++  uint32_t start, end, length;
++  GString *updated;
++
++  if (!text || text_input->preedit.string ||
++      text_input->surrounding.cursor != text_input->surrounding.anchor)
++    return;
++
++  length = strlen (text);
++  if (cursor > length)
++    return;
++  start = text_input->pending_ops.has_delete ?
++    cursor - MIN (cursor, text_input->pending_ops.delete_before) : cursor;
++  end = text_input->pending_ops.has_delete ?
++    MIN (length, cursor + text_input->pending_ops.delete_after) : cursor;
++
++  updated = g_string_new_len (text, start);
++  if (text_input->pending_ops.commit)
++    g_string_append_len (updated, text_input->pending_ops.commit->str,
++                         text_input->pending_ops.commit->len);
++  cursor = updated->len;
++  g_string_append (updated, text + end);
++
++  g_free (text_input->surrounding.text);
++  text_input->surrounding.text = g_string_free (updated, FALSE);
++  text_input->surrounding.cursor = cursor;
++  text_input->surrounding.anchor = cursor;
++}
++
++static void
++clear_pending_ops (MetaWaylandTextInput *text_input)
++{
++  if (text_input->pending_ops.commit)
++    g_string_set_size (text_input->pending_ops.commit, 0);
++  text_input->pending_ops.has_delete = FALSE;
++  text_input->pending_ops.delete_before = 0;
++  text_input->pending_ops.delete_after = 0;
++}
++
++static gboolean
++has_pending_commit (MetaWaylandTextInput *text_input)
++{
++  return text_input->pending_ops.commit &&
++         text_input->pending_ops.commit->len > 0;
++}
++
+ static void
+ clutter_input_focus_send_done (ClutterInputFocus *focus)
+ {
+   MetaWaylandTextInput *text_input;
+   struct wl_resource *resource;
++  gboolean commit;
+ 
+   text_input = META_WAYLAND_TEXT_INPUT_FOCUS (focus)->text_input;
++  commit = has_pending_commit (text_input);
+ 
+   wl_resource_for_each (resource, &text_input->focus_resource_list)
+     {
++      if (text_input->pending_ops.has_delete)
++        {
++          zwp_text_input_v3_send_delete_surrounding_text (resource,
++                                                          text_input->pending_ops.delete_before,
++                                                          text_input->pending_ops.delete_after);
++        }
++
++      if (commit)
++        {
++          zwp_text_input_v3_send_preedit_string (resource, NULL, 0, 0);
++          zwp_text_input_v3_send_commit_string (resource,
++                                                text_input->pending_ops.commit->str);
++        }
++
+       if (text_input->preedit.string || text_input->preedit.changed)
+         {
+           zwp_text_input_v3_send_preedit_string (resource,
+@@ -226,6 +309,10 @@ clutter_input_focus_send_done (ClutterInputFocus *focus)
+       zwp_text_input_v3_send_done (resource,
+                                    lookup_serial (text_input, resource));
+     }
++
++  if (commit || text_input->pending_ops.has_delete)
++    apply_pending_ops_to_surrounding (text_input);
++  clear_pending_ops (text_input);
+ }
+ 
+ static gboolean
+@@ -299,6 +386,22 @@ meta_wayland_text_input_focus_delete_surrounding (ClutterInputFocus *focus,
+   text_input = META_WAYLAND_TEXT_INPUT_FOCUS (focus)->text_input;
+   offset = MIN (offset, 0);
+ 
++  if (!text_input->surrounding.text)
++    {
++      g_warning ("Input method deleted surrounding text the client never reported");
++      return;
++    }
++
++  /* One deletion per done, applied before its commit: a deletion after a
++   * pending commit or deletion goes into the next done. */
++  if (has_pending_commit (text_input) || text_input->pending_ops.has_delete)
++    {
++      if (text_input->done_idle_id != 0)
++        meta_wayland_text_input_focus_flush_done (focus);
++      else
++        clutter_input_focus_send_done (focus);
++    }
++
+   start = text_input->surrounding.text;
+   end = start + strlen (text_input->surrounding.text);
+   cursor = start + text_input->surrounding.cursor;
+@@ -312,12 +415,9 @@ meta_wayland_text_input_focus_delete_surrounding (ClutterInputFocus *focus,
+   before_length = cursor - before;
+   after_length = after - cursor;
+ 
+-  wl_resource_for_each (resource, &text_input->focus_resource_list)
+-    {
+-      zwp_text_input_v3_send_delete_surrounding_text (resource,
+-                                                      before_length,
+-                                                      after_length);
+-    }
++  text_input->pending_ops.has_delete = TRUE;
++  text_input->pending_ops.delete_before = before_length;
++  text_input->pending_ops.delete_after = after_length;
+ 
+   meta_wayland_text_input_focus_defer_done (focus);
+ }
+@@ -327,15 +427,16 @@ meta_wayland_text_input_focus_commit_text (ClutterInputFocus *focus,
+                                            const gchar       *text)
+ {
+   MetaWaylandTextInput *text_input;
+-  struct wl_resource *resource;
+ 
+   text_input = META_WAYLAND_TEXT_INPUT_FOCUS (focus)->text_input;
+ 
+-  wl_resource_for_each (resource, &text_input->focus_resource_list)
+-    {
+-      zwp_text_input_v3_send_preedit_string (resource, NULL, 0, 0);
+-      zwp_text_input_v3_send_commit_string (resource, text);
+-    }
++  if (!text || !*text)
++    return;
++
++  /* Every commit before the done reaches the client, in order. */
++  if (!text_input->pending_ops.commit)
++    text_input->pending_ops.commit = g_string_new (NULL);
++  g_string_append (text_input->pending_ops.commit, text);
+ 
+   meta_wayland_text_input_focus_defer_done (focus);
+ }
+@@ -557,6 +658,12 @@ meta_wayland_text_input_set_focus (MetaWaylandTextInput *text_input,
+ 
+   if (text_input->surface)
+     {
++      /* Text the old focus has not been sent yet is its own, not the next
++       * surface's. */
++      if (text_input->done_idle_id != 0)
++        meta_wayland_text_input_focus_flush_done (text_input->input_focus);
++      clear_pending_ops (text_input);
++
+       if (!wl_list_empty (&text_input->focus_resource_list))
+         {
+           struct wl_resource *resource;
+@@ -1080,6 +1187,8 @@ meta_wayland_text_input_destroy (MetaWaylandTextInput *text_input)
+   g_clear_pointer (&text_input->preedit.string, g_free);
+   g_clear_pointer (&text_input->pending_surrounding.text, g_free);
+   g_clear_pointer (&text_input->surrounding.text, g_free);
++  if (text_input->pending_ops.commit)
++    g_string_free (text_input->pending_ops.commit, TRUE);
+   g_free (text_input);
+ }
+ 
