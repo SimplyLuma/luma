@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 31 Oct 2026 10:00:00 -0500
+Subject: [PATCH] backends/native: Clamp the frame threads' minimum
+ utilization
+
+With schedutil, a frame that starts after the CPUs idled for a moment runs
+at the frequency the governor chose for idle (a phone measured 357-820 MHz
+CPU) and on whichever CPU the task last fitted, so the first frame after a
+pause misses its deadline while the governor ramps up. Neither rtkit path
+helps: the KMS thread's default "high priority" is a nice level, which does
+not raise frequency, and the main thread, where the frame clock, layout and
+painting run, cannot be real-time.
+
+The new frame-utilization-min setting sets a utilization clamp
+(uclamp_min) on the main thread and the KMS thread. The kernel lets a task
+change its own clamps without privileges, and a clamp applies only while
+the task is runnable, so idle CPUs are unaffected. Threads and processes
+started afterwards do not inherit it (SCHED_RESET_ON_FORK); real-time
+threads are left alone, as they already run at the highest clamp. The
+default of 0 leaves scheduling unchanged.
+---
+diff --git a/data/org.gnome.mutter.gschema.xml.in b/data/org.gnome.mutter.gschema.xml.in
+index 0912b11..6b0f873 100644
+--- a/data/org.gnome.mutter.gschema.xml.in
++++ b/data/org.gnome.mutter.gschema.xml.in
+@@ -125,6 +125,21 @@
+       </description>
+     </key>
+ 
++    <key name="frame-utilization-min" type="u">
++      <range min="0" max="1024"/>
++      <default>0</default>
++      <summary>Minimum CPU utilization of the frame threads</summary>
++      <description>
++        A utilization clamp (uclamp_min, 0 to 1024) for the compositor's
++        main thread and its KMS thread while they run. With a
++        utilization-driven CPU frequency governor (schedutil), a frame that
++        starts after the CPUs idled then runs at a matching frequency and on
++        a matching CPU instead of waiting for the governor to ramp up. Idle
++        CPUs are unaffected: the clamp applies only while these threads are
++        runnable. 0 leaves scheduling unchanged.
++      </description>
++    </key>
++
+     <key name="locate-pointer-key" type="s">
+       <default>'Control_L'</default>
+       <summary>Modifier to use to locate the pointer</summary>
+diff --git a/src/backends/native/meta-backend-native.c b/src/backends/native/meta-backend-native.c
+index 61e9278..38c0b74 100644
+--- a/src/backends/native/meta-backend-native.c
++++ b/src/backends/native/meta-backend-native.c
+@@ -37,7 +37,12 @@
+ #include "backends/native/meta-input-thread.h"
+ 
+ #include <drm_fourcc.h>
++#include <errno.h>
++#include <sched.h>
++#include <stdint.h>
+ #include <stdlib.h>
++#include <sys/syscall.h>
++#include <unistd.h>
+ 
+ #include "backends/meta-a11y-manager.h"
+ #include "backends/meta-color-manager.h"
+@@ -53,6 +58,7 @@
+ #include "backends/native/meta-device-pool-private.h"
+ #include "backends/native/meta-drm-lease.h"
+ #include "backends/native/meta-kms.h"
++#include "backends/native/meta-thread.h"
+ #include "backends/native/meta-kms-device.h"
+ #include "backends/native/meta-monitor-manager-native.h"
+ #include "backends/native/meta-render-device-gbm.h"
+@@ -97,6 +103,9 @@ typedef struct _MetaBackendNativePrivate
+ #endif
+ 
+   MetaDrmLeaseManager *drm_lease_manager;
++
++  GSettings *mutter_settings;
++  unsigned int frame_utilization_min;
+ } MetaBackendNativePrivate;
+ 
+ G_DEFINE_TYPE_WITH_PRIVATE (MetaBackendNative,
+@@ -117,6 +126,7 @@ meta_backend_native_dispose (GObject *object)
+   G_OBJECT_CLASS (meta_backend_native_parent_class)->dispose (object);
+ 
+   g_clear_pointer (&priv->startup_render_devices, g_hash_table_unref);
++  g_clear_object (&priv->mutter_settings);
+   g_clear_object (&priv->kms);
+   g_clear_object (&priv->device_pool);
+ }
+@@ -819,6 +829,128 @@ meta_backend_native_create_launcher (MetaBackend   *backend,
+ }
+ 
+ 
++/* struct sched_attr (SCHED_ATTR_SIZE_VER1); not every libc wraps
++ * sched_setattr(). */
++typedef struct _MetaSchedAttr
++{
++  uint32_t size;
++  uint32_t sched_policy;
++  uint64_t sched_flags;
++  int32_t sched_nice;
++  uint32_t sched_priority;
++  uint64_t sched_runtime;
++  uint64_t sched_deadline;
++  uint64_t sched_period;
++  uint32_t sched_util_min;
++  uint32_t sched_util_max;
++} MetaSchedAttr;
++
++#define META_SCHED_FLAG_RESET_ON_FORK 0x01
++#define META_SCHED_FLAG_KEEP_PARAMS 0x10
++#define META_SCHED_FLAG_UTIL_CLAMP_MIN 0x20
++
++#ifndef SCHED_BATCH
++#define SCHED_BATCH 3
++#endif
++
++/* Sets the calling thread's minimum utilization clamp. The kernel lets a
++ * task change its own clamps without privileges. */
++static gboolean
++set_thread_utilization_min (unsigned int   utilization_min,
++                            GError       **error)
++{
++#if defined (SYS_sched_setattr) && defined (SYS_sched_getattr)
++  MetaSchedAttr attr = { 0 };
++
++  if (syscall (SYS_sched_getattr, 0, &attr, sizeof (attr), 0) != 0)
++    {
++      int errsv = errno;
++
++      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errsv),
++                   "sched_getattr: %s", g_strerror (errsv));
++      return FALSE;
++    }
++
++  /* Real-time threads already run at the highest clamp by default. */
++  if (attr.sched_policy != SCHED_OTHER && attr.sched_policy != SCHED_BATCH)
++    return TRUE;
++
++  attr.size = sizeof (attr);
++  /* Threads and processes started from here do not inherit the clamp. */
++  attr.sched_flags = (META_SCHED_FLAG_RESET_ON_FORK |
++                      META_SCHED_FLAG_KEEP_PARAMS |
++                      META_SCHED_FLAG_UTIL_CLAMP_MIN);
++  attr.sched_util_min = utilization_min;
++  if (syscall (SYS_sched_setattr, 0, &attr, 0) != 0)
++    {
++      int errsv = errno;
++
++      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errsv),
++                   "sched_setattr: %s", g_strerror (errsv));
++      return FALSE;
++    }
++
++  return TRUE;
++#else
++  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++               "Utilization clamping is not supported");
++  return FALSE;
++#endif
++}
++
++static gpointer
++set_utilization_min_in_impl (MetaThreadImpl  *thread_impl,
++                             gpointer         user_data,
++                             GError         **error)
++{
++  return GINT_TO_POINTER (set_thread_utilization_min (GPOINTER_TO_UINT (user_data),
++                                                      error));
++}
++
++static void
++update_frame_utilization_min (MetaBackendNative *native)
++{
++  MetaBackendNativePrivate *priv =
++    meta_backend_native_get_instance_private (native);
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GError) kms_error = NULL;
++  unsigned int utilization_min;
++
++  utilization_min = g_settings_get_uint (priv->mutter_settings,
++                                         "frame-utilization-min");
++  if (utilization_min == priv->frame_utilization_min)
++    return;
++
++  priv->frame_utilization_min = utilization_min;
++
++  /* The frame clock, layout and painting run on the main thread; page
++   * flips are committed on the KMS thread. */
++  if (!set_thread_utilization_min (utilization_min, &error))
++    {
++      g_warning ("Failed to clamp the compositor thread's utilization: %s",
++                 error->message);
++      return;
++    }
++
++  meta_thread_run_impl_task_sync (META_THREAD (priv->kms),
++                                  set_utilization_min_in_impl,
++                                  GUINT_TO_POINTER (utilization_min),
++                                  &kms_error);
++  if (kms_error)
++    {
++      g_warning ("Failed to clamp the KMS thread's utilization: %s",
++                 kms_error->message);
++    }
++}
++
++static void
++on_frame_utilization_min_changed (GSettings         *settings,
++                                  const char        *key,
++                                  MetaBackendNative *native)
++{
++  update_frame_utilization_min (native);
++}
++
+ static gboolean
+ meta_backend_native_init_basic (MetaBackend  *backend,
+                                 GError      **error)
+@@ -842,6 +974,11 @@ meta_backend_native_init_basic (MetaBackend  *backend,
+   if (!priv->kms)
+     return FALSE;
+ 
++  priv->mutter_settings = g_settings_new ("org.gnome.mutter");
++  g_signal_connect (priv->mutter_settings, "changed::frame-utilization-min",
++                    G_CALLBACK (on_frame_utilization_min_changed), native);
++  update_frame_utilization_min (native);
++
+   if (!init_gpus (native, error))
+     return FALSE;
+ 
+-- 
+2.51.0

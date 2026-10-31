@@ -156,8 +156,14 @@ shift, symbols) is two opacity changes that reuse both cached textures, with
 no relayout (the grid ratio, which re-pages the emoji panel, is set only when
 it changes) and no restyle (shift keys change only with their latch). Hiding
 and showing layers drew the target layer anew on every switch: 42 journal
-flushes headless, 29-47 ms frames on the Fold. Everything a press can show
-(every layer, every preview, the pressed cap) is made when the layout is
+flushes headless, 29-47 ms frames on the Fold. Clutter queues a redraw of
+every actor it maps, so every show invalidates every layer's cache: layers
+are marked cold when the keyboard is mapped, its stage views change or its
+layout is rebuilt, and drawn again one per frame, nearly transparent, while
+it slides in or sits idle, never in a frame that handles a touch (keycap9
+drew a whole layer on the first capital's release after each show).
+Everything a press can show (every layer, every preview, the pressed cap) is
+made when the layout is
 built and drawn once, with a whole-stage repaint, on a timer after the
 keyboard is shown; the show animation's onComplete is not relied on (a
 relayout stops it, which is how keycap7's warm-up never ran and each new
@@ -260,9 +266,19 @@ feedbackd, IBus traffic, the press-path budget (TOUCH_BEGIN handling time, one
 geometry read and no restyle per press), Cogl journal flushes per press frame
 (Mutter's profiler, through `profile-shell.py` and `frame-flushes.py`), no
 repaint of neighbouring keys (the cached grid), layer switches (no extra
-journal flush, no key repainted, no relayout, 'a. b' typed as 'A. B'), the
-first press of a freshly
-built keyboard, a 300k-unit surrounding-text report and word-analysis time.
+journal flush, no key repainted, no relayout, 'a. b' typed as 'A. B'),
+releases after each of five show/"Hi"/hide sessions, the first press of a
+freshly built keyboard, a 300k-unit surrounding-text report and word-analysis
+time.
+
+**Frequency after idle.** The first frame after a pause ran at the
+governor's idle frequency (Fold: CPU 357-820 MHz, press frames median
+9.9 ms). Mutter's `frame-utilization-min` (patch 0026, Luma default 512)
+sets uclamp_min on the compositor's main and KMS threads, unprivileged and
+not inherited by anything they start; it acts only while those threads run,
+so idle power is unchanged. Press frames went to a 2.6-2.9 ms median with
+none over budget. It needs `CONFIG_UCLAMP_TASK=y` and schedutil;
+`frame-utilization-native.js` checks it headless.
 
 **Shadows.** St paints one shadow per actor and parses one layer; extra layers
 are dropped with "Ignoring excess values in shadow definition" and the last

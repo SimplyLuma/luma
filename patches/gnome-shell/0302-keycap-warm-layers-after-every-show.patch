@@ -1,0 +1,189 @@
+From: Luma Developers
+Subject: [PATCH] Keycap: draw every layer into its cache after each show
+
+On the Fold the first switch from Shift to lowercase after each keyboard
+show (the release of the first capital) still drew a whole layer: about 60
+journal flushes in one frame, up to 33 ms of dispatch. Clutter queues a
+relayout and redraw of every actor it maps, so each show invalidated every
+layer's cached texture, and the warm-up that draws them ran once per layout,
+not once per show. Headless, every session's first capital cost 42 flushes.
+
+The layers are now marked cold whenever the keyboard is mapped, its stage
+views change or its layout is rebuilt, and drawn again one per frame, nearly
+transparent, while the keyboard slides in or sits idle. A frame that handles
+a touch, or one that does not draw the keyboard, does not carry a layer.
+
+---
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1684,6 +1684,7 @@
+             global.stage.disconnect(this._hapticPaintId);
+         if (this._warmTimeoutId)
+             GLib.source_remove(this._warmTimeoutId);
++        this._stopLayerWarm();
+         if (this._priorsIdleId)
+             GLib.source_remove(this._priorsIdleId);
+         Main.inputMethod.disconnectObject(this);
+@@ -1754,7 +1755,12 @@
+         this.connect('notify::mapped', () => {
+             if (!this.mapped)
+                 this._cancelPointers();
++            else
++                this._coolLayers();
+         });
++        // A new stage view (a panel lit again, a monitor change) draws every
++        // cached texture anew too.
++        this.connect('stage-views-changed', () => this._coolLayers());
+     }
+ 
+     _pointerId(event) {
+@@ -1777,6 +1783,7 @@
+         const id = this._pointerId(event);
+         if (id === null)
+             return Clutter.EVENT_PROPAGATE;
++        this._inputSincePaint = true;
+         switch (event.type()) {
+         case Clutter.EventType.TOUCH_BEGIN:
+         case Clutter.EventType.BUTTON_PRESS:
+@@ -2410,9 +2417,11 @@
+         });
+ 
+         this._aspectContainer.add_child(layout);
++        this._stopLayerWarm();
+         this._currentLayout?.destroy();
+         this._currentLayout = layout;
+         this._layers = layers;
++        this._coolLayers();
+     }
+ 
+     // Keycap rows: hide lives in the tool strip and the language key appears
+@@ -3672,19 +3681,15 @@
+     }
+ 
+     // Everything a key press shows for the first time is drawn once, nearly
+-    // transparent, right after the keyboard opens: every layer's grid (the
+-    // letter layers it swaps between by itself, symbols), the press tint and
+-    // the key preview. The first press of a session, or the first swap to
+-    // a layer, then lays out and rasterises nothing new in its frame.
++    // transparent, right after the keyboard opens: the press tint and the
++    // key preview (the layers' cached grids are drawn by _warmLayerStep).
++    // The first press of a session then lays out and rasterises nothing new
++    // in its frame.
+     _warmLayers() {
+         if (!this._layers || this._warmedLayers === this._layers || !this._keyboardVisible)
+             return;
+         this._warmedLayers = this._layers;
+         this._preparePreviews();
+-        const cold = Object.values(this._layers)
+-            .filter(layer => layer && layer !== this._currentPage && layer.visible);
+-        for (const layer of cold)
+-            layer.opacity = 1;
+         const cell = this._currentPage && this._cellsFor(this._currentPage).find(c => c.key.character);
+         if (cell)
+             this._showPress({cell, page: this._currentPage}, false);
+@@ -3717,11 +3722,100 @@
+                 this._pressLayer.opacity = 0;
+             for (const label of shown)
+                 label.opacity = 0;
+-            for (const layer of cold) {
+-                if (layer !== this._currentPage)
+-                    layer.opacity = 0;
+-            }
++        });
++    }
++
++    // Clutter queues a relayout and redraw of every actor it maps, so each
++    // time the keyboard is shown (and when its stage views change) every
++    // layer's cached grid is drawn anew the next time it is painted. The
++    // current layer is drawn by the show itself; the others are drawn here,
++    // one per frame and nearly transparent, while the keyboard slides in or
++    // sits idle, and never in a frame that handles a touch: a later layer
++    // switch then only swaps textures.
++    _coolLayers() {
++        this._coldLayers = new Set(Object.values(this._layers ?? {}).filter(Boolean));
++        this._scheduleLayerWarm(0);
++    }
++
++    _scheduleLayerWarm(delay) {
++        if (this._layerWarmId || this._layerWarm || this._destroyed)
++            return;
++        this._layerWarmId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
++            this._layerWarmId = 0;
++            this._warmLayerStep();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _stopLayerWarm() {
++        if (this._layerWarmId)
++            GLib.source_remove(this._layerWarmId);
++        this._layerWarmId = 0;
++        if (this._layerWarm) {
++            const {layer, laterId, paintId} = this._layerWarm;
++            if (laterId)
++                global.compositor.get_laters().remove(laterId);
++            global.stage.disconnect(paintId);
++            if (layer !== this._currentPage)
++                layer.opacity = 0;
++            this._layerWarm = null;
++        }
++    }
++
++    // Whether a layer is drawn in this frame: shown, on screen and not
++    // under a fully transparent ancestor.
++    _layerDrawn(layer) {
++        if (!this._keyboardVisible || !layer.mapped)
++            return false;
++        for (let actor = layer; actor; actor = actor.get_parent()) {
++            if (actor !== layer && actor.opacity === 0)
++                return false;
++        }
++        const monitor = Main.layoutManager.keyboardMonitor;
++        const box = layer.get_transformed_extents();
++        return monitor && box.size.height > 0 &&
++            box.origin.y < monitor.y + monitor.height && box.origin.y + box.size.height > monitor.y;
++    }
++
++    _warmLayerStep() {
++        const cold = this._coldLayers;
++        if (!cold || !this._keyboardVisible || !this.mapped)
++            return;
++        // The current layer is drawn by being shown.
++        const layer = [...cold].find(l => l !== this._currentPage && l.visible && l.get_parent());
++        if (!layer) {
++            this._coldLayers = null;
++            return;
++        }
++        if (this._pointers.size > 0) {
++            this._scheduleLayerWarm(50);
++            return;
++        }
++        this._inputSincePaint = false;
++        layer.opacity = 1;
++        const warm = {layer, drawn: false};
++        // Before the frame paints (its input already handled): a frame that
++        // handles a touch, or one that does not draw the keyboard, does not
++        // carry the layer.
++        warm.laterId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            warm.drawn = !this._inputSincePaint && this._pointers.size === 0 && this._layerDrawn(layer);
++            if (!warm.drawn && layer !== this._currentPage)
++                layer.opacity = 0;
++            warm.laterId = 0;
++            return GLib.SOURCE_REMOVE;
+         });
++        warm.paintId = global.stage.connect('after-paint', () => {
++            global.stage.disconnect(warm.paintId);
++            if (warm.laterId)
++                global.compositor.get_laters().remove(warm.laterId);
++            this._layerWarm = null;
++            if (layer !== this._currentPage)
++                layer.opacity = 0;
++            if (warm.drawn)
++                cold.delete(layer);
++            this._scheduleLayerWarm(warm.drawn ? 0 : 50);
++        });
++        this._layerWarm = warm;
+     }
+ 
+     _animateShowComplete() {

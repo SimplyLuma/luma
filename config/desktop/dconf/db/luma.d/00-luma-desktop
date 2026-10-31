@@ -96,6 +96,13 @@ download-updates-notify=false
 [org/gnome/mutter]
 # Use Tiling Shell as Luma's sole tiling implementation when the user enables it.
 edge-tiling=false
+# The compositor's main and KMS threads run each frame at no less than half
+# of the largest CPU's capacity (uclamp_min, Mutter 0026): with schedutil the
+# first frame after a pause no longer waits for the governor to ramp up from
+# its idle frequency. It acts only while those threads run; idle CPUs and
+# governors that ignore utilization clamps (intel_pstate active) are
+# unaffected.
+frame-utilization-min=uint32 512
 
 [org/gnome/shell/extensions/appindicator]
 # Tray icons sit on the shelf beside Luma's own symbolic controls: the same

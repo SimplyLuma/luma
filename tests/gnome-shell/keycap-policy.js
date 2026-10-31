@@ -284,6 +284,8 @@ for (const [needle, message] of [
     ['this._warmTimeoutId = GLib.timeout_add', 'the warm-up runs even when the show animation is stopped'],
     ['levelLayout.opacity = 0;', 'every layer stays laid out and cached; a switch swaps opacity'],
     ['this._gridRatio = [columns, rows];', 'a switch sets the grid ratio only when it changes'],
+    ['            else\n                this._coolLayers();', 'every show draws the layers into their caches again'],
+    ['warm.drawn = !this._inputSincePaint', 'no layer is warmed in a frame that handles a touch'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
 ])
     assert(keyboard.includes(needle), message);

@@ -429,9 +429,8 @@ async function work() {
             }
         }
         // Adding the probes redrew both grids; draw them into their caches
-        // again the way the keyboard does when it opens.
-        keyboard._warmedLayers = null;
-        keyboard._warmLayers();
+        // again the way the keyboard does when it is shown.
+        keyboard._coolLayers();
         await sleep(500);
         probes.forEach(probe => (probe.samples = []));
         const switches = [];
@@ -543,6 +542,71 @@ async function work() {
             `switching releases (${releases.filter(r => r.switched).map(r => JSON.stringify(r.character)).join(' ')}) ` +
             `${flushes(typedSwitch).join(' ')} flushes; others ${flushes(typedPlain).join(' ')}; ` +
             `switches ${switches.map(s => `${s.to} on ${s.during}`).join(', ')}; text ${JSON.stringify(appText())}`);
+        await sleep(300);
+    }
+
+    // 1e. Every show draws the layers into their caches during the slide-in
+    // (mapping an actor redraws it): show, type "Hi", hide, five times, and
+    // no release after the first show costs more GPU batches than a frame
+    // redrawn from the cache, the capital's release (a switch to lowercase)
+    // included.
+    {
+        const capture = `${out}/sessions.syscap`;
+        const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+            capture, '14'], Gio.SubprocessFlags.STDOUT_PIPE);
+        const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+        await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+        await sleep(300);
+        const cachedRedraws = [];
+        for (let i = 0; i < 2; i++) {
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 254;
+            await sleep(120);
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 255;
+            await sleep(120);
+        }
+        const releases = [];
+        const texts = [];
+        for (let session = 0; session < 5; session++) {
+            Main.keyboard.close();
+            await until(() => !Main.layoutManager.keyboardBox.visible, 3000);
+            await sleep(200);
+            await reset();
+            window.activate(global.get_current_time());
+            Main.keyboard.open(Main.layoutManager.primaryIndex);
+            await until(() => Main.keyboard.visible, 3000);
+            keyboard = Main.keyboard.keyboardActor;
+            keyboard._setLatched(false);
+            keyboard._updateLevelFromHints(true);
+            // The slide-in (200 ms) and a few idle frames.
+            await sleep(450);
+            for (const character of 'Hi') {
+                const [x, y] = centre(keyFor(character));
+                down(0, x, y);
+                await sleep(50);
+                releases.push({at: now(), session, character});
+                up(0);
+                await sleep(150);
+            }
+            await sleep(200);
+            texts.push(appText());
+        }
+        await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+        const timesFile = `${out}/session-times.txt`;
+        GLib.file_set_contents(timesFile, [...cachedRedraws, ...releases.map(r => r.at)].join('\n'));
+        const [, result] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+            capture, timesFile], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+        const paints = JSON.parse(result || '{"presses": []}').presses;
+        const cached = paints.slice(0, cachedRedraws.length).map(p => p.flushes);
+        const released = paints.slice(cachedRedraws.length);
+        const baseline = Math.max(...cached);
+        check('every release after a fresh show draws from the cached layers (show, "Hi", hide, 5 times)',
+            released.length === releases.length && cached.length === cachedRedraws.length &&
+            released.every(p => p.flushes <= baseline),
+            `release flushes ${released.map((p, i) => `${releases[i].character}${p.flushes}`).join(' ')}; ` +
+            `paint ${released.map(p => p.paint_ms.toFixed(1)).join(' ')} ms; cached redraw ${cached.join(' ')}`);
+        check('each session types Hi', texts.every(text => text === 'Hi'), JSON.stringify(texts));
         await sleep(300);
     }
 
