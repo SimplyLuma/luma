@@ -56,6 +56,16 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 CURRENT — native settings/resize source prepared; incremental image build next:
+- r441 Android COMPILATION PASSED23:59 at02:02Z, both images generated. The
+  canonical script then failed writing its prior root-owned SHA256SUMS; outer
+  job correctly failed, VM/profile and account policy restored. r451/5796cc50
+  retained actual final build log. No new pair exported or Dell update applied.
+  Source now publishes image/component manifests through a fresh sibling file
+  and atomic replacement; r452/fe2ddece passed readonly-manifest, exact hashes,
+  explicit image list, symlink-target and failed-read preservation checks.
+  Next combined build must include checksum fix plus browser9f509e3c0 changes,
+  reuse compiled outputs and pass actual export/image/host-cohort verification.
+  Private r449 snapshot9f509e3c0 prepared but not started; keep it immutable.
 - Current build r441/40c3cf35 ACTIVE, source9d0b562d0; guard r441/62cb6736,
   monitor r441/371068ea. Private window-controls-build-r441/progress.log.
   Recovery succeeded and normal preparation refreshed patches; Android build

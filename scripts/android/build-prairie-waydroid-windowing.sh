@@ -277,15 +277,13 @@ install -m 0644 \
 install -m 0644 \
   "$product_root/vendor/lib64/hw/hwcomposer.waydroid.so" \
   "$output/vendor/lib64/hw/"
+# shellcheck source=write-checksums.sh
+source "$repo_root/scripts/android/write-checksums.sh"
 if [ "${LUMA_BUILD_WAYDROID_IMAGES:-0}" = 1 ]; then
   install -d -m 0755 "$output/images"
   install -m 0644 "$product_root/system.img" "$output/images/system.img"
   install -m 0644 "$product_root/vendor.img" "$output/images/vendor.img"
-  (
-    cd "$output/images"
-    sha256sum system.img vendor.img >SHA256SUMS
-  )
+  luma_android_write_checksums "$output/images" system.img vendor.img
 fi
-find "$output" -type f ! -name SHA256SUMS -exec sha256sum {} + | \
-  sed "s#  $output/#  #" | sort >"$output/SHA256SUMS"
+luma_android_write_checksums "$output"
 printf 'Prairie Waydroid windowing components: %s\n' "$output"

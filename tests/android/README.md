@@ -1,5 +1,10 @@
 # Android integration qualification
 
+`python3 tests/android/checksum-manifest.py` runs the production checksum
+publisher as an ordinary user. It checks replacement of a read-only prior
+manifest, exact hashes, explicit image lists, preserved symlink targets and
+failure atomicity. It does not qualify the complete Android image export.
+
 `browser-callback-consumption.py --source /prepared/Jelly/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt --patch patches/android-jelly/0001-luma-consume-handled-app-redirects.patch --kotlinc /pinned/kotlinc --java /pinned/java`
 compiles the actual navigation decision with explicit Android substitutes. It
 checks consumption after a handled redirect, header fallback, incognito,
