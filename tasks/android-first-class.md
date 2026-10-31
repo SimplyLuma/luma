@@ -55,29 +55,48 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 
 ## Current handoff
 
-CURRENT — combined image build r453 active; Dell remains on r309:
-- Source229a7a3ed57a4f69cca3778b68e9151b29f3c473 includes native settings,
-  logical desktop canvas, Jelly callback consumption and atomic checksums.
-  Frozen project SHA f8bc303b84afb342ed3982917b65e9c8cd9ee12bab143a6062c5c34c3b7f05c5.
-  Normal build45a20ee1, policy c85b7633 and progress monitor a437ad64 active.
-  Root controller luma-android-window-controls-build-r453-controller.service;
-  private window-controls-build-r453/progress.log. Full immutable input hashes
-  passed and builder booted02:12Z; normal source preparation active02:14Z.
-  Keep original image pair/host cohort until verified export and delivery guards.
-- r455/14139656 passed16 delivery/cohort guards on current private updater;
-  syntax passed for updater, verifier, packet builder and normal-user launcher.
-  r454/764f481e refused the active build path lease; reran in separate guard
-  lane without bypass. No actual device update/mount claimed by these fixtures.
-  Delivery remains pending actual export, pair/component checks and manifest pin.
-- Success-only post-build b20505f0 is waiting for the exact45a20ee1 result.
-  On success it requires the full source229a pin/export proof, checks actual
-  image components and ABI, builds/pins the packet and starts normal native Dell
-  delivery. Root packet driver768MiB/1200s; parent1GiB/7800s. Private
-  window-controls-build-r453/post_build.py; receipt/hash output remains private.
-  Any build/verification failure stops delivery. Normal Polkit applies.
-- r457/7e5e3acf actual guest observation02:18Z: Ninja graph processing active,
-  ~1.8GiB RSS, ~22GiB available, no swap and all memory.events zero. No C++
-  percentage or complete image claimed. Guest target is native x86_64 jobs8.
+CURRENT — r453 images live on Dell through corrected r463 development updater:
+- Android build45a20ee1 PASSED02:27:47Z, source
+  229a7a3ed57a4f69cca3778b68e9151b29f3c473; all46 steps completed, actual
+  Jelly compilation and system image recorded. Export verified12 files; guest
+  shut down, original VM profile and admission policy restored. No rebuild pending.
+- Success-only post-build b20505f0 PASSED: actual HIDL ABI/image equality,
+  HWC/settings transport/xdg-output markers, framework capability/media-default
+  props and extracted Jelly checked. Packet0650bb6a... delivered natively r453.
+  First apply failed the container host-module import and automatically restored
+  r309 images/cohort. Failure and all images retained; no app-data reset.
+- Cause observed r461/e6ccf8ca and r462/79891e7c: existing engine bind has
+  var_lib_t; other Python modules need original lib_t. Private updater had used
+  engine's label for every module. Corrected r463 preserves each original file's
+  label, uses settings.py label for new modules, explicitly sets directory755.
+  r463/794db25b passed18 delivery guards including distinct label references
+  and strict077 umask. Fixtures substitute chcon; actual MAC/startup below.
+- Corrected delivery e3490695 PASSED; same verified image bytes, new pinned
+  manifest0bc986ca45d3bdde25513f5c0c4bd039e9547127040ebd63cf0e8d5c6a0f3b18.
+  Actual apply completed; r466/8445471e read phase
+  applied-awaiting-window-and-callback-qualification. Live image/component/HIDL
+  hashes, active browser APK and settings service match the protected packet.
+  Dell root receipt: /var/lib/luma-android-native-preview/r180/window-controls-r463/receipt.json.
+  Rollback pair: /etc/waydroid-extra/images.before-window-r463; use matching
+  native launcher rollback action and normal Polkit. Do not alter r180 installer.
+- Actual runtime qualification r467/d38f4d80 launcher, r468/2306193c result:
+  physical Android canvas6800x2598, density180, cap1, STREAM_MUSIC15/15,
+  platform network VALIDATED, legacy Card Wars touch rule retained. Actual
+  UID1000 socket request traversed listener/Binder/native user-manager launcher:
+  GApplication name owned and Shell observed500x260 native settings window.
+  No preferences changed; no account callback/code collected, replayed or logged.
+  This proves the settings transport/panel opening, not a physical cog click,
+  repeated wide-window resize/input, app HTTPS or real OAuth completion.
+- Runtime system image cb662b5fb272327d6e9c7fbde5d7cf61b02ab6fce32504e74194ff5a2743f532;
+  vendor5a9551039856d5fa6c5fc9764eff461ef68d86b02df38812eb16d1f67e07d6e6;
+  Jelly25141c69679335392f3f2e709f243083da48bd8e8d2e956419800df0b24b4370.
+  Source tests r448 prove callback consumption with explicit Android substitutes;
+  real user sign-in remains pending. Never replay screenshot authorization values.
+- Host Python cohort is a development-only read-only bind, preserving original
+  engine underneath; it is ephemeral across OS reboot. Production packaging and
+  all open acceptance gates remain necessary; no nightly/release claim.
+  Keep existing bounded Dell sleep inhibitor through pending owner testing;
+  its current deadline is about07:56Z Oct31. No persistent power setting changed.
 - Earlier attempts below are retained history, not current live jobs:
 - r441 Android COMPILATION PASSED23:59 at02:02Z, both images generated. The
   canonical script then failed writing its prior root-owned SHA256SUMS; outer
