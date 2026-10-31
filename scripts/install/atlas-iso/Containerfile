@@ -18,7 +18,7 @@ RUN case "$TARGET_ARCH" in \
     dnf5 -y install --setopt=install_weak_deps=False \
       xorriso createrepo_c squashfs-tools erofs-utils mtools dosfstools isomd5sum \
       ${vm_packages} qemu-img python3 util-linux e2fsprogs file cpio findutils \
-      ostree ostree-libs python3-gobject-base gnupg2 fedora-gpg-keys diffutils dconf glib2 && \
+      ostree ostree-libs python3-gobject-base gnupg2 fedora-gpg-keys diffutils dconf glib2 git-core && \
     dnf5 clean all
 # Retain the cached common tools layer when adding the GRUB grammar check.
 # Lorax dependencies may already supply this package on either architecture.
