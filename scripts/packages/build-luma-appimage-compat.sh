@@ -36,7 +36,7 @@ source_dir="$work_dir/luma-appimage-compat"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$source_dir"
 cp -R "$repo_root/src/luma-appimage-compat/." "$source_dir/"
 find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
-source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
   --numeric-owner -cf - luma-appimage-compat | gzip -n >"$rpmbuild_dir/SOURCES/luma-appimage-compat.tar.gz"
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"

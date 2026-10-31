@@ -55,7 +55,7 @@ luma_developer_platform_rpm="$repo_root/build/packages/luma-developer-platform/x
 luma_quick_view_rpm="$repo_root/build/packages/luma-quick-view/RPMS/x86_64/$LUMA_QUICK_VIEW_NEVRA.rpm"
 luma_monitor_rpm="$repo_root/build/packages/luma-monitor/RPMS/noarch/$LUMA_MONITOR_NEVRA.rpm"
 luma_tide_rpm="$repo_root/build/packages/luma-tide/RPMS/noarch/$LUMA_TIDE_NEVRA.rpm"
-luma_displays_rpm="$repo_root/build/packages/luma-displays/RPMS/noarch/$LUMA_DISPLAYS_NEVRA.rpm"
+luma_display_config_rpm="$repo_root/build/packages/luma-display-config/RPMS/noarch/$LUMA_DISPLAY_CONFIG_NEVRA.rpm"
 luma_ari_rpm="$repo_root/build/packages/luma-ari/RPMS/noarch/$LUMA_ARI_NEVRA.rpm"
 luma_ari_runtime_rpm="$repo_root/build/packages/luma-ari-runtime/x86_64/RPMS/$LUMA_ARI_RUNTIME_NEVRA.rpm"
 luma_darkroom_rpm="$repo_root/build/packages/luma-darkroom/RPMS/noarch/$LUMA_DARKROOM_NEVRA.rpm"
@@ -98,7 +98,7 @@ for path in "$base_image" "$guest_key" "$guest_password_file" \
   "$tiling_shell_rpm" \
   "$tiling_toggle_rpm" "$backgrounds_rpm" "$prairie_icon_theme_rpm" "$launcher_policy_rpm" "$homebrew_rpm" \
   "$boot_theme_rpm" "$figtree_rpm" "$luma_developer_platform_rpm" \
-  "$prairie_core_apps_rpm" "$messages_e2ee_rpm" "$luma_tide_rpm" "$luma_displays_rpm" "$luma_ari_rpm" "$luma_ari_runtime_rpm" "$luma_monitor_rpm" "$luma_quick_view_rpm" "$luma_darkroom_rpm" "$search_rpm" "$shell_state_rpm" "$luma_mods_rpm" "$relay_rpm" \
+  "$prairie_core_apps_rpm" "$messages_e2ee_rpm" "$luma_tide_rpm" "$luma_display_config_rpm" "$luma_ari_rpm" "$luma_ari_runtime_rpm" "$luma_monitor_rpm" "$luma_quick_view_rpm" "$luma_darkroom_rpm" "$search_rpm" "$shell_state_rpm" "$luma_mods_rpm" "$relay_rpm" \
   "$application_installer_rpm" \
   "$apk_metadata_rpm" \
   "$luma_update_rpm" \
@@ -228,7 +228,7 @@ scp -q \
   "$tiling_shell_rpm" \
   "$tiling_toggle_rpm" "$backgrounds_rpm" "$prairie_icon_theme_rpm" "$launcher_policy_rpm" "$homebrew_rpm" \
   "$figtree_rpm" "$luma_developer_platform_rpm" "$prairie_core_apps_rpm" "$messages_e2ee_rpm" \
-  "$shell_state_rpm" "$search_rpm" "$luma_tide_rpm" "$luma_displays_rpm" "$luma_ari_rpm" "$luma_ari_runtime_rpm" "$luma_monitor_rpm" "$luma_quick_view_rpm" "$luma_darkroom_rpm" \
+  "$shell_state_rpm" "$search_rpm" "$luma_tide_rpm" "$luma_display_config_rpm" "$luma_ari_rpm" "$luma_ari_runtime_rpm" "$luma_monitor_rpm" "$luma_quick_view_rpm" "$luma_darkroom_rpm" \
   "$luma_mods_rpm" \
   "$luma_update_rpm" \
   "$android_runtime_rpm" \

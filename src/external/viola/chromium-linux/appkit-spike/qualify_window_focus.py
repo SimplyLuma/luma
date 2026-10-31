@@ -46,7 +46,30 @@ class WindowQualification(Base):
     def private_ready(self):
         window=next(c['window'] for c in self.manager.contexts.values() if c['window'].services.state.get('incognito'))
         self.check('ctrl_shift_n_private_window',bool(window.services.state.get('incognito')))
-        self.type_into(window,'private',lambda:self.finish())
+        self.private_window=window
+        self.private_tabs=self.tab_ids(window)
+        self.private_initial=window.services.state['activeTabId']
+        self.check('private_initial_blank_selected',window.services.state.get('activeUrl')=='about:blank')
+        self.type_into(window,'private',self.private_new_tab)
+
+    @staticmethod
+    def tab_ids(window):
+        return {tab['id'] for section in ('today','pinned','favorites')
+                for tab in window.services.state.get(section,[])}
+
+    def private_new_tab(self):
+        # CtrlT is an intentional additional tab, not a request to refocus the
+        # existing initial blank tab. It must create exactly one tab/window.
+        self.device.chord(0xffe3,ord('t'))
+        self.wait(lambda:self.private_window.services.state.get('activeTabId')!=self.private_initial
+                  and self.private_window.page_input.valid_identity(),self.private_new_tab_ready)
+
+    def private_new_tab_ready(self):
+        current=self.tab_ids(self.private_window)
+        self.check('private_ctrl_t_creates_exactly_one_tab',
+                   len(current-self.private_tabs)==1 and self.private_tabs.issubset(current))
+        self.check('private_ctrl_t_does_not_create_window',len(self.manager.contexts)==3)
+        self.type_into(self.private_window,'private-new-tab',lambda:self.finish())
 
     def finish(self,error=None):
         self.report['window_states']=[{'mapped': c['window'].get_mapped(), 'identity': c['window'].page_input.valid_identity(), 'incognito': c['window'].services.state.get('incognito'), 'activeUrl': c['window'].services.state.get('activeUrl')} for c in self.manager.contexts.values()]

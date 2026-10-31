@@ -90,8 +90,8 @@ composition, rather than merely filtering their icons. OpenEmu and Imager are
 optional applications and are excluded from the default image. Their source
 and support for independently installed applications are preserved.
 
-Secondary Displays and Mods are hidden by standard immutable NoDisplay
-overrides. Displays remains available to its owning display workflows. The
+Mods is hidden by a standard immutable NoDisplay override. Displays is retired;
+display controls live in Settings. The
 Mods transactional/recovery provider remains intact; this decision does not
 enable arbitrary GNOME extensions or privileged Mod payloads. Luma Search,
 Filer's Applications provider, and native GIO consumers use should_show(), so

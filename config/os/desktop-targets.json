@@ -1,0 +1,22 @@
+{
+  "schema": "org.projectluma.desktop-targets/v1",
+  "architectures": {
+    "x86_64": {
+      "oci_architecture": "amd64",
+      "efi_loader": "BOOTX64.EFI",
+      "kernel_provider": "fedora",
+      "base_tag": "44.20261005.0-x86_64",
+      "base_digest": "sha256:bb3e50173909123e774e357774ecbc444135d5f1761fd52a147fa58e83cf686c"
+    },
+    "aarch64": {
+      "oci_architecture": "arm64",
+      "efi_loader": "BOOTAA64.EFI",
+      "kernel_provider": "fedora",
+      "base_tag": "44.20261022.0-aarch64",
+      "base_digest": "sha256:ff49d98b71cea8312ac3ba9155ce96fc389144c241767617ac352bbf0c3c805e"
+    }
+  },
+  "hardware_packages": {
+    "intel-crashlog": ["x86_64"]
+  }
+}

@@ -20,6 +20,11 @@ depot_require_signing_control
 fingerprint=$(depot_gpg_fingerprint)
 site="$DEPOT_ROOT/site"
 
+# Keep withdrawn refs available to existing clients and rollback, while the
+# normal Flatpak EOL metadata excludes them from regenerated AppStream.
+depot_in_signer python3 -B scripts/depot/retire-remote-apps.py \
+  --repo "$depot_repo" --gpg-sign "$fingerprint" --gpg-homedir "$DEPOT_KEYS/gnupg"
+
 depot_log "updating summary, appstream and static deltas"
 depot_in_signer flatpak build-update-repo \
   --gpg-sign="$fingerprint" --gpg-homedir="$DEPOT_KEYS/gnupg" \

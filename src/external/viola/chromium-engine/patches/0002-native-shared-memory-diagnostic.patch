@@ -1,0 +1,169 @@
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.cc
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+@@ -39,11 +39,13 @@
+ #include "ui/display/screen.h"
+ #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
+ #include "third_party/skia/include/core/SkColor.h"
++#include "third_party/skia/include/core/SkColorType.h"
+ #include "third_party/skia/include/core/SkRect.h"
+ #include "cc/paint/paint_flags.h"
+ #include "cc/paint/paint_shader.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/gfx/canvas.h"
++#include "ui/gfx/color_space.h"
+ #include "ui/gfx/geometry/skia_conversions.h"
+ #include "ui/views/background.h"
+ #include "ui/native_theme/native_theme.h"
+@@ -62,6 +64,7 @@
+ #include <map>
+ #include <limits>
+ #include "base/files/scoped_file.h"
++#include "base/memory/read_only_shared_memory_region.h"
+ #include "base/containers/span.h"
+ #include "base/json/json_writer.h"
+ // Non-shipping Linux embedding probe. Reuses Chromium's public compositor
+@@ -379,6 +382,101 @@
+       last_cursor_target_ = target;
+     }
+   }
++  // Diagnostic-only raw transport. The normal DMA capture path is unchanged.
++  bool SendSharedFrame(
++      const base::ReadOnlySharedMemoryRegion& region,
++      const media::mojom::VideoFrameInfo& info,
++      const gfx::Rect& content_rect,
++      mojo::Remote<viz::mojom::FrameSinkVideoConsumerFrameCallbacks>* lease) {
++    constexpr size_t kMaxBytes = 64 * 1024 * 1024;
++    const int width = info.coded_size.width();
++    const int height = info.coded_size.height();
++    if (!frame_socket_.is_valid() || pending_frames_.size() >= 3 ||
++        !region.IsValid() || region.GetSize() > kMaxBytes ||
++        width <= 0 || width > 5120 || height <= 0 || height > 3200 ||
++        info.pixel_format != media::PIXEL_FORMAT_ARGB || content_rect.IsEmpty() ||
++        !gfx::Rect(info.coded_size).Contains(content_rect)) return false;
++    const uint32_t stride = info.strides ? info.strides->stride_by_plane[0]
++                                         : static_cast<uint32_t>(width * 4);
++    const uint64_t length = static_cast<uint64_t>(stride) * height;
++    if (stride < static_cast<uint32_t>(width * 4) || length > kMaxBytes ||
++        length > region.GetSize()) return false;
++    // ARGB default capture uses Skia N32, whose byte order is platform-defined.
++    static_assert(kN32_SkColorType == kBGRA_8888_SkColorType ||
++                  kN32_SkColorType == kRGBA_8888_SkColorType);
++    constexpr const char* fourcc = [] {
++      if constexpr (kN32_SkColorType == kBGRA_8888_SkColorType) {
++        return "AR24";
++      } else {
++        return "AB24";
++      }
++    }();
++    // gfx enum values differ from CICP. Map named, supported actual colors;
++    // never relabel unsupported/custom/derived states as sRGB.
++    const gfx::ColorSpace& color = info.color_space;
++    if (!color.IsValid() || color.GetTransferID() != gfx::ColorSpace::TransferID::SRGB ||
++        color.GetMatrixID() != gfx::ColorSpace::MatrixID::RGB ||
++        color.GetRangeID() != gfx::ColorSpace::RangeID::FULL) return false;
++    int primaries = 0;
++    switch (color.GetPrimaryID()) {
++      case gfx::ColorSpace::PrimaryID::BT709: primaries = 1; break;
++      case gfx::ColorSpace::PrimaryID::P3: primaries = 12; break;
++      default: return false;
++    }
++    const int fd = region.GetPlatformHandle().fd;
++    if (fd < 0 || next_frame_id_ == std::numeric_limits<int>::max()) return false;
++    const int id = next_frame_id_++;
++    base::DictValue metadata;
++    metadata.Set("kind", "frame");
++    metadata.Set("version", 2);
++    metadata.Set("transport", "shm");
++    metadata.Set("id", id);
++    metadata.Set("window_id", browser_->session_id().id());
++    metadata.Set("target_id", capture_target_id_);
++    auto* organization = ViolaOrganizationStore::Get(browser_->profile());
++    std::string tab_id = organization && organization->loaded() && web_contents()
++                             ? organization->TabIdFor(web_contents()) : std::string();
++    if (browser_->is_type_devtools() || browser_->profile()->IsOffTheRecord()) {
++      auto* tab = browser_->tab_strip_model()->GetActiveTab();
++      tab_id = tab ? "chromium-tab-" + base::NumberToString(tab->GetHandle().raw_value())
++                   : std::string();
++    }
++    metadata.Set("tab_id", tab_id);
++    metadata.Set("width", width);
++    metadata.Set("height", height);
++    metadata.Set("fourcc", fourcc);
++    metadata.Set("stride", static_cast<int>(stride));
++    metadata.Set("offset", 0);
++    metadata.Set("region_size", static_cast<int>(region.GetSize()));
++    metadata.Set("content_x", content_rect.x());
++    metadata.Set("content_y", content_rect.y());
++    metadata.Set("content_width", content_rect.width());
++    metadata.Set("content_height", content_rect.height());
++    metadata.Set("color_primaries", primaries);
++    metadata.Set("transfer_characteristics", 13);
++    metadata.Set("matrix_coefficients", 0);
++    metadata.Set("full_range", 1);
++    std::string json;
++    if (!base::JSONWriter::Write(metadata, &json)) return false;
++    iovec data{json.data(), json.size()};
++    std::array<int, 1> fds{fd};
++    alignas(cmsghdr) uint8_t control[CMSG_SPACE(sizeof(int))]{};
++    msghdr message{};
++    message.msg_iov = &data;
++    message.msg_iovlen = 1;
++    message.msg_control = control;
++    message.msg_controllen = sizeof(control);
++    cmsghdr* rights = CMSG_FIRSTHDR(&message);
++    rights->cmsg_level = SOL_SOCKET;
++    rights->cmsg_type = SCM_RIGHTS;
++    rights->cmsg_len = CMSG_LEN(sizeof(int));
++    base::span(control).subspan(CMSG_LEN(0), sizeof(int))
++        .copy_from(base::as_byte_span(fds));
++    if (sendmsg(frame_socket_.get(), &message, MSG_DONTWAIT | MSG_NOSIGNAL) !=
++        static_cast<ssize_t>(json.size())) return false;
++    pending_frames_.emplace(id, std::move(*lease));
++    return true;
++  }
+   void FindActivePage() {
+     DrainFrameReleases();
+     if (!AnnounceWindow()) return;
+@@ -412,10 +510,15 @@
+     capturer_->SetMinSizeChangePeriod(base::TimeDelta());
+     capturer_->SetResolutionConstraints(gfx::Size(1, 1),
+                                         gfx::Size(5120, 3200), false);
+-    capturer_->Start(
+-        this, viz::mojom::BufferFormatPreference::kPreferMappableSharedImage);
++    const bool shared_memory_probe = base::CommandLine::ForCurrentProcess()->
++        HasSwitch("viola-native-shm-frame-probe");
++    capturer_->Start(this, shared_memory_probe
++        ? viz::mojom::BufferFormatPreference::kDefault
++        : viz::mojom::BufferFormatPreference::kPreferMappableSharedImage);
+     capturer_->RequestRefreshFrame();
+-    LOG(WARNING) << "VIOLA_NATIVE_FRAME_PROBE started shared-image capture";
++    LOG(WARNING) << "VIOLA_NATIVE_FRAME_PROBE started "
++                 << (shared_memory_probe ? "raw shared-memory" : "shared-image")
++                 << " capture";
+   }
+   void WebContentsDestroyed() override { Stop(); }
+   void PrimaryPageChanged(content::Page&) override {
+@@ -442,6 +545,12 @@
+                      << " size=" << info->coded_size.ToString()
+                      << " content=" << content_rect.ToString()
+                      << " format=" << info->pixel_format;
++      } else if (data->is_read_only_shmem_region()) {
++        LOG(WARNING) << "VIOLA_NATIVE_FRAME_PROBE raw shared-memory frame size="
++                     << info->coded_size.ToString()
++                     << " color=" << info->color_space.ToString()
++                     << " stride=" << (info->strides ? info->strides->stride_by_plane[0]
++                                                   : info->coded_size.width() * 4);
+       } else {
+         LOG(ERROR) << "VIOLA_NATIVE_FRAME_PROBE no native buffer; tag="
+                    << static_cast<int>(data->which());
+@@ -450,6 +559,10 @@
+     DrainFrameReleases();
+     if (host_visible_ && data->is_gpu_memory_buffer_handle() &&
+         SendNativeFrame(data->get_gpu_memory_buffer_handle(), *info,
++                        content_rect, &done)) return;
++    if (host_visible_ && data->is_read_only_shmem_region() &&
++        base::CommandLine::ForCurrentProcess()->HasSwitch("viola-native-shm-frame-probe") &&
++        SendSharedFrame(data->get_read_only_shmem_region(), *info,
+                         content_rect, &done)) return;
+     done->Done();
+   }

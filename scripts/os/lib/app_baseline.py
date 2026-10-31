@@ -16,14 +16,15 @@ baseline = importlib.util.module_from_spec(spec)
 loader.exec_module(baseline)
 
 
-def admit(root, shipping):
-    manifest = baseline.validate(root, platform.machine())
+def admit(root, shipping, architecture=None):
+    manifest = baseline.validate(root, architecture or platform.machine())
     if baseline.digest(root/'shipping.json') != baseline.digest(shipping):
         raise ValueError('The app baseline does not match this OS source selection.')
     return {'schema':'org.projectluma.os-app-input/v1',
             'manifest_sha256':baseline.digest(root/'manifest.json'),
             'architecture':manifest['architecture'],
-            'applications':24, 'runtimes':3,
+            'applications':sum(row['ref'].startswith('app/') for row in manifest['bundles']),
+            'runtimes':sum(row['ref'].startswith('runtime/') for row in manifest['bundles']),
             'bundle_bytes':sum(row['bytes'] for row in manifest['bundles']),
             'bundles':manifest['bundles']}
 
@@ -32,5 +33,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('baseline', type=Path)
     parser.add_argument('--shipping', type=Path, required=True)
+    parser.add_argument('--arch', choices=('x86_64', 'aarch64'))
     args = parser.parse_args()
-    print(json.dumps(admit(args.baseline, args.shipping), sort_keys=True))
+    print(json.dumps(admit(args.baseline, args.shipping, args.arch), sort_keys=True))

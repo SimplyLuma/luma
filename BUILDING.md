@@ -56,15 +56,21 @@ scripts/packages/build-prairie-core-apps.sh
 
 Flatpak app definitions live in `packaging/flatpak/apps/`; platform/SDK definitions live in `packaging/flatpak/runtime/`. `scripts/depot/` contains their source preparation, build, verification, and publication tooling. Use the specific manifest's declared sources and permission contract. Publication requires separate authorized signing and repository configuration; compiling an application does not publish it.
 
+Run runtime assembly in the dedicated tools container. RPM installation into an alternate root still runs package scriptlets; it must not modify the running build host's SELinux policy. Keep unsigned native build workers separate from the networkless signing container, and budget memory for both the host-side input verifier and the signer.
+
 ## Viola's external engine dependency
 
-`src/external/viola/chromium-linux/appkit-spike/` contains the native host and Application Kit integration. The native35 package builder retains the separately built native30 browser engine. `scripts/packages/build-viola-browser.sh` requires `LUMA_VIOLA_ENGINE_ARCHIVE` to identify that archive and validates this exact SHA-256:
+`src/external/viola/chromium-linux/appkit-spike/` contains the shared native host and Application Kit integration. `scripts/packages/build-viola-browser.sh` supports both `x86_64` and `aarch64`; `LUMA_TARGET_ARCHITECTURE` selects the target and defaults to the builder's machine architecture. Each architecture has its own admitted engine archive, release and SHA-256 in that script.
 
-```text
-2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028
+Run on a builder for the target architecture and supply its matching engine archive, for example:
+
+```sh
+LUMA_TARGET_ARCHITECTURE=aarch64 \
+LUMA_VIOLA_ENGINE_ARCHIVE=/path/to/admitted-aarch64-engine.tar.zst \
+scripts/packages/build-viola-browser.sh
 ```
 
-The current builder accepts x86_64 only. This repository is not a complete Chromium/browser-engine source checkout. The matching engine source, its upstream licenses, and its build recipe must be obtained separately; an arbitrary Chromium binary cannot substitute for the admitted archive. Do not infer an ARM Viola build from the shared native platform's AArch64 support.
+This repository is not a complete Chromium/browser-engine source checkout. The matching engine source, its upstream licenses, and its build recipe must be obtained separately; an arbitrary Chromium binary cannot substitute for the admitted archive. Package builds and source checks do not establish successful native rendering; qualify the resulting browser in the target desktop environment before release.
 
 ## Desktop images and installation media
 
@@ -95,6 +101,29 @@ scripts/os/build-staff-media.sh --atlas-source YOUR_ATLAS_SOURCE \
 `--test-candidate` produces test media; it does not declare a release ready. Retain the build's source identity, package manifest, SBOM, provenance, and qualification results. Dirty development inputs are explicitly marked and refused by normal publication paths.
 
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
+
+## Desktop architectures
+
+Desktop source changes target both `x86_64` and `aarch64`. The ARM desktop
+bring-up uses the same source versions and release requirements as x86;
+existing phone preview pins do not establish desktop ARM parity.
+
+```sh
+python3 scripts/os/lib/desktop_target.py --arch aarch64 plan
+python3 scripts/os/preflight-desktop.py --arch aarch64 --package-dir YOUR_RPM_DIRECTORY
+```
+
+The normal image, package-pool and Atlas media entry points accept
+`--arch x86_64|aarch64`. Atlas uses Fedora’s architecture-specific UEFI boot
+chain and an unmodified, checksum-pinned Fedora kernel matching the payload.
+Its build host must execute the selected architecture natively or through
+registered binfmt emulation; x86 remains the default.
+Offline app inputs must match the selected architecture. A complete ARM image
+also needs every resolved native package, a signed ARM app baseline, installer
+media and actual boot/install/update qualification; the first architecture
+checks and package matrix do not establish those results. See
+[ARM desktop and device integration](docs/design/arm-desktop.md) for the
+shared-source rules, upstream kernel policy and Imager handoff requirements.
 
 ## Handheld profiles
 
@@ -148,3 +177,54 @@ from that fixture directory only. Overlay layers can expose different device
 IDs for directories and files; the safety checks intentionally reject
 cross-device traversal. Keep those guards enabled rather than changing
 expected results to fit the container's overlay or shared-drive permissions.
+
+The explicit `arm-preview` desktop profile is available only for `aarch64`.
+Select it with `--profile arm-preview` on the desktop preflight, package collector
+and image builder, or set `LUMA_OS_PROFILE=arm-preview`. It uses the same source,
+Fedora kernel, package checks and signed application baseline as the full desktop.
+Android applications, Windows applications and casting are unavailable in this
+preview; their engine/provider packages are excluded. Relay, the application
+installer and the rest of the shared application baseline remain selected.
+
+The default profile is `full` for both architectures. The preview never changes
+that default or bypasses first-party bundle admission or image signing. Every
+new image records `/usr/share/luma/desktop-capabilities.json` and its profile;
+composition and desktop smoke checks reject excluded providers that reappear
+through dependency resolution.
+
+Desktop delivery shares one canonical OSTree repository, object store and signed
+summary for both architectures. The normal publication workflow must import ARM
+candidates into that shared repository; ARM publication refuses a repository
+without its existing x86 desktop refs, and publication serializes shared summary
+updates. Other channel/architecture refs are checked for changes afterward.
+
+Architecture-specific metadata uses `luma/releases/aarch64/<version>` and
+`luma/channels/aarch64/<channel>.json` inside that repository. ARM media and indexes
+use `/media/aarch64/<channel>/`, and signed graphs use `/os/graph/aarch64/`.
+Existing x86 metadata, media and graph paths stay unchanged. Graph signing accepts
+`--arch`; sealed approved-refresh configurations may declare `architecture` and
+`profile` (their defaults remain `x86_64` and `full`). A new sealed state and normal
+publication approval are required before deploying any refresh configuration.
+
+A native builder without release keys can prepare an OS export with
+`scripts/os/export-ostree.sh --build-id ID --prepare-only`. This runs the normal
+container import, candidate creation and image metadata/mode verification. It
+writes `export-prepared.json` with an explicit unsigned result and hashes of the
+build evidence. It does not write `export.env`, move a channel ref, sign anything
+or qualify the image.
+
+Transfer the build evidence named in that receipt and both recorded commits
+from the native candidate repository to the authorized signing host. Record the
+receipt SHA256, source revision and image ID through the authenticated builder
+connection. Keep incoming evidence root owned and unwritable by other accounts.
+The signing host runs `scripts/os/sign-prepared-export.sh --build-id ID
+--prepared-repo REPO --receipt-sha256 SHA256 --source-revision COMMIT --image-id
+IMAGE_ID`. It validates those identities, the current channel parent, actual
+commit metadata/package inventory and the existing image metadata repairs
+before the normal GPG signing and signed summary steps create `export.env`.
+Release keys and passphrases remain on the authorized signing infrastructure.
+Return the signed candidate to the native test host for installer, boot and
+update qualification; signing alone does not authorize publication.
+
+The Prairie icon theme produces a noarch RPM on either native Fedora builder.
+Build it once and reuse the same RPM for both desktop architectures.

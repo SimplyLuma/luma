@@ -52,8 +52,36 @@ class GateChecksRevisionTests(unittest.TestCase):
         self.assertFalse(result["candidate_payload_changed"])
         self.assertFalse(result["phase_reuse"])
 
+    def test_keyring_fixture_closure_is_allowed(self):
+        paths = ['scripts/os/verify-media.sh', 'tests/os/gate/browser-opens.sh',
+                 'tests/os/gate/browser-fixture-keyring.py',
+                 'tests/unit/test_browser_fixture_keyring.py']
+        for path in paths: self.write(path, 'fixture setup\n')
+        result = MODULE.admit(self.repo, self.source, self.commit())
+        self.assertEqual(result['changed_paths'], sorted(paths))
+
+    def test_keyring_fixture_does_not_admit_unrelated_ci(self):
+        self.write('tests/os/gate/browser-fixture-keyring.py', 'fixture setup\n')
+        self.write('.github/workflows/native-desktop.yml', 'changed CI\n')
+        with self.assertRaisesRegex(ValueError, 'outside gate fixtures'):
+            MODULE.admit(self.repo, self.source, self.commit())
+
     def test_product_change_rejected(self):
         self.write("src/app.py", "different production code\n")
+        with self.assertRaisesRegex(ValueError, "outside gate fixtures"):
+            MODULE.admit(self.repo, self.source, self.commit())
+
+    def test_desktop_smoke_fixture_correction_is_allowed(self):
+        self.write("tests/smoke/desktop.sh", "architecture-aware fixture\n")
+        checks = self.commit()
+        result = MODULE.admit(self.repo, self.source, checks)
+        self.assertEqual(result["changed_paths"], ["tests/smoke/desktop.sh"])
+        self.assertFalse(result["candidate_payload_changed"])
+        self.assertFalse(result["phase_reuse"])
+
+    def test_desktop_smoke_cannot_hide_changed_product_pins(self):
+        self.write("tests/smoke/desktop.sh", "architecture-aware fixture\n")
+        self.write("config/desktop/inputs.env", "different product pins\n")
         with self.assertRaisesRegex(ValueError, "outside gate fixtures"):
             MODULE.admit(self.repo, self.source, self.commit())
 

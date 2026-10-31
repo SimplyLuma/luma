@@ -7,7 +7,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-for tool in cpio mktemp podman rpm2cpio sha256sum; do
+for tool in cpio curl mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'error: required RPM build tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -41,13 +41,8 @@ output_dir="$repo_root/build/packages/libadwaita"
 mkdir -p "$cache_dir" "$output_dir"
 
 srpm="$cache_dir/$LIBADWAITA_SRPM"
-if [ ! -f "$srpm" ]; then
-  command -v dnf5 >/dev/null 2>&1 || {
-    printf 'error: dnf5 is required when the admitted libadwaita SRPM is not cached\n' >&2
-    exit 1
-  }
-  dnf5 download --source --destdir "$cache_dir" "libadwaita-1.9.3-1.fc44"
-fi
+bash "$repo_root/scripts/packages/fetch-source-rpm.sh" \
+  "$srpm" "$LIBADWAITA_SRPM_SHA256" "$LIBADWAITA_SRPM_URL"
 
 printf '%s  %s\n' "$LIBADWAITA_SRPM_SHA256" "$srpm" |
   sha256sum --check --status || {
@@ -175,11 +170,27 @@ install -m 0644 "$repo_root/tests/toolkit-native/generic-client.py" "$rpmbuild_d
 luma_assert_spec_release "$rpmbuild_dir/SPECS/libadwaita.spec" \
   "$LIBADWAITA_LUMA_RELEASE" || exit 1
 
+# Match the shared toolkit provider to this target and release. A stock
+# builder GTK would make the generic-client surface checks measure another UI.
+gtk_nevra=${GTK4_NEVRA%.x86_64}.$architecture
+gtk_dir="$repo_root/build/packages/gtk4/RPMS/$architecture"
+[ -f "$gtk_dir/$gtk_nevra.rpm" ] || {
+  printf 'error: build the matching GTK4 provider first: %s\n' "$gtk_nevra" >&2
+  exit 1
+}
+install -d -m 0755 "$rpmbuild_dir/luma-toolkit"
+for built in "$gtk_dir"/gtk4-*.rpm; do
+  [ -f "$built" ] || continue
+  case "$(basename "$built")" in *-debuginfo-*|*-debugsource-*) continue ;; esac
+  install -m 0644 "$built" "$rpmbuild_dir/luma-toolkit/"
+done
+
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
   "$builder_container" '
     set -euo pipefail
     dnf5 -y install rpm-build dnf5-plugins
+    dnf5 -y install ./luma-toolkit/gtk4-*.rpm
     dnf5 -y builddep SPECS/libadwaita.spec
     rpmbuild -ba --noclean --define "_smp_build_ncpus 4" --define "_topdir $PWD" SPECS/libadwaita.spec
 

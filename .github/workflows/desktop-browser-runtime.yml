@@ -1,0 +1,69 @@
+name: Native ARM browser runtime probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      signed_input_url:
+        description: Exact public selected signed Flatpak input archive URL (optional)
+        type: string
+        default: ''
+      signed_input_sha256:
+        description: Full SHA256 of the selected signed input archive
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      signed_input_url:
+        type: string
+        default: ''
+      signed_input_sha256:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-browser-aarch64
+          run-id: 40227053792
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/browser
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-toolkit-aarch64
+          run-id: 39857373641
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/toolkit
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-apk-metadata-aarch64
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/apk-metadata
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-appimage-aarch64
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/runtime-inputs/appimage
+      - name: Probe the unchanged native RPM or selected signed Flatpak
+        env:
+          BROWSER_GATE_SIGNED_INPUT_URL: ${{ inputs.signed_input_url }}
+          BROWSER_GATE_SIGNED_INPUT_SHA256: ${{ inputs.signed_input_sha256 }}
+        run: bash scripts/os/run-native-browser-ci-container.sh
+      - name: Retain actual runtime evidence on either outcome
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-browser-runtime-aarch64
+          path: build/browser-runtime-evidence/
+          if-no-files-found: warn
+          retention-days: 14

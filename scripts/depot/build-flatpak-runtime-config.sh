@@ -9,6 +9,13 @@ set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 . "$depot_repo_root/config/desktop/inputs.env"
 
+case "$DEPOT_ARCH" in
+  x86_64) builder=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) depot_die "unsupported runtime config architecture: $DEPOT_ARCH" ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$DEPOT_ARCH
+
 source_dir="$depot_repo_root/packaging/flatpak/runtime/flatpak-runtime-config"
 output_dir="$depot_repo_root/build/packages/flatpak-runtime-config"
 rm -rf "$output_dir"
@@ -18,7 +25,7 @@ install -m 0644 "$source_dir/flatpak-runtime-config.spec" "$rpmbuild_dir/SPECS/"
 find "$source_dir" -maxdepth 1 -type f ! -name '*.spec' -exec install -m 0644 -t "$rpmbuild_dir/SOURCES" {} +
 
 "$depot_repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" \
-  "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$builder" '
     set -euo pipefail
     dnf5 -q -y install rpm-build python3 python3-rpm-macros >/dev/null
     rpmbuild -bb --define "_topdir $PWD" SPECS/flatpak-runtime-config.spec

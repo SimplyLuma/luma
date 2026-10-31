@@ -18,14 +18,14 @@ exceptions="$depot_repo_root/packaging/flatpak/lint-exceptions.json"
 scratch="$DEPOT_ROOT/work/lint/$app_id"
 depot_in_tools install -d "$scratch"
 
-depot_in_tools bash -s -- "$app_id" "$manifest" "$build_dir" "$repo" "$out" "$exceptions" "$scratch" <<'SH'
+depot_in_tools bash -s -- "$app_id" "$manifest" "$build_dir" "$repo" "$out" "$exceptions" "$scratch" "$DEPOT_TOOLS_ARCH" <<'SH'
 set -uo pipefail
-app_id=$1 manifest=$2 build_dir=$3 repo=$4 out=$5 exceptions=$6 scratch=$7
+app_id=$1 manifest=$2 build_dir=$3 repo=$4 out=$5 exceptions=$6 scratch=$7 tools_arch=$8
 # Builder initializes its own working state. Keep that state outside the
 # separately sealed producer inputs, without hiding new source members.
 cd "$scratch"
 lint() {
-  flatpak run --user --command=flatpak-builder-lint \
+  flatpak run --user --arch="$tools_arch" --command=flatpak-builder-lint \
     --filesystem="$(dirname "$manifest")" --filesystem="$build_dir" \
     --filesystem="$repo" --filesystem="$(dirname "$exceptions")" --filesystem="$scratch" \
     org.flatpak.Builder --exceptions --user-exceptions "$exceptions" --appid "$app_id" "$@"

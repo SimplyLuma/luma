@@ -39,6 +39,18 @@
 .viola-address button { min-width: 28px; min-height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; border-radius: 8px; }
 .viola-address button.lumaui-selected { color: @luma_accent; }
 .viola-address.secure entry image.left { color: @luma_green; }
+/* A deliberate, narrow control at the frame edge leaves bottom web inputs
+ * accessible without revealing the whole bar on ordinary pointer movement. */
+.viola-bar-handle {
+  min-width: 84px; min-height: 14px; padding: 0 6px;
+  border: 1px solid @luma_line; border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: @luma_content; color: @luma_muted;
+  box-shadow: 0 -1px 4px @luma_island_shadow;
+}
+.viola-bar-handle image { -gtk-icon-size: 10px; }
+.viola-bar-handle:hover { background: @luma_hover; color: @luma_ink; }
+.viola-bar-handle:focus-visible { outline: 2px solid @luma_focus_ring; }
 .viola-footer { padding: 4px; }
 .viola-notice-header { min-height: 22px; }
 .viola-notice-heading { font-size: 9px; font-weight: 700; letter-spacing: .09em; color: @luma_muted; }

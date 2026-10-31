@@ -11356,7 +11356,7 @@
     "packaging/rpm/luma-disks.spec": [
       "MPL-2.0"
     ],
-    "packaging/rpm/luma-displays.spec": [
+    "packaging/rpm/luma-display-config.spec": [
       "Apache-2.0"
     ],
     "packaging/rpm/luma-energy.spec": [

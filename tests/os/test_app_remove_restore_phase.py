@@ -2,7 +2,7 @@
 """Phase controls for the real removal gate's non-root readability query.
 
 Only account selection and child-command construction are isolated here.
-Actual removal, GPG restore and 27-ref readability remain VM gates.
+Actual removal, GPG restore and signed-baseline readability remain VM gates.
 """
 from pathlib import Path
 import ast
@@ -18,8 +18,8 @@ SCRIPT = ROOT / 'tests/os/gate/app-remove-restore.py'
 def controls(path=SCRIPT):
     tree = ast.parse(path.read_text())
     functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
-                 and node.name in ('require', 'readability_account', 'ordinary_refs')]
-    assert len(functions) == 3
+                 and node.name in ('require', 'expected_identities', 'readability_account', 'ordinary_refs')]
+    assert len(functions) == 4
     namespace = {'Path': Path, 'pwd': types.SimpleNamespace(), 'json': json,
                  'os': types.SimpleNamespace(), 'tempfile': types.SimpleNamespace(),
                  'shlex': __import__('shlex')}
@@ -125,6 +125,29 @@ class RemovalReadabilityPhaseTests(unittest.TestCase):
         self.assertIn("require(readable == before,", source)
         self.assertIn("ordinary = readability_account(args.pre_account)", source)
 
+
+
+
+
+class SignedBaselineIdentityTests(unittest.TestCase):
+    def test_manifest_controls_the_complete_expected_inventory(self):
+        expected_identities = controls()['expected_identities']
+        for count in (26, 27):
+            rows = [{'ref': f'app/org.example.App{i}/aarch64/beta',
+                     'commit': f'{i:064x}'} for i in range(count)]
+            result = expected_identities({'bundles': rows})
+            self.assertEqual(len(result), count)
+            self.assertEqual(result[rows[-1]['ref']],
+                             {'commit': rows[-1]['commit'], 'origin': 'luma'})
+
+    def test_duplicate_signed_refs_are_rejected(self):
+        row = {'ref': 'app/org.example.App/aarch64/beta', 'commit': 'a'*64}
+        with self.assertRaisesRegex(ValueError, 'duplicate refs'):
+            controls()['expected_identities']({'bundles': [row, row]})
+
+    def test_empty_signed_inventory_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'empty'):
+            controls()['expected_identities']({'bundles': []})
 
 if __name__ == '__main__':
     unittest.main()

@@ -8,6 +8,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "luma-viewer",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=min-host-installer=62",
     "--metadata=X-Luma=app-data-schema=viewer-v1",
     "--share=ipc",

@@ -2,7 +2,7 @@
 # Private experiment only. No composed pin or enabled service until Class D gates.
 Name:           luma-continuity
 Version:        0.1.0
-Release:        0.65.experiment%{?dist}
+Release:        0.66.experiment%{?dist}
 Summary:        Luma Connect experimental native device boundary
 License:        Apache-2.0
 BuildArch:      noarch
@@ -127,6 +127,9 @@ node shell/test-notification-export.mjs
 %{_datadir}/icons/hicolor/scalable/actions/luma-connect-*-symbolic.svg
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.66.experiment
+- Package the October 26 shared source updates.
+
 * Fri Oct 09 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.65.experiment
 - Explicit sign-in codes replace existing registrations only after acceptance;
   preserve identity and data when enrollment fails, and report sync honestly.

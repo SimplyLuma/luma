@@ -8,7 +8,9 @@ ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
 [Service]
 Type=oneshot
 ExecStart=/usr/libexec/luma-app-baseline
-UMask=0077
+# System Flatpak content must be readable by ordinary application users.
+# StateDirectory and completion records retain their explicit private modes.
+UMask=0022
 PrivateTmp=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes
@@ -18,7 +20,9 @@ ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
 StateDirectory=luma/app-baseline
 StateDirectoryMode=0700
 RemainAfterExit=yes
-TimeoutStartSec=600
+# Match the packaged baseline owner: a slow first import must not prevent GDM
+# from starting while authenticated offline application bundles are progressing.
+TimeoutStartSec=30min
 
 [Install]
 WantedBy=graphical.target

@@ -30,27 +30,54 @@
 set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 . "$(dirname -- "$0")/lib/common.sh"
+. "$(dirname -- "$0")/lib/devices.sh"
 
 channel=
 dry_run=0
 token_file="$LUMA_OS_SECRETS/hub-graph-service-token"
 source_file=
-graph_dir="$LUMA_OS_ROOT/publish/graph"
+hardware_target=
+arch_explicit=0
+graph_dir=
 sync=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; arch_explicit=1; shift 2 ;;
+    --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
     --channel) channel=${2:?}; shift 2 ;;
+    --hardware-target) hardware_target=${2:?}; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
     --token-file) token_file=${2:?}; shift 2 ;;
     --source) source_file=$(realpath "${2:?}"); shift 2 ;;
     --graph-dir) graph_dir=${2:?}; shift 2 ;;
     --no-sync) sync=0; shift ;;
     --sync) sync=1; shift ;;
-    *) printf 'usage: %s --channel C [--dry-run] [--token-file F] [--source FILE] [--graph-dir DIR] [--no-sync | --sync]\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s --channel C [--arch x86_64|aarch64] [--profile full|arm-preview] [--hardware-target TARGET --source FILE] [--dry-run] [--token-file F] [--source FILE] [--graph-dir DIR] [--no-sync | --sync]\n' "$0" >&2; exit 2 ;;
   esac
 done
+luma_os_select_architecture "$LUMA_OS_ARCH"
+graph_dir=${graph_dir:-$LUMA_OS_ROOT/publish/graph}
 ref=$(luma_os_channel_ref "$channel")
-luma_os_require_tools curl python3 install flock
+target_args=()
+legacy_graph_dir=
+if [ -n "$hardware_target" ]; then
+  device_arch=$(luma_os_device_field "$hardware_target" arch)
+  [ "$arch_explicit" -eq 1 ] || luma_os_select_architecture "$device_arch"
+  [ "$device_arch" = "$LUMA_OS_ARCH" ] ||
+    luma_os_die 'hardware target and selected architecture disagree'
+  [ -n "$source_file" ] || luma_os_die 'hardware-targeted signing requires --source; desktop Hub graphs are not device graphs'
+  ref=$(luma_os_device_ref "$hardware_target" "$channel")
+  target_args=(--hardware-target "$hardware_target")
+fi
+# --graph-dir is always the unscoped root. Every caller uses this same helper
+# to locate the files the signer actually installs, including x86 aliases.
+graph_paths=$(python3 "$luma_os_repo_root/scripts/os/lib/graph_bucket.py" \
+  --arch "$LUMA_OS_ARCH" --hardware-target "$hardware_target" "$graph_dir") || \
+  luma_os_die 'invalid graph bucket'
+mapfile -t graph_dirs <<<"$graph_paths"
+graph_dir=${graph_dirs[0]}
+legacy_graph_dir=${graph_dirs[1]:-}
+luma_os_require_tools curl python3 install flock cmp
 minisign_dir="$LUMA_OS_KEYS/update-graph-minisign"
 password_file="$LUMA_OS_SECRETS/update-graph-minisign.password"
 
@@ -113,8 +140,8 @@ luma_os_graph_tools() {
 
 # Validation and the previous-generation comparison belong to one transaction.
 # Never let two timers validate against the same head and replace one another.
-install -d -m 0755 "$LUMA_OS_ROOT/locks"
-exec 8>"$LUMA_OS_ROOT/locks/sign-graph-$channel.lock"
+install -d -m 0755 "$(luma_os_arch_path "$LUMA_OS_ROOT/locks")"
+exec 8>"$(luma_os_arch_path "$LUMA_OS_ROOT/locks")/sign-graph-$channel.lock"
 flock -w 60 8 || luma_os_die "another $channel graph signer holds the lock"
 
 # 1. Fetch.
@@ -153,28 +180,46 @@ luma_os_log "$channel graph fetched (Hub generated_at ${hub_generated:-missing})
 
 # 2. Validate against what is actually published.
 repo=$(luma_os_channel_repo "$channel")
-python3 - "$repo" "$channel" >"$work/releases.json" <<'PY'
+python3 - "$repo" "$channel" "$LUMA_OS_ARCH" "$luma_os_repo_root/scripts/os/lib" "$hardware_target" "$ref" >"$work/releases.json" <<'PY'
 import glob, json, os, sys
-repo, channel = sys.argv[1:3]
+repo, channel, architecture, lib, target, ref = sys.argv[1:7]
+sys.path.insert(0, lib)
+from graph_bucket import GraphBucket
+bucket = GraphBucket(architecture, target)
+releases_root = str(bucket.releases(repo))
 releases = {}
-for path in glob.glob(os.path.join(repo, "luma", "releases", "*", "manifest.json")):
+for path in glob.glob(os.path.join(releases_root, "*", "manifest.json")):
     manifest = json.load(open(path, encoding="utf-8"))
     commit = manifest["commit"]
     # Retention may have pruned an old release's commit: a graph must not
     # offer what the repository no longer serves.
     present = os.path.exists(os.path.join(repo, "objects", commit[:2], commit[2:] + ".commit"))
     if manifest.get("channel") == channel and present:
+        bucket.validate_manifest(manifest)
         releases[commit] = manifest["version"]
 json.dump(releases, sys.stdout)
 PY
 previous_args=()
-if [ -s "$graph_dir/$channel.json" ]; then
+previous="$graph_dir/$channel.json"
+[ -s "$previous" ] || [ -z "$legacy_graph_dir" ] || previous="$legacy_graph_dir/$channel.json"
+installed=1
+for dir in "${graph_dirs[@]}"; do
+  cmp -s "$previous" "$dir/$channel.json" &&
+    cmp -s "$previous.minisig" "$dir/$channel.json.minisig" || installed=0
+done
+if [ -s "$previous" ]; then
+  python3 - "$previous" "$channel" "$LUMA_OS_ARCH" "$hardware_target" <<'PYPREVIOUS' || luma_os_die 'previous graph belongs to another channel/architecture'
+import json, sys
+value = json.load(open(sys.argv[1]))
+assert value['channel'] == sys.argv[2] and value['arch'] == sys.argv[3]
+assert value.get('hardware_target', '') == sys.argv[4]
+PYPREVIOUS
   # A recent unsigned or altered staging file cannot suppress a refresh. Verify
   # the actual previous bytes before trusting their timestamp or comparison.
-  [ -s "$graph_dir/$channel.json.minisig" ] || luma_os_die 'previous graph has no signature'
-  luma_os_graph_tools verify "$graph_dir" \
+  [ -s "$previous.minisig" ] || luma_os_die 'previous graph has no signature'
+  luma_os_graph_tools verify "$(dirname -- "$previous")" \
     minisign -V -p "$minisign_dir/luma-update-graph.pub" \
-    -m "$graph_dir/$channel.json" -x "$graph_dir/$channel.json.minisig" >/dev/null ||
+    -m "$previous" -x "$previous.minisig" >/dev/null ||
     luma_os_die 'previous graph signature rejected; nothing replaced'
   # Unchanged apart from generated_at, and signed less than
   # LUMA_OS_GRAPH_RESIGN_HOURS ago: nothing to do. Otherwise the graph is
@@ -188,16 +233,16 @@ new, old = (json.load(open(path, encoding="utf-8")) for path in sys.argv[1:3])
 signed = datetime.strptime(old["generated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 same = {k: v for k, v in new.items() if k != "generated_at"} == {k: v for k, v in old.items() if k != "generated_at"}
 recent = datetime.now(timezone.utc) - signed < timedelta(hours=float(sys.argv[3]))
-sys.exit(0 if same and recent else 1)' "$work/graph.json" "$graph_dir/$channel.json" "$LUMA_OS_GRAPH_RESIGN_HOURS"; then
+sys.exit(0 if same and recent else 1)' "$work/graph.json" "$previous" "$LUMA_OS_GRAPH_RESIGN_HOURS" && [ "$installed" -eq 1 ]; then
     luma_os_log "the $channel graph is unchanged and was signed less than $LUMA_OS_GRAPH_RESIGN_HOURS hours ago; nothing to do"
     exit 0
   fi
-  previous_args=(--previous "$graph_dir/$channel.json")
+  previous_args=(--previous "$previous")
 fi
 if ! python3 "$luma_os_repo_root/scripts/os/lib/update_graph.py" validate \
     --graph "$work/graph.json" --channel "$channel" --arch "$LUMA_OS_ARCH" \
     --releases "$work/releases.json" --max-age-days "$LUMA_OS_GRAPH_MAX_AGE_DAYS" \
-    "${previous_args[@]}" >"$work/problems.txt"; then
+    "${target_args[@]}" "${previous_args[@]}" >"$work/problems.txt"; then
   sed 's/^/  /' "$work/problems.txt" >&2
   luma_os_die "the $channel graph failed validation; nothing was signed"
 fi
@@ -206,7 +251,9 @@ fi
 generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generated_at"])' "$work/graph.json")
 python3 -c 'import json,sys; g=json.load(open(sys.argv[1])); open(sys.argv[2],"w").write(json.dumps(g, indent=2, sort_keys=True)+"\n")' \
   "$work/graph.json" "$work/$channel.json"
-comment="luma-update-graph channel=$channel arch=$LUMA_OS_ARCH generated_at=$generated key=$LUMA_OS_GRAPH_KEY_ID"
+comment=$(python3 "$luma_os_repo_root/scripts/os/lib/graph_bucket.py" --arch "$LUMA_OS_ARCH" \
+  --hardware-target "$hardware_target" --comment "$work/graph.json" --key-id "$LUMA_OS_GRAPH_KEY_ID") || \
+  luma_os_die 'graph signing identity differs'
 [ -r "$password_file" ] || luma_os_die "update-graph key password is unavailable: $password_file"
 luma_os_graph_tools sign "$work" sh -c '
   set -eu
@@ -223,12 +270,14 @@ if [ "$dry_run" -eq 1 ]; then
 fi
 
 # 4. Install atomically, then serve and upload.
-install -d -m 0755 "$graph_dir"
-install -m 0644 "$work/$channel.json" "$graph_dir/.$channel.json.new"
-install -m 0644 "$work/$channel.json.minisig" "$graph_dir/.$channel.json.minisig.new"
-mv -f "$graph_dir/.$channel.json.minisig.new" "$graph_dir/$channel.json.minisig"
-mv -f "$graph_dir/.$channel.json.new" "$graph_dir/$channel.json"
-luma_os_log "signed $channel graph generated $generated installed in $graph_dir"
+for dir in "${graph_dirs[@]}"; do
+  install -d -m 0755 "$dir"
+  install -m 0644 "$work/$channel.json" "$dir/.$channel.json.new"
+  install -m 0644 "$work/$channel.json.minisig" "$dir/.$channel.json.minisig.new"
+  mv -f "$dir/.$channel.json.minisig.new" "$dir/$channel.json.minisig"
+  mv -f "$dir/.$channel.json.new" "$dir/$channel.json"
+  luma_os_log "signed $channel graph generated $generated installed in $dir"
+done
 if [ "$sync" -eq 1 ]; then
   "$luma_os_repo_root/scripts/os/stage-webroot.sh"
   "$luma_os_repo_root/scripts/os/sync-to-cdn.sh" --apply --only graph || {

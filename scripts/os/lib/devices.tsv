@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phone hardware targets the OS pipeline can export, publish and promote.
+# Read by devices.sh and devices.py; an unlisted target is refused.
+#
+# hardware_target  ref slug under luma/<major>/<arch>/
+# arch             the only build architecture admitted for the target
+# import           oci: OCI image through the container importer;
+#                  ostree: an existing OSTree commit (export-ostree.sh --ostree-repo)
+# base_kind        typed provenance producer (provenance.py base-args --kind)
+# required_labels  repository-relative SELinux label list, or - for a target
+#                  without SELinux (skips the label and policy verification)
+# image_id         os-release IMAGE_ID of the target's images (release_identity.py)
+fairphone,fp6	fairphone-fp6	aarch64	oci	rootfs	config/mobile/fp6-required-labels.tsv	luma-mobile-fp6
+unihertz,titan2e	unihertz-titan2e	aarch64	ostree	ostree	-	luma-mobile-titan2e

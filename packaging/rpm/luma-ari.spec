@@ -34,7 +34,7 @@ Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
 Requires:       luma-developer-platform >= 0.1.0-1.luma.100.creator20261007.1
 Requires:       luma-ari-runtime >= 0.4.0
-Requires:       luma-displays
+Requires:       luma-display-config
 Requires:       dbus-common
 Requires:       bubblewrap
 Requires:       luma-developer-platform-sdk >= 0.1.0-1.luma.100.creator20261007.1
@@ -99,6 +99,9 @@ PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" 
 - Add ChatGPT plan sign-in, account management and model selection.
 - Add hosted search requests, linked sources, effort controls and model family pages.
 - Connect application actions, isolated project builds and reviewed software installation and removal.
+
+* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.20.creator20261024.1
+- Use the headless display backend instead of the retired Displays application.
 
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19.creator20261019.3
 - Export the assistant interface before accepting activated requests.

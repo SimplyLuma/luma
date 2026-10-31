@@ -272,7 +272,8 @@
     {
       "app_id": "org.projectluma.Ari",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -875,7 +876,8 @@
     {
       "app_id": "org.projectluma.Camera",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -1439,7 +1441,8 @@
     {
       "app_id": "org.projectluma.Connect",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -1771,58 +1774,6 @@
       "visibility": "public"
     },
     {
-      "app_id": "org.projectluma.Displays",
-      "architectures": [
-        "x86_64",
-        "aarch64"
-      ],
-      "backend": "rpm",
-      "branch": "stable",
-      "categories": [
-        "utilities"
-      ],
-      "channel": {
-        "kind": "luma",
-        "title": "Luma",
-        "publisher_verified": true
-      },
-      "description": "When you plug in displays together for the first time, Displays asks how you want to use them: extend, mirror, or just one.\n\nDrag them to match your desk and set rotation, refresh rate and scale while you see the result. Every arrangement you keep is remembered and can be named, like Home or Office.",
-      "developer": {
-        "id": "dev_projectluma",
-        "name": "Project Luma",
-        "verified": "organization"
-      },
-      "distribution": "publisher",
-      "homepage": "https://simplyluma.com/apps/displays",
-      "icon": {
-        "url": "https://dl.simplyluma.com/media/listings/displays/icon-512-d3c2c8423eeaf2f3.png",
-        "sha256": "d3c2c8423eeaf2f333764efa52c2fd2fc226ce03f47caac42e0c9f9322c8a629",
-        "width": 512,
-        "height": 512
-      },
-      "id": "displays",
-      "license": "Apache-2.0",
-      "name": "Displays",
-      "preinstalled_on_luma": true,
-      "qualification": "pending",
-      "qualification_reason": "Included with Luma.",
-      "reference_url": "https://simplyluma.com/apps/displays",
-      "repository": "luma",
-      "sign_in": "none",
-      "source_id": "luma-displays",
-      "sources": {
-        "luma_system": {
-          "package": "luma-displays",
-          "desktop_id": "org.projectluma.Displays.desktop",
-          "removable": false
-        }
-      },
-      "summary": "Arrange your displays and name the arrangements you use.",
-      "system_tool": true,
-      "tier": "luma",
-      "visibility": "public"
-    },
-    {
       "age_rating": "age:15",
       "app_id": "com.dropbox.Client",
       "architectures": [
@@ -2061,7 +2012,8 @@
     {
       "app_id": "org.gnome.Nautilus",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -3271,7 +3223,8 @@
     {
       "app_id": "io.luma.Monitor",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -4148,7 +4101,8 @@
     {
       "app_id": "org.projectluma.Photos",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",
@@ -6292,7 +6246,8 @@
     {
       "app_id": "com.rhyme.viola",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "backend": "flatpak",
       "branch": "beta",

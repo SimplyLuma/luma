@@ -217,3 +217,14 @@
     border-color: rgba(255,255,255,.16);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,.16), 0 2px 6px rgba(0,0,0,.18), 0 8px 24px -4px rgba(0,0,0,.24);
 }
+
+/* The experience control shares the surrounding secondary text color. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-footer-mode .quick-toggle-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-footer-mode .quick-toggle-title,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-footer-mode .quick-toggle-menu-button { color: rgba(230, 233, 240, .62); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-footer-mode .quick-toggle-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-footer-mode .quick-toggle-title,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-footer-mode .quick-toggle-menu-button,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-title,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-menu-button { color: rgba(32, 38, 49, .62); }

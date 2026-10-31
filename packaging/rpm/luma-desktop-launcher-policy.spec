@@ -1,6 +1,6 @@
 Name:           luma-desktop-launcher-policy
 Version:        0.1.0
-Release:        28.creator20261007.1%{?dist}
+Release:        29.creator20261024.1%{?dist}
 Summary:        Luma desktop launcher visibility policy
 License:        Apache-2.0
 BuildArch:      noarch

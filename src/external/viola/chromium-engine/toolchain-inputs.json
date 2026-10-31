@@ -1,0 +1,45 @@
+{
+  "upstream_base": "2903d8558c752b5a554a1a47b4ea7219ba1a31ef",
+  "source_controls": {
+    "tools/clang/scripts/update.py": {
+      "url": "https://raw.githubusercontent.com/chromium/chromium/2903d8558c752b5a554a1a47b4ea7219ba1a31ef/tools/clang/scripts/update.py",
+      "sha256": "058d57b099c5eb31270534e0e81398d556ba34f808a37929e3d1c7b221e55823",
+      "bytes": 14568
+    },
+    "tools/rust/update_rust.py": {
+      "url": "https://raw.githubusercontent.com/chromium/chromium/2903d8558c752b5a554a1a47b4ea7219ba1a31ef/tools/rust/update_rust.py",
+      "sha256": "7c3bb4d493b34d2d823c054026ac0ddc866414dab96a180076b59a8caad60fef",
+      "bytes": 6084
+    },
+    "DEPS": {
+      "url": "https://raw.githubusercontent.com/chromium/chromium/2903d8558c752b5a554a1a47b4ea7219ba1a31ef/DEPS",
+      "sha256": "06fe80dd66fe9cb19fff30a4b205ea97acd132c77a133800b0897eaef2e2d2cb",
+      "bytes": 191759
+    }
+  },
+  "host": "Linux_x64 cross-compiling target_cpu=arm64; same host tools also support x64 profile",
+  "packages": {
+    "src/third_party/llvm-build/Release+Asserts": {
+      "official_url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64/clang-llvmorg-23-init-19482-g53d18800-1.tar.xz",
+      "deps_object": {
+        "object_name": "Linux_x64/clang-llvmorg-23-init-19482-g53d18800-1.tar.xz",
+        "sha256sum": "e22e06c05fe1657f48f988b15804b8226e691addb00abba5b984a5c99ac98c42",
+        "size_bytes": 59093892,
+        "generation": 1781627382446731,
+        "condition": "(host_os == \"linux\" or checkout_android) and non_git_source"
+      }
+    },
+    "src/third_party/rust-toolchain": {
+      "official_url": "https://commondatastorage.googleapis.com/chromium-browser-clang/Linux_x64/rust-toolchain-b998449636a48e2c4a362809085b600a0174e1f2-2-llvmorg-23-init-19482-g53d18800.tar.xz",
+      "deps_object": {
+        "object_name": "Linux_x64/rust-toolchain-b998449636a48e2c4a362809085b600a0174e1f2-2-llvmorg-23-init-19482-g53d18800.tar.xz",
+        "sha256sum": "88db954bdbaea527bebf832758d6ff8193eb214877b4eef362e97701d64c0b54",
+        "size_bytes": 274790504,
+        "generation": 1782418940816837,
+        "condition": "host_os == \"linux\" and non_git_source"
+      }
+    }
+  },
+  "compiler_revision": "llvmorg-23-init-19482-g53d18800",
+  "rust_revision": "b998449636a48e2c4a362809085b600a0174e1f2"
+}

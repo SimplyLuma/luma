@@ -11,8 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-HIDDEN = {"org.projectluma.Displays.desktop": "org.projectluma.Displays",
-          "org.projectluma.Mods.desktop": "luma-mods",
+HIDDEN = {"org.projectluma.Mods.desktop": "luma-mods",
           "org.projectluma.SoftwareUpdate.desktop": "luma-depot --view updates"}
 VISIBLE = ("org.projectluma.Terminal.desktop", "org.projectluma.Calculator.desktop")
 

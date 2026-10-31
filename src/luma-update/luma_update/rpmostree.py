@@ -204,6 +204,34 @@ class RpmOstree:
         self._run("UpdateDeployment",
                   GLib.Variant("(a{sv}a{sv})", (modifiers, options)), progress, message, cancellable)
 
+    def commit_target_metadata(self, revision: str) -> dict:
+        """Read typed immutable metadata from the fetched exact commit.
+
+        The native sysroot owns the repository location; do not infer it from
+        an origin ref, mirror URL, or working directory.
+        """
+        import re
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{64}", revision):
+            raise TransactionError("update commit identity is invalid")
+        gi.require_version("OSTree", "1.0")
+        from gi.repository import OSTree
+        sysroot = OSTree.Sysroot.new_default()
+        if not sysroot.load(None):
+            raise TransactionError("cannot load the native update sysroot")
+        ok, repo = sysroot.get_repo(None)
+        if not ok:
+            raise TransactionError("cannot read the native update repository")
+        ok, commit, _state = repo.load_commit(revision)
+        if not ok:
+            raise TransactionError("cannot read the fetched update commit")
+        metadata = commit.get_child_value(0)
+        result = {}
+        for key in ("org.projectluma.hardware-target", "org.projectluma.architecture"):
+            value = metadata.lookup_value(key, None)
+            if value is not None:
+                result[key] = value.unpack()
+        return result
+
     def deployment_root(self, deployment: Deployment) -> Path:
         """The deployment's checked-out tree. A staged deployment is written out
         when it is staged; finalization at shutdown only adds the boot entry."""

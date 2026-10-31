@@ -11,5 +11,5 @@ luma-session-0.1.0-1.luma.19.creator20261004.1.fc44.x86_64
 luma-session-instruments-1.0-1.luma.2.fc44.noarch
 sfizz-1.2.3-1.luma.1.fc44.x86_64
 luma-stage-preview-0.1.0-33.creator20261004.1.fc44.x86_64
-luma-tide-0.1.0-2.luma.34.creator20261012.1.fc44.noarch
+luma-tide-0.1.0-2.luma.35.nightly20261026.1.fc44.noarch
 luma-write-0.1.0-1.luma.13.creator20261004.1.fc44.x86_64

@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 36
+%global native_release 37
 # Native release 30's own engine (released already stripped).
 %global engine_release 30
 %global approved_release 20260921-native-30
@@ -29,7 +29,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        14.viola%{viola_build}.native%{native_release}.creator20261008.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261024.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola

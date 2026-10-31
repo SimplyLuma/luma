@@ -284,7 +284,7 @@ import re, sys
 from pathlib import Path
 root = Path(sys.argv[1])
 pinned = set()
-for path in (root / "config/desktop/packages.txt", root / "config/desktop/inputs.env", root / "config/os/media.env", root / "config/depot/packages.txt"):
+for path in (root / "config/desktop/packages.txt", root / "config/desktop/inputs.env", root / "config/os/media.env", root / "config/os/fedora-packages.txt", root / "config/depot/packages.txt"):
     if not path.exists():
         continue
     for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9+._-]*-[^-\s=]+-[^-\s=]+\.(?:x86_64|noarch|aarch64)", path.read_text()):

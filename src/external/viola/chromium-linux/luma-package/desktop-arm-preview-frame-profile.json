@@ -1,0 +1,5 @@
+{
+  "schema": "org.projectluma.viola.native-engine-profile/v1",
+  "role": "desktop-arm-preview",
+  "frame_transport": "shm"
+}

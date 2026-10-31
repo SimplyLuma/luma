@@ -30,7 +30,11 @@ async function launch(url, requirePage) {
     const app=browser();
     if (!app) throw new Error('Shell does not know the canonical browser');
     if (app.get_windows().length) {
-        for (const window of app.get_windows()) window.delete(global.get_current_time());
+        for (const window of app.get_windows()) {
+            if (!window.can_close())
+                throw new Error('unexpected preexisting noncloseable browser window');
+            window.delete(global.get_current_time());
+        }
         if (!await until(()=>app.get_windows().length===0,15000)) throw new Error('browser did not close');
     }
     const launcher=new Gio.SubprocessLauncher({flags:Gio.SubprocessFlags.STDOUT_PIPE|Gio.SubprocessFlags.STDERR_PIPE});
@@ -109,7 +113,19 @@ async function launch(url, requirePage) {
         throw new Error('the browser did not request the unique local page');
     check(requirePage?'signed-browser-loads-requested-page':'xdg-open-https-launches-viola',true,
         JSON.stringify({window_id:window.get_stable_sequence(),app_id:browser().get_id(),url,proof:observed}));
-    window.delete(global.get_current_time());
+    // Native URI popups can be mapped without a WM close operation. Calling
+    // MetaWindow.delete on those windows invokes an absent backend vfunc.
+    // Retire only the Flatpak instance whose identity was proven above.
+    if (window.can_close()) {
+        window.delete(global.get_current_time());
+    } else {
+        const cleanupInstance=observed.record.instance_id;
+        if (typeof cleanupInstance !== 'string' || !/^[0-9]+$/.test(cleanupInstance))
+            throw new Error('invalid proven Flatpak cleanup identity');
+        const ended=await capture(launcher.spawnv(['/usr/bin/flatpak','kill',cleanupInstance]));
+        if (!ended.ok && GLib.file_test(`/proc/${observed.record.pid}`,GLib.FileTest.EXISTS))
+            throw new Error('proven Flatpak instance cleanup failed');
+    }
     if (!await until(()=>!global.get_window_actors().some(actor=>actor.meta_window === window),15000)) throw new Error(`browser did not close after proof: ${JSON.stringify({time:global.get_current_time(),appWindows:app.get_windows().map(w=>({id:w.get_stable_sequence(),title:w.get_title(),pid:w.get_pid(),canClose:w.can_close()})),actors:global.get_window_actors().map(a=>({id:a.meta_window.get_stable_sequence(),title:a.meta_window.get_title()}))})}`);
     // Each URL proof starts a separate disposable Flatpak instance. A closed
     // frame need not stop the app's backend or its GApplication forwarding.

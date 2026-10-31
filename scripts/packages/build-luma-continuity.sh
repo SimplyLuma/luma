@@ -23,15 +23,31 @@ prairie=${LUMA_CONTINUITY_PRAIRIE_RPM:-}
 [ -f "$prairie" ] || { printf 'error: LUMA_CONTINUITY_PRAIRIE_RPM must name a qualified shared-app RPM\n' >&2;exit 1; }
 [ "$(rpm -qp --qf '%{NAME}' "$prairie")" = prairie-core-apps ] || exit 1
 install -m 0644 "$prairie" "$work/dependencies/"
-platform="$repo_root/build/packages/luma-developer-platform/$(uname -m)/RPMS/$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA.rpm"
+# Installing the protocol provider also requires its non-Fedora background
+# service. Carry the exact pin instead of relying on a pre-populated builder.
+background_nevra=$(awk '$1 ~ /^luma-background-/ {print $1;exit}' "$repo_root/config/desktop/packages.txt")
+[ -n "$background_nevra" ] || { printf 'error: no pinned background service\n' >&2;exit 1; }
+background=${LUMA_BACKGROUND_RPM:-$repo_root/build/packages/luma-background/RPMS/noarch/$background_nevra.rpm}
+[ -f "$background" ] || { printf 'error: build the pinned background service first: %s\n' "$background" >&2;exit 1; }
+[ "$(rpm -qp --qf '%{NVRA}' "$background")" = "$background_nevra" ] || exit 1
+install -m 0644 "$background" "$work/dependencies/"
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$architecture" = "$(uname -m)" ] || { printf 'error: Connect requires a native builder\n' >&2;exit 1; }
+case "$architecture" in
+  x86_64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA;builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_AARCH64_NEVRA;builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported Connect architecture: %s\n' "$architecture" >&2;exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
+platform="$repo_root/build/packages/luma-developer-platform/$architecture/RPMS/$platform_nevra.rpm"
 [ -f "$platform" ] || { printf 'error: build the exact pinned Luma platform first: %s\n' "$platform" >&2;exit 1; }
-[ "$(rpm -qp --qf '%{NVRA}' "$platform")" = "$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA" ] || exit 1
+[ "$(rpm -qp --qf '%{NVRA}' "$platform")" = "$platform_nevra" ] || exit 1
 install -m 0644 "$platform" "$work/dependencies/"
 figtree="$repo_root/build/packages/figtree-fonts/RPMS/noarch/$FIGTREE_NEVRA.rpm"
 [ -f "$figtree" ] || { printf 'error: build the exact pinned Figtree font first: %s\n' "$figtree" >&2;exit 1; }
 install -m 0644 "$figtree" "$work/dependencies/"
 export LUMA_RPM_BUILDER_NAME=${LUMA_RPM_BUILDER_NAME:-luma-continuity-rpm-builder-f44}
-"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$FEDORA_RPM_BUILD_CONTAINER" '
+"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$builder_container" '
   set -euo pipefail
   # --cacheonly forbids a preview run from pulling new dependency generations.
   # Missing build requirements fail normally in rpmbuild; never ignore them.

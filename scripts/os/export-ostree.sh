@@ -7,11 +7,12 @@
 #
 # 1. The image's OCI layout is imported with OSTree's container tooling (run
 #    from the image itself, so the importer matches the tree) into a
-#    bare-user staging repository. The importer writes one merged commit whose
+#    private bare-user staging repository. The importer writes one merged commit whose
 #    tree carries the image's SELinux labels and the /usr/etc layout rpm-ostree
 #    deploys.
 # 2. A candidate commit is written into the private candidate archive
-#    repository with that exact tree, bound to the channel ref and collection,
+#    repository, restoring metadata lost by user-mode checkout from the pinned
+#    image and preserving its imported policy labels, bound to the channel ref and collection,
 #    whose parent is the channel's current published head, with the build's
 #    version and provenance metadata and the rpm package list rpm-ostree uses
 #    for `db diff` and update previews.
@@ -26,19 +27,25 @@ set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
 
 build_id=
-case "${1:-}" in
-  --build-id) build_id=${2:?} ;;
-  *) printf 'usage: %s --build-id YYYYMMDD.N\n' "$0" >&2; exit 2 ;;
-esac
+prepare_only=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --build-id) build_id=${2:?}; shift 2 ;;
+    --prepare-only) prepare_only=1; shift ;;
+    *) printf 'usage: %s --build-id YYYYMMDD.N [--prepare-only]\n' "$0" >&2; exit 2 ;;
+  esac
+done
+[[ "$build_id" =~ ^[0-9]{8}\.[0-9]+$ ]] || luma_os_die 'invalid build id'
 
 luma_os_require_root
-luma_os_require_tools ostree gpg python3 flock
+luma_os_require_tools ostree python3 flock
+if [ "$prepare_only" = 0 ]; then luma_os_require_tools gpg; fi
 luma_os_check_host
 luma_os_check_space 20
 
 build_dir="$LUMA_OS_ROOT/builds/$build_id"
 [ -s "$build_dir/build.env" ] || luma_os_die "build is not complete: $build_dir"
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 channel=$LUMA_OS_CHANNEL
 ref=$(luma_os_channel_ref "$channel")
 if [ ! -d "$build_dir/oci" ]; then
@@ -60,7 +67,11 @@ import_repo="$LUMA_OS_ROOT/ostree/import"
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
 published_repo=$(luma_os_channel_repo "$channel")
 install -d -m 0700 "$LUMA_OS_ROOT/ostree"
+# Refuse shared/inherited staging metadata before an importer can cache it.
+python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" "$import_repo"
 [ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare-user
+[ "$(ostree config --repo="$import_repo" get core.mode)" = bare-user ] ||\
+  luma_os_die 'import cache has the wrong repository mode; quarantine it and use a fresh private path'
 if [ ! -f "$candidate_repo/config" ]; then
   ostree init --repo="$candidate_repo" --mode=archive --collection-id="$LUMA_OS_COLLECTION_ID"
 fi
@@ -97,18 +108,27 @@ ostree ls --repo="$import_repo" "$merge" /usr/etc/os-release >/dev/null 2>&1 ||
   ostree ls --repo="$import_repo" "$merge" /usr/etc/ostree/remotes.d/luma.conf >/dev/null ||
   luma_os_die 'imported tree does not carry /usr/etc'
 
-# File modes the import can change. The bare-user staging repository stores a
-# file its owner cannot read with owner-read added and set-user-ID and
-# set-group-ID dropped (sudo 4111 became 0511; shadow 0000 became 0400). Every
-# path in the image with a special bit or without owner-read is listed with
-# its image mode; differences are restored from the image by overlaying a tar
-# of exactly those paths (the tree's content, ownership and xattrs, the
-# image's mode), and the result is verified path by path.
+# Capture the mounted image once, without container runtime mounts. Directory,
+# symlink and forced-copy file metadata comes from this image; SELinux labels
+# stay exactly as computed by the importer using the image's own policy.
 modes="$build_dir/image-modes.txt"
-luma_os_podman run --rm --net=none --security-opt label=disable --entrypoint /usr/bin/find "$LUMA_IMAGE_TAG" \
-  / -xdev \( -path /proc -o -path /sys -o -path /dev -o -path /run -o -path /tmp -o -path /var \
-  -o -path /sysroot -o -path /boot \) -prune -o \( -perm /7000 -o ! -perm -u=r \) \
-  \( -type f -o -type d \) -printf '%m %p\n' | LC_ALL=C sort >"$modes"
+directory_manifest="$build_dir/image-import-metadata.json"
+directory_tar="$build_dir/metadata-repair.tar"
+image_root=$(luma_os_podman image mount "$LUMA_IMAGE_ID")
+image_mount_owned=1
+release_image_mount() {
+  [ "$image_mount_owned" = 1 ] || return 0
+  luma_os_podman image unmount "$LUMA_IMAGE_ID" >/dev/null
+  image_mount_owned=0
+}
+trap release_image_mount EXIT
+trap 'exit 143' HUP INT TERM
+python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" capture \
+  "$import_repo" "$merge" "$image_root" "$LUMA_IMAGE_ID" \
+  "$directory_manifest" "$directory_tar" "$modes" >>"$log"
+release_image_mount
+trap - EXIT HUP INT TERM
+
 grep -q ' /usr/bin/sudo$' "$modes" || luma_os_die "the image mode list is incomplete (no /usr/bin/sudo): $modes"
 repair_tar="$build_dir/mode-repair.tar"
 python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" tar "$import_repo" "$merge" "$modes" "$repair_tar" \
@@ -118,6 +138,8 @@ if [ -s "$build_dir/mode-repair.txt" ]; then
   tree_args+=(--tree="tar=$repair_tar")
   luma_os_log "restoring image modes the import changed: $(awk '{ printf "%s %s->%s; ", $1, $2, $3 }' "$build_dir/mode-repair.txt")"
 fi
+# This final overlay also restores metadata for sensitive copied files.
+tree_args+=(--tree="tar=$directory_tar")
 
 luma_os_log 'copying the tree into the candidate repository'
 ostree pull-local --repo="$candidate_repo" --untrusted "$import_repo" "$merge" >>"$log" 2>&1
@@ -151,6 +173,7 @@ metadata_file="$build_dir/commit-metadata.args"
   printf -- '--add-metadata-string=org.projectluma.build-id=%s\n' "$build_id"
   printf -- '--add-metadata-string=org.projectluma.build-version=%s\n' "$LUMA_OS_VERSION"
   printf -- '--add-metadata-string=org.projectluma.channel=%s\n' "$channel"
+  printf -- '--add-metadata-string=org.projectluma.architecture=%s\n' "$LUMA_OS_ARCH"
   # The release's name as people see it (os-release PRETTY_NAME, ADR-040).
   [ -z "${LUMA_DISPLAY_NAME:-}" ] ||
     printf -- '--add-metadata-string=org.projectluma.display-name=%s\n' "$LUMA_DISPLAY_NAME"
@@ -178,20 +201,27 @@ candidate=$(ostree commit --repo="$candidate_repo" \
   "${metadata_args[@]}")
 [[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || luma_os_die 'candidate commit failed'
 
-if [ -s "$build_dir/mode-repair.txt" ]; then
-  # Exactly the repaired paths differ, and only in mode.
-  diff <(ostree diff --repo="$candidate_repo" "$merge" "$candidate" | awk '{ print $1, $2 }' | LC_ALL=C sort) \
-       <(awk '{ print "M", $1 }' "$build_dir/mode-repair.txt" | LC_ALL=C sort) >>"$log" ||
-    luma_os_die 'candidate commit differs from the imported tree beyond the mode repair'
-  python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" verify "$candidate_repo" "$merge" "$candidate" "$modes" >>"$log" ||
-    luma_os_die 'mode repair changed content, ownership or xattrs'
-else
-  python3 "$luma_os_repo_root/scripts/os/lib/ostree_metadata.py" same-tree \
-    "$candidate_repo" "$merge" "$candidate" ||
-    luma_os_die 'candidate commit does not carry the imported tree exactly'
-fi
+python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" verify \
+  "$candidate_repo" "$merge" "$candidate" "$directory_manifest" "$modes" >>"$log" ||
+  luma_os_die 'candidate differs beyond exact image directory metadata and sensitive file mode repairs'
 python3 "$luma_os_repo_root/scripts/os/lib/repair_modes.py" check "$candidate_repo" "$candidate" "$modes" >>"$log" ||
   luma_os_die "candidate commit has file modes that differ from the image (see $log)"
+
+# A keyless native builder stops here. No signed-export success file or
+# channel ref is written until the authorized release signer finishes it.
+if [ "$prepare_only" = 1 ]; then
+  [ ! -e "$build_dir/export.env" ] || luma_os_die 'build already has a completed signed export'
+  root_dirtree=$(python3 "$luma_os_repo_root/scripts/os/lib/ostree_metadata.py" root-dirtree "$candidate_repo" "$candidate")
+  python3 "$luma_os_repo_root/scripts/os/lib/prepared_export.py" capture \
+    --build-dir "$build_dir" --candidate "$candidate" --tree-commit "$merge" \
+    --parent "$parent" --ref "$ref" --kernel "$kver" --root-dirtree "$root_dirtree"
+  python3 "$luma_os_repo_root/scripts/os/lib/prepared_export.py" verify \
+    --build-dir "$build_dir" --receipt-sha256 "$(luma_os_sha256 "$build_dir/export-prepared.json")" \
+    --source-revision "$LUMA_SOURCE_REVISION" --image-id "$LUMA_IMAGE_ID" \
+    --parent "$parent" --repo "$candidate_repo" --env-output "$build_dir/export-prepared.env"
+  luma_os_log "prepared unsigned candidate $candidate; release signing and qualification are pending"
+  exit 0
+fi
 
 luma_os_gpg_unlock
 trap luma_os_gpg_lock EXIT

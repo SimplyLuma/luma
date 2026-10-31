@@ -70,6 +70,8 @@ notes=
 nightly_date_arg=
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
+    --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
     --channel) channel=${2:?}; shift 2 ;;
     --no-publish) publish=0; shift ;;
     --rebuild) rebuild=1; shift ;;
@@ -103,11 +105,6 @@ case " $LUMA_MEDIA_CHANNELS " in *" $channel "*) ;; *) luma_os_die "no media are
 
 luma_os_require_root
 luma_os_check_host
-install -d -m 0755 "$LUMA_OS_ROOT/locks" "$LUMA_OS_ROOT/status" "$LUMA_OS_ROOT/media/$channel" "$LUMA_OS_ROOT/publish/media"
-exec 6>"$LUMA_OS_ROOT/locks/media-$channel.lock"
-flock -n 6 || { luma_os_log "media for $channel are already being made"; exit 0; }
-
-status="$LUMA_OS_ROOT/status/media-$channel.json"
 set_status() {
   python3 - "$status" "$@" <<'PY'
 import json, sys, os
@@ -127,26 +124,55 @@ jstr() { python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # The release: the channel's published head.
-repo=$(luma_os_channel_repo "$channel")
-ref=$(luma_os_channel_ref "$channel")
 if [ -n "$candidate$publish_verified" ]; then
   # The atomic nightly (docs/os/release-process.md): the medium of a gated,
   # not yet published candidate is built and verified first (--candidate
   # --no-publish), and published with the update (--publish-verified).
   build_id=${candidate:-$publish_verified}
-  luma_os_load_env "$LUMA_OS_ROOT/builds/$build_id/build.env"
+  luma_os_load_build_env "$LUMA_OS_ROOT/builds/$build_id/build.env"
+  [ "$channel" = "$LUMA_OS_CHANNEL" ] || luma_os_die 'candidate channel differs from requested media channel'
+  ref=$(luma_os_channel_ref "$channel")
   luma_os_load_env "$LUMA_OS_ROOT/builds/$build_id/export.env"
   repo="$LUMA_OS_ROOT/ostree/candidate-repo"
   head=$LUMA_EXPORT_CANDIDATE
   version=$LUMA_OS_VERSION
   ostree show --repo="$repo" "$head" >/dev/null 2>&1 || repo=$(luma_os_channel_repo "$channel")
 else
+  luma_os_select_architecture "$LUMA_OS_ARCH"
+  repo=$(luma_os_channel_repo "$channel")
+  ref=$(luma_os_channel_ref "$channel")
   head=$(ostree rev-parse --repo="$repo" "$ref" 2>/dev/null) || luma_os_die "no published release on $ref"
   version=$(python3 "$luma_os_repo_root/scripts/os/lib/ostree_metadata.py" version "$repo" "$head")
+  # A published medium reflects its signed image's capability profile, even
+  # when the caller did not explicitly select the preview profile.
+  if declaration=$(ostree cat --repo="$repo" "$head" /usr/share/luma/desktop-capabilities.json 2>/dev/null); then
+    LUMA_OS_PROFILE=$(python3 -c '
+import json, sys
+value=json.load(sys.stdin)
+assert value["schema"] == "org.projectluma.desktop-capabilities/v1"
+assert value["architecture"] == sys.argv[1]
+print(value["profile"])
+' "$LUMA_OS_ARCH" <<<"$declaration") || luma_os_die 'published capability identity differs from requested media architecture'
+    export LUMA_OS_PROFILE
+    luma_os_select_architecture "$LUMA_OS_ARCH"
+  else
+    [ "$LUMA_OS_ARCH" = x86_64 ] || luma_os_die 'ARM publication lacks its capability declaration'
+    export LUMA_OS_PROFILE=full
+  fi
 fi
+# Resolve paths only after a candidate's recorded target has been loaded.
+media_root=$(luma_os_arch_path "$LUMA_OS_ROOT/media")
+status_root=$(luma_os_arch_path "$LUMA_OS_ROOT/status")
+locks_root=$(luma_os_arch_path "$LUMA_OS_ROOT/locks")
+logs_root=$(luma_os_arch_path "$LUMA_OS_ROOT/logs")
+install -d -m 0755 "$locks_root" "$status_root" "$logs_root" "$media_root/$channel" "$LUMA_OS_ROOT/publish/media"
+exec 6>"$locks_root/media-$channel.lock"
+flock -n 6 || { luma_os_log "media for $LUMA_OS_ARCH/$channel are already being made"; exit 0; }
+status="$status_root/media-$channel.json"
+releases_root=$(luma_os_releases_path "$repo")
 build_id=${build_id:-${version##*-"$channel".}}
 [[ "$build_id" =~ ^[0-9]{8}\.[0-9]+$ ]] || luma_os_die "cannot tell the build id of $version"
-dir="$LUMA_OS_ROOT/media/$channel/$build_id"
+dir="$media_root/$channel/$build_id"
 if [ -n "$verify_existing" ]; then
   python3 "$luma_os_repo_root/scripts/os/lib/media_reuse.py" \
     "$dir/luma-$channel-$build_id.iso" "$verify_existing" "$channel" "$ref" \
@@ -169,14 +195,14 @@ if [ -n "$publish_verified" ]; then
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("result") == "pass" and d.get("commit") == sys.argv[2] else 1)' \
     "$dir/result.json" "$head" 2>/dev/null || luma_os_die "no verified medium of $build_id ($head) to publish"
 fi
-job_log="$LUMA_OS_ROOT/logs/media-$channel-$build_id-$(date -u +%Y%m%dT%H%M%SZ).log"
+job_log="$logs_root/media-$channel-$build_id-$(date -u +%Y%m%dT%H%M%SZ).log"
 install -d -m 0755 "$LUMA_OS_ROOT/logs"
 exec > >(tee -a "$job_log") 2>&1
 export LUMA_OS_JOB_LOG="$job_log"
 started=$SECONDS
 if [ -z "$publish_verified" ]; then
 rm -f "$status"
-set_status "state=\"starting\"" "channel=$(jstr "$channel")" "build_id=$(jstr "$build_id")" \
+set_status "state=\"starting\"" "architecture=$(jstr "$LUMA_OS_ARCH")" "profile=$(jstr "$LUMA_OS_PROFILE")" "channel=$(jstr "$channel")" "build_id=$(jstr "$build_id")" \
   "version=$(jstr "$version")" "commit=$(jstr "$head")" "started_utc=$(jstr "$(now)")" \
   "result=null" "published=false" "error=null" "log=$(jstr "$(basename "$job_log")")"
 fi
@@ -191,11 +217,11 @@ step_done() { set_status "step_${1}_seconds=$((SECONDS - step_started))"; }
 
 if [ -z "$publish_verified" ]; then
 # Room: this build host's own older media first, then the pipeline's guard.
-mapfile -t old < <(find "$LUMA_OS_ROOT/media/$channel" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
+mapfile -t old < <(find "$media_root/$channel" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
   -regex '.*/[0-9]{8}\.[0-9]+' ! -name "$build_id" -printf '%f\n' | sort -t. -k1,1n -k2,2n | head -n "-$((LUMA_MEDIA_LOCAL_KEEP - 1))")
 for id in "${old[@]}"; do
   # Media still served stay on this host: the served tree hard-links them.
-  rm -rf -- "${LUMA_OS_ROOT:?}/media/$channel/$id"
+  rm -rf -- "${media_root:?}/$channel/$id"
   luma_os_log "removed local media of $id"
 done
 luma_os_check_space 35 || fail 'not enough disk space for installer media'
@@ -235,7 +261,7 @@ forbid_args=()
 
 # Packages every medium's system must carry, and that this release pins.
 expect_args=()
-release_packages="$repo/luma/releases/$version/packages.tsv"
+release_packages="$releases_root/$version/packages.tsv"
 [ -z "$candidate" ] || release_packages="$LUMA_OS_ROOT/builds/$build_id/packages-installed.tsv"
 [ "$interim" -eq 1 ] && LUMA_MEDIA_EXPECT_PACKAGES=' '
 for package in ${LUMA_MEDIA_EXPECT_PACKAGES:-viola-browser-stable luma-charlie}; do
@@ -254,7 +280,7 @@ done
 if [ -n "$candidate" ]; then
   source_revision=$LUMA_SOURCE_REVISION
 else
-  source_revision=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$repo/luma/releases/$version/manifest.json") ||
+  source_revision=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$releases_root/$version/manifest.json") ||
     fail "no published release manifest for $version"
 fi
 if [ -n "$checks_revision" ]; then
@@ -266,7 +292,7 @@ fi
 iso="$dir/luma-$channel-$build_id.iso"
 step build
 if [ -z "$verify_existing" ]; then
-  "$luma_os_repo_root/scripts/os/build-staff-media.sh" --atlas-source "$atlas" --atlas-rpms "$atlas_rpms" \
+  "$luma_os_repo_root/scripts/os/build-staff-media.sh" --arch "$LUMA_OS_ARCH" --atlas-source "$atlas" --atlas-rpms "$atlas_rpms" \
     --channel "$channel" ${candidate:+--candidate "$candidate"} --output "$iso" || fail 'building the medium failed'
 else
   luma_os_log "rechecking existing medium $verify_existing; all install and UI checks still required"
@@ -294,7 +320,7 @@ step_done verify_install
 # origin, boots it, rolls back and returns to Official. The first nightly
 # medium has no predecessor.
 step verify_update
-previous=$(find "$LUMA_OS_ROOT/media/$channel" -mindepth 2 -maxdepth 2 -regextype posix-extended \
+previous=$(find "$media_root/$channel" -mindepth 2 -maxdepth 2 -regextype posix-extended \
   -regex ".*/[0-9]{8}\.[0-9]+/luma-$channel-[0-9]{8}\.[0-9]+\.iso" ! -path "*/$build_id/*" -printf '%h\n' |
   while read -r d; do
     python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("result") == "pass" else 1)' "$d/result.json" 2>/dev/null && basename "$d"
@@ -308,7 +334,7 @@ elif [ "$interim" -eq 1 ]; then
   luma_os_log "interim medium: the update path is checked by the next full run"
   set_status "update_verified_from=null"
 elif [ -n "$previous" ]; then
-  "$luma_os_repo_root/scripts/os/verify-media.sh" --iso "$LUMA_OS_ROOT/media/$channel/$previous/luma-$channel-$previous.iso" \
+  "$luma_os_repo_root/scripts/os/verify-media.sh" --iso "$media_root/$channel/$previous/luma-$channel-$previous.iso" \
     --checks-revision "$source_revision" --update-from-origin-to "$version" >"$dir/verify-update.log" 2>&1 ||
     fail "updating an install from the $previous medium to $version failed: $(failures_of "$dir/verify-update.log") (see verify-update.log)"
   set_status "update_verified_from=$(jstr "$previous")"
@@ -342,9 +368,9 @@ fi
 # open (owner decision 2026-09-16): no credential, an unlisted public path.
 step publish
 served="$LUMA_OS_ROOT/publish/media"
-tree="$served/public/$channel"
+tree="$(luma_os_arch_path "$served/public")/$channel"
 latest="luma-$channel-latest.iso"
-base="https://dl.simplyluma.com/$LUMA_MEDIA_PUBLIC_PREFIX/$channel"
+base="https://dl.simplyluma.com/$(luma_os_arch_path "$LUMA_MEDIA_PUBLIC_PREFIX")/$channel"
 install -d -m 0755 "$tree"
 name=$(basename "$iso")
 ln -f "$iso" "$tree/$name"
@@ -377,10 +403,10 @@ if [ -n "$notes" ]; then
   notes_summary=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["summary"])' "$notes")
 fi
 python3 - "$tree/$name.json" "$channel" "$build_id" "$version" "$head" "$name" \
-  "$(cat "$iso.sha256")" "$(stat -c %s "$iso")" "$base" "$interim" "$committed" "$nightly_date_arg" "$notes_url" "$notes_summary" "${LUMA_DISPLAY_NAME:-}" "$luma_os_repo_root/scripts/os/lib" <<'ENTRY'
+  "$(cat "$iso.sha256")" "$(stat -c %s "$iso")" "$base" "$interim" "$committed" "$nightly_date_arg" "$notes_url" "$notes_summary" "${LUMA_DISPLAY_NAME:-}" "$luma_os_repo_root/scripts/os/lib" "$LUMA_OS_ARCH" "$LUMA_OS_PROFILE" <<'ENTRY'
 import json, sys, datetime, zoneinfo
-sys.path.insert(0, sys.argv[-1])
-path, channel, build, version, commit, name, sha, size, base, interim, committed, nightly_arg, notes_url, notes_summary, display_arg, lib = sys.argv[1:]
+path, channel, build, version, commit, name, sha, size, base, interim, committed, nightly_arg, notes_url, notes_summary, display_arg, lib, architecture, profile = sys.argv[1:]
+sys.path.insert(0, lib)
 # The nightly's labelled day: the day the build id names, or the Central day
 # the build was made on when that is earlier (20260917.3 was built on the
 # evening of the 16th and is the 16th's nightly).
@@ -389,7 +415,7 @@ built = datetime.datetime.strptime(committed.strip(), "%Y-%m-%d %H:%M:%S %z")
 built_day = built.astimezone(zoneinfo.ZoneInfo("America/Chicago")).date()
 nightly_date = nightly_arg or min(id_day, built_day).isoformat()
 json.dump({
-    "build_id": build, "version": version, "channel": channel, "arch": "x86_64", "commit": commit,
+    "build_id": build, "version": version, "channel": channel, "arch": architecture, "profile": profile, "commit": commit,
     "nightly_date": nightly_date,
     # The release's name as people see it (ADR-040): the build's own, or for a
     # build from before release names, rendered from the release identity.
@@ -416,9 +442,9 @@ ENTRY
 # Longer promises are preserved. Missing confirmation forbids retirement.
 # Public historical entries and notes stay unchanged while protected. This does
 # not remove R2 objects; R2 publication separately retains its signed prior entries.
-retireable="$LUMA_OS_ROOT/status/media-retireable-$channel.txt"
+retireable="$status_root/media-retireable-$channel.txt"
 python3 "$luma_os_repo_root/scripts/os/lib/media_retention.py" --tree "$tree" \
-  --ledger "$LUMA_OS_ROOT/status/media-retention-$channel.json" --current "$build_id" \
+  --ledger "$status_root/media-retention-$channel.json" --current "$build_id" \
   --days "${LUMA_MEDIA_RETENTION_DAYS:-7}" >"$retireable" || fail 'preparing protected installer retention failed'
 dl_max_gib=25
 [ -f "$LUMA_OS_SECRETS/dl-origin.env" ] &&
@@ -486,14 +512,16 @@ set_status "served_builds=$(builds_in | python3 -c 'import json,sys; print(json.
 # sha256_url, size_bytes and sha256. Signed with the minisign update-graph key
 # (dl.simplyluma.com/os/keys/luma-update-graph.pub); the trusted comment binds
 # the channel and generated_utc.
-python3 - "$tree" "$channel" "$latest" "$base" "$(luma_os_channel_repo "$channel")" $(entries_in | sort -t. -k1,1nr -k2,2nr) <<'INDEX' || fail 'writing the media index failed'
+python3 - "$tree" "$channel" "$latest" "$base" "$(luma_os_releases_path "$(luma_os_channel_repo "$channel")")" "$LUMA_OS_ARCH" $(entries_in | sort -t. -k1,1nr -k2,2nr) <<'INDEX' || fail 'writing the media index failed'
 import datetime, glob, json, os, sys
-tree, channel, latest, base, published_repo, builds = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6:]
+tree, channel, latest, base, releases_root, architecture, builds = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7:]
 entries = []
 for build in builds:
     path = os.path.join(tree, f"luma-{channel}-{build}.iso.json")
     if os.path.exists(path):
         entry = json.load(open(path))
+        if entry.get("arch", "x86_64") != architecture:
+            raise ValueError("Media entry belongs to another architecture")
         # Media published before release names (ADR-040) were all Prairie
         # Beta 0 nightlies.
         if "display_name" not in entry and entry.get("channel") == "nightly" and entry.get("nightly_date"):
@@ -530,28 +558,74 @@ downloadable = [e for e in public if e.get("iso_available")]
 newest = (downloadable or public or entries)[0]
 listed = {e["build_id"] for e in entries}
 superseded = []
-for path in sorted(glob.glob(os.path.join(published_repo, "luma", "releases", "*", "manifest.json"))):
+for path in sorted(glob.glob(os.path.join(releases_root, "*", "manifest.json"))):
     manifest = json.load(open(path))
-    if manifest.get("channel") != channel or manifest.get("build_id") in listed:
+    if manifest.get("architecture", "x86_64") != architecture or manifest.get("channel") != channel or manifest.get("build_id") in listed:
         continue
     superseded.append({"build_id": manifest.get("build_id"), "version": manifest.get("version"),
                        "published_utc": manifest.get("published_utc"), "public": False,
                        "note": f"Superseded; see the {datetime.date.fromisoformat(newest['nightly_date']).strftime('%b %-d').replace('Sep ', 'Sept ')} nightly"})
 json.dump({
-    "schema": "org.projectluma.os-media-index/v1", "channel": channel,
+    "schema": "org.projectluma.os-media-index/v1", "channel": channel, "arch": architecture,
     "generated_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "latest_url": f"{base}/{latest}", "latest": newest, "entries": entries, "superseded": superseded,
 }, open(os.path.join(tree, "latest.json.new"), "w"), indent=2, sort_keys=True)
 open(os.path.join(tree, "latest.json.new"), "a").write("\n")
 INDEX
 generated=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generated_utc"])' "$tree/latest.json.new")
+media_signature_arch=
+[ "$LUMA_OS_ARCH" = x86_64 ] || media_signature_arch=" arch=$LUMA_OS_ARCH"
 minisign_dir="$LUMA_OS_KEYS/update-graph-minisign"
+# A new single-CPU producer must not replace another CPU's published entries.
+# Fetch the actual signed prior, not a possibly stale local media directory.
+# Qualified operators can pass their already-held shared lock descriptor.
+luma_os_require_tools curl stat flock
+media_publication_lock=${LUMA_MEDIA_PUBLICATION_LOCK:-$LUMA_OS_ROOT/locks/media-publication.lock}
+if [ -n "${LUMA_MEDIA_PUBLICATION_LOCK_FD:-}" ]; then
+  [[ "$LUMA_MEDIA_PUBLICATION_LOCK_FD" =~ ^[0-9]+$ ]] || fail 'invalid shared publication lock descriptor'
+  [ "$(stat -Lc '%d:%i' "/proc/self/fd/$LUMA_MEDIA_PUBLICATION_LOCK_FD")" = \
+    "$(stat -Lc '%d:%i' "$media_publication_lock")" ] || fail 'shared publication lock descriptor names another file'
+  flock -n "$LUMA_MEDIA_PUBLICATION_LOCK_FD" || fail 'shared publication lock is not available'
+else
+  install -d "$(dirname "$media_publication_lock")"
+  exec 7>"$media_publication_lock"
+  flock -w 120 7 || fail 'another architecture is publishing media'
+fi
+prior_index="$dir/canonical-prior-$channel.json"
+prior_http=$(curl --silent --show-error --location --max-time 60 --max-filesize 1048576 \
+  --header 'Cache-Control: no-cache' --output "$prior_index" --write-out '%{http_code}' \
+  "$base/latest.json") || fail 'reading the current signed media index failed'
+case "$prior_http" in
+  200)
+    curl --fail --silent --show-error --location --max-time 60 --max-filesize 4096 \
+      --header 'Cache-Control: no-cache' "$base/latest.json.minisig" --output "$prior_index.minisig" ||
+      fail 'reading the current media index signature failed'
+    LUMA_OS_TOOLS_MOUNTS="$minisign_dir/luma-update-graph.pub $tree $dir $luma_os_repo_root/scripts/os/lib" luma_os_tools sh -c '
+      set -e
+      minisign -V -p "$1" -m "$2" -x "$2.minisig" >/dev/null
+      python3 "$3/media_aggregate.py" check-preservation "$2" "$4" --channel "$5" --producer-arch "$6"
+    ' sh "$minisign_dir/luma-update-graph.pub" "$prior_index" "$luma_os_repo_root/scripts/os/lib" \
+      "$tree/latest.json.new" "$channel" "${LUMA_OS_ARCH:-x86_64}" ||
+      fail 'media publication would discard another architecture; prepare the shared aggregate'
+    ;;
+  404) ;; # A genuinely new scoped channel has no previous publication.
+  *) fail "reading the current media index returned HTTP $prior_http" ;;
+esac
 LUMA_OS_TOOLS_MOUNTS="$minisign_dir $tree" luma_os_tools sh -c '
   set -e
   minisign -S -s "$1/luma-update-graph.key" -m "$2" -x "$2.minisig" -t "$3" >/dev/null
   minisign -V -p "$1/luma-update-graph.pub" -m "$2" -x "$2.minisig" >/dev/null
-' sh "$minisign_dir" "$tree/latest.json.new" "luma-media-index channel=$channel generated_utc=$generated" \
+' sh "$minisign_dir" "$tree/latest.json.new" "luma-media-index channel=$channel${media_signature_arch:-} generated_utc=$generated" \
   <"$LUMA_OS_SECRETS/update-graph-minisign.password" || fail 'signing the media index failed'
+# The shared lock spans signing and upload. Recheck the exact remote predecessor
+# immediately before changing metadata, even when local media state was stale.
+prior_http_check=$(curl --silent --show-error --location --max-time 60 --max-filesize 1048576 \
+  --header 'Cache-Control: no-cache' --output "$prior_index.check" --write-out '%{http_code}' \
+  "$base/latest.json") || fail 'rechecking the current media index failed'
+[ "$prior_http_check" = "$prior_http" ] || fail 'the current media index changed during preparation'
+if [ "$prior_http" = 200 ]; then
+  cmp -s "$prior_index" "$prior_index.check" || fail 'the current media index changed; prepare again'
+fi
 mv -f "$tree/latest.json.new.minisig" "$tree/latest.json.minisig"
 mv -f "$tree/latest.json.new" "$tree/latest.json"
 

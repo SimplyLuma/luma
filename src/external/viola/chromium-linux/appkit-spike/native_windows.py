@@ -176,7 +176,8 @@ class NativeWindows:
                     else:
                         # One initial focus assignment only. Subsequent frames
                         # and state updates must not interrupt typing or clicks.
-                        window._focus_address()
+                        if not window.address_focused():
+                            window._focus_address()
             tab = self.detached_tabs.pop(window.services.state.get('activeUrl'), None)
             if tab:
                 placeholder = window.services.state['activeTabId']

@@ -333,12 +333,17 @@ install -m 0644 "$repo_root/patches/gnome-shell/0276-quick-options-device-row-ge
 install -m 0644 "$repo_root/patches/gnome-shell/0277-login-surfaces-and-dock-battery-percentage.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0278-brightness-one-percent-and-idle-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0279-applications-and-downloads-drawer.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0280-retire-standalone-displays.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0280-drawer-artwork-and-grid-alignment.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0281-converged-presentation.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0286-dock-native-touch-scroll.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0287-calendar-island-menu-state.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0288-surface-material-owner-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0289-status-material-and-readiness.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0290-compact-login-action-bar.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch" "$rpmbuild_dir/SOURCES/"
@@ -490,15 +495,16 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
         usr/lib64/gnome-shell/libshell-18.so
       grep -Fq "Clutter.OffscreenRedirect.NEVER" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-dark" \
+      grep -Fq ".luma-shelf-material.luma-surface-dark" \
         luma-shelf.css
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-glass" \
+      grep -Fq ".luma-shelf-material.luma-surface-glass" \
         luma-shelf.css
       # The Quick Options island is one surface: its controls are never
       # marked on their own; the shelf washes the whole island (0161).
       grep -q "controls\.remove_style_pseudo_class(.checked.)" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "DASH_TILE_SIZE = 45" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_SIZE = 45;" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_GAP = 11;" shelfMetrics.js
       grep -Fq "runningIndicatorGeometry" shelfMetrics.js
       grep -Fq "shelf-span-full" luma-dash.js
       grep -Fq "shelf-float-ends" luma-dash.js

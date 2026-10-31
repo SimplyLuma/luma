@@ -56,7 +56,7 @@ class InitialChannelPolicy(unittest.TestCase):
 
     def test_bad_signature_cannot_switch_the_channel(self):
         self.nightly()
-        url=self.rig.settings.graph_url.format(channel='nightly')
+        url=self.rig.settings.graph_url.format(channel='nightly', arch='x86_64')
         self.rig.http.files[url + '.minisig'] = b'not a signature'
         self.assertEqual(self.engine.check().action, "none")
         self.assertEqual(self.engine.status().channel, 'beta')

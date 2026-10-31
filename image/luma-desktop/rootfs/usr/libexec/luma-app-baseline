@@ -12,6 +12,7 @@ import hashlib,json,os,platform,re,stat,subprocess,tempfile
 BASELINE=Path('/usr/share/luma/app-baseline')
 STATE=Path('/var/lib/luma/app-baseline')
 OPTIONAL={'org.projectluma.Write','org.projectluma.Grid','org.projectluma.Stage','org.projectluma.Session','org.projectluma.Reel','org.projectluma.Darkroom'}
+RETIRED={'org.projectluma.Displays'}
 RUNTIMES={'org.projectluma.Platform','org.projectluma.Platform.GL.default','org.projectluma.Platform.Locale'}
 HEX=re.compile('[0-9a-f]{64}')
 
@@ -38,7 +39,7 @@ def document(path):
     return json.loads(path.read_text(),object_pairs_hook=unique)
 
 
-def validate(root,architecture,*,hash_bundles=True):
+def validate(root,architecture,*,hash_bundles=True,historical=False):
     st=root.lstat()
     if not stat.S_ISDIR(st.st_mode) or st.st_uid!=0 or st.st_mode&0o022:
         raise ValueError('Baseline directory is not a protected plain directory.')
@@ -47,8 +48,12 @@ def validate(root,architecture,*,hash_bundles=True):
         raise ValueError('This is not a reviewed OS shipping baseline.')
     if selection.get('schema')!='org.projectluma.os-app-baseline/v1':raise ValueError('Unknown shipping selection.')
     apps=selection.get('applications')
-    if not isinstance(apps,list) or len(apps)!=24 or len(set(apps))!=24 or any(not isinstance(app,str) for app in apps) or set(apps)&OPTIONAL:
-        raise ValueError('The baseline must contain exactly the 24 shipping applications.')
+    # A pinned prior baseline may contain an app retired by a later OS source.
+    # Only the producer's historical cache admission opts into that allowance;
+    # ordinary OS input/install admission continues to reject retired apps.
+    excluded=OPTIONAL if historical else OPTIONAL|RETIRED
+    if not isinstance(apps,list) or not apps or any(not isinstance(app,str) for app in apps) or len(set(apps))!=len(apps) or set(apps)&excluded:
+        raise ValueError('The baseline must contain a unique reviewed shipping selection.')
     if manifest.get('architecture')!=architecture or architecture not in ('x86_64','aarch64'):raise ValueError('Wrong baseline architecture.')
     if manifest.get('shipping_contract_sha256')!=digest(root/'shipping.json'):raise ValueError('Shipping selection changed.')
     if manifest.get('role_contract_sha256')!=digest(root/'roles.json') or roles!={'schema':'org.projectluma.first-party-app-roles/v1','roles':{app:'signed-system-flatpak' for app in apps}}:
@@ -125,6 +130,9 @@ def handoff(root,state,architecture,installation,verify,install):
 
 def main():
     if os.geteuid()!=0:raise PermissionError('The OS baseline handoff requires root.')
+    # Retirement runs on every updated boot, including completed baselines.
+    from luma_installer.retired_apps import reconcile_current
+    reconcile_current(system=True)
     if (STATE/'installed-v1.json').exists() or (STATE/'installed-v1.json').is_symlink():
         # The handoff function validates the marker before skipping transactions.
         print(handoff(BASELINE,STATE,platform.machine(),lambda:{},lambda *a:None,lambda *a:None));return

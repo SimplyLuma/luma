@@ -208,11 +208,12 @@ install_check() {
   cat >"$work/$name.py" <<PY
 import gi
 gi.require_version('Flatpak', '1.0')
+from gi.repository import Flatpak
 from luma_installer import depot_flatpak, depot_inventory
 
 app_id = '$app_id'
 installation, remote = depot_flatpak.installation_for(app_id)
-source = depot_flatpak.resolve(installation, app_id, 'x86_64')
+source = depot_flatpak.resolve(installation, app_id, Flatpak.get_default_arch())
 original = depot_flatpak.installed_ref(installation, source)
 original_identity = None
 if original is not None:

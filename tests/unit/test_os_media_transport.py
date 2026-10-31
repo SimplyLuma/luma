@@ -47,8 +47,10 @@ class MediaTransportTests(unittest.TestCase):
             subprocess.run(['python3', '-', str(path), 'nightly', '20261005.4', 'test', 'c' * 64, name,
                             'a' * 64, '8192', 'https://example.test/media/nightly', '0',
                             '2026-10-05 12:00:00 +0000', '2026-10-05', 'https://example.test/notes.json',
-                            'Notes', 'Luma test', str(ROOT / 'scripts/os/lib')], input=generator, text=True, check=True)
+                            'Notes', 'Luma test', str(ROOT / 'scripts/os/lib'), 'x86_64', 'full'], input=generator, text=True, check=True)
             data = json.loads(path.read_text())
+            self.assertEqual(data['arch'], 'x86_64')
+            self.assertEqual(data['profile'], 'full')
             self.assertEqual(data['file'], name)
             self.assertEqual(data['download_file'], name + '.download')
             self.assertEqual(data['url'], data['download_url'])

@@ -8,6 +8,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-voice-memos",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_MEMO_STYLE_PATH=/app/share/prairie-core/memo.css",
     "--metadata=X-Luma=app-data-schema=voicememos-v1",
     "--metadata=X-Luma=min-host-installer=60",

@@ -13,10 +13,41 @@ import threading
 import time
 from concurrent.futures import Future
 
+
+NATIVE_ENGINE_PROFILE = Path(__file__).parent.parent / 'native-engine-profile.json'
+
+
+def native_frame_profile_flags(path=NATIVE_ENGINE_PROFILE):
+    """Read the desktop producer's transport selection, outside user profiles.
+
+    An installation without this optional packaged profile keeps its existing
+    DMA transport. Mobile producers do not install the desktop preview profile.
+    Shared-memory delivery still uses Chromium's GPU renderer and sandbox.
+    """
+    if path.is_symlink():
+        raise ValueError('Invalid native engine profile file')
+    if not path.exists():
+        return []
+    if not path.is_file():
+        raise ValueError('Invalid native engine profile file')
+    with path.open('rb') as stream:
+        data = stream.read(4097)
+    if len(data) > 4096:
+        raise ValueError('Native engine profile is too large')
+    profile = json.loads(data)
+    if profile != {
+            'schema': 'org.projectluma.viola.native-engine-profile/v1',
+            'role': 'desktop-arm-preview',
+            'frame_transport': 'shm'}:
+        raise ValueError('Unsupported native engine profile')
+    return ['--viola-native-shm-frame-probe']
+
+
 class EnginePipe:
     def __init__(self, executable: Path, profile: Path, on_event, *, native_frame_probe=False, frame_socket=None, native_menu_probe=False, native_media_probe=False, on_closed=None, manual_browsing=False, reuse_profile=False):
         if manual_browsing and not native_frame_probe:
             raise ValueError('Manual browsing requires the native interactive host')
+        frame_profile_flags = native_frame_profile_flags() if native_frame_probe else []
         if profile.exists() and any(profile.iterdir()) and not reuse_profile:
             raise ValueError("The architecture probe requires a new, empty profile")
         profile.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -48,6 +79,7 @@ class EnginePipe:
                        # obsolete VaapiVideoDecoder flags do not select it.
                        '--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL',
                        '--force-device-scale-factor=1'] if native_frame_probe else []
+        probe_flags.extend(frame_profile_flags)
         if manual_browsing:
             # This user-operated browser uses the pipe as internal IPC, not a
             # WebDriver session. Keep QA's normal automation marker unchanged.
@@ -88,7 +120,7 @@ class EnginePipe:
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
 
-    def open_external(self, uri):
+    def open_external(self, uri, *, startup=False):
         from urllib.parse import urlsplit
         if urlsplit(uri).scheme not in ('http', 'https', 'file'):
             return False
@@ -96,11 +128,13 @@ class EnginePipe:
             return False
         # Reuse Chromium's singleton dispatch: it owns Mini routing, profile
         # cookies, redirects and callbacks. This process only forwards the URL.
+        # Initial dispatch shares Chromium cold-start work; interactive opens
+        # retain their shorter deadline once that startup has completed.
         try:
             result = subprocess.run([str(self.executable),
             '--user-data-dir=' + str(self.profile), '--no-first-run', '--', uri],
             env=self.display.environment() if self.display else os.environ.copy(),
-                stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log, timeout=12)
+                stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log, timeout=60 if startup else 12)
         except (OSError, subprocess.TimeoutExpired):
             return False
         return result.returncode == 0

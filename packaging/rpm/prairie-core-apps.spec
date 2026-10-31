@@ -669,6 +669,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.106.nightly20261026.1
+- Package the October 26 shared source updates.
+
 * Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103.creator20261012.1
 - Recognize the shared Photos library through the system home directory alias.
 
@@ -1081,7 +1084,7 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 - Rebuild Notes on the shared Luma Application Kit with durable rich editing,
   folders, favorites, ordering, autosave, and recoverable deletion
 
-* Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.24
+* Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.25
 - Keep Luma MIME defaults in the system XDG configuration layer
 
 * Sat Aug 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.23

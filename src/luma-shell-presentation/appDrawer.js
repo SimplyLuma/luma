@@ -40,6 +40,7 @@ class AppDrawer extends St.Widget {
             enable_mouse_scrolling: false, overlay_scrollbars: true});
         this._pages = new St.Viewport({layout_manager: new Clutter.FixedLayout()});
         this._viewport.set_child(this._pages);
+        this._installPagePan();
         this._viewport.update_fade_effect(new Clutter.Margin({left: 64, right: 64}));
         this.add_child(this._viewport);
         this._dots = new St.BoxLayout({style_class: 'lumaui-drawer-dots'});
@@ -92,8 +93,6 @@ class AppDrawer extends St.Widget {
         this._binding.setEnabled(true);
         this._owner.setDrawerOpen(true);
         this._search.grab_key_focus();
-        if (this._capture) global.stage.disconnect(this._capture);
-        this._capture = global.stage.connect('captured-event', (_stage, event) => this._dragEvent(event));
         const animated = St.Settings.get().enable_animations;
         this.opacity = animated ? 0 : 255;
         this.ease({opacity: 255, duration: animated ? 180 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
@@ -111,9 +110,6 @@ class AppDrawer extends St.Widget {
         this.remove_all_transitions();
         this.hide();
         this._binding.setEnabled(false);
-        this._drag = null;
-        if (this._capture) global.stage.disconnect(this._capture);
-        this._capture = 0;
         this._owner.setDrawerOpen(false);
         if (this._previousFocus?.get_stage()) this._previousFocus.grab_key_focus();
         this._previousFocus = null;
@@ -160,15 +156,22 @@ class AppDrawer extends St.Widget {
         // Only the current page and its neighbours own icon actors.
         const first = searching ? 0 : Math.max(0, this._page - 1);
         const last = searching ? 0 : Math.min(pages - 1, this._page + 1);
-        for (let page = first; page <= last; page++) {
+        // Each page owns a complete viewport, even if it contains one icon.
+        // FixedLayout derives scroll extents from children, not set_size().
+        for (let page = 0; page < (searching ? 1 : pages); page++) {
+            const pageActor = new St.Widget({layout_manager: new Clutter.FixedLayout(),
+                width: step, height});
+            pageActor.set_position(page * step, 0);
+            this._pages.add_child(pageActor);
+            if (page < first || page > last) continue;
             const entries = searching ? matches : items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
             const cells = appCells(entries.length, this._gridWidth / scale, height / scale, searching);
             entries.forEach((item, index) => {
                 const tile = this._tile(item);
                 const cell = cells[index];
-                tile.set_position(Math.round(page * step + 64 * scale + cell.x * scale), Math.round(cell.y * scale));
+                tile.set_position(Math.round(64 * scale + cell.x * scale), Math.round(cell.y * scale));
                 tile.set_size(Math.round(cell.width * scale), Math.round(cell.height * scale));
-                this._pages.add_child(tile);
+                pageActor.add_child(tile);
                 if (searching || page === this._page) this._tiles.push(tile);
             });
         }
@@ -207,7 +210,6 @@ class AppDrawer extends St.Widget {
         box.add_child(label);
         tile.child = box;
         tile.connect('clicked', () => {
-            if (this._suppressClick) return;
             this.close();
             item.app.activate();
         });
@@ -251,31 +253,31 @@ class AppDrawer extends St.Widget {
         return Clutter.EVENT_PROPAGATE;
     }
 
-    _dragEvent(event) {
-        const type = event.type();
-        const [x] = event.get_coords();
-        const source = event.get_source();
-        if ([Clutter.EventType.BUTTON_PRESS, Clutter.EventType.TOUCH_BEGIN].includes(type) &&
-            this._viewport.contains(source) && !this._state.searching) {
-            this._drag = {x, page: this._page, moved: false};
-            this._suppressClick = false;
-        } else if (this._drag && [Clutter.EventType.MOTION, Clutter.EventType.TOUCH_UPDATE].includes(type)) {
-            const dx = x - this._drag.x;
-            if (Math.abs(dx) > 8) this._drag.moved = true;
-            if (this._drag.moved) {
-                this._viewport.hadjustment.value = this._drag.page * (this._gridWidth + 128 * this._scale) - dx;
-                return Clutter.EVENT_STOP;
-            }
-        } else if (this._drag && [Clutter.EventType.BUTTON_RELEASE, Clutter.EventType.TOUCH_END, Clutter.EventType.TOUCH_CANCEL].includes(type)) {
-            const drag = this._drag;
-            this._drag = null;
-            if (drag.moved) {
-                this._suppressClick = true;
-                this.page(drag.page + (type !== Clutter.EventType.TOUCH_CANCEL && Math.abs(x - drag.x) > this._gridWidth * .15 ? Math.sign(drag.x - x) : 0));
-                return Clutter.EVENT_STOP;
-            }
-        }
-        return Clutter.EVENT_PROPAGATE;
+    _installPagePan() {
+        const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
+        pan.set_begin_threshold(10);
+        pan.connect('may-recognize', () => this.visible &&
+            !this._state?.searching && this._state?.pages > 1);
+        pan.connect('recognize', () => {
+            this._panPage = this._page;
+            this._panStart = this._viewport.hadjustment.value;
+            this._viewport.hadjustment.remove_transition('value');
+        });
+        pan.connect('pan-update', gesture => {
+            const a = this._viewport.hadjustment;
+            a.value = Math.clamp(this._panStart - gesture.get_accumulated_delta().get_x(),
+                a.lower, Math.max(a.lower, a.upper - a.page_size));
+        });
+        pan.connect('end', () => {
+            const dx = pan.get_accumulated_delta().get_x();
+            this.page(this._panPage + (Math.abs(dx) > this._gridWidth * .15
+                ? -Math.sign(dx) : 0));
+        });
+        pan.connect('cancel', () => {
+            if (this.visible) this.page(this._panPage ?? this._page);
+        });
+        this._viewport.add_action_full('luma-launcher-page-pan', Clutter.EventPhase.CAPTURE, pan);
+        this._pagePan = pan;
     }
 
     destroy() {

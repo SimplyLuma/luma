@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Sourced by Luma's greenboot health checks: this package's luma-updated check
 # and the OS image's display manager, shell and NetworkManager checks.
-# Interface: luma_trial_boot (status 0 on a trial boot) and
-# luma_check_failed MESSAGE (exits 1 on a trial boot, 0 otherwise).
+# Interface: luma_trial_boot: 0 trial, 1 ordinary, 2 unknown native FP6 state.
+# luma_check_failed MESSAGE fails for trial or unknown FP6 state; otherwise passes.
+# FP6 requires the qualified native qbootctl error-return patch and greenboot
+# A/B backend. No GRUB fallback is permitted when the FP6 image marker exists.
 #
 # greenboot 0.16 reboots the computer whenever a required check fails, even on
 # an ordinary boot with no update involved. Luma never restarts on its own
@@ -29,8 +31,43 @@ luma_greenboot_error() {
   printf '%s\n' "$message" >&2
 }
 
+# Status: 0 trial, 1 stable, 2 unknown/refused. Queries never change a slot.
+luma_fp6_trial_boot() {
+  local cmdline word suffix slot_arg count result
+  [ -f /usr/lib/greenboot/fp6-qbootctl ] && [ ! -L /usr/lib/greenboot/fp6-qbootctl ] || return 2
+  [ -f /run/ostree-booted ] && [ -x /usr/bin/qbootctl ] || return 2
+  cmdline=$(cat /proc/cmdline) || return 2
+  count=0
+  for word in $cmdline; do
+    case "$word" in
+      androidboot.slot_suffix=_a|androidboot.slot_suffix=_b)
+        suffix=${word#androidboot.slot_suffix=}; count=$((count + 1)) ;;
+      androidboot.slot_suffix=*) return 2 ;;
+    esac
+  done
+  [ "$count" -eq 1 ] || return 2
+  result=$(/usr/bin/qbootctl -c 2>&1) || return 2
+  [ "$result" = "Current slot: $suffix" ] || return 2
+  slot_arg=${suffix#_}
+  result=$(/usr/bin/qbootctl -b "$slot_arg" 2>&1) || return 2
+  [ "$result" = "SLOT $suffix: is marked bootable" ] || return 2
+  result=$(/usr/bin/qbootctl -n "$slot_arg" 2>&1) || return 2
+  case "$result" in
+    "SLOT $suffix: is not marked successful") return 0 ;;
+    "SLOT $suffix: is marked successful") return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
 luma_trial_boot() {
-  local grubenv environment
+  local grubenv environment state
+  if [ -e /usr/lib/greenboot/fp6-qbootctl ] || [ -L /usr/lib/greenboot/fp6-qbootctl ]; then
+    if luma_fp6_trial_boot; then return 0; else state=$?; fi
+    if [ "$state" -eq 2 ]; then
+      luma_greenboot_error "native FP6 trial state unavailable; required health checks fail closed"
+    fi
+    return "$state"
+  fi
   grubenv=$(luma_greenboot_grubenv)
   if [ -n "${LUMA_GREENBOOT_FORCE_TRIAL:-}" ]; then
     return 0
@@ -57,10 +94,20 @@ luma_trial_boot() {
 }
 
 luma_check_failed() {
-  if luma_trial_boot; then
-    echo "luma health check failed on a trial boot: $*" >&2
-    exit 1
-  fi
-  echo "luma health check (not a trial boot, not enforced): $*" >&2
-  exit 0
+  local state
+  if luma_trial_boot; then state=0; else state=$?; fi
+  case "$state" in
+    0)
+      echo "luma health check failed on a trial boot: $*" >&2
+      exit 1 ;;
+    2)
+      echo "luma health check failed with unknown native FP6 trial state: $*" >&2
+      exit 1 ;;
+    1)
+      echo "luma health check (not a trial boot, not enforced): $*" >&2
+      exit 0 ;;
+    *)
+      echo "luma health check failed with invalid trial state" >&2
+      exit 1 ;;
+  esac
 }

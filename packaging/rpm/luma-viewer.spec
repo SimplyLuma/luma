@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-viewer
 Version:        0.1.0
-Release:        1.luma.17.creator20261007.1%{?dist}
+Release:        1.luma.18.nightly20261026.1%{?dist}
 Summary:        Open a file, fast, and look at it
 
 License:        Apache-2.0

@@ -9,12 +9,18 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 36
-# Native release 30's own engine (released already stripped).
+%global native_release 39
+# The native host is shared. ARM uses the source-built engine; x86 keeps its
+# existing engine and original release identity.
+%ifarch aarch64
+%global engine_release 32
+%global approved_release 20261025-native32-arm-desktop
+%global engine_sha256 0c4829cf130a9490489e2dfb81d9cb1fe156ff3701511e3c94ca4b0af5f53b40
+%else
 %global engine_release 30
 %global approved_release 20260921-native-30
 %global engine_sha256 d6a87f43aff38963678dcfd0f89223fdc798193745dac99df4882c03938feff1
-%global source_commit %{?viola_commit}%{!?viola_commit:unknown}
+%endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
 # release already stripped it); keep its private libraries out of the
@@ -29,11 +35,11 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        14.viola%{viola_build}.native%{native_release}.creator20261008.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261026.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
-ExclusiveArch:  x86_64
+ExclusiveArch:  x86_64 aarch64
 
 Source0:        viola-native-engine-%{viola_version}-native%{engine_release}.tar.zst
 Source1:        viola-luma-host-%{viola_version}-native%{native_release}.tar.gz
@@ -71,7 +77,7 @@ Requires:       gtk4
 Requires:       gtk3
 # Menu headings, shortcut chips and disabled rows take solid inks (libadwaita 0039).
 Requires:       libadwaita >= 1.9.3-1.luma.48
-Requires:       luma-developer-platform >= 0.1.0-1.luma.102
+Requires:       luma-developer-platform >= 0.1.0-1.luma.117
 Requires:       luma-application-installer >= 0.1.0-1.luma.61
 Requires:       mutter
 Requires:       dbus-broker
@@ -96,6 +102,10 @@ tar -xzf %{SOURCE1} -C host --strip-components=1
 # Every engine and host file must be the approved release's.
 (cd engine && sha256sum -c --quiet ../host/luma-package/native-%{engine_release}-engine.sha256)
 (cd host/appkit-spike && sha256sum -c --quiet ../luma-package/native-%{native_release}-host.sha256)
+if [ -e host/luma-package/native-engine-profile.json ]; then
+  test '%{_arch}' = aarch64
+  cmp host/luma-package/desktop-arm-preview-frame-profile.json host/luma-package/native-engine-profile.json
+fi
 
 %build
 # The host manifest includes the supplied SVG and all nine locked PNGs.
@@ -127,6 +137,10 @@ install -d %{buildroot}%{_datadir}/viola-browser/luma-host
   xargs -d '\n' cp --parents -t %{buildroot}%{_datadir}/viola-browser/luma-host/)
 find %{buildroot}%{_datadir}/viola-browser -type d -exec chmod 0755 {} +
 find %{buildroot}%{_datadir}/viola-browser -type f -exec chmod 0644 {} +
+if [ -f host/luma-package/native-engine-profile.json ]; then
+  install -m 0644 host/luma-package/native-engine-profile.json \
+    %{buildroot}%{_datadir}/viola-browser/native-engine-profile.json
+fi
 
 install -d %{buildroot}%{_datadir}/applications
 desktop-file-install --dir=%{buildroot}%{_datadir}/applications host/luma-package/viola-browser.desktop
@@ -148,16 +162,24 @@ install -d %{buildroot}%{_datadir}/licenses/%{name}
 cp -a system/usr/share/licenses/viola-browser-stable/. %{buildroot}%{_datadir}/licenses/%{name}/
 
 python3 - %{buildroot} <<'PY'
-import hashlib, json, pathlib, sys
+import hashlib, json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 chrome = root / 'opt/viola/browser/chrome'
+source_revision = pathlib.Path('host/luma-package/luma-source-revision').read_text().strip()
+assert re.fullmatch('[0-9a-f]{40}', source_revision)
 record = {
     'viola_version': '%{viola_version}', 'viola_build': %{viola_build},
     'native_release': %{native_release}, 'approved_release': '%{approved_release}', 'engine_release': %{engine_release},
-    'source': {'repository': 'https://github.com/nmcmil/Viola', 'commit': '%{source_commit}'},
+    'source': {'repository': 'https://github.com/SimplyLuma/luma', 'commit': source_revision},
     'engine_released_sha256': '%{engine_sha256}',
     'engine_packaged_sha256': hashlib.sha256(chrome.read_bytes()).hexdigest(),
 }
+profile = root / 'usr/share/viola-browser/native-engine-profile.json'
+if profile.exists():
+    record['native_engine_profile'] = {
+        'selection': json.loads(profile.read_bytes()),
+        'sha256': hashlib.sha256(profile.read_bytes()).hexdigest(),
+    }
 (root / 'usr/share/viola-browser/provenance.json').write_text(json.dumps(record, indent=2) + '\n')
 PY
 
@@ -168,6 +190,19 @@ host=%{buildroot}%{_datadir}/viola-browser/luma-host
 # The installed host is exactly the approved one: every file and nothing else.
 (cd "$host" && sha256sum -c --quiet "$host_manifest")
 test "$(find "$host" -type f | wc -l)" = "$(wc -l <"$host_manifest")"
+if [ -f host/luma-package/native-engine-profile.json ]; then
+  cmp host/luma-package/native-engine-profile.json "$host/../native-engine-profile.json"
+else
+  test ! -e "$host/../native-engine-profile.json"
+fi
+python3 - "$host" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, sys.argv[1])
+from engine_pipe import native_frame_profile_flags
+selected = Path(sys.argv[1]).parent / 'native-engine-profile.json'
+assert native_frame_profile_flags() == (['--viola-native-shm-frame-probe'] if selected.exists() else [])
+PY
 # The host's unit tests (the approved files plus test-only modules), on a headless Weston.
 # (Wayland socket paths are limited to 108 bytes, so not below the build tree.)
 export XDG_RUNTIME_DIR=$(mktemp -d /tmp/viola-check.XXXXXX)
@@ -243,6 +278,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sun Oct 25 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native38.creator20261025.1
+- Add an explicit ARM desktop frame transport profile and native frame diagnostics.
+
 * Thu Oct 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-14.viola8210.native36.creator20261008.1
 - Restore qualified shared floating page controls and pointer-and-rings artwork; retain the existing engine, signed host service and profile migration.
 

@@ -2,7 +2,7 @@
 
 Name:           luma-vitals
 Version:        0.1.0
-Release:        1.luma.14.creator20261005.1%{?dist}
+Release:        1.luma.15.nightly20261026.1%{?dist}
 Summary:        What every application and service costs, and when one misbehaves
 License:        Apache-2.0 AND MPL-2.0
 URL:            https://projectluma.org/vitals
@@ -241,6 +241,9 @@ grep -q '^-- e6f1229b2154445eaaf8f207d149fb1f$' %{buildroot}%{_prefix}/lib/syste
 %{_prefix}/lib/bootc/kargs.d/60-luma-crash-evidence.toml
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.15.nightly20261026.1
+- Package the October 26 shared source updates.
+
 * Mon Oct 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.14.creator20261005.1
 - Protect the compositor's resident working set through the active-session
   uresourced budget without introducing a hard reservation or app limit

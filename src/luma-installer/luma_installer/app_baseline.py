@@ -16,7 +16,10 @@ import stat
 import subprocess
 import tempfile
 import time
-from .native_app_roles import APPS, CONTRACT, SIGNING_FINGERPRINTS, verify_deployed_commit
+from .native_app_roles import APPS as MAINTAINED_APPS, CONTRACT, SIGNING_FINGERPRINTS, verify_deployed_commit
+from .retired_apps import RETIRED
+
+APPS = MAINTAINED_APPS - RETIRED
 
 ROOT = Path('/usr/share/luma/app-baseline')
 STATE = Path('/var/lib/luma/app-baseline')
@@ -47,10 +50,23 @@ def inventory(root=ROOT):
     doc = json.loads(path.read_text())
     if (doc.get('schema') != 'org.projectluma.offline-app-baseline/v1'
             or doc.get('default_channel') != 'beta' or type(doc.get('bundles')) is not list
-            or not 1 <= len(doc['bundles']) <= len(APPS)+len(RUNTIMES)):
+            or not 1 <= len(doc['bundles']) <= len(set(MAINTAINED_APPS) | set(RETIRED))+len(RUNTIMES)):
         raise ValueError('The baseline inventory is unsupported.')
     arch = doc.get('architecture')
     if arch not in {'x86_64','aarch64'}: raise ValueError('The baseline architecture is unsupported.')
+    # Installed OS images own their shipped app set. A newer installer may
+    # support additional apps without requiring them in an older signed image.
+    role = root / 'roles.json'
+    if protected(role).st_size > 65536 or digest(role) != doc.get('role_contract_sha256'):
+        raise ValueError('The application role contract differs from the baseline.')
+    roles = json.loads(role.read_text())
+    mapping = roles.get('roles')
+    if (roles.get('schema') != 'org.projectluma.first-party-app-roles/v1'
+            or not isinstance(mapping, dict) or not mapping
+            or not set(mapping) <= (set(MAINTAINED_APPS) | set(RETIRED))
+            or any(value != 'signed-system-flatpak' for value in mapping.values())):
+        raise ValueError('The application baseline has invalid native role ownership.')
+    baseline_apps = set(mapping)
     records = []; seen = set(); applications = set(); runtimes = set()
     for row in doc['bundles']:
         if set(row) != {'ref','commit','sha256','bytes','file'}: raise ValueError('Incomplete baseline bundle.')
@@ -59,7 +75,7 @@ def inventory(root=ROOT):
         parts = ref.split('/')
         if len(parts)!=4 or parts[2] != arch: raise ValueError('The baseline ref architecture differs.')
         kind, name, _arch, branch = parts
-        if kind == 'app' and name in APPS and branch == 'beta': applications.add(name)
+        if kind == 'app' and name in baseline_apps and branch == 'beta': applications.add(name)
         elif kind == 'runtime' and name in RUNTIMES and branch == '44': runtimes.add(name)
         else: raise ValueError('The baseline contains an unmaintained role or channel.')
         for key in ('commit','sha256'):
@@ -70,18 +86,11 @@ def inventory(root=ROOT):
         if protected(bundle).st_size != row['bytes'] or digest(bundle) != row['sha256']:
             raise ValueError('The baseline bundle differs from the signed OS inventory.')
         seen.add(ref); records.append(row)
-    if applications != set(APPS) or runtimes != set(RUNTIMES):
+    if applications != baseline_apps or runtimes != set(RUNTIMES):
         raise ValueError('The shipped independent-app baseline is incomplete.')
     key = root / 'luma-depot.gpg'
     if protected(key).st_size > 65536 or digest(key) != doc.get('public_key_sha256'):
         raise ValueError('The baseline public signing key differs.')
-    role = root / 'roles.json'
-    if protected(role).st_size > 65536 or digest(role) != doc.get('role_contract_sha256'):
-        raise ValueError('The application role contract differs from the baseline.')
-    roles = json.loads(role.read_text())
-    if (roles.get('schema') != 'org.projectluma.first-party-app-roles/v1'
-            or roles.get('roles') != {app:'signed-system-flatpak' for app in APPS}):
-        raise ValueError('The application baseline has incomplete native role ownership.')
     return doc, records, key
 
 
@@ -101,6 +110,8 @@ def write_state(path, doc):
 
 def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
     if os.getuid()!=0: raise PermissionError('Only the signed OS baseline owner may seed system apps.')
+    from .retired_apps import reconcile_current
+    reconcile_current(system=True)
     doc, records, key = inventory(root)  # all bytes are admitted before writes
     protected(CONTRACT)
     if digest(CONTRACT) != doc['role_contract_sha256']:
@@ -147,6 +158,8 @@ def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
         outcomes=[]
         for row in sorted(records,key=lambda row:(row['ref'].startswith('app/'),row['ref'])):
             parts=row['ref'].split('/');kind,name=parts[:2]
+            if kind == 'app' and name in RETIRED:
+                outcomes.append({'ref':row['ref'],'result':'preserved-retired-application'});continue
             installed=[ref for ref in installation.list_installed_refs(None) if ref.get_name()==name and ref.format_ref().startswith(kind+'/')]
             if kind=='app' and name in history['applications']:
                 outcomes.append({'ref':row['ref'],'result':'preserved-prior-user-choice'});continue

@@ -67,7 +67,7 @@ for pair in "public-repo:repo" "preview-repo:preview-repo"; do
     [ -n "$ref" ] || continue
     [ "$(ostree rev-parse --repo="$target" "$ref")" = "$(ostree rev-parse --repo="$source" "$ref")" ] ||
       luma_os_die "generation copy of $ref differs from staging"
-  done < <(ostree refs --repo="$source" | grep "^$LUMA_OS_REF_PREFIX/")
+  done < <(ostree refs --repo="$source" | grep "^luma/$LUMA_OS_MAJOR/")
   cmp -s "$source/summary" "$target/summary" && cmp -s "$source/summary.sig" "$target/summary.sig" ||
     luma_os_die "generation summary of ${pair#*:} differs from staging"
 done

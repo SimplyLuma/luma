@@ -245,34 +245,6 @@
       }
     },
     {
-      "id": "org.projectluma.Displays",
-      "title": "Displays",
-      "catalog_id": "displays",
-      "producer": "displays",
-      "source_tree": "src/luma-displays",
-      "native_packages": [
-        "luma-displays"
-      ],
-      "native_desktop_ids": [
-        "org.projectluma.Displays.desktop"
-      ],
-      "target_delivery": "signed-flatpak-app",
-      "channels": [
-        "beta",
-        "nightly"
-      ],
-      "default_channel": "beta",
-      "required_host_services": [
-        "LumaDisplayControl"
-      ],
-      "host_interface_version": 1,
-      "qualification": "pending-installed-update-rollback-and-migration",
-      "recipe": "packaging/flatpak/apps/org.projectluma.Displays/org.projectluma.Displays.yml",
-      "minimum_host_packages": {
-        "luma-application-installer": 57
-      }
-    },
-    {
       "id": "org.gnome.Nautilus",
       "title": "Filer",
       "catalog_id": "filer",
