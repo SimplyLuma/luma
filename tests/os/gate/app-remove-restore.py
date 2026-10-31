@@ -39,6 +39,16 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def expected_identities(manifest):
+    expected = {}
+    for row in manifest['bundles']:
+        key = row['ref']
+        require(key not in expected, 'The signed baseline contains duplicate refs.')
+        expected[key] = {'commit': row['commit'], 'origin': 'luma'}
+    require(expected, 'The signed baseline is empty.')
+    return expected
+
+
 def fingerprint(path):
     st = path.lstat()
     return {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -142,9 +152,9 @@ def main():
                 'all_rpm_sha256': hashlib.sha256('\n'.join(packages).encode()).hexdigest()}
 
     before = identities()
-    expected = {row['ref']: {'commit': row['commit'], 'origin': 'luma'}
-                for row in manifest['bundles']}
-    require(len(before) == 27 and before == expected, 'The fresh signed 27-ref baseline is incomplete or changed.')
+    expected = expected_identities(manifest)
+    require(len(before) == len(manifest['bundles']) and before == expected,
+            'The fresh signed baseline is incomplete or changed.')
     require(completion.get('installed_or_preserved') == {key: value['commit'] for key, value in before.items()},
             'The first-boot completion did not record the installed baseline.')
     for key, ref in refs().items():
@@ -203,7 +213,7 @@ def main():
         attempted = True
         require(tx.run(None), 'The maintained Depot removal transaction did not complete.')
         require(len(operations) == 1 and identities() == untouched,
-                'Removal did not remove exactly Leaf while retaining the other 26 refs.')
+                'Removal did not remove exactly Leaf while retaining every other ref.')
         try:
             installed(installation, APP)
         except ValueError:
@@ -224,12 +234,12 @@ def main():
                 'Restore changed app data, the completion marker, or native engines.')
         ordinary = readability_account(args.pre_account)
         readable = ordinary_refs(ordinary, args.pre_account)
-        require(readable == before, 'The restored 27-ref baseline is not readable by an ordinary user.')
+        require(readable == before, 'The restored signed baseline is not readable by an ordinary user.')
         print(json.dumps({'result': 'PASS', 'removed_ref': leaf_key, 'restored_head': row['commit'],
-                          'operations': operations, 'other_26_heads_unchanged': True,
+                          'operations': operations, 'other_heads_unchanged': True, 'other_ref_count': len(untouched),
                           'same_origin_and_remotes': True, 'native_engines_and_boot_unchanged': True,
                           'durable_marker_unchanged': True, 'app_data_preserved': True,
-                          'ordinary_27_ref_readability': True,
+                          'ordinary_ref_readability': True, 'baseline_ref_count': len(expected),
                           'readability_phase': 'pre-account' if args.pre_account else 'installed-user',
                           'readability_uid': ordinary.pw_uid}, sort_keys=True))
     finally:

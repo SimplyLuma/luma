@@ -5,6 +5,7 @@
   "sdk": "org.projectluma.Sdk",
   "command": "io.luma.Monitor",
   "finish-args": [
+    "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=app-data-schema=monitor-v1",
     "--share=ipc",
     "--socket=wayland",

@@ -24,7 +24,12 @@ SERIES = ["0001-prairie-native-android-window-chrome.patch",
           "0010-luma-authoritative-task-removal.patch",
           "0011-luma-mandatory-initial-task-resize.patch",
           "0012-luma-shared-composer-rpc-threadpool.patch",
-          "0013-luma-software-buffer-allocation-bounds.patch"]
+          "0013-luma-software-buffer-allocation-bounds.patch",
+          "0014-luma-configure-invalidation-lock-order.patch",
+          "0015-luma-native-clipboard-caller-admission.patch",
+          "0016-luma-bounded-native-clipboard-transfer.patch",
+          "0017-luma-native-task-caller-admission.patch",
+          "0018-luma-bound-task-channel-io.patch"]
 
 
 def check_linkage(work):
@@ -59,6 +64,34 @@ def check_linkage(work):
     if negative.returncode == 0 or "undefined reference" not in negative.stdout:
         raise ValueError("Anonymous-scope linkage negative did not reject the broken HAL")
     print("Actual two-translation-unit task-removal linkage PASS; anonymous-scope control RED")
+
+
+def check_configure_lock_order(work):
+    source = (work / "hwcomposer/wayland-hwc.cpp").read_text()
+    callbacks = []
+    for name in ("xdg_toplevel_handle_configure", "shell_surface_configure"):
+        start = source.index(name + "(")
+        opening = source.index("{", start)
+        depth, end = 1, opening + 1
+        while depth:
+            if source[end] == "{": depth += 1
+            elif source[end] == "}": depth -= 1
+            end += 1
+        callbacks.append("void " + source[start:end])
+    production = "\n".join(callbacks)
+    harness = (ROOT / "tests/android/configure-lock-order.cpp").read_text()
+    for name, body in (("production-configure-lock", production),
+                       ("held-window-lock-negative", production.replace("chrome_lock.unlock();", ""))):
+        target = work / (name + ".cpp")
+        target.write_text(harness.replace("// PRODUCTION_CALLBACKS", body))
+        binary = work / name
+        subprocess.run(["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
+                        str(target), "-o", str(binary)], check=True)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=5)
+        print(name + ": " + result.stdout + result.stderr)
+        expected = 42 if name.endswith("negative") else 0
+        if result.returncode != expected:
+            raise ValueError("Production configure lock regression/control failed")
 
 
 def check(archive, link_check=False):
@@ -96,6 +129,9 @@ def check(archive, link_check=False):
             raise ValueError("Effective authoritative task removal differs from native tested source")
         if (work / "hwcomposer/luma-rgb-copy-bounds.h").read_bytes() != (ROOT / "patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h").read_bytes():
             raise ValueError("Effective software copy bounds differ from native tested production source")
+        if (work / "hwcomposer/luma-clipboard-transfer.h").read_bytes() != (ROOT / "patches/android-hardware-waydroid/native/luma-clipboard-transfer.h").read_bytes():
+            raise ValueError("Effective clipboard transfer differs from tested production source")
+        check_configure_lock_order(work)
         if link_check:
             check_linkage(work)
         print("Pinned HWC patch series, production headers and font license identity: PASS")

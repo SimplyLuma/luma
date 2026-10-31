@@ -1,0 +1,49 @@
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -307,7 +307,7 @@
+     if (!owner) return;
+     auto* window = owner.get();
+     struct display *display = window->display;
+-    std::scoped_lock chrome_lock(window->chromeMutex);
++    std::unique_lock chrome_lock(window->chromeMutex);
+ 
+     if (window->has_prairie_titlebar) {
+         if (width <= 1) width = window->content_width + 2 * LUMA_FRAME_GAP;
+@@ -361,6 +361,10 @@
+         if (window->viewport)
+             wp_viewport_set_destination(window->viewport, width, height);
+         xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
++        // The HWC2 adapter holds its own lock while presenting and may wait
++        // for chromeMutex. Do not call back into it while holding this lock.
++        // owner retains window lifetime across the unlocked callback.
++        chrome_lock.unlock();
+         // Resubmit the existing canvas after resize, including when paused.
+         if (changed && display->procs && display->procs->invalidate)
+             display->procs->invalidate(display->procs);
+@@ -374,6 +378,8 @@
+         choose_width_height(display, width, height);
+         if (display->wm_base)
+             xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
++        // Hotplug also invalidates through the HWC2 adapter.
++        chrome_lock.unlock();
+         do_hotplug(display);
+     }
+ }
+@@ -435,7 +441,7 @@
+     if (!owner) return;
+     auto* window = owner.get();
+     struct display *display = window->display;
+-    std::scoped_lock chrome_lock(window->chromeMutex);
++    std::unique_lock chrome_lock(window->chromeMutex);
+ 
+     if (width > 1 && height > 1) {
+         display->req_width = width;
+@@ -446,6 +452,8 @@
+ 
+     if (display->height && display->width) {
+         choose_width_height(display, width, height);
++        // Hotplug also invalidates through the HWC2 adapter.
++        chrome_lock.unlock();
+         do_hotplug(display);
+     }
+ }

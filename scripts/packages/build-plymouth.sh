@@ -14,10 +14,18 @@ for tool in cpio curl git mktemp podman rpm2cpio sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma Plymouth RPMs on the canonical Linux/x86_64 builder\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the Luma Plymouth RPMs on a Linux builder\n' >&2
   exit 1
 fi
+
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported desktop package architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 
 cache_dir="$repo_root/build/cache/srpm"
 output_dir="$repo_root/build/packages/plymouth"
@@ -58,13 +66,14 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/plymouth.spec" \
   "$PLYMOUTH_LUMA_RELEASE" || exit 1
 
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
-  "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
+    architecture=$(rpm --eval "%{_arch}")
     dnf5 -y install rpm-build dnf5-plugins
     dnf5 -y builddep SPECS/plymouth.spec
     rpmbuild -ba --define "_topdir $PWD" SPECS/plymouth.spec
-    rpm_path=$(find RPMS/x86_64 -type f \
-      -name "plymouth-24.004.60-'"$PLYMOUTH_LUMA_RELEASE"'.fc44.x86_64.rpm" -print -quit)
+    rpm_path=$(find RPMS/$architecture -type f \
+      -name "plymouth-24.004.60-'"$PLYMOUTH_LUMA_RELEASE"'.fc44.${architecture}.rpm" -print -quit)
     verify_dir=$(mktemp -d "$PWD/verify.XXXXXX")
     cd "$verify_dir"
     rpm2cpio "$OLDPWD/$rpm_path" >payload.cpio
@@ -75,8 +84,8 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/plymouth.spec" \
     grep -Fx Theme=luma-loading usr/share/plymouth/plymouthd.defaults >/dev/null
     strings usr/lib64/plymouth/details.so |
       grep -F "using Prairie light details palette" >/dev/null
-    script_rpm=$(find "$OLDPWD/RPMS/x86_64" -type f \
-      -name "plymouth-plugin-script-24.004.60-'"$PLYMOUTH_LUMA_RELEASE"'.fc44.x86_64.rpm" -print -quit)
+    script_rpm=$(find "$OLDPWD/RPMS/$architecture" -type f \
+      -name "plymouth-plugin-script-24.004.60-'"$PLYMOUTH_LUMA_RELEASE"'.fc44.${architecture}.rpm" -print -quit)
     test -n "$script_rpm"
     mkdir script-plugin
     # Through a file, as above: cpio stops at the trailer and would leave
@@ -90,9 +99,9 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/plymouth.spec" \
     done
   '
 
-install -d -m 0755 "$output_dir/RPMS/x86_64" "$output_dir/SRPMS"
-find "$rpmbuild_dir/RPMS/x86_64" -type f -name '*.rpm' \
-  -exec install -m 0644 -t "$output_dir/RPMS/x86_64" {} +
+install -d -m 0755 "$output_dir/RPMS/$architecture" "$output_dir/SRPMS"
+find "$rpmbuild_dir/RPMS/$architecture" -type f -name '*.rpm' \
+  -exec install -m 0644 -t "$output_dir/RPMS/$architecture" {} +
 install -m 0644 "$rpmbuild_dir/SRPMS/plymouth-24.004.60-${PLYMOUTH_LUMA_RELEASE}.fc44.src.rpm" \
   "$output_dir/SRPMS/"
 (

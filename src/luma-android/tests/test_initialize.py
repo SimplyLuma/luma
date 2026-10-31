@@ -16,7 +16,9 @@ from luma_android import initialize
 @unittest.skipUnless(os.geteuid() == 0, "package ownership checks require the RPM builder")
 class PackagedImagesTest(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(dir="/root")
+        # Atomic desktops can make /root a link to /var/roothome. Test the
+        # protected real ancestry; production must still reject input symlinks.
+        self.directory = tempfile.TemporaryDirectory(dir=Path("/root").resolve())
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         records = {}
@@ -293,7 +295,12 @@ class GraphicsCapabilityTest(unittest.TestCase):
             if path.parent == self.dri:
                 return SimpleNamespace(st_mode=stat.S_IFCHR | 0o660, st_uid=0,
                                        st_rdev=os.makedev(226, int(path.name[7:])))
-            return original(path)
+            actual = original(path)
+            if path.parent.name == 'device' and path.name.startswith('virtio'):
+                # Model kernel ownership while preserving the actual file
+                # type and permissions tested by the malformed-child cases.
+                return SimpleNamespace(st_mode=actual.st_mode, st_uid=0)
+            return actual
         with patch.object(Path, "lstat", metadata):
             return initialize._software_graphics_required(self.dri, self.sys_drm)
 

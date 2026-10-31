@@ -17,7 +17,7 @@ import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificati
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
-import {readDisplayGeometry, statusInsets} from './safeAreas.js';
+import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
@@ -61,12 +61,14 @@ export class Presentation {
         this._powerButton = new HandheldPowerButton();
         this._motion = new HandheldMotion(this);
         this._page = 0;
+        this._displayProfiles = null;
         this._displayGeometry = null;
+        this._displayGeometrySerial = 0;
         for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
             try {
                 const [ok, bytes] = GLib.file_get_contents(path);
-                if (ok) this._displayGeometry = readDisplayGeometry(new TextDecoder().decode(bytes));
-                if (this._displayGeometry) break;
+                if (ok) this._displayProfiles = readDisplayProfiles(new TextDecoder().decode(bytes));
+                if (this._displayProfiles) break;
             } catch { /* Displays without exclusions retain their normal insets. */ }
         }
         this._refreshDisplayGeometry();
@@ -99,10 +101,22 @@ export class Presentation {
         this._status.add_child(this._statusRight);
         Main.layoutManager.addChrome(this._status, {affectsStruts: false, trackFullscreen: false});
         this._connect(this._status, 'notify::visible', () => this._syncStatusCompositing());
+        // Quick Options belongs to the whole right side of the status bar,
+        // including its inset beside a rounded corner or camera, not only the
+        // indicators: that inset is where a thumb pulls from.
+        const quickOptionsPoint = gesture => {
+            const event = gesture.get_point_event(0);
+            if (!event) return false;
+            const [x] = event.get_coords();
+            const [statusX] = this._status.get_transformed_position();
+            const [rightX] = this._statusRight.get_transformed_position();
+            return x >= Math.min(rightX, statusX + this._status.width / 2);
+        };
         const settingsPan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
             pan_axis: Clutter.PanAxis.Y});
         settingsPan.set_begin_threshold(4);
-        settingsPan.connect('may-recognize', () => this.mode !== 'desktop' && !Main.sessionMode.isLocked);
+        settingsPan.connect('may-recognize', gesture => this.mode !== 'desktop' &&
+            !Main.sessionMode.isLocked && quickOptionsPoint(gesture));
         settingsPan.connect('recognize', () => {
             if (this.mode === 'mobile') this._handheldOptions.beginPull();
         });
@@ -113,12 +127,15 @@ export class Presentation {
         });
         settingsPan.connect('end', () => this._handheldOptions.endPull());
         settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
-        this._statusRight.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        this._status.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
+        // Indicators answer their own taps; the empty status area and its
+        // inset open Quick Options.
         const settingsTap = new Clutter.ClickGesture();
         settingsTap.connect('may-recognize', gesture => !Main.sessionMode.isLocked &&
-            global.stage.get_event_actor(gesture.get_point_event(0)) === this._statusRight);
+            [this._status, this._statusRight].includes(global.stage.get_event_actor(gesture.get_point_event(0))) &&
+            quickOptionsPoint(gesture));
         settingsTap.connect('recognize', () => Main.panel.statusArea.quickSettings.menu.toggle());
-        this._statusRight.add_action(settingsTap);
+        this._status.add_action(settingsTap);
         this._editor = new HomeEditor(this);
         this._gestureBar = button(_('Home'), () => this.showHome(), 'luma-converged-home-control');
         this._gestureBar.set_child(new St.Widget({style_class: 'luma-converged-home-pill',
@@ -229,6 +246,8 @@ export class Presentation {
             }
         });
         this._connect(Main.sessionMode, 'updated', () => this._syncVisibility());
+        if (Main.keyboard)
+            this._connect(Main.keyboard, 'visibility-changed', () => this._syncGestureVisibility());
         this._connect(Main.overview, 'showing', () => {
             if (this.mode !== 'desktop') {
                 Main.overview.hide();
@@ -337,26 +356,31 @@ export class Presentation {
                 this._enterHandheld();
             this._rebuild();
             this._syncVisibility();
+            // Mobile and Tablet place windows differently; re-place them.
+            for (const window of this._windows.keys()) this._queueKeep(window);
         }
         this._tasks.setMode();
     }
 
+    // Runs on every monitor change: the primary display's connector picks its
+    // profile (a foldable switches panels), and the transform is re-read.
     _refreshDisplayGeometry() {
-        if (!this._displayGeometry) return;
+        if (!this._displayProfiles) return;
+        const serial = ++this._displayGeometrySerial;
         Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
             'org.gnome.Mutter.DisplayConfig', 'GetCurrentState', null, null,
             Gio.DBusCallFlags.NONE, 3000, this._cancellable, (bus, result) => {
                 try {
                     const state = bus.call_finish(result).deep_unpack();
-                    if (this._destroyed) return;
+                    if (this._destroyed || serial !== this._displayGeometrySerial) return;
                     const monitor = Main.layoutManager.primaryMonitor;
                     const logical = state[2].find(entry => entry[0] === monitor?.x && entry[1] === monitor?.y);
                     const connector = logical?.[5]?.[0]?.[0];
                     const native = state[1].find(entry => entry[0][0] === connector);
                     const builtIn = native?.[2]?.['is-builtin']?.deep_unpack?.() ?? false;
-                    if (!builtIn || (this._displayGeometry.connector && connector !== this._displayGeometry.connector))
-                        this._displayGeometry = null;
-                    else if (logical) this._displayGeometry.transform = logical[3];
+                    const profile = selectDisplayProfile(this._displayProfiles, connector, builtIn, logical?.[3] ?? 0);
+                    if (JSON.stringify(profile) === JSON.stringify(this._displayGeometry)) return;
+                    this._displayGeometry = profile;
                     this._queueRebuild();
                 } catch (error) {
                     if (!this._destroyed) console.warn(`Display exclusion transform unavailable: ${error.message}`);
@@ -495,6 +519,15 @@ export class Presentation {
         for (const actor of this._panelChildren) {
             this._statusLoans.set(actor, {x_expand: actor.x_expand,
                 x_align: actor.x_align, clip_to_allocation: actor.clip_to_allocation});
+            // Indicators open on release here, so a drag that starts on them
+            // is the status bar's pull rather than a press-time toggle.
+            for (const indicator of [actor, actor.child].filter(Boolean)) {
+                const click = indicator._clickGesture;
+                if (click?.get_recognize_on_press?.()) {
+                    click.set_recognize_on_press(false);
+                    (this._pressRecognizers ??= []).push(click);
+                }
+            }
             move(actor, this._statusRight);
             actor.set_size(-1, -1);
             actor.x_expand = false;
@@ -505,6 +538,9 @@ export class Presentation {
     }
 
     _releaseStatus() {
+        for (const click of this._pressRecognizers ?? [])
+            click.set_recognize_on_press(true);
+        this._pressRecognizers = [];
         for (const [actor, properties] of this._statusLoans ?? []) {
             if (actor.get_parent() === this._statusRight)
                 move(actor, Main.panel._rightBox);
@@ -527,6 +563,8 @@ export class Presentation {
             if (!window.get_compositor_private()) continue;
             window.disconnect(saved.unmanagedId);
             window.disconnect(saved.identityId);
+            saved.keepIds?.forEach(id => window.disconnect(id));
+            if (saved.keepSource) GLib.source_remove(saved.keepSource);
             if (!saved.fullscreen) window.unmake_fullscreen();
             if (!saved.maximized) window.unmaximize();
             if (!saved.fullscreen && !saved.maximized)
@@ -542,6 +580,24 @@ export class Presentation {
         Main.shelf?._sync();
     }
 
+    _queueKeep(window) {
+        const saved = this._windows.get(window);
+        if (!saved || saved.keepSource) return;
+        saved.keepSource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            saved.keepSource = 0;
+            if (!this._destroyed && this.mode !== 'desktop' && !Main.sessionMode.isLocked &&
+                this._windows.has(window) && !window.minimized && window.get_compositor_private())
+                this._manage(window);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // Logical pixels the on-screen keyboard keeps clear at its bottom for
+    // the home gesture, which stays above it.
+    keyboardInset() {
+        return this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter ? 0 : 28;
+    }
+
     _manage(window) {
         if (window.get_window_type() !== Meta.WindowType.NORMAL || window.is_override_redirect() ||
             window.is_skip_taskbar())
@@ -551,6 +607,9 @@ export class Presentation {
                 maximized: window.get_maximize_flags(), rect: window.get_frame_rect()});
             const unmanagedId = window.connect('unmanaged', () => {
                 window.disconnect(this._windows.get(window).identityId);
+                const kept = this._windows.get(window);
+                kept.keepIds?.forEach(id => window.disconnect(id));
+                if (kept.keepSource) GLib.source_remove(kept.keepSource);
                 this._tasks.unmanaged(window);
                 this._windows.delete(window);
                 this._homeMinimized.delete(window);
@@ -567,6 +626,11 @@ export class Presentation {
             this._windows.get(window).identityId = window.connect('notify::gtk-application-id', () => {
                 if (this._tasks.pending) this._tasks.manage(window);
             });
+            // Handheld windows are placed by the Shell. A window that leaves
+            // its place (a client or a stray move unfullscreens or
+            // unmaximizes it) is put back.
+            this._windows.get(window).keepIds = ['notify::fullscreen', 'notify::maximized-horizontally',
+                'notify::maximized-vertically'].map(signal => window.connect(signal, () => this._queueKeep(window)));
         }
         if (!this._tasks.manage(window)) window.make_fullscreen();
         return true;
@@ -636,6 +700,10 @@ export class Presentation {
         this._gestureBar.visible = !this._destroyed && this.mode !== 'desktop' &&
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
             !Main.panel.statusArea.quickSettings.menu.isOpen && !peekNotificationLip()?.isOpen;
+        // The home gesture stays reachable above the on-screen keyboard,
+        // which keeps keyboardInset() clear for it.
+        if (this._gestureBar.visible && this._gestureBar.get_parent() === Main.layoutManager.keyboardBox.get_parent())
+            this._gestureBar.get_parent().set_child_above_sibling(this._gestureBar, Main.layoutManager.keyboardBox);
     }
 
     _setStatusWindow(window) {
@@ -965,7 +1033,8 @@ export class Presentation {
             style: `padding: ${Math.max(0, gap - 1)}px; spacing: ${gap}px;`});
         for (const info of favorites) {
             const item = this._appButton(info, true);
-            item.get_child().get_first_child().icon_size = compact ? this._homeIconSize : size;
+            // The compact dock keeps its 44 px buttons; Home icons may be larger.
+            item.get_child().get_first_child().icon_size = compact ? Math.min(this._homeIconSize, size - 4) : size;
             item.set_size(size * scale, size * scale);
             dock.add_child(item);
             if (draggable) this._tasks.attachDrag(item, info);

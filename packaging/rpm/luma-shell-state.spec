@@ -2,7 +2,7 @@
 
 Name:           luma-shell-state
 Version:        0.2.0
-Release:        1.luma.36.presentation20261025.1%{?dist}
+Release:        1.luma.37.mobile20261030.1%{?dist}
 Summary:        Shared Project Luma shell-state contract
 License:        Apache-2.0
 URL:            https://project-luma.local/

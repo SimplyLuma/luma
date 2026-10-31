@@ -27,6 +27,8 @@ verify_drops=1
 dirs=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
     --reference) reference=${2:?}; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
     --allow-unverified-drop) verify_drops=0; shift ;;
@@ -35,6 +37,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+luma_os_select_architecture "$LUMA_OS_ARCH"
 luma_os_require_tools rpm sha256sum find
 # A drop is checked before anything is taken from it: every NEVRA it claims
 # must be carried by a file whose RPM header says so. File names and
@@ -62,10 +65,8 @@ if [ -n "$reference" ]; then
   done <"$reference"
 fi
 
-mapfile -t pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
-  "$luma_os_repo_root/config/desktop/packages.txt")
-mapfile -t -O "${#pins[@]}" pins < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
-  "$luma_os_repo_root/config/os/fedora-packages.txt" | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t pins < <(luma_os_desktop_packages)
+mapfile -t -O "${#pins[@]}" pins < <(luma_os_desktop_packages "$luma_os_repo_root" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 
 missing=0
 for nevra in "${pins[@]}"; do

@@ -30,9 +30,10 @@
 #    content only (no deltas, no other refs), the Luma collection id, and a
 #    summary signed with the Luma OS Release key, so the medium is exactly what
 #    an online install of that release verifies.
-# 2. Atlas's own media builder (scripts/install/atlas-iso/build-installer-iso.sh
-#    from the Atlas source) composes the ISO with that payload and the release
-#    public key as the only trust anchor.
+# 2. The current OS tree's shared media builder composes the ISO with that
+#    payload and the release public key as the only trust anchor. --atlas-source
+#    identifies the Atlas application RPM's source separately: reusing an
+#    unchanged frontend does not select obsolete architecture/kernel helpers.
 # 3. The ISO's sha256 and the release it carries are written beside it.
 #
 # Everything is written below LUMA_OS_ROOT; containers use the pipeline's
@@ -50,6 +51,7 @@ candidate_build=
 credential_file=
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
     --atlas-source) atlas=$(realpath "${2:?}"); shift 2 ;;
     --atlas-rpms) rpms=$(realpath "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
@@ -67,6 +69,7 @@ luma_os_check_space 25
 ref=$(luma_os_channel_ref "$channel")
 [ -z "$test_build" ] || [ -z "$candidate_build" ] || luma_os_die '--test-candidate and --candidate exclude each other'
 if [ -n "$test_build$candidate_build" ]; then
+  luma_os_load_build_env "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/build.env"
   luma_os_load_env "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/export.env"
   boot_rpms="$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/packages/Packages"
   boot_manifest="$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/luma-packages.manifest"
@@ -84,16 +87,22 @@ if [ -z "$test_build$candidate_build" ]; then
   boot_manifest="$source_repo/luma/releases/$version/luma-packages.manifest"
 fi
 [ -f "$boot_manifest" ] || luma_os_die "payload boot-package manifest missing: $boot_manifest"
-. "$atlas/config/install/atlas/runtime-kernel.env"
+media_builder="$luma_os_repo_root/scripts/install/atlas-iso/build-installer-iso.sh"
+kernel_config="$luma_os_repo_root/config/install/atlas/runtime-kernel.env"
+[ "$LUMA_OS_ARCH" = x86_64 ] || kernel_config="$luma_os_repo_root/config/install/atlas/runtime-kernel-$LUMA_OS_ARCH.env"
+. "$kernel_config"
 if [ -n "$test_build$candidate_build" ]; then
   [ "$LUMA_EXPORT_KERNEL" = "$ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH" ] ||
     luma_os_die "installer runtime kernel does not match payload: $ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH versus $LUMA_EXPORT_KERNEL"
 fi
-[ -x "$atlas/scripts/install/atlas-iso/build-installer-iso.sh" ] || luma_os_die "not an Atlas source tree: $atlas"
+[ -d "$atlas/src/luma-installer-atlas" ] || luma_os_die "not an Atlas application source tree: $atlas"
+[ -x "$media_builder" ] || luma_os_die "OS media builder missing: $media_builder"
 
-work="$LUMA_OS_ROOT/media/work-$channel"
-payload="$LUMA_OS_ROOT/media/payload-$channel/repo"
-rm -rf "$LUMA_OS_ROOT/media/payload-$channel"
+media_channel="$channel"
+[ "$LUMA_OS_ARCH" = x86_64 ] || media_channel="$channel-$LUMA_OS_ARCH"
+work="$LUMA_OS_ROOT/media/work-$media_channel"
+payload="$LUMA_OS_ROOT/media/payload-$media_channel/repo"
+rm -rf "$LUMA_OS_ROOT/media/payload-$media_channel"
 install -d -m 0755 "$(dirname "$payload")" "$work" "$(dirname "$output")"
 ostree init --repo="$payload" --mode=archive --collection-id="$LUMA_OS_COLLECTION_ID"
 ostree pull-local --repo="$payload" "$source_repo" "$head" >/dev/null
@@ -115,6 +124,22 @@ ostree pull --repo="$client/repo" --commit-metadata-only medium "$ref" >/dev/nul
 rm -rf "$client"
 luma_os_log "payload: $version ($head), $(du -sh "$payload" | awk '{ print $1 }')"
 
+# Capture only this medium's selected repository. Shared candidate cache indexes
+# are explicitly unusable as payload proof; their inode hashes are merely hints.
+payload_body_index_sha=
+if [ "${LUMA_OS_CAPTURE_PAYLOAD_BODIES:-0}" = 1 ]; then
+  body_args=()
+  if [ -n "${LUMA_EXPORT_BODY_INDEX_SHA256:-}" ] && [ -n "$test_build$candidate_build" ]; then
+    body_args=(--previous "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/payload-object-bodies.json"
+               --previous-sha256 "$LUMA_EXPORT_BODY_INDEX_SHA256")
+  fi
+  body_source_revision=$(ostree show --repo="$source_repo" --print-metadata-key=org.projectluma.source-revision "$head" | tr -d "'")
+  payload_body_index_sha=$(python3 "$luma_os_repo_root/scripts/install/atlas-iso/payload-object-reuse.py" \
+    --repository "$payload" --output "$output.payload-index.json" \
+    --source-revision "$body_source_revision" --candidate "$head" \
+    --architecture "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --ref "$ref" "${body_args[@]}")
+fi
+
 credential_args=()
 if [ -n "$credential_file" ]; then
   luma_os_channel_is_preview "$channel" || luma_os_die 'a preview credential is only for nightly and beta media'
@@ -131,25 +156,36 @@ display_name=$(ostree cat --repo="$source_repo" "$head" /usr/lib/os-release 2>/d
 case "$display_name" in "Luma ("*")") ;; *) display_name= ;; esac
 media_args=()
 [ -z "$display_name" ] || media_args+=(--display-name "$display_name")
-[ -z "$test_build" ] || media_args+=(--volid "Luma-TEST-${channel^}-x86_64")
+[ -z "$test_build" ] || media_args+=(--volid "Luma-TEST-${channel^}-$LUMA_OS_ARCH")
 
 CONTAINERS_STORAGE_CONF="$LUMA_OS_ROOT/etc/storage.conf" \
 CONTAINERS_CONF="$LUMA_OS_ROOT/etc/containers.conf" \
 TMPDIR="$LUMA_OS_ROOT/tmp" \
-  "$atlas/scripts/install/atlas-iso/build-installer-iso.sh" \
-    --rpms "$rpms" --boot-rpms "$boot_rpms" --boot-manifest "$boot_manifest" \
+  "$media_builder" \
+    --arch "$LUMA_OS_ARCH" --rpms "$rpms" --boot-rpms "$boot_rpms" --boot-manifest "$boot_manifest" \
     --work "$work" --output "$output" \
     --channel "$channel" --payload-repo "$payload" \
     --release-key "$LUMA_OS_KEYS/luma-os-release.asc" \
     "${credential_args[@]}" "${media_args[@]}"
 
+payload_bodies_receipt_sha=
+if [ -n "$payload_body_index_sha" ]; then
+  payload_bodies_receipt_sha=$(python3 "$luma_os_repo_root/scripts/install/atlas-iso/verify-payload-bodies.py" \
+    --iso "$output" --repository "$payload" \
+    --body-index "$output.payload-index.json" --body-index-sha256 "$payload_body_index_sha" \
+    --output "$output.payload-bodies.json")
+fi
 sha256sum "$output" | awk '{ print $1 }' >"$output.sha256"
 cat >"$output.release" <<EOF
+architecture=$LUMA_OS_ARCH
 channel=$channel
 ref=$ref
 commit=$head
 version=$version
 atlas_source_revision=$(git -c "safe.directory=$atlas" -C "$atlas" rev-parse HEAD 2>/dev/null || echo unknown)
+media_helpers_source_revision=$(git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" rev-parse HEAD 2>/dev/null || echo unknown)
+payload_body_index_sha256=$payload_body_index_sha
+payload_bodies_receipt_sha256=$payload_bodies_receipt_sha
 release_key_fingerprint=$(luma_os_gpg_fingerprint)
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 test=${test_build:+true}

@@ -1,0 +1,78 @@
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -31,6 +31,8 @@
+ 
+ const MESSAGES_REPLY_PATH = '/org/projectluma/Messages/Notifications';
+ const MESSAGES_REPLY_IFACE = 'org.projectluma.Messages.NotificationReply1';
++const ANDROID_REPLY_PATH = '/org/projectluma/Android/Notifications';
++const ANDROID_REPLY_IFACE = 'org.projectluma.Android.NotificationReply1';
+ const INLINE_REPLY_TIMEOUT_MS = 30_000;
+ 
+ class FdoNotificationDaemon {
+@@ -312,10 +314,16 @@
+         const appId = source.app?.get_id()?.replace(/\.desktop$/, '');
+         const path = hints['x-luma-inline-reply-path'];
+         const token = hints['x-luma-inline-reply-token'];
+-        if (appId !== 'org.projectluma.Messages' ||
++        // The forwarder attests the unique producer before this method runs.
++        // Restrict the endpoint as well: never call an arbitrary hinted object.
++        const isMessages = appId === 'org.projectluma.Messages' &&
++            path === MESSAGES_REPLY_PATH;
++        const isAndroid = typeof appId === 'string' &&
++            /^waydroid\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/.test(appId) &&
++            path === ANDROID_REPLY_PATH;
++        if ((!isMessages && !isAndroid) ||
+             typeof producerSender !== 'string' ||
+             !producerSender.startsWith(':') ||
+-            path !== MESSAGES_REPLY_PATH ||
+             typeof token !== 'string' ||
+             !/^[0-9a-f]{32}$/.test(token))
+             return null;
+@@ -328,7 +336,7 @@
+                 const result = await Gio.DBus.session.call(
+                     producerSender,
+                     path,
+-                    MESSAGES_REPLY_IFACE,
++                    isAndroid ? ANDROID_REPLY_IFACE : MESSAGES_REPLY_IFACE,
+                     'Reply',
+                     new GLib.Variant('(usss)', [
+                         notificationId, token, requestId, text,
+@@ -359,6 +367,7 @@
+             'icon-static',
+             'persistence',
+             'sound',
++            'x-luma-android-inline-reply-v1',
+         ];
+     }
+ 
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -1241,14 +1241,14 @@
+                 return;
+             const remoteName = Gio.DBusError.get_remote_error(error) ?? '';
+             if (remoteName.endsWith('.NotReady')) {
+-                this._replyEntry.hint_text = _('Messages is not ready; try again');
++                this._replyEntry.hint_text = _('App is not ready; try again');
+                 this._replyButton.remove_style_class_name('luma-inline-reply-send');
+                 this._replyButton._lumaGlyph = false;
+                 this._replyButton.label = _('Try again');
+                 this._replyButton.accessible_name = _('Try again');
+             } else {
+                 // A timeout may have happened after dispatch. Preserve the
+-                // text and request ID, and reconcile in Messages instead of
++                // text and request ID, and reconcile in the app instead of
+                 // blindly transmitting again.
+                 this._setReplyUncertain();
+             }
+@@ -1269,9 +1269,9 @@
+         this._replyButton._lumaGlyph = false;
+         this._replyEntry.reactive = false;
+         this._replyEntry.hint_text = _('Delivery uncertain');
+-        this._replyButton.label = _('Open Messages');
++        this._replyButton.label = _('Open app');
+         this._replyButton.reactive = true;
+-        this._replyButton.accessible_name = _('Open Messages to check delivery');
++        this._replyButton.accessible_name = _('Open app to check delivery');
+     }
+ });
+ 

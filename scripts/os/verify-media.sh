@@ -49,6 +49,7 @@
 
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
+. "$(dirname -- "$0")/lib/gate-vm.sh"
 
 iso=
 update=0
@@ -93,6 +94,9 @@ luma_os_vm_lock
 luma_os_check_space 25
 [ -f "$iso" ] && [ -f "$iso.release" ] || luma_os_die "ISO or its .release record is missing: $iso"
 luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_]*\)=/MEDIA_\U\1=/' "$iso.release")"
+# Select the metadata namespace before looking up an already published release.
+media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
+luma_os_select_architecture "$media_architecture"
 volid=$(isoinfo -d -i "$iso" | sed -n 's/^Volume id: //p')
 # The medium's release is judged by the checks committed with its own source.
 if [ "${MEDIA_TEST:-}" = true ]; then
@@ -104,7 +108,7 @@ elif [ -n "${MEDIA_CANDIDATE_BUILD:-}" ]; then
   media_source=$(sed -n 's/^LUMA_SOURCE_REVISION=//p' "$LUMA_OS_ROOT/builds/$MEDIA_CANDIDATE_BUILD/build.env")
   [ "$update" -eq 0 ] || luma_os_die 'an unpublished candidate has no published release to update from'
 else
-  media_manifest="$(luma_os_channel_repo "$MEDIA_CHANNEL")/luma/releases/$MEDIA_VERSION/manifest.json"
+  media_manifest="$(luma_os_releases_path "$(luma_os_channel_repo "$MEDIA_CHANNEL")")/$MEDIA_VERSION/manifest.json"
   [ -s "$media_manifest" ] || luma_os_die "no published release manifest for $MEDIA_VERSION"
   media_source=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$media_manifest")
 fi
@@ -119,13 +123,26 @@ elif [ -n "${MEDIA_CANDIDATE_BUILD:-}" ]; then
   media_build_dir="$LUMA_OS_ROOT/builds/$MEDIA_CANDIDATE_BUILD"
 fi
 if [ -n "$media_build_dir" ]; then
-  luma_os_load_env "$media_build_dir/build.env"
+  luma_os_load_build_env "$media_build_dir/build.env"
   if [ "$LUMA_SOURCE_DIRTY" = true ] && [ -n "$checks_revision" ] && [ "$checks_revision" != "$media_source" ]; then
     luma_os_die 'private media cannot replace its bound checks with a Git revision'
   fi
 fi
+# New media name their architecture directly; retained x86 media predate that
+# field, so derive it from the signed payload ref. Reject inconsistent records
+# rather than silently installing the wrong target in a VM.
+media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
+if [ -n "$media_build_dir" ] && [ "$LUMA_OS_ARCH" != "$media_architecture" ]; then
+  luma_os_die 'media architecture differs from its candidate build'
+fi
+luma_os_select_architecture "$media_architecture"
+[ "$MEDIA_REF" = "$(luma_os_channel_ref "$MEDIA_CHANNEL")" ] ||
+  luma_os_die 'media architecture/channel does not match its payload ref'
+kvm_available=no
+[ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || kvm_available=yes
+luma_os_gate_vm_target "$LUMA_OS_ARCH" "$(uname -m)" "$kvm_available"
 
-run=$(date -u +%Y%m%dT%H%M%SZ)
+run=$(luma_os_media_vm_run "$(date -u +%Y%m%dT%H%M%SZ)")
 out="$LUMA_OS_ROOT/media/verify-$run"
 vm="$LUMA_OS_ROOT/vm/media-$run"
 install -d -m 0755 "$out" "$vm"
@@ -218,19 +235,21 @@ Path(sys.argv[4]).write_text(json.dumps(dict(
 PY
   printf 'info  disposable VM routes the official codec hostname to %s; TLS and RPM trust unchanged\n' "$codec_address"
 fi
+luma_os_gate_vm_preflight "$out/libvirt-capabilities.xml"
 qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "installing $MEDIA_VERSION from $(basename "$iso") ($volid), account: $account"
 started=$SECONDS
 virt-install --connect qemu:///system --name "$domain" \
-  --memory 6144 --vcpus 4 --cpu host-passthrough --machine q35 --boot uefi \
+  --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
+  --memory 6144 --vcpus 4 --cpu "$gate_cpu" --machine "$gate_machine" --boot "$gate_boot" \
   --disk "path=$vm/disk.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
   --location "$iso,kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img" \
   --initrd-inject "$vm/atlas-media.ks" \
-  --extra-args "inst.ks=file:/atlas-media.ks inst.stage2=hd:LABEL=$volid inst.text console=ttyS0 inst.notmux" \
+  --extra-args "inst.ks=file:/atlas-media.ks inst.stage2=hd:LABEL=$volid inst.text console=$gate_console inst.notmux" \
   --network "passt,portForward0.proto=tcp,portForward0.range0.start=$port,portForward0.range0.to=22" \
   --graphics vnc,listen=127.0.0.1 --video virtio --rng /dev/urandom \
   --serial "file,path=/var/log/libvirt/qemu/$domain-serial.log" \
-  --os-variant fedora-unknown --noreboot --noautoconsole --wait 60 >"$out/virt-install.log" 2>&1 || {
+  --os-variant fedora-unknown --noreboot --noautoconsole --wait "$gate_install_wait_minutes" >"$out/virt-install.log" 2>&1 || {
     cp "/var/log/libvirt/qemu/$domain-serial.log" "$out/install-serial.log" 2>/dev/null
     luma_os_die 'installation from the media failed'
   }
@@ -359,7 +378,7 @@ release_check() {
   # Keep the signed-browser script's source-owned sibling closure intact.
   if [ "$name" = default-browser ]; then
     local helper helper_ready
-    for helper in browser-opens.sh browser-opens.js browser-process-proof.py; do
+    for helper in browser-opens.sh browser-opens.js browser-process-proof.py browser-fixture-keyring.py; do
       helper_ready=0
       if [ -n "$media_build_dir" ] && [ "${LUMA_SOURCE_DIRTY:-false}" = true ]; then
         cp -- "$release_files/tests/os/gate/$helper" "$vm/$helper" && helper_ready=1
@@ -378,6 +397,13 @@ release_check() {
           return 1
         }
     done
+    # This public fixture is read by the disposable unprivileged session.
+    # Root's SCP umask must not make that session's keyring setup unreadable.
+    guest 'chmod 0644 /var/tmp/browser-fixture-keyring.py' || {
+      printf 'FAIL  %s: could not make the public keyring fixture readable\n' "$label" | tee -a "$results"
+      failures=$((failures + 1))
+      return 1
+    }
   fi
   scp -q -P "$port" -i "$key_dir/ssh-key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "$vm/$name.sh" "root@127.0.0.1:/var/tmp/luma-check-$name.sh"

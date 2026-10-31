@@ -243,24 +243,36 @@ def compatibility_report(path, kind, size, digest):
     from .model import PackageReport
     try:
         if kind == "android":
-            from luma_android.apk import inspect_android_package
+            from luma_android.apk import inspect_android_package, architecture_notice, processor_summary
             from luma_android.config import load_runtime_config
             value = inspect_android_package(path, load_runtime_config().apk_max_bytes)
             details = {"Metadata source": "Luma Android archive inspector", "Package kind": value.package_format,
                        "Native processors": ", ".join(value.native_abis) or "No native libraries declared",
+                       "Processor compatibility": processor_summary(value.native_abis),
                        "Signature": "Android verifies the signature during installation",
                        "Permissions": "Manifest permission details are unavailable from this inspector"}
-            title, icon = value.display_name, "application-x-executable"
-            if value.package_format == "apk":
-                from .apk_metadata import identity_for_package
+            title, icon, version = value.display_name, "application-x-executable", ""
+            notice = architecture_notice(value.native_abis)
+            if value.package_format in {"apk", "apks", "apkm", "xapk", "apkx"}:
+                from .apk_metadata import metadata_for_package
                 try:
-                    name, artwork = identity_for_package(path, digest)
-                    title, icon = name or title, artwork or icon
+                    metadata = metadata_for_package(path, digest)
+                    title, icon = metadata["label"] or title, metadata["icon"] or icon
+                    version = metadata["version"]
+                    if metadata["package"]:
+                        details["Package identifier"] = metadata["package"]
+                        if icon == "application-x-executable":
+                            # An installed owner may already have rendered an
+                            # adaptive icon that the static inspector cannot.
+                            from .workflow import installed_icon
+                            icon = installed_icon({"format": "android",
+                                                   "package": metadata["package"], "icon": icon})
                 except (OSError, ValueError, subprocess.SubprocessError):
                     # Identification is optional; never prevent a validated install.
                     pass
             return PackageReport(path, kind, title, "Android application", size, digest,
-                                 "runtime-selected", destination="Android application runtime", icon=icon, details=details)
+                                 ", ".join(value.native_abis) or "universal", destination="Android application runtime",
+                                 icon=icon, details=details, version=version, warnings=(notice,) if notice else ())
         from luma_relay.package import inspect_windows_package, host_supports
         from luma_relay.config import load_config
         from luma_relay import fex

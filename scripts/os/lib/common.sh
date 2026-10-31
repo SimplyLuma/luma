@@ -41,7 +41,88 @@ luma_os_load_env() {
   done <"$file"
 }
 
+: "${LUMA_OS_PROFILE:=full}"
+export LUMA_OS_PROFILE
 luma_os_load_env "$luma_os_repo_root/config/os/release.env"
+
+# The default remains x86_64 for existing callers. A selected target changes
+# package/base/update identities together; it never changes source releases.
+luma_os_select_architecture() {
+  local architecture=$1 contract
+  contract=$(python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
+    --arch "$architecture" --profile "$LUMA_OS_PROFILE" contract) || luma_os_die 'invalid desktop target'
+  luma_os_load_env <(printf '%s\n' "$contract")
+  export LUMA_TARGET_ARCHITECTURE=$architecture
+}
+if [ -n "${LUMA_TARGET_ARCHITECTURE:-}" ]; then
+  luma_os_select_architecture "$LUMA_TARGET_ARCHITECTURE"
+fi
+
+luma_os_desktop_packages() {
+  python3 "$luma_os_repo_root/scripts/os/lib/desktop_target.py" \
+    --root "${1:-$luma_os_repo_root}" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" "${2:-pins}"
+}
+
+# A build record selects its architecture/profile before any path or ref is
+# derived. Older records without an explicit profile retain the full desktop.
+luma_os_load_build_env() {
+  export LUMA_OS_PROFILE=full
+  luma_os_load_env "$1"
+  luma_os_select_architecture "$LUMA_OS_ARCH"
+}
+
+# Metadata/media namespaces differ; OSTree objects, refs and signed summaries
+# continue to share the canonical channel repository.
+luma_os_arch_path() {
+  case "$LUMA_OS_ARCH" in
+    x86_64) printf '%s\n' "$1" ;;
+    aarch64) printf '%s/aarch64\n' "${1%/}" ;;
+    *) luma_os_die 'unsupported desktop architecture namespace' ;;
+  esac
+}
+luma_os_releases_path() { luma_os_arch_path "$1/luma/releases"; }
+
+# New publishers serialize the shared summary, while also honoring the locks
+# used by already deployed per-channel publishers. Pruning uses this boundary
+# too because it can replace the signed repository summary.
+luma_os_publication_lock() {
+  [ "${luma_os_publication_lock_initialized:-0}" != 1 ] ||
+    luma_os_die 'publication locks are already acquired in this shell'
+  install -d -m 0700 "$LUMA_OS_ROOT/locks"
+  legacy_publication_fds=()
+  local legacy_channel legacy_fd inherited_map inherited_key inherited_fd repository_fd
+  local -A inherited_publication_fds=()
+  if [ -n "${LUMA_OS_PUBLICATION_LOCK_FDS:-}" ]; then
+    inherited_map=$(python3 "$luma_os_repo_root/scripts/os/lib/publication_lock_fds.py" \
+      --root "$LUMA_OS_ROOT" --channels $LUMA_OS_CHANNELS) ||
+      luma_os_die 'inherited publication lock validation failed'
+    while read -r inherited_key inherited_fd; do
+      [ -z "$inherited_key" ] || inherited_publication_fds[$inherited_key]=$inherited_fd
+    done <<<"$inherited_map"
+  fi
+  for legacy_channel in $LUMA_OS_CHANNELS; do
+    if [ -n "${inherited_publication_fds[$legacy_channel]:-}" ]; then
+      legacy_fd=${inherited_publication_fds[$legacy_channel]}
+    else
+      exec {legacy_fd}>"$LUMA_OS_ROOT/locks/publish-$legacy_channel.lock"
+    fi
+    flock -n "$legacy_fd" || luma_os_die "a legacy $legacy_channel publication is running"
+    legacy_publication_fds+=("$legacy_fd")
+  done
+  if [ -n "${inherited_publication_fds[repository]:-}" ]; then
+    repository_fd=${inherited_publication_fds[repository]}
+  elif [ -n "${LUMA_OS_PUBLICATION_LOCK_FDS:-}" ]; then
+    # An inherited channel may itself use FD6. Never overwrite it while
+    # acquiring the missing shared repository lock in a partial map.
+    exec {repository_fd}>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+  else
+    exec 6>"$LUMA_OS_ROOT/locks/publish-repository.lock"
+    repository_fd=6
+  fi
+  flock -n "$repository_fd" || luma_os_die 'another shared-repository publication is running'
+  luma_os_repository_publication_fd=$repository_fd
+  luma_os_publication_lock_initialized=1
+}
 
 luma_os_require_root() {
   [ "$(id -u)" -eq 0 ] || luma_os_die "$(basename "$0") must run as root on the build host"
@@ -210,19 +291,27 @@ luma_os_vm_lock() {
 }
 
 luma_os_tools_image() {
-  local digest tag fedora_image
-  digest=$(sha256sum "$luma_os_repo_root/image/os-tools/Containerfile" | cut -c1-16)
+  local digest tag fedora_image host_arch image_key image_arch expected_arch
+  host_arch=$(uname -m)
+  case "$host_arch" in
+    x86_64) image_key=FEDORA_RPM_BUILD_CONTAINER; expected_arch=amd64 ;;
+    aarch64|arm64) host_arch=aarch64; image_key=FEDORA_RPM_BUILD_CONTAINER_AARCH64; expected_arch=arm64 ;;
+    *) luma_os_die "unsupported release tools host architecture: $host_arch" ;;
+  esac
+  fedora_image=$(awk -F= -v key="$image_key" '$1 == key { print $2 }' \
+    "$luma_os_repo_root/config/desktop/inputs.env")
+  [ -n "$fedora_image" ] || luma_os_die "$image_key is not pinned"
+  digest=$({ cat "$luma_os_repo_root/image/os-tools/Containerfile"; printf '%s\n' "$fedora_image"; } | sha256sum | cut -c1-16)
   tag="$LUMA_OS_TOOLS_IMAGE_NAME:$digest"
   if ! luma_os_podman image exists "$tag"; then
-    fedora_image=$(awk -F= '$1 == "FEDORA_RPM_BUILD_CONTAINER" { print $2 }' \
-      "$luma_os_repo_root/config/desktop/inputs.env")
-    [ -n "$fedora_image" ] || luma_os_die 'FEDORA_RPM_BUILD_CONTAINER is not pinned'
     luma_os_log "building tools image $tag"
-    luma_os_podman build --security-opt label=disable \
+    luma_os_podman build --arch "$host_arch" --security-opt label=disable \
       --build-arg "FEDORA_IMAGE=$fedora_image" \
       -t "$tag" -f "$luma_os_repo_root/image/os-tools/Containerfile" \
       "$luma_os_repo_root/image/os-tools" >&2
   fi
+  image_arch=$(luma_os_podman image inspect --format '{{.Architecture}}' "$tag")
+  [ "$image_arch" = "$expected_arch" ] || luma_os_die 'release tools image differs from executing host architecture'
   printf '%s\n' "$tag"
 }
 

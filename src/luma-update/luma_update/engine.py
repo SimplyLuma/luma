@@ -479,16 +479,36 @@ class Engine:
     # ── Reading the system ───────────────────────────────────────────────
 
     def _view(self) -> SystemView:
+        from .hardware import require_device_target
+        if self.arch not in ("x86_64", "aarch64"):
+            raise UpdateError(f"unsupported system architecture {self.arch!r}", "architecture")
+        try:
+            require_device_target(self.paths, self.settings.hardware_target, self.arch)
+            self.settings.graph("stable", self.arch)  # Validate official feed identity before any operation.
+        except ValueError as error:
+            raise Unmanaged(str(error)) from error
         deployments = self.backend.deployments()
         booted = next((d for d in deployments if d.booted), None)
         if booted is None:
             raise Unmanaged("rpm-ostree reports no booted deployment")
+        origin = parse_origin(booted.origin, self.settings)
+        if origin is not None and origin.arch != self.arch:
+            raise UpdateError("booted Luma origin architecture does not match this device", "architecture")
         staged = next((d for d in deployments if d.staged), None)
         rollback = next((d for d in deployments if not d.booted and not d.staged), None)
         default_is_rollback = bool(deployments) and not deployments[0].booted and not deployments[0].staged
-        return SystemView(deployments, booted, staged, parse_origin(booted.origin, self.settings),
+        return SystemView(deployments, booted, staged, origin,
                           parse_origin(staged.origin, self.settings) if staged else None,
                           rollback, default_is_rollback)
+
+    def _require_commit_target(self, revision: str) -> None:
+        from .hardware import require_commit_target, require_device_target
+        try:
+            require_device_target(self.paths, self.settings.hardware_target, self.arch)
+            require_commit_target(self.backend.commit_target_metadata(revision),
+                                  self.settings.hardware_target, self.arch)
+        except ValueError as error:
+            raise UpdateError(str(error), "hardware-target") from error
 
     def _channel(self, view: SystemView, data: dict | None = None) -> str:
         requested = (self.store.data if data is None else data).get("requested_channel") or ""
@@ -628,8 +648,15 @@ class Engine:
         except Exception as error:  # rpm-ostree unavailable: publish what is known
             error_class = classify_error(error)
             log.error("could not read deployments: %s", error)
+            invalidated = {}
+            if error_class == "architecture":
+                self._decision = None
+                invalidated = dict(available_version="", available_commit="",
+                                   available_summary="", available_name="", notes_url="",
+                                   download_bytes=0, waiting_version="", waiting_name="",
+                                   signature_verified=False, signing_key_id="", managed=False)
             self._set(state=ERROR, last_error=FRIENDLY.get(error_class, "Luma couldn't read the installed system."),
-                      last_error_class=error_class)
+                      last_error_class=error_class, **invalidated)
             return self.status()
         data = self.store.snapshot()
         pending_now = data.get("pending") if isinstance(data.get("pending"), dict) else None
@@ -715,7 +742,7 @@ class Engine:
             automatic_download=self.automatic_download_enabled(data),
             ignored_version=self.ignored_version(data),
             repository_url=repository_url(self.paths, self.settings),
-            graph_url=self.settings.graph_url.format(channel=self._channel(view, data) or "stable", arch=self.arch),
+            graph_url=self.settings.graph(self._channel(view, data) or "stable", self._arch(view)),
             signature_verified=bool(signature.get("key_id")),
             signing_key_id=str(signature.get("key_id", "") or ""),
             last_check_reason=str(data.get("last_check_reason", "") or ""),
@@ -807,7 +834,7 @@ class Engine:
     def fetch_graph(self, channel: str, arch: str) -> graphmod.Graph:
         if arch != self.arch or self.arch not in ("x86_64", "aarch64"):
             raise UpdateError(f"requested graph is for {arch}, this computer is {self.arch}", "architecture")
-        url = self.settings.graph_url.format(channel=channel, arch=self.arch)
+        url = self.settings.graph(channel, arch)
         data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
         signature = self.http.get(url + ".minisig", minisign.MAX_SIGNATURE_BYTES)
         keys = minisign.load_keys(self.paths.graph_key_dirs)
@@ -817,7 +844,8 @@ class Engine:
         key_id = next((key.key_id_hex for key in keys if key.key_id == verified.key_id), "")
         graph = graphmod.parse_graph(data)
         graphmod.check_freshness(graph, channel=channel, arch=arch, now=self.clock(),
-                                 last_generated_at=self.store.graph_seen(channel))
+                                 last_generated_at=self.store.graph_seen(channel),
+                                 hardware_target=self.settings.hardware_target)
         with self.store.locked():
             self.store.record_graph(channel, graph.generated_at)
             # What Depot shows as "signed and verified": which key checked out, and when.
@@ -875,6 +903,23 @@ class Engine:
             self.store.data["channel_default_policy"] = policy
         self._decision = None
 
+    def _connection_changed_since_attempt(self) -> bool:
+        """Does the network the last attempt saw no longer hold for this check?
+
+        An attempt that never reached the update server (a phone checking before
+        it joined Wi-Fi) settled nothing. An update found on mobile data that this
+        connection may now download waits for nothing either: the daemon forgot
+        the decision when it exited, so only a new check can start the download."""
+        data = self.store.data
+        if data.get("last_error_class") == "network":
+            return True
+        available = data.get("available")
+        if self._decision is not None or not isinstance(available, dict) or not available.get("commit"):
+            return False
+        allowed, _reason = automatic_download_allowed(self.settings, self.probes.network(), self.probes.power(),
+                                                      self.automatic_download_enabled())
+        return allowed
+
     def check(self, *, automatic: bool = False) -> graphmod.Decision | None:
         self._begin()
         try:
@@ -890,7 +935,8 @@ class Engine:
         # An attempt made on another system (before the restart into an update, or by an
         # older agent that never said which) does not space out this one's first check.
         if automatic and 0 <= since_attempt < self.settings.minimum_check_spacing_seconds \
-                and booted_now and self.store.data.get("attempt_booted") == booted_now:
+                and booted_now and self.store.data.get("attempt_booted") == booted_now \
+                and not self._connection_changed_since_attempt():
             log.info("skipping automatic check: the last attempt was less than %ss ago",
                      self.settings.minimum_check_spacing_seconds)
             self.refresh(keep_busy=False)
@@ -1027,9 +1073,9 @@ class Engine:
             decision = self._check_locked(automatic=False)
         if decision is None or decision.release is None or decision.action == "none":
             return False
-        view = self._view()
         try:
             # Recheck even when a previously selected decision is still cached.
+            view = self._view()
             self._arch(view)
         except UpdateError as error:
             self._decision = None
@@ -1100,6 +1146,17 @@ class Engine:
             if dropping:
                 options["uninstall"] = tuple(dropping)
             try:
+                if self.settings.hardware_target:
+                    # Fetch without staging first. All retry/cache/preview paths
+                    # pass through this boundary and inspect the same checksum.
+                    self.backend.update_deployment(
+                        revision=release.commit, refspec=refspec,
+                        allow_downgrade=allow_downgrade, progress=progress,
+                        message=lambda text: log.info("rpm-ostree: %s", text),
+                        cancellable=token, download_only=True, **options)
+                    if token.is_cancelled():
+                        raise UpdateError("update download was cancelled", "cancelled")
+                    self._require_commit_target(release.commit)
                 self.backend.update_deployment(revision=release.commit, refspec=refspec,
                                                allow_downgrade=allow_downgrade, progress=progress,
                                                message=lambda text: log.info("rpm-ostree: %s", text),
@@ -1217,6 +1274,17 @@ class Engine:
                     except Exception as cleanup_error:
                         log.error("could not remove the wrong staged deployment: %s", cleanup_error)
                 raise UpdateError("rpm-ostree did not stage the requested commit", "transaction")
+            if not self.settings.hardware_target:
+                # A generic install stages in one transaction, so the exact
+                # commit is checked here, before a shutdown can finalize it.
+                try:
+                    self._require_commit_target(release.commit)
+                except Exception:
+                    try:
+                        self.backend.cleanup_pending(message=lambda text: log.info("rpm-ostree: %s", text))
+                    except Exception as cleanup_error:
+                        log.error("could not remove the wrong staged deployment: %s", cleanup_error)
+                    raise
             kargs_added = self._apply_release_kargs(view_after, release)
             self._refresh_boot_menu(view_after, release)
         except Exception as error:
@@ -1251,6 +1319,8 @@ class Engine:
             self.store.data["kept_packages"] = None
             self.store.data["available"] = None
             self.store.data["switch_now"] = False
+            self.store.data["last_error"] = ""
+            self.store.data["last_error_class"] = ""
             reporting.queue_transition(self.store, self.paths, channel=channel,
                                        from_version=view.booted.version, to_version=str(release.version),
                                        arch=self._arch(view), result="staged")
@@ -1382,6 +1452,7 @@ class Engine:
                 kind = "rollback"
             else:
                 raise NothingToDo("nothing is waiting for a restart")
+            self._require_commit_target(view.deployments[0].base_commit)
             log.info("restarting to finish the %s, as requested", kind)
             restart()
             return kind
@@ -1396,6 +1467,8 @@ class Engine:
                 raise NothingToDo("there is no previous version to go back to")
             if self.backend.active_transaction() is not None:
                 raise Busy("another rpm-ostree transaction is in progress")
+            self._require_commit_target(view.booted.base_commit if view.default_is_rollback
+                                        else view.rollback.base_commit)
             self.backend.rollback(message=lambda text: log.info("rpm-ostree: %s", text))
             after = self._view()
             with self.store.locked():

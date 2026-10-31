@@ -1,0 +1,54 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: scroll overflowing dock with a native one-finger pan
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 24c7a77..ad9af84 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -762,6 +762,7 @@ export const Shelf = GObject.registerClass({
+         this._dockPadding = new St.Bin({child: this._dockStrip});
+         this._dockContent.add_child(this._dockPadding);
+         this._dockScroll.set_child(this._dockContent);
++        this._installDockPan();
+         this._dockScroll.connect('scroll-event', (_view, event) => this._scrollDock(event));
+         this._dockScroll.x_expand = true;
+         this._dockScroll.y_expand = true;
+@@ -1955,6 +1956,38 @@ export const Shelf = GObject.registerClass({
+     // A dock with more in it than fits scrolls. A surface that hangs from a
+     // dock item must never hang from one the pointer cannot see, so the item
+     // comes into the visible strip first.
++    _installDockPan() {
++        // Native gesture arbitration cancels the icon's click/long-press once
++        // a pan wins. A tap continues through to the application unchanged.
++        const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        pan.set_begin_threshold(10);
++        const adjustment = () => this._vertical
++            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
++        pan.connect('may-recognize', () => {
++            const a = adjustment();
++            return this.visible && a.upper - a.lower > a.page_size;
++        });
++        pan.connect('recognize', () => {
++            this._dockPanAdjustment = adjustment();
++            this._dockPanStart = this._dockPanAdjustment.value;
++            this._dockPanVertical = this._vertical;
++            this._dockPanAdjustment.remove_transition('value');
++        });
++        pan.connect('pan-update', gesture => {
++            const a = this._dockPanAdjustment;
++            if (!a || this._vertical !== this._dockPanVertical) return;
++            const delta = gesture.get_accumulated_delta();
++            const distance = this._dockPanVertical ? delta.get_y() : delta.get_x();
++            a.value = Math.clamp(this._dockPanStart - distance,
++                a.lower, Math.max(a.lower, a.upper - a.page_size));
++        });
++        const finish = () => { this._dockPanAdjustment = null; };
++        pan.connect('end', finish);
++        pan.connect('cancel', finish);
++        this._dockScroll.add_action_full('luma-dock-touch-pan', Clutter.EventPhase.CAPTURE, pan);
++        this._dockPan = pan;
++    }
++
+     scrollDockItemIntoView(actor) {
+         if (!actor?.get_stage() || !this._dockScroll?.contains(actor))
+             return;

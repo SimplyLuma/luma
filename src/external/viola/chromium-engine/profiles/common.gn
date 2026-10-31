@@ -1,0 +1,10 @@
+target_os = "linux"
+is_debug = false
+is_official_build = true
+is_component_build = false
+is_chrome_branded = false
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+symbol_level = 1
+blink_symbol_level = 0
+v8_symbol_level = 0

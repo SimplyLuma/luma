@@ -3,7 +3,7 @@
 #
 # The nightly OS release job (ADR-030): build -> export -> gate -> publish.
 #
-#   nightly.sh [--source-branch BRANCH] [--base pinned|latest] [--no-publish]
+#   nightly.sh [--arch x86_64|aarch64] [--profile full|arm-preview] [--source-branch BRANCH] [--base pinned|latest] [--no-publish]
 #   nightly.sh --resume-build YYYYMMDD.N [--no-publish]
 #   nightly.sh --release-only YYYYMMDD.N
 #
@@ -45,19 +45,28 @@ resume=
 release_only=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
+    --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
     --resume-build) resume=${2:?}; shift 2 ;;
     --release-only) resume=${2:?}; release_only=1; shift 2 ;;
     --source-branch) branch=${2:?}; shift 2 ;;
     --base) base_policy=${2:?}; shift 2 ;;
     --no-publish) publish=0; shift ;;
-    *) printf 'usage: %s [--source-branch BRANCH] [--base pinned|latest] [--no-publish]\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s [--arch x86_64|aarch64] [--profile full|arm-preview] [--source-branch BRANCH] [--base pinned|latest] [--no-publish]\n' "$0" >&2; exit 2 ;;
   esac
 done
 
 luma_os_require_root
+if [ -n "$resume" ]; then
+  luma_os_load_build_env "$LUMA_OS_ROOT/builds/$resume/build.env"
+else
+  luma_os_select_architecture "$LUMA_OS_ARCH"
+fi
 luma_os_check_host
 install -d -m 0700 "$LUMA_OS_ROOT/locks"
-install -d -m 0755 "$LUMA_OS_ROOT/status" "$LUMA_OS_ROOT/logs/nightly"
+nightly_status_root=$(luma_os_arch_path "$LUMA_OS_ROOT/status")
+nightly_logs_root=$(luma_os_arch_path "$LUMA_OS_ROOT/logs")
+install -d -m 0755 "$nightly_status_root" "$nightly_logs_root/nightly"
 exec 4>"$LUMA_OS_ROOT/locks/nightly.lock"
 if ! flock -n 4; then
   luma_os_log 'another nightly run is active; not starting a second one'
@@ -65,9 +74,9 @@ if ! flock -n 4; then
 fi
 
 run_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-run_log="$LUMA_OS_ROOT/logs/nightly/$(date -u +%Y%m%dT%H%M%SZ).log"
+run_log="$nightly_logs_root/nightly/$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee -a "$run_log") 2>&1
-status="$LUMA_OS_ROOT/status/nightly.json"
+status="$nightly_status_root/nightly.json"
 provenance="$luma_os_repo_root/scripts/os/lib/provenance.py"
 
 set_status() {
@@ -119,14 +128,15 @@ if [ -n "$resume" ]; then
   build_dir="$LUMA_OS_ROOT/builds/$resume"
   [ -s "$build_dir/build.env" ] || fail_run "no completed build to resume: $resume"
   build_id=$resume
-  luma_os_load_env "$build_dir/build.env"
+  luma_os_load_build_env "$build_dir/build.env"
   os="$luma_os_repo_root/scripts/os"
   set_status --set "build_id=\"$build_id\"" --set "version=\"$LUMA_OS_VERSION\"" \
     --set "source_revision=\"$LUMA_SOURCE_REVISION\"" --set "resumed=true" --set 'state="exporting"'
 else
 # Source: a clean checkout of the branch from the pipeline mirror.
 mirror="$LUMA_OS_ROOT/git/ProjectLuma.git"
-checkout="$LUMA_OS_ROOT/src/nightly"
+checkout="$(luma_os_arch_path "$LUMA_OS_ROOT/src")/nightly"
+install -d -m 0755 "$(dirname "$checkout")"
 if [ ! -d "$checkout/.git" ]; then
   git clone --quiet "$mirror" "$checkout" || fail_run 'cannot clone the source mirror'
 fi
@@ -144,10 +154,10 @@ os="$checkout/scripts/os"
 python3 "$os/lib/system_apps_current.py" pins --source "$checkout" --pool "$LUMA_OS_ROOT/rpms/pool" \
   --incoming "$LUMA_OS_ROOT/../incoming" >>"$run_log" 2>&1 ||
   fail_run "a system app is pinned older than its newest release: $(grep '^FAIL' "$run_log" | tail -n 1 | cut -c6-)"
-build_dir=$("$os/build-image.sh" --source "$checkout" --base "$base_policy" | tail -n 1) ||
+build_dir=$("$os/build-image.sh" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --source "$checkout" --base "$base_policy" | tail -n 1) ||
   fail_run 'image build failed'
 build_id=$(basename "$build_dir")
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 image_bytes=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image"]["size_bytes"])' "$build_dir/provenance.json")
 set_status --set "build_id=\"$build_id\"" --set "version=\"$LUMA_OS_VERSION\"" \
   --set "image_bytes=$image_bytes" --set "build_completed_utc=\"$LUMA_BUILD_COMPLETED\"" --set 'state="exporting"'
@@ -204,11 +214,13 @@ PY
   #    nightly must be covered by a fragment, or nothing is published.
   channel_repo=$(luma_os_channel_repo nightly)
   previous_manifest= previous_source=
-  if [ -s "$channel_repo/luma/channels/nightly.json" ]; then
-    previous_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$channel_repo/luma/channels/nightly.json")
-    previous_build=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build_id"])' "$channel_repo/luma/channels/nightly.json")
-    previous_source=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$channel_repo/luma/channels/nightly.json")
-    for candidate_manifest in "$channel_repo/luma/releases/$previous_version/luma-packages.manifest" "$LUMA_OS_ROOT/builds/$previous_build/luma-packages.manifest"; do
+  channel_metadata="$(luma_os_arch_path "$channel_repo/luma/channels")"
+  releases_root=$(luma_os_releases_path "$channel_repo")
+  if [ -s "$channel_metadata/nightly.json" ]; then
+    previous_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$channel_metadata/nightly.json")
+    previous_build=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["build_id"])' "$channel_metadata/nightly.json")
+    previous_source=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_revision"])' "$channel_metadata/nightly.json")
+    for candidate_manifest in "$releases_root/$previous_version/luma-packages.manifest" "$LUMA_OS_ROOT/builds/$previous_build/luma-packages.manifest"; do
       [ -s "$candidate_manifest" ] && previous_manifest=$candidate_manifest && break
     done
     [ -n "$previous_manifest" ] || fail_run "the previous nightly's package set ($previous_build) is gone; release notes cannot be checked"
@@ -239,7 +251,7 @@ if [ "$publish" -eq 1 ]; then
   set_status --set 'published=true' --set 'state="serving"'
   # Retention and the delta contract before anything is served or uploaded.
   "$os/prune.sh" --apply >>"$run_log" 2>&1 || fail_run 'retention after publication failed'
-  install -m 0644 "$notes" "$(luma_os_channel_repo nightly)/luma/releases/$LUMA_OS_VERSION/notes.json"
+  install -m 0644 "$notes" "$(luma_os_releases_path "$(luma_os_channel_repo nightly)")/$LUMA_OS_VERSION/notes.json"
   # The nightly graph: Hub's signing job owns graphs once it has its service
   # token; until then the nightly graph comes from the releases published here.
   if [ ! -r "$LUMA_OS_SECRETS/hub-graph-service-token" ]; then
@@ -247,9 +259,14 @@ if [ "$publish" -eq 1 ]; then
     python3 "$luma_os_repo_root/scripts/os/lib/graph_from_releases.py" \
       "$(luma_os_channel_repo nightly)" nightly "$LUMA_OS_ARCH" >"$graph_source" ||
       fail_run 'rendering the nightly graph failed'
-    "$os/sign-update-graph.sh" --channel nightly --source "$graph_source" --no-sync ||
+    "$os/sign-update-graph.sh" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --channel nightly --source "$graph_source" --no-sync ||
       fail_run 'signing the nightly graph failed'
     rm -f "$graph_source"
+  elif [ "$LUMA_OS_ARCH" != x86_64 ]; then
+    # Existing scheduled signers target x86. A newly qualified ARM release
+    # must obtain and validate its own architecture's graph before serving.
+    "$os/sign-update-graph.sh" --arch "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --channel nightly --no-sync ||
+      fail_run 'signing the ARM nightly graph from Hub failed'
   fi
   /usr/bin/bash "$luma_os_repo_root/scripts/os/nightly-media.sh" --channel nightly --publish-verified "$build_id" \
     --notes "$notes" --nightly-date "$nightly_date" || fail_run 'publishing the release medium failed'
@@ -262,7 +279,7 @@ if [ "$publish" -eq 1 ]; then
     [ "$rc" -eq 3 ] || fail_run "upload failed (exit $rc)"
   fi
   deltas=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["deltas"]))' \
-    "$(luma_os_channel_repo nightly)/luma/releases/$LUMA_OS_VERSION/manifest.json")
+    "$(luma_os_releases_path "$(luma_os_channel_repo nightly)")/$LUMA_OS_VERSION/manifest.json")
   set_status --set 'published=true' --set "upload=\"$sync_state\"" --set "deltas=$deltas" \
     --set "repo_bytes=$(du -sb "$(luma_os_channel_repo nightly)" | awk '{ print $1 }')"
 fi

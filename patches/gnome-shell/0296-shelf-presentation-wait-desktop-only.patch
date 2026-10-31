@@ -1,0 +1,57 @@
+From: Luma Developers
+Subject: [PATCH] Stop the Shelf presentation wait outside Desktop
+
+The Shelf polls every 16 ms until its first layout settles. Tablet and
+Mobile hide the Shelf, so a session that reached them before it settled
+never stopped polling: about 60 wakeups a second with the screen off.
+The wait now runs only on Desktop, resumes there, and is bounded.
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -23,6 +23,8 @@ import * as LiveActivity from './liveActivity.js';
+ import {ShelfArrange, DashedOutline} from './shelfArrange.js';
+ import {DockFolders} from './lumaDockFolders.js';
+ 
++// Longest wait for the Shelf's first settled layout before it is shown anyway.
++const INITIAL_PRESENTATION_LIMIT_US = 5 * GLib.USEC_PER_SEC;
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+ // artwork it ships. Linux has spent a decade letting applications put whatever
+@@ -1003,7 +1005,18 @@ export const Shelf = GObject.registerClass({
+ 
+     _queueInitialPresentation() {
+         // Wait for the real items and allocations before painting the Shelf.
++        // Only a presented Shelf can settle: Tablet and Mobile hide it, so the
++        // wait stops there and resumes on Desktop. It is bounded, so a layout
++        // that never settles still shows rather than polling every frame.
++        if (this._initialPresentationId || this._initialLayoutReady ||
++            (this._lumaPresentationMode ?? 'desktop') !== 'desktop')
++            return;
++        const deadline = GLib.get_monotonic_time() + INITIAL_PRESENTATION_LIMIT_US;
+         this._initialPresentationId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
++            if ((this._lumaPresentationMode ?? 'desktop') !== 'desktop') {
++                this._initialPresentationId = 0;
++                return GLib.SOURCE_REMOVE;
++            }
+             const groups = this._groups.filter(group => group.visible &&
+                 group.row.get_children().some(actor => actor.visible && actor.width > 0));
+             const expected = AppFavorites.getAppFavorites().getFavorites().length;
+@@ -1016,7 +1029,7 @@ export const Shelf = GObject.registerClass({
+             this._initialLayoutFrames = ready && key === this._initialLayoutKey
+                 ? this._initialLayoutFrames + 1 : 0;
+             this._initialLayoutKey = key;
+-            if (this._initialLayoutFrames < 3)
++            if (this._initialLayoutFrames < 3 && GLib.get_monotonic_time() < deadline)
+                 return GLib.SOURCE_CONTINUE;
+             this._initialPresentationId = 0;
+             this._initialLayoutReady = true;
+@@ -1075,6 +1088,8 @@ export const Shelf = GObject.registerClass({
+         if ((this._lumaPresentationMode ?? 'desktop') === 'desktop' && mode !== 'desktop')
+             this._restorePanelActors();
+         this._lumaPresentationMode = mode;
++        if (mode === 'desktop')
++            this._queueInitialPresentation();
+         this.dockFolders?._desktopUI?.sync();
+         this._sync();
+     }

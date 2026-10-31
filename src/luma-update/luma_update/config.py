@@ -32,6 +32,10 @@ class Paths:
         return self.root / path.lstrip("/")
 
     @property
+    def device_tree_compatible(self) -> Path:
+        return self._p("/proc/device-tree/compatible")
+
+    @property
     def state_dir(self) -> Path:
         return self._p("/var/lib/luma-update")
 
@@ -96,11 +100,12 @@ class Paths:
 
 @dataclass(frozen=True)
 class Settings:
-    graph_url: str = "https://dl.simplyluma.com/os/graph/{channel}.json"
+    graph_url: str = "https://dl.simplyluma.com/os/graph/{arch}/{channel}.json"
     stable_repo_url: str = "https://dl.simplyluma.com/os/repo"
     preview_repo_url: str = "https://dl.simplyluma.com/os/preview/{credential}/repo"
     stable_remote: str = "luma"
     ref_template: str = "luma/1/{arch}/{channel}"
+    hardware_target: str = ""
     events_url: str = "https://hub.simplyluma.com/api/updates/events"
     preview_credentials_url: str = "https://hub.simplyluma.com/api/updates/preview-credentials"
     automatic_download: bool = True
@@ -113,7 +118,42 @@ class Settings:
     extra: dict = field(default_factory=dict)
 
     def ref(self, channel: str, arch: str) -> str:
-        return self.ref_template.format(channel=channel, arch=arch)
+        return self.ref_template.format(channel=channel, arch=arch, hardware_target=self.hardware_target)
+
+    def graph(self, channel: str, arch: str) -> str:
+        """Resolve official legacy feeds without overwriting administrator files.
+
+        Vendor defaults cannot replace a retained /etc graph_url. Resolve known
+        official legacy buckets at use time from the verified machine identity;
+        intentional third-party and isolated test feeds retain their own paths.
+        Explicit incompatible official buckets fail closed rather than guessing.
+        """
+        from urllib.parse import urlsplit, urlunsplit
+        from .hardware import graph_slug
+        url = self.graph_url.format(channel=channel, arch=arch,
+                                    hardware_target=self.hardware_target)
+        parsed = urlsplit(url)
+        if parsed.hostname != "dl.simplyluma.com":
+            return url
+        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
+            raise ValueError("official update graphs require the canonical HTTPS origin")
+        if channel not in CHANNELS or arch not in ("x86_64", "aarch64"):
+            raise ValueError("unsupported update graph identity")
+        prefix = "/os/graph/"
+        if not parsed.path.startswith(prefix):
+            raise ValueError("official update graph URL is outside the graph namespace")
+        parts = parsed.path[len(prefix):].split("/")
+        if not parts or parts[-1] not in tuple(c + ".json" for c in CHANNELS):
+            raise ValueError("official update graph URL does not name a channel graph")
+        slug = graph_slug(self.hardware_target, arch)
+        bucket = parts[:-1]
+        if bucket:
+            if bucket[0] != arch:
+                raise ValueError("official update graph architecture does not match this device")
+            if len(bucket) > 2 or (len(bucket) == 2 and (not slug or bucket[1] != slug)):
+                raise ValueError("official update graph hardware target does not match this device")
+        expected = prefix + arch + ("/" + slug if slug else "") + "/" + channel + ".json"
+        return urlunsplit((parsed.scheme, parsed.netloc, expected, parsed.query, parsed.fragment))
 
     def remote_for(self, channel: str) -> str:
         # One remote for every channel; preview enrollment changes where it points.

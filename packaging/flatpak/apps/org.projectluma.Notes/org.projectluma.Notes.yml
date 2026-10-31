@@ -10,6 +10,7 @@ command: prairie-notes
 # URLs. The publisher stages the exact included SHA-addressed image bytes.
 appstream-compose: false
 finish-args:
+  - --talk-name=org.project_luma.ShellState1
   - --talk-name=org.projectluma.ApplicationDirectory1
   - --metadata=X-Luma=min-host-continuity=63
   - --metadata=X-Luma=min-host-installer=64

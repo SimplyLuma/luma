@@ -8,6 +8,7 @@ import subprocess
 import sys
 import unittest
 
+from public_first_party_policy import public_ids
 from luma_installer import depot_catalog
 from luma_installer.depot_catalog import CatalogError, validate_catalog
 
@@ -173,16 +174,25 @@ class SeedInputs(unittest.TestCase):
         first_party = json.loads((DATA / 'depot-first-party.json').read_text())
         private = {row['id'] for row in first_party['applications']
                    if {**first_party['defaults'], **row}['visibility'] not in ('public', 'unlisted')}
-        # Five held behind their public gate, plus Sticky Notes, withdrawn.
-        self.assertEqual(len(private), 6)
+        # Private suite apps and withdrawn listings stay out of the seed.
+        withdrawn = {row['id'] for row in first_party['applications']
+                     if {**first_party['defaults'], **row}['visibility'] == 'withdrawn'}
+        self.assertEqual(private, {'grid', 'stage', 'canvas', 'session', 'reel'} | withdrawn)
         self.assertIn('sticky-notes', private)
         shipped = {row['id'] for row in seed['applications']}
         self.assertFalse(private & shipped)
         self.assertTrue(all(row['visibility'] in ('public', 'unlisted') for row in seed['applications']))
-        # 47 listed apps (7-Zip and Ollama are withdrawn from schema 4), the
-        # 24 public first-party identities (21 baseline and optional Darkroom/
-        # Imager/Write; Sticky Notes is withdrawn), plus one verified developer.
-        self.assertEqual(len(shipped), 72)
+        channels = json.loads((DATA / 'depot-channels.json').read_text())['applications']
+        legacy = json.loads((DATA / 'depot-catalog.json').read_text())
+        verified = json.loads((DATA / 'depot-verified.json').read_text())
+        expected = set(public_ids(DATA))
+        for source in (legacy, verified):
+            for row in source['applications']:
+                entry = {**source.get('defaults', {}), **row}
+                visibility = channels.get(entry['id'], {}).get('visibility', entry.get('visibility', 'public'))
+                if visibility in ('public', 'unlisted'):
+                    expected.add(entry['id'])
+        self.assertEqual(shipped, expected)
         self.assertEqual({c['id'] for c in seed['collections']}, {'office', 'creative', 'studio'})
 
     def test_first_party_entries_validate_once_public(self):
@@ -241,7 +251,8 @@ class Seed(unittest.TestCase):
     def test_first_party_native_identity_and_flatpak_fallback_are_preserved(self):
         seed = depot_catalog.load_catalog(DATA / 'depot-catalog-4.json')
         first_party = [e for e in seed.applications if e.tier == 'luma']
-        self.assertEqual(len(first_party), 24)
+        self.assertEqual({entry.id for entry in first_party}, set(public_ids(DATA)))
+        self.assertNotIn('displays', {entry.id for entry in first_party})
         # Published first-party apps retain native provenance and their release branch.
         wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
                  'monitor', 'photos', 'camera', 'connect', 'write', 'filer', 'ari'}
@@ -264,7 +275,7 @@ class Seed(unittest.TestCase):
                                 'clock', 'weather', 'tasks', 'voice-memos'})
         # Apps the system or Settings needs are never offered for removal.
         self.assertEqual({e.id for e in first_party if not e.luma_system.removable},
-                         {'filer', 'connect', 'monitor', 'displays', 'mods'})
+                         {'filer', 'connect', 'monitor', 'mods'})
 
     def test_preinstalled_flags_match_actual_image_pins(self):
         pins_file = DATA.parents[2] / 'config/desktop/packages.txt'

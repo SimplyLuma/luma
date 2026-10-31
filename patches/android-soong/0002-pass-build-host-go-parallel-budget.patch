@@ -1,0 +1,20 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] Preserve explicit build-host Go parallelism
+
+After the GC-budget patch, also preserve explicit Go scheduler concurrency
+through Soong's env-i boundary. Ninja job count alone does not constrain the
+Go graph compiler. This tunes the build host, not Android application policy.
+Pinned Soong/AOSP Apache-2.0 copyright and source notices remain intact.
+
+--- a/ui/build/soong.go
++++ b/ui/build/soong.go
+@@ -169,6 +169,9 @@
+ 	invocationEnv := make(map[string]string)
+ 	if gc := os.Getenv("GOGC"); gc != "" {
+ 		invocationEnv["GOGC"] = gc
++	}
++	if parallel := os.Getenv("GOMAXPROCS"); parallel != "" {
++		invocationEnv["GOMAXPROCS"] = parallel
+ 	}
+ 	debugMode := os.Getenv("SOONG_DELVE") != ""
+ 

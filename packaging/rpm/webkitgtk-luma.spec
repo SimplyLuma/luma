@@ -76,6 +76,9 @@ Patch:          0001-native-touch-surface-transform-and-cancel.patch
 BuildRequires:  bison
 BuildRequires:  bubblewrap
 BuildRequires:  clang
+%ifarch aarch64
+BuildRequires:  lld
+%endif
 BuildRequires:  cmake
 BuildRequires:  flex
 BuildRequires:  flite-devel
@@ -322,6 +325,10 @@ mkdir -p webkitgtk-6.0
 pushd webkitgtk-6.0
 %cmake -S .. \
   -GNinja \
+%ifarch aarch64
+  -DTRY_USE_LD_LLD=ON \
+  -DUSE_LD_LLD=ON \
+%endif
   -DPORT=GTK \
   -DCMAKE_BUILD_TYPE=Release \
   -DUSE_GTK4=ON \
@@ -330,12 +337,25 @@ pushd webkitgtk-6.0
   -DENABLE_DOCUMENTATION=OFF \
 %endif
   %{nil}
+%ifarch aarch64
+# Upstream's supported LLD selection keeps Fedora ThinLTO and all checks.
+# Refuse silent fallback before spending time compiling either GTK ABI.
+{
+  printf 'architecture=aarch64 ABI=webkitgtk-6.0 linker=LLD\n'
+  grep -Fx 'USE_LD_LLD:BOOL=ON' %{_vpath_builddir}/CMakeCache.txt
+  grep -m1 -F -- '-fuse-ld=lld' %{_vpath_builddir}/build.ninja
+} >> %{_topdir}/ADMITTED-LINKER-PROOF.txt
+%endif
 popd
 
 mkdir -p webkit2gtk-4.1
 pushd webkit2gtk-4.1
 %cmake -S .. \
   -GNinja \
+%ifarch aarch64
+  -DTRY_USE_LD_LLD=ON \
+  -DUSE_LD_LLD=ON \
+%endif
   -DPORT=GTK \
   -DCMAKE_BUILD_TYPE=Release \
   -DUSE_GTK4=OFF \
@@ -345,6 +365,15 @@ pushd webkit2gtk-4.1
   -DENABLE_DOCUMENTATION=OFF \
 %endif
   %{nil}
+%ifarch aarch64
+# Upstream's supported LLD selection keeps Fedora ThinLTO and all checks.
+# Refuse silent fallback before spending time compiling either GTK ABI.
+{
+  printf 'architecture=aarch64 ABI=webkit2gtk-4.1 linker=LLD\n'
+  grep -Fx 'USE_LD_LLD:BOOL=ON' %{_vpath_builddir}/CMakeCache.txt
+  grep -m1 -F -- '-fuse-ld=lld' %{_vpath_builddir}/build.ninja
+} >> %{_topdir}/ADMITTED-LINKER-PROOF.txt
+%endif
 popd
 
 pushd webkitgtk-6.0

@@ -52,10 +52,31 @@ esac
 
 container_workdir="/build/${host_workdir#"$build_root"/}"
 
+# Native CI workers already run inside the pinned Fedora job container. The
+# architecture check is mandatory: a label cannot turn an x86 compiler into ARM.
+if [ "${LUMA_RPM_BUILDER_DIRECT:-0}" = 1 ]; then
+  actual_architecture=$(rpm --eval '%{_arch}')
+  expected_architecture=${builder_architecture:-$(uname -m)}
+  [ "$actual_architecture" = "$expected_architecture" ] || {
+    printf 'error: direct builder architecture %s differs from %s\n' "$actual_architecture" "$expected_architecture" >&2
+    exit 1
+  }
+  (cd "$host_workdir" && /bin/bash -lc "$builder_command")
+  exit
+fi
+
 # Local package validation can use an existing Fedora development container
 # when nested image-loader sandboxes are unavailable in the pinned builder.
 if [ -n "${LUMA_RPM_BUILDER_EXISTING:-}" ]; then
+  # Newly staged host files need the same shared label as ordinary builders.
+  if [ "$disable_selinux_label" = 0 ] && command -v getenforce >/dev/null 2>&1 && \
+      [ "$(getenforce)" = Enforcing ]; then
+    chcon -R -t container_file_t -l s0 "$host_workdir"
+  fi
+  # Builder commands read the target architecture (their verification
+  # unpacks RPMS/<architecture>); pass it as the other modes do.
   podman exec --user root --workdir "$host_workdir" \
+    --env "LUMA_RPM_BUILDER_ARCHITECTURE=${builder_architecture:-x86_64}" \
     "$LUMA_RPM_BUILDER_EXISTING" /bin/bash -lc "$builder_command"
   exit
 fi

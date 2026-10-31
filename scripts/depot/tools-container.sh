@@ -29,8 +29,14 @@ done
 if [ "$signing" = 1 ]; then
   [ "$DEPOT_TOOLS_CONTAINER" != luma-depot-tools ] || depot_die "signing requires a distinct DEPOT_TOOLS_CONTAINER"
 fi
-image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER}
-if [ "$(uname -m)" = aarch64 ]; then image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER_AARCH64}; fi
+depot_validate_build_architectures
+# Signing exports files and metadata without executing the target payload.
+# The declared tools CPU must still match the actual container for every role.
+case "$DEPOT_TOOLS_ARCH" in
+  x86_64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER} ;;
+  aarch64) image=${DEPOT_TOOLS_IMAGE:-$FEDORA_RPM_BUILD_CONTAINER_AARCH64} ;;
+  *) depot_die "unsupported Depot architecture: $DEPOT_ARCH" ;;
+esac
 
 if podman container exists "$DEPOT_TOOLS_CONTAINER"; then
   if [ "$recreate" != 1 ]; then
@@ -99,7 +105,7 @@ esac
 podman run --detach --init "${isolation[@]}" --security-opt label=disable \
   --cpus "${DEPOT_TOOLS_CPUS:-2}" --memory "${DEPOT_TOOLS_MEMORY:-4g}" \
   --memory-swap "${DEPOT_TOOLS_MEMORY_SWAP:-5g}" --pids-limit 2048 \
-  --cgroup-parent luma-os.slice --label "org.projectluma.depot.role=$role" "${custody_labels[@]}" \
+  --cgroup-parent "${DEPOT_TOOLS_CGROUP_PARENT:-luma-os.slice}" --label "org.projectluma.depot.role=$role" "${custody_labels[@]}" \
   --name "$DEPOT_TOOLS_CONTAINER" --hostname luma-depot-tools \
   "${work_mount[@]}" \
   "${key_mount[@]}" \
@@ -107,12 +113,9 @@ podman run --detach --init "${isolation[@]}" --security-opt label=disable \
   --env PYTHONPATH= --env PYTHONHOME= --env BASH_ENV= --env ENV= --env LD_PRELOAD= --env LD_LIBRARY_PATH= \
   "$image" sleep infinity >/dev/null
 
+actual_arch=$(podman exec "$DEPOT_TOOLS_CONTAINER" uname -m)
+depot_validate_actual_tools_cpu "$actual_arch"
 if [ "$signing" = 0 ]; then
-podman exec "$DEPOT_TOOLS_CONTAINER" dnf5 -q -y install \
-  flatpak flatpak-builder flatpak-module-tools ostree minisign \
-  appstream appstream-compose createrepo_c gnupg2 pinentry \
-  python3-pyyaml python3-requests python3-pytest git-core rsync jq \
-  desktop-file-utils librsvg2-tools util-linux zstd tar findutils which python3-pillow cpio \
-  dnf5-plugins rclone s3cmd
+podman exec --interactive "$DEPOT_TOOLS_CONTAINER" bash -s < "$depot_repo_root/scripts/depot/install-tools-packages.sh"
 fi
 depot_log "$DEPOT_TOOLS_CONTAINER ready ($image)"

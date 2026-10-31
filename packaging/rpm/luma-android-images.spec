@@ -5,11 +5,11 @@
 %global _binary_payload w9.zstdio
 Name:           luma-android-images
 Version:        20.0
-Release:        1.luma.9.creator20261008.1%{?dist}
+Release:        1.luma.10.nightly20261030.1%{?dist}
 Summary:        Pinned offline Android application support images
 License:        LicenseRef-Waydroid-Android-Image
 URL:            https://waydro.id/
-ExclusiveArch:  x86_64
+ExclusiveArch:  x86_64 aarch64
 Source0:        android-system.zip
 Source1:        android-vendor.zip
 Source2:        images.env
@@ -24,7 +24,7 @@ Source10:       IMAGE-MEMBERS.json
 Source11:       verify-packaged-image-provenance.py
 Source12:       test_image_pair_admission.py
 BuildRequires:  python3
-Requires:       luma-android-runtime >= 0.1.0-1.luma.79
+Requires:       luma-android-runtime >= 0.1.0-1.luma.97
 
 %description
 The exact architecture-matched Waydroid system and vendor image pair. These

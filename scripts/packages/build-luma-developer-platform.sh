@@ -66,7 +66,7 @@ install -d "$source_dir/appkit/luma_appkit/icons"
 install -m 0644 "$repo_root"/assets/icon-theme/Prairie/symbolic/actions/lumaui-*.svg \
   "$source_dir/appkit/luma_appkit/icons/"
 find "$source_dir" -type d -name build -prune -exec rm -rf {} +
-source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 case "$source_date_epoch" in
   ''|*[!0-9]*)
     printf 'error: source date epoch must be an unsigned integer\n' >&2
@@ -134,6 +134,10 @@ builder_command='
   '
 
 if [ "${LUMA_RPM_BUILDER_DIRECT:-0}" = 1 ]; then
+  [ "$(rpm --eval '%{_arch}')" = "$architecture" ] || {
+    printf 'error: native platform builder does not match target architecture\n' >&2
+    exit 1
+  }
   (
     cd "$rpmbuild_dir"
     /bin/bash -lc "$builder_command"

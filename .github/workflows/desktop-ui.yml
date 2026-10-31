@@ -1,0 +1,139 @@
+name: Native desktop UI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-ui.yml'
+      - 'scripts/os/build-desktop-ui.sh'
+      - 'scripts/os/admit-desktop-toolkit.py'
+      - 'scripts/os/desktop-ui-matrix.py'
+      - 'tests/os/test_desktop_ui_matrix.py'
+      - 'scripts/packages/build-gnome-control-center.sh'
+      - 'scripts/packages/build-nautilus.sh'
+      - 'scripts/packages/build-gnome-shell.sh'
+      - 'patches/gnome-control-center/**'
+      - 'patches/nautilus/**'
+      - 'patches/gnome-shell/**'
+      - 'tests/gnome-control-center/**'
+      - 'tests/nautilus/**'
+      - 'tests/gnome-shell/**'
+      - 'config/desktop/inputs.env'
+      - 'scripts/packages/run-in-rpm-builder.sh'
+      - 'scripts/packages/spec-release.sh'
+      - 'scripts/packages/patch-series.sh'
+      - 'scripts/packages/fetch-source-rpm.sh'
+      - 'scripts/packages/build-gtk4.sh'
+      - 'scripts/packages/build-libadwaita.sh'
+      - 'scripts/packages/build-luma-developer-platform.sh'
+      - 'scripts/packages/build-figtree-fonts.sh'
+      - 'scripts/packages/check-gnome-control-center-rpm.sh'
+      - 'patches/gtk4/**'
+      - 'patches/libadwaita/**'
+      - 'src/luma-platform/**'
+      - 'scripts/fonts/**'
+      - 'packaging/fontconfig/**'
+      - 'assets/icon-theme/Prairie/**'
+      - 'tests/toolkit-native/**'
+      - 'packaging/rpm/luma-developer-platform.spec'
+      - 'packaging/rpm/google-figtree-fonts.spec'
+      - 'LICENSE.md'
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native CPU to build (both preserves the shared default)
+        type: choice
+        options: [both, x86_64, aarch64]
+        default: both
+      components:
+        description: Comma separated selected components (empty means all)
+        type: string
+        default: ""
+      home_widgets_run:
+        description: Successful matching native Home widget producer
+        type: string
+        default: ""
+      toolkit_run:
+        description: Successful toolkit run for this exact source revision
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      components: ${{ steps.matrix.outputs.components }}
+      targets: ${{ steps.matrix.outputs.targets }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: matrix
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SELECTED: ${{ inputs.components }}
+          ARCHITECTURE: ${{ inputs.architecture }}
+        run: |
+          python3 tests/os/test_desktop_ui_matrix.py
+          if [ -n "$BASE" ]; then
+            components=$(python3 scripts/os/desktop-ui-matrix.py --base "$BASE")
+          else
+            components=$(python3 scripts/os/desktop-ui-matrix.py)
+          fi
+          if [ -n "$SELECTED" ]; then
+            components=$(python3 -c 'import json,os; a=os.environ["SELECTED"].split(","); assert a and len(a)==len(set(a)) and set(a)<=set(["gnome-shell","gnome-control-center","nautilus"]); print(json.dumps(a))')
+          fi
+          echo "components=$components" >> "$GITHUB_OUTPUT"
+          echo "count=$(printf '%s' "$components" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
+          targets=$(python3 -c 'import json,os,pathlib; v=dict(line.split("=",1) for line in pathlib.Path("config/desktop/inputs.env").read_text().splitlines() if line and not line.startswith("#") and "=" in line); pick=os.environ.get("ARCHITECTURE") or "both"; assert pick in ("both","x86_64","aarch64"); rows=[{"runner":"ubuntu-24.04","architecture":"x86_64","image":v["FEDORA_RPM_BUILD_CONTAINER"]},{"runner":"ubuntu-24.04-arm","architecture":"aarch64","image":v["FEDORA_RPM_BUILD_CONTAINER_AARCH64"]}]; print(json.dumps([r for r in rows if pick=="both" or r["architecture"]==pick]))')
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+  build:
+    needs: select
+    if: needs.select.outputs.count != '0'
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.select.outputs.components) }}
+        target: ${{ fromJSON(needs.select.outputs.targets) }}
+    runs-on: ${{ matrix.target.runner }}
+    container:
+      image: ${{ matrix.target.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.target.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+      LUMA_DESKTOP_UI_COMPONENT: ${{ matrix.component }}
+      RPM_BUILD_NCPUS: '3'
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git gh podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Admit already checked matching toolkit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOLKIT_RUN: ${{ inputs.toolkit_run }}
+        run: |
+          args=()
+          if [ -n "$TOOLKIT_RUN" ]; then args+=(--run-id "$TOOLKIT_RUN"); fi
+          python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" "${args[@]}"
+      - name: Build and check UI component
+        run: |
+          git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+          bash scripts/os/build-desktop-ui.sh
+      - name: Retain checked UI RPMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-ui-${{ matrix.component }}-${{ matrix.target.architecture }}
+          path: |
+            build/packages/${{ matrix.component }}/RPMS/
+            build/packages/${{ matrix.component }}/SRPMS/
+            build/packages/${{ matrix.component }}/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14

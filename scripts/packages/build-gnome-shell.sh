@@ -333,20 +333,32 @@ install -m 0644 "$repo_root/patches/gnome-shell/0276-quick-options-device-row-ge
 install -m 0644 "$repo_root/patches/gnome-shell/0277-login-surfaces-and-dock-battery-percentage.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0278-brightness-one-percent-and-idle-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0279-applications-and-downloads-drawer.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0280-retire-standalone-displays.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0280-drawer-artwork-and-grid-alignment.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0281-converged-presentation.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0286-android-native-notification-replies.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0287-app-menu-section-ownership.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0288-dock-wheel-reachability.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0286-dock-native-touch-scroll.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0287-calendar-island-menu-state.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0288-surface-material-owner-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0289-status-material-and-readiness.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0290-compact-login-action-bar.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0291-shared-handheld-startup-and-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0293-mobile-lock-notification-island.patch" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg; do
+install -m 0644 "$repo_root/patches/gnome-shell/0294-keycap-keyboard.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0295-status-without-shelf-backdrop.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0296-shelf-presentation-wait-desktop-only.patch" "$rpmbuild_dir/SOURCES/"
+for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/scripts/packages/check-rpm-directory-modes.py" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"
@@ -366,6 +378,14 @@ install -m 0644 "$repo_root/tests/gnome-shell/seal-conversations.js" "$rpmbuild_
 install -m 0644 "$repo_root/tests/gnome-shell/dock-badges.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/android-existing-activation.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-input-source.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/keycap-policy.js" "$rpmbuild_dir/SOURCES/"
+# Keycap icons are derived from Stevia's outlines; refuse stale copies.
+python3 "$repo_root/scripts/developer/generate-keycap-shell-icons.py" --check
+(
+  cd "$repo_root/src/luma-shell-presentation/keycap-icons"
+  tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 \
+    -cf "$rpmbuild_dir/SOURCES/keycap-icons.tar" LICENSE luma-keycap-*-symbolic.svg
+)
 install -m 0644 "$repo_root/tests/gnome-shell/screen-sharing.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/search/ranking-gjs.js" "$rpmbuild_dir/SOURCES/search-ranking-gjs.js"
 install -m 0644 "$repo_root/tests/search/ranking-vectors.json" "$rpmbuild_dir/SOURCES/search-ranking-vectors.json"
@@ -393,6 +413,12 @@ figtree_rpm="$repo_root/build/packages/figtree-fonts/RPMS/noarch/$FIGTREE_NEVRA.
 }
 install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
 
+# Preserve the specification's historical dependency order. Include every
+# declared patch even when its legacy filename differs from its sequence ID.
+while IFS= read -r patch_name; do
+  install -m0644 "$repo_root/patches/gnome-shell/$patch_name" "$rpmbuild_dir/SOURCES/"
+done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p' "$repo_root/patches/gnome-shell/0000-luma-fedora-spec.patch")
+
 (
   cd "$rpmbuild_dir/SPECS"
   # Inside a Git work tree (a build tree that is a clone, not an rsync) git
@@ -410,13 +436,8 @@ install -m 0644 "$figtree_rpm" "$rpmbuild_dir/SOURCES/"
   }
 )
 
-widgets_rpm="$repo_root/build/packages/luma-home-widgets/RPMS/$architecture/luma-home-widgets-0.1.0-1.luma.3.fc44.$architecture.rpm"
-[ -f "$widgets_rpm" ] || {
-  printf 'error: build the shared Home widget package first: %s\n' "$widgets_rpm" >&2
-  exit 1
-}
-install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
-
+# Home widgets are imported dynamically by the running Shell, not linked by
+# its compiler. The image installs the normal required widget/Core packages.
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" \
   "$builder_container" '
@@ -430,9 +451,16 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       printf "VERIFY FAILED at line %s: %s\n" "$1" "$2" >&2
     }
     trap "luma_verify_failed \$LINENO \"\$BASH_COMMAND\"" ERR
-    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm SOURCES/luma-home-widgets-*.rpm
+    dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm
     dnf5 -y builddep SPECS/gnome-shell.spec
     rpmbuild -ba --noclean --define "_lto_cflags -flto=2" --define "_topdir $PWD" SPECS/gnome-shell.spec
+
+    # Check RPM header modes, not the privileged builder ability to read them.
+    # Both main and common packages must remain traversable by ordinary users.
+    while IFS= read -r rpm_path; do
+      rpm -qp --qf "[%{FILEMODES:octal} %{FILENAMES}\n]" "$rpm_path" > payload-modes.txt
+      python3 SOURCES/check-rpm-directory-modes.py payload-modes.txt
+    done < <(find RPMS -type f -name "*.rpm" -print)
 
     architecture=${LUMA_RPM_BUILDER_ARCHITECTURE:-x86_64}
     shell_rpm=$(find "RPMS/$architecture" -type f -name "gnome-shell-*.rpm" \
@@ -455,6 +483,10 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       gjs -m "$OLDPWD/SOURCES/media-selection.js" mediaSelection.js
       grep -Fq "lumaShelfWorkArea" luma-dash.js
       grep -Fq "affectsStruts: enabled" luma-dash.js
+      # Tablet and Mobile borrow Quick Settings without the Shelf backdrop.
+      grep -Fq "this._actionsIsland?.setSurfaceVisible(false, false);" luma-dash.js
+      # The Shelf stops waiting for its first layout outside Desktop.
+      grep -Fq "INITIAL_PRESENTATION_LIMIT_US" luma-dash.js
       grep -Fq "Arrangement.reservations(this._monitors, reserve ? occupied : new Map(), metrics," luma-dash.js
       gresource extract usr/lib64/gnome-shell/libshell-18.so \
         /org/gnome/shell/ui/shelfMetrics.js >shelfMetrics.js
@@ -490,15 +522,16 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
         usr/lib64/gnome-shell/libshell-18.so
       grep -Fq "Clutter.OffscreenRedirect.NEVER" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-dark" \
+      grep -Fq ".luma-shelf-material.luma-surface-dark" \
         luma-shelf.css
-      grep -Fq "luma-shelf-material.luma-status-cluster.luma-surface-glass" \
+      grep -Fq ".luma-shelf-material.luma-surface-glass" \
         luma-shelf.css
       # The Quick Options island is one surface: its controls are never
       # marked on their own; the shelf washes the whole island (0161).
       grep -q "controls\.remove_style_pseudo_class(.checked.)" \
         usr/lib64/gnome-shell/libshell-18.so
-      grep -Fq "DASH_TILE_SIZE = 45" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_SIZE = 45;" shelfMetrics.js
+      grep -Fq "export const DASH_TILE_GAP = 11;" shelfMetrics.js
       grep -Fq "runningIndicatorGeometry" shelfMetrics.js
       grep -Fq "shelf-span-full" luma-dash.js
       grep -Fq "shelf-float-ends" luma-dash.js
@@ -524,6 +557,19 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
       grep -Fq ".luma-handheld .keyboard-key:active" gnome-shell-light.css
       grep -Fxq ".luma-handheld .keyboard-key:active {" gnome-shell-light.css
       ! grep -Fq "  .luma-handheld .keyboard-key:active" gnome-shell-light.css
+      # Keycap: the keyboard loads the token-generated sheet, and the icons
+      # carry St symbolic classes (derived from Stevia by the builder check).
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/keyboard.js >keycap-keyboard.js
+      grep -Fq "lumaPresentation/keycap.js" keycap-keyboard.js
+      grep -Fq "commitPreeditText" keycap-keyboard.js
+      gresource extract usr/lib64/gnome-shell/libshell-18.so \
+        /org/gnome/shell/ui/lumaPresentation/keycap.css >keycap.css
+      grep -Fq "#keyboard.luma-keycap-light .keyboard-key" keycap.css
+      grep -Fq "#keyboard.luma-keycap-dark .keyboard-key" keycap.css
+      gresource extract usr/share/gnome-shell/gnome-shell-icons.gresource \
+        /org/gnome/shell/icons/scalable/status/luma-keycap-delete-symbolic.svg >keycap-delete.svg
+      grep -Fq "foreground-stroke" keycap-delete.svg
       grep -Fq "transition-duration: 0ms" gnome-shell-light.css
       grep -Fq "background-color: #4d78b8" gnome-shell-light.css
       grep -Fq ".prairie-desktop-shortcut" gnome-shell-light.css

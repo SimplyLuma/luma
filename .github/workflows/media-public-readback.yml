@@ -1,0 +1,33 @@
+name: Verify exact full public installer bytes
+on:
+  workflow_call:
+    inputs:
+      profile_json:
+        type: string
+        required: true
+      profile_sha256:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Verify all exact public ISO bodies and download headers
+        env:
+          LUMA_MEDIA_PROFILE_JSON: ${{ inputs.profile_json }}
+          LUMA_MEDIA_PROFILE_SHA256: ${{ inputs.profile_sha256 }}
+        run: |
+          umask 077
+          python3 -B scripts/os/public-media-readback.py --profile-json-env LUMA_MEDIA_PROFILE_JSON --profile-sha256 "$LUMA_MEDIA_PROFILE_SHA256" --out "$RUNNER_TEMP/media-readback"
+      - name: Retain actual ISO readback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: media-public-readback
+          path: ${{ runner.temp }}/media-readback/
+          if-no-files-found: error
+          retention-days: 14

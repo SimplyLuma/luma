@@ -1,0 +1,64 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: Scope a surface material to its owning island across presentation changes
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -388,6 +388,7 @@
+         this._joins = null;
+         this._materialBinding = SurfaceMaterials.bindSurface(child, {
+             enabled: false,
++            ownerActor: this,
+             cornerRadii: SHELF_ISLAND_RADIUS,
+             classActors: [this, stroke, ...this._joinStrokes, ...this._shadows],
+             onTreatmentChanged: treatment => {
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -276,6 +276,7 @@
+ class SurfaceMaterialBinding {
+     constructor(controller, actor, {
+         enabled = true,
++        ownerActor = null,
+         cornerRadii = 15,
+         classActors = [],
+         backdrop = true,
+@@ -287,6 +288,7 @@
+         this._controller = controller;
+         this._actor = actor;
+         this._enabled = enabled;
++        this._ownerActor = ownerActor;
+         this._classActors = [actor, ...classActors];
+         this._cornerRadii = Array.isArray(cornerRadii)
+             ? [...cornerRadii]
+@@ -301,6 +303,12 @@
+             : null;
+         if (this._effect)
+             actor.add_effect_with_name(EFFECT_NAME, this._effect);
++        if (ownerActor) {
++            // This signal belongs to the material actor, not the island's
++            // interaction listener group, which is replaced during mode changes.
++            actor.connect('notify::parent', () => this._sync(
++                this._controller._effective, SHELL_RECIPES[this._controller._effective]));
++        }
+         actor.connect('destroy', () => {
+             this._controller._remove(this);
+             this._actor = null;
+@@ -360,7 +368,9 @@
+             }
+         }
+ 
+-        const floating = this._enabled && this._floatingRecipe && !LIGHT_FAMILY.has(treatment);
++        const enabled = this._enabled &&
++            (!this._ownerActor || this._actor.get_parent() === this._ownerActor);
++        const floating = enabled && this._floatingRecipe && !LIGHT_FAMILY.has(treatment);
+         const allowed = this._controller._hardwareAccelerated() &&
+             !this._controller._surfaceSettings?.get_boolean('reduce-transparency') &&
+             !this._controller._a11ySettings?.get_boolean('high-contrast');
+@@ -373,7 +383,7 @@
+             else actor.remove_style_class_name('lumaui-floating-reduced');
+         }
+         if (this._effect) {
+-            const active = this._enabled && (TRANSLUCENT.has(treatment) || floating && allowed);
++            const active = enabled && (TRANSLUCENT.has(treatment) || floating && allowed);
+ 
+             if (TRANSLUCENT.has(treatment) && this._translucentRecipe) recipe = this._translucentRecipe;
+             if (floating && allowed) recipe = this._floatingRecipe;

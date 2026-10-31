@@ -1,0 +1,21 @@
+From: Luma Developers
+Subject: [PATCH] Drop the Shelf backdrop from Quick Settings outside the Shelf
+
+Tablet and Mobile borrow Quick Settings for their status bar. It kept the
+actions island backdrop blur, which painted a blurred patch of wallpaper
+behind the status icons in the top-right corner.
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1601,6 +1601,10 @@ export const Shelf = GObject.registerClass({
+             quick.get_parent()?.remove_child(quick);
+             quick.container.child = quick;
+         }
++        // Quick Settings is the actions island's material: its backdrop blur
++        // travels with it. Away from the Shelf (the panel, or the Tablet and
++        // Mobile status bar) it must not paint the island's blurred backdrop.
++        this._actionsIsland?.setSurfaceVisible(false, false);
+         indicators.quickSettings?.setShelfPresentation?.(false);
+         indicators.dateMenu?.setShelfPresentation?.(false);
+         Main.panel._updatePanel();

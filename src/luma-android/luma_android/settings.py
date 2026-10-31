@@ -243,6 +243,13 @@ class SettingsApplication(Adw.Application):
 
 
 def main() -> int:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--app")
+    arguments = parser.parse_args()
+    if arguments.app:
+        from .app_settings import main as app_main
+        return app_main(arguments.app)
     return SettingsApplication().run([])
 
 

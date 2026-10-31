@@ -1,0 +1,3294 @@
+# Task: android-first-class
+
+- Status: active; production/nightly Android release blocked by open acceptance gates
+- Owner: Codex, luma-dev-2; Android first-class implementation chat
+- Updated: 2026-10-31; native settings and desktop-canvas build preparation
+- Project: luma-os
+- Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
+- Worktree: /srv/dev/worktrees/luma-os/android-first-class
+- Scope and expected result: implement the researched Android subsystem, native install/app identity/window and host-service integration, both CPU architectures and measured qualification. User explicitly authorized downloads, edits and testing without questions. No unsupported performance or hardware claims.
+- Files / interfaces owned by this task: src/luma-android, Android integration patches/build profiles and tests; coordinate any shared installer/platform changes by inspecting existing owners.
+- Related tasks and integration owner: this chat owns Android implementation; preserve active mobile/ARM/device/release tasks and device gates.
+
+## Acceptance audit
+
+Owner for every open gate: this Android task. No gate closes because a source
+unit test, baseline run or image build passed. Require the named behavior on a
+recorded matching OS/runtime/Shell/system/vendor/APK set, with actual architecture,
+profile and hardware scope. Failures and unavailable controls stay open. Package
+.94/126 tests and Shell124 compiled resources are component results only.
+
+| Gate | Current evidence/status | Required closure / next action |
+| --- | --- | --- |
+| A01 Matched candidate | PARTIAL x86: actual SDK5/host96/Shell127/APKr16 boot/native hashes183e21f8 and real native reply818f9e4b passed; remaining scopes open | SDK4 image guards/resize passed. Observe current matching SDK5/host96/Shell127/APKr16 test through actual native reply and repeated scope checks. |
+| A02 Install and app identity | PARTIAL SDK5 x86: R171/8a4fde27 matched81/helper2/130 install, version, native close, drawer Pin/Unpin, scroll-to-dock activation and drawer relaunch PASS; broader matrix/input reliability/hardware OPEN | Actual APK double-click in Filer; app drawer/search/dock pin/activation; split/universal packages; updates, signing identity and uninstall/data behavior. |
+| A03 Shared runtime/storage cost | Architecture defined; complete measurement OPEN | Prove multiple apps share one platform image; measure allocated blocks/private data/cache growth and idle footprint, not sparse file size or summed RSS. |
+| A04 Lifecycle/windows | PARTIAL: actual SDK4 and SDK5 x86 VM resize/maximize/restore, state restoration and responsive activation passed2ad2f9cc/3ab0ebc6/fd38012d; visual capture unavailable | Repeat resize/maximize/minimize/restore/rotation/activity recreation/close, concurrent apps and runtime/compositor restarts; preserve task identity/state. |
+| A05 Startup/performance | .92 full-RAM VM cold/warm command observations only; earlier failures retained | First-frame and frame-time distributions, warm activation, sustained workloads, native comparison and hardware traces; no UI stalls or hidden resource omissions. |
+| A06 Native notifications | PARTIAL SDK5 x86: real Luma entry + hardware keyboard + Send -> original Android PendingIntent receipt passed818f9e4b once with correct UID/PID; virtual-keyval path remains faulty | Real APK text reply through Luma UI and original PendingIntent; replacement/dismissal/restart/deduplication/uncertain delivery with exact synthetic receipts. |
+| A07 Notification policy/bidirectionality | OPEN implementation/qualification | Group/channel/DND/lock-screen privacy, custom-content semantic fallback and explicitly consented host-notification listener access; no echo loops. |
+| A08 Clipboard | Actual SDK4 and SDK5 ordinary-UID clipboard read/write guards passed with nonempty trusted controls; focus policy remains open | Actual new native-HIDL admission with nonempty trusted controls; compositor-attested logical focus including touch-only profiles; read/write revocation, rich MIME, stalled/large transfers and lifetime/restart tests. |
+| A09 Documents/share/drop | Android picker alone is insufficient; OPEN host broker | Scoped native file handles/URIs, seek/read/write-back, persist/revoke, reconnect, share/drop and denied paths; no whole-home mount. |
+| A10 Input/layout/accessibility | OPEN system qualification | Phone/tablet layouts, DPI/rotation, touch/stylus, IME/compose/keyboard, selection and actual accessibility roles/actions on desktop and mobile. |
+| A11 Audio/media | OPEN per-app native bridge | PipeWire stream identity/routing/focus/volume/interruptions and MediaSession transport controls with concurrent native apps. |
+| A12 Camera/mic/location | OPEN per-app native bridge | Per-app permission/device choice, recording/location indicators, live revocation, denied/background cases and actual hardware. |
+| A13 Contacts/calendar/telephony | OPEN consented providers | Native authoritative services via scoped grants; no private native database mounts or Android ownership of modem/controllers. |
+| A14 Other hardware | OPEN arbitration/qualification | USB/Bluetooth/NFC/sensors with native coexistence, real device reconnect/revocation and accurate capability advertisement. |
+| A15 Isolation/origin | BLOCKED for production: Android SELinux Disabled, UID1000 collision/shared namespace baseline | Enforced MAC and separate/remapped identities; attest runtime origin; audit Binder/device/socket/data/profile boundaries and cross-app/profile negatives. Host Enforcing alone does not pass. |
+| A16 Privileged native services | PARTIAL: actual ordinary UID10128 native clipboard read/write and task-name guards passed with nonempty UID1000 before/after controls2ad2f9cc and SDK5 fd38012d; remaining methods/boundaries open | Clipboard read/write and task-name getter passed on SDK4 and SDK5 x86 images. Require actual task focus/remove/remove-all negatives and trusted controls, plus property/platform/host-service boundaries and repeat on final image. |
+| A17 Process/resource integration | OPEN full per-app attribution | Verified process/package/profile identity, CPU/PSS/GPU accounting and scoped app termination across native Luma surfaces; aggregate runtime row insufficient. |
+| A18 CPU/page/GPU matrix | PARTIAL: x86 VM baseline and native AArch64 image/export PASS e83d2ad1; ARM runtime/page/GPU/device tests OPEN | Actual native x86_64 and ARM64 builds/corpus; admitted page sizes, acceleration/buffer sharing/synchronization and physical Dell/Surface behavior. |
+| A19 Optional translation | OPEN; no qualified engine | Prefer inspected native ABI; explicit opt-in and separately qualify ARM-to-x86 and x86-to-ARM libraries, performance and licensing. Do not advertise either until it works. |
+| A20 Background/mobile power | Old-image local alarm/no-window observation only | Jobs/alarms/network push, suspend/resume/wakeup, Doze/wakelocks, idle drain and sustained physical energy/thermal measurements; no freeze shortcut. |
+| A21 Recovery/data lifecycle | Partial baseline lifetime/restart controls | Atomic runtime/image updates, rollback/data migration, corruption/out-of-space recovery and multi-user/profile removal without data leakage/loss. |
+| A22 Maintained platform/trust | Android13 repair baseline; rebase/trust OPEN | Maintained security baseline, pinned both-CPU sources and reproducible artifacts; protected production signing and rejection of test-key privileged apps. |
+| A23 Distribution/rights | Research/source notices retained; final payload review OPEN | Actual component licenses/NOTICE/corresponding source/offers, original APK signatures, branding/service/proprietary rights and authorized distribution infrastructure. |
+| A24 Build recovery/observation | Save/restore synthetic control; actual compiler restoration OPEN | One-shot validated compiler restore and exported-image checks; observe every final child; failure/cancellation/deadline/admission/budget exhaustion remain visible. |
+| A25 Google-dependent services | OPEN: Dell vanilla image lacked GMS/Companion; verified microG evaluation packages installed; ordinary-UID certificate/authenticator/bind/Java HTTPS PASS; account flow OPEN | Verify certificate-restricted compatibility, account chooser and user-controlled Google sign-in/callback/cancellation in actual Reddit/YouTube versions; keep Play Integrity, certification, push, mobile power and distribution separate. |
+
+Order of immediate work: retain the failed combined GUI runs and restore owned
+fixtures; distinguish host I/O contention from stable Shell startup on a controlled
+run, then repeat the complete dock flow with loaded-resource proof. Production
+work must close runtime isolation, signing and maintained-platform gates before
+nightly promotion, alongside ARM runtime/device and native-broker qualification.
+An x86 development test image is not a declaration of daily-use or ARM readiness.
+
+## Current handoff
+
+CURRENT — r453 images live on Dell through corrected r463 development updater:
+- Android build45a20ee1 PASSED02:27:47Z, source
+  229a7a3ed57a4f69cca3778b68e9151b29f3c473; all46 steps completed, actual
+  Jelly compilation and system image recorded. Export verified12 files; guest
+  shut down, original VM profile and admission policy restored. No rebuild pending.
+- Success-only post-build b20505f0 PASSED: actual HIDL ABI/image equality,
+  HWC/settings transport/xdg-output markers, framework capability/media-default
+  props and extracted Jelly checked. Packet0650bb6a... delivered natively r453.
+  First apply failed the container host-module import and automatically restored
+  r309 images/cohort. Failure and all images retained; no app-data reset.
+- Cause observed r461/e6ccf8ca and r462/79891e7c: existing engine bind has
+  var_lib_t; other Python modules need original lib_t. Private updater had used
+  engine's label for every module. Corrected r463 preserves each original file's
+  label, uses settings.py label for new modules, explicitly sets directory755.
+  r463/794db25b passed18 delivery guards including distinct label references
+  and strict077 umask. Fixtures substitute chcon; actual MAC/startup below.
+- Corrected delivery e3490695 PASSED; same verified image bytes, new pinned
+  manifest0bc986ca45d3bdde25513f5c0c4bd039e9547127040ebd63cf0e8d5c6a0f3b18.
+  Actual apply completed; r466/8445471e read phase
+  applied-awaiting-window-and-callback-qualification. Live image/component/HIDL
+  hashes, active browser APK and settings service match the protected packet.
+  Dell root receipt: /var/lib/luma-android-native-preview/r180/window-controls-r463/receipt.json.
+  Rollback pair: /etc/waydroid-extra/images.before-window-r463; use matching
+  native launcher rollback action and normal Polkit. Do not alter r180 installer.
+- Actual runtime qualification r467/d38f4d80 launcher, r468/2306193c result:
+  physical Android canvas6800x2598, density180, cap1, STREAM_MUSIC15/15,
+  platform network VALIDATED, legacy Card Wars touch rule retained. Actual
+  UID1000 socket request traversed listener/Binder/native user-manager launcher:
+  GApplication name owned and Shell observed500x260 native settings window.
+  No preferences changed; no account callback/code collected, replayed or logged.
+  This proves the settings transport/panel opening, not a physical cog click,
+  repeated wide-window resize/input, app HTTPS or real OAuth completion.
+- Runtime system image cb662b5fb272327d6e9c7fbde5d7cf61b02ab6fce32504e74194ff5a2743f532;
+  vendor5a9551039856d5fa6c5fc9764eff461ef68d86b02df38812eb16d1f67e07d6e6;
+  Jelly25141c69679335392f3f2e709f243083da48bd8e8d2e956419800df0b24b4370.
+  Source tests r448 prove callback consumption with explicit Android substitutes;
+  real user sign-in remains pending. Never replay screenshot authorization values.
+- Host Python cohort is a development-only read-only bind, preserving original
+  engine underneath; it is ephemeral across OS reboot. Production packaging and
+  all open acceptance gates remain necessary; no nightly/release claim.
+  Keep existing bounded Dell sleep inhibitor through pending owner testing;
+  its current deadline is about07:56Z Oct31. No persistent power setting changed.
+- Earlier attempts below are retained history, not current live jobs:
+- r441 Android COMPILATION PASSED23:59 at02:02Z, both images generated. The
+  canonical script then failed writing its prior root-owned SHA256SUMS; outer
+  job correctly failed, VM/profile and account policy restored. r451/5796cc50
+  retained actual final build log. No new pair exported or Dell update applied.
+  Source now publishes image/component manifests through a fresh sibling file
+  and atomic replacement; r452/fe2ddece passed readonly-manifest, exact hashes,
+  explicit image list, symlink-target and failed-read preservation checks.
+  Next combined build must include checksum fix plus browser9f509e3c0 changes,
+  reuse compiled outputs and pass actual export/image/host-cohort verification.
+  Private r449 snapshot9f509e3c0 prepared but not started; keep it immutable.
+- Earlier build r441/40c3cf35, source9d0b562d0; guard r441/62cb6736,
+  monitor r441/371068ea. Private window-controls-build-r441/progress.log.
+  Recovery succeeded and normal preparation refreshed patches; Android build
+  setup/glob generation active at01:42Z. No new image exported/deployed yet.
+  r437 failed its safe comparison before reset: readonly444 versus644 files.
+  r442/21989b37 checks Git executable bits and exact bytes/paths/link targets;
+  its changed-content/executable/extra-path/link controls passed. r437 VM/profile
+  and policy restored. All failed attempts retained.
+- User reports NFL callback reaches app on retry despite browser error. Installed
+  browser is org.lineageos.jelly, pinned e9990a1a25ce305c1ac24a46c81b39231ed23381.
+  Exact WebClient source launches app then returns false on redirects. New
+  android-jelly patch consumes successful handoffs, preserving existing privacy
+  and handler checks. r448/59eb8421 actual Kotlin decision PASSED synthetic
+  redirect/header/incognito/subframe/repeat/gesture/web cases; unchanged control
+  failed exact42. Android dependencies substituted, no real login performed.
+  Browser source hooks added to clean/incremental preparation; compiled browser
+  package and device update pending. r444 partial read lacked root Android.bp;
+  r445 found app/Android.bp. Test setup r446 wrong compiler path and r447 source
+  permissions failed without source/runtime changes, corrected in r448.
+  Never copy/log live authorization callback query data from user screenshots.
+- Earlier build r437/d8b0f57f, guard r437/1afd5d00, monitor
+  r437/5f4e232d. Immutable9d0b562d0/input
+  SHA7cd03f9ff18aea273e578948f094f8157b757613c58b3a50fde78dfca18c33b1.
+  Root unit luma-android-window-controls-build-r437-controller.service;
+  private window-controls-build-r437/progress.log is bounded observer output.
+  r425 failed before compilation:0020 destroy_display context omitted existing
+  luma_clipboard_shutdown. Read-only guestfish r435/dcd6de31 recovered exact
+  prepared C++/header; corrected patch applies to those exact files and preserves
+  shutdown. Prior virt-cat r433 failed multi-boot inspection; no disk writes.
+  Guarded recovery in r437 must prove ALL partial hardware files equal official
+  plus exact ordered patches1..19 before restoring only its prior prepared HEAD;
+  afterward require global recorded snapshot and clean hardware. No broad reset.
+  Actual recovery and compiler results still pending. Both earlier failed jobs
+  shut down the VM and restored profile/policy; no Dell deployment occurred.
+- r428/fc4bcbda host suite:143 discovered,127 executed passed,16 root-only skipped.
+  r431/15fc790f desktop GetWindows access denied; no permission/policy change.
+- Earlier build r425/05643043; guard r425/9061396c. Private
+  window-controls-build-r425 includes required empty build mount directory in
+  frozen project input SHA60cb195f086b782b07ae96909c3648287c41335a0ff330a1e9174bc6b040cbf2,
+  source remains410a362a7. Root unit
+  luma-android-window-controls-build-r425-controller.service. r406 stopped
+  before compilation because that directory was absent from git archive;
+  actual failure retained, VM shut down/profile restored, policy restored.
+  Checkpoint r426/acf66ac4 refused reuse because source inode metadata changed
+  across the VM cycle; no checkpoint published or verification bypassed.
+- r417/32cce29b confirmed actual Dell HANDLES_COMMAND_LINE native panel launch,
+  title Settings—Card Wars,500x260, real LumaUISwitch and saved touch=true.
+  No preference writes. r420/2c97cc23 repeated socket checks with exact
+  negative-control exit42 rather than a generic failure. r421/0802f2ea passed16
+  private delivery/cohort guards, including preservation of effective engine,
+  intervening source changes and host-module path traversal; actual root mount
+  remains unqualified. Source test/helper changes after410 do not alter image.
+- Incremental build is now ACTIVE r406/d889ca79, immutable source410a362a7;
+  input SHA3eb6cb6392a5e56c35030b64e00537c26085d3053525bc246939ab31882599b1.
+  Root unit luma-android-window-controls-build-r406-controller.service;
+  normal28GiB admission,24GiB guest/QEMU25GiB/root2GiB. Guard
+  r408/e47724bc restores temporary account policy afterward. First guard
+  r406/764f3527 failed before mutation: runner now puts owner in /launcher.
+  Private watcher now accepts only that exact optional child while verifying
+  its enclosing admitted service's unchanged memory cap. No admission bypass.
+  r405/b651048c4 input retained but unused;410a362a7 moves Wayland roundtrips
+  outside outputsMutex to prevent callback lock reentry.
+- r412/eb1fbff2 passed actual socket/peer-credential production settings body at
+  namespaceUID1000 and10000, malformed/oversize/short/stalled/closed cases.
+  Both deliberate missing-credential/MSG_TRUNC controls failed as required.
+  Binder is substituted; real device boundary/cog activation remains OPEN.
+- Card Wars responds to actual Android touchscreen input: r383/cb12745e
+  confirmed its age popup dismissed via the in-game X. No age submitted.
+  Ordinary-user per-package fake-touch applied/reopened r384/962a57df;
+  r388/026aadb8 confirms the new ViewRoot loaded that setting. User subsequently
+  reached the tutorial. This is not a complete host-pointer qualification.
+- Quiet Android media was STREAM_MUSIC5/15 while the host stream was100%.
+  r389/5b0ba30f changed only Android media to15; r391/a3dda3fa confirms it.
+  Host volume unchanged. Product default now15; no per-window volume slider.
+- Luma-styled cog and native App Kit panel expose only mouse-as-touch input.
+  Presentation uses a separate bounded system-UID channel/Binder endpoint;
+  preference writes remain explicit ordinary-user operations. New images use
+  per-package properties; legacy wildcard rules are preserved by fallback.
+- Initial logical desktop union is6800x2598 on Dell; Android currently calibrates
+  to1408x2528 from one portrait output, clipping wider windows. Patch0020 uses
+  xdg-output logical bounds at initial calibration. Hotplug/dynamic density and
+  actual new-image resize behavior remain OPEN.
+- r398/4e449d49 passed native bounds/protocol/shared-frame/glyph and production
+  redraw concurrency checks, including the expected failing unlocked control.
+  r401/86ad7ce6 passed8 preference/request tests and9 notification tests.
+  r400/a017bc27 native Dell panel preview read the actual Card Wars setting with
+  a real Luma switch; no scripted preference mutation. Build/deployment and
+  actual cog activation remain pending. Bash syntax and patch parse passed;
+  ViewRoot source reverse/apply preflight passed, not Java compilation.
+- Private workspace: experiments/android-first-class/window-controls-r390,
+  HDD directory bind. Build must use a fresh immutable source commit and normal
+  guarded resource admission. Preserve current r309 image pair as rollback.
+
+CURRENT00:15Z — actual repaired-image component results; OBB import in progress:
+- r357/75be031e collected the completed r350 native diagnostic. CodecProbe
+  PASSED100 configure/start/stop/release cycles across4threads at ordinary
+  UID10136; no decoded frames/playback qualification. Ordinary-UID provider
+  signer/authenticator/service binding and Java HTTPS204 also PASSED. No
+  account login tested. Mount guard remains131mounts/1pc bind, netd running
+  and default Ethernet VALIDATED. Both repaired system library SHAs match.
+- Game still exits: latest PID4182 SIGKILL9 at00:05:32Z, cached importance400;
+  original pre-repair SIGSEGV is a separate observation. r361/2a2ec0bf captured
+  system lifecycle: game displayed356ms after start; process death precedes
+  HWC authoritative task retirement by129ms. No evidence that retirement
+  initiated the exit. Container cgroup memory.events all0 including OOM.
+  Android cached-process cleanup of other apps also observed; actual game
+  signal origin remains unresolved. APEX VNDK libhidlbase is mapped alongside
+  system copy and has different hashes; do not assume its source variant.
+- r359/a9b0e1f9 host display query: three connected monitors, all scale1,
+  primary3440x1440 plus rotated2560x1440 and built-in1920x1200. Android
+  physical display1408x2528/density213 despite ro.sf.lcd_density180, confirmed
+  by r361. No forced size/density override applied. Scaling remains OPEN.
+- User requested manual Card Wars OBB placement. r363/bc0ddc40 located exact
+  source and confirmed installed package com.turner.cardwars; r364/e5ace033
+  hashed source. Native data mount verified from config_session. First frozen
+  importer r365 failed before writes because Fedora /home is a symlink.
+  Corrected r367/4e5742db uses canonical /var/home; user unit
+  luma-preview-android-cardwars-obb-r367-2bbd58b9.service launched00:14:21Z.
+  Copied ONLY pinned193382321-byte OBB, retained original, refused a different
+  existing destination. r369/521b1aeb: source/copy bytes match, but bare UID
+  lxc-attach read denied in the system storage mount namespace. r371/1f6f4962
+  confirmed full destination SHA through Android storage view and package
+  directory ownership already adjusted by Android to app UID10133/ext_obb_rw.
+  Bare UID attach is not an actual app mount-namespace read; no game-read pass
+  claimed. Card Wars92/targetSDK27 READ/WRITE_EXTERNAL_STORAGE both denied;
+  user informed storage prompt may need approval. No automatic grant, launch,
+  data reset, credentials or Polkit policy changes. User told copy is complete.
+- Private artifacts/scripts remain below second-account artifacts and
+  experiments/android-first-class/dell-hotfix-r199. No generated payloads or
+  private diagnostic output committed. Valet has no OBB import implementation;
+  XAPK APK installation does not place accompanying OBB data.
+- r372/a2924593 launched one bounded read-only game activity-event capture;
+  r373/29aec38a collected `Request dismissed` from normal Polkit authentication.
+  No event evidence obtained, no policy change and no automatic reprompt.
+  The OBB copy had already completed independently. Remaining game/scaling/
+  Google-account/hardware/release gates stay open.
+
+CURRENT23:59Z — native pair applied; game still exits; Dell kept awake:
+- User authenticated. r340/ae2885ea observed verified-packet/android-stopped;
+  r341/9c677e05 observed applied-awaiting-game-qualification and completed
+  launcher. Root installer checked boot completion and BOTH live library SHAs
+  against packet. OS and app data retained. This closes deployment only.
+- r345/4b02bf24 launched 8 Ball Pool normally, no login actions. Actual Dell
+  observations: host PID93963 present through5.51s, absent at6.55s and every
+  remaining sample through31.41s. Game failure remains OPEN; do not claim fixed.
+  Private result in r348/7760db9a/post-hidl-read.txt (also has codec journal).
+- r342/ab117be4 codec AFTER launch did NOT yield a codec result: local pkexec
+  timed out after120s awaiting authentication; user unit failed per journal.
+  Empty result is not a pass. systemctl show on a garbage-collected unit can
+  misleadingly return default inactive/success; inspect LoadState/journal/result.
+- r347/af67ee3a health-only diagnostic also needed separate local auth; no result
+  collected. Consolidated all remaining privileged diagnostics into ONE bounded
+  frozen full-native-checks-r350 bundle under dell-hotfix-r199. No credentials,
+  policy changes or permanent privileged agent. Scripts verify their own file
+  hashes; capture health/ordinary-UID provider, codec, HAL state, game library
+  mappings, normal-user relaunch/12s observation, app exit history and app-only
+  native crash blocks. No APK install/data reset/account actions.
+- r350/89717c30 transferred/launched native user unit
+  luma-preview-android-full-native-checks-r350-a4ef751c.service at23:54:15Z.
+  Launcher allows1500s for normal local auth+diagnostics, outer cap1800s.
+  Result ~/Downloads/Luma-Android-Hotfix-r199/full-native-checks-r350/full-result.json;
+  r352/5a6a45aa and r354/8bda1024 observed0 bytes (no diagnostic pass). Reader
+  dell-hotfix-r199/full_checks_read.sh; next action capture actual result.
+- User explicitly requested preventing Dell sleep during testing. r351/
+ 3a475600 verified logind inhibitor: Luma-Android-validation, Nick UID1000,
+  PID96118, sleep:idle BLOCK, held by native user unit
+  luma-preview-android-validation-awake-r351-f373218d.service for28800s/8h
+  from23:56Z. No persistent power settings changed. Stop ONLY that unit on Dell
+  when testing ends; renew before expiry if needed. Release inhibitor before
+  measuring idle/mobile power; no battery/power qualification while inhibited.
+- Independent static image inspection r353/5df334ad: allocator service binary
+  and rc present, OMX service and graphics allocators present; system/bin/timeout
+  symlink exists. This is image-content evidence, not proof services are running.
+- Next: collect full native diagnostic after its standard OS authentication,
+  identify actual new game failure/library mapping, then fix/retest. Network,
+  codec, Google-account flow and scaling after the new pair remain unqualified.
+
+CURRENT23:43Z — repaired images built/verified/transferred; Dell admin auth pending:
+- r309 compiler completed successfully19:11 (actual final build log). Original
+  guest wrapper then FAILED while hashing exports: Python3.10 lacks
+  hashlib.file_digest. Preserve that failure, do not reclassify wrapper as PASS.
+  Automatic original account policy/24GiB VM profile restoration completed.
+- r326/f85bf9d9 export-only attempt refused before VM start because the strict
+  admitted-owner check does not accept package-mode delegated cgroups. Reused
+  the original build-mode owner check unchanged. r328/784b3a30 PASS normal4GiB
+  admission,2GiB export-only guest/QEMU hard3/root512MiB, no compilation and no
+  source/tool disks attached. Chunked SHA recovery preserved original error.
+  All12 exported files verified; VM powered off/original24/25 profile restored
+ 23:35:57Z. Root receipts: export-recovery.json, export-verified.json and
+  export-recovery-profile-restored.json under hidl-repair-r309.
+- r329/896612e5 PASS ELF identity, exports/imports, public-data sizes and dynamic
+  dependencies for both repaired libraries; extracted system-image bytes match
+  the exported libraries.32-bit1544 exports/248 imports,64-bit1540/248.
+  New32SHA46a045699f4523944a5227ad1afd8383bdbf79fbd26efd315be77f36490694f1;
+  new64SHA54615b1a3dac1035f53843c15d100f19667552bbff70beb6b347d6fe7b648ed7.
+  New BuildIDs868748f1d6104131471ff8b8b5de63b6 /f653ff39716c9d191a0d4aa8db1dc240.
+  Image system1,829,285,888 bytes SHA3888b4e35974b8ad70c82a8b62b72a28ea5f1eb7285c27bcab98384fafc50dc8;
+  vendor566,210,560 bytes SHAa77611c6a811f00e91884b7dedc1e4b0fa0c7e921e594a2fc95b804d9351c30b.
+- Delivery packet experiments/android-first-class/hidl-repair-r309/dell-packet,
+  payload SHAca4eea73471e24763a55dd822f01c4f1503500a9f1433d076ba119346571ad63.
+  Exact immutable image source remains d7b752da362ade4f153a6a12cda1aa4db6042dc9.
+  Export metadata recovery and device_tested=false explicitly retained in packet.
+- Dell reconnected r330/735e87d4 at23:37:08Z. r331/4736bdb7 transferred packet
+  to ~/Downloads/Luma-Android-HIDL-r309/packet and launched native user unit
+  luma-preview-android-hidl-native-repair-r331-b4572175.service at23:38:58.
+  As of23:42, user unit ACTIVE and pkexec PID89207 waiting at standard local
+  admin authentication; native-image-apply.log is empty. No image replacement
+  yet, no OS reboot or user data reset. Do not bypass authentication or claim
+  the launch is an applied hotfix. Parent delivery job exited0 only for launch.
+- r332/5ae09d80 PASS actual Dell91-file preview refresh, archive SHAfda19c6...
+  (full hash below), old payload user-payload.before-r319 retained, original
+  control backup unchanged. NON_UNIQUE preview change is now delivered.
+- r333/41630834 recovered OLD device codec control: UID10136, old64library
+ 849faa..., MediaCodec start failed after101ms, passed=false. This is a failing
+  control, not a HIDL race reproduction or codec success. Full private result
+  artifacts/dev-android-codec-original-result-r333-41630834/codec-before.json.
+- Status readers: hidl-repair-r309/read_delivery.sh and read_auth_status.sh
+  (Dell has no rg; bounded grep fallback fixed in r337/8b409f12). New private
+  codec-after launcher/driver under dell-hotfix-r199, not launched while image
+  auth pending. It reuses the installed synthetic fixture, applies Android-side
+ 28s hard timeout and stops only that fixture afterward; result codec-after-hidl-r309.json.
+- Next: observe actual Dell apply result/live32+64 hashes; then codec, 8 Ball Pool
+  native launch/crash history, network/provider and scaling qualification. Source
+  archive recognition/Valet refresh is delivered; no game fix or nightly claim.
+
+CURRENT23:20Z — compiler graph complete; native image job remains active:
+- Source milestone2466f9435 commits the preview NON_UNIQUE behavior, codec
+  fixture and factual operational notes. Image input remains immutable d7b752da3.
+- r309 actual24GiB VM passed Soong graph analysis and Kati rule generation;
+  ninja now loading the final systemimage/vendorimage graph. r321/0ad980c5
+  at23:19:44:16,563MiB available, no swap use, ninja RSS6.4GB. No image pass yet.
+  One transient guest SSH255 at23:17 recovered on next read; no restart occurred.
+- r315/97d2d5b2 parsed SHA-verified baseline ELF32/64 interfaces, respectively
+ 1544/1540 exports and248 imports each. New-vs-old comparison pending actual
+  exports. Private verifier hidl-repair-r309/verify_pair.py also checks image-
+  extracted libraries against exported bytes and coherent image hashes.
+- Prepared private native_image_hotfix.py/prepare_packet.py under that same
+  directory. They retain the original pair outside images/, preserve the native
+  preview ownership marker and user data, stop Android only, and reuse the
+  unchanged original protected installer after checking its exact SHA. Scripts
+  are preparation; no packet built or native image operation qualified yet.
+- r317/ffc195f4 PASS12 local staging guards including changed owner/image,
+  in-directory backup rejection, symlink rejection, real zstd decoding, size/
+  SHA mismatch and original-pair preservation. No actual OS-update test claimed.
+- r320/60cfd5ab PASS actual91-file preview refresh in a temporary ordinary-user
+  fixture, retaining old modules and original controls. Dell delivery driver
+  dell-hotfix-r199/deliver_preview_r319.sh is ready; not run against Dell.
+- Dell listener22440 is absent at23:18 (r310 earlier connection refused).
+  No new device deployment/codec pass/game retry. Continue normal r309 build
+  through export and automatic original policy/profile restoration; then run
+  bounded root pair verification/package and retry native Dell transport.
+
+CURRENT23:11Z — source fixture and preview update ready; Dell tunnel unavailable:
+- r311/6a4d16b8 and r313/2f11a0ce confirm the actual24GiB guest,49,151MiB
+  virtual swap, no swap used, and active build. At23:10 it was running the
+  Soong TARGET_DEVICE dumpvar step; compilation/export completion remains open.
+- r310/4d83e8df now reports connection refused on pinned loopback22440 rather
+  than the earlier banner timeout. Dell transport remains unavailable. No
+  replacement images or final preview update have been applied.
+- r312/dc14424e prepared the91-file user overlay with NON_UNIQUE preview fix:
+  archive SHAfda19c672b74bd267bcb73b7fed1c1013926e1e6c82a105e0832fb52eb0931c5.
+  Private path experiments/android-first-class/dell-hotfix-r199/user-payload.tar.gz.
+- Codec instrumentation source built/signature-verified r297/e5932453; no actual
+  device codec pass. Private follow-up runner now has an Android-side28-second
+  hard timeout and finally stops only our own synthetic probe package. Original
+  r298 runner retained. Account/login/media content remains untouched.
+- User's APK.now TikTok page SHA exactly matches inspected Dell archive. Page
+  incorrectly advertises x86/x86_64; actual archive contains only arm64-v8a and
+  armeabi-v7a. Do not describe this file as native-compatible with x86 Dell.
+- This host preview/test milestone does not change immutable d7b752da3 image
+  input. Next: monitor real compiler/export, compare both library ABIs and stage
+  a coherent pair; deliver/retest on native Dell when the tunnel returns.
+
+CURRENT23:07Z — builder resized after actual memory pressure; native retry active:
+- r301/2ab3776b completed source checks/refreshed patches, then regenerated
+  globs and entered Soong graph analysis. r304/00b8e3d8 initially showed9GiB
+  available/no swap; later r307/c0ccfc35 measured soong_build RSS9.23GB, VM
+  free281MB and648MB swap: actual9GiB compiler cap was now a bottleneck. Our
+  incremental retry was undersized; disclosed this and stopped it via root
+  SIGINT so its normal admitted owner remained alive through clean shutdown.
+  Original24GiB XML and original account policy restored. Completed outputs
+  retained; unfinished graph analysis is restarted, not claimed restored.
+- r308/011e0263 safely carries the completed full source SHA through the
+  controlled libvirt read-only disk metadata transition. Same source device,
+  inode, size and mtime; changed ctime is within that actor's managed read-only
+  start interval. Root-owned checkpoint records no fresh full read claim.
+- CURRENT r309/4bad37d9 ACTIVE under normal28GiB admission; guard
+  r309/b089e2a6 ACTIVE. Private drivers/receipts hidl-repair-r309; root unit
+  luma-android-hidl-repair-r309-controller.service, guest unit
+  luma-android-hidl-repair-r309.service. Uses proven24GiB guest/QEMU hard25,
+  root2GiB,8 compiler jobs and original guest-local4GiB-cap zram/24GiB swap.
+  Account-only max32/build28; global32/host reserve8/disk reserve20 unchanged;
+  exact original policy/VM profile restore after terminal state. No build pass.
+- Original source image/template/tool hashes and d7b752da3 project input are
+  reused with protected checkpoint/metadata checks and fresh small-input hashes.
+  Root controller preserves the previous r301 partial build log on next boot.
+- r303/e2ea3db4 confirms Dell banner-exchange timeout, not just a missing result
+  file. Tunnel listener remains. Actual codec control result remains unavailable;
+  no new image pair applied and no OS reboot/user app data reset on Dell.
+- Fixed preview-only Valet process reuse: NON_UNIQUE loads newly delivered
+  modules for subsequent file opens while old windows remain intact. r305/
+  c25f12e3 tested two local previews; stronger r306/59107092 PASS with an actual
+  legacy unique owner: control redirects remotely, updated preview stays local.
+  This final preview change is not yet delivered because Dell is unreachable.
+  Source codec fixture/preview changes still need commit; image input remains d7.
+- Next: observe actual high-memory compiler/export result, compare native ABI,
+  prepare verified deliverable, retry Dell transport and complete device codec/
+  8 Ball Pool/scaling/Google flow qualification without deleting user data.
+
+CURRENT22:49Z — corrected native build active; latest Dell transport unavailable:
+- r293/55744732 passed full54GiB input SHA, booted the server VM, then stopped
+  on a controller polling bug: initial missing log made remote tail return1.
+  Clean guest poweroff/original24GiB XML and original account policy restored.
+  This was our operational error, not an Android compiler failure or device pass.
+- r295/d16077d7 verified all source inputs again, then refused an existing
+  identical project input before VM boot. Automatic policy restoration completed
+ 22:43:18Z. Preserve both failed attempts and original exports.
+- r300/1a0fb5ea root verification checkpoint ties the completed whole-file SHA
+  to authenticated root journal ordering and an unchanged source inode, device,
+  size, mtime and ctime. Reuse is explicitly not another full read. Future drift
+  falls back to full verification. The project input is rehashed and reused
+  with its managed root/qemu ownership; no existing payload was overwritten.
+- CURRENT r301/2ab3776b normal14GiB build ACTIVE; guard r301/5d796c48 ACTIVE.
+  Private drivers/receipts: experiments/android-first-class/hidl-repair-r301.
+  Root unit luma-android-hidl-repair-r301-controller.service; guest unit
+  luma-android-hidl-repair-r301.service on owned809f0871 server VM. Booted
+ 22:46:38Z at10GiB, root2GiB/QEMU hard11GiB within14GiB reservation. Source
+  checks active22:48:17Z; no compile/export pass yet. Child safely polls a
+  missing initial log; original VM settings/policy restore at terminal state.
+- r294/6b0f5554 independently verified original system image SHA and extracted
+  baseline libhidlbase32/64.64-bit BuildID79d76731f1cb197e877bb7ef6fe29f38
+  exactly matches the game's crash. SHA849faa585919484da75ed7fa73337e005cbb6e6c910411c8f6f1c6273f83a6e2;
+ 32-bit SHA390b047652c9ff30dd9cf63deae4aa2d1dd31f61122dc4b3be6dfe53507e4e51.
+  Baseline library symbols retained outside Git for ABI comparison.
+- Added bounded ordinary-UID OMX H264 allocation instrumentation:100 configure/
+  start/stop/release cycles across4 threads, no account/media content. r297/
+  e5932453 APK build/signature PASS; source test changes not yet committed and
+  do not alter immutable d7b752da3 image build input. r296 initially admission-
+  refused; normal retry succeeded after prior actors finished, no ledger bypass.
+- Dell r298/69381ca7 launched fixture replacement/diagnostic only (removes only
+  our launcher-less synthetic provider probe, not any user app). r299/f2a42362
+  copied an empty result before completion; no device-codec pass. r302/b9128581
+  subsequently could not connect to Dell (SSH255 after8s); server loopback tunnel
+  listener still exists. Cause/actual codec result unverified; do not attribute
+  transport loss to the test. r303 route diagnostic pending. No replacement
+  images or OS reboot applied on Dell. User app/account data retained.
+- Next observe actual Android build result; compare library exports/ABI and
+  package exact image hashes. Continue native Dell hotfix/codec/game retest only
+  when transport returns. Scaling and actual Google callback remain open.
+
+CURRENT22:28Z — native repair build active, immutable-input read verification:
+- Source milestone d7b752da362ade4f153a6a12cda1aa4db6042dc9 includes the minimal
+  HIDL lock fix and host concurrency control; da2364c63 earlier delivered host
+  mount/Valet/package-shape fix. No source push/publication.
+- Immutable project input r290/e54f2d7a PASS:70,799,360 bytes, squashfs SHA
+ d8bb9a7ce4aec66f79338aa2128b4a5ef863e45128226b5efcd5e806d12ff0d9.
+  New private operational drivers under experiments/android-first-class/
+  hidl-repair-r290; existing54GiB Android source, SDK5 intermediate cache and
+  matching tools retained. Guest uses network-isolated4-job incremental build.
+- r291 refused the14GiB request before launch (normal build max10). Account-only
+  guarded max temporarily14, preserving account16/global32/host reserve8/disk
+  reserve20. Automatic root guard restores original bytes after the build.
+  r292/e89aacd8 failed before root actor start because systemd-run --pipe could
+  not establish its transient service; no VM start. Original policy restored
+ 22:26:20Z (attempt-r292/policy-restored.json). Removed only --pipe.
+- Current normal build r293/55744732 ACTIVE under14GiB admission; root unit
+  luma-android-hidl-repair-r290-controller.service, root controller2GiB + planned
+  guest10GiB/QEMU hard11GiB. Guard r293/6c3248f4 ACTIVE (1GiB reservation).
+  Existing owned builder809f0871 checked shut off, ARM fixture checked shut off,
+  host SELinux Enforcing. Reading/verifying all54GiB immutable source before
+  boot;8GiB read by22:28. No compiler completion/image/device pass yet.
+- Controller will preserve original inactive24GiB/25GiB domain XML, boot the
+  owned server VM with10GiB only for this incremental build, build coherent
+  system/vendor images and both system libhidlbase variants, stream/hash export,
+  sync/power off and restore original VM profile. Stops on failed setup/compiler
+  or missing receipts. No VM on Dell, no user/app data reset or device reboot.
+- Next: observe root journal and admitted child to actual completion, capture
+  library ABI/export evidence, then bounded native Dell repair/8 Ball Pool
+  relaunch without touching account state. Scaling/manual Google flow still open.
+
+CURRENT22:21Z — HIDL strong-reference race source fix qualified on host:
+- Library patch retains the manager sp while its existing mutex is held. Keeps
+  upstream per-call refresh and host/container transport selection, no API/ABI
+  change. Integrated into clean and incremental Android builders with tracked
+  base/head/hash state. Did not edit the source-recovery candidate in place.
+- r287/c5b68d4b failed host link because GCC ASan library is missing. Existing
+  Clang ASan runtime used instead, no package installation. r288/d4a55d96 and
+  source-owned r289/7062b96c PASS: original extracted function's concurrent
+  positive control aborts with manager became null outside its lock; fixed
+  function retains320,000 references across16 threads. This uses host shared
+  references/mock Binder construction, not Android sp or a device codec pass.
+- Native library/device qualification remains OPEN. Next prepare immutable
+  source input and use the existing owned server Android build VM, under normal
+  bounded admission. No VM on Dell and no Android/game data reset. Preserve
+  SDK5 export and original VM profile; avoid another full source synchronization.
+
+CURRENT22:16Z — mislabeled TikTok source proven; media crash isolated:
+- Nick's TikTok39.3.15 download is an APKM ZIP renamed .apk. Source page claims
+  all-CPU universal, but the actual98-entry bundle includes only ARM64/32-bit
+  ARM libraries. r286/889ce099 SHA exactly matches that page's public hash:
+ 625b357802228ecdca8bbe83520aebd4bb54187cc2a344465f8a90a0c2ff1297.
+  No x86 translation engine was enabled or claimed. This is a mislabeled
+  source listing as well as our filename-based inspection bug.
+- Runtime now validates contents to distinguish individual APKs/package sets
+  despite misleading Android suffixes; non-Android and invalid nested payloads
+  still fail. Valet inspection failure clears Reading application and stale
+  permission/trust presentation. r277/2522cea1 PASS135/16 environment skips;
+  r281/298ee910 existing APK validation/staging PASS13; real GTK widget checks
+  r278/940aa94f PASS including failure heading and disabled Install.
+- New91-file user overlay verified/delivered. Initial r279/001d4189 qualification
+  wrongly expected only ARM64; actual bundle also has32-bit ARM. Retained that
+  failed assertion. r280/b4294d61 actual preview PASS: TikTok39.3.15, correct
+  com.zhiliaoapp.musically, real icon, APKM semantics, both ARM ABIs and x86
+  warning,4.703s including two full inspections. Payload archive SHA
+ ddce708c473f9eb43d767239653ca85914669bbbd1148c7e4656b6accaeeaedb.
+- Fresh native Valet review launched r282/50f94184 as isolated preview identity
+  io.luma.Valet.AndroidPackagePreviewR282; older error window/process not killed.
+  Source update is delivered but existing already-imported Python windows need
+  reopening. Native input API introspected r283/ff5cce38: inactive session closed
+  on client disconnect. No input, clipboard or screen capture was enabled.
+- Nick reports8 Ball Pool exits after login. r284/b13f6b17/r285/1959870d actual
+  package56.34.0 uses native x86_64 (not translation). Foreground SIGSEGV in
+  stagefright thread at libutils RefBase::decStrong -> libhidlbase
+  defaultServiceManager1_2 -> HIDL allocator -> ACodec buffer allocation.
+  Native source clears a shared strong pointer under lock but copies it after
+  unlock, with one pointer shared between host/Android managers. This is a
+  candidate race requiring a source fix and matched-library reproduction;
+  not yet a proven recovery or an authentication/architecture diagnosis.
+- Next: repair and exercise the HIDL manager cache without unrelated audio or
+  desktop changes. Scaling/maximize, full Google callback and8 Ball Pool remain
+  open. No nightly promotion or publication; all global acceptance gates retained.
+
+CURRENT22:04Z — Google provider evaluation active:
+- r260/bb4ceee7/r261/4aa1d9f4 confirmed both GMS and Play Store absent;
+  filtered recent provider-error logs were empty. Treat Reddit Continue with
+  Google failure as consistent with this absence, not an observed stack trace.
+- Official microG v0.3.17.252432 API assets verified r265/b53389ec: Services
+ 252432034 SHAe5e6cba078bdec812b5450599350e5c1a12c8b7438da5bf77123af170f8c1a35;
+  Companion84022634 SHA9b8616011cc8f026bcbbe094df850794abb9d6d9f23214d7a8f8c4d1033ea012.
+  Both APK signatures match upstream platform's pinned microG signing certificate
+  SHA9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165.
+  GMS includes native x86_64 and ARM64, no translation used on Dell.
+- Initial fetch r262 failed because upstream release text names a stale asset;
+  corrected against actual release API. r263 failed missing Java on host PATH;
+  used existing pinned Android JDK11, no server Java/package installation.
+- Initial Dell preflight r267/r269 refused on ro.debuggable=0 without installing
+  anything. That was the wrong proxy: source hook depends on compile-time
+  ANDROID_DEBUGGABLE; userdebug builder is pinned. Corrected the preflight and
+  disclosed the mistake. Did not modify ro.debuggable or platform admission.
+- r270/6078e0a0 installation completed, captured r272/99aa3965: Services7.574s,
+  Companion5.475s, both new packages; no existing provider overwritten, no
+  automatic broad grants or account access. No proprietary GApps installed.
+- Separate source-owned ordinary-UID provider probe and builder selector added.
+  r271/3aa0eb6e final APK build/signature PASS; source/API tools pinned, ephemeral
+  fixture-only key. APK SHA f70e5b26cc21309faca002b85f20687c40bc922eccd39cd9a47e8fa1b2ba3d82.
+  Checks visible compatibility certificate, authenticator, sign-in service bind
+  and Android Java HTTPS; never requests accounts, tokens or credentials.
+  r273/a29be50b installed the test. Initial r274/bfa6b758 returned empty output,
+  not a pass: Java CLI lacked Android boot-classpath environment. Corrected only
+  the diagnostic environment from zygote's public Android classpath variables.
+  r275/2b0ad617, captured r276/dc523d37: ordinary UID10133 PASS, exact expected
+  visible certificate for both packages, Google authenticator present, sign-in
+  service resolves/binds, Java HTTPS204/TLS_AES_128_GCM_SHA256. No account access.
+  Production compile-mode policy and real user Google sign-in remain open.
+- Permanent mount guard byte equality r264/d07c00c5 PASS, same exact guarded
+  init SHA55d56275017e09124d286e97ea11436af6d5370a6ef94b11e8425a1974a03dd1.
+  Final reformatted policy tests r266/15f73109 PASS3. Scaling and actual Google
+  login/callback remain open. No OS reboot, image build, publication or push.
+
+CURRENT22:00Z — native Dell mount-storm repair and scoped recovery evidence:
+- Found repeated unchanged multi-window property writes replay Android init's
+  shared file bind mount. Actual Android namespace had65,665 mounts, including
+ 65,535 copies at the two PC feature XML paths. Reading its23MB mount table took
+ 43.716s. Android CLI clients stalled; netd was stopping, Ethernet work queued
+  for20min and no default network existed. Host namespace remained43 mounts.
+- Source now reads before setting multi-window policy. Vendor/extra init patch
+  adds a volatile once-per-boot guard; clean and incremental source builders
+  include that patch. Unit coverage checks unchanged/changed/unreadable policy.
+  r248/bec27da5 PASS131 tests/16 environment skips; both scripts bash -n and
+  exact upstream vendor/extra git apply --check passed. No new full image build.
+- Local administrator-authenticated repairr249/3bb09870 checked exact originals
+  and no active installs, stopped Android only, retained backup receipts, added
+  the init overlay guard and root-protected host engine bind, then restarted
+  Android. App data retained; no OS reboot or uninstall. Host engine bind lasts
+  until reboot; init overlay persists in Waydroid data. User override also
+  carries the new engine. Native rollback retains the original data backup.
+- Earlier netd-only recovery implicitly restarted Android zygote via its init
+  onrestart actions. Disclosed this to Nick; no claim that it fixed the issue.
+- r252/591fbb5c: mounts131, exactlyone PC mask bind;20 repeated direct same-value
+  property writes left counts unchanged. netd running; Ethernet CONNECTED and
+  VALIDATED/default network100; IP and DNS ping passed. Android wm and package
+  commands returned in milliseconds. Android DPI still180, size5088x1325.
+- Native same-file Reddit reinstall through normal PackageInstaller retained
+  data and returned correct identity/version in10.468s (r254/b0d0b1a8), versus
+  Nick's multi-minute failures. This is one measured reinstall, not corpus proof.
+- Root Android HTTPS to Google's public204 endpoint passed actual certificate
+  verification0 in0.063s (r256/0c8ec780). First raw dropped-UID probe omitted
+  inet3003 and failed DNS; retained as an invalid app-permission control. Correct
+  probe r259/3b6f0ac7 used WhatsApp UID10127 and inet3003, matched against its
+  actual process group list: HTTPS204, verify0,0.051s. This proves network under
+  that app UID/group, not WhatsApp activation or account sign-in.
+- Reopened WhatsApp: native initial frame1104x646; Android bounds1088x593 fit
+  content after chrome. Actual repeated resize/maximize/visual scaling remains
+  OPEN; no blind DPI change. Host text scale1, display scale1; external screen
+  scale1 and internal1.25. User's pre-repair half-scale/translucent screenshots
+  remain failed evidence until matching native controls are repeated.
+- Nick reports Reddit Continue with Google does nothing. GMS is absent; previous
+  YouTube logs explicitly report missing Play Store. Track provider-dependent
+  sign-in/YouTube separately from recovered general networking. No proprietary
+  GApps or broad signature spoofing installed; no account login attempted.
+- No publication/push or nightly pass. Android SELinux Disabled, production
+  identity/signing/maintained-platform, ARM hardware and native broker gates
+  remain open. Next: capture narrowly scoped Reddit provider diagnostics;
+  verify permanent init patch equals live guarded bytes; complete source commit
+  and repeat native window/scaling qualification without resetting user data.
+
+CURRENT21:04Z — native Dell candidate active; user reports and first hotfix:
+- Nick booted candidate6a673f5a; activation unit completed successfully at
+  20:41:30Z. Actual seven130/81/2/75/96 package queries and private Filer
+  e56aa0ca commit match. Image files require administrator read access on Dell;
+  independent post-boot image SHA reread not completed. No claim beyond the
+  activation success and retained server cohort qualification.
+- Nick reports smooth Reddit/WhatsApp windows, resize and input; these are his
+  physical observations, not an automated performance measurement. Reports
+  APKM extracting by default, successful Reddit install followed by unresolved
+  identity, missing bundle names/icons, huge Open label, no network in all
+  three apps, YouTube exiting and translucent notification-permission UI.
+  Subsequent cutout report was withdrawn and belongs to another agent; no
+  audio work or service changes were made for it.
+- User explicitly authorizes iterative native Dell diagnostics/testing and
+  targeted hotfixes; builds stay on server where needed. Existing app data,
+  signed OS/system Filer, unrelated apps and other agents' work preserved.
+- Source fix: workflow now consumes the manifest Package identifier field that
+  inspection actually publishes; existing-app reinstall no longer requires a
+  newly discovered app. Static metadata reads the bounded unambiguous base APK
+  from split bundles, supports PNG/WebP, and may use an installed owner's
+  rendered adaptive icon. Current owner name/icon refreshes after install.
+  Open action is short and its label is bounded. APKX follows validated split
+  archive handling in runtime/Valet/MIME/Filer source. Android MIME definitions
+  use suffixes+ZIP inheritance, without identifying unrelated ZIPs by magic.
+- r206/14a2ab6f broad host suite FAILED795/8errors/4skips: trusted deployment
+  fixtures reject shared ancestor ownership and GUI import lacks Luma AppKit.
+  No broad-suite pass claimed. Focusedr208/9e0129bf PASS28 +runtime128/16skips.
+  Initial GUIr209/5c0a5dd1 failed missing host LumaAppearance typelib. Extracted
+  existing coherent SDK117 read-only for server GUI; r211/6efee6f9 and final
+  r217/25546bfa GTK checks PASS. Final focusedr226/bc682e59 PASS30 including
+  actual APKX bundle validation, ambiguous base rejection, WebP and reinstall
+  identity. Maintained Filer patches parse with git apply --numstat; no new
+  Filer binary rebuild/physical APKX double-click qualification claimed.
+- Reversible user override r214/864c3cf1 delivered with exact-file checks:
+  isolated Valet preview identity and Python path, user host-broker activation,
+  MIME databases/defaults for Android only, and selection of already-qualified
+  private Filer. Existing production Valet process/profile not killed/reset.
+  r219/4f04c948 refresh caught a self-including payload manifest; fixed producer
+  exclusion and retained failure. r220/73cb8f8a refresh PASS20:58:39Z, final
+  tarSHAebca8dfa533efe5281430f1d2d8febb06167c0a8cac28b2180ac151f546ac904.
+  Actual downloads now report Reddit2026.44.0, YouTube21.40.161 and
+  WhatsApp2.26.43.70, all manifest IDs and real artwork. YouTube's XML adaptive
+  icon uses its existing owner's rendered PNG; standalone pre-install adaptive
+  XML rendering remains unsupported. No APKs, app data or private captures in Git.
+- User-control backup/undo is in private Dell Hotfix-r199 folder; restore
+  launcher first runs native OS rollback, then restores original user controls.
+  Undo refuses intervening control edits before changing anything; actual
+  temporary-filesystem tests r222/347e75c9 PASS2. No data deletion. Exact
+  user-control/hash/default proof r224/5fb16d59 PASS21:00:53Z, all91 payload
+  file hashes true, both Android MIME defaults Valet. Earlier root image hash
+  reads r221/c9193fab and r223/494f862a failed EACCES; permission not weakened.
+- Actual native Dell Reddit same-file reinstall through normal shipped
+  PackageInstaller/polkit path r225 launchbfc40344; captured r227/578fa074
+  PASS21:02:54Z: PASS_NATIVE_DELL_REINSTALL_IDENTITY,10.724s, correct package,
+  name and2026.44.0. PackageInstaller -r, no uninstall/data reset. This proves
+  the reported existing-package identity case, not the entire APK corpus.
+- Root diagnosticr200/d1326f76 completed (collectedr201/fc45c12f): IP assigned,
+  host forwarding1 and nft LXC masquerade present, Android connectivity has no
+  active default network; IP ping unreachable and DNS lookup fails. Do not
+  diagnose this as simply missing host NAT. Startup system_server repeatedly
+  crashed in notification Binder notify with IllegalArgumentException before
+  stabilizing; this is not yet attributed to YouTube's later exit. GMS package
+  absent; do not assume that proves the YouTube failure or install proprietary
+  Google services as a shortcut.
+- Deeper Ethernet/netd/log/YouTube-exit read-only diagnostic launchedr202/706a0d65:
+  Dell unitluma-preview-android-hotfix-diagnostics-r202-95208246.service,
+  root_diag2_launcher PID27099 ->pkexec PID27101. Latest r224/r227: still
+  waiting for normal local administrator authentication; output0bytes.
+  Generic SSH sudo requires password. No auth bypass, no new root keys, no
+  silent firewall/route change or claimed connectivity repair. Enter the local
+  Dell administrator password at the existing prompt to obtain the evidence.
+- Next: collect private Hotfix-r199/root-diag2.json after local auth; inspect
+  Ethernet/IpClient/netd and actual YouTube exit before targeted root repair.
+  Revalidate DNS+network validation+HTTPS inside Android and real app loading;
+  reproduce permission-window translucency separately. UI defaults/reinstall
+  changes delivered; network/YouTube/translucency remain open. The prompt is
+  the only live local diagnostic actor; server build/test jobs are final.
+  Production/nightly isolation, trust, maintained platform, ARM, brokers,
+  power and distribution gates remain open. No release/push/publication.
+
+CURRENT20:32Z — Dell native candidate staged; next normal reboot required:
+- Nick completed the normal reboot. Dell now boots the previously pending
+  deployment4320c7e9, boot92f3f709; no foreign pending deployment/transaction
+  existed immediately before delivery. Native Dell only, no VM on device.
+- Private backend native_install.py SHA8f8b2ed3ad780b4f85d5d80e00c3a85073fb175f02912dd9777fc0481ace4565
+  and frontend b17727fb5fcea9894b5894008dc344334d7ab0496e8133f413bdb259b3cdb578.
+  Final server tests r191/3d1b94d3 PASS20:15:54Z:19 tests including actual archive
+  attributes, full mocked-stage/cancel and preservation of preexisting launchers,
+  native app entries and private Filer. No Flatpak data removal.
+- Actual server R182 stage/backups/reboot/activation passed; original rollback
+  lost SSH (cause unresolved; no host OOM found) and run failed. R187 recovery
+  failed at guestfish listen pipe capture before boot; fixed with regular-file
+  output. R189 reached rollback but its offline fixture-only service mask had
+  unlabeled_t; PID1 refused unmask. Retained failures, no full-pass substitution.
+- R193 fixes only fixture mask labeling with restorecon, preserves Enforcing,
+  actual rollback selection and subsequent baseline-boot archive restoration
+  passed. Childdce92906 PASS20:25:35Z, parent54c462cb PASS20:25:36Z:
+  PASS_ACTUAL_SERVER_ROLLBACK_DATA_RESTORE. Backup SHA+tar comparison verified;
+  preview data retained. Container held inactive for restore proof, restart
+  afterward and physical-device rollback remain unqualified. Original XML6/8,
+  VM off, alias unmounted, shared policy24cf restored.
+- Controls transfer r194/a57a1865 PASS20:29:49Z; all received SHA checks pass.
+  Added native_setup frontend/backend, instructions and app drawer Setup/APKs/
+  Restore launchers to existing private930MB Dell kit. Payload manifest798daa38
+  unchanged. Earlier staging-only README superseded by NATIVE-SETUP.txt.
+- r195/a06f1181 PASS20:29:56Z launched actual local user-manager unit
+  luma-preview-android-native-install-r180-eb1b5fca.service, with normal local
+  Polkit authentication. No credentials requested in chat or bypassed.
+- r196/12ee8bfd metadata: native installer root process running, OS4320 pinned,
+  UpdateDeployment transaction active; frontend stage_succeeded still false,
+  stdout empty while transaction running. Do not call staging done yet.
+- Final Dell staging r198/23a401a8 PASS20:31:30Z: transactionnull,
+  stage_succeeded=true, native-stage.log confirms verified original Android
+  backup. Actual rpm-ostree db diff shows exactly seven upgrades and no other
+  changes. Candidate6a673f5a1ddb0fd0e114299a7612d72501daa6a8cde2219772f5b5bda71d6628
+  pending; booted4320 pinned; olderf1df retained. Android container inactive
+  pending new-OS activation. This is staged, not yet booted/physically qualified.
+- Immediate next: Nick saves work and restarts normally once more. On reconnect,
+  verify candidate boot+all seven packages, activation unit, SDK5 image hashes
+  and private Filer commit. Then manual Android Preview APKs launch/double-click
+  F-Droid in private Filer. Native activation after this physical reboot remains
+  unobserved. Never reboot Dell remotely or run automated app/UI tests there.
+- All server child/parent/guard and transfer/launch/metadata jobs observed final;
+  no owned build/VM watcher left active. Dell local setup frontend completed;
+  next activity is boot-triggered native activation, not a background test.
+- All production isolation/security, maintained-platform/signing, ARM hardware,
+  native broker/power/distribution gates remain open; no nightly promotion.
+
+CURRENT19:24Z — native Dell files delivered; full scoped server install/drawer/dock PASS:
+- User explicitly requests native Dell manual test and rejects a VM/degraded
+  preview. No VM, emulation wrapper, automated UI test or OS change was delivered
+  or run on Dell. Only connection/package/session metadata and received-file/hash
+  checks ran there. Existing native OS and active Android runtime are unchanged.
+- Dell reachable as nick, x86_64, Fedora44/Luma20261027.4, hostEnforcing,
+  kernel7.2.8; active local Wayland session. Existing runtime80/images9,
+  Shell125/Installer76/helper1/Filer74. Shared Platform44 commitbc70be60 already
+  matches the private Filer requirement. Existing real per-user Android data.
+  A separate OS deployment4320c7e9 is staged; bootedf1dfcbc1 and prior rollback
+  de4d98d1 preserved. sudo -n requires local password. Do not overwrite pending
+  deployment, reset Android data, interrupt desktop or reboot remotely.
+- Native bundle: ~/Downloads/Luma-Android-Native-20261030-r172 on Dell.
+  Seven exact130/81/helper2/75/extensions75/Runtime96 RPMs, compressed coherent
+  SDK5 x86 image pair, private Filer app, official F-Droid and synthetic probe,
+  payload.json, control hashes, read-only checker and READ-ME-FIRST.txt.
+  About930MB compressed; final manifest SHA
+  798daa38eb07bf5e3af69041861daa04e8fc5c888b2e150a00b287082fb6c2d5.
+  r172/e9524cca payload generation PASS19:15:04Z; r175/cca2c2fa upload and actual
+  Dell full payload + decoded image SHA checks PASS19:19:03Z. Native/not installed.
+  No installer/rollback automation is included or claimed tested: native install
+  must follow existing pending-change reboot, local admin authentication, pinned
+  rollback and quiescent backups of root AND per-user Android state.
+- Earlier r170/ec3e8642 failed before image compression because exported images
+  live in images/ subdirectory; retained. First upload worker r173/ef491bcd
+  failed255 before any remote directory was created. Diagnosticr174/17800cfb
+  found worker namespace SSH system-config ownership check failure. Normal
+  package-kind r175 used existing account key/host pin successfully; no key,
+  host pin, policy or shared SSH config changed. No failed transfer pass claimed.
+- Server-only R171 guard9440ed27 PASS4; childa5028d52 PASS19:21:41Z and parent
+  c12fa4fe PASS19:21:45Z. Same coherent130/81/2/75/96/SDK5 and private Filer;
+  bounded health polling retains strict active/running/success checks, actual
+  loaded shelf.js/appMenu.js SHA matches compiled130. Actual compositor wheel
+  scroll0 ->646, F-Droid icon x733..778 within dock viewport27..846, real pointer
+  dock activation opens native F-Droid phone window. Actual Unpin restores all
+  23 original favorites; drawer primary launch opens loaded real repository.
+- Independent full19-phase qualifier r176/8a4fde27 PASS19:22:35Z, explicitly
+  PASS_SCOPED_X86_APK_INSTALL_DRAWER_DOCK, production_qualified=false. APK hash,
+  launcher Exec, three native SDK5 component hashes and cleanup match. Private
+  gui-proof-r171/observations.json and artifactqualification.json preserve exact
+  input/screenshot IDs, limits and additional actions. Early scrolled-dock click
+  activated Contacts and another early drawer click did not open drawer; later
+  observed drawer/pin/relaunch succeeded. No error-free/physical-input claim.
+- Actual cleanup: settings/favorites restored, owned extension removed, VM off,
+  XML restored, raw alias unmounted, original policy24cf restored. All owned
+  payload/transfer/qualification/VM actors finished. Nightly/security/ARM/native
+  services/power/distribution gates remain open; no release promoted or published.
+- Next device step is Nick's normal saved-work reboot to finish the EXISTING
+  pending OS change, then local admin authentication for native install. Recheck
+  actual state before proceeding, pin existing OS and preserve Android data;
+  current bundle is staged only and must not be described as a usable Dell build.
+
+CURRENT19:03Z — tonight Android release NO-GO; R164 failed and all actors stopped:
+- R164 child060263d6 FAILED19:00:48Z; parentd4182075 FAILED19:00:49Z.
+  Exact seven130/81/helper2/Filer75/extensions75/Runtime96 packages verified;
+  already-exact-candidate, no update transaction. Host package inventory outside
+  candidate preserved and Enforcing checked before GUI setup. No APK UI phases
+  reached; complete19-phase verifier NOT run or passed.
+- Read-only session diagnosis46331ad5 PASSED as diagnostic18:58:30Z, not UI:
+  cold graphical login hit actual90s Shell and Evolution startup timeouts. Shell
+  was killed by systemd; captured1570 main stack was in open -> GLib key-file
+  load -> libwacom database -> Mutter backend setup, before Shell JS setup.
+  Heavy shared I/O is supported by samples, but no general startup reliability
+  or absence-of-code-defect claim is made.
+- Scoped recovery7a2d1e07 successfully restarted ONLY disposable guest gdm once
+  after attesting boot6a66b9e0-83a7-4690-8a7b-8330b35b28be and Shell130 package.
+  No timeout override, production host/session or other job changed. A Wayland
+  socket appeared, but actual Shell ActiveState/SubState/Result health assertion
+  still failed (driver line137, diagnostic22c0b56b). Recovery is NOT a UI pass.
+- Actual final cleanup verified: VM shut off, original6GiB/8GiB-cap XML restored,
+  raw test alias unmounted, policy SHA24cfbd91cb9af179dd1025f8344a87881a2c711e33f237eff84d078a5a5133db
+  restored. Both Android VMs off. No owned build/VM/diagnostic actor left active.
+  R164 extension was staged offline but never enabled; preserve/retire its two
+  exact byte-verified files on the next offline fixture preparation.
+- Release decision: do not promote Android feature into tonight's nightly.
+  Packaged130 graphical9+29 component passes, prior real x86 install/drawer/
+  Pin-Unpin and native reply evidence, and ARM image compilation remain useful;
+  they do not close failed combined acceptance or security/trust, ARM runtime,
+  native services, full app corpus and mobile power gates. Nothing published.
+  Next useful action: controlled startup/whole dock test with loaded-resource
+  proof after measured I/O contention, plus actual isolation/trust/platform work;
+  do not continue adding unbounded retries or promise a release ETA from builds.
+
+CURRENT18:55Z — combined startup/inventory failures retained; R164 active:
+- R158 childc8a6625e FAILED18:50:56Z before UI: read-only SSH readiness
+  deadline. QGA was responsive, host DHCP still assigns correct MAC .35. Actual
+  VM off, original XML/raw alias and policy24cf restored. No APK/dock pass.
+  Diagnostic5eb4bd8d sampled guest about9.2GiB unused and zero swap I/O; its
+  attempted aggregate guest command failed at denied ip execution and lost prior
+  subprocess output, so it is not a guest service-health pass. Diagnosticfcbdb457
+  arrived after shutdown and cannot diagnose live services.
+- R162 guard a06eebe7 PASS4; parent705e8be7/childabda89e6 reached SSH on fresh
+  boot3e536776-e334-4109-b445-078c8dec4a2e but FAILED18:54Z at read-only rpm -qa
+  default30s timeout before UI. Installed130 is present in atomic status; no new
+  package transaction or UI pass. Actual VM off/XML restored/policy24cf restored.
+- Host vmstat sampled about27GiB free, zero swap I/O and no memory pressure;
+  I/O PSI some74.12/full72.30 avg10. Two root ostree processes were D state in
+  fold-delta-arm.service and another root session. Other owners/jobs untouched.
+  These samples support shared HDD contention, not an Android performance claim.
+- R164 guard3039b2a4 PASSED18:55:14Z; parentd4182075 launched same candidate.
+  Only harness read-only package inventory/SSH deadlines increased (bounded180s
+  reads,300s initial SSH readiness); actual GUI assertions unchanged. Observe
+  child/final cleanup and do not treat retry as proof of startup reliability.
+  Private gui-vm-r164/vm-cache-budget-r164/gui-proof-r164 retain exact inputs.
+
+CURRENT18:46Z — compiled130 graphical component checks PASS; combined R158 active:
+- Full Shell130 package d48bce89 PASSED18:09:47Z from immutable8d4778409.
+  Main RPM SHA7670d9d7bc56455d6baecc023d43694348606e751be4126052d8ebbe0a44ce6d;
+  common SHA db3475e125ad70fdf73abf34af008e595373ae4c5537cb1810840ac5a20d7beb.
+  Actual compiled native test and RPM guards passed. Packaged/no-overlay graphical
+  dock r154/76aeaceb PASSED9 checks18:11:31Z; drawer r155/04246ea1 PASSED29
+  checks18:11:38Z. These are component results under distribution Mutter, not
+  whole-OS, physical input, ARM or production qualification.
+- Combined R153 child78ada9ef reproduced actual APK double-click, correct Valet
+  metadata/install/Open, native app close, drawer context Pin and real favorite.
+  QMP wheel accepted12 requests but dock offset remained0. Transport versus
+  compositor behavior unresolved: no dock activation pass. Explicit abort
+  3754bf1d-f6d6-4fcd-9da1-6fd1571b2b5c retained; child exit1 at18:34:44Z;
+  parent52e8f76e restored original policy24cf. Failed run is not a full GUI pass.
+- R158 guard4 checks aaf08d38 PASSED18:38:51Z. Parent b7f27351 / child c8a6625e
+  now active with same seven130/81/2/75/96 RPMs and SDK5. Adds bounded compositor
+  virtual pointer scroll, actual dock geometry/offset and loaded shelf.js/appMenu.js
+  resource hashes, compared with exact compiled130 resources. No internal app
+  activation or adjustment mutation. Full19-phase independent qualifier prepared,
+  not run; first VM readiness and actual dock interaction remain pending.
+  Private gui-vm-r158, vm-cache-budget-r158, gui-proof-r158 retain inputs/results.
+- Maintained base source inventory r156/95422111 PASSED18:18:09Z: all1,166
+  public base-manifest project refs resolved,0 errors. Public evaluation inventory
+  committed9db797f4f; no full content checkout, assembled device/profile overlays,
+  platform build, license/security admission or runtime qualification implied.
+- Nightly request remains conditional on readiness. Android internal SELinux
+  Disabled, shared identity baseline, test keys and unqualified ARM runtime/native
+  brokers/mobile power are actual open gates. No publication or promotion made.
+
+CURRENT18:09Z — dock wheel source9 PASS; full130 package active; next matching VM prepared:
+- Source8d4778409 is the final tested patch0288 variant. Native source-overlay
+  4a73004c PASSED18:01:54Z,9 actual graphical checks with33 pinned apps, real
+  GTK last-app activation/close. A separate native St.ScrollView control gives
+  one-notch98.997483px; cross-axis and horizontal input both match it exactly;
+  ordinary/reverse/smooth input reveals last app without duplicate handling.
+  Scope: compiled129 Shell + exact patch0288 JS overlays under distribution
+  Mutter50.6, NOT compiled130/wholeOS/Android/hardware qualification.
+- Earlier source attempts6d088cfe/3bc9bcde FAILED horizontal comparison;
+  67fdf06e preserved primary axis but exposed incorrect test assumption that
+  step_increment is wheel distance. 30ac7685e adds a real native reference.
+  f6f183e3 then caught remaining duplicate relay. Diagnosticba6b50f0 observed
+  smooth flags32 + discrete flags0 at SAME timestamp; actual enum70e1405e
+  confirms FLAG_POINTER_EMULATED=32 (POINTER_EMULATED is undefined in GJS).
+  Final8d4778409 uses actual enum, native distance, RTL and primary-axis handling.
+  Earlier ae57721d enum probe failed missing explicit typelib path; no pass.
+- Full Shell130 job dev-android-shell130-package-d48bce89 ACTIVE since18:02Z.
+  Normal4GiB package/10GiB HDD reservation; immutable source8d4778409. Private
+  shell-r130-r150 build/host-native executor reuses ONLY owned completed129 HDD
+  Podman cache, configuration receipt retained; no global store/policy changes.
+  Snapshot rpm-r10/source/build/candidate-shell130-r150. Observe final native
+  compiled test + RPM guards/results; do not treat intermediate PASS/COMMIT as
+  package success. No130 RPM digest sealed yet.
+- R153 helpers PREPARED, NOT launched/sealed: same matched Installer81/helper2/
+  Filer75/private app/Runtime96/SDK5, upgrade Shell130/common130. Same10GiB guest/
+  12GiB QEMU cap/normal14+separate1guard and original policy24cf restoration.
+  New bounded hardware wheel action executes12 actual QMP mouse notches in the
+  existing admitted actor, records delivery once; native snapshots add read-only
+  dock viewport/adjustments/app bounds so dock click can be proven in bounds.
+  Waiting actual130 RPM hashes before sealing manifest and launching. Both VMs
+  off now. Other release gates unchanged; full nightly feature NOT admitted.
+
+CURRENT17:50Z — matched x86 install/drawer/pin-unpin PASS; dock wheel defect reproduced; source fix active:
+- R137 child9bb648b5 PASSED17:37:40Z; parenta0c2bd64 PASSED17:37:45Z.
+  Actual healthy bootc5a91f5a-24a6-4176-bb63-7511e59ec851 runs exact seven RPMs:
+  Shell129/common129,Installer81,metadata2,Filer75/extensions75,Runtime96,SDK5.
+  Atomic update succeeded with1200s bound; packages outside candidate unchanged,
+  hostEnforcing retained. Private Filer/runtime commits and binary verified and
+  skipped redundant install. Signed system Filer retained; development ref only.
+- Actual pointer APK double-click -> Valet directly, correct F-Droid icon/name/
+  version2.0.2 -> Install -> Ready in Applications -> Open -> native phone window;
+  hash19d51fad... preserved. AndroidPID1677, shared host client3267 (not per-app
+  host attribution). Actual Luma close -> drawer search -> right-click Pin ->
+  real favorite appended -> actual Unpin -> exact previous favorites preserved
+  -> primary drawer launch -> actual app window with real loaded repository.
+  Android notification PERMISSION prompt remains Android UI, distinct from the
+  native host-notification styling/reply bridge. No native permission claim.
+- Independent qualification eed270c0 PASSED17:39:02Z, explicitly
+  PASS_SCOPED_X86_APK_INSTALL_DRAWER_PIN_UNPIN_DOCK_OPEN. It checks17 native
+  screenshot/input stages, exact APK/desktop/three native SDK5 hashes, actual
+  child/parent cleanup. Private gui-proof-r137/observations.json retains IDs and
+  limits. Complete dock activation is NOT passed: new pin clipped in full dock;
+  QMP wheel-right12dbea728a /Shift+wheel-down12b01f9c48 did not reveal it.
+- ACTUAL cleanup: original settings/favorites restored, owned GUI extension
+  removed, VM off/XML restored/raw alias unmounted, policy24cf restored. Both
+  Android VMs now off; ARM build/export already completed. No release published.
+- Native packaged129 overflow diagnostic1f45a0b5 PASSED2checks:33 entries,
+  range1901/page985; actual horizontal input offset0->916 reveals last app.
+  Reduced ordinary wheel-down diagnostic35c47788 FAILED as expected (offset0
+  unchanged), nonempty range/control establishes the actual wheel-axis defect.
+  Expanded keyboard+scroll private diagnosticf2eeee88 crashed before completion;
+  cause unresolved, no pass inferred. Earlier e228da05 failed fixture GID/ACL
+  ownership before Shell; fixed with fresh staging before output creation.
+- Source2506147bf adds patch0288: route either wheel axis onto dock orientation,
+  consume handled input once; shared label Pin to Dock. Adds native dock-scroll
+  scenario8checks: ordinary/reverse/horizontal/smooth input, last app visibility,
+  real pointer activation and close. Candidate pins130, NOT built/qualified yet.
+  Private source-overlay6d088cfe ACTIVE: exact patch applied fuzz0 to extracted
+  packaged129 JS; source2506147bf. Observe final result, fix if needed, then full
+  Shell130 build + packaged native tests + actual matching VM dock activation.
+- Pinned Ika6fde114 primary metadata/code intakes7b98eecc/93d742b4 PASSED download
+  scope only. Initial broad video-path assumption corrected: modified scrcpy
+  app path selects direct Cuttlefish DMA-BUF frame transport. Launcher defaults
+  VMM enable_sandbox=false and app start force-stops target; no wholesale
+  adoption, upstream script execution, binary/security/performance admission.
+- Tonight's nightly remains BLOCKED for full Android feature: Android internal
+  MAC disabled/shared identities/test keys, ARM runtime/device results, maintained
+  platform rebase, native document/hardware/permission/power and other A gates
+  remain open. The prototype estimate never authorized treating these as passed.
+
+CURRENT17:13Z — conditional nightly target; combined VM timeout retained; bounded retry:
+- User wants tonight's nightly IF ready. Communicated clearly: next45–60min
+  estimate meant tested x86 DEVELOPMENT candidate, not production/nightly release.
+  ARM runtime, internal Android MAC/identity isolation, wider hardware/power and
+  remaining acceptance gates are release blockers. Do not publish by assumption.
+- R126 child920c539c FAILED17:10:56Z before APK testing: rpm-ostree replace
+  reached its600s timeout during post-install scripts. Diagnostics401f02c7 /
+  3acbc61b /e4ba570c /3bb19583 show actual progress, Installer post189471ms,
+  shared MIME cache update waiting in rofiles-fuse. Guest~8.3GiB available/no
+  swap, so no RAM bottleneck observed. No GUI/candidate pass inferred.
+- Actual child/profile restored and parent6e17ee51 restored original24cf policy;
+  inactive offline-created R126 extension retained for exact-hash cleanup.
+- NEW R137 same seven RPM hashes, fresh one-shot guest/profile/extension paths,
+  longer BOUNDED update1200s/SSH1300s; root4500s/guard4800s observation. Old
+  R126 evidence untouched. Offline preparation retires only byte/owner/xattr
+  verified R55/R126 task-owned fixture files, preserving all other extensions.
+  Manifest d31fa94894dc94205685606ec73aad28693945cc87749a77e32f864121298aad.
+  Guard4fixture681cef20 PASSED17:12:21Z; parent dev-android-highmem-reply-r137-a0c2bd64
+  admitted normally. Continue observing its actual child to final result.
+
+CURRENT16:58Z — ARM native image/export PASS; combined x86 VM admission active:
+- Native x86 build host cross-compiled AArch64 target: all75864 steps completed
+  in1h37m36s. Actual final compile diagnostic85bd9673 PASS; measured guest559MiB
+  used/23063MiB available at finalization, swap8MiB (not peak instrumentation).
+- ARM child e83d2ad1 PASSED16:57:19Z; guard28a5035c PASSED16:57:23Z. Streamed
+  image/native component byte counts and SHA verified; HWC actualELF AArch64.
+  System1636896768B SHA8430150c6868de9c7821dc4080245ea63d2d1dafd1da893fc3d4d1b5c92ca565;
+  vendor237363200B SHA05d47bb167a87b99fe57481c73ff1b04aaa51fd9bd5f0a9ccd2be891b02421da.
+  Same SDK5 immutable integration0c0cc1a9f as x86. Output private arm-image-r90/
+  output-aarch64. ACTUAL builder off/XML unchanged/original shared policy24cf
+  restored. This closes this build/export run; ARM runtime/device gates stay OPEN.
+- R126 isolated guard4checks ce4ba4d8 PASSED16:57:32Z. Sealed27 inputs and syntax
+  reverified. Parent dev-android-highmem-reply-r126-6e17ee51 admitted normally;
+  dispatches exact seven-RPM x86 whole-OS test. Observe through actual APK GUI,
+  pointer Pin/Unpin and dock/drawer launch, then child/parent cleanup. No pass yet.
+
+CURRENT16:52Z — final packaged drawer29 PASS; both metadata CPU payloads PASS; ARM99%:
+- Final Shell129 normal package05c7d806 PASSED16:44:48Z from c621fa319,
+  including existing guards and actual compiled sandbox-enabled native test.
+  Main SHA c2e590d7d0286b567784fb739fce5df95ece6115423017b15de4ffdfe1e9815f;
+  common SHA12f47bcd6c7c9eafab842d292dcdeea4518146d536abe0a0c1b37312fe38dadb.
+- Actual PACKAGED Shell129 drawer graphical qualification9dc5df4f PASSED
+  16:45:31Z:29 checks, resource_overlay=None. Actual pointer Pin/Unpin, keyboard
+  Menu/ShiftF10/Escape/focus/Enter, hold, replacement and close/modal cleanup.
+  Scope remains distribution Mutter50.6 software headless fixture; APK dock
+  pin on matched whole OS awaits R126. No device/performance inference.
+- ARM64 decoder2 package503fd468 PASSED16:35:20Z, sourceb92d40c59, under QEMU
+  ARM Fedora. RPM SHA019477155004687e6d58b24bfb3eaeb2a4ee1c30581fb4f4af77e9bee50379ef.
+  Actual extracted AArch64 helper on unchanged official F-Droid2.0.2 PASSED
+  525c1c59 at16:45:22Z; ELF machine183, correct package/label/version. No ARM
+  hardware speed or Android runtime result inferred. All generated outputs HDD.
+- R126 seven-package manifest SEALED fc1b867adba89aed4a1d1967e6fe239f30fe2ab72a4af5e7ee05c06f1a8f7cc5:
+  Shell129/common129,Installer81,metadata2x86,Filer75/extensions75,Runtime96;
+  SAME SDK5 x86 images. Private existing Filer/runtime refs verified and skipped
+  if already exact, no redundant install. Test favorites saved/restored. New
+  read-only drawer/menu bounds observation supports actual pointer Pin/Unpin.
+  NOT LAUNCHED: must wait ARM final export, VM-off and original24cf policy.
+- ARM e83d2ad1/guard28a5035c ACTIVE99%75840/75864 at16:51:37Z. Require actual
+  complete/export/ELF/hash/cleanup receipts; percentage is not qualification.
+- Maintained Android16 candidate metadata audit fb52914e PASSED16:34:35Z:
+  33 immutable local-project revisions and4 excluded proprietary/service slots;
+  config/android/candidates/lineage-23.2-intake.json is evaluation only. Complete
+  platform graph, build, license/distribution and runtime gates stay OPEN.
+
+CURRENT16:26Z — native drawer actions29 PASS; ARM74%; final Shell package pending:
+- Public sourcec621fa319 includes DrawerAppMenu (keeps Enter/Space launching),
+  Menu/ShiftF10/right-click/hold, menu cleanup before tile replacement and native
+  captured-event actor selection/null guards. Patch0287 fixes a real shared-menu
+  defect: window section was parented once early and again in the group loop.
+- Native source-overlay qualification17ee6ef2 PASSED16:22:19Z,29 checks: actual
+  pointer Pin/Unpin modifies real favorites; Menu/ShiftF10/Escape/focus/Enter,
+  hold without launch, search replacement and full close/modal cleanup, ordinary
+  primary launch. No captured null-descendant or duplicate-parent warnings in
+  this final run. Exact source/module/RPM proofs in qualification.json.
+  Scope: extracted Shell128 payload + current source overlays, disposable native
+  headless container with distribution Mutter50.6/GLib2.88.4/GTK4.22.5/GJS1.88.1.
+  NOT another matched OS/Android boot, APK dock result or hardware/performance
+  test. Source fixes require full Shell129 build (prepared shell-r129-r125).
+- Shell128 full packagecef4e079 PASSED15:56:13Z from80aca776a: native compiled
+  sandbox-enabled symbolic test + all existing checks. MainSHAe252ef06..., common
+  97ca33d8... . Earlier owned30df0c5d intentionally stopped143 before compiling;
+  a372dd14 compiled then FAILED private native-executor mount path. R106 fixed
+  the one-shot /build mapping. No failed attempt was counted as qualification.
+- Native fixtures first exposed actual Enter opening a menu, then confirmed fix.
+  R120 all25 behavior checks passed but runner failed inherited28-count floor;
+  added useful ShiftF10/no-launch/no-orphan controls to29, final R121/R124 passed.
+  Earlier ownership/missing runtime deps/library duplicate/readability failures
+  remain retained. Runner result.json now exclusively devctl-owned; separate
+  native-result.json retains scenario result. R122 diagnostic escape error was
+  stopped; not a product/runtime failure or a qualified result.
+- ARM imagee83d2ad1/guard28a5035c ACTIVE74%56489/75864 at16:25Z, actual ARM64
+  target/native x86 compiler. Last measured guest24GiB used7.2GiB/available16.4GiB,
+  swap0 (72ca2e5e). Require final export, VM-off and original24cf policy restore.
+- Separate ARM64 metadata2 RPM build503fd468 ACTIVE, emulated aarch64 Fedora
+  package builder (not native hardware performance), sourceb92d40c59,2GiB normal
+  reservation. Actual release compilation completed; required debug cargo checks
+  still running. Private container store/TMP on owned HDD; no extra host SSD load.
+- R126 one-shot combined VM helpers PREPARED only; no VM started. Preserve exact
+  runtime96/SDK5/Filer75 private Flatpak; upgrade Installer81 + helper2 + Shell129.
+  Guest10GiB/QEMU12cap/admission14+guard1; original6GiB XML restored. Manifest and
+  package hashes must be sealed after Shell129 exists, then wait ARM cleanup.
+  Original-policy worker14 guard cannot run while ARM owns temporary policy.
+
+CURRENT15:45Z — preview packages qualified; ARM compile active; drawer actions in progress:
+- Metadata decoder2 package f1eac518 PASSED15:41:56Z from sourceb92d40c59.
+  Actual Rust helper x86 RPM SHA30849e8bc082d45a2ecf917b78e9ee420537bd1e53f2f1f3495563d18f0cb243;
+  binary5fd1a276... . Four binary/debug/source RPMs retained, normal frozen/offline
+  cargo build/test and RPM payload/header directory checks passed. No ARM helper
+  package or production qualification inferred.
+- Actual helper on official signature-verified F-Droid2.0.2 PASSED d5b3ba51:
+  labelF-Droid/version2.0.2/packageorg.fdroid.fdroid and four native ABI choices;
+  APK SHA19d51fad... unchanged. This corrects failed native harnessa024f279:
+  the helper is a SEPARATE RPM, not payload inside Installer80.
+- Installer81 full package90feb429 PASSED15:44:05Z:841tests/9skips, native6+7,
+  real GTK main-preview architecture warning/version/eligible-install controls,
+  cache/digest/header checks. RPM SHA718a88d8a721518fbc646b09c80f203ad952da0b74bcbf05e9fab6b222b200e4;
+  package-installer-r101/source/build/packages/luma-application-installer.
+  Requires now pins helper2 exactly; both-CPU input pins updated. Android ABIs
+  no longer accidentally rejected by host RPM architecture-name heuristics.
+  Version/signature facts remain separate, publisher not invented. This is
+  component qualification, not another whole-VM GUI install or ARM result.
+- Source drawer actions currently adds native AppMenu for right-click/hold/Menu/
+  ShiftF10; disposes menus before actor replacement and preserves primary-click
+  search behavior. New native drawer-app-actions scenario is NOT RUN yet;
+  build/real UI pin-unpin gate remains OPEN. Dock overflow remains separate.
+- ARM normal e83d2ad1/guard28a5035c at31%24031/75864 at15:44:40Z, live native
+  x86 host cross-compiling arm64. Existing24GiB VM/25GiBcap/8CPU/27+1admission,
+  policy756a... unchanged; require final export/VM-off/original24cf restore.
+- Retired ONLY completed disposable Installer79/80 build-cache images through
+  normal ec846dc7/5465b131 after retained RPM+SRPM/source/log/no-consumer proof.
+  Root~21GiB available; preserve20GiB floor. New native helper/Installer81 caches
+  may be retired only with equivalent artifact/custody proof before next build.
+
+CURRENT15:08Z — actual x86 direct-install GUI PASS; ARM24GiB build active:
+- R85 child7a7558bd PASSED14:51:01Z; parent1165077b PASSED14:51:04Z.
+  Same actual boot55637e9b-2b56-403b-82c0-0171df7fbd98, verified79/Filer75 native
+  pair/96/Shell127/SDK5 and exact unsigned USER Filer test ref e56aa0ca/binary2116a024.
+- Real pointer double-click dab8a44a on selected F-Droid APK d998daa0 opened
+  native Valet directly8d371fa4, no chooser. Pointer Install d5659605 produced
+  Ready in Applications268be02c. Installed APK SHA exactly19d51fad...; generated
+  native desktop file Exec=/usr/bin/luma-android launch org.fdroid.fdroid.
+  Pointer Open d6e147aa -> real phone window b7b40462; allowed notification
+  permission1126b760; actual window close f7b0d162 removed it. Actual Luma app
+  drawer1a136a8a, pointer F-Droid3311a4ba -> reopened8d3df299 with loaded real
+  repository content. AndroidPID1592, host Waydroid clientPID3658 shared; no
+  per-app host process attribution claim. Valet version/signer shown undeclared.
+- Independent qualification5c3c4e30 PASSED actual input-command/window/image
+  sequence, APK/desktop identity, three SDK5 native component hashes and final
+  child/parent cleanup. Evidence qualification.json includes exact PNG SHA/paths.
+  Corpus is UNIVERSAL with arm64-v8a/armeabi-v7a/x86/x86_64 native libs; do not
+  describe it as pure DEX. Native JNI load/maps not separately observed here.
+- Cleanup actual: settings restored, only owned GUI extension removed, VM off,
+  original XML/raw unmount and policy24cf restored. Private candidate/app and
+  test downloads retained on raw diagnostic disk. Scope one x86 VM/one APK;
+  unsigned development Filer branch, signed system app unchanged. No daily-use,
+  ARM, hardware-power or production-isolation qualification. Dock pin/UI,
+  metadata details and wider installation/recovery corpus remain open.
+- LIVE ARM guard28a5035c / normal build e83d2ad1 since15:07:49Z. New private
+  arm-image-r90 targets aarch64/lineage_waydroid_arm64_only-userdebug with SAME
+  immutable Android0c0cc1a9f source/tool squashfs inputs as SDK5 x86 build.
+  Native x86_64 build host cross-compiles ARM64; no APK translation claim.
+  Guest24GiB/QEMU25cap/8CPU/normal27GiB + separate1GiB guard; temporary BUILD
+  ceiling27 and account32 only, global32/reserve8/disk20 unchanged. Four isolated
+  restore/admission tests PASSED2a22d870. Temporary policy SHA756a9279...,
+  original24cf... must be restored after actual child end. Current phase verifies
+  immutable inputs before boot. New ARM logs/outputs preserve completed x86 ones.
+- ARM controller bounded5.5h, guest20500s/root21600s, observed guard6.25h;
+  streams image exports with size/digest checks, requires actual AArch64 ELF and
+  VM-off/XML unchanged. A compile/export pass is NOT ARM runtime/device proof.
+- Continue observing ARM job to final result; meanwhile finish first-class gaps
+  (APK preview metadata, dock pin interaction, safety/power/process integration).
+
+HISTORICAL14:42Z — corrected bundle installs; exact79 GUI retry active:
+- R80 parent8fd20a4a/child4132e7e2 FAILED14:36:15/16Z, cleanup observed:
+  actual79 boot b3972fc5-a277-4ac6-9db4-cd21c5f3ada9 graphical session and exact
+  three package versions passed; pinned signed user Platform44 installed. Local
+  candidate bundle install failed before APK activation. No APK/UI pass claimed.
+- Isolated host bundle install e2e82cec FAILED with actual error: private export
+  incorrectly used builder filesystem path as --runtime-repo URL. Corrected
+  export bd767c11 PASSED14:39:43Z, then actual isolated HOST user install passed
+  exact app commit e56aa0ca31b44022e3b52f38b6155c0e4e76ccd144873e40cb570ee177e12846.
+  No source/binary rebuild or trust relaxation. Runtime is explicitly provisioned
+  from pinned signed remote, so corrected export omits invalid URL field.
+- NEW usable bundle INPUT (not GUI-qualified yet):
+  private filer-bundle-export-r86/Filer-Android-Test.flatpak SHA
+ 77d64520a46e37fabaa75b6762cacf72a1afdf60e972ee86e9d088f7565d05c5.
+  Same actual binary2116a024... and source6773ac5ba. Old bundle7edb99b6 retained
+  FAILED installation artifact; do not supply it to further tests.
+- LIVE parent1165077b / child7a7558bd (R85) since14:41. Four guard fixtures
+ 93ee4fbd PASSED. Manifest d9ca6810b22e9fd0b946a257d571c4dd7803b8dceb9223ed6a4361ef9f2db2f7
+  pins corrected bundle,79/Filer75/96/127/SDK5, same matching signed runtime/GL.
+  If exact candidate is ALREADY booted, skips redundant override/reboot; still
+  requires actual healthy final graphical session and full package/hash checks.
+  Nested guest command failures now print/store actual captured child output.
+- gui-control-r85.py targets exact observed child via parent's capacity receipt.
+  Wait for interactive-gui-session-ready + private-filer.json deployed app/binary
+  verification before input. Earlier R69 queued snapshot never ran. Current R85
+  has not received any pointer/keyboard input yet. Observe final cleanup/results.
+- Next: real patched /app Filer APK double-click -> native Valet install ->
+  exact F-Droid APK/app drawer/window proof. No production/ARM/whole-gate claim.
+
+HISTORICAL14:27Z — real /app Filer bundle BUILT; exact development GUI test active:
+- Normal Flatpak package39a1b3d4 PASSED14:26:16Z source6773ac5ba. All recipe
+  dependencies built, complete160-patch preparation passed inside SDK sandbox,
+  native /app binary compiled, both required filename test programs passed,
+  normal export and unsigned development bundle completed. Prior0484dfbe kept
+  FAILED. Group normalization fixes the actual namespaced source path.
+- Private app ref app/org.gnome.Nautilus/x86_64/android-test commit
+ e56aa0ca31b44022e3b52f38b6155c0e4e76ccd144873e40cb570ee177e12846.
+  Bundle filer-flatpak-r82/Filer-Android-Test.flatpak SHA
+ 7edb99b689f4d4b93673665055e4fe82153f891faba9b75282790f6b14ddad49;
+  actual /app/files/bin/nautilus SHA
+ 2116a024528f0cbf6b75ebb8df13b9fe97be7148e062e891c4addd98d3074553.
+  API literal RequestDefaultInstall verified in binary. This is not GUI/ARM/
+  performance or production signing qualification.
+- R80 four isolated policy restoration fixtures PASSEDf3189c7e. Final input
+  manifest SHA d67b1060d96484df3bf95d67891e758e96a605b2614bb5167e0c49d4d72b710b
+  pins installer79, Filer75 native pair, exact new Flatpak bundle/commit/binary,
+  signed user Platform44bc70 and existing system GL279c, Shell127/96/SDK5.
+- LIVE parent8fd20a4a / child4132e7e2 since14:26:43. Normal guard1+worker14GiB,
+  root256MiB+1GiB/QEMU12/guest6, same exact restoration controls. First repairs
+  through normal atomic79 update/reboot; final GUI mandatory. It explicitly
+  installs unsigned USER android-test candidate and pinned signed user runtime,
+  preserving system signed Filer/trust. No publisher/signing keys or release.
+- Prepared gui-control-r80.py targets exact observed child. Do NOT submit UI
+  input before pipeline interactive-gui-session-ready; prior R69 snapshot never
+  executed. New fresh setup checks pm list-packages instead of failing on the
+  expected pm path absence status; records top-level command output on failure.
+- Next: observe current root/child to private-filer.json exact deployed binary
+  hash and interactive readiness, then actual APK pointer double-click -> Valet
+  install -> exact F-Droid APK/app drawer/window. Observe final cleanup/results.
+  Current build artifacts are reviewable; no usable daily-use/ARM claim yet.
+
+HISTORICAL14:23Z — actual Flatpak delivery fixed; installer79 verified; build active:
+- R69 parent3b35849b/child ec8ef23e FAILED14:11:08/09Z. Actual78 boot
+ 45042e53-5d9b-4455-bf0d-8971e089bf55 reached healthy graphical session and
+  exact installer78/Filer75/extension75 package receipt. No APK click occurred:
+  fresh-test setup failed before interactive inbox processing. Snapshot162a4e1c
+  was queued but never executed; client timed out, not a UI failure/pass.
+  GUI settings restored/fixture removed/VM off/XML/raw mount/policy24cf restored.
+- Read-only5a44bbea established why prior76 boot worked: its composed service
+  ExecStart=/usr/libexec/luma-app-baseline (new handoff); installer77/78 RPM
+  replaced it with old legacy seeder unit. Old/new Python validators themselves
+  identical. Source155516d7a makes package and image units identical to the OS
+  handoff, UMask0022/public app files, private StateDirectory0700 and30min bound.
+  Source-owned shipping-format contract restored unchanged24 entries; legacy
+  required app set23 matches after maintained Displays retirement. No global
+  native-baseline format change or fresh-image qualification claimed.
+- Source ownership checks e4bed435 PASSED6 component inventory cases+Filer
+  contract+actual package/image unit equality and selection after retirement.
+  Installer79 package9cb2f433 PASSED14:14:50Z,834tests/9skips+6native+7additional,
+  actual RPM metadata/digests passed. RPM SHA
+ f10b8267e65208b1682e8511a31219c8f0bcdb515789ef80c9de6c02bd347b64;
+  output private package-installer-r75/source/build/packages/luma-application-installer/RPMS/noarch.
+- Critical delivery finding: nautilus-main explicitly delegates host launch to
+  signed system Flatpak. Host RPM75 alone cannot update visible Filer. Actual
+  patched /app Flatpak build is required; no production role/signature bypass.
+- Private signed SDK intake75d30bb8 reached1GiB cap, intentionally stopped143;
+ 4GiB normal resume e6e5331a PASSED14:16:30 with downloaded data retained.
+  Private XDG dirs filer-sdk-r73, temp on HDD; no global Flatpak state changed.
+  Public signing069E001599679B49042FE40885FCC398C02A8BEE; Platform44bc70be6049c83e63fdccd46b368fab69730cd722127da3c8bee01dadc2ea8fa5;
+  SDK441134c28823bae0cd52c7343a57ddb91c48a9b6441c6ff8ee89c195e8774b3d56.
+  GL pin8a1fa656279c93fc5a817837fd6f8f20ee26048ebafba4802088c15d3a6ad8739590a6dc matches VM system GL.
+- Flatpak build0484dfbe FAILED14:20:31 after completing prerequisite modules:
+  GNU patch could not preserve unmapped inherited shared gid in its userns.
+  Source6773ac5ba normalizes ONLY freshly extracted owned working-copy groups
+  to current builder gid. Restricted worker regression c20ef3bc PASSED full
+ 160-patch prepare, exact resulting C7e2e8fb1 unchanged; contract test passed.
+  Its static receipt floor77 stale; e946ac63 separately verifies actual floor79.
+- LIVE Flatpak build39a1b3d4 normal package4GiB/10GiB disk, source6773ac5ba,
+  private filer-flatpak-r82, reflink copy of prior owned dependency cache; original
+  failed source/logs preserved. Observe final result, bundle SHA and app commit.
+- R80 GUI controller prepared, NOT launched/finalized. It will update to79,
+  install explicit unsigned USER android-test Filer branch plus pinned signed
+  user Platform44; preserve signed system app. Must verify exact app commit/
+  binary hash and system GL before actual double-click. No release signing or
+  publication. Fresh-app setup uses successful pm list-packages absence check
+  rather than erroneous pm path exit-code assertion; captures top-level errors.
+- Only disposable installer78 image4add4e17 removed after no-consumer+retained
+  RPM/SRPM/source/log proof34f75ee7 PASSED. Root reserve restored22GiB. No broad
+  pruning; runtime images, previous successful SDK/reply/GUI evidence preserved.
+- Next: finish actual /app Flatpak build, finalize R80 package/bundle/runtime
+  manifest and preflight, then observe actual GUI flow through final cleanup.
+  All ARM, production isolation/mobile power and broader gates remain open.
+
+HISTORICAL14:03Z — real boot gate found OS selection mismatch; corrected78 run active:
+- R55 parentf9287404/child3af3503d FAILED13:58:35/39Z. Atomic three-package
+  replacement succeeded (candidate93f18d7fae643196f6e1d445e02f7a359d4ceef7e0fe4ffc1b0333d914d04fa7),
+  but fresh boot GDM dependency luma-app-baseline.service rejected incomplete
+  inventory before graphical login. NO direct APK UI qualification occurred.
+  Original XML/off/raw unmount/policy24cf restoration verified in final receipts.
+- Actual root read-only diagnostics ef2dbd8c/cd1ae6ed captured boot failure,
+  manifest23 OS apps+3 runtimes and matching23-role contract. Runtime validator
+  required29 apps, including six Office/Creative products explicitly excluded
+  by source-owned bundle producer. Old76 and new77 validator/native-role source
+  are identical; do not claim this source mismatch was newly introduced by77.
+  Earlier successful boot's differing unit/cache behavior is not established.
+- Source682197ff0 fixes required OS APPS by excluding the same six separate
+  products; removes already-retired Displays from OS shipping selection. It
+  retains all ownership/hash/signature/core completeness checks. Regression
+ 21b1371b PASSED5 inventory tests+1 Filer contract+actual producer/runtime exact
+  selection23; missing core Notes and injected separate Write rejected.
+- Installer78 package4fb50ec3 PASSED14:01:29Z:833tests/9skips,6 native preview,
+ 7 additional tests, digest/header modes. Exact RPM SHA
+ 3965043c7ac0f1fefaa9bdde081a5b8aea4a6a8770a04906313c83dfc075e47b;
+  output private package-installer-r68/source/build/packages/luma-application-installer/RPMS/noarch.
+- Only completed disposable installer77 builder image431db544 removed normally
+  (no force) by83b727a3 after verifying no dependent containers and retaining
+  exact RPM/SRPM hashes, full source/build outputs/logs. Root free22GiB; no broad
+  pruning or other task cache changes.
+- LIVE new guarded parent3b35849b / gui-vm-r69 (child exact unit in parent's
+  capacity-handoff.json). Fresh helpers/manifests, four policy fixtures PASSED
+ d7ba63f3; only initial repair boot may use root SSH without GUI. Final78 reboot
+  STILL requires actual healthy graphical session and exact candidate packages.
+  It retires only byte-verified orphan R55 fixture created before failed boot;
+  all settings/health guards retained. Filer75 verified pair reused unchanged.
+- Next: observe current child to actual installer78 graphical boot and direct
+  Filer double-click/install/app drawer/window proof; keep final results/cleanup.
+  No usable build, ARM, production/security or whole24-gate completion claimed.
+
+HISTORICAL13:45Z — Filer75 full package PASS; actual candidate GUI run active:
+- Normal package cfb36e59 PASSED13:44:37Z source1b0bfc41e. Fresh full compile,
+  all7 Meson test programs, packaged-content checks and all-RPM0755 header
+  guard passed. Original74dc3463 FAILED one Glycin decode test in nested builder;
+  six other programs passed. No test/source assertion or sandbox was disabled.
+- Exact compiled test-properties-about diagnostic cb7d1be1 PASSED5 cases on
+  Fedora host with normal Glycin sandbox after privately extracting signature-
+  verified required runtime libs. First diagnostic9c482a09 failed missing libs.
+  Fresh full package cfb36e59 used bounded optional private executor in SAME
+  admitted4GiB job for that exact test; all7 still ran, native SHA before/after
+  and private recipe/client source deltas recorded. This is a build-environment
+  adaptation, not VM or production qualification.
+- Filer75 main RPM SHA4bd2f649e31ebc618be2e94132d5bb3abd04dca5d7f5696545cba4203d5aefd8;
+  extensions75 SHAcea7f9927bdf4a5726477f41491fa85f66bef564c3a37bd8bec016383821a594;
+  output private package-filer-r58/source/build/packages/nautilus/RPMS/x86_64.
+- Sourcecf206712c also advances Flatpak source preparer through159 and required
+  host installer77. Actual full Flatpak source preparation + host-contract test
+ 48c38dab PASSED13:44:46Z; final C SHA7e2e8fb1 matches prior application check.
+  Worker dd325fa4/2b1be55f failed GNU patch preserving shared group inside worker
+  namespace (EINVAL); normal package job retains build group mappings and passed.
+  No Flatpak binary/build/GUI success claimed by source preparation.
+- LIVE r55 parentf9287404 / child3af3503d: guarded normal1+14GiB, capped root
+ 256MiB+1GiB and QEMU12GiB/guest6, temporary worker ceiling14 only; original
+  policy and VM XML restoration retained. Exact candidate manifest pins verified
+  installer77 + Filer75/extension75, Shell127/runtime96/SDK5 and helpers. Atomic
+  update/reboot and real double-click/install/launcher/window still pending.
+- Continue observing exact child through actual GUI operations and cleanup.
+  ARM/security/mobile power/all broader gates remain open, no release action.
+
+HISTORICAL13:40Z — installer77 package verified; Filer75 native build active:
+- Source fdfb4b3f5 aligns installer baseline with recorded2319, includes optional
+  RequestDefaultInstall and20 focused checks, declares release77 consistently,
+  and requires toolkit generation111+ for the existing Depot layout dependency.
+- Installer r51 f8669aa8 failed stale declared host release; r52 ad713809 failed
+  old toolkit108 missing _LayoutWatch. Both defects corrected without skipped
+  checks. Exact qualified toolkit117 input hashes retained in source receipt.
+- Installer r53 build92df5ccc ran831 tests OK (9skips),6 native preview tests,
+ 7 additional tests and packaged successfully; overall wrapper FAILED because
+  RPM mode verifier was incorrectly given raw RPM bytes. Corrected read-only
+  postverification ce46a56c PASSED13:33:37Z: actual header dirs0755 and digest OK.
+  Installer77 RPM1214298B SHA6d71c338964a40366d1326685baeb62246b5c9c3c01b5267c3320b84d60f3a25;
+  path private package-installer-r53/source/build/packages/luma-application-installer/RPMS/noarch/.
+  Neither wrapper failure nor component success is whole-OS qualification.
+- Filer r53 build8bc06b08 FAILED before compile: complete spec still release74
+  and missing patch0159. Source1b0bfc41e corrects release75 and includes0159.
+  New normal package build74dc3463 ACTIVE,4GiB reservation,2 compiler jobs;
+  applied full160-patch series, reached native linking. Observe final checks.
+- Fresh owned r55 GUI controller prepared, not launched. It verifies exact new
+  installer/Filer RPM hashes, atomic replacement and reboot with no unrelated
+  package changes; removes only hash-verified owned F-Droid corpus app, restores
+  only diagnostic APK MIME lines, and qualifies actual direct install/launcher/
+  window separately from still-open dock pin UI. Four isolated policy restore
+  fixtures PASSED4a32c244. Original shared policy unchanged; VM remains off.
+- Next: observe Filer build through final result, finish exact candidate manifest,
+  run owned r55 VM GUI test; do not stop at job launch or claim ARM readiness.
+
+HISTORICAL06:21Z — session cleaned up; source fix and baseline alignment:
+- R50 child2d0de28a/parent0727a2ae FAILED at bounded session deadline; both
+  results observed06:04:18/19Z. Actual cleanup restored extension preferences,
+  removed only owned extension, powered VM off, restored exact original XML,
+  unmounted raw alias and restored original shared policy SHA24cfbd91. No VM or
+  owned build active. Successful independent reply818f9e4b remains scoped PASS.
+- Dock explicit test-preference write8d544623 applied but its output JSON parse
+  failed. Readback confirmed it; actual menu showed Unpin18884c91 and pointer
+  unpin62835972 worked. Pin-menu flow remains open; no false overall GUI pass.
+- New optional ApplicationInstaller2.RequestDefaultInstall returns handled=true
+  only for APK/split packages whose actual host default is a Valet identity.
+  Custom/missing/default legacy Android handlers decline without launching;
+  malformed/local-symlink/remote inputs rejected. Focused dc445cf7 PASSED7 cases.
+- Filer client0159 source written, not compiled/qualified yet: async host handoff,
+  original activation on explicit decline/absent optional API, weak view lifetime,
+  no second launch after ambiguous errors. Existing D-Bus talk permission reused.
+- Before building, aligned installer component/spec/build recipe with recorded
+  Nightly source2319c9b86df26b89f57b1c750916441f3ffb5fc2. This restores newer
+  app-baseline/private-listing/retirement guards and tests missing on this branch;
+  avoids shipping old71 contents over the installed76 package. Existing service
+  source is unchanged between those baselines; new handoff/test kept separately.
+  Baseline source release74 is not claimed byte-identical to installed76.
+- Next: compile/check Filer0159 against exact admitted source RPM SHA d3204c26,
+  run focused/full relevant installer checks, produce new candidate releases,
+  then actual direct APK activation in owned VM. No release/signing/publication.
+
+HISTORICAL06:04Z — actual real-app install and native reply milestones:
+- Actual96/127/SDK5 boot3264f49d-e460-43be-b19d-9ad405ee8cca: real Filer APK
+  double-click opened chooser (defect still open). Choosing Valet opened actual
+  io.luma.Valet GUI; pointer Install succeeded. Installed F-Droid2.0.2 APK SHA
+  exactly19d51fad... matches official signature-verified corpus; native desktop
+  entry published. Actual app opened, loaded repository, closed and reopened by
+  pointer from Luma app drawer. Hardware typing F-Droid in native search correct.
+- Evidence GUI child2d0de28a: snapshot e3b92286 installation success; state
+ 5f5bc5c6 exact APK/desktop; dce4dd0d actual running window; c69059de closed;
+ a11f85c5/fd79fdef/a4f5456e app-drawer reopen; 9387bf3d actual correct search.
+  Full screenshot/JSON UUID filenames stay in that artifact directory.
+- Native reply actual PASS dev-android-gui-reply-verify-818f9e4b EXIT0 05:54:53Z.
+  Existing APK16 BackgroundReceiver local30s alarm removes foreground task,
+  then posts real notification. Sidecar4a6e84d2 verified96/127/SDK5 native hashes,
+  APK hash, same boot, UID10128/PID1780 and unique textLumaAndroidReply-207d821f.
+  Native pointer focused actual live Luma card; QEMU keys dispatched once per
+  character; snapshot01f6190a showed exact text; pointer Send66b17b7c. Original
+  ActionReceiver action:reply receipt exact text/UID/PID once, unchanged after3s.
+  No direct reply API invocation, text setter or clipboard injection. This closes
+  only one x86 synthetic hardware-input happy path, not lifecycle/mobile/power.
+- Foreground fixture posts did not show a banner; background local-alarm fixture
+  did. Earlier no-banner runs do not establish background notification failure.
+  Virtual notify_keyval duplication remains unqualified; physical input succeeds.
+- Dock backend favorite/reorder succeeded in owned test profile. Native menu
+  showed Unpin; pointer unpin worked. Pin interaction remains OPEN (long dock's
+  running app clipped; drawer tiles have no context menu). QMP wheel/shift/right
+  inputs were accepted but did not expose it; not evidence of working scrolling.
+- Explicit diagnostic preference sidecar8d544623 FAILED JSON parse after applying
+  changes. Readback fb39eb6b confirmed favorite and APK identity/PID1539; later
+  UI unpinned it. MIME canonical Valet default changed in this test profile;
+  double-click142fe5e1 STILL opened chooser. Do NOT claim canonical default fixes
+  it or change public defaults based on that hypothesis. Actual GIO queried in
+  Filer's exact XDG environment had resolved installer default even before change.
+- R50 main child/root/parent0727a2ae still active until bounded06:04-ish deadline;
+  its finish predicate mistakenly requires legacy org.projectluma.AndroidInstaller
+  while actual installed surface is io.luma.Valet. Do not alter frozen helpers or
+  claim overall pass. Observe final cleanup, VM off/original XML and policy24cf
+  restoration, then record independent successful scopes with their limits.
+- Next product fix: inspect Filer's actual default activation/portal path against
+  pinned50.2.2 source and existing ApplicationInstaller2 handoff; runtime GUI
+  itself demonstrably installs. Generic installer2 is ordinary session D-Bus Exec,
+  not the hardened Android broker; no evidence requiring a sandbox relaxation.
+
+HISTORICAL05:33Z — real-app GUI flow in one bounded persistent desktop session:
+- User correctly calls out ~48h without a usable build. Deliverable remains
+  incomplete; repeated recovery/probe work has consumed too much time. Immediate
+  milestone is actual APK double-click/install/launcher/window/dock in one boot,
+  while retaining all original broader acceptance gates and production blocks.
+- R49 child0e968f9d/parentae00480f FAILED; final results and cleanup observed.
+  Actual native guards passed again; notification did not arrive during the
+  150s receipt window, so host keyboard input was NEVER dispatched. This does
+  not compare hardware vs virtual keyboard yet. Window test observed no layout
+  change this run and failed; earlier SDK5 resize passes remain bounded evidence.
+- LIVE parent0727a2ae normal1GiB/root256MiB; child gui-vm-r50-2d0de28a
+  normal14GiB/root1GiB/QEMU12/guest6/2CPU. vm-cache-budget-r50 exact restoration
+  controls retained. New fixture luma-android-gui-r50@test.projectluma is limited
+  to native screenshots/windows and pointer input; host uses actual QEMU keys.
+- Private gui-vm-r50/inbox accepts owned0600 UUID JSON commands, records each
+  once, and keeps same VM session for at most1800s. Commands snapshot/click/keys/
+  fixed F-Droid text/state/finish. Source helpers/hash pins immutable while live.
+  Observe child and parent through cleanup/final results; never stop at launch.
+- Corpus F-Droid2.0.2 official signature/hash pin retained. Install must happen
+  through actual Filer and native installer. Finish requires actual matching
+  installed APK SHA, registered desktop file, running PID, visible Filer/
+  installer/Android app observations, dock favorite and SDK5 native components.
+  It does NOT claim ARM/mobile/performance/full image/security qualification.
+- Preflight846750c3 PASSED pins/syntax/4 restoration fixture cases; two small
+  prelaunch corrections removed duplicate record keyword and made Downloads via
+  actual user manager. Offline owned GUI extension creation/readback passed.
+
+HISTORICAL05:23Z — SDK5 scoped guards passed; keyboard-path comparison active:
+- R48 childfd38012d/parent3d2ffb62 FAILED overall, final results observed. Actual
+  native clipboard read/write and task-name UID guards PASSED with ordinary
+  UID10128/PID1670, unique run63d41267 and nonempty UID1000 controls before/after;
+  trusted clipboard seed unchanged. Same actual96/127/SDK5/APKr16 parent boot.
+  Full origin/isolation/focus/mutators remain OPEN; Android SELinux Disabled.
+- SDK5 resize/state passed again. Reply probe reached real live entry, focus
+  and typing without a Shell crash, but each Clutter notify_keyval character
+  appeared twice. No Send and no Android reply receipt; original6c token unused.
+  Cause is not established as product or probe. Preserve this input-path failure.
+- Source probe now supports explicitly selected host-evdev keyboard input and
+  records bounded native key events. It requires actual xkb/us input source and
+  observed exact editor text; no text setter/clipboard injection. Next r49 sends
+  each QEMU Linux keycode once, with a before-first-event intent/count receipt;
+  no action retries. This compares physical-key delivery with virtual-keyval.
+- Preflightaddde270 PASSED pinned files/Python/Bash/JS syntax and4 isolated
+  restoration cases. r49 guarded normal14/root1/QEMU12 run dispatched; observe
+  both child and parent. Prior policy24cfbd91, XML and fixture settings restored.
+
+HISTORICAL05:15Z — SDK5 window scope passed; two probe issues remain:
+- R47 child3ab0ebc6/parent587b5fda FAILED overall; actual final results observed,
+  original policy/XML restored and fixture preferences restored/extension removed.
+- Same SDK5/96/127/APKr16 boot73188874: resize459x635 ->471x647 ->1242x641
+  ->581x647, two activity state restorations and same PID1360; responsive
+  activation passed. QEMU screenshot unavailable; no visual/performance claim.
+- Corrected reply probe did not crash Shell. Failed before virtual device input
+  because St.Widget.contains(null) rejects absent initial stage focus. Guard it
+  explicitly. Actual original-PendingIntent reply remains OPEN; token6c unused.
+- Native scope did not run: O_EXCL correctly rejected a reused output pathname
+  left by R44. Copied stale inconclusive report is not new runtime evidence.
+  Next run uses a unique native result path. No weakening of O_EXCL or IPC guards.
+- R48 will recreate only the removed owned extension offline; unchanged payloads,
+  same original unused reply token; active source/hash checked after fresh boot.
+
+HISTORICAL05:11Z — cold graphical startup remains an independent gate:
+- R46 preflight83347407 PASSED exact helper/package pins, syntax and4 isolated
+  policy restoration cases. Offline owned active probe update passed actual
+  checksum/owner/mode/SELinux-xattr readback with synchronous appliance shutdown.
+- Actual R46 child4f688d3d FAILED graphical-readiness deadline before UI/Android
+  phase. Parent05be282c FAILED and restored original shared policy24cfbd91;
+  original VM XML restored/off. No reply token sent. The failure is preserved.
+- Guest full IO pressure~73-79%, user Shell startup failed and GDM returned to
+  greeter. Larger RAM limit did not establish a successful cold desktop start.
+- One immediate fresh-boot control r47 active under parent587b5fda with the
+  already verified probe/payloads; no repeated package/image changes. Compares
+  warm backing-file state after cold-start work. Same fixed graphical deadline;
+  no timeout/health-check relaxation. Continue observing both final job results.
+- Own stopped runtime89 container has only2.5GiB writable cache; SSDs~21GiB free
+  with20GiB reserve. Removing it alone cannot fit the33GiB VM disk, so no cache
+  removal or SSD copy attempted. Other owners' work preserved.
+
+HISTORICAL05:05Z — correcting the actual probe lifecycle failure:
+- R44 child560f0a3a/guard489c58bc FAILED; both final results observed. Original
+  shared policy SHA24cfbd91 restored; VM off, original XML restored/raw unmounted.
+- Read-only crash evidence71c63c24 PASSED extraction/readback. Journal identifies
+  probe.js bounds() accessing an already disposed St.Entry after an await;
+  Shell then SEGV and graphical-session teardown stopped Android normally.
+  This is a probe crash, not evidence of an unexplained Android crash/OOM.
+- Public probe now waits for prior fixture withdrawal, reacquires live controls
+  after every yield and retains only values across awaits; virtual devices are
+  explicitly disposed in JS. Syntax b7a309fc PASSED. Actual reply still OPEN.
+- Preparing fresh single-boot r46: update only owned fixture probe while VM off,
+  preserve its metadata/xattrs and verify checksum; unchanged96/127/SDK5/APKr16.
+  Independent window/native scopes require verified runtime/same boot, even if
+  UI arming fails before obtaining the app PID. No new qualification claimed.
+
+HISTORICAL04:38Z — single-boot continuation under larger accounted cache cap active:
+- r41 f711e6d8 FAILED before Android/UI: fresh user Shell service timeout.
+  No new reply/window/guard qualification. Its original source and unique token
+ 6c0944d9 remain unused; cleanup readback was inconclusive, so fixture remains
+  owned/recoverable. No claim that all preferences were restored by that run.
+- Host observation showed guest pressure alone misses QEMU cache reclaim:
+  old8GiB cap hit392 times, no OOM; anon~6GiB/file~1.6GiB. Host had~46GiB
+  available with VM off. This supports a controlled cap trial, not a proven
+  primary cause. Guest remains6GiB, CPU2/GPU unchanged; QEMU cap now12GiB.
+- LIVE parent dev-android-highmem-reply-489c58bc.service normal1GiB/root256MiB,
+  vm-cache-budget-r44 guard; child dev-android-reply-vm-r44-560f0a3a.service
+  normal14GiB/root1GiB/QEMU12. TEMPORARY SHARED policy changes ONLY worker
+  ceiling10->14; account16/global32/host8/disk20 reserves unchanged. Original
+  policy SHA24cfbd91..., expandedb38b7783...; exact-byte automatic restoration
+  and refusal to overwrite foreign edits. Root guard stops child/restores owned
+  XML, and has a separate ExecStopPost restore fallback. Observe BOTH final jobs.
+- Earlier guard245d18fb failed absent absolute devctl path before child; real
+  original policy restoration passed. R43 guard e22344e4/child9d79cf4a then
+  failed initial SSH master connection, before fixture recovery. Both restored
+  XML and original policy. Actual live memtune12 verified, but no speedup claim.
+- Frozen r44 uses ONE fresh OS boot and the exact preexisting r41 helper/probe/
+  candidate hashes. Enables ONLY that already discovered owned extension via
+  actual user manager, requires exact same boot/payload/unused reply-token checks,
+  then real UI plus independent window/native scopes. No action retries; only
+  idempotent SSH true readiness retries. Preflight585480f9 PASSED syntax/hashes
+  and4 isolated capacity restoration/alias/foreign-change cases. Fixture tests
+  do not mutate live policy; live mutation occurs only in the guarded parent.
+- F-Droid2.0.2 downloaded/fully APK-signature verified e51c8898 PASS.12,569,951B,
+  SHA19d51fad482239f6df6a99120e34513667e9a86d136dafdc4a211a68c3327b52,
+  certificate matches published43238d51...; minSDK24,target37. Private corpus-
+  fdroid-r42/download-proof.json. NOT installed/launched/integration-qualified.
+
+HISTORICAL04:06Z — actual Luma card/input reached; dispatch observation corrected:
+- r40 e6cc8f8e failed at editor text comparison before Send. Actual96 label and
+  waydroid_t process under Enforcing passed again; SDK5/APKr16 hashes and app UID/
+  PID matched. Real live Luma card, policy(dndfalse/bannertrue), matching native
+  owner, mapped entry/button and actual pointer focus all passed. Failed-state.png
+  captured real Luma card/editor with synthetic text, not a mock or injected card.
+- No Send click and no Android reply receipt. Observer previously compared text
+  immediately after queued virtual keyboard events. Source now waits at most2s
+  for actual editor contents and records observed text; no direct set_text, input
+  bypass or fabricated receipt. Still UNQUALIFIED until actual runtime pass.
+- r40 cleanup restored settings/removed owned extension, original XML restored/
+  raw alias unmounted. No VM active at this note. Next run also records window
+  and native guard results independently of UI failure so separate gates progress;
+  any incomplete scope still makes the overall job fail. Same immutable96/127/
+  SDK5/APKr16 payloads, no package/image rebuild required for probe-only change.
+
+HISTORICAL03:59Z — corrected live-card probe active:
+- LIVE dev-android-reply-vm-r40-e6cc8f8e.service normal10GiB/root1GiB;
+  frozen reply-vm-r40, source probe940dad211. Preflight5ab3d228 PASSED all
+  helper/package hashes and Python/Bash/JS syntax. Same96/127/SDK5/APKr16.
+- First actual user Shell/bus and preparation passed; currently fresh reboot
+  before real live-card input. No history opening or hidden-editor mutation.
+  Repeats deployed label/root-domain checks and requires fresh exact Android
+  PendingIntent receipt, then actual resize/native guard scopes. All still pending.
+- Initial pressure: IO waits high, memory pressure0, CPU some~5%; no RAM/CPU
+  increase justified by these samples. Do not present VM timings as device perf.
+
+HISTORICAL03:53Z — actual96 label/domain/SDK5 boot passed; UI probe corrected:
+- r39 183e21f8 staged70093fa6fe77fb146b09b98c942fa4c2401964b1117f70af5c49e468efd9711d.
+  Fresh96/127/SDK5 boot: actual user Shell running, health success, launcher
+  waydroid_exec_t, root service PID1678 actually waydroid_t with host Enforcing.
+  Android boot completed; installed APKr16 and native SDK5 image component hashes
+  passed. Ordinary APK UID10128/PID1529 launched/posted real notification42.
+- Reply negotiation succeeded, but probe opened HISTORY (which deliberately
+  calls setInlineReplyVisible(false)) and then looked for a mapped editor. Test
+  FAILED1 at03:49:23Z, with no input sent and no reply receipt. No UI pass.
+  Cleanup restored original settings/removed fixture; XML restored/alias unmounted.
+- Corrected source probe observes the daemon's actual LIVE Luma notification
+  card, its real ownership/policy and mapped controls. No private presentation
+  calls, toggling hidden editors, synthetic card or direct transport. Adds failed
+  screenshot for diagnosis. Normal syntaxeab65098 PASSED; actual input still open.
+- Runtime96 label-copyup change now has actual atomic install/start evidence;
+  this does not close Android internal SELinux/shared-UID production gate A15.
+  No VM currently active. Next freeze a new probe run against same96/127/SDK5.
+
+HISTORICAL03:42Z — runtime96 packaged; actual atomic label/reply test active:
+- Candidate96 source52564ea7e. Initial generic build8249b3cd failed before
+  packaging: NoNewPrivileges prevented rootless UID mapping. Correct normal
+  --kind package one-shot a5c91e96 PASSED03:38:04.853083Z:128 tests/0 skips,
+  payload/Python/desktop/mode checks. No runner policy change or root bypass.
+- RPM25dc4ccb3e3dd50745c092df2d4d074090bc58ea07227a1802521e9e3b5679f1;
+  SRPMdf2d1ad6642b8eade9c926723038b780d4cc0d01eef2c258b9cd17596e88a104.
+  Immutable receipt rpm-r38/source-receipt.json; outputs beneath existing
+  rpm-r10/source/build/candidate-96/build/packages/luma-android-runtime.
+- LIVE dev-android-reply-vm-r39-183e21f8.service10GiB/root1GiB, frozen
+  reply-vm-r39. Same buffered raw6GiB/QEMU8/2CPU. Initial actual user Shell/bus
+  running checks passed; currently replacing95->96 with unchangedShell127/SDK5.
+  Fresh boot must prove launcher waydroid_exec_t AND real root process
+  waydroid_t under Enforcing before native APK reply/resize/guard qualification.
+  Preflight1e956766 PASSED syntax/pinned bytes. No end-to-end pass yet.
+- Cleanup7ec3652a PASSED removing ONLY owned completed one-shot builder image
+  b7076710, no force/pruning. RPM/SRPM/source receipts retained; main free~23GiB.
+
+HISTORICAL03:34Z — actual runtime label regression; candidate96 source prepared:
+- r33 506ec195 FAILED actual resume before Android started. Both real user Shell
+  boots passed running-service checks; fixture settings persisted and the native
+  extension initialized after reboot. Fresh health success and exact SDK5 image
+  hashes passed. Android refused startup outside waydroid_t; no reply qualified.
+  Cleanup restored settings/removed fixture, original XML restored/unmounted raw
+  alias, VM gracefully OFF. Original raw test disk retained for label diagnosis.
+- Offline e4b312ef/7bef6813 show new810ef deployment launcher xattr bin_t, while
+  declared policy and compiled contexts require waydroid_exec_t; older f865
+  launcher is correctly labeled. No local rule overrides. b13af7a8 copied actual
+  context files with SHA readback. Its automatic mode0100755 probes were invalid;
+  subsequent read-only matchpathcon -m file checks both binary/text context sets
+  and both return waydroid_exec_t. Do not count invalid probes as passing matches.
+- Inspected pinned official rpm-ostree2026.2 d5ef5f0c and libostree2026.4
+ 4f4445a8 sources. Binary-policy checksum excludes file_contexts; rpm-ostree can
+  treat cached inodes as canonical when that checksum is unchanged. This gives
+  a concrete candidate explanation for the observed label-only update failure,
+  not yet an experimentally closed root-cause claim.
+- Candidate96 spec gives ONLY the owned launcher a fresh inode after module
+  installation, preserving exact contents/mode/timestamp, before normal final
+  labeling. No new allow rules, permissive mode or bypass of confinement check.
+  Updated check floor128 includes both installer activation tests. Source change
+  remains UNQUALIFIED until package checks, real atomic replacement, correct
+  deployed xattr and actual waydroid_t startup/Android/UI tests pass.
+- No VM or compile currently active. Next: immutable96 package build, replace
+  ONLY95->96 in owned buffered raw VM, verify labels before native reply retry.
+
+HISTORICAL03:12Z — diagnosed stale readiness; buffered VM profile test active:
+- r31 ec852439 FAILED1 at03:06:37Z before preparing Android/UI fixture. Exact
+ 127/95 triple booted, but actual UID1000 Shell process was absent despite the
+  socket. Original XML restored, raw alias unmounted, VM OFF before next work.
+- Offline raw evidence97e1a65e PASSED verified selected-journal/profile extraction.
+  Boot1f392b61 logs actual user Shell1509 startup timeout at140.744s, Wayland
+  socket created144.573s after termination began, then systemd SIGABRT145.748s.
+  This was not an unexplained spontaneous crash. Main thread was importing GJS
+  modules at abort. Native health had accepted a login session before Shell was
+  usable; its success alone is insufficient. No boot-health timeout/policy changed.
+- LIVE dev-android-reply-vm-r33-506ec195.service normal10GiB/root1GiB;
+  frozen reply-vm-r33. Same6GiB guest/8GiB QEMU/2CPU/GPU/reset watchdog. ONLY
+  diagnostic disk cache changed none->writeback (normal flushes retained).
+  Requires two consecutive actual UID1000 Shell/process/bus plus user service
+  ActiveStateactive/SubStaterunning/Resultsuccess observations before setup,
+  and rechecks the real user Shell service after fresh reboot before UI tests.
+  Generic failure journals collected even before guest staging exists.
+- Syntax/hash preflight7171ac6d PASSED. Native reply, Android SDK5 execution,
+  resize/guard repeat remain OPEN. Earlier r28 reached a user Shell process and
+  active manager/bus, but did NOT prove stable usable desktop/first frame; do not
+  upgrade those preliminary observations to complete GUI acceptance.
+
+HISTORICAL03:04Z — verified copy complete; corrected native QA actor active:
+- Full buffered qemu-img comparison56b49bea PASSED02:58:02Z, with unchanged
+  source/target bytes during comparison. Standalone raw copy is guest-byte equal
+  to original at that checkpoint; subsequent owned VM boots intentionally write
+  only the raw copy. Original qcow2 remains retained and unbooted in these runs.
+- Success-only handoff5f3891b0 launched r28 b0607261. Actual raw boot reached
+  user GNOME1501, active user manager/bus, and guest pressure showed storage waits
+  with near-zero CPU/memory pressure. No Android processes in recorded snapshot.
+  BUT observer tried /proc/pressure through MAC-confined guest-agent execution:
+  PermissionError made readiness fail. Actual socket-only correction verified
+  via agent, and separate actual SSH read verified manager/bus/pressure. No MAC
+  relaxation. r28 remains FAILED1, not Android qualification. End03:03:14Z;
+  original XML restored, diagnostic file bind unmounted, VM gracefully OFF.
+- LIVE dev-android-reply-vm-r31-ec852439.service normal10GiB/disk10GiB;
+  root luma-android-first-class-reply-vm-r31.service1GiB, raw VM6GiB/QEMU8.
+  Frozen reply-vm-r31 helpers. Readiness checks only readable socket/boot identity
+  via guest agent; actual user-manager/GNOME/bus and pressure verified through
+  real SSH after readiness. No change to APK authorization or production policy.
+  Preflight6fe5fad5 PASSED syntax and all helper/package manifest bytes.
+- Candidate remains95/127/SDK5/APKr16. Real native inline-reply execution, fresh
+  exact original PendingIntent receipt, repeated resize and native guards STILL
+  pending. Observe this child through final result and original-profile restore.
+
+HISTORICAL02:54Z — buffered comparison active; success-only boot handoff waiting:
+- r27 conversion completed (raw48GiB virtual,35,024,945,152 allocated bytes).
+  Direct-read qemu-img comparison was slow on the same HDD; deliberately stopped
+  original normalf0197be8 at02:50:20Z, result143. Original handoff962aa96c saw
+  that failure and exited1 WITHOUT booting. Neither is a passing qualification.
+- LIVE dev-android-runtime-raw-compare-56b49bea.service normal4GiB/root3GiB,
+  driver runtime-raw-compare-r29. Full qemu-img compare now uses buffered reads;
+  comparison.json and qemu-compare.log are its authoritative outcome. No Android
+  performance claim. Both owned VMs remain off during comparison.
+- LIVE dev-android-raw-qualification-handoff-5f3891b0.service normal1GiB,
+  private raw-qualification-handoff-r30. It requires exact comparison exit0 and
+  verified proof, then normally admits frozen reply-vm-r28 at10GiB/root1GiB/
+  VM6GiB/QEMU8GiB. Child result propagates; failure never starts a VM.
+- r28 readiness uses QEMU guest-agent read-only observations instead of repeated
+  PAM logins; records guest CPU/IO/memory pressure and domain counters. Disabled
+  agent commands fail explicitly. Real APK authorization still uses the actual
+  graphical user manager, not guest-agent execution. Frozen helper preflight
+ 6c3c5dec PASSED syntax and all manifest bytes; no UI/runtime pass yet.
+- Raw disk physical parents are private. r28 uses a temporary single-file bind
+  inside the existing owned VM image directory, not broader shared-parent ACLs.
+  It retains original XML/disk, checks alias inode and qemu readability, and
+  restores XML/unmounts after shutdown; wrapper has a fallback restore path.
+  Actual restored evidence still required. Do not modify pinned r28 once live.
+
+HISTORICAL02:42Z — no usable-build or inline-reply qualification claim:
+- Corrected runtime95/Shell127 and SDK5 images are installed. r20 ba8fb087
+  booted actual user Shell127 with successful native boot health and no bootstrap
+  mounts; the owned reply extension did not initialize. No Android reply reached.
+  Cleanup restored original extension settings and removed the owned extension.
+- r21 c35178cd failed user-bus setup; r22 cb96e24f failed graphical readiness.
+  Both preserved as failures. Offline evidence8ee98dd8 PASSED read-only extraction
+  with matching guest/host file hashes. Its journals show user-manager and other
+  system-service startup timeouts, and virtual CPU clock watchdog warnings;
+  neither Android causation nor a RAM bottleneck is established. kvm-clock was
+  already selected. VM and builder are OFF during disk-copy work.
+- LIVE normal dev-android-runtime-raw-copy-f0197be8.service4GiB/disk60GiB;
+  root luma-android-first-class-runtime-raw-copy-r27.service3GiB. One-shot raw
+  diagnostic copy on HDD, source original qcow2 retained/unmodified. Conversion
+  followed by full qemu-img guest-byte comparison is required. Domain has NOT
+  been switched. IMPORTANT: actual backing-chain inventory contains ONE qcow2,
+  so earlier commentary calling this a layered-disk comparison was inaccurate.
+  It compares raw versus qcow2 (and physical storage paths), not backing layers.
+- Private evidence: artifacts/dev-android-offline-runtime-evidence-8ee98dd8;
+  artifacts/dev-android-runtime-raw-copy-f0197be8/copy-proof.json. Private drivers
+  offline-runtime-evidence-r26 and runtime-raw-copy-r27. Observe exact copy job
+  to completion, then perform bounded boot comparison preserving original XML.
+- Native reply probe now permits a strictly named directory in Shell's own user
+  runtime directory. Syntax job a37c9165 PASSED; no actual GJS/UI/reply claim.
+  APKr16, SDK5 image and package hashes remain the previously recorded pins.
+
+HISTORICAL handoffs below retain prior attempts; their LIVE labels are dated
+history, not current jobs.
+
+Source/worktree isolated; canonical untouched. Current source is on this task branch; older immutable build sources are named below. Historical implementation497a61054
+includes supervised cold-CLI handoff, corrected raw-wire APKr13/native controls,
+page-size admission and native clipboard0016. DO NOT BUILD SNAPSHOT901d5f18c
+OR luma-project-aidl.squashfs: wrong backend.
+
+LIVE01:42Z — corrected triple staged/booted; current native fixture setup:
+- CURRENT dev-android-reply-vm-r20-ba8fb087.service normal10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r20.service1GiB. Frozen reply-vm-r20
+  helpers, same127/95/SDK5/APKr16. Pipeline installing-local-candidate-triple-
+  and-image (setup phase). Builder OFF; original watchdog/health checks intact.
+- r18 08c5ab7c successfully staged ALL3 local candidates: derived checksum
+ 810efb5672e9b92a153056d0d058d59de09843181d8a9597f26d62b2a7e101a2.
+  Native transaction upgraded nightlyShell124 -> AndroidShell127 and runtime94
+  ->95. THEN harness settings JSON parse failed; no reply test. Error preserved.
+- r19 e849e30c booted actual127 (bootstrap mounts EMPTY), exact existing triple
+  reused. Settings reader now captures stdout/stderr separately and pins Gio2;
+  actual diagnostics retained. First95a8f9bb launch failed before VM boot because
+  missing manifest after a Python quoting/syntax preflight failure; fixed only
+  after actors inactive. Never reported either failed attempt as passed.
+- r19 stopped because recovery profile globally disabled extensions. Original
+  enabled-list/disabled flag restored and test extension absent per cleanup.json.
+  r20 temporarily selects ONLY the owned fixture when globally disabled, then
+  enables it; unrelated extensions remain disabled. Finally restores BOTH exact
+  original settings and removes only owned fixture. This is test instrumentation,
+  not production UI code. No ordinary-user reply pass yet.
+- Latest source public task branch a4ed46942 before this handoff. Root source/
+  payload hash pins unchanged; no new image/package rebuild. Observe fresh native
+  GUI health, original PendingIntent receipt, resize/admission checks and cleanup.
+
+LIVE01:28Z — current matching VM update; prior harness attempts retained:
+- CURRENT normal dev-android-reply-vm-r18-08c5ab7c.service10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r18.service1GiB, VM6GiB/QEMU8. Frozen
+  reply-vm-r18 manifest, same verified95/127/imageSDK5/APKr16 candidates. Pipeline
+  is installing-local-candidate-triple-and-image. Builder remains OFF. Observe
+  this actual child through fresh reboot/tests/cleanup, do not stop at launch.
+- r16 f390d264 FAILED01:16:02 because native rpm-ostree Rollback transaction was
+  already running; override applied nothing. r17 d5664919 adds bounded180s wait
+  for ONLY that rollback, refuses other active transactions. No transaction
+  canceled or health policy weakened.
+- r17 booted bad124; temporary same-byte/context read-only copies corrected only
+  private-library/resource traversal and produced a healthy GDM greeter. Actual
+  greenboot Resultsuccess/SubStateexited. However GDM restart left the login
+  screen, so old preparation incorrectly waited for logged-in user Wayland.
+  No native Android test reached. Gracefully powered off01:24:35UTC; confirmed shut off01:25:22, then stopped obsolete admitted actor.
+  Retained result as failed/canceled, never pass; no force stop needed here.
+- r18 initial update setup now starts only the existing test user's manager/bus
+  as needed for settings/stopping units. It does NOT count this as an active
+  graphical session or run APK authorization tests there. Final reboot STILL
+  requires real user Wayland, no bootstrap bind mounts, matching RPM triple and
+  completed successful native boot-health unit before any reply qualification.
+- Root native reply fixture is boot/gate synchronized, no synthetic Shell
+  notification/direct Reply RPC. Fresh one exact Android action:reply required,
+  then actual resize and native clipboard/task-name controls; all still pending.
+
+LIVE01:14Z — corrected Shell127 fully packaged; coherent VM test active:
+- Normal dev-android-shell127-package-be016db1.service PASSED01:06:56.228019Z.
+  Fresh full build sourcea270220b0, immutable private127 release/bounded2CPU and
+  prior documented source assertions; freshly built Home widget prerequisite,
+  verified Figtree inputs. All native %check, packaged resources/fixtures and new
+  EVERY-RPM header directory guard passed. Glycin sandbox-enabled compiled
+  symbolic test receipt required and passed; no skipped native check.
+- Shell main694b36212a18e4bc2759bd47411b459f675365b22f9371ecdd0cc0a9fad0cd95;
+  common1922523a46e378bc7b3efbe1bb5f73e59d18c27d71c1c82f6621cfb29a88b513;
+  SRPM588b7ec03c9af42c1d9e1d7eb15dab0b074920cca3347405ce364a03eb617573.
+  Output rpm-r10/source/build/candidate-shell127/build/packages/gnome-shell.
+- CURRENT dev-android-reply-vm-r16-f390d264.service normal10GiB/10GiB disk;
+  root luma-android-first-class-reply-vm-r16.service1GiB, owned6GiB/QEMU8 runtime.
+  Frozen reply-vm-r16/manifest.json pins helpers and exact95/127 RPM triple.
+  Original reset watchdog and boot health checks retained. Builder stays off.
+- Bad124 may still boot due trial recovery selection. Bootstrap is explicitly
+  nonqualifying: same-byte/context copies of only private Shell library/resource
+  subtrees with intended directory permissions, temporary read-only bind mounts
+  inside owned VM. No package payload changes or MAC/health-check relaxation.
+  These mounts must be absent after fresh corrected127/95 reboot, which must
+  also pass actual greenboot health checks. No bootstrap result counts as pass.
+- Actual image pair reused only after full SHA verification/reflink; otherwise
+  verified streaming transfer. Atomic cache-only triple update accepts ONLY
+  known task-owned fallback pending checksums and compares explicit package sets.
+- Native UI probe waits at a private boot-specific gate until Android/APK hashes
+  are verified and fixture force-stopped; then posts a fresh real notification.
+  Real pointer/keyboard, exact one fresh action:reply, then actual resize and
+  native clipboard/task-name guard checks. Finally restore original extension
+  settings/remove fixture and observe VM shutdown. None passed yet on this set.
+- Continue foreground through this child, retain failed runs/independent scopes.
+  All ARM, production isolation, physical power and remaining24-gate work stays
+  open. Source installer95 fix is packaged but actual Filer install still open.
+
+OBSERVED01:05Z — full126 build/native checks passed; final directory audit FAILED:
+- Normal768f4a04 built all Shell126 RPMs and ran the existing full %check,
+  including native symbolic-stroke test through bounded same-job host executor;
+  native-test-receipts.json status0, Glycin sandbox enabled. Earlier commentary
+  that native checks had not completed was preliminary and incorrect.
+- New final all-RPM guard correctly rejected /usr/share/doc/gnome-shell mode
+ 40770. Private-library directories now normalized, but RPM creates doc/license
+  directories AFTER %install and inherited default ACLs survived chmod.
+  Original failed126 results/RPMs remain unqualified and preserved.
+- Canonical spec now BuildRequires acl, clears ONLY staged system-directory
+  default ACLs with setfacl -k, then chmod00755. No shared source/build ancestor
+  ACL change. Later RPM mkdir obeys umask022. e62e6be4 PASSED real inherited
+  setgid/default-ACL and later doc/license creation regression, prior bad-RPM
+  rejection, original SRPM patch application and builder syntax. Require full
+  package guard and actual ordinary-user graphical boot before claiming fixed.
+- Preparing fresh127 candidate from this source, retaining all native checks
+  and guard. Runtime95 already built/128checks passed; SDK5 images already
+  exported/installed. Actual new coherent native reply still OPEN.
+
+OBSERVED00:59Z — exact directory-mode normalization verified:
+- Direct Linux check found GNU chmod0755 preserves directory setgid (2755),
+  so canonical recipe now uses00755 to clear it explicitly. Regression78a0f186
+  PASSED actual2770 -> exact0755 directories, actual bad-RPM rejection, correct
+  original-source patch application and Bash syntax. Earlier3d28a2b1 did not
+  exercise the actual chmod semantics; do not treat it as that proof.
+- First Shell125 preparation070b84f6 FAILED before compilation: Figtree RPM/SRPM
+  manifests passed, but old Home widget build has NO SHA256SUMS. No source or
+  font digest mismatch. Prior note of a wrong manifest base path was an initial
+  diagnosis; actual issue is absent widget manifest. Rebuild widgets from pinned
+  source for the next candidate rather than claim missing input verification.
+- New Shell126 preparation will preserve125 failed source tree/artifacts and use
+  source with00755 normalization plus all-package header checks. Native compiled
+  symbolic-stroke test still required through same bounded host executor with
+  normal Glycin sandbox; no test skips or decoder/sandbox replacement.
+
+OBSERVED00:57Z — root cause confirmed; Shell packaging fix/regression passed:
+- Read-only log jobs5b2df417 and23c7b0c4 PASSED, VMs powered off afterward.
+  Failed candidate boot journals explicitly show greenboot's display-manager
+  health check invoking reboot after repeated user/greeter session failures.
+  This failure was health-check initiated, not evidence of watchdog expiration.
+- FIRST Shell error: /usr/bin/gnome-shell could not open libshell-18.so, exit127.
+  Actual candidate124 RPM metadata gives /usr/lib64/gnome-shell and its typelib
+  directory mode42770 (setgid2770), denying ordinary-user traversal. RUNPATH is
+  correct and the library is present. Root package checks had not caught this.
+- Added final %install normalization of static system directories to0755 in
+ 0000-luma-fedora-spec.patch. Builder now checks directory modes in EVERY main/
+  common RPM header with source-owned check-rpm-directory-modes.py. Bad workspace
+  ACL/setgid modes must never become installed OS permissions.
+- Regression3d28a2b1 PASSED: rejects actual bad124 RPM, applies fixed patch to
+  exact original Fedora50.3 SRPM, verifies normalization after install, Bash
+  syntax passes. Earlier64370de8/ccf4baf4 failed because fixture extraction
+  requested gnome-shell.spec instead of ./gnome-shell.spec; retained, corrected
+  to assert extracted source is nonempty. No actual fixed Shell boot yet.
+- Runtime95 package0f0a3d09 PASSED00:49:37 with128 checks/0 skipped. Exact
+  RPM34713ac778e81bc6befa0999119cfeea90d93fedda6eec76e6dd21644ce9798c;
+  SRPM6e2aeaac10fa24c6c03f786e6f89c5b7bbd66d71a1dd692c56c3c215e370122d.
+  Source27371d18bd6cd5dc77773e00b9f4c1c5e306f3bd; rpm-r18 receipt/minimal
+  archive; output rpm-r10/source/build/candidate-95/build/packages/luma-android-runtime.
+  Native graphical install still unqualified. Preparing fresh Shell125 build,
+  preserve124 artifacts and full native Glycin sandbox-required check.
+
+OBSERVED00:44Z — automatic fallback confirmed; diagnostic cleanup complete:
+- Original d4e9f7f8 FAILED00:40:24 after graphical readiness failure and
+  unresponsive graceful shutdown; ExecStopPost stopped ONLY owned VM. No reply
+  test executed and no production/new-image native gate closed.
+- Diagnostic24919723 PASSED its diagnostic scope: owned watchdog reset action
+  temporarily none, original runtime6GiB/QEMU8 inactive XML restored
+  exactly afterward with reset action. Guest graphical session reached. Restored
+  original extension settings and removed only owned temporary extension; explicit
+  extension-cleanup.json confirms both. Graceful shutdown completed.
+- Actual boot history shows repeated candidate boots00:31:35,00:33:23,00:35:05;
+  diagnostic boot00:41:31 ran original nightly Shell124, NOT reply Shell124.
+  Automatic fallback occurred. Do not attribute previous resets to watchdog from
+  this experiment: the booted deployment also changed. Need failed-boot journals.
+- CURRENT normal dev-android-reply-boot-logs-5b2df417.service10GiB; root
+  luma-android-first-class-reply-boot-logs-r14.service1GiB. Original reset
+  watchdog retained. Collecting specific failed boot journals and Atomic/boot
+  counter status. Observe normal final child and powered-off VM before updates.
+- Source installer delegation passes all128 root checks. Preparing distinct
+  candidate95 Android20261030 RPM identity; accepted OS pins unchanged. Not built
+  or installed yet; current installed.94 lacks installer activation fix.
+
+OBSERVED00:38Z — combined candidate installed; graphical boot gate FAILED:
+- d4e9f7f8 prepared local Shell124 main/common override alongside existing.94,
+  matched SDK5 pair and retained image backup. Exact package dependencies resolved
+  against Mutter50.4/luma14. This proves installation, not an executing Shell UI.
+- New boot never met the300s graphical readiness gate. pipeline.json records
+  qualification-failed-or-inconclusive/Graphical session readiness deadline.
+  NO native reply or new-image runtime qualification pass. Normal/root actor
+  still active in shutdown cleanup; observe final child before restarting VM.
+- Earlier root SSH uptime82s then later103s several minutes later suggests a
+  repeated boot; cause unconfirmed. Guest SSH intermittently refused/timed out,
+  last fetched GNOME Shell journal had no entries. Serial reached GDM startup.
+  Owned libvirt VM has an itco reset watchdog; evaluate boot history/watchdog
+  events, do not assume this caused the reboot or disable health checks to pass.
+- Finally's extension cleanup failed while SSH unavailable. Owned test extension
+  and original settings record must be restored on next reachable boot; do not
+  report cleanup completed. Original settings at d4e9f7f8 artifact and guest
+  /var/tmp/luma-android-reply-r12-a65b419f/original-extension-settings.json.
+- Independent source root check5750ac25 PASSED128 tests, ZERO skipped in1.794s
+  after installer delegation fix7e932221e. .94 installed VM lacks this fix;
+  updated runtime package/graphical install remain to build and test.
+
+SOURCE00:31Z — installer activation delegation fixed; VM test unaffected:
+- Added installer_activation.py: RequestInstall asks the ordinary user manager
+  to launch the fixed graphical installer in its application context. Broker
+  NoNewPrivileges/read-only home/private tmp remain intact; the existing package
+  helper still performs native authorization. Only display/activation variables
+  are forwarded, filename stays one literal argv item, and failed manager launch
+  returns an explicit bounded error instead of silently accepting the request.
+- b83ac8dd PASSED2 focused tests (literal hostile filename, unique transient
+  units, limited environment, failure/timeout reporting). d0bf8867 PASSED128
+  discovered checks,16 skipped for root semantics;112 executed. This is source
+  component evidence, not a packaged or actual graphical install pass. Current
+  SDK5 reply VM remains pinned to installed host.94, which lacks this new fix.
+- Reply VM installed local Shell124 pair with existing runtime.94 override;
+  exact Mutter50.4/luma14 satisfied dependencies. SDK5 image pair installed,
+  original image backup retained. Original extension list preserved plus owned
+  test instrumentation. Now rebooting into actual new Shell; no reply pass yet.
+
+REVIEW00:26Z — installer D-Bus activation hardening needs an actual check:
+- service.py RequestInstall directly spawns luma-android-installer. That parent
+  user service has NoNewPrivileges=yes, PrivateTmp=yes and ProtectHome=read-only;
+  child GUI inherits those restrictions, while package transactions invoke
+  pkexec. The ordinary CLI passed from the user manager, not this D-Bus route.
+  Do not claim this route works from CLI evidence. Exercise actual Filer/installer
+  activation and fix delegation to the normal graphical application context as
+  needed, preserving broker hardening and native package authorization.
+- Rechecked effective Shell124 source: uncertain reply already says Open app /
+  Open app to check delivery via0286; no hardcoded Messages label remains in
+  the effective candidate. Error-path actual runtime behavior remains open.
+
+OBSERVED00:23Z (Oct30 UTC) — SDK5 COMPILED/EXPORTED; NATIVE UI TEST ACTIVE:
+- Actual r12 m systemimage/vendorimage633/633 completed successfully in19:40;
+  guest synced output and wrote exit0 at1793318999.528394. Immutable source
+ 0c0cc1a9f034c7048a7aef1947ac3ef33f34d23c, no preparation overlay.
+- Original normal e60f41b6 FAILED00:10:49: root1GiB controller OOM during
+  bulk export AFTER guest success. Guest compiler did not OOM. Original failed
+  result/partial export retained; do not relabel it passed.
+- Dedicated normal dev-android-reply-export-r12-49b74252.service PASSED.
+  Bounded4GiB root +4GiB guest/QEMU5 under normal10GiB reservation streamed
+ 64KiB chunks, synced every8MiB, checked size/SHA before atomic publication,
+  then independently read back every artifact. Owned VM powered off and exact
+ 24GiB/25GiB inactive builder profile restored. Shared policy original restored
+ 00:10:50; no temporary budget remains active.
+- Verified export build-vm/output-x86_64-r12-20261030T001611Z; manifest SHA256
+ 3fd927d110054b9db0673fbc13772933da819f1cce46421dc2d2db6044de8b1c;
+  system d721cbb27b6ee4c477fad225325e547391078acaaea8348bf3e4cff7a0ba9c26,
+  vendor2a25f1e1c286b3108ba18a30e53f67fc5861fa17970c547e2bbe108112d05bb8.
+  SystemUI99ad1201424eb672fcc1fec81c97dd7e2073e395b79e48c6c6bbb5028e958810.
+  Exact tool/source receipt verified, no clean reproducibility claim.
+- Public export-stream.py component tests a4bc2d7d PASSED5, including incremental
+  sync, size/checksum rejection, non-overwrite/symlinks and deadline. Actual
+  dedicated export used the same frozen helper d53936a4d9c0956712ad632d80af68b7ac460cd7f9c48f9633399d4e6cf8303d.
+- CURRENT dev-android-reply-vm-r12-d4e9f7f8.service normal10GiB/12GiB disk;
+  root luma-android-first-class-reply-vm-r12.service1GiB, owned runtime VM6GiB/
+  QEMU8. Private reply-vm-r12 helpers frozen by manifest. Streaming transfer,
+  local cache-only Shell124 main+common Atomic replacement, matched SDK5 pair,
+  reboot, temporary owned test extension and actual virtual pointer/keyboard.
+  Original extension settings restored/removal attempted in finally. APKr16
+  exact synthetic reply must arrive once through original PendingIntent; UI
+  report alone never qualifies delivery. No actual native UI pass yet.
+- Public probe options/boot identity syntax check73145d6f PASSED Node only.
+  Continue observing current child through final result/cleanup; do not stop at
+  admission. SDK4 native guards/resize evidence remains independent. All ARM,
+  full isolation, physical power and broader acceptance gates remain open.
+
+OBSERVED23:58Z — r12 NINJA ACTIVE; PREPARED REAL NATIVE REPLY PROBE:
+- Source checks/SDK5 incremental refresh completed23:47Z. Soong graph regenerated
+  with actual soong_build using~6cores early; guest available~8GiB at graph peak,
+  zero swap. Target lineage_waydroid_x86_64 confirmed. Ninja started~23:55Z,
+  PID15330, dependency scanning; no compiler action/error reported yet.
+- Prepared public tests/android/notification-reply-native.js for installed
+  Shell124. Actual Android source/app identity and negotiated inline reply
+  required; opens Luma notification tray, locates mapped live entry/button,
+  uses compositor virtual pointer+keyboard to type/click, attempts internal Shell
+  screenshot. Does NOT synthesize a notification or call Reply transport directly.
+  JSresult ALWAYS leaves android_delivery_qualified=false; outside wrapper must
+  verify one fresh exact unique APK action:reply receipt with matched identities.
+- 8df213de PASSED Node ES-module syntax ONLY. No installed GJS/native UI/input or
+  Android reply claim yet. Private reply-vm-r12/README.txt records setup need;
+  actual VM update/test driver still to prepare. Shell124 main/common RPMs
+  are2,428,083B/16,746B; strict common dependency must be replaced together via
+  local rpm-ostree transaction, reboot to execute new Shell, retain rollback.
+- Active normal build e60f41b6 and policy guard e184fa82 unchanged; do not mutate
+  their pinned private helper files/inputs. Continue through build/export then
+  coherent runtime/Shell/image UI test. All broader gates remain open.
+
+OBSERVED23:46Z — r12 COLD TOOL PREFLIGHT PASSED; SOURCE CHECKS ACTIVE:
+- Four immutable inputs verified23:45:13Z; vdd project/vde tools replaced ONLY on
+  owned stopped builder, then VM started. Guest current-attempt timestamp
+ 1793317538.6160452/source0c0cc1a9f, overlays{} and explicit verification2/build8/
+  GOMAXPROCS8/GOGC20. Root preboot XML24GiB/QEMU25/8CPU assertions passed.
+- Actual new guest env-i PATH=/usr/bin:/usr/local/bin:/bin preflight PASSED:
+  Meson1.9.2>=1.4 andglslang16.6.0>=12.2. Same versions also verified by actual
+  build entrypoint. No warm/manual glslang addon required. Current log
+  `Checking Android source projects (verification jobs=2)...`; Ninja not begun.
+- Main normal e60f41b6 and policy guard e184fa82 remain active. No image/reply
+  runtime pass; continue through source check/SDK5 build/export/real matching UI.
+
+LIVE23:44Z — REPLY-ENABLED IMAGE BUILD ADMITTED; STAY FOREGROUND:
+- CURRENT normal dev-android-reply-image-r12-e60f41b6.service27GiB/450GiB,
+  admitted23:40:12Z; root luma-android-first-class-build-controller.service1GiB/
+ 128swap/CPU200/Runtime21600/TimeoutStop360, guest unchanged24GiB/QEMU25/8CPU/jobs8.
+  Hashing57,095,458,816B source input BEFORE VM boot; original inputs retained.
+  Root controller reported active1GiB cap (file-cache accounting included), not
+  OOM observed. Do not confuse current unit with old22:02 exporter OOM in journal.
+- Current immutable source0c0cc1a9f034c7048a7aef1947ac3ef33f34d23c now includes
+  SDK0005 replies and public source/Mesa checks. Source SFS70,651,904B SHA
+ 93501baab2f32578e64357a87cb67f8dc5a1bc8e474a133de51c662571adc780.
+  New immutable tools9,302,016B SHA9b19404bfd360b53596f977c4ab753eed969ba5524d0d67b37ecf02bc0ee8ac2;
+  old verified Meson bundle plus self-contained launcher468133..., exact glslang
+ 16.6.0 binary30cdc0... and preserved upstream LICENSE17e70c676e15... .
+  Cold guest binds both tools over actual /usr/bin selection; source checker
+  sanitizesPYTHONPATH. NO old SDK4 preparation overlay or one-time output repair.
+  Guest only publishes completion after sync. New metadata+full export manifest
+  verified; bounded SCP16x64KiB/root1GiB. Prior image export/proof stays separate.
+- a21ee3a0 PASSED source/tool input preparation. Initial79c90257 failed reading
+  qemu-owned old tools input;81e2ddf9 root copy asserted wrong owner(root vsactual
+  qemuUID107).60ab7899 exact-hash readable COPY succeeded, original unchanged.
+  Initial failed source archive/snapshot retained. No compilation pass yet.
+- Private helpers reply-image-r12/{guest,controller,budget,policy-guard}.py and
+  run.sh/run-policy-guard.sh, prepared.json/drivers.json pin source/tool/control
+  identities. Static syntax, guest destination/launch agreement and preservation
+  of global32GiB/host8GiB/disk20GiB reserve checks passed. Interrupt handler tries
+  sync/poweroff; actual compiler checkpoint restore remains unqualified.
+- POLICY GUARD CURRENT dev-android-reply-policy-e184fa82.service normal1GiB,
+  root luma-android-first-class-reply-policy-guard-20261029T234005.service128MiB.
+  It raised only shared per-account budget16->32/build10->27 (global32 unchanged),
+  waits for registered build e60f41b6 and restores exact original policy in
+  finally. Registration/build-admission.json published; policy-ready.json23:40Z.
+  Verify policy-restored.json + actual policy hash after build termination.
+  Source/AUDIT guard refuses overwriting another owner's policy changes.
+- NEXT: inspect root controller journal/current normal result, guest current
+  source0c0 startup/tool preflight then actual compiler. Stay through export and
+  actual matching .94/Shell124/image/APKr16 native reply UI tests; do not end on
+  launch. Latest7c13 guarded/resize-qualified image remains below, not SDK5 pass.
+
+VERIFIED23:32Z — ACTUAL X86 WINDOW AND NATIVE GUARD MILESTONE PASSED:
+- dev-android-window-live-2ad2f9cc.service EXIT0 finished23:30:29.634923Z;
+  root window actor inactive; owned runtime VM observed SHUT OFF. No ongoing VM
+  actor or watcher remains. Same exact system/vendor7c13 pair, host.94 and APKr16
+  hashes verified before tests. Source/native provenance remains above; SDK4 only.
+- Window PASS: initial349x635, new1242x641 then459x635; two saved/restored activity
+  events retained `State survives resizing`; same processPID1541 and responsive
+  am-start after resize/maximize/restore. This exercises the old configure deadlock
+  path; no freeze observed in this case. Not full phone/tablet/window corpus.
+- Screenshot UNAVAILABLE all four attempts: QEMU screendump `no surface`.
+  Actual error retained. No rendered pixels, visual smoothness, first-frame or
+  physical/performance claim; actual client dimensions/state are the evidence.
+- Native PASS run29bf83a3-deab-495d-baec-ca8b35b4ad75: APKUID10128/PID1638,
+  both before/after UID1000 controls clipboardandroid-fixture/taskfixture-label
+  return0. Ordinary APK task-nameempty, clipboardempty/request-returned/empty.
+  Synthetic seeded clipboard unchanged; same Android init3062/start9151 and
+  system_server322/start13384. Actual kernel app UID/PID matched receipts.
+  Scope ONLY native clipboard read/write and task-name getter admission.
+  Focus/remove/resize mutators, platform/property/host-service boundaries open.
+- Android SELinuxDisabled STILL productionBLOCK; A15 not closed. Tests do not
+  establish identity namespace isolation or test-key/origin protection.
+- Private guard-vm-auto/latest.json explicitly records independent passed scope
+  with exact normal result/evidence digests; original failed runs unchanged.
+  Evidence: artifacts/dev-android-window-live-2ad2f9cc/{pipeline,window-qualification,
+  native-guard-result,result}.json andreadiness-output.txt. Prepared private
+  check/ready/driver/run/helpers pinned in window-live manifest. No PR/push/release.
+- NEXT: prepare current immutable project+verified Meson/glslang tool inputs and
+  coherent SDK0005 reply-enabled image; do not reuse old r11 cold driver as-is
+  (glslang mount missing, SDK4 preparation overlay, old128MiB bulk exporter).
+  Use bounded26/27GiB normal admission with24GiB/QEMU25, adequate controller cap,
+  explicit restored shared policy, sync before results/clean shutdown, and
+  separate or bounded-SFTP export. Then test image+host.94+Shell124 native reply
+  UI. Continue ARM/isolation/hardware/power/rights gates; no daily-use claim.
+
+LIVE23:28Z — WINDOW/NATIVE TESTS CONTINUE, no completed pass:
+- 431f4ddf verified booted.94/APKr16/native payloads; initial actual layout349x635,
+  PID1555. FAILED23:26:08 at initial virsh screenshot before any resize key.
+  Source traceback retained in root window unit journal; old wrapper omitted
+  command stdout. No resize regression verdict. No image/UI capture claimed.
+- Updated PRIVATE window helper records screenshot unavailability+actual error
+  and continues independent client-layout/saved-state/responsive checks; any
+  actual resize command/test failure still fails. It then executes corrected
+  native gate runner on same verified installed APK/images, avoiding another
+  cold boot. Both result files retained; aggregate succeeds ONLY if both pass.
+- CURRENT dev-android-window-live-2ad2f9cc.service normal9GiB, root same window
+  actor512MiB/CPU200/runtime1800. Same guest6/QEMU8 limits; no other VM actor.
+  Own private window-live manifest pins all six helper files. Syntax/bash checks
+  passed; actual screenshots/resize/native verdicts pending. Guard auto watchers
+  remain stopped; DO NOT arm guard or change window files during current actor.
+- Next read window pipeline/window-qualification/native-guard-result and actual
+  normal result, fix concrete errors, continue. Canonical source untouched.
+
+LIVE23:24Z — INDEPENDENT ACTUAL WINDOW TEST ACTIVE; gated native release repaired:
+- b80cd765 APKr16 installed/launched and reached focused private gate. Both
+  before-controls UID1000 nonempty. INCONCLUSIVE23:22:15 at ordinary-apk-probes:
+  Android run-as trigger helper returned nonzero before release; no native probe
+  verdict. Cause inside run-as not captured. Replaced ONLY marker creation with
+  disposable VM administrator touch of fixed private runUUID file; native calls
+  still execute in ordinary APK and kernelUID/PID must match. b3d82dcd PASS13.
+- Current independent job dev-android-window-live-431f4ddf.service normal9GiB;
+  root luma-android-first-class-window-qualification.service512MiB/128swap/
+  CPU200/runtime1200, same guest6/QEMU8 profile. Helpers+exact image/APKr16/native
+  hashes in private window-live/manifest.json. Readiness and UI resize result
+  separate. Executes keyboard resize/maximize/restore, screenshots, actual client
+  layout dimension change, synthetic saved-state and responsive reactivation;
+  no first-frame/perf/focus/production claim. Syntax checked; actual test pending.
+- Guard watcher c93f147f/childb80 stopped before modifying guard sources. Next
+  guard manifest668d24bcfa871da55f7cb3d343c1194545829ea869a9bfeb1bfe4d7ed4914489.
+  DO NOT launch guard while window VM actor active. Continue foreground through
+  window child result and graceful off, then new normal guard run with corrected
+  marker. Window test may proceed independently of inconclusive security gate.
+
+OBSERVED23:18Z — actual controls reveal invalidated clipboard seed; gated fixture built:
+- e6471513 native report retained full evidence: ordinaryUID10127/PID1698 returned
+  clipboardempty/request-returned/empty and taskempty. Before UID1000 controls
+  clipboardandroid-fixture/taskfixture-label; after clipboardEMPTY(return1),
+  taskfixture-label(return0). VerdictINCONCLUSIVE, no clipboard denial/setter pass.
+  RunUUID8abddc0f-1e12-4e9d-b2ea-b91339c027d4; init4415/start15512,
+  system_server282/start16065. Focus transition invalidation suspected, not proved.
+- APKr16 adds explicit focused-ready/private-file release gate. Runner starts
+  ordinary activity, waits matching UID/run focused-ready, THEN seeds before
+  controls and releases probes via run-as fixed private trigger. No framework or
+  native guard/policy bypass; same ordinary app IPC. Actual behavior not run yet.
+- 5f9a2d7b PASS APKr16 Java/D8/build/signature,15,685B SHA
+  e681607bc91fb97b8267ef2689360c3ffb78b4632075e01d192727030c606318.
+  d95b5066 PASS13 runner+5 stop/Atomic+9 policy+8 inventory/readonly VM checks.
+- Private harness now reuses guest images ONLY after exact fullhash comparison;
+  cp --reflink=auto into stage and skip reinstall of already exact target pair.
+  Actual running native hashes still required. Avoid unnecessary backups/disk
+  copies across repeated same-image tests; original raw pair untouched.
+- CURRENT observer dev-android-guard-build-handoff-c93f147f.service; manifest
+  8a045fc81e8775f888ab300de5f9806587955735db628f5744b924950697df5f.
+  Next actual gated APK native controls; then independent resize/native UI test.
+
+OBSERVED23:12Z — actual native probes reached; post-control inconclusive:
+- 78667cb4 progressed past installed-path/hash/UID/generation checks. Ordinary
+  APK UID10126, Android init4365/start15621, system_server275/start16070.
+  Actual before controls BOTH nonempty UID1000: clipboardandroid-fixture and
+  taskfixture-label. Native raw APK probes ran; kernel process UID verified.
+- INCONCLUSIVE23:10:09 at trusted-after-controls: old helper raised on a
+  post-control state mismatch and discarded that state plus completed APK
+  receipts. Therefore actual denial/disclosure/write verdict unknown, NOT PASS.
+  Android SELinuxDisabled remains productionBLOCK. No inference from HIDL code.
+- Runner now records before/after controls incrementally, typed post-control
+  mismatches with return code and completed probe/UID/PID receipts before any
+  following failure. Wrong trusted UID/service/state schema still rejected.
+  96d6a101 PASSED13 runner/path/evidence tests. ef4a4c39 PASSED5+9+8 harness
+  checks+readonly source/VM preflight. Window-live/check.py prepared privately
+  only (keyboard resize/maximize/state), syntax checked, not executed/qualified.
+- CURRENT observer dev-android-guard-build-handoff-a1773142.service; manifest
+  8ac68e6d4b2d8c618c7fb31c22eb3dcee408cdc7df6b5ee6a8d3157ca845fbba.
+  Continue to actual child/native receipt, diagnose observed after-control state.
+
+OBSERVED23:07Z — native .94 reboot and normal-user APK operations PASSED:
+- ef606d67 booted .94 derived deployment f865bb9e...; previous base retained.
+  Read-only pkcheck from UID1000 user-manager service returnedYES, no policy
+  modifications. Test user alreadywheel. This resolves harness context rejection.
+- Same candidate images booted. Resume34.936s; CLI remove8.595s, install12.335s,
+  launch4.787s returned0 from normal-user service. Command times only; no first
+  frame/performance claim. Actual running HWC/task-service hashes match export.
+- Native guard runner INCONCLUSIVE23:05:16 with RuntimeError before android_uid
+  recorded; no actual probe pass. Original report lacked message/phase. Found
+  installed-path validator excludes Android's randomized `~~` directory form;
+  fixed that source issue and added phase/fixed RuntimeError diagnostics. Actual
+  old failure cause not proved yet.72233dcb PASSED11 classifier/path tests.
+- 9ba8e7fd PASSED5+9+8 helper/read-only checks. Fresh observer
+  dev-android-guard-build-handoff-9e95810d.service; manifest
+  40745aace2146ca87607091ec343dbb359777554045c8a203cb5be3fa152600b.
+  Continue through actual native controls; exact failure phase now recorded.
+
+OBSERVED23:02Z — rebuilt Android boot PASSED; ordinary CLI authorization OPEN:
+- e3424e03 installed exact image pair and CLI resume returned0 in58.934s;
+  boot_completed=1 confirmed before package query. Android RUNNING independently
+  observed22:58Z. No first-frame or performance qualification inferred.
+- Failed22:59:15 at normal-user remove of existing synthetic APK: pkexec Not
+  authorized; no new APK/native probes executed. Source policy requires active,
+  local wheel user. Harness runuser from root SSH may carry remote/root session
+  context; exact cause remains to prove. No policy bypass or root APK install.
+- Native Atomic replace/apply succeeded again; new derived deployment f865bb9e...
+  Cleanup waited60s for graceful poweroff before fallback; VM off23:00:17.
+  Next harness allows180s to finish deployment finalization under actual HDD I/O.
+- New CLI invocation uses systemd-run --user --wait --pipe normal UID1000 desktop
+  user manager, plus read-only pkcheck before large image copies; existing policy
+  unchanged.5981acea PASSED5+9+8 harness checks/read-only source+VM preflight.
+- CURRENT observer dev-android-guard-build-handoff-b351bf16.service; manifest
+  2372ccfed2164e0d4bf2a3e661d8157f35dceb148f71ef14761e946ccff3f646.
+  Continue through actual desktop-context auth/APK/native controls; inspect child
+  preflight/qualification/errors. New image native binary live hashes/control
+  qualification still open. ARM/production/isolation/all acceptance gates remain.
+
+OBSERVED22:51Z — new images installed; qualification sequencing repaired:
+- f7901d90 FAILED22:49:46 AFTER exact image installation/target hash check,
+  before actual Android boot. Normal-user list returned0 in0.682s but only
+  metadata; my harness incorrectly called pm before starting the Android session.
+  lxc-attach failed `Failed to get init pid`. No native-control pass inferred.
+- New harness invokes normal-user CLI resume and requires actual boot_completed=1
+  before package inspection. Graceful sync/poweroff now precedes bounded destroy
+  fallback. Exact known pending .94 deployment62d5... may be reused; any other
+  pending deployment still rejected.1837f0bf PASSED5+9+8 checks/read-only preflight.
+- CURRENT observer dev-android-guard-build-handoff-519c61db.service;
+  child dev-android-guard-image-qualification-e3424e03.service passed Atomic
+  replacement22:57:22Z and now copying images; guest stage225230Z; manifest
+  0bb360b75c6ac9baf562daadb1ea409749b8a52b7bc07f704a58bea2e26f9300.
+  Read new child pipeline and continue through Android boot/native controls.
+
+OBSERVED22:49Z — f7901d90 native Atomic runtime replacement PASSED:
+- rpm-ostree local cache-only override and apply-live both exit0. Exact .94 RPM
+  digest/installed identity verified; before/after package inventory unchanged
+  outside luma-android-runtime. Base .80 retained; pending .94 derived deployment
+  62d5d9e5b2e5e0e9a399c0f30e5d473964bc47796eb42f7ffac87718611c419d,
+  live-replaced same. Host Enforcing. This establishes package installation ONLY.
+- Child now copying image pair; first staged system.img has full1,829,220,352B.
+  No Android boot/native-controls pass yet. Root qualification finally currently
+  destroys VM, so staged OS may not finalize: prefer bounded graceful poweroff
+  in next harness revision after current pinned actor stops. Do not mutate live.
+
+LIVE FOLLOW-THROUGH22:44Z — image export remains verified; runtime boot untested:
+- d6f47577 FAILED22:34:09 before large upload. Actual RPM--test reported856KB
+  needed on immutable `/`, despite writable stage30,110,994,432B free and
+  MemAvailable4,332,576KiB. No missing dependency was established. Previous direct
+  rpm install failure still has no preserved RPM stdout, so same cause unproved.
+- Replaced private qualification harness direct ostree-unlock/rpm-Uvh with native
+  rpm-ostree override replace --cache-only LOCAL exact-hashed .94 RPM followed by
+  apply-live --allow-replacement, as upstream administrator handbook documents.
+  Refuse preexisting pending deployment; compare before/after package inventories
+  and require no changes outside runtime. Original OS rollback deployment retained.
+  Actual native transaction has NOT passed yet. Preflight JSON/errors retained on
+  failure. Guest qualification only asserts the exact preflight+installed identity.
+- b69ce5a8 PASSED5 stop/Atomic-guard fixtures,9 policy,8 inventory and readonly
+  inactive-VM/source/syntax preflight. These are harness checks, not an OS install.
+- CURRENT observer dev-android-guard-build-handoff-0392730f.service, admitted22:43Z;
+  manifest e10042f1fe0a9820bcbb7669e811c8331145383a0751967f060f353ea0542e7c.
+  Continue foreground through actual child outcome; next read guard-vm-auto/latest,
+  child pipeline/preflight/error/qualification. No native guard run has passed yet.
+
+LIVE HANDOFF22:33Z — IMAGE BUILT/VERIFIED; RUNTIME QUALIFICATION STILL OPEN:
+- Full Android m systemimage/vendorimage completed successfully at~22:01Z,
+  compiler report55:06. Guest packaging and sync completed; raw result exits0,
+  finished_unix1793311306.8638635. Root-owned raw result
+  build-vm/build-r9-result-20261029T220225Z.json SHA
+  df17ffeba44366d80a2bb4f6b49567b84a4b17edc2035f0f0d2cb914ec25aae9.
+- Original normal e37c3216 FAILED22:02:33Z during bulk artifact export: separately
+  capped root controller128MiB was OOM-killed. Guest24GiB was not the failed cap.
+  Guest outputs had been synced BEFORE publishing successful completion, so
+  no compilation rerun was needed. Preserve original failure/partial220225Z.
+  Shared policy restored automatically to original24cfbd91...; override is OFF.
+- Normal dev-android-image-export-recovery-1e0431d5.service PASSED22:08:43Z.
+  Dedicated normal7GiB/root1GiB actor temporarily cold-booted builder at4GiB,
+  QEMU5GiB hard+combined, bounded SFTP16x64KiB, COPIED completed output only.
+  Actual full export checksum verification passed. Guest sync/poweroff observed;
+  exact prior24/25GiB inactive builder XML restored by finally and stop hook.
+  Backups/helpers in export-recovery; domain-original.xml/SHA root-owned.
+  Actor backup already exists: do not blindly rerun one-shot driver.
+- VERIFIED export: build-vm/output-x86_64-r9-20261029T220751Z. Raw images,
+  system1,829,220,352B SHA88dbed302af8bd933e12c6e098bed9a9870db5f342ee59efaacb71bb30a76d09;
+  vendor566,210,560B SHA2a25f1e1c286b3108ba18a30e53f67fc5861fa17970c547e2bbe108112d05bb8.
+  Main manifest9899baf62d4f95be95cc380c6c6d0e90d84be8163ad4396e838e3fae16dee5de.
+  HWC60e4bc0a34cfcff9b9937ea553db946e1714141e890cfff4ea7946af44754e81;
+  task5a6fdb7734bdf8f2f89830984ea96ff9819ac73d662635deb3e3da7ad49c4041.
+  SystemUI551952bb9cee20aba677ad35372cf17059c46fff8efb251d2f1e5d170eb946df;
+  frameworkf4f69537c7f0438f4fa17f46a1cd2d72ac1e689b9c7915639f09a0a076de7996.
+  Host-tool metadata22d0f6... below remains required. No source/ABI/image test claim
+  beyond source7c13c192f/SDK0004 (no replies). ARM not built/qualified.
+- build-vm-auto/latest.json now EXPLICIT image_export_verified_pending_qualification
+  pointing to successful EXPORT recovery normal1e0431d5, retaining original
+  e37 failure identity and original successful guest result hash. Original job
+  result never rewritten. Guard watch accepts this separate phase only after
+  actual successful normal recovery result, original compile0 and exact export
+  manifest match. Controls66f1274c PASSED9 policy+8 root inventory checks+VM
+  preflight. No automatic compiler watcher remains active; e40f42bb terminated.
+- First guard childf0bca862 FAILED22:12:35Z copying system.img, scp255; failed
+  subprocess output was not preserved by old wrapper. No native controls ran.
+  Kernel OOM not established for this transfer; do not equate it with root
+  exporter OOM. Root128MiB cap was expanded to512MiB within normal9GiB/QEMU8;
+  bounded SCP buffers and60s keepalive, old runtime stop and storage preflight
+  now occur BEFORE uploading images; errors are retained.6dffbf91 PASSED3
+  stop-state fixtures+9 policy+8 root inventory+readonly VM/source preflight.
+- Guard child8beee6cf then staged images successfully. Actual preflight stock
+  runtime.80, both user units loaded/stopped, LXC STOPPED, MemAvailable~4.5GiB,
+ 32,497,623,040B free vs5,864,603,648B required. Therefore no storage shortage
+  was established. It FAILED22:24:29Z at rpm-Uvh .94 AFTER transient ostree
+  unlock, before images installed/Android boot/APK/native tests. Old guest
+  exception omitted RPM stdout: underlying transaction error still unknown.
+  Artifacts8beee6cf/guest-output.txt andqualification.json retain exact step.
+- New harness fixes: guest exception records full bounded transaction output;
+  pre-transfer RPM--test uses PRIVATE COPIED installed RPM DB (real DB unchanged)
+  to fail before large transfer; APK filename now unique under/var/tmp, outside
+  root-only stage (my earlier stage-local filename would have been unreadable
+  by normal user; it had not executed). Ordinary CLI list/remove/install/launch
+  still required; fixture cleanup uses actual pm package identity, not display
+  text.74d238fa PASSED3 stop fixtures+9 policy+8 root inventory+read-only preflight.
+- CURRENT observer dev-android-guard-build-handoff-27c1e556.service admitted
+ 22:32:10Z, waiting/running a fresh child. Guard manifest
+  f2f60c2d6ac96eb630208bbe6fec541af10313ac6f95727d9ead02c76e62c898.
+  NEXT: read latest.json/child pipeline and preserved RPM-test output, fix actual
+  package prerequisites WITHOUT bypassing dependency checks, continue same run
+  through real image boot/APK/native controls. Original raw image pair untouched.
+- Future main builds: do NOT reuse128MiB root bulk exporter; separate compile
+  and bounded export stages (the7GiB/1GiB transfer path is proven), or validate
+  a larger controller within normal reservation. Cold r11 also does not reapply
+  glslang addon; see notes below. Do not mutate pinned sources of live actors.
+
+HISTORICAL ACTUAL PROGRESS21:44:32Z:
+7511/9913 remaining Ninja actions (75%).
+The repaired unstripped libart.so is valid x86_64 ELF (observed21:24:30Z),
+buildID85b88bd9fe02d64f563ebd3e1295a245. BOTH actual main-build Mesa32/64
+.build.timestamp markers fresh21:28:10Z; these are created only after configure
+AND nested compilation succeed. So the Meson/glslang fixes passed actual Mesa
+builds, beyond earlier separate configure diagnostics. Main image remains
+in framework/Java packages, no completed/exported image yet. Source/R8 warnings
+have not stopped subsequent actions; no test/runtime claim. Guardf7f6a184 still
+armed for real post-build matched-image native controls. Continue foreground
+follow-through; do not end merely because the services remain active.
+
+CURRENT BUILD: normal dev-android-images-build-vm-r9-e37c3216.service admitted
+20:50:11Z,26GiB/450GiB, same24GiB/25GiB/8CPU/8job VM. Input verification
+passed20:55:41..43Z, VM boot20:55:44Z;
+source checks finished21:03:54Z. Full graph regeneration completed by21:19;
+actual Ninja-j8 MainPID21453. At21:21:51Z1044/9913 remaining actions completed,
+C++/Rust processes active and both actual Mesa configurations running. No image. Recovery observer
+ dev-android-image-auto-highram-watch-0-e40f42bb.service; guard handoff
+ dev-android-guard-build-handoff-f7f6a184.service. Live verifier
+ dev-android-highram-live-verification-0fe08472.service PASSED20:57:26Z with
+NEW attempt timestamp,4 operational overlay hashes, actual24GiB/8CPU/8jobs,
+25GiB QEMU hard+combined and Meson1.9.2 under env-i. Actual repair completed
+20:57:24Z:915 logged outputs preserved in quarantine; both required ART outputs
+selected. Preserved unstripped ART header is zero bytes, not ELF; cause remains
+unproven beyond confirmed prior unclean VM teardown.
+Source manifest b0477f2e2dcda81c9ffee0257104da925e9ac5e10cf4a09b410c165bcb35e4fc.
+Guard manifest a93c31066447a14353065d433597f8e3203331cf43a6eff85a2b79f2e7a78b7b
+(the former6ac681f2 manifest is superseded).
+Project7c13c192f/native patch set unchanged; still no SDK0005 reply image.
+
+
+HOST SHADER TOOL ADD-ON / REAL MESA CONFIGURATION:
+- First separate actual Mesa diagnostic63e09483 ran21:04..05:41: both32/64
+  configurations selected Meson1.9.2 but FAILED glslang minimum12.2; Ubuntu
+  binary11.8. Diagnostic job exited0 because its scope was collecting both
+  results. This is NOT a Mesa pass. Prior Meson-only preflight was insufficient.
+- Official Khronos16.6.0 Linux x86_64 archive normal0bdad353 downloaded/verified
+  against GitHub API published SHA2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce,
+  7,923,164B. Binary8,274,896B SHA30cdc0e1a09ccfe7164c4b9d3d82bcae6baf759bcd101b053ef087b5c82fade6.
+  ABI inspection requires GLIBC2.34/GLIBCXX3.4.29, compatible with guest.
+- Normal c120a553 PASSED21:14:15Z. Guest compiler unit frozen briefly BEFORE
+  primary image Ninja (asserted against fresh log), binary SHA verified, root
+  /root/luma-glslang-16.6.0 mounted readonly over guest-rootfs/usr/bin/glslangValidator.
+  Four input disks unchanged. Empty-environment version16.6.0 and actual
+  synthetic Vulkan1.2 vertex->SPIR-V magic check passed. Finally thaw executed;
+  FreezerState=running independently observed21:14:31Z. Main build never rebooted.
+- c120a553 then configured actual retained Mesa/cross files in SEPARATE temporary
+  output directories: BOTH obj64/445 targets and obj_x86/436 targets exit0.
+  Actual Meson1.9.2/Ninja1.10.1, target Clang14.0.6, host GCC11.4.0.
+  Configuration only; not Mesa compilation, final image, renderer or hardware pass.
+- Guest export includes root-created BUILD-HOST-TOOLS.json, SHA
+  22d0f6e5a534b01e9852a97bff47f27e6fe57042a4ef9df786a9bee80121eea9.
+  Metadata captures exact archive/binary/hash, version, phase and smoke check.
+  Its image-root SHA manifest will include it. Updated export inventory REQUIRES
+  this exact metadata/event/hash; it no longer accepts only the base4 overlays.
+  1e7da539 PASSED8 root inventory cases including unrecorded tool change refusal,
+  plus readonly inactive test-VM/source preflight. Current guard manifest above.
+- Waiting guard observer2340ddfb, then4ce9ddd0 were INTENTIONALLY stopped to
+  reallocate only this task's1GiB for diagnostics/add-on while another4GiB job
+  occupied the global budget. Compiler/recovery observer stayed active.
+  f7f6a184 rearmed21:14:53Z after controls; it is waiting on correct current unit.
+- Public preflight now checks Mesa's actual glslang declaration as well as Meson;
+  067a0554 PASSED4 version/environment fixtures, Bash syntax and diff checks.
+  This public helper update is for the NEXT project snapshot; current7c13
+  preparer overlay remains the previously recorded4 hashes, plus additive tool
+  metadata above. Do not mutate pinned live r11/recovery sources.
+- COLD-BOOT LIMIT: r11 does NOT automatically reapply the new glslang bind.
+  /root/luma-glslang-16.6.0 persists but its mount does not. Before another cold
+  build, prepare a validated next driver/tools input with this pin, or a fresh
+  recorded pre-Ninja activation. Existing add-on installer is one-shot and
+  refuses an already-existing export receipt. Do not blindly rerun it. A saved
+  whole-VM checkpoint should retain current mounts; root receipt/disk/source
+  checks still apply. No production reproducibility claim for this incremental
+  development candidate; full clean maintained-baseline builds remain A22.
+- Host cgroup read21:18:39/21:19:51: QEMU ancestor memory.max25GiB; global
+  machine.slice cpu.max800000/100000 (shared across VMs), nr_throttled6830
+  unchanged across samples. Guest15GiB available/no swap at21:19:51. No hidden
+  CPU bottleneck established and no shared cap was changed.
+
+Prior fdd0d35d FAILED20:44:19Z after48/9187 remaining actions, not a new89%.
+Source checks finished20:34:28Z; actual Ninja-j8 observed20:37. Dependency file
+out/soong/build.ninja11GiB, process mapped RSS temporarily13GiB, then~6GiB;
+16GiB available/no swap at20:41. The prior 961d8dd3 failed20:08:50Z at
+75677/84730 (89%) from Mesa selecting Meson0.61.2 while requiring>=1.4.0.
+
+Root cause of FAILED first tool recovery: binding the bundle launcher did not
+make its Python import self-contained. Preflight retained PYTHONPATH and saw
+Meson1.9.2, while Soong's sanitized Ninja environment imported system0.61.2.
+Do not describe d9b1a4be preflight as proof of actual Mesa compilation.
+New production preflight removes PYTHONPATH; guest operational launcher inserts
+verified/immutable bundle module directory itself. New root check runs env-i.
+Also observed retained ART unstripped88,707,664-byte libart.so classified as data,
+stripped95-byte output classified HFS resource, causing real link failures.
+Underlying cause of invalid contents not proven. Prior controller's terminal
+virsh-destroy without guest sync is confirmed; new boot journal marked unclean.
+Guest sync d3750127 PASSED20:44:05Z before fdd teardown. It cannot restore
+already invalid prior artifacts.
+
+New r11 guest preserves logged recent outputs since20:06:28Z (120s before the
+first failed compiler result) in out/.luma-quarantine-unflushed-20261029T200849Z,
+requiring both known invalid ART targets in its plan. Owner/path/scope guards,
+durable plan and one-time completion prevent silently reusing/repeatedly
+invalidating new work. Regenerate selected targets from source. Preparation
+scheduling/error-propagation overlay remains exact c85ed1d81 functions against
+7c13's native patch set; source checks not skipped. Four overlay source hashes
+are recorded in result and required by export inventory. Actual repair pending.
+Compiler completion now runs guest sync before writing/fsyncing result; normal
+root terminal success/failure flushes and powers off, waits<=90s, then returns.
+The old ExecStopPost destroy remains last-resort cleanup on abnormal controller
+exit; no claim that cancellation/host loss is a clean shutdown. New checkpoints
+remain tied to operational guest-driver SHA.
+
+Checks c33364fd PASSED2 production preflight fixtures/Bash syntax/diff checks,
+including PYTHONPATH removal. 1fe855c3 PASSED3 real-filesystem repair fixtures,
+3 production shutdown-function dependency fixtures,9 watcher cases,4 root
+budget cases (actual parent-directory symlink alias/reapply/refusal),7 root
+export cases and readonly inactive runtime VM/source preflight. These are not
+actual repair, clean terminal shutdown, image or runtime qualification.
+665da51d PASSED20:50:07Z: exact restored original shared policy matched root
+backup before reapplying26GiB; global32/host8/disk20 reserves unchanged.
+
+FOLLOW-THROUGH: user explicitly objected to repeated turn endings at background
+launch. Watchers record terminal failure and hand successful image to tests;
+they DO NOT wake a reasoning agent or repair compiler failures. No available
+standalone automation/wakeup tool was found; do not promise unconfigured future
+notifications/repairs. Stay with current run through the next actual compiler/
+image/test outcome and investigate failures in the same active run. An active
+unit, fixtures, or a past preflight is not evidence of compiler progress.
+
+User explicitly authorized a larger allocation when spare RAM is available.
+At change time server had~34GiB available; only this builder plus three1GiB
+admitted observers/server were reserved. Host8GiB reserve, combined32GiB job
+budget and every20GiB disk reserve remain unchanged. TEMPORARY SHARED policy
+override: build maximum26GiB/account budget32GiB, with the same GLOBAL32GiB
+cap; worker/server/container/package maxima remain10/2/4/4. The second tooling
+directory is a symlink to /srv/dev/tooling: both account aliases see this override,
+not separate policy files. Initial inode/hardlink interpretation was incorrect;
+actual post-change hashes resolved that. Build-kind default is now26 while the
+override is active: request smaller jobs explicitly. Original exact
+policy is root-owned build-highram/policy-original.json. New recovery watcher
+restores original bytes after a terminal build result, including failure, but
+retains this allocation across exit75 checkpoints. Refuse overwriting a policy
+changed by another owner. If observer is lost, restore with normally admitted
+root-capped build-highram/budget.py restore after stopping this builder.
+
+Old normala1c4e3af/root compiler stopped intentionally17:19Z for this resize.
+Native build reached59947/143205,41%; ~30GiB out tree retained. Guest compiler
+was stopped/synced and guest powered off cleanly. A root-owned XFS reflink copy
+of the47,742,976,000-byte qcow2 and original XML are under build-highram; the
+copy is NOT fully hash-verified. First migration13c60323 failed after shutdown:
+cp rejected incompatible reflink/sparse flags before creating any copy. Finish
+6a85c4c1 PASSED17:20:23Z using reflink alone, then verified inactive24/25GiB and
+8vCPU/800% settings. This is a cold incremental restart, not VM-heap restoration.
+Runtime VM remains off; its6GiB/QEMU8GiB profile is unchanged.
+
+REPLY SOURCE CANDIDATE (coherent source, matched runtime NOT qualified):
+- Host notification_reply.py/transport.py/dbus.py plus bridge/session integration;
+  SDK0005 plus NotificationReplyDispatcher.java; native Shell0286 extends0025 UI.
+  Runtime candidate.94; accepted OS/Shell package pins unchanged. Current image
+  source7c13c192f and installed .92 do not contain these changes.
+-45 notification component tests PASSED c767e61914:56:17Z.
+  Production dispatch closure tested with credential/PID fixtures and explicit Binder
+  dependencies; no actual Binder claim. Includes8-worker C-userdata lifetime,
+  canonical request/token/text validation, generation revocation and deduplication.
+-Private reply endpoint878dc0ef PASSED14:38:38Z: separate real D-Bus connections,
+  Shell/foreign caller admission, replacements, owner loss and uncertain results.
+  Native-capability owner-epoch test3ecfc401 PASSED14:58:32Z: real private bus
+  + fixture server/listener; forwarder restart preserves Shell-held IDs/tokens;
+  Shell loss clears grants. Legacy d2f97939 PASSED15:02:56Z. No actual renderer.
+-Shell97558b26 PASSED14:51:01Z: exact verified Fedora50.3 source + spec-selected
+  patch list through0285, new0286 and updated spec apply. Production reply method
+  executed in Node with D-Bus fixtures: existing Messages/new Android fixed path
+  and interface routing, caller shape, tokens and cross-app/path denial.
+  Not a GJS/runtime/rendering test. Private effective-r4/ receipt retained.
+-Java latest4feddc80 PASSED15:03:07Z: pinned AIDL compiler confirms service1..3
+  and callback1..3 retained, new service4/5 and callback4. Generated AIDL and
+  production dispatcher compile against actual API33. Production helper JVM
+  fixtures test original RemoteInput payload, UID policy, text limits, receipts,
+  replacement/removal/reset, immutable/auth/multiple-input fallback, cancelled
+  queued work and a running send whose ACK arrives after the5s wait. Late receipt
+  reconciles without another send. Not Android IPC or a full SDK/image build.
+-Android callback checks captured host UID policy BEFORE AIDL unmarshalling.
+  Native input is the original mutable PendingIntent, one free-form RemoteInput;
+  unsupported shapes never become an empty-reply ordinary button. No new image
+  yet. Host service5 requires posting kernel PID match a live registered listener.
+-Host uses one strongly retained gbinder.Client per reply until C destroy,
+  including timed-out workers; global8 calls. libgbinder cancellation does not
+  stop the worker.15s host deadline /30s Shell deadline; uncertain is not retried.
+  Reply tokens bind post/listener/generation; same-connection endpoint requires
+  current Shell unique owner. Records retain hashes/receipts, no message text.
+-Candidate.93 clean RPM c06af05e PASSED15:05:09Z:124 tests/0 skips/failures/
+ errors, imports/desktop/payload/profile755 checks. Binarycb1f98535c45c163cc24b190d524a4a133118ff5c0c7fe4d3fe9ce48c805e306,
+ SRPMe0ba8094d11631b6edc757d4a0bcee29eae4d9ad3f6bf3a27df0e76b42ab8fbc,
+ under rpm-r10/source/build/candidate-93/build/packages/luma-android-runtime.
+ DO NOT use .93 for reply qualification: later wire audit found two bugs hidden
+ by inaccurate fixtures. Android Parcel.writeByte writes int32, gbinder.read_byte
+ advances1; appended reply_action misaligns. RemoteReply.read_int32 convenience
+ methods each start at0; use one init_reader cursor for header+ACK.
+-New realistic byte/cursor fixtures against preserved .93 failed as expected:
+ fe3bccf1,2 assertion failures+1 alignment error at15:10:45Z. Correctedsource
+ d07356fa PASSED47 component tests15:11:18Z. Candidate.94 full126-test RPM PASSED f468a1a6 at15:12:50Z; see below.
+-New reply project SFS ed446c6f PASSED15:08:27Z, sourceb22ed165d,
+ build-vm/luma-project-native-reply.squashfs70,615,040B,
+ SHAe6ed231917685db4321cb91d57ce249e1c333831af0fe370080c472aea7d7b02.
+ Android SDK0005 is unchanged by host-only .94 fixes; prefer latest host RPM.
+ Snapshot is NOT attached to current builder; never replace its input mid-build.
+-Native Shell candidate normalb4b733eb FAILED15:10:22Z in existing%check
+ st/test-symbolic-strokes: icon pixbuf loader/theme warning aborts. All290 native
+ build steps reached%check; no Shell RPM pass. Both actual Figtree/widgets
+ prerequisites built first. Private candidate-shell124 derivedb22ed165d changes
+ only release1.luma.124.android20261029.1 (acceptedpinsunchanged), bounded2jobs,
+ and two obsolete package assertions40->45 /16->18 matching existing0284 and
+ independently confirmed Surface task correction. No checks skipped. Source
+ receipt shell-r124/source-receipt.json. Later retry resolved the build environment; see below.
+-TODO: actual GJS/native UI and Binder/RemoteInput receipt in
+  a matched image/Shell pair; source-level full SDK image build; physical tests.
+  Update the next image snapshot after current native-guard image finishes or
+  is safely saved. Never replace its immutable project disk mid-build.
+
+LATEST QUALIFIED CANDIDATE ARTIFACTS / ACTIVE CONTINUATION:
+-.94 f468a1a6 PASSED15:12:50Z, source497a61054:126 tests/0 skips/failures/errors,
+ imports/desktop/payload/profile755. Binary3ba654b17f14cbee15f0c15c0acb851a7d024fd8c5a31a1a6f4c41d5aa0e1292,
+ SRPM71b10726c6967e46338e94b61193ee33d237cfa228b3cb31c5f77eca921875e7,
+ rpm-r10/source/build/candidate-94/build/packages/luma-android-runtime.
+ .94 NOT installed/live runtime tested; .92 remains last live lifecycle pass.
+-Native Shell124 retry a62273fe PASSED15:22:30Z; full ordinary rpmbuild + all
+ packaged checks (no short-circuit or skipped test). The existing symbolic SVG
+ test could not start Glycin sandbox inside rootless container. Diagnostic
+55ad7743 reproduced it with a fixed SVG; rsvg-pixbuf-loader is now a virtual
+ provide, not a separate native decoder (61b77658 correctly failed its query).
+ The exact compiled test passed natively under normal worker1GiB f8cb544b;
+ actual package%check then used a bounded private file-mailbox executor inside
+ the SAME normal package4GiB job, executing the exact compiled test/library on
+ native Fedora with Glycin sandbox enabled. No alternate decoder, sandbox/
+ policy disable, omitted check, host package install or production change.
+ Test exit0 and executable/library SHA before/after in
+ shell-r124/native-test-receipts.json; private source adaptations in
+ native-executor-source-receipt.json. The candidate SRPM includes the test
+ helper; absent the optional mailbox it executes normally inside the builder.
+ Sourceb22ed165d plus private release124/2-job/assertion corrections already
+ recorded. Accepted OS/Shell pins unchanged, no publication or device install.
+ ShellRPMf1eaec320bc57cde0b3c8ec15fd71c1cc52dfc55863ab245236b6d354a715e17,
+ commonf74a8a452ae2654bc31655feae9ee65d1ab10729252a374bfaaedecd69904626,
+ SRPMb9d823e1d842c6df1b2fd7f228902185037b384d2c8564c83582c509282df478,
+ rpm-r10/source/build/candidate-shell124/build/packages/gnome-shell.
+-Packaged reply resources3a23e032 PASSED15:26:17Z: actual ELF GResource bytes
+ equal prepared effective-r4 sources and production method/syntax checks pass.
+ Firste6311d1f failed because host lacks gresource CLI; corrected by parsing
+ ELF resource sections + actual Gio.Resource lookup, no package installed.
+ Receipt shell-r124/packaged-reply-receipt.json. Not installed GJS/native UI.
+-Main image now uses root r11, normal961d8dd3 build26GiB, source7c13c192f.
+ Former8GiB attempt reached41%; deliberate clean restart preserves disk outputs.
+-Automatic bounded continuation ACTIVE:
+ dev-android-image-auto-highram-watch-0-eca8b2c8.service, normal1GiB,
+ MainPID611446; private build-vm-auto/watch-v3.py watches exact961d8dd3 result.
+ Original66408768 watcher intentionally stopped for migration. Only exit75 with
+ a fresh root-owned complete/unconsumed own-UUID/source checkpoint can resume.
+ Each child is separately admitted kind build26GiB/450GiB with VM24GiB/QEMU25GiB
+ and root128/256 limits. No retry of compiler failures/cancellation; at most4
+ resumes. Each watcher5.5h bounded, overall deadline2026-10-30T15:30:00Z.
+ Resource refusal waits at most30m, then stops. STOP file build-vm-auto/STOP
+ prevents NEW continuations; stop active root controller before its normal job.
+ Source manifest build-vm-auto/source-manifest-v3.json SHA
+ 8a71203e48f8039ad5d392915c5971d1fee7fb5801cec2ee300dd7372dc19696.
+ Seven operational scripts, including guest/budget helper, are pinned at startup
+ and before resume. This guards accidental edits, not a hostile owner. Previous
+ v2 scripts/manifests remain historical. Future resume wrapper is
+ build-highram/run-r11.sh; root6h deadline and bounded guest timer rearming remain.
+-Terminal v3 outcomes attempt original shared-policy restoration before
+ publishing completion/failure. A restoration conflict fails visibly; it never
+ overwrites another owner's policy. Policy/backup details above. Post-build VM
+ qualification is separately owned by the success-only handoff below.
+-Resume prerequisite15b20427 FAILED safely: guest249 rejects RuntimeMaxSec via
+ set-property; original compiler deadline stayed20500s. Replacement actual guest
+ timer controlac3445e7 PASSED15:35:03Z: baseline stopped3s, drop-in/reload timer
+ survived4s and stopped8s. Compiler MainPID and original deadline unchanged;
+ synthetic unit/drop-in removed. Root checkpoint inventory returns null now.
+ Policy093cb68b passed cancellation/failure/success/no-resume and fresh/unconsumed
+ source/UUID selection fixtures. Actual compiler save/restore/r10 automation is
+ NOT yet exercised; original synthetic KVM save/restore result remains below.
+ New wrapper syntax and embedded Python/newline bytes checked before launch.
+-User ETA given as rough24–48h for an x86 Dell development build if compilation/
+ integration succeed, NOT a delivery promise or daily-use/ARM/power/security ETA.
+
+POST-BUILD GUARD VM HANDOFF ACTIVE:
+- Normal dev-android-guard-build-handoff-eea5005f.service,1GiB, MainPID614946;
+  restarted after the deliberate migration; actual waiting heartbeat17:21:48Z in guard-vm-auto/latest.json. No runtime VM
+  started while builder runs. This extends build monitoring into actual tests;
+  it does not automatically implement remaining brokers or qualify a release.
+- Private guard-vm-auto/watch.py waits for successful final normal build result
+  and inactive build unit, follows bounded resume units, and stops on build/
+  recovery failures, cancellation, exhausted budget or deadline. Wait deadline
+ 2026-10-30T15:30Z. Normal admission refusal retries at most30min, without
+  changing limits. Each stage records structured status; no blind failure retry.
+- Then a separately admitted normal9GiB/20GiB-HDD job boots ONLY owned runtime
+  VM3c485515-a910-4f44-80a0-4189ec58cab8, guest6GiB/QEMU8GiB combined. Root
+  driver128MiB+128swap, CPU200%, IO25, RuntimeMax2400s, owner watchdog and
+  ExecStopPost own-UUID destruction; observer waits at most2700s for that child.
+- Inventory verifies a fresh root-owned successful7c13c192f export, safe manifest
+  paths, complete image/native payloads and every listed file hash. Staged files
+  are rehashed in the VM before changes. It stops the old runtime, installs host
+  .94 in a disposable /usr overlay, retains the old image pair through the source
+  deploy helper, cold-starts the runtime, replaces only the synthetic fixture
+  with APKr15, verifies boot/native payload hashes and runs actual native guards.
+  Results/logs are retained under that admitted child's artifact directory.
+- Passing status is native_guards_passed_pending_other_gates, with production
+  qualification and notification reply qualification explicitly false. Current
+  image7c13c192f lacks SDK0005; Shell124 is not installed by this narrow guard run.
+  Focus/task mutators/hardware/security/performance and reply pair remain open.
+  Both success/failure destroy only the owned disposable VM, retaining its disk.
+- Pins guard-vm-auto/manifest.json SHA
+  fb45a3d4d6f9574cb689cc4a84f33ec8dabbbfff435bea8891cc08359b547a89.
+  Do not change pinned scripts/artifacts under a live observer. STOP file
+  guard-vm-auto/STOP or build-vm-auto/STOP prevents a NEW qualification job.
+  Once admitted, stop root luma-android-first-class-guard-qualification.service
+  before stopping its normal job; stopping its observer alone does not kill it.
+- Policy4780fe1b PASSED7 tests; root export controls243c45ad PASSED6 actual
+  root-owned fixture cases plus read-only inactive-VM limits/source/syntax
+  preflight16:31:50Z. Altered/symlink/non-root-owned/escaping/wrong-source/failed
+  exports reject. These do NOT claim the new boot/install/qualification sequence
+  has executed; its first actual run waits for a completed compiled image.
+
+FAILED BUILD: normal dev-android-images-build-vm-r8-3a3af2ff.service,
+10GiB/450GiB HDD; root luma-android-first-class-build-controller.service;
+VM809f0871-fd88-4770-83dd-624c90259c06/IP192.168.122.36. Started09:01:21Z,
+startup passed09:06:41Z. Project luma-project-native-io.squashfs70,574,080B,
+SHA8b8ef91de1bfcb394a2b10b8325155cce958cd18195a4e0db72aad1120b18317,
+source3ff01af63 includes0016. Builder8GiB RAM/QEMU9GiB hard, 24GiB disk swap
+plus4GiB virtual zram with1GiB compressed cap, priority100. Source/out overlay
+upper-native-v1 reused. At13:35Z soong_build active~3h50m, RSS6.35GiB, total
+guest swap10.8GiB; severe memory pressure remains. No completed image exists. Build guest was destroyed by controller13:52:51Z
+after a30s SSH poll timeout during swap relocation. Heap work was NOT saved.
+Do NOT repeat swapoff on a memory-starved live compiler. Disk artifacts retained.
+Next startup needs compressed swap configured adequately BEFORE compilation,
+transient transport retry within bounded actor lifetime, and early state saving.
+Guest startup verifies zram cap via mm_stat[3] (mem_limit is write-only).
+Root controller watches normal owner; ExecStopPost destroys only this VM.
+Deliberate cancellation: stop root controller before normal job.
+
+r6 was deliberately frozen/synced/powered off08:46Z to take latest0016 and8GiB
+profile; durable r6-checkpoint.json/logs retained. No process-heap resume claim.
+r7 failed before compilation08:56Z due reading write-only zram mem_limit;
+no result claimed. r8 fixes startup. Immutable input verification remains intact.
+
+COMPLETED RUNTIME (OFF since14:07:08Z): normal dev-android-runtime-full-r9-5706d8ea.service,
+9GiB/10GiB HDD; root luma-android-first-class-runtime-controller.service,
+VM3c485515-a910-4f44-80a0-4189ec58cab8/IP192.168.122.35. Guest6GiB RAM/
+QEMU8GiB hard AND combined RAM+swap, root128MiB+128swap, actual guest MemTotal
+5844MiB. Original restored XML had no swap_hard_limit, so first0484888f refused
+BEFORE BOOT. Retry5706d8ea added ONLY combined cap while inactive; backup
+vm/domain-before-full-bounded-r8.xml SHA b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5,
+current vm/domain-full-bounded-r8.xml SHA
+5cfc05320de373e991c6f0ac143356876dd6b14a7d222f5d31abbc02d81427ca.
+Original6GiB RAM preserved. Stop root controller before normal job when done.
+No compiler runs concurrently. Runtime needs normal9GiB; builder10GiB cannot
+coexist in account16GiB. Private helper stages run separately under normal1GiB.
+
+.92 INSTALLED in disposable /usr overlay13:59:45Z, normal c6175059 PASSED,
+profiles755/import transaction completed. Earlier4585a133 failed waiting for
+SSH during early boot before mutation; bounded readiness retry corrected it.
+Initial cold39333e14 failed BEFORE launch because reset-failed named an unloaded
+unit. Retry28da51d2 removed that unnecessary setup command and PASSED14:02:20Z:
+packaged.92 after broker/session stop and root container-service restart,
+CLI launch exited0 in25.2808s, Android boot_completed1, MainPID6155 alive in
+luma-android-session.service cgroup after caller exit. This is full6GiB guest,
+old Android image, not first-frame/physical performance or proof of the cause
+of earlier3GiB failures. Evidence runtime-cold92-full/result-r2.json.
+Warm fixture14 normal de38a382 PASSED14:03:36Z: normal CLI remove4.660s,
+install8.103s, launch3.172s (command completion only). APK14 persists disk.
+Native screenshot native-task-live/fixture14-full.png shows rendered app with
+native titlebar; NOT timing evidence. New task button at(640,398), native
+clipboard now(640,344), copy remains(640,452); recapture before future clicks.
+
+REAL TASK HAL NEGATIVE e5fe4bee PASSED AS PROBE14:05:07Z: ordinary Android
+UID10135 raw transaction4 returned fixed fixture label. UID1000 trusted raw
+control returned known label before AND after; endpoint not unavailable.
+Actual installed APKsha916d4214440eaeb55fb25852eb2dd657cf91ea72bb97d59136c8358d7b7a4755
+checked inside Android. Evidence native-task-live/result.json. Old-image name
+access is NOT isolated; no actual task mutation tested.0017 must deny ordinary
+reads while preserving trusted labels and normal native window controls.
+
+CURRENT BUILDER INPUT: project luma-project-native-task.squashfs
+70,582,272B SHA849a73b0388eb90c5d3297deece9f3e37a2e42d45e47cf0bb9552f679d205bdd,
+commit7c13c192faacdcaa32170fef1e68322c22e4a8d5, snapshot normal3d91c58f PASSED.
+Private build-vm-driver/{controller-r9.py,guest-build-r9.py,run-r9.sh} syntax
+passed. Same normal10GiB/guest8GiB/QEMU9GiB fixed budget. Guest configures zstd
+zram24GiB virtual/4GiB compressed cap BEFORE compilation, keeps disk swap24GiB,
+uses GOGC5/GOMAXPROCS2; no live swapoff. Controller retries up to6 transient SSH
+failures and saves VM RAM/disk identity before4.5h or repeated transport failures.
+One-shot restore verifies immutable inputs, disk bytes, XML, RAM-state SHA and
+marks consumed before restore. Restore driver not yet run against actual builder.
+Synthetic KVM control b826926d PASSED14:04:08Z: exact counter+marker unchanged
+across save/restore-paused, counter advances after resume. VM256MiB/QEMU512MiB
+combined under normal1GiB + root128/128, no network/data. SELinuxEnforcing retained;
+fixture domain destroyed/undefined. checkpoint-control/result.json. This tests
+KVM save semantics, NOT Android/compiler recovery or the full r9 controller.
+
+.92 clean RPM r15/164b9abc PASSED08:47:48Z:91 actual tests, zero skips/failures/
+errors, payload/import/desktop/profile755 checks. Source3ff01af63. BinarySHA
+8d22a623638dea6d318ec86a794a97413e999e9fadc821f5ab546a6490207fae,
+SRPM94c22d4acf8083bc10956f1964ec513057e5b9b8345b8c0a89293e6e668187f0,
+rpm-r10/source/build/candidate-92/build/packages/luma-android-runtime.
+.92 installed/live lifecycle tested as recorded above. Full91 source tests passed08:07:06Z.
+.91 clean RPM cb8f4f4a passed84 tests, installed07:34:04Z in disposable overlay.
+
+Runtime cold managed-source92 test FAILED deadline08:13Z; MainPID13327 stayed
+in separate session-service cgroup after caller exit (lifetime boundary only).
+Android boot_completed1 by08:22:26Z; warm client FAILED response timeout08:25Z.
+No reliable cold/warm startup claim. Captured composer/SurfaceFlinger normal
+wait stacks and Python3.14 GLib loops do not establish root cause or rule out
+native callbacks. Py-spy actual version0.4.2, receipt vm/pyspy/receipt.json.
+Harmless sleeper cgroup control confirmed setsid insufficient and managed unit
+survives caller exit. Runtime stopped/root config restored after evidence capture.
+
+New Bionic compile check743a43b2 PASSED pinned AndroidClang14.0.6 r450784d:
+exact production clipboard helper compiled with actual Bionic/libc++ headers
+for ARM64(machine183) andx86_64(62), no host headers. Compile-only, not linking,
+execution, HwBinder or hardware qualification. Report under account artifacts
+/dev-android-bionic-clipboard-compile-743a43b2/bionic-clipboard-compile.json.
+Script and README await source commit.
+
+NEW AUDIT/FIXES (13:50Z):0017 adds actual HwBinder UID1000 admission to all4
+native task methods before framework lookup, successful HIDL Void/one denied
+empty getter callback. Replaces shared mutable sp caches with per-call local
+checkService proxies; no automatic mutation replay, no stale cached framework
+proxy across SystemServer replacement. Internal native resize relies on existing
+Unix SO_PEERCRED admission, not HIDL caller state. Actual composer rc user system
+confirmed. No ordinary-APK task exploit has been measured yet.
+64 production-method cases + replacement/missing registry/failure/concurrency
+PASSED ASan/UBSan485feeb9 and TSan f6cc0fc9, unpatched negative42.0018 rejects
+oversized packet prefixes/nonzero reserved fields and bounds accepted resize
+socket receive/send250ms. Real SOCK_SEQPACKET/SO_PEERCRED tests with private
+user namespaces mapped to1000/10000 PASSED a746000a, original oversize control42.
+No host account changes. Framework Binder work remains unbounded by socket limits.
+Full pinned patch series through0018 + configure-lock/linkage controls PASSED
+14f48ee7. Both builders and incremental patch-state hashes include0017/18.
+Current immutable image build remains0016; subsequent image required for fixes.
+Individual HAL checks do not replace outstanding Android MAC/userns isolation.
+
+APKr14 read-only raw task HIDL name probe BUILT/SIGNED13:48:21Z, normal2e75410f,
+252MiB peak, private user+network namespaces, pinned JDK17/tools, clean env/Xmx192m.
+SHA916d4214440eaeb55fb25852eb2dd657cf91ea72bb97d59136c8358d7b7a4755.
+No live execution yet. Earlier95acd51d failed unshare network without userns;
+no compiler ran. Trusted UID1000 read control shares raw wire request; expects
+nonempty fixed fixture label. Ordinary unavailable/other-label cannot pass.
+Read-only probe does NOT establish denial of destructive task mutations.
+New task button shifts all following UI coordinates; recapture before clicks.
+
+Builder-only tuning: normal87d3720f PASSED13:43:02Z adds zram1 virtual16GiB/
+compressed-memory cap3GiB, lz4, priority110. Existing4GiB/1GiB zram and24GiB disk
+retained, guest8GiB/QEMU9GiB/normal10GiB unchanged. zram-expand/receipt.json.
+Normal a2ca00dd FAILED13:52:47Z (350s SSH timeout): bounded300s swapoff attempt relocates disk pages
+to new compressed capacity, finally re-enables disk fallback if off. Root128MiB/
+420s, log/receipt under zram-expand. Normal d7f080e0 PASSED13:49:20Z changes only
+guest vm.page-cluster3->6 for swap readahead; swap-readahead/receipt.json.
+The bounded swapoff did not return a receipt before SSH transport failed; do not
+claim it was fully bounded or that disk fallback re-enable executed. VM is OFF.
+At13:49Z soong_build still4h04 elapsed/29m32CPU, guest disk swap~6.77GiB,
+zram1~313MiB original/78MiB memory. No measured throughput improvement claimed.
+
+CRITICAL REAL NATIVE BASELINE: APKr12 could not load private vendor interface
+as an app (no registered org.lineageos.platform shared library); unavailable is
+not denial. Its UID1000 app_process control DID read the expected token after
+using /init.environ.rc plus /data/system/environ/classpath whitelist. New APKr13
+uses raw HIDL1.0 HwBinder/HwParcel (wire1 setter/2 getter), no private shared-lib
+permission and no hidden-API policy change. Actual Android UID10134 read the
+Android token and replaced it with fixed forbidden-write token; UID1000 control
+confirmed Android token before and forbidden token after. Exact evidence
+vm/native-clipboard-r13-old-image-negative.json. Probe reaches the real HAL;
+old image is NOT isolated/qualified. Actual guard0015 image must now deny read/
+write with the same nonempty trusted controls and preserve normal ClipboardManager.
+APKr13 SHA f99ed9e69ded19e2d497ddfcee20e0cdcc6185f5c0a1cc1c97da914e83afbf8a.
+Built offline07:57:21..26Z,275MiB peak, source JDK17/verified tools asUID1003 under
+384MiB root cap within existing6GiB VM reservation (VM5GiB hard+controllers fit).
+No Podman/package-runner bypass; unshare network, setpriv no-new-privileges,
+explicit clean compiler env/Xmx192m, normal owner job remained active.
+
+.91 root install finished07:34:04Z; first ordinary fixture remove failed after
+123.8s waiting for cold Android. Explicit supervised session then boot_completed1
+at07:41:54Z. APK12 normal retry remove/install/launch11.83/12.55/3.92s succeeded;
+APK13 later20.27/22.68/10.01s under graph I/O, not first-frame/performance evidence.
+The real harmless-sleeper user-systemd control08:04:34Z proved Popen setsid child
+is killed with its transient parent and separate managed child service survives.
+Current source uses existing user session unit for packaged detached cold launches;
+manager failure cannot spawn caller-owned fallback. Actual cold source test FAILED after182s with unit still active/MainPID13327
+in its service cgroup. Android reported boot_completed1 by08:22:26Z; later warm
+client still timed out. Native SF/composer stacks were captured; composer Wayland
+thread in normal dispatch, not evidence of a clipboard deadlock. Py-spy0.5.x
+metadata under vm/pyspy/receipt.json (use actual receipt version) dumped Python
+3.14 session idle in GLib loops; root-side stack next. No cold/warm restart pass.
+
+New transfer helper test e98dfcab PASSED real >pipe-capacity UTF-8 self roundtrip,
+partial I/O, timeout/cancellation, oversize/invalid UTF-8, EPIPE, bounded writes,
+shutdown/FD ownership and cache generations. Helper concurrent submission/shutdown stress now passes ASan/UBSan and TSan
+(0d019389; separate asan.txt/tsan.txt preserve completion receipts). Initial
+612c2875 could not link GCC libasan, which is absent; Clang runtime is installed.
+A59191a4 command failed because systemd expanded a shell-array expression; private
+script corrected it. Complete production callbacks with explicit Wayland/HIDL
+fixtures pass91d70a0f ASan/UBSan and f4415ac5 TSan. These exercise real asynchronous
+pipes, denied callers, rapid immutable copies, retired queued callbacks and late
+HAL calls after joined teardown. Not actual Wayland/HwBinder IPC qualification.
+Full upstream patch series264ac866 passes through0016, exact header identity and
+configure-lock/linkage controls. Both builders hash/apply0016. Old raw listener
+payload eviction would race dispatch; final source uses existing generation-token
+registry, admits strong snapshots before retirement and bounds sources to8 while
+later copies continue. Queued stale sends close FDs; stale cancels touch no proxy.
+APK12 hashbf7e2aa3496aae6999f39f87b73e8617f6786423de1fddb009c313a6e4bc38b9;
+not installed/live-qualified. Native HIDL1MiB transaction-limit/large text, focus,
+rich MIME and actual image paths remain gates.
+
+Critical correction: actual installed framework DEX and hardware/waydroid source
+show Clipboard uses vendor.waydroid.clipboard@1.0 HIDL in native HWComposer,
+not the host's legacy AIDL endpoint. sdkobserve2 captured/disassembled only the
+public framework jar (actual /system/framework/org.lineageos.platform.jar), then
+ran pinned dexdump asUID1003 under a256MiB capped root diagnostic within the6GiB
+VM reservation. Original93dd6267 used wrong system_ext path and failed. Exact
+proof sdk-image-observe/clipboard-class.txt. Legacy AIDL UID tests remain valid
+ONLY for that unused endpoint; they do not qualify native clipboard admission.
+
+Source .91 now preserves HIDL, disables the unused Python/AIDL clipboard manager,
+removes its pyclip/wl-clipboard dependencies, adds native HwBinder UID1000 caller
+admission before cached-data read/mutation, and reconnects SDK failed proxies.
+Both builders/state hashes track native patch0015 and replacement SDK0004.
+Native HIDL generated stubs assert successful Return and exactly one getter
+callback. Initial94e78f80 fake-transport test did not model that contract; corrected
+before any image build: denied read calls back empty once, denied write is no-op.
+Updated32-case actual-method testda69c3a5 PASSED, unpatched negative control42.
+HIDL production SDK wrapper430cbf55 PASSED failure/reconnection/race fixture tests.
+Neither is real HwBinder proof. Root package .91/84-case check subsequently PASSED (current handoff above).
+
+Upstream native read_selection blocked the event loop and shared its cache
+without synchronization;6118eec17 fixes these source paths. Next real-image
+acceptance uses APKr12's raw HIDL controls with known nonempty trusted reads.
+Do not mistake ordinary-empty for denial when the trusted control is also empty.
+Keep all arbitrary clipboard contents out of logs; synthetic token classes only.
+
+Historical06:18Z state (superseded by active r6 build above): ALL owned VMs and image jobs were OFF. Stopped r5/09340d25 root controller and
+admission before native-path correction. No completed replacement image exists.
+Own Luma VM original6GiB/8GiB config restored inactive05:54:45Z from intact
+vm/domain.xml; actual restored XML SHA
+b3f5031d32bf43a5ed2c0241f1e4dec6a1369be53ea25f36ed8ddbba82c37fe5.
+EMPTY domain-before-lowram-20261029T020943.xml remains unusable. Next full-RAM
+runtime lifetime needs normal9GiB reservation; do not run it under old6GiB budget.
+Its .90 usr overlay is gone on reboot; APKr11 remains installed on its disk.
+
+Build VM UUID809f0871-fd88-4770-83dd-624c90259c06 remains defined/off,7GiB RAM,
+9GiB hard/4vCPU/24GiB guest swap/280GiB root disk. Private SSH key only
+/root/.ssh/luma-android-builder-20261029/ssh-key. Root controller private path
+build-vm-driver/controller.py and run.sh now watch admitted parent PID/start/UID,
+cgroup/memory.max and have EXIT cleanup + own-UUID ExecStopPost. No limits/reserves
+changed. Synthetic forced death/normal stop tests2dbfcc8d/4f675d66 stopped root
+actor within1s; normal test exercised watchdog, primary trap alone not proved.
+
+Prior build attempts preserved, not image passes. r3 did create a startup marker
+and entered the builder; old log must establish how far it got. r4/763bed83 stopped
+on that marker and cleaned own VM. r5 uses explicit prior-boot resume: archives
+started/result/log files under/root/luma-build-attempts only if timestamp predates
+current boot. Before next build, pack a new corrected readonly project disk and
+switch away from luma-project-aidl; retain all old inputs/logs. Consider a fresh
+named overlay for this source correction, preserving old upper/work; original
+compressed source is unchanged and validated. Never weaken Git/LFS/HEAD gates.
+
+Android source SFS57,095,458,816B SHA
+48f1c8c31596993fc4ec10e97ab17c571d3eb9e1d32b06a709d9f4be8a76f7be.
+Rootfs/tools/original project disks retained. Compiler guest chroot UID1003,
+no-new-privileges, private network namespace. Build root actor128MiB/6h and
+QEMU9GiB hard fit normal10GiB/450GiB HDD admission; no host credentials enter VM.
+
+Latest installed test package .90 (now reboot-cleared) passed83 actual package
+checks/zero skips/failures, directory755/import/signature checks. Binary
+ db6e7408e591d25aa83713eaccf625a38d69052a652618fd9021894d3c570754,
+SRPMdaa21b8aa950cff398ecc063e0907d879ff542f5979ec98718d3c0da85bce38c.
+Actual .90 root-hardware/user-monitor and LEGACY clipboard trusted/app controls
+passed; r10 APK UID10131 denied at all3 tested AIDL endpoints. Rootwaydroid_t,
+FedoraEnforcing; AndroidDisabled, old platform/property still allowed. Volatile
+fixture property cleared. No native-HIDL ordinary-APK admission pass yet.
+
+Real native clipboard plain-text round trip r10 passed. r11 APK
+SHA862bf4e6e0d931c7c8e714c34eb3060c4d5410423fd8f442c1a85b9447c090eb
+was built17ec82d0, installed/launched normally. Native GTK focus control recorded
+actual activation/boottime. Initial native-app focus control opened too late;
+fixed-token background match might have been legitimately cached. Strong round:
+normal Android copy, confirmed native focus, fresh host token published after
+that, then delayed APK read returned unexpected-content, NOT fresh target, while
+Android hasWindowFocus remained true. vm/clipboard-focus-r11-result.json records
+neither privacy pass nor confirmed fresh disclosure. Native control stopped by
+its timer. Personal profiles never used; source/evidence only synthetic.
+
+Actual sampler:16 samples/30.001s, observed Android PSS204.95..205.25MiB including
+fixture20.396MiB; cgroup memory497.88..498.42MiB;175,266CPUus,0.584% of one core,
+zero unreadable/changed or frozen samples. vm/observed-r90-20261029T0525.jsonl.
+Not physical battery, first-frame/GPU-memory completeness or comparative proof.
+
+Open gates: maintained AOSP rebase (current Android13/security patch2026-02-01),
+full-image native resize/dismissal/platform/property denial, actual clipboard
+HAL/IO/focus, MAC/usernamespace/origin attestation/private platform keys, ARM
+native/foreign ABIs, portals/hardware/media/reply and physical suspend/push/power.
+FP6 hardware gate/other agents/devices untouched. Preserve20GiB disk and8GiB host
+memory reserves. All bulk/private evidence stays task HDD, not Git. No release,
+push, PR, deployment or human sign-off. Research recommendation remains under
+/srv/dev/accounts/second/artifacts/android-first-class-research-20261028/RECOMMENDATION.md.
+
+## Validation and artifacts
+
+Exact commands, observed results, output paths and untested parts. Never turn
+an intended test into a passed result. Keep long logs in the artifact directory.
+
+## Dated history
+
+- UTC timestamp — concrete change or finding, outcome, and relevant commit/unit.
+
+2026-10-28 baseline: dev-android-baseline-db8fb1f2 ran60 tests, one pre-existing nonroot sysfs-fixture ownership failure and16 root-only skips. No baseline pass claimed. Preparing an independent flattened copy of an inactive synthetic Luma gate VM; original disks and domains remain unchanged. Bulk storage bind established at /srv/dev/accounts/second/experiments/android-first-class -> /srv/dev-storage/projects/luma-os/build/android-first-class, to account actual HDD usage through normal admission. VM preparation291473c6 active; no VM started yet.
+
+
+2026-10-28 implementation evidence (source candidate, not release):
+- `dev-android-component-tests-r2-5a91c9fa`: 71 tests, success, 16 root-only skips.
+- `dev-android-runtime-unit-r3-5bfef57c`: 73 repository Android tests passed with src/luma-platform/appkit on PYTHONPATH. Earlier two invocations lacked that dependency; their failures are retained.
+- `dev-android-notification-dbus-r2-603d425a`: real private D-Bus lifecycle checks passed, Binder listener fixture. First run caught and fixed a signed CloseNotification argument.
+- `dev-android-fixture-build-r2-a882f291`: actual APK compile/signature verification passed. First build exposed missing Java lambda bootstrap stubs; --release 8 compilation plus D8 fixed it. Tools are checked against the committed lock, not a downloaded manifest.
+- `dev-android-caller-policy-6bd5f259`: compiled production Java admission helper passed 100 UID combinations. This is not a framework/APK permission test.
+- `dev-android-tools-fetch-verify-1bea9815`: maintained downloader fetched and verified all three official pinned tool artifacts.
+- Disposable domain luma-android-first-class-x86 has its own flattened HDD disk, 6 GiB RAM/8 GiB hard ceiling, two vCPUs and accelerated virtio graphics. Original source domain/disks are untouched. The synthetic account was granted its normal installer group only inside this VM. Source APK installed through Luma and launched in a native Luma window; one warm command took 2.945 seconds. This is command latency, not first-frame timing or a statistical benchmark.
+- Actual mouse resize froze the baseline HWC. Android debuggerd captured a cycle: xdg_toplevel_handle_configure holds chromeMutex and enters HWC2On1Adapter::hwc1Invalidate, while adapter present holds its lock and enters prairie::frame waiting for chromeMutex. Patch 0014 releases window locks before adapter invalidation, including display/legacy paths.
+- `dev-android-windowing-lock-regression-575ae0d9`: exact production callback bodies compiled and passed the three-path lock test; removing the unlock reproduces the deadlock with exit42. Full pinned HWC patch series/header/license checks and actual two-translation-unit cancellation linkage passed, with broken-scope negative control rejected. Full image build and VM resize retest remain open.
+- Archived Android source recovery is isolated in task-owned root-private HDD staging. First 1.5 GiB root driver hit its cgroup limit (7166c5f6); preserved failure, retry 53b804ed admitted with 4 GiB total/3.5 GiB root bound. No existing build tree is reset or overwritten.
+- Current baseline Android image reports internal SELinux Disabled while Fedora host is Enforcing. This is an unresolved production isolation gate, not qualified sandboxing. ARM execution, reverse ABI translation, document/camera/media brokers, inline reply, suspend/push/battery, accessibility and complete integration remain open.
+
+2026-10-28 native notification and packaging evidence:
+- Source commits feb302cf3, 0c6ac15f3 and 765a59e1c preserve the bridge/patches, clean-package fix and source fixture. Runtime RPM .81 was built from clean 0c6ac15f3 by dev-android-runtime-rpm-r2-3fd91682: actual package checks ran 71 tests with zero skips/failures. Binary SHA256 062802d71e88534daad0621b98d400a922cfd50df4cb394523812d7e1abd294e. Package artifacts are in that account job's source/build/packages/luma-android-runtime.
+- Installed .81 only in the disposable VM's reboot-cleared ostree development overlay. Existing release/installer protection was not changed. New Luma-owned session transport is running; the Android image remains the old matched system/vendor pair, without the new SDK/HWC patches.
+- dev-android-fixture-build-r3-efa332bb built the permission-aware, UID-boundary fixture. APK SHA256 0c32ff3c4af425708ae9b5247e5c5f8d04a774b2c5fc5b46d1f9c032f9508d00; own HDD apk-r3/AndroidIntegrationTest.apk. Source/tool hashes match its build receipt.
+- The real APK posted a notification rendered as a native Luma notification-center card. Actual desktop identity was waydroid.org.projectluma.androidtest. Clicking native Mark read delivered action:read to the APK's private events.jsonl and cleared the card. Screenshot evidence is own HDD vm/fixture-r3-window.png and vm/notification-mark-read.png. This qualifies the tested content/action path only; inline text reply, grouping, privacy/channel controls and new dismissal callbacks remain open.
+- The ordinary APK boundary probe returned allowed against the old image. This confirms why the new platform caller patch is needed, not a security pass. Its compiled policy helper passes; complete-image denial remains to be tested.
+- Found a separate framework freeze path controlled by persist.waydroid.suspend. Default product property and host readiness now follow the existing explicit idle_freeze setting. dev-android-idle-policy-tests-r3-d575e1a7 ran all 74 repository Android tests successfully. First test invocation found a stale expected call ordering; next invocation was refused by the already-held recovery path lock; retained both outcomes, then used the task worktree admission path.
+- Applying the supported property in the VM and closing all app windows left open_windows=0 and cgroup.freeze=0. A 30-second no-window sample retained freeze=0 and used 25,304 microseconds of aggregate Android cgroup CPU. This controlled VM observation is not a physical power, push-delivery or Doze qualification. Sample: own HDD vm/idle-policy-background-sample.json.
+- Product decision recorded explicitly: Android notifications use Luma styling, preserving Android semantics through structured bridges. Android custom RemoteViews must not execute as host UI.
+
+Active jobs at this update: dev-android-vm-r4-be5a1197 (own VM, automatic finite lifetime) and dev-android-source-recovery-r2-53b804ed (root unit luma-android-first-class-source-recovery-r2-20261028T223745.service). Recovery is running/thawed, capped at 3.5 GiB with low IO weight and 60M/s write limit; files had reached prebuilts/vndk. No complete image rebuild is claimed. Root staging and original retired archive remain private. Next: inspect recovered preparation state, arrange bounded matched-image build, then retest the reproduced resize deadlock and ordinary-APK admission on that image.
+
+2026-10-28T23:23Z follow-up:
+- dev-android-runtime-rpm-r3-b4fb3ebf built .82 from clean a7d895b01007bc1915589af71422f0b11bd6454e successfully. Actual package checks: 71 tests, zero skips/failures; peak 2 GiB. Binary SHA256 8500e1b773849cc7e2b1a4d559052a68f8a06a8596c59e0a247aa6d9b6a087ee; SRPM SHA256 973add20b62566da21ce2852674d5295226a65696615e3d6944051e3f69b7ff9. Output is the corresponding account artifact directory's source/build/packages/luma-android-runtime.
+- Installed .82 successfully only in the existing disposable VM overlay. The RPM transaction completed with exit 0; final query reports .82 only. Reloaded user units and restarted luma-android-session.service and luma-android.service; both report active. A concurrent query during update briefly showed both versions while update-mime-database was still running; that was not the final package state. No other VM/package/update policies changed.
+- Source recovery completed successfully at 23:20:33Z (42m47s, 3.5 GiB peak). dev-android-source-recovery-r2-53b804ed and its root unit are now inactive/success. The recovered out/ contains directory scaffolding without the prior Ninja graph or images; this is a cold build input, not a restored warm build.
+- Read-only recovered HEADs: hardware/waydroid 18e73d3882d97d909843925419ef25ea60f6a376 (old Prairie chrome commit on pinned 85f31a9); frameworks/base 79d859d0a657dc234241a56fb49279a0f448fe56; device/waydroid/waydroid 5ff343563d2ea187534c9791993137c61d198c0b; lineage-sdk 631dcfbbd15efcd44c970eb25e3c78f8d44b0283 (upstream Waydroid service patches). Vendor is vendor/extra, not vendor/waydroid. Prepared-state metadata is retained intact. Next build setup must verify the complete recorded snapshot before using the normal reset/preparation path; no reset or build has occurred.
+- Only the finite private VM lifetime job remains active. Full image build, resize acceptance and ordinary APK rejection are still open.
+
+2026-10-28 continuation (active; no subsystem completion claimed):
+- Builder preparation dev-android-source-builder-prepare-9b3bc3ef passed. Task-private Ubuntu 22.04 rootfs, official base digest 8a2321a92b438238f93b4346fff61bc4259c99fdd4d9b52ee86f153fee0c344f; built image f91addbcbf3c30955bd1439a73b880700e88e2e30d1b2d2b8a7f0c098ca51964. Exact export/containerfile receipt is own HDD source-builder/receipt.json. No build uses host credentials or network. The normal worker's unprivileged Bubblewrap namespace probe passed (6e5d0cdd).
+- Recovered Android source custody was explicitly assigned to this task owner only (03cdecc8), preserving the original archive. Found an archived unfinished HWC delta. Preserved it and the original recovered tree, then made an independent XFS reflink candidate (c100bd02); selected its recorded HWC commit only in that fork. Original delta is retained and hashed in source-recovery/candidate-provenance.json. Current maintained HWC already has the corresponding logical-to-pixel resize conversion.
+- dev-android-source-build-preflight-1dbcf889 is verifying that candidate's full repo snapshot and file cleanliness inside the offline namespace. It has passed the recorded head-snapshot check and is still hashing copied working files through repo forall. At 23:44Z it had reached prebuilts. No reset or Android compilation has started. Launcher: own HDD source-builder/run.py; source snapshot 79198ee0e; candidate path source-recovery/candidate/lineage-20. Namespace mounts only the build inputs and private scratch.
+- dev-android-fixture-build-r4-4ec59e62 passed actual APK compilation/signature verification. APK SHA256 b865d34e96fa2a82e3d4b5ee47a80e1b8afabbbd2f3bc53edcdb263426b1a276. Its local-alarm receiver is now source owned. Installer correctly rejected a root-only copied APK; assigning that private fixture file to the synthetic VM user allowed normal Luma installation. No installer checks were weakened.
+- Real no-window background delivery passed on runtime .82/old Android image: fixture scheduled at elapsed5107999ms, fired at5138004ms, posted at5138006ms; host observed waydroid.org.projectluma.androidtest and its actions. Android reported zero open windows and cgroup.freeze=0. Native Luma notification-center screenshot confirms the card with no Android app window. Private receipts: own HDD vm/background-notification-r4.txt and vm/background-notification-r4.png. This is a local alarm test, not network push/suspend/battery qualification.
+- A diagnostic Android run-as invocation exited139; its attempted pre-update synthetic event backup was empty. Earlier notification action evidence remains in screenshots, transport logs and this factual record. Subsequent receipt capture uses root cat of only the source fixture's private synthetic events; no user data is involved.
+- Root hardware transport audit used official Waydroid 1.6.3 commit5b7e2e71be3f6bfaaaab3b461251dacaf1ce4991. Initial fetch had an incorrect services/container_manager.py path and failed; corrected actions/container_manager.py fetch passed (02fb891f). Source/hash receipt is private upstream/root-bridge/receipt.json.
+- Added a process-local root Binder constructor adapter and package-owned systemd drop-in. It admits kernel UIDs0/1000 before upstream parcel read/dispatch, fails closed when credentials are missing, and leaves provider files/global gbinder intact. Four dedicated boundary tests passed (bf4a61c0); component run fb682892 ran75 tests successfully with16 root-only skips. Real Binder admission and candidate RPM checks remain next.
+Active jobs: private VM lifetime be5a1197; source preflight1dbcf889. Next: package/runtime Binder acceptance, finish clean-source audit, stop only this VM to fit the admitted cold full-image build, then boot its matched images and retest resize/framework admission/dismissal. All ARM/mobile/power/portal/translation gates remain open.
+
+2026-10-29T00:59Z active handoff:
+- Commit083c9a97d records root hardware admission and real no-window notification evidence. RPM .83 built successfully by dev-android-runtime-rpm-r4-74cb90c7: 75 actual tests, zero skips/failures, binary SHA25620962f70ca72722ada6f5f41f95074ebe1fe92376701a806b1301a77b5a58c21. Installed only private VM overlay; later manual .84 source overlays mean current VM is not a clean RPM qualification.
+- Caught custom root entrypoint losing the existing provider SELinux transition. Uncommitted .84 adds label-only CIL for the helper using existing waydroid_exec_t, no allow rules, and refuses startup outside waydroid_t on SELinux hosts. Disposable VM source overlay now confirms root process waydroid_t with host Enforcing. A discarded service PYTHONPATH/sitecustomize prototype is inert in the VM; no prototype source retained. First prototype used wrong /usr/local purelib and failed import; fixed actual RPM path before proceeding. No production files or host policy changed.
+- Early raw Binder probes used obsolete /dev/anbox-binder or generic transport errors: not security passes. Correct endpoint is /dev/binder with aidl3 protocols. R6 APK b865 predecessor was replaced by apk-r6; its root probe incorrectly treated an empty Parcel as allowed. Fixed source to reject empty replies; rebuild pending. Root hardware unknown transaction65536 is read-only and has typed positive-control versus denial replies. Actual live tests exposed python-gbinder append_int32 rejecting negative values; fixed using unsigned wire words and strengthened fake accordingly. Six focused tests passed (bfa211bc); actual typed Binder denial is still being retested. No mutable hardware operation was invoked.
+- Source preflight1dbcf889 canceled after lengthy duplicate cold audit; prepare64ad0adb failed after39m40s without useful stderr. Traced retry8f9172b3 failed cleanliness on WebView/Mesa LFS files: isolated Ubuntu lacked Git LFS/filter, while host LFS-aware status is clean. Original recovered source, binaries and archive were preserved. No reset/Android compile pass claimed.
+- Added private Meson1.9.2 (official PyPI SHA1a284dc1912929098a6462401af58dc49ae3f324e94814a38a8f1020cee07cba) and Git LFS3.0.2 from signature-verified official Ubuntu apt (binary SHA682e3dbfed122987bfd8e73e21852bc92703e53fb2b20d1b34a361e3ce65774a). Own build-home global LFS filter, no account credentials. Tools check ea50c049 passes including exact pinned Android clang14.0.6, Meson, Ninja and LFS config. Maintained prepare retry25ed13ab is active under normal worker6GiB/20GiB HDD reservation, offline Bubblewrap. Source snapshot79198ee0e; independent candidate source-recovery/candidate/lineage-20. Full-image compilation has NOT started.
+- Active units: dev-android-vm-r4-be5a1197 (own VM finite lifetime, expected end about01:11Z), dev-android-source-prepare-r3-25ed13ab. Do not extend VM/root bound or bypass16GiB account reservation. Full build10GiB requires stopping/releasing only this VM9GiB first. Source builder launcher own HDD source-builder/run.py. Source overlays own HDD vm/hardware-guard-source-84b.*, native probe vm guest /var/tmp/luma-hardware-probe-r5.py.
+- Next: finish typed read-only root versus ordinary-UID Binder checks; commit and build/install .84 clean RPM; finish LFS-aware maintained prepare, bounded matched system/vendor build, then actual resize/platform rejection/dismissal acceptance. Source audit also found Android init property permission checks commented out in old Waydroid source and host clipboard/user-monitor Binder endpoints needing review; no actual mitigation/pass yet. Internal Android SELinux, maintained AOSP rebase, ARM/translation, hardware/documents/audio/media, inline reply/privacy, latency and physical suspend/push/power remain open. No complete or shipping claim.
+
+2026-10-29T01:01Z follow-up:
+- Maintained prepare25ed13ab succeeded after3min29s with Git LFS configured, peak1GiB. Full recorded HEAD snapshot and cleanliness passed; current task patches refreshed in the independent source candidate. No Android compilation yet.
+- Explicit guarded entrypoint reached Android boot_completed=1. A first broker attempt timed out under concurrent HDD audit load; later standalone session boot succeeded. post-stop hook /dev/null returns126 and predates this adapter; no unsupported claim that it caused boot delay.
+- Real Android service client control (root, unknown transaction65536) returned AIDL UnsupportedOperationException(-7); ordinary UID10127 returned SecurityException(-1). Fedora root service remains waydroid_t/Enforcing. Generic host python-gbinder client returned transport status1 and cannot qualify the path; replaced acceptance script with bounded Android-native service client and exact exception parsing. Actual APK Java boundary receipt is next.
+- Latest fixture build5487068e succeeded: apk-r7 SHA0bcb811bfeeba066cdf533b87b5543c10b07c51b0339c0cc217cfeb6e9517460. Initial848067e7 failed because wrapper referenced r6 output; no original APK overwritten. One retry admission refused while other account jobs held memory. Corrected private wrapper and normal admission succeeded. First remove command used unsupported --confirmed; corrected without weakening installer.
+
+2026-10-29T01:05Z:
+- Source commit0169f2ff5 contains .84 guarded-entrypoint policy and clean-source Git LFS preflight. dev-android-runtime-rpm-r5-bb6c4fc1 passed:77 actual tests, zero skips/failures. Binary SHA5440a3bbac4f54a82e37ab6810c4f7572a92cd495817537016b46233197d43c6, SRPM e3c90df203dfbaac0e2d2c69f7c11ea874d271d20b25e2e2b6a2799a2a05024b, outputs own HDD rpm-r5/source/build/packages/luma-android-runtime. VM installation ongoing in update-mime-database; wait for final transaction before claiming package pass.
+- Real r7 APK, installed normally and running UID10129, returned root-hardware-boundary=denied. Old framework platform-boundary remains allowed, as expected before rebuilt images. Read-only native positive control(-7)/ordinary UID denial(-1) also pass. Retained exact evidence own HDD vm/fixture-r7-boundary-events.txt. Triggered source-owned probe_boundary activity extra using Android am, not a privileged APK identity.
+- Harmless volatile luma.test.property_boundary was writable by ordinary Android UID10129 in old image; readback confirmed then root cleared it. Added uncommitted Android init property admission patch plus both builder paths/state tracking. It rejects application and isolated app IDs across Android users before global/control writes, retains existing native service identities. No complete SELinux replacement claimed. Compilation/image acceptance pending; do not modify Android candidate tree outside maintained preparation.
+
+2026-10-29T01:07Z property policy candidate:
+- dev-android-property-writer-policy-139e36cc compiled the actual patched CheckPermissions function with permissive dependency fixtures.160 UID/user/property combinations passed; compiling the original function failed the same tests with expected42. Uses pinned Android UID constants, includes ordinary/control names as pure strings; no power/control operation executed. Candidate patch applies cleanly to exact recovered Waydroid-prepared system/core. Both clean and incremental builders apply/hash it; full init/image test still pending.
+- .84 RPM installation completed successfully; final query reports only .84, helper is waydroid_exec_t, ExecStart selects it and no prototype PYTHONPATH remains. Restart/actual boundary recheck from installed RPM is active. Other abandoned prototype files are inert in this disposable overlay; no source prototype retained.
+
+2026-10-29T01:08Z installed-package findings:
+- .84 installed RPM's guarded root entrypoint booted Android and passes native typed root/app denial after starting the supervised session. First automated recheck found a stopped container and correctly failed; starting session explicitly restored the tested endpoint. Installed root service remains waydroid_t/Enforcing.
+- Found a separate real packaging defect in HDD builds: inherited private/setgid directory modes entered the RPM, including /usr/share/luma/android/profiles. Broker could not read its profile. Did not bypass permissions in the VM. Added .85 explicit RPM directory mode0755 and build verification for every packaged directory (including generated cache/license dirs). .84 package tests passed, but its user session integration is not accepted. New .85 build/retest needed.
+
+2026-10-29T01:10Z active build handoff:
+- .85 clean RPM build dev-android-runtime-rpm-r6-2bc2b668 passed77 tests, zero skips/failures, and header verification of every packaged directory0755. Binary e3d34f570731d11738eb91708b0ab9e8932e91ebefd81c008687e83e3cc24931; SRPM029b2baf9f4455d0537e1ba57edee1748a6b2a20893dd911dc7f5d1b3c6e16f8. Source1273cbaf5, task HDD rpm-r6/source/build/packages/luma-android-runtime. This fixes observed .84 profile traversal; .85 VM installation remains next.
+- Own VM shut down cleanly before its finite lifetime; dev-android-vm-r4-be5a1197 inactive/success. Original other VMs untouched. No VM should run concurrently with this account's10GiB full image worker without fresh normal admission.
+- Full matched-image builder job dev-android-images-x86-r2-d3916ea0 admitted01:09:38Z with10GiB/200GiB HDD reservation, two build jobs, GOGC20, offline unprivileged Bubblewrap. First attempt refused memory while own VM reservation remained; no override. It uses exact source snapshot948b609305be896cb7c0e78ad058608885aba6ed, tar SHA4d3639e426bdcbb224e1db90986448b8fb20046e5099a9c2a1814ec57b67dc03. This snapshot includes property admission and prior SDK/HWC changes; current runtime .85 packaging does not affect image code. Launcher own HDD source-builder/run.py; original source snapshot retained. Builder begins with maintained preparation/full cleanliness checks before compilation. No image completion claimed.
+- Source audit official Waydroid1.6.3 IClipboard/IUserMonitor shows unguarded host callback entrypoints too. Next independent source work is kernel-UID admission in Luma-owned session adapters before parcel reads, preserving Android clipboard focus policy. Do not read real user clipboards; test only synthetic VM content.
+
+2026-10-29T01:14Z independent session admission candidate:
+- Uncommitted .86 uses the same process-local constructor facade with distinct exact policies: root hardware allows0/1000, clipboard/user-monitor only1000. Repeat installation refuses policy drift. Luma session installs both adapters before upstream managers start; no provider file/global gbinder mutation. Android clipboard source still performs focus/lock/permission checks before system_server consults host clipboard.
+- Actual policy tests a185b02b ran8 focused tests successfully. Component7b3acbdf ran79 tests successfully with16 root-only skips. Package build still required for zero-skip count. New fixture unknown-operation probes do not access clipboard contents or create package events; its shared receipt writer is synchronized for the concurrent probes. Read-only native acceptance script supports service-specific trusted controls; actual clipboard/user-monitor VM checks remain open.
+- Full-image worker d3916ea0 has compiled the Soong build tools and is progressing into graph generation; this is not an image completion percentage. Current source includes property admission. Keep job normal10GiB, two compiler jobs/GOGC20; monitor actual result instead of raising memory/reserve or relaunching other VMs. .85 RPM mode validation passed but .85/.86 installation is deferred to next admitted test-VM lifetime after image build.
+
+2026-10-29T01:18Z:
+- .86 clean build ef21b4e4 passed79 actual tests, zero skips/failures and all package directory-mode checks. Binary6f32c3dd600750ba7ac27c5bf2141d9023f00e3ec28cd20286799aac6fe33e5c; SRPM6df655539478efeb7ba260aa9d0858d993f78eeade22179357fa779275077731. Source d3450923f, own HDD rpm-r7. New APK r8/05d00363 passed pinned-tool build:4c333923949aa3267fe0bf0cf4c1eb1069968599ac8a9504cb266a5b67200eb5. Neither installed in VM yet.
+- Further source audit: current non-remapped Android system UID1000 can collide with host login UID1000. Kernel UID guard rejects ordinary APKs but is not complete origin attestation. Dedicated user-namespace identity mapping plus actual runtime-instance peer validation and protected production platform signing remain shipping gates; no sandbox completion claimed. Do not invent a cgroup path or weaken admission if origin cannot be verified.
+- Added uncommitted .87 rejection of root Binder image-replacement transactions5/6, before parcel reads, even for trusted Android UIDs. Host verified update path owns image replacement; installed-image upstream already disables guest updater. ShutdownRequest7 only stops/restarts Android in the inspected upstream source, not host power; it remains intact. No mutable upgrade/power operation was invoked during tests.
+- Image worker d3916ea0 remains active; Soong build-graph generation near its normal7GiB MemoryHigh, bounded10GiB maximum. No limit changes, VM restart or new image success claim.
+
+2026-10-29T01:24Z acceptance accuracy:
+- e83b615e1 commits host-owned image replacement; eight exact adapter tests pass ecd26fff. New .87 package build remains pending (last clean package .86).
+- Updated desktop acceptance script to use only org.projectluma.androidtest and the existing disposable graphical session. Removed nested compositor/user-manager display mutation and misleading notification/SELinux claims. It records functional observations but fails the isolation gate for disabled Android MAC, shared user namespace or sampled UID collisions. Full mapping audit and actual notification/action receipts remain separate. Runtime smoke now checks installation of the actual Luma-owned transport instead of unrelated provider source strings. Shell syntax/diff checks pass; live script execution is pending new-image VM acceptance.
+- Full image worker remains active, graph generation IO-bound on HDD (observed IO pressure ~80%, no OOM/max events), MemoryHigh7GiB/MemoryMax10GiB unchanged. Do not report old 399-step bootstrap progress as whole-image completion. Keep original archive/source/VM evidence intact.
+
+2026-10-29T01:31Z image build pressure correction:
+- d3916ea0 reached actual soong_build graph generation, not just bootstrap. It then accumulated ~86GiB read_bytes for25MiB read syscalls, with ~7.13GiB anonymous RSS and only164KiB file RSS, ~80% IO pressure and repeated file refaults. MemoryHigh7GiB/MemoryMax10GiB remained intact; no OOM/max events. This is executable-page thrashing under memory pressure, not useful image progress. Stopping only this owned attempt normally; keep all compiled objects/source/evidence.
+- Pinned compiler Go is1.18, so GOMEMLIMIT is unavailable. Next use GOGC5 and GOMAXPROCS2, explicitly forward the latter through Soong's env-i boundary with an additive build-host-only patch and tracked preparation hash. Do not raise limits, remove reserves or adopt another build tree.
+- .87 RPM build7d684f6e succeeded; counts/hashes pending receipt extraction. APK r9/7cfb98fa built successfully, SHA4408dd0e925e753ca6ea800179b9334b788b7c464344e79f4c1524290d4c67f7. It adds bounded actual app-UID writes to only volatile fixture property, with native positive-control/readback instructions. Source changes in BoundaryProbe.java/README remain uncommitted at this note until preserved with receipt.
+
+2026-10-29T01:33Z compiler retry preparation:
+- First graph job stopped normally; no source reset or policy change. Additive Soong patch0002 preserves explicit GOMAXPROCS through env-i; both builder paths and prepared-state hash tracking updated, applying after existing GC patch. Exact prepared source apply-check and shell syntax pass. Actual new compiler environment/graph result remains next.
+- .87 RPM7d684f6e actual79 tests, zero skips/failures, directory checks pass. Binary0b549cb63ce1911b3b4f94bd1f6da0337464ad37551fe197c53127428059fdeb; SRPMd3b1f5591b196c6e42367f296ce4fffed455e38b316703f7262da4d38097cd89. Source12231bb40, own HDD rpm-r8. Latest source-owned APK r9 compile/signature checks pass; no live property/clipboard/user-monitor pass claimed.
+
+2026-10-29T01:41Z Blueprint override correction:
+- Retried worker7d31767a received actual GOGC5/GOMAXPROCS2 (verified in its compiler environment), but Blueprint bootstrap/command.go unconditionally calls runtime.GOMAXPROCS(runtime.NumCPU()). Observed105 threads, >1000% CPU and renewed ~7.14GiB anonymous RSS/file-page starvation. Stopped only this owned retry normally, no limit changes. Pinned args.NoGC is false; no claim that GC itself was disabled.
+- New additive Blueprint patch honors explicit GOMAXPROCS while retaining upstream default behavior. Both maintained builder paths and incremental-state tracking apply it. Exact source apply-check/shell checks pass. c1196e84 is compiling/executing the actual production concurrency prelude and unpatched negative control with pinned Go1.18. New full-image retry follows the result.
+- Added read-only bounded tests/android/measure-runtime.py for real cgroup CPU, memory.current, proportional memory and synthetic app attribution, with generation/incomplete-read checks and private exclusive output. Python compilation passes; actual VM measurement not yet run. No first-frame/battery claim.
+
+- c1196e84 passed in7.9s/115MiB: actual patched Blueprint prelude respects explicit concurrency2 and retains unset default; original prelude fails the positive test with expected42. Public builder derives Go concurrency from an explicit LUMA_BUILD_JOBS budget unless separately provided, and refuses invalid explicit GOMAXPROCS. New retry will verify the actual compiler environment plus running thread/memory behavior; policy test alone is not a full build.
+
+2026-10-29T01:50Z:
+- Full-image worker c3c0c929 uses source9db3a1c96 and actual GOGC5/GOMAXPROCS2. Verified compiler now five threads/~196% CPU, ~3.65GiB RSS (including17MiB file pages) and only4KiB read_bytes at the sampled graph point, rather than the earlier executable-page refault loop. Different cache states/stages make this operational evidence, not a comparative benchmark or completed image.
+- .88 source drops delivered notification body/image payloads from the ownership map, retains only package/action authority, and uses dbus.ByteArray instead of per-byte wrapper allocation. Weak-reference retention regression c53406cb passed9 tests. Real private-D-Bus a36830a1 passed9 checks including exact image bytes, actions/token, dismissal/expiration/withdrawal and server restart. Binder remains a fixture there; actual APK/image delivery requalification still required. Package .88 zero-skip checks next.
+- An attempted registry claim refresh refused because the existing own record already exists; it was not overwritten. Actual branch/path/owner remain explicit in this task note. No unrelated task was adopted.
+
+2026-10-29T02:02Z current continuation:
+- e01969db5 commits .88 notification payload release/ByteArray changes. rpm-r9/3079868e passed80 real tests, zero skips/failures and directory-mode checks; binary9b6f0f9a40c1c92c0f06b60a595c2f43cb86d8e748f251cc08626c361583aaad, SRPMa1bffc9eac4d444b27fae563ff2348a8396edc4abeddc71a65e9136fb6096ce1. It remains uninstalled (own VM off).
+- c3c0c929 eventually grew to the MemoryHigh threshold despite correct five-thread/two-CPU behavior and began refaulting executable pages again. Stopped only this owned attempt; no image completion. A separate normally admitted10GiB bounded180s direct compiler diagnostic c6ef88c8 ended124 as designed, preserving GC trace. Last trace at178.7s: ~2,759MiB live heap,5% goal~2,897MiB; diagnostics had3.2GiB peak but had not reached the later large graph stage. It proves GC is active, not that full graph now fits. No active full build currently.
+- Preparing an explicit image-build-only Make patch that omits unused Windows SDK host-cross variants. Guest target/secondary architectures and ABIs are untouched; both builder paths/state hashes track the patch. Initial pure Make test44c5faf0 exposed command-line variable precedence; corrected explicit flag with override and retried abdb14d6. Exact source apply/shell syntax checks pass. Full generated Soong JSON/heap/build acceptance are next. This is a host graph optimization, not reduced Android API or native ABI coverage.
+
+2026-10-29T02:05Z host graph policy check:
+- abdb14d6 passed the patched cases but failed its negative-control assertion because the test supplied empty HOST_CROSS_OS on Make's command line, suppressing the upstream default. Corrected the fixture to supply the actual environment contract; 2d044c66 now passes all four real host-fragment/default comparisons and the upstream Windows control. Source policy and test fix are preserved separately. Generated full Soong configuration and graph fit remain next; no full image pass.
+
+2026-10-29T03:00Z live .88 boundary finding:
+- Missing clipboard positive control is endpoint absence, not a failed UID denial: real Waydroid clipboard_manager skips registration when pyclip is absent. VM has wl-clipboard2.2.1 but no python3-pyclip. User-monitor real system-UID control(-7) and ordinary UID10130 denial(-1) pass; root hardware had passed before the missing endpoint. No clipboard data read/written by those unknown-operation probes.
+- Added .89 required python3-pyclip + wl-clipboard and build import check, fixing the observed missing optional provider. New fixture controls copy only fixed synthetic Android text and record only whether a whitelisted synthetic host string matched; arbitrary clipboard contents are never logged. Compilation/package/live text-copy/paste checks pending; no broad MIME clipboard qualification claimed.
+- Low-RAM .88 source APKr9 normal remove/install/launch succeeded after Android completed its slow boot: command runtimes11.9/19.1/4.5s under concurrent HDD load, not benchmarks. Cold120s failures retained. No freeze (persist.waydroid.suspend=false); system_server later reports BOOT_COMPLETED. Earlier auto-warm session had started before the Wayland socket and exhausted its startup burst, another lifecycle issue to address.
+- Build VM cloud-image preparation e67a90c1 passed, inactive domain UUID809f0871-fd88-4770-83dd-624c90259c06. Private SSH key stays under/root/.ssh/luma-android-builder-20261029.9GiB hard/7GiB RAM/4vCPU profile is to run under fresh10GiB normal admission; source disk pending successful squashfs pack. Generic host limits unchanged; guest-only24GiB disk paging. Rootfs285081600B SHAe01d7eb66e4b3bc04b974438dba450435fc45adc73c9cd5dd01dea37b0276e7f; tools6316032B SHA224ab89186bdc083938e1372c6cb29b4a6a0715dced6a1a9a85dea3fc98ed202. Source packf50c7d55 remains active.
+
+2026-10-29T04:25Z compositor readiness:
+- Source18bbe1d27 supervised session now waits for an actual listening, current-user Unix Wayland socket before invoking Waydroid. Directory monitoring plus bounded startup-only retry covers bind-before-listen/backlog races; every timer/monitor is removed at readiness/deadline. Broker starts warm session from idle callback, replacing blind4s delay. No resident readiness polling. Actual socket tests34936b83 passed three tests (delayed bind/listen, immediate absolute path, missing/stale/regular/symlink deadlines). Full package/live graphical reboot test pending.
+
+2026-10-29T04:36Z continuation:
+- .89 package31a8444c PASSED80 tests/zero skips/failures; binary15dd4a1a950d270949cfe44661e494104fa510ec7ffff654d3f8ab31e9e68692, SRPM79658a955b56e3f588a3b80147aa1aca8b7f20325ee47109ce48dd57de599013. .90 sourcecc15bd5a2 packageff59a12f PASSED83 tests/zero skips/failures plus directory modes. Binarydb6e7408e591d25aa83713eaccf625a38d69052a652618fd9021894d3c570754, SRPMdaa21b8aa950cff398ecc063e0907d879ff542f5979ec98718d3c0da85bce38c; outputs rpm-r10/source/build/candidate-90/build/packages/luma-android-runtime. Private builder luma-android-runtime-89-20261029 preserves damaged earlier cache.
+- Build VM5145f446 verified all4 input hashes and booted, then failed because controller's missing initial log tail returned1 while guest setup was still active. ExecStopPost successfully destroyed ONLY its own UUID. Corrected startup status command and added failed-unit journal capture. Retry dev-android-images-build-vm-r2-ad1c3fe2 active10GiB/450GiB, rootunit luma-android-first-class-build-controller.service; re-verifying inputs, no compilation/image pass yet. Guest swap activation fallback supports clean restart; no host swap change.
+- Runtime VM dev-android-runtime-vm-r6-7ef0192b active6GiB/10GiB, rootunit luma-android-first-class-runtime-controller.service with6,000s cap and own-UUID ExecStopPost. QGA became reachable before normal network/root services; earlier NM-not-running/absent journal were early boot, not a guest network diagnosis. By04:30Z normal SSH/IP192.168.122.35 and synthetic UID1000 Wayland session are ready. Root capped install90/20261029T043113 active, signature verified/ostree disposable unlock done, .90+pyclip installed, RPM waits for update-mime-database. Wait terminal transaction before restart/tests.
+- Further clipboard source audit: HWC keyboard_handle_leave only releases keys; Android clipboard read policy trusts mWm.isUidFocused, and writes permit unfocused apps. This suggests stale Android focus after switching to native windows; actual leakage is NOT yet measured. Add native-host-focus background negative control and enforce cross-domain focus before claiming clipboard privacy. Current private bridge test is functional/UID filtering only, never full isolation.
+
+2026-10-29T05:02Z clipboard/cleanup evidence:
+- .90 installation completed04:39:54Z, signature/import/profile755 checks passed. Restarted own services; Android boot_completed1, session NRestarts0. r10 ordinary remove first timed out after17.4s while source checksum saturated disk; preserved root journal fixture10. Paused only checksum unit for120s with automatic thaw (04:45:14..04:47:14); ordinary remove/install/launch then succeeded8.74/8.84/2.77s command times, not frame or speed qualification. Private fixture-r10-install.json now holds the retry; original failure remains root journal and chat evidence.
+- Actual .90 native typed trusted/app controls passed all3 hardware/clipboard/usermonitor endpoints. r10 APK actualUID10131 reports all3 host endpoints denied. Old image still allows platform and test property; root cleared the volatile test key. Rootwaydroid_t and FedoraEnforcing retained, AndroidDisabled. Exact guest result /var/tmp/luma-android-qualification/host-bridge-88-result.json contains actual .90 package; filename is legacy, not a claim .88 passed clipboard.
+- Real r10 normal UI copied synthetic Android text; native wl-paste comparison matched, no arbitrary clipboard contents logged. Native wl-copy fixed host token then normal APK UI read returned matched-host-fixture. Root private logs clipboard10/20261029T044813 and own VM clipboard-android-to-host-r10.txt, captures clipboard-copy/read-r10.png. Bidirectional plain-text function only; native-focus/background privacy remains unqualified.
+- Recovered SDK Clipboard.java uses vendor HIDL while tested host exposes lineageos.waydroid.IClipboard AIDL. Stopped buildr3 before compilation to align contract. New source0004 adds matching AIDL, reconnects after binder death/errors without replaying failed writes, and preserves a newer connection against late old-proxy failure. Both maintained builders apply it; preparation state includes hash. Pinned AIDL generation+official API compile+production wrapper dependency-fixture tests14e4dee5 PASSED; first28942a04 failed because javac absent from host PATH, corrected to pinned source JDK17. No rebuilt-image IPC pass.
+- Stopping normal build job158f8b65 did NOT initially stop its separate root controller. Found and manually stopped root controller/own UUID04:52:55Z; original/other domains untouched. New private build-vm-driver/run.sh has EXIT cleanup and job_owner.py watches actual admitted parent PID/start/UID/cgroup/memory limit; root actor terminates if owner disappears. Synthetic no-VM watcher tests: forcibly killed owner2dbfcc8d at04:55:58; root stopped04:55:59. Normal devctl stop4f675d66 also stopped root actor via watchdog within1s (primary trap alone not proven). ExecStopPost own-UUID shutdown already observed. No host limits/reserves changed. Future lowram driver run-r3.sh uses same watchdog; CURRENT runtime VM still uses old run-r2.sh, so stop its root unit explicitly before stopping admission.
+- r3 build VM did get past corrected kernel swap parser and into guest mount preparation, then was manually stopped for the protocol fix. No image compiled. All build VMs now INACTIVE. New controller logs every guest mount command; update readonly Luma project disk with source0004 before next full build. Android source/rootfs/tools disks retained unchanged.
+- New APKr11/17ec82d0 compiled/signed successfully SHA862bf4e6e0d931c7c8e714c34eb3060c4d5410423fd8f442c1a85b9447c090eb, adds10s delayed synthetic clipboard read plus actual Android focus receipt. Live host-focus negative control is next. Current live runtime6GiB admission7ef0192b continues, deadline about06:00Z; own build off.
+
+2026-10-29T06:12Z actual-path correction:
+- Corrected earlier AIDL-backend assumption after actual DEX plus composer implementation inspection. Never use901d5f18c project image; HIDL-native reconnect/admission source candidate replaces it. Legacy dependency/provider removed from .91 candidate. No prior claim that legacy endpoint guards protect native clipboard remains current. Actual HIDL generator assert/callback review caught and corrected a transport-error denial that would abort the service; da69c3a5 updated contract tests pass32 cases with negative42, 430cbf55 wrapper lifecycle passes. Full image/wire and blocked-transfer tests remain next.
+
+2026-10-29T06:18Z source correction validation:
+- Added explicit libhwbinder_headers dependency for native UID API. Updated native policyf03ebfd2 passes32 source-body cases including exact callback-once/successful-return contract and unpatched negative42. SDK lifecycle283a9cc5 passes after removing misleading AIDL dependency fixtures; actual HIDL source remains unchanged in protocol. Adapter0a622f4d passes9 tests, including legacy provider suppression; first51ecc79f failed test import name and was corrected. .91 package check still next.
+
+2026-10-29T07:27Z native transfer milestone:
+- Added0016: one sleeping poll/eventfd worker per runtime,2s/1MiB text limits,
+  at most16 accepted writes, partial I/O, worker-local SIGPIPE mask, UTF-8 checks,
+  generation-checked synchronized cache and joined shutdown. Clipboard data source
+  snapshots use existing token registry to avoid listener-payload UAF during
+  Binder-side retirement; at most8 sources, later copies keep working.
+- Production-source dependency-fixture ASan/UBSan91d70a0f and TSan f4415ac5 pass;
+  real-helper stress ASan/UBSan and TSan receipts0d019389 pass800 concurrent read
+  submissions across shutdown with exactly800 callbacks and no descriptor leak.
+  Full pinned upstream series264ac866 passes. Android image/wire still unqualified.
+- Build r6 still in Git/LFS preflight at07:24Z (prebuilts ABI dumps/JDK and later
+  projects advancing). Read-only project59aecadc4 has0015, not0016. Runtime VMoff.
+
+2026-10-29T07:35Z runtime/page-size progress:
+- Owned runtime r7/1da16b36 active under6GiB, root watchdog observes normal owner.
+  .91 transaction finished07:34:04Z, replacing.80 in disposable overlay; profiles755.
+  An early read-only RPM query during transaction reported lock contention and
+  both versions, not a completion result. Only terminal driver result accepted.
+- New .92 kernel-page preflight candidate passes5 source tests in own x86 VM;
+  full package89-case result not yet run. Surface source selects4KiB; primary
+  AOSP docs confirm Android15 introduced16KiB support, which is not evidence
+  that our older Android13 images or64KiB host kernels are compatible.
+
+2026-10-29T08:12Z native baseline and lifecycle progress:
+- Build r6 passed source checks and compiled bootstrap; real soong_build graph
+  now paging inside7GiB guest+24GiB internal swap, source snapshot59aecadc4 still
+  lacks0016. No matched image ready. Root/controller normal ownership intact.
+- Raw APK13 ordinaryUID10134 confirmed missing native-HIDL ACL in old image with
+  nonempty trusted before/after tokens. Corrected probe is executable and catches
+  the real gap; prior APK12 unavailable result was never accepted as denial.
+- Source suite91 passes including cold handoff manager failure/no-child tests;
+  full package .92 pending. Live managed-cold92 source test still active.
+
+2026-10-29T08:41Z source milestone / remaining gates:
+- APK13 raw-HIDL negative control passed as a probe08:01:25Z: ordinaryUID10134
+  read Android fixture and wrote forbidden fixture, UID1000 before/after agreed.
+  It proves the older image is vulnerable, never a security pass. New0015/0016
+  image still required. Source tool native-clipboard-control.py now reproduces
+  the fixed read-only trusted control with required nonempty --expect.
+- Current source91 tests passed08:07Z. Real cold client failed182s deadline; its
+  supervised unit survived. Android completed later, but warm command timed out.
+  These old-image restart failures remain explicit release gates.
+- Guest-only zram setup succeeded08:27:39Z: official Ubuntu kernel extras
+  5.15.0-198.208 SHA43528923613a77891402e3b722729e7a866ac24f76b087b63a02cdd7ae56134d,
+  wireless-regdb dependency SHA0c8f9893f577c890b3dd6d1f2b90a564b1627879dd58b2bf3ce17434d5ca17d0.
+  Download hashes checked against signed apt metadata; no host swap/limits changed.
+  lz4 zram4GiB virtual/1GiB compressed-memory cap, priority100; original24GiB disk
+  swap preserved. Receipt build-vm/zram-receipt.json. First setup guard stopped on
+  the small dependency; second hit Python3.10's missing hashlib.file_digest before
+  install; corrected streaming hash, third succeeded. At08:39Z ~640MiB original
+  data occupied~142MiB compressed,179MiB peak; no image/performance pass implied.
+- r6 soong_build graph is IO bound (~12m CPU/~46m elapsed, RSS~6GiB plus disk swap).
+  Plan next: save root runtime stack, stop owned runtime/restore XML; commit source,
+  clean-package .92 and pack latest0016 project snapshot. Checkpoint/stop r6 if
+  still incomplete, then use8GiB guest RAM within EXISTING9GiB hard/10GiB normal
+  reservation and guest zram from startup, preserving source/upper/output. No
+  hard-cap, host memory reserve or host swap increase. Current r6 is STILL ACTIVE
+  with7GiB guest and source59aecadc4; do not assume that plan already ran.
+
+2026-10-29T15:12Z reply candidate milestone:
+- Sourceb22ed165d committed host/Android/Shell reply path; source/API/private-bus
+  checks pass with the exact limits above. .93 RPM124 tests passed but subsequent
+  byte/cursor negative controls exposed wire bugs; .94 correction is pending
+  commit/package and no .93 reply runtime pass exists. Native Shell build failed
+  existing icon-loader%check; preserving the failure, diagnosing prerequisites.
+- Main image r9 remains active source7c13c192f, graph CPU progressing with guest
+  zstd compression, no completed system/vendor images. No hardware/release claim.
+
+2026-10-29T15:38Z package/recovery milestone:
+- .94 runtime126 tests and native Shell124 full packaged checks passed, with
+  actual packaged reply-resource verification. Installed native reply/Binder/
+  APK text receipt and hardware gates remain open; no release/push/deployment.
+- Current image7c13c192f reached actual compiler10781/143205,7%. Bounded normal
+  checkpoint continuation watcher74758108 active; details and stop path above.
+  It never converts checkpoint/failure into an image pass or installs outputs.
+
+2026-10-29T15:58Z acceptance/recovery audit:
+- Added the24-gate current acceptance audit above. No component, old-image,
+  fixture or compiler result closes whole-system acceptance. Android MAC/UID
+  isolation is a known production blocker. Current guard image7c13c192f does
+  not contain SDK0005 replies, so its completion cannot qualify the new reply UI.
+- Found last-resume observer gap in private watcher. New watch-v2.py always
+  admits an observer for the last child, with zero further retries. Atomic
+  per-job records + task-wide build-vm-auto/latest.json retain terminal failure,
+  cancellation, deadline, admission refusal and budget exhaustion. Heartbeat60s.
+  Successful build is explicitly image_built_pending_qualification, never ready.
+- Policy95b0ee0b PASSED8 tests15:53:44Z. First3c510deb failed because its
+  temporary fixture omitted build-vm-auto parent; corrected setup, not assertions.
+  Tests cover actual final observer admission branch, terminal cases, no resume
+  after failure/success/cancellation, and atomic unqualified records.
+- Live systemd controls50d42f95 PASSED15:55:22Z: separately admitted synthetic
+  workers exited23/0; real observer processes recorded build_failed/
+  image_built_pending_qualification and exit1/0 respectively. Tests used a
+  separate state directory, no VM, Android image or restore claim.
+- Source-pin extension17ffac45 PASSED9 tests16:00:03Z, including rejecting a
+  modified synthetic controller. Startup of the actual pinned observer verified
+  its manifest and published that hash in the live heartbeat.
+- Old watchers74758108 and d1ad8be9 intentionally stopped; pinned watcher
+  dev-android-image-auto-pinned-watch-0-66408768.service active under normal1GiB.
+  Root controller r9/image normala1c4e3af uninterrupted. Same maximum4 resumes,
+ 24h outer deadline, unchanged reservations/caps and STOP path. Every observer
+  failure remains a failed normal job with structured status; no automatic code
+  repair or image installation/publication. Actual compiler restore still open.
+- Corrected design document's stale cold-launch statement to include qualified
+  old-image .92/full6GiB command observations while preserving prior failures.
+
+2026-10-29T16:07Z clipboard focus audit:
+- Traced pinned native keyboard leave handler: releases pressed keys but does
+  not revoke clipboard access. Existing0015/0016 do not implement focus policy.
+- Primary xdg-shell1.31 protocol explicitly says activated decorations do not
+  guarantee keyboard/pointer focus. An activated-state-only guard would not
+  establish clipboard privacy. Logical seat/window focus must be attested by
+  the compositor for desktop and touch-only profiles; preserve existing Android
+  copies for native pastes while revoking new background reads/writes.
+- Corrected native-focus-fixture.py: records native-window-activation/active,
+  source Gtk.Window:is-active and input_focus_attested=false. It no longer emits
+  misleading focused fields. Old private r11 runner/receipts remain historical;
+  they must not be reused as compositor-focus proof or run against the changed
+  schema without adapting qualification. The old result remains inconclusive.
+- Updated design and acceptance instructions with this distinction, focus-loss
+  races, generation changes and copy-after-switch controls. Normal syntax job
+  a60a1149 PASSED16:07:24Z; no GTK/compositor/runtime execution claim. Runtime VM
+  stays off while current guard image compiles. Builder19%,27842/143205 at
+ 16:07:33Z; pinned observer and original build still active. No focus gate closed.
+
+2026-10-29T16:25Z native guard qualification preparation:
+- New source-owned native-guard-qualification.py runs actual ordinary-APK raw
+  native clipboard read/write and task-name probes with UID1000 nonempty controls
+  before/after. Exact installed APK hash, kernel app UID/PID, unique run UUID
+  and unchanged init/system_server generations prevent stale/unavailable evidence
+  from passing. Scope excludes focus, task mutators and complete image/isolation
+  qualification. Its result always retains production_qualified=false.
+- Fixture can launch both native probes without coordinate clicks. Receipts now
+  include UID/PID and canonical guard_run UUID. A trusted-only fixed synthetic
+  clipboard seed avoids destructive or arbitrary clipboard controls; all use is
+  confined to the disposable test profile.
+- Evidence-classification e433a76d PASSED8 cases: expected denial, observed old
+  disclosure/write, missing/empty/unavailable controls, stale UUID or wrong
+  process, unavailable IPC, duplicate/missing receipts and isolated task-name
+  leakage. This is classification evidence, not actual rebuilt-image IPC.
+- APKr15 normal60701700 PASSED build/signature verification. SHA256
+  e54edd6f88584354cd472a50fe9fc879b87d9a9054b48cef7e0cde725db8b680,
+ 14893 bytes; apk-r15/build.json records exact source and verified tools. Not
+  installed or executed yet. Original APK14 evidence remains unchanged.
+- User correctly identified that build monitoring alone does not perform the
+  subsequent qualification. Preparing a bounded success-only handoff into the
+  owned disposable runtime VM under separate normal9GiB admission. Not active
+  or claimed qualified until that driver and its controls are validated.
+
+
+2026-10-29T17:22Z owner-authorized build capacity increase:
+- User explicitly authorized using idle server memory. Verified x86_64 native
+  KVM host/guest/Android target (secondaryx86), not an emulated ARM build. Host
+  has16 logical CPUs/8 physical cores and~34GiB available before the resize.
+- Increased the admitted build profile as detailed above; no shared runner code,
+  global32GiB budget or host/disk reserve change. Policy is shared through a
+  tooling-directory symlink, so both account aliases see the temporary account32/
+  build26 values. Initial private-policy assumption corrected by actual hash/path
+  checks; original policy restoration remains automatic. Other1GiB server preserved. Actual helper c9fb1537 PASSED9
+  watcher tests +3 root policy-fixture cases, including hardlink separation,
+  exact restoration and rejecting another owner's intervening policy change.
+  The hardlink fixture did not model the real parent-directory symlink; do not
+  claim per-account policy separation from that test.
+- Intentionally stopped old recovery66408768 and VM handoff99f51328 before
+  stopping the compiler, then resumed with the same immutable project/disk
+  outputs. Migration failure and correction retained; no full output reset.
+- New admitted normal961d8dd3/controller-r11, source-pin observereca8b2c8 and
+  post-build handoffeea5005f are active. Waiting for input SHA verification,
+  actual24GiB boot, eight-job compiler activity and new throughput observation.
+  Do not report a speedup merely from the larger configured allocation.
+
+- Actual larger-builder verification26f58230 PASSED17:26:26Z: guest MemTotal
+ 25,195,495,424 bytes/8 CPUs, current started marker jobs8/source7c13c192f,
+  native KVM XML RAM24GiB/QEMU25GiB hard+combined/CPU800%. Normal26GiB
+  admission remains active; runtime VM stays off. This proves startup/settings,
+  not eight simultaneous compiler processes, build completion or a speedup.
+  Evidence artifacts/dev-android-highram-live-verification-26f58230/live-verification.json.
+
+2026-10-29T18:15Z actual post-resize progress diagnosis:
+- User asked whether done. Actual compiler log was still empty at18:05 and no
+  Ninja process existed: unit active/startup settings did NOT mean C++ work had
+  resumed. Worker had~23GiB available, no swap activity, and heavy source-disk
+  waits. Exact parent was maintained prep dirty_projects -> repo forall -> eight
+  concurrent git status checks across the full compressed source checkout.
+  LLVM check alone read~17GiB over~25min. Full-source checks after remount are a
+  distinct bottleneck; do not report a new compile percentage from service state.
+- Read-only core.checkStat/minimal + trustctime=false experiment5660e2cb timed
+  out30s and was NOT adopted. No persisted stat/ignore relaxation.
+- Scheduling-only probea5c7ddc5 paused seven status processes with exact PID/start
+  checks, then restored them in finally/alarm paths. Oldest LLVM process finished
+  during1s; causality/speedup NOT established. Boundedcc4d54ce caps status tasks
+  at2 for at most230s, then releases every original process. No source/index
+  mutations or checks skipped. Its completion receipt still pending at18:14Z.
+- Actual724de78d PASSED18:12:36Z: builder-only global core.preloadIndex=false
+  verified, original config retained in guest/root, owner1003 preserved. This
+  affects scheduling for subsequent Git processes, not Android sources or the
+  immutable project disk. No controller/source pins were changed live.
+- Canonical future preparation now uses bounded verification jobs default2 and
+  Git index preloading disabled. Added explicit progress messages and fixed the
+  false-clean error path: Git/repo failures propagate through all four initial,
+  incremental and destructive-reset callers. Git failure must never authorize
+  reset. Current immutable7c13c192f project does NOT include this source change.
+- Actual Bash/Git fixture058c36fc PASSED6 checks; repeat73579ac3 PASSED6 after
+  making the preserved broken-function control independent of Git HEAD/history.
+  Tracked/untracked/delete checks, failed Git/repo, explicit job bounds and all
+  call sites covered. Repo enumeration is an explicit fixture, not a full repo
+  Android execution claim. Need next source snapshot to carry this fix.
+- Build961d8dd3, source-pin observereca8b2c8 and post-build handoffeea5005f remain
+  active. No completed image and no actual new-image VM test yet; last completed
+  C++ work remains59947/143205 before the deliberate resize. Do not claim done.
+- Boundedcc4d54ce scheduling control completed18:15:08Z after230.86s; every
+  original status task released. No paused probe processes remain. Source
+  checks were still active at18:15:32Z; no measured end-to-end speedup or new
+  compile progress is established by that completed probe.

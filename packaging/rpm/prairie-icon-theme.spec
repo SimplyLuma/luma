@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.43.creator20261030.1%{?dist}
+Release:        1.luma.44.nightly20261030.1%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
@@ -144,8 +144,17 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
-* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.43.creator20261030.1
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.44.nightly20261030.1
 - Keep the shared icon package and image pins ahead of the published baseline.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.42
+- Center wireless status glyphs within their shared icon slots.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.41
+- Provide the launcher folder name and kind sorting icons.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.40
+- Package the October 26 shared source updates.
 
 * Mon Oct 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.36.creator20261005.1
 - Resolve the Disks Preview launcher through the canonical rounded Disks artwork.
@@ -221,7 +230,7 @@ done
   so the ISC geometry each glyph claims is verifiable from the SRPM alone.
 - Re-sync the eight bundled application identities that had drifted from the
   6 September canvas. Release 1.luma.25 was pinned but never built; the spec
-  still read 1.luma.24.
+  still read 1.luma.25.
 * Mon Sep 07 2026 Project Luma <builds@project-luma.local> - 0.1.0-1.luma.23
 - Package 51 approved system icon names with exact-byte provenance and payload checks
 - Preserve current application, symbolic, and full Trash artwork

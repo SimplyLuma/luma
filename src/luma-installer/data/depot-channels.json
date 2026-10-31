@@ -533,6 +533,7 @@
    }
   },
   "displays": {
+   "visibility": "withdrawn",
    "system_tool": true,
    "metadata": {
     "authored": {

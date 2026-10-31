@@ -10,7 +10,8 @@
 ## The runtime's global OSTree keyring holds only the pull key: Anaconda adds
 ## its remote without a keyring of its own, so libostree verifies the pull
 ## against /usr/share/ostree/trusted.gpg.d and nothing else.
-<%page args="root, luma_atlas_ks, luma_atlas_media, luma_atlas_release_key, luma_atlas_pull_key, luma_atlas_preview_credential, luma_atlas_clock_epoch"/>
+<%page args="root, luma_atlas_ks, luma_atlas_media, luma_atlas_release_key, luma_atlas_pull_key, luma_atlas_preview_credential, luma_atlas_clock_epoch, luma_atlas_runtime_kernel"/>
+runcmd python3 /s/check-runtime-kernel.py '${root}' '${luma_atlas_runtime_kernel}'
 runcmd sh -c "install -m 0644 '${luma_atlas_ks}' '${root}/usr/share/anaconda/interactive-defaults.ks'"
 runcmd sh -c "install -D -m 0644 '${luma_atlas_media}' '${root}/usr/share/luma-installer-atlas/media.env'"
 runcmd sh -c "install -D -m 0644 '${luma_atlas_release_key}' '${root}/usr/share/luma-installer-atlas/luma-release.gpg'"

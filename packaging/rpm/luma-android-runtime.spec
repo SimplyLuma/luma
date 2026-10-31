@@ -1,10 +1,13 @@
+# Python 3.14 forkserver workers fail inside the Fedora bytecompile sandbox.
+# This small Python payload compiles serially; all package checks still run.
+%global _smp_build_ncpus 1
 # SPDX-License-Identifier: Apache-2.0
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.80.creator20261007.1%{?dist}
+Release:        1.luma.97.nightly20261030.1%{?dist}
 Summary:        Project Luma integration for Android applications
-License:        Apache-2.0
+License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
 BuildArch:      noarch
 
@@ -16,10 +19,16 @@ BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
 BuildRequires:  shared-mime-info
 BuildRequires:  systemd-rpm-macros
+%selinux_requires_min
 Requires:       waydroid >= 1.6.3
+Requires:       waydroid-selinux >= 1.6.3
+Requires(post): waydroid-selinux >= 1.6.3
+Requires(post): coreutils
 Requires:       python3
 Requires:       glib2
 Requires:       python3-gobject
+Requires:       python3-dbus
+Requires:       python3-gbinder
 Requires:       gtk4
 Requires:       libadwaita
 Requires:       luma-developer-platform >= 0.1.0-1.luma.46~preview.20260906.1
@@ -54,6 +63,14 @@ install -D -m 0755 bin/luma-android-policy-generator \
   %{buildroot}%{_prefix}/lib/systemd/system-generators/luma-android-policy-generator
 install -D -m 0755 bin/luma-waydroid-package-session \
   %{buildroot}%{_libexecdir}/luma-waydroid-package-session
+install -D -m 0755 bin/luma-waydroid-session \
+  %{buildroot}%{_libexecdir}/luma-waydroid-session
+install -D -m 0755 bin/luma-waydroid-container \
+  %{buildroot}%{_libexecdir}/luma-waydroid-container
+install -D -m 0644 data/luma_android_runtime.cil \
+  %{buildroot}%{_datadir}/selinux/packages/luma_android_runtime.cil
+install -D -m 0644 data/25-luma-hardware-admission.conf \
+  %{buildroot}%{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 install -D -m 0755 bin/luma-waydroid-binder-compat \
   %{buildroot}%{_libexecdir}/luma-waydroid-binder-compat
 install -D -m 0755 bin/luma-waydroid-fp6-graphics-compat \
@@ -110,21 +127,39 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 40
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 135
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
+%selinux_modules_install -s targeted %{_datadir}/selinux/packages/luma_android_runtime.cil
+# A file-context-only module need not change the binary policy checksum used
+# by rpm-ostree's inode cache. Give the entrypoint a fresh inode so the final
+# deployment policy labels it, preserving its bytes, mode and RPM timestamp.
+runtime_entrypoint=$(mktemp %{_libexecdir}/.luma-waydroid-container.XXXXXX) || exit 1
+if ! install -p -m 0755 -- %{_libexecdir}/luma-waydroid-container "$runtime_entrypoint" || \
+   ! mv -fT -- "$runtime_entrypoint" %{_libexecdir}/luma-waydroid-container; then
+    rm -f -- "$runtime_entrypoint"
+    exit 1
+fi
+/usr/sbin/restorecon %{_libexecdir}/luma-waydroid-container >/dev/null 2>&1 || :
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
 
 %postun
+%selinux_modules_uninstall -s targeted luma_android_runtime
+/usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
 
 %files
+# Shared build storage may inherit private/setgid directory ACLs.
+# Runtime policy and Python directories must be traversable by session users.
+%defattr(-,root,root,0755)
 %license LICENSE.md
+%license COPYING.GPL-3.0
 %config(noreplace) %{_sysconfdir}/luma/android.conf
 %{_bindir}/luma-android
 %{_bindir}/luma-androidd
@@ -133,6 +168,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_bindir}/luma-android-session
 %{_prefix}/lib/systemd/system-generators/luma-android-policy-generator
 %{_libexecdir}/luma-waydroid-package-session
+%{_libexecdir}/luma-waydroid-session
+%{_libexecdir}/luma-waydroid-container
+%{_datadir}/selinux/packages/luma_android_runtime.cil
+%dir %{_unitdir}/waydroid-container.service.d
+%{_unitdir}/waydroid-container.service.d/25-luma-hardware-admission.conf
 %{_libexecdir}/luma-waydroid-binder-compat
 %{_libexecdir}/luma-waydroid-fp6-graphics-compat
 %{_libexecdir}/luma-waydroid-fp6-gpu-watchdog
@@ -157,6 +197,44 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94.android20261029.1
+- Correct Android reply parcel alignment and acknowledgement decoding
+
+* Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.93.android20261029.1
+- Add capability-negotiated Android notification reply transport
+
+* Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.92.android20261029.1
+- Check kernel page size before starting Android apps
+- Keep the shared Android session under its user service
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.91.android20261028.1
+- Use the native Android clipboard service and disable the unused host provider
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.88.android20261028.1
+- Release delivered notification payloads and send image bytes without per-byte wrappers
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.87.android20261028.1
+- Keep Android image replacement under the host update path
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.86.android20261028.1
+- Restrict Android host clipboard and package-event bridges to system services
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.85.android20261028.1
+- Install runtime policy directories with normal user-readable permissions
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.84.android20261028.1
+- Reuse the provider SELinux entrypoint type and verify the root service domain
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.83.android20261028.1
+- Reject untrusted callers before root Android hardware IPC dispatch
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.82.android20261028.1
+- Apply the configured idle policy to Android's automatic container freeze
+
+* Wed Oct 28 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.81.android20261028.1
+- Track Android notification dismissal, replacement and notification-server restarts
+- Use Luma's notification transport for supervised Android sessions
+
 * Tue Sep 15 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.70.preview20260915.1
 - Never start the Android broker, session or compositor inside the GDM greeter
 - Let the sandboxed broker open dconf's runtime file so appearance sync stops warning

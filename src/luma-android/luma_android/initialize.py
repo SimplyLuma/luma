@@ -16,7 +16,7 @@ import platform
 import stat
 import subprocess
 
-from .kernel import is_fp6
+from .kernel import is_fp6, require_android_page_size
 
 
 IMAGES = Path("/usr/share/waydroid-extra/images")
@@ -202,6 +202,7 @@ def verify_images(root: Path = IMAGES, machine: str | None = None) -> None:
 def initialize() -> None:
     if os.geteuid() != 0:
         raise RuntimeError("Android setup must run through its system service.")
+    require_android_page_size()
     # An existing Android installation and its user data stay owned by
     # Waydroid. This is initial setup, never a repair/reset or image migration.
     if runtime_complete(STATE):

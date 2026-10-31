@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.projectluma.androidtest" android:versionCode="1" android:versionName="1.0">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <application android:label="Android Integration Test" android:debuggable="true"
+      android:icon="@android:drawable/ic_dialog_info" android:allowBackup="false"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true">
+      <intent-filter><action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+    <receiver android:name=".ActionReceiver" android:exported="false"/>
+    <receiver android:name=".BackgroundReceiver" android:exported="false"/>
+  </application>
+</manifest>

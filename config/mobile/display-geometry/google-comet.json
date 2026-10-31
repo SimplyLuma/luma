@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "displays": [
+    {
+      "connector": "DSI-1",
+      "nativeWidth": 1080,
+      "nativeHeight": 2424,
+      "cutouts": [
+        {"x": 0, "y": 0, "width": 104, "height": 104},
+        {"x": 976, "y": 0, "width": 104, "height": 104},
+        {"x": 0, "y": 2320, "width": 104, "height": 104},
+        {"x": 976, "y": 2320, "width": 104, "height": 104}
+      ]
+    },
+    {
+      "connector": "DSI-2",
+      "nativeWidth": 2076,
+      "nativeHeight": 2152,
+      "cutouts": [
+        {"x": 0, "y": 0, "width": 96, "height": 96},
+        {"x": 1980, "y": 0, "width": 96, "height": 96},
+        {"x": 0, "y": 2056, "width": 96, "height": 96},
+        {"x": 1980, "y": 2056, "width": 96, "height": 96}
+      ]
+    }
+  ],
+  "provenance": "Provisional rounded-corner exclusions for the Pixel 9 Pro Fold outer (DSI-1) and inner (DSI-2) panels. All four corners are listed so the panel transform cannot move an unprotected corner to the top. Sizes are conservative estimates, not measurements; camera openings are not yet described. Calibrate on the device and refine independently of shared shell layout."
+}

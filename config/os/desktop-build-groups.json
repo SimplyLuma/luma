@@ -1,0 +1,195 @@
+{
+  "schema": "org.projectluma.desktop-build-groups/v1",
+  "groups": {
+    "libhandy": {
+      "recipe": "scripts/packages/build-libhandy.sh",
+      "paths": [
+        "patches/libhandy/"
+      ]
+    },
+    "ibus": {
+      "recipe": "scripts/packages/build-ibus.sh",
+      "paths": [
+        "patches/ibus/"
+      ]
+    },
+    "fwupd": {
+      "recipe": "scripts/packages/build-fwupd.sh",
+      "paths": [
+        "patches/fwupd/"
+      ]
+    },
+    "plymouth": {
+      "recipe": "scripts/packages/build-plymouth.sh",
+      "paths": [
+        "patches/plymouth/"
+      ]
+    },
+    "mutter": {
+      "recipe": "scripts/packages/build-mutter.sh",
+      "paths": [
+        "patches/mutter/"
+      ]
+    },
+    "gnome-settings-daemon": {
+      "recipe": "scripts/packages/build-gnome-settings-daemon.sh",
+      "paths": [
+        "patches/gnome-settings-daemon/"
+      ]
+    },
+    "quick-view": {
+      "recipe": "scripts/packages/build-luma-quick-view.sh",
+      "paths": [
+        "patches/sushi/",
+        "tests/quick-view/",
+        "packaging/rpm/luma-quick-view.spec"
+      ]
+    },
+    "apk-metadata": {
+      "recipe": "scripts/packages/build-luma-apk-metadata.sh",
+      "paths": [
+        "src/luma-installer/apk-metadata/",
+        "packaging/rpm/luma-apk-metadata.spec"
+      ]
+    },
+    "appimage": {
+      "recipe": "scripts/packages/build-luma-appimage-compat.sh",
+      "paths": [
+        "src/luma-appimage-compat/",
+        "packaging/rpm/luma-appimage-compat.spec"
+      ]
+    },
+    "ari-runtime": {
+      "recipe": "scripts/packages/build-luma-ari-runtime.sh",
+      "paths": [
+        "packaging/rpm/luma-ari-runtime.spec"
+      ]
+    },
+    "messages-e2ee": {
+      "recipe": "scripts/packages/build-luma-messages-e2ee.sh",
+      "paths": [
+        "src/luma-messages-e2ee/",
+        "packaging/rpm/luma-messages-e2ee.spec",
+        "scripts/packages/build-luma-messages-e2ee-source.sh"
+      ]
+    },
+    "messages-bridges": {
+      "recipe": "scripts/packages/build-luma-messages-bridges.sh",
+      "paths": [
+        "src/luma-messages-bridges/",
+        "packaging/rpm/luma-messages-bridges.spec",
+        "scripts/packages/build-luma-messages-bridges-source.sh"
+      ]
+    },
+    "display-config": {
+      "recipe": "scripts/packages/build-luma-display-config.sh",
+      "paths": [
+        "packaging/rpm/luma-display-config.spec",
+        "src/luma-displays/luma_displays/model.py",
+        "src/luma-displays/luma_displays/displayconfig.py",
+        "tests/luma-displays/test_model.py"
+      ]
+    },
+    "application-installer": {
+      "recipe": "scripts/packages/build-luma-application-installer.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "toolkit": true,
+      "spec": "packaging/rpm/luma-application-installer.spec",
+      "paths": [
+        "src/luma-installer/",
+        "src/luma-depot/",
+        "packaging/rpm/luma-application-installer.spec",
+        "tests/fixtures/depot-v70",
+        "tests/fixtures/valet-v70",
+        "src/luma-shell-state/org.project_luma.shell-state.gschema.xml"
+      ]
+    },
+    "ari": {
+      "recipe": "scripts/packages/build-luma-ari.sh",
+      "toolkit": true,
+      "spec": "packaging/rpm/luma-ari.spec",
+      "paths": [
+        "src/luma-ari/",
+        "tests/luma-ari/",
+        "tests/fixtures/ari-v70",
+        "tools/lumaui-conform/scenarios/ari.json",
+        "packaging/rpm/luma-ari.spec"
+      ]
+    },
+    "desktop-launcher-policy": {
+      "recipe": "scripts/packages/build-luma-desktop-launcher-policy.sh",
+      "spec": "packaging/rpm/luma-desktop-launcher-policy.spec",
+      "paths": [
+        "src/luma-desktop-launcher-policy/",
+        "config/desktop/system-flatpak-replacements.txt",
+        "packaging/rpm/luma-desktop-launcher-policy.spec"
+      ]
+    },
+    "shell-state": {
+      "recipe": "scripts/packages/build-luma-shell-state.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "spec": "packaging/rpm/luma-shell-state.spec",
+      "paths": [
+        "src/luma-shell-state/",
+        "packaging/rpm/luma-shell-state.spec"
+      ]
+    },
+    "icon-theme": {
+      "recipe": "scripts/packages/build-prairie-icon-theme.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "spec": "packaging/rpm/prairie-icon-theme.spec",
+      "paths": [
+        "assets/icon-theme/",
+        "packaging/gsettings/90-prairie.gschema.override",
+        "packaging/rpm/prairie-icon-theme.spec"
+      ]
+    },
+    "home-widgets": {
+      "recipe": "scripts/packages/build-luma-home-widgets.sh",
+      "paths": [
+        "src/luma-home-widgets/",
+        "packaging/rpm/luma-home-widgets.spec",
+        "config/shared/design-tokens.d/home-widgets.json"
+      ]
+    },
+    "tiling": {
+      "recipe": "scripts/packages/build-tiling.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "paths": [
+        "patches/tiling-shell/",
+        "extensions/luma-tiling-toggle/",
+        "packaging/rpm/gnome-shell-extension-tiling-shell.spec"
+      ]
+    },
+    "update": {
+      "recipe": "scripts/packages/build-luma-update.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "paths": [
+        "src/luma-update/",
+        "packaging/rpm/luma-update.spec"
+      ]
+    },
+    "android-runtime": {
+      "architectures": [
+        "x86_64"
+      ],
+      "recipe": "scripts/packages/build-luma-android-runtime.sh",
+      "spec": "packaging/rpm/luma-android-runtime.spec",
+      "paths": [
+        "src/luma-android/",
+        "config/android/",
+        "packaging/rpm/luma-android-runtime.spec"
+      ]
+    }
+  }
+}

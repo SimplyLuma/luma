@@ -19,6 +19,7 @@
     "--talk-name=org.projectluma.AppData1",
     "--talk-name=org.projectluma.ViolaHost1",
     "--talk-name=org.projectluma.ApplicationDirectory1",
+    "--talk-name=org.project_luma.ShellState1",
     "--talk-name=org.freedesktop.portal.Flatpak"
   ],
   "modules": [
@@ -40,8 +41,9 @@
         }
       ],
       "build-commands": [
-        "python3 -B packaging/viola/flatpak-source.py .",
+        "python3 -B packaging/viola/flatpak-source.py . --desktop-profile",
         "install -d /app/lib/viola /app/share/viola-browser/luma-host /app/bin",
+        "if test -f viola-engine/native-engine-profile.json; then install -m644 viola-engine/native-engine-profile.json /app/share/viola-browser/native-engine-profile.json; fi",
         "cp -a viola-engine/engine /app/lib/viola/browser",
         "mv /app/lib/viola/browser/chrome-sandbox.packaged /app/lib/viola/browser/chrome-sandbox",
         "chmod 755 /app/lib/viola/browser/chrome-sandbox",
@@ -61,7 +63,8 @@
         "install -Dm644 depot-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png /app/share/luma-app-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png"
       ],
       "only-arches": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ]
     }
   ],

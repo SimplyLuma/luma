@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.119.creator20261030.1%{?dist}
+Release:        1.luma.120.nightly20261030.1%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -145,7 +145,7 @@ python3 - <<'PY_CHECK'
 import json
 from pathlib import Path
 rows = [json.loads(line) for line in Path("%{_vpath_builddir}/meson-logs/testlog.json").read_text().splitlines() if line.strip()]
-expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch")}
+expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch")}
 names = {row["name"] for row in rows}
 # The thirteen platform executables, plus LumaUI-1's own part tests, token check and C/Python parity.
 lumaui = {name for name in names if name.startswith("luma-developer-platform:lumaui-")}
@@ -328,8 +328,14 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
-* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.119.creator20261030.1
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.120.nightly20261030.1
 - Expose shared search, command and invitation text fields to accessibility.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.118.nightly20261026.1
+- Update adopted native frames when presentation mode changes.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.117.nightly20261026.1
+- Package the October 26 shared source updates.
 
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101.creator20261007.1
 - Delegate Python Flatpak app-menu updates to the installed host update portal
@@ -653,7 +659,7 @@ done
 - Give inactive AppKit windows a calm backdrop elevation with an unbroken
   title-row surface.
 
-* Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.24
+* Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.25
 - Preserve native island elevation outside the AppKit content allocation.
 
 * Mon Aug 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.23

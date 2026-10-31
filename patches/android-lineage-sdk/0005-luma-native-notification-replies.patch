@@ -1,0 +1,325 @@
+--- a/sdk/src/java/lineageos/waydroid/INotifications.aidl
++++ b/sdk/src/java/lineageos/waydroid/INotifications.aidl
+@@ -19,11 +19,31 @@
+ 
+     void closeNotification(in int notification_id);
+ 
++    // Additive transactions 4 and 5; older hosts retain transactions 1..3.
++    int getCapabilities();
++    int notifyWithReply(in int replaces_id,
++               in String app_name,
++               in String package_name,
++               in String summary,
++               in String body,
++               in List<Action> actions,
++               in @nullable ImageData image,
++               in String category,
++               in boolean suppress_sound,
++               in int expire_timeout,
++               in boolean is_resident,
++               in boolean is_transient,
++               in Urgency urgency,
++               in String reply_action);
++
+     interface INotificationCallback {
+         void onActionInvoked(int notification_id, String action, String xdg_activation_token);
+         // Additive callbacks: existing action transaction remains number 1.
+         void onHostDismissed(int notification_id);
+         void onHostReset();
++        // Transaction 4 acknowledges handoff, not network delivery.
++        boolean onReplyRequested(int notification_id, String action,
++                                String request_id, String text);
+     }
+ 
+     parcelable Action {
+--- a/sdk/src/java/lineageos/waydroid/Notifications.java
++++ b/sdk/src/java/lineageos/waydroid/Notifications.java
+@@ -93,6 +93,27 @@
+         return 0;
+     }
+ 
++    /** @hide Capability must be negotiated before posting an inline reply. */
++    public boolean supportsInlineReply() {
++        if (sService == null) return false;
++        try { return (sService.getCapabilities() & 1) != 0; }
++        catch (RemoteException error) { return false; }
++    }
++
++    /** @hide Do not retry an uncertain notification mutation. */
++    public int notifyWithReply(int replaces_id, String app_name, String package_name,
++                      String summary, String body, List<INotifications.Action> actions,
++                      INotifications.ImageData image, String category, boolean suppress_sound,
++                      int expire_timeout, boolean is_resident, boolean is_transient, byte urgency,
++                      String reply_action) {
++        if (sService == null) return 0;
++        try {
++            return sService.notifyWithReply(replaces_id, app_name, package_name, summary, body,
++                    actions, image, category, suppress_sound, expire_timeout,
++                    is_resident, is_transient, urgency, reply_action);
++        } catch (RemoteException error) { return 0; }
++    }
++
+     public void closeNotification(int notification_id) {
+         if (sService == null) {
+             return;
+--- a/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
++++ b/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
+@@ -288,6 +288,8 @@
+         mNotificationActionsMap.clear();
+         final android.os.Handler notificationHandler =
+                 new android.os.Handler(mContext.getMainLooper());
++        final NotificationReplyDispatcher replies =
++                new NotificationReplyDispatcher(mContext, notificationHandler, mHostUid);
+         mSystemNotificationListener = new NotificationListenerService() {
+             private INotifications.ImageData getImageData(Notification notification) {
+                 Icon icon = notification.getLargeIcon();
+@@ -347,6 +349,9 @@
+ 
+                 List<INotifications.Action> hostActions = new LinkedList<INotifications.Action>();
+                 Map<String, PendingIntent> actionMap = new HashMap<String, PendingIntent>();
++                boolean supportsReply = mWaydroidNotifications.supportsInlineReply();
++                Notification.Action replyAction = null;
++                String replyActionId = null;
+ 
+                 if (notification.contentIntent != null) {
+                     INotifications.Action defaultAction = new INotifications.Action();
+@@ -359,6 +364,21 @@
+                 if (notification.actions != null) {
+                     for (Notification.Action androidAction : notification.actions) {
+                         if (androidAction.actionIntent != null) {
++                            android.app.RemoteInput[] inputs = androidAction.getRemoteInputs();
++                            if (inputs != null && inputs.length != 0) {
++                                // A reply PendingIntent must never be exposed as an
++                                // ordinary button that sends an empty reply.
++                                if (supportsReply && replyAction == null &&
++                                        NotificationReplyDispatcher.textInput(androidAction) != null) {
++                                    replyAction = androidAction;
++                                    replyActionId = nextId();
++                                    INotifications.Action hostReply = new INotifications.Action();
++                                    hostReply.id = replyActionId;
++                                    hostReply.label = String.valueOf(androidAction.title);
++                                    hostActions.add(hostReply);
++                                }
++                                continue;
++                            }
+                             String label = androidAction.title.toString();
+                             String hostActionId = nextId();
+ 
+@@ -383,9 +403,15 @@
+ 
+                 int existingId = mNotificationIdMap.getOrDefault(key, INotifications.ID_NONE);
+ 
+-                int newId = mWaydroidNotifications.notify(existingId, appName, packageName, summary, body,
+-                                              hostActions, image, category, suppressSound, expireTimeout,
+-                                              isResident, isTransient, urgency);
++                // Revoke the old Android grant even if the host mutation fails.
++                replies.remove(existingId);
++                int newId = replyAction != null
++                        ? mWaydroidNotifications.notifyWithReply(existingId, appName, packageName,
++                                summary, body, hostActions, image, category, suppressSound,
++                                expireTimeout, isResident, isTransient, urgency, replyActionId)
++                        : mWaydroidNotifications.notify(existingId, appName, packageName, summary, body,
++                                hostActions, image, category, suppressSound, expireTimeout,
++                                isResident, isTransient, urgency);
+                 if (newId == INotifications.ID_NONE) {
+                     return;
+                 }
+@@ -393,6 +419,7 @@
+                 if (existingId != newId) mNotificationActionsMap.remove(existingId);
+                 mNotificationIdMap.put(key, newId);
+                 mNotificationActionsMap.put(newId, actionMap);
++                replies.replace(newId, replyActionId, replyAction);
+             }
+ 
+             @Override
+@@ -402,6 +429,7 @@
+                 mNotificationIdMap.remove(key);
+                 if (id != null) {
+                     mNotificationActionsMap.remove(id);
++                    replies.remove(id);
+                     mWaydroidNotifications.closeNotification(id);
+                 }
+             }
+@@ -416,6 +444,21 @@
+         }
+ 
+         mWaydroidNotifications.registerListener(new INotifications.INotificationCallback.Stub() {
++            @Override
++            public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
++                    throws RemoteException {
++                // Check kernel Binder credentials before unmarshalling reply text.
++                int uid = Binder.getCallingUid();
++                if (!HostCallerPolicy.allowed(uid, mHostUid))
++                    throw new SecurityException("Host callback denied");
++                return super.onTransact(code, data, reply, flags);
++            }
++
++            @Override
++            public boolean onReplyRequested(int id, String action, String requestId, String text) {
++                return replies.reply(Binder.getCallingUid(), id, action, requestId, text);
++            }
++
+             @Override
+             public void onActionInvoked(int notificationId, String actionId, String xdgActivationToken) {
+                 notificationHandler.post(() -> {
+@@ -460,6 +503,7 @@
+                 notificationHandler.post(() -> {
+                     mNotificationIdMap.clear();
+                     mNotificationActionsMap.clear();
++                    replies.clear();
+                     StatusBarNotification[] active = mSystemNotificationListener.getActiveNotifications();
+                     if (active != null) for (StatusBarNotification item : active) {
+                         mSystemNotificationListener.onNotificationPosted(item);
+--- /dev/null
++++ b/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java
+@@ -0,0 +1,150 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++package org.lineageos.platform.internal;
++
++import android.app.Notification;
++import android.app.PendingIntent;
++import android.app.RemoteInput;
++import android.content.Context;
++import android.content.Intent;
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import java.security.NoSuchAlgorithmException;
++import java.util.HashMap;
++import java.util.Map;
++import java.util.concurrent.FutureTask;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
++
++/** Main-looper-owned reply grants. An acknowledgement means PendingIntent.send
++ * returned successfully, not that a remote messaging server delivered the text.
++ */
++final class NotificationReplyDispatcher {
++    private final Context context;
++    private final Handler handler;
++    private final int hostUid;
++    private final Map<Integer, Target> targets = new HashMap<>();
++    private final AtomicInteger pending = new AtomicInteger();
++
++    private static final class Receipt {
++        final byte[] digest;
++        boolean accepted;
++        Receipt(byte[] digest) { this.digest = digest; }
++    }
++
++    private static final class Target {
++        final String actionId;
++        final Notification.Action action;
++        final RemoteInput input;
++        final Map<String, Receipt> receipts = new HashMap<>();
++        Target(String actionId, Notification.Action action, RemoteInput input) {
++            this.actionId = actionId;
++            this.action = action;
++            this.input = input;
++        }
++    }
++
++    NotificationReplyDispatcher(Context context, Handler handler, int hostUid) {
++        this.context = context;
++        this.handler = handler;
++        this.hostUid = hostUid;
++    }
++
++    /** A single free-form input can be represented faithfully by one entry.
++     * Authentication-required actions must use the app's own unlock flow.
++     */
++    static RemoteInput textInput(Notification.Action action) {
++        if (action == null || action.actionIntent == null || action.actionIntent.isImmutable()
++                || action.isAuthenticationRequired()) return null;
++        RemoteInput[] inputs = action.getRemoteInputs();
++        if (inputs == null || inputs.length != 1 || !inputs[0].getAllowFreeFormInput()
++                || inputs[0].getResultKey() == null || inputs[0].getResultKey().isEmpty()) return null;
++        return inputs[0];
++    }
++
++    private void onLooper() {
++        if (Looper.myLooper() != handler.getLooper())
++            throw new IllegalStateException("Notification replies require their owner looper");
++    }
++
++    void replace(int id, String actionId, Notification.Action action) {
++        onLooper();
++        targets.remove(id);
++        RemoteInput input = textInput(action);
++        if (input != null && actionId != null && targets.size() < 512)
++            targets.put(id, new Target(actionId, action, input));
++    }
++
++    void remove(int id) { onLooper(); targets.remove(id); }
++    void clear() { onLooper(); targets.clear(); }
++
++    static boolean validText(String text) {
++        if (text == null || text.length() > 4096) return false;
++        boolean nonblank = false;
++        for (int i = 0; i < text.length(); i++) {
++            char c = text.charAt(i);
++            if (c == 0 || Character.isLowSurrogate(c)) return false;
++            if (Character.isHighSurrogate(c)) {
++                if (++i >= text.length() || !Character.isLowSurrogate(text.charAt(i))) return false;
++            }
++            if (!Character.isWhitespace(c)) nonblank = true;
++        }
++        return nonblank && text.getBytes(StandardCharsets.UTF_8).length <= 4096;
++    }
++
++    /** Binder callers wait at most five seconds. Cancelled queued work cannot
++     * run; work already sending may finish, so false must never trigger a replay.
++     */
++    boolean reply(int callerUid, int id, String actionId, String requestId, String text) {
++        if (!HostCallerPolicy.allowed(callerUid, hostUid) || requestId == null
++                || !requestId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
++                || !validText(text)) return false;
++        if (Looper.myLooper() == handler.getLooper())
++            return dispatch(id, actionId, requestId, text);
++        if (pending.incrementAndGet() > 8) { pending.decrementAndGet(); return false; }
++        FutureTask<Boolean> task = new FutureTask<>(() -> dispatch(id, actionId, requestId, text));
++        if (!handler.post(() -> {
++            try { task.run(); } finally { pending.decrementAndGet(); }
++        })) { pending.decrementAndGet(); return false; }
++        try {
++            return task.get(5, TimeUnit.SECONDS);
++        } catch (InterruptedException error) {
++            task.cancel(false);
++            Thread.currentThread().interrupt();
++        } catch (Exception error) {
++            task.cancel(false);
++        }
++        return false;
++    }
++
++    private boolean dispatch(int id, String actionId, String requestId, String text) {
++        onLooper();
++        Target target = targets.get(id);
++        if (target == null || !target.actionId.equals(actionId)) return false;
++        final byte[] digest;
++        try {
++            digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
++        } catch (NoSuchAlgorithmException error) { return false; }
++        Receipt previous = target.receipts.get(requestId);
++        if (previous != null)
++            return MessageDigest.isEqual(previous.digest, digest) && previous.accepted;
++        // Never evict an active receipt: that would permit a duplicate send.
++        if (target.receipts.size() >= 32) return false;
++        Receipt receipt = new Receipt(digest);
++        target.receipts.put(requestId, receipt);
++        Bundle results = new Bundle();
++        results.putCharSequence(target.input.getResultKey(), text);
++        Intent fillIn = new Intent();
++        RemoteInput.addResultsToIntent(new RemoteInput[] {target.input}, fillIn, results);
++        RemoteInput.setResultsSource(fillIn, RemoteInput.SOURCE_FREE_FORM_INPUT);
++        try {
++            target.action.actionIntent.send(context, 0, fillIn);
++            receipt.accepted = true;
++        } catch (PendingIntent.CanceledException | RuntimeException error) {
++            // No notification text, token or application exception in logs.
++        }
++        return receipt.accepted;
++    }
++}

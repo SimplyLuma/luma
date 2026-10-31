@@ -7,7 +7,7 @@
 
 Name:           flatpak-runtime-config
 Version:        44
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Configuration files that live inside the flatpak runtime
 Source1:        50-flatpak.conf
 Source2:        sitecustomize.py
@@ -141,6 +141,8 @@ for l in `find /app -type l`; do \
 done
 
 %files
+# Build workspaces can inherit private ACLs/setgid; RPM payload modes must not.
+%defattr(0644,root,root,0755)
 %dir %{_prefix}/cache
 %dir %{_prefix}/cache/fontconfig
 %{python3_sitelib}
@@ -151,6 +153,9 @@ done
 %{_sysconfdir}/profile.d/app.sh
 
 %changelog
+* Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 44-1.luma.2
+- Set consistent configuration file and directory permissions
+
 * Tue Sep 15 2026 Project Luma <maintainers@projectluma.org> - 44-1.luma.1
 - Rebuild Fedora's flatpak-runtime-config 44 (dist-git d947a4c8) for the Luma
   Platform runtime; ship component data for org.projectluma.Platform and Sdk

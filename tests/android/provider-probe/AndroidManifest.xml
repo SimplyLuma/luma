@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.projectluma.androidproviderprobe" android:versionCode="1" android:versionName="1.0">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <application android:label="Android provider probe" android:allowBackup="false"/>
+  <instrumentation android:name=".ProviderProbe"
+      android:targetPackage="org.projectluma.androidproviderprobe"/>
+  <instrumentation android:name=".CodecProbe"
+      android:targetPackage="org.projectluma.androidproviderprobe"/>
+</manifest>

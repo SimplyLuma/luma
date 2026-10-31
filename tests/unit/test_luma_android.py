@@ -462,6 +462,22 @@ class PolicyTests(unittest.TestCase):
 
 
 class EngineTests(unittest.TestCase):
+    def test_framework_freeze_tracks_explicit_runtime_idle_policy(self):
+        engine = WaydroidEngine("waydroid")
+        for freeze in (False, True):
+            with self.subTest(freeze=freeze), tempfile.TemporaryDirectory() as directory:
+                config = Path(directory) / "android.conf"
+                config.write_text("[runtime]\nidle_freeze=" + str(freeze).lower() + "\n")
+                with mock.patch.dict(os.environ, {"LUMA_ANDROID_CONFIG": str(config)}), \
+                     mock.patch.object(engine, "status", return_value={"session": "RUNNING"}), \
+                     mock.patch.object(engine, "wait_for_boot_completion"), \
+                     mock.patch.object(engine, "wait_for_application_service"), \
+                     mock.patch.object(engine, "_run_as_android_package_manager"), \
+                     mock.patch.object(engine, "_run") as run:
+                    engine.ensure_ready(detached=True)
+                    run.assert_any_call("prop", "set", "persist.waydroid.suspend",
+                                        "true" if freeze else "false", timeout=30)
+
     def test_window_chrome_follows_posture_in_both_composition_modes(self):
         engine = WaydroidEngine("waydroid")
         for posture in ("desktop", "tablet", "handheld"):
@@ -854,6 +870,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(
             run.call_args_list,
             [
+                mock.call("prop", "set", "persist.waydroid.suspend", "false", timeout=30),
                 mock.call(
                     "prop", "set", "persist.luma.device_class", "desktop", timeout=30
                 ),
@@ -1024,7 +1041,7 @@ class EngineTests(unittest.TestCase):
             engine.ensure_ready(multi_window=True, detached=True)
 
         self.assertEqual(
-            run.call_args_list[0],
+            run.call_args_list[1],
             mock.call(
                 "prop", "set", "persist.luma.device_class", "handheld", timeout=30
             ),

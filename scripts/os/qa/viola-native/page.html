@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owned native SHM mechanism fixture</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden}
+body{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.tile{width:100%;height:100%}
+output{position:fixed;left:15%;right:15%;top:45%;text-align:center;background:white;color:black;font:16px monospace;pointer-events:none}
+</style>
+<div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+<output></output>
+<script>
+'use strict';
+const token = new URL(location.href).searchParams.get('token');
+if (!token || !/^[a-f0-9]{32}$/.test(token)) throw Error('missing owned fixture token');
+const palettes = [
+  [[231,41,83],[19,173,109],[43,83,229],[241,181,29]],
+  [[29,191,211],[197,47,181],[89,211,47],[229,101,23]],
+  [[117,53,223],[223,211,37],[31,151,179],[211,61,43]]
+];
+let phase = 0, pointers = 0, keys = 0;
+let reportChain = Promise.resolve();
+function report(lastEvent) {
+  const body=JSON.stringify({token,phase,pointers,keys,last_event:lastEvent,href:location.href,width:innerWidth,height:innerHeight});
+  reportChain=reportChain.then(()=>fetch(`/native-event-${token}`,{method:'POST',headers:{'Content-Type':'application/json'},body}))
+    .then(reply=>{if(!reply.ok)throw Error(`fixture report ${reply.status}`);})
+    .catch(error=>{document.body.dataset.reportError=String(error);});
+}
+function paint(lastEvent) {
+  document.querySelectorAll('.tile').forEach((tile,i)=>tile.style.backgroundColor=`rgb(${palettes[phase][i]})`);
+  Object.assign(document.body.dataset,{token,phase:String(phase),pointers:String(pointers),keys:String(keys)});
+  document.querySelector('output').textContent = `${token} phase=${phase} pointer=${pointers} key=${keys}`;
+  report(lastEvent);
+}
+document.addEventListener('pointerdown',event=>{
+  if (phase === 0 && event.isTrusted && event.button === 0) { pointers++; phase=1; paint('trusted-pointer'); }
+});
+document.addEventListener('keydown',event=>{
+  if (phase === 1 && event.isTrusted && event.key === 'a') { keys++; phase=2; paint('trusted-key'); }
+});
+paint('load');
+window.addEventListener('resize',()=>report('viewport'));
+</script>

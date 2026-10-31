@@ -7,22 +7,22 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 
-platform_rpm=${LUMA_PLATFORM_RPM:-$repo_root/build/packages/luma-developer-platform/x86_64/RPMS/$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA.rpm}
-[ -f "$platform_rpm" ] || {
-  printf 'error: application installer requires the built platform RPM: %s\n' "$platform_rpm" >&2
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+[ "$(uname -s)" = Linux ] && [ "$architecture" = "$(uname -m)" ] || {
+  printf 'error: build the noarch application installer on a native Fedora Linux builder\n' >&2
   exit 1
 }
-
-for tool in mktemp podman sha256sum tar; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    printf 'error: required application-installer build tool is missing: %s\n' "$tool" >&2
-    exit 1
-  }
+case "$architecture" in
+  x86_64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA; builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) platform_nevra=$LUMA_DEVELOPER_PLATFORM_AARCH64_NEVRA; builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported application-installer build architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
+platform_rpm=${LUMA_PLATFORM_RPM:-$repo_root/build/packages/luma-developer-platform/$architecture/RPMS/$platform_nevra.rpm}
+[ -f "$platform_rpm" ] || { printf 'error: application installer requires the built platform RPM: %s\n' "$platform_rpm" >&2; exit 1; }
+for tool in mktemp podman python3 sha256sum tar; do
+  command -v "$tool" >/dev/null 2>&1 || { printf 'error: required application-installer build tool is missing: %s\n' "$tool" >&2; exit 1; }
 done
-[ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || {
-  printf 'error: build the noarch application-installer RPM on the canonical Linux/x86_64 builder\n' >&2
-  exit 1
-}
 
 output_dir="$repo_root/build/packages/luma-application-installer"
 mkdir -p "$(dirname -- "$output_dir")"
@@ -40,6 +40,12 @@ cp -R "$repo_root/src/luma-installer/luma_installer" "$source_dir/"
 cp -R "$repo_root/src/luma-installer/bin" "$repo_root/src/luma-installer/data" \
   "$repo_root/src/luma-installer/tests" "$source_dir/"
 cp -R "$repo_root/src/luma-depot/luma_depot" "$source_dir/"
+# Exercise the optional Android integration against its actual source without
+# introducing a circular installed build dependency or shipping it in Valet.
+mkdir -p "$source_dir/tests/dependencies"
+cp -R "$repo_root/src/luma-android/luma_android" "$source_dir/tests/dependencies/"
+install -m0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/tests/dependencies/COPYING.GPL-3.0"
+
 cp "$repo_root/src/luma-depot/data/depot.css" "$source_dir/data/depot.css"
 # Depot's code ships inside this package, so Depot's tests have to come with
 # it. They did not, which meant the only package that ships luma_depot could
@@ -56,6 +62,10 @@ mkdir -p "$work_dir/luma-application-installer/tests/fixtures"
 cp -R "$repo_root/tests/fixtures/valet-v70.json" "$work_dir/luma-application-installer/tests/fixtures/"
 cp -R "$repo_root/tests/fixtures/valet-v70" "$work_dir/luma-application-installer/tests/fixtures/"
 cp -R "$repo_root/tests/fixtures/depot-v70.json" "$work_dir/luma-application-installer/tests/fixtures/"
+# Tests retain only the public identity projection, not private listing data.
+python3 "$repo_root/src/luma-installer/tests/public_first_party_policy.py" \
+  --data "$repo_root/src/luma-installer/data" \
+  --output "$source_dir/tests/fixtures/depot-public-first-party.json"
 rm -f "$source_dir/data/depot-first-party.json" "$source_dir/data/depot-verified.json"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/luma-application-installer.tar.gz" \
   luma-application-installer
@@ -67,9 +77,15 @@ install -m 0644 "$repo_root/packaging/rpm/luma-application-installer.spec" \
 chmod -R a+rX "$rpmbuild_dir"
 
 bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
-  "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
-    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
+    dnf5 -y install platform/*.rpm desktop-file-utils rpm-build shared-mime-info python3-devel python3-gobject python3-cairo flatpak-libs xdg-dbus-proxy bubblewrap ostree-libs glib2 dconf systemd-rpm-macros gtk4 libadwaita xorg-x11-server-Xvfb dbus-daemon
+    # GitHub mounts HOME as a shared writable volume. Trust-boundary tests
+    # need actual private ancestors; keep their files inside this container.
+    check_home=$(mktemp -d /root/luma-installer-check.XXXXXX)
+    trap "rm -rf \"$check_home\"" EXIT
+    export HOME="$check_home"
+    umask 022
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-application-installer.spec
     rpm_path=$(find RPMS/noarch -name "luma-application-installer-*.rpm" -print -quit)
     test -n "$rpm_path"

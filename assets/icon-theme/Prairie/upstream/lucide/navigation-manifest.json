@@ -1,226 +1,232 @@
 {
-  "source": "Exact SVGs from user-provided simulator icons directory, supplied with LUCIDE_LICENSE.txt. Some identify lucide-static1.39.0; unmarked files not assigned a guessed upstream version. Geometry unchanged. Transport glyphs (2026-09-15) additionally vendor their exact Lucide source under upstream/lucide/transport/ so each sha256 is verifiable in-tree. Messages glyphs (2026-09-16) vendor their exact Lucide source under upstream/lucide/messages/ the same way.",
+  "source": "Exact SVGs from user-provided simulator icons directory, supplied with LUCIDE_LICENSE.txt. Some identify lucide-static1.39.0; unmarked files not assigned a guessed upstream version. Geometry unchanged. Transport glyphs (2026-09-15) additionally vendor their exact Lucide source under upstream/lucide/transport/ so each sha256 is verifiable in-tree. Messages glyphs (2026-09-16) vendor their exact Lucide source under upstream/lucide/messages/ the same way. Two existing editable GTK SVGs are canonical sources; their historical raw-source hashes are retained in their entries.",
   "files": [
     {
       "alias": "user-home-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/house.svg",
       "sha256": "cf7ba27be575b5fdb583d1f1ff8fa45e70c7fb9dadb80ed9d4bdb5bde8162642",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "e4732b9970c8b2d1641716837afc011d6209f205e7a9cfdd1202d91f68f8b7b0"
     },
     {
       "alias": "document-open-recent-symbolic",
-      "source": "local-source-artwork",
-      "sha256": "fc360ee63fc51bbe62978d8ef4ca4077b91036aef5d164fd18ae24422c28c257",
+      "source": "symbolic/actions/document-open-recent-symbolic.svg",
+      "source_kind": "canonical-gtk-symbolic-svg",
+      "original_source_sha256": "fc360ee63fc51bbe62978d8ef4ca4077b91036aef5d164fd18ae24422c28c257",
+      "source_note": "Original unadapted supplied SVG unavailable; the existing published GTK SVG is the canonical editable source.",
+      "sha256": "aabffb5e912cf05fd8fd2d78745cffcfbccad9ea41e75b813db5bdc1baa65f57",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "aabffb5e912cf05fd8fd2d78745cffcfbccad9ea41e75b813db5bdc1baa65f57"
     },
     {
       "alias": "starred-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/star.svg",
       "sha256": "c59da86b889569387db28e69ad00a89f96af22863ad9eea9aa12c4876a14338c",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "a717c79c41536a03a3bec384afc0f575db4fc282e3e1dfdc2500c14c5bc8d4fb"
     },
     {
       "alias": "non-starred-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/star.svg",
       "sha256": "c59da86b889569387db28e69ad00a89f96af22863ad9eea9aa12c4876a14338c",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "a717c79c41536a03a3bec384afc0f575db4fc282e3e1dfdc2500c14c5bc8d4fb"
     },
     {
       "alias": "view-app-grid-symbolic",
-      "source": "local-source-artwork",
-      "sha256": "8995425eed97a05ca4b17a1bffdd0961aa2bb9b8259d41fd3d71f0829d1d1f5c",
+      "source": "symbolic/actions/view-app-grid-symbolic.svg",
+      "source_kind": "canonical-gtk-symbolic-svg",
+      "original_source_sha256": "8995425eed97a05ca4b17a1bffdd0961aa2bb9b8259d41fd3d71f0829d1d1f5c",
+      "source_note": "Original unadapted supplied SVG unavailable; the existing published GTK SVG is the canonical editable source.",
+      "sha256": "34dc474ede25a9d0175514a21d32f6bc3d4987dc0338542a039a0dce929b6c15",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "34dc474ede25a9d0175514a21d32f6bc3d4987dc0338542a039a0dce929b6c15"
     },
     {
       "alias": "network-computer-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/globe.svg",
       "sha256": "60debf09ce755d186a963ed51bb0f0690bd29e20c72c2439667db8364617e774",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "fb1ba12b7e24cc283512f1d4756ee32f997bbdbef9bd15a665548ec3dce67520"
     },
     {
       "alias": "network-workgroup-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/globe.svg",
       "sha256": "60debf09ce755d186a963ed51bb0f0690bd29e20c72c2439667db8364617e774",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "fb1ba12b7e24cc283512f1d4756ee32f997bbdbef9bd15a665548ec3dce67520"
     },
     {
       "alias": "drive-harddisk-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/hard-drive.svg",
       "sha256": "68dce2527df71d343e8361d301f53b7401e44a30e4533746b38c828bf985a749",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "9706eda44afb4b769fbb5dad621b3964cd696fcf1c43679ded839bb8cbb87940"
     },
     {
       "alias": "drive-removable-media-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/hard-drive.svg",
       "sha256": "68dce2527df71d343e8361d301f53b7401e44a30e4533746b38c828bf985a749",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "9706eda44afb4b769fbb5dad621b3964cd696fcf1c43679ded839bb8cbb87940"
     },
     {
       "alias": "user-trash-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/trash-2.svg",
       "sha256": "90a9f8df4c2622b88beb83dc06e338da4b0d57d272dfab703c0cd3ba74a1140b",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "598883f5b297ac0ca5c371f6417729ca18428e71baa5531584b3ae1995acbe28"
     },
     {
       "alias": "user-trash-full-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/trash-2.svg",
       "sha256": "90a9f8df4c2622b88beb83dc06e338da4b0d57d272dfab703c0cd3ba74a1140b",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "598883f5b297ac0ca5c371f6417729ca18428e71baa5531584b3ae1995acbe28"
     },
     {
       "alias": "folder-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "user-desktop-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-documents-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-download-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-music-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-pictures-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-publicshare-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-templates-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "folder-videos-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/folder.svg",
       "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
     },
     {
       "alias": "text-x-generic-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/file-text.svg",
       "sha256": "a261082fa3e783d0e78d2ec28d289638cfd132d23177aed725a13c6155d87206",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "1f5965bf71a6f940c7249fbeda4b646f9f56b1887b25a4261fcb6c7f6a5d64aa"
     },
     {
       "alias": "image-x-generic-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/image.svg",
       "sha256": "619c9db58c879dce6250376ba67d9c9102ca6dbb3b1efb9294c9f180e22273a5",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "77d3d0d4f730eb61abcecf1e9c92ca1ddeb5ebe61c3340df2f6ad788985193e4"
     },
     {
       "alias": "audio-x-generic-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/music-2.svg",
       "sha256": "fd3e51e40de1d9c5b1872030467fc1e181592072c3a70854133e060b134c3661",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "a669340f1b5200c7858a1670e8378a773a07d761351c1d0d5e9e44450e017caf"
     },
     {
       "alias": "video-x-generic-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/video.svg",
       "sha256": "a0ec1b95d02d80d06d17e5b2eaace1fccafd32820f7ffdce84eba0be44ddb6be",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "ea8219bca1c043072a3baae9621f36de67efea3e0ff0c4121371bc8e89de248f"
     },
     {
       "alias": "luma-chevron-left-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/chevron-left.svg",
       "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "c9ddb42e1706309505e8cb11805c5eaba178704fc26c714c67bf2e1eb2534756"
     },
     {
       "alias": "luma-chevron-right-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/chevron-right.svg",
       "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8"
     },
     {
       "alias": "luma-search-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/messages/search.svg",
       "sha256": "9322d964b61cf729b3a81210568d5a97eaf4a1f3239f25a056fda3013bf35611",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "da7b9ae078ec2c196d59802619a5ec56c3d4fd650f2274ee94dbd17cb783d370"
     },
     {
       "alias": "luma-layout-grid-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/layout-grid.svg",
       "sha256": "b8903f61d09b1d75e55c71158277d26570962f69c2099446a251871e0a2d6678",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "38ee05d88990bf8063862873cd6925ea5589a9738cdf68670f2be81425db7379"
     },
     {
       "alias": "luma-list-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/list.svg",
       "sha256": "ff97a7379eb962ddc3863bb59f0f45875ac8da91aac8a38a67361e7118d2d627",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "d6a456ce61f4175b4a8a849bae50c3d8d30ac593f1a315d7d75cc51fa1e5056e"
     },
     {
       "alias": "luma-columns-three-symbolic",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/columns-3.svg",
       "sha256": "c297e5d7d9b4f7e685b9beceaeb8819fa5eed97101b38090a036385e37a9a85e",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "a16784c2acc49dc81a98784b8ff17c8c2cc18c656f043a970a515f31820e2be5"
     },
     {
       "alias": "luma-chevron-left-symbolic-rtl",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/chevron-right.svg",
       "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8"
     },
     {
       "alias": "luma-chevron-right-symbolic-rtl",
-      "source": "local-source-artwork",
+      "source": "upstream/lucide/lumaui/chevron-left.svg",
       "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
       "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "c9ddb42e1706309505e8cb11805c5eaba178704fc26c714c67bf2e1eb2534756"

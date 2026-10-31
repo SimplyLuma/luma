@@ -14,8 +14,20 @@ if [ -r "$inputs_file" ]; then
   # shellcheck disable=SC1090
   . "$inputs_file"
 fi
+# This immutable source pin set names the same releases for both CPUs. The
+# machine's architecture selects the RPM suffix; old handheld preview aliases
+# must not replace the current desktop source selection.
+architecture=$(uname -m)
+case "$architecture" in x86_64|aarch64) ;; *) printf 'Unsupported desktop architecture\n' >&2; exit 2 ;; esac
+while IFS= read -r pin; do
+  case "$pin" in *_AARCH64_NEVRA|*_X86_64_NEVRA) continue ;; *_NEVRA) ;; *) continue ;; esac
+  value=${!pin}
+  case "$value" in *.x86_64|*.aarch64) printf -v "$pin" '%s' "${value%.*}.$architecture" ;; esac
+done < <(compgen -A variable)
+LUMA_DEVELOPER_PLATFORM_NEVRA=${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.x86_64}.$architecture
+
 : "${PRAIRIE_CORE_APPS_NEVRA:?desktop smoke requires the pinned desktop inputs}"
-: "${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA:?desktop smoke requires the pinned desktop inputs}"
+: "${LUMA_DEVELOPER_PLATFORM_NEVRA:?desktop smoke requires the pinned desktop inputs}"
 
 failures=0
 check() {
@@ -29,8 +41,41 @@ check() {
   fi
 }
 
+# Profiles declare unavailable capabilities explicitly; all other smoke gates
+# remain the same. This signed image declaration never substitutes for the
+# signed first-party application baseline or its handoff checks.
+capability_manifest=/usr/share/luma/desktop-capabilities.json
+check 'desktop capabilities match the declared supported profile' python3 - "$capability_manifest" "$architecture" <<'PYPROFILE'
+import json, sys
+value = json.load(open(sys.argv[1]))
+assert value['schema'] == 'org.projectluma.desktop-capabilities/v1'
+assert value['architecture'] == sys.argv[2]
+expected = {'desktop': True, 'android_apps': True, 'windows_apps': True, 'casting': True}
+if value['profile'] == 'arm-preview':
+    assert sys.argv[2] == 'aarch64'
+    expected.update(android_apps=False, windows_apps=False, casting=False)
+else:
+    assert value['profile'] == 'full'
+assert value['capabilities'] == expected
+registry = json.load(open('/usr/share/luma/desktop-profiles.json'))
+assert registry['schema'] == 'org.projectluma.desktop-profiles/v1'
+selection = registry['profiles'][value['profile']]
+assert sys.argv[2] in selection['architectures']
+for key in ('capabilities', 'excluded_packages', 'excluded_package_prefixes'):
+    assert value[key] == selection[key]
+PYPROFILE
+capability_enabled() {
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["capabilities"][sys.argv[2]] else 1)' "$capability_manifest" "$1"
+}
+check 'unsupported profile capability providers are absent' python3 - "$capability_manifest" <<'PYABSENT'
+import json, subprocess, sys
+value = json.load(open(sys.argv[1]))
+installed = subprocess.check_output(['rpm', '-qa', '--qf', '%{NAME}\n'], text=True).splitlines()
+assert not [name for name in installed if name in value['excluded_packages'] or name.startswith(tuple(value['excluded_package_prefixes']))]
+PYABSENT
+
 check 'Luma GNOME Control Center package' \
-  rpm -q "gnome-control-center-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.x86_64"
+  rpm -q "gnome-control-center-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.${architecture}"
 check 'Luma GNOME Control Center filesystem package' \
   rpm -q "gnome-control-center-filesystem-50.4-${GNOME_CONTROL_CENTER_LUMA_RELEASE}.fc44.noarch"
 check 'Luma GNOME Shell package' \
@@ -63,7 +108,7 @@ check 'update agent never asks rpm-ostree to reboot or apply live' \
   bash -c "! grep -REq '\"(reboot|apply-live)\", GLib.Variant\\(\"b\", True' /usr/lib/python3*/site-packages/luma_update"
 # Luma Cast (ADR-034): one session service and its backends, started only by
 # D-Bus activation when something asks for them, never at login.
-if [ -n "${LUMA_CAST_NEVRA:-}" ]; then
+if capability_enabled casting && [ -n "${LUMA_CAST_NEVRA:-}" ]; then
   check 'Luma Cast service package' rpm -q "$LUMA_CAST_NEVRA"
   check 'Luma Cast shared backend helper package' rpm -q "$LUMA_CAST_BACKEND_COMMON_NEVRA"
   check 'Luma Cast Google Cast backend package' rpm -q "$LUMA_CAST_GOOGLECAST_NEVRA"
@@ -118,12 +163,14 @@ check 'Prairie core apps replace GNOME Calendar' \
   bash -c '! rpm -q gnome-calendar >/dev/null 2>&1'
 check 'Luma Relay package' \
   rpm -q "$LUMA_RELAY_NEVRA"
+if capability_enabled windows_apps; then
 check 'Relay Wine Explorer integration' \
-  rpm -q wine-luma-relay-explorer-11.0-3.luma.2.fc44.x86_64
+  rpm -q "$WINE_RELAY_EXPLORER_NEVRA"
 check 'Relay Windows engine' rpm -q wine
 check 'Relay NTSYNC loader' rpm -q ntsync-autoload
 check 'Relay Direct3D translation' rpm -q wine-dxvk
 check 'Relay reviewed component helper' rpm -q winetricks
+fi
 # The unified Luma application installer receives Windows, Android and Linux
 # packages and hands Windows programs to Relay.
 check 'the Luma application installer owns Windows executable files' \
@@ -303,16 +350,16 @@ done
 # Owner-requested baseline exclusions are checked by package name and exact
 # launchers. GIO verifies hidden provider metadata without concealing duplicates.
 for package in gnome-disk-utility gnome-calculator ptyxis gnome-terminal \
-               gnome-console yelp firefox gnome-extensions-app openemu-linux luma-imager; do
+               gnome-console yelp firefox gnome-extensions-app openemu-linux luma-imager luma-displays; do
   check "excluded baseline application $package is absent" collection_package_absent "$package"
 done
 for launcher in org.gnome.DiskUtility org.gnome.Calculator org.gnome.Ptyxis \
                 org.gnome.Terminal org.gnome.Console org.gnome.Extensions \
-                firefox yelp org.projectluma.Imager org.openemu.OpenEmuLinux.Development; do
+                firefox yelp org.projectluma.Imager org.projectluma.Displays org.openemu.OpenEmuLinux.Development; do
   check "excluded baseline launcher $launcher is absent" \
     collection_launcher_absent "/usr/share/applications/$launcher.desktop"
 done
-check 'GIO hides secondary Displays and Mods, retaining Luma native roles' \
+check 'GIO hides Mods, retaining Luma native roles' \
   env XDG_DATA_DIRS=/usr/share/luma/desktop-overrides:/usr/local/share:/usr/share python3 - <<'PYGIO'
 import ctypes
 import ctypes.util
@@ -324,7 +371,7 @@ lib.g_app_info_should_show.argtypes = [ctypes.c_void_p]
 lib.g_app_info_should_show.restype = ctypes.c_int
 lib.g_desktop_app_info_get_filename.argtypes = [ctypes.c_void_p]
 lib.g_desktop_app_info_get_filename.restype = ctypes.c_char_p
-for desktop in ('org.projectluma.Displays', 'org.projectluma.Mods'):
+for desktop in ('org.projectluma.Mods',):
     app = lib.g_desktop_app_info_new((desktop + '.desktop').encode())
     assert app and not lib.g_app_info_should_show(app), desktop
     expected = '/usr/share/luma/desktop-overrides/applications/' + desktop + '.desktop'
@@ -332,7 +379,7 @@ for desktop in ('org.projectluma.Displays', 'org.projectluma.Mods'):
 for desktop in ('org.projectluma.Calculator', 'org.projectluma.Terminal', 'org.projectluma.Disks.Preview', 'org.projectluma.Tide'):
     app = lib.g_desktop_app_info_new((desktop + '.desktop').encode())
     assert app and lib.g_app_info_should_show(app), desktop
-print('PASS: 2 hidden providers, 4 visible native applications')
+print('PASS: 1 hidden provider, 4 visible native applications')
 PYGIO
 check 'exact shared Search package installed' rpm -q "$LUMA_SEARCH_NEVRA"
 
@@ -444,7 +491,7 @@ check 'GTK embeds the Luma native dark-mode window elevation' \
 check 'shared Luma core applications package is installed' \
   rpm -q "$PRAIRIE_CORE_APPS_NEVRA"
 check 'shared Luma Developer Platform package is installed' \
-  rpm -q "$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA"
+  rpm -q "$LUMA_DEVELOPER_PLATFORM_NEVRA"
 check 'Luma Semantics introspection is installed' test -f \
   /usr/lib64/girepository-1.0/LumaSemantics-1.typelib
 check 'Luma UI introspection is installed' test -f \
@@ -621,6 +668,7 @@ check_schema_default 'desktop Filer retains the full storage view by default' \
   org.gnome.nautilus.preferences personal-storage-only false
 check_value 'Prairie Calendar is the desktop calendar command' \
   /org/gnome/desktop/default-applications/office/calendar/exec "'prairie-calendar'"
+if capability_enabled android_apps; then
 check 'Luma Android integration package' \
   rpm -q "$LUMA_ANDROID_RUNTIME_NEVRA"
 check 'Fedora Waydroid engine' rpm --quiet --query waydroid
@@ -628,6 +676,7 @@ check 'APK MIME integration' grep -Fq application/vnd.android.package-archive \
   /usr/share/mime/packages/luma-android.xml
 check 'APK installer broker' test -f \
   /usr/share/dbus-1/services/org.projectluma.ApplicationInstaller1.service
+fi
 check_value '12-hour clock default' \
   /org/gnome/desktop/interface/clock-format "'12h'"
 

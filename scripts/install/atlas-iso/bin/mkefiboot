@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Lorax mkksiso expects mkefiboot to replace its extracted EFI image.
+exec python3 /s/make-efi-image.py --replace "$@"

@@ -439,8 +439,6 @@ class IntegratedWindow(AppWindow):
         blank_selected = (state.get('activeUrl') == 'about:blank' and
                           (not self.state or self.state.get('activeTabId') != state.get('activeTabId')))
         self.state = state
-        if blank_selected:
-            self._edit_blank_tab()
         self.present_selected_frame()
         self.toolbar.set_sensitive(True)
         self.address_field.set_sensitive(True)
@@ -459,6 +457,10 @@ class IntegratedWindow(AppWindow):
         else:
             self.sidebar.render(state)
         self.responsive.render()
+        if blank_selected:
+            # The initial editor starts disabled, and responsive rendering may
+            # reparent it. Focus only after it is enabled in its final bar.
+            self._edit_blank_tab()
         return GLib.SOURCE_REMOVE
 
     def native_event(self, name, payload):
@@ -652,17 +654,22 @@ def main():
         if os.environ.get('VIOLA_QA_INVENTORY') == '1':
             requests = [engine.request('Target.createTarget', {'url': 'about:blank',
                 'newWindow': True, 'background': False, 'windowState': 'normal'}) for _ in range(2)]
-            for request in requests: request.result(timeout=15)
+            for request in requests: request.result(timeout=60)
         else:
             engine.call('Target.createTarget', {'url': 'about:blank', 'newWindow': True,
-                                               'background': False, 'windowState': 'normal'})
+                                               'background': False, 'windowState': 'normal'}, timeout=60)
         windows.wait_primary()
         windows.connect(windows.primary)
         origin = 'http://127.0.0.1:' + str(server.server_port)
-        if args.start_url or not had_profile:
-            services.navigate(args.start_url or ("https://www.google.com/" if args.interactive else origin + ('/cadence' if args.measure_presentation else '/native-window')))
+        from startup_navigation import primary_startup_url
+        initial_url = primary_startup_url(start_url=args.start_url, had_profile=had_profile,
+            urls=args.urls, interactive=args.interactive, origin=origin,
+            measure_presentation=args.measure_presentation)
+        if initial_url is not None:
+            services.navigate(initial_url)
         for url in args.urls:
-            engine.open_external(url)
+            if not engine.open_external(url, startup=True):
+                error('Chromium did not accept the requested startup URL')
         if args.representative:
             from seed_native_layout import seed
             layout_report.update(seed(services, origin, run / 'fixture-downloads', media=bool(args.media_fixture)))
@@ -672,7 +679,8 @@ def main():
             window.identity_menu = NativeIdentityMenu(window, description)
             if args.qa_present:
                 window.present()
-                window._focus_address()
+                if not window.address_focused():
+                    window._focus_address()
             timeout_policy.ready = True
             (args.work_root / 'native-ready').write_text('ready\n')
             if os.environ.get('VIOLA_QA_WINDOWS') == '1':
@@ -781,6 +789,21 @@ def main():
                 'inflight_max', 'queue_wait_ms_max', 'ack_ms_max',
                 'ack_timeouts')})
         summary['transport_metrics'] = dict(engine.transport_metrics)
+        valid, bounds = active_window.page.compute_bounds(active_window)
+        frame = active_window.page.displayed_frame or {}
+        state = getattr(active_window.services, 'state', None) or {}
+        summary['native_identity_geometry'] = dict(
+            bounds_valid=valid,
+            page_bounds=[bounds.get_x(), bounds.get_y(), bounds.get_width(), bounds.get_height()] if valid else None,
+            window_size=[active_window.get_width(), active_window.get_height()],
+            scale=active_window.get_scale_factor(),
+            window_description=active_window.native_context.get('description'),
+            target=active_window.page_input.target, tab_id=active_window.page_input.tab_id,
+            input_identity_valid=active_window.page_input.valid_identity(),
+            active_url=state.get('activeUrl'),
+            displayed_frame={key: frame.get(key) for key in (
+                'id', 'transport', 'version', 'window_id', 'target_id', 'tab_id',
+                'width', 'height', 'content', 'fourcc')})
         temporary = args.work_root / 'presentation-live.tmp'
         temporary.write_text(json.dumps(summary) + '\n')
         temporary.replace(args.work_root / 'presentation-live.json')

@@ -17,10 +17,18 @@ for tool in cpio curl git mktemp podman rpm2cpio sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma fwupd RPMs on the canonical Linux/x86_64 builder\n' >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf 'error: build the Luma fwupd RPMs on a Linux builder\n' >&2
   exit 1
 fi
+
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported desktop package architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 
 cache_dir="$repo_root/build/cache/srpm"
 output_dir="$repo_root/build/packages/fwupd"
@@ -59,8 +67,9 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/fwupd.spec" \
   "$FWUPD_LUMA_RELEASE" || exit 1
 
 bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
-  "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+  "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
+    architecture=$(rpm --eval "%{_arch}")
     dnf5 -y install rpm-build dnf5-plugins binutils
     dnf5 -y builddep SPECS/fwupd.spec
     # Build inside the container: meson runs the programs it compiles, and a
@@ -74,12 +83,12 @@ bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
     cp -a "$top/SRPMS/." SRPMS/
     rm -rf "$top"
     for name in fwupd fwupd-plugin-modem-manager; do
-      test -f "RPMS/x86_64/$name-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.x86_64.rpm"
+      test -f "RPMS/$architecture/$name-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.${architecture}.rpm"
     done
     verify_dir=$(mktemp -d "$PWD/verify.XXXXXX")
     cd "$verify_dir"
-    for rpm in "$OLDPWD"/RPMS/x86_64/fwupd-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.x86_64.rpm \
-               "$OLDPWD"/RPMS/x86_64/fwupd-plugin-modem-manager-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.x86_64.rpm; do
+    for rpm in "$OLDPWD"/RPMS/$architecture/fwupd-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.${architecture}.rpm \
+               "$OLDPWD"/RPMS/$architecture/fwupd-plugin-modem-manager-'"$FWUPD_VERSION-$FWUPD_LUMA_RELEASE"'.fc44.${architecture}.rpm; do
       rpm2cpio "$rpm" >payload.cpio
       cpio -idm --quiet <payload.cpio
       rm -f payload.cpio

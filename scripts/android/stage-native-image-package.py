@@ -42,10 +42,12 @@ def save(path, value):
 
 
 def stage(pair, member_path, output, repo, arch):
-    if arch != 'x86_64':
-        raise ValueError('No native current-frame pair qualified for this architecture; use the explicit reference builder for reference images')
+    if arch not in ('x86_64', 'aarch64'):
+        raise ValueError('Unsupported Android image architecture')
     producer_path = regular(pair / 'RESULT.json')
     producer = json.loads(producer_path.read_text())
+    if producer.get('architecture', 'x86_64') != arch:
+        raise ValueError('Image producer architecture differs from the RPM target')
     members = json.loads(regular(member_path).read_text())
     identities = [producer[k] for k in ('source_manifest_sha256', 'source63_sha256') if k in producer]
     if len(identities) != 1 or not isinstance(identities[0], str) or not re.fullmatch('[a-f0-9]{64}', identities[0]):
@@ -99,7 +101,7 @@ def stage(pair, member_path, output, repo, arch):
             name = kind + '.img'
             archive = producer['archives'][name]
             source = regular(Path(archive['path']))
-            if (source.parent != pair or not re.fullmatch(r'[A-Za-z0-9_.-]*waydroid_x86_64[A-Za-z0-9_.-]*\.zip', source.name)
+            if (source.parent != pair or not re.fullmatch(r'[A-Za-z0-9_.-]*' + {'x86_64': 'waydroid_x86_64', 'aarch64': 'waydroid_arm64_only'}[arch] + r'[A-Za-z0-9_.-]*\.zip', source.name)
                     or sha(source) != archive['sha256'] or source.stat().st_size != archive['bytes']):
                 raise ValueError('Changed actual terminal archive')
             records['SOURCES/android-' + kind + '.zip'] = copy(source, output / 'SOURCES' / ('android-' + kind + '.zip'))

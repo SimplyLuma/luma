@@ -52,6 +52,7 @@
 
 set -euo pipefail
 . "$(dirname -- "$0")/lib/common.sh"
+. "$(dirname -- "$0")/lib/gate-vm.sh"
 
 build_id=
 keep_vms=0
@@ -85,7 +86,7 @@ luma_os_check_space 30
 
 build_dir="$LUMA_OS_ROOT/builds/$build_id"
 [ -s "$build_dir/export.env" ] || luma_os_die "build has no candidate commit: $build_dir"
-luma_os_load_env "$build_dir/build.env"
+luma_os_load_build_env "$build_dir/build.env"
 luma_os_load_env "$build_dir/export.env"
 channel=$LUMA_OS_CHANNEL
 ref=$LUMA_EXPORT_REF
@@ -99,7 +100,10 @@ if [ -n "$update_from" ]; then
   previous=$update_from
 fi
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
-iso=${LUMA_OS_GATE_ISO:-$LUMA_OS_ROOT/vm/media/Fedora-Silverblue-ostree-x86_64-44-1.7.iso}
+kvm_available=no
+[ ! -r /dev/kvm ] || [ ! -w /dev/kvm ] || kvm_available=yes
+luma_os_gate_vm_target "$LUMA_OS_ARCH" "$(uname -m)" "$kvm_available"
+iso=${LUMA_OS_GATE_ISO:-$LUMA_OS_ROOT/vm/media/Fedora-Silverblue-ostree-$LUMA_OS_ARCH-44-1.7.iso}
 [ -f "$iso" ] || luma_os_die "installer ISO is missing: $iso"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -110,6 +114,8 @@ install -d -m 0755 "$gate_dir" "$vm_dir"   # qemu must reach the disks in vm_dir
 log="$gate_dir/gate.log"
 exec > >(tee -a "$log") 2>&1
 luma_os_log "gate $run_id for $candidate ($LUMA_OS_VERSION) on $ref; previous ${previous:-none}"
+# Fail before credentials, repository copies and disks if this host cannot boot the target.
+luma_os_gate_vm_preflight "$gate_dir/libvirt-capabilities.xml"
 
 exec 7>"$LUMA_OS_ROOT/locks/gate.lock"
 flock -n 7 || luma_os_die 'another gate is running'
@@ -246,11 +252,11 @@ gate_release_check() {
     record "$stage-$name" fail "tests/os/gate/$name.sh is not in the release source"
     return 1
   fi
-  # The signed-browser check invokes three source-owned sibling helpers.
+  # The signed-browser check invokes source-owned sibling helpers.
   # Deliver them from the same admitted release tree, never from host drafts.
   if [ "$name" = default-browser ]; then
     local helper
-    for helper in browser-opens.sh browser-opens.js browser-process-proof.py; do
+    for helper in browser-opens.sh browser-opens.js browser-process-proof.py browser-fixture-keyring.py; do
       if [ ! -f "$release_files/tests/os/gate/$helper" ]; then
         record "$stage-$name" fail "tests/os/gate/$helper is not in the release source"
         return 1
@@ -446,6 +452,8 @@ install_vm() {
       -e "s#@REPO_URL@#$repo_url#g" \
       -e "s#@REF@#$ref#g" \
       -e "s#@CHANNEL@#$channel#g" \
+      -e "s#@ARCH@#$LUMA_OS_ARCH#g" \
+      -e "s#@CONSOLE@#$gate_console#g" \
       -e "s|@FIRSTBOOT@|$firstboot|" \
       "$luma_os_repo_root/tests/os/gate/luma-gate.ks.in" >"$vm_dir/luma-gate.ks"
   qemu-img create -q -f qcow2 "$vm_dir/$domain.qcow2" 48G
@@ -454,19 +462,20 @@ install_vm() {
   local started=$SECONDS
   virt-install --connect qemu:///system \
     --name "$domain" \
-    --memory 6144 --vcpus 4 --cpu host-passthrough \
-    --machine q35 --boot uefi \
+    --arch "$LUMA_OS_ARCH" --virt-type "$gate_virt" \
+    --memory 6144 --vcpus 4 --cpu "$gate_cpu" \
+    --machine "$gate_machine" --boot "$gate_boot" \
     --disk "path=$vm_dir/$domain.qcow2,format=qcow2,bus=virtio,cache=unsafe,discard=unmap" \
     --location "$iso,kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img" \
     --initrd-inject "$vm_dir/luma-gate.ks" \
-    --extra-args "inst.ks=file:/luma-gate.ks inst.text console=ttyS0 inst.notmux" \
+    --extra-args "inst.ks=file:/luma-gate.ks inst.text console=$gate_console inst.notmux" \
     --network "passt,portForward0.proto=tcp,portForward0.range0.start=$port,portForward0.range0.to=22" \
     --graphics vnc,listen=127.0.0.1 --video virtio \
     --rng /dev/urandom \
     --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \
     --serial "file,path=/var/log/libvirt/qemu/$domain-serial.log" \
     --os-variant fedora-unknown \
-    --noreboot --noautoconsole --wait 60 >>"$gate_dir/virt-install-$name.log" 2>&1 || {
+    --noreboot --noautoconsole --wait "$gate_install_wait_minutes" >>"$gate_dir/virt-install-$name.log" 2>&1 || {
       tail -n 30 "/var/log/libvirt/qemu/$domain-serial.log" 2>/dev/null >&2
       return 1
     }

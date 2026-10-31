@@ -41,7 +41,12 @@ def main():
         if not re.fullmatch(r'/[A-Za-z0-9_./-]+',str(value)):raise ValueError('Unsupported unit path')
     command=['/usr/bin/python3','-B',str(control/'scripts/os/refresh-approved-graphs.py'),
              str(control),control_sha,str(state),state_sha,channel]
-    name='luma-approved-os-graph-refresh-'+channel
+    architecture=cfg.get('architecture','x86_64')
+    if architecture not in ('x86_64','aarch64'):raise ValueError('Unsupported refresh architecture')
+    spec=importlib.util.spec_from_file_location('install_graph_bucket',control/'scripts/os/lib/graph_bucket.py')
+    buckets=importlib.util.module_from_spec(spec);spec.loader.exec_module(buckets)
+    bucket=buckets.GraphBucket(architecture,cfg.get('hardware_target',''))
+    name=bucket.unit_name(channel)
     units=Path('/etc/systemd/system')
     service='\n'.join([
         '[Unit]','Description=Refresh the approved signed Luma '+channel+' OS graph',
@@ -52,8 +57,9 @@ def main():
         '[Timer]','OnCalendar=*-*-* 00,12:15:00 UTC','RandomizedDelaySec=5min','Persistent=true',
         'Unit='+name+'.service','[Install]','WantedBy=timers.target',''])
     if mode=='--apply':
-        subprocess.run(['systemctl','disable','--now','luma-beta-os-graph-refresh.timer'],check=True)
-        subprocess.run(['systemctl','stop','luma-beta-os-graph-refresh.service'],check=True)
+        if architecture=='x86_64' and not bucket.hardware_target:
+            subprocess.run(['systemctl','disable','--now','luma-beta-os-graph-refresh.timer'],check=True)
+            subprocess.run(['systemctl','stop','luma-beta-os-graph-refresh.service'],check=True)
         for suffix,text in (('.service',service),('.timer',timer)):
             target=units/(name+suffix);temporary=units/('.'+name+suffix+'.new')
             with temporary.open('w') as stream:

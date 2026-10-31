@@ -23875,14 +23875,15 @@ new file mode 100644
 index 0000000..021bf30
 --- /dev/null
 +++ b/shell/test-luma-live-you.c
-@@ -0,0 +1,332 @@
+@@ -0,0 +1,340 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/* Privacy and Wellbeing adapters against memory settings (never dconf) and
-+ * no session bus (the permission store is simply absent). */
++ * a private session bus with no permission-store service. */
 +#include "cc-luma-live-gsettings.h"
 +
 +extern const CcLumaAdapter cc_luma_adapter_privacy, cc_luma_adapter_wellbeing, cc_luma_adapter_sharing;
 +static const char *ready_adapter;
++static const char *test_bus_address;
 +void cc_luma_live_ready (CcLumaFixture *model, const char *adapter) { ready_adapter = adapter; }
 +
 +static gboolean
@@ -24102,7 +24103,10 @@ index 0000000..021bf30
 +  g_autoptr (JsonNode) on = json_node_init_boolean (json_node_alloc (), TRUE);
 +  g_autoptr (JsonNode) off = json_node_init_boolean (json_node_alloc (), FALSE);
 +  Want w = { model, key, TRUE };
-+  g_assert_true (cc_luma_fixture_write (model, key, on, NULL));
++  g_autoptr (GError) error = NULL;
++  gboolean written = cc_luma_fixture_write (model, key, on, &error);
++  g_assert_no_error (error);
++  g_assert_true (written);
 +  g_assert_true (spin_until (model_is, &w)); /* the adapter reads it back from ListNetworks */
 +  g_assert_cmpstr (g_hash_table_lookup (fake_enabled, service), ==, "net-1");
 +  w.want = FALSE;
@@ -24115,10 +24119,8 @@ index 0000000..021bf30
 +static void
 +test_sharing (void)
 +{
-+  g_autoptr (GTestDBus) dbus = g_test_dbus_new (G_TEST_DBUS_NONE);
-+  g_test_dbus_up (dbus);
 +  g_autoptr (GError) error = NULL;
-+  g_autoptr (GDBusConnection) service = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (dbus),
++  g_autoptr (GDBusConnection) service = g_dbus_connection_new_for_address_sync (test_bus_address,
 +    G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT | G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION, NULL, NULL, &error);
 +  g_assert_no_error (error);
 +  g_autoptr (GDBusNodeInfo) info = g_dbus_node_info_new_for_xml (sharing_xml, &error);
@@ -24196,17 +24198,23 @@ index 0000000..021bf30
 +  g_dbus_connection_close_sync (service, NULL, NULL);
 +  g_clear_pointer (&fake_enabled, g_hash_table_unref);
 +  g_clear_pointer (&fake_last_disable_network, g_free);
-+  g_test_dbus_down (dbus);
 +}
 +
 +int
 +main (int argc, char **argv)
 +{
 +  g_test_init (&argc, &argv, NULL);
++  /* Set the session bus before privacy or wellbeing starts GLib workers.
++   * GTestDBus changes process environment and must precede those threads. */
++  g_autoptr (GTestDBus) dbus = g_test_dbus_new (G_TEST_DBUS_NONE);
++  g_test_dbus_up (dbus);
++  test_bus_address = g_test_dbus_get_bus_address (dbus);
 +  g_test_add_func ("/live/privacy", test_privacy);
 +  g_test_add_func ("/live/wellbeing", test_wellbeing);
 +  g_test_add_func ("/live/sharing", test_sharing);
-+  return g_test_run ();
++  int result = g_test_run ();
++  g_test_dbus_down (dbus);
++  return result;
 +}
 diff --git a/shell/test-luma-permissions.c b/shell/test-luma-permissions.c
 index e9c3ae8..eac1fc9 100644

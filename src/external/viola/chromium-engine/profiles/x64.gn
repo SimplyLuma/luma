@@ -1,0 +1,2 @@
+target_cpu = "x64"
+# Keep upstream official Linux x64 CFI and its ThinLTO requirement.

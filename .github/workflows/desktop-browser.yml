@@ -1,0 +1,154 @@
+name: Native desktop browser
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop-browser.yml'
+      - 'scripts/os/build-desktop-browser.sh'
+      - 'scripts/packages/build-viola-browser.sh'
+      - 'packaging/rpm/viola-browser-stable.spec'
+      - 'src/external/viola/chromium-linux/**'
+  workflow_dispatch:
+    inputs:
+      toolkit_run:
+        description: Successful checked toolkit run with matching native providers
+        type: string
+        default: ''
+      public_readback:
+        description: Verify the exact published signed application union without rebuilding
+        type: boolean
+        default: false
+      runtime_probe:
+        description: Probe retained native ARM packages without rebuilding
+        type: boolean
+        default: false
+      media_readback:
+        description: Verify exact public ISO URLs without building packages
+        type: boolean
+        default: false
+      media_profile_json:
+        description: Exact small prepared ISO readback profile JSON
+        type: string
+        default: ''
+      media_profile_sha256:
+        description: SHA256 of the exact prepared readback profile bytes
+        type: string
+        default: ''
+      signed_input_url:
+        description: Exact selected signed Flatpak test input archive URL
+        type: string
+        default: ''
+      signed_input_sha256:
+        description: SHA256 of the selected signed Flatpak test archive
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  select:
+    if: inputs.runtime_probe != true && inputs.public_readback != true && inputs.media_readback != true
+    runs-on: ubuntu-24.04
+    outputs:
+      needed: ${{ steps.scope.outputs.needed }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          echo "needed=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE")" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(python3 scripts/os/desktop-ci-changed.py --component browser --base "$BASE" --print-matrix)" >> "$GITHUB_OUTPUT"
+  build:
+    needs: select
+    if: needs.select.outputs.needed == 'true'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+      RPM_BUILD_NCPUS: '2'
+      BUILDER_IMAGE: ${{ matrix.image }}
+    steps:
+      - name: Prepare native Fedora tools
+        run: dnf5 -y install git gh podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Admit matching current toolkit packages
+        if: inputs.toolkit_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOLKIT_RUN: ${{ inputs.toolkit_run }}
+        run: python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" --run-id "$TOOLKIT_RUN" --output build/browser-inputs/toolkit
+      - name: Reuse checked toolkit packages
+        if: inputs.toolkit_run == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-toolkit-${{ matrix.architecture }}
+          run-id: 39857373641
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/toolkit
+      - name: Reuse checked apk-metadata packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-apk-metadata-${{ matrix.architecture }}
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/apk-metadata
+      - name: Reuse checked appimage packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-appimage-${{ matrix.architecture }}
+          run-id: 39860196045
+          github-token: ${{ github.token }}
+          path: build/browser-inputs/appimage
+      - name: Build and check the shared browser host
+        run: |
+          test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
+          . config/desktop/inputs.env
+          case "$LUMA_TARGET_ARCHITECTURE" in
+            x86_64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER" ;;
+            aarch64) test "$BUILDER_IMAGE" = "$FEDORA_RPM_BUILD_CONTAINER_AARCH64" ;;
+          esac
+          mkdir -p build
+          git -c safe.directory="$PWD" rev-parse HEAD > build/SOURCE-REVISION
+          bash scripts/os/build-desktop-browser.sh
+      - name: Retain checked browser packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-browser-${{ matrix.architecture }}
+          path: |
+            build/packages/**/RPMS/
+            build/packages/**/SRPMS/
+            build/packages/**/SHA256SUMS
+            build/SOURCE-REVISION
+          if-no-files-found: error
+          retention-days: 14
+  runtime-probe:
+    if: github.event_name == 'workflow_dispatch' && inputs.runtime_probe == true && inputs.public_readback != true && inputs.media_readback != true
+    uses: ./.github/workflows/desktop-browser-runtime.yml
+    with:
+      signed_input_url: ${{ inputs.signed_input_url }}
+      signed_input_sha256: ${{ inputs.signed_input_sha256 }}
+
+  public-readback:
+    if: github.event_name == 'workflow_dispatch' && inputs.public_readback == true && inputs.runtime_probe != true && inputs.media_readback != true
+    uses: ./.github/workflows/depot-public-readback.yml
+
+  media-readback:
+    if: github.event_name == 'workflow_dispatch' && inputs.media_readback == true && inputs.runtime_probe != true && inputs.public_readback != true
+    uses: ./.github/workflows/media-public-readback.yml
+    with:
+      profile_json: ${{ inputs.media_profile_json }}
+      profile_sha256: ${{ inputs.media_profile_sha256 }}

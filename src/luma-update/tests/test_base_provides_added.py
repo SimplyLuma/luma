@@ -70,7 +70,7 @@ class AddedPackageTheBaseShips(unittest.TestCase):
         backend = BaseShipsAddedPackage({"viola-browser-stable": "viola-browser-stable-151.0.7922.72-2.x86_64"},
                                         local=(VIOLA_LOCAL, "htop-3.3.0-1.fc44.x86_64"), repo=("git",))
         engine, logs = self.stage(backend)
-        self.assertEqual(backend.calls, [("update", commit(2), None, False),
+        self.assertEqual(backend.transactions(), [("update", commit(2), None, False),
                                          ("update", commit(2), None, False, "uninstall", VIOLA_LOCAL)])
         status = engine.status()
         self.assertEqual((status.state, status.staged_commit, status.last_error), ("staged", commit(2), ""))
@@ -83,7 +83,7 @@ class AddedPackageTheBaseShips(unittest.TestCase):
     def test_a_repository_request_the_base_ships_goes_by_its_request(self):
         backend = BaseShipsAddedPackage({"htop": "htop-3.4.0-1.fc44.x86_64"}, repo=("htop", "git"))
         engine, _ = self.stage(backend)
-        self.assertEqual(backend.calls[-1], ("update", commit(2), None, False, "uninstall", "htop"))
+        self.assertEqual(backend.transactions()[-1], ("update", commit(2), None, False, "uninstall", "htop"))
         self.assertEqual(engine.status().removed_packages, ["htop"])
 
     def test_two_packages_are_removed_one_conflict_at_a_time(self):
@@ -93,7 +93,7 @@ class AddedPackageTheBaseShips(unittest.TestCase):
         engine, _ = self.stage(backend)
         self.assertEqual(engine.status().state, "staged")
         self.assertEqual(sorted(engine.status().removed_packages), sorted([VIOLA_LOCAL, "htop-3.3.0-1.fc44.x86_64"]))
-        self.assertEqual(len(backend.calls), 3)
+        self.assertEqual(len(backend.transactions()), 3)
 
     def test_a_conflict_with_nothing_added_here_is_not_touched(self):
         backend = fakes.FakeRpmOstree()
@@ -103,7 +103,7 @@ class AddedPackageTheBaseShips(unittest.TestCase):
         self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
         engine = self.rig.engine()
         engine.automatic()
-        self.assertEqual(backend.calls, [("update", commit(2), None, False)])
+        self.assertEqual(backend.transactions(), [("update", commit(2), None, False)])
         self.assertEqual((engine.status().last_error_class, engine.status().staged_commit), ("transaction", ""))
         self.assertEqual(engine.status().removed_packages, [])
 
@@ -143,7 +143,7 @@ class NicksThinkPad(AddedPackageTheBaseShips):
         self.assertEqual((status.staged_commit, status.last_error_class), ("", "added-package-newer"))
         self.assertIn("newer copy", status.last_error)
         self.assertEqual(status.kept_packages, [self.SESSION])
-        for call in backend.calls:
+        for call in backend.transactions():
             self.assertNotIn(self.SESSION, call)            # never asked to remove the newer copy
             self.assertNotIn("override-remove", call)
         self.assertIn("keeping the added copy", logs)
@@ -161,7 +161,7 @@ class NicksThinkPad(AddedPackageTheBaseShips):
         backend = BaseShipsAddedPackage({"luma-keyring": self.KEYRING}, local=(self.KEYRING,))
         engine, _ = self.stage(backend)
         self.assertEqual(engine.status().state, "staged")
-        self.assertEqual(backend.calls[-1], ("update", commit(2), None, False, "uninstall", self.KEYRING))
+        self.assertEqual(backend.transactions()[-1], ("update", commit(2), None, False, "uninstall", self.KEYRING))
         self.assertEqual(engine.status().kept_packages, [])
 
 

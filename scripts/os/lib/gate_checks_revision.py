@@ -11,9 +11,16 @@ from pathlib import Path
 
 FIXTURE_PATHS = frozenset({
     "scripts/os/gate.sh",
+    "scripts/os/verify-media.sh",
     "scripts/os/lib/gate_checks_revision.py",
     "tests/os/gate/admin-prompt.sh",
+    "tests/os/gate/app-remove-restore.py",
+    "tests/os/test_app_remove_restore_phase.py",
     "tests/os/gate/browser-opens.js",
+    "tests/os/gate/browser-opens.sh",
+    "tests/os/gate/browser-fixture-keyring.py",
+    "tests/unit/test_browser_fixture_keyring.py",
+    "tests/smoke/desktop.sh",
     "tests/unit/test_gate_checks_revision.py",
 })
 

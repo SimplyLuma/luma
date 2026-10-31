@@ -82,3 +82,18 @@ index 6b7ca421f5ed..5f1faa9813fb 100644
                  }
                  if (!task.getWindowConfiguration().canResizeTask()) {
                      Slog.w(TAG, "resizeTask not allowed on task=" + task);
+
+--- a/core/java/android/view/ViewRootImpl.java
++++ b/core/java/android/view/ViewRootImpl.java
+@@ -1013,7 +1013,10 @@
+                 context.getApplicationInfo().isOnBackInvokedCallbackEnabled());
+ 
+         String packageName = context.getPackageName();
+-        mFakeClickAsTouch = Arrays.stream(SystemProperties.get("persist.waydroid.fake_touch").split(","))
++        String touchOverride = SystemProperties.get("persist.luma.app.touch." + packageName);
++        mFakeClickAsTouch = ("true".equals(touchOverride) || "false".equals(touchOverride))
++            ? "true".equals(touchOverride)
++            : Arrays.stream(SystemProperties.get("persist.waydroid.fake_touch").split(","))
+             .map(x -> x.replace(".", "\\."))
+             .map(x -> x.replace("*", ".*"))
+             .map(x -> new PatternMatcher(x, PatternMatcher.PATTERN_SIMPLE_GLOB))

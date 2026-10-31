@@ -14,10 +14,14 @@ for tool in mktemp podman sha256sum; do
   }
 done
 
-if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-  printf 'error: build the Luma Search RPM on the canonical Linux/x86_64 builder\n' >&2
-  exit 1
-fi
+[ "$(uname -s)" = Linux ] || { printf 'error: build Search on Linux\n' >&2; exit 1; }
+architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
+case "$architecture" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported Search architecture: %s\n' "$architecture" >&2; exit 1 ;;
+esac
+export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
 
 output_dir="$repo_root/build/packages/luma-search"
 mkdir -p "$(dirname "$output_dir")"
@@ -55,7 +59,7 @@ install -m 0644 "$repo_root/src/luma-search/org.projectluma.Depot.search-provide
 install -m 0644 "$repo_root/src/luma-search/filer-places.json" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/packaging/rpm/luma-search.spec" "$rpmbuild_dir/SPECS/"
 
-"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
+"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$builder_container" '
   set -euo pipefail
   dnf5 -y install glib2-devel python3 python3-gobject-base rpm-build systemd-rpm-macros localsearch libtinysparql
   schemas=$(mktemp -d)

@@ -40,6 +40,22 @@ class Handoff(unittest.TestCase):
     def install(self,path,key,row):self.calls.append(row['ref']);self.installed[row['ref']]=Ref(row['commit'])
     def verify(self,ref,expected):self.assertIn(expected,self.installed)
     def run_handoff(self,install=None):return baseline.handoff(self.root,self.state,'x86_64',lambda:self.installed,self.verify,install or self.install)
+    def test_retirement_runs_before_completed_baseline_shortcut_and_retries(self):
+        from luma_installer import retired_apps
+        from unittest import mock
+        self.state.mkdir();(self.state/'installed-v1.json').write_text('{}')
+        events=[]
+        with mock.patch.object(baseline,'STATE',self.state),mock.patch.object(baseline.os,'geteuid',return_value=0), \
+             mock.patch.object(baseline,'handoff',side_effect=lambda *_:events.append('handoff')), \
+             mock.patch.object(retired_apps,'reconcile_current',side_effect=lambda **_:events.append('retire')):
+            baseline.main();baseline.main()
+        self.assertEqual(events,['retire','handoff','retire','handoff'])
+        with mock.patch.object(baseline,'STATE',self.state),mock.patch.object(baseline.os,'geteuid',return_value=0), \
+             mock.patch.object(baseline,'handoff') as handoff, \
+             mock.patch.object(retired_apps,'reconcile_current',side_effect=RuntimeError('retry')):
+            with self.assertRaises(RuntimeError):baseline.main()
+            handoff.assert_not_called()
+
     def test_changed_bundle_refused_before_any_install(self):
         (self.root/self.rows[0]['file']).write_bytes(b'changed')
         with self.assertRaises(ValueError):self.run_handoff()
@@ -83,10 +99,24 @@ class Handoff(unittest.TestCase):
         self.assertEqual(marker.read_bytes(),original)
     def test_os_input_admits_exact_files_and_records_bundle_identity(self):
         admitted=baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json')
-        self.assertEqual(admitted['applications'],24);self.assertEqual(admitted['runtimes'],3)
+        self.assertEqual(admitted['applications'],len(self.apps));self.assertEqual(admitted['runtimes'],3)
         self.assertEqual(admitted['bundles'],self.rows)
         self.assertEqual(admitted['bundle_bytes'],sum(r['bytes'] for r in self.rows))
         self.assertEqual(admitted['manifest_sha256'],baseline.digest(self.root/'manifest.json'))
+    def test_cross_host_arm_input_requires_arm_target(self):
+        for row in self.rows:
+            (self.root/row['file']).unlink()
+            row['ref']=row['ref'].replace('/x86_64/','/aarch64/')
+            body=row['ref'].encode();h=hashlib.sha256(body).hexdigest()
+            row.update(commit=h,sha256=h,bytes=len(body),file=h+'.flatpak')
+            (self.root/row['file']).write_bytes(body)
+        self.manifest['architecture']='aarch64'
+        self.write('manifest.json',self.manifest)
+        result=baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json','aarch64')
+        self.assertEqual(result['architecture'],'aarch64')
+        with self.assertRaises(ValueError):
+            baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json','x86_64')
+
     def test_os_input_refuses_a_different_source_selection(self):
         other=self.home/'other-shipping.json';other.write_text('{"schema":"different"}')
         with self.assertRaises(ValueError):baseline_input.admit(self.root,other)

@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 
-# Destructive scope: the supplied acceptance APK is removed and immediately
-# reinstalled to prove the lifecycle. Do not use an APK carrying test data.
+# Disposable graphical test account only. This removes/reinstalls the source
+# fixture's synthetic data. It never changes the user manager's display setup.
 set -euo pipefail
 
 apk=${1:?usage: acceptance-desktop.sh ACCEPTANCE.apk}
-package=${LUMA_ANDROID_ACCEPTANCE_PACKAGE:-org.fdroid.fdroid}
-display=${LUMA_ANDROID_ACCEPTANCE_DISPLAY:-wayland-luma-android-acceptance}
-shell_unit=luma-android-acceptance-shell.service
+package=org.projectluma.androidtest
+isolation_failed=0
 luma_android=(luma-android)
 if [[ -n ${LUMA_ANDROID_ACCEPTANCE_PYTHONPATH:-} ]]; then
   export PYTHONPATH=$LUMA_ANDROID_ACCEPTANCE_PYTHONPATH
@@ -18,30 +17,13 @@ fi
 test -r "$apk"
 sudo -n true
 
-cleanup() {
-  systemctl --user stop luma-android-session.service luma-android.service 2>/dev/null || true
-  systemctl --user stop "$shell_unit" 2>/dev/null || true
-}
-trap cleanup EXIT
+test -n "${WAYLAND_DISPLAY:-}"
+test -S "${XDG_RUNTIME_DIR:?}/$WAYLAND_DISPLAY"
+test -n "${DBUS_SESSION_BUS_ADDRESS:-}"
 
-systemctl --user stop "$shell_unit" luma-android-session.service luma-android.service \
-  2>/dev/null || true
-/usr/bin/waydroid session stop >/dev/null 2>&1 || true
-systemctl --user unset-environment WAYLAND_DISPLAY DISPLAY XDG_SESSION_TYPE 2>/dev/null || true
-systemd-run --user --unit="$shell_unit" --property=Restart=on-failure \
-  --setenv="WAYLAND_DISPLAY=$display" --setenv=XDG_SESSION_TYPE=wayland \
-  /usr/bin/gnome-shell --headless --wayland --no-x11 \
-  --wayland-display="$display" --virtual-monitor=1280x720 >/dev/null
-systemctl --user set-environment "WAYLAND_DISPLAY=$display" XDG_SESSION_TYPE=wayland
-
-for _attempt in $(seq 1 30); do
-  test -S "${XDG_RUNTIME_DIR:?}/$display" && break
-  sleep 0.5
-done
-test -S "$XDG_RUNTIME_DIR/$display"
-
-export WAYLAND_DISPLAY=$display
-export XDG_SESSION_TYPE=wayland
+if ! "${luma_android[@]}" list | grep -Fq "packageName: $package"; then
+  "${luma_android[@]}" install --confirmed "$apk"
+fi
 systemctl --user start luma-android.service
 for _attempt in $(seq 1 180); do
   status=$("${luma_android[@]}" status)
@@ -50,7 +32,7 @@ for _attempt in $(seq 1 180); do
 done
 grep -q '"session": "RUNNING"' <<<"${status:-}"
 
-printf 'PASS  warm broker starts Android only when an installed app exists\n'
+printf 'PASS  broker and fixture runtime report running\n'
 tests/smoke/android-runtime.sh
 gdbus call --session --dest org.projectluma.ApplicationInstaller1 \
   --object-path /org/projectluma/ApplicationInstaller1 \
@@ -76,10 +58,33 @@ android_selinux=$(sudo waydroid shell -- getenforce | tr -d '\r')
 if [[ $android_selinux == Enforcing ]]; then
   printf 'PASS  Android internal SELinux is enforcing\n'
 else
-  printf 'WARN  Android internal SELinux is %s; host SELinux/LXC is the MAC boundary\n' \
-    "$android_selinux"
+  printf 'UNQUALIFIED  Android internal SELinux is %s\n' "$android_selinux" >&2
+  isolation_failed=1
 fi
 test "$(getenforce)" = Enforcing
+init_pid=$(sudo lxc-info -P /var/lib/waydroid/lxc -n waydroid -pH)
+[[ $init_pid =~ ^[1-9][0-9]*$ ]]
+if [[ $(sudo readlink "/proc/$init_pid/ns/user") == $(readlink /proc/self/ns/user) ]]; then
+  printf 'UNQUALIFIED  Android shares the host user namespace\n' >&2
+  isolation_failed=1
+else
+  uid_map=$(sudo cat "/proc/$init_pid/uid_map")
+  if python3 -c '
+import os, sys
+ranges = [tuple(map(int, line.split())) for line in sys.stdin if line.strip()]
+def host(uid):
+    return next((outside + uid - inside for inside, outside, size in ranges
+                 if inside <= uid < inside + size), None)
+values = [host(uid) for uid in (0, 1000, 10000, 10129, 99000)]
+sys.exit(0 if all(value is not None and value not in (0, 1000, os.getuid())
+                  for value in values) else 1)
+' <<<"$uid_map"; then
+    printf 'PASS  observed separate namespace and non-colliding sampled IDs; full mapping audit still required\n'
+  else
+    printf 'UNQUALIFIED  Android UID mapping is missing or collides with sampled host identities\n' >&2
+    isolation_failed=1
+  fi
+fi
 host_processes=$(ps -eZ)
 grep -q 'container_runtime_t.*lxc-start' <<<"$host_processes"
 package_state=$(sudo waydroid shell -- dumpsys package "$package")
@@ -91,7 +96,7 @@ if sudo grep -Eq 'lxc\.mount\.entry.*(/home|/var/home)' \
   printf 'FAIL  Android container exposes a Linux home mount\n' >&2
   exit 1
 fi
-printf 'PASS  host SELinux/LXC and Android per-app UID are active; Linux home is not mounted\n'
+printf 'PASS  observed host labels and Android app UID; inspected base config has no home mount\n'
 
 connectivity=$(sudo waydroid shell -- dumpsys connectivity)
 grep -q 'Active default network: [0-9]' <<<"$connectivity"
@@ -100,10 +105,7 @@ grep -q 'Capabilities: .*INTERNET.*VALIDATED' <<<"$connectivity"
 sudo waydroid shell -- ping -c 1 -W 3 192.168.240.1 >/dev/null
 printf 'PASS  Android has a validated application network and reachable gateway\n'
 
-session_log=$(journalctl --user -u luma-android-session.service -n 80 --no-pager)
-grep -q 'Android with user 0 is ready' <<<"$session_log"
-grep -q 'Service manager /dev/binder has appeared' <<<"$session_log"
-printf 'PASS  Waydroid binder notification bridge is attached to the desktop session\n'
+printf 'PENDING  notification delivery/actions require fixture and native renderer receipts\n'
 
 "${luma_android[@]}" pause
 for _attempt in $(seq 1 60); do
@@ -133,4 +135,10 @@ printf 'PASS  reinstall restores the first-class application entry and launch\n'
 receipt=$(sha256sum "$apk" | cut -d' ' -f1)
 test -f "$HOME/.local/share/luma-android/receipts/$receipt.json"
 test "$(stat -c %a "$HOME/.local/share/luma-android/receipts/$receipt.json")" = 600
-printf 'PASS  private immutable installation receipt\n'
+printf 'PASS  private installation receipt\n'
+
+if (( isolation_failed )); then
+  printf 'UNQUALIFIED  functional observations do not pass the runtime isolation gate\n' >&2
+  exit 1
+fi
+printf 'FUNCTIONAL CHECKS COMPLETE  resize, notifications, hardware, ABI and power need separate receipts\n'

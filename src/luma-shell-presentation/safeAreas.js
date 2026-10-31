@@ -1,18 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 // Display exclusions are device metadata in native pixels, never a mode heuristic.
+function validDisplay(value) {
+    if (!value || typeof value !== 'object' || !Number.isFinite(value.nativeWidth) ||
+        !Number.isFinite(value.nativeHeight) || value.nativeWidth <= 0 || value.nativeHeight <= 0 ||
+        !Array.isArray(value.cutouts) || value.cutouts.length > 16 ||
+        (value.connector !== undefined && (typeof value.connector !== 'string' || !value.connector)))
+        return false;
+    return value.cutouts.every(r => ['x', 'y', 'width', 'height'].every(k => Number.isFinite(r[k])) &&
+        r.x >= 0 && r.y >= 0 && r.width > 0 && r.height > 0 &&
+        r.x + r.width <= value.nativeWidth && r.y + r.height <= value.nativeHeight);
+}
+
+// Schema 1: one display profile (its connector is optional).
 export function readDisplayGeometry(text) {
     try {
         const value = JSON.parse(text);
-        if (value.schema !== 1 || !Number.isFinite(value.nativeWidth) ||
-            !Number.isFinite(value.nativeHeight) || value.nativeWidth <= 0 || value.nativeHeight <= 0 ||
-            !Array.isArray(value.cutouts) || value.cutouts.length > 16)
-            return null;
-        if (!value.cutouts.every(r => ['x', 'y', 'width', 'height'].every(k => Number.isFinite(r[k])) &&
-            r.x >= 0 && r.y >= 0 && r.width > 0 && r.height > 0 &&
-            r.x + r.width <= value.nativeWidth && r.y + r.height <= value.nativeHeight))
-            return null;
-        return value;
+        return value.schema === 1 && validDisplay(value) ? value : null;
     } catch { return null; }
+}
+
+// Every display profile in a file. Schema 2 lists several displays (a
+// foldable's inner and outer panels), each naming its connector; schema 1
+// files are read as a one-entry list.
+export function readDisplayProfiles(text) {
+    try {
+        const value = JSON.parse(text);
+        if (value.schema === 1)
+            return validDisplay(value) ? [value] : null;
+        if (value.schema !== 2 || !Array.isArray(value.displays) ||
+            value.displays.length === 0 || value.displays.length > 8)
+            return null;
+        const connectors = value.displays.map(display => display?.connector);
+        if (!value.displays.every(display => validDisplay(display) && typeof display.connector === 'string') ||
+            new Set(connectors).size !== connectors.length)
+            return null;
+        return value.displays;
+    } catch { return null; }
+}
+
+// The profile for the current primary display, or null. Nothing is
+// discarded: the next monitor change selects again from all profiles.
+export function selectDisplayProfile(profiles, connector, builtIn, transform = 0) {
+    if (!profiles || !builtIn)
+        return null;
+    const profile = profiles.find(entry => entry.connector && entry.connector === connector) ??
+        profiles.find(entry => !entry.connector);
+    return profile ? {...profile, transform} : null;
 }
 
 export function displayExclusions(profile, monitor) {

@@ -87,3 +87,26 @@ class WorkflowTests(unittest.TestCase):
             launch.assert_called_once_with(['flatpak','run','org.example.App'], start_new_session=True, close_fds=True)
 
 if __name__ == '__main__': unittest.main()
+
+
+class AndroidReinstallIdentity(unittest.TestCase):
+    def test_existing_app_is_identified_from_reviewed_manifest_on_reinstall(self):
+        from types import SimpleNamespace
+        report=PackageReport(Path('/tmp/app.apk'), 'android', 'App', '', 1, 'a'*64,
+                             details={'Package identifier':'org.example.app'})
+        inspection=SimpleNamespace(sha256='a'*64,apk_entries=())
+        app=SimpleNamespace(package='org.example.app',name='Existing App')
+        with patch('luma_installer.workflow.fingerprint',return_value=(1,'a'*64)), \
+             patch('luma_installer.workflow.transaction_lock'), \
+             patch('luma_android.apk.inspect_android_package',return_value=inspection), \
+             patch('luma_android.apk.stage_android_package',return_value=[Path('/tmp/stage/base.apk')]), \
+             patch('luma_android.apk.staged_package_root',return_value=Path('/tmp/stage')), \
+             patch('luma_android.config.load_runtime_config'), \
+             patch('luma_android.engine.WaydroidEngine') as factory, \
+             patch('luma_android.receipts.write_install_receipt'), \
+             patch('luma_installer.workflow.shutil.rmtree'), \
+             patch('luma_installer.workflow.write_record'):
+            factory.return_value.applications.return_value=[app]
+            record=workflow.install(report)
+        self.assertEqual(record['package'],'org.example.app')
+        self.assertEqual(record['name'],'Existing App')

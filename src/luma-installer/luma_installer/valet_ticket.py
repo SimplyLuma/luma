@@ -256,6 +256,8 @@ class ValetTicket(Gtk.Overlay):
         primary_line = self.primary.get_child()
         primary_line.get_first_child().set_visible(False)
         self.primary_label = primary_line.get_last_child()
+        self.primary_label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.primary_label.set_max_width_chars(24)
         self.primary.set_size_request(84, 42)
         self.actions.append(self.primary)
         self.secondary = Gtk.Button(label="Cancel")
@@ -509,7 +511,7 @@ class ValetTicket(Gtk.Overlay):
         return list(self._choices)
 
     def _notice_is_warning(self) -> bool:
-        return "won’t" in self.phase_label.get_label()
+        return self.phase_label.has_css_class("valet-warning")
 
     def phone_warning(self) -> str:
         """A compatibility warning: on a phone it is its own note under the facts (v71 `.vtwarn`)."""
@@ -734,7 +736,7 @@ class ValetTicket(Gtk.Overlay):
 
     def set_phase(self, phase: str, action: str, text: str = "", fraction: float | None = 0.0,
                   *, removing: bool = False, cancellable: bool = False, phone_text: str | None = None,
-                  phone_action: str | None = None) -> None:
+                  phone_action: str | None = None, warning: bool = False) -> None:
         """`phone_text` and `phone_action`, when given, are what the phone page says instead of
         `text` under the name and `action` in the bar (v71's sample: "Remove", not "Remove Harbor")."""
         self.phase = phase
@@ -752,7 +754,8 @@ class ValetTicket(Gtk.Overlay):
         apply_type(self.phase_label, "title-2" if phase == "done" else "body",
                    weight=600 if phase == "done" else None)
         self.notice.set_visible(bool(text))
-        glyph = "check" if phase == "done" else "triangle-alert" if "won’t" in text else None
+        warning = warning or "won’t" in text
+        glyph = "check" if phase == "done" else "triangle-alert" if warning else None
         if glyph == "check":
             self.notice_icon.add_css_class("valet-verified")
         else:
@@ -771,7 +774,7 @@ class ValetTicket(Gtk.Overlay):
         (self.phase_label.add_css_class if phase == "ready" and text and glyph != "triangle-alert"
          else self.phase_label.remove_css_class)("valet-note")
         after = (self.keep_choices if removing and phase == "ready" else
-                 self.permissions if "won’t" in text else None)
+                 self.permissions if warning else None)
         self.middle.reorder_child_after(self.notice, after)
         self.secondary.set_visible(phase in {"ready", "done"} or (phase == "working" and cancellable))
         self.secondary.set_label("Cancel" if phase != "done" else "Done")

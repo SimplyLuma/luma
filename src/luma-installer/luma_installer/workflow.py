@@ -45,7 +45,8 @@ def install(report, permission_changes=None):
                     write_install_receipt(inspection, "installed")
                     phase("Register", 2/3)
                     after = {a.package: a for a in engine.applications()}
-                    package = report.details.get("Application ID")
+                    package = (report.details.get("Package identifier")
+                               or report.details.get("Application ID"))
                     if package not in after:
                         new = set(after) - set(before)
                         if not new:
@@ -60,6 +61,7 @@ def install(report, permission_changes=None):
                     name = after[package].name
                     record = {"application_id": safe_id("android-" + package), "format": "android",
                               "package": package, "name": name, "sha256": report.sha256}
+                    record["icon"] = installed_icon({**record, "icon": report.icon})
                 finally:
                     shutil.rmtree(staged_package_root(payloads), ignore_errors=True)
             else:

@@ -18,11 +18,16 @@ are separate historical paths.
 | Live Weather/Calendar models and background refresh | `src/luma-home-widgets/`, `src/prairie-core/prairie_apps/weather*.py` |
 | Maintained native Terminal and shared command action bar | `src/luma-terminal/` |
 | Mode/state service | `src/luma-shell-state/` |
-| Device display exclusions | `config/mobile/display-geometry/` |
+| Device display exclusions (schema 2 lists several panels by connector) | `config/mobile/display-geometry/` |
+| Keycap on-screen keyboard | `patches/gnome-shell/0294-keycap-keyboard.patch`, `src/luma-shell-presentation/keycap*`, `keycap` tokens; see `docs/mobile/keycap-keyboard.md` |
+| No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
 The source candidate pins are Shell `1.luma.125.mobile20261030.1`, developer
 platform `1.luma.119.creator20261030.1`, core apps
+
+The source candidate pins are Shell `1.luma.131.keycap20261030.1`, developer
+platform `1.luma.117.mobile20261030.1`, core apps
 `1.luma.106.creator20261030.1` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
 the receiving branch/device; the Titan's private development install includes
@@ -68,7 +73,7 @@ composition/session profile and build/install the matched native cohort.
 ## Current behavior and remaining work
 
 Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
-screen, Home has five columns and four rows plus the dock; each widget spans
+screen, Home has four columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
 Notifications are pulled from the top island; Quick Options is pulled from the
 right status area. Full pages use the dock palette's opaque treatment for readable text.

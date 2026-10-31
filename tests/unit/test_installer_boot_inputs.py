@@ -4,7 +4,7 @@ import hashlib
 import importlib.util
 import struct
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,10 +17,46 @@ def module(name, path):
     return value
 RPM = module('atlas_boot_rpms', 'scripts/install/atlas-iso/prepare-boot-rpms.py')
 LORAX = module('atlas_lorax_boot', 'scripts/install/atlas-iso/prepare-lorax-boot.py')
+RUNNER = module('atlas_lorax_runner', 'scripts/install/atlas-iso/run-lorax.py')
+KERNEL = module('atlas_runtime_kernel', 'scripts/install/atlas-iso/check-runtime-kernel.py')
 PRESENTATION = module('atlas_runtime_presentation', 'scripts/install/atlas-iso/prepare-runtime-presentation.py')
 FONT = module('luma_grub_font', 'scripts/boot/check-grub-fonts.py')
 
 class InstallerBootInputs(unittest.TestCase):
+    def test_foreign_transaction_requires_target_packages_and_isolated_root(self):
+        base = Mock()
+        base.get_vars().get_value.return_value = 'aarch64'
+        base.get_config().installroot = '/work/runtime'
+        RUNNER.configure_target(base, 'aarch64', 'x86_64')
+        base.get_config().get_ignorearch_option().set.assert_called_with(True)
+        RUNNER.configure_target(base, 'aarch64', 'aarch64')
+        base.get_config().get_ignorearch_option().set.assert_called_with(False)
+        base.get_config().installroot = '/'
+        with self.assertRaisesRegex(RuntimeError, 'isolated'):
+            RUNNER.configure_target(base, 'aarch64', 'x86_64')
+        base.get_config().installroot = '/work/runtime'
+        base.get_vars().get_value.return_value = 'x86_64'
+        with self.assertRaisesRegex(RuntimeError, 'differs'):
+            RUNNER.configure_target(base, 'aarch64', 'x86_64')
+
+    def test_runtime_kernel_rejects_extra_boot_images_and_module_versions(self):
+        for arch in ('aarch64', 'x86_64'):
+            with self.subTest(arch=arch), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                expected = f'7.2.11-200.fc44.{arch}'
+                old = f'6.19.10-300.fc44.{arch}'
+                (root / 'boot').mkdir()
+                (root / 'boot' / f'vmlinuz-{expected}').write_bytes(b'pinned')
+                (root / 'usr/lib/modules' / expected).mkdir(parents=True)
+                KERNEL.check(root, expected)
+                (root / 'boot' / f'vmlinuz-{old}').write_bytes(b'GA')
+                with self.assertRaisesRegex(ValueError, 'kernel cohort mismatch'):
+                    KERNEL.check(root, expected)
+                (root / 'boot' / f'vmlinuz-{old}').unlink()
+                (root / 'usr/lib/modules' / old).mkdir()
+                with self.assertRaisesRegex(ValueError, 'kernel cohort mismatch'):
+                    KERNEL.check(root, expected)
+
     def test_exact_manifest_files_and_tampering(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -66,6 +102,7 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue quiet }
             for kind in ('bios', 'efi'):
                 (config / f'grub2-{kind}.cfg').write_text(menu)
             (generic / 'x86.tmpl').write_text(LORAX.ARCH + '\n## make boot.iso\n')
+            (generic / 'efi.tmpl').write_text('runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}\n')
             LORAX.prepare(root / 'source', root / 'good')
             for kind in ('bios', 'efi'):
                 result = (root / 'good/templates.d/99-generic/config_files/x86' / f'grub2-{kind}.cfg').read_text()
@@ -84,6 +121,99 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue quiet }
                     LORAX.prepare(root / 'source', root / f'rejected-{kind}')
                 self.assertFalse((root / f'rejected-{kind}').exists())
                 path.write_text(menu)
+
+    def test_arm_boot_inputs_use_current_releases_and_reject_x86_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pool = root / 'pool'; pool.mkdir()
+            pins, entries = [], []
+            for index, key in enumerate(RPM.KEYS):
+                arch = 'noarch' if index < 2 else 'x86_64'
+                pin = f'boot{index}-1-23.creator.fc44.{arch}'
+                selected = pin.replace('.x86_64', '.aarch64')
+                data = selected.encode()
+                (pool / f'{selected}.rpm').write_bytes(data)
+                pins.append(f'{key}={pin}')
+                entries.append(f'{selected} {hashlib.sha256(data).hexdigest()} {index:064x}')
+            inputs = root / 'inputs'; inputs.write_text('\n'.join(pins))
+            manifest = root / 'manifest'; manifest.write_text('\n'.join(entries))
+            result = RPM.prepare(inputs, manifest, pool, root / 'good/rpms', 'aarch64')
+            self.assertTrue(all('.x86_64' not in str(row[0]) for row in result))
+            manifest.write_text('\n'.join(entries).replace('.aarch64', '.x86_64'))
+            with self.assertRaises(KeyError):
+                RPM.prepare(inputs, manifest, pool, root / 'bad/rpms', 'aarch64')
+            self.assertFalse((root / 'bad').exists())
+
+    def test_arm_native_uefi_menu_and_iso_theme_graft(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            generic = root / 'source/templates.d/99-generic'
+            config = generic / 'config_files/aarch64'; config.mkdir(parents=True)
+            # Native Lorax44.6 ARM choices omit quiet and use a single EFI menu.
+            menu = ("""set default="1"
+set timeout=60
+search --no-floppy --set=root -l '@ISOLABEL@'
+menuentry 'Install' { linux @KERNELPATH@ @ROOT@ ro
+}
+menuentry 'Test' { linux @KERNELPATH@ @ROOT@ rd.live.check
+}
+menuentry 'Basic graphics' { linux @KERNELPATH@ @ROOT@ nomodeset
+}
+menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
+}
+""")
+            (config / 'grub2-efi.cfg').write_text(menu)
+            template = "efiarch64 = 'AA64'\n## make boot.iso\n${efigraft} ${filegraft}\n"
+            (generic / 'aarch64.tmpl').write_text(template)
+            (generic / 'efi.tmpl').write_text('runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}\n')
+            LORAX.prepare(root / 'source', root / 'good', 'aarch64')
+            result = (root / 'good/templates.d/99-generic/config_files/aarch64/grub2-efi.cfg').read_text()
+            self.assertIn('@ROOT@ ro rhgb quiet', result)
+            self.assertIn('@ROOT@ rd.live.check rhgb quiet', result)
+            self.assertIn('@ROOT@ nomodeset\n', result)
+            self.assertIn('@ROOT@ inst.rescue\n', result)
+            self.assertEqual(result.count('menuentry'), 4)
+            self.assertIn('set timeout_style=hidden\nset timeout=1', result)
+            iso = (root / 'good/templates.d/99-generic/aarch64.tmpl').read_text()
+            self.assertIn('boot/grub2={0}/boot/grub2', iso)
+            self.assertIn("efiarch64 = 'AA64'", iso)
+            (generic / 'aarch64.tmpl').write_text(template.replace('AA64', 'X64'))
+            with self.assertRaisesRegex(ValueError, 'unsupported Lorax aarch64'):
+                LORAX.prepare(root / 'source', root / 'bad', 'aarch64')
+            self.assertFalse((root / 'bad').exists())
+
+    def test_final_iso_requires_native_menu_set_and_resolved_theme(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            menu = 'set theme=/boot/grub2/themes/luma/theme.txt\nlinux /vmlinuz inst.stage2=hd:LABEL=Luma\n'
+            (root / 'efi-grub.cfg').write_text(menu)
+            LORAX.verify_iso(root, 'aarch64')
+            with self.assertRaises(FileNotFoundError):
+                LORAX.verify_iso(root, 'x86_64')
+
+            (root / 'grub2').mkdir()
+            (root / 'grub2/grub.cfg').write_text(menu)
+            LORAX.verify_iso(root, 'x86_64')
+            for relative in ('efi-grub.cfg', 'grub2/grub.cfg'):
+                path = root / relative
+                path.write_text(menu + '@ROOT@')
+                with self.assertRaisesRegex(ValueError, 'unresolved GRUB'):
+                    LORAX.verify_iso(root, 'x86_64')
+                path.write_text(menu.replace('set theme=', 'lost theme='))
+                with self.assertRaisesRegex(ValueError, 'theme missing'):
+                    LORAX.verify_iso(root, 'x86_64')
+                path.write_text(menu)
+
+    def test_real_grub_grammar_rejects_compound_if_even_with_zero_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = 'set theme=/boot/grub2/themes/luma/theme.txt\n'
+            (root / 'efi-grub.cfg').write_text(prefix + LORAX.THEME)
+            LORAX.verify_iso(root, 'aarch64')
+            broken = 'if loadfont /font.pf2 && [ x != y ]; then\n terminal_output gfxterm\nfi\n'
+            (root / 'efi-grub.cfg').write_text(prefix + broken)
+            with self.assertRaisesRegex(ValueError, 'invalid GRUB script'):
+                LORAX.verify_iso(root, 'aarch64')
 
     def test_runtime_handoff_preserves_tui_and_refuses_unknown_owner(self):
         with tempfile.TemporaryDirectory() as temporary:

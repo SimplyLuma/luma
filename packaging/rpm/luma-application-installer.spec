@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.71.creator20261021.1%{?dist}
+Release:        1.luma.82.nightly20261030.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -15,6 +15,9 @@ Source2:        org.project_luma.shell-state.gschema.xml
 BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  flatpak-libs
+# Live-instance authority tests validate the maintained sandbox executables.
+BuildRequires:  xdg-dbus-proxy
+BuildRequires:  bubblewrap
 BuildRequires:  ostree-libs
 BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
@@ -22,7 +25,7 @@ BuildRequires:  shared-mime-info
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  gtk4
 BuildRequires:  libadwaita
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 BuildRequires:  dconf
@@ -33,7 +36,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman
@@ -45,7 +48,7 @@ Requires:       slirp4netns
 Requires:       gnupg2
 Requires:       polkit
 Requires:       python3
-Requires:       luma-apk-metadata = 0.1.0-1.luma.1~preview.20260910.1%{?dist}
+Requires:       luma-apk-metadata = 0.1.0-1.luma.2.android20261030.1%{?dist}
 Requires:       python3-libarchive-c
 # Launch failures are written to the journal with fields Luma Vitals reads.
 Requires:       python3-systemd
@@ -116,6 +119,14 @@ install -D -m 0644 data/org.projectluma.Depot.service \
   %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.Depot.service
 install -D -m 0644 data/org.projectluma.SoftwareUpdate.desktop \
   %{buildroot}%{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
+# Retire obsolete applications automatically for system and per-user installs.
+# Immutable wants links also enable this on upgrades where presets do not run.
+install -D -m 0644 data/luma-retired-apps.service %{buildroot}%{_userunitdir}/luma-retired-apps.service
+install -d %{buildroot}%{_userunitdir}/default.target.wants
+ln -s ../luma-retired-apps.service %{buildroot}%{_userunitdir}/default.target.wants/luma-retired-apps.service
+install -D -m 0644 data/luma-retired-system-apps.service %{buildroot}%{_unitdir}/luma-retired-system-apps.service
+install -d %{buildroot}%{_unitdir}/multi-user.target.wants
+ln -s ../luma-retired-system-apps.service %{buildroot}%{_unitdir}/multi-user.target.wants/luma-retired-system-apps.service
 install -D -m 0644 data/luma-depot-provision.service %{buildroot}%{_userunitdir}/luma-depot-provision.service
 install -D -m 0644 data/luma-depot-app-updates.service %{buildroot}%{_userunitdir}/luma-depot-app-updates.service
 install -D -m 0644 data/luma-depot-app-updates.timer %{buildroot}%{_userunitdir}/luma-depot-app-updates.timer
@@ -173,19 +184,20 @@ ln -s ../luma-depot-appstream.timer \
 install -D -m 0644 data/selinux/luma_application.cil %{buildroot}%{_datadir}/selinux/packages/luma_application.cil
 
 %check
-PYTHONPATH=. python3 -c 'from luma_installer.app_host_compatibility import SUPPORTED_INSTALLER_RELEASE; assert SUPPORTED_INSTALLER_RELEASE == int("%{release}".split(".luma.", 1)[1].split(".", 1)[0]), "Installer host declaration differs from its actual package release"'
-PYTHONPATH=. python3 -m unittest discover -s tests -p "test_*.py" -v
-PYTHONPATH=. dbus-run-session -- python3 -B tests/runtime_app_preferences.py
-PYTHONPATH=. dbus-run-session -- python3 -B tests/runtime_app_native_owner.py
+PYTHONPATH=.:tests/dependencies python3 -c 'from luma_installer.app_host_compatibility import SUPPORTED_INSTALLER_RELEASE; assert SUPPORTED_INSTALLER_RELEASE == int("%{release}".split(".luma.", 1)[1].split(".", 1)[0]), "Installer host declaration differs from its actual package release"'
+PYTHONPATH=.:tests/dependencies python3 -m unittest discover -s tests -p "test_*.py" -v
+PYTHONPATH=.:tests/dependencies dbus-run-session -- python3 -B tests/runtime_app_preferences.py
+PYTHONPATH=.:tests/dependencies dbus-run-session -- python3 -B tests/runtime_app_native_owner.py
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 # Depot notifies when first-boot apps finish installing, so Settings must list
 # it under Notifications.
 grep -qx 'X-GNOME-UsesNotifications=true' \
   %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
 python3 -m py_compile %{buildroot}%{python3_sitelib}/luma_installer/*.py
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/smoke.py
+PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies python3 tests/smoke.py
+GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies GSK_RENDERER=cairo timeout --kill-after=5s 30s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/valet_android_preview.py
 # Real widgets must retain scrolling while installation progress arrives.
-GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib} LUMA_DEPOT_STYLE_PATH=%{buildroot}%{_datadir}/luma-depot/depot.css GSK_RENDERER=cairo timeout --kill-after=5s 60s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/native_depot_preview.py
+GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib}:$PWD/tests/dependencies LUMA_DEPOT_STYLE_PATH=%{buildroot}%{_datadir}/luma-depot/depot.css GSK_RENDERER=cairo timeout --kill-after=5s 60s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/native_depot_preview.py
 grep -qx 'NoDisplay=true' %{buildroot}%{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
 
 %post
@@ -216,6 +228,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_datadir}/luma/installer/depot-catalog-4.json
 %{_datadir}/dbus-1/services/org.projectluma.Depot.service
 %{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
+%{_userunitdir}/luma-retired-apps.service
+%{_userunitdir}/default.target.wants/luma-retired-apps.service
+%{_unitdir}/luma-retired-system-apps.service
+%{_unitdir}/multi-user.target.wants/luma-retired-system-apps.service
 %{_userunitdir}/luma-depot-provision.service
 %{_userunitdir}/luma-depot-app-updates.service
 %{_userunitdir}/luma-depot-app-updates.timer
@@ -254,6 +270,25 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.77.nightly20261026.1
+- Seed older signed OS app inventories with their original role contract.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.76.nightly20261026.1
+- Keep system app repositories readable when retirement runs before first setup.
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.75.nightly20261026.1
+- Keep system app baseline contents readable by ordinary users.
+
+
+* Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
+- Package the October 26 shared source updates.
+
+* Sat Oct 24 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.73.creator20261024.1
+- Remove retired Displays installations automatically while preserving app data.
+
+* Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.72.creator20261023.1
+- Declare ARM support for the bundled applications in the Depot catalogue.
+
 * Tue Oct 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.70.creator20261020.1
 - Deliver Filer and Ari updates through their installed signed Flatpaks.
 

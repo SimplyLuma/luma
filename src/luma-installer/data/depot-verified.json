@@ -19,7 +19,8 @@
       "visibility": "public",
       "tier": "verified",
       "architectures": [
-        "x86_64"
+        "x86_64",
+        "aarch64"
       ],
       "developer": {
         "id": "dev_rhyme",

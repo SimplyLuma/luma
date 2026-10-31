@@ -397,9 +397,9 @@
       ]
     },
     {
-      "source_path": "packaging/rpm/luma-displays.spec",
+      "source_path": "packaging/rpm/luma-display-config.spec",
       "package_names": [
-        "luma-displays"
+        "luma-display-config"
       ],
       "license_expressions": [
         "Apache-2.0"

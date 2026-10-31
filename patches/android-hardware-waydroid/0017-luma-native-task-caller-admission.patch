@@ -1,0 +1,163 @@
+--- a/interfaces/task/1.0/default/WaydroidTask.cpp
++++ b/interfaces/task/1.0/default/WaydroidTask.cpp
+@@ -17,6 +17,8 @@
+ #include "WaydroidTask.h"
+ 
+ #include <android/api-level.h>
++#include <cutils/android_filesystem_config.h>
++#include <hwbinder/IPCThreadState.h>
+ #include <utils/String16.h>
+ #include <utils/String8.h>
+ 
+@@ -26,69 +28,90 @@
+ namespace V1_0 {
+ namespace implementation {
+ 
+-// Methods from ::vendor::waydroid::task::V1_0::IWaydroidTask follow.
++namespace {
++
++bool trustedTaskCaller() {
++    return android::hardware::IPCThreadState::self()->getCallingUid() == AID_SYSTEM;
++}
++
++sp<IActivityTaskManager> activityTaskManager() {
++    // Never share mutable sp fields between HIDL and resize threads. Resolve
++    // the current service without waiting for a framework restart or replaying
++    // a mutation whose result may have been lost with the old Binder proxy.
++    const auto manager = android::defaultServiceManager();
++    if (manager == nullptr)
++        return nullptr;
++    return android::interface_cast<IActivityTaskManager>(
++            manager->checkService(android::String16("activity_task")));
++}
++
++sp<IPlatform> platformService() {
++    const auto manager = android::defaultServiceManager();
++    if (manager == nullptr)
++        return nullptr;
++    return android::interface_cast<IPlatform>(
++            manager->checkService(android::String16("waydroidplatform")));
++}
++
++}  // namespace
++
+ Return<void> WaydroidTask::setFocusedTask(uint32_t taskID) {
+-    if (mActivityTaskManager == nullptr) {
+-        sp<IBinder> binderTask = android::defaultServiceManager()->getService(android::String16("activity_task"));
+-        if (binderTask != nullptr)
+-            mActivityTaskManager = android::interface_cast<IActivityTaskManager>(binderTask);
+-    }
+-    if (mActivityTaskManager != nullptr)
+-        mActivityTaskManager->setFocusedTask(taskID);
++    if (!trustedTaskCaller())
++        return Void();
++    const auto manager = activityTaskManager();
++    if (manager != nullptr)
++        manager->setFocusedTask(taskID);
+     return Void();
+ }
+ 
+ Return<void> WaydroidTask::removeTask(uint32_t taskID) {
+-    bool ret;
+-    if (mActivityTaskManager == nullptr) {
+-        sp<IBinder> binderTask = android::defaultServiceManager()->getService(android::String16("activity_task"));
+-        if (binderTask != nullptr)
+-            mActivityTaskManager = android::interface_cast<IActivityTaskManager>(binderTask);
+-    }
+-    if (mActivityTaskManager != nullptr)
+-        mActivityTaskManager->removeTask(taskID, &ret);
++    if (!trustedTaskCaller())
++        return Void();
++    const auto manager = activityTaskManager();
++    bool result = false;
++    if (manager != nullptr)
++        manager->removeTask(taskID, &result);
+     return Void();
+ }
+ 
+ Return<void> WaydroidTask::removeAllVisibleRecentTasks() {
+-    if (mActivityTaskManager == nullptr) {
+-        sp<IBinder> binderTask = android::defaultServiceManager()->getService(android::String16("activity_task"));
+-        if (binderTask != nullptr)
+-            mActivityTaskManager = android::interface_cast<IActivityTaskManager>(binderTask);
+-    }
+-    if (mActivityTaskManager != nullptr)
+-        mActivityTaskManager->removeAllVisibleRecentTasks();
++    if (!trustedTaskCaller())
++        return Void();
++    const auto manager = activityTaskManager();
++    if (manager != nullptr)
++        manager->removeAllVisibleRecentTasks();
+     return Void();
+ }
+ 
+ bool WaydroidTask::resizeTaskNative(uint32_t taskID, int32_t left,
+         int32_t top, int32_t right, int32_t bottom, int32_t resizeMode) {
++    // Internal entry point: the Unix channel authenticates SO_PEERCRED before
++    // calling here. It is not a HwBinder transaction and has no HIDL caller.
+     bool result = false;
+-    if (mActivityTaskManager == nullptr) {
+-        sp<IBinder> binderTask = android::defaultServiceManager()->getService(
+-                android::String16("activity_task"));
+-        if (binderTask != nullptr)
+-            mActivityTaskManager = android::interface_cast<IActivityTaskManager>(binderTask);
+-    }
+-    if (mActivityTaskManager != nullptr) {
+-        const auto status = mActivityTaskManager->resizeTask(
++    const auto manager = activityTaskManager();
++    if (manager != nullptr) {
++        const auto status = manager->resizeTask(
+                 taskID, left, top, right, bottom, resizeMode, &result);
+-        if (!status.isOk())
++        if (!status.isOk()) {
+             ALOGE("resizeTask(%u) failed with exception %d", taskID,
+                   status.exceptionCode());
++            return false;
++        }
+     }
+     return result;
+ }
+ 
+ Return<void> WaydroidTask::getAppName(const hidl_string& packageName, getAppName_cb _hidl_cb) {
++    // HIDL1 requires a successful Return and exactly one callback even when
++    // access is denied. Returning a transport exception aborts generated stubs.
++    if (!trustedTaskCaller()) {
++        _hidl_cb("");
++        return Void();
++    }
+     android::String16 AppName;
+-    if (mPlatform == nullptr) {
+-        sp<IBinder> binderPlatform = android::defaultServiceManager()->getService(android::String16("waydroidplatform"));
+-        if (binderPlatform != nullptr)
+-            mPlatform = android::interface_cast<IPlatform>(binderPlatform);
+-    }
+-    if (mPlatform != nullptr)
+-        mPlatform->getAppName(android::String16(packageName.c_str()), &AppName);
++    const auto platform = platformService();
++    if (platform != nullptr)
++        platform->getAppName(android::String16(packageName.c_str()), &AppName);
+     android::String8 AppName8(AppName);
+ #if __ANDROID_API__ >= 34
+     const char* OutAppName = AppName8.c_str();
+--- a/interfaces/task/1.0/default/WaydroidTask.h
++++ b/interfaces/task/1.0/default/WaydroidTask.h
+@@ -52,9 +52,6 @@
+     bool resizeTaskNative(uint32_t taskID, int32_t left, int32_t top,
+                           int32_t right, int32_t bottom,
+                           int32_t resizeMode);
+-  private:
+-    sp<IActivityTaskManager> mActivityTaskManager;
+-    sp<IPlatform> mPlatform;
+ };
+ 
+ }  // namespace implementation
+--- a/interfaces/task/1.0/default/Android.bp
++++ b/interfaces/task/1.0/default/Android.bp
+@@ -27,6 +27,7 @@
+     local_include_dirs: [
+         "binder-interfaces/include"
+     ],
++    header_libs: ["libhwbinder_headers"],
+     shared_libs: [
+         "libbase",
+         "libbinder",

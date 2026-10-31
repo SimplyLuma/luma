@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "aosp_sdk_revision": "3af7c93524be6f51e092b87b17f009f13ee98b43",
+  "artifacts": {
+    "android.jar": {
+      "url": "https://android.googlesource.com/platform/prebuilts/sdk/+/3af7c93524be6f51e092b87b17f009f13ee98b43/35/public/android.jar?format=TEXT",
+      "sha256": "ee568219aa3754977207a8fd849fdbf3a299658dd26dd0907d39ca830587f8aa",
+      "size": 27100040
+    },
+    "aapt2.jar": {
+      "url": "https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/8.7.3-12006047/aapt2-8.7.3-12006047-linux.jar",
+      "sha256": "028916a040b58f34c9c89984e1bc48f8da6581662014f2b66391860def8b9c36",
+      "size": 2303812
+    },
+    "r8.jar": {
+      "url": "https://dl.google.com/dl/android/maven2/com/android/tools/r8/8.7.18/r8-8.7.18.jar",
+      "sha256": "58366f77067207c39a17d469de7b05701d2877212a9c55201bcb0af43e59e903",
+      "size": 17650417
+    }
+  }
+}

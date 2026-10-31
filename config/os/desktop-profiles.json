@@ -1,0 +1,40 @@
+{
+  "schema": "org.projectluma.desktop-profiles/v1",
+  "profiles": {
+    "full": {
+      "architectures": [
+        "x86_64",
+        "aarch64"
+      ],
+      "capabilities": {
+        "desktop": true,
+        "android_apps": true,
+        "windows_apps": true,
+        "casting": true
+      },
+      "excluded_packages": [],
+      "excluded_package_prefixes": []
+    },
+    "arm-preview": {
+      "architectures": [
+        "aarch64"
+      ],
+      "capabilities": {
+        "desktop": true,
+        "android_apps": true,
+        "windows_apps": false,
+        "casting": false
+      },
+      "excluded_packages": [
+        "wine",
+        "ntsync-autoload",
+        "winetricks",
+        "luma-cast"
+      ],
+      "excluded_package_prefixes": [
+        "wine-",
+        "luma-cast-"
+      ]
+    }
+  }
+}

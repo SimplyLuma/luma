@@ -151,6 +151,20 @@ def check() -> int:
         primitives = len(re.findall(r"<(?:path|circle|rect|ellipse|line|polyline|polygon)\b", raw))
         if primitives != expected.count("foreground-stroke"):
             problems.append(f"{name}: adaptation dropped a primitive")
+    for entry in manifest.get("derived_icons", []):
+        name = entry["name"]
+        if not NAME.fullmatch(name) or name in listed:
+            problems.append(f"{name}: invalid or duplicate derived icon")
+            continue
+        listed.add(name)
+        source = THEME / entry["source"]
+        icon = ACTIONS / f"{entry['icon']}.svg"
+        if not source.is_relative_to(THEME) or not source.is_file() or digest(source.read_bytes()) != entry["sha256"]:
+            problems.append(f"{name}: derived source missing or digest drifted")
+        elif not icon.is_file() or icon.read_bytes() != source.read_bytes():
+            problems.append(f"{name}: derived icon differs from the pinned source")
+        if not (THEME / entry["license"]).is_file() or not entry.get("derivation"):
+            problems.append(f"{name}: derived icon provenance is incomplete")
     strays = {p.stem for p in UPSTREAM.glob("*.svg")} - listed
     strays |= {p.name[len(PREFIX):-len("-symbolic.svg")] for p in ACTIONS.glob(f"{PREFIX}*-symbolic.svg")} - listed
     problems += [f"{name}: not in the manifest" for name in sorted(strays)]

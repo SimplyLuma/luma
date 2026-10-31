@@ -1,0 +1,16 @@
+From: Luma Developers
+Subject: [PATCH] Add the app menu window section once in grouped order
+
+The shared group loop owns insertion. Adding the same section beforehand
+tries to parent its actor twice whenever an application menu is created.
+
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -165,7 +165,6 @@
+         this.addMenuItem(this._titleItem);
+ 
+         this._windowSection = new PopupMenu.PopupMenuSection();
+-        this.addMenuItem(this._windowSection);
+ 
+         this._actionsGroup = new PopupMenu.PopupMenuSection();
+         this._newWindowItem = this._actionsGroup.addAction(_('New Window'), () => {

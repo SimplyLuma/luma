@@ -30,6 +30,7 @@ SUPPORTED_SUFFIXES = {
     ".apk": "android",
     ".apks": "android",
     ".xapk": "android",
+    ".apkx": "android",
     ".apkm": "android",
     ".exe": "windows",
     ".msi": "windows",

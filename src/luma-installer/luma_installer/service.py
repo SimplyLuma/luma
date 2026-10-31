@@ -21,6 +21,10 @@ INTERFACE_XML = """
     <method name="RequestUninstall">
       <arg type="s" name="application_id" direction="in"/>
     </method>
+    <method name="RequestDefaultInstall">
+      <arg type="s" name="uri" direction="in"/>
+      <arg type="b" name="handled" direction="out"/>
+    </method>
     <method name="RequestInstall">
       <arg type="s" name="uri" direction="in"/>
     </method>
@@ -42,6 +46,29 @@ def local_path_from_uri(uri: str) -> Path:
     return candidate
 
 
+DEFAULT_INSTALLER_IDS = frozenset({
+    "io.luma.Valet.desktop", "io.luma.Install.desktop",
+    "org.projectluma.ApplicationInstaller.desktop",
+})
+
+
+def default_android_install(path: Path) -> bool:
+    """Host-side default lookup for a file manager that may be sandboxed.
+
+    Declining the request has no launch side effect. Explicit package drops
+    continue to use RequestInstall, independently of the default open handler.
+    """
+    if kind_for_path(path) != "android":
+        return False
+    mime = ("application/vnd.android.package-archive" if path.suffix.lower() == ".apk"
+            else "application/vnd.projectluma.android-package-set")
+    selected = Gio.AppInfo.get_default_for_type(mime, False)
+    if selected is None or selected.get_id() not in DEFAULT_INSTALLER_IDS:
+        return False
+    subprocess.Popen(["/usr/bin/luma-install", str(path)], start_new_session=True, close_fds=True)
+    return True
+
+
 class Service:
     def __init__(self) -> None:
         self.loop = GLib.MainLoop()
@@ -58,6 +85,11 @@ class Service:
                     raise InstallerError("Invalid application identity.")
                 subprocess.Popen(["/usr/bin/luma-install", "--remove", identity], start_new_session=True, close_fds=True)
                 invocation.return_value(None)
+                return
+            if method == "RequestDefaultInstall":
+                path = local_path_from_uri(parameters.unpack()[0])
+                handled = default_android_install(path)
+                invocation.return_value(GLib.Variant("(b)", (handled,)))
                 return
             if method == "RequestInstall":
                 path = local_path_from_uri(parameters.unpack()[0])

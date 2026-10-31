@@ -18,7 +18,7 @@ cp "$repo_root/packaging/rpm/luma-apk-metadata.spec" "$work/SPECS/"
 cp "$repo_root/LICENSE.md" "$work/SOURCES/"
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$image" '
  set -euo pipefail
- dnf5 -y install cargo rust gcc rpm-build python3
+ dnf5 -y install cargo rust gcc rpm-build python3 acl
  cd luma-apk-metadata
  mkdir -p .cargo
  cargo vendor --locked vendor > .cargo/config.toml

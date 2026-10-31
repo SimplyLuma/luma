@@ -1,0 +1,296 @@
+diff --git a/hwcomposer/luma-app-settings-channel.h b/hwcomposer/luma-app-settings-channel.h
+new file mode 100644
+index 0000000..49e776d
+--- /dev/null
++++ b/hwcomposer/luma-app-settings-channel.h
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include <cstdint>
++#include <cstring>
++
++namespace luma::app_settings {
++constexpr uint32_t magic = 0x4c415053; // LAPS
++constexpr uint16_t version = 1;
++constexpr char socket_name[] = "luma-android-app-settings-v1";
++struct Request {
++    uint32_t magic;
++    uint16_t version;
++    uint16_t reserved;
++    char package[256];
++};
++static_assert(sizeof(Request) == 264);
++inline bool valid_package(const char* name, size_t length) {
++    if (length < 3 || length > 255) return false;
++    bool start = true, dotted = false;
++    for (size_t i = 0; i < length; ++i) {
++        const unsigned char c = name[i];
++        const bool letter = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
++        if (c == '.') {
++            if (start) return false;
++            start = true; dotted = true;
++        } else {
++            if (!letter && (start || !((c >= '0' && c <= '9') || c == '_')))
++                return false;
++            start = false;
++        }
++    }
++    return dotted && !start;
++}
++inline bool valid(const Request& request) {
++    const size_t length = strnlen(request.package, sizeof(request.package));
++    return request.magic == magic && request.version == version &&
++        request.reserved == 0 && valid_package(request.package, length);
++}
++}
+diff --git a/hwcomposer/luma-frame-glyphs.h b/hwcomposer/luma-frame-glyphs.h
+index a504e7c..2285b0e 100644
+--- a/hwcomposer/luma-frame-glyphs.h
++++ b/hwcomposer/luma-frame-glyphs.h
+@@ -134,3 +134,20 @@ static const uint8_t luma_frame_back_glyph[196] = {
+     0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+     0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+ };
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-settings-symbolic.svg SHA256 a4dd939ff16fca222db8c1c0729bfcd4654d704ecd74a565fb39b2f15f135234 */
++static const uint8_t luma_frame_settings_glyph[196] = {
++    0,0,0,0,0,0,45,45,0,0,0,0,0,0,
++    0,0,0,0,0,114,211,211,111,0,0,0,0,0,
++    0,0,0,5,5,220,25,25,219,5,6,0,0,0,
++    0,47,224,231,226,141,0,0,142,226,231,224,47,0,
++    0,159,90,1,14,0,30,29,0,14,1,90,158,0,
++    0,125,158,0,0,138,218,218,137,0,0,159,124,0,
++    0,4,193,66,29,218,5,5,219,28,68,192,4,0,
++    0,5,194,67,29,218,5,6,219,28,68,193,4,0,
++    0,127,157,0,0,136,219,219,136,0,0,158,125,0,
++    0,160,90,2,15,0,29,28,0,15,2,91,158,0,
++    0,47,224,232,226,142,0,0,143,225,232,223,46,0,
++    0,0,0,4,5,220,25,26,219,4,4,0,0,0,
++    0,0,0,0,0,112,211,212,110,0,0,0,0,0,
++    0,0,0,0,0,0,44,44,0,0,0,0,0,0,
++};
+diff --git a/hwcomposer/luma-window-frame.h b/hwcomposer/luma-window-frame.h
+index e2a740f..e8b2a2e 100644
+--- a/hwcomposer/luma-window-frame.h
++++ b/hwcomposer/luma-window-frame.h
+@@ -170,6 +170,14 @@ static inline LumaFrameRect luma_frame_back(LumaWindowFrame f)
+     return (LumaFrameRect){controls.x - LUMA_FRAME_BACK_GAP - LUMA_FRAME_CONTROL_SIZE,
+                           controls.y, LUMA_FRAME_CONTROL_SIZE, LUMA_FRAME_CONTROL_SIZE};
+ }
++/* Optional application compatibility action. Ordinary native window controls
++ * keep their existing geometry and hit targets. Android opts into this slot. */
++static inline LumaFrameRect luma_frame_settings(LumaWindowFrame f)
++{
++    LumaFrameRect back = luma_frame_back(f);
++    back.x -= LUMA_FRAME_CONTROL_GAP + LUMA_FRAME_CONTROL_SIZE;
++    return back;
++}
+ /* 0 Minimize, 1 Maximize, 2 Close, 3 Android Back. */
+ static inline LumaFrameRect luma_frame_control(LumaWindowFrame f, unsigned index)
+ {
+diff --git a/hwcomposer/prairie-titlebar.cpp b/hwcomposer/prairie-titlebar.cpp
+index 5a78f69..2e1a9b6 100644
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -6,6 +6,7 @@
+ #include "prairie-titlebar.h"
+ 
+ #include "wayland-hwc.h"
++#include "luma-app-settings-channel.h"
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -151,6 +152,27 @@ void draw_control(window& window, int button_left, int kind) {
+               rect.y + (rect.height - kIconSize) / 2, mask, ink);
+ }
+ 
++bool has_settings(const window& window) {
++    return window.taskID != "none" && window.taskID != "0" &&
++        luma::app_settings::valid_package(window.appID.data(), window.appID.size());
++}
++
++void draw_settings(window& window) {
++    if (!has_settings(window)) return;
++    const LumaFrameRect rect = luma_frame_settings(frame(window));
++    const LumaFrameMaterial material = frame_material(window);
++    const bool hovered = window.hovered_chrome_target == static_cast<int>(TitlebarTarget::Settings);
++    if (hovered)
++        for (int y = rect.y; y < rect.y + rect.height; ++y)
++            for (int x = rect.x; x < rect.x + rect.width; ++x)
++                premultiplied_pixel(window, x, y,
++                    luma_frame_button_pixel(rect, x, y, material, false));
++    const auto style = luma_frame_style(material);
++    draw_mask(window, rect.x + (rect.width - kIconSize) / 2,
++              rect.y + (rect.height - kIconSize) / 2, luma_frame_settings_glyph,
++              hovered ? style.ink : style.muted);
++}
++
+ void draw_back(window& window) {
+     LumaFrameRect rect = luma_frame_back(frame(window));
+     LumaFrameMaterial material = frame_material(window);
+@@ -283,7 +305,8 @@ void draw_title(window& window) {
+     FT_Fixed weight = LUMA_FRAME_TITLE_WEIGHT << 16;
+     FT_Set_Var_Design_Coordinates(face, 1, &weight);
+     const int title_left = LUMA_FRAME_IDENTITY_INSET + LUMA_FRAME_IDENTITY_ICON_SIZE + LUMA_FRAME_IDENTITY_GAP;
+-    const int max_width = std::max(0, luma_frame_back(frame(window)).x - LUMA_FRAME_IDENTITY_GAP - title_left);
++    const int action_left = has_settings(window) ? luma_frame_settings(frame(window)).x : luma_frame_back(frame(window)).x;
++    const int max_width = std::max(0, action_left - LUMA_FRAME_IDENTITY_GAP - title_left);
+     const std::string text = ellipsize(face, window.title, max_width);
+     int pen_x = title_left;
+     const uint32_t ink = frame_ink(window);
+@@ -427,6 +450,10 @@ TitlebarTarget hit_test(const window& window, int x, int y) {
+     }
+     if (y < 0)
+         return TitlebarTarget::Content;
++    const auto settings = luma_frame_settings(frame(window));
++    if (has_settings(window) && x >= settings.x && x < settings.x + settings.width &&
++            y >= settings.y && y < settings.y + settings.height)
++        return TitlebarTarget::Settings;
+     switch (luma_frame_control_at(frame(window), x, y)) {
+     case 0: return TitlebarTarget::Minimize;
+     case 1: return TitlebarTarget::Maximize;
+@@ -556,6 +583,7 @@ void redraw_titlebar(window& window) {
+     for (int index = 0; index < 3; ++index)
+         draw_control(window, control_left(window, index), index);
+     draw_back(window);
++    draw_settings(window);
+     draw_app_icon(window);
+     draw_title(window);
+     wl_shm_pool* pool = wl_shm_create_pool(window.display->shm, fd, size);
+diff --git a/hwcomposer/prairie-titlebar.h b/hwcomposer/prairie-titlebar.h
+index 366b4f7..9f58865 100644
+--- a/hwcomposer/prairie-titlebar.h
++++ b/hwcomposer/prairie-titlebar.h
+@@ -30,6 +30,7 @@ enum class TitlebarTarget {
+     Minimize,
+     Maximize,
+     Back,
++    Settings,
+ };
+ 
+ LumaWindowFrame frame(const window& window);
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+index 98450bf..ea47835 100644
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -33,6 +33,7 @@
+ #include "prairie-titlebar.h"
+ #include "luma-task-resize.h"
+ #include "luma-window-callbacks.h"
++#include "luma-app-settings-channel.h"
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -165,6 +166,25 @@ luma::TaskResizeQueue& task_resize_queue() {
+ 
+ }  // namespace
+ 
++// Nonblocking, one-way request: a missing host settings panel must never
++// stall Wayland input. The task HAL checks kernel credentials before parsing.
++static void request_app_settings(const window& window) {
++    using namespace luma::app_settings;
++    if (!valid_package(window.appID.data(), window.appID.size())) return;
++    Request request{};
++    request.magic = magic; request.version = version;
++    memcpy(request.package, window.appID.data(), window.appID.size());
++    const int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
++    if (fd < 0) return;
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    memcpy(address.sun_path + 1, socket_name, sizeof(socket_name) - 1);
++    const socklen_t length = offsetof(sockaddr_un, sun_path) + sizeof(socket_name);
++    if (connect(fd, reinterpret_cast<const sockaddr*>(&address), length) == 0)
++        send(fd, &request, sizeof(request), MSG_NOSIGNAL | MSG_DONTWAIT);
++    close(fd);
++}
++
+ void cancel_task_resize(uint32_t taskID) {
+     task_resize_queue().cancel(taskID);
+ }
+@@ -1335,6 +1355,8 @@ pointer_handle_button(void *data, struct wl_pointer *,
+                     window->minimize();
+                 } else if (target == prairie::TitlebarTarget::Maximize) {
+                     window->set_maximize(!window->maximized);
++                } else if (target == prairie::TitlebarTarget::Settings) {
++                    request_app_settings(*window);
+                 } else if (target == prairie::TitlebarTarget::Back) {
+                     if (window->display->task && window->taskID != "none" &&
+                             window->taskID != "0")
+@@ -1537,6 +1559,8 @@ touch_handle_down(void *data, struct wl_touch *,
+                 window->minimize();
+             else if (target == prairie::TitlebarTarget::Maximize)
+                 window->set_maximize(!window->maximized);
++            else if (target == prairie::TitlebarTarget::Settings)
++                request_app_settings(*window);
+             else if (target == prairie::TitlebarTarget::Back) {
+                 if (window->display->task && window->taskID != "none" &&
+                         window->taskID != "0")
+diff --git a/interfaces/task/1.0/default/service.cpp b/interfaces/task/1.0/default/service.cpp
+index 5266161..e4296cb 100644
+--- a/interfaces/task/1.0/default/service.cpp
++++ b/interfaces/task/1.0/default/service.cpp
+@@ -18,6 +18,10 @@
+ 
+ #include <android-base/logging.h>
+ #include <binder/ProcessState.h>
++#include <binder/IServiceManager.h>
++#include <binder/Parcel.h>
++#include <utils/String16.h>
++#include "../../../../hwcomposer/luma-app-settings-channel.h"
+ #include <hidl/HidlTransportSupport.h>
+ #include <sys/socket.h>
+ #include <sys/un.h>
+@@ -121,6 +125,46 @@ void servePrairieResizeRequests(const android::sp<WaydroidTask>& service) {
+     }
+ }
+ 
++// A separate listener keeps a slow host settings service off the resize
++// channel. Queue length, packet size and socket reads all remain bounded.
++void serveAppSettingsRequests() {
++    using namespace luma::app_settings;
++    const int server = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++    if (server < 0) return;
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    memcpy(address.sun_path + 1, socket_name, sizeof(socket_name) - 1);
++    const socklen_t length = offsetof(sockaddr_un, sun_path) + sizeof(socket_name);
++    if (bind(server, reinterpret_cast<const sockaddr*>(&address), length) != 0 ||
++            listen(server, 4) != 0) {
++        close(server); return;
++    }
++    for (;;) {
++        const int client = TEMP_FAILURE_RETRY(accept4(server, nullptr, nullptr, SOCK_CLOEXEC));
++        if (client < 0) continue;
++        ucred credentials{};
++        socklen_t size = sizeof(credentials);
++        const timeval deadline{0, 250000};
++        Request request{};
++        const bool admitted = getsockopt(client, SOL_SOCKET, SO_PEERCRED,
++                &credentials, &size) == 0 && size == sizeof(credentials) &&
++            credentials.uid == 1000 &&
++            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &deadline, sizeof(deadline)) == 0 &&
++            TEMP_FAILURE_RETRY(recv(client, &request, sizeof(request), MSG_TRUNC)) ==
++                static_cast<ssize_t>(sizeof(request)) && valid(request);
++        close(client);
++        if (!admitted) continue;
++        const auto manager = android::defaultServiceManager();
++        if (manager == nullptr) continue;
++        const auto host = manager->checkService(android::String16("lumaappsettings"));
++        if (host == nullptr) continue;
++        android::Parcel data;
++        data.writeInterfaceToken(android::String16("org.projectluma.android.IAppSettings"));
++        data.writeString16(android::String16(request.package));
++        host->transact(1, data, nullptr, android::IBinder::FLAG_ONEWAY);
++    }
++}
++
+ }  // namespace
+ 
+ int main() {
+@@ -141,6 +185,7 @@ int main() {
+     LOG(INFO) << "Waydroid Task HAL service ready.";
+ 
+     std::thread(servePrairieResizeRequests, implementation).detach();
++    std::thread(serveAppSettingsRequests).detach();
+ 
+     joinRpcThreadpool();
+ 

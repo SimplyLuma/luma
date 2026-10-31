@@ -1,0 +1,20 @@
+{
+  "schema": "org.projectluma.depot.native-filer-inputs/v1",
+  "source": "bdaf62fd08989b790decfac941a6947f8f72273a",
+  "architecture": "aarch64",
+  "refs": {
+    "runtime/org.projectluma.Platform/aarch64/44": "30f7e30d5d68e20c6c39bcb933508f3706446b39f0aaf2a353a1917544cdc925",
+    "runtime/org.projectluma.Sdk/aarch64/44": "41e1fcb8f50d018b7ef63324b49b4a17e2c0268f46cf9bf4f57d34e6a524c7e6",
+    "runtime/org.projectluma.Platform.Locale/aarch64/44": "5bfaf68f9ce85be411838deee112e60feb7711189fe0d5173ac225010c95a663",
+    "runtime/org.projectluma.Platform.GL.default/aarch64/44": "f5a7bd279203af22a54b83fb3f0049e9a70567c7e75bf162bc0695768ce001d8",
+    "appstream/aarch64": "8a50efb3cd60db02df464d516ff56fae37a126f2fb7b0b03a5af47a2439ea593",
+    "appstream2/aarch64": "8f59578813def45985ad28e3053fe8f97c251327dbc8bea172728cea9f435492"
+  },
+  "summary_sha256": "89d5ff7041c3ea5ff04ed566d4707539d5af9366c4c07976931de117141f0d3b",
+  "summary_signature_sha256": "6b41cff67a087e405fd30d1bdef24c62b8f4ac1742992efd62759d3e45bc3adb",
+  "flatpakrepo_sha256": "484f64ac6666341999d876da633b43c7f66fadd8db3b15f7c9996b5bd296884a",
+  "reachable_object_count": 77581,
+  "reachable_stored_bytes": 1449582022,
+  "filer_source_manifest_sha256": "9ffbb06ee9713267fcd77218b21f6b3932ceefd63c25debaa5b008dbcdd1d332",
+  "filer_manifest_sha256": "4a8ee94bb059712a09a336b12ac8793365b4004a0b4a5b480556fa277429746e"
+}

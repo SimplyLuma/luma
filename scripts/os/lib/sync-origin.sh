@@ -16,6 +16,22 @@
 # never reads a summary naming objects the origin does not have yet.
 set -euo pipefail
 generation=$1 apply=$2 prune=$3 parts=$4 media=$5
+public_repo_destination=${DL_PUBLIC_REPO_DEST:-os/repo}
+public_repo_link_destination=${DL_PUBLIC_REPO_LINK_DEST:-}
+# Some maintained origins expose a legacy directory as the public repository.
+# Keep the public URL stable and require an explicit, bounded hosting profile.
+case "$public_repo_destination" in
+  os/repo|os/preview-repo) ;;
+  *) printf 'unsupported public repository destination\n' >&2; exit 2 ;;
+esac
+if [ -n "$public_repo_link_destination" ]; then
+  [ "$public_repo_destination" = os/preview-repo ] && [ "$public_repo_link_destination" = /os/repo ] ||
+    { printf 'unsupported public repository link destination\n' >&2; exit 2; }
+fi
+if [ "$public_repo_destination" = os/preview-repo ] && [[ " $parts " = *' preview '* ]]; then
+  printf 'public repository profile conflicts with private preview destination\n' >&2
+  exit 2
+fi
 
 ssh_cmd="ssh -i $DL_SSH_KEY -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$KNOWN_HOSTS"
 rs=(rsync --recursive --links --times --omit-dir-times --perms --chmod=D0755,F0644 --no-owner --no-group
@@ -24,33 +40,37 @@ rs=(rsync --recursive --links --times --omit-dir-times --perms --chmod=D0755,F06
 log() { printf '%s sync-origin: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
 sync_repo() {
-  local source=$1 prefix=$2 file
+  local source=$1 prefix=$2 destination=${3:-$2} file
   [ -f "$source/config" ] || { log "$prefix: no repository in this generation"; return 0; }
   if [ "$prune" = 1 ]; then
     # Deletion only (--existing with --ignore-existing transfers nothing): a
     # prune never uploads, so it can never put a summary ahead of its objects.
     "${rs[@]}" --existing --ignore-existing --delete-after --exclude tmp/ --exclude state/ --exclude .lock \
-      --exclude .rsync-partial/ "$source/" "$DL_RSYNC_DEST:$prefix/"
+      --exclude .rsync-partial/ "$source/" "$DL_RSYNC_DEST:$destination/"
     log "$prefix: pruned to the served generation"
     return 0
   fi
-  "${rs[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
+  local immutable=("${rs[@]}")
+  if [ "$prefix" = os/repo ] && [ -n "$public_repo_link_destination" ]; then
+    immutable+=(--link-dest="$public_repo_link_destination")
+  fi
+  "${immutable[@]}" --ignore-existing --exclude tmp/ --exclude state/ --exclude .lock \
     --include 'objects/***' --include 'deltas/***' --include 'objects/' --include 'deltas/' --exclude '*' \
-    "$source/" "$DL_RSYNC_DEST:$prefix/"
+    "$source/" "$DL_RSYNC_DEST:$destination/"
   "${rs[@]}" --exclude 'objects/' --exclude 'deltas/' --exclude tmp/ --exclude state/ --exclude .lock \
     --exclude summary --exclude summary.sig --exclude 'summary.idx*' --exclude 'summaries/' \
-    "$source/" "$DL_RSYNC_DEST:$prefix/"
+    "$source/" "$DL_RSYNC_DEST:$destination/"
   local last=()
   for file in summaries summary.idx summary.idx.sig summary summary.sig; do
     [ -e "$source/$file" ] && last+=("$file")
   done
-  [ "${#last[@]}" -eq 0 ] || (cd "$source" && "${rs[@]}" --delay-updates --relative "${last[@]}" "$DL_RSYNC_DEST:$prefix/")
+  [ "${#last[@]}" -eq 0 ] || (cd "$source" && "${rs[@]}" --delay-updates --relative "${last[@]}" "$DL_RSYNC_DEST:$destination/")
   log "$prefix: uploaded"
 }
 
 for part in $parts; do
   case "$part" in
-    repo) sync_repo "$generation/os/repo" os/repo ;;
+    repo) sync_repo "$generation/os/repo" os/repo "$public_repo_destination" ;;
     preview) sync_repo "$generation/os/preview-repo" os/preview-repo ;;
     graph)
       [ -d "$generation/os/graph" ] || continue
@@ -108,16 +128,33 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failures=0
 fail() { log "$1"; failures=$((failures + 1)); }
+# Follow only the official immutable-object handoff. Custom origin Host routing
+# belongs to the first request; sending it to the media host serves the wrong
+# virtual host. Policy, credentials, graphs and summaries never follow redirects.
+http_request() {
+  local path=$1 output=$2 method=$3 result code location
+  local options=()
+  [ "$method" != HEAD ] || options+=(--head)
+  result=$(printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$path" |
+    curl --config - --fail --silent --max-time 120 "${options[@]}" \
+      -H "Host: $DL_HOST_HEADER" --output "$output" \
+      --write-out '%{http_code}\n%{redirect_url}' 2>/dev/null) || return 1
+  code=${result%%$'\n'*}
+  location=${result#*$'\n'}
+  [[ "$code" == 2[0-9][0-9] ]] && return 0
+  case "$code" in 301|302|303|307|308) ;; *) return 1 ;; esac
+  [[ "$path" = os/repo/objects/* &&
+     "$location" = "https://media.simplyluma.com/$path" ]] || return 1
+  # No custom Host and no further redirects; the final resource must succeed.
+  code=$(printf 'url = "%s"\n' "$location" |
+    curl --config - --proto '=https' --fail --silent --max-time 120 \
+      "${options[@]}" --output "$output" --write-out '%{http_code}' 2>/dev/null) || return 1
+  [[ "$code" == 2[0-9][0-9] ]]
+}
 # fetch URL-PATH OUTPUT-FILE
-fetch() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --max-time 120 -H "Host: $DL_HOST_HEADER" --output "$2" 2>/dev/null
-}
-# present URL-PATH: the origin answers 200 to HEAD
-present() {
-  printf 'url = "%s/%s"\n' "$DL_HTTP_ORIGIN" "$1" |
-    curl --config - --fail --silent --head --max-time 60 -H "Host: $DL_HOST_HEADER" --output /dev/null 2>/dev/null
-}
+fetch() { http_request "$1" "$2" GET; }
+# present URL-PATH: a final successful HEAD, including the verified media hop.
+present() { http_request "$1" /dev/null HEAD; }
 digest() { sha256sum <"$1" | cut -d' ' -f1; }
 # served URL-PATH LOCAL-FILE LABEL: the origin serves LOCAL-FILE byte for byte
 served() {
@@ -169,9 +206,11 @@ for part in $parts; do
       fi
       credential= ;;
     graph)
-      for file in "$generation"/os/graph/*; do
-        served "os/graph/$(basename "$file")" "$file" "os/graph/$(basename "$file")"
-      done ;;
+      [ -d "$generation/os/graph" ] || continue
+      while IFS= read -r -d '' file; do
+        relative=${file#"$generation/os/graph/"}
+        served "os/graph/$relative" "$file" "os/graph/$relative"
+      done < <(find "$generation/os/graph" -type f -print0) ;;
     keys)
       for file in "$generation"/os/keys/*; do
         served "os/keys/$(basename "$file")" "$file" "os/keys/$(basename "$file")"
