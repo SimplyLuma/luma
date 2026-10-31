@@ -131,3 +131,10 @@ The MT6878 audio PLL correction is maintained separately under
 It is hardware-specific and belongs after the device branch's preceding kernel
 series. Its full kernel has booted on the owner's Titan, and the owner confirms
 Tide playback is smooth. Doom/call-path listening checks remain untested. It is not a desktop/tablet audio-policy change or OS release.
+
+
+Owner has accepted the current Titan playback and requested retaining it.
+Individual physical loudspeaker/receiver isolation was not completed; do not
+interpret mixer labels or the manual diagram as independent acoustic evidence.
+Keep this limitation with the source/build handoff. The tested corrected kernel
+and rollback image are retained privately; no general release was published.

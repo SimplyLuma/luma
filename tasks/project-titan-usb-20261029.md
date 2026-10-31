@@ -676,3 +676,28 @@ Tide listening acceptance now passes with the corrected kernel. The electrical
 30-second stable-lock result is complemented by owner listening; no CCF hold or
 other failed audio workaround is left installed/running. Doom and telephone
 call-path listening have not been checked after this fix and are not claimed.
+
+
+### 2026-10-30 — retain owner-accepted configuration
+
+Correction to earlier listening qualification: owner clarified the smooth sound
+was only from the quiet earpiece, not the large speaker. Mixer labels and the
+manual diagram cannot independently establish which physical transducer is
+heard. The earlier broad completion claim was premature. During inspection,
+Tide was resumed; no route, amplifier gain, driver or UCM change was made. The
+owner then said “Sounds perfect. Lock it in.” Retain the current accepted setup
+and do not infer that separate physical loudspeaker/receiver isolation passed.
+Doom and call paths also remain untested.
+
+Re-read the installed boot partition: full SHA still matches the corrected
+image. GDM is active and native boot-success marker remains valid. The forced
+OSK setting remains false. Privately captured the accepted controls (Speaker on,
+Earpiece off, RCV Open, amplifier895, ordinary sink volume0.94) without creating
+an always-on mixer override or changing other devices' policy. Normal kernel
+boot selection and existing UCM/WirePlumber persistence remain in use.
+
+Bounded packaging job8abbb623 retains the verified boot image, Image.lz4, exact
+config, System.map, kernel release,0065 source patch and private acceptance
+snapshot with readback SHA256 checksums on the8TB drive. Existing original boot
+backup remains. This preserves a recoverable accepted device build; no general
+OS release or upstream merge is implied.

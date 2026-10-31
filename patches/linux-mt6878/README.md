@@ -21,8 +21,8 @@ to the other set/clear PLLs kept amplifier PLL lock in324/324 samples; releasing
 them restored intermittent lock. This is electrical evidence, not listening
 acceptance: a later longer comparison was reported silent. The corrected full kernel
 has now built and booted on the development Titan. Existing config, DTB,
-built-in initramfs and exported symbols were preserved. The owner confirms Tide music now plays smoothly with no chopping. The active
-route uses the speaker amplifier with the PMIC receiver disabled; the
-manufacturer diagram places the loudspeaker on the top edge beside the receiver.
-Doom and call-path listening acceptance remain untested. This is a development installation, not a published kernel or
+built-in initramfs and exported symbols were preserved. The owner accepted current Tide playback and requested that this setup be
+retained. Individual physical loudspeaker/receiver outputs have not been
+independently isolated; Doom and call-path listening acceptance remain untested.
+This is a development installation, not a published kernel or
 OS update.
