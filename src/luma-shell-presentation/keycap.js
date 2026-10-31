@@ -149,12 +149,23 @@ export function deleteSelectWords(dx) {
     return Math.min(32, Math.max(1, Math.trunc(-dx / t.delete_select_word)));
 }
 
-// Word suggestions from a word list, computed off the key path: a tap
-// commits its character at once, and suggestions for the word follow when
-// the Shell is idle. Completions extend the typed word; when the word is not
-// a known word, single-edit corrections come first. Case follows the word.
+// Word suggestions and autocorrection, computed off the key path: a tap
+// commits its character at once, and analysis of the word follows when the
+// Shell is idle. Words come from a dictionary (Hunspell) and a frequency
+// list; candidates are ranked by frequency times how likely the edit is as
+// a touch typo (keycap.prediction). Case follows the typed word.
 const WORD = /^[\p{L}\p{M}'’]+$/u;
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz\'';
+const BOUNDARY = /^[\s.,!?;:)\]}"”]$/u;
+
+export function isWordCharacter(character) {
+    return WORD.test(character);
+}
+
+// Characters that end a word: where autocorrection may apply.
+export function isWordBoundary(character) {
+    return BOUNDARY.test(character);
+}
 
 const ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
 const POSITIONS = new Map([...ROWS.entries()].flatMap(([row, keys]) =>
@@ -166,88 +177,243 @@ function neighbours(a, b) {
     return !!pa && !!pb && a !== b && Math.abs(pa[0] - pb[0]) <= 1 && Math.abs(pa[1] - pb[1]) <= 1;
 }
 
-export function isWordCharacter(character) {
-    return WORD.test(character);
+function matchCase(candidate, typed) {
+    if (typed.length > 1 && typed === typed.toUpperCase() && typed !== typed.toLowerCase())
+        return candidate.toUpperCase();
+    if (typed[0] !== typed[0].toLowerCase())
+        return candidate[0].toUpperCase() + candidate.slice(1);
+    return candidate;
 }
 
 export class WordSuggester {
-    constructor(words = []) {
-        this._sorted = [...new Set(words.map(word => word.toLowerCase()).filter(word => WORD.test(word)))].sort();
-        this._known = new Set(this._sorted);
+    // words: dictionary entries; frequencies: Map(word -> corpus count). A
+    // large vocabulary is added in slices instead (addWords/addFrequencies),
+    // so building it never holds a frame.
+    constructor(words = [], frequencies = new Map()) {
+        this._frequency = new Map();
+        this._known = new Set();
+        this._buckets = new Map();
+        this._kept = new Set();
+        this._accepted = new Map();
+        this.addFrequencies(frequencies);
+        this.addWords(words);
+    }
+
+    _add(lower) {
+        if (this._known.has(lower))
+            return;
+        this._known.add(lower);
+        const key = lower[0];
+        let bucket = this._buckets.get(key);
+        if (!bucket)
+            this._buckets.set(key, bucket = {words: [], sorted: true});
+        bucket.words.push(lower);
+        bucket.sorted = false;
+    }
+
+    addWords(words) {
+        for (const word of words) {
+            const lower = word.toLowerCase();
+            if (WORD.test(lower))
+                this._add(lower);
+        }
+    }
+
+    addFrequencies(entries) {
+        const minimum = keycap.prediction.known_min_count;
+        for (const [word, count] of entries) {
+            const lower = word.toLowerCase();
+            if (!WORD.test(lower) || count < minimum)
+                continue;
+            this._frequency.set(lower, Math.max(count, this._frequency.get(lower) ?? 0));
+            this._add(lower);
+        }
     }
 
     get size() {
-        return this._sorted.length;
+        return this._known.size;
+    }
+
+    // Sort the prefix index one initial letter at a time (each a short step).
+    *sortSlices() {
+        for (const bucket of this._buckets.values()) {
+            if (!bucket.sorted) {
+                bucket.words.sort();
+                bucket.sorted = true;
+                yield;
+            }
+        }
     }
 
     has(word) {
-        return this._known.has(word.toLowerCase());
+        const lower = word.toLowerCase();
+        return this._known.has(lower) || this._kept.has(lower);
+    }
+
+    // How common a word is, including the person's accepted choices.
+    frequency(word) {
+        const lower = word.toLowerCase();
+        return (this._frequency.get(lower) ?? (this._known.has(lower) ? 1 : 0)) +
+            (this._accepted.get(lower) ?? 0) * 1000;
+    }
+
+    // The person's own words: one they kept by undoing a correction is never
+    // corrected again; accepted suggestions rank higher.
+    keep(word) {
+        this._kept.add(word.toLowerCase());
+    }
+
+    accept(word) {
+        const lower = word.toLowerCase();
+        if (WORD.test(lower))
+            this._accepted.set(lower, (this._accepted.get(lower) ?? 0) + 1);
+    }
+
+    get learned() {
+        return {kept: [...this._kept], accepted: Object.fromEntries(this._accepted)};
+    }
+
+    restore({kept = [], accepted = {}} = {}) {
+        const limit = keycap.prediction.learned_limit;
+        kept.slice(-limit).forEach(word => this.keep(word));
+        Object.entries(accepted).slice(-limit).forEach(([word, count]) =>
+            this._accepted.set(word.toLowerCase(), count));
     }
 
     _completions(lower, limit) {
-        let low = 0, high = this._sorted.length;
+        const bucket = this._buckets.get(lower[0]);
+        if (!bucket)
+            return [];
+        if (!bucket.sorted) {
+            bucket.words.sort();
+            bucket.sorted = true;
+        }
+        const sorted = bucket.words;
+        let low = 0, high = sorted.length;
         while (low < high) {
             const middle = (low + high) >> 1;
-            if (this._sorted[middle] < lower) low = middle + 1;
+            if (sorted[middle] < lower) low = middle + 1;
             else high = middle;
         }
         const found = [];
-        for (let i = low; i < this._sorted.length && found.length < 200 && this._sorted[i].startsWith(lower); i++) {
-            if (this._sorted[i] !== lower)
-                found.push(this._sorted[i]);
+        for (let i = low; i < sorted.length && found.length < 400 && sorted[i].startsWith(lower); i++) {
+            if (sorted[i] !== lower)
+                found.push(sorted[i]);
         }
-        return found.sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).slice(0, limit);
+        return found.sort((a, b) => this.frequency(b) - this.frequency(a) || a.length - b.length || (a < b ? -1 : 1))
+            .slice(0, limit);
     }
 
-    // Single-edit corrections ranked by how people mistype on a touch
-    // keyboard: swapped or doubled letters first, then a neighbouring key,
-    // then any other single edit.
-    _corrections(lower, limit) {
-        const scored = new Map();
-        const add = (candidate, score) => {
-            if (candidate !== lower && this._known.has(candidate) && !(scored.get(candidate) <= score))
-                scored.set(candidate, score);
+    // Single-edit corrections, each weighted by frequency and by how people
+    // mistype on a touch keyboard: swapped or doubled letters, a
+    // neighbouring key, then any other edit.
+    _corrections(lower) {
+        const p = keycap.prediction;
+        const weights = new Map();
+        const add = (candidate, weight) => {
+            if (candidate !== lower && this.has(candidate) && !(weights.get(candidate) >= weight))
+                weights.set(candidate, weight);
         };
         const chars = [...lower];
         const join = parts => parts.join('');
         for (let i = 0; i < chars.length - 1; i++)
-            add(join([...chars.slice(0, i), chars[i + 1], chars[i], ...chars.slice(i + 2)]), 0);
+            add(join([...chars.slice(0, i), chars[i + 1], chars[i], ...chars.slice(i + 2)]), p.transpose);
         for (let i = 0; i < chars.length; i++) {
-            add(join([...chars.slice(0, i + 1), chars[i], ...chars.slice(i + 1)]), 0);
+            add(join([...chars.slice(0, i + 1), chars[i], ...chars.slice(i + 1)]), p.double);
             if (chars[i] === chars[i + 1])
-                add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), 0);
-            for (const letter of LETTERS)
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i + 1)]), neighbours(chars[i], letter) ? 1 : 3);
+                add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.double);
+            for (const letter of LETTERS) {
+                add(join([...chars.slice(0, i), letter, ...chars.slice(i + 1)]),
+                    neighbours(chars[i], letter) ? p.neighbour : p.other);
+            }
         }
         for (let i = 0; i <= chars.length; i++) {
             for (const letter of LETTERS) {
                 const near = neighbours(chars[i - 1], letter) || neighbours(chars[i], letter);
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i)]), near ? 2 : 4);
+                add(join([...chars.slice(0, i), letter, ...chars.slice(i)]), near ? p.near_insert : p.other);
             }
         }
         for (let i = 0; i < chars.length; i++)
-            add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), 4);
-        return [...scored].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
+            add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.other);
+        return [...weights].map(([candidate, weight]) => [candidate, weight * Math.max(1, this.frequency(candidate))])
+            .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    }
+
+    // Suggestions for the word being typed and, when one correction is
+    // decisive, the autocorrection to apply at the word's end.
+    analyse(word, limit = 3) {
+        if (!word || !WORD.test(word))
+            return {suggestions: [], correction: null};
+        const p = keycap.prediction;
+        const lower = word.toLowerCase();
+        const known = this.has(lower);
+        const corrections = known ? [] : this._corrections(lower);
+        // Corrections and completions share one ranking: a completion counts
+        // as an edit weighted `complete`.
+        const scores = new Map(corrections.slice(0, 20));
+        for (const candidate of this._completions(lower, 20)) {
+            const score = p.complete * Math.max(1, this.frequency(candidate));
+            if (!(scores.get(candidate) >= score))
+                scores.set(candidate, score);
+        }
+        const ranked = [...scores].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
             .slice(0, limit).map(([candidate]) => candidate);
+        let correction = null;
+        const [best, runnerUp] = corrections;
+        // Never correct a known or kept word, a single letter, or a word
+        // typed in capitals beyond its first letter.
+        const shaped = [...word].length > 1 && word.slice(1) === word.slice(1).toLowerCase();
+        if (!known && shaped && best && best[1] >= p.autocorrect_min &&
+            (!runnerUp || best[1] >= runnerUp[1] * p.autocorrect_lead))
+            correction = matchCase(best[0], word);
+        return {suggestions: ranked.map(candidate => matchCase(candidate, word)), correction};
     }
 
     suggest(word, limit = 3) {
-        if (!word || !WORD.test(word))
-            return [];
-        const lower = word.toLowerCase();
-        const corrections = this._known.has(lower) ? [] : this._corrections(lower, limit);
-        const ranked = [...new Set([...corrections, ...this._completions(lower, limit)])].slice(0, limit);
-        const upper = word[0] !== word[0].toLowerCase();
-        const all = word.length > 1 && word === word.toUpperCase();
-        return ranked.map(candidate => all ? candidate.toUpperCase()
-            : upper ? candidate[0].toUpperCase() + candidate.slice(1) : candidate);
+        return this.analyse(word, limit).suggestions;
     }
+}
+
+// Word counts from a frequency list in pyspellchecker's format: a JSON object
+// of word -> count. Parsed in slices so a large list never holds a frame.
+export function* frequencyEntries(text, slice = 2000) {
+    const pattern = /"((?:[^"\\]|\\.)*)"\s*:\s*(\d+)/g;
+    let batch = [];
+    for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+        batch.push([match[1], Number(match[2])]);
+        if (batch.length >= slice) {
+            yield batch;
+            batch = [];
+        }
+    }
+    if (batch.length)
+        yield batch;
 }
 
 // Words of a Hunspell dictionary (.dic): the first line is a count, each
 // entry may carry affix flags after a slash.
 export function hunspellWords(text) {
-    return text.split('\n').slice(1).map(line => line.split('/')[0].trim()).filter(Boolean);
+    return [...hunspellSlices(text, Infinity)].flat();
+}
+
+export function* hunspellSlices(text, slice = 2000) {
+    let start = text.indexOf('\n') + 1;
+    let batch = [];
+    while (start > 0 && start < text.length) {
+        let end = text.indexOf('\n', start);
+        if (end < 0)
+            end = text.length;
+        const word = text.slice(start, end).split('/')[0].trim();
+        if (word)
+            batch.push(word);
+        if (batch.length >= slice) {
+            yield batch;
+            batch = [];
+        }
+        start = end + 1;
+    }
+    if (batch.length)
+        yield batch;
 }
 
 // Copied text kept in memory only: at most max_clips, max_bytes each, gone

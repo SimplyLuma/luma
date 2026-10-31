@@ -892,7 +892,8 @@ def render_keycap_shell_css() -> str:
 
 def render_keycap_js() -> str:
     tokens = load_document()["keycap"]
-    value = {key: tokens[key] for key in ("geometry", "timing", "clipboard")}
+    value = {key: {k: v for k, v in tokens[key].items() if not k.startswith("_")}
+             for key in ("geometry", "timing", "clipboard", "prediction")}
     return ("// SPDX-License-Identifier: GPL-2.0-or-later\n"
             "// Generated from config/shared/design-tokens.json `keycap`; do not edit.\n"
             "export const keycap = Object.freeze(" + json.dumps(value, sort_keys=True) + ");\n")

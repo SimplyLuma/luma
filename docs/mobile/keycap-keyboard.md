@@ -82,10 +82,25 @@ alternatives, and the Settings page bindings.
 
 A tap is text: it is committed straight to the application (gathered into
 one Wayland text-input commit per "done", so fast taps are never dropped)
-and never waits on an engine. Word suggestions come from the system Hunspell
-dictionary of the person's language, indexed in the background and computed
-when the Shell is idle; a suggestion replaces its word only while the caret
-is still at that word's end, and stale results are dropped. The on-screen
+and never waits on an engine. Words are analysed off the key path, when the
+Shell is idle: spelling from the system Hunspell dictionary of the person's
+language, ranking from python3-pyspellchecker's word frequency list
+(OpenSubtitles counts, MIT; both are Fedora packages the Shell recommends and
+the OS image installs). Candidates are scored by frequency times a touch-typo
+model (swapped and doubled letters, neighbouring keys), with weights in the
+`keycap.prediction` tokens. A suggestion replaces its word only while the
+caret is still at that word's end, and stale results are dropped.
+
+Autocorrect matches Stevia's LatinIME completer: when space or punctuation
+ends an unknown word with one decisive correction (enough weight and 1.5x the
+runner-up), the correction is committed with that boundary through the same
+ordered buffer. If the word's analysis is not ready, the word is left as
+typed. Backspace straight after restores the typed word and that word is not
+corrected again. Kept words and accepted suggestions are remembered in
+`~/.local/share/luma/keycap-words.json` (private file, at most 1000 each);
+other typing is never stored. Nothing is corrected, suggested or learned in
+password or sensitive fields or outside ordinary text, and the
+`auto-correct` key (Autocorrect in the keyboard menu) turns it off. The on-screen
 keyboard no longer switches IBus to typing-booster; an IBus input source the
 person chose (Pinyin, Hangul and so on) still composes the keys.
 

@@ -457,6 +457,19 @@
       "delete_select_threshold": 20,
       "delete_select_word": 30
     },
+    "prediction": {
+      "_doc": "Word ranking: corpus frequency (python3-pyspellchecker's OpenSubtitles counts) times how likely the edit is as a touch typo. Autocorrect needs a decisive best: at least autocorrect_min weighted and autocorrect_lead times the runner-up, as Stevia's LatinIME completer requires 1.5x. Words below known_min_count are not treated as words.",
+      "transpose": 1,
+      "double": 1,
+      "neighbour": 0.05,
+      "near_insert": 0.03,
+      "other": 0.005,
+      "complete": 0.05,
+      "known_min_count": 10,
+      "autocorrect_min": 1000,
+      "autocorrect_lead": 1.5,
+      "learned_limit": 1000
+    },
     "clipboard": {
       "max_clips": 10,
       "max_bytes": 65536,

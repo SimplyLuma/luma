@@ -123,6 +123,33 @@ assert(typos.suggest('helo')[0] === 'hello' && typos.suggest('wprk')[0] === 'wor
 assert(words.suggest('hello').length === 0 && words.suggest('').length === 0 && words.suggest('12').length === 0,
     'known words and non-words get nothing');
 
+// Frequency ranking and decisive autocorrection (python3-pyspellchecker
+// style counts): a correction needs autocorrect_min weight and to lead the
+// runner-up by autocorrect_lead, as Stevia's LatinIME completer requires.
+const counts = new Map([['the', 76138318], ['thy', 2000], ['their', 3000000], ['there', 5000000],
+    ['work', 900000], ['word', 300000], ['cat', 400000], ['car', 400000], ['receive', 51996]]);
+const model = new Keycap.WordSuggester(['the', 'cat', 'car'], counts);
+assert(model.analyse('teh').correction === 'the' && model.analyse('Teh').correction === 'The', 'teh becomes the');
+assert(model.analyse('recieve').correction === 'receive', 'transposed letters are corrected');
+assert(model.analyse('the').correction === null && model.analyse('work').correction === null, 'known words are never corrected');
+assert(model.analyse('cax').correction === null, 'an ambiguous correction (cat or car) is left as typed');
+assert(model.analyse('TEH').correction === null && model.analyse('t').correction === null,
+    'capitals and single letters are left as typed');
+assert(model.analyse('wor').suggestions[0] === 'work', 'completions rank by frequency');
+model.keep('teh');
+assert(model.analyse('teh').correction === null, 'a word kept by undoing a correction stays');
+model.accept('thy');
+assert(model.learned.kept.includes('teh') && model.learned.accepted.thy === 1, 'learned words round-trip');
+const restored = new Keycap.WordSuggester([], counts);
+restored.restore(model.learned);
+assert(restored.analyse('teh').correction === null, 'kept words survive a restart');
+let parsed = 0;
+for (const batch of Keycap.frequencyEntries('{"a": 3, "b": 4, "c": 5}', 2))
+    parsed += batch.length;
+assert(parsed === 3, 'frequency lists parse in slices');
+for (const [character, boundary] of [[' ', true], ['.', true], [',', true], ['a', false], ["'", false]])
+    assert(Keycap.isWordBoundary(character) === boundary, `boundary ${JSON.stringify(character)}`);
+
 const history = new Keycap.ClipboardHistory({max_clips: 10, max_bytes: 65536, ttl_seconds: 3600});
 for (let i = 0; i < 12; i++)
     history.add(`clip ${i}`, i);
@@ -140,6 +167,8 @@ for (const [needle, message] of [
     ["import * as Keycap from './lumaPresentation/keycap.js';", 'keyboard uses the shared policy'],
     ['this._keyboardController.setOskCompletion(false);', 'taps never switch to a completion engine'],
     ['GLib.idle_add(GLib.PRIORITY_LOW, () => {', 'suggestions are computed off the key path'],
+    ['analysis?.word !== this._word || !analysis.correction', 'autocorrect never waits for analysis'],
+    ["this._keycapSettings.get_boolean('auto-correct')", 'autocorrect has an owner setting'],
     ['Keycap.SECRET_CLIPBOARD_TARGET', 'password-manager copies are skipped'],
     ['generation !== this._clipboardGeneration || this._isSensitive()', 'stale clipboard reads are dropped'],
     ['St.Settings.get().high_contrast ? null', 'High Contrast keeps the platform keyboard'],

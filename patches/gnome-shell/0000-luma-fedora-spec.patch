@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.130.keycap20261030.1%{?dist}
++Release:        1.luma.131.keycap20261030.1%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -335,7 +335,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +397,11 @@
+@@ -90,6 +397,14 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -344,10 +344,13 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Requires:       mutter >= 50.4-1.luma.8.preview20260919.1
 +Requires:       libtinysparql%{?_isa}
 +Recommends:     localsearch
++# On-screen keyboard words: spelling and frequency ranking.
++Recommends:     hunspell-en-US
++Recommends:     python3-pyspellchecker
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +501,40 @@
+@@ -189,8 +504,40 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -388,17 +391,18 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +552,26 @@
+@@ -207,10 +554,27 @@
+ # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
- 
++
 +# Keep generated helper shebangs on Fedora's canonical binary path. Native
 +# AArch64 build hosts may resolve python3 through the merged-/usr /usr/sbin
 +# symlink, which otherwise creates an unsatisfiable literal file dependency
 +# for offline/minimal-image transaction solvers.
 +sed -i '1s|^#!/usr/sbin/python3$|#!/usr/bin/python3|' \
 +  %{buildroot}%{_bindir}/gnome-shell-{extension,test}-tool
-+
+ 
  %find_lang %{name}
  
  %check
@@ -415,7 +419,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +579,7 @@
+@@ -218,7 +582,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -424,7 +428,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +611,11 @@
+@@ -250,6 +614,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

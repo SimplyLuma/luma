@@ -38,6 +38,8 @@ async function work() {
     const monitor = Main.layoutManager.primaryMonitor;
     const full = `${monitor.width}x${monitor.height}+${monitor.x}+${monitor.y} fullscreen`;
 
+    // Start without words learned by an earlier run.
+    GLib.unlink(GLib.build_filenamev([GLib.get_user_data_dir(), 'luma', 'keycap-words.json']));
     const typed = `${out}/typed.txt`;
     const context = global.create_app_launch_context(0, -1);
     Gio.AppInfo.create_from_commandline(
@@ -81,11 +83,11 @@ async function work() {
         return handleVirtualKey.call(Main.inputMethod, keyval);
     };
     const suggester = keyboard._suggester;
-    const suggest = suggester?.suggest;
+    const analyse = suggester?.analyse;
     if (suggester) {
-        suggester.suggest = async word => {
+        suggester.analyse = async word => {
             await delay(500);
-            return suggest.call(suggester, word);
+            return analyse.call(suggester, word);
         };
     }
     const commits = [];
@@ -153,7 +155,46 @@ async function work() {
     Main.inputMethod.handleVirtualKey = handleVirtualKey;
     Main.inputMethod.commit = commit;
     if (suggester)
-        suggester.suggest = suggest;
+        suggester.analyse = analyse;
+
+    // Autocorrect at the word boundary, undone by backspace and remembered.
+    const read = path => {
+        try {
+            return new TextDecoder().decode(GLib.file_get_contents(path)[1]);
+        } catch {
+            return '';
+        }
+    };
+    const typeSlowly = async word => {
+        for (const character of word) {
+            letter?.emit('commit', character);
+            await sleep(60);
+        }
+    };
+    const deleteKey = [];
+    const findDelete = actor => {
+        for (const child of actor.get_children()) {
+            if (child.keyButton && child._iconName === 'osk-delete-symbolic' && child.mapped)
+                deleteKey.push(child);
+            findDelete(child);
+        }
+    };
+    findDelete(keyboard._currentPage);
+    const start = read(typed);
+    await typeSlowly('teh');
+    await sleep(1500);
+    letter?.emit('commit', ' ');
+    await sleep(1000);
+    check('autocorrect applies at the word boundary', read(typed) === `${start}the `, JSON.stringify(read(typed)));
+    deleteKey[0]?.emit('released');
+    await sleep(1000);
+    check('backspace right after restores the typed word', read(typed) === `${start}teh`, JSON.stringify(read(typed)));
+    letter?.emit('commit', ' ');
+    await typeSlowly('teh');
+    await sleep(1500);
+    letter?.emit('commit', ' ');
+    await sleep(1000);
+    check('a restored word is not corrected again', read(typed) === `${start}teh teh `, JSON.stringify(read(typed)));
 
     // A pull from the top edge belongs to the Shell, never to the window.
     const seat = Clutter.get_default_backend().get_default_seat();
@@ -182,6 +223,36 @@ async function work() {
     await sleep(1500);
     check('Mobile keeps its application full screen', frame(window) === full, frame(window));
     window.delete(global.get_current_time());
+
+    // Nothing is corrected, suggested or learned in a password field.
+    const secret = `${out}/secret.txt`;
+    Gio.AppInfo.create_from_commandline(
+        `python3 ${source}/tests/gnome-shell/presentation/typing-window.py ${secret} password`,
+        'Password fixture', Gio.AppInfoCreateFlags.NONE).launch([], context);
+    await until(() => global.display.focus_window?.get_wm_class()?.includes('TypingFixturePassword'));
+    await sleep(1500);
+    Main.keyboard.open(Main.layoutManager.primaryIndex);
+    await sleep(1500);
+    const passwordKeyboard = Main.keyboard.keyboardActor;
+    let key = null;
+    const findKey = actor => {
+        for (const child of actor.get_children()) {
+            if (!key && child.keyButton && !child._keyval && !child._hasAction && child.mapped)
+                key = child;
+            findKey(child);
+        }
+    };
+    findKey(passwordKeyboard._currentPage);
+    for (const character of 'teh') {
+        key?.emit('commit', character);
+        await sleep(60);
+    }
+    await sleep(1500);
+    key?.emit('commit', ' ');
+    await sleep(1000);
+    check('a password field is never corrected', read(secret) === 'teh ', JSON.stringify(read(secret)));
+    check('a password field gets no suggestions', passwordKeyboard._suggestions.get_n_children() === 0);
+    global.display.focus_window?.delete(global.get_current_time());
     a11y.reset('screen-keyboard-enabled');
 }
 

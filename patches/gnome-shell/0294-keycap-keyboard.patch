@@ -33,7 +33,7 @@ diff --git a/data/gnome-shell-icons.gresource.xml b/data/gnome-shell-icons.greso
 diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
 --- a/data/org.gnome.shell.gschema.xml.in
 +++ b/data/org.gnome.shell.gschema.xml.in
-@@ -154,6 +154,37 @@
+@@ -154,6 +154,42 @@
      <child name="window-switcher" schema="org.gnome.shell.window-switcher"/>
      <child name="world-clocks" schema="org.gnome.shell.world-clocks"/>
      <child name="weather" schema="org.gnome.shell.weather"/>
@@ -67,6 +67,11 @@ diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.
 +    <key name="double-space-period" type="b">
 +      <default>true</default>
 +      <summary>Insert a period after two spaces</summary>
++    </key>
++    <key name="auto-correct" type="b">
++      <default>true</default>
++      <summary>Correct misspelled words when a word ends</summary>
++      <description>A decisive correction replaces the word at the space or punctuation that ends it; backspace right after restores the typed word. Never in passwords or sensitive fields.</description>
 +    </key>
    </schema>
  
@@ -149,7 +154,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
  export const KEYBOARD_ANIMATION_TIME = 150;
  const KEYBOARD_REST_TIME = KEYBOARD_ANIMATION_TIME * 2;
-@@ -29,7 +31,48 @@ const EMOJI_PAGE_SEPARATION = 32;
+@@ -29,7 +31,49 @@ const EMOJI_PAGE_SEPARATION = 32;
  const KEY_SIZE = 2;
  
  const KEY_RELEASE_TIMEOUT = 50;
@@ -176,6 +181,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +    ['auto-capitalise', N_('Auto-capitalise')],
 +    ['double-space-period', N_('Double-space period')],
 +    ['suggestions', N_('Suggestions')],
++    ['auto-correct', N_('Autocorrect')],
 +];
 +
 +// The Keycap variant being painted ('light' or 'dark'), or null under High
@@ -199,7 +205,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
  const AspectContainer = GObject.registerClass(
  class AspectContainer extends St.Widget {
-@@ -129,8 +172,10 @@ class Suggestions extends St.BoxLayout {
+@@ -129,8 +173,10 @@ class Suggestions extends St.BoxLayout {
          this.show();
      }
  
@@ -211,7 +217,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          button.connect('button-press-event', () => {
              callback();
              return Clutter.EVENT_STOP;
-@@ -155,29 +200,12 @@ class Suggestions extends St.BoxLayout {
+@@ -155,29 +201,12 @@ class Suggestions extends St.BoxLayout {
      }
  });
  
@@ -245,7 +251,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          actor.connectObject('notify::mapped', () => {
              if (!actor.is_mapped())
-@@ -187,6 +215,10 @@ class LanguageSelectionPopup extends PopupMenu.PopupMenu {
+@@ -187,6 +216,10 @@ class LanguageSelectionPopup extends PopupMenu.PopupMenu {
  
      _onCapturedEvent(actor, event) {
          const targetActor = global.stage.get_event_actor(event);
@@ -256,7 +262,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          if (targetActor === this.actor ||
              this.actor.contains(targetActor))
-@@ -216,6 +248,42 @@ class LanguageSelectionPopup extends PopupMenu.PopupMenu {
+@@ -216,6 +249,42 @@ class LanguageSelectionPopup extends PopupMenu.PopupMenu {
      }
  }
  
@@ -299,7 +305,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  const Key = GObject.registerClass({
      Signals: {
          'long-press': {},
-@@ -223,14 +291,17 @@ const Key = GObject.registerClass({
+@@ -223,14 +292,17 @@ const Key = GObject.registerClass({
          'released': {},
          'keyval': {param_types: [GObject.TYPE_UINT]},
          'commit': {param_types: [GObject.TYPE_STRING]},
@@ -319,7 +325,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          /* Add the key in a container, so keys can be padded without losing
           * logical proportions between those.
-@@ -246,11 +317,49 @@ const Key = GObject.registerClass({
+@@ -246,11 +318,49 @@ const Key = GObject.registerClass({
      }
  
      get iconName() {
@@ -371,7 +377,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onDestroy() {
-@@ -281,6 +390,7 @@ const Key = GObject.registerClass({
+@@ -281,6 +391,7 @@ const Key = GObject.registerClass({
      }
  
      _press(button) {
@@ -379,7 +385,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (button === this.keyButton) {
              this._pressTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
                  KEY_LONG_PRESS_TIME,
-@@ -309,7 +419,7 @@ const Key = GObject.registerClass({
+@@ -309,7 +420,7 @@ const Key = GObject.registerClass({
              this._pressTimeoutId = 0;
          }
  
@@ -388,7 +394,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              if (this._keyval && button === this.keyButton)
                  this.emit('keyval', this._keyval);
              else if (commitString)
-@@ -321,6 +431,7 @@ const Key = GObject.registerClass({
+@@ -321,6 +432,7 @@ const Key = GObject.registerClass({
          this.emit('released');
          this._hideSubkeys();
          this._pressed = false;
@@ -396,7 +402,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      cancel() {
-@@ -331,6 +442,7 @@ const Key = GObject.registerClass({
+@@ -331,6 +443,7 @@ const Key = GObject.registerClass({
          this._touchPressSlot = null;
          this.keyButton.set_hover(false);
          this.keyButton.fake_release();
@@ -404,7 +410,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onCapturedEvent(actor, event) {
-@@ -339,6 +451,14 @@ const Key = GObject.registerClass({
+@@ -339,6 +452,14 @@ const Key = GObject.registerClass({
          const release = type === Clutter.EventType.BUTTON_RELEASE || type === Clutter.EventType.TOUCH_END;
          const targetActor = global.stage.get_event_actor(event);
  
@@ -419,7 +425,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (targetActor === this._boxPointer.bin ||
              this._boxPointer.bin.contains(targetActor))
              return Clutter.EVENT_PROPAGATE;
-@@ -352,6 +472,7 @@ const Key = GObject.registerClass({
+@@ -352,6 +473,7 @@ const Key = GObject.registerClass({
      }
  
      _showSubkeys() {
@@ -427,7 +433,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._boxPointer.open(BoxPointer.PopupAnimation.FULL);
          global.stage.connectObject(
              'captured-event', this._onCapturedEvent.bind(this), this);
-@@ -369,30 +490,67 @@ const Key = GObject.registerClass({
+@@ -369,30 +491,67 @@ const Key = GObject.registerClass({
          this._capturedPress = false;
      }
  
@@ -498,7 +504,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              return Clutter.EVENT_STOP;
          });
          button.connect('touch-event', (actor, event) => {
-@@ -401,13 +559,24 @@ const Key = GObject.registerClass({
+@@ -401,13 +560,24 @@ const Key = GObject.registerClass({
              if (!this._touchPressSlot &&
                  event.type() === Clutter.EventType.TOUCH_BEGIN) {
                  this._touchPressSlot = slot;
@@ -524,65 +530,173 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                  }
  
                  if (this._touchPressSlot === slot)
-@@ -1043,6 +1212,57 @@ const EmojiSelection = GObject.registerClass({
+@@ -1043,6 +1213,165 @@ const EmojiSelection = GObject.registerClass({
      }
  });
  
-+// Word suggestions for the on-screen keyboard from the system Hunspell
-+// dictionary of the person's language, read and indexed in the background
-+// the first time they are needed and shared by every keyboard instance.
++// Word analysis for the on-screen keyboard: the system Hunspell dictionary
++// of the person's language for spelling, and python3-pyspellchecker's word
++// frequency list (OpenSubtitles counts, MIT) for ranking and autocorrect
++// confidence. Both are read and indexed in the background the first time
++// they are needed and shared by every keyboard instance. Words the person
++// kept or accepted are remembered in a small file of their own.
 +const HUNSPELL_DIRS = ['/usr/share/hunspell', '/usr/share/myspell'];
++const LEARNED_FILE = GLib.build_filenamev([GLib.get_user_data_dir(), 'luma', 'keycap-words.json']);
 +let sharedSuggester = null;
 +
++function idle() {
++    return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
++        resolve();
++        return GLib.SOURCE_REMOVE;
++    }));
++}
++
++function readFile(file, compressed = false) {
++    return new Promise((resolve, reject) => file.load_contents_async(null, (_file, result) => {
++        try {
++            const bytes = file.load_contents_finish(result)[1];
++            if (!compressed) {
++                resolve(new TextDecoder().decode(bytes));
++                return;
++            }
++            const stream = new Gio.ConverterInputStream({
++                base_stream: Gio.MemoryInputStream.new_from_bytes(new GLib.Bytes(bytes)),
++                converter: new Gio.ZlibDecompressor({format: Gio.ZlibCompressorFormat.GZIP}),
++            });
++            const output = Gio.MemoryOutputStream.new_resizable();
++            output.splice_async(stream, Gio.OutputStreamSpliceFlags.CLOSE_SOURCE |
++                Gio.OutputStreamSpliceFlags.CLOSE_TARGET, GLib.PRIORITY_LOW, null, (_out, spliced) => {
++                try {
++                    output.splice_finish(spliced);
++                    resolve(new TextDecoder().decode(output.steal_as_bytes().toArray()));
++                } catch (error) {
++                    reject(error);
++                }
++            });
++        } catch (error) {
++            reject(error);
++        }
++    }));
++}
++
++function frequencyFiles(language) {
++    const files = [];
++    for (const root of ['/usr/lib', '/usr/lib64']) {
++        try {
++            const children = Gio.File.new_for_path(root).enumerate_children('standard::name',
++                Gio.FileQueryInfoFlags.NONE, null);
++            for (let info = children.next_file(null); info; info = children.next_file(null)) {
++                if (info.get_name().startsWith('python3'))
++                    files.push(Gio.File.new_for_path(`${root}/${info.get_name()}/site-packages/spellchecker/resources/${language}.json.gz`));
++            }
++        } catch {}
++    }
++    return files;
++}
++
 +class WordSuggestions {
-+    suggest(word) {
++    analyse(word) {
 +        sharedSuggester ??= this._load();
-+        return sharedSuggester.then(suggester => suggester.suggest(word));
++        return sharedSuggester.then(suggester => suggester.analyse(word));
 +    }
 +
++    async suggest(word) {
++        return (await this.analyse(word)).suggestions;
++    }
++
++    keep(word) {
++        sharedSuggester?.then(suggester => {
++            suggester.keep(word);
++            this._save(suggester);
++        });
++    }
++
++    accept(word) {
++        sharedSuggester?.then(suggester => {
++            suggester.accept(word);
++            this._save(suggester);
++        });
++    }
++
++    _save(suggester) {
++        const file = Gio.File.new_for_path(LEARNED_FILE);
++        try {
++            file.get_parent().make_directory_with_parents(null);
++        } catch {}
++        const bytes = new GLib.Bytes(new TextEncoder().encode(JSON.stringify(suggester.learned)));
++        file.replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.PRIVATE, null, (_file, result) => {
++            try {
++                file.replace_contents_finish(result);
++            } catch (error) {
++                console.warn(`Keycap words not saved: ${error.message}`);
++            }
++        });
++    }
++
++    // Start reading the vocabulary before the first word is typed.
++    prepare() {
++        sharedSuggester ??= this._load();
++    }
++
++    // Everything here runs in short idle slices: the vocabulary is built
++    // while the person types, never in one long step.
 +    async _load() {
-+        const names = GLib.get_language_names().map(name => name.split('.')[0].split('@')[0])
-+            .filter(name => name && name !== 'C' && name !== 'POSIX');
-+        for (const name of [...new Set([...names, 'en_US'])]) {
++        const names = [...new Set([...GLib.get_language_names()
++            .map(name => name.split('.')[0].split('@')[0])
++            .filter(name => name && name !== 'C' && name !== 'POSIX'), 'en_US'])];
++        const suggester = new Keycap.WordSuggester();
++        let language = 'en';
++        let found = false;
++        for (const name of names) {
 +            for (const dir of HUNSPELL_DIRS) {
-+                const file = Gio.File.new_for_path(`${dir}/${name}.dic`);
++                let text;
 +                try {
 +                    // eslint-disable-next-line no-await-in-loop
-+                    const bytes = await new Promise((resolve, reject) => file.load_contents_async(null, (_file, result) => {
-+                        try {
-+                            resolve(file.load_contents_finish(result)[1]);
-+                        } catch (error) {
-+                            reject(error);
-+                        }
-+                    }));
-+                    const words = Keycap.hunspellWords(new TextDecoder().decode(bytes));
-+                    // Index in slices so a large dictionary never holds a frame.
-+                    const slices = [];
-+                    for (let i = 0; i < words.length; i += 4000)
-+                        slices.push(words.slice(i, i + 4000));
-+                    const collected = [];
-+                    for (const slice of slices) {
-+                        collected.push(...slice);
-+                        // eslint-disable-next-line no-await-in-loop
-+                        await new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
-+                            resolve();
-+                            return GLib.SOURCE_REMOVE;
-+                        }));
-+                    }
-+                    return new Keycap.WordSuggester(collected);
++                    text = await readFile(Gio.File.new_for_path(`${dir}/${name}.dic`));
 +                } catch {
-+                    // Try the next language or location.
++                    continue;
 +                }
++                for (const slice of Keycap.hunspellSlices(text)) {
++                    suggester.addWords(slice);
++                    // eslint-disable-next-line no-await-in-loop
++                    await idle();
++                }
++                language = name.split('_')[0];
++                found = true;
++                break;
 +            }
++            if (found)
++                break;
 +        }
-+        return new Keycap.WordSuggester([]);
++        for (const file of frequencyFiles(language)) {
++            let text;
++            try {
++                // eslint-disable-next-line no-await-in-loop
++                text = await readFile(file, true);
++            } catch {
++                continue;
++            }
++            for (const slice of Keycap.frequencyEntries(text)) {
++                suggester.addFrequencies(slice);
++                // eslint-disable-next-line no-await-in-loop
++                await idle();
++            }
++            break;
++        }
++        for (const _step of suggester.sortSlices())
++            // eslint-disable-next-line no-await-in-loop
++            await idle();
++        try {
++            suggester.restore(JSON.parse(await readFile(Gio.File.new_for_path(LEARNED_FILE))));
++        } catch {}
++        return suggester;
 +    }
 +}
 +
  export class KeyboardManager extends Signals.EventEmitter {
      constructor() {
          super();
-@@ -1222,6 +1442,35 @@ export const Keyboard = GObject.registerClass({
+@@ -1222,6 +1551,38 @@ export const Keyboard = GObject.registerClass({
          Main.layoutManager.connectObject('monitors-changed',
              this._relayout.bind(this), this);
  
@@ -604,7 +718,10 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        this._recent = '';
 +        this._wordGeneration = 0;
 +        this._wordCandidates = [];
++        this._analysis = null;
++        this._lastCorrection = null;
 +        this._suggester = new WordSuggestions();
++        this._suggester.prepare();
 +        this._deleteTimer = 0;
 +        this._deleteSelected = 0;
 +        this._clipboardGeneration = 0;
@@ -618,7 +735,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._setupKeyboard();
  
          this.connect('destroy', this._onDestroy.bind(this));
-@@ -1242,6 +1491,24 @@ export const Keyboard = GObject.registerClass({
+@@ -1242,6 +1603,24 @@ export const Keyboard = GObject.registerClass({
      }
  
      _onDestroy() {
@@ -643,7 +760,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (this._windowMovedId) {
              this._focusTracker.disconnect(this._windowMovedId);
              delete this._windowMovedId;
-@@ -1277,6 +1544,8 @@ export const Keyboard = GObject.registerClass({
+@@ -1277,6 +1656,8 @@ export const Keyboard = GObject.registerClass({
  
          this._suggestions = new Suggestions();
          this.add_child(this._suggestions);
@@ -652,7 +769,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          this._aspectContainer = new AspectContainer({
              layout_manager: new Clutter.BinLayout(),
-@@ -1288,31 +1557,108 @@ export const Keyboard = GObject.registerClass({
+@@ -1288,31 +1669,108 @@ export const Keyboard = GObject.registerClass({
          this._emojiSelection.connect('toggle', this._toggleEmoji.bind(this));
          this._emojiSelection.connect('close-request', () => this.close(true));
          this._emojiSelection.connect('emoji-selected', (selection, emoji) => {
@@ -763,7 +880,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      _updateLevelFromHints(userInputHappened) {
          // If the latch is enabled, avoid level changes
          if (this._latched)
-@@ -1323,52 +1669,37 @@ export const Keyboard = GObject.registerClass({
+@@ -1323,52 +1781,37 @@ export const Keyboard = GObject.registerClass({
              return;
          }
  
@@ -838,7 +955,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onKeyFocusChanged() {
-@@ -1381,6 +1712,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1381,6 +1824,7 @@ export const Keyboard = GObject.registerClass({
          if (this._focusInExtendedKeys || extendedKeysWereFocused)
              return;
  
@@ -846,7 +963,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (!(focus instanceof Clutter.Text)) {
              this.close();
              return;
-@@ -1447,9 +1779,10 @@ export const Keyboard = GObject.registerClass({
+@@ -1447,9 +1891,10 @@ export const Keyboard = GObject.registerClass({
              levelLayout.mode = currentLevel.mode;
  
              const rows = currentLevel.rows;
@@ -859,7 +976,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              });
  
              layers[currentLevel.level] = levelLayout;
-@@ -1463,7 +1796,40 @@ export const Keyboard = GObject.registerClass({
+@@ -1463,7 +1908,40 @@ export const Keyboard = GObject.registerClass({
          this._layers = layers;
      }
  
@@ -901,7 +1018,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          let accumulatedWidth = 0;
          for (let i = 0; i < keys.length; ++i) {
              const key = keys[i];
-@@ -1487,10 +1853,29 @@ export const Keyboard = GObject.registerClass({
+@@ -1487,10 +1965,29 @@ export const Keyboard = GObject.registerClass({
                  iconName: key.iconName,
                  keyval: key.keyval,
                  hasAction: !!key.action,
@@ -931,9 +1048,12 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                      if (key.action === 'hide') {
                          this.close(true);
                          this._updateLevelFromHints(true);
-@@ -1501,30 +1886,60 @@ export const Keyboard = GObject.registerClass({
+@@ -1500,31 +1997,68 @@ export const Keyboard = GObject.registerClass({
+                         this._toggleEmoji();
                      } else if (key.action === 'modifier') {
                          this._toggleModifier(key.keyval);
++                    } else if (key.action === 'delete' && this._revertCorrection()) {
++                        this._updateLevelFromHints(true);
                      } else if (key.action === 'delete') {
 -                        this._keyboardController.toggleDelete(true);
 -                        this._keyboardController.toggleDelete(false);
@@ -985,7 +1105,12 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                  });
              } else {
                  button.connect('commit', (_actor, str) => {
++                    this._lastCorrection = null;
 +                    if (this._doubleSpacePeriod(str)) {
++                        this._updateLevelFromHints(true);
++                        return;
++                    }
++                    if (this._modifiers.size === 0 && this._autocorrectAt(str)) {
 +                        this._updateLevelFromHints(true);
 +                        return;
 +                    }
@@ -1001,7 +1126,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                  });
              }
  
-@@ -1540,10 +1955,8 @@ export const Keyboard = GObject.registerClass({
+@@ -1540,10 +2074,8 @@ export const Keyboard = GObject.registerClass({
                  }
              }
  
@@ -1014,7 +1139,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
              if (key.action === 'modifier') {
                  const modifierKeys = this._modifierKeys[key.keyval] || [];
-@@ -1558,6 +1971,480 @@ export const Keyboard = GObject.registerClass({
+@@ -1558,6 +2090,529 @@ export const Keyboard = GObject.registerClass({
          }
      }
  
@@ -1113,6 +1238,8 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +    _resetWord() {
 +        this._word = '';
 +        this._recent = '';
++        this._analysis = null;
++        this._lastCorrection = null;
 +        this._wordGeneration++;
 +        this._wordCandidates = [];
 +        this._renderSuggestions();
@@ -1150,10 +1277,11 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        }
 +        GLib.idle_add(GLib.PRIORITY_LOW, () => {
 +            if (generation === this._wordGeneration && !this._destroyed)
-+                this._suggester.suggest(word).then(candidates => {
++                this._suggester.analyse(word).then(analysis => {
 +                    if (generation !== this._wordGeneration || this._destroyed || word !== this._word)
 +                        return;
-+                    this._wordCandidates = candidates;
++                    this._analysis = {word, correction: analysis.correction};
++                    this._wordCandidates = analysis.suggestions;
 +                    this._renderSuggestions();
 +                }).catch(console.error);
 +            return GLib.SOURCE_REMOVE;
@@ -1176,9 +1304,55 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        }
 +        const length = [...word].length;
 +        this._resetWord();
++        if (candidate !== word)
++            this._suggester.accept(candidate);
 +        controller.enqueue(() => controller.replaceBefore(candidate === word ? 0 : length,
 +            candidate === word ? ' ' : `${candidate} `)).catch(console.error);
 +        this._recent = ' ';
++    }
++
++    _autocorrectAllowed() {
++        return this._completionAllowed() && this._keycapSettings.get_boolean('auto-correct') &&
++            this._keyboardController.purpose === Clutter.InputContentPurpose.NORMAL &&
++            (this._contentHint & (Clutter.InputContentHintFlags.LOWERCASE |
++                Clutter.InputContentHintFlags.UPPERCASE)) === 0;
++    }
++
++    // A word boundary commits the word's decisive correction with it. The
++    // analysis ran off the key path; when it is not ready for exactly this
++    // word, the word is left as typed rather than waiting.
++    _autocorrectAt(boundary) {
++        if (!Keycap.isWordBoundary(boundary) || !this._word || !this._autocorrectAllowed())
++            return false;
++        const analysis = this._analysis;
++        if (analysis?.word !== this._word || !analysis.correction || analysis.correction === this._word)
++            return false;
++        const typed = this._word;
++        const corrected = analysis.correction;
++        const controller = this._keyboardController;
++        controller.enqueue(() => controller.replaceBefore([...typed].length, corrected + boundary))
++            .catch(console.error);
++        this._resetWord();
++        this._recent = (corrected + boundary).slice(-2);
++        this._lastCorrection = {typed, corrected, boundary};
++        return true;
++    }
++
++    // Backspace straight after an autocorrection restores what was typed,
++    // and that word is not corrected again.
++    _revertCorrection() {
++        const last = this._lastCorrection;
++        this._lastCorrection = null;
++        if (!last)
++            return false;
++        const controller = this._keyboardController;
++        controller.enqueue(() => controller.replaceBefore([...last.corrected + last.boundary].length, last.typed))
++            .catch(console.error);
++        this._suggester.keep(last.typed);
++        this._word = last.typed;
++        this._recent = last.typed.slice(-2);
++        this._queueWordSuggestions();
++        return true;
 +    }
 +
 +    _keyFeedback() {
@@ -1495,7 +1669,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      _setLatched(latched) {
          this._latched = latched;
          this._setCurrentLevelLatched(this._currentPage, this._latched);
-@@ -1587,24 +2474,22 @@ export const Keyboard = GObject.registerClass({
+@@ -1587,24 +2642,22 @@ export const Keyboard = GObject.registerClass({
          if (this._languagePopup)
              this._languagePopup.destroy();
  
@@ -1524,7 +1698,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _setCurrentLevelLatched(layout, latched) {
-@@ -1633,19 +2518,26 @@ export const Keyboard = GObject.registerClass({
+@@ -1633,19 +2686,26 @@ export const Keyboard = GObject.registerClass({
  
      _relayout() {
          const monitor = Main.layoutManager.keyboardMonitor;
@@ -1558,7 +1732,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _updateKeys() {
-@@ -1653,6 +2545,9 @@ export const Keyboard = GObject.registerClass({
+@@ -1653,6 +2713,9 @@ export const Keyboard = GObject.registerClass({
          const {purpose} = this._keyboardController;
          this._updateLayout(group, purpose);
          this._setActiveLevel('default');
@@ -1568,7 +1742,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _onGroupChanged() {
-@@ -1718,7 +2613,9 @@ export const Keyboard = GObject.registerClass({
+@@ -1718,7 +2781,9 @@ export const Keyboard = GObject.registerClass({
              return;
          }
  
@@ -1579,7 +1753,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._clearKeyboardRestTimer();
  
          if (immediate) {
-@@ -1742,7 +2639,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1742,7 +2807,7 @@ export const Keyboard = GObject.registerClass({
          this._relayout();
          this._animateShow();
  
@@ -1588,7 +1762,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      close(immediate = false) {
-@@ -1788,7 +2685,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1788,7 +2853,7 @@ export const Keyboard = GObject.registerClass({
          this.ease({
              translation_y: -this.height,
              opacity: 255,
@@ -1597,7 +1771,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onComplete: () => {
                  this._animateShowComplete();
-@@ -1816,7 +2713,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1816,7 +2881,7 @@ export const Keyboard = GObject.registerClass({
          this.ease({
              translation_y: 0,
              opacity: 0,
@@ -1606,7 +1780,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_IN_QUAD,
              onComplete: () => {
                  this._animateHideComplete();
-@@ -1855,19 +2752,18 @@ export const Keyboard = GObject.registerClass({
+@@ -1855,19 +2920,18 @@ export const Keyboard = GObject.registerClass({
      }
  
      resetSuggestions() {
@@ -1632,7 +1806,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _clearShowIdle() {
-@@ -1908,7 +2804,7 @@ export const Keyboard = GObject.registerClass({
+@@ -1908,7 +2972,7 @@ export const Keyboard = GObject.registerClass({
  
          windowActor.ease({
              y: finalY,
@@ -1641,7 +1815,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onStopped: () => {
                  window.disconnect(winUnmanagedId);
-@@ -1981,6 +2877,18 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -1981,6 +3045,18 @@ class KeyboardController extends Signals.EventEmitter {
  
          const seat = global.stage.context.get_backend().get_default_seat();
          this._virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
@@ -1660,7 +1834,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          this._inputSourceManager = InputSourceManager.getInputSourceManager();
          this._inputSourceManager.connectObject(
-@@ -2000,6 +2908,11 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2000,6 +3076,11 @@ class KeyboardController extends Signals.EventEmitter {
      }
  
      destroy() {
@@ -1672,7 +1846,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._inputSourceManager.disconnectObject(this);
          Main.inputMethod.disconnectObject(this);
  
-@@ -2070,7 +2983,90 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2070,7 +3151,90 @@ class KeyboardController extends Signals.EventEmitter {
          return keyvals;
      }
  
@@ -1764,7 +1938,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const keyvals = this._getKeyvalsFromString(str);
  
          // If there is no IM focus (e.g. with X11 clients), or modifiers
-@@ -2092,19 +3088,22 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2092,19 +3256,22 @@ class KeyboardController extends Signals.EventEmitter {
  
          // If OSK completion is enabled, or there is an active source requiring
          // IBus to receive input, prefer to feed the events directly to the IM
@@ -1795,7 +1969,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      async setOskCompletion(enabled) {
-@@ -2134,12 +3133,14 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2134,12 +3301,14 @@ class KeyboardController extends Signals.EventEmitter {
          return charPos;
      }
  
@@ -1811,7 +1985,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          /* If there is no IM focus or are in the middle of preedit, fallback to
           * keypresses */
-@@ -2170,7 +3171,7 @@ class KeyboardController extends Signals.EventEmitter {
+@@ -2170,7 +3339,7 @@ class KeyboardController extends Signals.EventEmitter {
                  } else if (cursor < anchor) {
                      offset = 0;
                      len = anchor - cursor;

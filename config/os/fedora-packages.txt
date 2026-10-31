@@ -38,3 +38,8 @@ gstreamer1-1.28.7-1.fc44.x86_64
 gstreamer1-plugins-base-1.28.7-1.fc44.x86_64
 gstreamer1-plugin-openh264-1.28.7-1.fc44.x86_64
 gstreamer1-rtsp-server-1.28.7-1.fc44.x86_64
+
+# On-screen keyboard words (Keycap): Hunspell spelling and
+# pyspellchecker word frequencies (MIT) for suggestions and autocorrect.
+hunspell-en-US
+python3-pyspellchecker
