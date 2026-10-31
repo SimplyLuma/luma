@@ -56,6 +56,22 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 CURRENT — native settings/resize source prepared; incremental image build next:
+- Superseding build ACTIVE r425/05643043; guard r425/9061396c. Private
+  window-controls-build-r425 includes required empty build mount directory in
+  frozen project input SHA60cb195f086b782b07ae96909c3648287c41335a0ff330a1e9174bc6b040cbf2,
+  source remains410a362a7. Root unit
+  luma-android-window-controls-build-r425-controller.service. r406 stopped
+  before compilation because that directory was absent from git archive;
+  actual failure retained, VM shut down/profile restored, policy restored.
+  Checkpoint r426/acf66ac4 refused reuse because source inode metadata changed
+  across the VM cycle; no checkpoint published or verification bypassed.
+- r417/32cce29b confirmed actual Dell HANDLES_COMMAND_LINE native panel launch,
+  title Settings—Card Wars,500x260, real LumaUISwitch and saved touch=true.
+  No preference writes. r420/2c97cc23 repeated socket checks with exact
+  negative-control exit42 rather than a generic failure. r421/0802f2ea passed16
+  private delivery/cohort guards, including preservation of effective engine,
+  intervening source changes and host-module path traversal; actual root mount
+  remains unqualified. Source test/helper changes after410 do not alter image.
 - Incremental build is now ACTIVE r406/d889ca79, immutable source410a362a7;
   input SHA3eb6cb6392a5e56c35030b64e00537c26085d3053525bc246939ab31882599b1.
   Root unit luma-android-window-controls-build-r406-controller.service;

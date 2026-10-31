@@ -59,7 +59,7 @@ int main(){
   assert(elapsed<1500);
   if(scenario==7&&getuid()==1000)assert(elapsed>=200);
   const int expected=getuid()==1000?1:0;
-  assert(android::manager.calls==expected&&android::host.calls==expected);
+  if(android::manager.calls!=expected||android::host.calls!=expected)return 42;
   if(fds[1]>=0)close(fds[1]);
  }
  assert(getuid()==1000||getuid()==10000);
@@ -97,7 +97,7 @@ def main():
                 ('credentials.uid == 1000','true',10000)]:
             assert body.count(old)==1
             compile_body(body.replace(old,new))
-            assert execute(uid).returncode != 0, ('negative control passed',old)
+            assert execute(uid).returncode == 42, ('negative control did not reach admission failure',old)
         print('PASS production settings socket body; both deliberate negative controls failed')
 
 
