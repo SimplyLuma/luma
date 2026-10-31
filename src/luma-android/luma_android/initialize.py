@@ -45,10 +45,23 @@ def _virtio_has_3d(node: Path) -> bool:
         os.close(descriptor)
 
 
-def _software_graphics_required(dri: Path = Path("/dev/dri"),
-                                sys_drm: Path = Path("/sys/class/drm")) -> bool:
-    # Match Waydroid 1.6.3 getDriNode ordering and its unsupported nvidia
-    # exclusion. Other real GPU drivers retain upstream's normal selection.
+# Kernel drivers with a Mesa renderer in the packaged Android images. Display
+# controllers can expose render nodes too (exynos-drm beside a Mali panthor
+# GPU); Waydroid would pick whichever sorts first and crash SurfaceFlinger.
+RENDER_DRIVERS = frozenset({
+    "amdgpu", "etnaviv", "i915", "lima", "msm", "nouveau", "panfrost", "panthor",
+    "radeon", "tegra", "v3d", "vc4", "virtio_gpu", "vmwgfx", "xe",
+})
+
+
+def _graphics_selection(dri: Path = Path("/dev/dri"),
+                        sys_drm: Path = Path("/sys/class/drm")) -> tuple[bool, Path | None]:
+    """Return (software, drm_device) for Waydroid's initial configuration.
+
+    drm_device is set only when the first renderable node differs from
+    Waydroid 1.6.3 getDriNode's pick: the first node not driven by nvidia.
+    """
+    upstream = None
     for node in sorted(dri.glob("renderD*")):
         metadata = node.lstat()
         if (not stat.S_ISCHR(metadata.st_mode) or metadata.st_uid != 0
@@ -62,6 +75,7 @@ def _software_graphics_required(dri: Path = Path("/dev/dri"),
             raise RuntimeError("Android graphics could not identify the render-device driver.")
         if driver == "nvidia":
             continue
+        upstream = upstream or node
         if driver == "virtio-pci":
             # DRM's device link can point at the transport rather than the
             # actual virtio GPU. Read that transport's sole virtio child;
@@ -79,8 +93,10 @@ def _software_graphics_required(dri: Path = Path("/dev/dri"),
             driver = fields.get("DRIVER", "")
             if driver != "virtio_gpu" or not fields.get("MODALIAS", "").startswith("virtio:d00000010v"):
                 raise RuntimeError("Android graphics could not identify the virtio render-device driver.")
-        return driver == "virtio_gpu" and not _virtio_has_3d(node)
-    return True
+        if driver not in RENDER_DRIVERS or (driver == "virtio_gpu" and not _virtio_has_3d(node)):
+            continue
+        return False, None if node == upstream else node
+    return True, None
 
 
 def _seed_initial_graphics(state: Path) -> None:
@@ -91,18 +107,26 @@ def _seed_initial_graphics(state: Path) -> None:
         with _open_packaged(config):
             pass
         return
-    if is_fp6() or not _software_graphics_required():
+    if is_fp6():
+        return
+    software, device = _graphics_selection()
+    if software:
+        # Supported Waydroid properties, consumed by its ordinary initial init.
+        # https://docs.waydro.id/faq/get-waydroid-to-work-through-a-vm
+        payload = ("[waydroid]\n\n[properties]\n"
+                   "ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n")
+    elif device is not None:
+        # Waydroid's own override, kept by init and read again at each start.
+        payload = f"[waydroid]\ndrm_device = {device}\n"
+    else:
         return
     _trusted_directories(state.parent)
     state.mkdir(mode=0o755, exist_ok=True)
     _trusted_directories(state)
-    # Supported Waydroid properties, consumed by its ordinary initial init.
-    # https://docs.waydro.id/faq/get-waydroid-to-work-through-a-vm
     descriptor = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
                          os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
     with os.fdopen(descriptor, "w") as target:
-        target.write("[waydroid]\n\n[properties]\n"
-                     "ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n")
+        target.write(payload)
         target.flush()
         os.fsync(target.fileno())
     directory = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
