@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Per-press paint cost from a Shell Sysprof capture: for each press time (CLOCK_MONOTONIC
 microseconds, one per line in TIMES), the first Clutter::Stage::paint_view() that starts
-after it, its duration and the Cogl journal flushes inside it. Prints JSON.
+after it, its duration, the Cogl journal flushes inside it and the time spent relaying out
+the stage between the press and the end of that paint. Prints JSON.
 frame-flushes.py CAPTURE TIMES"""
 import json
 import struct
@@ -29,6 +30,7 @@ capture, times = sys.argv[1], sys.argv[2]
 all_marks = marks(capture)
 paints = sorted((t, d) for t, d, n in all_marks if n.startswith('Clutter::Stage::paint_view'))
 flushes = sorted(t for t, d, n in all_marks if n.startswith('Cogl::Journal::flush'))
+relayouts = sorted((t, d) for t, d, n in all_marks if 'relayout' in n.lower())
 result = []
 for line in open(times):
     press = int(line) * 1000
@@ -37,5 +39,6 @@ for line in open(times):
         continue
     start, duration = paint
     count = sum(1 for t in flushes if start <= t < start + duration)
-    result.append({'flushes': count, 'paint_ms': duration / 1e6})
+    relayout = sum(d for t, d in relayouts if press <= t < start + duration)
+    result.append({'flushes': count, 'paint_ms': duration / 1e6, 'relayout_ms': relayout / 1e6})
 print(json.dumps({'presses': result, 'marks': len(all_marks)}))

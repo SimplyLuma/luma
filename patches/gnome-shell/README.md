@@ -347,3 +347,10 @@ flood; `tools/check-shell-shadows.py` guards it in the build.
 texture, the pressed cap drawn over them, previews without offscreen text
 caches shown by opacity above their keys, a warm-up that runs on a timer
 after the keyboard shows, and a vocabulary built in 3 ms slices. Shell .134.
+
+`0301-keycap-layer-switch-swaps-cached-layers.patch`: every key layer stays
+shown and laid out at opacity 0 and the current one is opaque, so a layer
+switch (sentence case, shift, symbols) reuses both cached textures; the grid
+ratio, which re-pages the emoji panel and relays out the keyboard, is set only
+when it changes; shift keys are restyled only when their latch changes; the
+warm-up draws every layer into its cache. Shell .135.

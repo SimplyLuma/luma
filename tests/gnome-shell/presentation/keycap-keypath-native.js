@@ -409,6 +409,143 @@ async function work() {
         await sleep(300);
     }
 
+    // 1d. A layer switch (sentence case after '. ', lowercase again after
+    // a capital, the shift key) only swaps which cached layer is shown: no
+    // layer is laid out, shown, hidden or drawn again, and the frame costs
+    // no more GPU batches than one that redraws the keyboard from its cache.
+    {
+        await reset();
+        keyboard._setLatched(false);
+        keyboard._updateLevelFromHints(true);
+        await sleep(400);
+        const layers = keyboard._layers;
+        const letterKeys = layer => layer.get_children().filter(key => key.keyButton && key.character);
+        const probes = [];
+        for (const level of ['default', 'shift']) {
+            for (const key of letterKeys(layers[level]).slice(0, 12)) {
+                const probe = new PaintProbe();
+                key.keyButton.add_effect(probe);
+                probes.push(probe);
+            }
+        }
+        // Adding the probes redrew both grids; draw them into their caches
+        // again the way the keyboard does when it opens.
+        keyboard._warmedLayers = null;
+        keyboard._warmLayers();
+        await sleep(500);
+        probes.forEach(probe => (probe.samples = []));
+        const switches = [];
+        let touching = null;
+        const setActiveLevel = keyboard._setActiveLevel;
+        keyboard._setActiveLevel = function (level) {
+            const before = this._currentPage;
+            const result = setActiveLevel.call(this, level);
+            if (this._currentPage !== before)
+                switches.push({at: now(), to: level, during: touching});
+            return result;
+        };
+        const watched = ['queue_relayout', 'show', 'hide'].map(name => [name, Clutter.Actor.prototype[name]]);
+        const layoutCalls = [];
+        let watching = false;
+        for (const [name, original] of watched) {
+            Clutter.Actor.prototype[name] = function (...args) {
+                if (watching)
+                    layoutCalls.push(`${name} ${this.constructor.name}`);
+                return original.apply(this, args);
+            };
+        }
+        const capture = `${out}/switch.syscap`;
+        const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+            capture, '6'], Gio.SubprocessFlags.STDOUT_PIPE);
+        const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+        await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+        await sleep(300);
+        // Frames that redraw the whole keyboard from its cache and change
+        // nothing else: the current layer's opacity nudged and restored.
+        const cachedRedraws = [];
+        for (let i = 0; i < 3; i++) {
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 254;
+            await sleep(120);
+            cachedRedraws.push(now());
+            keyboard._currentPage.opacity = 255;
+            await sleep(120);
+        }
+        // lowercase -> Shift -> lowercase with no key down.
+        const direct = [];
+        watching = true;
+        keyboard._setActiveLevel('default');
+        await sleep(120);
+        for (let i = 0; i < 3; i++) {
+            direct.push(now());
+            keyboard._setActiveLevel('shift');
+            await sleep(120);
+            direct.push(now());
+            keyboard._setActiveLevel('default');
+            await sleep(120);
+        }
+        watching = false;
+        const directPaints = probes.reduce((sum, probe) => sum + probe.samples.length, 0);
+        // Typed: 'a. b' switches on the release of a, of the full stop
+        // (sentence case follows the mark) and of b.
+        keyboard._updateLevelFromHints(true);
+        await sleep(200);
+        switches.length = 0;
+        const releases = [];
+        for (const character of 'a. bc d') {
+            const [x, y] = centre(keyFor(character));
+            touching = `${JSON.stringify(character)} down`;
+            down(0, x, y);
+            await sleep(50);
+            touching = `${JSON.stringify(character)} up`;
+            const releasedAt = now();
+            up(0);
+            await sleep(120);
+            releases.push({at: releasedAt, character,
+                switched: switches.some(s => s.at >= releasedAt && s.at - releasedAt < 50000)});
+            if (character === 'b') {
+                await sleep(300);
+                check('typing a. b gives A. B (sentence case)', appText() === 'A. B', JSON.stringify(appText()));
+            }
+        }
+        await sleep(400);
+        keyboard._setActiveLevel = setActiveLevel;
+        for (const [name, original] of watched)
+            Clutter.Actor.prototype[name] = original;
+        probes.forEach(probe => probe.actor?.remove_effect(probe));
+        await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+        const times = [...cachedRedraws, ...direct, ...releases.map(r => r.at)];
+        const timesFile = `${out}/switch-times.txt`;
+        GLib.file_set_contents(timesFile, times.join('\n'));
+        const [, result] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+            capture, timesFile], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+        const paints = JSON.parse(result || '{"presses": []}').presses;
+        const cached = paints.slice(0, cachedRedraws.length);
+        const switched = paints.slice(cachedRedraws.length, cachedRedraws.length + direct.length);
+        const typed = paints.slice(cachedRedraws.length + direct.length);
+        const flushes = list => list.map(p => p.flushes);
+        const baseline = Math.max(...flushes(cached));
+        check('a lowercase -> Shift -> lowercase switch costs no extra GPU batch (journal flush)',
+            switched.length === direct.length && cached.length === cachedRedraws.length &&
+            Math.max(...flushes(switched)) <= baseline,
+            `switch frames ${flushes(switched).join(' ')} flushes, ${switched.map(p => p.paint_ms.toFixed(2)).join(' ')} ms; ` +
+            `cached redraw frames ${flushes(cached).join(' ')}`);
+        check('a layer switch draws no key again (both layers stay cached)', directPaints === 0,
+            `${directPaints} key paints over ${direct.length} switches`);
+        check('a layer switch lays out, shows and hides nothing',
+            layoutCalls.length === 0 && switched.every(p => p.relayout_ms < 0.5),
+            `${layoutCalls.slice(0, 6).join(', ') || 'no calls'}; relayout ${switched.map(p => p.relayout_ms.toFixed(2)).join(' ')} ms`);
+        const typedSwitch = typed.filter((_p, i) => releases[i]?.switched);
+        const typedPlain = typed.filter((_p, i) => releases[i] && !releases[i].switched);
+        check('a release that switches layer costs no more GPU batches than one that does not',
+            typedSwitch.length === 3 && typedPlain.length > 0 &&
+            Math.max(...flushes(typedSwitch)) <= Math.max(...flushes(typedPlain)),
+            `switching releases (${releases.filter(r => r.switched).map(r => JSON.stringify(r.character)).join(' ')}) ` +
+            `${flushes(typedSwitch).join(' ')} flushes; others ${flushes(typedPlain).join(' ')}; ` +
+            `switches ${switches.map(s => `${s.to} on ${s.during}`).join(', ')}; text ${JSON.stringify(appText())}`);
+        await sleep(300);
+    }
+
     // 2. Commit at once: a release commits within the event that ended it,
     // also with the main loop kept busy at the frame clock's priority (as
     // in the measured frame-clock spin), where idle callbacks never run.
