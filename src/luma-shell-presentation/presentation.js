@@ -17,6 +17,7 @@ import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificati
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
+import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
@@ -30,6 +31,8 @@ import {gettext as _} from 'gettext';
 
 const BUS = 'org.project_luma.ShellState1';
 const PATH = '/org/project_luma/ShellState1';
+// Logical height of the home gesture zone at the bottom of a handheld screen.
+const GESTURE_HEIGHT = 28;
 
 function move(actor, parent) {
     actor.get_parent()?.remove_child(actor);
@@ -599,10 +602,16 @@ export class Presentation {
         return this.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
     }
 
-    // Logical pixels the on-screen keyboard keeps clear at its bottom for
-    // the home gesture, which stays above it.
+    // Logical pixels the on-screen keyboard keeps clear below its keys: the
+    // home gesture, which stays above it, and on a phone held upright the
+    // thumb gap. The lock screen and greeter have no home gesture but keep
+    // the thumb gap; Desktop keeps nothing.
     keyboardInset() {
-        return this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter ? 0 : 28;
+        const monitor = Main.layoutManager.keyboardMonitor;
+        if (this.mode === 'desktop' || !monitor)
+            return 0;
+        const locked = Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
+        return bottomInset(monitor, this.mode === 'mobile', locked ? 0 : GESTURE_HEIGHT);
     }
 
     _manage(window) {
@@ -883,8 +892,8 @@ export class Presentation {
             lip._place();
         }
         this._setHandheldQuickOptions(true);
-        this._gestureBar.set_position(display.x, display.y + display.height - 28 * scale);
-        this._gestureBar.set_size(display.width, 28 * scale);
+        this._gestureBar.set_position(display.x, display.y + display.height - GESTURE_HEIGHT * scale);
+        this._gestureBar.set_size(display.width, GESTURE_HEIGHT * scale);
         this._apps = this._catalog();
         this._layout = homeLayout(monitor.width / scale, monitor.height / scale,
             this.mode, this._apps.length);

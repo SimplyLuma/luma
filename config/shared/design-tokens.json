@@ -441,7 +441,8 @@
       "compact_width": 600,
       "landscape_cap": 38,
       "landscape_row": 47,
-      "compact_landscape_height": 600
+      "compact_landscape_height": 600,
+      "thumb_gap": 72
     },
     "timing": {
       "release": 60,
