@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,40 @@
+@@ -29,13 +29,41 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.15.keycap20261030.1%{?dist}
++Release:       1.luma.16.keycap20261030.1%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -39,6 +39,7 @@
 +Patch1022:     0023-wayland-text-input-Keep-every-commit-and-deletion-until-done.patch
 +Patch1023:     0024-clutter-frame-clock-Dispatch-unpresented-frames-at-the-refresh-rate.patch
 +Patch1024:     0025-display-Let-the-shell-keep-an-on-screen-keyboard-clear-of-windows.patch
++Patch1025:     0026-backends-native-Clamp-the-frame-threads-minimum-utilization.patch
  
  
  BuildRequires: cvt
