@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,37 @@
+@@ -29,13 +29,40 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.14.presentation20261025.1%{?dist}
++Release:       1.luma.15.keycap20261030.1%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -36,10 +36,13 @@
 +Patch1019:     0020-x11-Keep-the-geometry-the-shell-chose-before-map.patch
 +Patch1020:     0021-display-Default-unconfigured-desktop-monitors-to-100-percent.patch
 +Patch1021:     0022-native-Expose-hardware-tablet-posture.patch
++Patch1022:     0023-wayland-text-input-Keep-every-commit-and-deletion-until-done.patch
++Patch1023:     0024-clutter-frame-clock-Dispatch-unpresented-frames-at-the-refresh-rate.patch
++Patch1024:     0025-display-Let-the-shell-keep-an-on-screen-keyboard-clear-of-windows.patch
  
  
  BuildRequires: cvt
-@@ -169,6 +190,8 @@
+@@ -169,6 +193,8 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -48,7 +51,7 @@
  
  %build
  %meson -Degl_device=true
-@@ -179,6 +202,26 @@
+@@ -179,6 +205,29 @@
  
  %find_lang %{name}
  
@@ -70,12 +73,15 @@
 +./key-handover-test | tee key-handover-test.log
 +passed=$(grep -c "^ok " key-handover-test.log)
 +test "$passed" -eq 11 || { echo "key-handover-test: $passed of 11 passed"; exit 1; }
++# Luma: frames that paint nothing are dispatched at the refresh rate, not at
++# main-loop speed (0024; the unpresented-rate case spins without it).
++%{__meson} test -C %{_vpath_builddir} --print-errorlogs mutter:frame-clock
 +glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
 +
  %files -f %{name}.lang
  %license COPYING
  %doc NEWS
-@@ -200,6 +242,7 @@
+@@ -200,6 +248,7 @@
  %{_datadir}/GConf/gsettings/mutter-schemas.convert
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml

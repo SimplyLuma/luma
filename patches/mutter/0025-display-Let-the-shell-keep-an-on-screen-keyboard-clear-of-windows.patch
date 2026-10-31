@@ -1,0 +1,188 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 30 Oct 2026 22:00:00 -0500
+Subject: [PATCH] display: Let the shell keep an on-screen keyboard clear of
+ windows
+
+On a phone or tablet the on-screen keyboard should shrink applications
+above it, as Android resizes them above its input method, instead of
+covering their bottom bars. Struts cannot do this: full-screen windows
+ignore them, and handheld presentations keep applications full screen.
+
+meta_display_set_input_panel_inset() keeps the bottom of one monitor clear:
+its work area ends above the keyboard, and full-screen windows on that
+monitor end there too while staying full screen. Windows are re-constrained
+at once; a monitor always keeps at least half its height.
+---
+ src/core/constraints.c     |  9 ++++-
+ src/core/display-private.h | 10 ++++++
+ src/core/display.c         | 71 ++++++++++++++++++++++++++++++++++++++
+ src/core/workspace.c       |  4 +++
+ src/meta/display.h         |  9 +++++
+ 5 files changed, 102 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+index 420f622..a3e7c7f 100644
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -525,7 +525,14 @@ setup_constraint_info (MetaBackend         *backend,
+     {
+       info->entire_monitor = logical_monitor->rect;
+       if (meta_window_is_fullscreen (window))
+-        meta_window_adjust_fullscreen_monitor_rect (window, &info->entire_monitor);
++        {
++          meta_window_adjust_fullscreen_monitor_rect (window, &info->entire_monitor);
++          /* A full-screen window ends above an on-screen keyboard. */
++          meta_display_apply_input_panel_inset (window->display,
++                                                logical_monitor->number,
++                                                &logical_monitor->rect,
++                                                &info->entire_monitor);
++        }
+     }
+ 
+   cur_workspace = window->display->workspace_manager->active_workspace;
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+index 93119bd..e0b15aa 100644
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -78,6 +78,11 @@ struct _MetaDisplay
+    * edge shared with another monitor, where struts are dropped. */
+   GArray *edge_reservations;
+ 
++  /* The bottom of one monitor kept for an on-screen keyboard: work areas and
++   * full-screen windows there end above it. */
++  int input_panel_monitor;
++  int input_panel_inset;
++
+   /* What a maximized window keeps from each monitor edge, so maximizing
+    * lands a window exactly where the shell's full-screen tile would. */
+   GArray *maximize_insets;
+@@ -345,6 +350,11 @@ int  meta_display_get_maximize_inset (MetaDisplay *display,
+                                       int          monitor,
+                                       MetaSide     side);
+ 
++void meta_display_apply_input_panel_inset (MetaDisplay        *display,
++                                           int                 monitor_number,
++                                           const MtkRectangle *monitor,
++                                           MtkRectangle       *rect);
++
+ void meta_display_apply_monitor_edge_reservations (MetaDisplay        *display,
+                                                    int                 monitor_number,
+                                                    const MtkRectangle *monitor,
+diff --git a/src/core/display.c b/src/core/display.c
+index de0b039..de9afec 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -2546,6 +2546,77 @@ meta_display_clear_monitor_edge_reservations (MetaDisplay *display)
+   invalidate_all_work_areas (display);
+ }
+ 
++/**
++ * meta_display_set_input_panel_inset:
++ * @display: a #MetaDisplay
++ * @monitor: index of the monitor the on-screen keyboard is shown on
++ * @height: how far the keyboard reaches up from that monitor's bottom edge,
++ *   in layout coordinates; 0 when it is hidden
++ *
++ * Keeps the bottom of a monitor clear for an on-screen keyboard, the way
++ * Android resizes applications above its input method: the work area of
++ * that monitor ends above the keyboard, so maximized and tiled windows do,
++ * and full-screen windows on it end there too while keeping their state.
++ * Windows are re-constrained at once. There is one keyboard: an inset for
++ * another monitor replaces the previous one.
++ */
++void
++meta_display_set_input_panel_inset (MetaDisplay *display,
++                                    int          monitor,
++                                    int          height)
++{
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  height = MAX (height, 0);
++  if (height == 0)
++    monitor = -1;
++  if (display->input_panel_monitor == monitor &&
++      display->input_panel_inset == height)
++    return;
++
++  display->input_panel_monitor = monitor;
++  display->input_panel_inset = height;
++  invalidate_all_work_areas (display);
++}
++
++/**
++ * meta_display_get_input_panel_inset:
++ * @display: a #MetaDisplay
++ * @monitor: a monitor index
++ *
++ * Returns: the height kept clear at the bottom of @monitor by
++ *   meta_display_set_input_panel_inset(), or 0
++ */
++int
++meta_display_get_input_panel_inset (MetaDisplay *display,
++                                    int          monitor)
++{
++  g_return_val_if_fail (META_IS_DISPLAY (display), 0);
++
++  return display->input_panel_monitor == monitor && monitor >= 0 ?
++         display->input_panel_inset : 0;
++}
++
++/* Ends @rect, on monitor @monitor_number, above the input panel inset. */
++void
++meta_display_apply_input_panel_inset (MetaDisplay        *display,
++                                      int                 monitor_number,
++                                      const MtkRectangle *monitor,
++                                      MtkRectangle       *rect)
++{
++  int limit;
++
++  if (display->input_panel_inset <= 0 ||
++      display->input_panel_monitor != monitor_number)
++    return;
++
++  /* Never shrink a window to nothing: half the monitor stays usable. */
++  limit = monitor->y + monitor->height -
++          MIN (display->input_panel_inset, monitor->height / 2);
++  if (rect->y + rect->height > limit)
++    rect->height = MAX (limit - rect->y, 1);
++}
++
+ /* Called while a workspace computes a monitor's work area: moves the work
+  * area in from each reserved edge of that monitor. */
+ void
+diff --git a/src/core/workspace.c b/src/core/workspace.c
+index ae3721f..9c61890 100644
+--- a/src/core/workspace.c
++++ b/src/core/workspace.c
+@@ -1005,6 +1005,10 @@ meta_workspace_ensure_work_areas_validated (MetaWorkspace *workspace)
+                                                     logical_monitor->number,
+                                                     &logical_monitor->rect,
+                                                     &work_area);
++      meta_display_apply_input_panel_inset (workspace->display,
++                                            logical_monitor->number,
++                                            &logical_monitor->rect,
++                                            &work_area);
+ 
+       if (workspace->display->work_area_inset > 0)
+         {
+diff --git a/src/meta/display.h b/src/meta/display.h
+index 32e998f..f458dde 100644
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -200,6 +200,15 @@ void meta_display_set_monitor_edge_reservation (MetaDisplay *display,
+ META_EXPORT
+ void meta_display_clear_monitor_edge_reservations (MetaDisplay *display);
+ 
++META_EXPORT
++void meta_display_set_input_panel_inset (MetaDisplay *display,
++                                         int          monitor,
++                                         int          height);
++
++META_EXPORT
++int meta_display_get_input_panel_inset (MetaDisplay *display,
++                                        int          monitor);
++
+ META_EXPORT
+ void meta_display_set_maximize_inset (MetaDisplay *display,
+                                       int          monitor,
