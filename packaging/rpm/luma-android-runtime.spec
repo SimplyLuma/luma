@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.97.nightly20261030.1%{?dist}
+Release:        1.luma.98%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -108,6 +108,8 @@ install -D -m 0644 data/luma-waydroid-package-session.rules \
   %{buildroot}%{_datadir}/polkit-1/rules.d/50-luma-waydroid-package-session.rules
 install -D -m 0644 data/luma-android-user.conf \
   %{buildroot}%{_user_tmpfilesdir}/luma-android.conf
+install -D -m 0644 data/luma-android-system.conf \
+  %{buildroot}%{_tmpfilesdir}/luma-android.conf
 install -D -m 0644 data/luma-waydroid-fp6-gpu-watchdog.service \
   %{buildroot}%{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 install -D -m 0644 data/luma-android-fp6-software-compositor.service \
@@ -194,9 +196,13 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_datadir}/polkit-1/actions/org.projectluma.waydroid-package-session.policy
 %{_datadir}/polkit-1/rules.d/50-luma-waydroid-package-session.rules
 %{_user_tmpfilesdir}/luma-android.conf
+%{_tmpfilesdir}/luma-android.conf
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
+- Declare the Android state directory 0755 so setup accepts it
+
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94.android20261029.1
 - Correct Android reply parcel alignment and acknowledgement decoding
 

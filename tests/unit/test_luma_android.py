@@ -1402,5 +1402,18 @@ class ReceiptTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(receipt.stat().st_mode), 0o600)
 
 
+class StateDirectoryTests(unittest.TestCase):
+    def test_state_directory_is_declared_root_owned_and_not_writable(self) -> None:
+        # Setup refuses a group- or world-writable /var/lib/waydroid; the
+        # package declares its mode so the image's /var never decides it.
+        lines = [line.split() for line in
+                 (REPO_ROOT / "src/luma-android/data/luma-android-system.conf").read_text().splitlines()
+                 if line and not line.startswith("#")]
+        self.assertIn(["d", "/var/lib/waydroid", "0755", "root", "root", "-"], lines)
+        spec = (REPO_ROOT / "packaging/rpm/luma-android-runtime.spec").read_text()
+        self.assertIn("%{buildroot}%{_tmpfilesdir}/luma-android.conf", spec)
+        self.assertIn("\n%{_tmpfilesdir}/luma-android.conf\n", spec)
+
+
 if __name__ == "__main__":
     unittest.main()
