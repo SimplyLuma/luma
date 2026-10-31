@@ -831,3 +831,79 @@ mobile-convergence smoke09103955 is NOT passing: it references two absent old AD
 files and its unit-launch command used the wrong working directory; its updated
 Monitor/package-role assertions passed. No full image build/reboot qualification
 is claimed. Private diagnostics remain outside Git under titan-ui-20261030.
+
+
+### 2026-10-30/31 — shared application launch acceleration
+
+Owner requested substantial, measured mobile launch improvements and primary-source
+Android/Apple/Linux research, with rapid hotfixing and GitHub source convergence.
+Owned worktree/branch unchanged: project-titan-usb-20261029, luma-dev-2.
+
+Implemented the shared platform's prepared Python/GTK host, libc launch client,
+protocol-v2 commit gate, compatible fallback, same-confinement admission, app-scope
+adoption and one display-ready child. Stateless core imports are shared; Camera
+and Tide media initialization remains in the launched process. Native source and
+RPM entry points use -sP. Core UI, Monitor, Terminal and Tide packages use the
+native frontend; background agents remain separate. Removed redundant appearance
+CSS reloads. Image finalization produces checked-hash Python caches, avoiding
+OSTree timestamp recompilation. Home persists until a real app frame; Mobile
+opening opacity transition is 80ms, Tablet160ms and reduced motion0.
+
+Handheld-only native preparation is explicitly limited to Settings/Filer. The
+shared opt-in module constructs their real initial view without mapping it, drops
+its environment before children, restores ordinary priority/lifecycle on use,
+retires untouched views on document Open, and reclaims unused UI on low-memory
+signals. At most2 caches, 1GiB MemAvailable guard before each; no recurring scan,
+frequency boost, media prelaunch or generic background freezing. An arbitrary
+unused-cache expiry was tested then removed; memory pressure/use govern lifetime.
+
+Found and fixed a fresh-login ordering regression: starting the host alongside
+Shell captured the environment before DISPLAY/WAYLAND_DISPLAY were exported.
+Ordering after gnome-session-initialized.target makes ordinary post-login launches
+use the prepared display. Confirmed by fresh GDM restart/password login and host
+logs, without manually restarting the host after login. Early greeter capture at
+3s was blank before UI readiness; a later capture showed the correct compact
+clock/password field with no OSK. Temporary greeter capture code was restored.
+
+Observed first focused app frames: baseline Weather2081–2128ms, Contacts2268ms,
+Monitor1621ms. Fresh-session prepared-runtime launch: Weather532ms, Contacts547ms,
+Terminal391ms; corresponding resident reopen57/45/53ms. Other real comparisons:
+Phone426ms, Photos361ms, Tasks524ms, Clock550ms, Messages675ms, Notes668ms,
+Calendar771ms, Monitor554ms, Tide753ms. Prepared native Settings381ms/Filer466ms
+versus unprepared1536/1121ms. Resident windows generally15–70ms. These are individual
+TTID observations, not percentiles, full data readiness or a universal125ms claim.
+Host+spare+two unused native caches totaled~490MiB PSS and each used0 CPU ticks in
+one10s idle sample. This is not a battery-run qualification.
+
+Device overlay source: canonical apphost is in the existing compact-bars Python
+kit; native frontend/launchers/module/controller are under
+/var/lib/project-titan/launch-20261030. /usr/local/bin UI aliases and three user
+D-Bus service overrides point at the frontend. User host/timer enabled; source-
+backed units in /etc/systemd/user. Public presentation.js/tabletTasks.js replaced
+startup overlay copies; private r104 is only the diagnostic reload. Removed the
+older device-only render_texture warmup scheduling, which caused invalid DMA-BUF
+export/FD errors. Do not restore it from an older kit overlay. Accepted audio
+kernel #2 2026-10-30 23:00UTC unchanged; touch-wake driver/policy active, OSKfalse,
+CPU floors450/400MHz and no persistent graphics boost.
+
+Validation: actual Titan12 Unix protocol/Wayland runtime tests plus3 native GTK
+preparation tests pass, including original fallback, environment/flag mismatch,
+no-new-privileges confinement, aborted launch, signals/status, pending executor
+writes/exit handlers, initialized-media rejection, FD cleanup, one
+mapped real window, OOM priority restore and low-memory/document-open cleanup.
+Server10 protocol tests pass (2 display cases skipped there); checked-hash import
+regression1pass; package cohort2 and application inventory12pass. Five modified
+app/platform RPM specs parse, Meson AST parses, shell/image script syntax and diff
+checks pass. Full pinned Shell268-patch series applies and syntax passes
+(dev-titan-launch-cohort-final-141fea08). Fixed an existing Shell126 input/spec125
+mismatch and assigned coherent candidate127.mobile20261031.1 with a contract test.
+Platform117, core125, Monitor18, Terminal8, Tide37 candidate pins are coherent.
+No full new RPM cohort/image compose or sustained battery test is claimed.
+
+See docs/operations/mobile-app-startup.md for architecture/research links and
+shared-mobile-shell-handoff.md for receiving-device migration. Source publication
+is this development branch, not a release promotion. Other phones must integrate
+the matching source cohort and build/qualify their packages; do not copy private
+Titan overlays or claim that Home paging/Quick Options rendering now achieves60FPS.
+Private measurements/scripts: account experiments/titan-launch-20261030; bounded
+cross-build inputs/binaries live on the existing titan-kernel-20261030 HDD bind.

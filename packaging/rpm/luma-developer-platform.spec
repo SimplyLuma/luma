@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.116.mobile20261030.1%{?dist}
+Release:        1.luma.117.mobile20261030.1%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -115,6 +115,15 @@ install -D -m 0644 broker/data/luma-semantic-broker.service \
 install -D -m 0644 broker/data/org.projectluma.SemanticBroker1.service \
   %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.SemanticBroker1.service
 
+install -D -m 0644 apphost/luma-app-host.service \
+  %{buildroot}%{_userunitdir}/luma-app-host.service
+install -D -m 0644 apphost/80-luma-app-host.preset \
+  %{buildroot}%{_userpresetdir}/80-luma-app-host.preset
+
+install -m 0644 apphost/luma-native-app-prewarm.service apphost/luma-native-app-prewarm.timer \
+  %{buildroot}%{_userunitdir}/
+install -d %{buildroot}%{_datadir}/luma-app-host/preload.d
+
 %check
 # Exercise the staged installed kit with its matching data, even on a fresh
 # builder that has no platform in /usr/share. The normal source discovery
@@ -123,6 +132,22 @@ install -D -m 0644 broker/data/org.projectluma.SemanticBroker1.service \
 for sheet in %{buildroot}%{_datadir}/luma-appkit/*.css; do
   ln -s "$sheet" "%{buildroot}%{python3_sitelib}/$(basename "$sheet")"
 done
+PYTHONPATH="$PWD/appkit" LUMA_APP_LAUNCH=%{buildroot}%{_libexecdir}/luma-app-launch \
+  python3 tests/test_app_host.py
+timeout 60s xvfb-run -a dbus-run-session -- env \
+  PYTHONPATH=%{buildroot}%{python3_sitelib} \
+  LUMA_APPKIT_TEST_PATH=%{buildroot}%{python3_sitelib} \
+  LUMA_APP_LAUNCH=%{buildroot}%{_libexecdir}/luma-app-launch \
+  GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
+  LD_LIBRARY_PATH=%{buildroot}%{_libdir} \
+  LUMA_APP_HOST_RUNTIME=1 GSK_RENDERER=cairo GTK_A11Y=none \
+  python3 tests/test_app_host.py
+gcc -shared -fPIC -Wall -Wextra -Werror tests/native-prepare-fixture.c \
+  $(pkg-config --cflags --libs gtk4) -o native-prepare-fixture.so
+timeout 30s xvfb-run -a dbus-run-session -- env GSK_RENDERER=cairo GTK_A11Y=none \
+  LUMA_NATIVE_PREPARE_LIBRARY=%{buildroot}%{_libdir}/libluma-app-prepare.so \
+  LUMA_NATIVE_PREPARE_FIXTURE="$PWD/native-prepare-fixture.so" \
+  python3 tests/test_native_prepare.py
 PYTHONPATH="$PWD/appkit" python3 tests/icon_assets.py
 # MD3 must be importable from the installed package and allocate its full
 # story/arrangement surface at desktop and compact widths. No display is a
@@ -287,7 +312,27 @@ for sheet in %{buildroot}%{_datadir}/luma-appkit/*.css; do
   rm "%{buildroot}%{python3_sitelib}/$(basename "$sheet")"
 done
 
+%post
+%systemd_user_post luma-app-host.service luma-native-app-prewarm.timer
+
+%preun
+%systemd_user_preun luma-app-host.service luma-native-app-prewarm.timer luma-native-app-prewarm.service
+
+%postun
+%systemd_user_postun_with_restart luma-app-host.service luma-native-app-prewarm.timer
+
 %files
+%{_libexecdir}/luma-app-launch
+%dir %{_libexecdir}/luma-app-launchers
+%{_libexecdir}/luma-native-app-prewarm
+%{_libdir}/libluma-app-prepare.so
+%{_datadir}/luma-app-host/native.json
+%{_userunitdir}/luma-native-app-prewarm.service
+%{_userunitdir}/luma-native-app-prewarm.timer
+%dir %{_datadir}/luma-app-host
+%dir %{_datadir}/luma-app-host/preload.d
+%{_userunitdir}/luma-app-host.service
+%{_userpresetdir}/80-luma-app-host.preset
 %license LICENSE.md
 %{_libdir}/libluma-appearance-1.so.0*
 %{_libdir}/girepository-1.0/LumaAppearance-1.typelib
@@ -328,6 +373,10 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.117.mobile20261030.1
+- Add the shared prepared application runtime and native launch frontend
+- Reuse unchanged appearance styles and prepare native Settings/Filer on handhelds
+
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101.creator20261007.1
 - Delegate Python Flatpak app-menu updates to the installed host update portal
 - Keep current code running and require terminal progress before success notices

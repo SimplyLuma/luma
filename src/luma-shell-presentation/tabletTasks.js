@@ -851,7 +851,7 @@ export class HandheldMotion {
             this._actors.add(actor);
             // Same native completion contract, including interrupted effects.
             actor.ease({opacity: 255,
-                duration: St.Settings.get().enable_animations ? 160 : 0,
+                duration: St.Settings.get().enable_animations ? (this.home.mode === 'mobile' ? 80 : 160) : 0,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 onStopped: () => {this._actors.delete(actor); done();}});
         };

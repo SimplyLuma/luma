@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Prepare native applications after session startup
+PartOf=graphical-session.target
+
+[Timer]
+OnActiveSec=3
+AccuracySec=1
+
+[Install]
+WantedBy=graphical-session.target

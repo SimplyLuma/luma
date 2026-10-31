@@ -16,7 +16,7 @@
 # not relicensed here.
 Name:           luma-monitor
 Version:        0.1.0
-Release:        1.luma.17.creator20261010.1%{?dist}
+Release:        1.luma.18.mobile20261030.1%{?dist}
 Summary:        Native application activity monitor for Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/
@@ -36,7 +36,7 @@ Requires:       python3
 Requires:       python3-gobject
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.117.mobile20261030.1
 # The "This machine" view reads the report luma-capability writes. Monitor
 # works without it and says the machine has not been checked yet, so this is
 # a recommendation rather than a dependency.
@@ -64,13 +64,16 @@ install -m 0644 $app/data/monitor.css $app/data/machine.css %{buildroot}%{_datad
 ln -s data/monitor.css %{buildroot}%{_datadir}/%{name}/monitor.css
 install -d %{buildroot}%{_bindir}
 cat >%{buildroot}%{_bindir}/io.luma.Monitor <<'EOF'
-#!%{python3} -s
+#!%{python3} -sP
 import sys
 sys.path.insert(0, "%{_datadir}/%{name}")
 from luma_monitor.application import main
 raise SystemExit(main())
 EOF
 chmod 0755 %{buildroot}%{_bindir}/io.luma.Monitor
+install -d %{buildroot}%{_libexecdir}/luma-app-launchers
+mv %{buildroot}%{_bindir}/io.luma.Monitor %{buildroot}%{_libexecdir}/luma-app-launchers/io.luma.Monitor
+ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/io.luma.Monitor
 cat >%{buildroot}%{_bindir}/luma-monitor-host <<'EOF'
 #!%{python3} -s
 import sys
@@ -112,6 +115,7 @@ dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$
 dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$PWD/data/monitor.css PYTHONPATH=$PWD %{python3} tests/machine_runtime.py
 
 %files
+%{_libexecdir}/luma-app-launchers/io.luma.Monitor
 %license LICENSE.md
 %{_bindir}/io.luma.Monitor
 %{_bindir}/luma-monitor-host
@@ -122,6 +126,9 @@ dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$
 %{_datadir}/dbus-1/services/org.projectluma.MonitorHost1.service
 
 %changelog
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.18.mobile20261030.1
+- Use the shared prepared application launcher
+
 * Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.17.creator20261010.1
 - Fix the host namespace needed to verify signed Monitor callers
 - Show unavailable activity, preserve stale readings and recover after errors

@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.124.mobile20261030.2%{?dist}
+Release:        1.luma.125.mobile20261030.1%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -15,6 +15,7 @@ Source2:        luma-continuity.tar.gz
 Source3:        org.project_luma.shell-state.gschema.xml
 Source4:        messages-v70.json
 
+BuildRequires:  systemd-rpm-macros
 BuildRequires:  dbus-daemon
 BuildRequires:  desktop-file-utils
 BuildRequires:  evolution-data-server
@@ -57,7 +58,7 @@ Requires:       ibm-plex-mono-fonts
 Requires:       libadwaita >= 1.9
 # Native Tide owns the non-interactive credential API used by Connect.
 Requires:       (luma-tide >= 0.1.0-2.luma.36.mobile20261030.1 if luma-tide)
-Requires:       luma-developer-platform >= 0.1.0-1.luma.102.creator20261007.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.117.mobile20261030.1
 # Messages' glyphs are Prairie's Lucide set by standard name (1.luma.27).
 Requires:       prairie-icon-theme >= 0.1.0-1.luma.28
 Requires:       gstreamer1
@@ -127,6 +128,15 @@ install -D -m 0755 bin/prairie-weather %{buildroot}%{_bindir}/prairie-weather
 install -D -m 0755 bin/prairie-clock %{buildroot}%{_bindir}/prairie-clock
 install -D -m 0755 bin/prairie-clock-alarm %{buildroot}%{_bindir}/prairie-clock-alarm
 install -D -m 0755 bin/luma-connect-sync %{buildroot}%{_bindir}/luma-connect-sync
+# UI entry points use the native client; windowless agents stay ordinary
+# Python executables and never acquire a GTK runtime.
+install -d %{buildroot}%{_libexecdir}/luma-app-launchers
+for app in clock weather contacts photos phone tasks messages notes calendar voice-memos camera; do
+  mv %{buildroot}%{_bindir}/prairie-$app %{buildroot}%{_libexecdir}/luma-app-launchers/
+  ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/prairie-$app
+done
+install -D -m 0644 data/prairie-core-preload.json \
+  %{buildroot}%{_datadir}/luma-app-host/preload.d/prairie-core.json
 install -d -m 0755 %{buildroot}%{_datadir}/prairie-core
 install -m 0644 style/*.css %{buildroot}%{_datadir}/prairie-core/
 install -D -m 0644 data/org.projectluma.Messages.desktop \
@@ -606,11 +616,14 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 systemctl --global enable prairie-messages-daemon.service >/dev/null 2>&1 || :
 
 %postun
+%systemd_user_postun_with_restart luma-app-host.service
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 || :
 
 
 %files
+%{_libexecdir}/luma-app-launchers/prairie-*
+%{_datadir}/luma-app-host/preload.d/prairie-core.json
 %license LICENSE.md
 %{_bindir}/prairie-messages
 %{_bindir}/prairie-messages-daemon
@@ -671,6 +684,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.125.mobile20261030.1
+- Use the shared prepared runtime for UI launches; keep background agents separate
+
 * Sat Oct 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103.creator20261012.1
 - Recognize the shared Photos library through the system home directory alias.
 

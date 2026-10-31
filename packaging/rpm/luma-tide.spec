@@ -29,7 +29,7 @@
 # cherry-pick -- the right home for the canvas artwork re-sync.
 Name:           luma-tide
 Version:        0.1.0
-Release:        2.luma.36.mobile20261030.2%{?dist}
+Release:        2.luma.37.mobile20261030.1%{?dist}
 Summary:        Source-aware native music player for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/tide
@@ -65,7 +65,7 @@ Requires:       python3-gobject
 Requires:       python3-mutagen
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
-Requires:       luma-developer-platform >= 0.1.0-1.luma.102.creator20261007.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.117.mobile20261030.1
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 # souphttpsrc streams from Navidrome/Subsonic servers; libsoup takes TLS from
@@ -91,6 +91,9 @@ cp %{SOURCE1} LICENSE.md
 
 %install
 %meson_install
+install -d %{buildroot}%{_libexecdir}/luma-app-launchers
+mv %{buildroot}%{_bindir}/org.projectluma.Tide %{buildroot}%{_libexecdir}/luma-app-launchers/
+ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/org.projectluma.Tide
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Tide.desktop
 
 %check
@@ -149,6 +152,7 @@ done
 PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 
 %files
+%{_libexecdir}/luma-app-launchers/org.projectluma.Tide
 %license LICENSE.md
 %{_bindir}/org.projectluma.Tide
 %{_bindir}/luma-tide-retire-preview-overrides
@@ -162,6 +166,9 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service
 
 %changelog
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.37.mobile20261030.1
+- Use the shared prepared application launcher
+
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.32.creator20261006.1
 - Keep source actions reachable in short windows and adaptive drawers
 - Share original local audio files through actual clipboard and GIO receivers

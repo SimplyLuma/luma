@@ -772,7 +772,8 @@ export class Presentation {
         try {
             if (app) app.activate();
             else info.launch([], global.create_app_launch_context(0, -1));
-            this._home.hide();
+            // The map/focus handlers replace Home when the app has a buffer.
+            // Hiding it at dispatch exposed bare wallpaper throughout startup.
         } catch (error) { Main.notifyError(_('Unable to open application'), error.message); }
     }
 

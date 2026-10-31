@@ -1,0 +1,4 @@
+[
+  {"id": "settings", "program": "/usr/bin/gnome-control-center", "bus": "org.gnome.Settings"},
+  {"id": "filer", "program": "/usr/bin/nautilus", "bus": "org.gnome.Nautilus"}
+]

@@ -122,6 +122,11 @@ cp -a "$rpmdb"/rpmdb.sqlite* "$base_db/"
   fail 'the rpm-ostree base database does not list the image packages'
 rm -f "$rpmdb/.rpm.lock"
 
+# OSTree normalizes /usr timestamps. Fedora's timestamp-based Python caches
+# otherwise become invalid and every application recompiles the standard
+# library on every launch from the immutable filesystem.
+python3 "$src/scripts/os/lib/prepare_python_bytecode.py"
+
 # A bootable container carries no state in /var beyond what tmpfiles creates:
 # drop caches and logs, then declare everything packages put in /var the way
 # rpm-ostree does, so a deployed system gets it. /run is runtime-only.

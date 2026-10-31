@@ -16,6 +16,14 @@ git fetch origin refs/heads/codex/project-titan-usb-20261029:refs/remotes/origin
 git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/presentation.js
 ```
 
+## App startup
+
+The prepared GTK runtime, native launch frontend, bounded native Settings/Filer
+preparation and immutable-image Python caches are maintained in the shared
+platform. Carry the matching package cohort, not just the shell JS. See
+[Mobile application startup](mobile-app-startup.md) for architecture, confinement
+boundaries, measured first-frame timings and remaining qualification gates.
+
 ## Source to carry over
 
 | Area | Maintained source |
