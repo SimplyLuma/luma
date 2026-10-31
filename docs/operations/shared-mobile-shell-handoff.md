@@ -143,7 +143,13 @@ Touch wake candidate: kernel patch0066 and the optional shared
 `scripts/mobile/touch-wake-policy.py` / `config/mobile/luma-touch-wake-policy.service`
 use FT3383 hardware gesture detection and compositor display-power signals.
 Device profiles opt in with `wakeup-source`; unsupported devices are unchanged.
-The Titan has this candidate staged, with protocol/event/lifecycle checks passed
-and zero service CPU measured during20s idle. Physical double-tap acceptance,
-fresh boot and system-sleep/battery qualification remain pending. Lift-to-wake
-requires a real motion event backend, which this Titan build does not expose.
+The driver reports KEY_WAKEUP on a separate input device and retains low-power
+mode until actual unblank. Shared handheld `powerButton.js` explicitly handles
+XF86WakeUp as wake-only, including while locked: relying on ordinary input idle
+activity was inconsistent after manual display blank. Physical recognition was
+observed, but the initial implementation failed to unblank. Three consecutive
+injected events now pass with the revised shell handler and keep the lock.
+Owner physical acceptance, fresh boot and system-sleep/battery qualification
+remain pending. Lift-to-wake requires a real motion event backend, which this
+Titan build does not expose. Idle policy checks have measured zero service CPU;
+this is not a whole-device battery-life measurement.

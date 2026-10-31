@@ -736,3 +736,28 @@ physical gesture recognition, system suspend/resume and battery-life measurement
 are pending. Async physical tap question is still unanswered; driver wake count
 has been zero during observation. Lift-to-wake stays unavailable until the
 motion sensor/hub backend exposes a low-power event path.
+
+### 2026-10-30 — recognize taps and explicitly wake the handheld display
+
+Owner reported no response to the physical gesture. The controller counter
+increased while display mode remained3, proving recognition reached the driver
+but not successful unblank. The old driver also exited low-power mode before
+unblank. Revised0066 emits KEY_WAKEUP through a separate key input device and
+leaves gesture mode armed until the policy sees an actual display-on event.
+A separate input device alone did not fix waking; ordinary input-activity wake
+was inconsistent in repeated tests after direct/manual blank.
+
+Added a wake-only XF86WakeUp accelerator to the existing shared handheld power
+handler, allowed while locked. It explicitly requests display-on and never
+unlocks or toggles off. Both shortcut registrations are released on destroy;
+retrying one missing shortcut preserves the other. Desktop/tablet gating and
+physical-keyboard policy remain intact.
+
+Module build eb790b7e and patch provenance check6f85f52e pass. JavaScript syntax
+and diff whitespace checks pass. Live source-backed presentation r87 hot reload
+succeeded; startup overlay contains the same power handler. Three consecutive
+injected KEY_WAKEUP events on the actual driver input each changed display3→0,
+gesture1→0 and retained the screen lock. Reblank rearms1. The physical test has
+been requested again after this shell correction; no physical success is yet
+claimed. Fresh boot/system suspend/battery-life remain untested. Lift-to-wake
+still requires motion/hub driver support. Accepted audio kernel is unchanged.

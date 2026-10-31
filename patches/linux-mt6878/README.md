@@ -30,7 +30,7 @@ OS update.
 ## Controller-based touch wake candidate
 
 `0066-Input-focaltech-spi-low-power-double-tap-wake.patch` adds FT3383
-controller gesture mode, a `KEY_WAKEUP` report, serialized SPI access, system
+controller gesture mode, a separate `KEY_WAKEUP` input device, serialized SPI access, system
 sleep handling, and the standard `wakeup-source` opt-in on the Titan device tree.
 It applies to the retained running driver after the existing Titan kernel series.
 Its generated driver matches the compiled module input. No full replacement
@@ -45,14 +45,21 @@ lock screen and greeter, and arms hardware recognition while the panel is blank.
 A monitor runs with the active user's bus credentials; only the small privileged
 parent writes boolean kernel attributes. There is no touch or motion polling.
 Stopping the service restores normal touch, including after a process failure.
+The controller stays in low-power mode after recognition until display policy
+observes an actual unblank. The shared handheld power handler explicitly handles
+`XF86WakeUp` as wake-only in all shell modes; it never unlocks or toggles the
+screen off. Ordinary keyboard activity alone was inconsistent after manual blank.
 
 The development Titan currently runs a source-backed module override with its
-packaged module retained as fallback. Controller mode write/readback, wake-key
-handling, display blank/unblank transitions and service-stop restoration pass.
-A 20-second idle check measured zero service CPU time. Physical double-tap
-recognition, a fresh boot of this override, real system suspend/resume and longer
-battery measurements remain unqualified. The owner has been asked to test the
-physical gesture; do not label this candidate fully accepted before that reply.
+packaged module retained as fallback. Physical taps increment the controller's
+recognition counter, but the initial candidate did not wake the screen. Merely
+separating the wake input device did not resolve that failure. After the explicit
+shell wake handler was added, three consecutive injected wake events on the
+actual driver input turned the display on, disarmed gesture mode and retained
+the lock. Driver build eb790b7e and patch/source provenance check6f85f52e pass.
+Owner verification of the revised physical wake, a fresh boot, real system
+suspend/resume and longer battery measurements remain pending. The policy has no
+periodic work; earlier idle checks measured zero service CPU time.
 
 Lift-to-wake is not implemented: this build exposes a PMIC ADC but no usable
 accelerometer/motion event interface. It requires sensor/hub support rather than

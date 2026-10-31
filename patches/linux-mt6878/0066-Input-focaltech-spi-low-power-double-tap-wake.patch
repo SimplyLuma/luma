@@ -2,7 +2,9 @@ Subject: [PATCH] Input: focaltech-spi: recognize double tap in controller low-po
 
 Use controller-side double-tap detection and KEY_WAKEUP instead of a host
 sampling loop. Expose a narrow wake_gesture switch for display-power policy,
-serialize SPI configuration with IRQ reads and restore normal touch on wake.
+serialize SPI configuration with IRQ reads and restore normal touch on unblank.
+Report wake keys on a separate input device so blanked touch filtering does
+not discard them. Keep low-power scanning armed until the display unblanks.
 System sleep arms the touchscreen IRQ only when wakeup is enabled.
 ---
 --- a/drivers/input/touchscreen/focaltech-spi.c
@@ -27,10 +29,11 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  #define FTS_MAX_POINTS		10
  #define FTS_POINT_LEN		6
  /* Data from register 0x01: a 4-byte header ([1] low nibble = point count), then 6 bytes per point. */
-@@ -55,6 +61,12 @@
+@@ -55,6 +61,13 @@
  	struct touchscreen_properties prop;
  	struct gpio_desc *reset;
  	u32 edge_margin[4];	/* left, top, right, bottom, in screen pixels */
++	struct input_dev *wake_input;
 +	struct mutex lock;
 +	bool gesture_mode;
 +	bool suspended;
@@ -40,7 +43,7 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  	u8 *tx;
  	u8 *rx;
  };
-@@ -104,6 +116,121 @@
+@@ -104,6 +117,121 @@
  	}
  	return ret;
  }
@@ -111,10 +114,10 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
 +{
 +	ts->wake_count++;
 +	pm_wakeup_event(&ts->spi->dev, 500);
-+	input_report_key(ts->input, KEY_WAKEUP, 1);
-+	input_sync(ts->input);
-+	input_report_key(ts->input, KEY_WAKEUP, 0);
-+	input_sync(ts->input);
++	input_report_key(ts->wake_input, KEY_WAKEUP, 1);
++	input_sync(ts->wake_input);
++	input_report_key(ts->wake_input, KEY_WAKEUP, 0);
++	input_sync(ts->wake_input);
 +}
 +
 +static ssize_t wake_gesture_show(struct device *dev,
@@ -162,15 +165,14 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  
  #define FTS_EDGE_BAND		96
  
-@@ -165,14 +292,90 @@
+@@ -165,14 +293,88 @@
  	struct fts_spi *ts = data;
  	u8 buf[FTS_DATA_LEN];
  
 +	mutex_lock(&ts->lock);
 +	if (ts->gesture_mode) {
 +		if (!fts_read(ts, FTS_REG_GESTURE_OUT, buf, 8) &&
-+		    buf[0] == FTS_GESTURE_DOUBLE_TAP &&
-+		    !fts_gesture_mode(ts, false))
++		    buf[0] == FTS_GESTURE_DOUBLE_TAP)
 +			fts_wake(ts);
 +		goto out;
 +	}
@@ -231,8 +233,7 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
 +	if (ts->gesture_mode)
 +		fts_read(ts, FTS_REG_GESTURE_OUT, gesture, sizeof(gesture));
 +	/* Background resumes must not leave a still-blank screen scanning. */
-+	ret = fts_gesture_mode(ts, ts->resume_gesture &&
-+			       gesture[0] != FTS_GESTURE_DOUBLE_TAP);
++	ret = fts_gesture_mode(ts, ts->resume_gesture);
 +	ts->suspended = false;
 +	if (!ret && gesture[0] == FTS_GESTURE_DOUBLE_TAP)
 +		fts_wake(ts);
@@ -254,7 +255,7 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  }
  
  
-@@ -189,6 +392,8 @@
+@@ -189,6 +391,8 @@
  	if (!ts)
  		return -ENOMEM;
  	ts->spi = spi;
@@ -263,25 +264,34 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  	ts->tx = devm_kzalloc(dev, 2 * FTS_BUF_LEN, GFP_KERNEL | GFP_DMA);
  	if (!ts->tx)
  		return -ENOMEM;
-@@ -227,6 +432,7 @@
- 	ts->input = input;
- 	input->name = "FocalTech touchscreen";
- 	input->id.bustype = BUS_SPI;
-+	input_set_capability(input, EV_KEY, KEY_WAKEUP);
- 
- 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, 4095, 0, 0);
- 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, 4095, 0, 0);
-@@ -250,6 +456,9 @@
+@@ -241,6 +445,16 @@
  	if (ret)
  		return ret;
  
++	ts->wake_input = devm_input_allocate_device(dev);
++	if (!ts->wake_input)
++		return -ENOMEM;
++	ts->wake_input->name = "FocalTech wake gestures";
++	ts->wake_input->id.bustype = BUS_SPI;
++	input_set_capability(ts->wake_input, EV_KEY, KEY_WAKEUP);
++	ret = input_register_device(ts->wake_input);
++	if (ret)
++		return ret;
++
+ 	ret = devm_request_threaded_irq(dev, spi->irq, NULL, fts_irq, IRQF_ONESHOT,
+ 					dev_name(dev), ts);
+ 	if (ret)
+@@ -249,6 +463,9 @@
+ 	ret = input_register_device(input);
+ 	if (ret)
+ 		return ret;
++
 +	device_set_wakeup_capable(dev, true);
 +	device_set_wakeup_enable(dev, device_property_read_bool(dev, "wakeup-source"));
-+
+ 
  	dev_info(dev, "chip 0x%02x%02x, firmware 0x%02x\n", id_hi, id_lo, fw);
  	return 0;
- }
-@@ -270,9 +479,12 @@
+@@ -270,9 +487,12 @@
  	.driver = {
  		.name = "focaltech-spi",
  		.of_match_table = fts_of_match,
@@ -296,7 +306,7 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
  
 --- /dev/null
 +++ b/Documentation/ABI/testing/sysfs-driver-focaltech-spi
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,18 @@
 +What:           /sys/bus/spi/devices/.../wake_gesture
 +Date:           October 2026
 +Contact:        Luma device maintainers
@@ -304,8 +314,9 @@ System sleep arms the touchscreen IRQ only when wakeup is enabled.
 +                Boolean controller low-power gesture mode. Root display-power
 +                policy writes 1 only while the screen is blank, and 0 on unblank
 +                or policy shutdown. Only a double tap generates KEY_WAKEUP;
-+                recognizing it restores normal touch reporting. It does not
-+                unlock the session. Transport/readback errors reject the write.
++                normal touch resumes when display policy writes 0. A separate
++                wake-key input device avoids blanked touchscreen filtering.
++                Recognizing a gesture does not unlock the session. Transport/readback errors reject the write.
 +                System sleep also uses gesture mode when power/wakeup is enabled.
 +
 +What:           /sys/bus/spi/devices/.../wake_gesture_count
