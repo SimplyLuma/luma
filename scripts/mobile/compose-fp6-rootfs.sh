@@ -72,6 +72,7 @@ local_rpms=(
   "$repo_root/build/packages/luma-messages-e2ee/RPMS/aarch64/$LUMA_MESSAGES_E2EE_AARCH64_NEVRA.rpm"
   "$repo_root/build/packages/luma-apk-metadata/aarch64/$LUMA_APK_METADATA_AARCH64_NEVRA.rpm"
   "$repo_root/build/packages/luma-terminal/RPMS/noarch/$LUMA_TERMINAL_NEVRA.rpm"
+  "$repo_root/build/packages/luma-monitor/RPMS/noarch/$LUMA_MONITOR_NEVRA.rpm"
   "$repo_root/build/packages/luma-calculator/RPMS/noarch/$LUMA_CALCULATOR_NEVRA.rpm"
   "$repo_root/build/packages/gtk4/RPMS/aarch64/$GTK4_AARCH64_NEVRA.rpm"
   "$repo_root/build/packages/gtk3/RPMS/aarch64/$GTK3_AARCH64_NEVRA.rpm"
@@ -93,7 +94,6 @@ local_rpms=(
   "$repo_root/build/packages/prairie-core-apps/RPMS/noarch/$PRAIRIE_CORE_APPS_NEVRA.rpm"
   "$repo_root/build/packages/luma-developer-platform/aarch64/RPMS/$LUMA_DEVELOPER_PLATFORM_AARCH64_NEVRA.rpm"
   "$repo_root/build/packages/luma-tide/RPMS/noarch/$LUMA_TIDE_NEVRA.rpm"
-  "$repo_root/build/packages/luma-darkroom/RPMS/noarch/$LUMA_DARKROOM_NEVRA.rpm"
   "$repo_root/build/packages/luma-imsd/aarch64/RPMS/$LUMA_IMSD_AARCH64_NEVRA.rpm"
   "$android_runtime_bundle/$LUMA_ANDROID_RUNTIME_NEVRA.rpm"
   "$filer_bundle/$NAUTILUS_AARCH64_NEVRA.rpm"
@@ -151,6 +151,7 @@ if [ "$finalize_only" -eq 0 ] && [ "$resume_after_dnf" -eq 0 ]; then
     --releasever=44 \
     --use-host-config \
     --setopt=install_weak_deps=False \
+    --exclude="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$repo_root/config/shared/application-exclusions.txt" | paste -sd, -)" \
     "${packages[@]}" \
     "${local_rpms[@]}"
 
@@ -269,6 +270,7 @@ contract_sha256=$({
     "$repo_root/config/shared/mod-packages.txt" \
     "$repo_root/config/shared/application-packages.txt" \
     "$repo_root/config/mobile/phone-capability-packages.txt"
+  cat "$repo_root/config/shared/application-exclusions.txt"
   cat "$local_rpm_manifest"
 } | sha256sum | awk '{print $1}')
 

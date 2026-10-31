@@ -29,7 +29,7 @@
 # cherry-pick -- the right home for the canvas artwork re-sync.
 Name:           luma-tide
 Version:        0.1.0
-Release:        2.luma.37.nightly20261030.1%{?dist}
+Release:        2.luma.38%{?dist}
 Summary:        Source-aware native music player for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/tide
@@ -66,7 +66,7 @@ Requires:       python3-gobject
 Requires:       python3-mutagen
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
-Requires:       luma-developer-platform >= 0.1.0-1.luma.102.creator20261007.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.121
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 # souphttpsrc streams from Navidrome/Subsonic servers; libsoup takes TLS from
@@ -92,6 +92,9 @@ cp %{SOURCE1} LICENSE.md
 
 %install
 %meson_install
+install -d %{buildroot}%{_libexecdir}/luma-app-launchers
+mv %{buildroot}%{_bindir}/org.projectluma.Tide %{buildroot}%{_libexecdir}/luma-app-launchers/
+ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/org.projectluma.Tide
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Tide.desktop
 
 # Shared build volumes can supply default ACLs and setgid directories.
@@ -146,7 +149,7 @@ dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_R
 dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_RENDERER=cairo PYTHONPATH=.:tests python3 tests/sign_in_runtime.py
 
 # Current v71 desktop and phone contracts, plus compact player/source checks.
-for runtime in deck_narrow_runtime search_panel_runtime artwork_hues_runtime v71_album_actions_runtime v71_desktop_runtime v71_startup_search_runtime creator_forms_runtime creator_audio_runtime; do
+for runtime in deck_narrow_runtime search_panel_runtime artwork_hues_runtime v71_album_actions_runtime v71_desktop_runtime v71_startup_search_runtime creator_forms_runtime creator_audio_runtime source_navigation_runtime; do
   dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_RENDERER=cairo GDK_DEBUG=no-portals PYTHONPATH=.:tests python3 "tests/$runtime.py"
 done
 
@@ -157,6 +160,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 
 %files
 %defattr(-,root,root,0755)
+%{_libexecdir}/luma-app-launchers/org.projectluma.Tide
 %license LICENSE.md
 %{_bindir}/org.projectluma.Tide
 %{_bindir}/luma-tide-retire-preview-overrides
@@ -170,8 +174,14 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.38
+- Merge the shared prepared application runtime with the October 30 nightly.
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.37.nightly20261030.1
 - Normalize packaged directory modes.
+
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.37.mobile20261030.1
+- Use the shared prepared application launcher
 
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.32.creator20261006.1
 - Keep source actions reachable in short windows and adaptive drawers
@@ -223,6 +233,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   tabular figures and no longer shift
 - A server's "[Unknown Artist]" and "[Unknown Album]" read "Unknown
   artist" and "Unknown album", including songs synced before
+
 * Thu Sep 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.23
 - Track lists are one line per song in columns (number, title, artist,
   album, plays from, time) under a header that lines up with them; an
@@ -233,6 +244,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   there is only one source
 - Counts read as spoken ("1 copy", "2 copies") through gettext, and the
   Now playing section labels are sentence case
+
 * Thu Sep 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.22
 - Source rows show a 6px state dot instead of a stretched bar and a check
   mark, with a show/hide control that appears on hover or keyboard focus
@@ -243,6 +255,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   list; the song playing shows a mark where its number was
 - Declare X-GNOME-UsesNotifications so Settings lists Tide and its
   per-application notification and badge switches reach it
+
 * Thu Sep 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.21
 - Bring the full remote-source feature set of the Navidrome preview build
   into the packaged Tide: Add Source chooser, server sign-in sheet with a
@@ -258,6 +271,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   keyring reference, songs, play history, playlists, queue, cached artwork
   and downloads; read either saved sign-in format
 - Converge both earlier schema lineages on library schema 4
+
 * Wed Sep 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.20
 - Fix luma-tide-retire-preview-overrides.service (added in 2.luma.19)
   failing to start at almost every login: its ReadWritePaths listed two
@@ -266,6 +280,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   to be created, not merely accessed. Caught before 2.luma.19 was pinned,
   by starting the unit under a real systemd --user session rather than
   only through the Python-level tests
+
 * Wed Sep 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.19
 - Harden startup so a failure is never silent: the "tide" logger had no
   handler configured anywhere, so log.info/log.exception calls were
@@ -282,6 +297,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   race where a correctly-retired override could still get served from an
   already-cached resolution. Moves, never deletes, and only ever touches a
   file that doesn't point at the real installed binary
+
 * Wed Sep 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.18
 - A dev-preview build of Tide (with working Subsonic support before shipped
   Tide had it) stored a source's password under an older libsecret schema
@@ -293,6 +309,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
   local, capabilities, auth_ref) are imported read-only, deduplicated
   against the real library by id and by canonical URI, and then populated
   by the normal scan/sync every known source already goes through
+
 * Tue Sep 15 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.17
 - Play albums gaplessly by default: the next track's URI is handed to
   GStreamer from playbin's about-to-finish signal while the current track is
@@ -306,6 +323,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 - A track that cannot be prepared in time no longer breaks the track that is
   playing: that one boundary falls back to the previous load-on-eos behavior
   and says so
+
 * Tue Sep 15 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.16
 - Add Subsonic/Navidrome server support: add/edit/remove a server, browse,
   search, and play a remote library, with credentials held only in the

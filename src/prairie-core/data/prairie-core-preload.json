@@ -1,0 +1,15 @@
+[
+  "prairie_apps.clock",
+  "prairie_apps.weather",
+  "prairie_apps.contacts",
+  "prairie_apps.photos",
+  "prairie_apps.phone",
+  "prairie_apps.tasks",
+  "prairie_apps.messages",
+  "prairie_apps.notes",
+  "prairie_apps.calendar",
+  "prairie_apps.voice_memos",
+  "prairie_apps.notes_lumaui",
+  "prairie_apps.messages_app_port",
+  "prairie_apps.messages_app_client"
+]

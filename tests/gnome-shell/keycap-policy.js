@@ -158,6 +158,13 @@ assert(Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5) <= 4 * (g.portr
     'phone caps never exceed the design height');
 assert(Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5, 28) ===
     Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5) + 28, 'the home gesture inset is added below the keys');
+assert(Keycap.bottomInset({width: 360, height: 808}, true, 28) === g.thumb_gap && g.thumb_gap > 28,
+    'an upright phone keeps the thumb gap, which holds the home gesture');
+assert(Keycap.bottomInset({width: 360, height: 808}, true, 0) === g.thumb_gap, 'the lock screen keeps the thumb gap');
+assert(Keycap.bottomInset({width: 808, height: 360}, true, 28) === 28, 'a phone on its side keeps only the home gesture');
+assert(Keycap.bottomInset({width: 1038, height: 1076}, false, 28) === 28, 'a tablet keeps only the home gesture');
+assert(Keycap.keyboardHeight({width: 432, height: 970}, 4, 11.5, Keycap.bottomInset({width: 432, height: 970}, true, 28)) <= 970 / 2,
+    'the thumb gap fits within half the screen');
 assert(Keycap.keyboardHeight({width: 404, height: 908}, 4, 11.5) < 908 / 3, 'tall phones are not sized by screen height');
 assert(Keycap.keyboardHeight({width: 908, height: 404}, 4, 11.5) === 4 * g.landscape_row + g.strip_height,
     'phone landscape uses compact rows');

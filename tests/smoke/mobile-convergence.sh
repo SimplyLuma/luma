@@ -48,8 +48,8 @@ check 'desktop package pin matches the shared Search input' \
   grep -Fqx "$LUMA_SEARCH_NEVRA" "$desktop_packages"
 check 'developer platform is a shared application role' \
   grep -Fqx 'luma-developer-platform' "$application_packages"
-check 'Darkroom is one shared adaptive application role' \
-  grep -Fqx 'luma-darkroom' "$application_packages"
+check 'Monitor is one shared adaptive application role' \
+  grep -Fqx 'luma-monitor' "$application_packages"
 check 'desktop package pin matches the developer-platform input' \
   grep -Fqx "$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA" "$desktop_packages"
 check 'mobile composition consumes the exact developer-platform RPM' \
@@ -58,11 +58,11 @@ check 'mobile composition consumes the exact developer-platform RPM' \
 check 'desktop composition consumes the exact developer-platform RPM' \
   grep -Fq 'build/packages/luma-developer-platform/x86_64/RPMS/$LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA.rpm' \
   "$desktop_compose"
-check 'mobile composition consumes the shared Darkroom RPM' \
-  grep -Fq 'build/packages/luma-darkroom/RPMS/noarch/$LUMA_DARKROOM_NEVRA.rpm' \
+check 'mobile composition consumes the shared Monitor RPM' \
+  grep -Fq 'build/packages/luma-monitor/RPMS/noarch/$LUMA_MONITOR_NEVRA.rpm' \
   "$mobile_compose"
-check 'desktop composition consumes the shared Darkroom RPM' \
-  grep -Fq 'build/packages/luma-darkroom/RPMS/noarch/$LUMA_DARKROOM_NEVRA.rpm' \
+check 'desktop composition consumes the shared Monitor RPM' \
+  grep -Fq 'build/packages/luma-monitor/RPMS/noarch/$LUMA_MONITOR_NEVRA.rpm' \
   "$desktop_compose"
 check 'Tide is one shared adaptive application role' \
   grep -Fqx 'luma-tide' "$application_packages"

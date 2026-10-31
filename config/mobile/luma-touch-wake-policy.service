@@ -1,0 +1,26 @@
+[Unit]
+Description=Luma controller-based touch wake policy
+After=systemd-logind.service
+Wants=systemd-logind.service
+ConditionPathExistsGlob=|/sys/bus/spi/devices/*/wake_gesture
+ConditionPathExistsGlob=|/sys/bus/i2c/devices/*/wake_gesture
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-touch-wake-policy
+ExecStopPost=/usr/libexec/luma-touch-wake-policy --reset
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/sys/devices
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# Read the session bus as its owner; keep sysfs writes in the parent.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=graphical.target
