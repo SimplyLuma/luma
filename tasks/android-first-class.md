@@ -2,7 +2,7 @@
 
 - Status: active; production/nightly Android release blocked by open acceptance gates
 - Owner: Codex, luma-dev-2; Android first-class implementation chat
-- Updated: 2026-10-30T23:59Z
+- Updated: 2026-10-31T00:17Z
 - Project: luma-os
 - Branch and last useful commit: codex/android-first-class; 8d4778409 (compiled Shell130 wheel fix), 9db797f4f (evaluation platform revision inventory), 4d7cb12a0 (retained failed VM runs); latest combined x86 install/drawer/dock scope passed8a4fde27; native Dell candidate active; committed hotfixda2364c63 delivered; mount storm repaired, network and same-file reinstall requalified; scaling and Google-dependent flows remain open
 - Worktree: /srv/dev/worktrees/luma-os/android-first-class
@@ -54,6 +54,50 @@ nightly promotion, alongside ARM runtime/device and native-broker qualification.
 An x86 development test image is not a declaration of daily-use or ARM readiness.
 
 ## Current handoff
+
+CURRENT00:15Z — actual repaired-image component results; OBB import in progress:
+- r357/75be031e collected the completed r350 native diagnostic. CodecProbe
+  PASSED100 configure/start/stop/release cycles across4threads at ordinary
+  UID10136; no decoded frames/playback qualification. Ordinary-UID provider
+  signer/authenticator/service binding and Java HTTPS204 also PASSED. No
+  account login tested. Mount guard remains131mounts/1pc bind, netd running
+  and default Ethernet VALIDATED. Both repaired system library SHAs match.
+- Game still exits: latest PID4182 SIGKILL9 at00:05:32Z, cached importance400;
+  original pre-repair SIGSEGV is a separate observation. r361/2a2ec0bf captured
+  system lifecycle: game displayed356ms after start; process death precedes
+  HWC authoritative task retirement by129ms. No evidence that retirement
+  initiated the exit. Container cgroup memory.events all0 including OOM.
+  Android cached-process cleanup of other apps also observed; actual game
+  signal origin remains unresolved. APEX VNDK libhidlbase is mapped alongside
+  system copy and has different hashes; do not assume its source variant.
+- r359/a9b0e1f9 host display query: three connected monitors, all scale1,
+  primary3440x1440 plus rotated2560x1440 and built-in1920x1200. Android
+  physical display1408x2528/density213 despite ro.sf.lcd_density180, confirmed
+  by r361. No forced size/density override applied. Scaling remains OPEN.
+- User requested manual Card Wars OBB placement. r363/bc0ddc40 located exact
+  source and confirmed installed package com.turner.cardwars; r364/e5ace033
+  hashed source. Native data mount verified from config_session. First frozen
+  importer r365 failed before writes because Fedora /home is a symlink.
+  Corrected r367/4e5742db uses canonical /var/home; user unit
+  luma-preview-android-cardwars-obb-r367-2bbd58b9.service launched00:14:21Z.
+  Copied ONLY pinned193382321-byte OBB, retained original, refused a different
+  existing destination. r369/521b1aeb: source/copy bytes match, but bare UID
+  lxc-attach read denied in the system storage mount namespace. r371/1f6f4962
+  confirmed full destination SHA through Android storage view and package
+  directory ownership already adjusted by Android to app UID10133/ext_obb_rw.
+  Bare UID attach is not an actual app mount-namespace read; no game-read pass
+  claimed. Card Wars92/targetSDK27 READ/WRITE_EXTERNAL_STORAGE both denied;
+  user informed storage prompt may need approval. No automatic grant, launch,
+  data reset, credentials or Polkit policy changes. User told copy is complete.
+- Private artifacts/scripts remain below second-account artifacts and
+  experiments/android-first-class/dell-hotfix-r199. No generated payloads or
+  private diagnostic output committed. Valet has no OBB import implementation;
+  XAPK APK installation does not place accompanying OBB data.
+- r372/a2924593 launched one bounded read-only game activity-event capture;
+  r373/29aec38a collected `Request dismissed` from normal Polkit authentication.
+  No event evidence obtained, no policy change and no automatic reprompt.
+  The OBB copy had already completed independently. Remaining game/scaling/
+  Google-account/hardware/release gates stay open.
 
 CURRENT23:59Z — native pair applied; game still exits; Dell kept awake:
 - User authenticated. r340/ae2885ea observed verified-packet/android-stopped;
