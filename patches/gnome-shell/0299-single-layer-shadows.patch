@@ -1,0 +1,251 @@
+From: Luma Developers
+Subject: [PATCH] One shadow per rule, as St paints
+
+St paints one box-shadow per actor and parses only one layer: every value
+after the fourth length is dropped with "Ignoring excess values in shadow
+definition", and the last colour in the list wins. Multi-layer rules on the
+lock and login poster (card, avatar, password field and its focus ring, away
+well), the Quick Options radio hover and the dock icons therefore painted
+the first layer's geometry in another layer's colour (the dock icons and the
+poster card got a dark inset line) and filled the journal with warnings
+whenever those nodes were restyled. Each rule now names the one layer it
+was designed around: the outset depth shadow, the focus ring, or the inset
+outline where a rule has only inset layers.
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index a6a7fab..72b1e3b 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4754,7 +4754,7 @@ StScrollBar {
+   border-radius: 24px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
+   background-size: 100% 100%;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6);
+   color: #eceeed; }
+ 
+ .poster-card.poster-card-opaque {
+@@ -4844,7 +4844,7 @@ StScrollBar {
+   border: 0;
+   background-color: #627eae;
+   background-image: none;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++  box-shadow: 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
+ 
+ .poster-avatar .prairie-login-avatar-initial {
+   font-family: "Figtree";
+@@ -4887,10 +4887,10 @@ StScrollBar {
+   border: 0;
+   border-radius: 13px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .login-dialog-button-box.prairie-password-field:focus-within {
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++  box-shadow: 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
+ 
+ .login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
+   min-height: 34px;
+@@ -4943,7 +4943,7 @@ StScrollBar {
+   padding: 4px;
+   border-radius: 16px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .poster-away-row {
+   spacing: 12px;
+@@ -5011,7 +5011,7 @@ StScrollBar {
+   box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-radio.luma-radio-hover {
+   background-color: #fff;
+-  box-shadow: 0 0 0 1px rgba(25,27,31,.14), 0 2px 4px rgba(25,27,31,.08); }
++  box-shadow: 0 0 0 1px rgba(25,27,31,.14); }
+ .quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button {
+   width: 24px; margin-right: 6px; }
+ .quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:rtl {
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 9e859ae..22e4bed 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5012,7 +5012,7 @@ StScrollBar {
+   border-radius: 24px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
+   background-size: 100% 100%;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6);
+   color: #eceeed; }
+ 
+ .poster-card.poster-card-opaque {
+@@ -5102,7 +5102,7 @@ StScrollBar {
+   border: 0;
+   background-color: #627eae;
+   background-image: none;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++  box-shadow: 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
+ 
+ .poster-avatar .prairie-login-avatar-initial {
+   font-family: "Figtree";
+@@ -5145,10 +5145,10 @@ StScrollBar {
+   border: 0;
+   border-radius: 13px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .login-dialog-button-box.prairie-password-field:focus-within {
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++  box-shadow: 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
+ 
+ .login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
+   min-height: 34px;
+@@ -5201,7 +5201,7 @@ StScrollBar {
+   padding: 4px;
+   border-radius: 16px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .poster-away-row {
+   spacing: 12px;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index d94d1a5..dd33866 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4978,7 +4978,7 @@ StScrollBar {
+   border-radius: 24px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
+   background-size: 100% 100%;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6);
+   color: #eceeed; }
+ 
+ .poster-card.poster-card-opaque {
+@@ -5068,7 +5068,7 @@ StScrollBar {
+   border: 0;
+   background-color: #627eae;
+   background-image: none;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++  box-shadow: 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
+ 
+ .poster-avatar .prairie-login-avatar-initial {
+   font-family: "Figtree";
+@@ -5111,10 +5111,10 @@ StScrollBar {
+   border: 0;
+   border-radius: 13px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .login-dialog-button-box.prairie-password-field:focus-within {
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++  box-shadow: 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
+ 
+ .login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
+   min-height: 34px;
+@@ -5167,7 +5167,7 @@ StScrollBar {
+   padding: 4px;
+   border-radius: 16px;
+   background-color: rgba(0, 0, 0, 0.28);
+-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ 
+ .poster-away-row {
+   spacing: 12px;
+@@ -5235,7 +5235,7 @@ StScrollBar {
+   box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-radio.luma-radio-hover {
+   background-color: #fff;
+-  box-shadow: 0 0 0 1px rgba(25,27,31,.14), 0 2px 4px rgba(25,27,31,.08); }
++  box-shadow: 0 0 0 1px rgba(25,27,31,.14); }
+ .quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button {
+   width: 24px; margin-right: 6px; }
+ .quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:rtl {
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 1914337..b2fbab9 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -676,7 +676,7 @@ $_gdm_dialog_width: 25em;
+ .poster-day.compact .poster-time { font-size: 48px; }
+ .poster-day.rtl .poster-weekday { font-size: 104px; }
+ .poster-day.rtl.compact .poster-weekday { font-size: 72px; }
+-.poster-card { padding: 26px 30px 22px; border-radius: 24px; background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg"); background-size: 100% 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6); color: #eceeed; }
++.poster-card { padding: 26px 30px 22px; border-radius: 24px; background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg"); background-size: 100% 100%; box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.6); color: #eceeed; }
+ .poster-card.poster-card-opaque { background-image: none; background-color: #26262a; }
+ .poster-status-row { spacing: 14px; }
+ .poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 16px; background-color: transparent; box-shadow: none; color: #eceeed; }
+@@ -693,14 +693,14 @@ $_gdm_dialog_width: 25em;
+ .poster-power-progress-label { font-family: "Figtree"; font-size: 18px; font-weight: 500; color: white; }
+ .login-dialog-prompt-layout.prairie-auth-card { width: 320px; padding: 0; spacing: 0; border: 0; background-color: transparent; box-shadow: none; }
+ .poster-identity { spacing: 0; }
+-.poster-avatar { icon-size: 76px; border-radius: 99px; border: 0; background-color: #627eae; background-image: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++.poster-avatar { icon-size: 76px; border-radius: 99px; border: 0; background-color: #627eae; background-image: none; box-shadow: 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
+ .poster-avatar .prairie-login-avatar-initial { font-family: "Figtree"; font-size: 30px; font-weight: 650; color: white; }
+ .poster-greeting { margin-top: 20px; margin-bottom: 22px; font-family: "Figtree"; font-size: 26px; font-weight: 650; letter-spacing: -0.025em; color: #eceeed; text-align: center; }
+ .poster-card .login-dialog-banner-view { max-width: 100%; max-height: 160px; margin-top: 16px; padding: 10px 12px; border-radius: 12px; background-color: rgba(0, 0, 0, 0.28); }
+ .poster-card .login-dialog-banner { color: #eceeed; font-family: "Figtree"; font-size: 12px; }
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 320px; spacing: 0; }
+-.login-dialog-button-box.prairie-password-field { width: 320px; height: 44px; padding: 0 5px 0 14px; spacing: 0; border: 0; border-radius: 13px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
+-.login-dialog-button-box.prairie-password-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++.login-dialog-button-box.prairie-password-field { width: 320px; height: 44px; padding: 0 5px 0 14px; spacing: 0; border: 0; border-radius: 13px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
++.login-dialog-button-box.prairie-password-field:focus-within { box-shadow: 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
+ .login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry { min-height: 34px; font-size: 14px; }
+ .prairie-login-submit-button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; border-radius: 9px; background-gradient-direction: vertical; background-gradient-start: #edeef0; background-gradient-end: #d8d9dc; color: #29292d; }
+ .prairie-login-submit-button:hover, .prairie-login-submit-button:focus { background-color: #f4f5f7; }
+@@ -710,7 +710,7 @@ $_gdm_dialog_width: 25em;
+ .prairie-login-error, .login-dialog-message-warning.prairie-login-error { margin-top: 8px; font-size: 12.5px; text-align: center; }
+ .poster-away { spacing: 8px; }
+ .poster-away-heading { font-family: "Figtree"; font-size: 11.5px; font-weight: 600; color: rgba(236, 238, 237, 0.42); }
+-.poster-away-well { padding: 4px; border-radius: 16px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++.poster-away-well { padding: 4px; border-radius: 16px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32); }
+ .poster-away-row { spacing: 12px; padding: 10px; }
+ .poster-away-row + .poster-away-row { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+ .poster-away-icon { icon-size: 32px; }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 91dd5b8..07ac5d9 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -399,17 +399,9 @@
+   box-shadow: none; }
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
+   border-radius: 9px;
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.36),
+-              inset 0 0 0 1px rgba(255,255,255,0.09),
+-              inset 0 -9px 15px rgba(10,14,20,0.15),
+-              0 1px 2px rgba(12,17,24,0.30),
+-              0 4px 9px -3px rgba(12,17,24,0.42); }
++  box-shadow: 0 4px 9px -3px rgba(12,17,24,0.42); }
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon {
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42),
+-              inset 0 0 0 1px rgba(255,255,255,0.12),
+-              inset 0 -9px 15px rgba(10,14,20,0.13),
+-              0 2px 3px rgba(12,17,24,0.28),
+-              0 6px 12px -3px rgba(12,17,24,0.46); }
++  box-shadow: 0 6px 12px -3px rgba(12,17,24,0.46); }
+ 
+ .dash-label.luma-surface-light {
+   border-color: rgba(39,48,56,0.10);
+@@ -870,11 +862,7 @@
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus .overview-icon,
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus:hover .overview-icon,
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile:active:focus .overview-icon {
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42),
+-              inset 0 0 0 1px rgba(255,255,255,0.12),
+-              inset 0 -9px 15px rgba(10,14,20,0.13),
+-              0 2px 3px rgba(12,17,24,0.28),
+-              0 6px 12px -3px rgba(12,17,24,0.46) !important; }
++  box-shadow: 0 6px 12px -3px rgba(12,17,24,0.46) !important; }
+ 
+ /* The hover overlay is the only transient status fill. It must not inherit a
+  * transition of its own after the JS actor has returned to zero opacity. */
+@@ -2452,8 +2440,7 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ /* Detached it is a thing sitting on the desktop rather than a thing hanging
+  * off the dock, so the shadow deepens to the desktop's window shadow. */
+ .luma-dockf-detached .luma-dockf-shadow {
+-  box-shadow: 0 18px 42px -14px rgba(25, 27, 31, 0.42),
+-              0 54px 110px -28px rgba(25, 27, 31, 0.56); }
++  box-shadow: 0 54px 110px -28px rgba(25, 27, 31, 0.56); }
+ .luma-dockf-surface.luma-surface-light {
+   border-color: rgba(255, 255, 255, 0.82); background-color: #fbfbfa; color: #283038; }
+ .luma-dockf-surface.luma-surface-frost {

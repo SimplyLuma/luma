@@ -143,6 +143,23 @@ Surrounding-text reports read only the tail before the caret, whatever the
 document's length. Headless at 360x808 scale 3: TOUCH_BEGIN handling median
 0.12 ms, p90 0.24 ms.
 
+**The grid is a cached texture; presses draw over it** (as LatinIME's
+KeyboardView keeps its keyboard in a buffer and overlays pressed keys). Each
+key layer has `offscreen_redirect = ALWAYS` and nothing inside it changes on
+a press: the pressed cap is one small group above the keyboard (a
+tray-coloured cover over the resting cap, a clone of the cap lowered by the
+travel with its edge clipped by as much, and the tint), and each character's
+preview label stays above its key, draws its text directly (no St.Label
+offscreen cache) and is shown by opacity. Everything a press can show (the
+letter layers, every preview, the pressed cap) is made when the layout is
+built and drawn once, with a whole-stage repaint, on a timer after the
+keyboard is shown; the show animation's onComplete is not relied on (a
+relayout stops it, which is how keycap7's warm-up never ran and each new
+letter's first preview cost a dozen GPU batches). The budget is at most 5
+Cogl journal flushes in a press frame, measured with Mutter's own profiler;
+headless it is 0. The vocabulary is built in idle slices of at most 3 ms, so
+a touch made while it loads never waits.
+
 **Pointers.** One tracker on the keyboard owns input; caps are drawn only.
 Each touch sequence (and the primary button) is a pointer bound to the key it
 pressed until it ends.
@@ -234,8 +251,16 @@ rollover order, gutter and margin taps, held and grabbed delete, long press
 then taps, sentence case under fast typing, a lock-screen password entry and
 an entry under a modal grab, adjustResize, a D-Bus activated stand-in
 feedbackd, IBus traffic, the press-path budget (TOUCH_BEGIN handling time, one
-geometry read and no restyle per press), a 300k-unit surrounding-text report
-and word-analysis time. Mutter's `/frame-clock/unpresented-rate`
+geometry read and no restyle per press), Cogl journal flushes per press frame
+(Mutter's profiler, through `profile-shell.py` and `frame-flushes.py`), no
+repaint of neighbouring keys (the cached grid), the first press of a freshly
+built keyboard, a 300k-unit surrounding-text report and word-analysis time.
+
+**Shadows.** St paints one shadow per actor and parses one layer; extra layers
+are dropped with "Ignoring excess values in shadow definition" and the last
+colour wins. `tools/check-shell-shadows.py` fails the Shell build on any
+multi-layer shadow in its stylesheets (patch 0299 reduced the poster, Quick
+Options and dock rules to their designed layer). Mutter's `/frame-clock/unpresented-rate`
 conformance test runs in the Mutter package's `%check`; Stevia's
 `test-osk-widget` gains `backspace_held`.
 

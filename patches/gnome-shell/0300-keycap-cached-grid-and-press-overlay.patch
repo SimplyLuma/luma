@@ -1,0 +1,507 @@
+From: Luma Developers
+Subject: [PATCH] Keycap: cached key grid, pressed cap drawn over it, nothing new on a first press
+
+On the Fold a press frame still cost about 18 ms of redraw with a median of
+22 Cogl journal flushes, and the first press of a word stalled one frame for
+185 ms. Measured headless with Mutter's own profiler, nearly every press
+frame ran a dozen journal flushes, all from the key preview: the preview of
+a character not shown before was laid out, rasterised and rendered into
+St.Label's offscreen text cache in the press frame, because the step meant
+to draw everything ahead of time after the keyboard opens ran from the show
+animation's onComplete, which a relayout stops, so it never ran.
+
+- Each key layer is cached as one texture (offscreen redirect) and a press
+  never invalidates it: the pressed cap is drawn over the grid by one small
+  group (a tray-coloured cover, a clone of the cap lowered by the Keycap
+  travel with its edge clipped by as much, and the tint), as LatinIME's
+  KeyboardView overlays pressed keys on its cached keyboard buffer.
+- Preview labels are made when the layout is built, draw their text
+  directly instead of through St.Label's offscreen cache, stay above their
+  own key and are only shown by opacity.
+- The warm-up runs on a timer after the keyboard is shown (and for a layout
+  built while open), repaints the whole stage for that frame, and draws the
+  letter layers, every preview and the pressed cap once.
+- The vocabulary is built in idle slices of at most 3 ms (two-letter index
+  buckets, a frequency list decoded in slices), so a touch made while it
+  loads never waits behind it.
+
+Headless at 360x808 scale 3: 0 journal flushes in every press frame (was
+13), press frames 2.8 ms median, 4.4 ms worst.
+
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -403,21 +403,17 @@ const Key = GObject.registerClass({
+         return this._consumed;
+     }
+ 
+-    // Keycap travel: the cap drops while its edge shadow shrinks by the
+-    // same amount, so the foot stays put; release eases it back.
+-    _capDown(button) {
+-        button.remove_transition('translation-y');
+-        button.translation_y = keycapVariant ? Keycap.keycap.geometry.travel : 0;
+-    }
+-
+-    _capUp(button) {
+-        if (!button.translation_y)
++    // High Contrast keeps the platform keyboard's pressed style; Keycap draws
++    // its pressed cap over the cached grid instead (Keyboard._showPressedCap),
++    // so the grid never changes on a press.
++    _platformPressed(pressed) {
++        if (keycapVariant)
+             return;
+-        button.ease({
+-            translation_y: 0,
+-            duration: Keycap.keycap.timing.release,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-        });
++        const button = this.keyButton;
++        if (pressed)
++            button.add_style_pseudo_class('active');
++        else
++            button.remove_style_pseudo_class('active');
+     }
+ 
+     _onDestroy() {
+@@ -447,15 +443,14 @@ const Key = GObject.registerClass({
+         this.keyButton._extendedKeys = this._extendedKeyboard;
+     }
+ 
+-    // The pointer tracker pressed this key: the cap goes down on the next
+-    // frame by a translation only. No style changes on a press: a pseudo
+-    // class restyles the cap and its labels, which on a phone re-shaped their
+-    // text and re-rendered their paint state in the press frame. The pressed
+-    // tint and the preview are the keyboard's (Keyboard._showPress).
++    // The pointer tracker pressed this key. Nothing in the key grid changes:
++    // the grid is one cached texture, and the pressed cap, tint and preview
++    // are drawn over it by the keyboard (Keyboard._showPress), as LatinIME's
++    // KeyboardView overlays pressed keys on its cached keyboard buffer.
+     press() {
+         this._consumed = false;
+         this._pressed = true;
+-        this._capDown(this.keyButton);
++        this._platformPressed(true);
+         this.emit('pressed');
+     }
+ 
+@@ -542,7 +537,7 @@ const Key = GObject.registerClass({
+ 
+     _finish() {
+         this._pressed = false;
+-        this._capUp(this.keyButton);
++        this._platformPressed(false);
+         this._hideSubkeys();
+         this.emit('released');
+         this._consumed = false;
+@@ -1249,6 +1244,24 @@ function idle() {
+     }));
+ }
+ 
++// The vocabulary is built in idle passes of at most VOCABULARY_SLICE_MS, so a
++// touch never waits behind it for more than that (the first words typed
++// after the Shell starts arrive while it is still loading).
++const VOCABULARY_SLICE_MS = 3;
++
++class Slicer {
++    constructor() {
++        this._start = GLib.get_monotonic_time();
++    }
++
++    async step() {
++        if (GLib.get_monotonic_time() - this._start < VOCABULARY_SLICE_MS * 1000)
++            return;
++        await idle();
++        this._start = GLib.get_monotonic_time();
++    }
++}
++
+ function readFile(file, compressed = false) {
+     return new Promise((resolve, reject) => file.load_contents_async(null, (_file, result) => {
+         try {
+@@ -1266,7 +1279,9 @@ function readFile(file, compressed = false) {
+                 Gio.OutputStreamSpliceFlags.CLOSE_TARGET, GLib.PRIORITY_LOW, null, (_out, spliced) => {
+                 try {
+                     output.splice_finish(spliced);
+-                    resolve(new TextDecoder().decode(output.steal_as_bytes().toArray()));
++                    // Decoded by the caller in slices: a whole frequency
++                    // list at once held the main loop for tens of ms.
++                    resolve(output.steal_as_bytes().toArray());
+                 } catch (error) {
+                     reject(error);
+                 }
+@@ -1348,6 +1363,7 @@ class WordSuggestions {
+     // Everything here runs in short idle slices: the vocabulary is built
+     // while the person types, never in one long step.
+     async _load() {
++        const slicer = new Slicer();
+         const names = [...new Set([...GLib.get_language_names()
+             .map(name => name.split('.')[0].split('@')[0])
+             .filter(name => name && name !== 'C' && name !== 'POSIX'), 'en_US'])];
+@@ -1363,10 +1379,10 @@ class WordSuggestions {
+                 } catch {
+                     continue;
+                 }
+-                for (const slice of Keycap.hunspellSlices(text)) {
++                for (const slice of Keycap.hunspellSlices(text, 200)) {
+                     suggester.addWords(slice);
+                     // eslint-disable-next-line no-await-in-loop
+-                    await idle();
++                    await slicer.step();
+                 }
+                 language = name.split('_')[0];
+                 found = true;
+@@ -1376,23 +1392,35 @@ class WordSuggestions {
+                 break;
+         }
+         for (const file of frequencyFiles(language)) {
+-            let text;
++            let bytes;
+             try {
+                 // eslint-disable-next-line no-await-in-loop
+-                text = await readFile(file, true);
++                bytes = await readFile(file, true);
+             } catch {
+                 continue;
+             }
+-            for (const slice of Keycap.frequencyEntries(text)) {
++            // Decoded in slices cut at UTF-8 character boundaries.
++            const decoder = new TextDecoder();
++            let text = '';
++            for (let offset = 0; offset < bytes.length;) {
++                let end = Math.min(bytes.length, offset + 128 * 1024);
++                while (end < bytes.length && (bytes[end] & 0xC0) === 0x80)
++                    end++;
++                text += decoder.decode(bytes.subarray(offset, end));
++                offset = end;
++                // eslint-disable-next-line no-await-in-loop
++                await slicer.step();
++            }
++            for (const slice of Keycap.frequencyEntries(text, 200)) {
+                 suggester.addFrequencies(slice);
+                 // eslint-disable-next-line no-await-in-loop
+-                await idle();
++                await slicer.step();
+             }
+             break;
+         }
+         for (const _step of suggester.sortSlices())
+             // eslint-disable-next-line no-await-in-loop
+-            await idle();
++            await slicer.step();
+         try {
+             suggester.restore(JSON.parse(await readFile(Gio.File.new_for_path(LEARNED_FILE))));
+         } catch {}
+@@ -1650,10 +1678,12 @@ export const Keyboard = GObject.registerClass({
+             this._setWindowInset(0);
+         this._reserve?.destroy();
+         this._reserve = null;
+-        this._tint?.destroy();
+-        this._tint = null;
++        this._pressLayer?.destroy();
++        this._pressLayer = this._pressCover = this._pressClone = this._tint = null;
+         if (this._hapticPaintId)
+             global.stage.disconnect(this._hapticPaintId);
++        if (this._warmTimeoutId)
++            GLib.source_remove(this._warmTimeoutId);
+         if (this._priorsIdleId)
+             GLib.source_remove(this._priorsIdleId);
+         Main.inputMethod.disconnectObject(this);
+@@ -2121,8 +2151,10 @@ export const Keyboard = GObject.registerClass({
+             setKeycapVariantClass(label);
+         if (this._reserve)
+             setKeycapVariantClass(this._reserve);
+-        if (this._tint)
++        if (this._pressLayer) {
++            setKeycapVariantClass(this._pressCover);
+             setKeycapVariantClass(this._tint);
++        }
+     }
+ 
+     _isSensitive() {
+@@ -2363,6 +2395,10 @@ export const Keyboard = GObject.registerClass({
+                     levelLayout, emojiVisible, purpose);
+             });
+ 
++            // The key grid is drawn once into its own texture and reused:
++            // a press draws over it and never invalidates it, so a frame
++            // paints the grid as one quad instead of every cap and label.
++            levelLayout.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS;
+             layers[currentLevel.level] = levelLayout;
+             layout.add_child(levelLayout);
+             levelLayout.hide();
+@@ -2802,14 +2838,14 @@ export const Keyboard = GObject.registerClass({
+             this._prefs[key.replaceAll('-', '_')] = this._keycapSettings.get_boolean(key);
+     }
+ 
+-    // What a press shows: the cap's tint and, for a character, the preview,
+-    // both placed from the cached cell (one stage-position read per press),
+-    // and the haptic tick. Neither restyles anything.
++    // What a press shows, drawn over the cached grid: the pressed cap and,
++    // for a character, the preview, both placed from the cached cell (one
++    // stage-position read per press), and the haptic tick.
+     _showPress(pointer, feedback = true) {
+         const {cell, page} = pointer;
+         const [px, py] = page.get_transformed_position();
+         const cap = {x: px + cell.cap.x, y: py + cell.cap.y, width: cell.cap.width, height: cell.cap.height};
+-        this._showTint(cap);
++        this._showPressedCap(cell, cap);
+         const text = cell.key.character;
+         if (text && text !== ' ' && [...text].length === 1)
+             this._showPreview(cap, text);
+@@ -2819,27 +2855,67 @@ export const Keyboard = GObject.registerClass({
+ 
+     _hidePress() {
+         this._hidePreview();
+-        if (this._tint)
+-            this._tint.opacity = 0;
++        this._releasePressedCap();
+     }
+ 
+-    // A pressed cap's tint: one actor laid out once per cap size, moved by
+-    // translation and shown by opacity, above the keys and below the preview.
+-    _showTint(cap) {
++    _ensurePressLayer() {
++        if (this._pressLayer)
++            return;
++        const layer = new Clutter.Actor({reactive: false, opacity: 0});
++        this._pressCover = new St.Widget({style_class: 'luma-keycap-press-cover'});
++        this._pressClone = new Clutter.Clone();
++        this._tint = new St.Widget({style_class: 'luma-keycap-press'});
++        for (const actor of [this._pressCover, this._pressClone, this._tint])
++            layer.add_child(actor);
++        setKeycapVariantClass(this._pressCover);
++        setKeycapVariantClass(this._tint);
++        Main.layoutManager.uiGroup.insert_child_above(layer, Main.layoutManager.keyboardBox);
++        this._pressLayer = layer;
++    }
++
++    // The pressed cap, one small actor group over the grid: a tray-coloured
++    // cover hides the cap at rest (face and edge), a clone of it sits
++    // `travel` lower with its edge clipped by as much (so the foot stays put,
++    // the Keycap travel), and the pressed tint lies on it. Only this group is
++    // moved and shown; it is laid out again only when the cap size changes.
++    _showPressedCap(cell, cap) {
+         if (!keycapVariant)
+             return;
+-        const uiGroup = Main.layoutManager.uiGroup;
+-        if (!this._tint) {
+-            this._tint = new St.Widget({style_class: 'luma-keycap-press', opacity: 0});
+-            setKeycapVariantClass(this._tint);
+-            uiGroup.insert_child_above(this._tint, Main.layoutManager.keyboardBox);
+-        }
+-        if (this._tintSize?.[0] !== cap.width || this._tintSize?.[1] !== cap.height) {
+-            this._tintSize = [cap.width, cap.height];
++        this._ensurePressLayer();
++        const {travel, edge} = Keycap.keycap.geometry;
++        for (const actor of [this._pressClone, this._tint])
++            actor.remove_transition('translation-y');
++        if (this._pressSize?.[0] !== cap.width || this._pressSize?.[1] !== cap.height) {
++            this._pressSize = [cap.width, cap.height];
++            this._pressCover.set_size(cap.width, cap.height + edge);
++            this._pressClone.set_size(cap.width, cap.height);
++            this._pressClone.set_clip(0, 0, cap.width, cap.height + edge - travel);
+             this._tint.set_size(cap.width, cap.height);
+         }
+-        this._tint.set_translation(cap.x, cap.y + Keycap.keycap.geometry.travel, 0);
+-        this._tint.opacity = 255;
++        if (this._pressClone.source !== cell.key.keyButton)
++            this._pressClone.source = cell.key.keyButton;
++        this._pressClone.translation_y = travel;
++        this._tint.translation_y = travel;
++        this._pressLayer.set_translation(cap.x, cap.y, 0);
++        this._pressLayer.opacity = 255;
++    }
++
++    // Releasing eases the cap back up (keycap.timing.release), then hides
++    // the group; a press in the meantime takes it over.
++    _releasePressedCap() {
++        if (!this._pressLayer?.opacity)
++            return;
++        const duration = Keycap.keycap.timing.release;
++        this._tint.ease({translation_y: 0, duration, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        this._pressClone.ease({
++            translation_y: 0,
++            duration,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: () => {
++                if (this._pressClone?.translation_y === 0 && this._pressLayer)
++                    this._pressLayer.opacity = 0;
++            },
++        });
+     }
+ 
+     // The key preview above a pressed cap. It is laid out once per cap
+@@ -2859,7 +2935,11 @@ export const Keyboard = GObject.registerClass({
+                 this._previewLayer = new Clutter.Actor({reactive: false});
+                 Main.layoutManager.uiGroup.add_child(this._previewLayer);
+             }
+-            label = new St.Label({style_class: 'luma-keycap-preview', text, opacity: 0});
++            // Drawn directly, not through St.Label's offscreen text cache:
++            // showing and moving a preview then renders nothing offscreen
++            // (each re-render of that cache cost about a dozen GPU batches).
++            label = new St.Label({style_class: 'luma-keycap-preview', text, opacity: 0,
++                offscreen_redirect: 0});
+             setKeycapVariantClass(label);
+             this._previewLayer.add_child(label);
+             this._previews.set(text, label);
+@@ -2890,29 +2970,30 @@ export const Keyboard = GObject.registerClass({
+         let previewX = Math.round(x + (width - previewWidth) / 2);
+         if (monitor)
+             previewX = Math.clamp(previewX, monitor.x, monitor.x + monitor.width - previewWidth);
+-        label.set_translation(previewX, Math.round(y - previewHeight - 4), 0);
++        const previewY = Math.round(y - previewHeight - 4);
++        // A label stays where its key is: a press only changes its opacity.
++        if (label._previewX !== previewX || label._previewY !== previewY) {
++            label._previewX = previewX;
++            label._previewY = previewY;
++            label.set_translation(previewX, previewY, 0);
++        }
+         label.opacity = 255;
+         this._preview = label;
+     }
+ 
+-    // Makes the preview labels of a layer's characters ahead of time, a few
+-    // per idle pass, so no press creates one.
++    // Makes the preview labels of every letter layer's characters when the
++    // layout is built, so no press creates one (they are drawn once by
++    // _warmLayers after the keyboard opens).
+     _preparePreviews() {
+-        if (this._previewsIdleId || !this._layers)
++        if (!this._layers || !keycapVariant)
+             return;
+-        const pending = [...new Set(['default', 'shift'].flatMap(level => this._layers[level]?.get_children() ?? [])
+-            .map(key => key.character).filter(text => text && text !== ' ' && [...text].length === 1))]
+-            .filter(text => !this._previews?.has(text));
+-        if (pending.length === 0 || !keycapVariant)
+-            return;
+-        this._previewsIdleId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+-            for (const text of pending.splice(0, 4))
+-                this._previewLabel(text);
+-            if (pending.length > 0 && !this._destroyed)
+-                return GLib.SOURCE_CONTINUE;
+-            this._previewsIdleId = 0;
+-            return GLib.SOURCE_REMOVE;
+-        });
++        for (const level of ['default', 'shift']) {
++            for (const key of this._layers[level]?.get_children() ?? []) {
++                const text = key.character;
++                if (text && text !== ' ' && [...text].length === 1)
++                    this._previewLabel(text);
++            }
++        }
+     }
+ 
+     _hidePreview() {
+@@ -2921,9 +3002,6 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _destroyPreviews() {
+-        if (this._previewsIdleId)
+-            GLib.source_remove(this._previewsIdleId);
+-        this._previewsIdleId = 0;
+         this._previewLayer?.destroy();
+         this._previewLayer = null;
+         this._previews = null;
+@@ -3323,8 +3401,15 @@ export const Keyboard = GObject.registerClass({
+         this._updateLayout(group, purpose);
+         this._setActiveLevel('default');
+         this._syncTools();
+-        if (this._keyboardVisible)
++        this._preparePreviews();
++        if (this._keyboardVisible) {
+             this._relayout();
++            // A new layout while open is drawn ahead of its first press too.
++            global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++                this._warmLayers();
++                return GLib.SOURCE_REMOVE;
++            });
++        }
+     }
+ 
+     _onGroupChanged() {
+@@ -3550,6 +3635,16 @@ export const Keyboard = GObject.registerClass({
+         });
+         this._keyboardVisible = true;
+         this.emit('visibility-changed');
++        // Draw what a press shows once the keyboard is in place, whether or
++        // not the show animation ran to its end (a relayout or gesture can
++        // stop it, and then its onComplete never runs).
++        if (this._warmTimeoutId)
++            GLib.source_remove(this._warmTimeoutId);
++        this._warmTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Keycap.keycap.timing.show + 50, () => {
++            this._warmTimeoutId = 0;
++            this._warmLayers();
++            return GLib.SOURCE_REMOVE;
++        });
+     }
+ 
+     // Everything a key press shows for the first time is drawn once, nearly
+@@ -3558,9 +3653,10 @@ export const Keyboard = GObject.registerClass({
+     // preview. The first press of a session, or the first swap to
+     // a layer, then lays out and rasterises nothing new in its frame.
+     _warmLayers() {
+-        if (!this._layers || this._warmedLayers === this._layers)
++        if (!this._layers || this._warmedLayers === this._layers || !this._keyboardVisible)
+             return;
+         this._warmedLayers = this._layers;
++        this._preparePreviews();
+         const cold = ['default', 'shift'].map(level => this._layers[level])
+             .filter(layer => layer && layer !== this._currentPage && !layer.visible);
+         for (const layer of cold) {
+@@ -3568,29 +3664,47 @@ export const Keyboard = GObject.registerClass({
+             layer.show();
+         }
+         const cell = this._currentPage && this._cellsFor(this._currentPage).find(c => c.key.character);
+-        if (cell) {
++        if (cell)
+             this._showPress({cell, page: this._currentPage}, false);
+-            if (this._preview)
+-                this._preview.opacity = 1;
+-            if (this._tint)
+-                this._tint.opacity = 1;
++        // Each preview is drawn once where it will show: above its key (the
++        // shift layer shares the letter layer's geometry).
++        const shown = [];
++        if (cell && this._prefs.key_preview && keycapVariant) {
++            const [px, py] = this._currentPage.get_transformed_position();
++            const cells = new Map(this._cellsFor(this._currentPage).filter(c => c.key.character)
++                .map(c => [c.key.character.toLowerCase(), c]));
++            for (const label of this._previews?.values() ?? []) {
++                const home = cells.get(label.text.toLowerCase());
++                if (!home)
++                    continue;
++                this._showPreview({x: px + home.cap.x, y: py + home.cap.y,
++                    width: home.cap.width, height: home.cap.height}, label.text);
++                label.opacity = 1;
++                shown.push(label);
++            }
+         }
++        if (this._pressLayer)
++            this._pressLayer.opacity = 1;
++        // The whole stage is repainted for this one frame, so nothing just
++        // made (and not yet allocated when its redraw was queued) is culled
++        // before it is drawn and its glyphs are in the glyph cache.
++        global.stage.queue_redraw();
+         const id = global.stage.connect('after-paint', () => {
+             global.stage.disconnect(id);
+-            if (this._tint)
+-                this._tint.opacity = 0;
++            if (this._pressLayer)
++                this._pressLayer.opacity = 0;
++            for (const label of shown)
++                label.opacity = 0;
+             for (const layer of cold) {
+                 layer.opacity = 255;
+                 if (layer !== this._currentPage)
+                     layer.hide();
+             }
+-            this._hidePreview();
+         });
+     }
+ 
+     _animateShowComplete() {
+         this._warmLayers();
+-        this._preparePreviews();
+         if (this._windowsResized)
+             this._showReserve(false);
+         const keyboardBox = Main.layoutManager.keyboardBox;

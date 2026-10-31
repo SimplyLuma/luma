@@ -246,6 +246,14 @@ async function work() {
         .map(a => a.get_theme_node());
     let restyled = 0;
     let presses = 0;
+    // Mutter's own profiler records the paint of each press frame, with the
+    // Cogl journal flushes inside it (each one a separate GPU batch).
+    const capture = `${out}/press.syscap`;
+    const profiler = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/profile-shell.py`,
+        capture, '9'], Gio.SubprocessFlags.STDOUT_PIPE);
+    const profilerStdout = new Gio.DataInputStream({base_stream: profiler.get_stdout_pipe()});
+    await new Promise(resolve => profilerStdout.read_line_async(GLib.PRIORITY_DEFAULT, null, () => resolve()));
+    await sleep(300);
     for (const letter of 'thequickbrownfoxjumpsoverthelazydog') {
         const key = keyFor(letter);
         const [x, y] = centre(key);
@@ -266,6 +274,18 @@ async function work() {
     keyboard.handleKeyEvent = handle;
     for (const [name, original] of geometry)
         Clutter.Actor.prototype[name] = original;
+    await new Promise(resolve => profiler.wait_async(null, () => resolve()));
+    const pressTimes = `${out}/press-times.txt`;
+    GLib.file_set_contents(pressTimes, tapTimes.filter((_t, i) => i % 2 === 0).join('\n'));
+    const [, analysis] = Gio.Subprocess.new(['python3', `${source}/tests/gnome-shell/presentation/frame-flushes.py`,
+        capture, pressTimes], Gio.SubprocessFlags.STDOUT_PIPE).communicate_utf8(null, null);
+    const pressPaints = JSON.parse(analysis || '{"presses": []}').presses.slice(1);
+    const worstFlushes = Math.max(...pressPaints.map(p => p.flushes));
+    const flushCounts = pressPaints.map(p => p.flushes);
+    check('a press frame draws in at most 5 GPU batches (Cogl journal flushes)',
+        pressPaints.length > 20 && worstFlushes <= 5,
+        `flushes per press frame: median ${[...flushCounts].sort((a, b) => a - b)[Math.floor(flushCounts.length / 2)]}, ` +
+        `worst ${worstFlushes} over ${pressPaints.length} (${flushCounts.join(' ')})`);
     await sleep(300);
     const sortedPress = [...pressHandling].sort((a, b) => a - b);
     const pressMedian = sortedPress[Math.floor(sortedPress.length / 2)] ?? Infinity;
@@ -308,6 +328,86 @@ async function work() {
     check('a stand-in feedbackd was activated and asked for a quiet tick per press',
         await until(() => read(feedbackLog).split('\n').filter(l => l.includes('button-pressed quiet')).length >= 30, 3000),
         `${read(feedbackLog).split('\n').filter(l => l.includes('button-pressed')).length} feedback calls; direct call ${direct}`);
+
+    // 1b. A press draws over the cached key grid and never invalidates it:
+    // keys around the pressed one (the row the preview overlaps, its
+    // neighbours) are not painted again for a press or its release.
+    {
+        keyboard._setActiveLevel('default');
+        keyboard._latched = true;
+        await sleep(300);
+        const probes = [];
+        for (const letter of 'qwertyuiopadfghjkl') {
+            const probe = new PaintProbe();
+            keyFor(letter).keyButton.add_effect(probe);
+            probes.push(probe);
+        }
+        await sleep(500);
+        probes.forEach(probe => (probe.samples = []));
+        const [sx, sy] = centre(keyFor('s'));
+        let gridPaints = 0;
+        for (let i = 0; i < 5; i++) {
+            down(0, sx, sy);
+            await sleep(70);
+            up(0);
+            await sleep(150);
+        }
+        gridPaints = probes.reduce((sum, probe) => sum + probe.samples.length, 0);
+        probes.forEach(probe => probe.actor?.remove_effect(probe));
+        check('a press and its release repaint no other key (the grid stays cached)', gridPaints === 0,
+            `${gridPaints} paints of the 18 neighbouring keys over 5 taps on s`);
+        await sleep(300);
+    }
+
+    // 1c. The first press of a freshly built keyboard creates and renders
+    // nothing new: everything a press shows was made and drawn once when the
+    // keyboard was built and opened.
+    {
+        a11y.set_boolean('screen-keyboard-enabled', false);
+        await until(() => !Main.keyboard.keyboardActor, 3000);
+        a11y.set_boolean('screen-keyboard-enabled', true);
+        await until(() => Main.keyboard.keyboardActor, 3000);
+        window.activate(global.get_current_time());
+        Main.keyboard.open(Main.layoutManager.primaryIndex);
+        await until(() => Main.keyboard.visible, 3000);
+        await sleep(1500);
+        keyboard = Main.keyboard.keyboardActor;
+        const before = descendants(Main.layoutManager.uiGroup, () => true).length;
+        const firstFrames = [];
+        let started = 0;
+        const ids = [
+            global.stage.connect('before-paint', () => (started = now())),
+            global.stage.connect('after-paint', () => firstFrames.push({at: started, ms: (now() - started) / 1000})),
+        ];
+        const handle = keyboard.handleKeyEvent;
+        let firstHandling = null;
+        keyboard.handleKeyEvent = function (event) {
+            const start = now();
+            try {
+                return handle.call(this, event);
+            } finally {
+                if (event.type() === Clutter.EventType.TOUCH_BEGIN && firstHandling === null)
+                    firstHandling = (now() - start) / 1000;
+            }
+        };
+        const key = keyFor('t');
+        const [tx, ty] = centre(key);
+        const pressedAt = now();
+        down(0, tx, ty);
+        await sleep(70);
+        const after = descendants(Main.layoutManager.uiGroup, () => true).length;
+        up(0);
+        await sleep(300);
+        keyboard.handleKeyEvent = handle;
+        ids.forEach(id => global.stage.disconnect(id));
+        const pressFrame = firstFrames.find(frame => frame.at >= pressedAt);
+        check('the first press of a fresh keyboard creates no actor', after === before,
+            `${after - before} actors created by the first press`);
+        check('the first press of a fresh keyboard is handled and painted within a frame',
+            firstHandling !== null && firstHandling < 2 && pressFrame && pressFrame.ms < 16.7,
+            `TOUCH_BEGIN ${firstHandling?.toFixed(3)} ms, press frame ${pressFrame?.ms.toFixed(2)} ms`);
+        await sleep(300);
+    }
 
     // 2. Commit at once: a release commits within the event that ended it,
     // also with the main loop kept busy at the frame clock's priority (as

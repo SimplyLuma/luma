@@ -278,6 +278,10 @@ for (const [needle, message] of [
     ['Keycap.textBeforeCursor(text, cursor)', 'surrounding reports read only the tail'],
     ['this._letterPriors?.word === this._word', 'letter priors are computed off the key path'],
     ['_lockedWithoutEntry()', 'the locked screen opens the keyboard only for a visible entry'],
+    ['levelLayout.offscreen_redirect = Clutter.OffscreenRedirect.ALWAYS', 'key layers are cached as one texture'],
+    ['_showPressedCap(cell, cap)', 'the pressed cap is drawn over the cached grid'],
+    ['offscreen_redirect: 0', 'previews render no offscreen text cache'],
+    ['this._warmTimeoutId = GLib.timeout_add', 'the warm-up runs even when the show animation is stopped'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
 ])
     assert(keyboard.includes(needle), message);
@@ -290,6 +294,7 @@ for (const [needle, message] of [
     ["global.stage.connectObject(\n            'captured-event', this._onCapturedEvent.bind(this), this);\n        this.keyButton", 'alternatives take no stage grab'],
     ['setKeycapVariantClass(this._preview);\n        this._preview.text', 'no per-press restyle of the preview'],
     ["this.keyButton.add_style_pseudo_class('active');", 'a press restyles no cap'],
+    ['    _capDown(button) {', 'a press moves nothing inside the cached grid'],
     ["[...text].slice(0, cursor).join('')", 'no whole-document copy per surrounding report'],
     ['this._suggester.prefixMass(word + cell.letter)', 'no word-model lookups on a press'],
 ])

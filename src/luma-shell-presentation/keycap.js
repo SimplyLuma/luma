@@ -435,16 +435,65 @@ export class WordSuggester {
         this.addWords(words);
     }
 
+    // The prefix index is bucketed by the first two letters, so sorting one
+    // bucket while the vocabulary loads is a short step (a one-letter bucket
+    // holds a whole letter's words and took tens of milliseconds on a
+    // phone).
     _add(lower) {
         if (this._known.has(lower))
             return;
         this._known.add(lower);
-        const key = lower[0];
+        const key = [...lower].slice(0, 2).join('');
         let bucket = this._buckets.get(key);
-        if (!bucket)
+        if (!bucket) {
             this._buckets.set(key, bucket = {words: [], sorted: true});
+            this._bucketKeys = null;
+        }
         bucket.words.push(lower);
         bucket.sorted = false;
+    }
+
+    // The sorted buckets that can hold words starting with `lower`, in word
+    // order.
+    _bucketsFor(lower) {
+        const chars = [...lower];
+        let keys;
+        if (chars.length >= 2) {
+            keys = [chars[0] + chars[1]];
+        } else {
+            this._bucketKeys ??= [...this._buckets.keys()].sort();
+            keys = this._bucketKeys.filter(key => key.startsWith(chars[0]));
+        }
+        const buckets = [];
+        for (const key of keys) {
+            const bucket = this._buckets.get(key);
+            if (!bucket)
+                continue;
+            if (!bucket.sorted) {
+                bucket.words.sort();
+                bucket.sorted = true;
+            }
+            buckets.push(bucket.words);
+        }
+        return buckets;
+    }
+
+    // Words starting with `lower`, in order, at most `cap` of them.
+    *_withPrefix(lower, cap) {
+        let n = 0;
+        for (const sorted of this._bucketsFor(lower)) {
+            let low = 0, high = sorted.length;
+            while (low < high) {
+                const middle = (low + high) >> 1;
+                if (sorted[middle] < lower) low = middle + 1;
+                else high = middle;
+            }
+            for (let i = low; i < sorted.length && sorted[i].startsWith(lower); i++) {
+                if (n++ >= cap)
+                    return;
+                yield sorted[i];
+            }
+        }
     }
 
     addWords(words) {
@@ -524,24 +573,10 @@ export class WordSuggester {
     }
 
     _completions(lower, limit) {
-        const bucket = this._buckets.get(lower[0]);
-        if (!bucket)
-            return [];
-        if (!bucket.sorted) {
-            bucket.words.sort();
-            bucket.sorted = true;
-        }
-        const sorted = bucket.words;
-        let low = 0, high = sorted.length;
-        while (low < high) {
-            const middle = (low + high) >> 1;
-            if (sorted[middle] < lower) low = middle + 1;
-            else high = middle;
-        }
         const found = [];
-        for (let i = low; i < sorted.length && found.length < 400 && sorted[i].startsWith(lower); i++) {
-            if (sorted[i] !== lower)
-                found.push(sorted[i]);
+        for (const word of this._withPrefix(lower, 401)) {
+            if (word !== lower)
+                found.push(word);
         }
         const weight = new Map(found.map(word => [word, this._frequencyOf(word)]));
         return found.sort((a, b) => weight.get(b) - weight.get(a) || a.length - b.length || (a < b ? -1 : 1))
@@ -632,23 +667,9 @@ export class WordSuggester {
         const lower = (prefix ?? '').toLowerCase();
         if (!lower)
             return 0;
-        const bucket = this._buckets.get(lower[0]);
-        if (!bucket)
-            return 0;
-        if (!bucket.sorted) {
-            bucket.words.sort();
-            bucket.sorted = true;
-        }
-        const sorted = bucket.words;
-        let low = 0, high = sorted.length;
-        while (low < high) {
-            const middle = (low + high) >> 1;
-            if (sorted[middle] < lower) low = middle + 1;
-            else high = middle;
-        }
         let mass = 0;
-        for (let i = low, n = 0; i < sorted.length && n < cap && sorted[i].startsWith(lower); i++, n++)
-            mass += Math.max(1, this._frequencyOf(sorted[i]));
+        for (const word of this._withPrefix(lower, cap))
+            mass += Math.max(1, this._frequencyOf(word));
         return mass;
     }
 }
