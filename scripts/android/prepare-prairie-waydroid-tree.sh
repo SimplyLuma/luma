@@ -20,6 +20,8 @@ lineage_root="$source_root/lineage-sdk"
 framework_root="$source_root/frameworks/base"
 native_root="$source_root/frameworks/native"
 device_root="$source_root/device/waydroid/waydroid"
+jelly_root="$source_root/packages/apps/Jelly"
+jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
 vendor_extra_root="$source_root/vendor/extra"
 vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 libhidl_root="$source_root/system/libhidl"
@@ -155,6 +157,8 @@ write_state() {
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
     printf 'DEVICE_OFFICIAL_HEAD=%s\n' "$device_official_head"
+    printf 'JELLY_OFFICIAL_HEAD=%s\n' "$jelly_official_head"
+    printf 'JELLY_PATCH_SHA=%s\n' "$(patch_sha "$jelly_patch")"
     printf 'HARDWARE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_patch")"
     printf 'HARDWARE_POINTER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_pointer_patch")"
     printf 'HARDWARE_FRAME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_frame_patch")"
@@ -250,6 +254,7 @@ if [ ! -f "$state_file" ]; then
   framework_official_head=$(git -C "$framework_root" rev-parse HEAD)
   native_official_head=$(git -C "$native_root" rev-parse HEAD)
   device_official_head=$(git -C "$device_root" rev-parse HEAD)
+  jelly_official_head=$(git -C "$jelly_root" rev-parse HEAD)
   vendor_extra_official_head=$(git -C "$vendor_extra_root" rev-parse HEAD)
   libhidl_official_head=$(git -C "$libhidl_root" rev-parse HEAD)
 
@@ -299,6 +304,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  git -C "$jelly_root" apply "$jelly_patch"
+  commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
   git -C "$vendor_extra_root" apply "$vendor_extra_patch"
   commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
   git -C "$libhidl_root" apply "$libhidl_patch"
@@ -343,6 +350,7 @@ lineage_official_head=${LINEAGE_OFFICIAL_HEAD:-$(git -C "$lineage_root" rev-pars
 framework_official_head=$FRAMEWORK_OFFICIAL_HEAD
 native_official_head=${NATIVE_OFFICIAL_HEAD:-$(git -C "$native_root" rev-parse HEAD)}
 device_official_head=$DEVICE_OFFICIAL_HEAD
+jelly_official_head=${JELLY_OFFICIAL_HEAD:-$(git -C "$jelly_root" rev-parse HEAD)}
 vendor_extra_official_head=${VENDOR_EXTRA_OFFICIAL_HEAD:-$(git -C "$vendor_extra_root" rev-parse HEAD)}
 libhidl_official_head=${LIBHIDL_OFFICIAL_HEAD:-$(git -C "$libhidl_root" rev-parse HEAD)}
 
@@ -510,6 +518,13 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ]; then
   changed=1
 fi
 
+if [ "$(patch_sha "$jelly_patch")" != "${JELLY_PATCH_SHA:-}" ]; then
+  git -C "$jelly_root" reset --hard -q "$jelly_official_head"
+  git -C "$jelly_root" clean -fdq
+  git -C "$jelly_root" apply "$jelly_patch"
+  commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
+  changed=1
+fi
 if [ "$(patch_sha "$libhidl_patch")" != "${LIBHIDL_PATCH_SHA:-}" ]; then
   git -C "$libhidl_root" reset --hard -q "$libhidl_official_head"
   git -C "$libhidl_root" clean -fdq

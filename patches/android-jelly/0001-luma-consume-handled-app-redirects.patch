@@ -1,0 +1,13 @@
+diff --git a/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt b/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt
+--- a/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt
++++ b/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt
+@@ -51,7 +51,8 @@ internal class WebClient(private val urlBarLayout: UrlBarLayout) : WebViewClient() {
+             if (!webViewExt.isIncognito
+                 && needsLookup
+                 && startActivityForUrl(view, url)
+-                && !request.isRedirect
++                // A successful app handoff consumes redirects too. Loading the
++                // callback in WebView afterward produces UNKNOWN_URL_SCHEME.
+             ) {
+                 return true
+             } else if (webViewExt.requestHeaders.isNotEmpty()) {

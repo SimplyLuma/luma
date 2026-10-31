@@ -1,5 +1,12 @@
 # Android integration qualification
 
+`browser-callback-consumption.py --source /prepared/Jelly/app/src/main/java/org/lineageos/jelly/webview/WebClient.kt --patch patches/android-jelly/0001-luma-consume-handled-app-redirects.patch --kotlinc /pinned/kotlinc --java /pinned/java`
+compiles the actual navigation decision with explicit Android substitutes. It
+checks consumption after a handled redirect, header fallback, incognito,
+subframes, repeated URLs and gestures. The unchanged decision must fail with
+exit42. All callback values are synthetic; this does not qualify actual Android
+intent resolution, account authentication or native window activation.
+
 `desktop-canvas.cpp` checks the production logical desktop bounds helper and
 settings request layout, including negative monitor positions, invalid spans,
 and package names. Compile with C++17 and the native patch include directory.

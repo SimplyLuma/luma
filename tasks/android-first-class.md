@@ -56,6 +56,26 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 CURRENT — native settings/resize source prepared; incremental image build next:
+- Current build r441/40c3cf35 ACTIVE, source9d0b562d0; guard r441/62cb6736,
+  monitor r441/371068ea. Private window-controls-build-r441/progress.log.
+  Recovery succeeded and normal preparation refreshed patches; Android build
+  setup/glob generation active at01:42Z. No new image exported/deployed yet.
+  r437 failed its safe comparison before reset: readonly444 versus644 files.
+  r442/21989b37 checks Git executable bits and exact bytes/paths/link targets;
+  its changed-content/executable/extra-path/link controls passed. r437 VM/profile
+  and policy restored. All failed attempts retained.
+- User reports NFL callback reaches app on retry despite browser error. Installed
+  browser is org.lineageos.jelly, pinned e9990a1a25ce305c1ac24a46c81b39231ed23381.
+  Exact WebClient source launches app then returns false on redirects. New
+  android-jelly patch consumes successful handoffs, preserving existing privacy
+  and handler checks. r448/59eb8421 actual Kotlin decision PASSED synthetic
+  redirect/header/incognito/subframe/repeat/gesture/web cases; unchanged control
+  failed exact42. Android dependencies substituted, no real login performed.
+  Browser source hooks added to clean/incremental preparation; compiled browser
+  package and device update pending. r444 partial read lacked root Android.bp;
+  r445 found app/Android.bp. Test setup r446 wrong compiler path and r447 source
+  permissions failed without source/runtime changes, corrected in r448.
+  Never copy/log live authorization callback query data from user screenshots.
 - Current ACTIVE build r437/d8b0f57f, guard r437/1afd5d00, monitor
   r437/5f4e232d. Immutable9d0b562d0/input
   SHA7cd03f9ff18aea273e578948f094f8157b757613c58b3a50fde78dfca18c33b1.

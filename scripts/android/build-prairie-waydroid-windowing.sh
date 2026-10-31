@@ -17,6 +17,7 @@ window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-de
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
+jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
 vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
 hardware_root="$source_root/hardware/waydroid"
@@ -212,6 +213,7 @@ if [ "$incremental" = 0 ]; then
   # than one Android application is open.
   git -C "$source_root/frameworks/native" apply "$native_patch"
   git -C "$device_root" apply "$device_patch"
+  git -C "$source_root/packages/apps/Jelly" apply "$jelly_patch"
   git -C "$source_root/vendor/extra" apply "$vendor_extra_patch"
   git -C "$source_root/system/libhidl" apply "$libhidl_patch"
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
