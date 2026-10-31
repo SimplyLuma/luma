@@ -1,0 +1,2159 @@
+From: Luma Developers
+Subject: [PATCH] Keycap key path: no stall, commit at once, press-order input
+
+The on-screen keyboard's key path rebuilt after an on-device investigation
+(Pixel 9 Pro Fold, 360x808 at scale 3), where each press or release made
+the next frame take about 270 ms:
+
+- keyboardBox no longer tracks hover. A touch entered and left it on every
+  key, and the :hover change restyled the whole keyboard, so St re-rendered
+  the keyboard's CPU-blurred inset background (Keycap sheet) twice per tap.
+  The open keyboard is never restyled or resized per key: _relayout() writes
+  only what changed, open() on a visible keyboard does nothing, the key
+  preview changes only its text, translation and opacity, the suggestion
+  strip reuses its buttons, and the pressed-cap, preview and letter layers
+  are drawn once, nearly transparent, after the keyboard opens.
+- A key's whole cell is its target. One pointer tracker on the keyboard
+  owns input (caps are drawn only): taps in gutters and margins go to the
+  nearest key after a learned per-row touch correction, and near a letter
+  boundary the word's prefix mass can move the boundary by at most a fifth
+  of a key. A new press first finishes older held keys, so overlapping taps
+  type in press order.
+- A release commits at once at default priority, one commit per key event;
+  a second key in the same main-loop turn follows Mutter's text-input done
+  (CLUTTER_PRIORITY_EVENTS + 2), never at idle priority. Shell entries (the
+  unlock password, search) take text synchronously. Typing therefore works
+  while the frame clock keeps the main loop busy.
+- Long press and delete repeat are decided at frame time from event
+  timestamps, never by a GLib timer alone, and a repeat is bound to a live
+  touch: release, cancel, a grab taking the touch (seen by an event filter),
+  unmap, hide, focus loss and a layer change end it.
+- Alternatives open on the held key with no stage grab; the release types
+  the chosen one, and a menu opened from the strip passes on the press that
+  closes it, so no popup swallows a tap.
+- Sentence case is decided from the keyboard's own view of the text before
+  the caret (application reports that echo its sends are ignored), and the
+  layer never changes while a key is down. Shift's double tap and the
+  double-space period use event times.
+- In Mobile and Tablet the keyboard keeps its height clear through Mutter's
+  input panel inset, so applications shrink above it (Android adjustResize)
+  with the keyboard colour underneath while they resize; Desktop and the
+  Shell's own entries keep the window slide.
+- Haptics call feedbackd's TriggerFeedback with D-Bus activation and back
+  off quietly when it is missing or fails.
+- With a keyboard-layout (xkb) input source, IBus is not sent the caret
+  rectangle or surrounding text on every keystroke, and typing-booster is
+  no longer preloaded.
+
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -30,7 +30,11 @@ const EMOJI_PAGE_SEPARATION = 32;
+ /* KeyContainer puts keys in a grid where a 1:1 key takes this size */
+ const KEY_SIZE = 2;
+ 
+-const KEY_RELEASE_TIMEOUT = 50;
++// While a key is down the pointer tracker looks at least this often whether
++// its touch is still alive, and it never sends more than this many repeats
++// at once after a late frame (missed repeats are dropped, not bunched).
++const POINTER_WATCHDOG_MS = 250;
++const MAX_REPEATS_PER_TICK = 2;
+ 
+ // Keycap (config/shared/design-tokens.json `keycap`): the shared keyboard
+ // design, also used by Stevia on Phosh images. Its sheet is generated from the
+@@ -152,6 +156,8 @@ class KeyContainer extends St.Widget {
+         this._gridLayout.attach(key,
+             left * KEY_SIZE, top * KEY_SIZE,
+             width * KEY_SIZE, height * KEY_SIZE);
++        // The row a key sits in, for per-row touch correction.
++        key.row = top - 1;
+ 
+         this._currentCol += leftOffset + width;
+         this._maxCols = Math.max(this._currentCol, this._maxCols);
+@@ -170,29 +176,60 @@ class Suggestions extends St.BoxLayout {
+             orientation: Clutter.Orientation.HORIZONTAL,
+             x_align: Clutter.ActorAlign.CENTER,
+         });
++        this._entries = [];
++        this._shown = '';
+         this.show();
+     }
+ 
++    // Entries are gathered (clear, add...) and drawn by sync(): a strip that
++    // did not change touches no actor, and one that did reuses its buttons,
++    // so typing never rebuilds the strip.
+     add(word, callback, styleClass = null) {
+-        const button = new St.Button({label: word});
+-        if (styleClass)
+-            button.add_style_class_name(styleClass);
+-        button.connect('button-press-event', () => {
+-            callback();
+-            return Clutter.EVENT_STOP;
+-        });
+-        button.connect('touch-event', (actor, event) => {
+-            if (event.type() !== Clutter.EventType.TOUCH_BEGIN)
+-                return Clutter.EVENT_PROPAGATE;
+-
+-            callback();
+-            return Clutter.EVENT_STOP;
+-        });
+-        this.add_child(button);
++        this._entries.push({word, callback, styleClass});
+     }
+ 
+     clear() {
+-        this.remove_all_children();
++        this._entries = [];
++    }
++
++    get count() {
++        return this._entries.length;
++    }
++
++    sync() {
++        const buttons = this.get_children();
++        this._entries.forEach((entry, i) => {
++            let button = buttons[i];
++            if (!button) {
++                button = new St.Button({can_focus: false});
++                button.connect('button-press-event', () => {
++                    button._callback?.();
++                    return Clutter.EVENT_STOP;
++                });
++                button.connect('touch-event', (actor, event) => {
++                    if (event.type() !== Clutter.EventType.TOUCH_BEGIN)
++                        return Clutter.EVENT_PROPAGATE;
++                    button._callback?.();
++                    return Clutter.EVENT_STOP;
++                });
++                this.add_child(button);
++            }
++            button._callback = entry.callback;
++        });
++        const shown = JSON.stringify(this._entries.map(entry => [entry.word, entry.styleClass]));
++        if (shown === this._shown)
++            return;
++        this._shown = shown;
++        this.get_children().slice(this._entries.length).forEach(button => button.destroy());
++        this._entries.forEach((entry, i) => {
++            const button = this.get_child_at_index(i);
++            if (button.label !== entry.word)
++                button.label = entry.word;
++            if (entry.styleClass === 'suggested')
++                button.add_style_class_name('suggested');
++            else
++                button.remove_style_class_name('suggested');
++        });
+     }
+ 
+     setVisible(visible) {
+@@ -202,7 +239,8 @@ class Suggestions extends St.BoxLayout {
+ });
+ 
+ // A menu opened from the keyboard: it has no menu manager, so a press outside
+-// closes it and the keyboard keeps the input focus.
++// closes it and the keyboard keeps the input focus. That press still does what
++// it was for (a key types), so no tap is lost to a menu.
+ class KeyboardPopup extends PopupMenu.PopupMenu {
+     constructor(actor) {
+         super(actor, 0.5, St.Side.BOTTOM);
+@@ -225,10 +263,14 @@ class KeyboardPopup extends PopupMenu.PopupMenu {
+             this.actor.contains(targetActor))
+             return Clutter.EVENT_PROPAGATE;
+ 
+-        if (event.type() === Clutter.EventType.BUTTON_RELEASE || event.type() === Clutter.EventType.TOUCH_END)
+-            this.close(true);
+-
+-        return Clutter.EVENT_STOP;
++        const type = event.type();
++        if (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.TOUCH_BEGIN)
++            return Clutter.EVENT_PROPAGATE;
++        this.close(true);
++        // The button that opened the menu toggles it closed; anything else
++        // gets its press.
++        return this.sourceActor === targetActor || this.sourceActor.contains(targetActor)
++            ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+     }
+ 
+     open(animate) {
+@@ -285,6 +327,10 @@ class LanguageSelectionPopup extends KeyboardPopup {
+     }
+ }
+ 
++// A key of the grid. It draws itself and says what it means; it handles no
++// input of its own. The keyboard's pointer tracker (Keyboard._onKeyEvent)
++// decides which key a touch is for over the whole cell, presses and releases
++// it in press order, and times holds from event timestamps.
+ const Key = GObject.registerClass({
+     Signals: {
+         'long-press': {},
+@@ -297,11 +343,14 @@ const Key = GObject.registerClass({
+     },
+ }, class Key extends St.BoxLayout {
+     _init(params, extendedKeys = []) {
+-        const {label, iconName, commitString, keyval, hasAction, hint} = {keyval: 0, ...params};
++        const {label, iconName, commitString, keyval, hasAction, hint, action} = {keyval: 0, ...params};
+         super._init({style_class: 'key-container'});
+ 
+         this._keyval = parseInt(keyval, 16);
++        this._commitString = commitString ?? null;
++        this.action = action ?? null;
+         this._consumed = false;
++        this._pressed = false;
+         this.keyButton = this._makeKey(commitString, label, iconName, hint);
+ 
+         /* Add the key in a container, so keys can be padded without losing
+@@ -312,8 +361,7 @@ const Key = GObject.registerClass({
+ 
+         this._extendedKeys = extendedKeys;
+         this._extendedKeyboard = null;
+-        this._pressTimeoutId = 0;
+-        this._capturedPress = false;
++        this._alternatives = [];
+         this._hasAction = hasAction;
+     }
+ 
+@@ -332,14 +380,23 @@ const Key = GObject.registerClass({
+             this._icon.icon_name = name;
+     }
+ 
++    // Text this key types, when it is a plain character key.
++    get character() {
++        return !this._hasAction && !this._keyval && this._commitString ? this._commitString : null;
++    }
++
++    get hasAlternatives() {
++        return this._extendedKeys.length > 0;
++    }
++
++    get pressed() {
++        return this._pressed;
++    }
++
+     // A gesture on the key (a swipe on space or delete) replaces its tap:
+     // releasing it then commits nothing and opens no alternatives.
+     consume() {
+         this._consumed = true;
+-        if (this._pressTimeoutId !== 0) {
+-            GLib.source_remove(this._pressTimeoutId);
+-            this._pressTimeoutId = 0;
+-        }
+     }
+ 
+     get consumed() {
+@@ -364,12 +421,11 @@ const Key = GObject.registerClass({
+     }
+ 
+     _onDestroy() {
++        this.cancel();
+         if (this._boxPointer) {
+             this._boxPointer.destroy();
+             this._boxPointer = null;
+         }
+-
+-        this.cancel();
+     }
+ 
+     _ensureExtendedKeysPopup() {
+@@ -386,115 +442,127 @@ const Key = GObject.registerClass({
+ 
+         // Adds style to existing keyboard style to avoid repetition
+         this._boxPointer.add_style_class_name('keyboard-subkeys-boxpointer');
++        setKeycapVariantClass(this._boxPointer);
+         this._getExtendedKeys();
+         this.keyButton._extendedKeys = this._extendedKeyboard;
+     }
+ 
+-    _press(button) {
++    // The pointer tracker pressed this key: the cap goes down on the next
++    // frame, with no style recomputed beyond the cap's own state.
++    press() {
+         this._consumed = false;
+-        if (button === this.keyButton) {
+-            this._pressTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
+-                KEY_LONG_PRESS_TIME,
+-                () => {
+-                    this._pressTimeoutId = 0;
+-
+-                    this.emit('long-press');
+-
+-                    if (this._extendedKeys.length > 0) {
+-                        this._touchPressSlot = null;
+-                        this._ensureExtendedKeysPopup();
+-                        this.keyButton.set_hover(false);
+-                        this.keyButton.fake_release();
+-                        this._showSubkeys();
+-                    }
+-                });
+-        }
+-
+-        this.emit('pressed');
+         this._pressed = true;
++        this.keyButton.add_style_pseudo_class('active');
++        this._capDown(this.keyButton);
++        this.emit('pressed');
+     }
+ 
+-    _release(button, commitString) {
+-        if (this._pressTimeoutId !== 0) {
+-            GLib.source_remove(this._pressTimeoutId);
+-            this._pressTimeoutId = 0;
+-        }
++    drag(dx, dy) {
++        if (this._pressed)
++            this.emit('drag', dx, dy);
++    }
+ 
+-        if (this._pressed && !this._consumed) {
+-            if (this._keyval && button === this.keyButton)
+-                this.emit('keyval', this._keyval);
+-            else if (commitString)
+-                this.emit('commit', commitString);
+-            else if (!this._hasAction)
+-                console.error('Need keyval, commitString or an action');
+-        }
++    // Held long enough (judged by the tracker from event times): the key's
++    // own long-press action, and its alternatives when it has any. Returns
++    // whether the alternatives opened.
++    longPress() {
++        if (!this._pressed || this._consumed)
++            return false;
++        this.emit('long-press');
++        if (this._extendedKeys.length === 0)
++            return false;
++        this._ensureExtendedKeysPopup();
++        this._boxPointer.open(BoxPointer.PopupAnimation.NONE);
++        this.keyButton.connectObject('notify::mapped', () => {
++            if (!this.keyButton.is_mapped())
++                this._hideSubkeys();
++        }, this);
++        this.highlightAlternative(0);
++        return true;
++    }
+ 
+-        this.emit('released');
+-        this._hideSubkeys();
+-        this._pressed = false;
+-        this._consumed = false;
++    get alternativesOpen() {
++        return !!this._boxPointer?.visible && this._alternatives.length > 0;
+     }
+ 
+-    cancel() {
+-        if (this._pressTimeoutId !== 0) {
+-            GLib.source_remove(this._pressTimeoutId);
+-            this._pressTimeoutId = 0;
+-        }
+-        this._touchPressSlot = null;
+-        this.keyButton.set_hover(false);
+-        this.keyButton.fake_release();
+-        this._capUp(this.keyButton);
++    // The alternative under a stage point, or the nearest one along the
++    // popup when the finger is anywhere around it; the first one otherwise.
++    alternativeAt(x, y) {
++        if (!this.alternativesOpen)
++            return -1;
++        const cells = this._alternatives.map((button, index) => {
++            const box = button.get_transformed_extents();
++            return {index, x1: box.origin.x, y1: box.origin.y,
++                x2: box.origin.x + box.size.width, y2: box.origin.y + box.size.height};
++        });
++        const popup = this._boxPointer.get_transformed_extents();
++        const slack = popup.size.height;
++        if (y < popup.origin.y - slack || y > popup.origin.y + popup.size.height + 2 * slack)
++            return this._highlighted ?? 0;
++        return Keycap.nearestCell(cells, x, Math.min(Math.max(y, cells[0].y1), cells[0].y2))?.index ?? 0;
+     }
+ 
+-    _onCapturedEvent(actor, event) {
+-        const type = event.type();
+-        const press = type === Clutter.EventType.BUTTON_PRESS || type === Clutter.EventType.TOUCH_BEGIN;
+-        const release = type === Clutter.EventType.BUTTON_RELEASE || type === Clutter.EventType.TOUCH_END;
+-        const targetActor = global.stage.get_event_actor(event);
++    highlightAlternative(index) {
++        this._alternatives.forEach((button, i) => {
++            if (i === index)
++                button.add_style_pseudo_class('active');
++            else
++                button.remove_style_pseudo_class('active');
++        });
++        this._highlighted = index;
++    }
+ 
+-        // An event without an actor (a cancelled touch sequence) ends the
+-        // alternatives interaction but is not the popup's to consume.
+-        if (!targetActor) {
+-            if (type === Clutter.EventType.TOUCH_CANCEL)
+-                this._hideSubkeys();
+-            return Clutter.EVENT_PROPAGATE;
++    // The finger lifted: type the key (or the chosen alternative) unless a
++    // gesture consumed it.
++    release(alternative = -1) {
++        if (!this._pressed)
++            return;
++        if (!this._consumed) {
++            if (alternative >= 0 && this._alternatives[alternative])
++                this.emit('commit', this._alternatives[alternative].extendedKey);
++            else if (this._keyval)
++                this.emit('keyval', this._keyval);
++            else if (this._commitString)
++                this.emit('commit', this._commitString);
++            else if (!this._hasAction)
++                console.error('Need keyval, commitString or an action');
+         }
++        this._finish();
++    }
+ 
+-        if (targetActor === this._boxPointer.bin ||
+-            this._boxPointer.bin.contains(targetActor))
+-            return Clutter.EVENT_PROPAGATE;
+-
+-        if (press)
+-            this._capturedPress = true;
+-        else if (release && this._capturedPress)
+-            this._hideSubkeys();
+-
+-        return Clutter.EVENT_STOP;
++    // The touch was taken away (cancelled, the keyboard hid): no text.
++    cancel() {
++        if (!this._pressed)
++            return;
++        this._consumed = true;
++        this._finish();
+     }
+ 
+-    _showSubkeys() {
+-        setKeycapVariantClass(this._boxPointer);
+-        this._boxPointer.open(BoxPointer.PopupAnimation.FULL);
+-        global.stage.connectObject(
+-            'captured-event', this._onCapturedEvent.bind(this), this);
+-        this.keyButton.connectObject('notify::mapped', () => {
+-            if (!this.keyButton.is_mapped())
+-                this._hideSubkeys();
+-        }, this);
++    _finish() {
++        this._pressed = false;
++        this.keyButton.remove_style_pseudo_class('active');
++        this._capUp(this.keyButton);
++        this._hideSubkeys();
++        this.emit('released');
++        this._consumed = false;
+     }
+ 
+     _hideSubkeys() {
+-        if (this._boxPointer)
+-            this._boxPointer.close(BoxPointer.PopupAnimation.FULL);
+-        global.stage.disconnectObject(this);
++        if (this._boxPointer?.visible)
++            this._boxPointer.close(BoxPointer.PopupAnimation.NONE);
+         this.keyButton.disconnectObject(this);
+-        this._capturedPress = false;
++        this._highlighted = null;
+     }
+ 
+     _makeKey(commitString, label, icon, hint = null) {
++        // Drawn only: the keyboard's pointer tracker owns the input, so the
++        // whole cell is the target and no cap tracks hover.
+         const button = new St.Button({
+             style_class: 'keyboard-key',
+             x_expand: true,
++            reactive: false,
++            track_hover: false,
++            can_focus: false,
+         });
+ 
+         if (icon) {
+@@ -533,59 +601,6 @@ const Key = GObject.registerClass({
+             button.set_label(commitString);
+         }
+ 
+-        button.connect('button-press-event', (actor, event) => {
+-            [this._pressX, this._pressY] = event.get_coords();
+-            this._press(button, commitString);
+-            button.add_style_pseudo_class('active');
+-            this._capDown(button);
+-            return Clutter.EVENT_STOP;
+-        });
+-        button.connect('motion-event', (actor, event) => {
+-            if (this._pressed && button === this.keyButton &&
+-                (event.get_state() & Clutter.ModifierType.BUTTON1_MASK) !== 0) {
+-                const [x, y] = event.get_coords();
+-                this.emit('drag', x - this._pressX, y - this._pressY);
+-            }
+-            return Clutter.EVENT_PROPAGATE;
+-        });
+-        button.connect('button-release-event', () => {
+-            this._release(button, commitString);
+-            button.remove_style_pseudo_class('active');
+-            this._capUp(button);
+-            return Clutter.EVENT_STOP;
+-        });
+-        button.connect('touch-event', (actor, event) => {
+-            const slot = event.get_event_sequence().get_slot();
+-
+-            if (!this._touchPressSlot &&
+-                event.type() === Clutter.EventType.TOUCH_BEGIN) {
+-                this._touchPressSlot = slot;
+-                [this._pressX, this._pressY] = event.get_coords();
+-                this._press(button, commitString);
+-                button.add_style_pseudo_class('active');
+-                this._capDown(button);
+-            } else if (event.type() === Clutter.EventType.TOUCH_UPDATE) {
+-                if (this._touchPressSlot === slot && this._pressed && button === this.keyButton) {
+-                    const [x, y] = event.get_coords();
+-                    this.emit('drag', x - this._pressX, y - this._pressY);
+-                }
+-            } else if (event.type() === Clutter.EventType.TOUCH_END ||
+-                       event.type() === Clutter.EventType.TOUCH_CANCEL) {
+-                if (!this._touchPressSlot ||
+-                    this._touchPressSlot === slot) {
+-                    if (event.type() === Clutter.EventType.TOUCH_CANCEL)
+-                        this.consume();
+-                    this._release(button, commitString);
+-                    button.remove_style_pseudo_class('active');
+-                    this._capUp(button);
+-                }
+-
+-                if (this._touchPressSlot === slot)
+-                    this._touchPressSlot = null;
+-            }
+-            return Clutter.EVENT_STOP;
+-        });
+-
+         return button;
+     }
+ 
+@@ -600,6 +615,7 @@ const Key = GObject.registerClass({
+ 
+             key.extendedKey = extendedKey;
+             this._extendedKeyboard.add_child(key);
++            this._alternatives.push(key);
+ 
+             key.set_size(...this.keyButton.allocation.get_size());
+             this.keyButton.connect('notify::allocation',
+@@ -1222,6 +1238,8 @@ const EmojiSelection = GObject.registerClass({
+ const HUNSPELL_DIRS = ['/usr/share/hunspell', '/usr/share/myspell'];
+ const LEARNED_FILE = GLib.build_filenamev([GLib.get_user_data_dir(), 'luma', 'keycap-words.json']);
+ let sharedSuggester = null;
++// The loaded vocabulary, once ready: key hit testing reads it synchronously.
++let readySuggester = null;
+ 
+ function idle() {
+     return new Promise(resolve => GLib.idle_add(GLib.PRIORITY_LOW, () => {
+@@ -1275,10 +1293,16 @@ function frequencyFiles(language) {
+ 
+ class WordSuggestions {
+     analyse(word) {
+-        sharedSuggester ??= this._load();
++        this.prepare();
+         return sharedSuggester.then(suggester => suggester.analyse(word));
+     }
+ 
++    // How likely the word being typed continues with `letter` (a prefix's
++    // word mass), or null while the vocabulary is still loading.
++    prefixMass(prefix) {
++        return readySuggester ? readySuggester.prefixMass(prefix) : null;
++    }
++
+     async suggest(word) {
+         return (await this.analyse(word)).suggestions;
+     }
+@@ -1314,7 +1338,10 @@ class WordSuggestions {
+ 
+     // Start reading the vocabulary before the first word is typed.
+     prepare() {
+-        sharedSuggester ??= this._load();
++        if (sharedSuggester)
++            return;
++        sharedSuggester = this._load();
++        sharedSuggester.then(suggester => (readySuggester = suggester)).catch(console.error);
+     }
+ 
+     // Everything here runs in short idle slices: the vocabulary is built
+@@ -1495,6 +1522,12 @@ export class KeyboardManager extends Signals.EventEmitter {
+         if (!actor)
+             return false;
+ 
++        // The key grid's pointer tracker takes its own events; anything
++        // else in the keyboard (the strip, panels) gets them as before.
++        if (actor === this._keyboard || this._keyboard._currentPage?.contains(actor)) {
++            this._keyboard.handleKeyEvent(event);
++            return true;
++        }
+         if (Main.layoutManager.keyboardBox.contains(actor) ||
+             !!actor._extendedKeys || !!actor.extendedKey) {
+             actor.event(event, true);
+@@ -1566,23 +1599,27 @@ export const Keyboard = GObject.registerClass({
+         this._spaceTap = 0;
+         this._spaceSteps = 0;
+         this._word = '';
+-        this._recent = '';
++        // The text before the caret as this keyboard knows it: sentence case
++        // and double-space periods are decided from it without a round trip.
++        this._mirror = new Keycap.TextMirror();
++        this._mirrorKnown = false;
+         this._wordGeneration = 0;
+         this._wordCandidates = [];
+         this._analysis = null;
+         this._lastCorrection = null;
+         this._suggester = new WordSuggestions();
+         this._suggester.prepare();
+-        this._deleteTimer = 0;
+         this._deleteSelected = 0;
+         this._clipboardGeneration = 0;
+         this._wasSensitive = false;
+-        this._feedbackAvailable = false;
++        // feedbackd is D-Bus activated on the first key; if it is missing or
++        // fails, haptics wait until it appears or a while has passed.
++        this._feedbackRetryAt = 0;
+         this._feedbackWatch = Gio.bus_watch_name(Gio.BusType.SESSION,
+             'org.sigxcpu.Feedback', Gio.BusNameWatcherFlags.NONE,
+-            () => (this._feedbackAvailable = true),
+-            () => (this._feedbackAvailable = false));
++            () => (this._feedbackRetryAt = 0), null);
+ 
++        this._initPointers();
+         this._setupKeyboard();
+ 
+         this.connect('destroy', this._onDestroy.bind(this));
+@@ -1599,17 +1636,26 @@ export const Keyboard = GObject.registerClass({
+     _onFocusPositionChanged(focusTracker) {
+         const rect = focusTracker.getCurrentRect();
+         this.setCursorLocation(focusTracker.currentWindow, rect.x, rect.y, rect.width, rect.height);
+-        this._updateLevelFromHints(true);
+     }
+ 
+     _onDestroy() {
+         this._destroyed = true;
+         this._clearKeyboardRestTimer();
+-        this._clearDeleteTimer();
+-        if (this._surroundingTextId) {
+-            Main.inputMethod.disconnect(this._surroundingTextId);
+-            this._surroundingTextId = 0;
+-        }
++        this._cancelPointers();
++        this._watchPointers(false);
++        for (const id of [this._tickTimeoutId, this._reserveTimeoutId])
++            if (id)
++                GLib.source_remove(id);
++        for (const id of [this._tickLaterId, this._endLaterId])
++            if (id)
++                global.compositor.get_laters().remove(id);
++        this._tickTimeoutId = this._reserveTimeoutId = this._tickLaterId = this._endLaterId = 0;
++        this._reserveWindow?.disconnectObject(this);
++        if (this._windowsResized)
++            this._setWindowInset(0);
++        this._reserve?.destroy();
++        this._reserve = null;
++        Main.inputMethod.disconnectObject(this);
+         Gio.bus_unwatch_name(this._feedbackWatch);
+         this._keycapSettings.disconnectObject(this);
+         global.display.get_selection().disconnectObject(this);
+@@ -1646,11 +1692,326 @@ export const Keyboard = GObject.registerClass({
+         }
+     }
+ 
++    // The key grid's input (LatinIME's PointerTracker, Stevia's rollover).
++    // Each touch sequence, and the primary mouse button, is one pointer bound
++    // to the key it pressed until it ends:
++    // - press: the key whose whole cell is under the touch (after per-row
++    //   touch correction; the nearest key in a gap or the keyboard's own
++    //   margins) goes down at once. A newer press first finishes the older
++    //   pointers in press order, so overlapping taps type in the order they
++    //   were pressed;
++    // - release: the key types at once, at default priority, as one commit;
++    // - long press and repeat are decided at frame time (after every input
++    //   event queued before that frame) from event timestamps, so a stalled
++    //   frame never turns a tap into a hold, and a release whose own time
++    //   says tap is a tap;
++    // - an event filter sees the end of every tracked sequence even when a
++    //   grab or gesture takes it from the keyboard; unmap, hide, focus loss,
++    //   a new layout and the frame-time watchdog cancel what is still down.
++    // Nothing here touches style or allocation beyond the pressed cap.
++    _initPointers() {
++        this._pointers = new Map();
++        this._pointerSerial = 0;
++        this._tickTimeoutId = 0;
++        this._tickLaterId = 0;
++        this._endLaterId = 0;
++        this._pointerFilterId = 0;
++        this._pendingLevel = null;
++        this._keyEvent = {downMs: 0, upMs: 0};
++        this._touchCorrection = new Keycap.TouchCorrection();
++        this._lastLearned = null;
++        for (const signal of ['touch-event', 'button-press-event', 'button-release-event', 'motion-event'])
++            this.connect(signal, (_actor, event) => this.handleKeyEvent(event));
++        this.connect('notify::mapped', () => {
++            if (!this.mapped)
++                this._cancelPointers();
++        });
++    }
++
++    _pointerId(event) {
++        const sequence = event.get_event_sequence();
++        if (sequence)
++            return `touch:${sequence.get_slot()}`;
++        const type = event.type();
++        if ((type === Clutter.EventType.BUTTON_PRESS || type === Clutter.EventType.BUTTON_RELEASE) &&
++            event.get_button() !== Clutter.BUTTON_PRIMARY)
++            return null;
++        if (type === Clutter.EventType.MOTION &&
++            (event.get_state() & Clutter.ModifierType.BUTTON1_MASK) === 0)
++            return null;
++        return 'pointer';
++    }
++
++    // Also called by KeyboardManager.maybeHandleEvent while another actor
++    // holds a grab.
++    handleKeyEvent(event) {
++        const id = this._pointerId(event);
++        if (id === null)
++            return Clutter.EVENT_PROPAGATE;
++        switch (event.type()) {
++        case Clutter.EventType.TOUCH_BEGIN:
++        case Clutter.EventType.BUTTON_PRESS:
++            return this._pointerDown(id, event);
++        case Clutter.EventType.TOUCH_UPDATE:
++        case Clutter.EventType.MOTION:
++            return this._pointerMove(id, event);
++        case Clutter.EventType.TOUCH_END:
++        case Clutter.EventType.BUTTON_RELEASE:
++            return this._pointerUp(id, event, false);
++        case Clutter.EventType.TOUCH_CANCEL:
++            return this._pointerUp(id, event, true);
++        default:
++            return Clutter.EVENT_PROPAGATE;
++        }
++    }
++
++    _keysActive() {
++        return this._keyboardVisible && this.mapped && !this._panel && !!this._currentPage?.visible;
++    }
++
++    _orderedPointers() {
++        return [...this._pointers.values()].sort((a, b) => a.serial - b.serial);
++    }
++
++    // The key a touch at stage (x, y) is for: geometry over whole cells, the
++    // row's learned bias, and near a letter boundary the word being typed.
++    _hitKey(x, y) {
++        const cells = [];
++        for (const key of this._currentPage.get_children()) {
++            if (!(key instanceof Key) || !key.visible)
++                continue;
++            const box = key.get_transformed_extents();
++            const letter = key.character && Keycap.isWordCharacter(key.character) ? key.character : null;
++            cells.push({key, row: key.row ?? 0, letter, x1: box.origin.x, y1: box.origin.y,
++                x2: box.origin.x + box.size.width, y2: box.origin.y + box.size.height});
++        }
++        if (cells.length === 0)
++            return null;
++        // The suggestion strip above the keys is not part of the grid.
++        if (y < Math.min(...cells.map(cell => cell.y1)))
++            return null;
++        const raw = Keycap.nearestCell(cells, x, y);
++        const [cx, cy] = this._touchCorrection.correct(raw.row, x, y, raw.x2 - raw.x1, raw.y2 - raw.y1);
++        let prior = null;
++        if (this._completionAllowed() && this._modifiers.size === 0 &&
++            this._suggester.prefixMass('a') !== null) {
++            const word = this._word;
++            const cache = new Map();
++            prior = cell => {
++                if (!cache.has(cell.letter))
++                    cache.set(cell.letter, this._suggester.prefixMass(word + cell.letter) ?? 0);
++                return cache.get(cell.letter);
++            };
++        }
++        return Keycap.chooseCell(cells, cx, cy, prior);
++    }
++
++    _pointerDown(id, event) {
++        const target = global.stage.get_event_actor(event);
++        if (target !== this && !this._currentPage?.contains(target))
++            return Clutter.EVENT_PROPAGATE;
++        if (this._pointers.has(id))
++            return Clutter.EVENT_STOP;
++        const timeUs = event.get_time_us();
++        // Press order: whatever is still down types before this touch does.
++        for (const pointer of this._orderedPointers())
++            this._finishPointer(pointer, timeUs, pointer.alternatives);
++        this._applyPendingLevel();
++        if (!this._keysActive())
++            return Clutter.EVENT_PROPAGATE;
++        const [x, y] = event.get_coords();
++        const cell = this._hitKey(x, y);
++        if (!cell)
++            return Clutter.EVENT_PROPAGATE;
++        const pointer = {
++            id, cell, key: cell.key, page: this._currentPage, serial: ++this._pointerSerial,
++            downUs: timeUs, downX: x, downY: y, x, y,
++            longPressed: false, alternatives: false,
++            repeat: cell.key.action === 'delete' ? {sent: 0} : null,
++        };
++        this._pointers.set(id, pointer);
++        this._watchPointers(true);
++        this._keyEvent = {downMs: timeUs / 1000, upMs: 0};
++        pointer.key.press();
++        this._scheduleTick();
++        return Clutter.EVENT_STOP;
++    }
++
++    _pointerMove(id, event) {
++        const pointer = this._pointers.get(id);
++        if (!pointer)
++            return Clutter.EVENT_PROPAGATE;
++        [pointer.x, pointer.y] = event.get_coords();
++        if (pointer.alternatives) {
++            pointer.key.highlightAlternative(pointer.key.alternativeAt(pointer.x, pointer.y));
++        } else if (!pointer.repeat?.sent) {
++            pointer.key.drag(pointer.x - pointer.downX, pointer.y - pointer.downY);
++            // A swipe on delete selects words instead of repeating.
++            if (pointer.key.consumed)
++                pointer.repeat = null;
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    _pointerUp(id, event, cancelled) {
++        const pointer = this._pointers.get(id);
++        if (!pointer) {
++            // A pointer finished early (a newer press typed it): its end is
++            // still the keyboard's.
++            return global.stage.get_event_actor(event) === this
++                ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
++        }
++        [pointer.x, pointer.y] = event.get_coords();
++        this._finishPointer(pointer, event.get_time_us(), cancelled);
++        return Clutter.EVENT_STOP;
++    }
++
++    // Ends a pointer: its key types (or, cancelled, does not). Afterwards a
++    // layer change waiting for the keys to come up applies.
++    _finishPointer(pointer, timeUs, cancelled) {
++        if (this._pointers.get(pointer.id) !== pointer)
++            return;
++        this._pointers.delete(pointer.id);
++        const key = pointer.key;
++        const heldMs = Math.max(0, timeUs - pointer.downUs) / 1000;
++        this._keyEvent = {downMs: pointer.downUs / 1000, upMs: timeUs / 1000};
++        if (cancelled || key.get_parent() === null) {
++            key.cancel();
++        } else if (pointer.alternatives && Keycap.isLongPress(heldMs)) {
++            key.release(key.alternativeAt(pointer.x, pointer.y));
++        } else {
++            // A release whose own time says tap is a tap, even when a late
++            // frame already showed the alternatives.
++            const letter = !key.consumed && key.character && !pointer.alternatives;
++            key.release();
++            if (letter) {
++                const cell = pointer.cell;
++                this._lastLearned = this._touchCorrection.learn(cell.row,
++                    (pointer.downX - (cell.x1 + cell.x2) / 2) / (cell.x2 - cell.x1),
++                    (pointer.downY - (cell.y1 + cell.y2) / 2) / (cell.y2 - cell.y1));
++            } else if (key.action !== 'delete') {
++                this._lastLearned = null;
++            }
++        }
++        if (this._pointers.size === 0) {
++            this._watchPointers(false);
++            this._applyPendingLevel();
++        }
++        this._scheduleTick();
++    }
++
++    _cancelPointers() {
++        if (!this._pointers)
++            return;
++        for (const pointer of this._orderedPointers())
++            this._finishPointer(pointer, GLib.get_monotonic_time(), true);
++    }
++
++    // The end of every tracked sequence is seen here before any actor or
++    // grab: if the keyboard does not get it (a grab took the touch), the
++    // pointer still ends, so no key stays down and nothing repeats.
++    _watchPointers(watch) {
++        if (watch && !this._pointerFilterId) {
++            this._pointerFilterId = Clutter.Event.add_filter(global.stage, event => {
++                const type = event.type();
++                if (type === Clutter.EventType.TOUCH_END || type === Clutter.EventType.TOUCH_CANCEL ||
++                    type === Clutter.EventType.BUTTON_RELEASE) {
++                    const pointer = this._pointers.get(this._pointerId(event));
++                    if (pointer) {
++                        pointer.ended = {timeUs: event.get_time_us(),
++                            cancelled: type === Clutter.EventType.TOUCH_CANCEL};
++                        this._queueEndCheck();
++                    }
++                }
++                return Clutter.EVENT_PROPAGATE;
++            });
++        } else if (!watch && this._pointerFilterId) {
++            Clutter.Event.remove_filter(this._pointerFilterId);
++            this._pointerFilterId = 0;
++        }
++    }
++
++    _queueEndCheck() {
++        if (this._endLaterId)
++            return;
++        this._endLaterId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._endLaterId = 0;
++            for (const pointer of this._orderedPointers()) {
++                if (pointer.ended)
++                    this._finishPointer(pointer, pointer.ended.timeUs, pointer.ended.cancelled);
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    // Long presses, repeats and the watchdog run at frame time: a timer only
++    // asks for the next frame, and the decision is made there, after every
++    // input event that arrived before it.
++    _scheduleTick() {
++        if (this._tickTimeoutId) {
++            GLib.source_remove(this._tickTimeoutId);
++            this._tickTimeoutId = 0;
++        }
++        if (this._pointers.size === 0 || this._destroyed)
++            return;
++        const now = GLib.get_monotonic_time();
++        let next = POINTER_WATCHDOG_MS;
++        for (const pointer of this._pointers.values()) {
++            const held = (now - pointer.downUs) / 1000;
++            if (pointer.repeat)
++                next = Math.min(next, Keycap.nextRepeatAt(pointer.repeat.sent) - held);
++            else if (!pointer.longPressed)
++                next = Math.min(next, Keycap.keycap.timing.long_press - held);
++        }
++        this._tickTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(0, Math.ceil(next)), () => {
++            this._tickTimeoutId = 0;
++            if (!this._tickLaterId) {
++                this._tickLaterId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++                    this._tickLaterId = 0;
++                    this._tick();
++                    return GLib.SOURCE_REMOVE;
++                });
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _tick() {
++        const now = GLib.get_monotonic_time();
++        for (const pointer of this._orderedPointers()) {
++            // Watchdog: a key whose layer, keyboard or panel went away, or
++            // whose sequence ended unseen, is not down any more.
++            if (pointer.ended || pointer.page !== this._currentPage || !this._keysActive()) {
++                this._finishPointer(pointer, pointer.ended?.timeUs ?? now, !pointer.ended || pointer.ended.cancelled);
++                continue;
++            }
++            const held = (now - pointer.downUs) / 1000;
++            if (pointer.repeat) {
++                const due = Keycap.repeatsDue(held);
++                let steps = Math.min(due - pointer.repeat.sent, MAX_REPEATS_PER_TICK);
++                if (steps > 0)
++                    pointer.key.consume();
++                for (; steps > 0; steps--)
++                    this._deleteBackward(Keycap.deleteMode(held, this._isSensitive()));
++                pointer.repeat.sent = Math.max(pointer.repeat.sent, due);
++            } else if (!pointer.longPressed && Keycap.isLongPress(held)) {
++                pointer.longPressed = true;
++                pointer.alternatives = pointer.key.longPress();
++            }
++        }
++        this._scheduleTick();
++    }
++
+     _setupKeyboard() {
+         Main.layoutManager.keyboardBox.add_child(this);
+         Main.layoutManager.trackChrome(this);
+ 
+         this._keyboardController = new KeyboardController();
++        // Every text change this keyboard sends updates its own view of the
++        // text before the caret at once.
++        this._keyboardController.onText = (count, text) => this._mirror.apply(count, text);
++        Main.inputMethod.connectObject('surrounding-text-set',
++            this._onSurroundingText.bind(this), this);
+ 
+         this._currentPage = null;
+ 
+@@ -1717,6 +2078,8 @@ export const Keyboard = GObject.registerClass({
+         setKeycapVariantClass(this);
+         if (this._preview)
+             setKeycapVariantClass(this._preview);
++        if (this._reserve)
++            setKeycapVariantClass(this._reserve);
+     }
+ 
+     _isSensitive() {
+@@ -1753,7 +2116,7 @@ export const Keyboard = GObject.registerClass({
+                 Main.inputMethod.commitPreeditText();
+             this._syncPrivacy();
+         } else if (key === 'auto-capitalise') {
+-            this._updateLevelFromHints(false);
++            this._updateLevelFromHints();
+         }
+     }
+ 
+@@ -1761,23 +2124,30 @@ export const Keyboard = GObject.registerClass({
+         this._contentHint = contentHint;
+         this._resetWord();
+         this._syncPrivacy();
+-        this._updateLevelFromHints(false);
++        this._updateLevelFromHints();
+     }
+ 
+     _onLetterLevel() {
++        const level = this._pendingLevel?.level;
++        if (level)
++            return level === 'default' || level === 'shift';
+         return !!this._currentPage && (this._currentPage === this._layers['default'] ||
+             this._currentPage === this._layers['shift']);
+     }
+ 
+     // Sentence case follows the field's purpose and hints (Keycap policy),
+     // never touches the symbol levels and never applies to sensitive text.
+-    _updateLevelFromHints(userInputHappened) {
++    // It is decided at once from the keyboard's own view of the text before
++    // the caret (TextMirror), never from a surrounding-text round trip, and
++    // the layer changes only while no key is down (_setActiveLevel).
++    _updateLevelFromHints() {
+         // If the latch is enabled, avoid level changes
+-        if (this._latched)
++        if (this._latched || !this._layers)
+             return;
+ 
+         if ((this._contentHint & Clutter.InputContentHintFlags.LOWERCASE) !== 0) {
+-            this._setActiveLevel('default');
++            if (this._onLetterLevel())
++                this._setActiveLevel('default');
+             return;
+         }
+ 
+@@ -1790,27 +2160,38 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+ 
+-        if (sensitive || !this._keycapSettings.get_boolean('auto-capitalise')) {
+-            if (userInputHappened && this._currentPage === this._layers['shift'])
+-                this._setActiveLevel('default');
++        if (sensitive || !this._keycapSettings.get_boolean('auto-capitalise') || !this._mirrorKnown) {
++            this._setActiveLevel('default');
+             return;
+         }
+ 
+-        if (this._surroundingTextId)
++        const before = this._mirror.before;
++        const capitalise = this._keycapPolicy.shouldCapitalise(
++            this._keyboardController.purpose, this._contentHint ?? 0, before, [...before].length);
++        this._setActiveLevel(capitalise ? 'shift' : 'default');
++    }
++
++    // The application reported its text. A report that echoes what this
++    // keyboard sent changes nothing; anything else (the caret moved, the
++    // application edited the text) is the new truth.
++    _onSurroundingText() {
++        const [text, cursor] = Main.inputMethod.getSurroundingText();
++        if (text === null || cursor === null)
+             return;
++        const before = [...text].slice(0, cursor).join('');
++        const outside = this._mirror.report(before) || !this._mirrorKnown;
++        this._mirrorKnown = true;
++        if (outside) {
++            this._resetWord();
++            this._updateLevelFromHints();
++        }
++    }
+ 
+-        this._surroundingTextId =
+-            Main.inputMethod.connect('surrounding-text-set', () => {
+-                Main.inputMethod.disconnect(this._surroundingTextId);
+-                this._surroundingTextId = 0;
+-                if (this._latched || !this._onLetterLevel())
+-                    return;
+-                const [text, cursor] = Main.inputMethod.getSurroundingText();
+-                const capitalise = this._keycapPolicy.shouldCapitalise(
+-                    this._keyboardController.purpose, this._contentHint ?? 0,
+-                    text ?? '', text ? cursor : 0);
+-                this._setActiveLevel(capitalise ? 'shift' : 'default');
+-            });
++    // The caret may be anywhere now: forget what came before it until the
++    // application says.
++    _forgetText(before = '') {
++        this._mirror.reset(before);
++        this._mirrorKnown = before !== '';
+         Main.inputMethod.request_surrounding();
+     }
+ 
+@@ -1825,6 +2206,8 @@ export const Keyboard = GObject.registerClass({
+             return;
+ 
+         this._resetWord?.();
++        this._cancelPointers?.();
++        this._forgetText?.();
+         if (!(focus instanceof Clutter.Text)) {
+             this.close();
+             return;
+@@ -1840,6 +2223,8 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _updateLayout(groupName, purpose) {
++        this._cancelPointers();
++        this._pendingLevel = null;
+         let keyboardModel = null;
+         const layers = {};
+         const layout = new Clutter.Actor({
+@@ -1965,6 +2350,7 @@ export const Keyboard = GObject.registerClass({
+                 iconName: key.iconName,
+                 keyval: key.keyval,
+                 hasAction: !!key.action,
++                action: key.action,
+                 hint: key.hint,
+             }, strings);
+ 
+@@ -1990,7 +2376,6 @@ export const Keyboard = GObject.registerClass({
+                         return;
+                     if (key.action === 'hide') {
+                         this.close(true);
+-                        this._updateLevelFromHints(true);
+                     } else if (key.action === 'languageMenu') {
+                         this._popupLanguageMenu(button);
+                     } else if (key.action === 'emoji') {
+@@ -1998,26 +2383,18 @@ export const Keyboard = GObject.registerClass({
+                     } else if (key.action === 'modifier') {
+                         this._toggleModifier(key.keyval);
+                     } else if (key.action === 'delete' && this._revertCorrection()) {
+-                        this._updateLevelFromHints(true);
++                        this._updateLevelFromHints();
+                     } else if (key.action === 'delete') {
+-                        this._backspaceWord();
+-                        const controller = this._keyboardController;
+-                        controller.enqueue(() => {
+-                            const [, cursor, anchor] = Main.inputMethod.getSurroundingText();
+-                            if (controller.pendingText || (Main.inputMethod.currentFocus &&
+-                                !Main.inputMethod.hasPreedit() && cursor === anchor &&
+-                                controller.purpose !== Clutter.InputContentPurpose.TERMINAL)) {
+-                                controller.replaceBefore(1, '');
+-                                return;
+-                            }
+-                            controller.flush();
+-                            controller.toggleDelete(true);
+-                            controller.toggleDelete(false);
+-                        });
+-                        this._updateLevelFromHints(true);
++                        // A tap on delete right after a letter undoes what
++                        // touch correction learned from that letter.
++                        this._touchCorrection.retract(this._lastLearned);
++                        this._lastLearned = null;
++                        this._deleteBackward('char');
++                        this._updateLevelFromHints();
+                     } else if (!this._longPressed && key.action === 'levelSwitch') {
+                         const shiftKey = key.iconName === 'osk-shift-symbolic';
+-                        if (shiftKey && !this._latched && this._shiftTaps.tap(monotonicMs())) {
++                        // A double tap is judged on the presses' own times.
++                        if (shiftKey && !this._latched && this._shiftTaps.tap(this._keyEvent.downMs || monotonicMs())) {
+                             // Two quick taps on shift lock capitals.
+                             this._setActiveLevel('shift');
+                             this._setLatched(true);
+@@ -2036,29 +2413,40 @@ export const Keyboard = GObject.registerClass({
+             } else if (key.keyval) {
+                 button.connect('keyval', (_actor, keyval) => {
+                     this._resetWord();
+-                    this._keyboardController.sendKeyval(keyval).then(() =>
+-                        this._updateLevelFromHints(true)).catch(console.error);
++                    this._lastLearned = null;
++                    // Enter starts a new line or submits; arrows move the
++                    // caret: what precedes it is the application's to say.
++                    this._forgetText(keyval === Clutter.KEY_Return || keyval === Clutter.KEY_KP_Enter ? '\n' : '');
++                    this._keyboardController.sendKeyval(keyval).catch(console.error);
++                    this._updateLevelFromHints();
+                 });
+             } else {
++                // A character is typed at once, as one commit, in the order
++                // the keys were pressed; the layer that follows is decided
++                // from the keyboard's own text in the same step.
+                 button.connect('commit', (_actor, str) => {
+                     this._lastCorrection = null;
+                     if (this._doubleSpacePeriod(str)) {
+-                        this._updateLevelFromHints(true);
++                        this._updateLevelFromHints();
+                         return;
+                     }
+                     if (this._modifiers.size === 0 && this._autocorrectAt(str)) {
+-                        this._updateLevelFromHints(true);
++                        this._updateLevelFromHints();
+                         return;
+                     }
+                     const plain = this._modifiers.size === 0;
+                     this._keyboardController.commit(str, this._modifiers).then(() => {
+-                        this._disableAllModifiers();
+-                        this._updateLevelFromHints(true);
++                        if (!plain) {
++                            this._disableAllModifiers();
++                            this._forgetText();
++                            this._updateLevelFromHints();
++                        }
+                     }).catch(console.error);
+                     if (plain)
+                         this._typed(str);
+                     else
+                         this._resetWord();
++                    this._updateLevelFromHints();
+                 });
+             }
+ 
+@@ -2106,32 +2494,13 @@ export const Keyboard = GObject.registerClass({
+         });
+     }
+ 
+-    _clearDeleteTimer() {
+-        if (this._deleteTimer) {
+-            GLib.source_remove(this._deleteTimer);
+-            this._deleteTimer = 0;
+-        }
+-    }
+-
+     // Delete: one tap deletes once; holding repeats characters after the
+-    // repeat delay and whole words later; dragging left selects words
+-    // backwards and releasing deletes the selection.
++    // repeat delay and whole words later (the pointer tracker times it from
++    // the press and stops it the moment the touch ends); dragging left
++    // selects words backwards and releasing deletes the selection.
+     _setupDeleteKey(button) {
+-        button.connect('pressed', () => {
+-            this._deleteSelected = 0;
+-            this._clearDeleteTimer();
+-            this._deleteTimer = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
+-                Keycap.keycap.timing.delete_repeat_delay, () => {
+-                    this._deleteTimer = 0;
+-                    const sensitive = this._isSensitive();
+-                    this._keyboardController.enqueue(() => {
+-                        this._keyboardController.flush();
+-                        this._keyboardController.toggleDelete(true, sensitive);
+-                    });
+-                });
+-        });
++        button.connect('pressed', () => (this._deleteSelected = 0));
+         button.connect('released', () => {
+-            this._clearDeleteTimer();
+             if (this._deleteSelected > 0)
+                 this._sendShortcut(Clutter.KEY_BackSpace, [], false);
+             this._deleteSelected = 0;
+@@ -2140,11 +2509,7 @@ export const Keyboard = GObject.registerClass({
+             const words = this._isSensitive() ? 0 : Keycap.deleteSelectWords(dx);
+             if (!words && !this._deleteSelected)
+                 return;
+-            if (!button.consumed) {
+-                button.consume();
+-                this._clearDeleteTimer();
+-                this._keyboardController.enqueue(() => this._keyboardController.toggleDelete(false));
+-            }
++            button.consume();
+             const word = [Clutter.KEY_Control_L, Clutter.KEY_Shift_L];
+             for (; this._deleteSelected < words; this._deleteSelected++)
+                 this._sendShortcut(Clutter.KEY_Left, word, false);
+@@ -2153,6 +2518,25 @@ export const Keyboard = GObject.registerClass({
+         });
+     }
+ 
++    // Delete before the caret: a character through the input method (in
++    // order with typed text, one commit), a word or a selection as keys.
++    _deleteBackward(mode) {
++        const controller = this._keyboardController;
++        const [text, cursor, anchor] = Main.inputMethod.getSurroundingText();
++        const plain = mode === 'char' && Main.inputMethod.currentFocus && text !== null &&
++            cursor === anchor && !Main.inputMethod.hasPreedit() && !controller.completing &&
++            controller.purpose !== Clutter.InputContentPurpose.TERMINAL;
++        if (plain) {
++            this._backspaceWord();
++            controller.replaceBefore(1, '');
++            return;
++        }
++        this._resetWord();
++        this._forgetText();
++        controller.sendKeyval(Clutter.KEY_BackSpace,
++            mode === 'word' ? [Clutter.KEY_Control_L] : [], false).catch(console.error);
++    }
++
+     _sendShortcut(keyval, modifiers = [], finishWord = true) {
+         this._resetWord();
+         return this._keyboardController.sendKeyval(keyval, modifiers, finishWord);
+@@ -2162,7 +2546,7 @@ export const Keyboard = GObject.registerClass({
+     // The decision uses the characters this keyboard just typed, so it never
+     // waits for the application to report its text.
+     _doubleSpacePeriod(str) {
+-        const now = monotonicMs();
++        const now = this._keyEvent.upMs || monotonicMs();
+         const previous = this._spaceTap;
+         this._spaceTap = str === ' ' ? now : 0;
+         if (str !== ' ' || !previous || now - previous > Keycap.keycap.timing.double_space ||
+@@ -2170,13 +2554,11 @@ export const Keyboard = GObject.registerClass({
+             !this._keycapSettings.get_boolean('double-space-period') ||
+             this._keyboardController.purpose !== Clutter.InputContentPurpose.NORMAL)
+             return false;
+-        if (!Keycap.canEndSentence(this._recent))
++        if (!Keycap.canEndSentence(this._mirror.before))
+             return false;
+         this._spaceTap = 0;
+-        this._recent = '. ';
+         this._resetWord();
+-        const controller = this._keyboardController;
+-        controller.enqueue(() => controller.replaceBefore(1, '. ')).catch(console.error);
++        this._keyboardController.replaceBefore(1, '. ');
+         return true;
+     }
+ 
+@@ -2184,7 +2566,6 @@ export const Keyboard = GObject.registerClass({
+     // forgotten whenever the caret may have moved without it.
+     _resetWord() {
+         this._word = '';
+-        this._recent = '';
+         this._analysis = null;
+         this._lastCorrection = null;
+         this._wordGeneration++;
+@@ -2198,12 +2579,10 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+         this._word = [...this._word].slice(0, -1).join('');
+-        this._recent = this._recent.slice(0, -1);
+         this._queueWordSuggestions();
+     }
+ 
+     _typed(str) {
+-        this._recent = (this._recent + str).slice(-2);
+         if (!this._completionAllowed()) {
+             this._word = '';
+             return;
+@@ -2240,11 +2619,10 @@ export const Keyboard = GObject.registerClass({
+     _applySuggestion(word, candidate) {
+         if (word !== this._word || !word)
+             return;
+-        // The application's own text decides: the caret must still sit at
++        // The text before the caret decides: the caret must still sit at
+         // the end of this word, or the suggestion is stale and dropped.
+         const controller = this._keyboardController;
+-        const [text, cursor] = Main.inputMethod.getSurroundingText();
+-        const before = (text ? [...text].slice(0, cursor).join('') : '') + controller.pendingText;
++        const before = this._mirror.before;
+         if (!before.endsWith(word) || Keycap.isWordCharacter([...before].at(-1 - [...word].length) ?? ' ')) {
+             this._resetWord();
+             return;
+@@ -2253,9 +2631,9 @@ export const Keyboard = GObject.registerClass({
+         this._resetWord();
+         if (candidate !== word)
+             this._suggester.accept(candidate);
+-        controller.enqueue(() => controller.replaceBefore(candidate === word ? 0 : length,
+-            candidate === word ? ' ' : `${candidate} `)).catch(console.error);
+-        this._recent = ' ';
++        controller.replaceBefore(candidate === word ? 0 : length,
++            candidate === word ? ' ' : `${candidate} `);
++        this._updateLevelFromHints();
+     }
+ 
+     _autocorrectAllowed() {
+@@ -2277,10 +2655,8 @@ export const Keyboard = GObject.registerClass({
+         const typed = this._word;
+         const corrected = analysis.correction;
+         const controller = this._keyboardController;
+-        controller.enqueue(() => controller.replaceBefore([...typed].length, corrected + boundary))
+-            .catch(console.error);
++        controller.replaceBefore([...typed].length, corrected + boundary);
+         this._resetWord();
+-        this._recent = (corrected + boundary).slice(-2);
+         this._lastCorrection = {typed, corrected, boundary};
+         return true;
+     }
+@@ -2293,19 +2669,23 @@ export const Keyboard = GObject.registerClass({
+         if (!last)
+             return false;
+         const controller = this._keyboardController;
+-        controller.enqueue(() => controller.replaceBefore([...last.corrected + last.boundary].length, last.typed))
+-            .catch(console.error);
++        controller.replaceBefore([...last.corrected + last.boundary].length, last.typed);
+         this._suggester.keep(last.typed);
+         this._word = last.typed;
+-        this._recent = last.typed.slice(-2);
+         this._queueWordSuggestions();
+         return true;
+     }
+ 
++    // Key-down feedback. Haptics go through feedbackd, D-Bus activated on
++    // the first press (no NO_AUTO_START), with the quiet profile; it plays
++    // nothing where no vibrator exists. A missing or failing service is
++    // left alone until its name appears or a minute has passed, so a phone
++    // without feedbackd pays nothing per key and logs nothing.
+     _keyFeedback() {
+         if (this._keycapSettings.get_boolean('sound'))
+             global.display.get_sound_player().play_from_theme('button-pressed', _('Key press'), null);
+-        if (!this._feedbackAvailable || !this._keycapSettings.get_boolean('haptics'))
++        if (!this._keycapSettings.get_boolean('haptics') ||
++            GLib.get_monotonic_time() < this._feedbackRetryAt)
+             return;
+         Gio.DBus.session.call('org.sigxcpu.Feedback', '/org/sigxcpu/Feedback',
+             'org.sigxcpu.Feedback', 'TriggerFeedback',
+@@ -2316,38 +2696,53 @@ export const Keyboard = GObject.registerClass({
+                     bus.call_finish(result);
+                 } catch {
+                     // Feedback is best effort; the press already happened.
++                    this._feedbackRetryAt = GLib.get_monotonic_time() + 60 * GLib.USEC_PER_SEC;
+                 }
+             });
+     }
+ 
++    // The key preview above a pressed cap. It is laid out once per cap
++    // size and then only changes its text, translation and opacity: showing,
++    // hiding, resizing or moving it would relayout the Shell's UI group and
++    // repaint the screen on every press and release.
+     _showPreview(key, text) {
+         if (!keycapVariant || !this._keycapSettings.get_boolean('key-preview'))
+             return;
++        const uiGroup = Main.layoutManager.uiGroup;
+         if (!this._preview) {
+             // Painted only: tracked chrome would recompute the input region
+-            // on every key press.
+-            this._preview = new St.Label({style_class: 'luma-keycap-preview', visible: false});
+-            Main.layoutManager.uiGroup.add_child(this._preview);
++            // on every key press. Its variant is set here and on theme
++            // changes, never per press (a class change restyles it).
++            this._preview = new St.Label({style_class: 'luma-keycap-preview', opacity: 0});
++            setKeycapVariantClass(this._preview);
++            uiGroup.add_child(this._preview);
++            this._previewSize = null;
+         }
+-        Main.layoutManager.uiGroup.set_child_above_sibling(this._preview, null);
+-        setKeycapVariantClass(this._preview);
+-        this._preview.text = text;
++        if (uiGroup.get_last_child() !== this._preview)
++            uiGroup.set_child_above_sibling(this._preview, null);
+         const [x, y] = key.keyButton.get_transformed_position();
+         const [width] = key.keyButton.get_transformed_size();
+-        const [, naturalWidth] = this._preview.get_preferred_width(-1);
+-        const [, naturalHeight] = this._preview.get_preferred_height(-1);
+-        const previewWidth = Math.max(naturalWidth, width);
++        if (this._previewSize?.cap !== width) {
++            // Wide enough for the widest letter, never narrower than the cap.
++            this._preview.text = 'W';
++            const [, naturalWidth] = this._preview.get_preferred_width(-1);
++            const [, naturalHeight] = this._preview.get_preferred_height(-1);
++            this._previewSize = {cap: width, width: Math.max(naturalWidth, width), height: naturalHeight};
++            this._preview.set_size(this._previewSize.width, this._previewSize.height);
++        }
++        const {width: previewWidth, height: previewHeight} = this._previewSize;
++        this._preview.text = text;
+         const monitor = Main.layoutManager.keyboardMonitor;
+         let previewX = Math.round(x + (width - previewWidth) / 2);
+         if (monitor)
+             previewX = Math.clamp(previewX, monitor.x, monitor.x + monitor.width - previewWidth);
+-        this._preview.set_size(previewWidth, naturalHeight);
+-        this._preview.set_position(previewX, Math.round(y - naturalHeight - 4));
+-        this._preview.show();
++        this._preview.set_translation(previewX, Math.round(y - previewHeight - 4), 0);
++        this._preview.opacity = 255;
+     }
+ 
+     _hidePreview() {
+-        this._preview?.hide();
++        if (this._preview)
++            this._preview.opacity = 0;
+     }
+ 
+     _createTools() {
+@@ -2389,7 +2784,7 @@ export const Keyboard = GObject.registerClass({
+         const numeric = this._keycapPolicy.isNumeric(this._keyboardController.purpose);
+         this._toolButtons.forEach((button, i) => (button.visible = i === 4 || !numeric));
+         this._stripEnter.visible = numeric;
+-        const suggesting = this._suggestionsShown && this._suggestions.get_n_children() > 0;
++        const suggesting = this._suggestionsShown && this._suggestions.count > 0;
+         this._suggestions.visible = suggesting;
+         this._tools.visible = !suggesting;
+     }
+@@ -2414,6 +2809,7 @@ export const Keyboard = GObject.registerClass({
+                 this._suggestions.add(slot.label, callback, slot.kind === 'suggested' ? 'suggested' : null);
+             }
+         }
++        this._suggestions.sync();
+         this._syncTools();
+     }
+ 
+@@ -2614,10 +3010,27 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _setLatched(latched) {
++        if (this._pendingLevel) {
++            this._pendingLevel.latched = latched;
++            return;
++        }
+         this._latched = latched;
+         this._setCurrentLevelLatched(this._currentPage, this._latched);
+     }
+ 
++    // A layer change asked for while a key is down waits until no key is
++    // down or a new touch begins, so a held key never moves under the
++    // finger and a release always types the key that was pressed.
++    _applyPendingLevel() {
++        const pending = this._pendingLevel;
++        if (!pending || this._pointers.size > 0)
++            return;
++        this._pendingLevel = null;
++        this._setActiveLevel(pending.level);
++        if (pending.latched !== null)
++            this._setLatched(pending.latched);
++    }
++
+     _setModifierEnabled(keyval, enabled) {
+         if (enabled)
+             this._modifiers.add(keyval);
+@@ -2690,22 +3103,32 @@ export const Keyboard = GObject.registerClass({
+         if (!monitor)
+             return;
+ 
+-        this.width = monitor.width;
+-
+         // Keycap rows sized from the design tokens and the width each key
+         // really gets, the tool strip above and the presentation's bottom
+         // inset (the home gesture) below; computed in logical pixels.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const [columns, rows] = this._currentPage?.getRatio() ?? [10, 4];
+         const inset = Main.presentation?.keyboardInset?.() ?? 0;
+-        this.set_style(inset ? `padding-bottom: ${inset}px;` : null);
+         const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
+             rows || 4, columns || 10, inset) * scale;
++        // Writes only what changed: a new style or size re-renders the
++        // keyboard's paint state, which must never happen per key.
++        const style = inset ? `padding-bottom: ${inset}px;` : null;
++        if (this.get_style() !== style)
++            this.set_style(style);
+         // The keyboard's own preferred height is the height last set here,
+         // so it must not floor the new one: a keyboard sized for a larger
+         // screen (an unfolded panel, a layout before scaling) would never
+         // shrink back. The Keycap rule already keeps touch-size rows.
+-        this.height = height;
++        if (this._relayoutSize?.[0] !== monitor.width || this._relayoutSize?.[1] !== height) {
++            this._relayoutSize = [monitor.width, height];
++            this.width = monitor.width;
++            this.height = height;
++            // Resized applications follow a keyboard that changed height
++            // (another layout, another panel of a foldable).
++            if (this._windowsResized)
++                this._setWindowInset(height);
++        }
+     }
+ 
+     _updateKeys() {
+@@ -2740,6 +3163,11 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _setActiveLevel(activeLevel) {
++        if (this._pointers?.size > 0) {
++            this._pendingLevel = {level: activeLevel, latched: this._pendingLevel?.latched ?? null};
++            return;
++        }
++        this._pendingLevel = null;
+         const layers = this._layers;
+         const currentPage = layers[activeLevel];
+ 
+@@ -2776,10 +3204,12 @@ export const Keyboard = GObject.registerClass({
+         this._clearShowIdle();
+         this._keyboardRequested = true;
+ 
+-        if (this._keyboardVisible) {
+-            this._relayout();
++        // Already open: nothing to lay out again (monitor and layout changes
++        // relayout on their own).
++        if (this._keyboardVisible)
+             return;
+-        }
++
++        this._forgetText();
+ 
+         // Taps never go through a completion engine: the engine stays the
+         // person's own input source, and suggestions run off the key path.
+@@ -2813,6 +3243,7 @@ export const Keyboard = GObject.registerClass({
+     close(immediate = false) {
+         this._clearShowIdle();
+         this._keyboardRequested = false;
++        this._cancelPointers();
+ 
+         if (!this._keyboardVisible)
+             return;
+@@ -2843,11 +3274,81 @@ export const Keyboard = GObject.registerClass({
+         this._disableAllModifiers();
+     }
+ 
++    // Mobile and Tablet resize applications above the keyboard, as Android
++    // does (adjustResize): Mutter keeps the keyboard's height clear at the
++    // bottom of its monitor for work areas and full-screen windows, so an
++    // application's own bottom bar lands right above the keys. Desktop, and
++    // the Shell's own entries, keep sliding the focused window instead.
++    _resizesWindows() {
++        return typeof global.display.set_input_panel_inset === 'function' &&
++            !(global.stage.key_focus instanceof Clutter.Text) &&
++            !!Main.presentation?.keyboardResizesWindows?.();
++    }
++
++    _setWindowInset(height) {
++        if (typeof global.display.set_input_panel_inset !== 'function')
++            return;
++        const monitor = Main.layoutManager.keyboardIndex;
++        if (height > 0 && monitor >= 0)
++            global.display.set_input_panel_inset(monitor, Math.round(height));
++        else
++            global.display.set_input_panel_inset(-1, 0);
++    }
++
++    // The keyboard's own colour under it while applications resize, so the
++    // strip they give up is never seen uncovered while the keys slide.
++    _showReserve(show) {
++        if (this._reserveTimeoutId) {
++            GLib.source_remove(this._reserveTimeoutId);
++            this._reserveTimeoutId = 0;
++        }
++        this._reserveWindow?.disconnectObject(this);
++        this._reserveWindow = null;
++        if (!show) {
++            this._reserve?.hide();
++            return;
++        }
++        const monitor = Main.layoutManager.keyboardMonitor;
++        if (!monitor)
++            return;
++        if (!this._reserve) {
++            this._reserve = new St.Widget({name: 'keyboardReserve', style_class: 'luma-keycap-reserve'});
++            Main.layoutManager.keyboardBox.get_parent().insert_child_below(this._reserve,
++                Main.layoutManager.keyboardBox);
++        }
++        setKeycapVariantClass(this._reserve);
++        this._reserve.set_position(monitor.x, monitor.y + monitor.height - this.height);
++        this._reserve.set_size(monitor.width, this.height);
++        this._reserve.show();
++    }
++
++    // Hides the reserve once the focused application has grown back (or
++    // after a short while), so its own content is what the keys uncover.
++    _releaseReserve() {
++        const window = global.display.focus_window;
++        if (!this._reserve?.visible)
++            return;
++        const done = () => this._showReserve(false);
++        this._reserveTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Keycap.keycap.timing.show, () => {
++            this._reserveTimeoutId = 0;
++            done();
++            return GLib.SOURCE_REMOVE;
++        });
++        this._reserveWindow = window;
++        window?.connectObject('size-changed', done, this);
++    }
++
+     _animateShow() {
+         global.compositor.disable_unredirect();
+ 
+-        if (this._focusWindow)
++        if (this._resizesWindows()) {
++            this._setFocusWindow(null);
++            this._showReserve(true);
++            this._setWindowInset(this.height);
++            this._windowsResized = true;
++        } else if (this._focusWindow) {
+             this._animateWindow(this._focusWindow, true);
++        }
+ 
+         Main.layoutManager.keyboardBox.show();
+         this.ease({
+@@ -2863,7 +3364,53 @@ export const Keyboard = GObject.registerClass({
+         this.emit('visibility-changed');
+     }
+ 
++    // Everything a key press shows for the first time is drawn once, nearly
++    // transparent, right after the keyboard opens: the letter layers it
++    // swaps between by itself (sentence case), a pressed cap of each kind
++    // and the key preview. The first press of a session, or the first swap to
++    // a layer, then lays out and rasterises nothing new in its frame.
++    _warmLayers() {
++        if (!this._layers || this._warmedLayers === this._layers)
++            return;
++        this._warmedLayers = this._layers;
++        const cold = ['default', 'shift'].map(level => this._layers[level])
++            .filter(layer => layer && layer !== this._currentPage && !layer.visible);
++        const pressed = [];
++        for (const layer of cold) {
++            layer.opacity = 1;
++            layer.show();
++            const kinds = new Set();
++            for (const key of layer.get_children()) {
++                const kind = key.keyButton?.get_style_class_name();
++                if (!kind || kinds.has(kind))
++                    continue;
++                kinds.add(kind);
++                key.keyButton.add_style_pseudo_class('active');
++                pressed.push(key.keyButton);
++            }
++        }
++        const sample = this._layers.default?.get_children().find(key => key.character)?.character;
++        if (sample) {
++            this._showPreview(this._layers.default.get_children().find(key => key.character), sample);
++            if (this._preview)
++                this._preview.opacity = 1;
++        }
++        const id = global.stage.connect('after-paint', () => {
++            global.stage.disconnect(id);
++            pressed.forEach(button => button.remove_style_pseudo_class('active'));
++            for (const layer of cold) {
++                layer.opacity = 255;
++                if (layer !== this._currentPage)
++                    layer.hide();
++            }
++            this._hidePreview();
++        });
++    }
++
+     _animateShowComplete() {
++        this._warmLayers();
++        if (this._windowsResized)
++            this._showReserve(false);
+         const keyboardBox = Main.layoutManager.keyboardBox;
+         this._keyboardHeightNotifyId = keyboardBox.connect('notify::height', () => {
+             this.translation_y = -this.height;
+@@ -2871,8 +3418,15 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _animateHide() {
+-        if (this._focusWindow)
++        this._cancelPointers();
++        if (this._windowsResized) {
++            this._windowsResized = false;
++            this._showReserve(true);
++            this._setWindowInset(0);
++            this._releaseReserve();
++        } else if (this._focusWindow) {
+             this._animateWindow(this._focusWindow, false);
++        }
+ 
+         if (this._keyboardHeightNotifyId) {
+             Main.layoutManager.keyboardBox.disconnect(this._keyboardHeightNotifyId);
+@@ -3018,6 +3572,12 @@ export const Keyboard = GObject.registerClass({
+     setCursorLocation(window, x, y, w, h) {
+         const monitor = Main.layoutManager.keyboardMonitor;
+ 
++        // Resized applications are already above the keyboard.
++        if (this._windowsResized || (this._resizesWindows() && !this._keyboardVisible)) {
++            this._setFocusWindow(null);
++            return;
++        }
++
+         if (window && monitor) {
+             const keyboardHeight = Main.layoutManager.keyboardBox.height;
+             const keyboardY1 = (monitor.y + monitor.height) - keyboardHeight;
+@@ -3045,18 +3605,25 @@ class KeyboardController extends Signals.EventEmitter {
+ 
+         const seat = global.stage.context.get_backend().get_default_seat();
+         this._virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+-        // Every key the keyboard sends waits its turn: the input method and
+-        // the application see keys in the order they were tapped, however
+-        // fast, and a key never overtakes a word the engine is completing.
++        // Keys that go through an input method engine the person chose (an
++        // IBus source such as Pinyin) wait their turn here, so the engine and
++        // the application see them in order. Plain text never waits.
+         this._queue = Promise.resolve();
+-        // Text bound for the application. Each Wayland text-input commit
+-        // replaces any commit the application has not been told is done, so
+-        // text is gathered and sent at most once per "done": the flush runs
+-        // after Mutter's own done idle (G_PRIORITY_DEFAULT_IDLE), within the
+-        // same main-loop pass when nothing else is waiting.
++        this._queued = 0;
++        // Text is sent the moment a key is released, at default priority, as
++        // one input-method commit (with its deletion) per key. Mutter sends
++        // the text-input "done" from an idle at CLUTTER_PRIORITY_EVENTS + 1;
++        // a Mutter without the Luma text-input patch lets a second commit in
++        // the same main-loop turn replace the first (mutter#5087), so a
++        // second key in one turn goes right after that done
++        // (CLUTTER_PRIORITY_EVENTS + 2), never at idle priority, where a busy
++        // frame clock could hold it back.
+         this._pendingText = '';
+         this._pendingDelete = 0;
+-        this._flushId = 0;
++        this._turnBusy = false;
++        this._turnId = 0;
++        // Told of every change sent, for the keyboard's view of the text.
++        this.onText = null;
+ 
+         this._inputSourceManager = InputSourceManager.getInputSourceManager();
+         this._inputSourceManager.connectObject(
+@@ -3077,9 +3644,9 @@ class KeyboardController extends Signals.EventEmitter {
+ 
+     destroy() {
+         this.flush();
+-        if (this._flushId)
+-            GLib.source_remove(this._flushId);
+-        this._flushId = 0;
++        if (this._turnId)
++            GLib.source_remove(this._turnId);
++        this._turnId = 0;
+         this._destroyed = true;
+         this._inputSourceManager.disconnectObject(this);
+         Main.inputMethod.disconnectObject(this);
+@@ -3152,8 +3719,9 @@ class KeyboardController extends Signals.EventEmitter {
+     }
+ 
+     enqueue(task) {
++        this._queued++;
+         const run = this._queue.then(() => (this._destroyed ? undefined : task()));
+-        this._queue = run.catch(error => console.error(error));
++        this._queue = run.catch(error => console.error(error)).finally(() => this._queued--);
+         return run;
+     }
+ 
+@@ -3163,10 +3731,20 @@ class KeyboardController extends Signals.EventEmitter {
+         return this._currentSource.type === InputSourceManager.INPUT_SOURCE_TYPE_IBUS;
+     }
+ 
++    get completing() {
++        return this._completing();
++    }
++
++    // Plain text goes out at once, unless keys for an engine are in flight
++    // ahead of it.
++    _direct() {
++        return this._queued === 0 && !this._completing();
++    }
++
+     // Text inserted as a whole (an emoji, a clipboard entry): the word being
+     // composed is kept as typed, then the text follows it.
+     commitText(str) {
+-        return this.enqueue(() => {
++        const insert = () => {
+             if (Main.inputMethod.hasPreedit())
+                 Main.inputMethod.commitPreeditText();
+             if (Main.inputMethod.currentFocus)
+@@ -3174,45 +3752,87 @@ class KeyboardController extends Signals.EventEmitter {
+             else
+                 return this.typeNow(str, new Set());
+             return undefined;
+-        });
++        };
++        if (this._queued === 0)
++            return Promise.resolve(insert());
++        return this.enqueue(insert);
+     }
+ 
+     get pendingText() {
+         return this._pendingText;
+     }
+ 
+-    // Replace the `count` characters before the caret with `str`: taken from
+-    // text not yet sent where possible, otherwise deleted in the application
+-    // ahead of the new text (a text-input deletion applies before its commit).
++    // A Shell entry (the unlock password, search) takes text synchronously:
++    // there is no Wayland "done" to keep apart.
++    _shellFocus() {
++        return global.stage.key_focus instanceof Clutter.Text;
++    }
++
++    // Replace the `count` characters before the caret with `str`, now: one
++    // deletion and one commit, which a text-input "done" applies in that
++    // order.
+     replaceBefore(count, str) {
+-        const pending = [...this._pendingText];
+-        const fromPending = Math.min(count, pending.length);
+-        this._pendingText = pending.slice(0, pending.length - fromPending).join('') + str;
+-        this._pendingDelete += count - fromPending;
+-        if (!this._flushId && (this._pendingText || this._pendingDelete)) {
+-            this._flushId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+-                this._flushId = 0;
+-                this.flush();
+-                return GLib.SOURCE_REMOVE;
+-            });
++        if (!count && !str)
++            return;
++        this.onText?.(count, str);
++        if (this._turnBusy && !this._shellFocus()) {
++            // A second key in this main-loop turn: merge with what waits for
++            // the turn's done, deleting from it first.
++            const pending = [...this._pendingText];
++            const fromPending = Math.min(count, pending.length);
++            this._pendingText = pending.slice(0, pending.length - fromPending).join('') + str;
++            this._pendingDelete += count - fromPending;
++            return;
+         }
++        this._send(count, str);
+     }
+ 
+-    flush() {
+-        const [count, text] = [this._pendingDelete, this._pendingText];
+-        this._pendingDelete = 0;
+-        this._pendingText = '';
++    _send(count, text) {
+         if (this._destroyed)
+             return;
+         if (count)
+             Main.inputMethod.delete_surrounding(-count, count);
+         if (text)
+             Main.inputMethod.commit(text);
++        if (this._shellFocus())
++            return;
++        this._turnBusy = true;
++        this._turnId ||= GLib.idle_add(GLib.PRIORITY_DEFAULT + 2, () => {
++            this._turnId = 0;
++            this._turnBusy = false;
++            this.flush();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    flush() {
++        const [count, text] = [this._pendingDelete, this._pendingText];
++        this._pendingDelete = 0;
++        this._pendingText = '';
++        if (count || text)
++            this._send(count, text);
+     }
+ 
+     // A key with no text (Enter, an arrow, Backspace) or a shortcut. Without
+     // modifiers the engine sees it first, as it would from a hardware key.
++    // Text sent before it reaches the application first: Mutter sends a
++    // pending text-input done before it delivers a key.
+     sendKeyval(keyval, modifiers = [], finishWord = false) {
++        const press = () => {
++            for (const modifier of modifiers)
++                this.keyvalPress(modifier);
++            this.keyvalPress(keyval);
++            this.keyvalRelease(keyval);
++            for (const modifier of [...modifiers].reverse())
++                this.keyvalRelease(modifier);
++        };
++        if (this._direct()) {
++            this.flush();
++            if (finishWord && Main.inputMethod.hasPreedit())
++                Main.inputMethod.commitPreeditText();
++            press();
++            return Promise.resolve();
++        }
+         return this.enqueue(async () => {
+             this.flush();
+             if (finishWord && Main.inputMethod.hasPreedit())
+@@ -3220,17 +3840,16 @@ class KeyboardController extends Signals.EventEmitter {
+             if (!modifiers.length && Main.inputMethod.currentFocus && this._completing() &&
+                 await Main.inputMethod.handleVirtualKey(keyval))
+                 return;
+-            for (const modifier of modifiers)
+-                this.keyvalPress(modifier);
+-            this.keyvalPress(keyval);
+-            this.keyvalRelease(keyval);
+-            for (const modifier of [...modifiers].reverse())
+-                this.keyvalRelease(modifier);
++            press();
+         });
+     }
+ 
+     commit(str, modifiers) {
+         const held = new Set(modifiers ?? []);
++        if (this._direct() && held.size === 0 && Main.inputMethod.currentFocus) {
++            this.replaceBefore(0, str);
++            return Promise.resolve();
++        }
+         return this.enqueue(() => this.typeNow(str, held));
+     }
+ 
+@@ -3293,97 +3912,4 @@ class KeyboardController extends Signals.EventEmitter {
+         this._virtualDevice.notify_keyval(Clutter.get_current_event_time() * 1000,
+             keyval, Clutter.KeyState.RELEASED);
+     }
+-
+-    _previousWordPosition(text, cursor) {
+-        const upToCursor = [...text].slice(0, cursor).join('');
+-        const jsStringPos = Math.max(0, upToCursor.search(/\s+\S+\s*$/));
+-        const charPos = GLib.utf8_strlen(text.slice(0, jsStringPos), -1);
+-        return charPos;
+-    }
+-
+-    toggleDelete(enabled, sensitive = false) {
+-        if (this._deleteEnabled === enabled)
+-            return;
+-
+-        this._deleteEnabled = enabled;
+-        this._timesDeleted = 0;
+-        this._deleteStarted = monotonicMs();
+-        this._deleteSensitive = sensitive;
+-
+-        /* If there is no IM focus or are in the middle of preedit, fallback to
+-         * keypresses */
+-        if (enabled &&
+-            (!Main.inputMethod.currentFocus ||
+-             Main.inputMethod.hasPreedit() ||
+-             this._purpose === Clutter.InputContentPurpose.TERMINAL)) {
+-            this.keyvalPress(Clutter.KEY_BackSpace);
+-            this._backspacePressed = true;
+-            return;
+-        }
+-
+-        if (!enabled && this._backspacePressed) {
+-            this.keyvalRelease(Clutter.KEY_BackSpace);
+-            delete this._backspacePressed;
+-            return;
+-        }
+-
+-        if (enabled) {
+-            const func = (text, cursor, anchor) => {
+-                if (cursor === 0 && anchor === 0)
+-                    return;
+-
+-                let offset, len;
+-                if (cursor > anchor) {
+-                    offset = anchor - cursor;
+-                    len = -offset;
+-                } else if (cursor < anchor) {
+-                    offset = 0;
+-                    len = anchor - cursor;
+-                } else if (Keycap.deleteMode(monotonicMs() - this._deleteStarted, this._deleteSensitive) === 'char') {
+-                    offset = -1;
+-                    len = 1;
+-                } else {
+-                    const wordLength = cursor - this._previousWordPosition(text, cursor);
+-                    offset = -wordLength;
+-                    len = wordLength;
+-                }
+-
+-                this._timesDeleted++;
+-                Main.inputMethod.delete_surrounding(offset, len);
+-            };
+-
+-            this._surroundingUpdateId = Main.inputMethod.connect(
+-                'surrounding-text-set', () => {
+-                    const [text, cursor, anchor] = Main.inputMethod.getSurroundingText();
+-                    if (this._timesDeleted === 0) {
+-                        func(text, cursor, anchor);
+-                    } else {
+-                        if (this._surroundingUpdateTimeoutId > 0) {
+-                            GLib.source_remove(this._surroundingUpdateTimeoutId);
+-                            this._surroundingUpdateTimeoutId = 0;
+-                        }
+-                        this._surroundingUpdateTimeoutId =
+-                            GLib.timeout_add_once(GLib.PRIORITY_DEFAULT, KEY_RELEASE_TIMEOUT, () => {
+-                                func(text, cursor, cursor);
+-                                this._surroundingUpdateTimeoutId = 0;
+-                            });
+-                    }
+-                });
+-
+-            const [text, cursor, anchor] = Main.inputMethod.getSurroundingText();
+-            if (text)
+-                func(text, cursor, anchor);
+-            else
+-                Main.inputMethod.request_surrounding();
+-        } else {
+-            if (this._surroundingUpdateId > 0) {
+-                Main.inputMethod.disconnect(this._surroundingUpdateId);
+-                this._surroundingUpdateId = 0;
+-            }
+-            if (this._surroundingUpdateTimeoutId > 0) {
+-                GLib.source_remove(this._surroundingUpdateTimeoutId);
+-                this._surroundingUpdateTimeoutId = 0;
+-            }
+-        }
+-    }
+ }
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -293,10 +293,12 @@ export const LayoutManager = GObject.registerClass({
+         });
+         this.uiGroup.add_child(this.modalDialogGroup);
+ 
++        // No hover tracking: a touch enters and leaves the box on every key,
++        // and a :hover change restyles the whole keyboard under it, which
++        // re-renders its background on each press and release.
+         this.keyboardBox = new St.BoxLayout({
+             name: 'keyboardBox',
+             reactive: true,
+-            track_hover: true,
+         });
+         this.addTopChrome(this.keyboardBox);
+         this._keyboardHeightNotifyId = 0;
+diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
+--- a/js/misc/inputMethod.js
++++ b/js/misc/inputMethod.js
+@@ -67,7 +67,29 @@ export const InputMethod = GObject.registerClass({
+     }
+ 
+     _onSourceChanged() {
++        const wasEngine = this._forwardsToEngine();
+         this._currentSource = this._inputSourceManager.currentSource;
++        // An engine source starts from the current caret and text.
++        if (!wasEngine && this._forwardsToEngine()) {
++            this.update();
++            if (this._surroundingText !== null)
++                this._sendSurrounding();
++        }
++    }
++
++    // Only an IBus engine the person chose (Pinyin, Hangul...) reads the
++    // caret position and surrounding text. With a keyboard layout (xkb)
++    // source IBus does not compose, so neither is sent on every keystroke.
++    _forwardsToEngine() {
++        return this._currentSource?.type === Keyboard.INPUT_SOURCE_TYPE_IBUS;
++    }
++
++    _sendSurrounding() {
++        if (!this._context || this._surroundingText === null)
++            return;
++        // Call context.set_surrounding_text() after context.set_capabilities().
++        this._context.set_surrounding_text(IBus.Text.new_from_string(this._surroundingText),
++            this._surroundingTextCursor, this._surroundingTextAnchor);
+     }
+ 
+     async _onConnected() {
+@@ -238,11 +260,11 @@ export const InputMethod = GObject.registerClass({
+     }
+ 
+     vfunc_set_cursor_location(rect) {
+-        if (this._context) {
+-            this._cursorRect = {
+-                x: rect.get_x(), y: rect.get_y(),
+-                width: rect.get_width(), height: rect.get_height(),
+-            };
++        this._cursorRect = {
++            x: rect.get_x(), y: rect.get_y(),
++            width: rect.get_width(), height: rect.get_height(),
++        };
++        if (this._context && this._forwardsToEngine()) {
+             this._context.set_cursor_location(
+                 this._cursorRect.x, this._cursorRect.y,
+                 this._cursorRect.width, this._cursorRect.height);
+@@ -266,13 +288,11 @@ export const InputMethod = GObject.registerClass({
+         if (!this._context || (!text && text !== ''))
+             return;
+ 
+-        const ibusText = IBus.Text.new_from_string(text);
+-
+         if (updateCapabilities)
+             this._updateCapabilities();
+ 
+-        // Call context.set_surrounding_text() after context.set_capabilities().
+-        this._context.set_surrounding_text(ibusText, cursor, anchor);
++        if (this._forwardsToEngine())
++            this._sendSurrounding();
+     }
+ 
+     vfunc_update_content_hints(hints) {
+@@ -427,7 +447,7 @@ export const InputMethod = GObject.registerClass({
+             return;
+         this._updateCapabilities();
+         this._context.set_content_type(this._purpose, this._hints);
+-        if (this._cursorRect) {
++        if (this._cursorRect && this._forwardsToEngine()) {
+             this._context.set_cursor_location(
+                 this._cursorRect.x, this._cursorRect.y,
+                 this._cursorRect.width, this._cursorRect.height);
+diff --git a/js/misc/ibusManager.js b/js/misc/ibusManager.js
+--- a/js/misc/ibusManager.js
++++ b/js/misc/ibusManager.js
+@@ -320,9 +320,8 @@ class IBusManager extends Signals.EventEmitter {
+         if (!this._ibus || !this._ready)
+             return;
+ 
+-        if (!ids.includes(TYPING_BOOSTER_ENGINE))
+-            ids.push(TYPING_BOOSTER_ENGINE);
+-
++        // The on-screen keyboard completes words itself; typing-booster
++        // starts only when the person chose it as an input source.
+         if (this._preloadEnginesId !== 0) {
+             GLib.source_remove(this._preloadEnginesId);
+             this._preloadEnginesId = 0;
