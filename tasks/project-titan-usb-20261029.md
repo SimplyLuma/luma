@@ -1035,3 +1035,22 @@ launched normal installed/usr/bin/gnome-control-center. Accessibility inspection
 confirms a real Settings frame showing/visible. No shell restart, OS reboot or
 Android service operation was needed for this follow-up. No launcher override,
 old shared-library injection, platform downgrade or inert symbol shim was used.
+
+### 2026-10-31 — Terminal source-directory access repair
+
+Terminal launch failed with ModuleNotFoundError for luma_terminal. The imported
+package and launcher were correct, but the private update's top-level source
+directory was root:root0770, preventing the signed-in user from traversing it.
+Changed that public source-only directory to0755; kept private backup/evidence
+permissions unchanged. Corrected both private source preparation/application
+scripts to set the root directory mode explicitly, alongside their existing
+descendant permissions. No shared app/runtime patch was needed for this error.
+Actual signed-in-user module resolution now succeeds. Normal accelerated
+Terminal launch started a VTE shell process; AT-SPI confirms a showing/visible
+Terminal frame. No Shell/Android restart or reboot was performed.
+
+Scaling/Weather follow-up remains active. Current Mutter readback and the user's
+saved monitors.xml already specify scale2.0 at1080x1200. Scrolling investigation
+uses a bounded native Weather fixture on the physical device; no user weather
+store is modified by that profiling fixture. No smoothness improvement is yet
+claimed from the initial measurements.
