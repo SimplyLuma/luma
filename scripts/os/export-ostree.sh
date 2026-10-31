@@ -123,9 +123,14 @@ release_image_mount() {
 }
 trap release_image_mount EXIT
 trap 'exit 143' HUP INT TERM
+private_metadata_args=()
+if [ -n "${LUMA_OS_PRIVATE_RPM_PERMISSION_POLICY:-}" ]; then
+  [ "$LUMA_SOURCE_DIRTY" = true ] || luma_os_die 'private metadata recovery requires an explicitly dirty private candidate'
+  private_metadata_args=(--private-rpm-policy "$LUMA_OS_PRIVATE_RPM_PERMISSION_POLICY")
+fi
 python3 "$luma_os_repo_root/scripts/os/lib/repair_import_metadata.py" capture \
   "$import_repo" "$merge" "$image_root" "$LUMA_IMAGE_ID" \
-  "$directory_manifest" "$directory_tar" "$modes" >>"$log"
+  "$directory_manifest" "$directory_tar" "$modes" "${private_metadata_args[@]}" >>"$log"
 release_image_mount
 trap - EXIT HUP INT TERM
 
@@ -184,6 +189,9 @@ metadata_file="$build_dir/commit-metadata.args"
   printf -- '--add-metadata-string=org.projectluma.base-image-digest=%s\n' "$base_digest"
   printf -- '--add-metadata-string=org.projectluma.provenance-sha256=%s\n' "$provenance_sha"
   printf -- '--add-metadata-string=org.projectluma.sbom-sha256=%s\n' "$sbom_sha"
+  if [ -n "${LUMA_OS_PRIVATE_RPM_PERMISSION_POLICY:-}" ]; then
+    printf -- '--add-metadata-string=org.projectluma.private-metadata-policy-sha256=%s\n' "$(luma_os_sha256 "$LUMA_OS_PRIVATE_RPM_PERMISSION_POLICY")"
+  fi
   printf -- '--add-metadata-string=org.projectluma.image-tree=%s\n' "$merge"
   printf -- '--add-metadata=rpmostree.rpmdb.pkglist=%s\n' "$pkglist"
 } >"$metadata_file"

@@ -78,7 +78,7 @@ def sensitive_mode(path, mode, modes):
         modes[path] = mode
 
 
-def image_directory(base, path, files, copied_files, modes, expected_files):
+def image_directory(base, path, files, copied_files, modes, expected_files, private_policy=None):
     source = '/etc' + path[len('/usr/etc'):] if path == '/usr/etc' or path.startswith('/usr/etc/') else path
     descriptor = os.dup(base)
     try:
@@ -93,6 +93,9 @@ def image_directory(base, path, files, copied_files, modes, expected_files):
         before = os.fstat(descriptor)
         result = {'uid': before.st_uid, 'gid': before.st_gid, 'mode': stat.S_IMODE(before.st_mode),
                   'xattrs': attributes(descriptor)}
+        if private_policy is not None:
+            from private_metadata_policy import normalize
+            result = normalize(path, result, private_policy, directory=True)
         sensitive_mode(path, result['mode'], modes)
         seen = set()
         with os.scandir(descriptor) as children:
@@ -112,7 +115,12 @@ def image_directory(base, path, files, copied_files, modes, expected_files):
                     copied_files[target] = record
                 elif stat.S_ISREG(info.st_mode):
                     sensitive_mode(target, stat.S_IMODE(info.st_mode), modes)
-                    if info.st_size and info.st_mode & stat.S_IRUSR:
+                    adjusted_mode = stat.S_IMODE(info.st_mode)
+                    if private_policy is not None:
+                        from private_metadata_policy import normalize
+                        candidate = normalize(target, {'mode': adjusted_mode, 'xattrs': attributes('/proc/self/fd/' + str(descriptor) + '/' + child.name)}, private_policy)
+                        adjusted_mode = candidate['mode']
+                    if info.st_size and info.st_mode & stat.S_IRUSR and adjusted_mode == stat.S_IMODE(info.st_mode):
                         continue
                     fd = os.open(child.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
                     try:
@@ -125,6 +133,8 @@ def image_directory(base, path, files, copied_files, modes, expected_files):
                         record = {'kind': 'regular', 'uid': original.st_uid, 'gid': original.st_gid,
                                   'mode': stat.S_IMODE(original.st_mode), 'size': original.st_size,
                                   'xattrs': attributes(fd), 'content_sha256': digest.hexdigest()}
+                        if private_policy is not None:
+                            record = normalize(target, record, private_policy)
                         if identity(original) != identity(os.fstat(fd)):
                             raise ValueError('Image file changed during capture: ' + target)
                         copied_files[target] = record
@@ -176,9 +186,13 @@ def file_record(repo, checksum):
     return record
 
 
-def capture(repo, revision, image_root, image_id, manifest, output, mode_output):
+def capture(repo, revision, image_root, image_id, manifest, output, mode_output, private_policy_path=None):
     if os.geteuid() != 0 or not re.fullmatch('[a-f0-9]{64}', revision) or not re.fullmatch('[a-f0-9]{64}', image_id):
         raise ValueError('Require root and exact image/raw import identities')
+    private_policy = None
+    if private_policy_path:
+        from private_metadata_policy import load_policy
+        private_policy = load_policy(private_policy_path)
     files, raw = tree(repo, revision)
     expected, copied_files, modes = {}, {}, {}
     files_by_directory = {path: set() for path in raw}
@@ -187,12 +201,14 @@ def capture(repo, revision, image_root, image_id, manifest, output, mode_output)
     base = os.open(image_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for path, imported in raw.items():
-            record = image_directory(base, path, files, copied_files, modes, files_by_directory[path])
+            record = image_directory(base, path, files, copied_files, modes, files_by_directory[path], private_policy)
             if 'security.selinux' in imported['xattrs']:
                 record['xattrs']['security.selinux'] = imported['xattrs']['security.selinux']
             expected[path] = record
     finally:
         os.close(base)
+    if private_policy_path:
+        document_policy_sha = hashlib.sha256(Path(private_policy_path).read_bytes()).hexdigest()
     for path, record in copied_files.items():
         original = file_record(repo, files[path])
         keys = ('kind', 'link_target') if record['kind'] == 'symlink' else ('kind', 'size', 'content_sha256')
@@ -232,6 +248,8 @@ def capture(repo, revision, image_root, image_id, manifest, output, mode_output)
                 'metadata_overlay_sha256': tar_sha, 'directory_count': len(expected),
                 'directories': expected, 'copied_files': copied_files,
                 'selinux_source': 'raw-import-image-policy'}
+    if private_policy_path:
+        document['private_rpm_permission_policy_sha256'] = document_policy_sha
     with open(manifest, 'x') as stream:
         json.dump(document, stream, sort_keys=True); stream.write('\n')
         stream.flush(); os.fsync(stream.fileno())
@@ -285,6 +303,7 @@ def main():
     collect = commands.add_parser('capture')
     for name in ('repo', 'commit', 'image_root', 'image_id', 'manifest', 'tar', 'modes'):
         collect.add_argument(name)
+    collect.add_argument('--private-rpm-policy')
     check = commands.add_parser('verify')
     for name in ('repo', 'old', 'new', 'manifest', 'modes'):
         check.add_argument(name)
@@ -292,7 +311,7 @@ def main():
     repo = open_repo(args.repo)
     if args.action == 'capture':
         print(json.dumps({'metadata_captured': capture(repo, args.commit, args.image_root,
-                                                          args.image_id, args.manifest, args.tar, args.modes)}))
+                                                          args.image_id, args.manifest, args.tar, args.modes, args.private_rpm_policy)}))
     else:
         print(json.dumps(verify(repo, args.old, args.new, args.manifest, args.modes)))
 

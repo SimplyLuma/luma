@@ -64,7 +64,7 @@ def mismatches(repo, commit, expected):
     _, root, _ = repo.read_commit(commit, None)
     found = []
     for mode, path in expected:
-        node = root.resolve_relative_path(path.lstrip("/"))
+        node = root if path == "/" else root.resolve_relative_path(path.lstrip("/"))
         try:
             info = node.query_info("standard::type,unix::mode", Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None)
         except GLib.Error:
@@ -106,7 +106,7 @@ def write_tar(repo, commit, expected, output):
     with tarfile.open(output, "w", format=tarfile.PAX_FORMAT) as archive:
         for path, actual, mode, node in found:
             info = node.query_info("standard::type,unix::uid,unix::gid", Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None)
-            entry = tarfile.TarInfo(path.lstrip("/"))
+            entry = tarfile.TarInfo(path.lstrip("/") or ".")
             entry.uid = info.get_attribute_uint32("unix::uid")
             entry.gid = info.get_attribute_uint32("unix::gid")
             entry.mode = mode
@@ -134,7 +134,7 @@ def write_tar(repo, commit, expected, output):
 
 
 def node_record(repo, root, path):
-    node = root.resolve_relative_path(path.lstrip("/"))
+    node = root if path == "/" else root.resolve_relative_path(path.lstrip("/"))
     info = node.query_info("standard::type,unix::uid,unix::gid,unix::mode", Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None)
     node.ensure_resolved()
     if info.get_file_type() == Gio.FileType.DIRECTORY:
