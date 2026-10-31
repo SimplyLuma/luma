@@ -58,6 +58,80 @@ assert(!taps.tap(2000) && !taps.tap(2400), 'slow taps stay single');
 assert(Keycap.deleteMode(1999, false) === 'char' && Keycap.deleteMode(2000, false) === 'word',
     'word deletion after two seconds');
 assert(Keycap.deleteMode(5000, true) === 'char', 'sensitive fields only delete characters');
+
+// Key timing from event times: a hold is judged by the press and release
+// timestamps, repeats are owed by elapsed time and never bunched.
+const t = Keycap.keycap.timing;
+assert(!Keycap.isLongPress(t.long_press - 1) && Keycap.isLongPress(t.long_press), 'long press from event times');
+assert(Keycap.repeatsDue(t.delete_repeat_delay - 1) === 0 && Keycap.repeatsDue(t.delete_repeat_delay) === 1 &&
+    Keycap.repeatsDue(t.delete_repeat_delay + 3 * t.delete_repeat_interval) === 4, 'repeats owed by hold time');
+assert(Keycap.nextRepeatAt(0) === t.delete_repeat_delay &&
+    Keycap.nextRepeatAt(2) === t.delete_repeat_delay + 2 * t.delete_repeat_interval, 'next repeat time');
+
+// Hit testing: whole cells, nearest key for gaps and margins.
+const cell = (x1, y1, letter) => ({x1, y1, x2: x1 + 36, y2: y1 + 50, letter});
+const row = [cell(0, 0, 'q'), cell(36, 0, 'w'), cell(72, 0, 'e')];
+assert(Keycap.nearestCell(row, 50, 25) === row[1], 'a touch inside a cell is that key');
+assert(Keycap.nearestCell(row, 36, 25) === row[1] || Keycap.nearestCell(row, 36, 25) === row[0],
+    'a touch on a cell boundary is one of its keys');
+assert(Keycap.nearestCell(row, -12, 25) === row[0] && Keycap.nearestCell(row, 80, 70) === row[2],
+    'a touch in the margins is the nearest key');
+assert(Keycap.cellDistance(row[0], 10, 10) === 0 && Keycap.cellDistance(row[0], 40, 0) === 4, 'cell distance');
+// Dynamic targets: near the q|w boundary a much likelier w wins, but a
+// clear tap on q never does, and nothing moves without a prior.
+const likelyW = c => (c.letter === 'w' ? 100000 : 10);
+assert(Keycap.chooseCell(row, 34, 25, likelyW) === row[1], 'the word moves a near-boundary touch');
+assert(Keycap.chooseCell(row, 18, 25, likelyW) === row[0], 'a clear tap keeps its key');
+assert(Keycap.chooseCell(row, 34, 25, null) === row[0], 'geometry alone without a prior');
+assert(Keycap.chooseCell(row, 34, 25, () => 5) === row[0], 'an even prior keeps geometry');
+
+// Touch-position correction: a per-row bias learned from committed taps,
+// clamped, and undone when the tap is deleted.
+const correction = new Keycap.TouchCorrection({rate: 0.5, limit: 0.2});
+let token = null;
+for (let i = 0; i < 10; i++)
+    token = correction.learn(1, -0.4, 0.3);
+const [bx, by] = correction.bias(1);
+assert(Math.abs(bx + 0.2) < 1e-9 && Math.abs(by - 0.2) < 1e-9, `bias clamped (${bx}, ${by})`);
+const [cx, cy] = correction.correct(1, 100, 100, 36, 50);
+assert(cx === 100 + 0.2 * 36 && cy === 100 - 0.2 * 50, 'correction moves the touch toward the cap centre');
+assert(correction.bias(0)[0] === 0, 'other rows are untouched');
+assert(correction.learn(1, 0.9, 0) === null, 'taps outside the cell teach nothing');
+correction.retract(token);
+assert(correction.bias(1)[0] !== bx || correction.bias(1)[0] === -0.2, 'a deleted tap is retracted');
+
+// The keyboard's own view of the text before the caret: its sends apply at
+// once, echoes of them change nothing, outside changes replace it.
+const mirror = new Keycap.TextMirror();
+mirror.reset('Hello. ');
+mirror.apply(0, 'H');
+mirror.apply(0, 'o');
+assert(mirror.before === 'Hello. Ho' && mirror.pending, 'sends apply at once');
+assert(!mirror.report('Hello. H') && mirror.before === 'Hello. Ho', 'a late echo keeps the newer text');
+assert(!mirror.report('Hello. Ho') && !mirror.pending, 'the final echo settles');
+assert(mirror.report('Elsewhere') && mirror.before === 'Elsewhere', 'an outside change replaces it');
+mirror.apply(2, 'X');
+assert(mirror.before === 'ElsewheX', 'deletions count characters');
+assert(!mirror.report('Elsewhe') && !mirror.report('ElsewheX') && !mirror.pending,
+    'a replacement reported as deletion then insertion is its own echo');
+assert(policy.shouldCapitalise(purpose.NORMAL, 0, 'Hi. ', [...'Hi. '].length), 'case decided from the mirror text');
+
+// Only the tail before the caret is read from a surrounding text, whatever
+// the document's length, and the caret counts characters.
+assert(Keycap.textBeforeCursor('Hello world', 5) === 'Hello', 'text before the caret');
+assert(Keycap.textBeforeCursor('a😀b😀c', 4) === 'a😀b😀', 'the caret counts characters, not code units');
+assert(Keycap.textBeforeCursor('', 3) === '' && Keycap.textBeforeCursor('abc', 0) === '', 'empty cases');
+{
+    const long = `${'x'.repeat(500000)}End. `;
+    const tail = Keycap.textBeforeCursor(long, long.length);
+    assert(tail.endsWith('End. ') && tail.length <= 4 * 48, 'a long document yields a bounded tail');
+    const emoji = `${'😀'.repeat(300)}Ok`;
+    const tailEmoji = Keycap.textBeforeCursor(emoji, [...emoji].length);
+    assert(tailEmoji.endsWith('😀Ok') && !/^[\uDC00-\uDFFF]/.test(tailEmoji), 'a tail never splits a surrogate pair');
+    const big = new Keycap.TextMirror();
+    big.reset(long);
+    assert(big.before.length <= 4 * 48 && !big.report(long), 'the mirror keeps a bounded tail of long reports');
+}
 assert(Keycap.deleteSelectWords(-19) === 0 && Keycap.deleteSelectWords(-30) === 1 &&
     Keycap.deleteSelectWords(-95) === 3 && Keycap.deleteSelectWords(-5000) === 32, 'delete drag words');
 assert(Keycap.spaceCursorSteps(8, 0, 0) === 0 && Keycap.spaceCursorSteps(9, 13, 0) === 0,
@@ -101,8 +175,13 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     const at = keyboard.indexOf('    _relayout() {');
     const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
     const relayout = new Function('Main', 'St', 'Keycap', 'global', body);
-    const actor = {height: 0, width: 0, _currentPage: {getRatio: () => [11.5, 4]},
-        set_style() {}, get_preferred_height: () => [actor.height, actor.height]};
+    let style = null, styleWrites = 0, sizeWrites = 0;
+    const sized = {};
+    const actor = {_currentPage: {getRatio: () => [11.5, 4]},
+        get_style: () => style, set_style(value) { style = value; styleWrites++; },
+        get height() { return sized.height ?? 0; }, set height(v) { sized.height = v; sizeWrites++; },
+        get width() { return sized.width ?? 0; }, set width(v) { sized.width = v; sizeWrites++; },
+        get_preferred_height: () => [actor.height, actor.height]};
     const run = (width, height) => relayout.call(actor, {layoutManager: {keyboardMonitor: {width, height}},
         presentation: {keyboardInset: () => 28}}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}});
     run(1038, 1076);
@@ -110,7 +189,18 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     run(360, 808);
     assert(actor.height < tablet && actor.height === Keycap.keyboardHeight({width: 360, height: 808}, 4, 11.5, 28),
         `keyboard shrinks back on the folded screen (${tablet} -> ${actor.height})`);
+    // Laying out again with nothing changed writes nothing (a write would
+    // re-render the open keyboard's paint state).
+    const [styles, sizes] = [styleWrites, sizeWrites];
+    run(360, 808);
+    run(360, 808);
+    assert(styleWrites === styles && sizeWrites === sizes, 'an unchanged relayout writes no style or size');
 }
+
+const words2 = new Keycap.WordSuggester(['the', 'then', 'they', 'there', 'tax'],
+    new Map([['the', 1000], ['then', 500], ['there', 400], ['tax', 2]]));
+assert(words2.prefixMass('th') > words2.prefixMass('ta') && words2.prefixMass('zz') === 0 &&
+    words2.prefixMass('') === 0, 'prefix mass ranks likely continuations');
 
 const words = new Keycap.WordSuggester(Keycap.hunspellWords('7\nhello/S\nthe\ntheir\nquick/M\nworld\nword\nwork\n'));
 assert(words.size === 7 && words.has('Hello'), 'Hunspell words without affix flags');
@@ -168,18 +258,42 @@ for (const [needle, message] of [
     ['this._keyboardController.setOskCompletion(false);', 'taps never switch to a completion engine'],
     ['GLib.idle_add(GLib.PRIORITY_LOW, () => {', 'suggestions are computed off the key path'],
     ['analysis?.word !== this._word || !analysis.correction', 'autocorrect never waits for analysis'],
-    ["this._keycapSettings.get_boolean('auto-correct')", 'autocorrect has an owner setting'],
+    ['this._prefs.auto_correct', 'autocorrect has an owner setting'],
     ['Keycap.SECRET_CLIPBOARD_TARGET', 'password-manager copies are skipped'],
     ['generation !== this._clipboardGeneration || this._isSensitive()', 'stale clipboard reads are dropped'],
     ['St.Settings.get().high_contrast ? null', 'High Contrast keeps the platform keyboard'],
     ['Keycap.keyboardHeight({width: monitor.width / scale', 'Keycap sizing in logical pixels'],
-    ['this._queue = Promise.resolve();', 'keys reach the input method in order'],
-    ['this._shiftTaps.tap(monotonicMs())', 'double-tap caps lock'],
-    ['Keycap.deleteMode(monotonicMs() - this._deleteStarted', 'time-based word deletion'],
+    ['this._queue = Promise.resolve();', 'engine keys reach the input method in order'],
+    ['this._shiftTaps.tap(this._keyEvent.downMs', 'double-tap caps lock from press times'],
+    ['Keycap.deleteMode(held, this._isSensitive())', 'time-based word deletion'],
+    ['GLib.idle_add(GLib.PRIORITY_DEFAULT + 2', 'a second key in one turn follows the done, never at idle priority'],
+    ['Clutter.Event.add_filter(global.stage', 'every tracked touch end is seen, grab or not'],
+    ['Meta.LaterType.BEFORE_REDRAW, () => {\n                    this._tickLaterId = 0;', 'holds are decided at frame time'],
+    ['this._finishPointer(pointer, timeUs, pointer.alternatives);', 'older keys type first on a new press'],
+    ['global.display.set_input_panel_inset(monitor', 'applications resize above the keyboard'],
+    ['reactive: false,\n            track_hover: false,', 'caps are drawn only; the tracker owns input'],
+    ["this._preview.opacity = 0;", 'the preview hides without a relayout'],
+    ['_cellsFor(page) {', 'key geometry is cached per layer allocation'],
+    ['page.transform_stage_point(x, y)', 'a press maps the touch once instead of measuring every key'],
+    ['Keycap.textBeforeCursor(text, cursor)', 'surrounding reports read only the tail'],
+    ['this._letterPriors?.word === this._word', 'letter priors are computed off the key path'],
+    ['_lockedWithoutEntry()', 'the locked screen opens the keyboard only for a visible entry'],
     ['!physicalKeyboard && this._seat.get_touch_mode()', 'automatic OSK policy (0291) is kept'],
 ])
     assert(keyboard.includes(needle), message);
 assert(!keyboard.includes('BACKSPACE_WORD_DELETE_THRESHOLD'), 'count-based word deletion is gone');
+for (const [needle, message] of [
+    ['GLib.PRIORITY_LOW, () => {\n                this._flushId', 'no idle-priority text flush'],
+    ['toggleDelete(', 'no surrounding-text driven delete repeat'],
+    ["'surrounding-text-set', () => {\n                    const [text, cursor, anchor]", 'no repeat bound to text reports'],
+    ['KEY_LONG_PRESS_TIME,', 'no timer-owned long press'],
+    ["global.stage.connectObject(\n            'captured-event', this._onCapturedEvent.bind(this), this);\n        this.keyButton", 'alternatives take no stage grab'],
+    ['setKeycapVariantClass(this._preview);\n        this._preview.text', 'no per-press restyle of the preview'],
+    ["this.keyButton.add_style_pseudo_class('active');", 'a press restyles no cap'],
+    ["[...text].slice(0, cursor).join('')", 'no whole-document copy per surrounding report'],
+    ['this._suggester.prefixMass(word + cell.letter)', 'no word-model lookups on a press'],
+])
+    assert(!keyboard.includes(needle), message);
 
 // Captured events that reach no actor (a cancelled touch, say) must neither
 // throw nor be consumed by the keyboard's popups (the alternatives popup and
@@ -193,11 +307,11 @@ for (let at = keyboard.indexOf('    _onCapturedEvent('); at >= 0; at = keyboard.
     const body = keyboard.indexOf('{', at);
     handlers.push(keyboard.slice(body + 1, keyboard.indexOf('\n    }', body)));
 }
-assert(handlers.length === 2, 'both captured-event handlers found');
+assert(handlers.length === 1, 'only the menu popup watches captured events');
 for (const body of handlers) {
     const handle = new Function('Clutter', 'global', 'actor', 'event', body);
     let hidden = false;
-    const owner = {actor: strict, _boxPointer: {bin: strict}, _hideSubkeys() { hidden = true; }, close() {}};
+    const owner = {actor: strict, sourceActor: strict, _boxPointer: {bin: strict}, _hideSubkeys() { hidden = true; }, close() {}};
     for (const type of Object.values(Clutter.EventType)) {
         const result = handle.call(owner, Clutter, actorless, null, {type: () => type});
         assert(result === Clutter.EVENT_PROPAGATE, `actorless event ${type} propagates`);
@@ -205,4 +319,17 @@ for (const body of handlers) {
     if (body.includes('_hideSubkeys'))
         assert(hidden, 'a cancelled touch closes the alternatives');
 }
-console.log('PASS Keycap privacy, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history');
+// A press outside an open menu closes it and still reaches its target (a
+// key), so no tap is lost to a menu.
+{
+    const body = handlers[0];
+    const handle = new Function('Clutter', 'global', 'actor', 'event', body);
+    const elsewhere = {contains: () => false};
+    let closed = false;
+    const owner = {actor: elsewhere, sourceActor: elsewhere, close() { closed = true; }};
+    const target = {};
+    const stage = {stage: {get_event_actor: () => target}};
+    const result = handle.call(owner, Clutter, stage, null, {type: () => Clutter.EventType.TOUCH_BEGIN});
+    assert(closed && result === Clutter.EVENT_PROPAGATE, 'a press outside the menu closes it and propagates');
+}
+console.log('PASS Keycap privacy, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');

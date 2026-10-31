@@ -124,3 +124,45 @@ matching app runtimes and updated apps, compose both complete OS candidates and
 matching media, run bounded basic candidate checks, merge PR102 and reconcile
 PR41/83/99/101 against the actual integrated heads. No complete OS image,
 installation-media acceptance or public nightly publication is claimed yet.
+
+## Integration checkpoint, October30 23:47 Chicago
+
+PR102 merged at51d6c9ee444bbf049ae26c6161675c28ce611a1b. PR101 and41 are
+merged; PR83 closed with integrated-head ancestry proof. PR99 advanced by three
+Keycap/input commits after the original snapshot; its actual9e5339d6d head is
+included in PR103. Final native Shell133 run41168295245 and Mutter15
+run41168297092 passed both CPUs; Filer76 passed in41167355646. All eight UI
+archives and exact CPU/RPM bodies were admitted in normal33e5a84f. Source checks
+41168298737 and41169464259 passed. Redundant automatic toolkit/all-package
+and Mutter reruns were cancelled; automatic UI run41169464257 failed because
+its default bootstrap still named Platform116. The default now selects the
+already authenticated Platform120 producer41165040069; actual default
+admission passed both CPUs in b3393997, without rebuilding toolkit/UI again.
+
+Runtime assembly is active in normal194b455b, private root
+/srv/luma-build/nightly-20261030/runtime-{x86_64,aarch64}. x86 Platform assembled;
+SDK is installing its RPM closure. The assembler now explicitly selects target
+CPU independently of native release-tools CPU, passing --forcearch to DNF;
+actual ARM payload verification remains pending. WebKit was fully archived and
+verified from unchanged native40433447051; no engine rebuild. Private signing
+control and independent old signed aggregate seed prepared574c4b25. Fifteen
+changed shipping app sources were sealed in0d71c7ea, including Ari, Tide, Filer,
+Core apps and Depot; unchanged apps will retain their signed commits.
+
+Core107/Tide36 active normal7d20be71. Earlier failures remain recorded: inherited
+HDD ACLs rejected private receipts; long temporary paths rejected sockets;
+HDD fsync exceeded the mailbox test's ten-second deadline. The current bounded
+512MiB private RAM temporary filesystem preserves all checks. One GTK screenshot
+check incorrectly rendered a newly created WidgetPaintable before its first
+frame; it now waits boundedly for a real nonempty frame before the original
+pixel assertions. The corrected build has passed that stage and continues the
+normal package checks. No Core/Tide RPM success is claimed yet.
+
+Installer runtime source is unchanged versus the qualified October27 source;
+normal reuse and clock/signature checks remain required for new payloads.
+Installer tools preparation10bd57d3 completed; this did not build a Lorax runtime.
+Normal OS pool waiting job752adebb was stopped (its exact root wait unit also
+stopped) to release an idle reservation; relaunch only after Core closes. Next:
+finish Core/Tide, merge103/reconcile99, finish runtime/apps/baselines, then both
+complete OS candidates/exports/matching media and bounded basic checks. No full
+OS candidate, new ISO, device acceptance or public publication is claimed.

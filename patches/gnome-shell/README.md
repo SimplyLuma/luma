@@ -319,3 +319,20 @@ handheld hardware, removes the upstream automatic welcome tour, and uses native
 physical-keyboard presence for automatic OSK behavior. Accessibility remains an
 explicit override; missing event actors propagate safely. These are shared Shell
 changes, with physical qualification tracked separately from source/package checks.
+
+`0297-keycap-key-path.patch`: the Keycap key path from the Fold investigation
+(no per-key restyle or relayout of the keyboard, no hover on `keyboardBox`, one
+pointer tracker over whole cells with touch correction, press-order rollover,
+frame-time long press and repeat from event timestamps, repeat bound to a live
+touch, grab-free alternatives, commits at once, sentence case from the
+keyboard's own text, adjustResize through Mutter 0025, D-Bus activated haptics,
+no per-key IBus traffic with layout sources). Rules and tests:
+`docs/mobile/keycap-keyboard.md` ("Key path"). Shell .132.
+
+`0298-keycap-press-path-and-lock-screen.patch`: a press costs a translation
+(cached cell geometry, one stage read, no restyle: a tint actor and
+per-character preview labels, priors computed in idle, haptic after the press
+frame, tail-only surrounding text), and on the lock screen the keyboard serves
+only the visible unlock entry, closes on lock and keeps the compact prompt
+above it. Tests: `keycap-keypath-native.js`, `keycap-lock-native.js`.
+Shell .133.

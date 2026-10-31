@@ -23,12 +23,10 @@ are separate historical paths.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The source candidate pins are Shell `1.luma.125.mobile20261030.1`, developer
-platform `1.luma.119.creator20261030.1`, core apps
-
-The source candidate pins are Shell `1.luma.131.keycap20261030.1`, developer
-platform `1.luma.117.mobile20261030.1`, core apps
-`1.luma.106.creator20261030.1` and widgets `1.luma.3`. These identify requested
+The converged nightly source pins Shell `1.luma.133.nightly20261030.1`,
+Mutter `1.luma.15.keycap20261030.1`, developer platform
+`1.luma.120.nightly20261030.1`, core apps `1.luma.107.nightly20261030.1`
+and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
 the receiving branch/device; the Titan's private development install includes
 newer unrelated platform UI work, so do not downgrade an installed package tuple
@@ -95,3 +93,5 @@ Validation and physical-device evidence are recorded in
 keys, user data, raw backups, captures, generated libraries/RPMs and diagnostic
 scripts are intentionally excluded. All product implementation belongs in the
 maintained source paths above, rather than copying the private override tree.
+
+Nightly integration also includes the e970f249b Keycap press/lock-screen follow-up; the combined Shell package is 1.luma.134.nightly20261030.1.

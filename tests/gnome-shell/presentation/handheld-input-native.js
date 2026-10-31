@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Handheld input on the installed Shell: fast typing through the on-screen
 // keyboard with a deliberately slow engine and suggestions, an
-// application that stays full screen under the keyboard and a top-edge pull,
-// and the home gesture above the keyboard. Run through run.sh:
+// application that stays full screen and resizes above the keyboard
+// (adjustResize) through a top-edge pull, and the home gesture above the
+// keyboard. Run through run.sh:
 // PRESENTATION_AUTOMATION=<this file> PRESENTATION_INITIAL_MODE=mobile
 // PRESENTATION_MONITOR=360x808.
 import Clutter from 'gi://Clutter';
@@ -63,7 +64,11 @@ async function work() {
     await sleep(1500);
     const keyboard = Main.keyboard.keyboardActor;
     check('keyboard opens over the application', Main.keyboard.visible, `${keyboard.width}x${keyboard.height}`);
-    check('application stays full screen under the keyboard', frame(window) === full, frame(window));
+    // Mobile resizes the application above the keyboard and keeps it full
+    // screen (Mutter's input panel inset).
+    const above = `${monitor.width}x${monitor.height - keyboard.height}+${monitor.x}+${monitor.y} fullscreen`;
+    check('application resizes above the keyboard and stays full screen', frame(window) === above,
+        `${frame(window)}, expected ${above}`);
 
     // The home gesture stays reachable above the keyboard.
     const picked = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE,
@@ -212,7 +217,9 @@ async function work() {
         Main.panel.statusArea.quickSettings.menu.close();
         Main.notificationTray?.close?.();
         await sleep(600);
-        check(`application stays full screen after a pull from y=${startY}`, frame(window) === full, frame(window));
+        const expected = Main.keyboard.visible ? above : full;
+        check(`application keeps its place after a pull from y=${startY}`, frame(window) === expected,
+            `${frame(window)}, keyboard ${Main.keyboard.visible ? 'open' : 'closed'}`);
     }
     finger.run_dispose();
     Main.keyboard.close();

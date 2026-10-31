@@ -1,0 +1,719 @@
+From: Luma Developers
+Subject: [PATCH] Keycap: a press costs a translation, and the keyboard serves the unlock prompt
+
+Measured on the Pixel 9 Pro Fold, handling a TOUCH_BEGIN took 7.1 ms and
+the press frame 13 ms of redraw. Instrumented headless at 360x808 scale 3
+the press path spent its time measuring every key (get_transformed_extents
+on 33 keys), in word-model lookups, in the cap's :active restyle, in setting
+the preview's text and in building the haptic call. Now:
+
+- Key cells (whole cell and cap) are cached per layer allocation in layer
+  coordinates; a press maps the touch once (transform_stage_point) and reads
+  one stage position.
+- Letter priors for near-boundary touches are computed in an idle after the
+  word changes, never on a press.
+- A press restyles nothing: the cap travels by translation, a single tint
+  actor moves over it, and each character has its own preview label that is
+  only moved and shown, in one layer above the UI.
+- Haptics send one prebuilt fire-and-forget D-Bus message right after the
+  frame that shows the press; the key path reads cached preferences.
+- Surrounding-text reports read only the tail before the caret, however long
+  the document.
+
+TOUCH_BEGIN handling headless: median 0.12 ms (was 1.5 ms), p90 0.24 ms.
+
+On the lock screen the keyboard serves only a visible Shell entry: locking
+closes a keyboard opened for an application, application text-input requests
+do not open it, and the unlock prompt's entry opens it once the curtain is
+lifted and the entry is on screen. The unlock content is laid out above an
+open keyboard, so the compact Prairie prompt stays visible.
+
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -448,11 +448,13 @@ const Key = GObject.registerClass({
+     }
+ 
+     // The pointer tracker pressed this key: the cap goes down on the next
+-    // frame, with no style recomputed beyond the cap's own state.
++    // frame by a translation only. No style changes on a press: a pseudo
++    // class restyles the cap and its labels, which on a phone re-shaped their
++    // text and re-rendered their paint state in the press frame. The pressed
++    // tint and the preview are the keyboard's (Keyboard._showPress).
+     press() {
+         this._consumed = false;
+         this._pressed = true;
+-        this.keyButton.add_style_pseudo_class('active');
+         this._capDown(this.keyButton);
+         this.emit('pressed');
+     }
+@@ -540,7 +542,6 @@ const Key = GObject.registerClass({
+ 
+     _finish() {
+         this._pressed = false;
+-        this.keyButton.remove_style_pseudo_class('active');
+         this._capUp(this.keyButton);
+         this._hideSubkeys();
+         this.emit('released');
+@@ -1591,6 +1592,7 @@ export const Keyboard = GObject.registerClass({
+         this._keycapSettings = new Gio.Settings({schema_id: KEYCAP_SCHEMA});
+         this._keycapSettings.connectObject('changed',
+             this._onKeycapSettingsChanged.bind(this), this);
++        this._syncPrefs();
+         this._contentHint = 0;
+         this._panel = null;
+         this._candidates = [];
+@@ -1612,13 +1614,6 @@ export const Keyboard = GObject.registerClass({
+         this._deleteSelected = 0;
+         this._clipboardGeneration = 0;
+         this._wasSensitive = false;
+-        // feedbackd is D-Bus activated on the first key; if it is missing or
+-        // fails, haptics wait until it appears or a while has passed.
+-        this._feedbackRetryAt = 0;
+-        this._feedbackWatch = Gio.bus_watch_name(Gio.BusType.SESSION,
+-            'org.sigxcpu.Feedback', Gio.BusNameWatcherFlags.NONE,
+-            () => (this._feedbackRetryAt = 0), null);
+-
+         this._initPointers();
+         this._setupKeyboard();
+ 
+@@ -1655,17 +1650,21 @@ export const Keyboard = GObject.registerClass({
+             this._setWindowInset(0);
+         this._reserve?.destroy();
+         this._reserve = null;
++        this._tint?.destroy();
++        this._tint = null;
++        if (this._hapticPaintId)
++            global.stage.disconnect(this._hapticPaintId);
++        if (this._priorsIdleId)
++            GLib.source_remove(this._priorsIdleId);
+         Main.inputMethod.disconnectObject(this);
+-        Gio.bus_unwatch_name(this._feedbackWatch);
++        Main.sessionMode.disconnectObject(this);
++        this._watchedFocus?.disconnectObject(this);
+         this._keycapSettings.disconnectObject(this);
+         global.display.get_selection().disconnectObject(this);
+         St.ThemeContext.get_for_stage(global.stage).disconnectObject(this);
+         this._clipPopup?.destroy();
+         this._clipPopup = null;
+-        if (this._preview) {
+-            this._preview.destroy();
+-            this._preview = null;
+-        }
++        this._destroyPreviews();
+ 
+         if (this._windowMovedId) {
+             this._focusTracker.disconnect(this._windowMovedId);
+@@ -1773,37 +1772,75 @@ export const Keyboard = GObject.registerClass({
+         return [...this._pointers.values()].sort((a, b) => a.serial - b.serial);
+     }
+ 
+-    // The key a touch at stage (x, y) is for: geometry over whole cells, the
+-    // row's learned bias, and near a letter boundary the word being typed.
+-    _hitKey(x, y) {
++    // A layer's cells (each key's whole cell, and its cap inside it) in the
++    // layer's own coordinates, measured once per allocation: a press never
++    // walks the actor tree to find a key.
++    _cellsFor(page) {
++        if (page._cells)
++            return page._cells;
++        if (!page.has_allocation())
++            return [];
+         const cells = [];
+-        for (const key of this._currentPage.get_children()) {
++        for (const key of page.get_children()) {
+             if (!(key instanceof Key) || !key.visible)
+                 continue;
+-            const box = key.get_transformed_extents();
++            const box = key.get_allocation_box();
++            const cap = key.keyButton.get_allocation_box();
+             const letter = key.character && Keycap.isWordCharacter(key.character) ? key.character : null;
+-            cells.push({key, row: key.row ?? 0, letter, x1: box.origin.x, y1: box.origin.y,
+-                x2: box.origin.x + box.size.width, y2: box.origin.y + box.size.height});
++            cells.push({key, row: key.row ?? 0, letter, x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2,
++                cap: {x: box.x1 + cap.x1, y: box.y1 + cap.y1, width: cap.x2 - cap.x1, height: cap.y2 - cap.y1}});
+         }
++        page._cells = cells;
++        page._cellsTop = Math.min(...cells.map(cell => cell.y1));
++        page._cellsAllocation ??= page.connect('notify::allocation', () => (page._cells = null));
++        return cells;
++    }
++
++    // The key a touch at stage (x, y) is for: geometry over whole cells, the
++    // row's learned bias, and near a letter boundary the word being typed
++    // (its letter priors are computed off the key path, see _queuePriors).
++    // Returns the cell with the touch in layer coordinates.
++    _hitKey(x, y) {
++        const page = this._currentPage;
++        const cells = this._cellsFor(page);
+         if (cells.length === 0)
+             return null;
++        const [ok, lx, ly] = page.transform_stage_point(x, y);
+         // The suggestion strip above the keys is not part of the grid.
+-        if (y < Math.min(...cells.map(cell => cell.y1)))
++        if (!ok || ly < page._cellsTop)
+             return null;
+-        const raw = Keycap.nearestCell(cells, x, y);
+-        const [cx, cy] = this._touchCorrection.correct(raw.row, x, y, raw.x2 - raw.x1, raw.y2 - raw.y1);
+-        let prior = null;
+-        if (this._completionAllowed() && this._modifiers.size === 0 &&
+-            this._suggester.prefixMass('a') !== null) {
++        const raw = Keycap.nearestCell(cells, lx, ly);
++        const [cx, cy] = this._touchCorrection.correct(raw.row, lx, ly, raw.x2 - raw.x1, raw.y2 - raw.y1);
++        const priors = this._letterPriors?.word === this._word && this._modifiers.size === 0 &&
++            this._completionAllowed() ? this._letterPriors.mass : null;
++        const cell = Keycap.chooseCell(cells, cx, cy, priors && (c => priors.get(c.letter.toLowerCase()) ?? 0));
++        return {cell, x: lx, y: ly};
++    }
++
++    // Letter priors for the word being typed, for near-boundary touches:
++    // computed when the Shell is idle after the word changes, never on a
++    // press; until they are ready a touch is decided by geometry alone.
++    _queuePriors() {
++        const word = this._word;
++        if (this._letterPriors?.word === word || this._priorsIdleId)
++            return;
++        this._priorsIdleId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
++            this._priorsIdleId = 0;
++            if (this._destroyed || !this._currentPage)
++                return GLib.SOURCE_REMOVE;
+             const word = this._word;
+-            const cache = new Map();
+-            prior = cell => {
+-                if (!cache.has(cell.letter))
+-                    cache.set(cell.letter, this._suggester.prefixMass(word + cell.letter) ?? 0);
+-                return cache.get(cell.letter);
+-            };
+-        }
+-        return Keycap.chooseCell(cells, cx, cy, prior);
++            const letters = new Set(this._cellsFor(this._currentPage).filter(cell => cell.letter)
++                .map(cell => cell.letter.toLowerCase()));
++            const mass = new Map();
++            for (const letter of letters) {
++                const value = this._suggester.prefixMass(word + letter);
++                if (value === null)
++                    return GLib.SOURCE_REMOVE;
++                mass.set(letter, value);
++            }
++            this._letterPriors = {word, mass};
++            return GLib.SOURCE_REMOVE;
++        });
+     }
+ 
+     _pointerDown(id, event) {
+@@ -1820,12 +1857,13 @@ export const Keyboard = GObject.registerClass({
+         if (!this._keysActive())
+             return Clutter.EVENT_PROPAGATE;
+         const [x, y] = event.get_coords();
+-        const cell = this._hitKey(x, y);
+-        if (!cell)
++        const hit = this._hitKey(x, y);
++        if (!hit)
+             return Clutter.EVENT_PROPAGATE;
++        const {cell} = hit;
+         const pointer = {
+             id, cell, key: cell.key, page: this._currentPage, serial: ++this._pointerSerial,
+-            downUs: timeUs, downX: x, downY: y, x, y,
++            downUs: timeUs, downX: x, downY: y, localX: hit.x, localY: hit.y, x, y,
+             longPressed: false, alternatives: false,
+             repeat: cell.key.action === 'delete' ? {sent: 0} : null,
+         };
+@@ -1833,6 +1871,7 @@ export const Keyboard = GObject.registerClass({
+         this._watchPointers(true);
+         this._keyEvent = {downMs: timeUs / 1000, upMs: 0};
+         pointer.key.press();
++        this._showPress(pointer);
+         this._scheduleTick();
+         return Clutter.EVENT_STOP;
+     }
+@@ -1873,6 +1912,7 @@ export const Keyboard = GObject.registerClass({
+             return;
+         this._pointers.delete(pointer.id);
+         const key = pointer.key;
++        this._hidePress();
+         const heldMs = Math.max(0, timeUs - pointer.downUs) / 1000;
+         this._keyEvent = {downMs: pointer.downUs / 1000, upMs: timeUs / 1000};
+         if (cancelled || key.get_parent() === null) {
+@@ -1887,8 +1927,8 @@ export const Keyboard = GObject.registerClass({
+             if (letter) {
+                 const cell = pointer.cell;
+                 this._lastLearned = this._touchCorrection.learn(cell.row,
+-                    (pointer.downX - (cell.x1 + cell.x2) / 2) / (cell.x2 - cell.x1),
+-                    (pointer.downY - (cell.y1 + cell.y2) / 2) / (cell.y2 - cell.y1));
++                    (pointer.localX - (cell.x1 + cell.x2) / 2) / (cell.x2 - cell.x1),
++                    (pointer.localY - (cell.y1 + cell.y2) / 2) / (cell.y2 - cell.y1));
+             } else if (key.action !== 'delete') {
+                 this._lastLearned = null;
+             }
+@@ -2054,6 +2094,7 @@ export const Keyboard = GObject.registerClass({
+             this);
+         global.stage.connectObject('notify::key-focus',
+             this._onKeyFocusChanged.bind(this), this);
++        Main.sessionMode.connectObject('updated', this._onSessionModeUpdated.bind(this), this);
+         global.display.get_selection().connectObject('owner-changed',
+             this._onSelectionOwnerChanged.bind(this), this);
+         St.ThemeContext.get_for_stage(global.stage).connectObject('changed',
+@@ -2076,10 +2117,12 @@ export const Keyboard = GObject.registerClass({
+         this.add_style_class_name('luma-keycap');
+         keycapVariant = variant;
+         setKeycapVariantClass(this);
+-        if (this._preview)
+-            setKeycapVariantClass(this._preview);
++        for (const label of this._previews?.values() ?? [])
++            setKeycapVariantClass(label);
+         if (this._reserve)
+             setKeycapVariantClass(this._reserve);
++        if (this._tint)
++            setKeycapVariantClass(this._tint);
+     }
+ 
+     _isSensitive() {
+@@ -2087,7 +2130,7 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _completionAllowed() {
+-        return !this._isSensitive() && this._keycapSettings.get_boolean('suggestions');
++        return !this._isSensitive() && this._prefs.suggestions;
+     }
+ 
+     // Sensitive fields get no suggestions, clipboard history, automatic case
+@@ -2110,6 +2153,7 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _onKeycapSettingsChanged(settings, key) {
++        this._syncPrefs();
+         if (key === 'suggestions') {
+             // Turning suggestions off keeps the word being typed as typed.
+             if (!settings.get_boolean(key) && !this._isSensitive())
+@@ -2160,7 +2204,7 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+ 
+-        if (sensitive || !this._keycapSettings.get_boolean('auto-capitalise') || !this._mirrorKnown) {
++        if (sensitive || !this._prefs.auto_capitalise || !this._mirrorKnown) {
+             this._setActiveLevel('default');
+             return;
+         }
+@@ -2178,7 +2222,9 @@ export const Keyboard = GObject.registerClass({
+         const [text, cursor] = Main.inputMethod.getSurroundingText();
+         if (text === null || cursor === null)
+             return;
+-        const before = [...text].slice(0, cursor).join('');
++        // Only the tail before the caret matters, whatever the document's
++        // length: nothing here walks or copies the whole text.
++        const before = Keycap.textBeforeCursor(text, cursor);
+         const outside = this._mirror.report(before) || !this._mirrorKnown;
+         this._mirrorKnown = true;
+         if (outside) {
+@@ -2208,8 +2254,22 @@ export const Keyboard = GObject.registerClass({
+         this._resetWord?.();
+         this._cancelPointers?.();
+         this._forgetText?.();
++        this._watchedFocus?.disconnectObject(this);
++        this._watchedFocus = null;
+         if (!(focus instanceof Clutter.Text)) {
+-            this.close();
++            this.close(this._lockedWithoutEntry());
++            return;
++        }
++
++        // On the lock screen the prompt's entry takes the focus before it is
++        // shown (the curtain is still down): open once it is on screen.
++        if (!focus.mapped && this._locked()) {
++            this.close(true);
++            this._watchedFocus = focus;
++            focus.connectObject('notify::mapped', () => {
++                if (focus.mapped && global.stage.key_focus === focus)
++                    this._onKeyFocusChanged();
++            }, this);
+             return;
+         }
+ 
+@@ -2222,6 +2282,27 @@ export const Keyboard = GObject.registerClass({
+         }
+     }
+ 
++    _locked() {
++        return Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
++    }
++
++    // While locked (and on the greeter) the keyboard serves only the visible
++    // prompt: an application's text-input request, or a focus that is not a
++    // Shell entry on screen, never opens it, and locking closes it at once.
++    _lockedWithoutEntry() {
++        if (!this._locked())
++            return false;
++        const focus = global.stage.key_focus;
++        return !(focus instanceof Clutter.Text && focus.mapped);
++    }
++
++    _onSessionModeUpdated() {
++        if (this._lockedWithoutEntry()) {
++            this._keyboardRequested = false;
++            this.close(true);
++        }
++    }
++
+     _updateLayout(groupName, purpose) {
+         this._cancelPointers();
+         this._pendingLevel = null;
+@@ -2354,12 +2435,6 @@ export const Keyboard = GObject.registerClass({
+                 hint: key.hint,
+             }, strings);
+ 
+-            button.connect('pressed', () => {
+-                this._keyFeedback();
+-                if (!key.action && commitString && commitString !== ' ' && [...commitString].length === 1)
+-                    this._showPreview(button, commitString);
+-            });
+-            button.connect('released', () => this._hidePreview());
+ 
+             if (parseInt(key.keyval, 16) === Clutter.KEY_Return || key.iconName === 'osk-enter-symbolic') {
+                 button.keyButton.add_style_class_name('luma-keycap-enter');
+@@ -2551,7 +2626,7 @@ export const Keyboard = GObject.registerClass({
+         this._spaceTap = str === ' ' ? now : 0;
+         if (str !== ' ' || !previous || now - previous > Keycap.keycap.timing.double_space ||
+             this._modifiers.size > 0 || !Main.inputMethod.currentFocus || this._isSensitive() ||
+-            !this._keycapSettings.get_boolean('double-space-period') ||
++            !this._prefs.double_space_period ||
+             this._keyboardController.purpose !== Clutter.InputContentPurpose.NORMAL)
+             return false;
+         if (!Keycap.canEndSentence(this._mirror.before))
+@@ -2571,6 +2646,7 @@ export const Keyboard = GObject.registerClass({
+         this._wordGeneration++;
+         this._wordCandidates = [];
+         this._renderSuggestions();
++        this._queuePriors?.();
+     }
+ 
+     _backspaceWord() {
+@@ -2596,6 +2672,7 @@ export const Keyboard = GObject.registerClass({
+     _queueWordSuggestions() {
+         const generation = ++this._wordGeneration;
+         const word = this._word;
++        this._queuePriors();
+         if (!word) {
+             this._wordCandidates = [];
+             this._renderSuggestions();
+@@ -2637,7 +2714,7 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _autocorrectAllowed() {
+-        return this._completionAllowed() && this._keycapSettings.get_boolean('auto-correct') &&
++        return this._completionAllowed() && this._prefs.auto_correct &&
+             this._keyboardController.purpose === Clutter.InputContentPurpose.NORMAL &&
+             (this._contentHint & (Clutter.InputContentHintFlags.LOWERCASE |
+                 Clutter.InputContentHintFlags.UPPERCASE)) === 0;
+@@ -2681,63 +2758,161 @@ export const Keyboard = GObject.registerClass({
+     // nothing where no vibrator exists. A missing or failing service is
+     // left alone until its name appears or a minute has passed, so a phone
+     // without feedbackd pays nothing per key and logs nothing.
++    // The haptic tick goes out right after the frame that shows the press,
++    // so the tick and the cap's travel land together and handling the press
++    // stays short.
+     _keyFeedback() {
+-        if (this._keycapSettings.get_boolean('sound'))
++        if (this._prefs.sound)
+             global.display.get_sound_player().play_from_theme('button-pressed', _('Key press'), null);
+-        if (!this._keycapSettings.get_boolean('haptics') ||
+-            GLib.get_monotonic_time() < this._feedbackRetryAt)
+-            return;
+-        Gio.DBus.session.call('org.sigxcpu.Feedback', '/org/sigxcpu/Feedback',
+-            'org.sigxcpu.Feedback', 'TriggerFeedback',
+-            new GLib.Variant('(ssa{sv}i)', ['org.gnome.Shell', 'button-pressed',
+-                {profile: new GLib.Variant('s', 'quiet')}, -1]),
+-            null, Gio.DBusCallFlags.NONE, -1, null, (bus, result) => {
+-                try {
+-                    bus.call_finish(result);
+-                } catch {
+-                    // Feedback is best effort; the press already happened.
+-                    this._feedbackRetryAt = GLib.get_monotonic_time() + 60 * GLib.USEC_PER_SEC;
+-                }
+-            });
++        if (!this._prefs.haptics || this._hapticPaintId)
++            return;
++        this._hapticPaintId = global.stage.connect('after-paint', () => {
++            global.stage.disconnect(this._hapticPaintId);
++            this._hapticPaintId = 0;
++            this._sendHaptic();
++        });
++    }
++
++    _sendHaptic() {
++        // One prebuilt, fire-and-forget message per press: no reply is
++        // awaited and nothing is built on the key path. The bus starts
++        // feedbackd on the first one; without feedbackd (or a vibrator)
++        // nothing happens and nothing is logged.
++        if (!this._feedbackMessage) {
++            this._feedbackMessage = Gio.DBusMessage.new_method_call('org.sigxcpu.Feedback',
++                '/org/sigxcpu/Feedback', 'org.sigxcpu.Feedback', 'TriggerFeedback');
++            this._feedbackMessage.set_body(new GLib.Variant('(ssa{sv}i)', ['org.gnome.Shell', 'button-pressed',
++                {profile: new GLib.Variant('s', 'quiet')}, -1]));
++            this._feedbackMessage.set_flags(Gio.DBusMessageFlags.NO_REPLY_EXPECTED);
++        }
++        try {
++            this._sessionBus ??= Gio.DBus.session;
++            this._sessionBus.send_message(this._feedbackMessage.copy(), Gio.DBusSendMessageFlags.NONE);
++        } catch {
++            // Feedback is best effort; the press already happened.
++        }
++    }
++
++    // The keyboard's preferences the key path reads, kept in step with the
++    // settings instead of read on every press.
++    _syncPrefs() {
++        this._prefs = {};
++        for (const key of ['sound', 'haptics', 'key-preview', 'suggestions', 'auto-capitalise',
++            'double-space-period', 'auto-correct'])
++            this._prefs[key.replaceAll('-', '_')] = this._keycapSettings.get_boolean(key);
++    }
++
++    // What a press shows: the cap's tint and, for a character, the preview,
++    // both placed from the cached cell (one stage-position read per press),
++    // and the haptic tick. Neither restyles anything.
++    _showPress(pointer, feedback = true) {
++        const {cell, page} = pointer;
++        const [px, py] = page.get_transformed_position();
++        const cap = {x: px + cell.cap.x, y: py + cell.cap.y, width: cell.cap.width, height: cell.cap.height};
++        this._showTint(cap);
++        const text = cell.key.character;
++        if (text && text !== ' ' && [...text].length === 1)
++            this._showPreview(cap, text);
++        if (feedback)
++            this._keyFeedback();
++    }
++
++    _hidePress() {
++        this._hidePreview();
++        if (this._tint)
++            this._tint.opacity = 0;
++    }
++
++    // A pressed cap's tint: one actor laid out once per cap size, moved by
++    // translation and shown by opacity, above the keys and below the preview.
++    _showTint(cap) {
++        if (!keycapVariant)
++            return;
++        const uiGroup = Main.layoutManager.uiGroup;
++        if (!this._tint) {
++            this._tint = new St.Widget({style_class: 'luma-keycap-press', opacity: 0});
++            setKeycapVariantClass(this._tint);
++            uiGroup.insert_child_above(this._tint, Main.layoutManager.keyboardBox);
++        }
++        if (this._tintSize?.[0] !== cap.width || this._tintSize?.[1] !== cap.height) {
++            this._tintSize = [cap.width, cap.height];
++            this._tint.set_size(cap.width, cap.height);
++        }
++        this._tint.set_translation(cap.x, cap.y + Keycap.keycap.geometry.travel, 0);
++        this._tint.opacity = 255;
+     }
+ 
+     // The key preview above a pressed cap. It is laid out once per cap
+     // size and then only changes its text, translation and opacity: showing,
+     // hiding, resizing or moving it would relayout the Shell's UI group and
+     // repaint the screen on every press and release.
+-    _showPreview(key, text) {
+-        if (!keycapVariant || !this._keycapSettings.get_boolean('key-preview'))
++    // One preview label per character, made once and then only moved and
++    // shown: a press sets no text, so nothing is laid out or shaped in its
++    // frame.
++    _previewLabel(text) {
++        this._previews ??= new Map();
++        let label = this._previews.get(text);
++        if (!label) {
++            // All previews share one layer above the Shell's UI: showing
++            // another character raises nothing.
++            if (!this._previewLayer) {
++                this._previewLayer = new Clutter.Actor({reactive: false});
++                Main.layoutManager.uiGroup.add_child(this._previewLayer);
++            }
++            label = new St.Label({style_class: 'luma-keycap-preview', text, opacity: 0});
++            setKeycapVariantClass(label);
++            this._previewLayer.add_child(label);
++            this._previews.set(text, label);
++        }
++        return label;
++    }
++
++    _showPreview(cap, text) {
++        if (!keycapVariant || !this._prefs.key_preview)
+             return;
++        const label = this._previewLabel(text);
+         const uiGroup = Main.layoutManager.uiGroup;
+-        if (!this._preview) {
+-            // Painted only: tracked chrome would recompute the input region
+-            // on every key press. Its variant is set here and on theme
+-            // changes, never per press (a class change restyles it).
+-            this._preview = new St.Label({style_class: 'luma-keycap-preview', opacity: 0});
+-            setKeycapVariantClass(this._preview);
+-            uiGroup.add_child(this._preview);
+-            this._previewSize = null;
+-        }
+-        if (uiGroup.get_last_child() !== this._preview)
+-            uiGroup.set_child_above_sibling(this._preview, null);
+-        const [x, y] = key.keyButton.get_transformed_position();
+-        const [width] = key.keyButton.get_transformed_size();
++        if (uiGroup.get_last_child() !== this._previewLayer)
++            uiGroup.set_child_above_sibling(this._previewLayer, null);
++        const {x, y, width} = cap;
+         if (this._previewSize?.cap !== width) {
+             // Wide enough for the widest letter, never narrower than the cap.
+-            this._preview.text = 'W';
+-            const [, naturalWidth] = this._preview.get_preferred_width(-1);
+-            const [, naturalHeight] = this._preview.get_preferred_height(-1);
++            const [, naturalWidth] = this._previewLabel('W').get_preferred_width(-1);
++            const [, naturalHeight] = this._previewLabel('W').get_preferred_height(-1);
+             this._previewSize = {cap: width, width: Math.max(naturalWidth, width), height: naturalHeight};
+-            this._preview.set_size(this._previewSize.width, this._previewSize.height);
+         }
+         const {width: previewWidth, height: previewHeight} = this._previewSize;
+-        this._preview.text = text;
++        if (label._previewWidth !== previewWidth) {
++            label._previewWidth = previewWidth;
++            label.set_size(previewWidth, previewHeight);
++        }
+         const monitor = Main.layoutManager.keyboardMonitor;
+         let previewX = Math.round(x + (width - previewWidth) / 2);
+         if (monitor)
+             previewX = Math.clamp(previewX, monitor.x, monitor.x + monitor.width - previewWidth);
+-        this._preview.set_translation(previewX, Math.round(y - previewHeight - 4), 0);
+-        this._preview.opacity = 255;
++        label.set_translation(previewX, Math.round(y - previewHeight - 4), 0);
++        label.opacity = 255;
++        this._preview = label;
++    }
++
++    // Makes the preview labels of a layer's characters ahead of time, a few
++    // per idle pass, so no press creates one.
++    _preparePreviews() {
++        if (this._previewsIdleId || !this._layers)
++            return;
++        const pending = [...new Set(['default', 'shift'].flatMap(level => this._layers[level]?.get_children() ?? [])
++            .map(key => key.character).filter(text => text && text !== ' ' && [...text].length === 1))]
++            .filter(text => !this._previews?.has(text));
++        if (pending.length === 0 || !keycapVariant)
++            return;
++        this._previewsIdleId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
++            for (const text of pending.splice(0, 4))
++                this._previewLabel(text);
++            if (pending.length > 0 && !this._destroyed)
++                return GLib.SOURCE_CONTINUE;
++            this._previewsIdleId = 0;
++            return GLib.SOURCE_REMOVE;
++        });
+     }
+ 
+     _hidePreview() {
+@@ -2745,6 +2920,17 @@ export const Keyboard = GObject.registerClass({
+             this._preview.opacity = 0;
+     }
+ 
++    _destroyPreviews() {
++        if (this._previewsIdleId)
++            GLib.source_remove(this._previewsIdleId);
++        this._previewsIdleId = 0;
++        this._previewLayer?.destroy();
++        this._previewLayer = null;
++        this._previews = null;
++        this._preview = null;
++        this._previewSize = null;
++    }
++
+     _createTools() {
+         const tools = new St.BoxLayout({style_class: 'luma-keycap-tools', x_expand: true});
+         const add = (icon, name, callback) => {
+@@ -3202,6 +3388,8 @@ export const Keyboard = GObject.registerClass({
+ 
+     open(immediate = false) {
+         this._clearShowIdle();
++        if (this._lockedWithoutEntry())
++            return;
+         this._keyboardRequested = true;
+ 
+         // Already open: nothing to lay out again (monitor and layout changes
+@@ -3366,8 +3554,8 @@ export const Keyboard = GObject.registerClass({
+ 
+     // Everything a key press shows for the first time is drawn once, nearly
+     // transparent, right after the keyboard opens: the letter layers it
+-    // swaps between by itself (sentence case), a pressed cap of each kind
+-    // and the key preview. The first press of a session, or the first swap to
++    // swaps between by itself (sentence case), the press tint and the key
++    // preview. The first press of a session, or the first swap to
+     // a layer, then lays out and rasterises nothing new in its frame.
+     _warmLayers() {
+         if (!this._layers || this._warmedLayers === this._layers)
+@@ -3375,29 +3563,22 @@ export const Keyboard = GObject.registerClass({
+         this._warmedLayers = this._layers;
+         const cold = ['default', 'shift'].map(level => this._layers[level])
+             .filter(layer => layer && layer !== this._currentPage && !layer.visible);
+-        const pressed = [];
+         for (const layer of cold) {
+             layer.opacity = 1;
+             layer.show();
+-            const kinds = new Set();
+-            for (const key of layer.get_children()) {
+-                const kind = key.keyButton?.get_style_class_name();
+-                if (!kind || kinds.has(kind))
+-                    continue;
+-                kinds.add(kind);
+-                key.keyButton.add_style_pseudo_class('active');
+-                pressed.push(key.keyButton);
+-            }
+         }
+-        const sample = this._layers.default?.get_children().find(key => key.character)?.character;
+-        if (sample) {
+-            this._showPreview(this._layers.default.get_children().find(key => key.character), sample);
++        const cell = this._currentPage && this._cellsFor(this._currentPage).find(c => c.key.character);
++        if (cell) {
++            this._showPress({cell, page: this._currentPage}, false);
+             if (this._preview)
+                 this._preview.opacity = 1;
++            if (this._tint)
++                this._tint.opacity = 1;
+         }
+         const id = global.stage.connect('after-paint', () => {
+             global.stage.disconnect(id);
+-            pressed.forEach(button => button.remove_style_pseudo_class('active'));
++            if (this._tint)
++                this._tint.opacity = 0;
+             for (const layer of cold) {
+                 layer.opacity = 255;
+                 if (layer !== this._currentPage)
+@@ -3409,6 +3590,7 @@ export const Keyboard = GObject.registerClass({
+ 
+     _animateShowComplete() {
+         this._warmLayers();
++        this._preparePreviews();
+         if (this._windowsResized)
+             this._showReserve(false);
+         const keyboardBox = Main.layoutManager.keyboardBox;
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -170,9 +170,15 @@ class PrairieUnlockContentLayout extends Clutter.LayoutManager {
+     }
+ 
+     vfunc_allocate(container, box) {
+-        const [width, height] = box.get_size();
++        const [width, fullHeight] = box.get_size();
+         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+         const actorBox = new Clutter.ActorBox();
++        // The prompt stays above an open on-screen keyboard: the content is
++        // laid out in the height the keyboard leaves.
++        const keyboard = Main.keyboard?.visible &&
++            Main.layoutManager.keyboardIndex === Main.layoutManager.primaryIndex
++            ? Main.layoutManager.keyboardBox.height : 0;
++        const height = Math.max(fullHeight / 2, fullHeight - keyboard);
+ 
+         if (PrairieLogin.compactLogin(width, scaleFactor)) {
+             const progress = container._compactProgress ?? 0;
+@@ -379,6 +385,9 @@ export const UnlockDialog = GObject.registerClass({
+             this._stack, this._otherUserButton);
+         this.add_child(mainBox);
+ 
++        // The content follows the on-screen keyboard (PrairieUnlockContentLayout).
++        Main.keyboard.connectObject('visibility-changed', () => this._stack.queue_relayout(), this);
++
+         this._idleMonitor = global.backend.get_core_idle_monitor();
+         this._idleWatchId = this._idleMonitor.add_idle_watch(IDLE_TIMEOUT * 1000, this._escape.bind(this));
+ 

@@ -451,6 +451,8 @@
       "double_space": 400,
       "delete_repeat_delay": 500,
       "delete_word_after": 2000,
+      "delete_repeat_interval": 50,
+      "long_press": 300,
       "space_cursor_threshold": 8,
       "space_cursor_vertical_limit": 12,
       "space_cursor_step": 10,
@@ -458,7 +460,7 @@
       "delete_select_word": 30
     },
     "prediction": {
-      "_doc": "Word ranking: corpus frequency (python3-pyspellchecker's OpenSubtitles counts) times how likely the edit is as a touch typo. Autocorrect needs a decisive best: at least autocorrect_min weighted and autocorrect_lead times the runner-up, as Stevia's LatinIME completer requires 1.5x. Words below known_min_count are not treated as words.",
+      "_doc": "Word ranking: corpus frequency (python3-pyspellchecker's OpenSubtitles counts) times how likely the edit is as a touch typo. Autocorrect needs a decisive best: at least autocorrect_min weighted and autocorrect_lead times the runner-up, as Stevia's LatinIME completer requires 1.5x. Words below known_min_count are not treated as words. Dynamic key targets: near a letter boundary the typed prefix's word mass can move the boundary by at most target_reach of a key (score: Gaussian of the distance from the cap centre with target_sigma key sizes, times (mass + target_floor)^target_weight). Touch-position correction: a per-row bias in key sizes, learned from committed taps at correction_rate and clamped to correction_limit.",
       "transpose": 1,
       "double": 1,
       "neighbour": 0.05,
@@ -468,7 +470,13 @@
       "known_min_count": 10,
       "autocorrect_min": 1000,
       "autocorrect_lead": 1.5,
-      "learned_limit": 1000
+      "learned_limit": 1000,
+      "target_reach": 0.2,
+      "target_sigma": 0.45,
+      "target_floor": 1,
+      "target_weight": 0.5,
+      "correction_rate": 0.08,
+      "correction_limit": 0.2
     },
     "clipboard": {
       "max_clips": 10,

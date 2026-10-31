@@ -86,6 +86,242 @@ export function deleteMode(heldMs, sensitive) {
     return !sensitive && heldMs >= keycap.timing.delete_word_after ? 'word' : 'char';
 }
 
+// Key timing is decided from event times (milliseconds since the press), never
+// from when a timer happened to run: a stalled frame cannot turn a tap into a
+// hold. A key held `heldMs` is a long press from keycap.timing.long_press.
+export function isLongPress(heldMs) {
+    return heldMs >= keycap.timing.long_press;
+}
+
+// Deletions a held delete key owes after `heldMs`: the first at the repeat
+// delay, then one per repeat interval.
+export function repeatsDue(heldMs, delay = keycap.timing.delete_repeat_delay,
+    interval = keycap.timing.delete_repeat_interval) {
+    return heldMs < delay ? 0 : 1 + Math.floor((heldMs - delay) / interval);
+}
+
+// When the next repeat falls due, in milliseconds since the press.
+export function nextRepeatAt(sent, delay = keycap.timing.delete_repeat_delay,
+    interval = keycap.timing.delete_repeat_interval) {
+    return sent === 0 ? delay : delay + sent * interval;
+}
+
+// Hit testing. A key's target is its whole cell (cap plus gutters); a touch
+// that lands in no cell (the keyboard's own padding, an aspect margin) goes to
+// the nearest key. Cells are {x1, y1, x2, y2} in one coordinate space.
+export function cellDistance(cell, x, y) {
+    const dx = Math.max(cell.x1 - x, 0, x - cell.x2);
+    const dy = Math.max(cell.y1 - y, 0, y - cell.y2);
+    return Math.hypot(dx, dy);
+}
+
+export function nearestCell(cells, x, y) {
+    // Almost every touch lands inside a cell: find it without measuring.
+    for (const cell of cells) {
+        if (x >= cell.x1 && x < cell.x2 && y >= cell.y1 && y < cell.y2)
+            return cell;
+    }
+    let best = null, bestDistance = Infinity, bestCentre = Infinity;
+    for (const cell of cells) {
+        const dx = Math.max(cell.x1 - x, 0, x - cell.x2);
+        const dy = Math.max(cell.y1 - y, 0, y - cell.y2);
+        const distance = dx * dx + dy * dy;
+        const cx = x - (cell.x1 + cell.x2) / 2, cy = y - (cell.y1 + cell.y2) / 2;
+        const centre = cx * cx + cy * cy;
+        if (distance < bestDistance || (distance === bestDistance && centre < bestCentre)) {
+            best = cell;
+            bestDistance = distance;
+            bestCentre = centre;
+        }
+    }
+    return best;
+}
+
+// Which key a touch means. Geometry decides, except near a boundary between
+// two letters, where the word being typed may move that boundary by at most
+// `reach` of a key (iOS/LatinIME-style dynamic targets, bounded so a clear tap
+// is never overruled). prior(cell) is the relative likelihood of the cell's
+// letter coming next (any positive scale); cells with `letter` take part.
+export function chooseCell(cells, x, y, prior = null) {
+    const p = keycap.prediction;
+    const geometric = nearestCell(cells, x, y);
+    if (!geometric || !prior || !geometric.letter || cellDistance(geometric, x, y) > 0)
+        return geometric;
+    const width = geometric.x2 - geometric.x1, height = geometric.y2 - geometric.y1;
+    const candidates = cells.filter(cell => cell.letter && (cell === geometric ||
+        cellDistance(cell, x, y) <= p.target_reach * Math.min(width, height)));
+    if (candidates.length < 2)
+        return geometric;
+    const score = cell => {
+        const nx = (x - (cell.x1 + cell.x2) / 2) / (cell.x2 - cell.x1);
+        const ny = (y - (cell.y1 + cell.y2) / 2) / (cell.y2 - cell.y1);
+        const sigma = p.target_sigma;
+        return Math.exp(-(nx * nx + ny * ny) / (2 * sigma * sigma)) *
+            Math.pow(Math.max(prior(cell), 0) + p.target_floor, p.target_weight);
+    };
+    let best = geometric, bestScore = score(geometric);
+    for (const cell of candidates) {
+        const value = score(cell);
+        if (value > bestScore) {
+            best = cell;
+            bestScore = value;
+        }
+    }
+    return best;
+}
+
+// Touch-position correction (LatinIME's sweet spots, learned per row): people
+// hit consistently off the cap centres, so each row keeps a small bias, in
+// fractions of a key, from taps that were committed and not deleted right
+// after. The bias is clamped so a correction never crosses half a gutter.
+export class TouchCorrection {
+    constructor({rate = keycap.prediction.correction_rate, limit = keycap.prediction.correction_limit} = {}) {
+        this._rate = rate;
+        this._limit = limit;
+        this._rows = new Map();
+    }
+
+    bias(row) {
+        return this._rows.get(row) ?? [0, 0];
+    }
+
+    // Where a touch at (x, y) is aimed, for keys `width` x `height` in `row`.
+    correct(row, x, y, width, height) {
+        const [bx, by] = this.bias(row);
+        return [x - bx * width, y - by * height];
+    }
+
+    // A committed tap on a key of `row`, (nx, ny) from its centre in key
+    // sizes. Returns a token that retract() takes when the tap is undone.
+    learn(row, nx, ny) {
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || Math.abs(nx) > 0.5 || Math.abs(ny) > 0.5)
+            return null;
+        const before = this.bias(row);
+        const clamp = value => Math.max(-this._limit, Math.min(this._limit, value));
+        this._rows.set(row, [clamp(before[0] + this._rate * (nx - before[0])),
+            clamp(before[1] + this._rate * (ny - before[1]))]);
+        return {row, before};
+    }
+
+    retract(token) {
+        if (token)
+            this._rows.set(token.row, token.before);
+    }
+
+    reset() {
+        this._rows.clear();
+    }
+}
+
+// What the keyboard knows of the text before the caret: the application's
+// last report plus every change this keyboard sent since, so decisions
+// (sentence case, double-space period) never wait for a round trip. Reports
+// that echo a state this keyboard produced are ignored; any other report is an
+// outside change (the caret moved, the application edited) and replaces it.
+const MIRROR_TAIL = 48;
+const MIRROR_SENT = 64;
+
+const SURROGATE = /[\uD800-\uDFFF]/;
+const NOT_HIGH_SURROGATE = /[^\uD800-\uDBFF]+/g;
+
+// The last `max` code units of `text`, never splitting a surrogate pair.
+function tailUnits(text, max) {
+    if (text.length <= max)
+        return text;
+    let start = text.length - max;
+    const unit = text.charCodeAt(start);
+    if (unit >= 0xDC00 && unit <= 0xDFFF)
+        start++;
+    return text.slice(start);
+}
+
+// The text just before the caret, at most `max` code units of it, for a
+// surrounding text whose caret counts characters (code points), as Clutter's
+// does. It neither walks nor copies a long document: a text without
+// surrogates is indexed directly, and only one with them is scanned (without
+// building arrays) to find the caret.
+export function textBeforeCursor(text, cursor, max = 4 * MIRROR_TAIL) {
+    if (!text || !(cursor > 0))
+        return '';
+    let end;
+    if (!SURROGATE.test(text)) {
+        end = Math.min(cursor, text.length);
+    } else {
+        // Characters in the text, counted natively; then walk to the caret
+        // from whichever end is nearer (usually zero steps from the end).
+        const total = text.length - text.replace(NOT_HIGH_SURROGATE, '').length;
+        if (cursor >= total) {
+            end = text.length;
+        } else if (total - cursor < cursor) {
+            end = text.length;
+            for (let points = total; points > cursor && end > 0; points--) {
+                const unit = text.charCodeAt(end - 1);
+                end -= unit >= 0xDC00 && unit <= 0xDFFF && end > 1 ? 2 : 1;
+            }
+        } else {
+            end = 0;
+            for (let points = 0; end < text.length && points < cursor; points++) {
+                const unit = text.charCodeAt(end);
+                end += unit >= 0xD800 && unit <= 0xDBFF && end + 1 < text.length ? 2 : 1;
+            }
+        }
+    }
+    return tailUnits(text.slice(Math.max(0, end - max - 1), end), max);
+}
+
+export class TextMirror {
+    constructor() {
+        this.reset();
+    }
+
+    reset(before = '') {
+        this.before = tailUnits(before ?? '', 4 * MIRROR_TAIL);
+        this._sent = [];
+    }
+
+    // Bounded whatever the text's length (reports can be whole documents).
+    _tail(text) {
+        return [...tailUnits(text, 2 * MIRROR_TAIL)].slice(-MIRROR_TAIL).join('');
+    }
+
+    // This keyboard replaced `count` characters before the caret with `text`.
+    // An application may report the deletion and the insertion separately;
+    // both states are its own echoes.
+    apply(count, text) {
+        const chars = [...this.before];
+        const kept = chars.slice(0, Math.max(0, chars.length - count)).join('');
+        if (count > 0 && text)
+            this._sent.push(this._tail(kept));
+        this.before = kept + text;
+        if ([...this.before].length > 4 * MIRROR_TAIL)
+            this.before = [...this.before].slice(-2 * MIRROR_TAIL).join('');
+        this._sent.push(this._tail(this.before));
+        if (this._sent.length > MIRROR_SENT)
+            this._sent.shift();
+    }
+
+    // The application reported `before` (its text before the caret). Returns
+    // true when that is an outside change.
+    report(before) {
+        const tail = this._tail(before ?? '');
+        const index = this._sent.lastIndexOf(tail);
+        if (index >= 0) {
+            this._sent.splice(0, index + 1);
+            if (this._sent.length === 0)
+                this.before = tailUnits(before ?? '', 4 * MIRROR_TAIL);
+            return false;
+        }
+        if (this._sent.length === 0 && tail === this._tail(this.before))
+            return false;
+        this.reset(before ?? '');
+        return true;
+    }
+
+    get pending() {
+        return this._sent.length > 0;
+    }
+}
+
 // Suggestion strip: the literal word (quoted) left, the backend's first
 // choice bold in the centre, the next different candidate right. Without a
 // literal word the candidates keep their order and the first is the choice.
@@ -252,9 +488,16 @@ export class WordSuggester {
 
     // How common a word is, including the person's accepted choices.
     frequency(word) {
-        const lower = word.toLowerCase();
+        return this._frequencyOf(word.toLowerCase());
+    }
+
+    _frequencyOf(lower) {
         return (this._frequency.get(lower) ?? (this._known.has(lower) ? 1 : 0)) +
             (this._accepted.get(lower) ?? 0) * 1000;
+    }
+
+    _hasLower(lower) {
+        return this._known.has(lower) || this._kept.has(lower);
     }
 
     // The person's own words: one they kept by undoing a correction is never
@@ -300,7 +543,8 @@ export class WordSuggester {
             if (sorted[i] !== lower)
                 found.push(sorted[i]);
         }
-        return found.sort((a, b) => this.frequency(b) - this.frequency(a) || a.length - b.length || (a < b ? -1 : 1))
+        const weight = new Map(found.map(word => [word, this._frequencyOf(word)]));
+        return found.sort((a, b) => weight.get(b) - weight.get(a) || a.length - b.length || (a < b ? -1 : 1))
             .slice(0, limit);
     }
 
@@ -311,31 +555,39 @@ export class WordSuggester {
         const p = keycap.prediction;
         const weights = new Map();
         const add = (candidate, weight) => {
-            if (candidate !== lower && this.has(candidate) && !(weights.get(candidate) >= weight))
+            if (candidate !== lower && this._hasLower(candidate) && !(weights.get(candidate) >= weight))
                 weights.set(candidate, weight);
         };
+        // Candidates are joined from prefixes and suffixes computed once per
+        // word: no array is built or joined per candidate.
         const chars = [...lower];
-        const join = parts => parts.join('');
-        for (let i = 0; i < chars.length - 1; i++)
-            add(join([...chars.slice(0, i), chars[i + 1], chars[i], ...chars.slice(i + 2)]), p.transpose);
-        for (let i = 0; i < chars.length; i++) {
-            add(join([...chars.slice(0, i + 1), chars[i], ...chars.slice(i + 1)]), p.double);
+        const n = chars.length;
+        const prefix = [''], suffix = [];
+        for (let i = 0; i < n; i++)
+            prefix.push(prefix[i] + chars[i]);
+        suffix[n] = '';
+        for (let i = n - 1; i >= 0; i--)
+            suffix[i] = chars[i] + suffix[i + 1];
+        for (let i = 0; i < n - 1; i++)
+            add(prefix[i] + chars[i + 1] + chars[i] + suffix[i + 2], p.transpose);
+        for (let i = 0; i < n; i++) {
+            add(prefix[i + 1] + chars[i] + suffix[i + 1], p.double);
             if (chars[i] === chars[i + 1])
-                add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.double);
+                add(prefix[i] + suffix[i + 1], p.double);
             for (const letter of LETTERS) {
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i + 1)]),
+                add(prefix[i] + letter + suffix[i + 1],
                     neighbours(chars[i], letter) ? p.neighbour : p.other);
             }
         }
-        for (let i = 0; i <= chars.length; i++) {
+        for (let i = 0; i <= n; i++) {
             for (const letter of LETTERS) {
                 const near = neighbours(chars[i - 1], letter) || neighbours(chars[i], letter);
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i)]), near ? p.near_insert : p.other);
+                add(prefix[i] + letter + suffix[i], near ? p.near_insert : p.other);
             }
         }
-        for (let i = 0; i < chars.length; i++)
-            add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.other);
-        return [...weights].map(([candidate, weight]) => [candidate, weight * Math.max(1, this.frequency(candidate))])
+        for (let i = 0; i < n; i++)
+            add(prefix[i] + suffix[i + 1], p.other);
+        return [...weights].map(([candidate, weight]) => [candidate, weight * Math.max(1, this._frequencyOf(candidate))])
             .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
     }
 
@@ -371,6 +623,33 @@ export class WordSuggester {
 
     suggest(word, limit = 3) {
         return this.analyse(word, limit).suggestions;
+    }
+
+    // How likely `prefix` continues into a word: the summed frequency of up
+    // to `cap` known words starting with it (a bounded scan of the sorted
+    // index, cheap enough for the touch that asks).
+    prefixMass(prefix, cap = 64) {
+        const lower = (prefix ?? '').toLowerCase();
+        if (!lower)
+            return 0;
+        const bucket = this._buckets.get(lower[0]);
+        if (!bucket)
+            return 0;
+        if (!bucket.sorted) {
+            bucket.words.sort();
+            bucket.sorted = true;
+        }
+        const sorted = bucket.words;
+        let low = 0, high = sorted.length;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (sorted[middle] < lower) low = middle + 1;
+            else high = middle;
+        }
+        let mass = 0;
+        for (let i = low, n = 0; i < sorted.length && n < cap && sorted[i].startsWith(lower); i++, n++)
+            mass += Math.max(1, this._frequencyOf(sorted[i]));
+        return mass;
     }
 }
 

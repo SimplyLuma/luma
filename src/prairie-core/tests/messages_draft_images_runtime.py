@@ -70,10 +70,16 @@ with tempfile.TemporaryDirectory(prefix='message-drafts-') as temporary:
         pump(); time.sleep(.15); pump()
         ok, bounds = avatar.compute_bounds(surface.scroller)
         assert ok and bounds.get_y() >= 0, (width, ok, bounds.get_y(), window.get_height(), surface.body.get_height(), surface.scroller.get_vadjustment().get_value(), surface.scroller.get_vadjustment().get_upper(), surface.scroller.get_vadjustment().get_page_size())
-        snapshot = Gtk.Snapshot()
         viewport_width, viewport_height = surface.scroller.get_width(), surface.scroller.get_height()
-        Gtk.WidgetPaintable.new(surface.scroller).snapshot(snapshot, viewport_width, viewport_height)
-        rendered = window.get_renderer().render_texture(snapshot.to_node(), Graphene.Rect().init(0, 0, viewport_width, viewport_height))
+        paintable = Gtk.WidgetPaintable.new(surface.scroller)
+        def snapshot_node():
+            snapshot = Gtk.Snapshot()
+            paintable.snapshot(snapshot, viewport_width, viewport_height)
+            return snapshot.to_node()
+        # A newly attached paintable receives its contents on a frame; mapping
+        # the widget does not mean that frame has already been delivered.
+        wait(lambda: snapshot_node() is not None)
+        rendered = window.get_renderer().render_texture(snapshot_node(), Graphene.Rect().init(0, 0, viewport_width, viewport_height))
         download = Gdk.TextureDownloader.new(rendered)
         download.set_format(Gdk.MemoryFormat.R8G8B8A8)
         pixels, stride = download.download_bytes()

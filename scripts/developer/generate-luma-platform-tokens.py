@@ -767,13 +767,31 @@ def _keycap_colour(value: str, alpha: float | None = None) -> str:
     return "rgba(" + ", ".join(("0" + part) if part.startswith(".") else part for part in parts) + ")"
 
 
+def _keycap_rgb(value: str) -> tuple[int, int, int]:
+    hexa = value.strip().lstrip("#")
+    if len(hexa) == 3:
+        hexa = "".join(c * 2 for c in hexa)
+    if len(hexa) != 6:
+        raise ValueError(f"Keycap face colours must be hex: {value}")
+    return tuple(int(hexa[i:i + 2], 16) for i in (0, 2, 4))
+
+
 def render_keycap_shell_css() -> str:
     """The Shell's Keycap sheet: one rule set per system variant.
 
-    St paints one box-shadow per actor, so a cap is its face gradient over a
-    hard edge shadow; pressing translates the cap by `travel` while the edge
+    St paints one box-shadow per actor, so a cap is a flat face over a hard
+    edge shadow; pressing translates the cap by `travel` while the edge
     shrinks by the same amount, keeping the cap's foot still (keyboard.js).
     The horizontal gutter is split into whole pixels because St rounds padding.
+
+    Everything here must stay cheap for St to paint at any scale: a gradient
+    or an inset shadow is rasterised with cairo on the CPU (the inset one
+    blurred there) whenever the actor's paint state is invalidated, which on
+    a phone at scale 3 cost about 270 ms a frame on the keyboard tray. So
+    faces and the tray are flat colours (the token gradient's mean), the
+    tray's inset shading is a one-pixel top edge, and only blur-free outset
+    edges remain; those St renders once per state and shares between caps.
+    Labels carry no text shadow, which St would re-render on every press.
     """
     tokens = load_document()["keycap"]
     g = tokens["geometry"]
@@ -788,9 +806,13 @@ def render_keycap_shell_css() -> str:
         lines.extend(f"  {declaration};" for declaration in declarations)
         lines.append("}")
 
+    def mean(top, bottom):
+        a, b = (_keycap_rgb(top), _keycap_rgb(bottom))
+        return "#" + "".join(f"{round((x + y) / 2):02x}" for x, y in zip(a, b))
+
     def gradient(top, bottom):
-        return ("background-color: " + bottom, "background-gradient-direction: vertical",
-                "background-gradient-start: " + top, "background-gradient-end: " + bottom)
+        # A flat face: see the docstring for why the Shell paints no gradient.
+        return ("background-color: " + mean(top, bottom), "background-gradient-direction: none")
 
     # Structure shared by every appearance, High Contrast included: the strip,
     # tool icons and number hints keep Keycap's sizes while the theme colours.
@@ -813,10 +835,13 @@ def render_keycap_shell_css() -> str:
         pressed = _keycap_colour(tokens[mode]["ink"], g["pressed_alpha"])
         edge = f"box-shadow: 0 {g['edge']}px 0 0 {c['edge']}"
         edge_down = f"box-shadow: 0 {g['edge'] - g['travel']}px 0 0 {c['edge']}"
-        text = f"text-shadow: 0 {c['text_glint_offset']}px 0 {c['text_glint']}"
+        # No text glint: St renders a label's text shadow offscreen again
+        # whenever the label's style changes, and a press changes the cap's
+        # style (and so its label's) twice per tap.
+        text = "text-shadow: none"
         lines.append(f"\n/* {mode} */")
         rule([root], *gradient(c["tray_top"], c["tray_bottom"]),
-             "box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14)",
+             "box-shadow: none", "border-top: 1px solid rgba(0, 0, 0, 0.14)",
              f"color: {c['ink']}", f"font-family: {family}, sans-serif")
         rule([f"{root} .key-container"],
              f"padding: {g['gutter_top']}px {right}px {g['gutter_bottom']}px {left}px", "spacing: 0")
@@ -882,6 +907,12 @@ def render_keycap_shell_css() -> str:
         rule([f"{popup} .key-container"], "padding: 4px", "spacing: 0")
         rule([f"{popup} .keyboard-key"], f"min-width: {g['popup_key_width']}px",
              f"min-height: {g['popup_key_height']}px", f"margin: 0 {left}px")
+        # A pressed cap: one tint actor moved over it (keyboard.js), so a press
+        # restyles no cap.
+        rule([f".luma-keycap-press.luma-keycap-{mode}"], f"background-color: {pressed}",
+             f"border-radius: {g['radius']}px")
+        # Under the keys while applications resize above the keyboard.
+        rule([f".luma-keycap-reserve.luma-keycap-{mode}"], *gradient(c["tray_top"], c["tray_bottom"]))
         rule([f".luma-keycap-preview.luma-keycap-{mode}"], f"color: {c['ink']}",
              *gradient(c["cap_top"], c["cap_bottom"]), f"border-radius: {g['popup_radius']}px",
              edge, text, f"font-family: {family}, sans-serif",

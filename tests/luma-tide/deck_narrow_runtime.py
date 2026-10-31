@@ -30,7 +30,8 @@ with test_application('org.projectluma.TideNarrowDeckTest') as (app, root):
             continue
         settle(lambda: window.deck.props.width_request <= window.layer.get_width() + 2,
                what='responsive deck width')
-        settle(lambda: window.deck.get_width() > 0 and window.deck.title.get_width() > 0,
+        settle(lambda: 0 < window.deck.get_width() <= window.layer.get_width() + 2
+               and window.deck.title.get_width() > 0,
                what='deck allocation')
         assert window.deck.get_width() <= window.layer.get_width() + 2, (width, window.deck.get_width(), window.layer.get_width())
         assert window.deck.title.get_width() >= 35, (width, window.deck.title.get_width())
