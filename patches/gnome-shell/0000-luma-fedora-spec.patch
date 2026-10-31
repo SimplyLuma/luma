@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,302 @@
+@@ -32,6 +32,303 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -284,6 +284,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1281:      0291-shared-handheld-startup-and-input.patch
 +Patch1282:      0292-display-exclusions-and-notification-touch.patch
 +Patch1283:      0293-mobile-lock-notification-island.patch
++Patch1284:      0294-notification-dismissal-policy.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

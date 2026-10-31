@@ -1,0 +1,49 @@
+Subject: [PATCH] Restore notification swipe eligibility and shared dismissal policy
+
+Allow horizontal arbitration after touch-down; may-recognize has no movement
+yet. Match NotificationMessage.canClose for swipe and Clear all: critical
+connection errors can be dismissed, while active incoming calls remain protected.
+---
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -584,6 +584,10 @@
+             context.log_pick(new Clutter.ActorBox({x1: 0, y1: 0,
+                 x2: this.width, y2: Math.max(this.height, 44 * scale)}), this);
+         }
++        // Chaining an overridden pick vfunc only picks the actor itself.
++        // Visit descendants explicitly so drawer cards and controls receive input.
++        for (const child of this.get_children())
++            child.pick(context);
+     }
+     vfunc_allocate(box) {
+         this.set_allocation(box);
+@@ -658,7 +662,7 @@
+         header.add_child(this._dndButton);
+         this._clear = new St.Button({label: _('Clear all'), style_class: 'luma-lip-clear', can_focus: true});
+         this._clear.connect('clicked', () => {
+-            for (const n of this._records) if (n.urgency !== MessageTray.Urgency.CRITICAL) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
++            for (const n of [...this._records]) if (!MessageList.isIncomingCallNotification(n)) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
+         });
+         header.add_child(this._clear); column.add_child(header);
+         this._list = new St.BoxLayout({style_class: 'luma-lip-list', orientation: Clutter.Orientation.VERTICAL});
+@@ -713,7 +717,7 @@
+     _syncTray() {
+         if (!this.isOpen || !this._list) return;
+         this._count.text = this._records.length ? String(this._records.length) : '';
+-        this._clear.visible = !mobileLock() && this._records.some(n => n.urgency !== MessageTray.Urgency.CRITICAL);
++        this._clear.visible = !mobileLock() && this._records.some(n => !MessageList.isIncomingCallNotification(n));
+         this._dndButton.checked = this.dnd;
+         this._dndButton.visible = !mobileLock();
+         this._empty.visible = !this._records.length;
+@@ -728,8 +732,9 @@
+                 frame = new TrayCard({child: this._createCard(n, true), x_expand: true, reactive: true});
+                 const swipe = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1, pan_axis: Clutter.PanAxis.X});
+                 swipe.set_begin_threshold(12);
+-                swipe.connect('may-recognize', gesture => n.urgency !== MessageTray.Urgency.CRITICAL &&
+-                    Math.abs(gesture.get_accumulated_delta_abs().get_x()) > Math.abs(gesture.get_accumulated_delta_abs().get_y()));
++                // Eligibility is tested at touch-down, before displacement exists.
++                // The horizontal PanGesture owns subsequent axis arbitration.
++                swipe.connect('may-recognize', () => !MessageList.isIncomingCallNotification(n));
+                 swipe.connect('recognize', () => frame.child.fake_release());
+                 swipe.connect('pan-update', gesture => {frame.translation_x = gesture.get_accumulated_delta_abs().get_x();});
+                 swipe.connect('end', () => {
