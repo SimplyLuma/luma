@@ -56,6 +56,20 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 CURRENT — native settings/resize source prepared; incremental image build next:
+- Incremental build is now ACTIVE r406/d889ca79, immutable source410a362a7;
+  input SHA3eb6cb6392a5e56c35030b64e00537c26085d3053525bc246939ab31882599b1.
+  Root unit luma-android-window-controls-build-r406-controller.service;
+  normal28GiB admission,24GiB guest/QEMU25GiB/root2GiB. Guard
+  r408/e47724bc restores temporary account policy afterward. First guard
+  r406/764f3527 failed before mutation: runner now puts owner in /launcher.
+  Private watcher now accepts only that exact optional child while verifying
+  its enclosing admitted service's unchanged memory cap. No admission bypass.
+  r405/b651048c4 input retained but unused;410a362a7 moves Wayland roundtrips
+  outside outputsMutex to prevent callback lock reentry.
+- r412/eb1fbff2 passed actual socket/peer-credential production settings body at
+  namespaceUID1000 and10000, malformed/oversize/short/stalled/closed cases.
+  Both deliberate missing-credential/MSG_TRUNC controls failed as required.
+  Binder is substituted; real device boundary/cog activation remains OPEN.
 - Card Wars responds to actual Android touchscreen input: r383/cb12745e
   confirmed its age popup dismissed via the in-game X. No age submitted.
   Ordinary-user per-package fake-touch applied/reopened r384/962a57df;

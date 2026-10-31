@@ -7,6 +7,13 @@ These component checks do not qualify resized surfaces or cog activation on a
 device. `test_app_preferences.py` checks per-package touch preferences, preserved
 legacy rules, request admission and bounded native-panel launch arguments.
 
+`python3 tests/android/app-settings-channel.py /prepared/hardware/waydroid`
+executes the production settings socket admission/forwarding body with real
+SOCK_SEQPACKET and SO_PEERCRED at private-namespace UIDs1000 and10000. Malformed,
+oversized, short, stalled and closed peers are checked; deliberately removing
+either credential admission or MSG_TRUNC must fail. Only Binder forwarding is
+substituted, so the result does not qualify Android Binder or actual cog clicks.
+
 The source-owned APK fixture is `org.projectluma.androidtest`. It contains DEX
 without native libraries, so the same artifact can exercise x86_64 and ARM64.
 It is a debuggable test app, not a bundled user application. It requests
