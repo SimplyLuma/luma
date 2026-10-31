@@ -1,0 +1,28 @@
+From b3092bed0d858b1e6f6796df49d52d5d968cdcd1 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 23:41:39 -0400
+Subject: [PATCH 39/88] arm64: dts: comet: AOC wifi-chip and sensor rails
+
+---
+ arch/arm64/boot/dts/exynos/google/zumapro-comet.dts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index f7bcb8a14..78e5ce2bb 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -45,6 +45,14 @@ memory_7: memory@b80000000 {
+ &aoc {
+ 	aoc-board-id = <0x40602>;
+ 	aoc-board-rev = <0x10000>;
++	google,wifi-chip = <1>;	/* BCM4390 */
++
++	/*
++	 * Sensor rails as the vendor comet overlay maps them:
++	 * sensor_1v8 = S2MPG15 LDO7, sensor_3v3 = S2MPG15 LDO5.
++	 */
++	sensor_1v8-supply = <&s_ldo7_reg>;
++	sensor_3v3-supply = <&s_ldo5_reg>;
+ };
+ 
+ /*

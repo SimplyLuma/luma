@@ -1,0 +1,28 @@
+From a13c9c2fc22239c4e591587f7ffdef5d6b5b17e0 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:21:23 -0400
+Subject: [PATCH 18/88] drm/exynos: decon: route to DSI1 when the board says so
+
+google,dsi-output = <1> selects DECON_OUT_DSI1 (DSIMIF 1) for a DECON that
+feeds DSIM1, as comet's DECON0 does for the inner panel.
+---
+ drivers/gpu/drm/exynos/exynos9_decon.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_decon.c b/drivers/gpu/drm/exynos/exynos9_decon.c
+index 6097921f1..3a60f433a 100644
+--- a/drivers/gpu/drm/exynos/exynos9_decon.c
++++ b/drivers/gpu/drm/exynos/exynos9_decon.c
+@@ -1625,6 +1625,12 @@ static void decon_set_mode(struct exynos_drm_crtc *crtc)
+ 	struct decon_mode *mode = &(ctx->config.mode);
+ 	enum decon_out_type out_type = DECON_OUT_DSI0;
+ 	struct drm_encoder *encoder;
++	u32 dsi = 0;
++
++	/* which DSIM this DECON feeds (comet's inner panel: DECON0 -> DSIM1) */
++	if (!of_property_read_u32(ctx->dev->of_node, "google,dsi-output", &dsi) &&
++	    dsi == 1)
++		out_type = DECON_OUT_DSI1;
+ 
+ 	/*
+ 	 * Derive the output interface from the attached encoder. DisplayPort

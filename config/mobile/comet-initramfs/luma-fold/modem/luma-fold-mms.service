@@ -1,0 +1,12 @@
+[Unit]
+Description=MMS settings and MMS data windows for mmsd-tng on the Fold
+ConditionUser=!@system
+After=mmsd-tng.service
+
+[Service]
+ExecStart=/usr/bin/python3 /var/lib/luma-fold/session/luma-fold-mms.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

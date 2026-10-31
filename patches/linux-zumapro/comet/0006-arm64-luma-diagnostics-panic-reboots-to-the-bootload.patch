@@ -1,0 +1,75 @@
+From a3d1806cd529ef71113384ffcc0e9c8f995193b3 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 15:02:28 -0400
+Subject: [PATCH 06/88] arm64: luma diagnostics: panic reboots to the
+ bootloader
+
+---
+ arch/arm64/kernel/Makefile    |  2 +-
+ arch/arm64/kernel/luma_diag.c | 44 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 45 insertions(+), 1 deletion(-)
+ create mode 100644 arch/arm64/kernel/luma_diag.c
+
+diff --git a/arch/arm64/kernel/Makefile b/arch/arm64/kernel/Makefile
+index 0af7e9570..aebf3d85f 100644
+--- a/arch/arm64/kernel/Makefile
++++ b/arch/arm64/kernel/Makefile
+@@ -50,7 +50,7 @@ obj-$(CONFIG_HAVE_STATIC_CALL)		+= static_call.o
+ obj-$(CONFIG_CPU_PM)			+= sleep.o suspend.o
+ obj-$(CONFIG_KGDB)			+= kgdb.o
+ obj-$(CONFIG_EFI)			+= efi.o efi-rt-wrapper.o
+-obj-$(CONFIG_LUMA_EMBEDDED_DTB)	+= luma_embedded_dtb.o
++obj-$(CONFIG_LUMA_EMBEDDED_DTB)	+= luma_embedded_dtb.o luma_diag.o
+ AFLAGS_luma_embedded_dtb.o += -I$(objtree)
+ 
+ obj-$(CONFIG_PCI)			+= pci.o
+diff --git a/arch/arm64/kernel/luma_diag.c b/arch/arm64/kernel/luma_diag.c
+new file mode 100644
+index 000000000..089f0b1ed
+--- /dev/null
++++ b/arch/arm64/kernel/luma_diag.c
+@@ -0,0 +1,44 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Luma RAM-boot diagnostics: on panic, set the Exynos PMU reboot reason to
++ * "bootloader" (SYSIP_DAT0 = 0xfc, as syscon-reboot-mode does) so the phone
++ * lands in fastboot with RAM, and so ramoops, intact.
++ */
++#include <linux/init.h>
++#include <linux/notifier.h>
++#include <linux/panic_notifier.h>
++#include <linux/printk.h>
++#include <linux/regmap.h>
++#include <linux/soc/samsung/exynos-pmu.h>
++
++#define LUMA_PMU_SYSIP_DAT0	0x0810
++#define LUMA_REBOOT_BOOTLOADER	0xfc
++
++static struct regmap *luma_pmu;
++
++static int luma_diag_panic(struct notifier_block *nb, unsigned long event, void *data)
++{
++	if (luma_pmu)
++		regmap_write(luma_pmu, LUMA_PMU_SYSIP_DAT0, LUMA_REBOOT_BOOTLOADER);
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block luma_diag_nb = {
++	.notifier_call = luma_diag_panic,
++	.priority = INT_MAX,
++};
++
++static int __init luma_diag_init(void)
++{
++	struct regmap *pmu = exynos_get_pmu_regmap();
++
++	if (IS_ERR_OR_NULL(pmu)) {
++		pr_warn("luma-diag: no PMU regmap; panics reboot normally\n");
++		return 0;
++	}
++	luma_pmu = pmu;
++	atomic_notifier_chain_register(&panic_notifier_list, &luma_diag_nb);
++	pr_info("luma-diag: panic reboots to the bootloader\n");
++	return 0;
++}
++late_initcall(luma_diag_init);

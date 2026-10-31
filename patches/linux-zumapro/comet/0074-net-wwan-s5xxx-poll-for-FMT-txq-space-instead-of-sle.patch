@@ -1,0 +1,96 @@
+From 273f9d1458f5a23d0b8b1af3e6c3f15950b658f3 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sat, 24 Oct 2026 13:30:16 -0400
+Subject: [PATCH 74/88] net: wwan: s5xxx: poll for FMT txq space instead of
+ sleeping out the timeout
+
+The CP advances the FMT txq tail without an interrupt of its own, and
+blocked FMT writers were only woken by CP data notifications, so each
+waited its full one-second timeout: GIPC file blocks went out at one
+per second and SIT requests queued behind them took a second longer.
+Recheck the tail every 2 ms while waiting and wake the writers on every
+CP interrupt.
+---
+ drivers/net/wwan/s5xxx_modem.c | 47 ++++++++++++++++++++++++++--------
+ 1 file changed, 36 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index d6936acd0..b34f8856f 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -2065,6 +2065,34 @@ static u32 s5xxx_fmt_txq_space(struct s5xxx_modem *sm)
+ 	return s5xxx_circ_space(S5XXX_FMT_TXQ_SIZE, in, out);
+ }
+ 
++/*
++ * Wait for @needed bytes of FMT txq space.  The CP advances the txq tail as it
++ * consumes frames but raises no interrupt for that alone (only for its own
++ * SEND_FMT/SEND_RAW data), so a writer that slept on fmt_tx_wq until the next
++ * CP message waited out its whole timeout -- one second per 4 KiB block of a
++ * GIPC file transfer, and SIT requests queued behind them.  Recheck the tail
++ * every couple of milliseconds as well as on every CP interrupt.  Returns 0
++ * once there is room, -ETIMEDOUT after one second, or -ERESTARTSYS.
++ */
++static int s5xxx_fmt_wait_space(struct s5xxx_modem *sm, u32 needed)
++{
++	unsigned long deadline = jiffies + HZ;
++	long ret;
++
++	while (s5xxx_fmt_txq_space(sm) < needed) {
++		if (!READ_ONCE(sm->online))
++			return -ENODEV;
++		if (time_after(jiffies, deadline))
++			return -ETIMEDOUT;
++		ret = wait_event_interruptible_timeout(sm->fmt_tx_wq,
++				s5xxx_fmt_txq_space(sm) >= needed,
++				max_t(long, msecs_to_jiffies(2), 1));
++		if (ret < 0)
++			return ret;
++	}
++	return 0;
++}
++
+ /*
+  * Frame one app message onto the FMT ring (SIT control plane at ch 0xF5 or the
+  * oem/GEMS chardev at ch 0x82) and signal the CP (ap2cp_msg SEND_FMT + doorbell).
+@@ -2107,11 +2135,8 @@ static int s5xxx_ctrl_tx(struct wwan_port *port, struct sk_buff *skb)
+ 					S5XXX_FMT_MAX, skb->data, skb->len);
+ 		if (ret != -EBUSY)
+ 			break;
+-		ret = wait_event_interruptible_timeout(sm->fmt_tx_wq,
+-				s5xxx_fmt_txq_space(sm) >= needed, HZ);
+-		if (ret == 0)
+-			ret = -ETIMEDOUT;
+-		if (ret < 0)
++		ret = s5xxx_fmt_wait_space(sm, needed);
++		if (ret)
+ 			break;
+ 	}
+ 	if (ret)
+@@ -2178,11 +2203,8 @@ static int s5xxx_oem_tx_blocking(struct wwan_port *port, struct sk_buff *skb)
+ 					S5XXX_FMT_MAX, skb->data, skb->len);
+ 		if (ret != -EBUSY)
+ 			break;
+-		ret = wait_event_interruptible_timeout(sm->fmt_tx_wq,
+-				s5xxx_fmt_txq_space(sm) >= needed, HZ);
+-		if (ret == 0)
+-			ret = -ETIMEDOUT;
+-		if (ret < 0)
++		ret = s5xxx_fmt_wait_space(sm, needed);
++		if (ret)
+ 			break;
+ 		/* Space appeared; retry the send. */
+ 	}
+@@ -3400,8 +3422,11 @@ static irqreturn_t s5xxx_irq_handler(int irq, void *data)
+ 	 * MSIs that need not set INT_VALID, so drain before the INT_VALID gate --
+ 	 * otherwise a DL-only interrupt returns here having done nothing.
+ 	 */
+-	if (sm->online)
++	if (sm->online) {
+ 		s5xxx_pktproc_dl_drain(sm);
++		/* Any CP interrupt may come with txq space freed. */
++		wake_up_interruptible(&sm->fmt_tx_wq);
++	}
+ 
+ 	if (!(val & S5XXX_INT_VALID))
+ 		return IRQ_HANDLED;

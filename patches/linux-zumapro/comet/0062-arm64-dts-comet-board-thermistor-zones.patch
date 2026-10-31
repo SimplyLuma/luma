@@ -1,0 +1,170 @@
+From dfe34796c7516bc988dfc4057c4b6335072cccff Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:01:24 -0400
+Subject: [PATCH 62/88] arm64: dts: comet: board thermistor zones
+
+The S2MPG15 NTC sensor and the vendor comet thermal zones on it with their trip points; S2MPG15_NTC_THERMAL in zumapro_defconfig.
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  | 136 ++++++++++++++++++
+ arch/arm64/configs/zumapro_defconfig          |   1 +
+ 2 files changed, 137 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 738756b40..1ade5fb7a 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -271,6 +271,142 @@ &max77779_pmic {
+ 	maxim,battery-temperature-supply-secondary = <&max17201_fg>;
+ };
+ 
++/*
++ * Board thermistors on the S2MPG15's NTC inputs, named and tripped as the
++ * vendor comet overlay does (channels 0-7). The vendor charger_therm also
++ * carries a software shutdown at 64 C (critical here) and the PMIC's own
++ * hardware backup at 66 C (hot); the rest have one passive trip, which the
++ * vendor thermal HAL acts on. Polled: the PMIC's warning interrupts are not
++ * used.
++ */
++&acpm_ipc {
++	pmic-2 {
++		s2mpg15_ntc: thermal-sensor {
++			compatible = "samsung,s2mpg15-ntc";
++			#thermal-sensor-cells = <1>;
++		};
++	};
++};
++
++/ {
++	thermal-zones {
++		soc_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 0>;
++
++			trips {
++				soc-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		rffe_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 1>;
++
++			trips {
++				rffe-passive {
++					temperature = <121000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		charger_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 2>;
++
++			trips {
++				charger-passive {
++					temperature = <62000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++				charger-critical {
++					temperature = <64000>;
++					hysteresis = <1000>;
++					type = "critical";
++				};
++				charger-hot {
++					temperature = <66000>;
++					hysteresis = <1000>;
++					type = "hot";
++				};
++			};
++		};
++		usb_conn_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 3>;
++
++			trips {
++				usb-conn-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		modem_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 4>;
++
++			trips {
++				modem-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		inner_display_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 5>;
++
++			trips {
++				inner-display-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		display_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 6>;
++
++			trips {
++				display-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++		gnss_tcxo_therm {
++			polling-delay-passive = <1000>;
++			polling-delay = <5000>;
++			thermal-sensors = <&s2mpg15_ntc 7>;
++
++			trips {
++				gnss-tcxo-passive {
++					temperature = <125000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++		};
++	};
++};
++
+ /delete-node/ &eusb_repeater;
+ 
+ &hsi2c_6 {
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index dd7ae905c..42cd30a0d 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -614,6 +614,7 @@ CONFIG_CORESIGHT_CTI=y
+ CONFIG_MEMTEST=y
+ CONFIG_THERMAL=y
+ CONFIG_THERMAL_OF=y
++CONFIG_S2MPG15_NTC_THERMAL=y
+ CONFIG_THERMAL_GOV_STEP_WISE=y
+ CONFIG_THERMAL_GOV_POWER_ALLOCATOR=y
+ CONFIG_THERMAL_DEFAULT_GOV_POWER_ALLOCATOR=y

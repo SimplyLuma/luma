@@ -1,0 +1,89 @@
+From 847957668dcb88c36f6e2a3a3260207ef638274d Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:27:09 -0400
+Subject: [PATCH 07/88] regulator: s2mps11: add s2mpg15 LDO25S, LDO27S and
+ LDO29S
+
+Add the sub-PMIC rails for the comet outer touchscreen (LDO25S AVDD,
+LDO27S VDD) and the outer display VDDI (LDO29S), and describe ldo29s
+in zumapro-comet.dts at 1.85 V, always on.
+
+LDO25S: L25S_CTRL 0x47, vsel [5:0], 1.8-3.375 V in 25 mV, enable [7]
+LDO27S: L27S_CTRL 0x49, vsel [5:0], 0.7-2.275 V in 25 mV, enable [7:6]
+LDO29S: L29S_CTRL 0x4b, vsel [5:0], 0.7-2.275 V in 25 mV, enable [7]
+
+Source: kernel/google-modules/soc/gs, android-gs-comet-6.1-android16
+(3045cdcfebf9):
+  drivers/regulator/s2mpg15-regulator.c:263-272 (descriptors)
+  include/linux/mfd/samsung/s2mpg15-register.h:122-126 (registers),
+  :680-684 (voltage groups 6 and 7), :696-697 (enable masks)
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  |  7 +++++++
+ drivers/regulator/s2mps11.c                   | 20 ++++++++++++++++---
+ 2 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 29c10f0d6..1b585a59f 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -148,6 +148,13 @@ s_ldo27_reg: ldo27s {
+ 				regulator-min-microvolt = <1800000>;
+ 				regulator-max-microvolt = <1800000>;
+ 			};
++
++			s_ldo29_reg: ldo29s {
++				regulator-name = "vddi_outer_disp";
++				regulator-min-microvolt = <1850000>;
++				regulator-max-microvolt = <1850000>;
++				regulator-always-on;
++			};
+ 		};
+ 	};
+ };
+diff --git a/drivers/regulator/s2mps11.c b/drivers/regulator/s2mps11.c
+index 83598de7e..4d3d74bd7 100644
+--- a/drivers/regulator/s2mps11.c
++++ b/drivers/regulator/s2mps11.c
+@@ -1805,9 +1805,12 @@ S2MPG10_VOLTAGE_RANGE(s2mpg15_ldo, 2, 300000, 700000, 1087500, STEP_12_5_MV);
+ /* voltage range for s2mpg15 LDO 9 */
+ S2MPG10_VOLTAGE_RANGE(s2mpg15_ldo, 9, 725000, 725000, 1512500, STEP_12_5_MV);
+ 
+-/* voltage range for s2mpg15 LDO 10, 11 */
++/* voltage range for s2mpg15 LDO 10, 11, 27, 29 */
+ S2MPG10_VOLTAGE_RANGE(s2mpg15_ldo, 10, 700000, 700000, 2275000, STEP_25_MV);
+ 
++/* voltage range for s2mpg15 LDO 25 */
++S2MPG10_VOLTAGE_RANGE(s2mpg15_ldo, 25, 1800000, 1800000, 3375000, STEP_25_MV);
++
+ #define regulator_desc_s2mpg14_buck(_num, _supply, _range) {		\
+ 	.name		= "buck"#_num"m",				\
+ 	.supply_name	= _supply,					\
+@@ -1872,8 +1875,9 @@ S2MPG10_VOLTAGE_RANGE(s2mpg15_ldo, 10, 700000, 700000, 2275000, STEP_25_MV);
+ 
+ /*
+  * The s2mpg15 LDO enable fields are not uniform: most LDOs switch on a
+- * single bit 7 of their own CTRL register, but LDO1S and LDO2S gate on
+- * two-bit fields in the shared LDO_CTRL1 register.  LDO1S also has a
++ * single bit 7 of their own CTRL register, but LDO27S gates on the two-bit
++ * [7:6] field of its CTRL register and LDO1S and LDO2S gate on two-bit
++ * fields in the shared LDO_CTRL1 register.  LDO1S also has a
+  * seven-bit voltage selector, so both masks are per-descriptor.
+  */
+ #define regulator_desc_s2mpg15_ldo(_num, _supply, _range, _vmask,	\
+@@ -1975,6 +1979,16 @@ static const struct regulator_desc s2mpg15_regulators[] = {
+ 	regulator_desc_s2mpg15_ldo(11, "vinl11s", s2mpg15_ldo_vranges10,
+ 				   GENMASK(5, 0), S2MPG15_PMIC_L11S_CTRL,
+ 				   BIT(7)),
++	/* outer touch AVDD and VDD, outer display VDDI */
++	regulator_desc_s2mpg15_ldo(25, "vinl25s", s2mpg15_ldo_vranges25,
++				   GENMASK(5, 0), S2MPG15_PMIC_L25S_CTRL,
++				   BIT(7)),
++	regulator_desc_s2mpg15_ldo(27, "vinl27s", s2mpg15_ldo_vranges10,
++				   GENMASK(5, 0), S2MPG15_PMIC_L27S_CTRL,
++				   GENMASK(7, 6)),
++	regulator_desc_s2mpg15_ldo(29, "vinl29s", s2mpg15_ldo_vranges10,
++				   GENMASK(5, 0), S2MPG15_PMIC_L29S_CTRL,
++				   BIT(7)),
+ 	/* AoC sensor rails; see s2mpg15_reg_enable_only_ops above */
+ 	regulator_desc_s2mpg15_ldo_en(5),
+ 	regulator_desc_s2mpg15_ldo_en(7),

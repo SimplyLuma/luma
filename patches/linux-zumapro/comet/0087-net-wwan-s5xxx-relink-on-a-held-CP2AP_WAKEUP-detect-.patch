@@ -1,0 +1,285 @@
+From ac40a8e392901ff560d78da661b5754397e56cad Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 29 Oct 2026 16:36:04 -0400
+Subject: [PATCH 87/88] net: wwan: s5xxx: relink on a held CP2AP_WAKEUP, detect
+ a stalled FMT txq
+
+The wake watchdog returned silently when CP2AP_WAKEUP was high with the
+link parked and a doorbell reserved. The relink is edge-driven, so if
+no new edge arrives (edge consumed while link_up was stale-true, or the
+send path cleared link_up on an all-ones BAR) nothing relinks, and the
+AP2CP_WAKEUP nudge cannot produce an edge either. Relink on the level
+instead, as downstream s5100_poweron_pcie() does.
+
+A full ring returned without signalling the CP; re-signal it (nudge if
+parked) and run the watchdog.
+
+Log wake state at each watchdog check, rate-limited: CP2AP_WAKEUP,
+link_up, db_reserved, edge/relink/flush/nudge counts, ring pointers,
+irq count. If the FMT txq tail stays frozen with frames pending for
+120 s over at least 6 checks, take the CP offline and emit a
+KOBJ_CHANGE uevent (S5XXX_EVENT=cp_stalled); stall_offline=0 only logs.
+---
+ drivers/net/wwan/s5xxx_modem.c | 178 ++++++++++++++++++++++++++++++---
+ 1 file changed, 164 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index 85d26c351..27cb028f8 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -49,6 +49,7 @@
+ #include <linux/pci.h>
+ #include <linux/pcie-zumapro.h>
+ #include <linux/platform_device.h>
++#include <linux/ratelimit.h>
+ #include <linux/sizes.h>
+ #include <linux/skbuff.h>
+ #include <linux/timekeeping.h>
+@@ -694,6 +695,17 @@ struct s5xxx_modem {
+ 	struct delayed_work	wake_wd;	/* a wake nudge the CP has not answered */
+ 	unsigned int		wake_tries;
+ 	unsigned int		park_retries;	/* consecutive deferred parks (pm_work only) */
++	/* Wake/stall diagnostics, reported by s5xxx_wake_wd_work(). */
++	unsigned int		cp2ap_edges;	/* CP2AP_WAKEUP irqs */
++	unsigned int		relinks;	/* successful runtime relinks */
++	int			relink_ret;	/* last zumapro_pcie_modem_link_up() result */
++	unsigned int		db_flushes;	/* reserved doorbells delivered by pm_work */
++	unsigned int		nudges;		/* AP2CP_WAKEUP nudges from the send path */
++	unsigned int		level_kicks;	/* relinks started on a held CP2AP_WAKEUP */
++	unsigned int		wd_checks;
++	u32			stall_tail;	/* FMT txq tail at the last check */
++	unsigned long		stall_since;	/* tail frozen with frames pending since (0: moving) */
++	unsigned int		stall_checks;	/* checks that found it still frozen */
+ 
+ 	/* RFS file channel (umts_rfs0, ch 0x29) on the NORM_RAW ring. */
+ 	struct wwan_port	*rfs_port;
+@@ -1025,6 +1037,7 @@ static void s5xxx_send_ipc_irq(struct s5xxx_modem *sm, u32 val)
+ 		 */
+ 		sm->link_up = false;
+ 		sm->db_reserved = true;
++		sm->nudges++;
+ 		wake = true;
+ 	}
+ 	spin_unlock_irqrestore(&sm->lock, flags);
+@@ -1215,34 +1228,153 @@ static void s5xxx_park_retry_work(struct work_struct *work)
+ 	queue_work(sm->pm_wq, &sm->pm_work);
+ }
+ 
++/*
++ * A CP that is alive (PHONE_ACTIVE high, no crash message) but has not taken a
++ * single AP->CP frame off the FMT txq for this long is not coming back by
++ * itself: SIT requests time out after 10 s and the ring fills.  Hand it to
++ * the recovery path the way the relink-failure budget does.
++ */
++#define S5XXX_STALL_OFFLINE_S		120
++#define S5XXX_STALL_MIN_CHECKS		6
++static bool stall_offline = true;
++module_param(stall_offline, bool, 0644);
++MODULE_PARM_DESC(stall_offline,
++		 "take the CP offline when the FMT txq tail stays frozen with frames pending (0: log only)");
++
++static void s5xxx_wake_report(struct s5xxx_modem *sm, const char *what,
++			      int cp_up, bool link_up, bool resv)
++{
++	dev_info(sm->dev,
++		 "wake check (%s, try %u/%u): cp2ap_wakeup %d link_up %d db_reserved %d | edges %u relinks %u fail %u last %d flushes %u nudges %u kicks %u | fmt tx %#x/%#x rx %#x/%#x raw tx %#x/%#x rx %#x/%#x | irq %u cp2ap_msg %#x cp2ap_united %#x phone_active %d\n",
++		 what, READ_ONCE(sm->wake_tries), S5XXX_WAKE_RETRIES,
++		 cp_up, link_up, resv,
++		 READ_ONCE(sm->cp2ap_edges), sm->relinks, sm->relink_failures,
++		 sm->relink_ret, sm->db_flushes, READ_ONCE(sm->nudges),
++		 sm->level_kicks,
++		 readl(sm->ipc + S5XXX_FMT_TXQ_HEAD),
++		 readl(sm->ipc + S5XXX_FMT_TXQ_TAIL),
++		 readl(sm->ipc + S5XXX_FMT_RXQ_HEAD),
++		 readl(sm->ipc + S5XXX_FMT_RXQ_TAIL),
++		 readl(sm->ipc + S5XXX_RAW_TXQ_HEAD),
++		 readl(sm->ipc + S5XXX_RAW_TXQ_TAIL),
++		 readl(sm->ipc + S5XXX_RAW_RXQ_HEAD),
++		 readl(sm->ipc + S5XXX_RAW_RXQ_TAIL),
++		 READ_ONCE(sm->irq_count),
++		 readl(sm->ipc + S5XXX_IPC_CP2AP_MSG),
++		 readl(sm->ipc + S5XXX_IPC_CP2AP_STATUS),
++		 sm->cp_active ? gpiod_get_value_cansleep(sm->cp_active) : -1);
++}
++
++/*
++ * Track whether the CP is consuming the FMT txq.  Returns true if it has been
++ * declared stalled and taken offline.  pm_wq only.
++ */
++static bool s5xxx_stall_check(struct s5xxx_modem *sm, int cp_up, bool link_up,
++			      bool resv)
++{
++	static const char * const env[] = { "S5XXX_EVENT=cp_stalled", NULL };
++	u32 head = readl(sm->ipc + S5XXX_FMT_TXQ_HEAD);
++	u32 tail = readl(sm->ipc + S5XXX_FMT_TXQ_TAIL);
++	unsigned int secs;
++
++	if (head == tail || tail != sm->stall_tail) {
++		if (sm->stall_since)
++			dev_info(sm->dev, "FMT txq moving again after %us\n",
++				 jiffies_to_msecs(jiffies - sm->stall_since) / 1000);
++		sm->stall_tail = tail;
++		sm->stall_since = 0;
++		sm->stall_checks = 0;
++		return false;
++	}
++	if (!sm->stall_since) {
++		sm->stall_since = jiffies ?: 1;
++		return false;
++	}
++	/*
++	 * Every check follows a send or a full ring, so the CP was signalled
++	 * (or nudged) before each of them; a window with only a couple of
++	 * checks may just be a quiet ring left pending across a park.
++	 */
++	sm->stall_checks++;
++	secs = jiffies_to_msecs(jiffies - sm->stall_since) / 1000;
++	if (secs < S5XXX_STALL_OFFLINE_S ||
++	    sm->stall_checks < S5XXX_STALL_MIN_CHECKS)
++		return false;
++
++	s5xxx_wake_report(sm, "stalled", cp_up, link_up, resv);
++	if (!stall_offline) {
++		dev_warn_ratelimited(sm->dev,
++				     "CP took no AP->CP frame for %us\n", secs);
++		return false;
++	}
++	dev_err(sm->dev,
++		"CP took no AP->CP frame for %us (fmt tx %#x/%#x), taking the CP offline\n",
++		secs, head, tail);
++	WRITE_ONCE(sm->online, false);
++	wake_up_interruptible(&sm->fmt_tx_wq);
++	kobject_uevent_env(&sm->dev->kobj, KOBJ_CHANGE, (char **)env);
++	return true;
++}
++
++/*
++ * 500 ms after an AP2CP_WAKEUP nudge.  Normally the CP has raised
++ * CP2AP_WAKEUP by now and pm_work has relinked and flushed the doorbell.
++ *
++ * Two ways it can be stuck with the link parked and the doorbell reserved:
++ * - CP2AP_WAKEUP low: the CP did not answer; re-nudge with a fresh edge.
++ * - CP2AP_WAKEUP high: the CP is asking for the link but no relink ran.  The
++ *   relink is edge-driven, so if the edge was consumed while link_up was
++ *   still (stale-)true -- e.g. the send path found the BAR all-ones and
++ *   cleared link_up under a CP2AP_WAKEUP the CP never dropped -- nothing
++ *   queues pm_work again, and the nudge cannot help either: AP2CP_WAKEUP is
++ *   already high, so the CP sees no edge.  Downstream s5100_poweron_pcie()
++ *   keys on the level; relink on it here.
++ */
+ static void s5xxx_wake_wd_work(struct work_struct *work)
+ {
++	static DEFINE_RATELIMIT_STATE(rs, 60 * HZ, 12);
+ 	struct s5xxx_modem *sm = container_of(to_delayed_work(work),
+ 					      struct s5xxx_modem, wake_wd);
+ 	unsigned long flags;
++	bool stuck, link_up, resv;
+ 	unsigned int n;
+-	bool stuck;
++	int cp_up;
++
++	if (!READ_ONCE(sm->online))
++		return;
+ 
+ 	spin_lock_irqsave(&sm->lock, flags);
+-	stuck = !sm->link_up && sm->db_reserved;
++	link_up = sm->link_up;
++	resv = sm->db_reserved;
+ 	spin_unlock_irqrestore(&sm->lock, flags);
+-	if (!stuck || !READ_ONCE(sm->online) ||
+-	    gpiod_get_value_cansleep(sm->cp2ap_wakeup))
++	stuck = !link_up && resv;
++	cp_up = gpiod_get_value_cansleep(sm->cp2ap_wakeup);
++
++	if (s5xxx_stall_check(sm, cp_up, link_up, resv))
+ 		return;
+ 
++	if (!stuck) {
++		n = ++sm->wd_checks;
++		if (n <= 8 || !(n % 32))
++			s5xxx_wake_report(sm, "answered", cp_up, link_up, resv);
++		return;
++	}
++
+ 	n = READ_ONCE(sm->wake_tries) + 1;
+ 	WRITE_ONCE(sm->wake_tries, n);
+-	dev_warn_ratelimited(sm->dev,
+-			     "CP did not answer the wake nudge (try %u/%u): phone_active %d cp2ap_msg %#x cp2ap_united %#x ap2cp_united %#x boot_stage %#x\n",
+-			     n, S5XXX_WAKE_RETRIES,
+-			     sm->cp_active ? gpiod_get_value_cansleep(sm->cp_active) : -1,
+-			     readl(sm->ipc + S5XXX_IPC_CP2AP_MSG),
+-			     readl(sm->ipc + S5XXX_IPC_CP2AP_STATUS),
+-			     readl(sm->ipc + S5XXX_IPC_AP2CP_STATUS),
+-			     readl(sm->msi + S5XXX_MSI_BOOT_STAGE));
++	if (__ratelimit(&rs))
++		s5xxx_wake_report(sm, cp_up ? "CP2AP_WAKEUP high, link parked" :
++				  "CP did not answer the wake nudge",
++				  cp_up, link_up, resv);
+ 	if (n > S5XXX_WAKE_RETRIES)
+ 		return;
+-	zumapro_pcie_modem_wake_pulse(sm->rc_dev);
++	if (cp_up) {
++		sm->level_kicks++;
++		WRITE_ONCE(sm->cp_wants_up, true);
++		queue_work(sm->pm_wq, &sm->pm_work);
++	} else {
++		zumapro_pcie_modem_wake_pulse(sm->rc_dev);
++	}
+ 	queue_delayed_work(sm->pm_wq, &sm->wake_wd, msecs_to_jiffies(S5XXX_WAKE_WD_MS));
+ }
+ 
+@@ -1292,7 +1424,8 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 	if (want_up && !sm->link_up &&
+ 	    sm->relink_failures < S5XXX_RELINK_FAIL_LIMIT &&
+ 	    gpiod_get_value_cansleep(sm->cp2ap_wakeup)) {
+-		if (zumapro_pcie_modem_link_up(sm->rc_dev) == 0) {
++		sm->relink_ret = zumapro_pcie_modem_link_up(sm->rc_dev);
++		if (sm->relink_ret == 0) {
+ 			s5xxx_relink_restore(sm);
+ 			/*
+ 			 * Vendor s5100_poweron_pcie() rings the PCIe link-ack
+@@ -1315,6 +1448,7 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 			sm->main_armed = true;
+ 			spin_unlock_irqrestore(&sm->lock, flags);
+ 			sm->relink_failures = 0;
++			sm->relinks++;
+ 			dev_dbg(sm->dev, "CP wakeup: link up (MAIN armed)\n");
+ 		} else {
+ 			/*
+@@ -1429,6 +1563,7 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 	    s5xxx_send_doorbell(sm, S5XXX_DB_MSG)) {
+ 		/* Link is up -- delivered the doorbell a tx had reserved. */
+ 		sm->db_reserved = false;
++		sm->db_flushes++;
+ 		spin_unlock_irqrestore(&sm->lock, flags);
+ 	} else if (sm->db_reserved) {
+ 		/*
+@@ -1459,6 +1594,7 @@ static irqreturn_t s5xxx_cp2ap_wakeup_irq(int irq, void *data)
+ 	 */
+ 	int up = gpiod_get_value(sm->cp2ap_wakeup);
+ 
++	WRITE_ONCE(sm->cp2ap_edges, sm->cp2ap_edges + 1);
+ 	WRITE_ONCE(sm->cp_wants_up, up);
+ 	dev_dbg(sm->dev, "CP2AP_WAKEUP irq: level %d\n", up);
+ 	queue_work(sm->pm_wq, &sm->pm_work);
+@@ -2015,6 +2151,20 @@ static int s5xxx_ring_tx(struct s5xxx_modem *sm, const struct s5xxx_txring *r,
+ 		dev_info_ratelimited(sm->dev,
+ 			     "txq full: ch %#x len %u in %#x out %#x space %u\n",
+ 			     ch, len, in, out, s5xxx_circ_space(r->size, in, out));
++		/*
++		 * A full ring is when the CP most needs telling: re-signal it
++		 * (nudging AP2CP_WAKEUP if the link is parked) and let the wake
++		 * watchdog check whether it is consuming at all.  Returning
++		 * without either left a parked, deaf CP with nothing to wake it
++		 * once the ring had filled.
++		 */
++		if (READ_ONCE(sm->online)) {
++			if (!READ_ONCE(sm->link_up))
++				s5xxx_send_ipc_irq(sm, S5XXX_INT_VALID | r->int_flag);
++			else
++				queue_delayed_work(sm->pm_wq, &sm->wake_wd,
++						   msecs_to_jiffies(S5XXX_WAKE_WD_MS));
++		}
+ 		return full_err;
+ 	}
+ 

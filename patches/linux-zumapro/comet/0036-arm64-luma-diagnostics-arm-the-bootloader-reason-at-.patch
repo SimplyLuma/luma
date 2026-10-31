@@ -1,0 +1,65 @@
+From 81ffb9665ca3fd2c93facbc4f84cc59cbd834687 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 23:50:35 -0400
+Subject: [PATCH 36/88] arm64: luma diagnostics: arm the bootloader reason at
+ init
+
+A watchdog or hard reset bypasses the panic and restart notifiers; with
+the PMU reason armed once the PMU is up, those land in fastboot too.
+---
+ arch/arm64/kernel/luma_diag.c | 25 +++++++++++++++++++++----
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/kernel/luma_diag.c b/arch/arm64/kernel/luma_diag.c
+index a19b6ec25..4f6717b48 100644
+--- a/arch/arm64/kernel/luma_diag.c
++++ b/arch/arm64/kernel/luma_diag.c
+@@ -4,6 +4,10 @@
+  * PMU reboot reason to "bootloader" (SYSIP_DAT0 = 0xfc, as syscon-reboot-mode
+  * does) so the phone lands in fastboot with RAM, and so ramoops, intact,
+  * instead of booting the installed OS over the log.
++ *
++ * The reason is also armed once the PMU is up, so a reset that bypasses the
++ * notifiers (hardware watchdog, hard hang) lands in fastboot as well; the
++ * bootloader consumes the value when it acts on it.
+  */
+ #include <linux/init.h>
+ #include <linux/notifier.h>
+@@ -16,16 +20,21 @@
+ #define LUMA_PMU_SYSIP_DAT0	0x0810
+ #define LUMA_REBOOT_BOOTLOADER	0xfc
+ 
++static void luma_diag_arm(void)
++{
++	struct regmap *pmu = exynos_get_pmu_regmap();
++
++	if (!IS_ERR_OR_NULL(pmu))
++		regmap_write(pmu, LUMA_PMU_SYSIP_DAT0, LUMA_REBOOT_BOOTLOADER);
++}
++
+ /*
+  * Registered at early_initcall, before the PMU probes, so a panic in an early
+  * built-in driver is covered too; the PMU regmap is looked up when needed.
+  */
+ static int luma_diag_panic(struct notifier_block *nb, unsigned long event, void *data)
+ {
+-	struct regmap *pmu = exynos_get_pmu_regmap();
+-
+-	if (!IS_ERR_OR_NULL(pmu))
+-		regmap_write(pmu, LUMA_PMU_SYSIP_DAT0, LUMA_REBOOT_BOOTLOADER);
++	luma_diag_arm();
+ 	return NOTIFY_DONE;
+ }
+ 
+@@ -48,3 +57,11 @@ static int __init luma_diag_init(void)
+ 	return 0;
+ }
+ early_initcall(luma_diag_init);
++
++static int __init luma_diag_arm_init(void)
++{
++	luma_diag_arm();
++	pr_info("luma-diag: reboot reason armed for any reset\n");
++	return 0;
++}
++late_initcall_sync(luma_diag_arm_init);

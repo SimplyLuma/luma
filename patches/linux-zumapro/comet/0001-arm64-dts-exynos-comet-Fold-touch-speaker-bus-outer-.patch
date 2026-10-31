@@ -1,0 +1,189 @@
+From b117a7fab29f5740b7b9792f433d9b7f53beb51a Mon Sep 17 00:00:00 2001
+From: Project Luma <dev@simplyluma.com>
+Date: Mon, 19 Oct 2026 20:15:22 -0400
+Subject: [PATCH 01/88] arm64: dts: exynos: comet: Fold touch, speaker bus,
+ outer-screen variant
+
+---
+ arch/arm64/boot/dts/exynos/google/Makefile    |   1 +
+ .../dts/exynos/google/zumapro-comet-front.dts |  35 ++++++
+ .../boot/dts/exynos/google/zumapro-comet.dts  | 103 +++++++++++++++---
+ 3 files changed, 123 insertions(+), 16 deletions(-)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-front.dts
+
+diff --git a/arch/arm64/boot/dts/exynos/google/Makefile b/arch/arm64/boot/dts/exynos/google/Makefile
+index bb4ff1028..a72e50c53 100644
+--- a/arch/arm64/boot/dts/exynos/google/Makefile
++++ b/arch/arm64/boot/dts/exynos/google/Makefile
+@@ -8,4 +8,5 @@ dtb-$(CONFIG_ARCH_EXYNOS) += \
+ 	zumapro-tokay.dtb \
+ 	zumapro-caiman.dtb \
+ 	zumapro-comet.dtb \
++	zumapro-comet-front.dtb \
+ 	zumapro-komodo.dtb
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-front.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-front.dts
+new file mode 100644
+index 000000000..a4f0a1565
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-front.dts
+@@ -0,0 +1,35 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Pixel 9 Pro Fold (comet), booted folded: the outer screen is the console.
++ *
++ * On MP hardware (board 0x60606, dtbo index 14) the bootloader names the
++ * panels dsim1:google-ct3b (inner, 2076x2152, primary) and dsim0:google-ct3d
++ * (outer, 1080x2424, secondary). Android's overlay sizes DECON0 for the inner
++ * screen and DECON1 for the outer one, so the outer path is DECON1 -> DSIM0.
++ * This variant keeps the bootloader's outer splash scanning out (DECON1
++ * auto-refresh, the DECON0 bit's counterpart at main + 0x30) and describes it
++ * as a simple framebuffer. The DECON1 bit and the splash address are
++ * unverified until a folded diagnostic boot reports them.
++ */
++
++#include "zumapro-comet.dts"
++
++/ {
++	model = "Pixel 9 Pro Fold (outer screen)";
++
++	decon1_autorefresh_bit: mmio-init@19471030 {
++		compatible = "linux,mmio-init-helper";
++		reg = <0 0x19471030 0x4>;
++		value = <0x3061>;
++	};
++};
++
++&decon_autorefresh_bit {
++	status = "disabled";
++};
++
++&framebuffer0 {
++	width = <1080>;
++	height = <2424>;
++	stride = <(1080 * 4)>;
++};
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index fa36e979a..91f2cfd26 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -10,7 +10,11 @@
+ #include "zumapro-pixel-common.dtsi"
+ #include "zumapro-caimito-bcm4390.dtsi"
+ #include "zumapro-caimito-s5400.dtsi"
+-#include "zumapro-caimito-cs35l41.dtsi"
++/*
++ * No zumapro-caimito-cs35l41.dtsi: comet's CS35L41 pair sits on spi_13
++ * (vendor zuma-comet-audio.dtsi), not caimito's spi_19, and comet's spi_19
++ * carries the outer touchscreen. The speakers wait for a spi_13 description.
++ */
+ 
+ / {
+ 	model = "Pixel 9 Pro Fold";
+@@ -38,21 +42,6 @@ memory_7: memory@b80000000 {
+ };
+ 
+ /* Board identity the AOC firmware reads at boot. */
+-/*
+- * The Halo DSP speaker-protection tuning is specific to this board's drivers
+- * and to each channel, so the firmware has to be named for both.  This is what
+- * wm_adsp interpolates as the system name: the amplifiers ask for
+- * cirrus/cs35l41-dsp1-spk-prot-comet.wmfw, and for a tuning of the same stem
+- * with "-r" appended on the right-hand amplifier, which carries the prefix.
+- */
+-&cs35l41_l {
+-	cirrus,subsystem-id = "comet";
+-};
+-
+-&cs35l41_r {
+-	cirrus,subsystem-id = "comet";
+-};
+-
+ &aoc {
+ 	aoc-board-id = <0x40602>;
+ 	aoc-board-rev = <0x10000>;
+@@ -111,3 +100,85 @@ &framebuffer0 {
+ 
+ 	status = "okay";
+ };
++
++/*
++ * Inner screen touch: Goodix Berlin-B (vendor "goodix,brl-b") on spi_20, the
++ * bus and pins the caimito boards use for their Synaptics part. Mainline's
++ * Berlin SPI driver checks the chip ID at probe, so a mismatch fails cleanly.
++ */
++/delete-node/ &spitouch;
++
++&spi_20 {
++	inner_touch: touchscreen@0 {
++		compatible = "goodix,gt9916";
++		reg = <0>;
++		spi-max-frequency = <10000000>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&ts_irq>;
++		interrupts-extended = <&gpn0 0 IRQ_TYPE_EDGE_FALLING>;
++		reset-gpios = <&gpp1 1 GPIO_ACTIVE_LOW>;
++		vddio-supply = <&m_ldo25_reg>;
++		avdd-supply = <&m_ldo4_reg>;
++		touchscreen-size-x = <2076>;
++		touchscreen-size-y = <2152>;
++
++		controller-data {
++			samsung,spi-feedback-delay = <0>;
++			samsung,spi-chip-select-mode = <0>;
++		};
++	};
++};
++
++/*
++ * Outer screen touch: Synaptics TouchComm on spi_19, IRQ gpn1-0, reset
++ * gpp19-2, rails L27S (1.8 V) and L25S (3.3 V), per vendor
++ * zuma-comet-outer-common-touch.dtsi.
++ */
++&acpm_ipc {
++	pmic-2 {
++		regulators {
++			s_ldo25_reg: ldo25s {
++				regulator-name = "vdd_outer_ts_avdd";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++			};
++
++			s_ldo27_reg: ldo27s {
++				regulator-name = "vdd_outer_ts_dvdd";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++			};
++		};
++	};
++};
++
++&pinctrl_gpio_custom_alive {
++	outer_ts_irq: outer-ts-irq {
++		samsung,pins = "gpn1-0";
++		samsung,pin-function = <GS101_PIN_FUNC_EINT>;
++		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
++		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
++	};
++};
++
++&spi_19 {
++	num-cs = <1>;
++
++	outer_touch: touchscreen@0 {
++		compatible = "syna,tcm-spi";
++		reg = <0>;
++		spi-max-frequency = <10000000>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&outer_ts_irq>;
++		interrupts-extended = <&gpn1 0 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpios = <&gpp19 2 GPIO_ACTIVE_LOW>;
++		vdd-supply = <&s_ldo27_reg>;
++		avdd-supply = <&s_ldo25_reg>;
++
++		controller-data {
++			samsung,spi-feedback-delay = <0>;
++			samsung,spi-chip-select-mode = <0>;
++			cs-clock-delay = <2>;
++		};
++	};
++};

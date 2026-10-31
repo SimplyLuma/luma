@@ -1,0 +1,335 @@
+From 58d80f89e1434c211b06f6819c2a2c23b65aecd2 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 01:19:18 -0400
+Subject: [PATCH 72/88] arm64: luma embedded DTB: keep the bootloader's /chosen
+ data
+
+With the embedded DTB the FDT the bootloader passes in x0 was dropped, and
+with it the data only the bootloader publishes under /chosen: its command
+line and, on Pixel, the per-unit board id, serial number and IMEIs under
+/chosen/config that the modem driver reads.
+
+Keep that FDT's address in boot_args[0]. Early boot only reserves it, and
+only when it is plain RAM clear of the kernel image and of the embedded
+tree's static reserved regions. An arch_initcall then adds its bootargs as
+luma,bootloader-bootargs and each /chosen subnode the embedded tree lacks to
+the live tree. Embedded nodes are left untouched; values are not logged.
+---
+ arch/arm64/include/asm/setup.h    |   6 +
+ arch/arm64/kernel/Makefile        |   2 +-
+ arch/arm64/kernel/head.S          |   9 +-
+ arch/arm64/kernel/luma_boot_fdt.c | 240 ++++++++++++++++++++++++++++++
+ arch/arm64/kernel/setup.c         |   1 +
+ 5 files changed, 253 insertions(+), 5 deletions(-)
+ create mode 100644 arch/arm64/kernel/luma_boot_fdt.c
+
+diff --git a/arch/arm64/include/asm/setup.h b/arch/arm64/include/asm/setup.h
+index 3d96dde4d..b03a154e7 100644
+--- a/arch/arm64/include/asm/setup.h
++++ b/arch/arm64/include/asm/setup.h
+@@ -13,6 +13,12 @@
+ extern phys_addr_t __fdt_pointer __initdata;
+ extern u64 __cacheline_aligned boot_args[4];
+ 
++#ifdef CONFIG_LUMA_EMBEDDED_DTB
++void luma_reserve_bootloader_fdt(void);
++#else
++static inline void luma_reserve_bootloader_fdt(void) { }
++#endif
++
+ static inline bool arch_parse_debug_rodata(char *arg)
+ {
+ 	extern bool rodata_enabled;
+diff --git a/arch/arm64/kernel/Makefile b/arch/arm64/kernel/Makefile
+index aebf3d85f..d70c7e8b9 100644
+--- a/arch/arm64/kernel/Makefile
++++ b/arch/arm64/kernel/Makefile
+@@ -50,7 +50,7 @@ obj-$(CONFIG_HAVE_STATIC_CALL)		+= static_call.o
+ obj-$(CONFIG_CPU_PM)			+= sleep.o suspend.o
+ obj-$(CONFIG_KGDB)			+= kgdb.o
+ obj-$(CONFIG_EFI)			+= efi.o efi-rt-wrapper.o
+-obj-$(CONFIG_LUMA_EMBEDDED_DTB)	+= luma_embedded_dtb.o luma_diag.o
++obj-$(CONFIG_LUMA_EMBEDDED_DTB)	+= luma_embedded_dtb.o luma_boot_fdt.o luma_diag.o
+ AFLAGS_luma_embedded_dtb.o += -I$(objtree)
+ 
+ obj-$(CONFIG_PCI)			+= pci.o
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+index 0b253a596..cba532e14 100644
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -83,12 +83,13 @@
+ 	 *  x21        primary_entry() .. start_kernel()        FDT pointer passed at boot in x0
+ 	 */
+ SYM_CODE_START(primary_entry)
+-#ifdef CONFIG_LUMA_EMBEDDED_DTB
+-	adrp	x0, __luma_embedded_dtb_start
+-	add	x0, x0, :lo12:__luma_embedded_dtb_start
+-#endif
+ 	bl	record_mmu_state
+ 	bl	preserve_boot_args
++#ifdef CONFIG_LUMA_EMBEDDED_DTB
++	/* boot_args[0] keeps the bootloader's FDT; boot from the embedded one */
++	adrp	x21, __luma_embedded_dtb_start
++	add	x21, x21, :lo12:__luma_embedded_dtb_start
++#endif
+ 
+ 	adrp	x1, early_init_stack
+ 	mov	sp, x1
+diff --git a/arch/arm64/kernel/luma_boot_fdt.c b/arch/arm64/kernel/luma_boot_fdt.c
+new file mode 100644
+index 000000000..ba151658d
+--- /dev/null
++++ b/arch/arm64/kernel/luma_boot_fdt.c
+@@ -0,0 +1,240 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Luma RAM boot: keep the bootloader's /chosen data alongside the embedded DTB.
++ *
++ * With CONFIG_LUMA_EMBEDDED_DTB the kernel boots from its own board DTB and
++ * the FDT the bootloader passes in x0 goes unused.  That tree still carries
++ * what only the bootloader knows: its command line and, on Pixel, the per-unit
++ * data under /chosen/config (board id, serial number, IMEIs) that the modem
++ * driver and userspace need.
++ *
++ * Early boot only validates and reserves it: the address stays in
++ * boot_args[0], and the memory is reserved once it is known to be ordinary
++ * RAM clear of the kernel image and of every static carveout of the embedded
++ * tree.  The data is added to the live tree from an arch_initcall, with the
++ * console and the panic handlers up: the bootloader's bootargs as
++ * luma,bootloader-bootargs and each /chosen subnode the embedded tree lacks.
++ * Nodes of the embedded tree are never modified.  Only names and sizes are
++ * logged, never values.
++ */
++
++#include <linux/init.h>
++#include <linux/libfdt.h>
++#include <linux/memblock.h>
++#include <linux/of.h>
++#include <linux/of_fdt.h>
++#include <linux/printk.h>
++#include <linux/sizes.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++
++#include <asm/early_ioremap.h>
++#include <asm/memory.h>
++#include <asm/sections.h>
++#include <asm/setup.h>
++
++#define LUMA_FDT_MAX_SIZE	SZ_4M
++
++static phys_addr_t luma_boot_fdt_phys __initdata;
++static u32 luma_boot_fdt_size __initdata;
++
++/*
++ * True if [base, base + size) is RAM nothing else claims: not the kernel
++ * image, not a /memreserve/ entry and not a static /reserved-memory region of
++ * the embedded tree.  Several of those are no-map carveouts of the secure
++ * world, and an earlier reservation would keep them from being marked so.
++ */
++static bool __init luma_range_is_free(phys_addr_t base, phys_addr_t size)
++{
++	const void *fdt = initial_boot_params;
++	phys_addr_t end = base + size;
++	int node, child, ac, sc, i, n;
++	u64 a, s;
++
++	if (!size || end < base || !memblock_is_region_memory(base, size))
++		return false;
++	if (base < __pa_symbol(_end) && __pa_symbol(_text) < end)
++		return false;
++
++	n = fdt_num_mem_rsv(fdt);
++	for (i = 0; i < n; i++)
++		if (!fdt_get_mem_rsv(fdt, i, &a, &s) && a < end && base < a + s)
++			return false;
++
++	node = fdt_path_offset(fdt, "/reserved-memory");
++	if (node < 0)
++		return true;
++	ac = fdt_address_cells(fdt, node);
++	sc = fdt_size_cells(fdt, node);
++	if (ac < 1 || ac > 2 || sc < 1 || sc > 2)
++		return false;
++	fdt_for_each_subnode(child, fdt, node) {
++		const __be32 *reg;
++		int len;
++
++		reg = fdt_getprop(fdt, child, "reg", &len);
++		if (!reg || len < 0)
++			continue;
++		for (len /= sizeof(*reg); len >= ac + sc; len -= ac + sc) {
++			a = dt_mem_next_cell(ac, &reg);
++			s = dt_mem_next_cell(sc, &reg);
++			if (a < end && base < a + s)
++				return false;
++		}
++	}
++	return true;
++}
++
++/* Early boot: validate the bootloader FDT and keep it until the initcall. */
++void __init luma_reserve_bootloader_fdt(void)
++{
++	phys_addr_t phys = boot_args[0];
++	struct fdt_header *hdr;
++	u32 size = 0;
++
++	if (!phys || (phys & 7) || !luma_range_is_free(phys, sizeof(*hdr)))
++		goto none;
++	hdr = early_memremap(phys, sizeof(*hdr));
++	if (!hdr)
++		goto none;
++	if (fdt_magic(hdr) == FDT_MAGIC)
++		size = fdt_totalsize(hdr);
++	early_memunmap(hdr, sizeof(*hdr));
++	if (size < sizeof(*hdr) || size > LUMA_FDT_MAX_SIZE ||
++	    !luma_range_is_free(phys, size) || memblock_reserve(phys, size))
++		goto none;
++	luma_boot_fdt_phys = phys;
++	luma_boot_fdt_size = size;
++	pr_info("luma: bootloader FDT at %pa, %u bytes, reserved\n", &phys, size);
++	return;
++none:
++	pr_info("luma: no usable bootloader FDT (x0 %pa)\n", &phys);
++}
++
++static struct property * __init luma_prop_new(const char *name,
++					      const void *val, int len)
++{
++	struct property *p = kzalloc(sizeof(*p), GFP_KERNEL);
++
++	if (!p)
++		return NULL;
++	p->name = kstrdup(name, GFP_KERNEL);
++	p->value = kmemdup(val, len, GFP_KERNEL);
++	p->length = len;
++	if (!p->name || !p->value) {
++		kfree(p->value);
++		kfree(p->name);
++		kfree(p);
++		return NULL;
++	}
++	of_property_set_flag(p, OF_DYNAMIC);
++	return p;
++}
++
++static int __init luma_add_prop(struct of_changeset *cs, struct device_node *np,
++				const char *path, const char *name,
++				const void *val, int len)
++{
++	struct property *p = luma_prop_new(name, val, len);
++	int ret;
++
++	if (!p)
++		return -ENOMEM;
++	ret = of_changeset_add_property(cs, np, p);
++	if (ret) {
++		kfree(p->value);
++		kfree(p->name);
++		kfree(p);
++		return ret;
++	}
++	pr_info("luma: bootloader %s/%s, %d bytes\n", path, name, len);
++	return 0;
++}
++
++static struct device_node * __init luma_child(struct device_node *parent,
++					      const char *name)
++{
++	struct device_node *child;
++
++	for_each_child_of_node(parent, child)
++		if (!strcmp(kbasename(child->full_name), name))
++			return child;
++	return NULL;
++}
++
++/* Add the bootloader's bootargs and missing /chosen subnodes. */
++static int __init luma_merge_bootloader_chosen(void)
++{
++	struct device_node *chosen, *np, *old;
++	const void *src, *val;
++	struct of_changeset cs;
++	int snode, sub, prop, len, ret = 0, n = 0;
++	const char *name, *pname;
++	char path[64];
++	phys_addr_t p;
++
++	if (!luma_boot_fdt_phys)
++		return 0;
++	for (p = luma_boot_fdt_phys & PAGE_MASK;
++	     p < luma_boot_fdt_phys + luma_boot_fdt_size; p += PAGE_SIZE)
++		if (!memblock_is_map_memory(p)) {
++			pr_warn("luma: bootloader FDT is not in the linear map\n");
++			return 0;
++		}
++	src = phys_to_virt(luma_boot_fdt_phys);
++	if (fdt_check_header(src) || fdt_totalsize(src) != luma_boot_fdt_size) {
++		pr_warn("luma: bootloader FDT changed after it was reserved\n");
++		return 0;
++	}
++	snode = fdt_path_offset(src, "/chosen");
++	chosen = of_find_node_by_path("/chosen");
++	if (snode < 0 || !chosen) {
++		pr_info("luma: no /chosen to merge\n");
++		of_node_put(chosen);
++		return 0;
++	}
++
++	of_changeset_init(&cs);
++	val = fdt_getprop(src, snode, "bootargs", &len);
++	if (val && len >= 0)
++		ret = luma_add_prop(&cs, chosen, "/chosen",
++				    "luma,bootloader-bootargs", val, len);
++	fdt_for_each_subnode(sub, src, snode) {
++		if (ret)
++			break;
++		name = fdt_get_name(src, sub, NULL);
++		if (!name)
++			continue;
++		old = luma_child(chosen, name);
++		if (old) {
++			of_node_put(old);
++			pr_info("luma: /chosen/%s kept from the embedded DTB\n", name);
++			continue;
++		}
++		np = of_changeset_create_node(&cs, chosen, name);
++		if (!np) {
++			ret = -ENOMEM;
++			break;
++		}
++		snprintf(path, sizeof(path), "/chosen/%s", name);
++		fdt_for_each_property_offset(prop, src, sub) {
++			val = fdt_getprop_by_offset(src, prop, &pname, &len);
++			if (!val || !pname || len < 0)
++				continue;
++			ret = luma_add_prop(&cs, np, path, pname, val, len);
++			if (ret)
++				break;
++			n++;
++		}
++	}
++	if (!ret)
++		ret = of_changeset_apply(&cs);
++	of_changeset_destroy(&cs);
++	of_node_put(chosen);
++	if (ret)
++		pr_warn("luma: bootloader /chosen not merged: %d\n", ret);
++	else
++		pr_info("luma: bootloader /chosen merged, %d subnode properties\n", n);
++	return 0;
++}
++arch_initcall(luma_merge_bootloader_chosen);
+diff --git a/arch/arm64/kernel/setup.c b/arch/arm64/kernel/setup.c
+index cfa03c51e..800cee1d1 100644
+--- a/arch/arm64/kernel/setup.c
++++ b/arch/arm64/kernel/setup.c
+@@ -290,6 +290,7 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 	early_ioremap_init();
+ 
+ 	setup_machine_fdt(__fdt_pointer);
++	luma_reserve_bootloader_fdt();
+ 
+ 	/*
+ 	 * Initialise the static keys early as they may be enabled by the

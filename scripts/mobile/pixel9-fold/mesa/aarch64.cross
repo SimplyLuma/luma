@@ -1,0 +1,23 @@
+[binaries]
+c = ['clang', '--target=aarch64-redhat-linux', '--sysroot=/sysroot']
+cpp = ['clang++', '--target=aarch64-redhat-linux', '--sysroot=/sysroot']
+c_ld = 'lld'
+cpp_ld = 'lld'
+ar = 'llvm-ar'
+strip = 'llvm-strip'
+objcopy = 'llvm-objcopy'
+pkg-config = 'pkgconf'
+
+[properties]
+sys_root = '/sysroot'
+pkg_config_libdir = ['/sysroot/usr/lib64/pkgconfig', '/sysroot/usr/share/pkgconfig']
+
+[built-in options]
+c_args = ['-O2', '-march=armv8.2-a']
+cpp_args = ['-O2', '-march=armv8.2-a']
+
+[host_machine]
+system = 'linux'
+cpu_family = 'aarch64'
+cpu = 'cortex-a720'
+endian = 'little'

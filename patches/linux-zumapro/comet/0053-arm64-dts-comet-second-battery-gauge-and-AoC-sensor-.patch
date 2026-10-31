@@ -1,0 +1,92 @@
+From b76de4e02fc150ffdc0a22c93643d3a760851b28 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 01:17:21 -0400
+Subject: [PATCH 53/88] arm64: dts: comet: second battery gauge and AoC sensor
+ hub
+
+MAX17201 on hsi2c_10 for the second battery, the USF registry and CDT for the AoC sensors, the aoc-usf IIO bridge node, and BATTERY_MAX1720X in zumapro_defconfig.
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  | 50 +++++++++++++++++++
+ arch/arm64/configs/zumapro_defconfig          |  1 +
+ 2 files changed, 51 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 8adc8e1e3..af188dba3 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -49,6 +49,40 @@ &aoc {
+ 	 */
+ 	sensor_1v8-supply = <&s_ldo7_reg>;
+ 	sensor_3v3-supply = <&s_ldo5_reg>;
++
++	/*
++	 * The sensor registry: the vendor .reg scripts from
++	 * /vendor/etc/sensors/registry, unmodified, at google/usf/comet in the
++	 * firmware path, in the order the vendor HAL uploads them. Each carries
++	 * its own ?+CDT/?-CDT filter, so only the ones for this stage apply.
++	 *
++	 * The embedded DTB replaces the bootloader's, so there is no
++	 * /chosen/plat to compose the CDT from: give it. Product 6 (comet),
++	 * stage 6 (MP, cdt_hwid 0x00060606...), 1.0: comet_common, comet_dvt
++	 * and the two append scripts apply; dev, proto and evt exclude
++	 * themselves.
++	 */
++	google,usf-cdt = <0x00066100>;
++	google,usf-registry = "google/usf/comet/comet_common.reg",
++			      "google/usf/comet/comet_dev.reg",
++			      "google/usf/comet/comet_proto_1_0.reg",
++			      "google/usf/comet/comet_proto_1_1.reg",
++			      "google/usf/comet/comet_evt_1_0.reg",
++			      "google/usf/comet/comet_evt_1_1.reg",
++			      "google/usf/comet/comet_dvt.reg",
++			      "google/usf/comet/append/motion_state.reg",
++			      "google/usf/comet/append/power.reg";
++};
++
++/ {
++	/*
++	 * The AoC sensor hub, bridged to IIO. The sensors live in AoC firmware
++	 * behind the com.google.usf service; the registry is on the AoC node.
++	 */
++	aoc_usf: aoc-usf {
++		compatible = "google,aoc-usf";
++		google,aoc = <&aoc>;
++	};
+ };
+ 
+ /*
+@@ -202,6 +236,22 @@ controller-data {
+  * hsi2c_9 it never probes, the eUSB2 PHY defers on it, and DWC3 never gets a
+  * UDC, so USB device mode stays down.
+  */
++/*
++ * The second battery's fuel gauge, a MAX17201 on hsi2c_10 (vendor
++ * max1720x@36, "maxfg_secondary" of the dual-battery gauge), with its nonvolatile
++ * block at 0x0b. The vendor node gives a 3 mOhm sense resistor
++ * (rsense-default = 300, in 10 uOhm) for parts whose nRSense is blank.
++ * Read-only: nothing here writes the gauge.
++ */
++&hsi2c_10 {
++	fuel-gauge@36 {
++		compatible = "maxim,max17201";
++		reg = <0x36>, <0x0b>;
++		reg-names = "m5", "nvmem";
++		maxim,rsense-default = <300>;
++	};
++};
++
+ /delete-node/ &eusb_repeater;
+ 
+ &hsi2c_6 {
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index d2c3d2a0b..dd7ae905c 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -356,6 +356,7 @@ CONFIG_SYSCON_REBOOT_MODE=y
+ CONFIG_NVMEM_REBOOT_MODE=y
+ CONFIG_BATTERY_SAMSUNG_SDI=y
+ CONFIG_BATTERY_MAX17042=y
++CONFIG_BATTERY_MAX1720X=y
+ CONFIG_BATTERY_MAX77779=y
+ CONFIG_CHARGER_MAX77779=y
+ # CONFIG_HWMON is not set

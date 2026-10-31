@@ -1,0 +1,27 @@
+From cbd7fd83e5bba0eae246e48eff603094f2797196 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 13:54:27 -0400
+Subject: [PATCH 31/88] arm64: dts: comet: inner touch contact size and scale
+
+The inner Goodix reports 16-byte contacts with coordinates in 1/10 pixel.
+---
+ arch/arm64/boot/dts/exynos/google/zumapro-comet.dts | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 1b585a59f..cce5dadd9 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -119,8 +119,10 @@ inner_touch: touchscreen@0 {
+ 		reset-gpios = <&gpp1 1 GPIO_ACTIVE_LOW>;
+ 		vddio-supply = <&m_ldo25_reg>;
+ 		avdd-supply = <&m_ldo4_reg>;
+-		touchscreen-size-x = <2076>;
+-		touchscreen-size-y = <2152>;
++		/* contacts are 16 bytes, coordinates in 1/10 pixel */
++		goodix,touch-size = <16>;
++		touchscreen-size-x = <20760>;
++		touchscreen-size-y = <21520>;
+ 
+ 		controller-data {
+ 			samsung,spi-feedback-delay = <0>;

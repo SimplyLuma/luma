@@ -1,0 +1,81 @@
+From 866efa0a78c732272a499893a2d087c7e57d0f43 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 21:36:48 -0400
+Subject: [PATCH 26/88] drm/exynos: zuma-dsim: pick the DECON from the OF graph
+
+With two DECONs the first LCD CRTC was given to both DSIMs: both encoders
+could only use it and both panels wrote their DSC config into it, so one
+panel ended up with no CRTC and no modes. Use drm_of_find_possible_crtcs()
+for the encoder and configure that CRTC; keep the old lookup as fallback.
+---
+ drivers/gpu/drm/exynos/exynos9_dsim.c | 36 ++++++++++++++++++++++-----
+ 1 file changed, 30 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_dsim.c b/drivers/gpu/drm/exynos/exynos9_dsim.c
+index 9f0302092..4ae24eea7 100644
+--- a/drivers/gpu/drm/exynos/exynos9_dsim.c
++++ b/drivers/gpu/drm/exynos/exynos9_dsim.c
+@@ -32,6 +32,7 @@
+ #include <drm/drm_atomic_helper.h>
+ #include <drm/drm_bridge.h>
+ #include <drm/drm_mipi_dsi.h>
++#include <drm/drm_of.h>
+ #include <drm/drm_probe_helper.h>
+ #include <drm/drm_simple_kms_helper.h>
+ 
+@@ -821,6 +822,21 @@ static void zuma_dsim_hotplug_work(struct work_struct *work)
+ 		drm_kms_helper_hotplug_event(dsim->encoder.dev);
+ }
+ 
++/* The CRTC this DSIM is wired to (its encoder's first possible CRTC). */
++static struct exynos_drm_crtc *zuma_dsim_crtc(struct zuma_dsim *dsim)
++{
++	struct drm_device *drm = dsim->encoder.dev;
++	struct drm_crtc *c;
++
++	if (drm)
++		drm_for_each_crtc(c, drm)
++			if (dsim->encoder.possible_crtcs & drm_crtc_mask(c))
++				return to_exynos_crtc(c);
++
++	return drm ? exynos_drm_crtc_get_by_type(drm, EXYNOS_DISPLAY_TYPE_LCD) :
++		     ERR_PTR(-ENODEV);
++}
++
+ static int zuma_dsim_host_attach(struct mipi_dsi_host *host,
+ 				 struct mipi_dsi_device *device)
+ {
+@@ -842,8 +858,7 @@ static int zuma_dsim_host_attach(struct mipi_dsi_host *host,
+ 
+ 	drm_bridge_attach(&dsim->encoder, &dsim->bridge, NULL, 0);
+ 
+-	crtc = exynos_drm_crtc_get_by_type(dsim->encoder.dev,
+-					   EXYNOS_DISPLAY_TYPE_LCD);
++	crtc = zuma_dsim_crtc(dsim);
+ 	if (!IS_ERR(crtc)) {
+ 		crtc->i80_mode = !(dsim->mode_flags & MIPI_DSI_MODE_VIDEO);
+ 		crtc->dsc = dsim->dsc;
+@@ -983,10 +998,19 @@ static int zuma_dsim_bind(struct device *dev, struct device *master, void *data)
+ 
+ 	drm_simple_encoder_init(drm_dev, &dsim->encoder, DRM_MODE_ENCODER_DSI);
+ 
+-	ret = exynos_drm_set_possible_crtcs(&dsim->encoder,
+-					    EXYNOS_DISPLAY_TYPE_LCD);
+-	if (ret < 0)
+-		return ret;
++	/*
++	 * Follow the OF graph to the DECON that feeds this DSIM. With two
++	 * DECONs (comet: DECON1 -> DSIM0, DECON0 -> DSIM1) "the first LCD
++	 * CRTC" hands both DSIMs the same one and the other panel gets none.
++	 */
++	dsim->encoder.possible_crtcs =
++		drm_of_find_possible_crtcs(drm_dev, dev->of_node);
++	if (!dsim->encoder.possible_crtcs) {
++		ret = exynos_drm_set_possible_crtcs(&dsim->encoder,
++						    EXYNOS_DISPLAY_TYPE_LCD);
++		if (ret < 0)
++			return ret;
++	}
+ 
+ 	return mipi_dsi_host_register(&dsim->dsi_host);
+ }

@@ -1,0 +1,11 @@
+# AOSP CarrierConfigManager defaults the ims.db transforms read (the layer no
+# CarrierSettings protobuf carries), in carrier-settings-tool's "key = value"
+# format. Values as the exynos-modem carrier-settings tests pin them.
+ims.request_uri_type_int = 0
+ims.sip_preferred_transport_int = 2
+ims.ipsec_authentication_algorithms_int_array = [0, 1]
+ims.ipsec_encryption_algorithms_int_array = [0, 1, 2]
+imsvoice.session_expires_timer_sec_int = 1800
+imsvoice.minimum_session_expires_timer_sec_int = 90
+imsvoice.session_refresher_type_int = 1
+imsvoice.srvcc_type_int_array = [0, 1, 2, 3]

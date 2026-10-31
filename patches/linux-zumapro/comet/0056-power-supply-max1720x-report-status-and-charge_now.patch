@@ -1,0 +1,59 @@
+From 2b15f778fc9c7be5f5783d7823999bc8470c5cd0 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 16:21:48 -0400
+Subject: [PATCH 56/88] power: supply: max1720x: report status and charge_now
+
+Status from the average current with a 20 mA dead band; charge_now from RepCap.
+---
+ drivers/power/supply/max1720x_battery.c | 31 +++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/power/supply/max1720x_battery.c b/drivers/power/supply/max1720x_battery.c
+index edc8d5a15..52d7ce342 100644
+--- a/drivers/power/supply/max1720x_battery.c
++++ b/drivers/power/supply/max1720x_battery.c
+@@ -256,6 +256,8 @@ static const struct nvmem_cell_info max1720x_nvmem_cells[] = {
+ };
+ 
+ static const enum power_supply_property max1720x_battery_props[] = {
++	POWER_SUPPLY_PROP_STATUS,
++	POWER_SUPPLY_PROP_CHARGE_NOW,
+ 	POWER_SUPPLY_PROP_HEALTH,
+ 	POWER_SUPPLY_PROP_PRESENT,
+ 	POWER_SUPPLY_PROP_CAPACITY,
+@@ -386,6 +388,35 @@ static int max1720x_battery_get_property(struct power_supply *psy,
+ 
+ 		val->intval = !FIELD_GET(MAX172XX_STATUS_BAT_ABSENT, reg_val);
+ 		break;
++	case POWER_SUPPLY_PROP_STATUS: {
++		/*
++		 * The gauge has no charger status; take it from the average
++		 * current (positive = into the cell), with a dead band so a cell
++		 * held at float reads as full or idle rather than flickering.
++		 */
++		int ua;
++
++		ret = regmap_read(info->regmap, MAX172XX_AVG_CURRENT, &reg_val);
++		if (ret)
++			break;
++		ua = max172xx_current_to_voltage(reg_val) / info->rsense;
++		if (ua > 20000) {
++			val->intval = POWER_SUPPLY_STATUS_CHARGING;
++		} else if (ua < -20000) {
++			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
++		} else {
++			ret = regmap_read(info->regmap, MAX172XX_REPSOC,
++					  &reg_val);
++			val->intval = max172xx_percent_to_ps(reg_val) >= 100 ?
++				      POWER_SUPPLY_STATUS_FULL :
++				      POWER_SUPPLY_STATUS_NOT_CHARGING;
++		}
++		break;
++	}
++	case POWER_SUPPLY_PROP_CHARGE_NOW:	/* RepCap, as CHARGE_AVG */
++		ret = regmap_read(info->regmap, MAX172XX_REPCAP, &reg_val);
++		val->intval = max172xx_capacity_to_ps(reg_val, info);
++		break;
+ 	case POWER_SUPPLY_PROP_CAPACITY:
+ 		ret = regmap_read(info->regmap, MAX172XX_REPSOC, &reg_val);
+ 		val->intval = max172xx_percent_to_ps(reg_val);

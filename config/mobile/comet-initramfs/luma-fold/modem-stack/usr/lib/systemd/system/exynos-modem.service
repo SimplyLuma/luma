@@ -1,0 +1,14 @@
+[Unit]
+Description=Exynos modem vendor channel services (GEMS, GIPC, radioext)
+Documentation=file:/usr/share/doc/exynos-modem/README.md
+BindsTo=dev-wwan0oem1.device
+After=dev-wwan0oem1.device
+
+[Service]
+# The s5xxx_modem driver boots the CP and serves RFS itself; this daemon
+# answers the OEM channels (wwan0oem0 radioext, wwan0oem1 GEMS, wwan0oem2 GIPC).
+EnvironmentFile=-/etc/sysconfig/exynos-modem
+ExecStart=/usr/bin/exynos-modem --boot-dev none --rfs-dev none --oem-gems-dev /dev/wwan0oem1 --oem-radioext-dev /dev/wwan0oem0 --oem-gipc-dev /dev/wwan0oem2 $EXYNOS_MODEM_OPTS
+StateDirectory=exynos-modem
+Restart=on-failure
+RestartSec=2

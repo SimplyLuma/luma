@@ -1,0 +1,49 @@
+From 849279b306bfa930a10794a307daaa0fc697c9bf Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 13:41:02 -0400
+Subject: [PATCH 03/88] arm64: dts: exynos: comet: read-only display probe
+ variant
+
+---
+ arch/arm64/boot/dts/exynos/google/Makefile    |  1 +
+ .../dts/exynos/google/zumapro-comet-probe.dts | 21 +++++++++++++++++++
+ 2 files changed, 22 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
+
+diff --git a/arch/arm64/boot/dts/exynos/google/Makefile b/arch/arm64/boot/dts/exynos/google/Makefile
+index a72e50c53..39f613778 100644
+--- a/arch/arm64/boot/dts/exynos/google/Makefile
++++ b/arch/arm64/boot/dts/exynos/google/Makefile
+@@ -9,4 +9,5 @@ dtb-$(CONFIG_ARCH_EXYNOS) += \
+ 	zumapro-caiman.dtb \
+ 	zumapro-comet.dtb \
+ 	zumapro-comet-front.dtb \
++	zumapro-comet-probe.dtb \
+ 	zumapro-komodo.dtb
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
+new file mode 100644
+index 000000000..86d30de31
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Pixel 9 Pro Fold (comet) read-only display probe. Identical to
++ * zumapro-comet.dts except that the kernel makes no display writes: no
++ * DECON auto-refresh poke and no simple-framebuffer on the splash, so a
++ * diagnostic can read the DECON/DSIM state the bootloader left behind.
++ */
++
++#include "zumapro-comet.dts"
++
++/ {
++	model = "Pixel 9 Pro Fold (display probe)";
++};
++
++&decon_autorefresh_bit {
++	status = "disabled";
++};
++
++&framebuffer0 {
++	status = "disabled";
++};

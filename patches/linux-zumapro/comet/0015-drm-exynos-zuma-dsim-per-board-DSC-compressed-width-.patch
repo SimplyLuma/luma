@@ -1,0 +1,78 @@
+From 937817c425290540c45fdea441d4ef6dd536e2df Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 19:16:13 -0400
+Subject: [PATCH 15/88] drm/exynos: zuma-dsim: per-board DSC compressed-width
+ alignment
+
+tokay's bootloader rounds the per-slice compressed width to 8; comet's outer
+panel uses the DECON's 2 x 180 unrounded. With the fixed 8 the DSIM expected
+368 pixels a line from a DECON sending 360, so no frame ever completed. Read
+google,dsc-comp-align from the DSIM node (default 8) and set 1 on comet.
+
+First light on comet's outer screen with this: DECON1 completes frames and
+fbcon draws on the panel.
+---
+ .../dts/exynos/google/zumapro-comet-panel.dts     |  2 ++
+ drivers/gpu/drm/exynos/exynos9_dsim.c             | 15 +++++++++++++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+index d1a95641a..80be9aeab 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+@@ -62,6 +62,8 @@ &dpp1 {
+ 
+ &dsim0 {
+ 	status = "okay";
++	/* the bootloader sends 2 x 180 compressed pixels per line, unrounded */
++	google,dsc-comp-align = <1>;
+ 
+ 	outer_panel: panel@0 {
+ 		compatible = "google,gs-ct3d";
+diff --git a/drivers/gpu/drm/exynos/exynos9_dsim.c b/drivers/gpu/drm/exynos/exynos9_dsim.c
+index f9130e1c5..77212737c 100644
+--- a/drivers/gpu/drm/exynos/exynos9_dsim.c
++++ b/drivers/gpu/drm/exynos/exynos9_dsim.c
+@@ -74,6 +74,7 @@ struct zuma_dsim {
+ 	unsigned int vactive;		/* active height (from mode_set) */
+ 	unsigned int vrefresh;		/* active refresh rate (from mode_set) */
+ 	const struct drm_dsc_config *dsc;	/* DSC config (from the panel) */
++	u32 comp_align;			/* per-slice compressed-width alignment */
+ };
+ 
+ static inline struct zuma_dsim *host_to_dsim(struct mipi_dsi_host *h)
+@@ -565,7 +566,7 @@ static int zuma_dsim_dphy_enable_lanes(struct zuma_dsim *dsim)
+ 	return ret;
+ }
+ 
+-static int dsim_comp_align = 8;
++static int dsim_comp_align = -1;
+ module_param_named(comp_align, dsim_comp_align, int, 0644);
+ MODULE_PARM_DESC(comp_align,
+ 		 "pixel alignment of the per-slice compressed width (0 = none)");
+@@ -589,7 +590,8 @@ static void zuma_dsim_set_config(struct zuma_dsim *dsim)
+ 	 * as RGB24 pixels and needs the per-slice count rounded up to 8, which
+ 	 * is what the bootloader programs (216/slice where the DECON has 214).
+ 	 */
+-	u32 width = dsc ? roundup(comp_w, dsim_comp_align ?: 1) * slice_cnt :
++	u32 align = dsim_comp_align >= 0 ? dsim_comp_align : dsim->comp_align;
++	u32 width = dsc ? roundup(comp_w, align ?: 1) * slice_cnt :
+ 			  dsim->hactive;
+ 
+ 	dsim_rmw(dsim, DSIM_SFR_CTRL, DSIM_SFR_CTRL_SHADOW_REG_READ_EN,
+@@ -1012,6 +1014,15 @@ static int zuma_dsim_probe(struct platform_device *pdev)
+ 		return PTR_ERR(dsim);
+ 
+ 	dsim->dev = dev;
++	/*
++	 * The bootloader's per-slice compressed width differs per board: tokay
++	 * rounds to 8 (216 for the DECON's 214), comet's outer panel uses the
++	 * DECON width unrounded (2 x 180). A mismatch leaves the DSIM waiting
++	 * for pixels the DECON never sends, so no frame completes.
++	 */
++	dsim->comp_align = 8;
++	of_property_read_u32(dev->of_node, "google,dsc-comp-align",
++			     &dsim->comp_align);
+ 	INIT_DELAYED_WORK(&dsim->hotplug_work, zuma_dsim_hotplug_work);
+ 
+ 	dsim->regs = devm_platform_ioremap_resource_byname(pdev, "dsi");

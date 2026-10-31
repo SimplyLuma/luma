@@ -1,0 +1,482 @@
+From a64f01ad8eb8e6192de8a2f00dc1b311ea7142a6 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 14:52:10 -0400
+Subject: [PATCH 54/88] power: supply: max77779-charger: temperature-banded
+ charging profile
+
+Optional per-board profile: temperature bands with a charge current and float voltage each, input limit from TCPM, battery temperature from up to two gauges (the hotter one). Values are capped at 1.5 A input, 1 A charge, 4.40 V; outside the bands charging pauses with the buck still on. Without a profile the conservative defaults stay. Comet gets the bands from its vendor google,battery profile.
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  |  21 +-
+ .../exynos/google/zumapro-pixel-common.dtsi   |   4 +-
+ drivers/power/supply/max77779_charger.c       | 296 +++++++++++++++++-
+ 3 files changed, 305 insertions(+), 16 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index af188dba3..738756b40 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -244,7 +244,7 @@ controller-data {
+  * Read-only: nothing here writes the gauge.
+  */
+ &hsi2c_10 {
+-	fuel-gauge@36 {
++	max17201_fg: fuel-gauge@36 {
+ 		compatible = "maxim,max17201";
+ 		reg = <0x36>, <0x0b>;
+ 		reg-names = "m5", "nvmem";
+@@ -252,6 +252,25 @@ fuel-gauge@36 {
+ 	};
+ };
+ 
++/*
++ * Wired charging by battery temperature, from the vendor google,battery
++ * profile: its temperature bands (0, 10, 20, 42, 46, 48, 55 C) and, per band,
++ * the highest voltage tier with a non-zero rate as the float voltage and the
++ * lowest non-zero rate up to it as the current (rates are % of the 4560 mAh
++ * pack). The driver caps that at 1.5 A input, 1 A charge and 4.40 V (the
++ * vendor charger's own chg-term-voltage), below the vendor step-charging
++ * maximum. Outside 0..55 C charging pauses; the charger's own JEITA stays on.
++ * The temperature is the hotter of the two gauges.
++ */
++&max77779_pmic {
++	maxim,charge-temp-limits-decicelsius = <0 100 200 420 460 480 550>;
++	maxim,charge-current-microamp = <456000 1000000 1000000 1000000 1000000 1000000>;
++	maxim,charge-float-voltage-millivolt = <4300 4400 4400 4400 4250 4100>;
++	maxim,input-current-max-microamp = <1500000>;
++	maxim,battery-temperature-supply = <&max77779_fg>;
++	maxim,battery-temperature-supply-secondary = <&max17201_fg>;
++};
++
+ /delete-node/ &eusb_repeater;
+ 
+ &hsi2c_6 {
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-pixel-common.dtsi b/arch/arm64/boot/dts/exynos/google/zumapro-pixel-common.dtsi
+index 0baaccb9e..cfa6c9bad 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-pixel-common.dtsi
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-pixel-common.dtsi
+@@ -579,7 +579,7 @@ usbc0_mode_sw: endpoint {
+ 		};
+ 	};
+ 
+-	fuel-gauge@36 {
++	max77779_fg: fuel-gauge@36 {
+ 		compatible = "maxim,max77779fg";
+ 		reg = <0x36>;
+ 
+@@ -590,7 +590,7 @@ fuel-gauge@36 {
+ 		shunt-resistor-micro-ohms = <2000>;
+ 	};
+ 
+-	pmic@66 {
++	max77779_pmic: pmic@66 {
+ 		compatible = "maxim,max77779";
+ 		reg = <0x66>;
+ 		power-supplies = <&max77759tcpc>;
+diff --git a/drivers/power/supply/max77779_charger.c b/drivers/power/supply/max77779_charger.c
+index c9a255a82..c08f271ee 100644
+--- a/drivers/power/supply/max77779_charger.c
++++ b/drivers/power/supply/max77779_charger.c
+@@ -28,6 +28,19 @@
+ #define MAX77779_SAFE_FLOAT_VOLTAGE_MV	4200
+ #define MAX77779_POLL_INTERVAL		(5 * HZ)
+ 
++/*
++ * Temperature-banded charging (a board opts in with a charge profile in its
++ * device tree). Whatever the profile says, the driver never goes past these:
++ * the board's stock limits above them belong to a step-charging policy with
++ * taper, cycle-based float offsets and the direct charger, none of which this
++ * driver implements.
++ */
++#define MAX77779_PROFILE_MAX_BANDS	8
++#define MAX77779_PROFILE_INPUT_MAX_UA	1500000
++#define MAX77779_PROFILE_CHARGE_MAX_UA	1000000
++#define MAX77779_PROFILE_FLOAT_MAX_MV	4400
++#define MAX77779_PROFILE_HYST_DECIC	10	/* 1.0 C either side of a band */
++
+ static const struct linear_range max77779_chgcc_ranges[] = {
+ 	LINEAR_RANGE(133330, 0x0, 0x2, 0),
+ 	LINEAR_RANGE(200000, 0x3, 0x3c, 66670),
+@@ -58,6 +71,23 @@ struct max77779_charger {
+ 	bool charging;
+ 	bool hardware_fallback;
+ 	int last_details;
++
++	/* charge profile from the device tree; nbands == 0 means none */
++	int nbands;
++	int band_temp[MAX77779_PROFILE_MAX_BANDS + 1];	/* deci-Celsius */
++	int band_cc_ua[MAX77779_PROFILE_MAX_BANDS];
++	int band_fv_mv[MAX77779_PROFILE_MAX_BANDS];
++	int profile_input_max_ua;
++	struct power_supply *temp_psy[2];
++	int band;		/* active band, -1 = paused, -2 = safe defaults */
++	int cc_ua;		/* programmed charge current */
++	int fv_mv;		/* programmed float voltage */
++	bool paused;		/* input on, charging held off by temperature */
++};
++
++static const char * const max77779_temp_supply_props[] = {
++	"maxim,battery-temperature-supply",
++	"maxim,battery-temperature-supply-secondary",
+ };
+ 
+ static int __max77779_set_mode(struct max77779_charger *chg,
+@@ -227,7 +257,8 @@ static int max77779_set_input_limit(struct max77779_charger *chg, int ua)
+ {
+ 	unsigned int selector;
+ 
+-	ua = clamp(ua, 100000, MAX77779_SAFE_INPUT_CURRENT_UA);
++	ua = clamp(ua, 100000, chg->nbands ? chg->profile_input_max_ua :
++					      MAX77779_SAFE_INPUT_CURRENT_UA);
+ 	linear_range_get_selector_within(max77779_chgin_ilim_ranges, ua,
+ 					 &selector);
+ 
+@@ -238,6 +269,153 @@ static int max77779_set_input_limit(struct max77779_charger *chg, int ua)
+ 				  selector);
+ }
+ 
++/* CHGCC and CHG_CV_PRM are protected: unlock around the write. */
++static int max77779_program_charge(struct max77779_charger *chg, int cc_ua,
++				   int fv_mv)
++{
++	int ret, ret2;
++
++	if (cc_ua == chg->cc_ua && fv_mv == chg->fv_mv)
++		return 0;
++
++	ret = regmap_update_bits(chg->regmap, MAX77779_CHGR_REG_CHG_CNFG_06,
++				 MAX77779_CHGR_REG_CHG_CNFG_06_CHGPROT,
++				 MAX77779_CHGR_REG_CHG_CNFG_06_CHGPROT);
++	if (ret)
++		return ret;
++
++	/* lower the current first, so no step is above both old and new */
++	if (cc_ua < chg->cc_ua) {
++		ret = max77779_set_charge_current(chg, cc_ua);
++		if (!ret)
++			ret = max77779_set_float_voltage(chg, fv_mv);
++	} else {
++		ret = max77779_set_float_voltage(chg, fv_mv);
++		if (!ret)
++			ret = max77779_set_charge_current(chg, cc_ua);
++	}
++
++	ret2 = regmap_update_bits(chg->regmap, MAX77779_CHGR_REG_CHG_CNFG_06,
++				  MAX77779_CHGR_REG_CHG_CNFG_06_CHGPROT, 0);
++	if (ret)
++		return ret;
++	if (ret2)
++		return ret2;
++
++	chg->cc_ua = cc_ua;
++	chg->fv_mv = fv_mv;
++	return 0;
++}
++
++/* Hottest readable battery temperature in deci-Celsius, or -ENODATA. */
++static int max77779_battery_temp(struct max77779_charger *chg, int *temp)
++{
++	union power_supply_propval val;
++	bool found = false;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(chg->temp_psy); i++) {
++		if (!chg->temp_psy[i]) {
++			struct power_supply *psy;
++
++			psy = devm_power_supply_get_by_reference(chg->dev,
++					max77779_temp_supply_props[i]);
++			if (IS_ERR_OR_NULL(psy))
++				continue;
++			chg->temp_psy[i] = psy;
++		}
++		if (power_supply_get_property(chg->temp_psy[i],
++					      POWER_SUPPLY_PROP_TEMP, &val))
++			continue;
++		if (!found || val.intval > *temp)
++			*temp = val.intval;
++		found = true;
++	}
++
++	return found ? 0 : -ENODATA;
++}
++
++/*
++ * Pick the band for the battery temperature, staying in the current one until
++ * the temperature is MAX77779_PROFILE_HYST_DECIC past its edges. -1: outside
++ * every band (charging paused).
++ */
++static int max77779_pick_band(struct max77779_charger *chg, int temp)
++{
++	int h = MAX77779_PROFILE_HYST_DECIC;
++	int i;
++
++	if (chg->band >= 0 && temp >= chg->band_temp[chg->band] - h &&
++	    temp < chg->band_temp[chg->band + 1] + h)
++		return chg->band;
++	if (chg->band == -1 && (temp < chg->band_temp[0] + h ||
++				temp >= chg->band_temp[chg->nbands] - h))
++		return -1;
++
++	for (i = 0; i < chg->nbands; i++)
++		if (temp >= chg->band_temp[i] && temp < chg->band_temp[i + 1])
++			return i;
++	return -1;
++}
++
++/*
++ * Apply the charge profile for the present battery temperature. Returns true
++ * when charging may run, false when it is paused. Without a profile, or
++ * without a readable temperature, the conservative defaults apply.
++ */
++static bool max77779_apply_profile(struct max77779_charger *chg)
++{
++	int temp, band, cc_ua, fv_mv, ret;
++
++	if (!chg->nbands)
++		return true;
++
++	if (max77779_battery_temp(chg, &temp)) {
++		band = -2;
++		cc_ua = MAX77779_SAFE_CHARGE_CURRENT_UA;
++		fv_mv = MAX77779_SAFE_FLOAT_VOLTAGE_MV;
++	} else {
++		band = max77779_pick_band(chg, temp);
++		if (band >= 0) {
++			cc_ua = chg->band_cc_ua[band];
++			fv_mv = chg->band_fv_mv[band];
++		} else {
++			cc_ua = chg->cc_ua;
++			fv_mv = chg->fv_mv;
++		}
++	}
++
++	if (band != chg->band) {
++		if (band == -2)
++			dev_warn(chg->dev,
++				 "no battery temperature: %d mA to %d mV\n",
++				 cc_ua / 1000, fv_mv);
++		else if (band == -1)
++			dev_warn(chg->dev,
++				 "battery at %d.%d C, outside %d..%d C: charging paused\n",
++				 temp / 10, abs(temp % 10),
++				 chg->band_temp[0] / 10,
++				 chg->band_temp[chg->nbands] / 10);
++		else
++			dev_info(chg->dev,
++				 "battery at %d.%d C, band %d: %d mA to %d mV\n",
++				 temp / 10, abs(temp % 10), band,
++				 cc_ua / 1000, fv_mv);
++		chg->band = band;
++	}
++
++	if (band == -1)
++		return false;
++
++	ret = max77779_program_charge(chg, cc_ua, fv_mv);
++	if (ret) {
++		dev_err_ratelimited(chg->dev, "charge profile write: %d\n", ret);
++		return false;
++	}
++
++	return true;
++}
++
+ static int max77779_input_valid(struct max77779_charger *chg)
+ {
+ 	unsigned int value;
+@@ -418,13 +596,17 @@ static int max77779_charger_get_property(struct power_supply *psy,
+ 	case POWER_SUPPLY_PROP_ONLINE:
+ 		ret = max77779_input_valid(chg);
+ 		if (ret > 0)
+-			ret = chg->mode == MAX77779_CHGR_MODE_CHG_BUCK_ON;
++			ret = chg->mode == MAX77779_CHGR_MODE_CHG_BUCK_ON ||
++			      chg->mode == MAX77779_CHGR_MODE_BUCK_ON;
+ 		break;
+ 	case POWER_SUPPLY_PROP_PRESENT:
+ 		ret = max77779_input_valid(chg);
+ 		break;
+ 	case POWER_SUPPLY_PROP_STATUS:
+ 		ret = max77779_get_status(chg);
++		if (ret == POWER_SUPPLY_STATUS_DISCHARGING && chg->paused &&
++		    max77779_input_valid(chg) > 0)
++			ret = POWER_SUPPLY_STATUS_NOT_CHARGING;
+ 		break;
+ 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
+ 		ret = max77779_get_charge_type(chg);
+@@ -433,10 +615,10 @@ static int max77779_charger_get_property(struct power_supply *psy,
+ 		ret = max77779_get_health(chg);
+ 		break;
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
+-		ret = MAX77779_SAFE_CHARGE_CURRENT_UA;
++		ret = chg->cc_ua;
+ 		break;
+ 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_VOLTAGE_MAX:
+-		ret = MAX77779_SAFE_FLOAT_VOLTAGE_MV * 1000;
++		ret = chg->fv_mv * 1000;
+ 		break;
+ 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+ 		ret = chg->input_limit_ua;
+@@ -485,7 +667,8 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 
+ 	if (online.intval && current_max.intval > 0) {
+ 		chg->input_limit_ua = min(current_max.intval,
+-					  MAX77779_SAFE_INPUT_CURRENT_UA);
++					  chg->nbands ? chg->profile_input_max_ua :
++						MAX77779_SAFE_INPUT_CURRENT_UA);
+ 		if (chg->hardware_fallback) {
+ 			chg->hardware_fallback = false;
+ 			dev_info(chg->dev, "TCPM input information is available\n");
+@@ -526,9 +709,19 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 	if (ret)
+ 		goto disable;
+ 
+-	ret = max77779_set_mode(chg, MAX77779_CHGR_MODE_CHG_BUCK_ON);
++	/* out of the profile's temperature range: run the system, no charge */
++	chg->paused = !max77779_apply_profile(chg);
++	ret = max77779_set_mode(chg, chg->paused ? MAX77779_CHGR_MODE_BUCK_ON :
++					     MAX77779_CHGR_MODE_CHG_BUCK_ON);
+ 	if (ret)
+ 		goto disable;
++	if (chg->paused) {
++		if (chg->charging) {
++			chg->charging = false;
++			dev_info(chg->dev, "wired charging paused\n");
++		}
++		return 0;
++	}
+ 
+ 	ret = max77779_check_charging(chg);
+ 	if (ret < 0)
+@@ -536,8 +729,10 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 
+ 	if (ret && !chg->charging) {
+ 		chg->charging = true;
+-		dev_info(chg->dev, "wired charging started at %d mA\n",
+-			 chg->input_limit_ua / 1000);
++		dev_info(chg->dev,
++			 "wired charging started: input %d mA, charge %d mA to %d mV\n",
++			 chg->input_limit_ua / 1000, chg->cc_ua / 1000,
++			 chg->fv_mv);
+ 	} else if (!ret && chg->charging) {
+ 		chg->charging = false;
+ 		dev_warn(chg->dev, "charger left the active state\n");
+@@ -551,6 +746,7 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 	regmap_update_bits(chg->regmap, MAX77779_CHGR_REG_CHG_CNFG_12,
+ 			   MAX77779_CHGR_REG_CHG_CNFG_12_CHGINSEL, 0);
+ 	chg->hardware_fallback = false;
++	chg->paused = false;
+ 	if (chg->charging) {
+ 		chg->charging = false;
+ 		dev_info(chg->dev, "wired charging stopped\n");
+@@ -589,6 +785,68 @@ static void max77779_unregister_notifier(void *data)
+ 	power_supply_unreg_notifier(data);
+ }
+ 
++/*
++ * Optional charge profile:
++ *   maxim,charge-temp-limits-decicelsius = <t0 t1 ... tN>;  band i: [ti, ti+1)
++ *   maxim,charge-current-microamp = <cc0 ... ccN-1>;
++ *   maxim,charge-float-voltage-millivolt = <fv0 ... fvN-1>;
++ *   maxim,input-current-max-microamp = <ua>;
++ *   maxim,battery-temperature-supply(-secondary) = <&gauge>;
++ * Every value is clamped to the driver's MAX77779_PROFILE_* ceilings.
++ */
++static int max77779_parse_profile(struct max77779_charger *chg)
++{
++	struct device *dev = chg->dev;
++	int n, i, ret;
++
++	n = device_property_count_u32(dev, "maxim,charge-temp-limits-decicelsius");
++	if (n <= 0)
++		return 0;
++	if (n < 2 || n > MAX77779_PROFILE_MAX_BANDS + 1)
++		return dev_err_probe(dev, -EINVAL, "bad charge temperature table\n");
++
++	ret = device_property_read_u32_array(dev,
++			"maxim,charge-temp-limits-decicelsius",
++			(u32 *)chg->band_temp, n);
++	if (!ret)
++		ret = device_property_read_u32_array(dev,
++				"maxim,charge-current-microamp",
++				(u32 *)chg->band_cc_ua, n - 1);
++	if (!ret)
++		ret = device_property_read_u32_array(dev,
++				"maxim,charge-float-voltage-millivolt",
++				(u32 *)chg->band_fv_mv, n - 1);
++	if (ret)
++		return dev_err_probe(dev, ret, "incomplete charge profile\n");
++
++	for (i = 0; i < n - 1; i++) {
++		if (chg->band_temp[i + 1] <= chg->band_temp[i])
++			return dev_err_probe(dev, -EINVAL,
++					     "charge temperatures not ascending\n");
++		chg->band_cc_ua[i] = clamp(chg->band_cc_ua[i], 133330,
++					   MAX77779_PROFILE_CHARGE_MAX_UA);
++		chg->band_fv_mv[i] = clamp(chg->band_fv_mv[i], 3800,
++					   MAX77779_PROFILE_FLOAT_MAX_MV);
++	}
++
++	if (device_property_read_u32(dev, "maxim,input-current-max-microamp",
++				     (u32 *)&chg->profile_input_max_ua))
++		chg->profile_input_max_ua = MAX77779_SAFE_INPUT_CURRENT_UA;
++	chg->profile_input_max_ua = clamp(chg->profile_input_max_ua, 100000,
++					  MAX77779_PROFILE_INPUT_MAX_UA);
++
++	if (!device_property_present(dev, max77779_temp_supply_props[0]))
++		return dev_err_probe(dev, -EINVAL,
++				     "charge profile without a battery temperature\n");
++
++	chg->nbands = n - 1;
++	for (i = 0; i < chg->nbands; i++)
++		dev_info(dev, "band %d: %d..%d C, %d mA to %d mV\n", i,
++			 chg->band_temp[i] / 10, chg->band_temp[i + 1] / 10,
++			 chg->band_cc_ua[i] / 1000, chg->band_fv_mv[i]);
++	return 0;
++}
++
+ static int max77779_charger_probe(struct platform_device *pdev)
+ {
+ 	struct power_supply_config supply_config = {};
+@@ -605,6 +863,9 @@ static int max77779_charger_probe(struct platform_device *pdev)
+ 
+ 	chg->dev = &pdev->dev;
+ 	chg->last_details = -1;
++	chg->band = -3;	/* nothing logged yet */
++	chg->cc_ua = MAX77779_SAFE_CHARGE_CURRENT_UA;
++	chg->fv_mv = MAX77779_SAFE_FLOAT_VOLTAGE_MV;
+ 	chg->regmap = dev_get_regmap(pdev->dev.parent, "charger");
+ 	if (!chg->regmap)
+ 		return dev_err_probe(&pdev->dev, -ENODEV,
+@@ -614,6 +875,10 @@ static int max77779_charger_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
++	ret = max77779_parse_profile(chg);
++	if (ret)
++		return ret;
++
+ 	chg->ext_bst_ctl = devm_gpiod_get_optional(&pdev->dev, "extbst",
+ 						   GPIOD_OUT_LOW);
+ 	if (IS_ERR(chg->ext_bst_ctl))
+@@ -704,11 +969,16 @@ static int max77779_charger_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, chg);
+ 	schedule_delayed_work(&chg->work, 0);
+ 
+-	dev_info(&pdev->dev,
+-		 "registered, charge limited to %d mA at %d mV (input %d mA)\n",
+-		 MAX77779_SAFE_CHARGE_CURRENT_UA / 1000,
+-		 MAX77779_SAFE_FLOAT_VOLTAGE_MV,
+-		 MAX77779_SAFE_INPUT_CURRENT_UA / 1000);
++	if (chg->nbands)
++		dev_info(&pdev->dev,
++			 "registered, temperature-banded charging (input up to %d mA)\n",
++			 chg->profile_input_max_ua / 1000);
++	else
++		dev_info(&pdev->dev,
++			 "registered, charge limited to %d mA at %d mV (input %d mA)\n",
++			 MAX77779_SAFE_CHARGE_CURRENT_UA / 1000,
++			 MAX77779_SAFE_FLOAT_VOLTAGE_MV,
++			 MAX77779_SAFE_INPUT_CURRENT_UA / 1000);
+ 
+ 	return 0;
+ }

@@ -1,0 +1,245 @@
+From 7d8e1b2a6886bd32fefc2399337bdf6260fc2e02 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 00:20:51 -0400
+Subject: [PATCH 84/88] ASoC: google: aoc: restore the DSP mode a call
+ replaced, modem DL ASRC on
+
+Leaving a call set the DSP mode to Ambient unconditionally.  Read the
+mode before switching to the call's (DSP_MODE_GET, 278) and go back to
+that one, as the vendor HAL tracks its dsp_mode_.  The AOC reported heap
+corruption while unloading the call processing on the switch to Ambient
+("prev->next != hdr", "CCA unloaded", "SetProcessLibrary failed. status
+78").
+
+Turn the modem downlink ASRC on before the call (telephony block 19,
+component 15, key 1 = ASP_ON), which the vendor HAL's mixer defaults do
+at start ("AoC Modem Downlink ASRC Mode").
+
+"Voice Call DSP Mode" picks the call's DSP mode: Telephony (2, the
+captured value, default) or Telephony_APMG3 (6).
+---
+ sound/soc/google/aoc-audio.c | 143 ++++++++++++++++++++++++++++++++---
+ 1 file changed, 132 insertions(+), 11 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index c6c610ac8..e0c64a712 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -130,8 +130,20 @@
+  * from the vendor driver's "Audio DSP Mode" control (aoc_set_audio_dsp_mode).
+  */
+ #define AOC_CMD_AUDIO_OUTPUT_DSP_MODE_SET_ID	277
++#define AOC_CMD_AUDIO_OUTPUT_DSP_MODE_GET_ID	278
++/* the vendor's "Audio DSP Mode" items */
+ #define AOC_DSP_MODE_AMBIENT		0
+ #define AOC_DSP_MODE_TELEPHONY		2
++#define AOC_DSP_MODE_TELEPHONY_APMG3	6
++#define AOC_DSP_MODE_MAX		7	/* Ambient_Plus */
++/*
++ * "AoC Modem Downlink ASRC Mode", which the vendor HAL sets to ASP_ON (1) in
++ * its mixer defaults at start: a parameter of the telephony block (19),
++ * component 15, key 1 (the vendor's soc_enum reg 0x10f, shift 19).
++ */
++#define AOC_MODEM_DL_ASRC_COMPONENT	15
++#define AOC_MODEM_DL_ASRC_KEY		1
++#define AOC_ASP_ON			1
+ /* Switching mode reloads DSP blocks, well past the ordinary reply window. */
+ #define AOC_CMD_DSP_MODE_TIMEOUT_MS	700
+ 
+@@ -382,6 +394,8 @@ struct aoc_audio {
+ 	int mic_hw_gain_cb;			/* mic preamp gain, centibels */
+ 	int mic_soft_gain_db;			/* record soft gain, dB */
+ 	unsigned int voice_start;		/* enum aoc_voice_start */
++	u8 voice_dsp_mode;			/* DSP mode for a call */
++	u8 voice_prev_dsp_mode;			/* DSP mode before the call */
+ 	int voice_mic_input;			/* ModemInputIndex of the call mic */
+ 	int voice_mic_gain_cb;			/* call mic preamp gain, centibels */
+ };
+@@ -539,7 +553,7 @@ struct aoc_voice_raw_cmd {
+ 
+ static const struct aoc_voice_raw_cmd aoc_voice_pre[] = {
+ 	{ false, 0x00d1, 10, { 0x13, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } },
+-	{ false, 0x0115,  1, { 0x02 } },
++	/* cntr 177, DSP_MODE_SET, is sent by aoc_voice_dsp_enter() */
+ 	/*
+ 	 * Android's sidetone chain (0x00f9 x5, 0x00f8/0x00f7 pairs) and its
+ 	 * source 11 (Sidetone) bind are deliberately NOT replayed.  Sidetone
+@@ -706,6 +720,65 @@ static int aoc_audio_dsp_mode(struct aoc_audio *aud, u8 mode)
+ 				sizeof(rsp), AOC_CMD_DSP_MODE_TIMEOUT_MS);
+ }
+ 
++static int aoc_audio_set_param(struct aoc_audio *aud, u8 block, u8 component,
++			       u32 key, u32 val);
++
++/* Read the AOC's current DSP mode (the vendor's aoc_get_audio_dsp_mode). */
++static int aoc_audio_dsp_mode_get(struct aoc_audio *aud)
++{
++	struct cmd_audio_output_dsp_mode cmd = { };
++	struct cmd_audio_output_dsp_mode rsp;
++	int ret;
++
++	memset(&rsp, 0xff, sizeof(rsp));
++	cmd.hdr.type = AOC_CMD_TYPE_CMD;
++	cmd.hdr.len = cpu_to_le16(sizeof(cmd));
++	cmd.hdr.id = cpu_to_le16(AOC_CMD_AUDIO_OUTPUT_DSP_MODE_GET_ID);
++	ret = aoc_audio_cmd(aud, &cmd, sizeof(cmd), &rsp, sizeof(rsp));
++	if (ret)
++		return ret;
++	if (le16_to_cpu(rsp.hdr.id) != AOC_CMD_AUDIO_OUTPUT_DSP_MODE_GET_ID ||
++	    rsp.mode > AOC_DSP_MODE_MAX)
++		return -EIO;
++	return rsp.mode;
++}
++
++/*
++ * Into the call's DSP mode, remembering the one it replaces, which is what
++ * the hang-up goes back to (the vendor HAL tracks its dsp_mode_ the same
++ * way rather than assuming Ambient).  The modem downlink's ASRC goes on
++ * first, as the HAL's mixer defaults have it before any call.
++ */
++static int aoc_voice_dsp_enter(struct aoc_audio *aud, struct device *dev)
++{
++	int prev = aoc_audio_dsp_mode_get(aud);
++	int ret;
++
++	if (prev < 0) {
++		dev_warn(dev, "voice: DSP mode read failed (%d), Ambient assumed\n",
++			 prev);
++		prev = AOC_DSP_MODE_AMBIENT;
++	}
++	aud->voice_prev_dsp_mode = prev;
++	ret = aoc_audio_set_param(aud, AOC_TELEPHONY_SINK_BLOCK,
++				  AOC_MODEM_DL_ASRC_COMPONENT,
++				  AOC_MODEM_DL_ASRC_KEY, AOC_ASP_ON);
++	if (ret)
++		dev_err(dev, "voice: modem downlink ASRC on failed: %d\n", ret);
++	ret = aoc_audio_dsp_mode(aud, aud->voice_dsp_mode);
++	dev_info(dev, "voice: DSP mode %d -> %d: %d\n", prev,
++		 aud->voice_dsp_mode, ret);
++	return ret;
++}
++
++static void aoc_voice_dsp_restore(struct aoc_audio *aud, struct device *dev)
++{
++	int ret = aoc_audio_dsp_mode(aud, aud->voice_prev_dsp_mode);
++
++	dev_info(dev, "voice: DSP mode back to %d: %d\n",
++		 aud->voice_prev_dsp_mode, ret);
++}
++
+ /*
+  * Open or close the modem's audio flow with the start the "Voice Call Start"
+  * control picked (latched per stream, so the stop matches the start).  A bare
+@@ -959,7 +1032,54 @@ static int aoc_voice_int_put(struct snd_kcontrol *kc,
+ 	return 1;
+ }
+ 
++static const char * const aoc_voice_dsp_texts[] = {
++	"Telephony", "Telephony_APMG3",
++};
++static const u8 aoc_voice_dsp_modes[] = {
++	AOC_DSP_MODE_TELEPHONY, AOC_DSP_MODE_TELEPHONY_APMG3,
++};
++
++static int aoc_voice_dsp_info(struct snd_kcontrol *kc,
++			      struct snd_ctl_elem_info *ui)
++{
++	return snd_ctl_enum_info(ui, 1, ARRAY_SIZE(aoc_voice_dsp_texts),
++				 aoc_voice_dsp_texts);
++}
++
++static int aoc_voice_dsp_get(struct snd_kcontrol *kc,
++			     struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++
++	uc->value.enumerated.item[0] =
++		aud->voice_dsp_mode == AOC_DSP_MODE_TELEPHONY_APMG3;
++	return 0;
++}
++
++static int aoc_voice_dsp_put(struct snd_kcontrol *kc,
++			     struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++	unsigned int v = uc->value.enumerated.item[0];
++
++	if (v >= ARRAY_SIZE(aoc_voice_dsp_modes))
++		return -EINVAL;
++	if (aud->voice_dsp_mode == aoc_voice_dsp_modes[v])
++		return 0;
++	aud->voice_dsp_mode = aoc_voice_dsp_modes[v];
++	return 1;
++}
++
+ static const struct snd_kcontrol_new aoc_mic_controls[] = {
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Voice Call DSP Mode",
++		.info = aoc_voice_dsp_info,
++		.get = aoc_voice_dsp_get,
++		.put = aoc_voice_dsp_put,
++	},
+ 	{
+ 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+ 		.name = "Voice Call Start",
+@@ -1524,10 +1644,15 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 				       ARRAY_SIZE(aoc_voice_pre));
+ 		if (ret)
+ 			return ret;
++		ret = aoc_voice_dsp_enter(aud, comp->dev);
++		if (ret) {
++			aoc_voice_dsp_restore(aud, comp->dev);
++			return ret;
++		}
+ 		ret = aoc_voice_mic_set(aud, true);
+ 		if (ret) {
+ 			dev_err(comp->dev, "call mic start failed: %d\n", ret);
+-			aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
++			aoc_voice_dsp_restore(aud, comp->dev);
+ 			return ret;
+ 		}
+ 	}
+@@ -1538,7 +1663,7 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 		dev_err(comp->dev, "speaker bind failed: %d\n", ret);
+ 		if (s->voice) {
+ 			aoc_voice_mic_set(aud, false);
+-			aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
++			aoc_voice_dsp_restore(aud, comp->dev);
+ 		}
+ 		return ret;
+ 	}
+@@ -1595,20 +1720,14 @@ static int aoc_pcm_hw_free(struct snd_soc_component *comp,
+ 
+ 	/*
+ 	 * The vendor's order (aoc_phonecall_path_close): the call mic first,
+-	 * then the downlink's bind, then (from the HAL) the DSP mode, once.
+-	 * Unbinding first left the modem input processor running on a sink
+-	 * that was gone, and the AOC reported heap corruption as it unloaded
+-	 * the call processing ("prev->next != hdr", "SetProcessLibrary failed.
+-	 * status 78").
++	 * then the downlink's bind, then (from the HAL) the DSP mode it had.
+ 	 */
+ 	ret = aoc_voice_mic_set(aud, false);
+ 	err = aoc_audio_bind(aud, aoc_stream_route_src(s), AOC_SINK_SPEAKER,
+ 			     false);
+ 	if (err && !ret)
+ 		ret = err;
+-	err = aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
+-	if (err && !ret)
+-		ret = err;
++	aoc_voice_dsp_restore(aud, comp->dev);
+ 	dev_info(comp->dev, "voice: path down: %d\n", ret);
+ 	return ret;
+ }
+@@ -1969,6 +2088,8 @@ static int aoc_audio_probe(struct platform_device *pdev)
+ 	aud->mic_hw_gain_cb = AOC_MIC_HW_GAIN_CB;
+ 	aud->mic_soft_gain_db = AOC_MIC_REC_SOFT_GAIN_DB;
+ 	aud->voice_start = AOC_VOICE_START_MODEM;
++	aud->voice_dsp_mode = AOC_DSP_MODE_TELEPHONY;
++	aud->voice_prev_dsp_mode = AOC_DSP_MODE_AMBIENT;
+ 	aud->voice_mic_input = AOC_MODEM_MIC_INPUT_INDEX;
+ 	aud->voice_mic_gain_cb = AOC_VOICE_MIC_HW_GAIN_CB;
+ 	aud->ctrl = aoc_service_find(aud->aoc_dev, AOC_OUTPUT_CTRL_SERVICE);

@@ -1,0 +1,121 @@
+From 3e637d79aebb105b9feb067f4eeec9f34c3d8ab5 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 13:54:27 -0400
+Subject: [PATCH 30/88] Input: goodix_berlin - allow larger contact records
+
+Some firmware (Pixel 9 Pro Fold inner panel) appends extended data to each
+8-byte contact, so the checksum sits after 16-byte records. Read the record
+size from goodix,touch-size (default 8) and log which size validates when
+the checksum fails.
+---
+ .../input/touchscreen/goodix_berlin_core.c    | 36 +++++++++++++------
+ 1 file changed, 25 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/input/touchscreen/goodix_berlin_core.c b/drivers/input/touchscreen/goodix_berlin_core.c
+index b0938a4f3..39292e0ba 100644
+--- a/drivers/input/touchscreen/goodix_berlin_core.c
++++ b/drivers/input/touchscreen/goodix_berlin_core.c
+@@ -144,6 +144,8 @@ struct goodix_berlin_touch {
+ 	__le16 w;
+ };
+ #define GOODIX_BERLIN_TOUCH_SIZE	sizeof(struct goodix_berlin_touch)
++/* Some firmware appends extended data to each contact (16 bytes total) */
++#define GOODIX_BERLIN_TOUCH_MAX_SIZE	16
+ 
+ struct goodix_berlin_header {
+ 	u8 status;
+@@ -157,7 +159,7 @@ struct goodix_berlin_header {
+ struct goodix_berlin_event {
+ 	struct goodix_berlin_header hdr;
+ 	/* The data below is u16/__le16 aligned */
+-	u8 data[GOODIX_BERLIN_TOUCH_SIZE * GOODIX_BERLIN_MAX_TOUCH +
++	u8 data[GOODIX_BERLIN_TOUCH_MAX_SIZE * GOODIX_BERLIN_MAX_TOUCH +
+ 		GOODIX_BERLIN_CHECKSUM_SIZE];
+ };
+ 
+@@ -168,6 +170,7 @@ struct goodix_berlin_core {
+ 	struct regulator *vddio;
+ 	struct gpio_desc *reset_gpio;
+ 	struct touchscreen_properties props;
++	u32 touch_size;
+ 	struct goodix_berlin_fw_version fw_version;
+ 	struct input_dev *input_dev;
+ 	int irq;
+@@ -416,14 +419,13 @@ static int goodix_berlin_get_ic_info(struct goodix_berlin_core *cd)
+ static int goodix_berlin_get_remaining_contacts(struct goodix_berlin_core *cd,
+ 						int n)
+ {
+-	size_t offset = 2 * GOODIX_BERLIN_TOUCH_SIZE +
+-				GOODIX_BERLIN_CHECKSUM_SIZE;
++	size_t offset = 2 * cd->touch_size + GOODIX_BERLIN_CHECKSUM_SIZE;
+ 	u32 addr = cd->touch_data_addr + GOODIX_BERLIN_HEADER_SIZE + offset;
+ 	int error;
+ 
+ 	error = regmap_raw_read(cd->regmap, addr,
+ 				&cd->event.data[offset],
+-				(n - 2) * GOODIX_BERLIN_TOUCH_SIZE);
++				(n - 2) * cd->touch_size);
+ 	if (error) {
+ 		dev_err_ratelimited(cd->dev, "failed to get touch data, %d\n",
+ 				    error);
+@@ -435,14 +437,12 @@ static int goodix_berlin_get_remaining_contacts(struct goodix_berlin_core *cd,
+ 
+ static void goodix_berlin_report_state(struct goodix_berlin_core *cd, int n)
+ {
+-	struct goodix_berlin_touch *touch_data =
+-			(struct goodix_berlin_touch *)cd->event.data;
+ 	struct goodix_berlin_touch *t;
+ 	int i;
+ 	u8 type, id;
+ 
+ 	for (i = 0; i < n; i++) {
+-		t = &touch_data[i];
++		t = (struct goodix_berlin_touch *)&cd->event.data[i * cd->touch_size];
+ 
+ 		type = FIELD_GET(GOODIX_BERLIN_POINT_TYPE_MASK, t->status);
+ 		if (type == GOODIX_BERLIN_POINT_TYPE_STYLUS ||
+@@ -491,11 +491,19 @@ static void goodix_berlin_touch_handler(struct goodix_berlin_core *cd)
+ 	}
+ 
+ 	if (touch_num) {
+-		int len = touch_num * GOODIX_BERLIN_TOUCH_SIZE +
++		int len = touch_num * cd->touch_size +
+ 			  GOODIX_BERLIN_CHECKSUM_SIZE;
+ 		if (!goodix_berlin_checksum_valid(cd->event.data, len)) {
+-			dev_err(cd->dev, "touch data checksum error: %*ph\n",
+-				len, cd->event.data);
++			u32 s;
++
++			dev_err_ratelimited(cd->dev, "touch data checksum error: %*ph\n",
++					    len, cd->event.data);
++			for (s = GOODIX_BERLIN_TOUCH_SIZE; s <= GOODIX_BERLIN_TOUCH_MAX_SIZE; s += 2)
++				if (touch_num * s <= 2 * cd->touch_size &&
++				    goodix_berlin_checksum_valid(cd->event.data,
++						touch_num * s + GOODIX_BERLIN_CHECKSUM_SIZE))
++					dev_info_ratelimited(cd->dev,
++						"checksum valid with %u-byte contacts\n", s);
+ 			return;
+ 		}
+ 	}
+@@ -557,7 +565,7 @@ static irqreturn_t goodix_berlin_irq(int irq, void *data)
+ 	error = regmap_raw_read(cd->regmap, cd->touch_data_addr,
+ 				&cd->event,
+ 				GOODIX_BERLIN_HEADER_SIZE +
+-					2 * GOODIX_BERLIN_TOUCH_SIZE +
++					2 * cd->touch_size +
+ 					GOODIX_BERLIN_CHECKSUM_SIZE);
+ 	if (error) {
+ 		dev_warn_ratelimited(cd->dev,
+@@ -744,6 +752,12 @@ int goodix_berlin_probe(struct device *dev, int irq, const struct input_id *id,
+ 	cd->dev = dev;
+ 	cd->regmap = regmap;
+ 	cd->irq = irq;
++	cd->touch_size = GOODIX_BERLIN_TOUCH_SIZE;
++	device_property_read_u32(dev, "goodix,touch-size", &cd->touch_size);
++	if (cd->touch_size < GOODIX_BERLIN_TOUCH_SIZE ||
++	    cd->touch_size > GOODIX_BERLIN_TOUCH_MAX_SIZE)
++		return dev_err_probe(dev, -EINVAL, "invalid goodix,touch-size %u\n",
++				     cd->touch_size);
+ 	cd->ic_data = ic_data;
+ 
+ 	cd->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);

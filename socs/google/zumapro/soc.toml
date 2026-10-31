@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Shared configuration for devices on Google Tensor G4 (zumapro).
+schema = 1
+vendor = "google"
+family = "zumapro"
+name = "Google Tensor G4 (zumapro)"
+arch = "aarch64"
+
+[kernel]
+# No SimplyLuma/linux branch yet: devices pin this tree in a source lock and
+# carry their patches in patches/linux-zumapro.
+repository = "https://github.com/orgwithsomething/linux-zumapro"
+branch = "tokay"
+dts_directory = "arch/arm64/boot/dts/exynos"
+
+[boot]
+# Pixel bootloader: header v4 boot image, kernel only (device tree and
+# initramfs are built into the kernel).
+format = "android-boot-v4"
+page_size = 4096
+slots = "ab"
+dtb_in_boot_image = false
+
+[firmware]
+directory = "google/zumapro"

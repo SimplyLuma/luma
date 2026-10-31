@@ -16,3 +16,5 @@
 
 /socs/qcom/purwa/       @nmcmil
 /devices/microsoft/sp12in/ @nmcmil
+/socs/google/zumapro/   @nmcmil
+/devices/google/comet/  @nmcmil

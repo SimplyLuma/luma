@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "google"
+codename = "comet"
+name = "Google Pixel 9 Pro Fold"
+marketing_name = "Pixel 9 Pro Fold"
+form_factor = "phone"
+year = 2024
+soc = "google/zumapro"
+tier = "experimental"
+maintainers = ["@nmcmil"]
+fastboot_product = "comet"
+
+[kernel]
+# No kernel tag yet: linux-zumapro c03f06b6 plus patches/linux-zumapro/comet,
+# zumapro_defconfig plus config/kernel/pixel9fold.fragment. The resolved
+# config is kept as config/kernel/pixel9fold.config and the build checks it.
+source_lock = "config/kernel/pixel9fold-source.json"
+release = "7.3.0-rc5-zumapro+"
+config = "config/kernel/pixel9fold.config"
+dtb = "exynos/google/zumapro-comet-dual.dtb"
+
+[boot]
+config = "boot.toml"
+
+[firmware]
+manifest = "firmware.manifest"
+manifest_sha256 = "762fe4f0704d803f6085022225567b45f870ba084a9591fa7abfd9c004090902"
+files = 18
+# From the phone's own factory image (vendor partition), built into the boot
+# image's initramfs under /luma-fold/firmware; hook 85 copies it here on boot.
+store = "/var/lib/luma-fold/firmware"
+
+[install]
+guide = "INSTALL.md"
+method = "fastboot"
+# Partitions the install must never erase or write. efs, efs_backup, persist
+# and modem_userdata hold the phone's own radio calibration and identity.
+# Luma writes only boot_a and userdata.
+preserve = [
+  "efs", "efs_backup", "persist", "modem_userdata", "modem_a", "modem_b",
+  "bootloader_a", "bootloader_b", "vbmeta_a", "vbmeta_b", "dtbo_a", "dtbo_b",
+  "vendor_boot_a", "vendor_boot_b", "init_boot_a", "init_boot_b", "super", "frp",
+]

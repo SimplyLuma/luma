@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+# Boot policy for the Pixel 9 Pro Fold. Format and page size come from
+# socs/google/zumapro/soc.toml. The kernel boots with its built-in device tree,
+# initramfs and command line (CONFIG_CMDLINE_FORCE); the bootloader's /chosen
+# data is kept for the modem.
+schema = 1
+partition = "boot_a"
+partition_size = 67108864
+
+[cmdline]
+# In this order; scripts/mobile/pixel9-fold/build-boot-image.sh inserts the
+# generated values after pmos_rootfsopts.
+args = [
+  "console=tty0",
+  "rootwait",
+  "ro",
+  "init=/init",
+  "pmos_rootfsopts=defaults",
+  "androidboot.slot_suffix=_a",
+  "enforcing=0",
+  "clk_ignore_unused",
+  "pd_ignore_unused",
+  "exynosdrm.oneshot=0",
+  "systemd.setenv=WLR_RENDERER=pixman",
+  "systemd.journald.forward_to_kmsg=1",
+  "systemd.mask=systemd-pstore.service",
+  "printk.devkmsg=on",
+  "ignore_loglevel",
+  "reboot=warm",
+  "panic=10",
+  "systemd.mask=greenboot-healthcheck.service",
+  "systemd.mask=greenboot-set-rollback-trigger.service",
+  "systemd.mask=luma-update-boot.service",
+  "systemd.mask=systemd-suspend.service",
+  "systemd.mask=suspend.target",
+  "systemd.mask=sleep.target",
+  "luma.fold_gpu=1",
+  "luma.diag_restart=0",
+]
+# Filesystem UUIDs of the Luma image and its OSTree deployment
+generated = ["pmos_root_uuid", "pmos_boot_uuid", "ostree"]
+forbidden = ["selinux=0", "lsm="]
+
+[avb]
+# vbmeta chains boot, so the image needs an AVB hash footer, signed with the
+# AOSP test key, which an unlocked bootloader accepts. Rollback index of the
+# stock cp3a.261005.005 boot image. vbmeta stays stock.
+footer = "hash"
+algorithm = "SHA256_RSA4096"
+hash_algorithm = "sha256"
+rollback_index = 1791158400
+vbmeta = "untouched"
+
+[dtbo]
+# The kernel ignores the bootloader's device tree; dtbo stays as shipped.
+policy = "stock"
+partitions = ["dtbo_a"]

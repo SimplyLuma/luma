@@ -1,0 +1,31 @@
+From 6b4891547d21f0ed79d446bf1797f16e6f7ae9f9 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:56:25 -0400
+Subject: [PATCH 12/88] arm64: dts: exynos: comet: two-cell alignment for the
+ DPU framebuffer pool
+
+---
+ .../boot/dts/exynos/google/zumapro-comet-panel.dts     | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+index c40106cfa..d1a95641a 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+@@ -38,6 +38,16 @@ &dsim0_in {
+ 	remote-endpoint = <&decon1_out>;
+ };
+ 
++/*
++ * of_reserved_mem checks "alignment" against the root #address-cells (2) and
++ * "size" against the root #size-cells (1). The shared node's one-cell
++ * alignment makes the kernel reject the pool ("invalid alignment property"),
++ * and fbdev then fails to allocate its framebuffer.
++ */
++&dpu_fb_pool {
++	alignment = <0x0 0x00400000>;
++};
++
+ &decon1 {
+ 	status = "okay";
+ };

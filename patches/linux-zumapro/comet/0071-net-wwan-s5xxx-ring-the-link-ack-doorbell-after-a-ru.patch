@@ -1,0 +1,39 @@
+From 396be3aee653f8193ab1d397bc6c19ec14891706 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 03:03:32 -0400
+Subject: [PATCH 71/88] net: wwan: s5xxx: ring the link-ack doorbell after a
+ runtime relink
+
+Vendor s5100_poweron_pcie() sends the PCIe link-ack doorbell after every
+power-on of the link, not only the one that ends the boot bounce. The
+runtime relink that answers CP2AP_WAKEUP restored the endpoint but never
+sent it.
+
+Send it there too while the CP is online, before a doorbell reserved by
+a parked transmit is flushed.
+---
+ drivers/net/wwan/s5xxx_modem.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index 4abff0410..c0a246d6b 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -1147,6 +1147,17 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 	    gpiod_get_value_cansleep(sm->cp2ap_wakeup)) {
+ 		if (zumapro_pcie_modem_link_up(sm->rc_dev) == 0) {
+ 			s5xxx_relink_restore(sm);
++			/*
++			 * Vendor s5100_poweron_pcie() rings the PCIe link-ack
++			 * doorbell after every power-on, the runtime ones too,
++			 * unless the CP is in crash exit; ring it here as the
++			 * boot relink does, before a reserved doorbell is
++			 * flushed below.
++			 */
++			if (READ_ONCE(sm->online) &&
++			    !s5xxx_send_doorbell(sm, S5XXX_DB_LINK_ACK))
++				dev_warn(sm->dev,
++					 "CP wakeup: link ack doorbell failed\n");
+ 			spin_lock_irqsave(&sm->lock, flags);
+ 			sm->link_up = true;
+ 			/*

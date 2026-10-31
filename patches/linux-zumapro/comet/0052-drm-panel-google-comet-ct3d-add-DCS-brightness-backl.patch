@@ -1,0 +1,215 @@
+From 714b93f375b9503f0743e6c286e00a02c0e806c3 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 01:17:21 -0400
+Subject: [PATCH 52/88] drm/panel: google-comet-ct3d: add DCS brightness
+ backlight devices
+
+Raw backlight per panel (panel0 inner CT3B, panel1 outer CT3D) writing DCS 0x51, clamped to the vendor normal range (CT3D 1..3628, CT3B 1..3490). Nothing is written at probe; a level set while the panel is off is applied on enable.
+---
+ drivers/gpu/drm/panel/Kconfig                 |   1 +
+ .../gpu/drm/panel/panel-google-comet-ct3d.c   | 112 +++++++++++++++++-
+ 2 files changed, 110 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index 744a49d14..5d905f5ef 100644
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -442,6 +442,7 @@ config DRM_PANEL_GOOGLE_COMET_CT3D
+ 	tristate "Google Pixel 9 Pro Fold outer CT3D panel (boot handoff)"
+ 	depends on OF
+ 	depends on DRM_MIPI_DSI
++	depends on BACKLIGHT_CLASS_DEVICE
+ 	select DRM_DISPLAY_DSC_HELPER
+ 	select DRM_DISPLAY_HELPER
+ 	help
+diff --git a/drivers/gpu/drm/panel/panel-google-comet-ct3d.c b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+index fc069e482..f8f5d114c 100644
+--- a/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
++++ b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+@@ -8,8 +8,19 @@
+  * PPS, read back from the encoder the bootloader programmed for each panel
+  * (DSC1 for the outer CT3D, DSC0 for the inner CT3B), so the DDIC's decoder
+  * and the DECON's encoder agree.
++ *
++ * Brightness is a raw backlight device per panel (panel0 = inner CT3B,
++ * panel1 = outer CT3D, as the vendor stack names them) that writes the DCS
++ * display brightness, 0x51 with a 16-bit big-endian level, as the vendor
++ * driver does in its normal range. Levels are clamped to the vendor normal
++ * range, so this never enters HBM and never writes 0. Nothing is written at
++ * probe: the level the bootloader set stays until userspace sets one, and a
++ * level set while the panel is off is applied when it is enabled again.
+  */
+ 
++#include <linux/backlight.h>
++#include <linux/mutex.h>
++
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_device.h>
+@@ -26,6 +37,9 @@ struct comet_panel_desc {
+ 	const struct drm_dsc_config *dsc;
+ 	const struct drm_display_mode *mode;
+ 	unsigned long hs_rate;
++	const char *bl_name;
++	u16 bl_min;	/* vendor normal range, DBV levels */
++	u16 bl_max;
+ };
+ 
+ struct comet_ct3d {
+@@ -33,6 +47,10 @@ struct comet_ct3d {
+ 	struct mipi_dsi_device *dsi;
+ 	const struct comet_panel_desc *desc;
+ 	enum drm_panel_orientation orientation;
++	struct backlight_device *bl;
++	struct mutex bl_lock;	/* enabled, bl_pending vs. the DCS write */
++	bool enabled;
++	bool bl_pending;	/* userspace set a level the panel has not seen */
+ };
+ 
+ /* DSC 1.2, two 540x24 slices, 8 bpc, 8.0 bpp (bootloader DSC1 PPS). */
+@@ -159,18 +177,32 @@ static const struct drm_display_mode comet_ct3b_mode = {
+ 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
+ };
+ 
+-/* 1080x2424 outer mode from the vendor dsim table: 4 lanes at 865 Mbps */
++/*
++ * 1080x2424 outer mode from the vendor dsim table: 4 lanes at 865 Mbps.
++ * Brightness: vendor panel-gs-ct3d normal range DBV 1..3628 (2..1200 nits);
++ * 3629..3939 is HBM and not offered.
++ */
+ static const struct comet_panel_desc comet_ct3d_desc = {
+ 	.dsc = &comet_ct3d_dsc,
+ 	.mode = &comet_ct3d_mode,
+ 	.hs_rate = 865000000,
++	.bl_name = "panel1-backlight",
++	.bl_min = 1,
++	.bl_max = 3628,
+ };
+ 
+-/* 2152x2076 inner mode from the vendor dsim table: 4 lanes at 1346 Mbps */
++/*
++ * 2152x2076 inner mode from the vendor dsim table: 4 lanes at 1346 Mbps.
++ * Brightness: vendor panel-gs-ct3b normal range DBV 1..3490 (2..1000 nits)
++ * on the older panel revision, 1..3739 on the newer; the lower one is used.
++ */
+ static const struct comet_panel_desc comet_ct3b_desc = {
+ 	.dsc = &comet_ct3b_dsc,
+ 	.mode = &comet_ct3b_mode,
+ 	.hs_rate = 1346000000,
++	.bl_name = "panel0-backlight",
++	.bl_min = 1,
++	.bl_max = 3490,
+ };
+ 
+ static inline struct comet_ct3d *to_ct3d(struct drm_panel *panel)
+@@ -178,6 +210,51 @@ static inline struct comet_ct3d *to_ct3d(struct drm_panel *panel)
+ 	return container_of(panel, struct comet_ct3d, panel);
+ }
+ 
++/* Caller holds bl_lock; brightness 0..max maps onto bl_min..bl_max. */
++static int comet_ct3d_write_brightness(struct comet_ct3d *ctx)
++{
++	const struct comet_panel_desc *desc = ctx->desc;
++	u32 b = backlight_get_brightness(ctx->bl);
++	u16 level;
++
++	/* blank (bl_power) still means the lowest level, never 0 */
++	level = clamp_t(u32, b, desc->bl_min, desc->bl_max);
++	return mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, level);
++}
++
++static int comet_ct3d_bl_update_status(struct backlight_device *bl)
++{
++	struct comet_ct3d *ctx = bl_get_data(bl);
++	int ret = 0;
++
++	mutex_lock(&ctx->bl_lock);
++	ctx->bl_pending = true;
++	if (ctx->enabled) {
++		ret = comet_ct3d_write_brightness(ctx);
++		if (!ret)
++			ctx->bl_pending = false;
++	}
++	mutex_unlock(&ctx->bl_lock);
++
++	return ret < 0 ? ret : 0;
++}
++
++static const struct backlight_ops comet_ct3d_bl_ops = {
++	.update_status = comet_ct3d_bl_update_status,
++};
++
++static int comet_ct3d_disable(struct drm_panel *panel)
++{
++	struct comet_ct3d *ctx = to_ct3d(panel);
++
++	/* nothing is sent: the panel is kept as the bootloader set it up */
++	mutex_lock(&ctx->bl_lock);
++	ctx->enabled = false;
++	mutex_unlock(&ctx->bl_lock);
++
++	return 0;
++}
++
+ static int comet_ct3d_enable(struct drm_panel *panel)
+ {
+ 	struct comet_ct3d *ctx = to_ct3d(panel);
+@@ -194,7 +271,15 @@ static int comet_ct3d_enable(struct drm_panel *panel)
+ 	if (ret < 0)
+ 		dev_warn(&dsi->dev, "DSC PPS: %d\n", ret);
+ 
+-	return mipi_dsi_dcs_set_display_on(dsi);
++	ret = mipi_dsi_dcs_set_display_on(dsi);
++
++	mutex_lock(&ctx->bl_lock);
++	ctx->enabled = true;
++	if (ctx->bl_pending && !comet_ct3d_write_brightness(ctx))
++		ctx->bl_pending = false;
++	mutex_unlock(&ctx->bl_lock);
++
++	return ret;
+ }
+ 
+ static int comet_ct3d_get_modes(struct drm_panel *panel,
+@@ -223,6 +308,7 @@ comet_ct3d_get_orientation(struct drm_panel *panel)
+ }
+ 
+ static const struct drm_panel_funcs comet_ct3d_funcs = {
++	.disable = comet_ct3d_disable,
+ 	.enable = comet_ct3d_enable,
+ 	.get_modes = comet_ct3d_get_modes,
+ 	.get_orientation = comet_ct3d_get_orientation,
+@@ -231,6 +317,10 @@ static const struct drm_panel_funcs comet_ct3d_funcs = {
+ static int comet_ct3d_probe(struct mipi_dsi_device *dsi)
+ {
+ 	struct device *dev = &dsi->dev;
++	struct backlight_properties props = {
++		.type = BACKLIGHT_RAW,
++		.scale = BACKLIGHT_SCALE_NON_LINEAR,
++	};
+ 	struct comet_ct3d *ctx;
+ 	int ret;
+ 
+@@ -245,6 +335,22 @@ static int comet_ct3d_probe(struct mipi_dsi_device *dsi)
+ 		return -ENODEV;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+ 
++	ret = devm_mutex_init(dev, &ctx->bl_lock);
++	if (ret)
++		return ret;
++
++	/*
++	 * The level the bootloader left is not read back; report the middle of
++	 * the range until userspace sets one (nothing is written until then).
++	 */
++	props.max_brightness = ctx->desc->bl_max;
++	props.brightness = ctx->desc->bl_max / 2;
++	ctx->bl = devm_backlight_device_register(dev, ctx->desc->bl_name, dev,
++						 ctx, &comet_ct3d_bl_ops, &props);
++	if (IS_ERR(ctx->bl))
++		return dev_err_probe(dev, PTR_ERR(ctx->bl),
++				     "failed to register backlight\n");
++
+ 	/* the inner panel scans out sideways relative to the device */
+ 	ret = drm_of_get_panel_orientation(dev->of_node, &ctx->orientation);
+ 	if (ret)

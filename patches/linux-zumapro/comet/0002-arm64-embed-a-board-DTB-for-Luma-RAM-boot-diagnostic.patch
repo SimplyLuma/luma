@@ -1,0 +1,101 @@
+From 8f1717e5a5493add4758dc9191946b42d8c2dae0 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 13:41:02 -0400
+Subject: [PATCH 02/88] arm64: embed a board DTB for Luma RAM-boot diagnostics
+
+Android's downloaded-boot path carries only the kernel. Behind an explicit,
+default-off option, link luma/embedded.dtb from the build tree, pass it as the
+FDT at primary_entry, and copy it out of init memory before unflattening.
+---
+ arch/arm64/Kconfig                    |  9 +++++++++
+ arch/arm64/kernel/Makefile            |  3 +++
+ arch/arm64/kernel/head.S              |  4 ++++
+ arch/arm64/kernel/luma_embedded_dtb.S | 10 ++++++++++
+ arch/arm64/kernel/setup.c             |  8 ++++++--
+ 5 files changed, 32 insertions(+), 2 deletions(-)
+ create mode 100644 arch/arm64/kernel/luma_embedded_dtb.S
+
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index b5a51b0ef..d6cf09dd6 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -2519,6 +2519,15 @@ config CMDLINE_FORCE
+ 
+ endchoice
+ 
++config LUMA_EMBEDDED_DTB
++	bool "Project Luma RAM-boot diagnostic with an embedded board DTB"
++	depends on ARM64
++	help
++	  Link luma/embedded.dtb from the build tree into the kernel and use it
++	  instead of the prior-stage FDT at primary entry. The DTB is copied
++	  out of init memory before unflattening. For bounded Project Luma
++	  bring-up kernels booted with fastboot boot only; not a release option.
++
+ config EFI_STUB
+ 	bool
+ 
+diff --git a/arch/arm64/kernel/Makefile b/arch/arm64/kernel/Makefile
+index d2690c3ec..0af7e9570 100644
+--- a/arch/arm64/kernel/Makefile
++++ b/arch/arm64/kernel/Makefile
+@@ -50,6 +50,9 @@ obj-$(CONFIG_HAVE_STATIC_CALL)		+= static_call.o
+ obj-$(CONFIG_CPU_PM)			+= sleep.o suspend.o
+ obj-$(CONFIG_KGDB)			+= kgdb.o
+ obj-$(CONFIG_EFI)			+= efi.o efi-rt-wrapper.o
++obj-$(CONFIG_LUMA_EMBEDDED_DTB)	+= luma_embedded_dtb.o
++AFLAGS_luma_embedded_dtb.o += -I$(objtree)
++
+ obj-$(CONFIG_PCI)			+= pci.o
+ obj-$(CONFIG_ARMV8_DEPRECATED)		+= armv8_deprecated.o
+ obj-$(CONFIG_ACPI)			+= acpi.o
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+index 48181865d..0b253a596 100644
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -83,6 +83,10 @@
+ 	 *  x21        primary_entry() .. start_kernel()        FDT pointer passed at boot in x0
+ 	 */
+ SYM_CODE_START(primary_entry)
++#ifdef CONFIG_LUMA_EMBEDDED_DTB
++	adrp	x0, __luma_embedded_dtb_start
++	add	x0, x0, :lo12:__luma_embedded_dtb_start
++#endif
+ 	bl	record_mmu_state
+ 	bl	preserve_boot_args
+ 
+diff --git a/arch/arm64/kernel/luma_embedded_dtb.S b/arch/arm64/kernel/luma_embedded_dtb.S
+new file mode 100644
+index 000000000..b7b53c5f4
+--- /dev/null
++++ b/arch/arm64/kernel/luma_embedded_dtb.S
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <linux/linkage.h>
++
++	.section ".init.rodata", "a"
++	.balign 8
++SYM_DATA_START(__luma_embedded_dtb_start)
++	.incbin "luma/embedded.dtb"
++SYM_DATA_END(__luma_embedded_dtb_start)
++	.balign 8
+diff --git a/arch/arm64/kernel/setup.c b/arch/arm64/kernel/setup.c
+index 29c6100f0..cfa03c51e 100644
+--- a/arch/arm64/kernel/setup.c
++++ b/arch/arm64/kernel/setup.c
+@@ -338,8 +338,12 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 	/* Parse the ACPI tables for possible boot-time configuration */
+ 	acpi_boot_table_init();
+ 
+-	if (acpi_disabled)
+-		unflatten_device_tree();
++	if (acpi_disabled) {
++		if (IS_ENABLED(CONFIG_LUMA_EMBEDDED_DTB))
++			unflatten_and_copy_device_tree();
++		else
++			unflatten_device_tree();
++	}
+ 
+ 	bootmem_init();
+ 

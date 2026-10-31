@@ -1,0 +1,49 @@
+From 06d5bb2639d06d25697c399d64d0e4cce2e68ed8 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 01:07:54 -0400
+Subject: [PATCH 76/88] arm64: dts: comet: hog the BCL modem throttle lines
+ inactive
+
+The stock battery-current-limiter driver owns gpp11-0 (bcl-rffe-modem) and
+gpp13-0 (bcl-batoilo-modem) as active-high outputs and holds them low. Without
+a BCL driver they stay at the bootloader state; hog both low before the modem
+starts.
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 1ade5fb7a..da416ce6e 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -208,6 +208,30 @@ outer_ts_irq: outer-ts-irq {
+ 	};
+ };
+ 
++/*
++ * Battery-current-limiter throttle lines to the modem RF front end. The
++ * stock BCL driver claims both as active-high outputs and keeps them
++ * deasserted; with no BCL driver here they would float at the bootloader
++ * state. Hog them low (inactive) before the modem starts.
++ */
++&gpp11 {
++	bcl-rffe-modem-hog {
++		gpio-hog;
++		gpios = <0 GPIO_ACTIVE_HIGH>;
++		output-low;
++		line-name = "bcl-rffe-modem";
++	};
++};
++
++&gpp13 {
++	bcl-batoilo-modem-hog {
++		gpio-hog;
++		gpios = <0 GPIO_ACTIVE_HIGH>;
++		output-low;
++		line-name = "bcl-batoilo-modem";
++	};
++};
++
+ &spi_19 {
+ 	num-cs = <1>;
+ 

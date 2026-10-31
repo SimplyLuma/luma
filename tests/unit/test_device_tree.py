@@ -25,7 +25,7 @@ class DeviceTree(unittest.TestCase):
         for name in ("scripts/mobile/fp6-native-init-functions.sh", "config/mobile/fp6-ostree-source.json"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
-        for name in ("config/kernel", "patches/linux-surface-pro12"):
+        for name in ("config/kernel", "patches/linux-surface-pro12", "patches/linux-zumapro/comet"):
             shutil.copytree(ROOT / name, self.root / name)
         self.fp6 = self.root / "devices" / "fairphone" / "fp6"
 

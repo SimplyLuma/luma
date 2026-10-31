@@ -1,0 +1,103 @@
+From 196a9c07d75559066fbcd90a834c7bad6572869f Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:41:02 -0400
+Subject: [PATCH 11/88] arm64: dts: exynos: comet: outer display through DECON1
+ -> DSIM0
+
+---
+ arch/arm64/boot/dts/exynos/google/Makefile    |  1 +
+ .../dts/exynos/google/zumapro-comet-panel.dts | 75 +++++++++++++++++++
+ 2 files changed, 76 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+
+diff --git a/arch/arm64/boot/dts/exynos/google/Makefile b/arch/arm64/boot/dts/exynos/google/Makefile
+index 39f613778..270e4f981 100644
+--- a/arch/arm64/boot/dts/exynos/google/Makefile
++++ b/arch/arm64/boot/dts/exynos/google/Makefile
+@@ -10,4 +10,5 @@ dtb-$(CONFIG_ARCH_EXYNOS) += \
+ 	zumapro-comet.dtb \
+ 	zumapro-comet-front.dtb \
+ 	zumapro-comet-probe.dtb \
++	zumapro-comet-panel.dtb \
+ 	zumapro-komodo.dtb
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+new file mode 100644
+index 000000000..c40106cfa
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-panel.dts
+@@ -0,0 +1,75 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Pixel 9 Pro Fold (comet), outer screen through the Exynos DRM path.
++ *
++ * Production comet drives the outer CT3D panel from DECON1 -> DSIM0 (the
++ * bootloader leaves DSIMIF_SEL0 = DECON1_OFIFO0 and DSC1 programmed for it),
++ * and the inner CT3B panel from DECON0 -> DSIM1. Re-route DECON1 from the
++ * DisplayPort to DSIM0, give it its GF1 plane, and attach the handoff CT3D
++ * panel driver. No reset GPIO: the panel is never reset by Linux here.
++ */
++
++#include "zumapro-comet.dts"
++
++/ {
++	model = "Pixel 9 Pro Fold (outer display)";
++};
++
++&decon_autorefresh_bit {
++	status = "disabled";
++};
++
++&framebuffer0 {
++	status = "disabled";
++};
++
++/delete-node/ &dp_in;
++/delete-node/ &decon0_out;
++
++&dp {
++	status = "disabled";
++};
++
++&decon1_out {
++	remote-endpoint = <&dsim0_in>;
++};
++
++&dsim0_in {
++	remote-endpoint = <&decon1_out>;
++};
++
++&decon1 {
++	status = "okay";
++};
++
++&dpu_dma {
++	status = "okay";
++};
++
++&dpp1 {
++	status = "okay";
++};
++
++&dsim0 {
++	status = "okay";
++
++	outer_panel: panel@0 {
++		compatible = "google,gs-ct3d";
++		reg = <0>;
++
++		port {
++			outer_panel_in: endpoint {
++				remote-endpoint = <&dsim0_out>;
++			};
++		};
++	};
++
++	ports {
++		port@1 {
++			reg = <1>;
++			dsim0_out: endpoint {
++				remote-endpoint = <&outer_panel_in>;
++			};
++		};
++	};
++};

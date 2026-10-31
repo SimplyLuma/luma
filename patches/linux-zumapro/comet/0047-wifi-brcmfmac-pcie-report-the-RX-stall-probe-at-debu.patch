@@ -1,0 +1,40 @@
+From 6bc78c7eca41c72fe03275a47cfe553ce0c8d2d7 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 21:51:45 -0400
+Subject: [PATCH 47/88] wifi: brcmfmac: pcie: report the RX stall probe at
+ debug level
+
+The poll worker's WEDGE report fires about 180 times per boot, connected or not. Its activity window (400 polls) ends each episode before the 500 and 2000 thresholds, so only stall=25 is reachable: 50 ms without a new RX completion after a burst. In every report the RX completion ring is drained (fw_w == mem_r) and the firmware takes RXPOST buffers in 256-buffer batches as it needs them, while pings and HTTPS over the same link succeed. That is idle, not a stalled datapath.
+---
+ .../net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 8b985a33e..5f60432e4 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -1823,8 +1823,11 @@ static void brcmf_pcie_poll_worker(struct work_struct *work)
+ 	 * dongle-side write index and host-side read index so we can tell a
+ 	 * "firmware believes ring full (stale read idx)" wedge apart from a
+ 	 * "firmware stopped submitting on an empty ring (resource starvation)"
+-	 * wedge. Only fires after we have recently seen the RX write index move
+-	 * (real traffic) so an idle link does not spam. */
++	 * wedge. Only fires after we have recently seen the RX write index move.
++	 * The activity window (400 polls) ends every episode before stall 500, so
++	 * only the stall=25 report is reachable, and it fires at the end of every
++	 * RX burst with the completion ring drained and the firmware still holding
++	 * its batch of RXPOST buffers: idle, not a wedge. Hence PCIE debug level. */
+ 	{
+ 		static u32 dbg_last_rxw, dbg_stall, dbg_active;
+ 		struct brcmf_pcie_ringbuf *rxr =
+@@ -1864,8 +1867,8 @@ static void brcmf_pcie_poll_worker(struct work_struct *work)
+ 					u32 rxp_r = devinfo->read_ptr(devinfo,
+ 							rxp->r_idx_addr);
+ 
+-					dev_err(&devinfo->pdev->dev,
+-						"DBG WEDGE stall=%u: RX fw_w=%u mem_r=%u | RXPOST host_w=%u fw_r=%u avail=%u | TX fw_w=%u mem_r=%u | dsreq=%u dsexit=%u d3ack=%u mbwait=%u\n",
++					brcmf_dbg(PCIE,
++						  "DBG WEDGE stall=%u: RX fw_w=%u mem_r=%u | RXPOST host_w=%u fw_r=%u avail=%u | TX fw_w=%u mem_r=%u | dsreq=%u dsexit=%u d3ack=%u mbwait=%u\n",
+ 						dbg_stall, rxw, rxr_r,
+ 						rxp_w, rxp_r,
+ 						(rxp_w - rxp_r) & 0xffff,

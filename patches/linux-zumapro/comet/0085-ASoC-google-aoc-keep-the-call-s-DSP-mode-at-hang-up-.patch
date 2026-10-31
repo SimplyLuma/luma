@@ -1,0 +1,164 @@
+From 5de0e2d4576e33a86654290ea22964409df7fd70 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 01:39:55 -0400
+Subject: [PATCH 85/88] ASoC: google: aoc: keep the call's DSP mode at hang-up
+ by default
+
+Every switch from a call DSP mode (Telephony or Telephony_APMG3) to
+Ambient makes the AOC report heap corruption while it unloads the
+call-clarity library: "CCA Processor received a command with command id
+: 106", "prev->next != hdr, likely heap corruption at 0x40615f18", "CCA
+unloaded", "SetProcessLibrary failed. status 78", at the same addresses
+on every boot.  The mode before a call reads back as Ambient, so
+restoring it does not avoid the switch.
+
+"Voice Call DSP Mode After" (Keep/Previous/Ambient/Ambient_Plus) decides
+what hang-up does; Keep, the default, leaves the call's mode in place.
+---
+ sound/soc/google/aoc-audio.c | 94 +++++++++++++++++++++++++++++++++---
+ 1 file changed, 86 insertions(+), 8 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index e0c64a712..fa4c22e07 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -135,7 +135,8 @@
+ #define AOC_DSP_MODE_AMBIENT		0
+ #define AOC_DSP_MODE_TELEPHONY		2
+ #define AOC_DSP_MODE_TELEPHONY_APMG3	6
+-#define AOC_DSP_MODE_MAX		7	/* Ambient_Plus */
++#define AOC_DSP_MODE_AMBIENT_PLUS	7
++#define AOC_DSP_MODE_MAX		7
+ /*
+  * "AoC Modem Downlink ASRC Mode", which the vendor HAL sets to ASP_ON (1) in
+  * its mixer defaults at start: a parameter of the telephony block (19),
+@@ -396,6 +397,7 @@ struct aoc_audio {
+ 	unsigned int voice_start;		/* enum aoc_voice_start */
+ 	u8 voice_dsp_mode;			/* DSP mode for a call */
+ 	u8 voice_prev_dsp_mode;			/* DSP mode before the call */
++	unsigned int voice_dsp_after;		/* enum aoc_voice_dsp_after */
+ 	int voice_mic_input;			/* ModemInputIndex of the call mic */
+ 	int voice_mic_gain_cb;			/* call mic preamp gain, centibels */
+ };
+@@ -744,10 +746,10 @@ static int aoc_audio_dsp_mode_get(struct aoc_audio *aud)
+ }
+ 
+ /*
+- * Into the call's DSP mode, remembering the one it replaces, which is what
+- * the hang-up goes back to (the vendor HAL tracks its dsp_mode_ the same
+- * way rather than assuming Ambient).  The modem downlink's ASRC goes on
+- * first, as the HAL's mixer defaults have it before any call.
++ * Into the call's DSP mode, remembering the one it replaces (logged, and
++ * what "Previous" goes back to at hang-up; the vendor HAL tracks its
++ * dsp_mode_ the same way).  The modem downlink's ASRC goes on first, as the
++ * HAL's mixer defaults have it before any call.
+  */
+ static int aoc_voice_dsp_enter(struct aoc_audio *aud, struct device *dev)
+ {
+@@ -771,12 +773,48 @@ static int aoc_voice_dsp_enter(struct aoc_audio *aud, struct device *dev)
+ 	return ret;
+ }
+ 
++/*
++ * What the DSP mode does at hang-up ("Voice Call DSP Mode After").  Keep,
++ * the default, leaves the call's mode in place: every switch from a call
++ * mode to Ambient makes the AOC report heap corruption as it unloads the
++ * call-clarity library ("CCA Processor received a command with command id
++ * : 106", "prev->next != hdr, likely heap corruption at 0x40615f18", then
++ * "SetProcessLibrary failed. status 78"), the same addresses every time,
++ * from Telephony and Telephony_APMG3 alike.  The others are there to find
++ * the switch that does not.
++ */
++enum aoc_voice_dsp_after {
++	AOC_VOICE_DSP_KEEP,
++	AOC_VOICE_DSP_PREVIOUS,
++	AOC_VOICE_DSP_AMBIENT,
++	AOC_VOICE_DSP_AMBIENT_PLUS,
++};
++
++static const char * const aoc_voice_dsp_after_texts[] = {
++	"Keep", "Previous", "Ambient", "Ambient_Plus",
++};
++
+ static void aoc_voice_dsp_restore(struct aoc_audio *aud, struct device *dev)
+ {
+-	int ret = aoc_audio_dsp_mode(aud, aud->voice_prev_dsp_mode);
++	int mode, ret;
+ 
+-	dev_info(dev, "voice: DSP mode back to %d: %d\n",
+-		 aud->voice_prev_dsp_mode, ret);
++	switch (aud->voice_dsp_after) {
++	case AOC_VOICE_DSP_PREVIOUS:
++		mode = aud->voice_prev_dsp_mode;
++		break;
++	case AOC_VOICE_DSP_AMBIENT:
++		mode = AOC_DSP_MODE_AMBIENT;
++		break;
++	case AOC_VOICE_DSP_AMBIENT_PLUS:
++		mode = AOC_DSP_MODE_AMBIENT_PLUS;
++		break;
++	default:
++		dev_info(dev, "voice: DSP mode kept at %d\n",
++			 aud->voice_dsp_mode);
++		return;
++	}
++	ret = aoc_audio_dsp_mode(aud, mode);
++	dev_info(dev, "voice: DSP mode back to %d: %d\n", mode, ret);
+ }
+ 
+ /*
+@@ -1072,7 +1110,46 @@ static int aoc_voice_dsp_put(struct snd_kcontrol *kc,
+ 	return 1;
+ }
+ 
++static int aoc_voice_dsp_after_info(struct snd_kcontrol *kc,
++				    struct snd_ctl_elem_info *ui)
++{
++	return snd_ctl_enum_info(ui, 1, ARRAY_SIZE(aoc_voice_dsp_after_texts),
++				 aoc_voice_dsp_after_texts);
++}
++
++static int aoc_voice_dsp_after_get(struct snd_kcontrol *kc,
++				   struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++
++	uc->value.enumerated.item[0] = aud->voice_dsp_after;
++	return 0;
++}
++
++static int aoc_voice_dsp_after_put(struct snd_kcontrol *kc,
++				   struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++	unsigned int v = uc->value.enumerated.item[0];
++
++	if (v >= ARRAY_SIZE(aoc_voice_dsp_after_texts))
++		return -EINVAL;
++	if (v == aud->voice_dsp_after)
++		return 0;
++	aud->voice_dsp_after = v;
++	return 1;
++}
++
+ static const struct snd_kcontrol_new aoc_mic_controls[] = {
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Voice Call DSP Mode After",
++		.info = aoc_voice_dsp_after_info,
++		.get = aoc_voice_dsp_after_get,
++		.put = aoc_voice_dsp_after_put,
++	},
+ 	{
+ 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+ 		.name = "Voice Call DSP Mode",
+@@ -2090,6 +2167,7 @@ static int aoc_audio_probe(struct platform_device *pdev)
+ 	aud->voice_start = AOC_VOICE_START_MODEM;
+ 	aud->voice_dsp_mode = AOC_DSP_MODE_TELEPHONY;
+ 	aud->voice_prev_dsp_mode = AOC_DSP_MODE_AMBIENT;
++	aud->voice_dsp_after = AOC_VOICE_DSP_KEEP;
+ 	aud->voice_mic_input = AOC_MODEM_MIC_INPUT_INDEX;
+ 	aud->voice_mic_gain_cb = AOC_VOICE_MIC_HW_GAIN_CB;
+ 	aud->ctrl = aoc_service_find(aud->aoc_dev, AOC_OUTPUT_CTRL_SERVICE);

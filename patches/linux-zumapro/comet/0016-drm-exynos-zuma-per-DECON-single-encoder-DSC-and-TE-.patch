@@ -1,0 +1,95 @@
+From 9a0964214fbd900041fc049c10e17aa3e26cc6db Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:21:23 -0400
+Subject: [PATCH 16/88] drm/exynos: zuma: per-DECON single-encoder DSC and TE
+ source from DT
+
+google,dsc-single-encoder: compress through one encoder (index = DECON id) in
+dual-slice mode; default for DECON1/2, and comet's DECON0 needs it for the
+inner panel. google,te-from: which DDI's TE triggers the DECON (default 0).
+---
+ drivers/gpu/drm/exynos/exynos9_decon_zuma.c | 25 ++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_decon_zuma.c b/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
+index feded6889..f9e697387 100644
+--- a/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
++++ b/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
+@@ -16,6 +16,7 @@
+  * DQE, partial update, PLL-sleep and EWR are intentionally not ported.
+  */
+ 
++#include <linux/of.h>
+ #include <linux/bits.h>
+ #include <linux/delay.h>
+ #include <linux/err.h>
+@@ -215,6 +216,15 @@ static void __iomem *zd_win[ZD_MAX_DECON];
+ static void __iomem *zd_sub[ZD_MAX_DECON];
+ static void __iomem *zd_wincon[ZD_MAX_DECON];
+ 
++/*
++ * Per-DECON board wiring from DT. single_enc: the DECON compresses through one
++ * encoder (physical index = DECON id) in dual-slice mode rather than DECON0's
++ * two encoders + combiner; default for DECON1/2, and comet's DECON0 (inner
++ * panel) needs it too. te_from: which DDI's TE triggers the DECON.
++ */
++static bool zd_single_enc[ZD_MAX_DECON];
++static u32 zd_te_from[ZD_MAX_DECON];
++
+ static inline u32 zd_main_read(u32 id, u32 off)
+ {
+ 	return readl(zd_main[id] + off);
+@@ -470,7 +480,7 @@ static void zuma_reg_set_data_path(u32 id, enum decon_out_type out_type,
+ 	 * data path names as their local encoder 0; comet's bootloader leaves
+ 	 * DSI0 | DSC(0) on DECON1 for the outer panel.
+ 	 */
+-	if (dsc && id == 0)
++	if (dsc && !zd_single_enc[id])
+ 		val |= ZD_COMP_DSCC | ZD_COMP_DSC(1) | ZD_COMP_DSC(0);
+ 	else if (dsc)
+ 		val |= ZD_COMP_DSC(0);
+@@ -600,7 +610,7 @@ static void zuma_reg_set_dsc(u32 id, const struct drm_dsc_config *cfg)
+ 	 * whole picture - the values comet's bootloader leaves on DSC1 for
+ 	 * the outer panel (CONTROL1 0x221, CONTROL3 0x30b4, pic_width 1080).
+ 	 */
+-	if (id != 0) {
++	if (zd_single_enc[id]) {
+ 		ds_en = (zuma_dsc_ds_en >= 0) ? !!zuma_dsc_ds_en :
+ 						cfg->slice_count > 1;
+ 		sm_ch = (zuma_dsc_sm_ch >= 0) ? !!zuma_dsc_sm_ch : 0;
+@@ -623,12 +633,12 @@ static void zuma_reg_set_outfifo_dsc(u32 id, const struct drm_dsc_config *cfg,
+ {
+ 	u32 comp_w = zuma_dsc_comp_width(cfg);
+ 	/* a single dual-slice encoder emits every slice through outfifo 0 */
+-	u32 of_w = id ? comp_w * cfg->slice_count : comp_w;
++	u32 of_w = zd_single_enc[id] ? comp_w * cfg->slice_count : comp_w;
+ 
+ 	zd_main_write(id, ZD_OF_SIZE_0,
+ 		      ZD_OUTFIFO_HEIGHT_F(height) | ZD_OUTFIFO_WIDTH_F(of_w));
+ 	/* dual DSC on decon0 uses the second outfifo too */
+-	if (id == 0 && cfg->slice_count == 2)
++	if (!zd_single_enc[id] && cfg->slice_count == 2)
+ 		zd_main_write(id, ZD_OF_SIZE_1, ZD_OUTFIFO_1_WIDTH_F(comp_w));
+ 	zd_main_write(id, ZD_OF_SIZE_2,
+ 		      ZD_OUTFIFO_COMPRESSED_SLICE_HEIGHT_F(cfg->slice_height) |
+@@ -657,7 +667,7 @@ static void zuma_reg_init_trigger(u32 id, const struct decon_mode *mode)
+ 	} else {
+ 		val = (mode->te_mode == DECON_SW_TRIG) ? 0 : ZD_HW_TRIG_EN;
+ 		/* default HW TE source; keep the trigger masked until start */
+-		val |= ZD_HW_TRIG_SEL_FROM_DDI0;
++		val |= (zd_te_from[id] << 24) & ZD_HW_TRIG_SEL_MASK;
+ 		val |= ZD_HW_TRIG_MASK_DECON;
+ 	}
+ 
+@@ -831,6 +841,11 @@ static int zuma_decon_init(struct decon_context *ctx,
+ 	if (id >= ZD_MAX_DECON)
+ 		return -EINVAL;
+ 
++	zd_single_enc[id] = id != 0 ||
++		of_property_read_bool(pdev->dev.of_node, "google,dsc-single-encoder");
++	zd_te_from[id] = 0;
++	of_property_read_u32(pdev->dev.of_node, "google,te-from", &zd_te_from[id]);
++
+ 	/*
+ 	 * Mapped without claiming the regions: DECON instances share the
+ 	 * window and sub blocks (decon0 and decon1 both describe 0x19480000

@@ -1,0 +1,109 @@
+From 99ea361959f619417b9d0ead466dfc9196ff0b1c Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 16:26:33 -0400
+Subject: [PATCH 45/88] ASoC: google: aoc: debug logging for stream steps and
+ failed starts
+
+Log each step of a stream (open, hw_params, trigger, the ring counters
+at prepare, start and stop, close) at debug level, and a start or stop
+the AOC refuses, with its error, at error level.
+---
+ sound/soc/google/aoc-audio.c | 35 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index 47720c2b6..562aa9dcc 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -1060,6 +1060,8 @@ static int aoc_pcm_open(struct snd_soc_component *comp,
+ 
+ 	snd_soc_set_runtime_hwparams(substream,
+ 				     voice ? &aoc_voice_hw : &aoc_pcm_hw);
++	dev_dbg(comp->dev, "%s open\n",
++		voice ? "voice" : playback ? "playback" : "capture");
+ 	return 0;
+ }
+ 
+@@ -1069,6 +1071,8 @@ static int aoc_pcm_close(struct snd_soc_component *comp,
+ 	struct aoc_audio_stream *s = substream->runtime->private_data;
+ 
+ 	if (s) {
++		dev_dbg(comp->dev, "%s close\n",
++			 s->voice ? "voice" : s->playback ? "playback" : "capture");
+ 		hrtimer_cancel(&s->tick);
+ 		cancel_work_sync(&s->period_work);
+ 		kfree(s);
+@@ -1090,6 +1094,20 @@ static int aoc_pcm_new(struct snd_soc_component *comp,
+ 	return 0;
+ }
+ 
++/* The playback ring's counters, as the AOC and we last left them. */
++static void aoc_pcm_log_ring(struct aoc_audio_stream *s, const char *what)
++{
++	u32 tx, rx, size;
++
++	if (!s->playback || s->voice)
++		return;
++	aoc_service_ring_state(s->svc, true, &tx, &rx, &size);
++	dev_dbg(s->dev, "playback %s: ring tx %u rx %u size %u, bytes pushed %llu read %llu\n",
++		what, tx, rx, size,
++		(u64)frames_to_bytes(s->substream->runtime, s->pushed),
++		s->consumed);
++}
++
+ /*
+  * Advance the playback position by what the AOC has read since the last look.
+  * Its read counter can only move up to what was written; a step past that is
+@@ -1128,6 +1146,7 @@ static int aoc_pcm_prepare(struct snd_soc_component *comp,
+ 	s->consumed = 0;
+ 	s->jumps = 0;
+ 	s->pushed = 0;
++	aoc_pcm_log_ring(s, "prepare");
+ 	return 0;
+ }
+ 
+@@ -1242,6 +1261,12 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 	if (aoc_pcm_is_be(substream))
+ 		return 0;
+ 
++	dev_dbg(comp->dev, "%s hw_params: %u Hz, %u ch, %u bit, buffer %u, period %u bytes\n",
++		s->voice ? "voice" : s->playback ? "playback" : "capture",
++		params_rate(params), params_channels(params),
++		params_width(params), params_buffer_bytes(params),
++		params_period_bytes(params));
++
+ 	if (!s->playback) {
+ 		ret = aoc_audio_mic_setup(aud, s->source, params_channels(params),
+ 					  params_rate(params), params_width(params),
+@@ -1389,6 +1414,9 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 		return -EINVAL;
+ 	}
+ 
++	dev_dbg(comp->dev, "%s trigger %d\n",
++		s->voice ? "voice" : s->playback ? "playback" : "capture", cmd);
++
+ 	if (on)
+ 		hrtimer_start(&s->tick, ns_to_ktime(AOC_PCM_TICK_NS),
+ 			      HRTIMER_MODE_REL);
+@@ -1409,8 +1437,12 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 		ret = aoc_audio_source(aud, s->source, on);
+ 	else
+ 		ret = 0;
+-	if (ret)
++	if (ret) {
++		dev_err(comp->dev, "%s %s failed: %d\n",
++			s->voice ? "voice" : s->playback ? "playback" : "capture",
++			on ? "start" : "stop", ret);
+ 		return ret;
++	}
+ 
+ 	/*
+ 	 * The modem's flow is opened once the endpoint it feeds is running, and
+@@ -1431,6 +1463,7 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 	dev_dbg(comp->dev, "%s %s: %d\n",
+ 		s->voice ? "voice" : s->playback ? "playback" : "capture",
+ 		on ? "start" : "stop", ret);
++	aoc_pcm_log_ring(s, on ? "started" : "stopped");
+ 	return ret;
+ }
+ 

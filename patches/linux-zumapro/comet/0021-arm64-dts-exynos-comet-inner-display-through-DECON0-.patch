@@ -1,0 +1,127 @@
+From eeaccc74616f3559595533c5d0ce1f3a9ef5f4c4 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:21:23 -0400
+Subject: [PATCH 21/88] arm64: dts: exynos: comet: inner display through DECON0
+ -> DSIM1
+
+---
+ arch/arm64/boot/dts/exynos/google/Makefile    |  1 +
+ .../dts/exynos/google/zumapro-comet-inner.dts | 99 +++++++++++++++++++
+ 2 files changed, 100 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
+
+diff --git a/arch/arm64/boot/dts/exynos/google/Makefile b/arch/arm64/boot/dts/exynos/google/Makefile
+index 270e4f981..7e3ee874d 100644
+--- a/arch/arm64/boot/dts/exynos/google/Makefile
++++ b/arch/arm64/boot/dts/exynos/google/Makefile
+@@ -11,4 +11,5 @@ dtb-$(CONFIG_ARCH_EXYNOS) += \
+ 	zumapro-comet-front.dtb \
+ 	zumapro-comet-probe.dtb \
+ 	zumapro-comet-panel.dtb \
++	zumapro-comet-inner.dtb \
+ 	zumapro-komodo.dtb
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
+new file mode 100644
+index 000000000..00044ba02
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
+@@ -0,0 +1,99 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Pixel 9 Pro Fold (comet), inner screen through the Exynos DRM path.
++ *
++ * Production comet drives the inner CT3B panel from DECON0 -> DSIM1: the
++ * bootloader leaves DSIMIF_SEL1 = DECON0_OFIFO0 and DSC0 programmed for one
++ * encoder carrying two 1076x12 slices, with TE on gpp0-4 (DDI1). Describe
++ * DSIM1, route DECON0 to it and attach the handoff CT3B panel driver. The
++ * outer pipe stays off in this variant.
++ */
++
++#include "zumapro-comet.dts"
++
++/ {
++	model = "Pixel 9 Pro Fold (inner display)";
++};
++
++&decon_autorefresh_bit {
++	status = "disabled";
++};
++
++&framebuffer0 {
++	status = "disabled";
++};
++
++/delete-node/ &dsim0_in;
++
++&soc {
++	dsim1: dsi@19450000 {
++		compatible = "google,zuma-dsim";
++		reg = <0x19450000 0x300>,	/* dsi         */
++		      <0x19460900 0x700>,	/* dphy        */
++		      <0x19460000 0x100>;	/* dphy-extra  */
++		reg-names = "dsi", "dphy", "dphy-extra";
++		interrupts = <GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH 0>;
++		clocks = <&cmu_dpu CLK_GOUT_DPU_PCLK>;
++		clock-names = "bus_clk";
++		power-domains = <&pd_dpuf0>;
++		samsung,disp-sysreg = <&sysreg_dpu>;
++		google,dsim-index = <1>;
++		/* 2 x 360 compressed pixels per line, as the bootloader programs */
++		google,dsc-comp-align = <1>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&disp_te_sec_on>;
++		te-gpio = <&gpp0 4 0>;
++
++		inner_panel: panel@0 {
++			compatible = "google,gs-ct3b";
++			reg = <0>;
++
++			port {
++				inner_panel_in: endpoint {
++					remote-endpoint = <&dsim1_out>;
++				};
++			};
++		};
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++				dsim1_in: endpoint {
++					remote-endpoint = <&decon0_out>;
++				};
++			};
++
++			port@1 {
++				reg = <1>;
++				dsim1_out: endpoint {
++					remote-endpoint = <&inner_panel_in>;
++				};
++			};
++		};
++	};
++};
++
++&decon0 {
++	status = "okay";
++	google,dsc-single-encoder;
++	google,te-from = <1>;
++	google,dsi-output = <1>;
++};
++
++&decon0_out {
++	remote-endpoint = <&dsim1_in>;
++};
++
++&dpu_dma {
++	status = "okay";
++};
++
++&dpp0 {
++	status = "okay";
++};

@@ -1,0 +1,79 @@
+From 10041ff6951fdd0b4be7213260e9f9ddd39861df Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 13:15:56 -0400
+Subject: [PATCH 69/88] brcmfmac: pcie: validate the ring info before using it
+
+Check that the ring info address, the ring memory and the TCM index
+pointers published by the firmware are aligned and inside device RAM
+before setting up the rings. After a missed firmware boot the shared
+area held a ring memory address of 0x32f2db, and the unaligned MMIO
+write in brcmf_pcie_init_dmabuffer_for_device() took the kernel down
+with an alignment fault. Fail the bring-up instead.
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 39 +++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 96b617814..d6b0d82be 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -1575,6 +1575,17 @@ static void brcmf_pcie_release_ringbuffers(struct brcmf_pciedev_info *devinfo)
+ }
+ 
+ 
++/* @addr..@addr + @len lies in device RAM and is @align-aligned. */
++static bool brcmf_pcie_tcm_range_ok(struct brcmf_pciedev_info *devinfo,
++				    u32 addr, u32 len, u32 align)
++{
++	u32 start = devinfo->ci->rambase;
++	u32 end = start + devinfo->ci->ramsize;
++
++	return !(addr & (align - 1)) && addr >= start && addr < end &&
++	       len <= end - addr;
++}
++
+ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
+ {
+ 	struct brcmf_bus *bus = dev_get_drvdata(&devinfo->pdev->dev);
+@@ -1594,6 +1605,12 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
+ 	u16 max_submissionrings;
+ 	u16 max_completionrings;
+ 
++	if (!brcmf_pcie_tcm_range_ok(devinfo, devinfo->shared.ring_info_addr,
++				     sizeof(ringinfo), 4)) {
++		brcmf_err(bus, "invalid ring info address 0x%08x\n",
++			  devinfo->shared.ring_info_addr);
++		return -EIO;
++	}
+ 	brcmf_pcie_copy_mem(devinfo, devinfo->shared.ring_info_addr, &ringinfo,
+ 			    sizeof(ringinfo), false);
+ 	if (devinfo->shared.version >= 6) {
+@@ -1675,6 +1692,28 @@ static int brcmf_pcie_init_ringbuffers(struct brcmf_pciedev_info *devinfo)
+ 
+ 	ring_mem_ptr = le32_to_cpu(ringinfo.ringmem);
+ 
++	/* Unset or half-written values from a firmware that did not finish
++	 * booting must not reach the MMIO accesses below: an unaligned ring
++	 * memory address faults the kernel.
++	 */
++	if (!brcmf_pcie_tcm_range_ok(devinfo, ring_mem_ptr,
++				     BRCMF_NROF_COMMON_MSGRINGS *
++				     BRCMF_RING_MEM_SZ, 4) ||
++	    (devinfo->dma_idx_sz == 0 &&
++	     (!brcmf_pcie_tcm_range_ok(devinfo, h2d_w_idx_ptr,
++				       max_submissionrings * idx_offset, 2) ||
++	      !brcmf_pcie_tcm_range_ok(devinfo, h2d_r_idx_ptr,
++				       max_submissionrings * idx_offset, 2) ||
++	      !brcmf_pcie_tcm_range_ok(devinfo, d2h_w_idx_ptr,
++				       max_completionrings * idx_offset, 2) ||
++	      !brcmf_pcie_tcm_range_ok(devinfo, d2h_r_idx_ptr,
++				       max_completionrings * idx_offset, 2)))) {
++		brcmf_err(bus, "invalid ring info: ringmem 0x%08x idx 0x%08x/0x%08x/0x%08x/0x%08x\n",
++			  ring_mem_ptr, h2d_w_idx_ptr, h2d_r_idx_ptr,
++			  d2h_w_idx_ptr, d2h_r_idx_ptr);
++		return -EIO;
++	}
++
+ 	for (i = 0; i < BRCMF_NROF_H2D_COMMON_MSGRINGS; i++) {
+ 		ring = brcmf_pcie_alloc_dma_and_ring(devinfo, i, ring_mem_ptr);
+ 		if (!ring)

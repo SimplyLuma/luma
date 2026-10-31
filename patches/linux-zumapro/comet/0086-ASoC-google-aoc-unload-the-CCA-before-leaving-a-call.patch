@@ -1,0 +1,64 @@
+From 3d7364c2b4279f9b39d00439a56a100c55a926c4 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 01:42:37 -0400
+Subject: [PATCH 86/88] ASoC: google: aoc: unload the CCA before leaving a
+ call's DSP mode
+
+The vendor HAL closes an active call-clarity library itself before it
+changes the DSP mode; the vendor driver's "CCA Module Load" sends bare
+commands 281 (load) and 282 (unload).  Send the unload before any
+hang-up DSP mode switch, so the AOC is not left to unload it inside the
+mode change, which is where it reports heap corruption.
+---
+ sound/soc/google/aoc-audio.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index fa4c22e07..3f1a12747 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -136,6 +136,15 @@
+ #define AOC_DSP_MODE_TELEPHONY		2
+ #define AOC_DSP_MODE_TELEPHONY_APMG3	6
+ #define AOC_DSP_MODE_AMBIENT_PLUS	7
++/*
++ * The call-clarity (CCA) library, which a call DSP mode loads.  The vendor
++ * driver has explicit load/unload commands for it ("CCA Module Load",
++ * aoc_load_cca_module: bare headers 281/282), and its HAL closes an active
++ * CCA itself before it changes the DSP mode ("Dsp mode will be unsupported.
++ * Check and close active CCA").
++ */
++#define AOC_CMD_AUDIO_OUTPUT_CCA_LOAD_ID	281
++#define AOC_CMD_AUDIO_OUTPUT_CCA_UNLOAD_ID	282
+ #define AOC_DSP_MODE_MAX		7
+ /*
+  * "AoC Modem Downlink ASRC Mode", which the vendor HAL sets to ASP_ON (1) in
+@@ -794,6 +803,18 @@ static const char * const aoc_voice_dsp_after_texts[] = {
+ 	"Keep", "Previous", "Ambient", "Ambient_Plus",
+ };
+ 
++static int aoc_audio_cca(struct aoc_audio *aud, bool load)
++{
++	struct aoc_cmd_hdr cmd = { };
++	char rsp[64];
++
++	cmd.type = AOC_CMD_TYPE_CMD;
++	cmd.len = cpu_to_le16(sizeof(cmd));
++	cmd.id = cpu_to_le16(load ? AOC_CMD_AUDIO_OUTPUT_CCA_LOAD_ID :
++				    AOC_CMD_AUDIO_OUTPUT_CCA_UNLOAD_ID);
++	return aoc_audio_cmd(aud, &cmd, sizeof(cmd), rsp, sizeof(rsp));
++}
++
+ static void aoc_voice_dsp_restore(struct aoc_audio *aud, struct device *dev)
+ {
+ 	int mode, ret;
+@@ -813,6 +834,9 @@ static void aoc_voice_dsp_restore(struct aoc_audio *aud, struct device *dev)
+ 			 aud->voice_dsp_mode);
+ 		return;
+ 	}
++	/* close the CCA first, as the vendor HAL does before a mode change */
++	ret = aoc_audio_cca(aud, false);
++	dev_info(dev, "voice: CCA unload: %d\n", ret);
+ 	ret = aoc_audio_dsp_mode(aud, mode);
+ 	dev_info(dev, "voice: DSP mode back to %d: %d\n", mode, ret);
+ }

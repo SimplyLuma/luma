@@ -1,0 +1,132 @@
+From a656c47612cbb37efdeef693e45f479242e3c08a Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 14:56:12 -0400
+Subject: [PATCH 75/88] net: wwan: s5xxx: reassemble fragmented oem/GEMS
+ messages
+
+The CP fragments a large ModemSvcMessage across FMT ring frames (~8 x 2036
+bytes on the uecap channel), but the oem chardev delivered each frame as its
+own read(), so the userspace daemon decoded fragments and dropped the whole
+message every time. Reassemble per oem channel by the link header fragment
+markers (config byte: FIRST/MIDDLE/LAST/SINGLE) and deliver one complete
+message; a stray or overflowing partial is dropped so a lost fragment cannot
+wedge the channel.
+---
+ drivers/net/wwan/s5xxx_modem.c | 76 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 74 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index b34f8856f..f77000e9d 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -462,6 +462,18 @@ struct s5xxx_variant {
+ #define S5XXX_SIT_HDR			12
+ #define S5XXX_SIT_SYNC			0xabcd
+ #define S5XXX_SIT_CFG_SINGLE		0xc000		/* EXYNOS_SINGLE_MASK<<8 */
++/*
++ * Fragment markers in the link header's config byte (hdr[5], the high byte of
++ * the cfg field): a message longer than one ring frame is split into FIRST,
++ * zero or more MIDDLE, then LAST; a message that fits one frame is SINGLE
++ * (FIRST|LAST).  Masked with 0x40|0x80 so any low status bits are ignored.
++ */
++#define S5XXX_FRAG_MASK			0xc0
++#define S5XXX_FRAG_LAST			0x40
++#define S5XXX_FRAG_FIRST		0x80
++#define S5XXX_FRAG_SINGLE		0xc0
++/* An oem/GEMS message the CP fragments can reach ~16 KiB; cap the reassembly. */
++#define S5XXX_OEM_REASM_MAX		(64 * 1024)
+ 
+ /*
+  * OEM/GEMS channel (downstream io-device oem_ipc, an IPC_FMT multi-channel iod
+@@ -565,6 +577,9 @@ struct s5xxx_oem_ch {
+ 	struct wwan_port	*port;
+ 	u8			ch;
+ 	u8			ch_seq;		/* per-channel link-header seq */
++	/* Reassembly of a CP message fragmented across FMT ring frames. */
++	u8			*reasm;
++	u32			reasm_len;
+ };
+ 
+ struct s5xxx_modem {
+@@ -2755,6 +2770,61 @@ static void s5xxx_fmt_deliver(struct wwan_port *port, void __iomem *buff,
+ 	wwan_port_rx(port, skb);
+ }
+ 
++/* Hand an already-assembled buffer to the chardev as one message. */
++static void s5xxx_fmt_deliver_buf(struct wwan_port *port, const u8 *data, u32 len)
++{
++	struct sk_buff *skb;
++
++	if (!len)
++		return;
++	skb = alloc_skb(len, GFP_ATOMIC);
++	if (!skb)
++		return;
++	memcpy(skb_put(skb, len), data, len);
++	wwan_port_rx(port, skb);
++}
++
++/*
++ * One oem/GEMS frame.  The CP fragments a large ModemSvcMessage across FMT ring
++ * frames (seen as ~8 x 2036 B on the uecap channel); the chardev reader wants
++ * one message per read(), so reassemble here by the link header's fragment
++ * markers and deliver only a complete message.  A SINGLE frame is delivered
++ * directly.  A stray MIDDLE/LAST without a FIRST, or an overflow past
++ * S5XXX_OEM_REASM_MAX, drops the partial so a lost fragment cannot wedge the
++ * channel (the CP re-requests).
++ */
++static void s5xxx_oem_rx_frame(struct s5xxx_oem_ch *oc, void __iomem *buff,
++			       u32 out, u32 plen, u8 cfg)
++{
++	u32 frag = cfg & S5XXX_FRAG_MASK;
++
++	if (!oc->port || !plen)
++		return;
++	if (frag == S5XXX_FRAG_SINGLE) {
++		oc->reasm_len = 0;
++		s5xxx_fmt_deliver(oc->port, buff, out, plen);
++		return;
++	}
++	if (frag == S5XXX_FRAG_FIRST)
++		oc->reasm_len = 0;
++	else if (oc->reasm_len == 0)
++		return;		/* MIDDLE/LAST with no FIRST: drop */
++	if (!oc->reasm || oc->reasm_len + plen > S5XXX_OEM_REASM_MAX) {
++		dev_warn_ratelimited(oc->sm->dev,
++				     "oem ch %#x reassembly overflow (%u+%u)\n",
++				     oc->ch, oc->reasm_len, plen);
++		oc->reasm_len = 0;
++		return;
++	}
++	s5xxx_circ_read(oc->reasm + oc->reasm_len, buff, S5XXX_FMT_RXQ_SIZE,
++			(out + S5XXX_SIT_HDR) % S5XXX_FMT_RXQ_SIZE, plen);
++	oc->reasm_len += plen;
++	if (frag == S5XXX_FRAG_LAST) {
++		s5xxx_fmt_deliver_buf(oc->port, oc->reasm, oc->reasm_len);
++		oc->reasm_len = 0;
++	}
++}
++
+ /*
+  * Drain formatted IPC frames the CP left on the FMT rxq.  The CP routes several
+  * IPC_FMT channels through this ring; ch 0xF5 is the SIT control port
+@@ -2805,8 +2875,7 @@ static void s5xxx_drain_fmt_rxq(struct s5xxx_modem *sm, u32 intval)
+ 		oc = s5xxx_oem_lookup(sm, hdr[8]);
+ 		sc = oc ? NULL : s5xxx_sit_lookup(sm, hdr[8]);
+ 		if (oc) {
+-			if (oc->port && plen)
+-				s5xxx_fmt_deliver(oc->port, buff, out, plen);
++			s5xxx_oem_rx_frame(oc, buff, out, plen, hdr[5]);
+ 			/*
+ 			 * The CP opened an oem transaction and expects a
+ 			 * (multi-frame) reply; keep the link up so it drains at L0.
+@@ -4861,6 +4930,9 @@ static int s5xxx_probe(struct platform_device *pdev)
+ 
+ 		sm->oem[i].sm = sm;
+ 		sm->oem[i].ch = oem_chs[i];
++		sm->oem[i].reasm = devm_kmalloc(dev, S5XXX_OEM_REASM_MAX, GFP_KERNEL);
++		if (!sm->oem[i].reasm)
++			return -ENOMEM;
+ 	}
+ 	for (i = 0; i < S5XXX_SIT_PORTS; i++) {
+ 		sm->sit[i].sm = sm;

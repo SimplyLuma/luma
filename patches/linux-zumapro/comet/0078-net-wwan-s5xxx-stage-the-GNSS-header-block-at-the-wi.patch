@@ -1,0 +1,59 @@
+From 6b41b43c77f93edf43ee16f7fd831827764f44ae Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 00:49:13 -0400
+Subject: [PATCH 78/88] net: wwan: s5xxx: stage the GNSS header block at the
+ window base before its load
+
+---
+ drivers/net/wwan/s5xxx_modem.c | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index afcea8187..654069cbc 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -2047,10 +2047,14 @@ static int s5xxx_gnss_blc(struct s5xxx_modem *sm, u32 field0, u32 arg)
+ 
+ /*
+  * Run the codeload for a staged image.  @hdr4 is the u32 at file offset 4 (the
+- * header block size); @fw_size is the whole file size.  Returns 0 once the
+- * sequence has been sent.
++ * header block size); @fw_size is the whole file size.  Between the two loads
++ * the header block is staged a second time, from file offset 4 to window
++ * offset 0, dropping the image's leading magic so the header sits at the
++ * window base -- the window the stock gnssd leaves (it stages twice); with the
++ * file alone the CP reads every header field four bytes off.
+  */
+-static void s5xxx_gnss_codeload(struct s5xxx_modem *sm, u32 fw_size, u32 hdr4)
++static void s5xxx_gnss_codeload(struct s5xxx_modem *sm, const u8 *fw,
++				u32 fw_size, u32 hdr4)
+ {
+ 	int i;
+ 
+@@ -2062,6 +2066,7 @@ static void s5xxx_gnss_codeload(struct s5xxx_modem *sm, u32 fw_size, u32 hdr4)
+ 
+ 	/* seg0 = whole file at window offset 0; seg1 = its header block. */
+ 	s5xxx_gnss_load(sm, 0, fw_size);
++	memcpy_toio(sm->ipc + S5XXX_GNSS_FW_OFFSET, fw + 4, hdr4);
+ 	s5xxx_gnss_load(sm, 4, hdr4);
+ 
+ 	/* Chip-config train (fixed field0/arg pairs from the stock sequence;
+@@ -4356,7 +4361,8 @@ static void s5xxx_load_gnss_fw(struct s5xxx_modem *sm)
+ 		return;
+ 	}
+ 
+-	if (fw->size > S5XXX_GNSS_FW_SIZE || fw->size < 8) {
++	if (fw->size > S5XXX_GNSS_FW_SIZE || fw->size < 8 ||
++	    get_unaligned_le32(fw->data + 4) > fw->size - 4) {
+ 		dev_warn(sm->dev, "%s bad size %zu; skipping\n",
+ 			 path, fw->size);
+ 	} else {
+@@ -4364,7 +4370,7 @@ static void s5xxx_load_gnss_fw(struct s5xxx_modem *sm)
+ 		u32 hdr4 = get_unaligned_le32(fw->data + 4);
+ 
+ 		memcpy_toio(sm->ipc + S5XXX_GNSS_FW_OFFSET, fw->data, fw->size);
+-		s5xxx_gnss_codeload(sm, fw->size, hdr4);
++		s5xxx_gnss_codeload(sm, fw->data, fw->size, hdr4);
+ 		dev_info(sm->dev,
+ 			 "staged GNSS firmware (%zu bytes) and ran the codeload\n",
+ 			 fw->size);

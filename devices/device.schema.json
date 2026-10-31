@@ -34,7 +34,7 @@
         "release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?[A-Za-z0-9._+-]*$"},
         "rpm_version_release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?-[A-Za-z0-9._+-]+$"},
         "config": {"$ref": "#/$defs/relpath"},
-        "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+/[A-Za-z0-9_.,+-]+\\.dtb$"},
+        "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+(/[a-z0-9_-]+)*/[A-Za-z0-9_.,+-]+\\.dtb$"},
         "dtb_overlays": {"$ref": "#/$defs/relpath"}
       }
     },

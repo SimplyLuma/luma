@@ -1,0 +1,30 @@
+From 626093284f35496c85825bdbc1e854fe17f48485 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 20:43:08 -0400
+Subject: [PATCH 46/88] arm64: luma: keep the embedded DTB inside one 2 MiB
+ block
+
+Align the embedded DTB to 256 KiB. With 8-byte alignment it moved with the image layout, and builds where it straddled a 2 MiB boundary died in early boot before ramoops; 64 KiB of unreferenced data was enough to move it across.
+---
+ arch/arm64/kernel/luma_embedded_dtb.S | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/kernel/luma_embedded_dtb.S b/arch/arm64/kernel/luma_embedded_dtb.S
+index b7b53c5f4..7276e1a88 100644
+--- a/arch/arm64/kernel/luma_embedded_dtb.S
++++ b/arch/arm64/kernel/luma_embedded_dtb.S
+@@ -2,8 +2,13 @@
+ 
+ #include <linux/linkage.h>
+ 
++/*
++ * Aligned so the blob never straddles a 2 MiB boundary of the image: a DTB
++ * that did (after 64 KiB of growth elsewhere) died in early boot before the
++ * console. 256 KiB divides 2 MiB; the build checks the DTB fits in it.
++ */
+ 	.section ".init.rodata", "a"
+-	.balign 8
++	.balign 0x40000
+ SYM_DATA_START(__luma_embedded_dtb_start)
+ 	.incbin "luma/embedded.dtb"
+ SYM_DATA_END(__luma_embedded_dtb_start)

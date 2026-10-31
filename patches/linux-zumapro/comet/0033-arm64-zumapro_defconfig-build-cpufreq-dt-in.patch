@@ -1,0 +1,25 @@
+From 892ba9d328bae2cef8cdef4a4c652df7b847804a Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 17:37:54 -0400
+Subject: [PATCH 33/88] arm64: zumapro_defconfig: build cpufreq-dt in
+
+The CPU clusters scale through ACPM DVFS clocks and their OPP tables; a
+modular cpufreq-dt leaves them at the bootloader rate when no module tree
+matches the running kernel.
+---
+ arch/arm64/configs/zumapro_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index f5deeab82..05903820f 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -96,7 +96,7 @@ CONFIG_CPU_FREQ=y
+ CONFIG_CPU_FREQ_STAT=y
+ CONFIG_CPU_FREQ_GOV_POWERSAVE=y
+ CONFIG_CPU_FREQ_GOV_CONSERVATIVE=y
+-CONFIG_CPUFREQ_DT=m
++CONFIG_CPUFREQ_DT=y
+ CONFIG_CPUFREQ_DT_PLATDEV=y
+ CONFIG_VIRTUALIZATION=y
+ CONFIG_KVM=y

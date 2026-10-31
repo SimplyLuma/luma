@@ -1,0 +1,153 @@
+From 8fbcd9b52b81add35c7a41dbca6cc788284cea2b Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 13:15:12 -0400
+Subject: [PATCH 67/88] brcmfmac: pcie: seed the BCM4390 firmware and clear
+ free TCM
+
+The BCM4390 firmware reads a random seed record (0xfeedc0de) directly
+below NVRAM at start-up to place its heap; the vendor driver writes 128
+bytes there before releasing the CA7. Write it for this chip as well,
+with the 128-byte length its firmware expects.
+
+Free TCM was not cleared when the BAR1 window slides, which is the case
+on the BCM4390, so the firmware started on whatever the previous run
+left in device RAM, which survives warm reboots and watchdog resets.
+Clear it one window at a time.
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 73 ++++++++++++++-----
+ 1 file changed, 53 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index a24752329..85c5f8649 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -505,6 +505,7 @@ struct brcmf_pciedev_info {
+ 	struct brcmf_mp_device *settings;
+ 	struct brcmf_otp_params otp;
+ 	bool fwseed;
++	u32 fwseed_len;
+ 	struct delayed_work poll_work;
+ 	bool poll_active;
+ 	/* Serializes brcmf_proto_msgbuf_rx_trigger between the MSI isr thread and
+@@ -784,6 +785,29 @@ brcmf_pcie_copy_mem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
+ }
+ 
+ 
++/* memset_io() over device TCM, split at BAR1 window boundaries. */
++static void
++brcmf_pcie_zero_mem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
++		    u32 len)
++{
++	u32 chunk;
++
++	while (len) {
++		chunk = len;
++		if (devinfo->tcm_bar_switch) {
++			u32 avail = devinfo->tcm_size -
++				    (mem_offset & (devinfo->tcm_size - 1));
++
++			if (chunk > avail)
++				chunk = avail;
++		}
++		memset_io(brcmf_pcie_tcm_addr(devinfo, mem_offset), 0, chunk);
++		mem_offset += chunk;
++		len -= chunk;
++	}
++}
++
++
+ static void
+ brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
+ 			  void *dstaddr, u32 len)
+@@ -2545,6 +2569,7 @@ struct brcmf_fw_memmap {
+ #define BRCMF_BL_HEAP_SIZE		0x10000
+ #define BRCMF_RANDOM_SEED_MAGIC		0xfeedc0de
+ #define BRCMF_RANDOM_SEED_LENGTH	0x100
++#define BRCMF_RANDOM_SEED_LENGTH_4390	0x80
+ #define BRCMF_FW_SIG_MAGIC		0xfeedfe51
+ #define BRCMF_NVRAM_SIG_MAGIC		0xfeedfe52
+ #define BRCMF_MEMMAP_MAGIC		0xfeedfe53
+@@ -2589,22 +2614,24 @@ static int brcmf_alloc_rtlv(struct brcmf_pciedev_info *devinfo, u32 *address, u3
+ static noinline_for_stack int
+ brcmf_pcie_add_random_seed(struct brcmf_pciedev_info *devinfo, u32 *address)
+ {
+-	int err;
++	u32 len = devinfo->fwseed_len;
+ 	u8 randbuf[BRCMF_RANDOM_SEED_LENGTH];
++	int err;
++
++	if (len > BRCMF_RANDOM_SEED_LENGTH)
++		return -EINVAL;
+ 
+-	err = brcmf_alloc_rtlv(devinfo, address,
+-			       BRCMF_RANDOM_SEED_MAGIC, BRCMF_RANDOM_SEED_LENGTH);
++	err = brcmf_alloc_rtlv(devinfo, address, BRCMF_RANDOM_SEED_MAGIC, len);
+ 	if (err)
+ 		return err;
+ 
+-	/* Some Apple chips/firmwares expect a buffer of random
+-	 * data to be present before NVRAM
++	/* Some Apple chips/firmwares and the BCM4390 expect a buffer of
++	 * random data to be present before NVRAM
+ 	 */
+-	brcmf_dbg(PCIE, "Download random seed\n");
++	brcmf_dbg(PCIE, "Download random seed (%u bytes)\n", len);
+ 
+-	get_random_bytes(randbuf, BRCMF_RANDOM_SEED_LENGTH);
+-	brcmf_pcie_copy_mem(devinfo, *address, randbuf, BRCMF_RANDOM_SEED_LENGTH,
+-			    true);
++	get_random_bytes(randbuf, len);
++	brcmf_pcie_copy_mem(devinfo, *address, randbuf, len, true);
+ 
+ 	return 0;
+ }
+@@ -2661,9 +2688,9 @@ static int brcmf_pcie_populate_footers(struct brcmf_pciedev_info *devinfo,
+ {
+ 	int err;
+ 
+-	/* We only do this for Apple firmwares. If any other
+-	 * production firmwares are found to need this, the condition
+-	 * needs to be adjusted.
++	/* We only do this for Apple firmwares and the BCM4390. If any
++	 * other production firmwares are found to need this, the
++	 * condition needs to be adjusted.
+ 	 */
+ 	if (!devinfo->fwseed)
+ 		return 0;
+@@ -2749,15 +2776,13 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+ 
+ 	release_firmware(fwsig);
+ 
+-	/* Clear free TCM. This isn't really necessary, but it
+-	 * makes debugging memory dumps a lot easier since we
+-	 * don't get a bunch of junk filling up the free space.
+-	 * Skip it when the BAR1 window slides: the free region can span more
+-	 * than one window and a plain memset_io would run off the mapping.
++	/* Clear free TCM, one BAR1 window at a time. Besides making memory
++	 * dumps readable, this keeps the firmware from starting on what a
++	 * previous run left behind: device RAM survives a warm reboot and a
++	 * watchdog reset.
+ 	 */
+-	if (!devinfo->tcm_bar_switch)
+-		memset_io(devinfo->tcm + devinfo->ci->rambase + devinfo->fw_size,
+-			  0, address - devinfo->fw_size - devinfo->ci->rambase);
++	brcmf_pcie_zero_mem(devinfo, devinfo->ci->rambase + devinfo->fw_size,
++			    address - devinfo->fw_size - devinfo->ci->rambase);
+ 
+ 	sharedram_addr_written = brcmf_pcie_read_ram32(devinfo,
+ 						       devinfo->ci->ramsize -
+@@ -4006,6 +4031,14 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ 	bus->wowl_supported = pci_pme_capable(pdev, PCI_D3hot);
+ 	bus->fwvid = drvdata[id->driver_data].vendor;
+ 	devinfo->fwseed = drvdata[id->driver_data].fw_seed;
++	devinfo->fwseed_len = BRCMF_RANDOM_SEED_LENGTH;
++	/* The BCM4390 firmware reads a 128-byte random seed below NVRAM to
++	 * place its heap, as written by the vendor driver.
++	 */
++	if (devinfo->ci->chip == BRCM_CC_4390_CHIP_ID) {
++		devinfo->fwseed = true;
++		devinfo->fwseed_len = BRCMF_RANDOM_SEED_LENGTH_4390;
++	}
+ 	dev_set_drvdata(&pdev->dev, bus);
+ 
+ 	ret = brcmf_alloc(&devinfo->pdev->dev, devinfo->settings);

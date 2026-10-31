@@ -1,0 +1,245 @@
+From 0f02dcd555c313483fc134cb4bcdc59d9a9ea7f6 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Fri, 23 Oct 2026 23:13:13 -0400
+Subject: [PATCH 50/88] brcmfmac: pcie: request SR power domains before the ARM
+ starts
+
+The BCM4390 request for the save/restore power domains was written from
+preinit, about 100 ms after the ARM was released, while the firmware was
+still booting. Where it landed in the firmware's bring-up decided the
+outcome: the first command came back with an error, MAC attach trapped,
+or the first domain transition trapped a second later. Boot timing is
+fixed for a given image, so an image passed or failed consistently and
+flipped with unrelated changes to the kernel or the initramfs.
+
+Write the request before the ARM is released, the way the vendor
+driver's firmware-reload path does, and limit it to the vendor's
+SRPWR_DMN_ALL for this chip, without the BT domain. Clear the mailbox
+interrupt right before the release so the boot doorbell wait cannot be
+satisfied by a stale bit, and before anything else in the shared area
+is read, follow the firmware console until it reports boot complete.
+Log the request, the doorbell and the boot wait at info level.
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 150 ++++++++++++++++--
+ 1 file changed, 133 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 5f60432e4..a24752329 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -5,6 +5,7 @@
+ 
+ #include <linux/kernel.h>
+ #include <linux/module.h>
++#include <linux/sizes.h>
+ #include <linux/firmware.h>
+ #include <linux/pci.h>
+ #include <linux/vmalloc.h>
+@@ -347,10 +348,14 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+  */
+ #define BRCMF_CHIPCREG_POWERCONTROL		0x1e8
+ #define BRCMF_SRPWR_REQON_DMN0_DMN1		0x00000300
+-/* REQON field (bits 8..) for domains 0..6: PCIE, ARM, MAC-Aux, MAC-Main,
+- * MAC-Scan, BT, SAQM -- i.e. SRPWR_DMN_ALL for BCM4390.
++/* REQON field (bits 8..) for the domains the host may request on the BCM4390:
++ * PCIE, ARM, MAC-Aux, MAC-Main, MAC-Scan and SAQM (0-4 and 6), the vendor
++ * driver's SRPWR_DMN_ALL for this chip. Domain 5 belongs to the BT host.
+  */
+-#define BRCMF_SRPWR_REQON_ALL			0x00007F00
++#define BRCMF_SRPWR_REQON_ALL			0x00005F00
++#define BRCMF_SRPWR_STATUS_ALL			0x005F0000
++#define BRCMF_SRPWR_STATUS_WAIT_MS		100
++#define BRCMF_FW_BOOT_WAIT_MS			5000
+ 
+ #define BRCMF_RING_H2D_RING_COUNT_OFFSET	0
+ #define BRCMF_RING_D2H_RING_COUNT_OFFSET	1
+@@ -1922,6 +1927,101 @@ static void brcmf_pcie_poll_worker(struct work_struct *work)
+ 	schedule_delayed_work(&devinfo->poll_work, msecs_to_jiffies(2));
+ }
+ 
++/* Request the save/restore power domains from ChipCommon PowerControl and
++ * give the PMU a moment to report them up. This runs before the ARM is
++ * released, so the firmware's power manager starts with the host's request
++ * already in place, as the vendor driver's firmware-reload path arranges
++ * with SRPWR_DMN_ALL. Written from preinit instead, about 100 ms after the
++ * release, the request landed somewhere in the firmware's bring-up and the
++ * outcome depended on exactly where: the first command came back with an
++ * error, MAC attach trapped, or the first domain transition trapped a second
++ * later. Boot timing is fixed for a given image, so an image passed or
++ * failed consistently and flipped with unrelated changes elsewhere.
++ */
++static void brcmf_pcie_srpwr_request(struct brcmf_pciedev_info *devinfo,
++				     const char *when)
++{
++	u32 before, val;
++	unsigned int ms = 0;
++
++	brcmf_pcie_select_core(devinfo, BCMA_CORE_CHIPCOMMON);
++	before = brcmf_pcie_read_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL);
++	brcmf_pcie_write_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL,
++			       before | BRCMF_SRPWR_REQON_ALL);
++	val = brcmf_pcie_read_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL);
++	while ((val & BRCMF_SRPWR_STATUS_ALL) != BRCMF_SRPWR_STATUS_ALL &&
++	       ms < BRCMF_SRPWR_STATUS_WAIT_MS) {
++		usleep_range(1000, 1500);
++		ms++;
++		val = brcmf_pcie_read_reg32(devinfo,
++					    BRCMF_CHIPCREG_POWERCONTROL);
++	}
++	brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
++	dev_info(&devinfo->pdev->dev,
++		 "SR power request %s: 0x%08x -> 0x%08x after %u ms\n",
++		 when, before, val, ms);
++}
++
++/* The firmware logs "Notify host through MSI - FW boot complete" as the last
++ * step of its bring-up. Follow the console until that line shows up, so
++ * nothing in the shared area is read or written and no command is sent while
++ * the firmware is still booting, whatever the mailbox interrupt did.
++ */
++static void brcmf_pcie_wait_fw_boot(struct brcmf_pciedev_info *devinfo)
++{
++	static const char mark[] = "FW boot complete";
++	u32 rambase = devinfo->ci->rambase;
++	u32 ramend = rambase + devinfo->ci->ramsize;
++	u32 base = 0, buf = 0, size = 0, widx, idx = 0, addr;
++	unsigned int ms, match = 0;
++	u8 ch;
++
++	for (ms = 0; ms < BRCMF_FW_BOOT_WAIT_MS; ms += 20) {
++		if (!base) {
++			addr = devinfo->shared.tcm_base_address +
++			       BRCMF_SHARED_CONSOLE_ADDR_OFFSET;
++			base = brcmf_pcie_read_tcm32(devinfo, addr);
++			if (base < rambase || base >= ramend) {
++				base = 0;
++				goto next;
++			}
++			addr = base + BRCMF_CONSOLE_BUFADDR_OFFSET;
++			buf = brcmf_pcie_read_tcm32(devinfo, addr);
++			addr = base + BRCMF_CONSOLE_BUFSIZE_OFFSET;
++			size = brcmf_pcie_read_tcm32(devinfo, addr);
++			if (buf < rambase || buf >= ramend || !size ||
++			    size > SZ_64K) {
++				base = 0;
++				goto next;
++			}
++		}
++		addr = base + BRCMF_CONSOLE_WRITEIDX_OFFSET;
++		widx = brcmf_pcie_read_tcm32(devinfo, addr);
++		if (widx >= size)
++			goto next;
++		while (idx != widx) {
++			ch = brcmf_pcie_read_tcm8(devinfo, buf + idx);
++			if (++idx == size)
++				idx = 0;
++			if (ch == mark[match]) {
++				if (!mark[++match]) {
++					dev_info(&devinfo->pdev->dev,
++						 "firmware boot complete after %u ms (console %u bytes)\n",
++						 ms, idx);
++					return;
++				}
++			} else {
++				match = ch == mark[0] ? 1 : 0;
++			}
++		}
++next:
++		msleep(20);
++	}
++	dev_warn(&devinfo->pdev->dev,
++		 "firmware boot not confirmed within %u ms (console %u bytes)\n",
++		 ms, idx);
++}
++
+ static int brcmf_pcie_preinit(struct device *dev)
+ {
+ 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
+@@ -1931,22 +2031,17 @@ static int brcmf_pcie_preinit(struct device *dev)
+ 
+ 	brcmf_dbg(PCIE, "Enter\n");
+ 
+-	/* Hold every save/restore power domain up, the way the vendor driver
+-	 * does (si_srpwr_request with SRPWR_DMN_ALL). The firmware otherwise
++	/* The save/restore power domains are held up from before the ARM
++	 * starts (brcmf_pcie_srpwr_request); without the hold the firmware
+ 	 * power-collapses the SAQM (D11 TX scheduler, domain 6) during a DVFS
+-	 * voltage transition; if txq_hw_fill touches the SAQM mid-collapse it
+-	 * dereferences NULL (dfar 0, r3 0) and traps -- which happens within
+-	 * seconds of any real TX (apk update, a download). The earlier
+-	 * DMN0/DMN1-only request left the MAC/SAQM domains free to collapse.
++	 * voltage transition and traps in txq_hw_fill within seconds of real
++	 * TX. Only report the state here.
+ 	 */
+ 	brcmf_pcie_select_core(devinfo, BCMA_CORE_CHIPCOMMON);
+ 	val = brcmf_pcie_read_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL);
+-	brcmf_pcie_write_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL,
+-			       val | BRCMF_SRPWR_REQON_ALL);
+-	dev_info(&devinfo->pdev->dev, "DBG SRPWR-all 0x1e8: 0x%08x -> 0x%08x\n",
+-		 val, brcmf_pcie_read_reg32(devinfo,
+-					    BRCMF_CHIPCREG_POWERCONTROL));
+ 	brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
++	dev_info(&devinfo->pdev->dev, "SR power control 0x%08x at preinit\n",
++		 val);
+ 
+ 	brcmf_pcie_intr_enable(devinfo);
+ 	brcmf_pcie_hostready(devinfo);
+@@ -2159,6 +2254,11 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ 	shared = &devinfo->shared;
+ 	shared->tcm_base_address = sharedram_addr;
+ 
++	/* The firmware publishes this address long before the structure is
++	 * complete; read nothing else until it has finished booting.
++	 */
++	brcmf_pcie_wait_fw_boot(devinfo);
++
+ 	shared->flags = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
+ 	                                      BRCMF_SHARED_FLAGS_OFFSET);
+ 
+@@ -2662,6 +2762,14 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+ 	sharedram_addr_written = brcmf_pcie_read_ram32(devinfo,
+ 						       devinfo->ci->ramsize -
+ 						       4);
++	brcmf_pcie_srpwr_request(devinfo, "before ARM start");
++
++	/* Nothing left pending in the mailbox interrupt register may satisfy
++	 * the boot doorbell wait below.
++	 */
++	brcmf_pcie_write_pcie32(devinfo, devinfo->reginfo->mailboxint,
++				0xffffffff);
++
+ 	brcmf_dbg(PCIE, "Bring ARM in running state\n");
+ 	err = brcmf_pcie_exit_download_state(devinfo, resetintr);
+ 	if (err)
+@@ -2673,7 +2781,9 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+ 	 * vendor driver waits on as a boot interrupt) so the shared structure
+ 	 * is complete before it is read.
+ 	 */
+-	if (devinfo->reginfo == &brcmf_reginfo_64) {
++	st = 0;
++	if (devinfo->reginfo == &brcmf_reginfo_64 ||
++	    devinfo->ci->chip == BRCM_CC_4390_CHIP_ID) {
+ 		brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
+ 		for (i = 0; i < BRCMF_PCIE_FW_UP_TIMEOUT / 20; i++) {
+ 			st = brcmf_pcie_read_reg32(devinfo,
+@@ -2682,12 +2792,18 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+ 				brcmf_pcie_write_reg32(devinfo,
+ 						devinfo->reginfo->mailboxint,
+ 						st);
+-				brcmf_dbg(PCIE, "FW boot doorbell after %u ms\n",
+-					  i * 20);
+ 				break;
+ 			}
+ 			msleep(20);
+ 		}
++		if (st)
++			dev_info(&devinfo->pdev->dev,
++				 "firmware boot doorbell 0x%08x after %u ms\n",
++				 st, i * 20);
++		else
++			dev_warn(&devinfo->pdev->dev,
++				 "no firmware boot doorbell within %u ms\n",
++				 BRCMF_PCIE_FW_UP_TIMEOUT);
+ 	}
+ 
+ 	brcmf_dbg(PCIE, "Wait for FW init\n");

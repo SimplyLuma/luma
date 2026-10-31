@@ -1,0 +1,8 @@
+[Unit]
+Description=Fold eSIM card reload after a profile switch
+After=sit-proxy.service
+Requires=sit-proxy.service
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /var/lib/luma-fold/modem/luma-fold-esim-switch.sh
+TimeoutStartSec=240

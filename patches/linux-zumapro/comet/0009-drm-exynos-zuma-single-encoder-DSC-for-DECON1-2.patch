@@ -1,0 +1,98 @@
+From cf2af4965c5279b1c87436ab8fcabce3f84d0a96 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:41:02 -0400
+Subject: [PATCH 09/88] drm/exynos: zuma: single-encoder DSC for DECON1/2
+
+DECON0 compresses through both encoders and the combiner. DECON1 and DECON2
+own one encoder each (physical index = DECON id), carrying every slice in
+dual-slice mode with a whole-picture PPS and one outfifo - the state comet's
+bootloader leaves on DECON1/DSC1 for the outer panel.
+---
+ drivers/gpu/drm/exynos/exynos9_decon_zuma.c | 40 +++++++++++++++++----
+ 1 file changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_decon_zuma.c b/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
+index 0cbde0a57..feded6889 100644
+--- a/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
++++ b/drivers/gpu/drm/exynos/exynos9_decon_zuma.c
+@@ -464,9 +464,16 @@ static void zuma_reg_set_data_path(u32 id, enum decon_out_type out_type,
+ 		zd_sub_write(id, ZD_DSIMIF_SEL(0), ZD_SEL_DSIM(sel));
+ 	}
+ 
+-	/* dual-DSC compression: route through both encoders + the combiner */
+-	if (dsc)
++	/*
++	 * DECON0 compresses through both encoders and the combiner. DECON1 and
++	 * DECON2 own a single encoder (physical encoder = DECON id), which the
++	 * data path names as their local encoder 0; comet's bootloader leaves
++	 * DSI0 | DSC(0) on DECON1 for the outer panel.
++	 */
++	if (dsc && id == 0)
+ 		val |= ZD_COMP_DSCC | ZD_COMP_DSC(1) | ZD_COMP_DSC(0);
++	else if (dsc)
++		val |= ZD_COMP_DSC(0);
+ 
+ 	zd_main_write_mask(id, ZD_DATA_PATH_CON_0, ZD_COMP_OUTIF_PATH_F(val),
+ 			   ZD_COMP_OUTIF_PATH_MASK);
+@@ -554,14 +561,15 @@ static void zuma_reg_dsc_config_control(u32 id, u32 dsc_id, u32 ds_en,
+  * DSIM underrunning; the bootloader programs 640 where the panel says 1280.
+  */
+ static void zuma_reg_dsc_set_pps(u32 id, u32 dsc_id,
+-				 const struct drm_dsc_config *cfg)
++				 const struct drm_dsc_config *cfg, bool whole)
+ {
+ 	struct drm_dsc_picture_parameter_set pps;
+ 	struct drm_dsc_config enc_cfg = *cfg;
+ 	const u8 *raw = (const u8 *)&pps;
+ 	int i;
+ 
+-	enc_cfg.pic_width = cfg->slice_width;
++	if (!whole)
++		enc_cfg.pic_width = cfg->slice_width;
+ 	if (zuma_dsc_dec_delay >= 0)
+ 		enc_cfg.initial_dec_delay = zuma_dsc_dec_delay;
+ 
+@@ -586,10 +594,26 @@ static void zuma_reg_set_dsc(u32 id, const struct drm_dsc_config *cfg)
+ 	u32 sm_ch = (zuma_dsc_sm_ch >= 0) ? !!zuma_dsc_sm_ch : 1;
+ 	u32 dsc_id;
+ 
++	/*
++	 * DECON1/2: one encoder (physical index = DECON id) carries both
++	 * slices, dual-slice on and no slice-mode change, with a PPS for the
++	 * whole picture - the values comet's bootloader leaves on DSC1 for
++	 * the outer panel (CONTROL1 0x221, CONTROL3 0x30b4, pic_width 1080).
++	 */
++	if (id != 0) {
++		ds_en = (zuma_dsc_ds_en >= 0) ? !!zuma_dsc_ds_en :
++						cfg->slice_count > 1;
++		sm_ch = (zuma_dsc_sm_ch >= 0) ? !!zuma_dsc_sm_ch : 0;
++		zuma_reg_dsc_config_control(id, id, ds_en, sm_ch,
++					    cfg->slice_width);
++		zuma_reg_dsc_set_pps(id, id, cfg, true);
++		return;
++	}
++
+ 	for (dsc_id = 0; dsc_id < cfg->slice_count; dsc_id++) {
+ 		zuma_reg_dsc_config_control(id, dsc_id, ds_en, sm_ch,
+ 					    cfg->slice_width);
+-		zuma_reg_dsc_set_pps(id, dsc_id, cfg);
++		zuma_reg_dsc_set_pps(id, dsc_id, cfg, false);
+ 	}
+ }
+ 
+@@ -598,11 +622,13 @@ static void zuma_reg_set_outfifo_dsc(u32 id, const struct drm_dsc_config *cfg,
+ 				     u32 height)
+ {
+ 	u32 comp_w = zuma_dsc_comp_width(cfg);
++	/* a single dual-slice encoder emits every slice through outfifo 0 */
++	u32 of_w = id ? comp_w * cfg->slice_count : comp_w;
+ 
+ 	zd_main_write(id, ZD_OF_SIZE_0,
+-		      ZD_OUTFIFO_HEIGHT_F(height) | ZD_OUTFIFO_WIDTH_F(comp_w));
++		      ZD_OUTFIFO_HEIGHT_F(height) | ZD_OUTFIFO_WIDTH_F(of_w));
+ 	/* dual DSC on decon0 uses the second outfifo too */
+-	if (cfg->slice_count == 2)
++	if (id == 0 && cfg->slice_count == 2)
+ 		zd_main_write(id, ZD_OF_SIZE_1, ZD_OUTFIFO_1_WIDTH_F(comp_w));
+ 	zd_main_write(id, ZD_OF_SIZE_2,
+ 		      ZD_OUTFIFO_COMPRESSED_SLICE_HEIGHT_F(cfg->slice_height) |

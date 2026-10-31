@@ -1,0 +1,153 @@
+From 345e3d4b5e364a1f0911bbc11849486e9076d0c1 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 13:16:24 -0400
+Subject: [PATCH 70/88] brcmfmac: pcie: retry a failed bring-up with a chip
+ reset
+
+A boot trap, a boot timeout, invalid ring info or a dongle that never
+answers its first commands left Wi-Fi down until the next boot. A
+firmware that trapped before its PM init also left the host SR power
+request asserted, after which the combo chip's Bluetooth side failed
+its post-patch commands.
+
+On a failed bring-up, release the rings and buffers, drop the SR
+request, reset the chip through the ChipCommon watchdog with the PCI
+state saved and restored, hold the ARM and download the firmware
+again, up to two times. Drop the SR request and reset the chip on the
+final failure as well. Stop scheduling the bus reset work from this
+path, which raced the release, and set up the out-of-band wake GPIOs
+and interrupt only once so a reload does not lose them.
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 91 ++++++++++++++++++-
+ 1 file changed, 90 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index d6b0d82be..700675d66 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -514,6 +514,8 @@ struct brcmf_pciedev_info {
+ 	struct mutex rx_lock;
+ 	int oob_irq;
+ 	struct gpio_desc *dev_wake_gpio;
++	bool oob_setup_done;
++	u32 setup_attempt;
+ #ifdef DEBUG
+ 	u32 console_interval;
+ 	bool console_active;
+@@ -3318,6 +3320,13 @@ static void brcmf_pcie_setup_oob_wake(struct brcmf_pciedev_info *devinfo)
+ 	struct gpio_desc *desc;
+ 	int irq, err;
+ 
++	/* The GPIOs and the interrupt are device-managed and outlive a chip
++	 * reset and firmware reload; set them up once.
++	 */
++	if (devinfo->oob_setup_done)
++		return;
++	devinfo->oob_setup_done = true;
++
+ 	devinfo->oob_irq = -1;
+ 	devinfo->dev_wake_gpio = NULL;
+ 	if (!np)
+@@ -3595,6 +3604,75 @@ static void brcmf_pcie_enable_l1ss(struct brcmf_pciedev_info *devinfo)
+ 	bphy_err(bus->drvr, "L1SS: full L1SS + ASPM-L1 enabled\n");
+ }
+ 
++/* Chip resets and firmware reloads after a failed bring-up. */
++#define BRCMF_PCIE_SETUP_RETRIES	2
++
++/* Drop the host's SR power request, reset the chip through the ChipCommon
++ * watchdog and hold the ARM for the next download. A firmware that trapped
++ * before its PM init leaves the host request asserted, and a combo chip left
++ * like that also stopped answering on its Bluetooth side.
++ */
++static void brcmf_pcie_chip_quiesce(struct brcmf_pciedev_info *devinfo)
++{
++	u32 val;
++
++	if (!devinfo->ci)
++		return;
++
++	brcmf_pcie_select_core(devinfo, BCMA_CORE_CHIPCOMMON);
++	val = brcmf_pcie_read_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL);
++	brcmf_pcie_write_reg32(devinfo, BRCMF_CHIPCREG_POWERCONTROL,
++			       val & ~BRCMF_SRPWR_REQON_ALL);
++	brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
++	dev_info(&devinfo->pdev->dev,
++		 "SR power request dropped (was 0x%08x), resetting chip\n", val);
++
++	/* The watchdog may take PCIe function 0 down with the chip. */
++	pci_save_state(devinfo->pdev);
++	brcmf_pcie_reset_device(devinfo);
++	pci_restore_state(devinfo->pdev);
++	brcmf_chip_set_passive(devinfo->ci);
++}
++
++/* Undo a partial bring-up and start another one. Returns false when no
++ * attempt is left or the reload could not be started.
++ */
++static bool brcmf_pcie_setup_retry(struct brcmf_pciedev_info *devinfo, int err)
++{
++	struct device *dev = &devinfo->pdev->dev;
++	struct brcmf_bus *bus = dev_get_drvdata(dev);
++	struct brcmf_fw_request *fwreq;
++
++	if (!devinfo->ci || devinfo->setup_attempt >= BRCMF_PCIE_SETUP_RETRIES)
++		return false;
++	devinfo->setup_attempt++;
++	dev_warn(dev, "firmware bring-up failed (%d), chip reset and reload %u of %u\n",
++		 err, devinfo->setup_attempt, BRCMF_PCIE_SETUP_RETRIES);
++
++	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
++	brcmf_pcie_intr_disable(devinfo);
++	brcmf_pcie_release_irq(devinfo);
++	brcmf_pcie_release_scratchbuffers(devinfo);
++	brcmf_pcie_release_ringbuffers(devinfo);
++	kfree(bus->msgbuf->flowrings);
++	bus->msgbuf->flowrings = NULL;
++	release_firmware(devinfo->clm_fw);
++	devinfo->clm_fw = NULL;
++	release_firmware(devinfo->txcap_fw);
++	devinfo->txcap_fw = NULL;
++
++	brcmf_pcie_chip_quiesce(devinfo);
++
++	fwreq = brcmf_pcie_prepare_fw_request(devinfo);
++	if (!fwreq)
++		return false;
++	if (brcmf_fw_get_firmwares(dev, fwreq, brcmf_pcie_setup)) {
++		kfree(fwreq);
++		return false;
++	}
++	return true;
++}
++
+ static void brcmf_pcie_setup(struct device *dev, int ret,
+ 			     struct brcmf_fw_request *fwreq)
+ {
+@@ -3704,6 +3782,10 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
+ 
+ 	brcmf_pcie_fwcon_timer(devinfo, true);
+ 
++	dev_info(dev, "firmware bring-up complete after %u reload(s)\n",
++		 devinfo->setup_attempt);
++	devinfo->setup_attempt = 0;
++
+ 	return;
+ 
+ fail:
+@@ -3713,7 +3795,14 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
+ 	}
+ 	brcmf_err(bus, "Dongle setup failed\n");
+ 	brcmf_pcie_bus_console_read(devinfo, true);
+-	brcmf_fw_crashed(dev);
++	/* No brcmf_fw_crashed() here: its bus reset work would start a second
++	 * reload alongside the retry or the release below.
++	 */
++	if (brcmf_pcie_setup_retry(devinfo, ret))
++		return;
++	dev_err(dev, "firmware bring-up failed after %u reload(s), giving up\n",
++		devinfo->setup_attempt);
++	brcmf_pcie_chip_quiesce(devinfo);
+ 	device_release_driver(dev);
+ }
+ 

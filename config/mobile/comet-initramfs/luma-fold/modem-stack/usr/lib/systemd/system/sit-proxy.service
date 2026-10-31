@@ -1,0 +1,18 @@
+[Unit]
+Description=Samsung SIT control port multiplexer
+Documentation=file:/usr/share/doc/exynos-modem/README.md
+Before=ModemManager.service
+
+[Service]
+# Opens /dev/wwan0sit0 and /dev/wwan0sit1 as they appear (and again after a CP
+# reset); no device binding, so it can be started ahead of the ports.
+ExecStart=/usr/bin/sit-proxy
+# Active only once both sockets listen.
+ExecStartPost=/bin/sh -c 'for i in $(seq 100); do [ -S /run/sit-proxy/0 ] && [ -S /run/sit-proxy/1 ] && exit 0; sleep 0.1; done; exit 1'
+RuntimeDirectory=sit-proxy
+RuntimeDirectoryMode=0755
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

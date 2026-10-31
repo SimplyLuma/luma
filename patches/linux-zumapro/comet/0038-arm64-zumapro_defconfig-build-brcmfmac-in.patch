@@ -1,0 +1,22 @@
+From 0761934c866967d9777631786f2964cde19af048 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 02:04:14 -0400
+Subject: [PATCH 38/88] arm64: zumapro_defconfig: build brcmfmac in
+
+---
+ arch/arm64/configs/zumapro_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index 3b633e70b..8703ed89c 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -279,7 +279,7 @@ CONFIG_USB_USBNET=y
+ # CONFIG_WLAN_VENDOR_ADMTEK is not set
+ # CONFIG_WLAN_VENDOR_ATH is not set
+ # CONFIG_WLAN_VENDOR_ATMEL is not set
+-CONFIG_BRCMFMAC=m
++CONFIG_BRCMFMAC=y
+ CONFIG_BRCMFMAC_USB=y
+ CONFIG_BRCMFMAC_PCIE=y
+ CONFIG_BRCMDBG=y

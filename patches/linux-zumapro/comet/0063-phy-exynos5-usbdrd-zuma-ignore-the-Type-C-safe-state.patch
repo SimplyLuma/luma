@@ -1,0 +1,42 @@
+From 0203419b692a6a507fb0d7ea77fd4f79e36601d4 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 23:36:56 -0400
+Subject: [PATCH 63/88] phy: exynos5-usbdrd: zuma: ignore the Type-C safe state
+ on USB
+
+TCPM requests TYPEC_STATE_SAFE when it registers and on every port
+reset. With a cable attached at boot that request can arrive after the
+controller has already brought up a SuperSpeed link; parking the TCA
+on NC then removes the SS lanes from under it and the host falls back
+to high-speed for the rest of the connection.
+
+The safe state only matters around alternate mode changes, so keep the
+TCA on USB when it is requested from USB, and only park it on NC when
+leaving a DisplayPort configuration.
+---
+ drivers/phy/samsung/phy-exynos5-usbdrd.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/phy/samsung/phy-exynos5-usbdrd.c b/drivers/phy/samsung/phy-exynos5-usbdrd.c
+index 2780121eb..b0bfee115 100644
+--- a/drivers/phy/samsung/phy-exynos5-usbdrd.c
++++ b/drivers/phy/samsung/phy-exynos5-usbdrd.c
+@@ -2128,6 +2128,18 @@ static int exynos5_usbdrd_mode_sw_set(struct typec_mux_dev *mux,
+ 
+ 	switch (state->mode) {
+ 	case TYPEC_STATE_SAFE:
++		/*
++		 * The USB Safe State only matters around an alternate mode
++		 * change. TCPM also requests it when it registers and on every
++		 * port reset; with a cable attached at boot that can arrive
++		 * after the controller has already trained SuperSpeed, and
++		 * parking the TCA on NC then pulls the lanes from under the
++		 * link, leaving the host on high-speed. Stay on USB.
++		 */
++		if (phy_drd->tca_mux == ZUMA_TCA_MUX_USB31) {
++			dev_dbg(phy_drd->dev, "TCA: ignoring safe state on USB\n");
++			return 0;
++		}
+ 		tca_mux = ZUMA_TCA_MUX_NC;
+ 		break;
+ 	case TYPEC_STATE_USB:

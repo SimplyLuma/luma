@@ -1,0 +1,247 @@
+From 961df0dcbab4834479e2f9331c73b4b6d66dd885 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Fri, 30 Oct 2026 09:55:07 -0400
+Subject: [PATCH 88/88] net: wwan: s5xxx: log rejected and discarded RFS
+ requests
+
+---
+ drivers/net/wwan/s5xxx_modem.c | 109 +++++++++++++++++++++++++++++----
+ 1 file changed, 98 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index 27cb028f8..867b77f31 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -590,6 +590,7 @@ struct s5xxx_rfs_file {
+ 	loff_t			woff;	/* write cursor */
+ 	size_t			wremain;	/* bytes left to sink */
+ 	u16			token;	/* active IO token, echoed in chunks */
++	char			name[96];	/* requested path (logging only) */
+ };
+ 
+ struct s5xxx_modem;
+@@ -2612,6 +2613,31 @@ struct s5xxx_rfs_frame {
+ 	u8			data[];
+ };
+ 
++/*
++ * Every RFS request the server rejects or discards is logged (path, op, error;
++ * never file contents).  Its own ratelimit so a CP burst at attach is not cut
++ * to the default ten lines.  The CP itself still sees status 0 with size 0.
++ */
++static DEFINE_RATELIMIT_STATE(s5xxx_rfs_log_rs, 5 * HZ, 200);
++#define s5xxx_rfs_log(sm, fmt, ...)					\
++	do {								\
++		if (__ratelimit(&s5xxx_rfs_log_rs))			\
++			dev_info((sm)->dev, "RFS " fmt, ##__VA_ARGS__);	\
++	} while (0)
++
++static const char *s5xxx_rfs_nv_name(u32 fid);
++
++/* Name of the file behind fid for the log: the OPEN path or the NV name. */
++static const char *s5xxx_rfs_fname(struct s5xxx_modem *sm, u32 fid)
++{
++	const char *nv;
++
++	if (fid < S5XXX_RFS_MAXFID && sm->rfs_files[fid].name[0])
++		return sm->rfs_files[fid].name;
++	nv = s5xxx_rfs_nv_name(fid);
++	return nv ? nv : "?";
++}
++
+ /* Send an RFS app frame, retrying while the RAW tx ring is momentarily full. */
+ static void s5xxx_rfs_send(struct s5xxx_modem *sm, const u8 *frame, u32 len)
+ {
+@@ -2655,6 +2681,15 @@ static void s5xxx_rfs_read_step(struct s5xxx_modem *sm, u32 fid)
+ 	u8 *tx = sm->rfs_txbuf;
+ 
+ 	if (!clen || !e->fw || e->roff + clen > e->fw->size) {
++		if (clen && !e->fw)
++			s5xxx_rfs_log(sm, "reject read fid=%u \"%s\" off=%lld len=%zu: %d (not served)\n",
++				      fid, s5xxx_rfs_fname(sm, fid),
++				      (long long)e->roff, e->rremain, -ENOENT);
++		else if (clen)
++			s5xxx_rfs_log(sm, "reject read fid=%u \"%s\" off=%lld len=%zu: %d (past size %zu)\n",
++				      fid, s5xxx_rfs_fname(sm, fid),
++				      (long long)e->roff, e->rremain, -EINVAL,
++				      e->fw->size);
+ 		s5xxx_rfs_op_status(sm, e->token, fid, 0);
+ 		return;
+ 	}
+@@ -2694,23 +2729,37 @@ static int s5xxx_rfs_open_path(struct s5xxx_modem *sm, struct s5xxx_rfs_file *e,
+ 	const char *rel;
+ 	int ret;
+ 
+-	if (plen >= sizeof(name))
++	if (plen >= sizeof(name)) {
++		s5xxx_rfs_log(sm, "reject open \"%*pE\" (plen %u): %d\n",
++			      (int)min_t(u32, plen, 128), path, plen,
++			      -ENAMETOOLONG);
+ 		return -ENAMETOOLONG;
++	}
+ 	memcpy(name, path, plen);
+ 	name[plen] = '\0';
++	strscpy(e->name, name, sizeof(e->name));
+ 
+ 	/* Whitelist: carrier config only, no path traversal (like rfsd). */
+ 	if (strstr(name, "..") ||
+-	    (!strstr(name, "carrierconfig") && !strstr(name, "confpack")))
++	    (!strstr(name, "carrierconfig") && !strstr(name, "confpack"))) {
++		s5xxx_rfs_log(sm, "reject open \"%*pE\": %d\n",
++			      (int)strlen(name), name, -EPERM);
+ 		return -EPERM;
++	}
+ 	rel = strstr(name, "carrierconfig/");
+-	if (!rel)
++	if (!rel) {
++		s5xxx_rfs_log(sm, "reject open \"%*pE\": %d\n",
++			      (int)strlen(name), name, -EINVAL);
+ 		return -EINVAL;
++	}
+ 	rel += strlen("carrierconfig/");
+ 	scnprintf(fw, sizeof(fw), "google/%s/%s/%s", sm->var->fw_dir,
+ 		  S5XXX_CC_DIR, rel);
+ 	ret = request_firmware_direct(&e->fw, fw, sm->dev);
+ 	dev_dbg(sm->dev, "RFS serve %s: %d\n", fw, ret);
++	if (ret)
++		s5xxx_rfs_log(sm, "reject open \"%*pE\" (fw %s): %d\n",
++			      (int)strlen(name), name, fw, ret);
+ 	return ret;
+ }
+ 
+@@ -2731,12 +2780,21 @@ static void s5xxx_rfs_open_nv(struct s5xxx_modem *sm, struct s5xxx_rfs_file *e,
+ 	const char *name = s5xxx_rfs_nv_name(fid);
+ 	char path[S5XXX_FW_PATH_MAX];
+ 
++	int ret;
++
+ 	e->used = true;
+-	if (!name)
++	if (!name) {
++		s5xxx_rfs_log(sm, "reject open_fid fid=%u: %d (no NV mapping)\n",
++			      fid, -ENOENT);
+ 		return;
++	}
+ 	s5xxx_fw_path(sm, path, sizeof(path), name);
+-	if (!request_firmware_direct(&e->fw, path, sm->dev))
++	ret = request_firmware_direct(&e->fw, path, sm->dev);
++	if (!ret)
+ 		e->size = e->fw->size;
++	else
++		s5xxx_rfs_log(sm, "reject open_fid fid=%u \"%s\" (fw %s): %d\n",
++			      fid, name, path, ret);
+ }
+ 
+ /* Handle one CP RFS request (process context, single-threaded via rfs_work). */
+@@ -2752,8 +2810,12 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 			return;
+ 		fid = get_unaligned_le32(f + 8);
+ 		plen = get_unaligned_le32(f + 0xc);
+-		if (fid >= S5XXX_RFS_MAXFID)
++		if (fid >= S5XXX_RFS_MAXFID) {
++			s5xxx_rfs_log(sm, "drop open fid=%u \"%*pE\": %d (fid out of range)\n",
++				      fid, (int)min_t(u32, min_t(u32, plen, n - 0x10), 128),
++				      f + 0x10, -EBADF);
+ 			return;
++		}
+ 		if (0x10 + plen > n)
+ 			plen = n - 0x10;
+ 		e = &sm->rfs_files[fid];
+@@ -2765,8 +2827,11 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		return;
+ 	case S5XXX_RFS_C_OPEN_FID:		/* 7: open an NV file by id */
+ 		fid = get_unaligned_le32(f + 8);
+-		if (fid >= S5XXX_RFS_MAXFID)
++		if (fid >= S5XXX_RFS_MAXFID) {
++			s5xxx_rfs_log(sm, "drop open_fid fid=%u: %d (fid out of range)\n",
++				      fid, -EBADF);
+ 			return;
++		}
+ 		e = &sm->rfs_files[fid];
+ 		s5xxx_rfs_close_file(e);
+ 		s5xxx_rfs_open_nv(sm, e, fid);
+@@ -2779,13 +2844,18 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		off = get_unaligned_le32(f + 0xc);
+ 		iolen = get_unaligned_le32(f + 0x10);
+ 		iotype = get_unaligned_le32(f + 0x14);
+-		if (fid >= S5XXX_RFS_MAXFID)
++		if (fid >= S5XXX_RFS_MAXFID) {
++			s5xxx_rfs_log(sm, "drop io fid=%u type=%u off=%u len=%u: %d (fid out of range)\n",
++				      fid, iotype, off, iolen, -EBADF);
+ 			return;
++		}
+ 		e = &sm->rfs_files[fid];
+ 		/* NV files may be IO_REQUEST'd without a preceding OPEN_FID. */
+ 		if (!e->used && s5xxx_rfs_nv_name(fid))
+ 			s5xxx_rfs_open_nv(sm, e, fid);
+ 		if (!e->used) {			/* never leave a request unanswered */
++			s5xxx_rfs_log(sm, "reject io fid=%u type=%u off=%u len=%u: %d (not open)\n",
++				      fid, iotype, off, iolen, -EBADF);
+ 			s5xxx_rfs_op_status(sm, token, fid, 0);
+ 			return;
+ 		}
+@@ -2795,10 +2865,16 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 			e->rremain = iolen;
+ 			s5xxx_rfs_read_step(sm, fid);
+ 		} else if (iotype == S5XXX_RFS_IO_WRITE) {
++			s5xxx_rfs_log(sm, "discard write fid=%u \"%s\" off=%u len=%u: %d (writes not stored)\n",
++				      fid, s5xxx_rfs_fname(sm, fid), off, iolen,
++				      -EROFS);
+ 			e->woff = off;
+ 			e->wremain = iolen;
+ 			s5xxx_rfs_write_req(sm, fid);
+ 		} else {
++			s5xxx_rfs_log(sm, "reject io fid=%u \"%s\" type=%u: %d (unknown io type)\n",
++				      fid, s5xxx_rfs_fname(sm, fid), iotype,
++				      -EOPNOTSUPP);
+ 			s5xxx_rfs_op_status(sm, token, fid, 0);
+ 		}
+ 		return;
+@@ -2806,8 +2882,11 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		if (n < 0x10)
+ 			return;
+ 		fid = get_unaligned_le32(f + 0xc);
+-		if (fid >= S5XXX_RFS_MAXFID || !sm->rfs_files[fid].used)
++		if (fid >= S5XXX_RFS_MAXFID || !sm->rfs_files[fid].used) {
++			s5xxx_rfs_log(sm, "drop read-ack fid=%u: %d (not open)\n",
++				      fid, -EBADF);
+ 			return;
++		}
+ 		e = &sm->rfs_files[fid];
+ 		if (e->rremain)
+ 			s5xxx_rfs_read_step(sm, fid);
+@@ -2818,8 +2897,11 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		if (n < 0x14)
+ 			return;
+ 		fid = get_unaligned_le32(f + 0xc);
+-		if (fid >= S5XXX_RFS_MAXFID || !sm->rfs_files[fid].used)
++		if (fid >= S5XXX_RFS_MAXFID || !sm->rfs_files[fid].used) {
++			s5xxx_rfs_log(sm, "drop write-data fid=%u: %d (not open)\n",
++				      fid, -EBADF);
+ 			return;
++		}
+ 		clen = get_unaligned_le32(f + 0x10);
+ 		e = &sm->rfs_files[fid];
+ 		e->woff += clen;
+@@ -2831,8 +2913,11 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		return;
+ 	case S5XXX_RFS_C_CLOSE:			/* 5: close + ack */
+ 		fid = get_unaligned_le32(f + 8);
+-		if (fid >= S5XXX_RFS_MAXFID)
++		if (fid >= S5XXX_RFS_MAXFID) {
++			s5xxx_rfs_log(sm, "drop close fid=%u: %d (fid out of range)\n",
++				      fid, -EBADF);
+ 			return;
++		}
+ 		s5xxx_rfs_close_file(&sm->rfs_files[fid]);
+ 		s5xxx_rfs_op_status(sm, token, fid, 0);
+ 		return;
+@@ -2840,6 +2925,8 @@ static void s5xxx_rfs_handle(struct s5xxx_modem *sm, const u8 *f, u32 n)
+ 		return;
+ 	default:
+ 		dev_dbg(sm->dev, "RFS unknown cmd %#x\n", cmd);
++		s5xxx_rfs_log(sm, "drop cmd=%#x len=%u: %d (unknown cmd)\n",
++			      cmd, n, -EOPNOTSUPP);
+ 		return;
+ 	}
+ }

@@ -1,0 +1,81 @@
+From 5275e2ce3a82d2f9b24bce0d695b7b081f678894 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:31:14 -0400
+Subject: [PATCH 64/88] Bluetooth: Add HCI_QUIRK_BROKEN_EXT_ADV
+
+Some controllers advertise LE Extended Advertising but, once an extended
+advertising command has been issued, refuse legacy LE commands with
+Command Disallowed. A controller that also needs legacy scanning
+(HCI_QUIRK_BROKEN_EXT_SCAN) then cannot scan at all, since the host
+issues extended advertising commands during init.
+
+Add a quirk that treats the Extended and Periodic Advertising features
+as unsupported.
+---
+ include/net/bluetooth/hci.h      | 13 +++++++++++++
+ include/net/bluetooth/hci_core.h |  6 ++++--
+ net/bluetooth/hci_sync.c         |  3 +++
+ 3 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index 1641d879d..8722fcfe6 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -375,6 +375,19 @@ enum {
+ 	 */
+ 	HCI_QUIRK_BROKEN_READ_PAGE_SCAN_TYPE,
+ 
++	/*
++	 * When this quirk is set, the LE Extended Advertising and LE Periodic
++	 * Advertising features are treated as not supported, so no extended
++	 * or periodic advertising command is used. This is required for
++	 * controllers that refuse legacy LE commands with Command Disallowed
++	 * once an extended advertising command was issued, and that need
++	 * legacy scanning (see HCI_QUIRK_BROKEN_EXT_SCAN).
++	 *
++	 * This quirk can be set before hci_register_dev is called or
++	 * during the hdev->setup vendor callback.
++	 */
++	HCI_QUIRK_BROKEN_EXT_ADV,
++
+ 	__HCI_NUM_QUIRKS,
+ };
+ 
+diff --git a/include/net/bluetooth/hci_core.h b/include/net/bluetooth/hci_core.h
+index 4105c446c..bdf633875 100644
+--- a/include/net/bluetooth/hci_core.h
++++ b/include/net/bluetooth/hci_core.h
+@@ -2042,7 +2042,8 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
+ #define use_ext_conn(dev) (((dev)->commands[37] & 0x80) && \
+ 	!hci_test_quirk((dev), HCI_QUIRK_BROKEN_EXT_CREATE_CONN))
+ /* Extended advertising support */
+-#define ext_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_EXT_ADV))
++#define ext_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_EXT_ADV) && \
++			      !hci_test_quirk((dev), HCI_QUIRK_BROKEN_EXT_ADV))
+ 
+ /* Maximum advertising length */
+ #define max_adv_len(dev) \
+@@ -2059,7 +2060,8 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
+ 							 HCI_QUIRK_BROKEN_EXT_CREATE_CONN))
+ 
+ /* Periodic advertising support */
+-#define per_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_PERIODIC_ADV))
++#define per_adv_capable(dev) (((dev)->le_features[1] & HCI_LE_PERIODIC_ADV) && \
++			      !hci_test_quirk((dev), HCI_QUIRK_BROKEN_EXT_ADV))
+ 
+ /* CIS Master/Slave and BIS support */
+ #define iso_capable(dev) (cis_capable(dev) || bis_capable(dev))
+diff --git a/net/bluetooth/hci_sync.c b/net/bluetooth/hci_sync.c
+index 74e2b04c8..c0ff1be58 100644
+--- a/net/bluetooth/hci_sync.c
++++ b/net/bluetooth/hci_sync.c
+@@ -5242,6 +5242,9 @@ static const struct {
+ 			 "and will not be used."),
+ 	HCI_QUIRK_BROKEN(LE_CODED,
+ 			 "HCI LE Coded PHY feature bit is set, "
++			 "but its usage is not supported."),
++	HCI_QUIRK_BROKEN(EXT_ADV,
++			 "HCI LE Extended Advertising feature bit is set, "
+ 			 "but its usage is not supported.")
+ };
+ 

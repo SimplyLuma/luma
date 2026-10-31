@@ -1,0 +1,135 @@
+From 31319d29575e0c6bcafab6e00b10a37a46217b9c Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 22:49:33 -0400
+Subject: [PATCH 48/88] ASoC: google: aoc: run the telephony endpoint on the
+ clock
+
+The telephony endpoint is a route, not a data path: opening it builds
+the AOC's call route and the downlink comes from the modem, so the AOC
+never reads what is written to it and its ring never moves. A sink
+opened on it therefore stalled at once. Consume that stream on the
+clock instead, at the nominal rate and no further than what was
+written, and drop the frames, so the sink runs for the life of a call.
+---
+ sound/soc/google/aoc-audio.c | 56 ++++++++++++++++++++++++++++++++++--
+ 1 file changed, 53 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index 562aa9dcc..0779aa5fb 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -365,6 +365,8 @@ struct aoc_audio_stream {
+ 	u64 consumed;				/* bytes the AOC has read since prepare */
+ 	unsigned int jumps;			/* read-counter discontinuities seen */
+ 	struct device *dev;
++	ktime_t started;			/* voice: when the stream started */
++	u64 periods;				/* voice: periods reported so far */
+ 	snd_pcm_uframes_t pushed;		/* frames handed to the ring */
+ 	spinlock_t ring_lock;			/* serialises ring fill: .ack vs tick */
+ };
+@@ -970,6 +972,7 @@ static const struct snd_pcm_hardware aoc_voice_hw = {
+  */
+ static void aoc_pcm_push(struct aoc_audio_stream *s);
+ static void aoc_pcm_pull(struct aoc_audio_stream *s);
++static void aoc_pcm_voice_clock(struct aoc_audio_stream *s);
+ 
+ static void aoc_pcm_period_work(struct work_struct *w)
+ {
+@@ -992,6 +995,23 @@ static enum hrtimer_restart aoc_pcm_tick(struct hrtimer *t)
+ 
+ 	hrtimer_forward_now(t, ns_to_ktime(AOC_PCM_TICK_NS));
+ 
++	if (s->voice) {
++		struct snd_pcm_runtime *rt = s->substream->runtime;
++		unsigned long flags;
++		u64 periods;
++
++		spin_lock_irqsave(&s->ring_lock, flags);
++		aoc_pcm_voice_clock(s);
++		periods = div_u64(s->consumed,
++				  frames_to_bytes(rt, rt->period_size));
++		spin_unlock_irqrestore(&s->ring_lock, flags);
++		if (periods != s->periods) {
++			s->periods = periods;
++			schedule_work(&s->period_work);
++		}
++		return HRTIMER_RESTART;
++	}
++
+ 	consumed = aoc_service_progress(s->svc, s->playback);
+ 	if (consumed != s->prev_consumed) {
+ 		s->prev_consumed = consumed;
+@@ -1133,6 +1153,22 @@ static void aoc_pcm_update_consumed(struct aoc_audio_stream *s)
+ 	s->rx_prev = rx;
+ }
+ 
++/*
++ * The telephony endpoint is a route, not a data path: the AOC never reads what
++ * is written to it (the downlink comes from the modem), so its ring never
++ * moves.  Run that stream on the clock instead, consuming at the nominal rate
++ * and no further than what was written, so a sink opened on it runs cleanly
++ * for the life of a call.  Called with ring_lock held.
++ */
++static void aoc_pcm_voice_clock(struct aoc_audio_stream *s)
++{
++	struct snd_pcm_runtime *rt = s->substream->runtime;
++	u64 ns = ktime_to_ns(ktime_sub(ktime_get(), s->started));
++	u64 bytes = frames_to_bytes(rt, div_u64(ns * rt->rate, NSEC_PER_SEC));
++
++	s->consumed = min(bytes, (u64)frames_to_bytes(rt, s->pushed));
++}
++
+ static int aoc_pcm_prepare(struct snd_soc_component *comp,
+ 			   struct snd_pcm_substream *substream)
+ {
+@@ -1145,6 +1181,7 @@ static int aoc_pcm_prepare(struct snd_soc_component *comp,
+ 	s->prev_consumed = s->rx_prev;
+ 	s->consumed = 0;
+ 	s->jumps = 0;
++	s->periods = 0;
+ 	s->pushed = 0;
+ 	aoc_pcm_log_ring(s, "prepare");
+ 	return 0;
+@@ -1165,6 +1202,14 @@ static void aoc_pcm_push(struct aoc_audio_stream *s)
+ 	if (!s->playback)
+ 		return;
+ 
++	/* The telephony endpoint takes the frames and drops them. */
++	if (s->voice) {
++		spin_lock_irqsave(&s->ring_lock, flags);
++		s->pushed = READ_ONCE(rt->control->appl_ptr);
++		spin_unlock_irqrestore(&s->ring_lock, flags);
++		return;
++	}
++
+ 	/* .ack (a userspace write) and the refill work both call this.  Without
+ 	 * serialisation they race: both read the same s->pushed, write the same
+ 	 * staging frames into the ring twice, and double-advance the pointer,
+@@ -1243,7 +1288,10 @@ static snd_pcm_uframes_t aoc_pcm_pointer(struct snd_soc_component *comp,
+ 		return s->pushed % rt->buffer_size;
+ 
+ 	spin_lock_irqsave(&s->ring_lock, flags);
+-	aoc_pcm_update_consumed(s);
++	if (s->voice)
++		aoc_pcm_voice_clock(s);
++	else
++		aoc_pcm_update_consumed(s);
+ 	div_u64_rem(s->consumed, buf_bytes, &pos);
+ 	spin_unlock_irqrestore(&s->ring_lock, flags);
+ 	return bytes_to_frames(rt, pos);
+@@ -1417,11 +1465,13 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 	dev_dbg(comp->dev, "%s trigger %d\n",
+ 		s->voice ? "voice" : s->playback ? "playback" : "capture", cmd);
+ 
+-	if (on)
++	if (on) {
++		s->started = ktime_get();
+ 		hrtimer_start(&s->tick, ns_to_ktime(AOC_PCM_TICK_NS),
+ 			      HRTIMER_MODE_REL);
+-	else
++	} else {
+ 		hrtimer_try_to_cancel(&s->tick);
++	}
+ 
+ 	/*
+ 	 * Capture starts/stops the mics; playback's route is already up.

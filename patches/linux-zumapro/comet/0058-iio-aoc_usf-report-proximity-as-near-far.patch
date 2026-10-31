@@ -1,0 +1,81 @@
+From 802da3ea554cadeb1f5b07223b893d658d5e8fe5 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 17:51:55 -0400
+Subject: [PATCH 58/88] iio: aoc_usf: report proximity as near/far
+
+The AoC reports proximity as a distance in cm (0 = near); report 100 when it rounds to 0 cm and 0 otherwise, so the value rises as an object comes close, as IIO proximity consumers expect.
+---
+ drivers/iio/common/aoc_usf/usf-iio.c | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/iio/common/aoc_usf/usf-iio.c b/drivers/iio/common/aoc_usf/usf-iio.c
+index 74cf8077d..f7cb246cf 100644
+--- a/drivers/iio/common/aoc_usf/usf-iio.c
++++ b/drivers/iio/common/aoc_usf/usf-iio.c
+@@ -134,6 +134,7 @@ struct usf_sensor {
+ 	 */
+ 	s32 last[3];
+ 	bool have_last;
++	bool distance_to_near;	/* see usf_type_map */
+ 	bool dcount_logged;	/* one-shot report of the firmware's value count */
+ };
+ 
+@@ -178,6 +179,7 @@ static const struct iio_chan_spec_ext_info usf_ext_info[] = {
+ /* Fixed-point fraction bits for the resolution divisor (res_q). */
+ #define USF_SCALE_Q	30
+ #define USF_NANO	1000000000ULL
++#define USF_PROX_NEAR	100
+ 
+ /* Forced scan masks (all data channels; timestamp is tracked separately). */
+ static const unsigned long usf_scan_masks_3axis[] = { GENMASK(2, 0), 0 };
+@@ -291,6 +293,14 @@ static const struct usf_type_map {
+ 	 * temperature degC -> milli-degC is *1000, so 1e12.
+ 	 */
+ 	u64 unit_nano;
++	/*
++	 * Proximity in Android units is a distance in cm, 0 when something is
++	 * near and the sensor's maximum range when nothing is. IIO consumers
++	 * (iio-sensor-proxy's PROXIMITY_NEAR_LEVEL) expect the opposite sense,
++	 * a value that rises as an object comes close, so report it as
++	 * USF_PROX_NEAR (near) or 0 (far) instead.
++	 */
++	bool distance_to_near;
+ } usf_type_maps[] = {
+ 	{ "Accelerometer", "usf_accel", usf_accel_channels,
+ 	  ARRAY_SIZE(usf_accel_channels), 3, usf_scan_masks_3axis, 1000000000ULL },
+@@ -302,7 +312,8 @@ static const struct usf_type_map {
+ 	  ARRAY_SIZE(usf_light_channels), 1, usf_scan_masks_scalar, 1000000000ULL },
+ 	/* "Proximity" alone also matches gesture/voice/AAD sensors; be specific */
+ 	{ "TMD3733 Proximity", "usf_prox", usf_prox_channels,
+-	  ARRAY_SIZE(usf_prox_channels), 1, usf_scan_masks_scalar, 1000000000ULL },
++	  ARRAY_SIZE(usf_prox_channels), 1, usf_scan_masks_scalar, 1000000000ULL,
++	  .distance_to_near = true },
+ 	{ "Barometer", "usf_baro", usf_pressure_channels,
+ 	  ARRAY_SIZE(usf_pressure_channels), 1, usf_scan_masks_scalar, 100000000ULL },
+ 	/* the same sensor, named after the part rather than the function */
+@@ -608,6 +619,13 @@ static void usf_handle_sample(struct usf_iio *usf, const u8 *pay, u32 plen)
+ 		for (d = 0; d < (u32)n; d++)
+ 			scan.chan[d] = usf_scale_sample(match,
+ 				get_unaligned_le32(pay + off + 8 + d * 4));
++		if (match->distance_to_near && n) {
++			/* near when the distance rounds to 0 cm */
++			u64 cm = usf_f32_scaled(get_unaligned_le32(pay + off + 8),
++						1, 0, NULL);
++
++			scan.chan[0] = cm ? 0 : USF_PROX_NEAR;
++		}
+ 
+ 		memcpy(match->last, scan.chan, sizeof(match->last));
+ 		match->have_last = true;
+@@ -734,6 +752,11 @@ static int usf_register_sensor(struct usf_iio *usf, u32 handle,
+ 	s->ndata = map->ndata;
+ 	s->samp_freq = rate > 0 ? rate : 50;
+ 	usf_set_scale(s, map, res_bits);
++	s->distance_to_near = map->distance_to_near;
++	if (s->distance_to_near) {
++		s->res_q = 0;
++		s->scale_nano = USF_NANO;	/* unitless 0 / USF_PROX_NEAR */
++	}
+ 
+ 	indio->name = map->iio_name;
+ 	/* the USF name tells the instances of one type apart (two IMUs, ALS) */

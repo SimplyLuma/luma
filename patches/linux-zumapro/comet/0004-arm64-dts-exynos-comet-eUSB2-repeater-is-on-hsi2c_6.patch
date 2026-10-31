@@ -1,0 +1,43 @@
+From ddde7934bea8503591f52657b39ed39f91cfc31f Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 14:48:57 -0400
+Subject: [PATCH 04/88] arm64: dts: exynos: comet: eUSB2 repeater is on hsi2c_6
+
+---
+ .../boot/dts/exynos/google/zumapro-comet.dts  | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 91f2cfd26..29c10f0d6 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -182,3 +182,29 @@ controller-data {
+ 		};
+ 	};
+ };
++
++/*
++ * eUSB2 repeater: caimito boards put it on hsi2c_9, but production comet puts
++ * the same part (same tuning) on hsi2c_6 (vendor zuma-comet-usb.dtsi). Left on
++ * hsi2c_9 it never probes, the eUSB2 PHY defers on it, and DWC3 never gets a
++ * UDC, so USB device mode stays down.
++ */
++/delete-node/ &eusb_repeater;
++
++&hsi2c_6 {
++	eusb_repeater: eusb-repeater@3e {
++		compatible = "samsung,eusb-repeater";
++		reg = <0x3e>;
++		#phy-cells = <0>;
++		vdd33-supply = <&reg_placeholder>;
++		samsung,tune-param = <0x50 0x0a>,
++				     <0x70 0x7c>,
++				     <0x71 0x3c>,
++				     <0x72 0x92>,
++				     <0x73 0x83>,
++				     <0x77 0x00>,
++				     <0x78 0x0b>,
++				     <0x79 0x60>;
++		status = "okay";
++	};
++};

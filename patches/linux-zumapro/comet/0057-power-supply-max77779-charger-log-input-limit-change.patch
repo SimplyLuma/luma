@@ -1,0 +1,88 @@
+From 2bcd1829abe922c3fc1f4bb98438d57b64dc1b48 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 16:21:48 -0400
+Subject: [PATCH 57/88] power: supply: max77779-charger: log input limit
+ changes
+
+---
+ drivers/power/supply/max77779_charger.c | 29 +++++++++++++++++--------
+ 1 file changed, 20 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/power/supply/max77779_charger.c b/drivers/power/supply/max77779_charger.c
+index c08f271ee..72e43d9eb 100644
+--- a/drivers/power/supply/max77779_charger.c
++++ b/drivers/power/supply/max77779_charger.c
+@@ -71,6 +71,7 @@ struct max77779_charger {
+ 	bool charging;
+ 	bool hardware_fallback;
+ 	int last_details;
++	int last_input_ua;	/* last input limit logged */
+ 
+ 	/* charge profile from the device tree; nbands == 0 means none */
+ 	int nbands;
+@@ -699,6 +700,13 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 	ret = max77779_set_input_limit(chg, chg->input_limit_ua);
+ 	if (ret)
+ 		goto disable;
++	if (chg->input_limit_ua != chg->last_input_ua) {
++		dev_info(chg->dev, "input limit %d mA (%s)\n",
++			 chg->input_limit_ua / 1000,
++			 chg->hardware_fallback ? "VBUS only, USB default" :
++						  "from the USB-C source");
++		chg->last_input_ua = chg->input_limit_ua;
++	}
+ 
+ 	ret = regmap_update_bits(chg->regmap, MAX77779_CHGR_REG_CHG_CNFG_12,
+ 				 MAX77779_CHGR_REG_CHG_CNFG_12_CHGINSEL |
+@@ -730,9 +738,8 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 	if (ret && !chg->charging) {
+ 		chg->charging = true;
+ 		dev_info(chg->dev,
+-			 "wired charging started: input %d mA, charge %d mA to %d mV\n",
+-			 chg->input_limit_ua / 1000, chg->cc_ua / 1000,
+-			 chg->fv_mv);
++			 "wired charging started: charge %d mA to %d mV\n",
++			 chg->cc_ua / 1000, chg->fv_mv);
+ 	} else if (!ret && chg->charging) {
+ 		chg->charging = false;
+ 		dev_warn(chg->dev, "charger left the active state\n");
+@@ -747,6 +754,7 @@ static int max77779_sync_input(struct max77779_charger *chg)
+ 			   MAX77779_CHGR_REG_CHG_CNFG_12_CHGINSEL, 0);
+ 	chg->hardware_fallback = false;
+ 	chg->paused = false;
++	chg->last_input_ua = 0;
+ 	if (chg->charging) {
+ 		chg->charging = false;
+ 		dev_info(chg->dev, "wired charging stopped\n");
+@@ -840,10 +848,6 @@ static int max77779_parse_profile(struct max77779_charger *chg)
+ 				     "charge profile without a battery temperature\n");
+ 
+ 	chg->nbands = n - 1;
+-	for (i = 0; i < chg->nbands; i++)
+-		dev_info(dev, "band %d: %d..%d C, %d mA to %d mV\n", i,
+-			 chg->band_temp[i] / 10, chg->band_temp[i + 1] / 10,
+-			 chg->band_cc_ua[i] / 1000, chg->band_fv_mv[i]);
+ 	return 0;
+ }
+ 
+@@ -969,11 +973,18 @@ static int max77779_charger_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, chg);
+ 	schedule_delayed_work(&chg->work, 0);
+ 
+-	if (chg->nbands)
++	if (chg->nbands) {
++		int i;
++
+ 		dev_info(&pdev->dev,
+ 			 "registered, temperature-banded charging (input up to %d mA)\n",
+ 			 chg->profile_input_max_ua / 1000);
+-	else
++		for (i = 0; i < chg->nbands; i++)
++			dev_info(&pdev->dev, "band %d: %d..%d C, %d mA to %d mV\n",
++				 i, chg->band_temp[i] / 10,
++				 chg->band_temp[i + 1] / 10,
++				 chg->band_cc_ua[i] / 1000, chg->band_fv_mv[i]);
++	} else
+ 		dev_info(&pdev->dev,
+ 			 "registered, charge limited to %d mA at %d mV (input %d mA)\n",
+ 			 MAX77779_SAFE_CHARGE_CURRENT_UA / 1000,

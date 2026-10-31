@@ -1,0 +1,38 @@
+From 6554f444ce864db43249ecf97f26e9d6b86088ed Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 13:39:17 -0400
+Subject: [PATCH 29/88] arm64: dts: comet: inner panel rotation 90
+
+phoc applies the panel orientation as the output transform and showed the
+inner CT3B panel upside down with 270.
+---
+ arch/arm64/boot/dts/exynos/google/zumapro-comet-dual.dts  | 2 +-
+ arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-dual.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-dual.dts
+index 215573989..76798cda7 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet-dual.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-dual.dts
+@@ -37,7 +37,7 @@ inner_panel: panel@0 {
+ 			compatible = "google,gs-ct3b";
+ 			reg = <0>;
+ 			/* scans out with its top on the device's left */
+-			rotation = <270>;
++			rotation = <90>;
+ 
+ 			port {
+ 				inner_panel_in: endpoint {
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
+index 054469149..1e860c410 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-inner.dts
+@@ -51,7 +51,7 @@ inner_panel: panel@0 {
+ 			compatible = "google,gs-ct3b";
+ 			reg = <0>;
+ 			/* scans out with its top on the device's left */
+-			rotation = <270>;
++			rotation = <90>;
+ 
+ 			port {
+ 				inner_panel_in: endpoint {

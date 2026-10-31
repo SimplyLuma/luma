@@ -1,0 +1,27 @@
+From b634becdf538ca2582947e70ff886ba252258fe2 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:31:50 -0400
+Subject: [PATCH 08/88] arm64: dts: exynos: comet probe: outer touch on its
+ real LDO25S/LDO27S rails
+
+---
+ .../arm64/boot/dts/exynos/google/zumapro-comet-probe.dts | 9 ---------
+ 1 file changed, 9 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
+index d638b44dd..976f621e6 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-probe.dts
+@@ -20,12 +20,3 @@ &framebuffer0 {
+ 	status = "disabled";
+ };
+ 
+-/*
+- * Probe only: the s2mpg15 driver has no LDO25S/LDO27S yet, so feed the outer
+- * touch from the placeholder to learn whether the boot chain left those rails
+- * on. Not for the release DTB.
+- */
+-&outer_touch {
+-	vdd-supply = <&reg_placeholder>;
+-	avdd-supply = <&reg_placeholder>;
+-};

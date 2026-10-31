@@ -1,0 +1,21 @@
+From 91a6d7d5284c1218ae9a72aa1238c2727c79f66c Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:46:51 -0400
+Subject: [PATCH 24/88] arm64: zumapro_defconfig: enable fbcon rotation
+
+---
+ arch/arm64/configs/zumapro_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index 042dc485c..f5deeab82 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -405,6 +405,7 @@ CONFIG_DRM_PANEL_SAMSUNG_S6E8AA0=y
+ CONFIG_DRM_PANEL_SAMSUNG_SOFEF00=y
+ CONFIG_DRM_PANTHOR=m
+ CONFIG_DRM_SIMPLEDRM=y
++CONFIG_FRAMEBUFFER_CONSOLE_ROTATION=y
+ CONFIG_DRM_UDL=y
+ CONFIG_FB=y
+ CONFIG_BACKLIGHT_CLASS_DEVICE=y

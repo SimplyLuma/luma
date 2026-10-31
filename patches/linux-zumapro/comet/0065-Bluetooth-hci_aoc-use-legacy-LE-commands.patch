@@ -1,0 +1,33 @@
+From de67d9bba4a4624198c34d37fab339014207365a Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:31:14 -0400
+Subject: [PATCH 65/88] Bluetooth: hci_aoc: use legacy LE commands
+
+The BCM4390 behind the AOC accepts LE Set Extended Scan Parameters and
+Enable but never reports advertisements, while legacy scanning works.
+Legacy scan commands are refused with Command Disallowed after any
+extended LE command, so disable extended scanning, extended create
+connection and extended advertising.
+---
+ drivers/bluetooth/hci_aoc.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/bluetooth/hci_aoc.c b/drivers/bluetooth/hci_aoc.c
+index 080d76a2e..28e464695 100644
+--- a/drivers/bluetooth/hci_aoc.c
++++ b/drivers/bluetooth/hci_aoc.c
+@@ -807,6 +807,14 @@ static int aoc_bt_probe(struct platform_device *pdev)
+ 	hdev->setup = aoc_bt_setup;
+ 	/* Every close cuts power, and with it the patchram. */
+ 	hci_set_quirk(hdev, HCI_QUIRK_NON_PERSISTENT_SETUP);
++	/*
++	 * The BCM4390 accepts LE extended scanning but never reports what it
++	 * receives, and refuses legacy scanning once any extended LE command
++	 * was used, so stay on legacy LE commands throughout.
++	 */
++	hci_set_quirk(hdev, HCI_QUIRK_BROKEN_EXT_SCAN);
++	hci_set_quirk(hdev, HCI_QUIRK_BROKEN_EXT_CREATE_CONN);
++	hci_set_quirk(hdev, HCI_QUIRK_BROKEN_EXT_ADV);
+ 	hdev->set_bdaddr = btbcm_set_bdaddr;
+ 
+ 	platform_set_drvdata(pdev, bt);

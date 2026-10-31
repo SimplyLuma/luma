@@ -1,0 +1,54 @@
+From 6a0a3523f3c271fa1a6e7f6e97e45f5e2321d7ba Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 22:28:15 -0400
+Subject: [PATCH 28/88] arm64: luma diagnostics: register at early_initcall
+
+Look the PMU regmap up when a panic or restart happens, so early panics in
+built-in drivers also land in fastboot.
+---
+ arch/arm64/kernel/luma_diag.c | 21 +++++++++------------
+ 1 file changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/arch/arm64/kernel/luma_diag.c b/arch/arm64/kernel/luma_diag.c
+index 62d0658fc..a19b6ec25 100644
+--- a/arch/arm64/kernel/luma_diag.c
++++ b/arch/arm64/kernel/luma_diag.c
+@@ -16,12 +16,16 @@
+ #define LUMA_PMU_SYSIP_DAT0	0x0810
+ #define LUMA_REBOOT_BOOTLOADER	0xfc
+ 
+-static struct regmap *luma_pmu;
+-
++/*
++ * Registered at early_initcall, before the PMU probes, so a panic in an early
++ * built-in driver is covered too; the PMU regmap is looked up when needed.
++ */
+ static int luma_diag_panic(struct notifier_block *nb, unsigned long event, void *data)
+ {
+-	if (luma_pmu)
+-		regmap_write(luma_pmu, LUMA_PMU_SYSIP_DAT0, LUMA_REBOOT_BOOTLOADER);
++	struct regmap *pmu = exynos_get_pmu_regmap();
++
++	if (!IS_ERR_OR_NULL(pmu))
++		regmap_write(pmu, LUMA_PMU_SYSIP_DAT0, LUMA_REBOOT_BOOTLOADER);
+ 	return NOTIFY_DONE;
+ }
+ 
+@@ -38,16 +42,9 @@ static struct notifier_block luma_diag_reboot_nb = {
+ 
+ static int __init luma_diag_init(void)
+ {
+-	struct regmap *pmu = exynos_get_pmu_regmap();
+-
+-	if (IS_ERR_OR_NULL(pmu)) {
+-		pr_warn("luma-diag: no PMU regmap; panics reboot normally\n");
+-		return 0;
+-	}
+-	luma_pmu = pmu;
+ 	atomic_notifier_chain_register(&panic_notifier_list, &luma_diag_nb);
+ 	register_reboot_notifier(&luma_diag_reboot_nb);
+ 	pr_info("luma-diag: panic and restart go to the bootloader\n");
+ 	return 0;
+ }
+-late_initcall(luma_diag_init);
++early_initcall(luma_diag_init);

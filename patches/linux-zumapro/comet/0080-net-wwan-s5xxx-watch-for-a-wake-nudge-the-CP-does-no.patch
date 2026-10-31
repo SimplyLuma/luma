@@ -1,0 +1,175 @@
+From b75be62afeb7afa71cd7077861f43d79f8ca0469 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Mon, 26 Oct 2026 15:38:27 -0400
+Subject: [PATCH 80/88] net: wwan: s5xxx: watch for a wake nudge the CP does
+ not answer
+
+After long runs of park/relink cycles the CP has stopped answering
+AP2CP_WAKEUP for good with PHONE_ACTIVE still high. Check 500 ms after each
+nudge; if the link is still parked with a doorbell reserved and CP2AP_WAKEUP
+low, log the CP's status words and re-nudge with a fresh edge, up to five
+times per nudge.
+---
+ drivers/net/wwan/s5xxx_modem.c          | 50 +++++++++++++++++++++++++
+ drivers/pci/controller/dwc/pci-exynos.c | 18 +++++++++
+ include/linux/pcie-zumapro.h            |  1 +
+ 3 files changed, 69 insertions(+)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index aebe39d08..85d26c351 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -539,6 +539,14 @@ struct s5xxx_variant {
+  * they live in AP memory and the CP drains them after the next relink.
+  */
+ #define S5XXX_PARK_RETRY_MAX		10
++/*
++ * A parked CP answers an AP2CP_WAKEUP nudge within a few ms.  After long runs
++ * of park/relink cycles it has been seen to stop answering for good, with
++ * PHONE_ACTIVE still high; check 500 ms after each nudge, log the CP's state
++ * and re-nudge with a fresh edge a few times.
++ */
++#define S5XXX_WAKE_WD_MS		500
++#define S5XXX_WAKE_RETRIES		5
+ #define S5XXX_PARK_RETRY_MS		(S5XXX_FMT_BUSY_MS + 100)
+ 
+ #define S5XXX_CH_GNSS_BOOT		0xf0
+@@ -683,6 +691,8 @@ struct s5xxx_modem {
+ 	wait_queue_head_t	fmt_tx_wq;
+ 	unsigned long		fmt_busy_until;	/* inhibit park during an FMT transfer (jiffies) */
+ 	struct delayed_work	park_retry_work; /* re-try a deferred park (pm_wq) */
++	struct delayed_work	wake_wd;	/* a wake nudge the CP has not answered */
++	unsigned int		wake_tries;
+ 	unsigned int		park_retries;	/* consecutive deferred parks (pm_work only) */
+ 
+ 	/* RFS file channel (umts_rfs0, ch 0x29) on the NORM_RAW ring. */
+@@ -1034,6 +1044,9 @@ static void s5xxx_send_ipc_irq(struct s5xxx_modem *sm, u32 val)
+ 		 * doorbell -- exactly the CP-initiated wake path.
+ 		 */
+ 		zumapro_pcie_modem_wake(sm->rc_dev);
++		WRITE_ONCE(sm->wake_tries, 0);
++		queue_delayed_work(sm->pm_wq, &sm->wake_wd,
++				   msecs_to_jiffies(S5XXX_WAKE_WD_MS));
+ 	}
+ }
+ 
+@@ -1202,6 +1215,37 @@ static void s5xxx_park_retry_work(struct work_struct *work)
+ 	queue_work(sm->pm_wq, &sm->pm_work);
+ }
+ 
++static void s5xxx_wake_wd_work(struct work_struct *work)
++{
++	struct s5xxx_modem *sm = container_of(to_delayed_work(work),
++					      struct s5xxx_modem, wake_wd);
++	unsigned long flags;
++	unsigned int n;
++	bool stuck;
++
++	spin_lock_irqsave(&sm->lock, flags);
++	stuck = !sm->link_up && sm->db_reserved;
++	spin_unlock_irqrestore(&sm->lock, flags);
++	if (!stuck || !READ_ONCE(sm->online) ||
++	    gpiod_get_value_cansleep(sm->cp2ap_wakeup))
++		return;
++
++	n = READ_ONCE(sm->wake_tries) + 1;
++	WRITE_ONCE(sm->wake_tries, n);
++	dev_warn_ratelimited(sm->dev,
++			     "CP did not answer the wake nudge (try %u/%u): phone_active %d cp2ap_msg %#x cp2ap_united %#x ap2cp_united %#x boot_stage %#x\n",
++			     n, S5XXX_WAKE_RETRIES,
++			     sm->cp_active ? gpiod_get_value_cansleep(sm->cp_active) : -1,
++			     readl(sm->ipc + S5XXX_IPC_CP2AP_MSG),
++			     readl(sm->ipc + S5XXX_IPC_CP2AP_STATUS),
++			     readl(sm->ipc + S5XXX_IPC_AP2CP_STATUS),
++			     readl(sm->msi + S5XXX_MSI_BOOT_STAGE));
++	if (n > S5XXX_WAKE_RETRIES)
++		return;
++	zumapro_pcie_modem_wake_pulse(sm->rc_dev);
++	queue_delayed_work(sm->pm_wq, &sm->wake_wd, msecs_to_jiffies(S5XXX_WAKE_WD_MS));
++}
++
+ static void s5xxx_pm_work(struct work_struct *work)
+ {
+ 	struct s5xxx_modem *sm = container_of(work, struct s5xxx_modem, pm_work);
+@@ -1397,6 +1441,8 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 		sm->link_up = false;
+ 		spin_unlock_irqrestore(&sm->lock, flags);
+ 		zumapro_pcie_modem_wake(sm->rc_dev);
++		queue_delayed_work(sm->pm_wq, &sm->wake_wd,
++				   msecs_to_jiffies(S5XXX_WAKE_WD_MS));
+ 	} else {
+ 		spin_unlock_irqrestore(&sm->lock, flags);
+ 	}
+@@ -4642,6 +4688,7 @@ static int s5xxx_dump_boot(struct s5xxx_modem *sm)
+ 	}
+ 	mutex_unlock(&sm->pcie_onoff_lock);
+ 	cancel_delayed_work_sync(&sm->park_retry_work);
++	cancel_delayed_work_sync(&sm->wake_wd);
+ 	cancel_work_sync(&sm->pm_work);
+ 	sm->link_up = true;
+ 
+@@ -5054,6 +5101,7 @@ static int s5xxx_probe(struct platform_device *pdev)
+ 	INIT_WORK(&sm->boot_work, s5xxx_boot_work);
+ 	INIT_WORK(&sm->pm_work, s5xxx_pm_work);
+ 	INIT_DELAYED_WORK(&sm->park_retry_work, s5xxx_park_retry_work);
++	INIT_DELAYED_WORK(&sm->wake_wd, s5xxx_wake_wd_work);
+ 	INIT_WORK(&sm->rfs_work, s5xxx_rfs_work);
+ 	INIT_LIST_HEAD(&sm->rfs_rxq);
+ 	spin_lock_init(&sm->rfs_lock);
+@@ -5449,6 +5497,7 @@ static void s5xxx_remove(struct platform_device *pdev)
+ 	if (sm->cp_active_irq >= 0)
+ 		free_irq(sm->cp_active_irq, sm);
+ 	cancel_delayed_work_sync(&sm->park_retry_work);
++	cancel_delayed_work_sync(&sm->wake_wd);
+ 	cancel_work_sync(&sm->pm_work);
+ 	destroy_workqueue(sm->pm_wq);
+ 
+@@ -5578,6 +5627,7 @@ static void s5xxx_shutdown(struct platform_device *pdev)
+ 	if (sm->cp_active_irq >= 0)
+ 		free_irq(sm->cp_active_irq, sm);
+ 	cancel_delayed_work_sync(&sm->park_retry_work);
++	cancel_delayed_work_sync(&sm->wake_wd);
+ 	cancel_work_sync(&sm->pm_work);
+ 	cancel_work_sync(&sm->boot_work);
+ 	if (sm->nvec > 1)
+diff --git a/drivers/pci/controller/dwc/pci-exynos.c b/drivers/pci/controller/dwc/pci-exynos.c
+index a5282c17b..b9b6b7840 100644
+--- a/drivers/pci/controller/dwc/pci-exynos.c
++++ b/drivers/pci/controller/dwc/pci-exynos.c
+@@ -1998,6 +1998,24 @@ EXPORT_SYMBOL_GPL(zumapro_pcie_modem_wake);
+  * the boot ROM.  Returns the PCI_EXP_LNKSTA_CLS speed (1 = Gen1 boot ROM,
+  * 3 = Gen3 running MAIN) or -ENOLINK when the link is parked or down.
+  */
++/*
++ * Re-nudge a CP that did not answer AP2CP_WAKEUP: drop the line and raise it
++ * again, so the CP sees a fresh rising edge rather than a level it may have
++ * missed.  Process context only.
++ */
++int zumapro_pcie_modem_wake_pulse(struct device *rc_dev)
++{
++	struct exynos_pcie *ep = zumapro_pcie_from_dev(rc_dev);
++
++	if (!ep)
++		return -ENODEV;
++	gpiod_set_value_cansleep(ep->cp_wakeup, 0);
++	usleep_range(2000, 3000);
++	gpiod_set_value_cansleep(ep->cp_wakeup, 1);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(zumapro_pcie_modem_wake_pulse);
++
+ int zumapro_pcie_modem_link_speed(struct device *rc_dev)
+ {
+ 	struct exynos_pcie *ep = zumapro_pcie_from_dev(rc_dev);
+diff --git a/include/linux/pcie-zumapro.h b/include/linux/pcie-zumapro.h
+index 2ebc4800d..185ca5b79 100644
+--- a/include/linux/pcie-zumapro.h
++++ b/include/linux/pcie-zumapro.h
+@@ -40,6 +40,7 @@ int zumapro_pcie_modem_link_down(struct device *rc_dev);
+ int zumapro_pcie_modem_link_up(struct device *rc_dev);
+ int zumapro_pcie_modem_gen3(struct device *rc_dev);
+ int zumapro_pcie_modem_wake(struct device *rc_dev);
++int zumapro_pcie_modem_wake_pulse(struct device *rc_dev);
+ int zumapro_pcie_modem_link_active(struct device *rc_dev);
+ int zumapro_pcie_modem_set_ap_active(struct device *rc_dev, bool active);
+ int zumapro_pcie_modem_reset(struct device *rc_dev);

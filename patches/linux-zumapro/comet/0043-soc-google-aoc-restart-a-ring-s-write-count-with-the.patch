@@ -1,0 +1,75 @@
+From 6177f5aafa334c4a2959ba79a723838a048ac3ee Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 13:16:43 -0400
+Subject: [PATCH 43/88] soc: google: aoc: restart a ring's write count with the
+ reader's
+
+A ring's free space is its size less what is in flight, tx - rx. When the
+AOC restarts its read count, as it may when an endpoint is set up or
+started, that difference wraps and the writer computes room it does not
+have, copying past the end of the ring. Restart the write count at the
+read count when more is in flight than the ring holds, and export the
+ring counters for diagnostics.
+---
+ drivers/soc/google/aoc.c       | 27 +++++++++++++++++++++++++++
+ include/linux/soc/google/aoc.h |  2 ++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/drivers/soc/google/aoc.c b/drivers/soc/google/aoc.c
+index 5e54725ee..79999beac 100644
+--- a/drivers/soc/google/aoc.c
++++ b/drivers/soc/google/aoc.c
+@@ -1000,6 +1000,21 @@ static int aoc_ring_write(struct aoc_data *aoc, void *svc,
+ 
+ 	if (!size)
+ 		return -ENODATA;
++	/*
++	 * More in flight than the ring holds cannot happen while both counters
++	 * run on; it means the AOC restarted its read count (an endpoint set up
++	 * or started again).  Restart ours with it rather than compute the room
++	 * from a wrapped difference and write past the end of the ring.
++	 */
++	if (tx - rx > size) {
++		dev_warn_ratelimited(aoc->dev,
++				     "ring: tx %u rx %u wp %u beyond size %u, restarting at rx\n",
++				     tx, rx, wp, size);
++		tx = rx;
++		wp = rx % size;
++		ipc_w32((u8 *)r + REG_TX, tx);
++		ipc_w32((u8 *)r + REG_WP, wp);
++	}
+ 	/*
+ 	 * Only what the AOC has already read may be written over.  tx and rx
+ 	 * are free-running byte counters, so their difference is what is still
+@@ -1146,6 +1161,18 @@ u32 aoc_service_progress(struct aoc_service *svc, bool playback)
+ }
+ EXPORT_SYMBOL_GPL(aoc_service_progress);
+ 
++/* The raw counters of a service's ring in one direction, for diagnostics. */
++void aoc_service_ring_state(struct aoc_service *svc, bool down, u32 *tx,
++			    u32 *rx, u32 *size)
++{
++	void *r = svc_region(svc->hdr, down ? AOC_DOWN : AOC_UP);
++
++	*tx = ipc_r32((u8 *)r + REG_TX);
++	*rx = ipc_r32((u8 *)r + REG_RX);
++	*size = ipc_r32((u8 *)r + REG_SIZE);
++}
++EXPORT_SYMBOL_GPL(aoc_service_ring_state);
++
+ void aoc_service_set_handler(struct aoc_service *svc,
+ 			     void (*handler)(struct aoc_service *svc, void *priv),
+ 			     void *priv)
+diff --git a/include/linux/soc/google/aoc.h b/include/linux/soc/google/aoc.h
+index f033ee270..ccdcdc27a 100644
+--- a/include/linux/soc/google/aoc.h
++++ b/include/linux/soc/google/aoc.h
+@@ -42,6 +42,8 @@ bool aoc_service_can_write(struct aoc_service *svc);
+  * hardware pointer: bytes consumed for playback, bytes produced for capture.
+  */
+ u32 aoc_service_progress(struct aoc_service *svc, bool playback);
++void aoc_service_ring_state(struct aoc_service *svc, bool down, u32 *tx,
++			    u32 *rx, u32 *size);
+ 
+ /**
+  * aoc_service_set_handler() - register a doorbell callback for a service

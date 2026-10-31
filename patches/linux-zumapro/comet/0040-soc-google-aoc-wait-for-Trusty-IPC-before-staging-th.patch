@@ -1,0 +1,47 @@
+From 8ef92df3ce2a21d036e96c1cae2ec56539a5509d Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 23:41:39 -0400
+Subject: [PATCH 40/88] soc: google: aoc: wait for Trusty IPC before staging
+ the image
+
+---
+ drivers/soc/google/aoc.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/drivers/soc/google/aoc.c b/drivers/soc/google/aoc.c
+index 9229683d4..5e54725ee 100644
+--- a/drivers/soc/google/aoc.c
++++ b/drivers/soc/google/aoc.c
+@@ -1484,6 +1484,21 @@ static int aoc_probe(struct platform_device *pdev)
+ 		return -EPROBE_DEFER;
+ 	}
+ 
++	/*
++	 * Built in, this probes before the Trusty virtio transport.  The GSA
++	 * AOC hardware manager, reached over that transport, is what starts
++	 * the core, so wait for it rather than stage an image nothing runs.
++	 */
++	ret = aoc_tz_connect(aoc);
++	if (ret) {
++		put_device(aoc->gsa);
++		if (ret == -ENOENT)
++			return -EPROBE_DEFER;
++		return dev_err_probe(dev, ret, "cannot reach %s\n",
++				     AOC_HWMGR_PORT);
++	}
++	dev_info(dev, "connected to %s\n", AOC_HWMGR_PORT);
++
+ 	/* The AOC DRAM carveout the firmware body is staged into. */
+ 	np = of_parse_phandle(dev->of_node, "memory-region", 0);
+ 	if (!np) {
+@@ -1588,6 +1603,10 @@ static int aoc_probe(struct platform_device *pdev)
+ 	return 0;
+ 
+ err_put_gsa:
++	if (aoc->tz_chan) {
++		tipc_chan_shutdown(aoc->tz_chan);
++		tipc_chan_destroy(aoc->tz_chan);
++	}
+ 	put_device(aoc->gsa);
+ 	return ret;
+ }

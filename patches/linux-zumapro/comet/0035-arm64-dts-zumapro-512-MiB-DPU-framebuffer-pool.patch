@@ -1,0 +1,25 @@
+From f7c53197a5c4e5d3dc8a1bc274bd6051a8a754af Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Wed, 21 Oct 2026 23:34:01 -0400
+Subject: [PATCH 35/88] arm64: dts: zumapro: 512 MiB DPU framebuffer pool
+
+Dumb scanout buffers are contiguous and each output enable allocates a
+new swapchain, so the 128 MiB pool fragments after a few disable/enable
+cycles (idle blanking, fold handoff) and allocation fails.
+---
+ arch/arm64/boot/dts/exynos/google/zumapro.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro.dtsi b/arch/arm64/boot/dts/exynos/google/zumapro.dtsi
+index b8e18299a..ac75b49a0 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro.dtsi
++++ b/arch/arm64/boot/dts/exynos/google/zumapro.dtsi
+@@ -933,7 +933,7 @@ bldr_log_reserved: bldr_log_reserved@fd800000 {
+ 		dpu_fb_pool: dpu-fb-pool {
+ 			compatible = "shared-dma-pool";
+ 			reusable;
+-			size = <0x08000000>;		/* 128 MiB: 8 screens */
++			size = <0x20000000>;		/* 512 MiB: dumb scanout buffers are contiguous (no DPU IOMMU mapping yet); every output enable allocates a new swapchain */
+ 			/* of_reserved_mem reads alignment in root #address-cells (2) */
+ 			alignment = <0x0 0x00400000>;
+ 		};

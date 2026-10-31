@@ -1,0 +1,312 @@
+From f80f471bb5c0be5ba9d030a766e47cd9c24f2a76 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:01:24 -0400
+Subject: [PATCH 61/88] thermal: samsung: add S2MPG15 thermistor channels
+
+The eight NTC inputs of the S2MPG15 meter block as thermal-of sensors, as an MFD cell bound by compatible. Channel enable sequence and ADC-to-temperature table from Google's s2mpg15_spmic_thermal driver (google-modules/soc/gs 3045cdcfebf9, GPL-2.0). Reads only; the PMIC over-temperature thresholds and interrupts are not programmed, trips are polled, and a sudden jump is held for 30 s before it is believed.
+---
+ drivers/mfd/sec-common.c                      |   1 +
+ drivers/thermal/samsung/Kconfig               |   9 +
+ drivers/thermal/samsung/Makefile              |   1 +
+ drivers/thermal/samsung/s2mpg15-ntc-thermal.c | 251 ++++++++++++++++++
+ 4 files changed, 262 insertions(+)
+ create mode 100644 drivers/thermal/samsung/s2mpg15-ntc-thermal.c
+
+diff --git a/drivers/mfd/sec-common.c b/drivers/mfd/sec-common.c
+index 1fbc96fbd..7b997a363 100644
+--- a/drivers/mfd/sec-common.c
++++ b/drivers/mfd/sec-common.c
+@@ -68,6 +68,7 @@ static const struct mfd_cell s2mpg15_devs[] = {
+ 	MFD_CELL_NAME("s2mpg15-meter"),
+ 	MFD_CELL_NAME("s2mpg15-regulator"),
+ 	MFD_CELL_OF("s2mpg15-gpio", NULL, NULL, 0, 0, "samsung,s2mpg15-gpio"),
++	MFD_CELL_OF("s2mpg15-ntc", NULL, NULL, 0, 0, "samsung,s2mpg15-ntc"),
+ };
+ 
+ static const struct resource s2mps11_rtc_resources[] = {
+diff --git a/drivers/thermal/samsung/Kconfig b/drivers/thermal/samsung/Kconfig
+index 6ee721a62..804502dc2 100644
+--- a/drivers/thermal/samsung/Kconfig
++++ b/drivers/thermal/samsung/Kconfig
+@@ -11,6 +11,15 @@ config EXYNOS_THERMAL
+ 	  This driver uses the Exynos core thermal APIs and TMU configuration
+ 	  data from the supported SoCs.
+ 
++config S2MPG15_NTC_THERMAL
++	tristate "Samsung S2MPG15 PMIC thermistor channels"
++	depends on THERMAL_OF
++	depends on MFD_SEC_ACPM
++	help
++	  The eight NTC thermistor inputs of the S2MPG15 sub-PMIC (Google
++	  Tensor G4 boards: charger, USB connector, display and other board
++	  thermistors) as thermal sensors.
++
+ config EXYNOS_ACPM_THERMAL
+ 	tristate "Exynos ACPM thermal management unit driver"
+ 	depends on THERMAL_OF
+diff --git a/drivers/thermal/samsung/Makefile b/drivers/thermal/samsung/Makefile
+index d5b6e9e05..180697669 100644
+--- a/drivers/thermal/samsung/Makefile
++++ b/drivers/thermal/samsung/Makefile
+@@ -5,3 +5,4 @@
+ obj-$(CONFIG_EXYNOS_THERMAL)			+= exynos_thermal.o
+ exynos_thermal-y				:= exynos_tmu.o
+ obj-$(CONFIG_EXYNOS_ACPM_THERMAL)		+= acpm-tmu.o
++obj-$(CONFIG_S2MPG15_NTC_THERMAL)		+= s2mpg15-ntc-thermal.o
+diff --git a/drivers/thermal/samsung/s2mpg15-ntc-thermal.c b/drivers/thermal/samsung/s2mpg15-ntc-thermal.c
+new file mode 100644
+index 000000000..45aed9df0
+--- /dev/null
++++ b/drivers/thermal/samsung/s2mpg15-ntc-thermal.c
+@@ -0,0 +1,251 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * S2MPG15 sub-PMIC thermistor channels as thermal sensors.
++ *
++ * The S2MPG15 meter block samples eight NTC inputs into 12-bit low-pass
++ * filtered readings; on Pixel boards they are the board thermistors (on
++ * comet: SoC, RF front end, charger, USB connector, modem, inner and outer
++ * display, GNSS TCXO).
++ *
++ * The channel enable sequence and the voltage to temperature table come from
++ * Google's downstream s2mpg15_spmic_thermal driver (google-modules/soc/gs,
++ * GPL-2.0, Copyright (c) 2022 Google LLC). Unlike it, this driver only reads:
++ * the PMIC's own over-temperature warning and fault thresholds and their
++ * interrupts are left as the bootloader set them, so trips are polled.
++ */
++
++#include <linux/bits.h>
++#include <linux/delay.h>
++#include <linux/jiffies.h>
++#include <linux/mfd/samsung/s2mpg15.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/platform_device.h>
++#include <linux/property.h>
++#include <linux/regmap.h>
++#include <linux/thermal.h>
++
++#define S2MPG15_NTC_CHANNELS		8
++#define S2MPG15_NTC_SETTLE_MS		50
++#define S2MPG15_NTC_CTRL5_NTC_UPDATE	0x4f	/* downstream b/238678825 */
++#define S2MPG15_METER_EN		BIT(0)	/* METER_CTRL1 */
++
++/*
++ * A reading this far above the last accepted one is held back for up to
++ * S2MPG15_NTC_JUMP_HOLD_MS before it is believed: the downstream driver
++ * filters single spurious samples the same way, and a critical trip must not
++ * act on one.
++ */
++#define S2MPG15_NTC_JUMP_MC		15000
++#define S2MPG15_NTC_JUMP_HOLD_MS	30000
++
++/* ADC code to milli-degrees C, descending in code (downstream table) */
++static const struct {
++	int code;
++	int temp;
++} s2mpg15_ntc_map[] = {
++	{ 0xf8d, -26428 }, { 0xf6a, -21922 }, { 0xf29, -15958 },
++	{ 0xee4, -11060 }, { 0xe9d, -6890 },  { 0xe3f, -2264 },
++	{ 0xdbf, 2961 },   { 0xd33, 7818 },   { 0xc97, 12525 },
++	{ 0xbf5, 16945 },  { 0xb3a, 21623 },  { 0xa42, 27431 },
++	{ 0x7f1, 40631 },  { 0x734, 44960 },  { 0x66b, 49757 },
++	{ 0x5a3, 54854 },  { 0x4ee, 59898 },  { 0x446, 65076 },
++	{ 0x43a, 65779 },  { 0x430, 65856 },  { 0x3c3, 69654 },
++	{ 0x3bd, 69873 },  { 0x33b, 74910 },  { 0x2bb, 80691 },
++	{ 0x259, 85844 },  { 0x206, 90915 },  { 0x1ce, 94873 },
++	{ 0x191, 99720 },  { 0x160, 104216 }, { 0x12e, 109531 },
++	{ 0xf9, 116445 },  { 0xd7, 121600 },  { 0x9f, 131839 },
++};
++
++static int s2mpg15_ntc_code_to_temp(int code)
++{
++	int i, n = ARRAY_SIZE(s2mpg15_ntc_map);
++
++	if (code >= s2mpg15_ntc_map[0].code)
++		return s2mpg15_ntc_map[0].temp;
++	if (code <= s2mpg15_ntc_map[n - 1].code)
++		return s2mpg15_ntc_map[n - 1].temp;
++
++	for (i = 1; i < n; i++)
++		if (code >= s2mpg15_ntc_map[i].code)
++			break;
++
++	/* linear between entries i - 1 (higher code) and i */
++	return s2mpg15_ntc_map[i].temp +
++	       mult_frac(s2mpg15_ntc_map[i - 1].temp - s2mpg15_ntc_map[i].temp,
++			 code - s2mpg15_ntc_map[i].code,
++			 s2mpg15_ntc_map[i - 1].code - s2mpg15_ntc_map[i].code);
++}
++
++struct s2mpg15_ntc;
++
++struct s2mpg15_ntc_sensor {
++	struct s2mpg15_ntc *ntc;
++	unsigned int chan;
++	int last_temp;
++	bool have_last;
++	unsigned long jump_since;	/* jiffies, 0 = no pending jump */
++};
++
++struct s2mpg15_ntc {
++	struct device *dev;
++	struct regmap *regmap;
++	struct mutex lock;	/* sensor filter state */
++	struct s2mpg15_ntc_sensor sensor[S2MPG15_NTC_CHANNELS];
++};
++
++static int s2mpg15_ntc_get_temp(struct thermal_zone_device *tz, int *temp)
++{
++	struct s2mpg15_ntc_sensor *s = thermal_zone_device_priv(tz);
++	struct s2mpg15_ntc *ntc = s->ntc;
++	u8 buf[2];
++	int code, t, ret;
++
++	ret = regmap_bulk_read(ntc->regmap,
++			       S2MPG15_METER_LPF_DATA_NTC0_1 + 2 * s->chan,
++			       buf, sizeof(buf));
++	if (ret)
++		return ret;
++
++	code = buf[0] | (buf[1] & 0xf) << 8;
++	if (!code)		/* not sampled yet */
++		return -EAGAIN;
++	t = s2mpg15_ntc_code_to_temp(code);
++
++	guard(mutex)(&ntc->lock);
++	if (s->have_last && t - s->last_temp > S2MPG15_NTC_JUMP_MC) {
++		if (!s->jump_since)
++			s->jump_since = jiffies ?: 1;
++		if (time_before(jiffies, s->jump_since +
++				msecs_to_jiffies(S2MPG15_NTC_JUMP_HOLD_MS))) {
++			*temp = s->last_temp;
++			return 0;
++		}
++		dev_warn(ntc->dev, "NTC%u: %d mC persisted for %d s, accepting it\n",
++			 s->chan, t, S2MPG15_NTC_JUMP_HOLD_MS / 1000);
++	}
++	s->jump_since = 0;
++	s->last_temp = t;
++	s->have_last = true;
++	*temp = t;
++	return 0;
++}
++
++static const struct thermal_zone_device_ops s2mpg15_ntc_ops = {
++	.get_temp = s2mpg15_ntc_get_temp,
++};
++
++/*
++ * Enable the requested channels if the bootloader has not: the downstream
++ * update sequence (NTC off, CTRL5 update value, NTC on, settle) and the meter
++ * re-enable it needs afterwards.
++ */
++static int s2mpg15_ntc_enable(struct s2mpg15_ntc *ntc, u32 mask)
++{
++	unsigned int ctrl3, ctrl5;
++	int ret;
++
++	ret = regmap_read(ntc->regmap, S2MPG15_METER_CTRL3, &ctrl3);
++	if (!ret)
++		ret = regmap_read(ntc->regmap, S2MPG15_METER_CTRL5, &ctrl5);
++	if (ret)
++		return ret;
++
++	if ((ctrl3 & mask) == mask) {
++		dev_info(ntc->dev, "NTC channels %#x already on (ctrl3 %#x ctrl5 %#x)\n",
++			 mask, ctrl3, ctrl5);
++		return 0;
++	}
++
++	ret = regmap_write(ntc->regmap, S2MPG15_METER_CTRL3, 0);
++	if (!ret) {
++		usleep_range(100, 10000);
++		ret = regmap_write(ntc->regmap, S2MPG15_METER_CTRL5,
++				   S2MPG15_NTC_CTRL5_NTC_UPDATE);
++	}
++	if (!ret) {
++		usleep_range(100, 10000);
++		ret = regmap_write(ntc->regmap, S2MPG15_METER_CTRL3,
++				   ctrl3 | mask);
++	}
++	if (ret)
++		return ret;
++	msleep(S2MPG15_NTC_SETTLE_MS);
++
++	ret = regmap_update_bits(ntc->regmap, S2MPG15_METER_CTRL1,
++				 S2MPG15_METER_EN, S2MPG15_METER_EN);
++	dev_info(ntc->dev, "NTC channels %#x on (ctrl3 was %#x, ctrl5 was %#x)\n",
++		 mask, ctrl3, ctrl5);
++	return ret;
++}
++
++static int s2mpg15_ntc_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct s2mpg15_ntc *ntc;
++	u32 mask = GENMASK(S2MPG15_NTC_CHANNELS - 1, 0);
++	int i, n = 0, ret;
++
++	/* only a board that describes its thermistors gets them switched on */
++	if (!dev_of_node(dev))
++		return -ENODEV;
++
++	ntc = devm_kzalloc(dev, sizeof(*ntc), GFP_KERNEL);
++	if (!ntc)
++		return -ENOMEM;
++	ntc->dev = dev;
++	ret = devm_mutex_init(dev, &ntc->lock);
++	if (ret)
++		return ret;
++
++	ntc->regmap = dev_get_regmap(dev->parent, "meter");
++	if (!ntc->regmap)
++		return dev_err_probe(dev, -ENODEV, "no meter regmap on parent\n");
++
++	device_property_read_u32(dev, "samsung,ntc-channel-mask", &mask);
++	mask &= GENMASK(S2MPG15_NTC_CHANNELS - 1, 0);
++
++	ret = s2mpg15_ntc_enable(ntc, mask);
++	if (ret)
++		return dev_err_probe(dev, ret, "cannot enable the NTC channels\n");
++
++	for (i = 0; i < S2MPG15_NTC_CHANNELS; i++) {
++		struct thermal_zone_device *tzd;
++
++		if (!(mask & BIT(i)))
++			continue;
++		ntc->sensor[i].ntc = ntc;
++		ntc->sensor[i].chan = i;
++		tzd = devm_thermal_of_zone_register(dev, i, &ntc->sensor[i],
++						    &s2mpg15_ntc_ops);
++		if (IS_ERR(tzd)) {
++			if (PTR_ERR(tzd) == -ENODEV)
++				continue;	/* no zone for this channel */
++			return dev_err_probe(dev, PTR_ERR(tzd),
++					     "NTC%d zone\n", i);
++		}
++		n++;
++	}
++
++	dev_info(dev, "%d thermistor zone(s)\n", n);
++	return 0;
++}
++
++static const struct of_device_id s2mpg15_ntc_of_match[] = {
++	{ .compatible = "samsung,s2mpg15-ntc" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, s2mpg15_ntc_of_match);
++
++static struct platform_driver s2mpg15_ntc_driver = {
++	.probe = s2mpg15_ntc_probe,
++	.driver = {
++		.name = "s2mpg15-ntc",
++		.of_match_table = s2mpg15_ntc_of_match,
++	},
++};
++module_platform_driver(s2mpg15_ntc_driver);
++
++MODULE_DESCRIPTION("S2MPG15 thermistor channels");
++MODULE_LICENSE("GPL");

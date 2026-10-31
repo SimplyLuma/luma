@@ -1,0 +1,22 @@
+From 150489b8ae8d2a47b39bfa98c43d84931d8aa65d Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 17:51:55 -0400
+Subject: [PATCH 59/88] power: supply: max1720x: register the battery thermal
+ zone
+
+---
+ drivers/power/supply/max1720x_battery.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/power/supply/max1720x_battery.c b/drivers/power/supply/max1720x_battery.c
+index 52d7ce342..de72ec183 100644
+--- a/drivers/power/supply/max1720x_battery.c
++++ b/drivers/power/supply/max1720x_battery.c
+@@ -612,7 +612,6 @@ static int max1720x_probe_nvmem(struct i2c_client *client,
+ 
+ static const struct power_supply_desc max1720x_bat_desc = {
+ 	.name = "max1720x",
+-	.no_thermal = true,
+ 	.type = POWER_SUPPLY_TYPE_BATTERY,
+ 	.properties = max1720x_battery_props,
+ 	.num_properties = ARRAY_SIZE(max1720x_battery_props),

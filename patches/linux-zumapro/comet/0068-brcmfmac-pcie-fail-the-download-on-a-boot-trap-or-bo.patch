@@ -1,0 +1,88 @@
+From ccf44138d6bfde92f3248c117cc4f17af7714388 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Mon, 26 Oct 2026 13:15:30 -0400
+Subject: [PATCH 68/88] brcmfmac: pcie: fail the download on a boot trap or
+ boot timeout
+
+Watch the firmware console for a trap while waiting for boot complete,
+and return an error on a trap or a timeout. Carrying on read a shared
+area the firmware never finished, failed at the first command two
+seconds later, and could hand garbage ring addresses to the ring setup.
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 31 ++++++++++++++-----
+ 1 file changed, 23 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 85c5f8649..96b617814 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -1989,15 +1989,18 @@ static void brcmf_pcie_srpwr_request(struct brcmf_pciedev_info *devinfo,
+ /* The firmware logs "Notify host through MSI - FW boot complete" as the last
+  * step of its bring-up. Follow the console until that line shows up, so
+  * nothing in the shared area is read or written and no command is sent while
+- * the firmware is still booting, whatever the mailbox interrupt did.
++ * the firmware is still booting, whatever the mailbox interrupt did. A trap
++ * during boot ("THREADX TRAP INFO") or no boot-complete line in time fails
++ * the download.
+  */
+-static void brcmf_pcie_wait_fw_boot(struct brcmf_pciedev_info *devinfo)
++static int brcmf_pcie_wait_fw_boot(struct brcmf_pciedev_info *devinfo)
+ {
+ 	static const char mark[] = "FW boot complete";
++	static const char trap[] = "TRAP INFO";
+ 	u32 rambase = devinfo->ci->rambase;
+ 	u32 ramend = rambase + devinfo->ci->ramsize;
+ 	u32 base = 0, buf = 0, size = 0, widx, idx = 0, addr;
+-	unsigned int ms, match = 0;
++	unsigned int ms, match = 0, tmatch = 0;
+ 	u8 ch;
+ 
+ 	for (ms = 0; ms < BRCMF_FW_BOOT_WAIT_MS; ms += 20) {
+@@ -2027,12 +2030,22 @@ static void brcmf_pcie_wait_fw_boot(struct brcmf_pciedev_info *devinfo)
+ 			ch = brcmf_pcie_read_tcm8(devinfo, buf + idx);
+ 			if (++idx == size)
+ 				idx = 0;
++			if (ch == trap[tmatch]) {
++				if (!trap[++tmatch]) {
++					dev_err(&devinfo->pdev->dev,
++						"firmware trapped during boot after %u ms (console %u bytes)\n",
++						ms, idx);
++					return -EIO;
++				}
++			} else {
++				tmatch = ch == trap[0] ? 1 : 0;
++			}
+ 			if (ch == mark[match]) {
+ 				if (!mark[++match]) {
+ 					dev_info(&devinfo->pdev->dev,
+ 						 "firmware boot complete after %u ms (console %u bytes)\n",
+ 						 ms, idx);
+-					return;
++					return 0;
+ 				}
+ 			} else {
+ 				match = ch == mark[0] ? 1 : 0;
+@@ -2041,9 +2054,10 @@ static void brcmf_pcie_wait_fw_boot(struct brcmf_pciedev_info *devinfo)
+ next:
+ 		msleep(20);
+ 	}
+-	dev_warn(&devinfo->pdev->dev,
+-		 "firmware boot not confirmed within %u ms (console %u bytes)\n",
+-		 ms, idx);
++	dev_err(&devinfo->pdev->dev,
++		"firmware boot not confirmed within %u ms (console %u bytes)\n",
++		ms, idx);
++	return -ETIMEDOUT;
+ }
+ 
+ static int brcmf_pcie_preinit(struct device *dev)
+@@ -2281,7 +2295,8 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ 	/* The firmware publishes this address long before the structure is
+ 	 * complete; read nothing else until it has finished booting.
+ 	 */
+-	brcmf_pcie_wait_fw_boot(devinfo);
++	if (brcmf_pcie_wait_fw_boot(devinfo))
++		return -EIO;
+ 
+ 	shared->flags = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
+ 	                                      BRCMF_SHARED_FLAGS_OFFSET);

@@ -1,0 +1,21 @@
+# Samsung Exynos 5300/5400 modem (s5xxx_modem). ModemManager drives the CP over
+# the SIT control ports through sit-proxy, one modem per logical stack (SIT0
+# with rmnet0-14, SIT1 with rmnet15-29). The RFS, OEM/GEMS, GNSS and DM channels
+# carry binary vendor protocols served by the kernel and exynos-modem, and the
+# AT port is a veneer the samsung-sit plugin ignores; probing them with AT or
+# QMI crashes the CP, so they are kept out of ModemManager entirely. Services
+# are wanted, never started synchronously: a blocking start from the uevent
+# waits on the device unit that the same uevent is still producing.
+ACTION=="remove", GOTO="exynos_modem_end"
+SUBSYSTEM!="wwan|net", GOTO="exynos_modem_end"
+SUBSYSTEM=="wwan", ENV{DEVTYPE}=="wwan_dev", GOTO="exynos_modem_end"
+
+SUBSYSTEM=="wwan", KERNEL=="wwan[0-9]*sit0", ENV{ID_MM_PORT_TYPE_SIT}="1", ENV{ID_MM_SIT_PROXY}="1", ENV{ID_MM_SIT_LOGICAL_STACK}="0", ENV{ID_MM_PHYSDEV_UID}="exynos-modem-stack0", ENV{ID_MM_SIT_CARRIER_CONFIG_DIRECTORY}="/var/lib/luma-fold/firmware/google/s5400/carrierconfig", TAG+="systemd", ENV{SYSTEMD_WANTS}+="sit-proxy.service"
+SUBSYSTEM=="wwan", KERNEL=="wwan[0-9]*sit1", ENV{ID_MM_PORT_TYPE_SIT}="1", ENV{ID_MM_SIT_PROXY}="1", ENV{ID_MM_SIT_LOGICAL_STACK}="1", ENV{ID_MM_PHYSDEV_UID}="exynos-modem-stack1", ENV{ID_MM_SIT_CARRIER_CONFIG_DIRECTORY}="/var/lib/luma-fold/firmware/google/s5400/carrierconfig", TAG+="systemd", ENV{SYSTEMD_WANTS}+="sit-proxy.service"
+SUBSYSTEM=="wwan", KERNEL=="wwan[0-9]*at[0-9]*|wwan[0-9]*rfs[0-9]*|wwan[0-9]*oem[0-9]*|wwan[0-9]*gnss[0-9]*|wwan[0-9]*dm[0-9]*", ENV{ID_MM_PORT_IGNORE}="1", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="wwan", KERNEL=="wwan[0-9]*oem1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="exynos-modem.service"
+
+SUBSYSTEM=="net", KERNEL=="rmnet[0-9]|rmnet1[0-4]", ENV{ID_MM_PHYSDEV_UID}="exynos-modem-stack0"
+SUBSYSTEM=="net", KERNEL=="rmnet1[5-9]|rmnet2[0-9]", ENV{ID_MM_PHYSDEV_UID}="exynos-modem-stack1"
+
+LABEL="exynos_modem_end"

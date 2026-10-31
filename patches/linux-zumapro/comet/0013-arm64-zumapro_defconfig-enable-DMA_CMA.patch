@@ -1,0 +1,24 @@
+From 744b7672c2ba268ee0230e7c886799f2f21843b7 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 18:05:16 -0400
+Subject: [PATCH 13/88] arm64: zumapro_defconfig: enable DMA_CMA
+
+The DPU framebuffer pool is a reusable shared-dma-pool, which only becomes a
+CMA area with DMA_CMA; without it dpu_dma falls back to a CMA that does not
+exist and fbdev cannot allocate its 10 MB framebuffer.
+---
+ arch/arm64/configs/zumapro_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index 2086da5dc..042dc485c 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -110,6 +110,7 @@ CONFIG_KSM=y
+ CONFIG_MEMORY_FAILURE=y
+ CONFIG_TRANSPARENT_HUGEPAGE=y
+ CONFIG_CMA=y
++CONFIG_DMA_CMA=y
+ CONFIG_CMA_SIZE_MBYTES=512
+ CONFIG_USERFAULTFD=y
+ CONFIG_LRU_GEN=y

@@ -1,0 +1,98 @@
+From a312b4544f2ab0cb398415557b1f86e77479ad53 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Fri, 23 Oct 2026 22:18:14 -0400
+Subject: [PATCH 73/88] net: wwan: s5xxx: power-cycle and rescan when the CP
+ endpoint is missing at probe
+
+A boot after a CP crash came up with no endpoint behind the modem root port
+(the root complex logged "Device not found"); the driver then failed its probe
+with -ENODEV and cellular stayed off for the whole boot. When no endpoint is
+enumerated, run the full CP power cycle (which retrains the link), rescan the
+modem root complex's root bus and look again before giving up.
+---
+ drivers/net/wwan/s5xxx_modem.c | 65 ++++++++++++++++++++++++++++------
+ 1 file changed, 55 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index c0a246d6b..d6936acd0 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -4760,6 +4760,46 @@ static int s5xxx_map_region(struct s5xxx_modem *sm, const char *name,
+ 	return 0;
+ }
+ 
++/*
++ * The zumapro root ports carry the same 144d:a5a5 ID as the modem endpoint,
++ * and they register first -- a bare first-match lookup returns a root port.
++ * Match the endpoint by port type.
++ */
++static struct pci_dev *s5xxx_find_endpoint(void)
++{
++	struct pci_dev *pdev = NULL;
++
++	while ((pdev = pci_get_device(S5XXX_PCI_VENDOR_ID,
++				      S5XXX_PCI_DEVICE_ID, pdev))) {
++		if (pci_pcie_type(pdev) == PCI_EXP_TYPE_ENDPOINT)
++			break;
++	}
++	return pdev;
++}
++
++/*
++ * Enumerate what a retrained link shows behind the modem root complex's root
++ * port (the one whose host bridge hangs off @rc_dev; the other channel's root
++ * port carries the same ID).
++ */
++static void s5xxx_rescan_root_bus(struct device *rc_dev)
++{
++	struct pci_dev *rp = NULL;
++
++	while ((rp = pci_get_device(S5XXX_PCI_VENDOR_ID, S5XXX_PCI_DEVICE_ID,
++				    rp))) {
++		if (pci_pcie_type(rp) == PCI_EXP_TYPE_ROOT_PORT &&
++		    rp->bus->bridge && rp->bus->bridge->parent == rc_dev)
++			break;
++	}
++	if (!rp)
++		return;
++	pci_lock_rescan_remove();
++	pci_rescan_bus(rp->bus);
++	pci_unlock_rescan_remove();
++	pci_dev_put(rp);
++}
++
+ static int s5xxx_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -4885,16 +4925,21 @@ static int s5xxx_probe(struct platform_device *pdev)
+ 		goto err_fw;
+ 	}
+ 
+-	/*
+-	 * The zumapro root port carries the same 144d:a5a5 ID as the modem
+-	 * endpoint, and it registers first -- a bare first-match lookup
+-	 * returns the root port.  Match the endpoint by port type.
+-	 */
+-	sm->pdev = NULL;
+-	while ((sm->pdev = pci_get_device(S5XXX_PCI_VENDOR_ID,
+-					  S5XXX_PCI_DEVICE_ID, sm->pdev))) {
+-		if (pci_pcie_type(sm->pdev) == PCI_EXP_TYPE_ENDPOINT)
+-			break;
++	sm->pdev = s5xxx_find_endpoint();
++	if (!sm->pdev) {
++		/*
++		 * Nothing behind the root port: the CP did not come up on the
++		 * link at boot (seen after a crash left MAIN wedged across the
++		 * warm reset of a reboot -- "Device not found" from the RC).
++		 * Power-cycle it into the boot ROM, retrain and enumerate.
++		 */
++		dev_warn(dev, "CP endpoint not enumerated; power-cycling the CP\n");
++		ret = zumapro_pcie_modem_power_cycle(sm->rc_dev);
++		if (ret)
++			dev_warn(dev, "CP power cycle: no link (%d)\n", ret);
++		else
++			s5xxx_rescan_root_bus(sm->rc_dev);
++		sm->pdev = s5xxx_find_endpoint();
+ 	}
+ 	if (!sm->pdev) {
+ 		ret = dev_err_probe(dev, -ENODEV,

@@ -1,0 +1,69 @@
+From e3903b8401bca891038f4a0f8e64652f8dd9878e Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:46:51 -0400
+Subject: [PATCH 23/88] drm/panel: comet: report the panel orientation from DT
+
+---
+ drivers/gpu/drm/panel/panel-google-comet-ct3d.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/gpu/drm/panel/panel-google-comet-ct3d.c b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+index 57c07c68e..fc069e482 100644
+--- a/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
++++ b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+@@ -16,8 +16,10 @@
+ 
+ #include <drm/display/drm_dsc.h>
+ #include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_connector.h>
+ #include <drm/drm_mipi_dsi.h>
+ #include <drm/drm_modes.h>
++#include <drm/drm_of.h>
+ #include <drm/drm_panel.h>
+ 
+ struct comet_panel_desc {
+@@ -30,6 +32,7 @@ struct comet_ct3d {
+ 	struct drm_panel panel;
+ 	struct mipi_dsi_device *dsi;
+ 	const struct comet_panel_desc *desc;
++	enum drm_panel_orientation orientation;
+ };
+ 
+ /* DSC 1.2, two 540x24 slices, 8 bpc, 8.0 bpp (bootloader DSC1 PPS). */
+@@ -205,15 +208,24 @@ static int comet_ct3d_get_modes(struct drm_panel *panel,
+ 
+ 	drm_mode_set_name(mode);
+ 	drm_mode_probed_add(connector, mode);
++	drm_connector_set_panel_orientation(connector,
++					    to_ct3d(panel)->orientation);
+ 	connector->display_info.width_mm = mode->width_mm;
+ 	connector->display_info.height_mm = mode->height_mm;
+ 
+ 	return 1;
+ }
+ 
++static enum drm_panel_orientation
++comet_ct3d_get_orientation(struct drm_panel *panel)
++{
++	return to_ct3d(panel)->orientation;
++}
++
+ static const struct drm_panel_funcs comet_ct3d_funcs = {
+ 	.enable = comet_ct3d_enable,
+ 	.get_modes = comet_ct3d_get_modes,
++	.get_orientation = comet_ct3d_get_orientation,
+ };
+ 
+ static int comet_ct3d_probe(struct mipi_dsi_device *dsi)
+@@ -233,6 +245,11 @@ static int comet_ct3d_probe(struct mipi_dsi_device *dsi)
+ 		return -ENODEV;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+ 
++	/* the inner panel scans out sideways relative to the device */
++	ret = drm_of_get_panel_orientation(dev->of_node, &ctx->orientation);
++	if (ret)
++		return dev_err_probe(dev, ret, "invalid rotation\n");
++
+ 	dsi->lanes = 4;
+ 	dsi->format = MIPI_DSI_FMT_RGB888;
+ 	dsi->hs_rate = ctx->desc->hs_rate;

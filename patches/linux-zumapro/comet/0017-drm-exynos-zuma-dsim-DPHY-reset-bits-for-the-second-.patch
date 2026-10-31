@@ -1,0 +1,56 @@
+From a417045e28d4aeeb051474e6a930988eb70a66eb Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:21:23 -0400
+Subject: [PATCH 17/88] drm/exynos: zuma-dsim: DPHY reset bits for the second
+ DSIM
+
+google,dsim-index selects the SYSREG MIPI_PHY_CON reset and select bits, so
+DSIM1 (comet's inner panel) does not reset DSIM0's DPHY.
+---
+ drivers/gpu/drm/exynos/exynos9_dsim.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_dsim.c b/drivers/gpu/drm/exynos/exynos9_dsim.c
+index 77212737c..afa5c735a 100644
+--- a/drivers/gpu/drm/exynos/exynos9_dsim.c
++++ b/drivers/gpu/drm/exynos/exynos9_dsim.c
+@@ -75,6 +75,7 @@ struct zuma_dsim {
+ 	unsigned int vrefresh;		/* active refresh rate (from mode_set) */
+ 	const struct drm_dsc_config *dsc;	/* DSC config (from the panel) */
+ 	u32 comp_align;			/* per-slice compressed-width alignment */
++	u32 index;			/* DSIM instance: DPHY reset bits in SYSREG */
+ };
+ 
+ static inline struct zuma_dsim *host_to_dsim(struct mipi_dsi_host *h)
+@@ -431,9 +432,10 @@ static const u32 *zuma_dsim_dphy_timing(u32 hs_mbps)
+ static void zuma_dsim_sysreg_dphy_reset(struct zuma_dsim *dsim, bool assert)
+ {
+ 	/* rst-n: 0 asserts reset, 1 releases it */
+-	regmap_update_bits(dsim->sysreg, DISP_DPU_MIPI_PHY_CON,
+-			   DISP_DPU_M_RESETN_M0,
+-			   assert ? 0 : DISP_DPU_M_RESETN_M0);
++	u32 bit = DISP_DPU_M_RESETN_M0 << dsim->index;
++
++	regmap_update_bits(dsim->sysreg, DISP_DPU_MIPI_PHY_CON, bit,
++			   assert ? 0 : bit);
+ }
+ 
+ /* Program the PLL, D-PHY timing and enable/lock the PLL (vendor set_clocks) */
+@@ -652,7 +654,7 @@ static int zuma_dsim_cold_init(struct zuma_dsim *dsim)
+ 
+ 	/* DPHY reset controlled from SYSREG, not the DSIM link */
+ 	regmap_update_bits(dsim->sysreg, DISP_DPU_MIPI_PHY_CON,
+-			   DISP_DPU_SEL_RESET_DPHY(0), 0);
++			   DISP_DPU_SEL_RESET_DPHY(dsim->index), 0);
+ 
+ 	dsim_rmw(dsim, DSIM_CLK_CTRL, 0, DSIM_CLK_CTRL_CLOCK_SEL);	/* OSC */
+ 	writel(DSIM_SWRST_RESET, dsim->regs + DSIM_SWRST);
+@@ -1023,6 +1025,8 @@ static int zuma_dsim_probe(struct platform_device *pdev)
+ 	dsim->comp_align = 8;
+ 	of_property_read_u32(dev->of_node, "google,dsc-comp-align",
+ 			     &dsim->comp_align);
++	/* DSIM1 (comet's inner panel) uses the second DPHY reset/select bits */
++	of_property_read_u32(dev->of_node, "google,dsim-index", &dsim->index);
+ 	INIT_DELAYED_WORK(&dsim->hotplug_work, zuma_dsim_hotplug_work);
+ 
+ 	dsim->regs = devm_platform_ioremap_resource_byname(pdev, "dsi");

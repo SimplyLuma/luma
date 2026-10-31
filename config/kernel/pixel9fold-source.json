@@ -1,0 +1,468 @@
+{
+  "schema": "org.projectluma.kernel-source/v1",
+  "version": "7.3-rc5",
+  "release": "7.3.0-rc5-zumapro+",
+  "architecture": "aarch64",
+  "device_tree": "exynos/google/zumapro-comet-dual.dtb",
+  "sources": {
+    "linux": {
+      "name": "linux-zumapro-c03f06b6.tar.gz",
+      "url": "https://github.com/orgwithsomething/linux-zumapro/archive/c03f06b6fb9b2c8ebf608635a33ae25db1c59b19.tar.gz",
+      "sha256": "1dd2fa1903f684b86f0faf9adefb4b79b20c960f59b268cabc0d40b1c86ba09c",
+      "size": 274249094,
+      "revision": "c03f06b6fb9b2c8ebf608635a33ae25db1c59b19"
+    }
+  },
+  "base_config": {
+    "defconfig": "zumapro_defconfig",
+    "fragment": "config/kernel/pixel9fold.fragment"
+  },
+  "firmware": {
+    "arm/mali/arch11.8/mali_csffw.bin": {
+      "from": "linux-firmware 20260309 (Fedora linux-firmware-20260309-1.fc44)",
+      "sha256": "98ef32f43f05d03711580fb78f44a5b24dcd1f8a2f3ab09a25410fb3d39d7e1d"
+    }
+  },
+  "patches": [
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0001-arm64-dts-exynos-comet-Fold-touch-speaker-bus-outer-.patch",
+      "sha256": "c759076d450a9dcecfd0ee8140874febbe79deb826b363e303445122b97171a4"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0002-arm64-embed-a-board-DTB-for-Luma-RAM-boot-diagnostic.patch",
+      "sha256": "e2514950d2aaf3794c7f8ea9b3d0a13b4c2dec9abeae23e03c9bcdf6023daec6"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0003-arm64-dts-exynos-comet-read-only-display-probe-varia.patch",
+      "sha256": "1d2797c40a88f64e2e6547dbab8c47e653bd6f3858fe0ac92ea4324ce862d15f"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0004-arm64-dts-exynos-comet-eUSB2-repeater-is-on-hsi2c_6.patch",
+      "sha256": "f43aaebd38e890adb26b4b61073b37fc0bd01e964537ec7315086791dad225cf"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0005-arm64-dts-exynos-comet-probe-placeholder-rails-for-o.patch",
+      "sha256": "48960f254601b580399ced3911c9e0b87e96f51053588059558ac38168fde860"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0006-arm64-luma-diagnostics-panic-reboots-to-the-bootload.patch",
+      "sha256": "15911896c094fad4d70bafc14f1e3793277eecc8084eba420c6e19e7ddbe477e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0007-regulator-s2mps11-add-s2mpg15-LDO25S-LDO27S-and-LDO2.patch",
+      "sha256": "592a0d4cbb4c9275e9e0b776029970fb4d17ba0871fb71df71b4eb21f2040644"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0008-arm64-dts-exynos-comet-probe-outer-touch-on-its-real.patch",
+      "sha256": "afbeabc1a42f849ad46639bf5898288901395bb67fe9d52b5b2f5183e3042b5e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0009-drm-exynos-zuma-single-encoder-DSC-for-DECON1-2.patch",
+      "sha256": "b70324bfa18d4844f8a23f5c2a16358515cdfb4617f42711b0193d04707f0454"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0010-drm-panel-add-a-boot-handoff-driver-for-the-comet-ou.patch",
+      "sha256": "cb9e1fd589c76d40cfdf26fe28c3dda3256c7ec16ca9e43f92fa55ab9babab08"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0011-arm64-dts-exynos-comet-outer-display-through-DECON1-.patch",
+      "sha256": "57ee20dcc5de83733413cd90dda85f7ae5409a8d5a6b577f023693982a85b892"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0012-arm64-dts-exynos-comet-two-cell-alignment-for-the-DP.patch",
+      "sha256": "69a8a093cfb96f9ec6e9c8230609a8fe00f27534dc5a2f7543620c2ff2ba4a22"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0013-arm64-zumapro_defconfig-enable-DMA_CMA.patch",
+      "sha256": "b0900df0ce3b7e81e4c37ab01c03490940a76e39f5382fc85e54af1997ab3978"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0014-drm-exynos-dpu-dma-quiesce-every-bootloader-DECON-no.patch",
+      "sha256": "659defd82183949c859b7275ccf353684677685e404737b4e969fb556a66454e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0015-drm-exynos-zuma-dsim-per-board-DSC-compressed-width-.patch",
+      "sha256": "28a967b948c571a207c2550c2a58efe7406a865b5999a06043df15b7e52c932d"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0016-drm-exynos-zuma-per-DECON-single-encoder-DSC-and-TE-.patch",
+      "sha256": "fb3aad76ccba18341f5e1f45017464c168d3bee236fb2e8f5399ac15750c0c30"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0017-drm-exynos-zuma-dsim-DPHY-reset-bits-for-the-second-.patch",
+      "sha256": "8ac47fefdfcb1f76dbd72f248092b8844425fe1c14a2106a0ed898d3958f7f20"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0018-drm-exynos-decon-route-to-DSI1-when-the-board-says-s.patch",
+      "sha256": "c19db8a28935c48a230919826bc792698ef25362388d91776e94948f272a5e71"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0019-drm-panel-comet-add-the-inner-CT3B-panel-to-the-hand.patch",
+      "sha256": "29988f72d78adef5998e09f3234eff39e8c7ecfd293dbf5c93c015f75838ea41"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0020-arm64-dts-exynos-zumapro-two-cell-alignment-for-the-.patch",
+      "sha256": "4d858fefe59643db2dcd3752f81f65ef42f18d5bbde439f2a2ff039aece47eed"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0021-arm64-dts-exynos-comet-inner-display-through-DECON0-.patch",
+      "sha256": "2a9ff2ce83b34c71a1240b6824bf7979b9916ad08d3fe1be9d074bffbef08e0a"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0022-drm-exynos-zuma-dsim-map-the-shared-DCPHY-bias-block.patch",
+      "sha256": "06f8bd0c72d641ce9aa55d71cacaf4687da9b9a3b64acc65cfd9774b9f7095f3"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0023-drm-panel-comet-report-the-panel-orientation-from-DT.patch",
+      "sha256": "5c5de6dd7cd6dc3369fded9a7f1e96dc010232f18746719a505bd51789587f65"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0024-arm64-zumapro_defconfig-enable-fbcon-rotation.patch",
+      "sha256": "d40f0722d4b201f40dd44e0850cc4ce432c8464ece4230ae41234d6356b6d602"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0025-arm64-dts-exynos-comet-inner-panel-rotation-and-a-du.patch",
+      "sha256": "7364a56bffc8a8c4cee95f8a71b5701a52ccee900aa156e8866b9b5a05123e62"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0026-drm-exynos-zuma-dsim-pick-the-DECON-from-the-OF-grap.patch",
+      "sha256": "86b3af28e3f3b68580048cd0b2c1a23585cc0d369d952d8823c7638d85aba353"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0027-arm64-luma-diagnostics-every-restart-goes-to-the-boo.patch",
+      "sha256": "a331158c4d5b9ee8ba026feb670293986938e1f4726a97c757eb523d15e3c537"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0028-arm64-luma-diagnostics-register-at-early_initcall.patch",
+      "sha256": "0a968d0ec36bee74dfc55c7338dbf241135781b34cc255540941a473ca495007"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0029-arm64-dts-comet-inner-panel-rotation-90.patch",
+      "sha256": "f2217bea1ea768637e7b1770b1a82cd0e25ecd7bf79779ce025170f936a7d1cc"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0030-Input-goodix_berlin-allow-larger-contact-records.patch",
+      "sha256": "74136c40aa26b551edb7634247498c578421b255ac8bf4a7dcfd13297a44474c"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0031-arm64-dts-comet-inner-touch-contact-size-and-scale.patch",
+      "sha256": "c2d83bdbcd5484520f14f427fa54776cdbde52debb00e5b917d55cf2d28204c6"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0032-arm64-dts-comet-inner-touch-contacts-are-14-bytes.patch",
+      "sha256": "ee2f042a033448c23bb4a1ba7231db79b2d050db8d57b4f11076151b38684b1e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0033-arm64-zumapro_defconfig-build-cpufreq-dt-in.patch",
+      "sha256": "80c433f99057c4bcc6092e3abac9cdfaf42d4758f48d5b214f2269427a37ea12"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0034-arm64-zumapro_defconfig-build-panthor-in.patch",
+      "sha256": "6fb34ee7d6aa03387a837e886759d7076ea98a201184174f9031a1c46a770463"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0035-arm64-dts-zumapro-512-MiB-DPU-framebuffer-pool.patch",
+      "sha256": "05c6b0b779d9dd536e5b8714bf631a2a6ec031f5fa900a865f655c9c1bde2ba9"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0036-arm64-luma-diagnostics-arm-the-bootloader-reason-at-.patch",
+      "sha256": "a6a0c1c2edf8ac57b02d275aa84b62f0f350d5fdad82fc7d43094e7f8da70b41"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0037-Revert-arm64-luma-diagnostics-arm-the-bootloader-rea.patch",
+      "sha256": "10daee571302f0861752842583fe2ecd1f51ef9df28b14272656818b780f44ac"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0038-arm64-zumapro_defconfig-build-brcmfmac-in.patch",
+      "sha256": "dbf892b79ad97cec8762c7bbe367ead218d4ab3cb48898bcc51acb90583ee723"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0039-arm64-dts-comet-AOC-wifi-chip-and-sensor-rails.patch",
+      "sha256": "4b97cde8dc26d06fa25a86b0943789f8f5b482f1fc5ba4bcc186ce17b8140021"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0040-soc-google-aoc-wait-for-Trusty-IPC-before-staging-th.patch",
+      "sha256": "a318cbdc5a89aed94c3e8e050aedd2f8fd27996ef16b1d1d0dfdf4edf5844059"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0041-arm64-zumapro_defconfig-hci_aoc-RFCOMM-BNEP-HIDP-and.patch",
+      "sha256": "b9e1aa5f2f13c48c9e81736adbb8f0c5caa437ad4c9d7243162a1093626587cf"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0042-arm64-dts-comet-CS35L41-speaker-amplifiers-on-spi_13.patch",
+      "sha256": "db42ba801856b4d7cb1ee0e367da7dd021062a633cf897ad5ff37a83005e758c"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0043-soc-google-aoc-restart-a-ring-s-write-count-with-the.patch",
+      "sha256": "ac929c326c1d946304247c091e78ecbfb90aa1b8d4ae6de00ceb2c8a32bd2db6"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0044-ASoC-google-aoc-keep-the-playback-pointer-within-wha.patch",
+      "sha256": "9ba0ff485959f1cdeea12cfc0b0d93d856da460eadac5adac9466f7753fcc92e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0045-ASoC-google-aoc-debug-logging-for-stream-steps-and-f.patch",
+      "sha256": "836e935d41e808c5603990604f14a7d6b09eb216722ade350f053284a93ea7e1"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0046-arm64-luma-keep-the-embedded-DTB-inside-one-2-MiB-bl.patch",
+      "sha256": "2db0968eee0f56addc66b8091116de2b3cb7779d757260adf145c92f4768366b"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0047-wifi-brcmfmac-pcie-report-the-RX-stall-probe-at-debu.patch",
+      "sha256": "2c9081bf0417461b89e818197615f0c5709e92ed265e4e16f3821752fde5d064"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0048-ASoC-google-aoc-run-the-telephony-endpoint-on-the-cl.patch",
+      "sha256": "7d6574d403a3970b166147864d7f2c40208c430f233ae37fbe68c32aa3fa6f4f"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0049-ASoC-google-aoc-let-the-telephony-endpoint-take-the-.patch",
+      "sha256": "20f3ab03b98f559e2597b69377996cdb44a580ee8c5884972710752484c781cc"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0050-brcmfmac-pcie-request-SR-power-domains-before-the-AR.patch",
+      "sha256": "dd64deeaa09517f5c16db6a04e6264409db762d093b8adbf0e11b9f5d4cbdef1"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0051-power-supply-max1720x-take-an-uncalibrated-nRSense-f.patch",
+      "sha256": "a260b507a87b40ed600914b0ceffb88778d3d04db25bf78f112fee72a8556462"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0052-drm-panel-google-comet-ct3d-add-DCS-brightness-backl.patch",
+      "sha256": "aff2c0b6659df555b16f011f1b36f2e3ce2429766f0f61e14cbd25b66898ed95"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0053-arm64-dts-comet-second-battery-gauge-and-AoC-sensor-.patch",
+      "sha256": "003b7ff51ac053e792f784e2ee8ec5fcef6125f45d256af7832a9365de84f98f"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0054-power-supply-max77779-charger-temperature-banded-cha.patch",
+      "sha256": "9ec66290e23c22848e7d1e8d890f498cb5d7d656dd570115e5e675c435bce63d"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0055-iio-aoc_usf-per-axis-raw-reads-wait-for-the-first-sa.patch",
+      "sha256": "a1da3b67ea53f9f94ce1f2c2639489e1335f31c7e6bee1711c3b47a34830f873"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0056-power-supply-max1720x-report-status-and-charge_now.patch",
+      "sha256": "9f52d12e10535d43c1f05ac883ab8443934a7561499d88e0a5066e2cca9ad15d"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0057-power-supply-max77779-charger-log-input-limit-change.patch",
+      "sha256": "0167afd90f94a9370ad14fc086f055fe8da3e1047114b586ca55392eabbc2d39"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0058-iio-aoc_usf-report-proximity-as-near-far.patch",
+      "sha256": "d08c043d220baa688e45b98cf9cdf0a79c1c9d42c21373ba3503952169c353ca"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0059-power-supply-max1720x-register-the-battery-thermal-z.patch",
+      "sha256": "af6ea17be2fa9a3df227770dac9d91df36ef3a711b48adb7957a584486e9347e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0060-mfd-sec-acpm-s2mpg14-15-readable-NTC-data-in-the-met.patch",
+      "sha256": "47f80a1ae1236b8cdfa76289fdff86091cc3b041f66c0b12ea50b690b49f289c"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0061-thermal-samsung-add-S2MPG15-thermistor-channels.patch",
+      "sha256": "6695185b7cc832735b9e7adb0d14f0f8557be013ca20e4ff7596342a4873253d"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0062-arm64-dts-comet-board-thermistor-zones.patch",
+      "sha256": "64becb64092e2b125a167fde36cc3d213f787686f4f772cc8e2a26d33cc2d572"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0063-phy-exynos5-usbdrd-zuma-ignore-the-Type-C-safe-state.patch",
+      "sha256": "b55c54a94912778c5cda1694bb9eaf6e46b6fc266efcb817219dda6f9c82da9e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0064-Bluetooth-Add-HCI_QUIRK_BROKEN_EXT_ADV.patch",
+      "sha256": "bcea1925e81cf3cd55006fa96253937488b30e9655cce47dea7dc9a0744c7e0a"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0065-Bluetooth-hci_aoc-use-legacy-LE-commands.patch",
+      "sha256": "82bb671f2be718a491a3cfa204a07be5212f1847d6e8ce5c1dada632b2e9ce28"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0066-arm64-luma_diag-luma.diag_restart-0-lets-a-normal-re.patch",
+      "sha256": "9831d57a2d4a26edb101243c5daff2b47f43c9eb12a9e8d8d325988456a61577"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0067-brcmfmac-pcie-seed-the-BCM4390-firmware-and-clear-fr.patch",
+      "sha256": "8b5e4ec412ddba9dbc85332567677db7c977d34a288711eda2b89412fa969a69"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0068-brcmfmac-pcie-fail-the-download-on-a-boot-trap-or-bo.patch",
+      "sha256": "95e7fb2c55b4f058c576673e595a48034bd9670b2c124f2d40d1e3497701ce35"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0069-brcmfmac-pcie-validate-the-ring-info-before-using-it.patch",
+      "sha256": "a42a43b34aab5e82f3bca352994dff136846473078a818d311ba99a9859c81d4"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0070-brcmfmac-pcie-retry-a-failed-bring-up-with-a-chip-re.patch",
+      "sha256": "8e0e0cf43c1e27ada6ce1286fe0a97d2b5e591e50b85cd7e2aa1a23f9fabcdbd"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0071-net-wwan-s5xxx-ring-the-link-ack-doorbell-after-a-ru.patch",
+      "sha256": "bd27201ace894370c13e5be9f49cedab38dfe0262f175e15e3a93c54433b2d67"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0072-arm64-luma-embedded-DTB-keep-the-bootloader-s-chosen.patch",
+      "sha256": "c82eae846f9bfe23a4fd9a4155965c3c4016ef0b1b72846ff94e9fdc5f816860"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0073-net-wwan-s5xxx-power-cycle-and-rescan-when-the-CP-en.patch",
+      "sha256": "e05dd2d3f5bab242f2b0811b72d89e2b50f9a1cd750d19b0b168f4c6174d8c8e"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0074-net-wwan-s5xxx-poll-for-FMT-txq-space-instead-of-sle.patch",
+      "sha256": "81eeb5002a6eaa2fcbfbe5ce5d89e167a45cd81eea5c9471ccc0709fc9d9dd50"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0075-net-wwan-s5xxx-reassemble-fragmented-oem-GEMS-messag.patch",
+      "sha256": "b59cdbb7dc3efcd009fceefd10ce5418248a8e9415a7be3ea3c45a76cd5ccc9c"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0076-arm64-dts-comet-hog-the-BCL-modem-throttle-lines-ina.patch",
+      "sha256": "a35d5576c9f609f6164efb017186846f6de0a124ba5a2c5aed6b5c321b6eaa96"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0077-net-wwan-s5xxx-publish-AP-awake-display-on-to-the-CP.patch",
+      "sha256": "d73db636724351e487315c15720072efd9d508973d2d5096e564f3017c9db2d3"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0078-net-wwan-s5xxx-stage-the-GNSS-header-block-at-the-wi.patch",
+      "sha256": "b1f519df7e69078b46eaea3b7b06080fcc7702ce0ca23528656a058717fc7d95"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0079-net-wwan-s5xxx-retry-a-deferred-park-so-the-CP-can-f.patch",
+      "sha256": "d8a0fdb02d9ca79ec645e7efc9c3fcc93c94ce8f74c961b5c073a7777e697f73"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0080-net-wwan-s5xxx-watch-for-a-wake-nudge-the-CP-does-no.patch",
+      "sha256": "ef2e980eab3ac8bff861b684bd2d3517d74ff65d23f3a66ffab7f7693ac30497"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0081-ASoC-google-aoc-telephony-start-and-call-mic-as-mixe.patch",
+      "sha256": "e1293779e3458b8af8c62dc76722fee7fabe08926c5cf8ab8c7d53a93a2fcc18"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0082-soc-google-aoc-log_info-parameter-for-the-AOC-log.patch",
+      "sha256": "69461ba99be439ecf7d97ae436d263c7c666354219c9fb94bfd5f4823b4de9e1"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0083-ASoC-google-aoc-tear-the-call-path-down-in-the-vendo.patch",
+      "sha256": "9da9b9d01e6eb20673e39fb46ace148fe66941ac9883c65ecfc6690cedf50904"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0084-ASoC-google-aoc-restore-the-DSP-mode-a-call-replaced.patch",
+      "sha256": "d679836c7efd2e91ebab7d8f16910af7790104637b8a83721850e49fa451ffcf"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0085-ASoC-google-aoc-keep-the-call-s-DSP-mode-at-hang-up-.patch",
+      "sha256": "d32738eeccca776619a11f40efb20d0e1e63251ca35e12e18a158d92b4d4972a"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0086-ASoC-google-aoc-unload-the-CCA-before-leaving-a-call.patch",
+      "sha256": "a5189f0e60d222caf23321fe1136eafce29ecef5b1d70589137c0fb93f2719ca"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0087-net-wwan-s5xxx-relink-on-a-held-CP2AP_WAKEUP-detect-.patch",
+      "sha256": "4ef75acd7e9887e78ae23a9c9b2d081f7f96ff6e7047e2e076fdd1e0b5b665e9"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0088-net-wwan-s5xxx-log-rejected-and-discarded-RFS-reques.patch",
+      "sha256": "230b4278afa80610e8f49b916dce416dc57a417b4ed2e0eb116f1ce65a2ab4d6"
+    }
+  ]
+}

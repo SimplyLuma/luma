@@ -1,0 +1,43 @@
+From 9a00c087b58ae6c8c39a107d1bb66649ba6f44a1 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 20:46:51 -0400
+Subject: [PATCH 22/88] drm/exynos: zuma-dsim: map the shared DCPHY bias block
+ without claiming it
+
+DSIM0 and DSIM1 share dphy-extra; an exclusive request made the second DSIM
+fail with -EBUSY when both are enabled.
+---
+ drivers/gpu/drm/exynos/exynos9_dsim.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos9_dsim.c b/drivers/gpu/drm/exynos/exynos9_dsim.c
+index afa5c735a..9f0302092 100644
+--- a/drivers/gpu/drm/exynos/exynos9_dsim.c
++++ b/drivers/gpu/drm/exynos/exynos9_dsim.c
+@@ -1006,6 +1006,7 @@ static const struct component_ops zuma_dsim_component_ops = {
+ 
+ static int zuma_dsim_probe(struct platform_device *pdev)
+ {
++	struct resource *res;
+ 	struct device *dev = &pdev->dev;
+ 	struct zuma_dsim *dsim;
+ 	int ret;
+@@ -1043,8 +1044,16 @@ static int zuma_dsim_probe(struct platform_device *pdev)
+ 	if (IS_ERR(dsim->phy_regs))
+ 		return PTR_ERR(dsim->phy_regs);
+ 
+-	dsim->phy_extra_regs =
+-		devm_platform_ioremap_resource_byname(pdev, "dphy-extra");
++	/*
++	 * The DCPHY bias block (dphy-extra) is shared by DSIM0 and DSIM1, so map
++	 * it without claiming the region or the second DSIM fails with -EBUSY.
++	 */
++	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dphy-extra");
++	dsim->phy_extra_regs = res ? devm_ioremap(dev, res->start,
++						  resource_size(res)) :
++				     IOMEM_ERR_PTR(-ENODEV);
++	if (!IS_ERR(dsim->phy_extra_regs) && !dsim->phy_extra_regs)
++		dsim->phy_extra_regs = IOMEM_ERR_PTR(-ENOMEM);
+ 	if (IS_ERR(dsim->phy_extra_regs))
+ 		return PTR_ERR(dsim->phy_extra_regs);
+ 

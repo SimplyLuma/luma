@@ -1,0 +1,124 @@
+From 0116ac2a9d41c7878d33472325e25f419be8f84b Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 18:33:17 -0400
+Subject: [PATCH 14/88] drm/exynos: dpu-dma: quiesce every bootloader DECON,
+ not just DECON0
+
+comet's bootloader drives the outer panel from DECON1 and leaves it running
+(GLOBAL_CON 0x132). Only DECON0 was stopped and reset before the SysMMU
+came up, so DECON1 was reprogrammed while still running and no frame ever
+reached the panel. Apply the same stop, wait-for-idle, SRESET to DECON1.
+---
+ drivers/gpu/drm/exynos/exynos_dpu_dma.c | 45 +++++++++++++++----------
+ 1 file changed, 28 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/gpu/drm/exynos/exynos_dpu_dma.c b/drivers/gpu/drm/exynos/exynos_dpu_dma.c
+index b979da4c8..bb31b8131 100644
+--- a/drivers/gpu/drm/exynos/exynos_dpu_dma.c
++++ b/drivers/gpu/drm/exynos/exynos_dpu_dma.c
+@@ -366,8 +366,9 @@ static const struct component_ops dma_component_ops = {
+ 	.bind = dma_bind,
+ };
+ 
+-/* DECON0 GLOBAL_CON, see regs-decon-zuma.h. */
+-#define QUIESCE_DECON0_MAIN	0x19470000
++/* DECON0/1 GLOBAL_CON, see regs-decon-zuma.h. */
++#define QUIESCE_DECON_MAIN(_id)	(0x19470000 + 0x1000 * (_id))
++#define QUIESCE_NR_DECON	2
+ #define QUIESCE_GLOBAL_CON	0x0020
+ #define QUIESCE_DECON_EN_F	BIT(0)
+ #define QUIESCE_DECON_EN	BIT(1)
+@@ -381,7 +382,8 @@ MODULE_PARM_DESC(quiesce_boot_decon,
+ 		 "stop the bootloader's DECON before powering the DPU SysMMU");
+ 
+ /*
+- * The bootloader hands the panel over with DECON0 still fetching, and enabling
++ * The bootloader hands the panel over with a DECON still fetching - DECON0 on
++ * single-panel boards, DECON1 for comet's outer panel - and enabling
+  * SysMMU translation under a live DMA master resets the SoC. Stop the fetch
+  * first. Done with a bare mapping rather than through the DECON driver, which
+  * probes later and does not own the hardware until it binds.
+@@ -392,24 +394,21 @@ MODULE_PARM_DESC(quiesce_boot_decon,
+  * is entered. Quiescing inside the probe is 100ms too late, which is exactly
+  * what the first version of this patch did.
+  */
+-void dpu_dma_quiesce_boot_decon(void)
++static void dpu_dma_quiesce_one(unsigned int id)
+ {
+ 	void __iomem *main;
+ 	u32 val;
+ 	int ret;
+ 
+-	if (!quiesce_boot_decon)
+-		return;
+-
+-	main = ioremap(QUIESCE_DECON0_MAIN, 0x100);
++	main = ioremap(QUIESCE_DECON_MAIN(id), 0x100);
+ 	if (!main) {
+-		pr_warn("exynos-dpu: quiesce: cannot map DECON0\n");
++		pr_warn("exynos-dpu: quiesce: cannot map DECON%u\n", id);
+ 		return;
+ 	}
+ 
+ 	val = readl(main + QUIESCE_GLOBAL_CON);
+ 	if (!(val & QUIESCE_RUN_STATUS)) {
+-		pr_info("exynos-dpu: quiesce: DECON0 already idle (%#x)\n", val);
++		pr_info("exynos-dpu: quiesce: DECON%u already idle (%#x)\n", id, val);
+ 		goto out;
+ 	}
+ 
+@@ -426,11 +425,11 @@ void dpu_dma_quiesce_boot_decon(void)
+ 	ret = readl_poll_timeout(main + QUIESCE_GLOBAL_CON, val,
+ 				 !(val & QUIESCE_RUN_STATUS), 100, 100000);
+ 	if (!ret) {
+-		pr_info("exynos-dpu: quiesce: DECON0 stopped (%#x)\n", val);
++		pr_info("exynos-dpu: quiesce: DECON%u stopped (%#x)\n", id, val);
+ 		goto out;
+ 	}
+ 
+-	pr_warn("exynos-dpu: quiesce: DECON0 still running (%#x), SRESET\n", val);
++	pr_warn("exynos-dpu: quiesce: DECON%u still running (%#x), SRESET\n", id, val);
+ 
+ 	/*
+ 	 * Only SRESET between frames. Resetting mid-frame -- IDLE_STATUS clear,
+@@ -442,23 +441,35 @@ void dpu_dma_quiesce_boot_decon(void)
+ 	ret = readl_poll_timeout(main + QUIESCE_GLOBAL_CON, val,
+ 				 val & QUIESCE_IDLE_STATUS, 100, 100000);
+ 	if (ret)
+-		pr_warn("exynos-dpu: quiesce: DECON0 never idle (%#x), SRESET anyway\n",
+-			val);
++		pr_warn("exynos-dpu: quiesce: DECON%u never idle (%#x), SRESET anyway\n",
++			id, val);
+ 	else
+-		pr_info("exynos-dpu: quiesce: DECON0 idle (%#x)\n", val);
++		pr_info("exynos-dpu: quiesce: DECON%u idle (%#x)\n", id, val);
+ 
+ 	writel(val | QUIESCE_SRESET, main + QUIESCE_GLOBAL_CON);
+ 	ret = readl_poll_timeout(main + QUIESCE_GLOBAL_CON, val,
+ 				 !(val & (QUIESCE_SRESET | QUIESCE_RUN_STATUS)),
+ 				 100, 100000);
+ 	if (ret)
+-		pr_warn("exynos-dpu: quiesce: SRESET did not settle (%#x)\n", val);
++		pr_warn("exynos-dpu: quiesce: DECON%u SRESET did not settle (%#x)\n",
++			id, val);
+ 	else
+-		pr_info("exynos-dpu: quiesce: DECON0 reset (%#x)\n", val);
++		pr_info("exynos-dpu: quiesce: DECON%u reset (%#x)\n", id, val);
+ out:
+ 	iounmap(main);
+ }
+ 
++void dpu_dma_quiesce_boot_decon(void)
++{
++	unsigned int id;
++
++	if (!quiesce_boot_decon)
++		return;
++
++	for (id = 0; id < QUIESCE_NR_DECON; id++)
++		dpu_dma_quiesce_one(id);
++}
++
+ static int dpu_dma_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;

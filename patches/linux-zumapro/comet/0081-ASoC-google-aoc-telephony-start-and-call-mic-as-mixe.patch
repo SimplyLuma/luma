@@ -1,0 +1,352 @@
+From e8de9360b51fb93a14d55d82d93e91e5100951df Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:01:40 -0400
+Subject: [PATCH 81/88] ASoC: google: aoc: telephony start and call mic as
+ mixer controls
+
+"Voice Call Start" (Off/Modem/VoIP/RTP, default Modem) picks the start
+command sent when the telephony endpoint is triggered; the stop matches
+the start that was sent.  The vendor driver uses MODEM_START for every
+cellular call, VoLTE included; the unknown-codec reports were the CP BAR2
+decoding to nothing.  "Voice Call Mic Input" (default 0) is the modem
+input index of the call mic, "Voice Call Mic HW Gain (cB)" (default 130,
+comet's stock voice path) replaces the replayed zero gain.  The voice
+path logs its steps at info level.
+---
+ sound/soc/google/aoc-audio.c | 214 ++++++++++++++++++++++++++++++++---
+ 1 file changed, 201 insertions(+), 13 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index b12ad0301..8dce631a1 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -109,11 +109,16 @@
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_START_ID	256
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_STOP_ID	257
+ /*
+- * EXPERIMENT: the AOC has three telephony starts -- MODEM (256) for a circuit
+- * bearer the CP decodes, VOIP (258), and RTP (289).  Every call since IMS came
+- * up is VoLTE, and on MODEM the AOC reports "PCIe Modem Configuration: Unknown
+- * codec type (0xffffffff)" -- it is told a call is up and finds no format
+- * behind it.  Try the RTP start instead.
++ * The AOC has three telephony starts: MODEM (256), VOIP (258) and RTP (289).
++ * The vendor driver issues only MODEM for a cellular call, VoLTE included
++ * (prepare_phonecall: MODEM_START on entry point 4, then it tells the CP the
++ * call audio is up); VOIP belongs to its separate voip PCM, where the AP
++ * carries the media, and RTP is not used at all.  The "PCIe Modem
++ * Configuration: Unknown codec type (0xffffffff)" seen with MODEM was the CP's
++ * BAR2 decoding to nothing (all-ones reads), fixed by the modem driver's BAR
++ * placement, not a wrong start.  Which start a call uses is a mixer control
++ * ("Voice Call Start"), MODEM by default, the others kept for comparison and
++ * "Off" to open the path without starting the modem's flow.
+  */
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_START_ID	258
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_STOP_ID	259
+@@ -132,6 +137,27 @@
+ 
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_RTP_START_ID	289
+ #define AOC_CMD_AUDIO_OUTPUT_TELEPHONY_RTP_STOP_ID	290
++
++enum aoc_voice_start {
++	AOC_VOICE_START_OFF,
++	AOC_VOICE_START_MODEM,
++	AOC_VOICE_START_VOIP,
++	AOC_VOICE_START_RTP,
++};
++
++static const char * const aoc_voice_start_texts[] = {
++	"Off", "Modem", "VoIP", "RTP",
++};
++
++/* start/stop command ids, by enum aoc_voice_start */
++static const u16 aoc_voice_start_ids[][2] = {
++	[AOC_VOICE_START_MODEM] = { AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_START_ID,
++				    AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_STOP_ID },
++	[AOC_VOICE_START_VOIP]  = { AOC_CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_START_ID,
++				    AOC_CMD_AUDIO_OUTPUT_TELEPHONY_VOIP_STOP_ID },
++	[AOC_VOICE_START_RTP]   = { AOC_CMD_AUDIO_OUTPUT_TELEPHONY_RTP_START_ID,
++				    AOC_CMD_AUDIO_OUTPUT_TELEPHONY_RTP_STOP_ID },
++};
+ /*
+  * The call's uplink, and the downlink's precondition.
+  *
+@@ -163,6 +189,11 @@
+  * the vendor's ft_aec_ref_source switch), so the two are NOT the same value.
+  */
+ #define AOC_MODEM_INCALL_INPUT_INDEX			3
++/*
++ * The mic preamp in a call: comet's stock "microphones (VOICE)" path sets the
++ * high-power HW gain to 130 cB (its record paths leave it at 0).
++ */
++#define AOC_VOICE_MIC_HW_GAIN_CB			130
+ 
+ struct aoc_cmd_hdr {
+ 	u8 type;
+@@ -349,6 +380,9 @@ struct aoc_audio {
+ 	struct completion cmd_done;		/* a control reply arrived */
+ 	int mic_hw_gain_cb;			/* mic preamp gain, centibels */
+ 	int mic_soft_gain_db;			/* record soft gain, dB */
++	unsigned int voice_start;		/* enum aoc_voice_start */
++	int voice_mic_input;			/* ModemInputIndex of the call mic */
++	int voice_mic_gain_cb;			/* call mic preamp gain, centibels */
+ };
+ 
+ /* Per-open stream state. */
+@@ -361,6 +395,7 @@ struct aoc_audio_stream {
+ 	bool playback;
+ 	u8 source;				/* AOC entry point = PCM device */
+ 	bool voice;				/* the telephony endpoint */
++	unsigned int voice_start;		/* voice: the start that was sent */
+ 	u32 rx_prev;				/* AOC read counter last seen */
+ 	u64 consumed;				/* bytes the AOC has read since prepare */
+ 	unsigned int jumps;			/* read-counter discontinuities seen */
+@@ -518,9 +553,13 @@ static const struct aoc_voice_raw_cmd aoc_voice_pre[] = {
+ };
+ 
+ 
++/*
++ * cntr 192 (0x00fe, the mic high-power HW gain) is sent separately with the
++ * "Voice Call Mic HW Gain (cB)" value: comet's stock voice path uses 130 cB
++ * where the capture has 0.
++ */
+ static const struct aoc_voice_raw_cmd aoc_voice_post_bind[] = {
+ 	{ true,  0x00f9,  4, { 0x00, 0x00, 0x00, 0x00 } },
+-	{ true,  0x00fe,  4, { 0x00, 0x00, 0x00, 0x00 } },
+ };
+ 
+ /* Undo of aoc_voice_pre's lasting effects, in reverse order. */
+@@ -646,7 +685,7 @@ static int aoc_voice_mic_set(struct aoc_audio *aud, bool on)
+ 	 * and leaving it, and PCM_VALID stopped advancing -- the CP delivered
+ 	 * no voice frames at all, where before it ticked once per 20 ms.
+ 	 */
+-	start.mic_input_source = AOC_MODEM_MIC_INPUT_INDEX;
++	start.mic_input_source = aud->voice_mic_input;
+ 	start.ref_input_source = AOC_MODEM_MIC_INPUT_INDEX;
+ 	return aoc_audio_cmd_on(aud, aud->ctrl_in, &start, sizeof(start), rsp,
+ 				sizeof(rsp));
+@@ -672,21 +711,39 @@ static int aoc_audio_dsp_mode(struct aoc_audio *aud, u8 mode)
+ }
+ 
+ /*
+- * Open or close the modem's audio flow.  A bare header: the command carries no
+- * payload, the AOC knows which endpoint it means.
++ * Open or close the modem's audio flow with the start the "Voice Call Start"
++ * control picked (latched per stream, so the stop matches the start).  A bare
++ * header: the command carries no payload, the AOC knows which endpoint it
++ * means.
+  */
+-static int aoc_audio_modem(struct aoc_audio *aud, bool on)
++static int aoc_audio_modem(struct aoc_audio *aud, unsigned int start, bool on)
+ {
+ 	struct aoc_cmd_hdr cmd = { };
+ 	char rsp[64];
+ 
++	if (start == AOC_VOICE_START_OFF ||
++	    start >= ARRAY_SIZE(aoc_voice_start_ids))
++		return 0;
+ 	cmd.type = AOC_CMD_TYPE_CMD;
+ 	cmd.len = cpu_to_le16(sizeof(cmd));
+-	cmd.id = cpu_to_le16(on ? AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_START_ID
+-				: AOC_CMD_AUDIO_OUTPUT_TELEPHONY_MODEM_STOP_ID);
++	cmd.id = cpu_to_le16(aoc_voice_start_ids[start][on ? 0 : 1]);
+ 	return aoc_audio_cmd(aud, &cmd, sizeof(cmd), rsp, sizeof(rsp));
+ }
+ 
++/* The call mic's preamp gain, on the input control channel. */
++static int aoc_voice_mic_gain(struct aoc_audio *aud)
++{
++	struct cmd_audio_input_hw_gain hw = { };
++	char rsp[64];
++
++	hw.hdr.type = AOC_CMD_TYPE_CMD;
++	hw.hdr.len = cpu_to_le16(sizeof(hw));
++	hw.hdr.id = cpu_to_le16(AOC_CMD_AUDIO_INPUT_SET_MIC_HP_GAIN_ID);
++	hw.gain_cb = cpu_to_le32(aud->voice_mic_gain_cb);
++	return aoc_audio_cmd_on(aud, aud->ctrl_in, &hw, sizeof(hw), rsp,
++				sizeof(rsp));
++}
++
+ /* Bind (or unbind) a source to a sink. */
+ static int aoc_audio_bind(struct aoc_audio *aud, u8 src, u8 dst, bool on)
+ {
+@@ -824,7 +881,112 @@ static int aoc_mic_gain_put(struct snd_kcontrol *kc,
+ 	return 1;
+ }
+ 
++/*
++ * The call path's knobs, read when the telephony endpoint is set up (mic,
++ * gain) and started (the start command), so a telephony daemon sets them
++ * before it opens hw:N,4.
++ */
++static int aoc_voice_start_info(struct snd_kcontrol *kc,
++				struct snd_ctl_elem_info *ui)
++{
++	return snd_ctl_enum_info(ui, 1, ARRAY_SIZE(aoc_voice_start_texts),
++				 aoc_voice_start_texts);
++}
++
++static int aoc_voice_start_get(struct snd_kcontrol *kc,
++			       struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++
++	uc->value.enumerated.item[0] = aud->voice_start;
++	return 0;
++}
++
++static int aoc_voice_start_put(struct snd_kcontrol *kc,
++			       struct snd_ctl_elem_value *uc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++	unsigned int v = uc->value.enumerated.item[0];
++
++	if (v >= ARRAY_SIZE(aoc_voice_start_texts))
++		return -EINVAL;
++	if (v == aud->voice_start)
++		return 0;
++	aud->voice_start = v;
++	return 1;
++}
++
++#define AOC_VOICE_CTL_MIC_INPUT		0
++#define AOC_VOICE_CTL_MIC_GAIN		1
++
++static int aoc_voice_int_info(struct snd_kcontrol *kc,
++			      struct snd_ctl_elem_info *ui)
++{
++	ui->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
++	ui->count = 1;
++	ui->value.integer.min = 0;
++	ui->value.integer.max = kc->private_value == AOC_VOICE_CTL_MIC_INPUT ?
++				AOC_MODEM_INCALL_INPUT_INDEX :
++				AOC_MIC_HW_GAIN_CB_MAX;
++	return 0;
++}
++
++static int *aoc_voice_int_slot(struct snd_kcontrol *kc)
++{
++	struct snd_soc_card *card = snd_kcontrol_chip(kc);
++	struct aoc_audio *aud = container_of(card, struct aoc_audio, card);
++
++	return kc->private_value == AOC_VOICE_CTL_MIC_INPUT ?
++	       &aud->voice_mic_input : &aud->voice_mic_gain_cb;
++}
++
++static int aoc_voice_int_get(struct snd_kcontrol *kc,
++			     struct snd_ctl_elem_value *uc)
++{
++	uc->value.integer.value[0] = *aoc_voice_int_slot(kc);
++	return 0;
++}
++
++static int aoc_voice_int_put(struct snd_kcontrol *kc,
++			     struct snd_ctl_elem_value *uc)
++{
++	int *slot = aoc_voice_int_slot(kc);
++	long max = kc->private_value == AOC_VOICE_CTL_MIC_INPUT ?
++		   AOC_MODEM_INCALL_INPUT_INDEX : AOC_MIC_HW_GAIN_CB_MAX;
++	long val = clamp(uc->value.integer.value[0], 0L, max);
++
++	if (val == *slot)
++		return 0;
++	*slot = val;
++	return 1;
++}
++
+ static const struct snd_kcontrol_new aoc_mic_controls[] = {
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Voice Call Start",
++		.info = aoc_voice_start_info,
++		.get = aoc_voice_start_get,
++		.put = aoc_voice_start_put,
++	},
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Voice Call Mic Input",
++		.info = aoc_voice_int_info,
++		.get = aoc_voice_int_get,
++		.put = aoc_voice_int_put,
++		.private_value = AOC_VOICE_CTL_MIC_INPUT,
++	},
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Voice Call Mic HW Gain (cB)",
++		.info = aoc_voice_int_info,
++		.get = aoc_voice_int_get,
++		.put = aoc_voice_int_put,
++		.private_value = AOC_VOICE_CTL_MIC_GAIN,
++	},
+ 	{
+ 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+ 		.name = "Mic HW Gain (cB)",
+@@ -1358,6 +1520,10 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 	 */
+ 	/* The DSP wants a mic source live before it will bind the sink. */
+ 	if (s->voice) {
++		dev_info(comp->dev, "voice: path up (%u Hz, %u ch): DSP telephony, call mic input %d, mic gain %d cB, start %s\n",
++			 params_rate(params), params_channels(params),
++			 aud->voice_mic_input, aud->voice_mic_gain_cb,
++			 aoc_voice_start_texts[aud->voice_start]);
+ 		ret = aoc_voice_replay(aud, aoc_voice_pre,
+ 				       ARRAY_SIZE(aoc_voice_pre));
+ 		if (ret)
+@@ -1389,6 +1555,13 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 	if (s->voice) {
+ 		ret = aoc_voice_replay(aud, aoc_voice_post_bind,
+ 				       ARRAY_SIZE(aoc_voice_post_bind));
++		if (!ret)
++			ret = aoc_voice_mic_gain(aud);
++		if (ret)
++			dev_err(comp->dev, "voice: call mic setup failed: %d\n", ret);
++		else
++			dev_info(comp->dev, "voice: downlink %d bound to the speaker sink, mic live\n",
++				 AOC_SRC_TELEPHONY_DOWNLINK);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -1435,6 +1608,7 @@ static int aoc_pcm_hw_free(struct snd_soc_component *comp,
+ 		aoc_voice_replay(aud, aoc_voice_teardown,
+ 				 ARRAY_SIZE(aoc_voice_teardown));
+ 		aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
++		dev_info(comp->dev, "voice: path down: %d\n", ret);
+ 	}
+ 	return ret;
+ }
+@@ -1506,12 +1680,23 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 	 * prepare that runs twice.
+ 	 */
+ 	if (s->voice) {
+-		ret = aoc_audio_modem(aud, on);
++		if (on)
++			s->voice_start = aud->voice_start;
++		ret = aoc_audio_modem(aud, s->voice_start, on);
+ 		if (!ret && on)
+ 			ret = aoc_audio_set_param(aud,
+ 						  AOC_TELEPHONY_SINK_BLOCK,
+ 						  AOC_TELEPHONY_COMPONENT_POST,
+ 						  AOC_TELEPHONY_BLOCK_KEY, 0);
++		if (s->voice_start == AOC_VOICE_START_OFF)
++			dev_info(comp->dev, "voice: %s with no telephony start (Voice Call Start Off)\n",
++				 on ? "running" : "stopped");
++		else
++			dev_info(comp->dev, "voice: telephony %s %s (%u): %d\n",
++				 aoc_voice_start_texts[s->voice_start],
++				 on ? "start" : "stop",
++				 aoc_voice_start_ids[s->voice_start][on ? 0 : 1],
++				 ret);
+ 	}
+ 
+ 	dev_dbg(comp->dev, "%s %s: %d\n",
+@@ -1783,6 +1968,9 @@ static int aoc_audio_probe(struct platform_device *pdev)
+ 	init_completion(&aud->cmd_done);
+ 	aud->mic_hw_gain_cb = AOC_MIC_HW_GAIN_CB;
+ 	aud->mic_soft_gain_db = AOC_MIC_REC_SOFT_GAIN_DB;
++	aud->voice_start = AOC_VOICE_START_MODEM;
++	aud->voice_mic_input = AOC_MODEM_MIC_INPUT_INDEX;
++	aud->voice_mic_gain_cb = AOC_VOICE_MIC_HW_GAIN_CB;
+ 	aud->ctrl = aoc_service_find(aud->aoc_dev, AOC_OUTPUT_CTRL_SERVICE);
+ 	if (aud->ctrl)
+ 		aoc_service_set_handler(aud->ctrl, aoc_audio_ctrl_isr, aud);

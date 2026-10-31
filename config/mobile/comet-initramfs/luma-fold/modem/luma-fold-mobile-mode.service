@@ -1,0 +1,13 @@
+[Unit]
+Description=Fold mobile mode (calls and texts, or mobile data)
+After=dbus.service NetworkManager.service ModemManager.service
+
+[Service]
+Type=dbus
+BusName=org.projectluma.MobileMode1
+ExecStart=/usr/bin/python3 /var/lib/luma-fold/modem/luma-fold-mobile-mode.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

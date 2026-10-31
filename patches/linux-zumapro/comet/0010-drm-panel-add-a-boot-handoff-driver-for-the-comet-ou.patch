@@ -1,0 +1,257 @@
+From 5a0eddcea13ffcf5fec98376bcfa9d1e355e64f5 Mon Sep 17 00:00:00 2001
+From: Project-Luma <dev@simplyluma.com>
+Date: Tue, 20 Oct 2026 17:41:02 -0400
+Subject: [PATCH 10/88] drm/panel: add a boot-handoff driver for the comet
+ outer CT3D panel
+
+---
+ arch/arm64/configs/zumapro_defconfig          |   1 +
+ drivers/gpu/drm/panel/Kconfig                 |  11 +
+ drivers/gpu/drm/panel/Makefile                |   1 +
+ .../gpu/drm/panel/panel-google-comet-ct3d.c   | 191 ++++++++++++++++++
+ 4 files changed, 204 insertions(+)
+ create mode 100644 drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+
+diff --git a/arch/arm64/configs/zumapro_defconfig b/arch/arm64/configs/zumapro_defconfig
+index cd4135a94..2086da5dc 100644
+--- a/arch/arm64/configs/zumapro_defconfig
++++ b/arch/arm64/configs/zumapro_defconfig
+@@ -382,6 +382,7 @@ CONFIG_DRM_EXYNOS9_DECON=y
+ # CONFIG_DRM_EXYNOS7_DECON is not set
+ # CONFIG_DRM_EXYNOS_MIXER is not set
+ # CONFIG_DRM_EXYNOS_DP is not set
++CONFIG_DRM_PANEL_GOOGLE_COMET_CT3D=y
+ CONFIG_DRM_PANEL_GOOGLE_TOKAY=y
+ CONFIG_DRM_PANEL_SAMSUNG_AMS581VF01=y
+ CONFIG_DRM_PANEL_SAMSUNG_AMS639RQ08=y
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index 9c19ce5cd..744a49d14 100644
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -438,6 +438,17 @@ config DRM_PANEL_GOOGLE_KOMODO
+ 	  the active refresh rate (60 or 120 Hz), and exposes DCS brightness
+ 	  control, so the exynos9 DECON can take over scanning out.
+ 
++config DRM_PANEL_GOOGLE_COMET_CT3D
++	tristate "Google Pixel 9 Pro Fold outer CT3D panel (boot handoff)"
++	depends on OF
++	depends on DRM_MIPI_DSI
++	select DRM_DISPLAY_DSC_HELPER
++	select DRM_DISPLAY_HELPER
++	help
++	  Boot-handoff driver for the outer CT3D panel of the Pixel 9 Pro
++	  Fold (comet): keeps the bootloader's panel state and re-sends only
++	  the DSC PPS.
++
+ config DRM_PANEL_GOOGLE_TOKAY
+ 	tristate "Google Pixel 9 (tokay) TK4C panel"
+ 	depends on OF
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index 8ee928330..df4cc822f 100644
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -23,6 +23,7 @@ obj-$(CONFIG_DRM_PANEL_FEIYANG_FY07024DI26A30D) += panel-feiyang-fy07024di26a30d
+ obj-$(CONFIG_DRM_PANEL_FOCALTECH_OTA7290B) += panel-focaltech-ota7290b.o
+ obj-$(CONFIG_DRM_PANEL_GOOGLE_CAIMAN) += panel-google-caiman.o
+ obj-$(CONFIG_DRM_PANEL_GOOGLE_KOMODO) += panel-google-komodo.o
++obj-$(CONFIG_DRM_PANEL_GOOGLE_COMET_CT3D) += panel-google-comet-ct3d.o
+ obj-$(CONFIG_DRM_PANEL_GOOGLE_TOKAY) += panel-google-tokay.o
+ obj-$(CONFIG_DRM_PANEL_HIMAX_HX8279) += panel-himax-hx8279.o
+ obj-$(CONFIG_DRM_PANEL_HIMAX_HX83102) += panel-himax-hx83102.o
+diff --git a/drivers/gpu/drm/panel/panel-google-comet-ct3d.c b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+new file mode 100644
+index 000000000..cf9e07c07
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-google-comet-ct3d.c
+@@ -0,0 +1,191 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Google Pixel 9 Pro Fold (comet) outer-screen CT3D MIPI-DSI panel.
++ *
++ * Boot-handoff driver: Google has not published the downstream panel-gs-ct3d
++ * init sequence, so this driver keeps the panel exactly as the bootloader left
++ * it (awake, DSC on, display on) and never resets it. It re-sends only the DSC
++ * PPS, which was read back from the DSC1 encoder the bootloader programmed for
++ * this panel, so the DDIC's decoder and the DECON's encoder agree.
++ */
++
++#include <linux/module.h>
++#include <linux/of.h>
++
++#include <drm/display/drm_dsc.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++
++struct comet_ct3d {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi;
++};
++
++/* DSC 1.2, two 540x24 slices, 8 bpc, 8.0 bpp (bootloader DSC1 PPS). */
++static const struct drm_dsc_config comet_ct3d_dsc = {
++	.line_buf_depth = 9,
++	.bits_per_component = 8,
++	.convert_rgb = true,
++	.slice_width = 540,
++	.slice_height = 24,
++	.slice_count = 2,
++	.simple_422 = false,
++	.pic_width = 1080,
++	.pic_height = 2424,
++	.rc_tgt_offset_high = 3,
++	.rc_tgt_offset_low = 3,
++	.bits_per_pixel = 128,
++	.rc_edge_factor = 6,
++	.rc_quant_incr_limit1 = 11,
++	.rc_quant_incr_limit0 = 11,
++	.initial_xmit_delay = 512,
++	.initial_dec_delay = 549,
++	.block_pred_enable = true,
++	.first_line_bpg_offset = 13,
++	.initial_offset = 6144,
++	.rc_buf_thresh = {
++		14, 28, 42, 56, 70, 84, 98, 105,
++		112, 119, 121, 123, 125, 126
++	},
++	.rc_range_params = {
++		{ 0, 4, 2 }, { 0, 4, 0 }, { 1, 5, 0 }, { 1, 6, 62 },
++		{ 3, 7, 60 }, { 3, 7, 58 }, { 3, 7, 56 }, { 3, 8, 56 },
++		{ 3, 9, 56 }, { 4, 10, 54 }, { 5, 10, 54 }, { 5, 11, 54 },
++		{ 5, 11, 52 }, { 8, 12, 52 }, { 12, 13, 52 }
++	},
++	.rc_model_size = 8192,
++	.flatness_min_qp = 3,
++	.flatness_max_qp = 12,
++	.initial_scale_value = 32,
++	.scale_decrement_interval = 7,
++	.scale_increment_interval = 565,
++	.nfl_bpg_offset = 1158,
++	.slice_bpg_offset = 1085,
++	.final_offset = 4336,
++	.vbr_enable = false,
++	.slice_chunk_size = 540,
++	.dsc_version_minor = 2,
++	.dsc_version_major = 1,
++};
++
++static const struct drm_display_mode comet_ct3d_mode = {
++	.clock = (1080 + 32 + 12 + 16) * (2424 + 8 + 2 + 16) * 60 / 1000,
++	.hdisplay = 1080,
++	.hsync_start = 1080 + 32,
++	.hsync_end = 1080 + 32 + 12,
++	.htotal = 1080 + 32 + 12 + 16,
++	.vdisplay = 2424,
++	.vsync_start = 2424 + 8,
++	.vsync_end = 2424 + 8 + 2,
++	.vtotal = 2424 + 8 + 2 + 16,
++	.width_mm = 65,
++	.height_mm = 146,
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
++static inline struct comet_ct3d *to_ct3d(struct drm_panel *panel)
++{
++	return container_of(panel, struct comet_ct3d, panel);
++}
++
++static int comet_ct3d_enable(struct drm_panel *panel)
++{
++	struct mipi_dsi_device *dsi = to_ct3d(panel)->dsi;
++	struct drm_dsc_picture_parameter_set pps;
++	int ret;
++
++	ret = mipi_dsi_compression_mode(dsi, true);
++	if (ret < 0)
++		dev_warn(&dsi->dev, "DSC enable: %d\n", ret);
++
++	drm_dsc_pps_payload_pack(&pps, &comet_ct3d_dsc);
++	ret = mipi_dsi_picture_parameter_set(dsi, &pps);
++	if (ret < 0)
++		dev_warn(&dsi->dev, "DSC PPS: %d\n", ret);
++
++	return mipi_dsi_dcs_set_display_on(dsi);
++}
++
++static int comet_ct3d_get_modes(struct drm_panel *panel,
++				struct drm_connector *connector)
++{
++	struct drm_display_mode *mode;
++
++	mode = drm_mode_duplicate(connector->dev, &comet_ct3d_mode);
++	if (!mode)
++		return -ENOMEM;
++
++	drm_mode_set_name(mode);
++	drm_mode_probed_add(connector, mode);
++	connector->display_info.width_mm = mode->width_mm;
++	connector->display_info.height_mm = mode->height_mm;
++
++	return 1;
++}
++
++static const struct drm_panel_funcs comet_ct3d_funcs = {
++	.enable = comet_ct3d_enable,
++	.get_modes = comet_ct3d_get_modes,
++};
++
++static int comet_ct3d_probe(struct mipi_dsi_device *dsi)
++{
++	struct device *dev = &dsi->dev;
++	struct comet_ct3d *ctx;
++	int ret;
++
++	ctx = devm_drm_panel_alloc(dev, struct comet_ct3d, panel,
++				   &comet_ct3d_funcs, DRM_MODE_CONNECTOR_DSI);
++	if (IS_ERR(ctx))
++		return PTR_ERR(ctx);
++
++	ctx->dsi = dsi;
++	mipi_dsi_set_drvdata(dsi, ctx);
++
++	/* 1080x2424 mode from the vendor dsim table: 4 lanes at 865 Mbps */
++	dsi->lanes = 4;
++	dsi->format = MIPI_DSI_FMT_RGB888;
++	dsi->hs_rate = 865000000;
++	dsi->dsc = (struct drm_dsc_config *)&comet_ct3d_dsc;
++	dsi->mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS;
++
++	ctx->panel.prepare_prev_first = true;
++	drm_panel_add(&ctx->panel);
++
++	ret = mipi_dsi_attach(dsi);
++	if (ret < 0) {
++		drm_panel_remove(&ctx->panel);
++		return dev_err_probe(dev, ret, "failed to attach to DSI host\n");
++	}
++
++	return 0;
++}
++
++static void comet_ct3d_remove(struct mipi_dsi_device *dsi)
++{
++	struct comet_ct3d *ctx = mipi_dsi_get_drvdata(dsi);
++
++	mipi_dsi_detach(dsi);
++	drm_panel_remove(&ctx->panel);
++}
++
++static const struct of_device_id comet_ct3d_of_match[] = {
++	{ .compatible = "google,gs-ct3d" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, comet_ct3d_of_match);
++
++static struct mipi_dsi_driver comet_ct3d_driver = {
++	.probe = comet_ct3d_probe,
++	.remove = comet_ct3d_remove,
++	.driver = {
++		.name = "panel-google-comet-ct3d",
++		.of_match_table = comet_ct3d_of_match,
++	},
++};
++module_mipi_dsi_driver(comet_ct3d_driver);
++
++MODULE_DESCRIPTION("Google comet outer CT3D panel (boot handoff)");
++MODULE_LICENSE("GPL");

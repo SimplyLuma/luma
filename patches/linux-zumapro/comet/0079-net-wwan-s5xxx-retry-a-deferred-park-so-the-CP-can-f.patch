@@ -1,0 +1,159 @@
+From 30ca9f7ecaa119b69761be3e7f47016fcd5402da Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Mon, 26 Oct 2026 14:36:09 -0400
+Subject: [PATCH 79/88] net: wwan: s5xxx: retry a deferred park so the CP can
+ finish its sleep
+
+After MAIN arms, every CP2AP_WAKEUP falling edge lands inside the FMT busy
+window of the frame that woke the CP, so the park was always deferred and
+nothing retried it: the link stayed up, the CP never completed its deep-sleep
+handshake and never raised CP2AP_WAKEUP for traffic of its own. Retry a
+deferred park after the busy window, park anyway after ten retries with
+undrained AP->CP frames, and log why each park is deferred. park_retry=0
+restores the old behaviour.
+---
+ drivers/net/wwan/s5xxx_modem.c | 70 ++++++++++++++++++++++++++++++++--
+ 1 file changed, 67 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wwan/s5xxx_modem.c b/drivers/net/wwan/s5xxx_modem.c
+index 654069cbc..aebe39d08 100644
+--- a/drivers/net/wwan/s5xxx_modem.c
++++ b/drivers/net/wwan/s5xxx_modem.c
+@@ -528,6 +528,18 @@ struct s5xxx_variant {
+  * storm off.
+  */
+ #define S5XXX_RELINK_FAIL_LIMIT		10
++/*
++ * A deferred park has to be retried by us: the CP drops CP2AP_WAKEUP once,
++ * ~50 ms after it answers, and then waits in its deep-sleep handshake for the
++ * AP to take the link down.  Every falling edge lands inside the FMT busy
++ * window of the frame that woke it, so without a retry the link is never
++ * parked after MAIN arms, the CP never completes its sleep, and it never
++ * raises CP2AP_WAKEUP for traffic of its own -- it only talks when poked.
++ * After this many retries with AP->CP frames still undrained, park anyway:
++ * they live in AP memory and the CP drains them after the next relink.
++ */
++#define S5XXX_PARK_RETRY_MAX		10
++#define S5XXX_PARK_RETRY_MS		(S5XXX_FMT_BUSY_MS + 100)
+ 
+ #define S5XXX_CH_GNSS_BOOT		0xf0
+ /*
+@@ -670,6 +682,8 @@ struct s5xxx_modem {
+ 	struct dentry		*dbgfs;		/* dump-boot trigger */
+ 	wait_queue_head_t	fmt_tx_wq;
+ 	unsigned long		fmt_busy_until;	/* inhibit park during an FMT transfer (jiffies) */
++	struct delayed_work	park_retry_work; /* re-try a deferred park (pm_wq) */
++	unsigned int		park_retries;	/* consecutive deferred parks (pm_work only) */
+ 
+ 	/* RFS file channel (umts_rfs0, ch 0x29) on the NORM_RAW ring. */
+ 	struct wwan_port	*rfs_port;
+@@ -1175,10 +1189,26 @@ static irqreturn_t s5xxx_tx_state_irq(int irq, void *data)
+  * the link may drop to save power.  Uses our existing (boot-bounce) link_up/down
+  * with the same D3hot save/restore the boot re-link uses.
+  */
++static bool park_retry = true;
++module_param(park_retry, bool, 0444);
++MODULE_PARM_DESC(park_retry,
++		 "re-try a park the FMT busy window or undrained tx deferred (0: wait for the next CP edge)");
++
++static void s5xxx_park_retry_work(struct work_struct *work)
++{
++	struct s5xxx_modem *sm = container_of(to_delayed_work(work),
++					      struct s5xxx_modem, park_retry_work);
++
++	queue_work(sm->pm_wq, &sm->pm_work);
++}
++
+ static void s5xxx_pm_work(struct work_struct *work)
+ {
+ 	struct s5xxx_modem *sm = container_of(work, struct s5xxx_modem, pm_work);
+ 	bool want_up = READ_ONCE(sm->cp_wants_up);
++
++	if (want_up)
++		sm->park_retries = 0;
+ 	unsigned long flags;
+ 	bool recheck;
+ 
+@@ -1303,17 +1333,47 @@ static void s5xxx_pm_work(struct work_struct *work)
+ 			 * unconditionally; once armed, fall back to the vendor debounce
+ 			 * (keep the link up for genuinely in-flight tx).
+ 			 */
++			bool pend = false, busy = false, resv = false;
++
++			if (sm->main_armed) {
++				pend = s5xxx_tx_pending(sm);
++				resv = sm->db_reserved;
++				busy = time_before(jiffies, READ_ONCE(sm->fmt_busy_until));
++			}
+ 			park = !sm->main_armed ||
+-			       (!s5xxx_tx_pending(sm) && !sm->db_reserved &&
+-				time_after_eq(jiffies,
+-					      READ_ONCE(sm->fmt_busy_until)));
++			       (!resv && !busy &&
++				(!pend || (park_retry &&
++					   sm->park_retries >= S5XXX_PARK_RETRY_MAX)));
+ 			if (park)
+ 				sm->link_up = false;
+ 			spin_unlock_irqrestore(&sm->lock, flags);
+ 
+ 			if (park) {
++				if (pend)
++					dev_info(sm->dev,
++						 "CP sleep: parking with undrained AP->CP frames (fmt tx %#x/%#x raw tx %#x/%#x)\n",
++						 readl(sm->ipc + S5XXX_FMT_TXQ_HEAD),
++						 readl(sm->ipc + S5XXX_FMT_TXQ_TAIL),
++						 readl(sm->ipc + S5XXX_RAW_TXQ_HEAD),
++						 readl(sm->ipc + S5XXX_RAW_TXQ_TAIL));
++				sm->park_retries = 0;
+ 				zumapro_pcie_modem_link_down(sm->rc_dev);
+ 				dev_dbg(sm->dev, "CP sleep: link down (parked)\n");
++			} else {
++				sm->park_retries++;
++				dev_dbg(sm->dev,
++					"CP sleep: park deferred (%s%s%s) #%u; fmt tx %#x/%#x rx %#x/%#x raw tx %#x/%#x\n",
++					busy ? "fmt busy " : "", pend ? "tx pending " : "",
++					resv ? "doorbell reserved" : "", sm->park_retries,
++					readl(sm->ipc + S5XXX_FMT_TXQ_HEAD),
++					readl(sm->ipc + S5XXX_FMT_TXQ_TAIL),
++					readl(sm->ipc + S5XXX_FMT_RXQ_HEAD),
++					readl(sm->ipc + S5XXX_FMT_RXQ_TAIL),
++					readl(sm->ipc + S5XXX_RAW_TXQ_HEAD),
++					readl(sm->ipc + S5XXX_RAW_TXQ_TAIL));
++				if (park_retry)
++					queue_delayed_work(sm->pm_wq, &sm->park_retry_work,
++							   msecs_to_jiffies(S5XXX_PARK_RETRY_MS));
+ 			}
+ 		}
+ 	}
+@@ -4581,6 +4641,7 @@ static int s5xxx_dump_boot(struct s5xxx_modem *sm)
+ 		sm->pm_armed = false;
+ 	}
+ 	mutex_unlock(&sm->pcie_onoff_lock);
++	cancel_delayed_work_sync(&sm->park_retry_work);
+ 	cancel_work_sync(&sm->pm_work);
+ 	sm->link_up = true;
+ 
+@@ -4992,6 +5053,7 @@ static int s5xxx_probe(struct platform_device *pdev)
+ 	init_completion(&sm->gnss_rsp);
+ 	INIT_WORK(&sm->boot_work, s5xxx_boot_work);
+ 	INIT_WORK(&sm->pm_work, s5xxx_pm_work);
++	INIT_DELAYED_WORK(&sm->park_retry_work, s5xxx_park_retry_work);
+ 	INIT_WORK(&sm->rfs_work, s5xxx_rfs_work);
+ 	INIT_LIST_HEAD(&sm->rfs_rxq);
+ 	spin_lock_init(&sm->rfs_lock);
+@@ -5386,6 +5448,7 @@ static void s5xxx_remove(struct platform_device *pdev)
+ 	free_irq(sm->cp2ap_irq, sm);
+ 	if (sm->cp_active_irq >= 0)
+ 		free_irq(sm->cp_active_irq, sm);
++	cancel_delayed_work_sync(&sm->park_retry_work);
+ 	cancel_work_sync(&sm->pm_work);
+ 	destroy_workqueue(sm->pm_wq);
+ 
+@@ -5514,6 +5577,7 @@ static void s5xxx_shutdown(struct platform_device *pdev)
+ 	free_irq(sm->cp2ap_irq, sm);
+ 	if (sm->cp_active_irq >= 0)
+ 		free_irq(sm->cp_active_irq, sm);
++	cancel_delayed_work_sync(&sm->park_retry_work);
+ 	cancel_work_sync(&sm->pm_work);
+ 	cancel_work_sync(&sm->boot_work);
+ 	if (sm->nvec > 1)

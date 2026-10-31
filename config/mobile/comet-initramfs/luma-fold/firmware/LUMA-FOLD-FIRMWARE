@@ -1,0 +1,12 @@
+Pixel 9 Pro Fold (comet) radio firmware from the stock vendor image of factory
+build comet-cp3a.261005.005 (Google factory-image license; not redistributable).
+brcm/brcmfmac4390b1-pcie.bin        <- /vendor/firmware/fw_bcmdhd.bin_4390_b1
+brcm/brcmfmac4390b1-pcie.clm_blob   <- /vendor/firmware/bcmdhd_clm.blob_4390_b1
+brcm/brcmfmac4390b1-pcie.txcap_blob <- /vendor/firmware/bcmdhd_txcap.blob_4390_b1
+brcm/brcmfmac4390b1-pcie.txt        <- /vendor/firmware/bcmdhd.cal_USI_G6BB_6327_V27 (USI G6 SKU3 module, 4390B1)
+brcm/BCM.hcd                        <- /vendor/firmware/brcm/BCM_200.hcd (the stock HAL choice, firmware_config.json)
+google/zumapro/aoc.bin              <- /vendor/firmware/aoc.bin
+cirrus/cs35l41-dsp1-spk-prot-comet.wmfw  <- /vendor/firmware/cs35l41-dsp1-spk-prot.wmfw
+cirrus/cs35l41-dsp1-spk-prot-comet.bin   <- /vendor/firmware/cs35l41-dsp1-spk-prot.bin
+cirrus/cs35l41-dsp1-spk-prot-comet-r.bin <- /vendor/firmware/R-cs35l41-dsp1-spk-prot.bin
+google/usf/comet/*.reg, append/*.reg <- /vendor/etc/sensors/registry (USF sensor registry, unmodified)

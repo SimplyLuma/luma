@@ -1,0 +1,214 @@
+From 066c919b4d842074a75c63b52f13f5ed5fa45cc3 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Thu, 22 Oct 2026 02:29:02 -0400
+Subject: [PATCH 42/88] arm64: dts: comet: CS35L41 speaker amplifiers on spi_13
+
+The AOC drives comet's two CS35L41 amplifiers over its TDM_0 as on the
+caimito boards, but their SPI control link is PERIC1 USI13 on gpp23 with
+both chip selects on GPIOs (gpp23-3, gpp20-3); spi_19 carries the outer
+touchscreen. Describe the bus and the amplifiers, with the vendor boost
+limits and bus drive settings, and the AOC sound card that binds them.
+Name the amplifiers' DSP tuning for the board.
+---
+ .../exynos/google/zumapro-comet-cs35l41.dtsi  | 174 ++++++++++++++++++
+ .../boot/dts/exynos/google/zumapro-comet.dts  |   6 +-
+ 2 files changed, 175 insertions(+), 5 deletions(-)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-cs35l41.dtsi
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-cs35l41.dtsi b/arch/arm64/boot/dts/exynos/google/zumapro-comet-cs35l41.dtsi
+new file mode 100644
+index 000000000..7a0ca672b
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-cs35l41.dtsi
+@@ -0,0 +1,174 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Pixel 9 Pro Fold (comet) speakers: two CS35L41 amplifiers on spi_13.
++ *
++ * The amplifiers, their reset lines (gpp6-3, gph2-1), interrupt lines
++ * (gpa5-5, gpa7-2), boost components and supplies are those of the caimito
++ * boards (zumapro-caimito-cs35l41.dtsi), and the AOC drives them over its
++ * TDM_0 the same way.  What differs is the SPI control link: PERIC1 USI13 on
++ * gpp23 rather than spi_19 (which carries the outer touchscreen here), with
++ * both chip selects on GPIOs -- the USI13 CS pad gpp23-3 for the left
++ * amplifier and gpp20-3 for the right -- as in the vendor
++ * zuma-comet-audio.dtsi.
++ */
++
++#include <dt-bindings/gpio/gpio.h>
++
++/ {
++	/*
++	 * AOC-routed audio.  The AOC does the DSP and drives the speaker amps;
++	 * this card streams PCM to it over the audio IPC rings.  Regless: it is
++	 * a software card, not a device.
++	 */
++	aoc_sound: aoc-sound {
++		compatible = "google,aoc-sound";
++		aoc = <&aoc>;
++
++		/* Both amplifiers listening to the AOC's TDM: left on slot 0,
++		 * right on slot 1.
++		 */
++		speakers {
++			sound-dai = <&cs35l41_l 0>, <&cs35l41_r 0>;
++		};
++	};
++
++	/* VP is the battery, which is always there and has nothing to model. */
++	cs35l41_vp: regulator-cs35l41-vp {
++		compatible = "regulator-fixed";
++		regulator-name = "cs35l41-vp";
++		regulator-min-microvolt = <3700000>;
++		regulator-max-microvolt = <3700000>;
++		regulator-always-on;
++	};
++};
++
++&pinctrl_hsi1 {
++	cs35l41_r_rst: cs35l41-r-rst-pins {
++		samsung,pins = "gph2-1";
++		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
++		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
++	};
++};
++
++&pinctrl_peric1 {
++	/* The vendor's bus settings: 5 mA on clock and MOSI, MISO pulled down. */
++	cs35l41_spi_drv: cs35l41-spi-drv-pins {
++		samsung,pins = "gpp23-0", "gpp23-1";
++		samsung,pin-drv = <GS101_PIN_DRV_5_MA>;
++	};
++
++	cs35l41_spi_miso: cs35l41-spi-miso-pins {
++		samsung,pins = "gpp23-2";
++		samsung,pin-pud = <GS101_PIN_PULL_DOWN>;
++	};
++
++	cs35l41_r_cs: cs35l41-r-cs-pins {
++		samsung,pins = "gpp20-3";
++		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
++		samsung,pin-drv = <GS101_PIN_DRV_5_MA>;
++	};
++};
++
++&usi13 {
++	samsung,mode = <USI_MODE_SPI>;
++
++	status = "okay";
++};
++
++/*
++ * Stereo speaker amplifiers: two CS35L41 on spi_13 (PERIC1 USI13).  The AOC
++ * drives them over TDM; this bus is only their SPI control link.  Both chip
++ * selects are GPIOs driven by the core: the controller's own CS pad gpp23-3,
++ * muxed to GPIO output (spi13_cs), for the left amp and gpp20-3 for the right.
++ */
++&spi_13 {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi13_bus>, <&spi13_cs>, <&cs35l41_r_cs>,
++		    <&cs35l41_spi_drv>, <&cs35l41_spi_miso>;
++	num-cs = <2>;
++	cs-gpios = <&gpp23 3 GPIO_ACTIVE_LOW>, <&gpp20 3 GPIO_ACTIVE_LOW>;
++
++	cs35l41_l: cs35l41@0 {
++		compatible = "cirrus,cs35l41";
++		reg = <0>;
++		#sound-dai-cells = <1>;
++		spi-max-frequency = <25000000>;
++
++		/*
++		 * The reset line, gpp6-3, is the SPI3 chip-select pad and comes
++		 * up in its peripheral function; mux it to GPIO output (the
++		 * spi3_cs config does exactly that) or the reset never drives and
++		 * the amp hangs in reset (OTP boot never completes).
++		 */
++		pinctrl-names = "default";
++		pinctrl-0 = <&spi3_cs>;
++
++		interrupt-parent = <&gpa5>;
++		interrupts = <5 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpios = <&gpp6 3 GPIO_ACTIVE_HIGH>;
++
++		VA-supply = <&s_bucka_reg>;
++		VP-supply = <&cs35l41_vp>;
++
++		/* Boost and output limits as the vendor tree has them. */
++		cirrus,boost-peak-milliamp = <3500>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <4>;
++		cirrus,asp-sdout-hiz = <3>;
++
++		/*
++		 * GPIO2 is the interrupt line: push-pull INTB, active low, as an
++		 * output.  Open drain would need a pull-up nothing provides.
++		 */
++		cirrus,gpio2-src-select = <4>;
++		cirrus,gpio2-output-enable;
++
++		/*
++		 * The Halo DSP speaker-protection tuning is specific to this
++		 * board and to each channel, so the firmware is named for both:
++		 * cirrus/cs35l41-dsp1-spk-prot-comet.{wmfw,bin}, and for the
++		 * right amp its prefix appended, lower-cased by wm_adsp:
++		 * cs35l41-dsp1-spk-prot-comet-r.bin.
++		 */
++		cirrus,subsystem-id = "comet";
++
++		controller-data {
++			samsung,spi-feedback-delay = <1>;
++		};
++	};
++
++	cs35l41_r: cs35l41@1 {
++		compatible = "cirrus,cs35l41";
++		reg = <1>;
++		#sound-dai-cells = <1>;
++		sound-name-prefix = "R";
++		spi-max-frequency = <25000000>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&cs35l41_r_rst>;
++
++		interrupt-parent = <&gpa7>;
++		interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpios = <&gph2 1 GPIO_ACTIVE_HIGH>;
++
++		VA-supply = <&s_bucka_reg>;
++		VP-supply = <&cs35l41_vp>;
++
++		cirrus,boost-peak-milliamp = <3500>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <4>;
++		cirrus,asp-sdout-hiz = <3>;
++
++		cirrus,gpio2-src-select = <4>;
++		cirrus,gpio2-output-enable;
++		cirrus,right-channel-amp;
++		cirrus,subsystem-id = "comet";
++
++		controller-data {
++			samsung,spi-feedback-delay = <1>;
++		};
++	};
++};
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index 78e5ce2bb..8adc8e1e3 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -10,11 +10,7 @@
+ #include "zumapro-pixel-common.dtsi"
+ #include "zumapro-caimito-bcm4390.dtsi"
+ #include "zumapro-caimito-s5400.dtsi"
+-/*
+- * No zumapro-caimito-cs35l41.dtsi: comet's CS35L41 pair sits on spi_13
+- * (vendor zuma-comet-audio.dtsi), not caimito's spi_19, and comet's spi_19
+- * carries the outer touchscreen. The speakers wait for a spi_13 description.
+- */
++#include "zumapro-comet-cs35l41.dtsi"
+ 
+ / {
+ 	model = "Pixel 9 Pro Fold";

@@ -1,0 +1,41 @@
+From ef219f0c7612bb19ec1dcbd2bd38cbe42c0eff06 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 18:01:24 -0400
+Subject: [PATCH 60/88] mfd: sec-acpm: s2mpg14/15: readable NTC data in the
+ meter regmap
+
+Extend the meter ranges over 0xd4-0xe3 (NTC low-pass-filtered data), read-only and volatile like the other data registers.
+---
+ drivers/mfd/sec-acpm.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/mfd/sec-acpm.c b/drivers/mfd/sec-acpm.c
+index d357582d9..552fdef6d 100644
+--- a/drivers/mfd/sec-acpm.c
++++ b/drivers/mfd/sec-acpm.c
+@@ -374,13 +374,11 @@ static const struct regmap_config s2mpg11_regmap_config_meter = {
+  */
+ static const struct regmap_range s2mpg1415_meter_registers[] = {
+ 	regmap_reg_range(0x00, 0x3c), /* Meter config */
+-	regmap_reg_range(0x63, 0xd3), /* ACC data, ACC count, LPF data, VBAT */
+-	regmap_reg_range(0xe4, 0xe5), /* External signed data */
++	regmap_reg_range(0x63, 0xe5), /* ACC, count, LPF, VBAT, NTC LPF, ext data */
+ };
+ 
+ static const struct regmap_range s2mpg1415_meter_ro_registers[] = {
+-	regmap_reg_range(0x63, 0xd3), /* ACC data, ACC count, LPF data, VBAT */
+-	regmap_reg_range(0xe4, 0xe5), /* External signed data */
++	regmap_reg_range(0x63, 0xe5), /* ACC, count, LPF, VBAT, NTC LPF, ext data */
+ };
+ 
+ static const struct regmap_access_table s2mpg1415_meter_wr_table = {
+@@ -401,8 +399,7 @@ static const struct regmap_access_table s2mpg1415_meter_rd_table = {
+  */
+ static const struct regmap_range s2mpg1415_meter_volatile_registers[] = {
+ 	regmap_reg_range(S2MPG14_METER_CTRL2, S2MPG14_METER_CTRL2),
+-	regmap_reg_range(0x63, 0xd3),
+-	regmap_reg_range(0xe4, 0xe5),
++	regmap_reg_range(0x63, 0xe5),
+ };
+ 
+ static const struct regmap_access_table s2mpg1415_meter_volatile_table = {

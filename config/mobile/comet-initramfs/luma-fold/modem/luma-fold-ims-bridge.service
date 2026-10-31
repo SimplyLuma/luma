@@ -1,0 +1,18 @@
+[Unit]
+Description=Luma Fold IMS1 call bridge to ModemManager voice
+After=dbus.service ModemManager.service
+Wants=ModemManager.service
+
+[Service]
+Type=dbus
+BusName=net.catcrafts.IMS1
+ExecStart=/usr/bin/python3 /var/lib/luma-fold/modem/luma-fold-ims-bridge.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

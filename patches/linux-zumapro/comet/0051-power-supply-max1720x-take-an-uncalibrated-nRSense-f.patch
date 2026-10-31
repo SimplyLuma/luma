@@ -1,0 +1,35 @@
+From f213848ad75bb70def14e1eabf6c04dbd3c47d08 Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 01:17:21 -0400
+Subject: [PATCH 51/88] power: supply: max1720x: take an uncalibrated nRSense
+ from firmware
+
+---
+ drivers/power/supply/max1720x_battery.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/power/supply/max1720x_battery.c b/drivers/power/supply/max1720x_battery.c
+index e2bd54ee3..edc8d5a15 100644
+--- a/drivers/power/supply/max1720x_battery.c
++++ b/drivers/power/supply/max1720x_battery.c
+@@ -12,6 +12,7 @@
+ #include <linux/module.h>
+ #include <linux/nvmem-provider.h>
+ #include <linux/power_supply.h>
++#include <linux/property.h>
+ #include <linux/regmap.h>
+ 
+ #include <linux/unaligned.h>
+@@ -558,6 +559,12 @@ static int max1720x_probe_nvmem(struct i2c_client *client,
+ 	}
+ 
+ 	info->rsense = val;
++	/* an uncalibrated nRSense: take the board's value if it gives one */
++	if (!info->rsense &&
++	    !device_property_read_u32(dev, "maxim,rsense-default", &val) && val) {
++		dev_info(dev, "RSense not calibrated, %u0 uOhm from firmware\n", val);
++		info->rsense = val;
++	}
+ 	if (!info->rsense) {
+ 		dev_warn(dev, "RSense not calibrated, set 10 mOhms!\n");
+ 		info->rsense = 1000; /* in regs in 10^-5 */

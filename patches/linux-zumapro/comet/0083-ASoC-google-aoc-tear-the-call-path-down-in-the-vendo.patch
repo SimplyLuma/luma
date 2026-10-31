@@ -1,0 +1,106 @@
+From 3acd271c0403a073e2bf89f25901fa2a24d2629f Mon Sep 17 00:00:00 2001
+From: Luma <luma@simplyluma.com>
+Date: Sun, 25 Oct 2026 23:12:56 -0400
+Subject: [PATCH 83/88] ASoC: google: aoc: tear the call path down in the
+ vendor's order
+
+Stop the call mic before unbinding the modem downlink from the speaker
+sink, then set the DSP mode back to ambient once (it was sent twice).
+Unbinding first left the modem input processor running on a sink that was
+gone; the AOC then reported heap corruption while unloading the call
+processing ("prev->next != hdr", "SetProcessLibrary failed. status 78").
+The vendor's aoc_phonecall_path_close closes the mic, then the sink.
+---
+ sound/soc/google/aoc-audio.c | 46 ++++++++++++++++++------------------
+ 1 file changed, 23 insertions(+), 23 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index 8dce631a1..c6c610ac8 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -168,7 +168,8 @@ static const u16 aoc_voice_start_ids[][2] = {
+  * It is not an optional extra to the downlink.  The DSP will not bind a sink
+  * with no mic source live - the bind simply goes unanswered - and the vendor
+  * stack goes as far as opening a default mic when none is up.  So the mic
+- * starts before the sink is bound, and stops after it is unbound.
++ * starts before the sink is bound; it also stops before the sink is
++ * unbound, which is the vendor's teardown order.
+  */
+ #define AOC_CMD_AUDIO_INPUT_MODEM_INPUT_START2_ID	324
+ #define AOC_CMD_AUDIO_INPUT_MODEM_INPUT_STOP_ID		211
+@@ -562,11 +563,6 @@ static const struct aoc_voice_raw_cmd aoc_voice_post_bind[] = {
+ 	{ true,  0x00f9,  4, { 0x00, 0x00, 0x00, 0x00 } },
+ };
+ 
+-/* Undo of aoc_voice_pre's lasting effects, in reverse order. */
+-static const struct aoc_voice_raw_cmd aoc_voice_teardown[] = {
+-	{ false, 0x0115,  1, { 0x00 } },		/* DSP mode back to AMBIENT */
+-};
+-
+ 
+ /* Replay a captured command table verbatim on its own control channel. */
+ static int aoc_voice_replay(struct aoc_audio *aud,
+@@ -1531,8 +1527,6 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 		ret = aoc_voice_mic_set(aud, true);
+ 		if (ret) {
+ 			dev_err(comp->dev, "call mic start failed: %d\n", ret);
+-			aoc_voice_replay(aud, aoc_voice_teardown,
+-					 ARRAY_SIZE(aoc_voice_teardown));
+ 			aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
+ 			return ret;
+ 		}
+@@ -1544,8 +1538,6 @@ static int aoc_pcm_hw_params(struct snd_soc_component *comp,
+ 		dev_err(comp->dev, "speaker bind failed: %d\n", ret);
+ 		if (s->voice) {
+ 			aoc_voice_mic_set(aud, false);
+-			aoc_voice_replay(aud, aoc_voice_teardown,
+-					 ARRAY_SIZE(aoc_voice_teardown));
+ 			aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
+ 		}
+ 		return ret;
+@@ -1592,24 +1584,32 @@ static int aoc_pcm_hw_free(struct snd_soc_component *comp,
+ {
+ 	struct aoc_audio *aud = substream_to_aud(substream);
+ 	struct aoc_audio_stream *s = substream->runtime->private_data;
+-	int ret;
++	int ret, err;
+ 
+ 	if (aoc_pcm_is_be(substream) || !s->playback)
+ 		return 0;
+ 
+-	ret = aoc_audio_bind(aud, aoc_stream_route_src(s), AOC_SINK_SPEAKER,
++	if (!s->voice)
++		return aoc_audio_bind(aud, aoc_stream_route_src(s),
++				      AOC_SINK_SPEAKER, false);
++
++	/*
++	 * The vendor's order (aoc_phonecall_path_close): the call mic first,
++	 * then the downlink's bind, then (from the HAL) the DSP mode, once.
++	 * Unbinding first left the modem input processor running on a sink
++	 * that was gone, and the AOC reported heap corruption as it unloaded
++	 * the call processing ("prev->next != hdr", "SetProcessLibrary failed.
++	 * status 78").
++	 */
++	ret = aoc_voice_mic_set(aud, false);
++	err = aoc_audio_bind(aud, aoc_stream_route_src(s), AOC_SINK_SPEAKER,
+ 			     false);
+-	/* Reverse of hw_params: the sink goes first, then the mic it needed. */
+-	if (s->voice) {
+-		int mic = aoc_voice_mic_set(aud, false);
+-
+-		if (mic && !ret)
+-			ret = mic;
+-		aoc_voice_replay(aud, aoc_voice_teardown,
+-				 ARRAY_SIZE(aoc_voice_teardown));
+-		aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
+-		dev_info(comp->dev, "voice: path down: %d\n", ret);
+-	}
++	if (err && !ret)
++		ret = err;
++	err = aoc_audio_dsp_mode(aud, AOC_DSP_MODE_AMBIENT);
++	if (err && !ret)
++		ret = err;
++	dev_info(comp->dev, "voice: path down: %d\n", ret);
+ 	return ret;
+ }
+ 
