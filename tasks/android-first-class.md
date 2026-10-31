@@ -56,6 +56,22 @@ An x86 development test image is not a declaration of daily-use or ARM readiness
 ## Current handoff
 
 CURRENT — native settings/resize source prepared; incremental image build next:
+- Current ACTIVE build r437/d8b0f57f, guard r437/1afd5d00, monitor
+  r437/5f4e232d. Immutable9d0b562d0/input
+  SHA7cd03f9ff18aea273e578948f094f8157b757613c58b3a50fde78dfca18c33b1.
+  Root unit luma-android-window-controls-build-r437-controller.service;
+  private window-controls-build-r437/progress.log is bounded observer output.
+  r425 failed before compilation:0020 destroy_display context omitted existing
+  luma_clipboard_shutdown. Read-only guestfish r435/dcd6de31 recovered exact
+  prepared C++/header; corrected patch applies to those exact files and preserves
+  shutdown. Prior virt-cat r433 failed multi-boot inspection; no disk writes.
+  Guarded recovery in r437 must prove ALL partial hardware files equal official
+  plus exact ordered patches1..19 before restoring only its prior prepared HEAD;
+  afterward require global recorded snapshot and clean hardware. No broad reset.
+  Actual recovery and compiler results still pending. Both earlier failed jobs
+  shut down the VM and restored profile/policy; no Dell deployment occurred.
+- r428/fc4bcbda host suite:143 discovered,127 executed passed,16 root-only skipped.
+  r431/15fc790f desktop GetWindows access denied; no permission/policy change.
 - Superseding build ACTIVE r425/05643043; guard r425/9061396c. Private
   window-controls-build-r425 includes required empty build mount directory in
   frozen project input SHA60cb195f086b782b07ae96909c3648287c41335a0ff330a1e9174bc6b040cbf2,
