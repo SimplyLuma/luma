@@ -18,10 +18,11 @@ grep -Fq 'LumaUI.CurveEditor.new()' "$source_root/luma_darkroom/window.py" || fa
 grep -Fq 'ImageCms.profileToProfile' "$source_root/luma_darkroom/engine.py" || fail 'embedded profiles are not converted for display'
 grep -Fq 'max_dimension=None' "$source_root/luma_darkroom/engine.py" || fail 'export does not reopen full-resolution source'
 grep -Fq 'os.replace' "$source_root/luma_darkroom/model.py" || fail 'documents are not atomically finalized'
-grep -Fxq 'luma-darkroom' "$repo_root/config/shared/application-packages.txt" || fail 'Darkroom is absent from shared applications'
-grep -Fq 'luma-darkroom-0.1.0-1.luma.1.fc44.noarch' "$repo_root/config/desktop/packages.txt" || fail 'desktop Darkroom package is not pinned'
-grep -Fq '$LUMA_DARKROOM_NEVRA.rpm' "$repo_root/scripts/vm/compose-desktop-image.sh" || fail 'desktop does not compose Darkroom'
-grep -Fq '$LUMA_DARKROOM_NEVRA.rpm' "$repo_root/scripts/mobile/compose-fp6-rootfs.sh" || fail 'mobile does not compose the same Darkroom package'
+# Creative applications are optional Depot installs, never baseline roles.
+grep -Fxq 'luma-darkroom' "$repo_root/config/shared/application-exclusions.txt" || fail 'optional app is not excluded from phone images'
+grep -Fxq 'luma-darkroom' "$repo_root/config/os/removed-packages.txt" || fail 'optional app is not excluded from desktop images'
+if grep -Fxq 'luma-darkroom' "$repo_root/config/shared/application-packages.txt"; then fail 'optional app leaked into shared defaults'; fi
+
 PYTHONPATH="$source_root" python3 -m unittest discover -s "$source_root/tests" -p 'test_*.py' >/dev/null || fail 'unit tests failed'
 printf 'Darkroom smoke test: PASS\n'
 
