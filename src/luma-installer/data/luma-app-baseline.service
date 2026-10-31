@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 [Unit]
-Description=Seed Luma's signed offline independent applications
-After=local-fs.target systemd-tmpfiles-setup.service
-Before=display-manager.service
+Description=Hand off the signed offline Luma application baseline
+After=local-fs.target systemd-tmpfiles-setup.service dbus.service
+Before=display-manager.service graphical.target
 ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
 
 [Service]
@@ -19,6 +19,9 @@ ProtectHome=yes
 ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
 StateDirectory=luma/app-baseline
 StateDirectoryMode=0700
+RemainAfterExit=yes
+# Match the packaged baseline owner: a slow first import must not prevent GDM
+# from starting while authenticated offline application bundles are progressing.
 TimeoutStartSec=30min
 
 [Install]

@@ -82,6 +82,35 @@ class Inventory(unittest.TestCase):
             else:self.doc['role_contract_sha256']='0'*64
             self.save()
             with self.subTest(change=change),self.assertRaises(ValueError):baseline.inventory(self.root)
+    def test_os_baseline_excludes_separate_products_and_still_requires_core_apps(self):
+        separate = {'org.projectluma.Write', 'org.projectluma.Grid', 'org.projectluma.Stage',
+                    'org.projectluma.Session', 'org.projectluma.Reel', 'org.projectluma.Darkroom'}
+        self.assertFalse(separate & baseline.APPS)
+        self.assertNotIn('org.projectluma.Displays', baseline.APPS)
+        self.assertIn('org.projectluma.Notes', baseline.APPS)
+        baseline.inventory(self.root)
+        self.doc['bundles'] = [row for row in self.doc['bundles']
+                               if row['ref'] != 'app/org.projectluma.Notes/x86_64/beta']
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'incomplete'):
+            baseline.inventory(self.root)
+
+    def test_package_service_uses_os_handoff_and_preserves_readable_system_apps(self):
+        unit = (Path(__file__).resolve().parents[1] / 'data/luma-app-baseline.service').read_text()
+        self.assertIn('ExecStart=/usr/libexec/luma-app-baseline\n', unit)
+        self.assertIn('UMask=0022\n', unit)
+        self.assertIn('StateDirectoryMode=0700\n', unit)
+        self.assertIn('RemainAfterExit=yes\n', unit)
+        self.assertIn('PrivateNetwork=yes\n', unit)
+        self.assertIn('ProtectSystem=strict\n', unit)
+
+    def test_separate_product_cannot_be_added_to_os_inventory(self):
+        row = dict(self.doc['bundles'][-1], ref='app/org.projectluma.Write/x86_64/beta')
+        self.doc['bundles'].append(row)
+        self.save()
+        with self.assertRaises(ValueError):
+            baseline.inventory(self.root)
+
     def test_exact_bundle_corruption_symlink_and_immutable_journal(self):
         row=self.doc['bundles'][0];bundle=self.root/row['file'];bundle.write_bytes(b'corrupt')
         with self.assertRaises(ValueError):baseline.inventory(self.root)

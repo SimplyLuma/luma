@@ -1,0 +1,19 @@
+From: Project Luma <engineering@projectluma.org>
+Subject: [PATCH] Apply the PC feature mask once per Android boot
+
+Repeated writes to the multi-window property must not clone shared file mounts.
+Keep a volatile boot-local guard; runtime policy changes remain independent.
+
+--- a/rootdir/etc/init.waydroid.rc
++++ b/rootdir/etc/init.waydroid.rc
+@@ -61,5 +61,9 @@
+ on property:ro.vndk.version=28
+     mount none /dev/null /vendor_extra/lib/libmedia_codecserviceregistrant.so ro bind
+ 
+-on property:persist.waydroid.multi_windows=true
++on init
++    setprop sys.luma.pc_feature_masked 0
++
++on property:persist.waydroid.multi_windows=true && property:sys.luma.pc_feature_masked=0
+     mount none /system/etc/hidden_xml/pc.xml /system/etc/permissions/pc.xml ro bind
++    setprop sys.luma.pc_feature_masked 1

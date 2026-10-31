@@ -8,6 +8,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .errors import RuntimeUnavailableError
+
 
 FP6_COMPATIBLE = b"fairphone,fp6"
 DEFAULT_COMPATIBLE = Path("/proc/device-tree/compatible")
@@ -26,6 +28,29 @@ FP6_SOFTWARE_UNIT_FRAGMENT = (
     "/usr/lib/systemd/user/luma-android-fp6-software-compositor.service"
 )
 FP6_SOFTWARE_UNIT_DROPIN = "/usr/lib/systemd/user/service.d/10-timeout-abort.conf"
+
+# The matched LineageOS20/Android13 images require 4KiB pages.
+# A shared-kernel runtime cannot select a different page size in a namespace.
+# Android15+ 16KiB support requires separately verified images and app libraries.
+ANDROID_RUNTIME_PAGE_SIZE = 4096
+
+
+def runtime_page_size() -> int:
+    try:
+        value = os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
+        return 0
+    return value if type(value) is int and value > 0 else 0
+
+
+def require_android_page_size() -> None:
+    page_size = runtime_page_size()
+    if page_size != ANDROID_RUNTIME_PAGE_SIZE:
+        detail = f"{page_size} bytes" if page_size else "an unknown page size"
+        raise RuntimeUnavailableError(
+            "Android app support requires Luma’s 4 KiB kernel profile. "
+            f"The running kernel uses {detail}."
+        )
 
 
 @dataclass(frozen=True)

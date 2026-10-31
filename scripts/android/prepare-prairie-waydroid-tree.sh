@@ -20,8 +20,18 @@ lineage_root="$source_root/lineage-sdk"
 framework_root="$source_root/frameworks/base"
 native_root="$source_root/frameworks/native"
 device_root="$source_root/device/waydroid/waydroid"
+jelly_root="$source_root/packages/apps/Jelly"
+jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
+vendor_extra_root="$source_root/vendor/extra"
+vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
+libhidl_root="$source_root/system/libhidl"
+libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
+soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
+blueprint_cpu_patch="$repo_root/patches/android-blueprint/0001-honor-host-go-concurrency.patch"
+make_host_patch="$repo_root/patches/android-make/0001-luma-native-image-host-tools.patch"
+property_admission_patch="$repo_root/patches/android-system-core/0001-luma-property-writer-admission.patch"
 hardware_patch="$repo_root/patches/android-hardware-waydroid/0001-prairie-native-android-window-chrome.patch"
 hardware_pointer_patch="$repo_root/patches/android-hardware-waydroid/0002-prairie-host-pointer-policy.patch"
 hardware_frame_patch="$repo_root/patches/android-hardware-waydroid/0003-luma-appkit-content-island.patch"
@@ -33,7 +43,18 @@ hardware_task_lifetime_patch="$repo_root/patches/android-hardware-waydroid/0010-
 hardware_initial_resize_patch="$repo_root/patches/android-hardware-waydroid/0011-luma-mandatory-initial-task-resize.patch"
 hardware_rpc_threadpool_patch="$repo_root/patches/android-hardware-waydroid/0012-luma-shared-composer-rpc-threadpool.patch"
 hardware_buffer_bounds_patch="$repo_root/patches/android-hardware-waydroid/0013-luma-software-buffer-allocation-bounds.patch"
+hardware_configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-configure-invalidation-lock-order.patch"
+hardware_native_clipboard_patch="$repo_root/patches/android-hardware-waydroid/0015-luma-native-clipboard-caller-admission.patch"
+hardware_clipboard_transfer_patch="$repo_root/patches/android-hardware-waydroid/0016-luma-bounded-native-clipboard-transfer.patch"
+hardware_task_admission_patch="$repo_root/patches/android-hardware-waydroid/0017-luma-native-task-caller-admission.patch"
+hardware_task_channel_patch="$repo_root/patches/android-hardware-waydroid/0018-luma-bound-task-channel-io.patch"
+hardware_app_settings_patch="$repo_root/patches/android-hardware-waydroid/0019-luma-native-app-settings-action.patch"
+hardware_desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-logical-desktop-canvas.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
+lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
+lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
+lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
+lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
@@ -44,6 +65,17 @@ test -d "$source_root/.repo" || {
 }
 test -x "$waydroid_patch_script"
 
+# The pinned WebView and Mesa projects contain LFS working files. Without the
+# filter a clean checkout appears dirty, after a costly full-tree scan.
+command -v git-lfs >/dev/null || {
+  printf 'error: Git LFS is required for the pinned Android source; install git-lfs and run git lfs install\n' >&2
+  exit 1
+}
+git -C "$source_root" config --get filter.lfs.process >/dev/null || {
+  printf 'error: configure the Android builder Git LFS filter with git lfs install before preparing source\n' >&2
+  exit 1
+}
+
 tree_snapshot() {
   (
     cd "$source_root"
@@ -52,11 +84,32 @@ tree_snapshot() {
 }
 
 dirty_projects() {
+  local verify_jobs=${LUMA_ANDROID_VERIFY_JOBS:-2}
+  case "$verify_jobs" in
+    1|2|3|4|5|6|7|8) ;;
+    *) printf 'error: LUMA_ANDROID_VERIFY_JOBS must be 1..8\n' >&2; return 2 ;;
+  esac
   (
     cd "$source_root"
-    repo forall -c \
-      'test -z "$(git status --porcelain)" || printf "%s\n" "$REPO_PATH"'
+    printf 'Checking Android source projects (verification jobs=%s)...\n' "$verify_jobs" >&2
+    # Parallel Git index preloads contend on compressed source filesystems.
+    # This changes scheduling only: retain tracked and untracked file checks.
+    repo forall -j "$verify_jobs" -e -c '
+      status=$(git -c core.preloadIndex=false status --porcelain) || {
+        printf "error: cannot inspect Android project %s\n" "$REPO_PATH" >&2
+        exit 2
+      }
+      test -z "$status" || printf "%s\n" "$REPO_PATH"
+    ' || return 2
+    printf 'Android source project checks completed.\n' >&2
   )
+}
+
+tree_is_clean() {
+  local dirty
+  # A failed Git/repo command must not become an empty, apparently clean tree.
+  dirty=$(dirty_projects) || return 2
+  test -z "$dirty"
 }
 
 official_input_sha() {
@@ -85,14 +138,27 @@ write_state() {
     printf 'HARDWARE_OFFICIAL_HEAD=%s\n' "$hardware_official_head"
     printf 'LINEAGE_OFFICIAL_HEAD=%s\n' "$lineage_official_head"
     printf 'LINEAGE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$lineage_task_lifetime_patch")"
+    printf 'LINEAGE_NOTIFICATION_PATCH_SHA=%s\n' "$(patch_sha "$lineage_notification_patch")"
+    printf 'LINEAGE_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$lineage_admission_patch")"
+    printf 'LINEAGE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$lineage_clipboard_patch")"
+    printf 'LINEAGE_REPLY_PATCH_SHA=%s\n' "$(patch_sha "$lineage_reply_patch")"
     printf 'HARDWARE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_lifetime_patch")"
     printf 'HARDWARE_INITIAL_RESIZE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_initial_resize_patch")"
     printf 'HARDWARE_RPC_THREADPOOL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_rpc_threadpool_patch")"
     printf 'HARDWARE_BUFFER_BOUNDS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_buffer_bounds_patch")"
+    printf 'HARDWARE_CONFIGURE_LOCK_PATCH_SHA=%s\n' "$(patch_sha "$hardware_configure_lock_patch")"
+    printf 'HARDWARE_NATIVE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$hardware_native_clipboard_patch")"
+    printf 'HARDWARE_CLIPBOARD_TRANSFER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_clipboard_transfer_patch")"
+    printf 'HARDWARE_TASK_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_admission_patch")"
+    printf 'HARDWARE_TASK_CHANNEL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_channel_patch")"
+    printf 'HARDWARE_APP_SETTINGS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_app_settings_patch")"
+    printf 'HARDWARE_DESKTOP_CANVAS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_desktop_canvas_patch")"
     printf 'FRAMEWORK_OFFICIAL_HEAD=%s\n' "$framework_official_head"
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
     printf 'DEVICE_OFFICIAL_HEAD=%s\n' "$device_official_head"
+    printf 'JELLY_OFFICIAL_HEAD=%s\n' "$jelly_official_head"
+    printf 'JELLY_PATCH_SHA=%s\n' "$(patch_sha "$jelly_patch")"
     printf 'HARDWARE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_patch")"
     printf 'HARDWARE_POINTER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_pointer_patch")"
     printf 'HARDWARE_FRAME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_frame_patch")"
@@ -102,8 +168,16 @@ write_state() {
     printf 'HARDWARE_LUMAUI_FRAME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_lumaui_frame_patch")"
     printf 'ALLOCATOR_PATCH_SHA=%s\n' "$(patch_sha "$repo_root/patches/android-hardware-libhardware/0001-luma-software-yuv-buffers.patch")"
     printf 'MESA_BUILD_PATCH_SHA=%s\n' "$(patch_sha "$mesa_build_patch")"
+    printf 'PROPERTY_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$property_admission_patch")"
     printf 'SOONG_GC_PATCH_SHA=%s\n' "$(patch_sha "$soong_gc_patch")"
+    printf 'SOONG_CPU_PATCH_SHA=%s\n' "$(patch_sha "$soong_cpu_patch")"
+    printf 'BLUEPRINT_CPU_PATCH_SHA=%s\n' "$(patch_sha "$blueprint_cpu_patch")"
+    printf 'MAKE_HOST_PATCH_SHA=%s\n' "$(patch_sha "$make_host_patch")"
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
+    printf 'VENDOR_EXTRA_OFFICIAL_HEAD=%s\n' "$vendor_extra_official_head"
+    printf 'VENDOR_EXTRA_PATCH_SHA=%s\n' "$(patch_sha "$vendor_extra_patch")"
+    printf 'LIBHIDL_OFFICIAL_HEAD=%s\n' "$libhidl_official_head"
+    printf 'LIBHIDL_PATCH_SHA=%s\n' "$(patch_sha "$libhidl_patch")"
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
@@ -121,7 +195,7 @@ commit_patch() {
 
 reset_prepared_tree() {
   if [ ! -f "$state_file" ]; then
-    test -z "$(dirty_projects)" || {
+    tree_is_clean || {
       printf 'error: refusing to reset an untracked dirty Android tree\n' >&2
       exit 1
     }
@@ -134,7 +208,7 @@ reset_prepared_tree() {
     printf 'error: prepared Android tree drifted; refusing automatic reset\n' >&2
     exit 1
   }
-  test -z "$(dirty_projects)" || {
+  tree_is_clean || {
     printf 'error: prepared Android tree has uncommitted changes\n' >&2
     exit 1
   }
@@ -157,7 +231,7 @@ fi
 }
 
 if [ ! -f "$state_file" ]; then
-  test -z "$(dirty_projects)" || {
+  tree_is_clean || {
     printf 'error: Android source tree has uncommitted changes\n' >&2
     exit 1
   }
@@ -180,6 +254,9 @@ if [ ! -f "$state_file" ]; then
   framework_official_head=$(git -C "$framework_root" rev-parse HEAD)
   native_official_head=$(git -C "$native_root" rev-parse HEAD)
   device_official_head=$(git -C "$device_root" rev-parse HEAD)
+  jelly_official_head=$(git -C "$jelly_root" rev-parse HEAD)
+  vendor_extra_official_head=$(git -C "$vendor_extra_root" rev-parse HEAD)
+  libhidl_official_head=$(git -C "$libhidl_root" rev-parse HEAD)
 
   git -C "$hardware_root" apply --binary "$hardware_patch"
   git -C "$hardware_root" apply "$hardware_pointer_patch"
@@ -192,16 +269,34 @@ if [ ! -f "$state_file" ]; then
   git -C "$hardware_root" apply "$hardware_initial_resize_patch"
   git -C "$hardware_root" apply "$hardware_rpc_threadpool_patch"
   git -C "$hardware_root" apply "$hardware_buffer_bounds_patch"
+  git -C "$hardware_root" apply "$hardware_configure_lock_patch"
+  git -C "$hardware_root" apply "$hardware_native_clipboard_patch"
+  git -C "$hardware_root" apply "$hardware_clipboard_transfer_patch"
+  git -C "$hardware_root" apply "$hardware_task_admission_patch"
+  git -C "$hardware_root" apply "$hardware_task_channel_patch"
+  git -C "$hardware_root" apply "$hardware_app_settings_patch"
+  git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-window-callbacks.h" "$hardware_root/hwcomposer/luma-window-callbacks.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-resize.h" "$hardware_root/hwcomposer/luma-task-resize.h"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-app-settings-channel.h" "$hardware_root/hwcomposer/luma-app-settings-channel.h"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-desktop-canvas.h" "$hardware_root/hwcomposer/luma-desktop-canvas.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/Figtree-OFL.txt" "$hardware_root/hwcomposer/fonts/OFL.txt"
   for header in luma-window-frame.h luma-frame-tokens.h luma-frame-glyphs.h; do
     cmp "$repo_root/src/luma-platform/compat/$header" "$hardware_root/hwcomposer/$header"
   done
   commit_patch "$hardware_root" 'Prairie native Android window chrome'
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
+  git -C "$lineage_root" apply "$lineage_notification_patch"
+  git -C "$lineage_root" apply "$lineage_admission_patch"
+  git -C "$lineage_root" apply "$lineage_clipboard_patch"
+  git -C "$lineage_root" apply "$lineage_reply_patch"
+  cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
+    "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
+  cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
+    "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'
   git -C "$framework_root" apply "$framework_patch"
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
@@ -209,12 +304,26 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  git -C "$jelly_root" apply "$jelly_patch"
+  commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
+  git -C "$vendor_extra_root" apply "$vendor_extra_patch"
+  commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
+  git -C "$libhidl_root" apply "$libhidl_patch"
+  commit_patch "$libhidl_root" 'Retain HIDL manager strong reference under lock'
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   commit_patch "$source_root/hardware/libhardware" 'Luma software-YUV allocator'
   git -C "$source_root/external/mesa" apply "$mesa_build_patch"
   commit_patch "$source_root/external/mesa" 'Bound nested Mesa jobs to the admitted build budget'
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go GC tuning in the isolated compiler'
+  git -C "$source_root/build/soong" apply "$soong_cpu_patch"
+  commit_patch "$source_root/build/soong" 'Preserve explicit host Go scheduler concurrency'
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
+  commit_patch "$source_root/build/blueprint" 'Honor explicit host Go scheduler concurrency'
+  git -C "$source_root/build/make" apply "$make_host_patch"
+  commit_patch "$source_root/build/make" 'Scope Luma images to native build host tools'
+  git -C "$source_root/system/core" apply "$property_admission_patch"
+  commit_patch "$source_root/system/core" 'Reject Android application property writers'
   write_state
   printf 'Prairie Waydroid incremental source prepared\n'
   exit 0
@@ -231,7 +340,7 @@ source "$state_file"
   printf 'error: prepared Android tree commit state drifted\n' >&2
   exit 1
 }
-test -z "$(dirty_projects)" || {
+tree_is_clean || {
   printf 'error: prepared Android tree has uncommitted changes\n' >&2
   exit 1
 }
@@ -241,8 +350,38 @@ lineage_official_head=${LINEAGE_OFFICIAL_HEAD:-$(git -C "$lineage_root" rev-pars
 framework_official_head=$FRAMEWORK_OFFICIAL_HEAD
 native_official_head=${NATIVE_OFFICIAL_HEAD:-$(git -C "$native_root" rev-parse HEAD)}
 device_official_head=$DEVICE_OFFICIAL_HEAD
+jelly_official_head=${JELLY_OFFICIAL_HEAD:-$(git -C "$jelly_root" rev-parse HEAD)}
+vendor_extra_official_head=${VENDOR_EXTRA_OFFICIAL_HEAD:-$(git -C "$vendor_extra_root" rev-parse HEAD)}
+libhidl_official_head=${LIBHIDL_OFFICIAL_HEAD:-$(git -C "$libhidl_root" rev-parse HEAD)}
 
 changed=0
+if [ -n "${MAKE_HOST_PATCH_SHA:-}" ] && [ "$(patch_sha "$make_host_patch")" != "$MAKE_HOST_PATCH_SHA" ]; then
+  printf 'error: image host policy changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${MAKE_HOST_PATCH_SHA:-}" ]; then
+  git -C "$source_root/build/make" apply "$make_host_patch"
+  commit_patch "$source_root/build/make" 'Scope Luma images to native build host tools'
+  changed=1
+fi
+if [ -n "${BLUEPRINT_CPU_PATCH_SHA:-}" ] && [ "$(patch_sha "$blueprint_cpu_patch")" != "$BLUEPRINT_CPU_PATCH_SHA" ]; then
+  printf 'error: Blueprint CPU policy changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${BLUEPRINT_CPU_PATCH_SHA:-}" ]; then
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
+  commit_patch "$source_root/build/blueprint" 'Honor explicit host Go scheduler concurrency'
+  changed=1
+fi
+if [ -n "${PROPERTY_ADMISSION_PATCH_SHA:-}" ] && [ "$(patch_sha "$property_admission_patch")" != "$PROPERTY_ADMISSION_PATCH_SHA" ]; then
+  printf 'error: property admission changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${PROPERTY_ADMISSION_PATCH_SHA:-}" ]; then
+  git -C "$source_root/system/core" apply "$property_admission_patch"
+  commit_patch "$source_root/system/core" 'Reject Android application property writers'
+  changed=1
+fi
 if [ -n "${SOONG_GC_PATCH_SHA:-}" ] && [ "$(patch_sha "$soong_gc_patch")" != "$SOONG_GC_PATCH_SHA" ]; then
   printf 'error: Soong compiler policy changed; run a clean release build first\n' >&2
   exit 1
@@ -250,6 +389,15 @@ fi
 if [ -z "${SOONG_GC_PATCH_SHA:-}" ]; then
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go GC tuning in the isolated compiler'
+  changed=1
+fi
+if [ -n "${SOONG_CPU_PATCH_SHA:-}" ] && [ "$(patch_sha "$soong_cpu_patch")" != "$SOONG_CPU_PATCH_SHA" ]; then
+  printf 'error: Soong CPU policy changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${SOONG_CPU_PATCH_SHA:-}" ]; then
+  git -C "$source_root/build/soong" apply "$soong_cpu_patch"
+  commit_patch "$source_root/build/soong" 'Preserve explicit host Go scheduler concurrency'
   changed=1
 fi
 if [ "$(patch_sha "$native_patch")" != "${NATIVE_PATCH_SHA:-}" ]; then
@@ -290,7 +438,14 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_task_lifetime_patch")" != "${HARDWARE_TASK_LIFETIME_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_initial_resize_patch")" != "${HARDWARE_INITIAL_RESIZE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_rpc_threadpool_patch")" != "${HARDWARE_RPC_THREADPOOL_PATCH_SHA:-}" ] ||
-    [ "$(patch_sha "$hardware_buffer_bounds_patch")" != "${HARDWARE_BUFFER_BOUNDS_PATCH_SHA:-}" ]; then
+    [ "$(patch_sha "$hardware_buffer_bounds_patch")" != "${HARDWARE_BUFFER_BOUNDS_PATCH_SHA:-}" ] ||
+    [ "$(patch_sha "$hardware_configure_lock_patch")" != "${HARDWARE_CONFIGURE_LOCK_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_native_clipboard_patch")" != "${HARDWARE_NATIVE_CLIPBOARD_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_clipboard_transfer_patch")" != "${HARDWARE_CLIPBOARD_TRANSFER_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_task_admission_patch")" != "${HARDWARE_TASK_ADMISSION_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_task_channel_patch")" != "${HARDWARE_TASK_CHANNEL_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_app_settings_patch")" != "${HARDWARE_APP_SETTINGS_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_desktop_canvas_patch")" != "${HARDWARE_DESKTOP_CANVAS_PATCH_SHA:-}" ]; then
   git -C "$hardware_root" reset --hard -q "$HARDWARE_OFFICIAL_HEAD"
   git -C "$hardware_root" clean -fdq
   git -C "$hardware_root" apply --binary "$hardware_patch"
@@ -304,10 +459,20 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   git -C "$hardware_root" apply "$hardware_initial_resize_patch"
   git -C "$hardware_root" apply "$hardware_rpc_threadpool_patch"
   git -C "$hardware_root" apply "$hardware_buffer_bounds_patch"
+  git -C "$hardware_root" apply "$hardware_configure_lock_patch"
+  git -C "$hardware_root" apply "$hardware_native_clipboard_patch"
+  git -C "$hardware_root" apply "$hardware_clipboard_transfer_patch"
+  git -C "$hardware_root" apply "$hardware_task_admission_patch"
+  git -C "$hardware_root" apply "$hardware_task_channel_patch"
+  git -C "$hardware_root" apply "$hardware_app_settings_patch"
+  git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-window-callbacks.h" "$hardware_root/hwcomposer/luma-window-callbacks.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-resize.h" "$hardware_root/hwcomposer/luma-task-resize.h"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-app-settings-channel.h" "$hardware_root/hwcomposer/luma-app-settings-channel.h"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-desktop-canvas.h" "$hardware_root/hwcomposer/luma-desktop-canvas.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/Figtree-OFL.txt" "$hardware_root/hwcomposer/fonts/OFL.txt"
   for header in luma-window-frame.h luma-frame-tokens.h luma-frame-glyphs.h; do
     cmp "$repo_root/src/luma-platform/compat/$header" "$hardware_root/hwcomposer/$header"
@@ -315,13 +480,29 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   commit_patch "$hardware_root" 'Prairie native Android window chrome'
   changed=1
 fi
-if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_PATCH_SHA:-}" ]; then
+if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_notification_patch")" != "${LINEAGE_NOTIFICATION_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_admission_patch")" != "${LINEAGE_ADMISSION_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_clipboard_patch")" != "${LINEAGE_CLIPBOARD_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_reply_patch")" != "${LINEAGE_REPLY_PATCH_SHA:-}" ]; then
   git -C "$lineage_root" reset --hard -q "$lineage_official_head"
   git -C "$lineage_root" clean -fdq
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
+  git -C "$lineage_root" apply "$lineage_notification_patch"
+  git -C "$lineage_root" apply "$lineage_admission_patch"
+  git -C "$lineage_root" apply "$lineage_clipboard_patch"
+  git -C "$lineage_root" apply "$lineage_reply_patch"
+  cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
+    "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
+  cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
+    "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'
   changed=1
 fi
+cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
+  "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
+cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
+  "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
 if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ]; then
   git -C "$framework_root" reset --hard -q "$FRAMEWORK_OFFICIAL_HEAD"
   git -C "$framework_root" clean -fdq
@@ -334,6 +515,29 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ]; then
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
+  changed=1
+fi
+
+if [ "$(patch_sha "$jelly_patch")" != "${JELLY_PATCH_SHA:-}" ]; then
+  git -C "$jelly_root" reset --hard -q "$jelly_official_head"
+  git -C "$jelly_root" clean -fdq
+  git -C "$jelly_root" apply "$jelly_patch"
+  commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
+  changed=1
+fi
+if [ "$(patch_sha "$libhidl_patch")" != "${LIBHIDL_PATCH_SHA:-}" ]; then
+  git -C "$libhidl_root" reset --hard -q "$libhidl_official_head"
+  git -C "$libhidl_root" clean -fdq
+  git -C "$libhidl_root" apply "$libhidl_patch"
+  commit_patch "$libhidl_root" 'Retain HIDL manager strong reference under lock'
+  changed=1
+fi
+
+if [ "$(patch_sha "$vendor_extra_patch")" != "${VENDOR_EXTRA_PATCH_SHA:-}" ]; then
+  git -C "$vendor_extra_root" reset --hard -q "$vendor_extra_official_head"
+  git -C "$vendor_extra_root" clean -fdq
+  git -C "$vendor_extra_root" apply "$vendor_extra_patch"
+  commit_patch "$vendor_extra_root" 'Bound Android PC feature mount to one per boot'
   changed=1
 fi
 

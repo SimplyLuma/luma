@@ -22,8 +22,9 @@ enable-animations=false
 SETTINGS
 case ${LUMA_POLISH_SCENARIO:-status-polish} in
  status-polish) polish_min_checks=89 ;;
- applications-drawer)
+ applications-drawer|drawer-app-actions|dock-scroll)
   polish_min_checks=28
+  if [ "${LUMA_POLISH_SCENARIO}" = dock-scroll ]; then polish_min_checks=9; fi
   mkdir -p "$polish_out/Downloads"
   printf 'A real fixture download\n' > "$polish_out/Downloads/notes.txt"
   printf 'XDG_DOWNLOAD_DIR="%s/Downloads"\n' "$polish_out" > "$polish_out/config/user-dirs.dirs"

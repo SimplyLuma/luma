@@ -28,7 +28,8 @@ def render():
              " * Exact native LumaUI control SVGs, rasterized at the shared control_icon size. */",
              "#pragma once", "#include <stdint.h>", f"#define LUMA_FRAME_GLYPH_SIZE {size}"]
     for role, name in (("minimize", "minus"), ("maximize", "maximize-2"),
-                       ("restore", "minimize-2"), ("close", "x"), ("back", "chevron-left")):
+                       ("restore", "minimize-2"), ("close", "x"), ("back", "chevron-left"),
+                       ("settings", "settings")):
         path = ROOT / f"assets/icon-theme/Prairie/symbolic/actions/lumaui-{name}-symbolic.svg"
         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), size, size, False)
         if not pixbuf.get_has_alpha() or (pixbuf.get_width(), pixbuf.get_height()) != (size, size):

@@ -1,0 +1,73 @@
+--- a/interfaces/task/1.0/default/service.cpp
++++ b/interfaces/task/1.0/default/service.cpp
+@@ -21,6 +21,7 @@
+ #include <hidl/HidlTransportSupport.h>
+ #include <sys/socket.h>
+ #include <sys/un.h>
++#include <sys/time.h>
+ #include <unistd.h>
+ #include <thread>
+ 
+@@ -60,6 +61,36 @@
+     uint8_t reserved;
+ };
+ 
++// Bound client socket I/O so a peer cannot occupy the sole listener forever.
++// Framework resize Binder execution is separate and is not bounded by these
++// socket deadlines; the composer already uses an asynchronous resize worker.
++void handlePrairieResizeClient(const android::sp<WaydroidTask>& service, int client) {
++    ucred credentials{};
++    socklen_t credentials_length = sizeof(credentials);
++    if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &credentials,
++                   &credentials_length) != 0 ||
++            credentials_length != sizeof(credentials) || credentials.uid != 1000)
++        return;
++    const timeval timeout{0, 250000};
++    if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
++            setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0)
++        return;
++    PrairieResizeRequest request{};
++    PrairieResizeReply reply{kPrairieResizeMagic, kPrairieResizeVersion, 0, 0};
++    // MSG_TRUNC reports the full packet length rather than silently accepting
++    // a valid-looking prefix of an oversized SOCK_SEQPACKET message.
++    if (TEMP_FAILURE_RETRY(recv(client, &request, sizeof(request), MSG_TRUNC)) ==
++                    static_cast<ssize_t>(sizeof(request)) &&
++            request.magic == kPrairieResizeMagic &&
++            request.version == kPrairieResizeVersion && request.reserved == 0 &&
++            request.right > request.left && request.bottom > request.top) {
++        reply.success = service->resizeTaskNative(request.task_id,
++                request.left, request.top, request.right, request.bottom,
++                request.resize_mode) ? 1 : 0;
++    }
++    TEMP_FAILURE_RETRY(send(client, &reply, sizeof(reply), MSG_NOSIGNAL));
++}
++
+ void servePrairieResizeRequests(const android::sp<WaydroidTask>& service) {
+     const int server = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+     if (server < 0) {
+@@ -85,24 +116,7 @@
+                 SOCK_CLOEXEC));
+         if (client < 0)
+             continue;
+-        ucred credentials{};
+-        socklen_t credentials_length = sizeof(credentials);
+-        PrairieResizeRequest request{};
+-        PrairieResizeReply reply{kPrairieResizeMagic,
+-                kPrairieResizeVersion, 0, 0};
+-        if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &credentials,
+-                       &credentials_length) == 0 &&
+-                credentials.uid == 1000 &&
+-                TEMP_FAILURE_RETRY(recv(client, &request, sizeof(request), 0)) ==
+-                        static_cast<ssize_t>(sizeof(request)) &&
+-                request.magic == kPrairieResizeMagic &&
+-                request.version == kPrairieResizeVersion &&
+-                request.right > request.left && request.bottom > request.top) {
+-            reply.success = service->resizeTaskNative(request.task_id,
+-                    request.left, request.top, request.right, request.bottom,
+-                    request.resize_mode) ? 1 : 0;
+-        }
+-        TEMP_FAILURE_RETRY(send(client, &reply, sizeof(reply), MSG_NOSIGNAL));
++        handlePrairieResizeClient(service, client);
+         close(client);
+     }
+ }

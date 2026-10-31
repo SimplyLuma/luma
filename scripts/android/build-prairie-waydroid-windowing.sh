@@ -17,6 +17,9 @@ window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-de
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
+jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
+vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
+libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
 hardware_root="$source_root/hardware/waydroid"
 framework_root="$source_root/frameworks/base"
 device_root="$source_root/device/waydroid/waydroid"
@@ -26,12 +29,27 @@ expected_font_sha=26ad3db9b31ff7dde67a91ff515d022d2f495cd506590699cf264f0bfe6fb7
 build_jobs=${LUMA_BUILD_JOBS:-}
 soong_gc=${LUMA_ANDROID_SOONG_GOGC:-20}
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
+soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
+blueprint_cpu_patch="$repo_root/patches/android-blueprint/0001-honor-host-go-concurrency.patch"
+make_host_patch="$repo_root/patches/android-make/0001-luma-native-image-host-tools.patch"
+property_admission_patch="$repo_root/patches/android-system-core/0001-luma-property-writer-admission.patch"
 chrome_ownership_patch="$repo_root/patches/android-hardware-waydroid/0009-luma-frame-buffer-thread-ownership.patch"
 task_lifetime_patch="$repo_root/patches/android-hardware-waydroid/0010-luma-authoritative-task-removal.patch"
 initial_resize_patch="$repo_root/patches/android-hardware-waydroid/0011-luma-mandatory-initial-task-resize.patch"
 rpc_threadpool_patch="$repo_root/patches/android-hardware-waydroid/0012-luma-shared-composer-rpc-threadpool.patch"
 buffer_bounds_patch="$repo_root/patches/android-hardware-waydroid/0013-luma-software-buffer-allocation-bounds.patch"
+configure_lock_patch="$repo_root/patches/android-hardware-waydroid/0014-luma-configure-invalidation-lock-order.patch"
+native_clipboard_patch="$repo_root/patches/android-hardware-waydroid/0015-luma-native-clipboard-caller-admission.patch"
+clipboard_transfer_patch="$repo_root/patches/android-hardware-waydroid/0016-luma-bounded-native-clipboard-transfer.patch"
+task_admission_patch="$repo_root/patches/android-hardware-waydroid/0017-luma-native-task-caller-admission.patch"
+task_channel_patch="$repo_root/patches/android-hardware-waydroid/0018-luma-bound-task-channel-io.patch"
+app_settings_patch="$repo_root/patches/android-hardware-waydroid/0019-luma-native-app-settings-action.patch"
+desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-logical-desktop-canvas.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
+lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
+lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
+lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
+lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -58,15 +76,21 @@ fi
   exit 1
 }
 export GOGC="$soong_gc"
+# This entry point produces Android runtime images/components, not host SDKs.
+export LUMA_ANDROID_IMAGE_HOST_ONLY=1
 build_job_args=()
 if [[ -n $build_jobs ]]; then
   build_job_args+=("-j$build_jobs")
 fi
-
-command -v meson >/dev/null || {
-  printf 'error: Meson is required to build the Waydroid Mesa image component\n' >&2
+if [[ -n $build_jobs && -z ${GOMAXPROCS:-} ]]; then
+  export GOMAXPROCS="$build_jobs"
+fi
+if [[ -n ${GOMAXPROCS:-} && ! $GOMAXPROCS =~ ^[1-9][0-9]*$ ]]; then
+  printf 'error: GOMAXPROCS must be a positive integer when supplied\n' >&2
   exit 1
-}
+fi
+
+python3 "$repo_root/scripts/android/verify-mesa-host.py" "$source_root"
 command -v glslangValidator >/dev/null || {
   printf 'error: glslangValidator is required to build Waydroid Mesa shaders\n' >&2
   exit 1
@@ -158,6 +182,14 @@ if [ "$incremental" = 0 ]; then
   git -C "$hardware_root" apply "$initial_resize_patch"
   git -C "$hardware_root" apply "$rpc_threadpool_patch"
   git -C "$hardware_root" apply "$buffer_bounds_patch"
+  git -C "$hardware_root" apply "$configure_lock_patch"
+  git -C "$hardware_root" apply "$native_clipboard_patch"
+  git -C "$hardware_root" apply "$clipboard_transfer_patch"
+  git -C "$hardware_root" apply "$task_admission_patch"
+  git -C "$hardware_root" apply "$task_channel_patch"
+  git -C "$hardware_root" apply "$app_settings_patch"
+  git -C "$hardware_root" apply "$desktop_canvas_patch"
+  cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-window-callbacks.h" "$hardware_root/hwcomposer/luma-window-callbacks.h"
@@ -168,14 +200,29 @@ if [ "$incremental" = 0 ]; then
   done
   git -C "$framework_root" apply "$framework_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_task_lifetime_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_notification_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_clipboard_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_reply_patch"
+  cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
+    "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
+  cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
+    "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
   # Keep clean builds aligned with the prepared incremental tree. Without
   # inherited task ownership, child video surfaces can disappear when more
   # than one Android application is open.
   git -C "$source_root/frameworks/native" apply "$native_patch"
   git -C "$device_root" apply "$device_patch"
+  git -C "$source_root/packages/apps/Jelly" apply "$jelly_patch"
+  git -C "$source_root/vendor/extra" apply "$vendor_extra_patch"
+  git -C "$source_root/system/libhidl" apply "$libhidl_patch"
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
+  git -C "$source_root/build/soong" apply "$soong_cpu_patch"
+  git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
+  git -C "$source_root/build/make" apply "$make_host_patch"
+  git -C "$source_root/system/core" apply "$property_admission_patch"
 fi
 printf '%s  %s\n' "$expected_font_sha" \
   "$hardware_root/hwcomposer/fonts/Figtree-VF.ttf" | sha256sum --check --status
@@ -230,15 +277,13 @@ install -m 0644 \
 install -m 0644 \
   "$product_root/vendor/lib64/hw/hwcomposer.waydroid.so" \
   "$output/vendor/lib64/hw/"
+# shellcheck source=write-checksums.sh
+source "$repo_root/scripts/android/write-checksums.sh"
 if [ "${LUMA_BUILD_WAYDROID_IMAGES:-0}" = 1 ]; then
   install -d -m 0755 "$output/images"
   install -m 0644 "$product_root/system.img" "$output/images/system.img"
   install -m 0644 "$product_root/vendor.img" "$output/images/vendor.img"
-  (
-    cd "$output/images"
-    sha256sum system.img vendor.img >SHA256SUMS
-  )
+  luma_android_write_checksums "$output/images" system.img vendor.img
 fi
-find "$output" -type f ! -name SHA256SUMS -exec sha256sum {} + | \
-  sed "s#  $output/#  #" | sort >"$output/SHA256SUMS"
+luma_android_write_checksums "$output"
 printf 'Prairie Waydroid windowing components: %s\n' "$output"

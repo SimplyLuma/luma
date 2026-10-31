@@ -17,10 +17,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let axml = AXML::new(&mut manifest.as_slice(), Some(&arsc))?;
     let label = axml.get_attribute_value("application", "label", Some(&arsc));
     let icon = axml.get_attribute_value("application", "icon", Some(&arsc));
+    let version = axml.get_attribute_value("manifest", "versionName", Some(&arsc));
+    let package = axml.get_attribute_value("manifest", "package", Some(&arsc));
     if label.as_ref().is_some_and(|s| s.len() > 1024) ||
-       icon.as_ref().is_some_and(|s| s.len() > 4096) {
+       icon.as_ref().is_some_and(|s| s.len() > 4096) ||
+       version.as_ref().is_some_and(|s| s.len() > 1024) ||
+       package.as_ref().is_some_and(|s| s.len() > 1024) {
         return Err("metadata value exceeds its limit".into());
     }
-    println!("{}", serde_json::json!({"label": label, "icon": icon}));
+    println!("{}", serde_json::json!({"label": label, "icon": icon, "version": version, "package": package}));
     Ok(())
 }

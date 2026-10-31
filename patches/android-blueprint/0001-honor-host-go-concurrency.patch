@@ -1,0 +1,23 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] Honor explicit Go concurrency in Blueprint graph generation
+
+RunBlueprint unconditionally overrides the Go runtime's environment-derived
+concurrency. Preserve the default when no explicit budget exists and honor
+GOMAXPROCS when the build owner supplies it. This affects host compilation,
+not the Android application image or platform behavior.
+
+Upstream Blueprint's Apache-2.0 notices and copyright remain intact.
+
+--- a/bootstrap/command.go
++++ b/bootstrap/command.go
+@@ -45,7 +45,9 @@
+ // written to the .d file for the output so that it is correctly rebuilt when
+ // needed in case Blueprint is itself invoked from Ninja
+ func RunBlueprint(args Args, stopBefore StopBefore, ctx *blueprint.Context, config interface{}) []string {
+-	runtime.GOMAXPROCS(runtime.NumCPU())
++	if os.Getenv("GOMAXPROCS") == "" {
++		runtime.GOMAXPROCS(runtime.NumCPU())
++	}
+ 
+ 	if args.NoGC {
+ 		debug.SetGCPercent(-1)

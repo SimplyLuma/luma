@@ -248,7 +248,11 @@ class InstallerWindow(AppWindow):
             self.closes_only = True
             self.card.primary.set_sensitive(True)
         else:
-            self.card.set_phase('ready', 'Install', message)
+            advice = '\n'.join(self.report.warnings) if self.report and self.report.kind == 'android' else ''
+            if advice:
+                self.card.set_phase('ready', 'Install', message or advice, warning=True)
+            else:
+                self.card.set_phase('ready', 'Install', message)
             self.card.primary.set_sensitive(self.report is not None and self.eligible)
         self.update_foot()
 
@@ -420,6 +424,12 @@ class InstallerWindow(AppWindow):
     def completed(self, result):
         self.busy = False; self.done = True
         if not self.removing: self.record = result
+        if not self.removing and self.report.kind == 'android' and result.get('name'):
+            from dataclasses import replace
+            self.report = replace(self.report, title=result['name'])
+            self.card.name.set_label(self.report.title)
+            if result.get('icon'):
+                self.card.set_icon(result['icon'])
         if not self.removing and self.report.kind in {'rpm', 'snap'} and self.report.requires_system_change:
             from dataclasses import replace
             from .backends import system_restart_required
@@ -429,7 +439,7 @@ class InstallerWindow(AppWindow):
             self.card.name.set_label(self.report.title + ' is gone')
             self.card.set_gone(True)
         pending = bool(self.report.requires_restart)
-        label = 'Done' if self.removing or pending or self.report.kind == 'flatpakrepo' else 'Open ' + self.report.title
+        label = 'Done' if self.removing or pending or self.report.kind == 'flatpakrepo' else 'Open'
         line = '' if self.removing else 'Ready in Applications'
         if self.report.kind == 'flatpakrepo' and not self.removing: line = 'Application source added'
         if pending:
@@ -587,6 +597,10 @@ class InstallerWindow(AppWindow):
 
     def failed(self, message):
         self.inspecting = False
+        if self.report is None:
+            self.card.name.set_label('Cannot read application')
+            self.card.set_subtitle('Choose a valid application package', '', verified=False)
+            self.card.set_permissions([])
         self.ready(message)
         self.card.phase_label.add_css_class('error')
         return False
@@ -952,7 +966,12 @@ class FixtureWindow(AppWindow):
 class InstallerApplication(Adw.Application):
     def __init__(self, remove_id=None):
         app_id = 'io.luma.Valet.LumaUIPreview' if os.environ.get('LUMA_VALET_PREVIEW') else 'io.luma.Valet'
-        super().__init__(application_id=app_id, flags=Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        flags = Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        if os.environ.get('LUMA_VALET_PREVIEW'):
+            # A delivered preview may replace its modules while an older
+            # inspection window is open. New file opens must load the new code.
+            flags |= Gio.ApplicationFlags.NON_UNIQUE
+        super().__init__(application_id=app_id, flags=flags)
         self.remove_id = remove_id
 
     def do_command_line(self, command):

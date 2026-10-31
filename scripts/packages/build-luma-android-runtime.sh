@@ -20,6 +20,7 @@ done
 }
 
 output_dir="$repo_root/build/packages/luma-android-runtime"
+install -d -m 0755 "$(dirname -- "$output_dir")"
 work_dir=$(mktemp -d "$output_dir.work.XXXXXX")
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/luma-android-runtime"
@@ -32,6 +33,7 @@ cp "$repo_root/config/android/luma-android.conf" "$source_dir/config/"
 cp "$repo_root/config/android/fp6-software-weston.ini" "$source_dir/config/"
 cp "$repo_root/config/android/profiles/"*.conf "$source_dir/config/profiles/"
 cp "$repo_root/config/android/hardware/"*.sha256 "$source_dir/config/hardware/"
+install -m 0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/COPYING.GPL-3.0"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/luma-android-runtime.tar.gz" \
   luma-android-runtime
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
@@ -44,10 +46,19 @@ chmod -R a+rX "$rpmbuild_dir"
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$FEDORA_RPM_BUILD_CONTAINER" '
     set -euo pipefail
-    dnf5 -y install desktop-file-utils rpm-build shared-mime-info systemd-rpm-macros python3-devel python3-gobject gtk4 libadwaita
+    dnf5 -y install desktop-file-utils rpm-build shared-mime-info systemd-rpm-macros systemd-devel selinux-policy-devel python3-devel python3-gobject gtk4 libadwaita
     rpmbuild -ba --define "_topdir $PWD" SPECS/luma-android-runtime.spec
     rpm_path=$(find RPMS/noarch -name "luma-android-runtime-*.rpm" -print -quit)
     test -n "$rpm_path"
+    rpm -qp --qf "[%{FILEMODES:octal} %{FILENAMES}\n]" "$rpm_path" > payload-modes.txt
+    python3 - <<PY
+import pathlib, stat
+for line in pathlib.Path("payload-modes.txt").read_text().splitlines():
+    mode, name = line.split(" ", 1)
+    value = int(mode, 8)
+    if stat.S_ISDIR(value) and stat.S_IMODE(value) != 0o755:
+        raise SystemExit(f"Unexpected Android runtime directory permissions: {mode} {name}")
+PY
     verify=$(mktemp -d)
     cd "$verify"
     # Fedora rpm2cpio can receive SIGPIPE after cpio has consumed a valid
@@ -60,6 +71,10 @@ chmod -R a+rX "$rpmbuild_dir"
     python3 -m py_compile usr/libexec/luma-waydroid-package-session
     test -x usr/lib/systemd/system-generators/luma-android-policy-generator
     test -x usr/libexec/luma-waydroid-package-session
+    test -x usr/libexec/luma-waydroid-container
+    test -f usr/share/selinux/packages/luma_android_runtime.cil
+    grep -Fqx "ExecStart=/usr/libexec/luma-waydroid-container" \
+      usr/lib/systemd/system/waydroid-container.service.d/25-luma-hardware-admission.conf
     test -f usr/share/polkit-1/actions/org.projectluma.waydroid-package-session.policy
     test -f usr/share/dbus-1/services/org.projectluma.ApplicationInstaller1.service
     grep -Fq "application/vnd.android.package-archive" \

@@ -1,0 +1,59 @@
+--- a/sdk/src/java/lineageos/waydroid/Clipboard.java
++++ b/sdk/src/java/lineageos/waydroid/Clipboard.java
+@@ -17,14 +17,11 @@
+ package lineageos.waydroid;
+ 
+ import android.content.Context;
+-import android.os.IBinder;
+ import android.os.RemoteException;
+-import android.os.ServiceManager;
+ import android.util.Log;
+ 
+ import java.util.NoSuchElementException;
+ 
+-import lineageos.app.LineageContextConstants;
+ import vendor.waydroid.clipboard.V1_0.IWaydroidClipboard;
+ 
+ public class Clipboard {
+@@ -55,7 +52,7 @@
+     }
+ 
+     /** @hide **/
+-    public static IWaydroidClipboard getService() {
++    public static synchronized IWaydroidClipboard getService() {
+         if (sService != null) {
+             return sService;
+         }
+@@ -67,6 +64,12 @@
+         return sService;
+     }
+ 
++    private static synchronized void invalidateService(IWaydroidClipboard failed) {
++        if (sService == failed) {
++            sService = null;
++        }
++    }
++
+     /** @hide **/
+     public void sendClipboardData(String value) {
+         IWaydroidClipboard service = getService();
+@@ -76,7 +79,8 @@
+         try {
+             service.sendClipboardData(value);
+         } catch (RemoteException e) {
+-            Log.e(TAG, e.getLocalizedMessage(), e);
++            invalidateService(service);
++            Log.e(TAG, "Native clipboard operation failed", e);
+         }
+         return;
+     }
+@@ -90,7 +94,8 @@
+             String paste = service.getClipboardData();
+             return paste != null ? paste : "";
+         } catch (RemoteException e) {
+-            Log.e(TAG, e.getLocalizedMessage(), e);
++            invalidateService(service);
++            Log.e(TAG, "Native clipboard operation failed", e);
+         }
+         return "";
+     }

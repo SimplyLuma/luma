@@ -1,0 +1,535 @@
+--- a/hwcomposer/WaydroidClipboard.cpp
++++ b/hwcomposer/WaydroidClipboard.cpp
+@@ -19,6 +19,8 @@
+  */
+ 
+ #include "WaydroidClipboard.h"
++#include "luma-clipboard-transfer.h"
++#include "luma-window-callbacks.h"
+ 
+ #include <log/log.h>
+ #include <hwbinder/IPCThreadState.h>
+@@ -37,20 +39,70 @@
+     "STRING",
+ };
+ 
++// State outlives display teardown while the HAL still owns it. Only the
++// Wayland thread touches offer metadata; the mutex also serializes HAL writes
++// and teardown. Worker completions hold Cache, never a raw display pointer.
++struct ClipboardSource;
++struct LumaClipboardState {
++    std::mutex mutex;
++    bool stopped = false;
++    std::shared_ptr<luma::clipboard::Cache> cache = std::make_shared<luma::clipboard::Cache>();
++    luma::clipboard::Transfers transfers;
++    std::map<uintptr_t, std::shared_ptr<ClipboardSource>> sources;
++};
++
++struct ClipboardSource {
++    std::weak_ptr<LumaClipboardState> state;
++    std::shared_ptr<const std::string> text;
++    wl_data_source* source;
++    void* token = nullptr;
++};
++
++static luma::WindowCallbacks<ClipboardSource>& clipboard_callbacks() {
++    // No static destruction while a protocol callback is still unwinding.
++    static auto* callbacks = new luma::WindowCallbacks<ClipboardSource>();
++    return *callbacks;
++}
++
++static void retire_source(LumaClipboardState& state,
++                          std::map<uintptr_t, std::shared_ptr<ClipboardSource>>::iterator entry) {
++    // The state mutex is held, but registry admission never retains its lock
++    // while entering this mutex. Admitted callbacks own immutable snapshots.
++    clipboard_callbacks().retire(entry->second->token);
++    wl_data_source_destroy(entry->second->source);
++    state.sources.erase(entry);
++}
++
+ static void data_source_handle_send(void *data, struct wl_data_source *, const char *mime_type, int fd) {
+-    // An application wants to paste the clipboard contents
+-    const char *text = (const char *)data;
+-    if (std::find(MIME_TYPES.begin(), MIME_TYPES.end(), mime_type) != MIME_TYPES.end())
+-        write(fd, text, strlen((char *)text));
+-    else
+-        ALOGE("Destination client requested unsupported MIME type: %s", mime_type);
+-    close(fd);
+-}
+-
+-static void data_source_handle_cancelled(void *data, struct wl_data_source *source) {
+-    // An application has replaced the clipboard contents
+-    wl_data_source_destroy(source);
+-    free(data);
++    auto source = clipboard_callbacks().acquire(data);
++    auto state = source ? source->state.lock() : nullptr;
++    if (!state || std::find(MIME_TYPES.begin(), MIME_TYPES.end(), mime_type) == MIME_TYPES.end()) {
++        close(fd);
++        return;
++    }
++    state->transfers.write(fd, source->text);
++}
++
++static void data_source_handle_cancelled(void *data, struct wl_data_source *) {
++    auto payload = clipboard_callbacks().acquire(data);
++    auto state = payload ? payload->state.lock() : nullptr;
++    if (!state) return;
++    std::lock_guard<std::mutex> lock(state->mutex);
++    auto entry = state->sources.find(reinterpret_cast<uintptr_t>(data));
++    if (entry != state->sources.end()) retire_source(*state, entry);
++}
++
++void luma_clipboard_shutdown(struct display* display) {
++    auto state = display->clipboard_state;
++    if (!state) return;
++    {
++        std::lock_guard<std::mutex> lock(state->mutex);
++        state->stopped = true;
++        state->cache->set({});
++        // Called after the dispatch thread has joined, before wl_disconnect.
++        while (!state->sources.empty()) retire_source(*state, state->sources.begin());
++    }
++    state->transfers.shutdown();
+ }
+ 
+ static void data_source_handle_target(void *, struct wl_data_source *, const char *) {}
+@@ -68,36 +120,30 @@
+ };
+ 
+ static void read_selection(struct display *display, struct wl_data_offer *offer, const std::string &mime_type) {
++    auto state = display->clipboard_state;
++    const auto generation = state->cache->beginRead();
+     int fds[2];
+-    pipe(fds);
++    if (pipe2(fds, O_CLOEXEC) != 0) {
++        state->cache->complete(generation, false, {});
++        wl_data_offer_destroy(offer);
++        return;
++    }
+     wl_data_offer_receive(offer, mime_type.c_str(), fds[1]);
+     close(fds[1]);
+-
+-    /* The wl_display_roundtrip is required here because we perform blocking read calls.
+-     * We need to make sure our request is sent to the compositor, otherwise the source client won’t send any data.
+-     * The blocking read calls stall the Wayland event loop.
+-     */
+-    wl_display_roundtrip(display->display);
+-
+-    // Read the clipboard contents
+-    display->clipboard.clear();
+-    while (true) {
+-        char buf[1024];
+-        ssize_t n = read(fds[0], buf, sizeof(buf));
+-        if (n <= 0)
+-            break;
+-        display->clipboard.append(buf, n);
+-    }
+-
+-    close(fds[0]);
+     wl_data_offer_destroy(offer);
++    // Never roundtrip or read on the Wayland thread: the sender can be us.
++    wl_display_flush(display->display);
++    state->transfers.read(fds[0], [cache = state->cache, generation](bool ok, std::string text) {
++        cache->complete(generation, ok, std::move(text));
++    });
+ }
+ 
+ static void data_device_handle_selection(void *data, struct wl_data_device *, struct wl_data_offer *offer) {
+     // An application has set the clipboard contents
+     struct display *display = (struct display *)data;
+     if (offer == NULL) {
+-        display->clipboard.clear();
++        display->clipboard_state->cache->set({});
++        display->clipboard_state->transfers.cancelRead();
+         display->clipboard_offer_mime_types.clear();
+         return;
+     }
+@@ -113,7 +159,8 @@
+ 
+     if (mime_type.empty()) {
+         // No supported mime-type
+-        display->clipboard.clear();
++        display->clipboard_state->cache->set({});
++        display->clipboard_state->transfers.cancelRead();
+         wl_data_offer_destroy(offer);
+         return;
+     }
+@@ -127,7 +174,10 @@
+ 
+ static void data_offer_handle_offer(void *data, struct wl_data_offer *, const char *mime_type) {
+     struct display *display = (struct display *)data;
+-    display->clipboard_offer_mime_types.push_back(mime_type);
++    // Keep only the five supported MIME types, once each.
++    if (std::find(MIME_TYPES.begin(), MIME_TYPES.end(), mime_type) != MIME_TYPES.end() &&
++        std::find(display->clipboard_offer_mime_types.begin(), display->clipboard_offer_mime_types.end(), mime_type) == display->clipboard_offer_mime_types.end())
++        display->clipboard_offer_mime_types.push_back(mime_type);
+ }
+ 
+ static const struct wl_data_offer_listener data_offer_listener = {
+@@ -162,8 +212,9 @@
+ namespace vendor::waydroid::clipboard::implementation {
+ 
+ WaydroidClipboard::WaydroidClipboard(struct display* display)
+-    : mDisplay(display)
++    : mDisplay(display), mState(std::make_shared<LumaClipboardState>())
+ {
++    mDisplay->clipboard_state = mState;
+     if (!mDisplay->data_device)
+         return;
+     wl_data_device_add_listener(mDisplay->data_device, &data_device_listener, mDisplay);
+@@ -177,17 +228,30 @@
+         return Void();
+     }
+ 
+-    mDisplay->clipboard = in;
+-
+-    if (!mDisplay->data_device)
+-        return Void();
+-
+-    struct wl_data_source *source = wl_data_device_manager_create_data_source(mDisplay->data_device_manager);
+-    wl_data_source_add_listener(source, &data_source_listener, strdup(in.c_str()));
+-    for (auto mime_type : MIME_TYPES)
++    if (in.size() > luma::clipboard::MaxBytes) return Void();
++    auto text = std::make_shared<const std::string>(in.c_str(), in.size());
++    if (!luma::clipboard::validUtf8(*text)) return Void();
++    std::lock_guard<std::mutex> lock(mState->mutex);
++    if (mState->stopped) return Void();
++    if (!mDisplay->data_device) { mState->cache->set(*text); return Void(); }
++
++    // Retire oldest protocol sources with generation tokens. A callback that
++    // already acquired its snapshot can finish; queued stale callbacks cannot
++    // dereference destroyed sources or admit a recycled protocol object.
++    if (mState->sources.size() >= 8) retire_source(*mState, mState->sources.begin());
++    auto* source = wl_data_device_manager_create_data_source(mDisplay->data_device_manager);
++    if (!source) return Void();
++    auto payload = std::make_shared<ClipboardSource>(ClipboardSource{mState, text, source});
++    payload->token = clipboard_callbacks().attach(payload);
++    if (!payload->token) { wl_data_source_destroy(source); return Void(); }
++    mState->cache->set(*text);
++    mState->transfers.cancelRead();
++    mState->sources.emplace(reinterpret_cast<uintptr_t>(payload->token), payload);
++    wl_data_source_add_listener(source, &data_source_listener, payload->token);
++    for (const auto& mime_type : MIME_TYPES)
+         wl_data_source_offer(source, mime_type.c_str());
+-    wl_data_device_set_selection(mDisplay->data_device, source, mDisplay->keyboard_enter_serial);
+-
++    wl_data_device_set_selection(mDisplay->data_device, source, mDisplay->keyboard_enter_serial.load());
++    wl_display_flush(mDisplay->display);
+     return Void();
+ }
+ 
+@@ -198,7 +262,7 @@
+         return Void();
+     }
+ 
+-    out_cb(mDisplay->clipboard);
++    out_cb(mState->cache->get());
+     return Void();
+ }
+ 
+--- a/hwcomposer/WaydroidClipboard.h
++++ b/hwcomposer/WaydroidClipboard.h
+@@ -40,6 +40,7 @@
+     Return<void> getClipboardData(getClipboardData_cb _hidl_cb) override;
+   private:
+     struct display *mDisplay;
++    std::shared_ptr<LumaClipboardState> mState;
+ };
+ 
+ }  // namespace vendor::waydroid::clipboard::implementation
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -2548,6 +2548,7 @@
+ {
+     pthread_kill(display->wayland_thread, SIGTERM);
+     pthread_join(display->wayland_thread, nullptr);
++    luma_clipboard_shutdown(display);
+ 
+     if (display->wm_base)
+         xdg_wm_base_destroy(display->wm_base);
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -34,6 +34,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string>
++#include <memory>
++#include <atomic>
++
++struct LumaClipboardState;
++void luma_clipboard_shutdown(struct display*);
+ #include <stdbool.h>
+ #include <assert.h>
+ #include <unistd.h>
+@@ -420,8 +425,8 @@
+     struct wl_surface *tablet_surface;
+     std::list<struct zwp_tablet_tool_v2 *> tablet_tools;
+     std::map<struct zwp_tablet_tool_v2 *, uint16_t> tablet_tools_evt;
+-    uint32_t keyboard_enter_serial;
+-    std::string clipboard;
++    std::atomic<uint32_t> keyboard_enter_serial{0};
++    std::shared_ptr<LumaClipboardState> clipboard_state;
+     std::list<std::string> clipboard_offer_mime_types;
+     uint32_t pointer_enter_serial;
+     uint32_t pointer_button_serial;
+--- /dev/null
++++ b/hwcomposer/luma-clipboard-transfer.h
+@@ -0,0 +1,258 @@
++// SPDX-License-Identifier: Apache-2.0
++// Copyright 2026 Luma contributors
++#pragma once
++
++#include <algorithm>
++#include <chrono>
++#include <cerrno>
++#include <condition_variable>
++#include <cstdint>
++#include <fcntl.h>
++#include <functional>
++#include <memory>
++#include <mutex>
++#include <poll.h>
++#include <pthread.h>
++#include <signal.h>
++#include <string>
++#include <sys/eventfd.h>
++#include <thread>
++#include <unistd.h>
++#include <vector>
++
++namespace luma::clipboard {
++
++// Bound both the peer's allocation and its time holding descriptors. This is
++// plain UTF-8 text; rich clipboard content needs a versioned descriptor API.
++constexpr size_t MaxBytes = 1024 * 1024;
++constexpr size_t MaxWrites = 16;
++constexpr auto TransferTimeout = std::chrono::seconds(2);
++
++inline bool validUtf8(const std::string& text) {
++    size_t i = 0;
++    while (i < text.size()) {
++        const auto c = static_cast<unsigned char>(text[i++]);
++        if (c < 0x80) continue;
++        unsigned count;
++        uint32_t value, minimum;
++        if (c >= 0xc2 && c <= 0xdf) { count = 1; value = c & 0x1f; minimum = 0x80; }
++        else if (c >= 0xe0 && c <= 0xef) { count = 2; value = c & 0x0f; minimum = 0x800; }
++        else if (c >= 0xf0 && c <= 0xf4) { count = 3; value = c & 7; minimum = 0x10000; }
++        else return false;
++        if (count > text.size() - i) return false;
++        while (count--) {
++            const auto next = static_cast<unsigned char>(text[i++]);
++            if ((next & 0xc0) != 0x80) return false;
++            value = (value << 6) | (next & 0x3f);
++        }
++        if (value < minimum || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)) return false;
++    }
++    return true;
++}
++
++class Cache {
++public:
++    uint64_t beginRead() {
++        std::lock_guard<std::mutex> lock(mutex_);
++        text_.clear();
++        receiving_ = true;
++        return ++generation_;
++    }
++    void complete(uint64_t generation, bool ok, std::string text) {
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (generation != generation_) return;
++        text_ = ok ? std::move(text) : std::string();
++        receiving_ = false;
++        ready_.notify_all();
++    }
++    void set(std::string text) {
++        std::lock_guard<std::mutex> lock(mutex_);
++        ++generation_;
++        receiving_ = false;
++        text_ = std::move(text);
++        ready_.notify_all();
++    }
++    std::string get() {
++        std::unique_lock<std::mutex> lock(mutex_);
++        // Only a HwBinder caller waits, never the Wayland dispatch thread.
++        ready_.wait_for(lock, TransferTimeout, [&] { return !receiving_; });
++        return text_;
++    }
++private:
++    std::mutex mutex_;
++    std::condition_variable ready_;
++    std::string text_;
++    uint64_t generation_ = 0;
++    bool receiving_ = false;
++};
++
++// Owns every submitted FD, including rejected submissions. One poll worker can
++// receive and send on the same pipe without a recursive Wayland dispatch or a
++// pipe-capacity deadlock. With no work it sleeps indefinitely on eventfd.
++class Transfers {
++public:
++    using Callback = std::function<void(bool, std::string)>;
++    Transfers() : wake_(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)) {
++        if (wake_ >= 0) worker_ = std::thread([this] { run(); });
++    }
++    ~Transfers() { shutdown(); }
++    Transfers(const Transfers&) = delete;
++    Transfers& operator=(const Transfers&) = delete;
++
++    void read(int fd, Callback callback) { submit(fd, nullptr, std::move(callback)); }
++    void write(int fd, std::shared_ptr<const std::string> text) {
++        if (!text || text->size() > MaxBytes || !validUtf8(*text)) { close(fd); return; }
++        submit(fd, std::move(text), {});
++    }
++    void cancelRead() {
++        std::lock_guard<std::mutex> lock(mutex_);
++        ++readGeneration_;
++        notifyLocked();
++    }
++    void shutdown() {
++        // Callers serialize shutdown. Submissions may race it safely.
++        {
++            std::lock_guard<std::mutex> lock(mutex_);
++            stopping_ = true;
++            notifyLocked();
++        }
++        if (worker_.joinable()) worker_.join();
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (wake_ >= 0) { close(wake_); wake_ = -1; }
++    }
++private:
++    using Clock = std::chrono::steady_clock;
++    struct Job {
++        int fd;
++        std::shared_ptr<const std::string> text;
++        Callback callback;
++        std::string received;
++        size_t offset = 0;
++        uint64_t generation;
++        Clock::time_point deadline;
++    };
++    std::mutex mutex_;
++    std::vector<Job> pending_;
++    std::thread worker_;
++    int wake_;
++    bool stopping_ = false;
++    size_t writes_ = 0;
++    uint64_t readGeneration_ = 0;
++
++    void notifyLocked() {
++        if (wake_ < 0) return;
++        const uint64_t one = 1;
++        ssize_t n;
++        do { n = ::write(wake_, &one, sizeof(one)); } while (n < 0 && errno == EINTR);
++        // EAGAIN means an existing wake is already pending.
++    }
++    void submit(int fd, std::shared_ptr<const std::string> text, Callback callback) {
++        bool accepted = false;
++        {
++            std::lock_guard<std::mutex> lock(mutex_);
++            const int flags = fcntl(fd, F_GETFL);
++            if (!stopping_ && wake_ >= 0 && flags >= 0 &&
++                fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 &&
++                (text ? writes_ < MaxWrites : pending_.size() < MaxWrites + 1)) {
++                if (text) ++writes_;
++                else ++readGeneration_;
++                pending_.push_back({fd, std::move(text), std::move(callback), {}, 0,
++                                    readGeneration_, Clock::now() + TransferTimeout});
++                accepted = true;
++                notifyLocked();
++            }
++        }
++        if (!accepted) { close(fd); if (callback) callback(false, {}); }
++    }
++    void finish(Job& job, bool ok) {
++        close(job.fd);
++        if (job.text) {
++            std::lock_guard<std::mutex> lock(mutex_);
++            --writes_;
++        } else if (job.callback) {
++            job.callback(ok, ok ? std::move(job.received) : std::string());
++        }
++    }
++    void run() {
++        // A peer closing its read end must not terminate SurfaceFlinger. Keep
++        // SIGPIPE blocked only in this dedicated worker, not process-wide.
++        sigset_t signals;
++        sigemptyset(&signals);
++        sigaddset(&signals, SIGPIPE);
++        pthread_sigmask(SIG_BLOCK, &signals, nullptr);
++        std::vector<Job> jobs;
++        for (;;) {
++            uint64_t generation;
++            bool stopping;
++            {
++                std::lock_guard<std::mutex> lock(mutex_);
++                for (auto& job : pending_) jobs.push_back(std::move(job));
++                pending_.clear();
++                generation = readGeneration_;
++                stopping = stopping_;
++            }
++            const auto now = Clock::now();
++            for (auto it = jobs.begin(); it != jobs.end();) {
++                if (stopping || now >= it->deadline || (!it->text && it->generation != generation)) {
++                    finish(*it, false);
++                    it = jobs.erase(it);
++                } else ++it;
++            }
++            if (stopping) break;
++            std::vector<pollfd> fds{{wake_, POLLIN, 0}};
++            int timeout = -1;
++            for (const auto& job : jobs) {
++                fds.push_back({job.fd, static_cast<short>(job.text ? POLLOUT : POLLIN), 0});
++                const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(job.deadline - now).count();
++                const int remaining = static_cast<int>(std::max<int64_t>(1, ms));
++                timeout = timeout < 0 ? remaining : std::min(timeout, remaining);
++            }
++            const int result = poll(fds.data(), fds.size(), timeout);
++            if (result < 0 && errno == EINTR) continue;
++            if (result < 0) {
++                for (auto& job : jobs) finish(job, false);
++                jobs.clear();
++                continue;
++            }
++            if (fds[0].revents) {
++                uint64_t value;
++                while (::read(wake_, &value, sizeof(value)) < 0 && errno == EINTR) {}
++                // Reconcile queued cancellation/shutdown before any more I/O.
++                continue;
++            }
++            for (size_t i = jobs.size(); i > 0; --i) {
++                auto& job = jobs[i - 1];
++                if (!fds[i].revents) continue;
++                bool done = false, ok = false;
++                // Bound work per FD so a ready writer cannot starve another
++                // transfer, cancellation or its own deadline.
++                for (unsigned chunk = 0; chunk < 16 && !done; ++chunk) {
++                    if (job.text) {
++                        const auto remaining = job.text->size() - job.offset;
++                        if (remaining == 0) { done = ok = true; break; }
++                        const ssize_t n = ::write(job.fd, job.text->data() + job.offset,
++                                                  std::min<size_t>(16384, remaining));
++                        if (n > 0) job.offset += static_cast<size_t>(n);
++                        else if (n < 0 && errno == EINTR) continue;
++                        else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
++                        else done = true;
++                        if (job.offset == job.text->size()) done = ok = true;
++                    } else {
++                        char buffer[16384];
++                        const ssize_t n = ::read(job.fd, buffer, sizeof(buffer));
++                        if (n > 0) {
++                            if (static_cast<size_t>(n) > MaxBytes - job.received.size()) done = true;
++                            else job.received.append(buffer, static_cast<size_t>(n));
++                        } else if (n == 0) { done = true; ok = validUtf8(job.received); }
++                        else if (errno == EINTR) continue;
++                        else if (errno == EAGAIN || errno == EWOULDBLOCK) break;
++                        else done = true;
++                    }
++                }
++                if (done) { finish(job, ok); jobs.erase(jobs.begin() + i - 1); }
++            }
++        }
++    }
++};
++
++} // namespace luma::clipboard

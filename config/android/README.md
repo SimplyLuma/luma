@@ -18,15 +18,34 @@ The runtime has three distinct states:
    notification delivery;
 3. **active:** one or more Android application windows are visible.
 
+Google-dependent application features are a separate compatibility boundary.
+AOSP alone does not provide Google account sign-in or Play services. The Dell
+evaluation installs the official microG Services and Companion packages with
+verified upstream hashes and signing certificates; it is not a certified Google
+Play device or a distribution approval. The inherited platform hook restricts
+compatibility identities to two package names signed by the pinned microG
+certificate. The current hook is compiled only for debuggable builds; the
+runtime `ro.debuggable` property alone does not establish its availability.
+Production support, user-controlled sign-in/callback/cancellation, dependent
+APIs, push delivery and mobile power still require qualification. The ordinary
+app [provider probe](../../tests/android/provider-probe/ProviderProbe.java)
+checks service visibility/binding and Java HTTPS without accessing accounts.
+
 Luma never intentionally freezes Android during normal idle because that also
 freezes notification delivery. Waydroid may independently report a warm
 container as `FROZEN`; Luma thaws that state through Waydroid's public lifecycle
-API before boot-completion and application-service readiness probes.
+API before boot-completion and application-service readiness probes. Luma also
+sets the supported `persist.waydroid.suspend` framework property from the
+explicit `idle_freeze` configuration, which defaults to false. Otherwise the
+framework can freeze the runtime independently when the last window closes.
 Desktop and tablet may warm an installed runtime after sign-in. Handheld starts
 only when an Android application is opened or the user explicitly resumes it;
-after that, Android Doze remains responsible for idle applications until the
-runtime is paused or the login session ends. The handheld systemd scope also
-has explicit CPU, memory, IO, and task ceilings.
+after that, background delivery remains available until the runtime is paused
+or the login session ends. Keeping that delivery available does not establish
+an efficient idle state: the pinned Waydroid framework modifies AOSP's Doze and
+suspend paths. Host suspend coordination, wakeup delivery and physical battery
+measurements remain release gates. The handheld systemd scope also has
+explicit CPU, memory, IO, and task ceilings.
 
 The release image must pin and hash Android system/vendor image inputs. The
 development initializer may download from Waydroid's official image channel,
@@ -125,3 +144,13 @@ the container and the normal Luma Android user service only after the script
 returns successfully. The image directory carries its own `SHA256SUMS`, so the
 matched pair can be transferred and verified without copying inspection-only
 framework artifacts from the build output.
+
+### Multi-window feature-mask lifetime
+
+`patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch` guards
+Waydroid's PC-feature file bind mount with a volatile, boot-local property. The
+host also skips unchanged multi-window property writes. Both clean and prepared
+build paths apply the vendor patch. Repeated property writes must leave the
+mount count unchanged; a previously accumulated mount tree requires a controlled
+Android restart after active package transactions finish. This does not reset
+application data. Device qualification and distribution rights remain separate.

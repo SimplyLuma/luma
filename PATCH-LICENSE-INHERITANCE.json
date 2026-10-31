@@ -90,6 +90,13 @@
       "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
     },
     {
+      "family": "android-vendor-extra",
+      "path": "patches/android-vendor-extra/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before distribution; do not apply the original-Luma Apache default automatically."
+    },
+    {
       "family": "cage",
       "path": "patches/cage/",
       "status": "documented",
@@ -815,6 +822,16 @@
         "line": 33
       },
       "note": ""
+    },
+    {
+      "family": "android-system-libhidl",
+      "path": "patches/android-system-libhidl/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "Apache-2.0"
+      ],
+      "note": "The modified transport/ServiceManagement.cpp explicitly carries the 2016 Android Open Source Project copyright and Apache-2.0 notice. Preserve that upstream notice and the inherited Waydroid patch authorship."
     }
   ]
 }

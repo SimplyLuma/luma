@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,307 @@
+@@ -32,6 +32,318 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -187,8 +187,8 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1167:      0172-luma-dash-islands-as-arranged.patch
 +Patch1168:      0173-inputMethod-A-key-the-input-method-cannot-answer-for-still-reaches-the-window.patch
 +Patch1169:      0174-luma-three-fingers-switch-app-four-switch-workspace.patch
-+Patch1170:      0180-luma-dock-folders.patch
-+Patch1171:      0175-luma-a-tap-is-a-tap.patch
++Patch1170:      0175-luma-a-tap-is-a-tap.patch
++Patch1171:      0180-luma-dock-folders.patch
 +Patch1172:      0176-luma-dock-folders-glyph.patch
 +Patch1173:      0181-luma-captures-keep-every-pixel-and-each-shortcut-its-mode.patch
 +Patch1174:      0182-luma-notification-island-folds-into-its-edge.patch
@@ -274,24 +274,27 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1254:      0277-login-surfaces-and-dock-battery-percentage.patch
 +Patch1255:      0278-brightness-one-percent-and-idle-input.patch
 +Patch1256:      0279-applications-and-downloads-drawer.patch
-+Patch1257:      0280-drawer-artwork-and-grid-alignment.patch
-+Patch1258:      0281-converged-presentation.patch
-+Patch1259:      0282-notification-pulse-lifecycle.patch
-+Patch1260:      0283-lucide-camera-privacy-indicator.patch
-+Patch1261:      0284-unified-shell-surfaces.patch
-+Patch1262:      0285-desktop-launcher-folders.patch
-+Patch1263:      0286-dock-native-touch-scroll.patch
-+Patch1264:      0287-calendar-island-menu-state.patch
-+Patch1265:      0288-surface-material-owner-lifecycle.patch
-+Patch1266:      0289-status-material-and-readiness.patch
-+Patch1267:      0280-retire-standalone-displays.patch
-+Patch1268:      0290-compact-login-action-bar.patch
-+Patch1269:      0291-shared-handheld-startup-and-input.patch
-+Patch1270:      0292-display-exclusions-and-notification-touch.patch
-+Patch1271:      0293-mobile-lock-notification-island.patch
-+Patch1284:      0294-keycap-keyboard.patch
-+Patch1285:      0295-status-without-shelf-backdrop.patch
-+Patch1286:      0296-shelf-presentation-wait-desktop-only.patch
++Patch1257:      0280-retire-standalone-displays.patch
++Patch1258:      0280-drawer-artwork-and-grid-alignment.patch
++Patch1259:      0281-converged-presentation.patch
++Patch1260:      0282-notification-pulse-lifecycle.patch
++Patch1261:      0283-lucide-camera-privacy-indicator.patch
++Patch1262:      0284-unified-shell-surfaces.patch
++Patch1263:      0285-desktop-launcher-folders.patch
++Patch1264:      0286-android-native-notification-replies.patch
++Patch1265:      0287-app-menu-section-ownership.patch
++Patch1266:      0288-dock-wheel-reachability.patch
++Patch1267:      0286-dock-native-touch-scroll.patch
++Patch1268:      0287-calendar-island-menu-state.patch
++Patch1269:      0288-surface-material-owner-lifecycle.patch
++Patch1270:      0289-status-material-and-readiness.patch
++Patch1271:      0290-compact-login-action-bar.patch
++Patch1272:      0291-shared-handheld-startup-and-input.patch
++Patch1273:      0292-display-exclusions-and-notification-touch.patch
++Patch1274:      0293-mobile-lock-notification-island.patch
++Patch1275:      0294-keycap-keyboard.patch
++Patch1276:      0295-status-without-shelf-backdrop.patch
++Patch1277:      0296-shelf-presentation-wait-desktop-only.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -330,12 +333,13 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +375,9 @@
+@@ -71,6 +375,10 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
 +BuildRequires:  luma-home-widgets >= 0.1.0-1.luma.1
 +BuildRequires:  sassc
++BuildRequires:  acl
 +BuildRequires:  google-figtree-fonts >= 2.0.3-1.luma.4
  
  # for rst2man

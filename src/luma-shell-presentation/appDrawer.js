@@ -8,8 +8,18 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {AppMenu} from 'resource:///org/gnome/shell/ui/appMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as SurfaceMaterials from 'resource:///org/gnome/shell/ui/lumaSurfaceMaterials.js';
 import {appCells, catalogPage, PAGE_SIZE} from './launcherModel.js';
+
+class DrawerAppMenu extends AppMenu {
+    _onKeyPress() {
+        // App tiles retain Enter/Space for launching after opening a menu.
+        // The drawer handles Menu and Shift+F10 explicitly.
+        return Clutter.EVENT_PROPAGATE;
+    }
+}
 
 export const AppDrawer = GObject.registerClass(
 class AppDrawer extends St.Widget {
@@ -22,6 +32,9 @@ class AppDrawer extends St.Widget {
         this._model = null;
         this._catalogSignal = 0;
         this._tiles = [];
+        this._menuManager = new PopupMenu.PopupMenuManager(this);
+        this._appMenu = null;
+        this._appMenuSource = null;
         this._wheelAt = 0;
         this._background = new St.Widget({style_class: 'lumaui-drawer-backdrop'});
         this.add_child(this._background);
@@ -48,7 +61,7 @@ class AppDrawer extends St.Widget {
         this.connect('key-press-event', (_actor, event) => this._key(event));
         this.connect('scroll-event', (_actor, event) => this._wheel(event));
         this.connect('button-release-event', (_actor, event) => {
-            const source = event.get_source();
+            const source = global.stage.get_event_actor(event);
             if (source === this || source === this._background) this.close();
             return Clutter.EVENT_PROPAGATE;
         });
@@ -106,6 +119,7 @@ class AppDrawer extends St.Widget {
     }
 
     close() {
+        this._destroyAppMenu();
         if (!this.visible) return;
         this.remove_all_transitions();
         this.hide();
@@ -140,6 +154,7 @@ class AppDrawer extends St.Widget {
     }
 
     _render() {
+        this._destroyAppMenu();
         const items = this._model?.items ?? [];
         const query = this._search.get_text();
         this._state = catalogPage(items, query, this._page);
@@ -210,10 +225,49 @@ class AppDrawer extends St.Widget {
         box.add_child(label);
         tile.child = box;
         tile.connect('clicked', () => {
+            if (this._suppressClick || this._appMenu?.isOpen) return;
             this.close();
             item.app.activate();
         });
+        const longPress = new Clutter.LongPressGesture();
+        longPress.connect('recognize', () => this._popupAppMenu(tile, item.app));
+        tile.add_action(longPress);
+        const rightClick = new Clutter.ClickGesture({
+            required_button: Clutter.BUTTON_SECONDARY, recognize_on_press: true});
+        rightClick.connect('recognize', () => this._popupAppMenu(tile, item.app));
+        tile.add_action(rightClick);
+        tile.connect('key-press-event', (_actor, event) => {
+            const key = event.get_key_symbol();
+            if (key !== Clutter.KEY_Menu && !(key === Clutter.KEY_F10 &&
+                (event.get_state() & Clutter.ModifierType.SHIFT_MASK)))
+                return Clutter.EVENT_PROPAGATE;
+            this._popupAppMenu(tile, item.app);
+            this._appMenu.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
+            return Clutter.EVENT_STOP;
+        });
         return tile;
+    }
+
+    _popupAppMenu(tile, app) {
+        this._drag = null;
+        if (this._appMenuSource !== tile) {
+            this._destroyAppMenu();
+            this._appMenu = new DrawerAppMenu(tile, St.Side.TOP, {
+                favoritesSection: true, showSingleWindows: true});
+            this._appMenuSource = tile;
+            this._appMenu.setApp(app);
+            if (!this._appMenu.actor.get_parent())
+                Main.uiGroup.add_child(this._appMenu.actor);
+            this._menuManager.addMenu(this._appMenu);
+        }
+        this._appMenu.open();
+    }
+
+    _destroyAppMenu() {
+        this._appMenu?.close();
+        this._appMenu?.destroy();
+        this._appMenu = null;
+        this._appMenuSource = null;
     }
 
     page(value) {
@@ -256,7 +310,7 @@ class AppDrawer extends St.Widget {
     _installPagePan() {
         const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
         pan.set_begin_threshold(10);
-        pan.connect('may-recognize', () => this.visible &&
+        pan.connect('may-recognize', () => this.visible && !this._appMenu?.isOpen &&
             !this._state?.searching && this._state?.pages > 1);
         pan.connect('recognize', () => {
             this._panPage = this._page;

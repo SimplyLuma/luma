@@ -41,7 +41,7 @@ LumaFrameMaterial frame_material(window&){return 0;}
 uint32_t luma_frame_pixel_material(Geometry,int,int,int){return 0xff123456;}
 int control_left(window&,int){return 0;}
 void draw_control(window&,int,int){}
-void draw_back(window&){} void draw_app_icon(window&){} void draw_title(window&){}
+void draw_back(window&){} void draw_settings(window&){} void draw_app_icon(window&){} void draw_title(window&){}
 std::mutex poolMutex;std::vector<wl_buffer*> proxies;
 void wl_buffer_destroy(wl_buffer* b){if(b->destroyed.exchange(true)){std::fprintf(stderr,"proxy destroyed twice\n");std::_Exit(91);}std::this_thread::sleep_for(std::chrono::microseconds(150));}
 wl_shm_pool* wl_shm_create_pool(void*,int,size_t){return new wl_shm_pool;}

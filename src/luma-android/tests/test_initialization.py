@@ -5,6 +5,42 @@ from luma_android.engine import WaydroidEngine, CommandResult
 from luma_android.errors import RuntimeUnavailableError
 
 class Initialization(unittest.TestCase):
+    def test_cold_cli_uses_the_supervised_unit_and_never_spawns_a_child(self):
+        engine = WaydroidEngine('waydroid')
+        with patch.object(engine, 'status', side_effect=[
+                {'initialized': True, 'session': 'STOPPED'},
+                {'initialized': True, 'session': 'RUNNING', 'container': 'RUNNING'}]), \
+             patch.object(engine, 'available', return_value=True), \
+             patch('luma_android.engine._activate_fp6_software_presentation'), \
+             patch('luma_android.engine._prepare_interactive_windowing'), \
+             patch('luma_android.engine._host_booted_in_charger_mode', return_value=False), \
+             patch('luma_android.engine.time.sleep'), \
+             patch('luma_android.engine.subprocess.run') as manager, \
+             patch('luma_android.engine.subprocess.Popen') as child, \
+             patch.object(engine, 'wait_for_boot_completion',
+                          side_effect=RuntimeUnavailableError('boot readiness sentinel')):
+            with self.assertRaisesRegex(RuntimeUnavailableError, 'boot readiness sentinel'):
+                engine.ensure_ready(multi_window=True, detached=True)
+            manager.assert_called_once_with(
+                ['/usr/bin/systemctl', '--user', 'start', '--no-block',
+                 'luma-android-session.service'],
+                check=True, capture_output=True, text=True, timeout=30)
+            child.assert_not_called()
+
+    def test_failed_managed_start_cannot_fall_back_to_a_caller_owned_child(self):
+        engine = WaydroidEngine('/usr/bin/waydroid')
+        with patch.object(engine, 'status', return_value={'initialized': True, 'session': 'STOPPED'}), \
+             patch.object(engine, 'available', return_value=True), \
+             patch('luma_android.engine._activate_fp6_software_presentation'), \
+             patch('luma_android.engine._prepare_interactive_windowing'), \
+             patch('luma_android.engine.subprocess.run',
+                   side_effect=subprocess.CalledProcessError(1, 'systemctl')) as manager, \
+             patch('luma_android.engine.subprocess.Popen') as child:
+            with self.assertRaisesRegex(RuntimeUnavailableError, 'user session service'):
+                engine.ensure_ready(multi_window=True, detached=True)
+            manager.assert_called_once()
+            child.assert_not_called()
+
     def test_setup_failure_or_cancel_does_not_claim_images_missing_or_retry_session(self):
         engine = WaydroidEngine('waydroid')
         with patch.object(engine, 'status', return_value={'initialized':False}), \

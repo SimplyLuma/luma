@@ -7,7 +7,7 @@
   "appstream-compose": false,
   "finish-args": [
     "--talk-name=org.project_luma.ShellState1",
-    "--metadata=X-Luma=min-host-installer=71",
+    "--metadata=X-Luma=min-host-installer=81",
     "--metadata=X-Luma=min-host-terminal=7",
     "--metadata=X-Luma=app-data-schema=filer-shared-v1",
     "--share=ipc",

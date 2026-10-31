@@ -8,6 +8,12 @@ Waydroid product so Android framework and SystemUI omit their internal
 freeform captions. The property is read-only and baked into the image; it is
 not a per-session toggle or boot-time script.
 
+It also defaults `persist.waydroid.suspend` to false, preventing the framework
+from freezing background delivery when the last app window closes. The host
+runtime reapplies the explicit `idle_freeze` policy through Waydroid's supported
+property interface. This availability default does not qualify idle power or
+replace host suspend coordination.
+
 ## Patch order
 
 1. `0001-prairie-host-window-product-property.patch`

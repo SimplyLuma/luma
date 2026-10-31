@@ -340,6 +340,9 @@ install -m 0644 "$repo_root/patches/gnome-shell/0282-notification-pulse-lifecycl
 install -m 0644 "$repo_root/patches/gnome-shell/0283-lucide-camera-privacy-indicator.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0284-unified-shell-surfaces.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0285-desktop-launcher-folders.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0286-android-native-notification-replies.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0287-app-menu-section-ownership.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0288-dock-wheel-reachability.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0286-dock-native-touch-scroll.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0287-calendar-island-menu-state.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0288-surface-material-owner-lifecycle.patch" "$rpmbuild_dir/SOURCES/"
@@ -355,6 +358,7 @@ for source in safeAreas.js powerButton.js presentation.js layout.js grid.js home
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/scripts/packages/check-rpm-directory-modes.py" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-teardown.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/clock-line-metrics.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/window-application-identity.py" "$rpmbuild_dir/SOURCES/"
@@ -449,6 +453,13 @@ install -m 0644 "$widgets_rpm" "$rpmbuild_dir/SOURCES/"
     dnf5 -y install rpm-build dnf5-plugins SOURCES/google-figtree-fonts-*.rpm SOURCES/luma-home-widgets-*.rpm
     dnf5 -y builddep SPECS/gnome-shell.spec
     rpmbuild -ba --noclean --define "_lto_cflags -flto=2" --define "_topdir $PWD" SPECS/gnome-shell.spec
+
+    # Check RPM header modes, not the privileged builder ability to read them.
+    # Both main and common packages must remain traversable by ordinary users.
+    while IFS= read -r rpm_path; do
+      rpm -qp --qf "[%{FILEMODES:octal} %{FILENAMES}\n]" "$rpm_path" > payload-modes.txt
+      python3 SOURCES/check-rpm-directory-modes.py payload-modes.txt
+    done < <(find RPMS -type f -name "*.rpm" -print)
 
     architecture=${LUMA_RPM_BUILDER_ARCHITECTURE:-x86_64}
     shell_rpm=$(find "RPMS/$architecture" -type f -name "gnome-shell-*.rpm" \

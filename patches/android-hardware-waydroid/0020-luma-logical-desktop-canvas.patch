@@ -1,0 +1,209 @@
+diff --git a/hwcomposer/luma-desktop-canvas.h b/hwcomposer/luma-desktop-canvas.h
+new file mode 100644
+index 0000000..4063a20
+--- /dev/null
++++ b/hwcomposer/luma-desktop-canvas.h
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include <algorithm>
++#include <cstdint>
++#include <vector>
++
++namespace luma {
++struct LogicalOutput { int x, y, width, height; };
++struct CanvasSize { int width, height; };
++// xdg-output supplies logical sizes after rotation and fractional scaling.
++// A desktop window may span monitors, including monitors left/above (0, 0).
++inline CanvasSize desktop_canvas(const std::vector<LogicalOutput>& outputs) {
++    bool found = false;
++    int64_t left = 0, top = 0, right = 0, bottom = 0;
++    for (const auto& output : outputs) {
++        if (output.width <= 0 || output.height <= 0) continue;
++        const int64_t x = output.x, y = output.y;
++        if (!found) { left = x; top = y; right = x; bottom = y; found = true; }
++        left = std::min(left, x); top = std::min(top, y);
++        right = std::max(right, x + output.width);
++        bottom = std::max(bottom, y + output.height);
++    }
++    if (!found || right - left > 16384 || bottom - top > 16384) return {0, 0};
++    return {static_cast<int>(right - left), static_cast<int>(bottom - top)};
++}
++}
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+index ea47835..97290ce 100644
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -34,6 +34,8 @@
+ #include "luma-task-resize.h"
+ #include "luma-window-callbacks.h"
+ #include "luma-app-settings-channel.h"
++#include "luma-desktop-canvas.h"
++#include "xdg-output-unstable-v1-client-protocol.h"
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -287,7 +289,26 @@ finished_calibrating(struct display *d)
+         property_set("ro.sf.lcd_density", lcd_density.c_str());
+     }
+ 
+-    choose_width_height(d, d->req_width, d->req_height);
++    int width = d->req_width, height = d->req_height;
++    if (property_get_bool("persist.waydroid.multi_windows", false)) {
++        std::vector<luma::LogicalOutput> outputs;
++        {
++            std::scoped_lock lock(d->outputsMutex);
++            for (const auto& entry : d->logical_outputs) {
++                const auto& output = *entry.second;
++                outputs.push_back({output.x, output.y, output.width, output.height});
++            }
++        }
++        const auto canvas = luma::desktop_canvas(outputs);
++        // SurfaceFlinger clips task layers at the virtual display boundary.
++        // The initial fullscreen probe measures only ONE host monitor. Use
++        // the desktop's logical bounds, so a wider native window is not cut
++        // off at the width of an unrelated portrait monitor. Rotation and
++        // fractional output scale are already included by xdg-output.
++        width = std::max(width, canvas.width);
++        height = std::max(height, canvas.height);
++    }
++    choose_width_height(d, width, height);
+ }
+ 
+ void
+@@ -2329,6 +2350,34 @@ static void add_tablet_seat(struct display *d) {
+     zwp_tablet_seat_v2_add_listener(d->tablet_seat, &tablet_seat_listener, d);
+ }
+ 
++static luma::WindowCallbacks<logical_output>& output_callbacks() {
++    static luma::WindowCallbacks<logical_output> callbacks;
++    return callbacks;
++}
++static void logical_position(void* data, zxdg_output_v1*, int32_t x, int32_t y) {
++    auto output = output_callbacks().acquire(data);
++    if (!output) return;
++    std::scoped_lock lock(output->owner->outputsMutex);
++    output->x = x; output->y = y;
++}
++static void logical_size(void* data, zxdg_output_v1*, int32_t width, int32_t height) {
++    auto output = output_callbacks().acquire(data);
++    if (!output) return;
++    std::scoped_lock lock(output->owner->outputsMutex);
++    output->width = width; output->height = height;
++}
++static void logical_done(void*, zxdg_output_v1*) {}
++static void logical_name(void*, zxdg_output_v1*, const char*) {}
++static void logical_description(void*, zxdg_output_v1*, const char*) {}
++static const zxdg_output_v1_listener logical_listener = {
++    logical_position, logical_size, logical_done, logical_name, logical_description
++};
++static void attach_logical_output(display* d, const std::shared_ptr<logical_output>& output) {
++    if (!d->output_manager || output->logical) return;
++    output->logical = zxdg_output_manager_v1_get_xdg_output(d->output_manager, output->output);
++    zxdg_output_v1_add_listener(output->logical, &logical_listener, output->token);
++}
++
+ static void
+ registry_handle_global(void *data, struct wl_registry *registry,
+                uint32_t id, const char *interface, uint32_t version)
+@@ -2362,10 +2411,24 @@ registry_handle_global(void *data, struct wl_registry *registry,
+ 		d->shm = (struct wl_shm *)wl_registry_bind(registry, id,
+                 &wl_shm_interface, 1);
+     } else if (strcmp(interface, "wl_output") == 0) {
++        std::scoped_lock lock(d->outputsMutex);
++        if (d->logical_outputs.size() >= 64) return;
+         d->output = (struct wl_output*)wl_registry_bind(registry, id,
+                 &wl_output_interface, std::min(version, 3U));
+         wl_output_add_listener(d->output, &output_listener, d);
+-        wl_display_roundtrip(d->display);
++        auto output = std::make_shared<logical_output>();
++        output->owner = d; output->output = d->output;
++        output->token = output_callbacks().attach(output);
++        d->logical_outputs.emplace(id, output);
++        attach_logical_output(d, output);
++    } else if (strcmp(interface, "zxdg_output_manager_v1") == 0) {
++        std::scoped_lock lock(d->outputsMutex);
++        d->output_manager = (zxdg_output_manager_v1*)wl_registry_bind(registry, id,
++                &zxdg_output_manager_v1_interface, std::min(version, 3U));
++        for (const auto& entry : d->logical_outputs)
++            attach_logical_output(d, entry.second);
++        // Initial roundtrips run in create_display, outside outputsMutex:
++        // logical output callbacks acquire that same mutex.
+     } else if (strcmp(interface, "wp_presentation") == 0) {
+         bool no_presentation = property_get_bool("persist.waydroid.no_presentation", false);
+         if (!no_presentation) {
+@@ -2422,8 +2485,18 @@ registry_handle_global(void *data, struct wl_registry *registry,
+ }
+ 
+ static void
+-registry_handle_global_remove(void *, struct wl_registry *, uint32_t)
++registry_handle_global_remove(void* data, struct wl_registry*, uint32_t id)
+ {
++    auto* d = static_cast<display*>(data);
++    std::scoped_lock lock(d->outputsMutex);
++    const auto found = d->logical_outputs.find(id);
++    if (found == d->logical_outputs.end()) return;
++    const auto output = found->second;
++    output_callbacks().retire(output->token);
++    if (output->logical) zxdg_output_v1_destroy(output->logical);
++    wl_output_destroy(output->output);
++    if (d->output == output->output) d->output = nullptr;
++    d->logical_outputs.erase(found);
+ }
+ 
+ static const struct wl_registry_listener registry_listener = {
+@@ -2554,6 +2627,9 @@ create_display(const char *gralloc)
+     wl_registry_add_listener(display->registry,
+                  &registry_listener, display);
+     wl_display_roundtrip(display->display);
++    // Registry callbacks bind xdg-output objects. Receive their initial logical
++    // geometry before the first window calibrates the Android display.
++    wl_display_roundtrip(display->display);
+ 
+     if (pthread_create(&display->wayland_thread, nullptr, hwc_wayland_thread, display->display) != 0) {
+         ALOGE("Couldn't create wayland thread");
+@@ -2573,7 +2649,15 @@ destroy_display(struct display *display)
+     pthread_kill(display->wayland_thread, SIGTERM);
+     pthread_join(display->wayland_thread, nullptr);
+     luma_clipboard_shutdown(display);
+ 
++    for (const auto& entry : display->logical_outputs) {
++        const auto& output = entry.second;
++        output_callbacks().retire(output->token);
++        if (output->logical) zxdg_output_v1_destroy(output->logical);
++        wl_output_destroy(output->output);
++    }
++    display->logical_outputs.clear();
++    if (display->output_manager) zxdg_output_manager_v1_destroy(display->output_manager);
+     if (display->wm_base)
+         xdg_wm_base_destroy(display->wm_base);
+ 
+diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
+index a0d067d..bb8bf55 100644
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -362,6 +362,14 @@ struct cursor_handler {
+     virtual int on_cursor_enter(display *display) = 0;
+ };
+ 
++struct logical_output {
++    struct display* owner;
++    struct wl_output* output;
++    struct zxdg_output_v1* logical = nullptr;
++    void* token = nullptr;
++    int x = 0, y = 0, width = 0, height = 0;
++};
++
+ struct display {
+     pthread_t wayland_thread; // constant after init
+ 
+@@ -380,6 +388,9 @@ struct display {
+     struct wl_keyboard *keyboard;
+     struct wl_touch *touch;
+     struct wl_output *output;
++    struct zxdg_output_manager_v1* output_manager = nullptr;
++    std::mutex outputsMutex;
++    std::map<uint32_t, std::shared_ptr<logical_output>> logical_outputs;
+     struct wp_presentation *presentation;
+     struct wp_viewporter *viewporter;
+     struct android_wlegl *android_wlegl;

@@ -9,6 +9,7 @@ GNOME identity and licenses.
 """
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -57,8 +58,8 @@ def prepare(root):
     spec_patch = root / 'packaging/nautilus/filer-spec-complete.patch'
     names = re.findall(r'^\+Patch\d+:\s+(\S+)\s*$', spec_patch.read_text(), re.MULTILINE)
     maintained = sorted((root / 'patches/nautilus').glob('0[0-9][0-9][0-9]-*.patch'))
-    admitted = [path.name for path in maintained if 1 <= int(path.name[:4]) <= 158]
-    if not names or names != admitted or names[-1] != '0158-filer-terminal-and-hover-open-menus.patch':
+    admitted = [path.name for path in maintained if 1 <= int(path.name[:4]) <= 159]
+    if not names or names != admitted or names[-1] != '0159-filer-android-default-install-handoff.patch':
         raise ValueError('Filer Flatpak and canonical RPM patch series disagree')
     target = root / 'nautilus-50.2.2'
     if target.exists():
@@ -69,6 +70,16 @@ def prepare(root):
                               for member in members):
             raise ValueError('Unexpected upstream Nautilus archive root')
         archive.extractall(root, members=members, filter='data')
+    # A build mount may inherit a shared host group that is unmapped inside
+    # Flatpak's user namespace. GNU patch preserves file groups and rejects
+    # that unmapped gid. Normalize only this freshly extracted, owned copy to
+    # the builder's primary group; source archives and shared parents stay intact.
+    for path in [target, *target.rglob('*')]:
+        info = path.lstat()
+        if info.st_uid != os.getuid():
+            raise ValueError('Extracted Filer source has a foreign owner')
+        if info.st_gid != os.getgid():
+            os.chown(path, -1, os.getgid(), follow_symlinks=False)
     for patch in [root / 'upstream-filer/default-terminal.patch'] + [
             root / 'patches/nautilus' / name for name in names]:
         subprocess.run(['patch', '--batch', '--fuzz=0', '-p1', '-i', str(patch)],

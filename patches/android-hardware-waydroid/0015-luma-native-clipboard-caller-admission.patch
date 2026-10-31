@@ -1,0 +1,47 @@
+--- a/hwcomposer/WaydroidClipboard.cpp
++++ b/hwcomposer/WaydroidClipboard.cpp
+@@ -21,6 +21,8 @@
+ #include "WaydroidClipboard.h"
+ 
+ #include <log/log.h>
++#include <hwbinder/IPCThreadState.h>
++#include <private/android_filesystem_config.h>
+ #include <unistd.h>
+ #include <algorithm>
+ #include <vector>
+@@ -169,6 +171,12 @@
+ 
+ // Methods from ::vendor::waydroid::clipboard::V1_0::IWaydroidClipboard follow.
+ Return<void> WaydroidClipboard::sendClipboardData(const hidl_string& in) {
++    // Only system_server may bridge Android's checked ClipboardService API.
++    // HIDL v1 stubs assert a successful transport result; deny as a no-op.
++    if (::android::hardware::IPCThreadState::self()->getCallingUid() != AID_SYSTEM) {
++        return Void();
++    }
++
+     mDisplay->clipboard = in;
+ 
+     if (!mDisplay->data_device)
+@@ -184,6 +192,12 @@
+ }
+ 
+ Return<void> WaydroidClipboard::getClipboardData(getClipboardData_cb out_cb) {
++    // HIDL requires exactly one callback, including a denied data request.
++    if (::android::hardware::IPCThreadState::self()->getCallingUid() != AID_SYSTEM) {
++        out_cb("");
++        return Void();
++    }
++
+     out_cb(mDisplay->clipboard);
+     return Void();
+ }
+--- a/hwcomposer/Android.bp
++++ b/hwcomposer/Android.bp
+@@ -64,6 +64,7 @@
+         "sw-sync-compat.cpp",
+     ],
+     header_libs: [
++        "libhwbinder_headers",
+         "libsystem_headers",
+         "minigbm_headers",
+     ],

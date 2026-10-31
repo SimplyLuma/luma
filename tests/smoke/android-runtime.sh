@@ -71,7 +71,8 @@ check 'sandboxed broker authenticates the immutable FP6 compositor unit' bash -c
   'grep -Fq '\''fp6_software_service_admitted(session_user=session_user)'\'' /usr/lib/python3*/site-packages/luma_android/engine.py'
 check 'FP6 software lab path requires an ephemeral root-owned marker' bash -c \
   'grep -Fq '\''FP6_SOFTWARE_LAB_MARKER = Path('\'' /usr/lib/python3*/site-packages/luma_android/engine.py && grep -Fq '\''metadata.st_uid != 0'\'' /usr/lib/python3*/site-packages/luma_android/engine.py && grep -Fq '\''metadata.st_mode & 0o022'\'' /usr/lib/python3*/site-packages/luma_android/engine.py'
-check 'Waydroid exposes per-application desktop notifications' bash -c \
-  'manager=$(rpm -ql waydroid | grep -E '\''/tools/services/notification_manager.py$'\'' | head -n 1); test -n "$manager" && grep -Fq '\''"desktop-entry": f"waydroid.{package_name}"'\'' "$manager" && grep -Fq '\''org.freedesktop.Notifications'\'' "$manager"'
+check 'Luma-owned Android notification transport is installed' bash -c \
+  'test -x /usr/libexec/luma-waydroid-session && grep -Fxq '\''ExecStart=/usr/bin/luma-android-session'\'' /usr/lib/systemd/user/luma-android-session.service && python3 -c "import luma_android.waydroid_notifications, luma_android.notification_bridge"'
+
 
 exit "$failures"

@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.77.nightly20261026.1%{?dist}
+Release:        1.luma.81.android20261030.1%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -25,7 +25,7 @@ BuildRequires:  shared-mime-info
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  gtk4
 BuildRequires:  libadwaita
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 BuildRequires:  dconf
@@ -36,7 +36,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.91.creator20261005.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman
@@ -48,7 +48,7 @@ Requires:       slirp4netns
 Requires:       gnupg2
 Requires:       polkit
 Requires:       python3
-Requires:       luma-apk-metadata = 0.1.0-1.luma.1~preview.20260910.1%{?dist}
+Requires:       luma-apk-metadata = 0.1.0-1.luma.2.android20261030.1%{?dist}
 Requires:       python3-libarchive-c
 # Launch failures are written to the journal with fields Luma Vitals reads.
 Requires:       python3-systemd
@@ -195,6 +195,7 @@ grep -qx 'X-GNOME-UsesNotifications=true' \
   %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
 python3 -m py_compile %{buildroot}%{python3_sitelib}/luma_installer/*.py
 PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/smoke.py
+GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib} GSK_RENDERER=cairo timeout --kill-after=5s 30s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/valet_android_preview.py
 # Real widgets must retain scrolling while installation progress arrives.
 GSETTINGS_SCHEMA_DIR=$PWD/tests/appearance-schema PYTHONPATH=%{buildroot}%{python3_sitelib} LUMA_DEPOT_STYLE_PATH=%{buildroot}%{_datadir}/luma-depot/depot.css GSK_RENDERER=cairo timeout --kill-after=5s 60s xvfb-run -a -s '-screen 0 1920x1080x24' dbus-run-session -- python3 tests/native_depot_preview.py
 grep -qx 'NoDisplay=true' %{buildroot}%{_datadir}/applications/org.projectluma.SoftwareUpdate.desktop
@@ -277,6 +278,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.75.nightly20261026.1
 - Keep system app baseline contents readable by ordinary users.
+
 
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.74.nightly20261026.1
 - Package the October 26 shared source updates.

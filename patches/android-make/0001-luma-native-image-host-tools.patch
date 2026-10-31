@@ -1,0 +1,27 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] Scope Luma image builds to native build-host tools
+
+Luma builds Android runtime images and their native Linux host tools, not the
+Windows SDK. With an explicit image-build flag, omit unused host-cross variants
+from Soong's graph. Android target/secondary architectures, guest ABIs and
+application APIs are unchanged. Without the flag retain upstream behavior.
+AOSP's original Apache-2.0 copyright and notices remain intact.
+
+--- a/core/envsetup.mk
++++ b/core/envsetup.mk
+@@ -148,8 +148,14 @@
+ # BUILD_OS is the real host doing the build.
+ BUILD_OS := $(HOST_OS)
+ 
++# Luma runtime images need native Linux build tools, not Windows SDK tools.
++# Android target architectures and both guest ABIs remain independent below.
++ifeq ($(LUMA_ANDROID_IMAGE_HOST_ONLY),1)
++  override HOST_CROSS_OS :=
++  override HOST_CROSS_ARCH :=
++  override HOST_CROSS_2ND_ARCH :=
+ # We can do the cross-build only on Linux
+-ifeq ($(HOST_OS),linux)
++else ifeq ($(HOST_OS),linux)
+   # Windows has been the default host_cross OS
+   ifeq (,$(filter-out windows,$(HOST_CROSS_OS)))
+     # We can only create static host binaries for Linux, so if static host

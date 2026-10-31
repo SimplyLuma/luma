@@ -1,0 +1,34 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] Deny global property writes from Android application UIDs
+
+The Waydroid property service disables SELinux property checks. Preserve a
+kernel-credential boundary before either ordinary or control-property writes.
+Retain native service identities and reject application/isolated identities
+for every Android user. This is an additional boundary, not an SELinux policy
+replacement. Android/AOSP copyright and Apache-2.0 notices remain intact.
+
+--- a/init/property_service.cpp
++++ b/init/property_service.cpp
+@@ -56,6 +56,7 @@
+ #include <android-base/properties.h>
+ #include <android-base/stringprintf.h>
+ #include <android-base/strings.h>
++#include <private/android_filesystem_config.h>
+ #include <property_info_parser/property_info_parser.h>
+ #include <property_info_serializer/property_info_serializer.h>
+ #include <selinux/android.h>
+@@ -452,6 +453,14 @@
+     if (!IsLegalPropertyName(name)) {
+         *error = "Illegal property name";
+         return PROP_ERROR_INVALID_NAME;
++    }
++
++    // Waydroid disables the SELinux property policy. Keep application and
++    // isolated UIDs out of global/control writes using the socket's kernel
++    // credentials, including applications in secondary Android users.
++    if (cr.uid % AID_USER_OFFSET >= AID_APP_START) {
++        *error = "Application UIDs cannot set Android system properties";
++        return PROP_ERROR_PERMISSION_DENIED;
+     }
+ 
+     if (StartsWith(name, "ctl.")) {
