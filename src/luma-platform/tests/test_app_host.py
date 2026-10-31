@@ -16,6 +16,21 @@ KIT = Path(os.environ.get('LUMA_APPKIT_TEST_PATH', Path(__file__).resolve().pare
 CLIENT = os.environ.get('LUMA_APP_LAUNCH')
 
 
+def _host_admits_this_runner():
+    # The host never forks for a launcher under seccomp or no_new_privs (a
+    # container CI runner has both); there every launch runs in its own
+    # interpreter, which is the contract these tests then check instead.
+    try:
+        lines = Path('/proc/self/status').read_text().splitlines()
+    except OSError:
+        return False
+    status = dict(line.split(':', 1) for line in lines if ':' in line)
+    return status.get('Seccomp', '').strip() == '0' and status.get('NoNewPrivs', '').strip() == '0'
+
+
+ADMITTED = _host_admits_this_runner()
+
+
 class AppHostTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -72,7 +87,7 @@ raise SystemExit(23)
         result = self.run_app(extra=['--input', 'argument with spaces'])
         self.assertEqual(result.returncode, 23, result.stderr)
         data = json.loads(result.stdout)
-        self.assertEqual(data['parent'], self.host.pid)
+        self.assertEqual(data['parent'], self.host.pid if ADMITTED else os.getpid())
         self.assertEqual(data['value'], self.environment['TEST_LUMA_VALUE'])
         self.assertEqual(data['stdin'], 'sample input')
         self.assertEqual(data['cwd'], str(self.root))
@@ -85,7 +100,7 @@ raise SystemExit(23)
         result = self.run_app(True, ['--input', 'a"b\\c'])
         self.assertEqual(result.returncode, 23, result.stderr)
         data = json.loads(result.stdout)
-        self.assertEqual(data['parent'], self.host.pid)
+        self.assertEqual(data['parent'], self.host.pid if ADMITTED else os.getpid())
         self.assertEqual(data['value'], self.environment['TEST_LUMA_VALUE'])
         self.assertEqual(data['argv'][-1], 'a"b\\c')
         self.assertEqual(data['stdin'], 'sample input')
@@ -150,6 +165,7 @@ raise SystemExit(23)
         self.assertEqual(result.returncode, 23, result.stderr)
         self.assertEqual(json.loads(result.stdout)['parent'], os.getpid())
 
+    @unittest.skipUnless(ADMITTED, 'the host refuses a seccomp or no_new_privs launcher before this protocol step')
     def test_abandoned_launch_never_executes_application(self):
         self.start()
         marker = self.root / 'executed'
