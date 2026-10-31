@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Handheld input on the installed Shell: fast typing through the on-screen
-// keyboard and the input method (word completion when it is available), an
+// keyboard with a deliberately slow engine and suggestions, an
 // application that stays full screen under the keyboard and a top-edge pull,
 // and the home gesture above the keyboard. Run through run.sh:
 // PRESENTATION_AUTOMATION=<this file> PRESENTATION_INITIAL_MODE=mobile
@@ -66,10 +66,33 @@ async function work() {
         monitor.x + monitor.width / 2, monitor.y + monitor.height - 4);
     check('home gesture is above the keyboard', presentation._gestureBar.contains(picked), `${picked}`);
 
-    // Fast typing: a key every few milliseconds, through the tap's commit path.
-    const completion = Boolean(keyboard._keyboardController._oskCompletionEnabled);
+    // Fast typing with a slow engine: every input-method call and every
+    // suggestion takes 500 ms. A tap must still reach the application at once
+    // (within the frame it happened in), in order, at 0-2 ms per key.
+    const delay = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+        resolve();
+        return GLib.SOURCE_REMOVE;
+    }));
+    const handleVirtualKey = Main.inputMethod.handleVirtualKey;
+    Main.inputMethod.handleVirtualKey = async keyval => {
+        await delay(500);
+        return handleVirtualKey.call(Main.inputMethod, keyval);
+    };
+    const suggester = keyboard._suggester;
+    const suggest = suggester?.suggest;
+    if (suggester) {
+        suggester.suggest = async word => {
+            await delay(500);
+            return suggest.call(suggester, word);
+        };
+    }
+    const commits = [];
+    const commit = Main.inputMethod.commit;
+    Main.inputMethod.commit = text => {
+        commits.push({text, at: GLib.get_monotonic_time()});
+        return commit.call(Main.inputMethod, text);
+    };
     const text = 'the quick brown fox, jumps over the lazy dog. and keeps typing fast; very fast ';
-    const interval = Number(GLib.getenv('KEYCAP_TYPING_INTERVAL') ?? 20);
     // Any character key commits what it is given; its handler is the tap path.
     let letter = null;
     const find = actor => {
@@ -83,19 +106,52 @@ async function work() {
     keyboard._latched = true;  // Typed text stays lower case; sentence case has its own check.
     find(keyboard._currentPage);
     check('a character key is available', !!letter);
-    for (const character of text) {
+    // Each tap's character must reach the application (one text-input
+    // commit per Wayland "done") within a frame of the tap.
+    const taps = [];
+    for (const [index, character] of [...text].entries()) {
+        taps.push(GLib.get_monotonic_time());
         letter?.emit('commit', character);
-        await sleep(interval);
+        await sleep(index % 3);  // 0-2 ms per key
     }
+    await until(() => commits.map(entry => entry.text).join('').length >= text.length, 3000);
+    const latencies = [];
+    let covered = 0;
+    for (const entry of commits) {
+        for (let i = 0; i < [...entry.text].length && covered < taps.length; i++, covered++)
+            latencies.push((entry.at - taps[covered]) / 1000);
+    }
+    const committed = commits.map(entry => entry.text).join('');
+    const worst = Math.max(...latencies);
+    const mean = latencies.reduce((sum, value) => sum + value, 0) / Math.max(1, latencies.length);
+    check('taps are committed in order', committed === text, JSON.stringify(committed));
+    check('every tap reaches the application within one frame despite a 500 ms engine', worst < 16,
+        `key-to-commit mean ${mean.toFixed(2)} ms, worst ${worst.toFixed(2)} ms over ${latencies.length} keys in ${commits.length} commits`);
     keyboard._latched = false;
-    await sleep(3000);
+    await sleep(2000);
     let received = '';
     try {
         received = new TextDecoder().decode(GLib.file_get_contents(typed)[1]);
     } catch {}
-    check(`fast typing arrives complete and in order${completion ? ' through word completion' : ''}`,
-        received.trim() === text.trim(), JSON.stringify(received));
-    check('word completion engine took part', completion || !GLib.getenv('KEYCAP_REQUIRE_COMPLETION'));
+    check('fast typing arrives complete and in order', received === text, JSON.stringify(received));
+
+    // Suggestions arrive afterwards, off the key path, for the latest word.
+    for (const character of 'helo')
+        letter?.emit('commit', character);
+    await sleep(2500);
+    const offered = keyboard._suggestions.get_children().map(button => button.label);
+    check('suggestions follow a slow engine for the latest word', offered.some(label => /^hello$/i.test(label)),
+        JSON.stringify(offered));
+    keyboard._applySuggestion('helo', 'hello');
+    await sleep(1500);
+    try {
+        received = new TextDecoder().decode(GLib.file_get_contents(typed)[1]);
+    } catch {}
+    check('a chosen correction replaces only its word', received === `${text}hello `, JSON.stringify(received));
+    Main.inputMethod.handleVirtualKey = handleVirtualKey;
+    Main.inputMethod.commit = commit;
+    if (suggester)
+        suggester.suggest = suggest;
 
     // A pull from the top edge belongs to the Shell, never to the window.
     const seat = Clutter.get_default_backend().get_default_seat();

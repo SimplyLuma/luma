@@ -112,6 +112,17 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
         `keyboard shrinks back on the folded screen (${tablet} -> ${actor.height})`);
 }
 
+const words = new Keycap.WordSuggester(Keycap.hunspellWords('7\nhello/S\nthe\ntheir\nquick/M\nworld\nword\nwork\n'));
+assert(words.size === 7 && words.has('Hello'), 'Hunspell words without affix flags');
+assert(words.suggest('helo')[0] === 'hello' && words.suggest('teh')[0] === 'the', 'single-edit corrections lead');
+assert(words.suggest('Thier')[0] === 'Their' && words.suggest('WOR').every(w => w === w.toUpperCase()), 'case follows the word');
+assert(words.suggest('wor').join() === 'word,work,world', 'completions shortest first');
+const typos = new Keycap.WordSuggester(['hello', 'halo', 'hero', 'help', 'work', 'word', 'the', 'thy']);
+assert(typos.suggest('helo')[0] === 'hello' && typos.suggest('wprk')[0] === 'work' && typos.suggest('thw')[0] === 'the',
+    'doubled letters and neighbouring keys rank first');
+assert(words.suggest('hello').length === 0 && words.suggest('').length === 0 && words.suggest('12').length === 0,
+    'known words and non-words get nothing');
+
 const history = new Keycap.ClipboardHistory({max_clips: 10, max_bytes: 65536, ttl_seconds: 3600});
 for (let i = 0; i < 12; i++)
     history.add(`clip ${i}`, i);
@@ -127,7 +138,8 @@ assert(!full.add('c', 0) && full.list(0).join() === 'b,a', 'all slots pinned ref
 
 for (const [needle, message] of [
     ["import * as Keycap from './lumaPresentation/keycap.js';", 'keyboard uses the shared policy'],
-    ['setOskCompletion(this._completionAllowed())', 'completion follows privacy and preference'],
+    ['this._keyboardController.setOskCompletion(false);', 'taps never switch to a completion engine'],
+    ['GLib.idle_add(GLib.PRIORITY_LOW, () => {', 'suggestions are computed off the key path'],
     ['Keycap.SECRET_CLIPBOARD_TARGET', 'password-manager copies are skipped'],
     ['generation !== this._clipboardGeneration || this._isSensitive()', 'stale clipboard reads are dropped'],
     ['St.Settings.get().high_contrast ? null', 'High Contrast keeps the platform keyboard'],

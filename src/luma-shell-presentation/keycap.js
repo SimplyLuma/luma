@@ -149,6 +149,107 @@ export function deleteSelectWords(dx) {
     return Math.min(32, Math.max(1, Math.trunc(-dx / t.delete_select_word)));
 }
 
+// Word suggestions from a word list, computed off the key path: a tap
+// commits its character at once, and suggestions for the word follow when
+// the Shell is idle. Completions extend the typed word; when the word is not
+// a known word, single-edit corrections come first. Case follows the word.
+const WORD = /^[\p{L}\p{M}'’]+$/u;
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz\'';
+
+const ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+const POSITIONS = new Map([...ROWS.entries()].flatMap(([row, keys]) =>
+    [...keys].map((key, column) => [key, [row, column + row * 0.5]])));
+
+// Keys that touch on a QWERTY touch keyboard.
+function neighbours(a, b) {
+    const [pa, pb] = [POSITIONS.get(a), POSITIONS.get(b)];
+    return !!pa && !!pb && a !== b && Math.abs(pa[0] - pb[0]) <= 1 && Math.abs(pa[1] - pb[1]) <= 1;
+}
+
+export function isWordCharacter(character) {
+    return WORD.test(character);
+}
+
+export class WordSuggester {
+    constructor(words = []) {
+        this._sorted = [...new Set(words.map(word => word.toLowerCase()).filter(word => WORD.test(word)))].sort();
+        this._known = new Set(this._sorted);
+    }
+
+    get size() {
+        return this._sorted.length;
+    }
+
+    has(word) {
+        return this._known.has(word.toLowerCase());
+    }
+
+    _completions(lower, limit) {
+        let low = 0, high = this._sorted.length;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (this._sorted[middle] < lower) low = middle + 1;
+            else high = middle;
+        }
+        const found = [];
+        for (let i = low; i < this._sorted.length && found.length < 200 && this._sorted[i].startsWith(lower); i++) {
+            if (this._sorted[i] !== lower)
+                found.push(this._sorted[i]);
+        }
+        return found.sort((a, b) => a.length - b.length || (a < b ? -1 : 1)).slice(0, limit);
+    }
+
+    // Single-edit corrections ranked by how people mistype on a touch
+    // keyboard: swapped or doubled letters first, then a neighbouring key,
+    // then any other single edit.
+    _corrections(lower, limit) {
+        const scored = new Map();
+        const add = (candidate, score) => {
+            if (candidate !== lower && this._known.has(candidate) && !(scored.get(candidate) <= score))
+                scored.set(candidate, score);
+        };
+        const chars = [...lower];
+        const join = parts => parts.join('');
+        for (let i = 0; i < chars.length - 1; i++)
+            add(join([...chars.slice(0, i), chars[i + 1], chars[i], ...chars.slice(i + 2)]), 0);
+        for (let i = 0; i < chars.length; i++) {
+            add(join([...chars.slice(0, i + 1), chars[i], ...chars.slice(i + 1)]), 0);
+            if (chars[i] === chars[i + 1])
+                add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), 0);
+            for (const letter of LETTERS)
+                add(join([...chars.slice(0, i), letter, ...chars.slice(i + 1)]), neighbours(chars[i], letter) ? 1 : 3);
+        }
+        for (let i = 0; i <= chars.length; i++) {
+            for (const letter of LETTERS) {
+                const near = neighbours(chars[i - 1], letter) || neighbours(chars[i], letter);
+                add(join([...chars.slice(0, i), letter, ...chars.slice(i)]), near ? 2 : 4);
+            }
+        }
+        for (let i = 0; i < chars.length; i++)
+            add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), 4);
+        return [...scored].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
+            .slice(0, limit).map(([candidate]) => candidate);
+    }
+
+    suggest(word, limit = 3) {
+        if (!word || !WORD.test(word))
+            return [];
+        const lower = word.toLowerCase();
+        const corrections = this._known.has(lower) ? [] : this._corrections(lower, limit);
+        const ranked = [...new Set([...corrections, ...this._completions(lower, limit)])].slice(0, limit);
+        const upper = word[0] !== word[0].toLowerCase();
+        const all = word.length > 1 && word === word.toUpperCase();
+        return ranked.map(candidate => all ? candidate.toUpperCase()
+            : upper ? candidate[0].toUpperCase() + candidate.slice(1) : candidate);
+    }
+}
+
+// Words of a Hunspell dictionary (.dic): the first line is a count, each
+// entry may carry affix flags after a slash.
+export function hunspellWords(text) {
+    return text.split('\n').slice(1).map(line => line.split('/')[0].trim()).filter(Boolean);
+}
+
 // Copied text kept in memory only: at most max_clips, max_bytes each, gone
 // after ttl_seconds unless pinned. Times are monotonic milliseconds.
 export class ClipboardHistory {

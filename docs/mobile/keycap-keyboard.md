@@ -78,8 +78,16 @@ copies marked `x-kde-passwordManagerHint`. Automatic keyboard presence policy
 
 Not ported to the Shell: the eight-column emoji grid with search and recents
 (the Shell's paged emoji chooser is themed instead), drag-select of accent
-alternatives, and the Settings page bindings. Suggestions need an IBus
-completion engine; without one the strip shows the tools.
+alternatives, and the Settings page bindings.
+
+A tap is text: it is committed straight to the application (gathered into
+one Wayland text-input commit per "done", so fast taps are never dropped)
+and never waits on an engine. Word suggestions come from the system Hunspell
+dictionary of the person's language, indexed in the background and computed
+when the Shell is idle; a suggestion replaces its word only while the caret
+is still at that word's end, and stale results are dropped. The on-screen
+keyboard no longer switches IBus to typing-booster; an IBus input source the
+person chose (Pinyin, Hangul and so on) still composes the keys.
 
 ## Build and validation
 
