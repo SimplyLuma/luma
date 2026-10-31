@@ -98,6 +98,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Tide.
 # Keep the installed system directories independent of those build settings.
 setfacl -Rb %{buildroot}
 find %{buildroot} -type d -exec chmod 0755 {} +
+chmod 0644 LICENSE.md
 
 %check
 # The light/dark native checks use the same shell-state schema shipped by the
@@ -156,7 +157,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 
 %files
 %defattr(-,root,root,0755)
-%license %attr(0644,root,root) LICENSE.md
+%license LICENSE.md
 %{_bindir}/org.projectluma.Tide
 %{_bindir}/luma-tide-retire-preview-overrides
 %{python3_sitelib}/luma_tide/

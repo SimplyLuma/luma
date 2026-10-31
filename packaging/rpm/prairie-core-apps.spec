@@ -225,6 +225,7 @@ install -D -m 0644 data/luma-user-dirs.dirs \
 # Keep the installed system directories independent of those build settings.
 setfacl -Rb %{buildroot}
 find %{buildroot} -type d -exec chmod 0755 {} +
+chmod 0644 LICENSE.md
 
 %check
 # Exercise shared-library grants and home aliases against the installed payload.
@@ -616,7 +617,7 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 
 %files
 %defattr(-,root,root,0755)
-%license %attr(0644,root,root) LICENSE.md
+%license LICENSE.md
 %{_bindir}/prairie-messages
 %{_bindir}/prairie-messages-daemon
 %{_bindir}/prairie-phone-daemon
