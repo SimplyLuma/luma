@@ -27,7 +27,7 @@ RUNTIMES = ('org.projectluma.Platform','org.projectluma.Platform.GL.default','or
 
 
 def run(*args, **kwargs):
-    return subprocess.run(args,check=True,text=True,capture_output=True,timeout=600,**kwargs).stdout
+    return subprocess.run(args,check=True,text=True,capture_output=True,timeout=kwargs.pop('timeout',600),**kwargs).stdout
 
 
 def selected_applications(entries, shipping=None):
@@ -257,7 +257,9 @@ def produce(repo,site,registry,output,arch,shipping=None,minimum_free_bytes=0,re
                 options=['flatpak','build-bundle','--arch='+arch,'--repo-url='+BASE+'/repo',
                          '--runtime-repo='+BASE+'/luma.flatpakrepo','--gpg-keys='+str(key)]
                 if kind=='runtime':options.append('--runtime')
-                run(*options,str(repo),str(target),name,branch)
+                # Large runtime bundles can exceed ten minutes on build storage.
+                # Keep lightweight admission commands on their shorter default.
+                run(*options,str(repo),str(target),name,branch,timeout=3600)
             require_capacity(output,minimum_free_bytes)
             if run('ostree','rev-parse','--repo='+str(repo),ref).strip()!=heads[ref]:
                 raise ValueError('Baseline source ref changed while bundling.')
