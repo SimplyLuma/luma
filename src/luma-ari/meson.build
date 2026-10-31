@@ -3,15 +3,17 @@ project('luma-ari', version: '0.1.0', meson_version: '>= 1.3.0')
 python = import('python').find_installation('python3')
 
 python.install_sources(
-  'ari/__init__.py', 'ari/agent.py', 'ari/audit.py', 'ari/cli.py', 'ari/cloud.py', 'ari/hardware.py', 'ari/intents.py',
+  'ari/__init__.py', 'ari/agent.py', 'ari/audit.py', 'ari/chatgpt.py', 'ari/chatgpt_provider.py', 'ari/cli.py', 'ari/cloud.py', 'ari/hardware.py', 'ari/intents.py',
   'ari/mcp.py', 'ari/models.py', 'ari/paths.py', 'ari/persona.py', 'ari/policy.py', 'ari/providers.py',
   'ari/host_identity.py', 'ari/host_limits.py', 'ari/router.py', 'ari/persistence.py', 'ari/runtime.py', 'ari/service.py', 'ari/store.py',
   subdir: 'ari',
 )
 python.install_sources('ari/tools/__init__.py', 'ari/tools/answers.py', 'ari/tools/desktop.py',
-                        'ari/tools/preferences.py', 'ari/tools/system.py', subdir: 'ari/tools')
-python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
-                       'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', subdir: 'ari_ui')
+                        'ari/tools/preferences.py', 'ari/tools/system.py', 'ari/tools/applications.py',
+                        'ari/tools/workspace.py', 'ari/tools/accessibility.py', 'ari/tools/processes.py',
+                        'ari/tools/productivity.py', 'ari/tools/media.py', subdir: 'ari/tools')
+python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/chatgpt_settings.py', 'ari_ui/rich_text.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
+                       'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', 'ari_ui/model_families.py', subdir: 'ari_ui')
 
 install_subdir('ari_ui/assets', install_dir: python.get_install_dir() / 'ari_ui')
 

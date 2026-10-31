@@ -33,6 +33,15 @@ media application built on the public Luma Developer Platform.
   removal.
 - `credentials.py` keeps source passwords in the system secret service.
 - `mpris.py` adapts that controller to MPRIS. It does not own another player.
+- `automation.py` exports `org.projectluma.MediaLibrary1` at
+  `/org/projectluma/MediaLibrary` on Tide's existing session-bus identity.
+  `Search(title)` returns bounded library metadata and short-lived targets;
+  `Play(target)` uses the existing queue/controller; `Status()` reports the
+  current track and playback state. Results are JSON strings. Targets bind to
+  the querying connection and track revision, expire after two minutes, and
+  are single use. Source URLs and credentials remain inside Tide. As with
+  MPRIS, playing is asynchronous: consumers must verify state rather than
+  treating a successful method return as audible playback.
 - `credit_markup.py` turns a track's real `artists`/`album_artists` tuples
   into Pango markup: each artist that resolves to a known library
   `album_artist` grouping is a clickable link, an unresolvable one is plain

@@ -60,3 +60,24 @@ reference inputs and environment instead of relying on a private workspace path.
 - GTK popovers and in-window layer menus have different capture geometry.
 - Chromium and Pango text measurements differ; configured tolerances must remain
   explicit and cannot establish a functional or hardware acceptance result.
+
+## October 29 Ari reference
+
+`ari-v73` is the additional Models/ChatGPT scenario pinned to Design Center
+`255e38cc874fce276114d18e49a1232432f41886`. The older `ari` scenario remains
+available for its original reference and regression inventory. The new scenario
+has eight matched views at 1600×1000 and 390×844. The new effort panel has no
+existing HTML counterpart; native composition and interaction checks cover it
+separately. These declarations do not establish a conformance PASS.
+
+A scenario can set `spec.phone_url` and `spec.phone_viewport` when its actual
+phone shell differs from a narrow desktop window. Other scenarios retain their
+existing URL and viewport defaults. Native capture pins both the legacy form
+factor and canonical device, presentation and input context, so SessionContext
+cannot restore desktop chrome in a phone run. A narrow desktop variant continues
+to use desktop chrome.
+
+The Ari reference hides the simulator's unrelated desktop shelf/notification
+shell (`#lshell`) while retaining the application's content. It does not remove
+Ari controls, change reference geometry to fit native output, or relax comparison
+tolerances. Use the actual phone URL for phone evidence.

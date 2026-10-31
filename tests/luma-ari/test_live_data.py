@@ -4,10 +4,20 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
-from ari_ui.live_data import live_capacity, stored_messages, stored_receipt
+from ari_ui.live_data import live_capacity, stored_messages, stored_receipt, clock_time
 
 
 class StoredConversation(unittest.TestCase):
+    def test_message_and_receipt_times_use_local_twelve_hour_clock(self):
+        import time
+        for hour, expected in ((0,'12:07 AM'), (12,'12:07 PM'), (16,'4:07 PM'), (23,'11:07 PM')):
+            local=time.struct_time((2026,10,29,hour,7,0,3,302,-1))
+            with patch('ari_ui.live_data.time.localtime', return_value=local):
+                self.assertEqual(clock_time(1), expected)
+                self.assertEqual(stored_messages({'messages':[{'role':'user','content':'Hello','created':1}]}),
+                                 [{'u':'Hello','at':expected}])
+                self.assertEqual(stored_receipt({'tool':'open_app','summary':'Opened Weather','created':1},'chat','Today')['at'], expected)
+
     def test_receipts_remain_beside_their_own_reply(self):
         record = {'messages': [
             {'role': 'user', 'content': 'First request'},

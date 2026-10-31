@@ -55,9 +55,19 @@ def _wallpaper(match):
 @_rule(r"^(?:please\s+)?(?:open|launch|start|run)\s+(?!the\s+(?:dock|dash))([\w .+-]{2,40})$")
 def _open(match):
     name = match.group(1).strip().rstrip(".")
-    if name.lower() in ("it", "that", "this"):
+    name = re.sub(r"^(?:my|the)\s+", "", name, flags=re.I)
+    name = re.sub(r"\s+app$", "", name, flags=re.I)
+    if name.lower() in ("it", "that", "this") or re.search(r'\b(?:and|then)\b',name,re.I):
         return None
     return Intent("open_app", {"name": name}, "{summary}.")
+
+
+@_rule(r"^(?:please\s+)?(?:close|quit|exit)\s+(?:the\s+|my\s+)?([\w .+-]{2,60})$")
+def _close(match):
+    name = re.sub(r"\s+(?:app|application)$", "", match.group(1).strip(), flags=re.I)
+    if name.casefold() in ('it', 'that', 'this') or re.search(r'\b(?:and|then)\b', name, re.I):
+        return None
+    return Intent('close_app', {'name': name}, '{summary}.')
 
 
 @_rule(r"^(?:please\s+)?(?:turn|switch)\s+(on|off)\s+night\s*light$|^night\s*light\s+(on|off)$")
@@ -97,6 +107,14 @@ def _calculate(match):
 @_rule(r"^(?:which|what)\s+(?:ai\s+|language\s+)?(?:model|llm|ai)\s+(?:are you|is this|do you (?:use|run)|are you (?:using|running))\??$|^who\s+(?:are|made)\s+you\??$|^what\s+are\s+you\??$")
 def _about(_match):
     return Intent("_about", {}, "")
+
+
+@_rule(r'^(?:please\s+)?play\s+(.+?)(?:\s+by\s+(.+?))?\s+(?:on|in)\s+(?:the\s+)?Tide(?:\s+app)?$')
+def _named_track(match):
+    title, artist = (value.strip().strip('"“”') if value else '' for value in match.groups())
+    if title.casefold() in ('the music', 'music', 'the song', 'the track', 'audio', 'playback') and not artist:
+        return None
+    return Intent('play_track', {'application': 'tide', 'title': title, 'artist': artist}, '{summary}.')
 
 
 @_rule(r"^(?:please\s+)?(pause|resume|play|stop)(\s+(?:the\s+|my\s+)?(?:music|song|track|audio|video|podcast|playback))?(?:\s+(?:in|on)\s+([\w .-]{2,30}))?$|^(?:please\s+)?press\s+(play|pause)(?:\s+(?:in|inside|on)\s+([\w .-]{2,30}))?$")

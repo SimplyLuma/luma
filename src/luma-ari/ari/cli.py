@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 
 import gi
 
@@ -90,6 +91,9 @@ def main(argv: list[str] | None = None) -> int:
     keep = sub.add_parser("keep", help="Keep a change that would otherwise revert")
     keep.add_argument("step")
     sub.add_parser("activity", help="Recent activity")
+    chatgpt = sub.add_parser("chatgpt", help="Use your ChatGPT plan")
+    chatgpt.add_argument("action", choices=("status", "connect", "account", "use", "signout"))
+    chatgpt.add_argument("value", nargs="?", default="", help="Saved account ID, or model ID for use")
     args, rest = parser.parse_known_args(argv)
     proxy = _proxy()
     if args.command is None:
@@ -100,6 +104,38 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "ask":
         _conversation, request = _call(proxy, "Ask", "(ss)", args.conversation, " ".join(args.text))
         return _follow(proxy, request)
+    if args.command == "chatgpt":
+        if args.action == "status":
+            print(json.dumps(json.loads(_call(proxy, "ChatGPT", "(b)", True, timeout=120000)[0]), indent=2))
+            return 0
+        if args.action == "connect":
+            attempt = json.loads(_call(proxy, "StartChatGPTSignIn", "(s)", args.value, timeout=120000)[0])
+            try:
+                Gio.AppInfo.launch_default_for_uri(attempt["url"], None)
+                print("Finish ChatGPT sign-in in your browser.")
+                while True:
+                    state = json.loads(_call(proxy, "ChatGPT", "(b)", False, timeout=120000)[0])
+                    pending = state.get("pending") or {}
+                    if pending.get("id") != attempt["id"]:
+                        return 1
+                    if pending["status"] not in ("waiting", "checking"):
+                        print(pending["message"])
+                        return 0 if pending["status"] == "complete" else 1
+                    time.sleep(.5)
+            except KeyboardInterrupt:
+                _call(proxy, "CancelChatGPTSignIn", "(s)", attempt["id"])
+                return 130
+            except GLib.Error:
+                _call(proxy, "CancelChatGPTSignIn", "(s)", attempt["id"])
+                print("ChatGPT sign-in could not continue. Check your default browser and Ari service.", file=sys.stderr)
+                return 1
+        method = {"account": "SelectChatGPTAccount", "use": "SetChatGPTModel", "signout": "SignOutChatGPT"}[args.action]
+        ok, message = _call(proxy, method, "(s)", args.value, timeout=120000)
+        if ok and args.action == "use":
+            ok, message = _call(proxy, "SetBrain", "(s)", "chatgpt")
+        if message:
+            print(message)
+        return 0 if ok else 1
     if args.command == "models":
         data = json.loads(_call(proxy, "Models")[0])
         print(f"This machine: {data['summary']} · tier {data['hardware']['tier']}")

@@ -48,9 +48,54 @@ class BoundaryTests(unittest.TestCase):
         self.daemon.owners.event('request', {'type':'approval', 'approval':'approve'})
         turn = SimpleNamespace(stop=Mock()); self.daemon.requests['request'] = turn
         for method, args in [('Stop', GLib.Variant('(s)', ('request',))),
-                             ('Approve', GLib.Variant('(sb)', ('approve', True)))]:
+                             ('Approve', GLib.Variant('(sb)', ('approve', True))),
+                             ('ApproveRemembered', GLib.Variant('(sb)', ('approve', True)))]:
             self.assertEqual(self.call(method,args).return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
         turn.stop.set.assert_not_called(); self.daemon.agent.approve.assert_not_called()
+    def test_download_cancel_cannot_cancel_a_chat_or_another_connection(self):
+        self.daemon.owners.add('chat', ':1.11')
+        turn = SimpleNamespace(stop=Mock())
+        self.daemon.requests['chat'] = turn
+        self.call('CancelDownload', GLib.Variant('(s)', ('chat',))).return_dbus_error.assert_called_once()
+        turn.stop.set.assert_not_called()
+        self.daemon.owners.add('download', ':1.12')
+        download = threading.Event()
+        self.daemon.downloads['download'] = download
+        self.call('CancelDownload', GLib.Variant('(s)', ('download',))).return_dbus_error.assert_called_once()
+        self.assertFalse(download.is_set())
+        self.call('Stop', GLib.Variant('(s)', ('download',)), ':1.12').return_value.assert_called_once()
+        self.assertFalse(getattr(download, 'remove_partial', False))
+        download.clear()
+        self.call('CancelDownload', GLib.Variant('(s)', ('download',)), ':1.12').return_value.assert_called_once()
+        self.assertTrue(download.is_set())
+        self.assertTrue(download.remove_partial)
+
+    def test_download_pause_preserves_partial_and_cancel_discards_it(self):
+        from tempfile import TemporaryDirectory
+        for method, expected in (('Stop', 'download_paused'), ('CancelDownload', 'download_cancelled')):
+            with self.subTest(method=method), TemporaryDirectory() as directory:
+                model = service.models.catalogue()[0]
+                self.daemon.catalogue = [model]
+                self.daemon.config = {}
+                pending = []
+                self.daemon.emit = Mock()
+                self.daemon.admission.reserve()
+                def interrupted(*_args, **_kwargs):
+                    raise service.models.DownloadError('Download stopped.')
+                with patch.object(self.daemon.admission, 'submit_reserved', side_effect=pending.append), \
+                     patch.object(service.audit, 'record'), \
+                     patch.object(service.models, 'download', side_effect=interrupted), \
+                     patch.object(service.models, 'discard_partial') as discard:
+                    request = self.daemon.install(model.id, ':1.11')
+                    result = self.call(method, GLib.Variant('(s)', (request,)))
+                    result.return_value.assert_called_once()
+                    pending.pop()()
+                    self.daemon.emit.assert_called_once_with(request, {'type':expected, 'model':model.id})
+                    self.assertEqual(discard.call_count, method == 'CancelDownload')
+                    self.assertNotIn(request, self.daemon.downloads)
+                    self.assertFalse(self.daemon.owners.owns('requests', request, ':1.11'))
+                self.daemon.admission.slots.release()
+
     def test_owner_can_approve(self):
         self.daemon.owners.add('r', ':1.11')
         self.daemon.owners.event('r', {'type':'approval', 'approval':'a'})
@@ -80,6 +125,10 @@ class BoundaryTests(unittest.TestCase):
         self.daemon.settings = Mock(); self.daemon.settings.is_writable.return_value = True
         self.call('SetApprovalMode', GLib.Variant('(s)', ('custom',))).return_dbus_error.assert_called_once()
         self.daemon.settings.set_string.assert_not_called()
+
+    def test_advanced_permissions_cannot_override_an_administrator_lock(self):
+        self.daemon.settings=Mock();self.daemon.settings.is_writable.return_value=False
+        self.call('SetActionPermission',GLib.Variant('(ss)',('enter_text@weather','allow'))).return_dbus_error.assert_called_once()
     def test_queued_cloud_setter_excludes_turn_and_other_setter(self):
         queued=[]
         def save(work): queued.append(work); return None
@@ -121,5 +170,52 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaises(Busy): owners.add('fifth', ':1.12')
         self.assertEqual(len(owners.vanished(':1.11')),4)
         owners.add('new', ':1.12')
+
+    def test_chatgpt_authentication_precedes_all_account_operations(self):
+        self.daemon.chatgpt = Mock(signing_in=False)
+        for method, params in (("ChatGPT", GLib.Variant('(b)', (False,))),
+                               ("StartChatGPTSignIn", GLib.Variant('(s)', ('',))),
+                               ("SelectChatGPTAccount", GLib.Variant('(s)', ('account',))),
+                               ("SetChatGPTEffort", GLib.Variant('(ss)', ('model', 'high'))),
+                               ("SetLocalThinking", GLib.Variant('(sb)', ('model', True))),
+                               ("SetTaskModel", GLib.Variant('(ss)', ('code', 'model'))),
+                               ("SignOutChatGPT", GLib.Variant('(s)', ('account',)))):
+            with patch.object(service, 'authenticate', side_effect=host_identity.Refused('no')):
+                result = self.call(method, params)
+                self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
+        self.daemon.chatgpt.assert_not_called()
+        self.assertEqual(self.daemon.chatgpt.mock_calls, [])
+
+    def test_chatgpt_signin_is_caller_owned_and_disconnect_cancels_it(self):
+        self.daemon.chatgpt = Mock(signing_in=True)
+        self.daemon._chatgpt_login_owner, self.daemon._chatgpt_login_id = ':1.11', 'attempt'
+        result = self.call('CancelChatGPTSignIn', GLib.Variant('(s)', ('attempt',)), sender=':1.12')
+        self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Refused')
+        self.daemon.chatgpt.cancel.assert_not_called()
+        self.daemon._name_changed(None,None,None,None,None,GLib.Variant('(sss)',(':1.11',':1.11','')))
+        self.daemon.chatgpt.cancel.assert_called_once_with('attempt')
+
+    def test_pending_chatgpt_signin_excludes_model_changes_and_inference(self):
+        self.daemon.chatgpt = Mock(signing_in=True)
+        for method, params in (("Ask", GLib.Variant('(ss)', ('', 'hello'))),
+                               ("SetBrain", GLib.Variant('(s)', ('local',))),
+                               ("SetChatGPTModel", GLib.Variant('(s)', ('model',)))):
+            result = self.call(method, params)
+            self.assertEqual(result.return_dbus_error.call_args.args[0], 'org.projectluma.Ari1.Busy')
+        self.daemon.store.new_conversation.assert_not_called()
+
+    def test_disconnected_queued_chatgpt_signin_does_not_open_a_listener(self):
+        self.daemon.chatgpt = Mock(signing_in=False)
+        queued, callbacks = [], []
+        with patch.object(self.daemon.admission, 'submit_reserved', side_effect=queued.append), \
+             patch.object(service.GLib, 'idle_add', side_effect=lambda callback: callbacks.append(callback) or 1):
+            result = self.call('StartChatGPTSignIn', GLib.Variant('(s)', ('',)))
+            self.daemon._name_changed(None,None,None,None,None,GLib.Variant('(sss)',(':1.11',':1.11','')))
+            queued.pop()()
+            callbacks.pop()()
+        self.daemon.chatgpt.start.assert_not_called()
+        self.assertIsNone(self.daemon._model_mutation)
+        self.assertEqual(result.return_dbus_error.call_args.args[1], 'Cancelled.')
+        self.daemon.admission.slots.release()
 
 if __name__ == '__main__': unittest.main()

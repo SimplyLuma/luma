@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<!-- Simple Icons mark; Luma tile from the owner-supplied Ari Models design. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<defs><linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF1F7"/></linearGradient>
+<radialGradient id="bloom" cx=".2" cy=".05" r=".8"><stop stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#10141c" flood-opacity="0.12"/></filter></defs>
+<rect width="64" height="64" fill="url(#tile)"/><rect width="64" height="64" fill="url(#bloom)"/><g filter="url(#shadow)"><rect transform="translate(17.0 17.0) scale(1.25)" x="0" y="0" width="11.408" height="11.408" fill="#F25022"/><rect transform="translate(17.0 17.0) scale(1.25)" x="12.594" y="0" width="11.408" height="11.408" fill="#7FBA00"/><rect transform="translate(17.0 17.0) scale(1.25)" x="0" y="12.594" width="11.408" height="11.408" fill="#00A4EF"/><rect transform="translate(17.0 17.0) scale(1.25)" x="12.594" y="12.594" width="11.408" height="11.408" fill="#FFB900"/></g></svg>

@@ -12,7 +12,8 @@
     "--socket=fallback-x11",
     "--device=dri",
     "--talk-name=org.projectluma.Ari1",
-    "--metadata=X-Luma=min-host-ari=19"
+    "--metadata=X-Luma=min-host-ari=21",
+    "--talk-name=org.project_luma.ShellState1"
   ],
   "modules": [
     {

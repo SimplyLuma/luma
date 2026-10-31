@@ -8,6 +8,7 @@ sdk: org.projectluma.Sdk
 command: org.projectluma.Tide
 appstream-compose: false
 finish-args:
+  - --talk-name=org.project_luma.ShellState1
   - --talk-name=org.projectluma.ApplicationDirectory1
   - --metadata=X-Luma=min-host-installer=60
   - --metadata=X-Luma=app-data-schema=tide-v1

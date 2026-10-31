@@ -33,8 +33,18 @@ TOOL_GLYPHS = {
     "set_permission": "channel-secure-symbolic",
 }
 TOOL_NAMES = {
+    "desktop_applications": "Found open applications", "inspect_application": "Read application controls",
+    "act_in_application": "Operated an application control",
+    "app_surfaces": "Read application actions", "request_app_access": "Requested application access",
+    "app_action": "Performed an application action", "installed_apps": "Checked installed apps",
+    "inspect_package": "Reviewed a package", "install_package": "Installed an app", "remove_application": "Uninstalled an app",
+    "list_project": "Read project files", "read_project_file": "Read a project file", "write_project_file": "Edited a project file",
+    "create_project": "Created an application project", "run_project": "Ran a project command",
+    "search_software": "Searched available software", "review_software": "Reviewed application permissions", "install_software": "Installed an application",
+    "restore_system_application": "Restored a system application",
     "now": "Checked the time", "calculate": "Worked something out", "convert": "Converted units",
     "weather": "Checked the weather", "web_search": "Searched the web", "fetch_page": "Read a page",
+    "wikipedia": "Looked up Wikipedia",
     "define": "Looked up a word", "find_app": "Looked for an app", "list_display_modes": "Checked displays",
     "install_model": "Downloaded a model", "remove_model": "Removed a model", "set_permission": "Permission changed",
 }
@@ -442,6 +452,7 @@ class SettingsView(Gtk.ScrolledWindow):
             self._clear()
             if data.get("schema"):
                 self._switches(data)
+            self._advanced_permissions(data)
             self._section("Ari may")
             listing = _boxed()
             later = []
@@ -472,8 +483,8 @@ class SettingsView(Gtk.ScrolledWindow):
             for title, subtitle in (
                     ("What Ari reads can't make changes",
                      "Web pages and search results can inform an answer. A change only happens when you ask for it."),
-                    ("Every change is a step you can undo",
-                     "Display changes put themselves back unless you keep them."),
+                    ("Changes are recorded",
+                     "Activity records completed actions. Undo is offered when the application supports it."),
                     ("Your activity stays here",
                      "The activity log lives in your own folder and is never uploaded.")):
                 row = Adw.ActionRow(title=title, subtitle=subtitle)
@@ -494,15 +505,15 @@ class SettingsView(Gtk.ScrolledWindow):
         self.content.append(listing)
         if data.get("locked"):
             self.content.append(_caption("Your administrator manages these settings."))
-        self._section("Ask before")
+        self._section("Autonomy")
         listing = _boxed()
         first = None
         for mode, title, subtitle in (
-                ("system", "System and connection changes",
-                 "The time zone, Wi-Fi and Bluetooth. Your own settings change straight away, with Undo."),
-                ("all", "Every change", "Ari shows each change and waits for you."),
-                ("never", "Don't ask", "Ari makes changes straight away. Undo still works, and anything "
-                                       "destructive always asks.")):
+                ("all", "Ask every time", "Approve each action before Ari carries it out."),
+                ("system", "Ask for important actions",
+                 "Routine preferences happen directly. Approve an application task once for its steps; system changes ask first."),
+                ("never", "Let Ari act", "Carry out your requests without Ari’s confirmation prompts. "
+                                       "Advanced choices, application permissions and system controls still apply.")):
             check = Gtk.CheckButton(active=data.get("approval_mode") == mode, valign=Gtk.Align.CENTER)
             if first is None:
                 first = check
@@ -516,6 +527,33 @@ class SettingsView(Gtk.ScrolledWindow):
             listing.append(row)
         master.bind_property("active", listing, "sensitive", GObject.BindingFlags.SYNC_CREATE)
         self.content.append(listing)
+
+    def _advanced_permissions(self, data):
+        advanced = Gtk.Expander(label='Advanced permissions and remembered choices')
+        advanced.set_name('advanced-permissions')
+        listing = _boxed()
+        rules = data.get('action_permissions', {})
+        catalogue = data.get('action_permission_catalogue', {})
+        keys = [*catalogue, *sorted(key for key in rules if key not in catalogue)]
+        choices = ('default','allow','ask','deny')
+        for key in keys:
+            base, _, app = key.partition('@')
+            title = catalogue.get(base, base)+(' in '+app if app else '')
+            row = Adw.ComboRow(title=title, model=Gtk.StringList.new(
+                ['Use autonomy mode','Always allow','Always ask','Block']))
+            row.set_selected(choices.index(rules.get(key,'default')))
+            row.set_sensitive(bool(data.get('approval_mode_writable')))
+            row.set_name('permission-'+key)
+            def changed(widget, _param, action=key):
+                def saved(value):
+                    if isinstance(value, Exception) or not value or not value[0]:
+                        self.refresh()
+                self.window.daemon.call('SetActionPermission','(ss)',(action,choices[widget.get_selected()]),saved)
+            row.connect('notify::selected',changed)
+            listing.append(row)
+        advanced.set_child(listing)
+        self.content.append(advanced)
+        self.content.append(_caption('Remembered choices stay on this computer. Choose “Use autonomy mode” to remove an exception. Turning a capability off below blocks it in every mode.'))
 
     # ── Activity ─────────────────────────────────────────────────────────
 

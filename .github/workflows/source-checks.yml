@@ -32,6 +32,16 @@ jobs:
         run: |
           /usr/bin/python3 -B -m unittest tests.unit.test_luma_search
           /usr/bin/python3 -B -m unittest discover -s tests/search -p 'test_*.py'
+  ari:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Ari protocol test dependencies
+        timeout-minutes: 5
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y python3-gi gir1.2-glib-2.0 python3-jwt python3-cryptography
+      - name: Ari subscription authentication, tool policy and daemon contracts
+        run: PYTHONPATH=src/luma-ari /usr/bin/python3 -B -m unittest discover -s tests/luma-ari -p 'test_*.py'
   gradle-wrapper:
     runs-on: ubuntu-latest
     steps:

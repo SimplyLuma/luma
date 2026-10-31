@@ -1,0 +1,739 @@
+{
+  "computer": {
+    "n": "This ThinkPad",
+    "mem": 32,
+    "sys": 5,
+    "gpu": "Radeon 780M graphics",
+    "disk": 412
+  },
+  "local_models": [
+    {
+      "id": "qwen8",
+      "n": "Qwen3 8B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 5.2,
+      "mem": 6.5,
+      "wps": 38,
+      "good": [
+        "Chat",
+        "Code"
+      ],
+      "have": true,
+      "parameters": "8B"
+    },
+    {
+      "id": "qwen30",
+      "n": "Qwen3 30B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 19.0,
+      "mem": 21.0,
+      "wps": 14,
+      "good": [
+        "Chat",
+        "Code",
+        "Reasoning"
+      ],
+      "have": true,
+      "parameters": "30B"
+    },
+    {
+      "id": "qwen14",
+      "n": "Qwen3 14B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 9.3,
+      "mem": 11.0,
+      "wps": 22,
+      "good": [
+        "Chat",
+        "Code",
+        "Reasoning"
+      ],
+      "rec": true,
+      "parameters": "14B"
+    },
+    {
+      "id": "gemma12",
+      "n": "Gemma 3 12B",
+      "by": "Google",
+      "mono": "G",
+      "h": 215,
+      "sz": 8.1,
+      "mem": 10.0,
+      "wps": 24,
+      "good": [
+        "Chat",
+        "Images"
+      ],
+      "parameters": "12B"
+    },
+    {
+      "id": "qwen4",
+      "n": "Qwen3 4B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 2.5,
+      "mem": 3.5,
+      "wps": 70,
+      "good": [
+        "Chat"
+      ],
+      "parameters": "4B"
+    },
+    {
+      "id": "qvl7",
+      "n": "Qwen2.5 VL 7B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 6.0,
+      "mem": 8.0,
+      "wps": 31,
+      "good": [
+        "Images"
+      ],
+      "parameters": "7B"
+    },
+    {
+      "id": "r1",
+      "n": "DeepSeek R1 14B",
+      "by": "DeepSeek",
+      "mono": "D",
+      "h": 245,
+      "sz": 9.0,
+      "mem": 11.0,
+      "wps": 19,
+      "good": [
+        "Reasoning"
+      ],
+      "parameters": "14B"
+    },
+    {
+      "id": "mistral24",
+      "n": "Mistral Small 3.2",
+      "by": "Mistral",
+      "mono": "M",
+      "h": 45,
+      "sz": 15.0,
+      "mem": 17.0,
+      "wps": 12,
+      "good": [
+        "Chat",
+        "Code"
+      ],
+      "parameters": "24B",
+      "have": true
+    },
+    {
+      "id": "coder30",
+      "n": "Qwen3 Coder 30B",
+      "by": "Qwen",
+      "mono": "Q",
+      "h": 265,
+      "sz": 19.0,
+      "mem": 21.0,
+      "wps": 13,
+      "good": [
+        "Code"
+      ],
+      "parameters": "30B"
+    },
+    {
+      "id": "llama70",
+      "n": "Llama 3.3 70B",
+      "by": "Meta",
+      "mono": "L",
+      "h": 230,
+      "sz": 43.0,
+      "mem": 46.0,
+      "wps": 0,
+      "good": [
+        "Chat",
+        "Reasoning"
+      ],
+      "parameters": "70B"
+    },
+    {
+      "id": "gemma4",
+      "n": "Gemma 3 4B",
+      "by": "Google",
+      "sz": 3.3,
+      "mem": 4.5,
+      "good": [
+        "Chat",
+        "Images"
+      ],
+      "have": false,
+      "wps": 0,
+      "mono": "G",
+      "h": 250,
+      "parameters": "4B"
+    },
+    {
+      "id": "gemma27",
+      "n": "Gemma 3 27B",
+      "by": "Google",
+      "sz": 17.0,
+      "mem": 19.0,
+      "good": [
+        "Chat",
+        "Images"
+      ],
+      "have": false,
+      "wps": 0,
+      "mono": "G",
+      "h": 250,
+      "parameters": "27B"
+    },
+    {
+      "id": "r1-8",
+      "n": "DeepSeek R1 8B",
+      "by": "DeepSeek",
+      "sz": 5.2,
+      "mem": 6.5,
+      "good": [
+        "Reasoning"
+      ],
+      "have": false,
+      "wps": 0,
+      "mono": "D",
+      "h": 250,
+      "parameters": "8B"
+    },
+    {
+      "id": "r1-32",
+      "n": "DeepSeek R1 32B",
+      "by": "DeepSeek",
+      "sz": 20.0,
+      "mem": 22.0,
+      "good": [
+        "Reasoning"
+      ],
+      "have": false,
+      "wps": 0,
+      "mono": "D",
+      "h": 250,
+      "parameters": "32B"
+    },
+    {
+      "id": "phi4",
+      "n": "Phi-4 mini",
+      "by": "Microsoft",
+      "sz": 2.5,
+      "mem": 3.5,
+      "good": [
+        "Chat"
+      ],
+      "have": false,
+      "wps": 0,
+      "mono": "M",
+      "h": 250,
+      "parameters": "3.8B"
+    }
+  ],
+  "providers": [
+    {
+      "id": "anthropic",
+      "n": "Anthropic",
+      "api": "Anthropic API",
+      "mono": "A",
+      "h": 45,
+      "on": false,
+      "models": [
+        [
+          "sonnet",
+          "Claude Sonnet"
+        ],
+        [
+          "opus",
+          "Claude Opus"
+        ]
+      ]
+    },
+    {
+      "id": "openrouter",
+      "n": "OpenRouter",
+      "api": "OpenRouter",
+      "mono": "O",
+      "h": 290,
+      "on": false,
+      "note": "Hundreds of models with one key",
+      "models": [
+        [
+          "kimi",
+          "Kimi K2"
+        ],
+        [
+          "dsv3",
+          "DeepSeek V3"
+        ]
+      ]
+    },
+    {
+      "id": "openai",
+      "n": "ChatGPT",
+      "api": "OpenAI API",
+      "mono": "O",
+      "h": 165,
+      "on": false,
+      "models": [
+        [
+          "gpt5",
+          "GPT-5"
+        ],
+        [
+          "gpt5m",
+          "GPT-5 mini"
+        ]
+      ]
+    },
+    {
+      "id": "google",
+      "n": "Google",
+      "on": false,
+      "models": []
+    },
+    {
+      "id": "own",
+      "n": "Your own server",
+      "on": false,
+      "models": []
+    }
+  ],
+  "provider_choices": [
+    {
+      "id": "anthropic",
+      "n": "Anthropic",
+      "mono": "A",
+      "h": 45,
+      "what": "Claude Sonnet, Claude Opus",
+      "where": "console.anthropic.com",
+      "key": "sk-ant-\u2026",
+      "models": [
+        [
+          "sonnet",
+          "Claude Sonnet",
+          "Everyday"
+        ],
+        [
+          "opus",
+          "Claude Opus",
+          "Hardest problems"
+        ],
+        [
+          "haiku",
+          "Claude Haiku",
+          "Quick"
+        ]
+      ]
+    },
+    {
+      "id": "openai",
+      "n": "OpenAI",
+      "mono": "O",
+      "h": 165,
+      "what": "GPT-5, GPT-5 mini",
+      "where": "platform.openai.com",
+      "key": "sk-proj-\u2026",
+      "models": [
+        [
+          "gpt5",
+          "GPT-5",
+          "Hardest problems"
+        ],
+        [
+          "gpt5m",
+          "GPT-5 mini",
+          "Everyday"
+        ]
+      ]
+    },
+    {
+      "id": "openrouter",
+      "n": "OpenRouter",
+      "mono": "O",
+      "h": 290,
+      "what": "Hundreds of models with one key",
+      "where": "openrouter.ai/keys",
+      "key": "sk-or-\u2026",
+      "models": [
+        [
+          "kimi",
+          "Kimi K2",
+          "Open weights"
+        ],
+        [
+          "dsv3",
+          "DeepSeek V3",
+          "Open weights"
+        ],
+        [
+          "gem",
+          "Gemini 2.5 Pro",
+          "Long documents"
+        ]
+      ]
+    },
+    {
+      "id": "google",
+      "n": "Google",
+      "mono": "G",
+      "h": 215,
+      "what": "Gemini 2.5 Pro and Flash",
+      "where": "aistudio.google.com",
+      "key": "AIza\u2026",
+      "models": [
+        [
+          "gem",
+          "Gemini 2.5 Pro",
+          "Long documents"
+        ],
+        [
+          "gemf",
+          "Gemini 2.5 Flash",
+          "Quick"
+        ]
+      ]
+    },
+    {
+      "id": "own",
+      "n": "Your own server",
+      "mono": "",
+      "h": 250,
+      "what": "Ollama, LM Studio or anything OpenAI-compatible",
+      "where": "",
+      "key": "",
+      "models": [
+        [
+          "own1",
+          "llama3.3:70b",
+          "On your server"
+        ]
+      ]
+    }
+  ],
+  "activity": {
+    "budget": {
+      "t": "September budget, shared with Theo",
+      "conv": "budget",
+      "day": "Today",
+      "at": "14:32",
+      "cats": [
+        "Files",
+        "People"
+      ],
+      "undo": "part",
+      "nodes": [
+        {
+          "k": "stack",
+          "kind": "paper",
+          "n": "23 receipts",
+          "m": "Downloads",
+          "st": "done"
+        },
+        {
+          "k": "file",
+          "v": "Made",
+          "n": "September budget.xlsx",
+          "m": "Documents \u203a Launch",
+          "ext": "XLSX",
+          "h": 150,
+          "st": "done"
+        },
+        {
+          "k": "person",
+          "v": "Shared with",
+          "p": "TH",
+          "n": "Theo Marsh",
+          "m": "Can edit",
+          "st": "done"
+        },
+        {
+          "k": "email",
+          "v": "Emailed",
+          "n": "Budget for September",
+          "m": "To Theo",
+          "st": "ask"
+        }
+      ],
+      "ask": {
+        "to": "TH",
+        "subj": "Budget for September",
+        "body": [
+          "Hi Theo,",
+          "The September budget is in the Launch folder. We spent $4,212, most of it on the venue and printing. The breakdown is on the first tab.",
+          "Nick"
+        ]
+      }
+    },
+    "tips": {
+      "t": "Made Tip Split",
+      "conv": "tips",
+      "day": "Today",
+      "at": "11:05",
+      "cats": [
+        "Apps"
+      ],
+      "undo": "can",
+      "nodes": [
+        {
+          "k": "app",
+          "n": "Tip Split",
+          "m": "Made by Ari",
+          "st": "done"
+        },
+        {
+          "k": "apps",
+          "v": "Added to",
+          "n": "Apps",
+          "m": "Next to Calculator",
+          "st": "done"
+        }
+      ]
+    },
+    "shots": {
+      "t": "Sorted 20 screenshots",
+      "conv": "shots",
+      "day": "Yesterday",
+      "at": "17:48",
+      "cats": [
+        "Files"
+      ],
+      "undo": "can",
+      "nodes": [
+        {
+          "k": "stack",
+          "kind": "shots",
+          "n": "20 screenshots",
+          "m": "Desktop",
+          "st": "done"
+        },
+        {
+          "k": "folder",
+          "v": "Moved 14 into",
+          "n": "September",
+          "m": "Pictures \u203a Screenshots",
+          "count": 14,
+          "st": "done"
+        },
+        {
+          "k": "folder",
+          "v": "and 6 into",
+          "n": "August",
+          "m": "Pictures \u203a Screenshots",
+          "count": 6,
+          "st": "done"
+        }
+      ]
+    },
+    "quiet": {
+      "t": "Quiet until 18:00",
+      "conv": "quiet",
+      "day": "Yesterday",
+      "at": "13:58",
+      "cats": [
+        "Settings",
+        "People"
+      ],
+      "undo": "done",
+      "nodes": [
+        {
+          "k": "setting",
+          "n": "Do Not Disturb",
+          "m": "On until 18:00",
+          "st": "done"
+        },
+        {
+          "k": "person",
+          "v": "except",
+          "p": "PR",
+          "n": "Priya Raman",
+          "m": "Can still reach you",
+          "st": "done"
+        },
+        {
+          "k": "event",
+          "v": "Blocked",
+          "n": "Focus",
+          "m": "14:00 \u2013 18:00",
+          "date": [
+            "SEP",
+            "22"
+          ],
+          "st": "done"
+        }
+      ]
+    },
+    "photos": {
+      "t": "Renamed 12 photos by date",
+      "day": "Monday",
+      "at": "10:14",
+      "cats": [
+        "Files"
+      ],
+      "undo": "can",
+      "nodes": [
+        {
+          "k": "stack",
+          "kind": "photos",
+          "n": "12 photos",
+          "m": "Pictures",
+          "st": "done"
+        },
+        {
+          "k": "folder",
+          "v": "Renamed in",
+          "n": "Launch shoot",
+          "m": "Pictures",
+          "count": 12,
+          "st": "done"
+        }
+      ]
+    },
+    "dad": {
+      "t": "Reminder to call Dad",
+      "day": "Monday",
+      "at": "09:02",
+      "cats": [
+        "Apps",
+        "People"
+      ],
+      "undo": "can",
+      "nodes": [
+        {
+          "k": "event",
+          "n": "Call Dad",
+          "m": "Saturday, 10:00",
+          "date": [
+            "SEP",
+            "27"
+          ],
+          "st": "done"
+        },
+        {
+          "k": "person",
+          "v": "with",
+          "p": "MO",
+          "n": "Dad",
+          "m": "Phone",
+          "st": "done"
+        }
+      ]
+    }
+  },
+  "conversations": [
+    {
+      "id": "budget",
+      "t": "Budget for Theo",
+      "day": "Today",
+      "msgs": [
+        {
+          "u": "Turn my September receipts into a budget, put it in the Launch folder, share it with Theo and email him."
+        },
+        {
+          "a": "I found 23 receipts in Downloads, all from September. Here is what I did, and the email is waiting for you.",
+          "m": "qwen8",
+          "s": 3.1
+        },
+        {
+          "ch": "budget"
+        }
+      ]
+    },
+    {
+      "id": "tips",
+      "t": "A tip splitter",
+      "day": "Today",
+      "msgs": [
+        {
+          "u": "Make me a little app that splits a bill and the tip between friends."
+        },
+        {
+          "a": "Done. Tip Split is in Apps. It takes the bill, the tip you want and how many people, and shows what each person pays.",
+          "m": "sonnet",
+          "s": 14.2
+        },
+        {
+          "ch": "tips"
+        }
+      ]
+    },
+    {
+      "id": "shots",
+      "t": "Tidy screenshots",
+      "day": "Yesterday",
+      "msgs": [
+        {
+          "u": "My desktop is a mess of screenshots. Sort them."
+        },
+        {
+          "a": "Moved all 20 into Pictures \u203a Screenshots, one folder per month. Your desktop is clear.",
+          "m": "qwen8",
+          "s": 1.4
+        },
+        {
+          "ch": "shots"
+        }
+      ]
+    },
+    {
+      "id": "quiet",
+      "t": "Quiet afternoon",
+      "day": "Yesterday",
+      "msgs": [
+        {
+          "u": "I need to focus until 6. Only Priya can get through."
+        },
+        {
+          "a": "Do Not Disturb is on until 18:00 and Priya can still reach you. I blocked the time in your calendar too.",
+          "m": "qwen8",
+          "s": 0.9
+        },
+        {
+          "ch": "quiet"
+        },
+        {
+          "u": "Thanks, turn it off, I\u2019m done early."
+        },
+        {
+          "a": "It\u2019s off.",
+          "m": "qwen8",
+          "s": 0.4
+        }
+      ]
+    },
+    {
+      "id": "ram",
+      "t": "Why models need memory",
+      "day": "Monday",
+      "msgs": [
+        {
+          "u": "Why do bigger models need more memory?"
+        },
+        {
+          "a": "A model is a large file of numbers. To answer you, all of those numbers have to sit in memory at once, so a model that needs 11 GB needs 11 GB free while it works.|Bigger models know more and reason better, but they need more memory and answer more slowly. Here is where each size lands on this computer:",
+          "m": "qwen8",
+          "s": 2.2,
+          "mem": true
+        }
+      ]
+    }
+  ],
+  "state": {
+    "view": "chat",
+    "cur": "budget",
+    "model": "auto",
+    "pop": false,
+    "filter": "All",
+    "store": "All",
+    "q": "",
+    "busy": false,
+    "n": 0
+  }
+}

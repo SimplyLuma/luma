@@ -67,6 +67,23 @@ class Persistence(unittest.TestCase):
             second.db.close()
             third.db.close()
 
+    def test_receipt_target_migration_preserves_old_steps_and_original_database(self):
+        from ari.store import SCHEMA
+        path=self.root/'old.db'
+        database=sqlite3.connect(path)
+        database.executescript(SCHEMA)
+        database.execute("INSERT INTO conversations VALUES ('chat','Original','',1,1)")
+        database.execute("INSERT INTO steps VALUES ('step','chat','','set_theme','Changed theme',NULL,'done',1)")
+        database.commit();database.close()
+        store=Store(path)
+        self.assertEqual(store.step('step')['summary'],'Changed theme')
+        self.assertIsNone(store.step('step')['target'])
+        identity=store.add_step('chat','','create_project','Created app',None,target='/tmp/project')
+        self.assertEqual(store.step(identity)['target'],'/tmp/project')
+        backup=sqlite3.connect(backup_path(path))
+        self.assertNotIn('target',{row[1] for row in backup.execute('PRAGMA table_info(steps)')})
+        backup.close();store.db.close()
+
 
 if __name__ == '__main__':
     unittest.main()

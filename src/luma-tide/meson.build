@@ -25,6 +25,7 @@ python.install_sources(
   'luma_tide/metadata.py',
   'luma_tide/model.py',
   'luma_tide/mpris.py',
+  'luma_tide/automation.py',
   'luma_tide/playback.py',
   'luma_tide/preview_import.py',
   'luma_tide/remote.py',

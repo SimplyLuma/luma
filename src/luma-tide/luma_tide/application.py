@@ -45,6 +45,7 @@ from .model import (
     LibraryStore, OfflineState, RepeatMode, SearchResults, Source, SourceState, Track, TrackCopy,
 )
 from .mpris import MprisService
+from .automation import MediaLibrary
 from .playback import GStreamerEngine, PlaybackController, PlaybackSnapshot, PlaybackState
 from .preview_import import import_preview_library
 from .remote import KIND as REMOTE_KIND, RemoteSources, accepts_plaintext
@@ -213,6 +214,8 @@ class TideApplication(Adw.Application):
         # is needed, never here on the GTK thread.
         self.remote = RemoteSources(self.store, SecretServiceStore)
         self.controller = PlaybackController(self.store, GStreamerEngine(), self._resolve_copy)
+        connection = self.get_dbus_connection()
+        self.media_library = MediaLibrary(connection, self.store, self.controller) if connection else None
         self._install_actions()
         self._install_semantics()
         try:
@@ -742,6 +745,8 @@ class TideApplication(Adw.Application):
         self.quit()
 
     def do_shutdown(self) -> None:
+        if getattr(self, 'media_library', None):
+            self.media_library.close()
         if self.window:
             self.window.close_resources()
         if self.mpris:

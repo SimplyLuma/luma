@@ -7,33 +7,87 @@ tier isn't enabled in this phase, never runs, whatever the model asked for.
 from __future__ import annotations
 
 import time
+import re
 from collections import deque
 from dataclasses import dataclass
 
 ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, ACT_ON_BEHALF, CHANGE_FILES, CHANGE_SYSTEM = range(6)
+OPEN_APPS = 6
 TIER_NAMES = {0: "Answer", 1: "Personal settings", 2: "Read personal data", 3: "Act on your behalf",
-              4: "Change your files and design", 5: "Change the system"}
+              4: "Change your files and design", 5: "Change the system", OPEN_APPS: "Open applications"}
 
 TOOL_TIERS = {
+    'discover_tools': ANSWER,
     "now": ANSWER, "calculate": ANSWER, "convert": ANSWER, "weather": ANSWER, "web_search": ANSWER,
-    "fetch_page": ANSWER, "define": ANSWER, "find_app": ANSWER, "list_display_modes": ANSWER,
+    "fetch_page": ANSWER, "wikipedia": ANSWER, "define": ANSWER, "find_app": ANSWER, "list_display_modes": ANSWER,
     "set_dock_position": PERSONAL_SETTINGS, "set_theme": PERSONAL_SETTINGS, "set_accent": PERSONAL_SETTINGS,
     "set_interface_scale": PERSONAL_SETTINGS, "set_night_light": PERSONAL_SETTINGS, "set_brightness": PERSONAL_SETTINGS,
-    "set_wallpaper": PERSONAL_SETTINGS, "set_refresh_rate": PERSONAL_SETTINGS, "open_app": PERSONAL_SETTINGS,
+    "set_wallpaper": PERSONAL_SETTINGS, "set_refresh_rate": PERSONAL_SETTINGS, "open_app": OPEN_APPS,
     "media_status": ANSWER, "find_setting": ANSWER,
     "set_timezone": PERSONAL_SETTINGS, "set_volume": PERSONAL_SETTINGS, "set_do_not_disturb": PERSONAL_SETTINGS,
     "set_wifi": PERSONAL_SETTINGS, "set_bluetooth": PERSONAL_SETTINGS, "set_tiling": PERSONAL_SETTINGS,
-    "media_control": PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
+    "media_control": PERSONAL_SETTINGS, 'play_track': PERSONAL_SETTINGS, "change_setting": PERSONAL_SETTINGS,
+    "app_surfaces": READ_PERSONAL, "request_app_access": READ_PERSONAL,
+    "app_action": ACT_ON_BEHALF, "installed_apps": ANSWER, "inspect_package": ANSWER,
+    "desktop_applications": READ_PERSONAL, "inspect_application": READ_PERSONAL,
+    "act_in_application": ACT_ON_BEHALF,
+    'query_application': READ_PERSONAL, 'change_application': ACT_ON_BEHALF,
+    'find_processes':ANSWER, 'control_process':ACT_ON_BEHALF, 'close_app':ACT_ON_BEHALF,
+    "install_package": CHANGE_SYSTEM, "remove_application": CHANGE_SYSTEM,
+    "list_project": READ_PERSONAL, "read_project_file": READ_PERSONAL,
+    "create_project": CHANGE_FILES, "write_project_file": CHANGE_FILES, "run_project": CHANGE_FILES,
+    "search_software": ANSWER, "review_software": ANSWER, "install_software": CHANGE_SYSTEM,
+    "restore_system_application": CHANGE_SYSTEM,
 }
 # Changes that reach past this person's own desktop -- the whole machine's
 # clock, its connections -- are consequential (ADR-025): Ari asks first unless
 # the person chose "Don't ask".
-CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth"}
+CONSEQUENTIAL = {"set_timezone", "set_wifi", "set_bluetooth", "install_package", "remove_application",
+                 "create_project", "write_project_file", "run_project", "install_software", "restore_system_application",
+                 "act_in_application", 'change_application', 'control_process'}
 APPROVAL_MODES = ("system", "all", "never")
-# Phase 1 runs Tiers 0 and 1. The rest exist so the refusal is honest.
-ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS}
-MAX_CALLS_PER_TURN = 6
-MAX_CALLS_PER_MINUTE = 30
+ACTION_PERMISSIONS = {
+    'open_apps': 'Opening applications', 'read_apps': 'Reading application controls', 'read_projects':'Reading project files',
+    'enter_text': 'Entering text in applications', 'activate_controls': 'Using application buttons and controls',
+    'app_actions': 'Working with application data', 'personal_settings': 'Changing personal settings',
+    'connections':'Changing connections and the time zone',
+    'edit_projects': 'Creating and editing project files', 'run_projects': 'Running project checks and builds',
+    'install_software': 'Installing software', 'remove_software': 'Removing software',
+    'process_control': 'Ending or killing a process',
+    'close_apps': 'Closing applications normally',
+}
+PERMISSION_CHOICES = ('default', 'allow', 'ask', 'deny')
+
+
+def validate_permission(key, choice):
+    if not isinstance(key,str) or not isinstance(choice,str):
+        raise ValueError('Unknown action permission.')
+    base, _separator, app = key.partition('@')
+    if (base not in ACTION_PERMISSIONS or choice not in PERMISSION_CHOICES or len(key)>160
+            or (app and (base not in ('enter_text','activate_controls','app_actions') or not re.fullmatch(r'[\w .+\-]{1,100}',app)))):
+        raise ValueError('Unknown action permission.')
+    return key, choice
+
+
+def action_permission(tool, arguments=None):
+    if tool in ('act_in_application', 'play_track'):
+        return 'enter_text' if (arguments or {}).get('operation') == 'set_text' else 'activate_controls'
+    if tool == 'open_app': return 'open_apps'
+    if tool == 'close_app': return 'close_apps'
+    if tool in ('desktop_applications','inspect_application','app_surfaces','request_app_access','query_application'): return 'read_apps'
+    if tool in ('read_project_file','list_project'): return 'read_projects'
+    if tool in ('set_wifi','set_bluetooth','set_timezone'): return 'connections'
+    if tool in ('app_action','change_application'): return 'app_actions'
+    if tool in ('create_project','write_project_file'): return 'edit_projects'
+    if tool == 'run_project': return 'run_projects'
+    if tool in ('install_package','install_software','restore_system_application'): return 'install_software'
+    if tool == 'remove_application': return 'remove_software'
+    if tool == 'control_process': return 'process_control'
+    return 'personal_settings' if TOOL_TIERS.get(tool) == PERSONAL_SETTINGS else ''
+# Only concrete adapters are registered; unknown tools still fail closed.
+ENABLED_TIERS = {ANSWER, PERSONAL_SETTINGS, READ_PERSONAL, ACT_ON_BEHALF, CHANGE_FILES, CHANGE_SYSTEM, OPEN_APPS}
+MAX_CALLS_PER_TURN = 24
+MAX_CALLS_PER_MINUTE = 60
 
 
 @dataclass(frozen=True)
@@ -48,11 +102,23 @@ class Policy:
         self.ask_before_settings = ask_before_settings
         self.enabled = set(ENABLED_TIERS)  # the person can turn tiers off in Ari's settings
         self.approval_mode = "system"
+        self.action_rules = {}
         self._recent: deque[float] = deque()
 
-    def needs_approval(self, tool: str) -> bool:
+    def action_rule(self, tool, arguments=None, application=''):
+        key = action_permission(tool, arguments)
+        return self.action_rules.get(key+'@'+application, self.action_rules.get(key, 'default')) if application else self.action_rules.get(key, 'default')
+
+    def needs_approval(self, tool: str, arguments=None, application='') -> bool:
+        rule = self.action_rule(tool, arguments, application)
+        if rule == 'ask': return True
+        if rule == 'allow': return False
         if self.tier(tool) == ANSWER or self.approval_mode == "never":
             return False
+        if self.approval_mode == 'all': return True
+        if self.tier(tool) in (OPEN_APPS, READ_PERSONAL): return False
+        if tool == "app_action":
+            return False  # The application broker owns its access and risk prompts.
         return self.approval_mode == "all" or tool in CONSEQUENTIAL
 
     def tier(self, tool: str) -> int:

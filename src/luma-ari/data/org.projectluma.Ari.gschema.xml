@@ -15,7 +15,7 @@
     <key name="approval-mode" enum="org.projectluma.Ari.ApprovalMode">
       <default>'system'</default>
       <summary>When Ari asks before making a change</summary>
-      <description>"system": before changes that reach past your own desktop, such as the time zone or Wi-Fi. "all": before every change. "never": she does not ask, except for anything destructive or security-sensitive, which always asks.</description>
+      <description>"all": ask every time. "system": ask for important actions, once per requested application task. "never": skip Ari's confirmations. Advanced action permissions override these defaults. Application, operating-system and administrator controls still apply.</description>
     </key>
   </schema>
 </schemalist>

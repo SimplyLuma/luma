@@ -44,6 +44,217 @@ def settle(window, seconds):
 
 
 class FixtureRuntime(unittest.TestCase):
+    def test_real_wheel_reaches_padded_end_and_stays_there(self):
+        if self.window.get_display().__gtype__.name!='GdkX11Display':
+            self.skipTest('Actual XTest wheel check runs separately on the private X11 display')
+        import ctypes
+        import ctypes.util
+        gi.require_version('GdkX11','4.0')
+        from gi.repository import GdkX11
+        window=self.window
+        chat={'id':'wheel-test','t':'Wheel test','day':'Today',
+              'msgs':[{'u':'Message '+str(i)} if i%2==0 else {'a':'Reply '+str(i)} for i in range(40)]}
+        window.data['conversations']=[chat]
+        window.state.update(view='chat',cur='wheel-test',busy=False)
+        window.render();window.present();settle(window,.3)
+        xlib=ctypes.CDLL(ctypes.util.find_library('X11'))
+        xtest=ctypes.CDLL(ctypes.util.find_library('Xtst'))
+        xlib.XOpenDisplay.restype=ctypes.c_void_p
+        xlib.XDefaultRootWindow.argtypes=[ctypes.c_void_p];xlib.XDefaultRootWindow.restype=ctypes.c_ulong
+        xlib.XTranslateCoordinates.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_int,ctypes.c_int,
+                                            ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_ulong)]
+        xlib.XFlush.argtypes=[ctypes.c_void_p];xlib.XCloseDisplay.argtypes=[ctypes.c_void_p]
+        xtest.XTestFakeMotionEvent.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_ulong]
+        xtest.XTestFakeButtonEvent.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_int,ctypes.c_ulong]
+        display=xlib.XOpenDisplay(None)
+        self.assertTrue(display)
+        try:
+            x,y,child=ctypes.c_int(),ctypes.c_int(),ctypes.c_ulong()
+            bounds=window.scroll.compute_bounds(window)[1]
+            xlib.XTranslateCoordinates(display,GdkX11.X11Surface.get_xid(window.get_surface()),xlib.XDefaultRootWindow(display),
+                int(bounds.get_x()+bounds.get_width()*.6),int(bounds.get_y()+bounds.get_height()*.6),
+                ctypes.byref(x),ctypes.byref(y),ctypes.byref(child))
+            xtest.XTestFakeMotionEvent(display,-1,x.value,y.value,0)
+            def wheel(button,count):
+                for _ in range(count):
+                    xtest.XTestFakeButtonEvent(display,button,1,0)
+                    xtest.XTestFakeButtonEvent(display,button,0,0)
+                xlib.XFlush(display)
+                settle(window,.7)
+            adjustment=window.scroll.get_vadjustment()
+            end=adjustment.get_upper()-adjustment.get_page_size()
+            wheel(4,6)
+            self.assertLess(adjustment.get_value(),end-50)
+            self.assertFalse(window._follow_end)
+            wheel(5,20)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+            wheel(5,6)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+            settle(window,.7)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+        finally:
+            xlib.XCloseDisplay(display)
+
+    def test_streaming_follows_bottom_preserves_manual_scroll_and_stable_composer(self):
+        window=self.window
+        for width,height in ((1180,740),(390,844)):
+            window.set_default_size(width,height)
+            chat={'id':'scroll-test','t':'A conversation','day':'Today',
+                  'msgs':[{'u':'Message '+str(i)} if i%2==0 else {'a':'Reply '+str(i)} for i in range(40)]}
+            window.data['conversations']=[chat]
+            window.state.update(view='chat',cur='scroll-test',busy=False)
+            window.render();window.present();settle(window,.2)
+            entry=window.entry.widget
+            key=entry.key
+            initial=key.compute_bounds(window)[1]
+            first=window._chat_rows[0][1]
+            window.request='scroll-request'
+            window.state['busy']=True
+            for value in ('Starting', 'Working', 'Checking'):
+                window.on_event(window.request,json.dumps({'type':'working','label':value}))
+                settle(window,.1)
+                self.assertIs(window.entry.widget,entry)
+                self.assertIs(window._chat_rows[0][1],first)
+                bounds=key.compute_bounds(window)[1]
+                self.assertLessEqual(abs(bounds.get_width()-initial.get_width()),1)
+                self.assertLessEqual(abs(bounds.get_height()-initial.get_height()),1)
+                self.assertLessEqual(abs(bounds.get_y()-initial.get_y()),1)
+                last=window.page.get_last_child().compute_bounds(window)[1]
+                composer=window.bar.bar.compute_bounds(window)[1]
+                self.assertLessEqual(last.get_y()+last.get_height(),composer.get_y())
+                adjustment=window.scroll.get_vadjustment()
+                self.assertAlmostEqual(adjustment.get_value(),adjustment.get_upper()-adjustment.get_page_size(),delta=1)
+            adjustment=window.scroll.get_vadjustment()
+            window._user_scroll(None,0,-1)
+            adjustment.set_value(adjustment.get_value()-200)
+            position=adjustment.get_value()
+            window.on_event(window.request,json.dumps({'type':'text','text':'An ongoing reply. '*30}))
+            settle(window,.2)
+            self.assertFalse(window._follow_end)
+            self.assertLessEqual(abs(adjustment.get_value()-position),1)
+            window._scroll_key(None,lumaui_app.Gdk.KEY_End,0,0)
+            settle(window,.2)
+            self.assertTrue(window._follow_end)
+            last=window.page.get_last_child().compute_bounds(window)[1]
+            composer=window.bar.bar.compute_bounds(window)[1]
+            self.assertLessEqual(last.get_y()+last.get_height(),composer.get_y())
+            self.assertAlmostEqual(adjustment.get_value(),adjustment.get_upper()-adjustment.get_page_size(),delta=1)
+            # A downward wheel gesture may reveal the padded end. It must not
+            # snap upward to put the final message against the floating bar.
+            window._user_scroll(None,0,1)
+            end=adjustment.get_value()
+            settle(window,.2)
+            self.assertAlmostEqual(adjustment.get_value(),end,delta=1)
+            window.on_event(window.request,json.dumps({'type':'done','text':'Finished'}))
+            settle(window,.1)
+            self.assertIs(window.entry.widget,entry)
+            self.assertEqual(entry.key.key_role,'send')
+
+    def test_native_permissions_dialog_and_explicit_remember_choice(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from ari.policy import ACTION_PERMISSIONS
+        window=self.window
+        window.fixture=False
+        data={'schema':True,'enabled':True,'enabled_writable':True,'approval_mode':'system',
+              'approval_mode_writable':True,'tiers':[],'action_permissions':{'enter_text@weather':'allow'},
+              'action_permission_catalogue':ACTION_PERMISSIONS}
+        calls=[]
+        def call(method,signature=None,args=(),callback=None):
+            calls.append((method,signature,args))
+            if callback:callback((json.dumps(data),) if method=='Settings' else (True,))
+        window.daemon=SimpleNamespace(call=call,close=lambda:None)
+        def descendants(widget):
+            yield widget
+            for child in _children(widget):yield from descendants(child)
+        for width,height in ((1180,740),(390,844)):
+            window.set_default_size(width,height);window.present();settle(window,.1)
+            window.show_permissions();settle(window,.1)
+            dialog=window.permissions_dialog
+            advanced=next(widget for widget in descendants(dialog) if widget.get_name()=='advanced-permissions')
+            advanced.set_expanded(True)
+            row=next(widget for widget in descendants(dialog) if widget.get_name()=='permission-enter_text@weather')
+            row.set_selected(3)
+            self.assertIn(('SetActionPermission','(ss)',('enter_text@weather','deny')),calls)
+            dialog.close();settle(window,.1)
+            self.assertIsNone(window.permissions_dialog)
+        window.request='remember-request'
+        window.on_event(window.request,json.dumps({'type':'approval','approval':'remember-test','tool':'act_in_application',
+            'summary':'Add Chicago to Weather','detail':'This request only','permission':'enter_text@weather',
+            'permission_label':'Entering text in Weather'}))
+        check=next(widget for widget in descendants(window.page) if widget.get_name()=='remember-remember-test')
+        check.set_active(True)
+        window.answer('remember-test',True)
+        self.assertIn(('ApproveRemembered','(sb)',('remember-test',True)),calls)
+
+    def test_parity_models_pages_effort_and_safe_links(self):
+        window = self.window
+        window.present()
+        window.state['view'] = 'models'
+        for width, height in ((1600, 1000), (390, 844)):
+            window.set_default_size(width, height)
+            settle(window, .2)
+            for tab in ('yours', 'store'):
+                window.switch_models_tab(tab)
+                settle(window, .1)
+                self.assertTrue(window.page.get_first_child())
+            window.show_model_family('Qwen3', 'qwen8')
+            settle(window, .1)
+            self.assertEqual(window.selected_family_model()['id'], 'qwen8')
+            key = window.bar.bar_row.get_first_child()
+            self.assertTrue(key.bar_words.get_visible())
+            self.assertIn('Remove',key.bar_words.get_label())
+            window.begin_remove('qwen8')
+            self.assertEqual(window.bar.grown, 'remove-model')
+            window.cancel_remove()
+            window.show_model_family('Qwen3','qwen14')
+            settle(window,.1)
+            key=window.bar.bar_row.get_first_child()
+            self.assertTrue(key.bar_words.get_visible())
+            self.assertIn('Download',key.bar_words.get_label())
+            window.models_tab, window.model_family = 'yours', None
+            window.state.update(view='chat', model='chatgpt:future')
+            window.chatgpt_data = {'models':[{'id':'future','name':'Future',
+                'supported_reasoning_levels':[{'effort':'low'},{'effort':'high'}], 'default_reasoning_level':'low'}]}
+            window.render()
+            self.assertTrue(window.effort_options('chatgpt:future'))
+            self.assertIsNone(window.effort_options('auto'))
+            window.show_effort('chatgpt:future')
+            settle(window, .1)
+            window.close_picker()
+            bubble = window.reply_bubble({'a':'**Answer** with [source](https://example.org).',
+                'sources':[{'title':'Source','url':'https://example.org'}]})
+            self.assertIsNotNone(bubble)
+
+    def test_desktop_sidebar_command_keeps_navigation_available(self):
+        window = self.window
+        window.set_default_size(1180, 740)
+        window.present()
+        settle(window, .2)
+        self.assertTrue(window.toggle.shown)
+        window.toggle.toggle()
+        settle(window, .1)
+        self.assertFalse(window.toggle.shown)
+        window.toggle.toggle()
+        settle(window, .1)
+        self.assertTrue(window.toggle.shown)
+
+    def test_approval_becomes_one_step_in_chat_and_activity(self):
+        window = self.window
+        window.request = 'fixture-request'
+        window.state.update(view='chat', cur='budget')
+        conversation = next(item for item in window.data['conversations'] if item['id']=='budget')
+        conversation['msgs'] = [{'u':'Change the setting'}]
+        window.data['activity'] = {}
+        for event in (
+            {'type':'approval', 'approval':'a', 'tool':'set_theme', 'summary':'Change appearance'},
+            {'type':'step', 'step':'s', 'approval':'a', 'tool':'set_theme', 'summary':'Changed appearance', 'undo':True},
+            {'type':'done', 'text':''}):
+            window.on_event('fixture-request', json.dumps(event))
+        self.assertEqual(list(window.data['activity']), ['s'])
+        self.assertEqual(conversation['msgs'], [{'u':'Change the setting'}, {'ch':'s'}])
+        self.assertEqual(window.data['activity']['s']['nodes'][0]['st'], 'done')
+
     @classmethod
     def setUpClass(cls):
         Gtk.init()
@@ -86,7 +297,7 @@ class FixtureRuntime(unittest.TestCase):
                 if window.phone:
                     self.assertEqual(window.title_island.lead_button.get_allocated_width(), 48)
                 else:
-                    self.assertTrue(window.toggle.get_visible())
+                    self.assertTrue(window.toggle.shown)
 
     def test_all_capture_states_compose_without_real_services(self):
         scenario = json.loads((ROOT / "tools/lumaui-conform/scenarios/ari.json").read_text())
@@ -109,7 +320,7 @@ class FixtureRuntime(unittest.TestCase):
                         self.assertIsNone(window.daemon)
                         # v71: under 560 the phone shape; the title row's toggle steps aside for the island.
                         self.assertEqual(window.phone, width == 390)
-                        self.assertEqual(window.toggle.get_visible(), width != 390)
+                        self.assertEqual(window.toggle.shown, width != 390)
                         if state == "model-picker":
                             if width == 390:
                                 self.assertIsNone(window.popover)
@@ -151,6 +362,11 @@ class FixtureRuntime(unittest.TestCase):
 
                     approval = next(w for w in descendants(window.page)
                                     if w.get_name() == "ari-approval-budget")
+                    if hasattr(lumaui_app.lumaui_tokens, "ARI"):
+                        metrics = lumaui_app.lumaui_tokens.ARI["approval"]
+                        self.assertEqual(approval.get_margin_start(),
+                                         metrics["margin_start"] if width > 560 else metrics["phone_margin_x"],
+                                         (window.get_width(), window.get_surface().get_width(), window.get_default_size()))
                     copies = [w for w in descendants(approval)
                               if isinstance(w, Gtk.TextView)
                               or w.has_css_class("ari-draft-copy")]
@@ -277,16 +493,20 @@ class FixtureRuntime(unittest.TestCase):
                 window = lumaui_app.AriWindow(self.application, self.source)
                 try:
                     window.set_default_size(width, 844)
-                    window._capture_state("models-all")
+                    window._capture_state("models-store")
                     window.render()
                     window.present()
                     settle(window, .3)
                     self.assertEqual(window.get_width(), width)
-                    self.assertIsNotNone(window.hero_view)
-                    grid, mark, information, fitting, action = window.hero_view
+                    def descendants(widget):
+                        yield widget
+                        for child in _children(widget):
+                            yield from descendants(child)
+                    widgets = list(descendants(window.page))
+                    hero = next(item for item in widgets if item.get_name() == "ari-model-qwen14")
+                    action = next(item for item in widgets if item.get_name() == "ari-get-qwen14")
                     self.assertTrue(action.get_sensitive())
-                    for widget in (mark, information, fitting, action):
-                        self.assertIs(widget.get_parent(), grid)
+                    for widget in (hero, action):
                         self.assertGreater(widget.get_width(), 0)
                         ok, bounds = widget.compute_bounds(window)
                         self.assertTrue(ok)
@@ -400,7 +620,9 @@ class FixtureRuntime(unittest.TestCase):
         self.window.stop()
         settle(self.window, 1.1)
         chat = next(chat for chat in self.source.data["conversations"] if chat["id"] == self.window.state["cur"])
-        self.assertEqual(chat["msgs"], [{"u": "Explain local models in two sentences"}])
+        self.assertEqual(len(chat['msgs']),1)
+        self.assertEqual(chat['msgs'][0]['u'], 'Explain local models in two sentences')
+        self.assertRegex(chat['msgs'][0]['at'], r'^\d{1,2}:\d{2} [AP]M$')
         self.assertFalse(self.window.state["busy"])
         self.assertIsNone(self.window.daemon)
 
@@ -900,6 +1122,35 @@ class FixtureRuntime(unittest.TestCase):
         self.assertEqual(self.window.draft, "a draft while chats load")
         self.assertEqual(self.window.data["conversations"][0]["id"], "stored")
 
+    def test_catalogue_refresh_retains_loaded_and_streaming_conversation(self):
+        from unittest.mock import Mock
+        self.window.fixture = False
+        self.window.daemon = Mock()
+        messages = [{'u':'Find places in Kansas City'}, {'a':'Saved previous answer'},
+                    {'u':'Add Chicago to Weather'}, {'a':'Working', 'streaming':True}]
+        chat = {'id':'stored', 't':'Chat', 'day':'Today', 'msgs':messages}
+        self.window.data['conversations'] = [chat]
+        self.window.state.update(view='chat',cur='stored',busy=True)
+        self.window._live_ready(None)
+        callback = next(call.kwargs['callback'] for call in self.window.daemon.call.call_args_list
+                        if call.args[0]=='ListConversations')
+        callback((json.dumps([{'id':'stored','title':'Updated title','updated':1}]),))
+        self.assertIs(self.window.data['conversations'][0],chat)
+        self.assertIs(chat['msgs'],messages)
+        self.assertEqual(len(chat['msgs']),4)
+        self.window.daemon.call.reset_mock()
+        self.window._live_ready(None)
+        request = next(call for call in self.window.daemon.call.call_args_list if call.args[0]=='ChatGPT')
+        self.assertEqual(request.args[2],(False,))
+
+    def test_first_account_read_refreshes_old_model_capabilities(self):
+        from unittest.mock import Mock
+        self.window.fixture = False
+        self.window.daemon = Mock()
+        self.window._live_ready(None)
+        request = next(call for call in self.window.daemon.call.call_args_list if call.args[0]=='ChatGPT')
+        self.assertEqual(request.args[2],(True,))
+
     def test_stale_events_do_not_change_another_chat(self):
         import json
         before = list(self.source.data["conversations"][0]["msgs"])
@@ -974,10 +1225,41 @@ class FixtureRuntime(unittest.TestCase):
             callback((json.dumps({"models": rows, "hardware": {"ram_gb": 16}}),))
         self.assertEqual(window.models_error, "")
         self.assertFalse(window.models_loading)
-        get_buttons = [w for w in descendants(window.page) if w.get_name().startswith("ari-get-")]
-        self.assertEqual(len(get_buttons), len(rows))
-        get_buttons[0].emit("clicked")
+        window.switch_models_tab('store')
+        family = next(w for w in descendants(window.page) if w.get_name() == 'ari-family-qwen3')
+        family.emit('clicked')
+        self.assertEqual(window.model_family, 'Qwen3')
+        self.assertEqual(len(lumaui_app.families(window.data['local_models'])['Qwen3']), len(rows))
+        window.bar.bar_row.get_first_child().emit('clicked')
         self.assertEqual(window.daemon.call.call_args.args[0], "InstallModel")
+
+    def test_late_chatgpt_status_keeps_a_new_local_model_selection(self):
+        import json
+        from unittest.mock import Mock
+        window = self.window
+        window.fixture = False
+        window.daemon = Mock()
+        window._live_ready(None)
+        callback = next(call.args[3] for call in window.daemon.call.call_args_list if call.args[0] == "ChatGPT")
+        window.use_model("qwen30")
+        window.daemon.call.call_args.args[3]((True,))
+        window.daemon.call.call_args.args[3]((True, ""))
+        callback((json.dumps({"brain": "chatgpt", "active": "a", "accounts": [{"id": "a", "signed_in": True,
+                            "plan_enabled": True, "label": "Test account"}], "model": "old-model",
+                            "models": [{"id": "old-model", "name": "Old model"}]}),))
+        self.assertEqual(window.state["model"], "qwen30")
+        self.assertTrue(any(provider["id"] == "chatgpt" for provider in window.data["providers"]))
+
+    def test_chatgpt_choices_do_not_make_an_unloaded_openrouter_form_available(self):
+        from unittest.mock import Mock
+        window = self.window
+        window.fixture = False
+        window.daemon = Mock()
+        window.data["provider_choices"] = []
+        window.chatgpt_loaded({"accounts": [], "active": "", "models": [], "model": "", "brain": "local"})
+        window.provider_sheet("openrouter")
+        self.assertIsNone(window.modal)
+        window.daemon.call.assert_not_called()
 
     def test_disconnection_invalidates_late_reads_and_owner_recovery_reloads(self):
         from unittest.mock import Mock

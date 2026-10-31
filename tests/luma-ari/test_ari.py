@@ -93,9 +93,9 @@ class Replies(unittest.TestCase):
             setattr(turn, key, value)
         return turn
 
-    def test_filler_and_markdown_are_removed(self):
+    def test_filler_is_removed_and_markdown_is_preserved_for_the_renderer(self):
         text = "I'll calculate 17% of 3,200 for you. 17% of 3,200 is **544**."
-        self.assertEqual(agent._normalise(text, self.turn()), "17% of 3,200 is 544.")
+        self.assertEqual(agent._normalise(text, self.turn()), "17% of 3,200 is **544**.")
         self.assertEqual(agent._normalise("I'll check.", self.turn()), "I'll check.")
 
     def test_a_claimed_change_without_a_step_is_corrected(self):

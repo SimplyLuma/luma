@@ -76,7 +76,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-ari.spec" "$rpmbuild_dir/SPECS/"
     dnf5 -q -y install --allowerasing \
       ../../luma-developer-platform/$architecture/RPMS/$platform_rpm_name \
       appstream desktop-file-utils gtk4 libadwaita libappstream-glib meson ninja-build \
-      python3-devel python3-gobject rpm-build systemd-rpm-macros glib2-devel \
+      python3-devel python3-gobject python3-jwt python3-cryptography rpm-build systemd-rpm-macros glib2-devel \
       xorg-x11-server-Xvfb dbus-daemon libXtst
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-ari.spec
   "

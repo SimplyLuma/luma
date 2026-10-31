@@ -38,6 +38,9 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        if 'target' not in {row[1] for row in self.db.execute('PRAGMA table_info(steps)')}:
+            self.db.execute("ALTER TABLE steps ADD COLUMN target TEXT")
+            self.db.commit()
         self.lock = threading.Lock()
 
     def new_conversation(self, title: str = "New conversation", model: str = "") -> str:
@@ -57,7 +60,9 @@ class Store:
             return self.db.execute("SELECT 1 FROM conversations WHERE id = ?", (conversation,)).fetchone() is not None
 
     def rename_if_new(self, conversation: str, text: str) -> None:
-        title = " ".join(text.split())[:48] or "New conversation"
+        title = " ".join(text.split()) or "New conversation"
+        if len(title) > 48:
+            title = title[:48].rsplit(' ', 1)[0].rstrip('.,;:') + '…'
         with self.lock, self.db:
             self.db.execute("UPDATE conversations SET title = ? WHERE id = ? AND title = 'New conversation'",
                             (title, conversation))
@@ -77,12 +82,12 @@ class Store:
                                    "ORDER BY created DESC LIMIT ?) ORDER BY created", (conversation, limit)).fetchall()
         return [{**dict(row), "meta": json.loads(row["meta"])} for row in rows]
 
-    def add_step(self, conversation: str, message: str, tool: str, summary: str, undo: dict | None) -> str:
+    def add_step(self, conversation: str, message: str, tool: str, summary: str, undo: dict | None, *, target: str | None = None) -> str:
         identity = uuid.uuid4().hex
         with self.lock, self.db:
-            self.db.execute("INSERT INTO steps VALUES (?, ?, ?, ?, ?, ?, 'done', ?)",
+            self.db.execute("INSERT INTO steps (id, conversation, message, tool, summary, undo, state, created, target) VALUES (?, ?, ?, ?, ?, ?, 'done', ?, ?)",
                             (identity, conversation, message, tool, summary,
-                             json.dumps(undo) if undo else None, time.time()))
+                             json.dumps(undo) if undo else None, time.time(), target))
         return identity
 
     def steps(self, conversation: str) -> list[dict]:

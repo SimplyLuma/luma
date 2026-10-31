@@ -63,7 +63,7 @@ def trace_state(receipt: dict) -> tuple[str, str]:
         return "ask", "Needs your OK"
     if states.intersection(("run", "wait")):
         return "run", "Working"
-    return "done", f"{len(receipt['nodes'])} steps"
+    return "done", f"{len(receipt['nodes'])} steps" if len(receipt['nodes']) != 1 else "Done"
 
 
 def model_fit(model: dict, computer: dict) -> tuple[str, str]:
