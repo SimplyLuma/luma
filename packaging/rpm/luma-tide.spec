@@ -29,7 +29,7 @@
 # cherry-pick -- the right home for the canvas artwork re-sync.
 Name:           luma-tide
 Version:        0.1.0
-Release:        2.luma.36.nightly20261030.1%{?dist}
+Release:        2.luma.37.nightly20261030.1%{?dist}
 Summary:        Source-aware native music player for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/tide
@@ -39,6 +39,7 @@ Source2:        org.project_luma.shell-state.gschema.xml
 
 BuildArch:      noarch
 BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.102.creator20261007.1
+BuildRequires:  acl
 BuildRequires:  dbus-daemon
 BuildRequires:  glib2
 BuildRequires:  xorg-x11-server-Xvfb
@@ -92,6 +93,12 @@ cp %{SOURCE1} LICENSE.md
 %install
 %meson_install
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Tide.desktop
+
+# Shared build volumes can supply default ACLs and setgid directories.
+# Keep the installed system directories independent of those build settings.
+setfacl -Rb %{buildroot}
+find %{buildroot} -type d -exec chmod 0755 {} +
+chmod 0644 LICENSE.md
 
 %check
 # The light/dark native checks use the same shell-state schema shipped by the
@@ -149,6 +156,7 @@ done
 PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 
 %files
+%defattr(-,root,root,0755)
 %license LICENSE.md
 %{_bindir}/org.projectluma.Tide
 %{_bindir}/luma-tide-retire-preview-overrides
@@ -162,6 +170,9 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.37.nightly20261030.1
+- Normalize packaged directory modes.
+
 * Tue Oct 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.32.creator20261006.1
 - Keep source actions reachable in short windows and adaptive drawers
 - Share original local audio files through actual clipboard and GIO receivers

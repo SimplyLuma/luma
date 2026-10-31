@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.107.nightly20261030.1%{?dist}
+Release:        1.luma.108.nightly20261030.1%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -15,6 +15,7 @@ Source2:        luma-continuity.tar.gz
 Source3:        org.project_luma.shell-state.gschema.xml
 Source4:        messages-v70.json
 
+BuildRequires:  acl
 BuildRequires:  dbus-daemon
 BuildRequires:  desktop-file-utils
 BuildRequires:  evolution-data-server
@@ -219,6 +220,12 @@ install -D -m 0644 data/luma-mimeapps.list \
 install -d -m 0755 %{buildroot}%{_sysconfdir}/skel/Photos
 install -D -m 0644 data/luma-user-dirs.dirs \
   %{buildroot}%{_sysconfdir}/skel/.config/user-dirs.dirs
+
+# Shared build volumes can supply default ACLs and setgid directories.
+# Keep the installed system directories independent of those build settings.
+setfacl -Rb %{buildroot}
+find %{buildroot} -type d -exec chmod 0755 {} +
+chmod 0644 LICENSE.md
 
 %check
 # Exercise shared-library grants and home aliases against the installed payload.
@@ -609,6 +616,7 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 
 
 %files
+%defattr(-,root,root,0755)
 %license LICENSE.md
 %{_bindir}/prairie-messages
 %{_bindir}/prairie-messages-daemon
@@ -669,6 +677,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.108.nightly20261030.1
+- Normalize packaged directory modes.
+
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.106.nightly20261026.1
 - Package the October 26 shared source updates.
 
