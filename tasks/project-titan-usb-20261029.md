@@ -1075,10 +1075,19 @@ No evidence supports rewriting Weather's application language from these tests.
 No experimental mask or renderer policy was deployed to production modules.
 The private harness/captures are under the owned update-20261031 artifact folder.
 
-At approximately22:52UTC both the Titan proxy and the Dell reverse SSH endpoint
+At approximately22:50UTC both the Titan proxy and the Dell reverse SSH endpoint
 stopped answering their SSH banners. Direct Dell probe failed too, so further
 physical qualification awaits the relay connection. A Cairo comparison was not
 executed (connection failed before remote startup). All successfully launched
 profile units have RuntimeMaxSec18 or35 and their UI self-exits after9 or20s;
 no persistent polling/inhibitor or rendering override was installed. Last device
 readback remains200percent; normal Terminal and Settings launch are repaired.
+
+Next connection: verify prepared-host module provenance and restart only
+luma-app-host.service after confirming KillMode=process. Its preloaded Python
+modules may still be the installed fallback source: the formerly inaccessible
+PYTHONPATH directory would allow imports to fall through to installed packages
+at host startup. This is an inference, not a live sys.modules readback. Retain
+running app children; relaunch Weather alone for the real-source acceptance.
+The isolated profiling fixture explicitly imported the current source directory
+after its permissions were repaired, so it did not depend on that prepared host.
