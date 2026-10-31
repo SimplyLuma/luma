@@ -1,3 +1,6 @@
+# Python 3.14 forkserver workers fail inside the Fedora bytecompile sandbox.
+# This small Python payload compiles serially; all package checks still run.
+%global _smp_build_ncpus 1
 # SPDX-License-Identifier: Apache-2.0
 
 Name:           luma-android-runtime
