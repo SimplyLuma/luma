@@ -7,6 +7,13 @@ from pathlib import Path
 import subprocess
 
 REQUIRED = {
+    'luma-android-runtime': {
+        '/usr/bin/luma-android', '/usr/bin/luma-android-settings',
+        '/usr/libexec/luma-waydroid-container',
+        '/usr/libexec/luma-waydroid-package-session',
+        '/usr/share/mime/packages/luma-android.xml',
+        '/usr/share/selinux/packages/luma_android_runtime.cil',
+    },
     'luma-shell-state': {
         '/usr/libexec/luma-shell-state-service', '/usr/bin/luma-shell-statectl',
         '/usr/share/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml',
