@@ -178,6 +178,18 @@
         "src/luma-update/",
         "packaging/rpm/luma-update.spec"
       ]
+    },
+    "android-runtime": {
+      "architectures": [
+        "x86_64"
+      ],
+      "recipe": "scripts/packages/build-luma-android-runtime.sh",
+      "spec": "packaging/rpm/luma-android-runtime.spec",
+      "paths": [
+        "src/luma-android/",
+        "config/android/",
+        "packaging/rpm/luma-android-runtime.spec"
+      ]
     }
   }
 }

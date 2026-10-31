@@ -10,6 +10,8 @@ on:
       - 'scripts/os/check-native-noarch-package.py'
       - 'scripts/packages/**'
       - 'patches/**'
+      - 'src/luma-android/**'
+      - 'config/android/**'
       - 'src/luma-installer/**'
       - 'src/luma-depot/**'
       - 'src/luma-ari/**'
