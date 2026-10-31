@@ -99,7 +99,20 @@ ostree refs --repo="$candidate_repo" --create="$ref" --force "$LUMA_EXPORT_CANDI
 ostree summary --repo="$candidate_repo" --update \
   --gpg-sign="$(luma_os_gpg_fingerprint)" --gpg-homedir="$(luma_os_gpg_home)"
 luma_os_gpg_lock
+body_index_sha=
+if [ "${LUMA_OS_CAPTURE_PAYLOAD_BODIES:-0}" = 1 ]; then
+  body_args=()
+  if [ -n "${LUMA_OS_PREVIOUS_BODY_INDEX:-}" ]; then
+    body_args=(--previous "$LUMA_OS_PREVIOUS_BODY_INDEX" --previous-sha256 "${LUMA_OS_PREVIOUS_BODY_INDEX_SHA256:?}")
+  fi
+  body_index_sha=$(python3 "$luma_os_repo_root/scripts/install/atlas-iso/payload-object-reuse.py" \
+    --scope candidate-cache --repository "$candidate_repo" --output "$build_dir/payload-object-bodies.json" \
+    --source-revision "$LUMA_SOURCE_REVISION" --candidate "$LUMA_EXPORT_CANDIDATE" \
+    --architecture "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --ref "$ref" "${body_args[@]}" 2>>"$log")
+  printf 'PAYLOAD_CACHE_INDEX_SHA256=%s\n' "$body_index_sha" >>"$log"
+fi
 cat "$verified" >"$build_dir/export.env.new"
+printf 'LUMA_EXPORT_BODY_INDEX_SHA256=%s\n' "$body_index_sha" >>"$build_dir/export.env.new"
 printf 'LUMA_EXPORT_COMPLETED=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$build_dir/export.env.new"
 mv "$build_dir/export.env.new" "$build_dir/export.env"
 luma_os_log "signed native candidate $LUMA_EXPORT_CANDIDATE on $ref; qualification remains pending"

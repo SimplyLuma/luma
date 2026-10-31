@@ -124,6 +124,22 @@ ostree pull --repo="$client/repo" --commit-metadata-only medium "$ref" >/dev/nul
 rm -rf "$client"
 luma_os_log "payload: $version ($head), $(du -sh "$payload" | awk '{ print $1 }')"
 
+# Capture only this medium's selected repository. Shared candidate cache indexes
+# are explicitly unusable as payload proof; their inode hashes are merely hints.
+payload_body_index_sha=
+if [ "${LUMA_OS_CAPTURE_PAYLOAD_BODIES:-0}" = 1 ]; then
+  body_args=()
+  if [ -n "${LUMA_EXPORT_BODY_INDEX_SHA256:-}" ] && [ -n "$test_build$candidate_build" ]; then
+    body_args=(--previous "$LUMA_OS_ROOT/builds/${test_build:-$candidate_build}/payload-object-bodies.json"
+               --previous-sha256 "$LUMA_EXPORT_BODY_INDEX_SHA256")
+  fi
+  body_source_revision=$(ostree show --repo="$source_repo" --print-metadata-key=org.projectluma.source-revision "$head" | tr -d "'")
+  payload_body_index_sha=$(python3 "$luma_os_repo_root/scripts/install/atlas-iso/payload-object-reuse.py" \
+    --repository "$payload" --output "$output.payload-index.json" \
+    --source-revision "$body_source_revision" --candidate "$head" \
+    --architecture "$LUMA_OS_ARCH" --profile "$LUMA_OS_PROFILE" --ref "$ref" "${body_args[@]}")
+fi
+
 credential_args=()
 if [ -n "$credential_file" ]; then
   luma_os_channel_is_preview "$channel" || luma_os_die 'a preview credential is only for nightly and beta media'
@@ -152,6 +168,13 @@ TMPDIR="$LUMA_OS_ROOT/tmp" \
     --release-key "$LUMA_OS_KEYS/luma-os-release.asc" \
     "${credential_args[@]}" "${media_args[@]}"
 
+payload_bodies_receipt_sha=
+if [ -n "$payload_body_index_sha" ]; then
+  payload_bodies_receipt_sha=$(python3 "$luma_os_repo_root/scripts/install/atlas-iso/verify-payload-bodies.py" \
+    --iso "$output" --repository "$payload" \
+    --body-index "$output.payload-index.json" --body-index-sha256 "$payload_body_index_sha" \
+    --output "$output.payload-bodies.json")
+fi
 sha256sum "$output" | awk '{ print $1 }' >"$output.sha256"
 cat >"$output.release" <<EOF
 architecture=$LUMA_OS_ARCH
@@ -161,6 +184,8 @@ commit=$head
 version=$version
 atlas_source_revision=$(git -c "safe.directory=$atlas" -C "$atlas" rev-parse HEAD 2>/dev/null || echo unknown)
 media_helpers_source_revision=$(git -c "safe.directory=$luma_os_repo_root" -C "$luma_os_repo_root" rev-parse HEAD 2>/dev/null || echo unknown)
+payload_body_index_sha256=$payload_body_index_sha
+payload_bodies_receipt_sha256=$payload_bodies_receipt_sha
 release_key_fingerprint=$(luma_os_gpg_fingerprint)
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 test=${test_build:+true}

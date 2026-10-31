@@ -100,6 +100,104 @@ scripts/os/build-staff-media.sh --atlas-source YOUR_ATLAS_SOURCE \
 
 `--test-candidate` produces test media; it does not declare a release ready. Retain the build's source identity, package manifest, SBOM, provenance, and qualification results. Dirty development inputs are explicitly marked and refused by normal publication paths.
 
+For a payload-only rebuild, `scripts/install/atlas-iso/reuse-installer-runtime.py`
+can retain an authenticated, qualified donor runtime when its consumed installer
+source paths have not changed. It verifies the new payload signature against the
+embedded release key and runtime clock; a deliberate clock-only refresh preserves
+all other extracted stage2 content and metadata. Optional Lorax `.treeinfo` is
+updated when present. The helper still checks runtime image equality, visible and
+embedded UEFI menus, and GRUB fonts after assembly. Its result is a built medium,
+not a qualification pass. Data-only remastering can use the host's native tools
+for either target: donor `.discinfo`, the embedded runtime and signed payload
+must all match `--arch`, and final FAT boot loaders must carry that architecture's
+PE machine type. It does not execute target binaries on the tools host. The
+wrapper's explicit `--data-only-architecture` keeps Lorax's EFI rebuilding and
+replaces only its host-CPU equality check with this target binding.
+
+Clock-refresh compression defaults to two workers and a 512 MiB mksquashfs cache.
+`--squashfs-processors` and `--squashfs-cache-mib` permit an explicitly budgeted
+builder to tune them; cache size excludes compression workers and OS/file-cache
+memory. The caller must admit and cap the complete job, including tools, scratch
+space and the final ISO, and retain the required host reserves. These settings
+are not a promise that an arbitrary runtime fits in a 512 MiB job.
+
+For resumable assembly, pass `--tools-image-id` with the operator's pinned native
+tools image checksum. After completing the clock refresh, the helper writes a
+private, read-only checkpoint and prints `CLOCK_CHECKPOINT_SHA256`. Preserve that
+digest in the operator's trusted job record. A retry may use the same `--work`,
+a new `--output`, the same semantic inputs and tools, and `--resume CHECKPOINT_SHA256`.
+The helper validates the externally pinned checkpoint and complete retained file
+hashes, donor and signature before skipping refresh/compression. Source, candidate,
+architecture, key, clock, tools or stage changes are refused. Failed assembly
+attempts and partial ISOs remain preserved; the helper never overwrites them.
+Resume produces built media and still runs every final runtime/EFI/font check;
+it does not reuse a qualification pass.
+
+
+Interactive media verification gives libvirt a disposable same-filesystem reflink
+of the ISO. It checks access as `LUMA_OS_QEMU_USER` (default `qemu`) before VM
+startup and verifies that the original inode, ownership, modes and timestamps
+remain unchanged afterward. Libvirt may relabel or chown only the fixture.
+The preflight fails if reflinks or reader traversal are unavailable; it never
+falls back to an unbudgeted full copy or widens ancestor permissions. This is
+a DAC preflight, not a substitute for the normal libvirt/SELinux boot check.
+
+
+For a separately admitted publication phase, use
+`scripts/os/lib/publication_window.py --unit luma-os-publication-UNIQUE.service
+--state-dir ROOT_OWNED_ATTEMPT --timer luma-APPROVED-REFRESH.timer -- COMMAND ...`
+with the approved host's actual timer names. It supervises a separate native
+worker with a 4 GiB default cap, private mount namespace and two-hour runtime
+bound. Admit the supervisor, worker, containers and storage together; container
+limits do not cover native OSTree fsck/delta processes. Tune `--memory-mib` and
+`--runtime-seconds` within that real budget. Selected architecture/profile and
+configuration paths cross the service-manager boundary explicitly. Use
+`--pass-env NAME` for additional non-secret proof paths; never pass credential
+contents or inherited lock descriptors. Acquire worker locks inside the worker.
+
+The supervisor pauses only explicitly named, idle refresh timers, rechecks for
+racing refresh services, quiesces an interrupted/failed client worker, and restores
+previously active timers. Root-owned phase receipts distinguish worker failure,
+timer restoration and interrupted-supervisor recovery from release success.
+A protected shared window lock rejects competing supervisors before timer
+inspection or mutation, including attempts using different state directories.
+This does not replace the worker’s normal repository/signing locks. Both
+supervision and recovery acquire the shared lock before an exclusive attempt
+lock, which prevents recovery from racing a live supervisor,
+even before its worker has started. After a hard supervisor kill, `--recover ROOT_OWNED_ATTEMPT` restores timers only
+when the recorded worker is inactive. Neither worker exit zero nor recovery
+qualifies or publishes a release. The generic `run-capped.sh` keeps its existing
+mount behavior unless
+`--private-mounts` is selected; publication workers always isolate mounts.
+Host setup requiring persistent mounts must run outside that isolated worker;
+ordinary repository file writes remain shared.
+
+Before expensive native publication, compare local predecessor catalogs with
+the exact signature-verified preparation copies. Repeat
+`--require-equal-files LOCAL VERIFIED_PREDECESSOR` for each metadata/signature
+pair to fail before worker startup on drift. This bounded byte preflight does
+not replace signature verification. A signed timestamp refresh may explain a
+difference, but it still requires explicit signature/semantic reconciliation and
+retention of the old bytes before publication. Never discover this mismatch only
+after moving a channel ref, or rerun a completed publisher to repair graph state.
+
+For targeted qualification that reuses an installed VM, account absence alone
+is not a valid first-run fixture. Prefer a fresh no-account installation. If a
+reviewed check deliberately rearms an explicitly disposable synthetic-person
+fixture, first retain its original configuration, account inventory and reset
+receipt. Stop its own user services, wait for its UID processes to exit, and
+check account-removal exit status. Inspect the installed distro's actual GDM
+conditions, including AccountsService, initial-setup session availability,
+GDM configuration/runtime markers and kernel overrides. Fedora additionally
+honors `/etc/sysconfig/anaconda` → `[General] post_install_tools_disabled`;
+a true value suppresses setup even with `InitialSetupEnable=true` and no users.
+Preserve that file before changing only this fixture flag when rearming is
+explicitly intended; retain unrelated keys and restore the normal GDM configuration.
+Never apply this reset to product images, customer installations or another
+job's VM. Require the real `gnome-initial-setup` greeter and healthy first boot
+afterward; neither deleting accounts nor toggling a flag is a passing result.
+There is no general-purpose account/first-run reset command in this workflow.
+
 See [release delivery](docs/operations/release-delivery.md) for the separate OS, application and R2 installation-media publication contracts, verification requirements and retention rules.
 
 ## Desktop architectures

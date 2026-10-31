@@ -65,6 +65,17 @@ protected_refs=$(ostree refs --repo="$repo" | while IFS= read -r other; do
 done)
 head=$(luma_os_channel_head "$repo" "$ref")
 
+if python3 - "$build_dir/gate-result.json" <<'PY'
+import json, sys
+sys.exit(0 if json.load(open(sys.argv[1])).get('schema') == 'org.projectluma.targeted-desktop-gate/v1' else 1)
+PY
+then
+  python3 "$luma_os_repo_root/scripts/os/lib/targeted_desktop_gate.py" \
+    --gate "$build_dir/gate-result.json" --candidate "$candidate" --previous "${head:-}" \
+    --architecture "$LUMA_OS_ARCH" \
+    --provenance-sha256 "$(sha256sum "$build_dir/provenance.json" | cut -d' ' -f1)" \
+    >/dev/null || luma_os_die 'targeted desktop qualification does not allow publication'
+else
 python3 - "$build_dir/gate-result.json" "$candidate" "${head:-}" <<'PY' || luma_os_die 'the gate result does not allow publication'
 import json, sys
 gate = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -92,6 +103,7 @@ for problem in problems:
     print("error: " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)
 PY
+fi
 
 parent=$(ostree rev-parse --repo="$candidate_repo" "$candidate^" 2>/dev/null || true)
 [ "$parent" = "$head" ] ||
