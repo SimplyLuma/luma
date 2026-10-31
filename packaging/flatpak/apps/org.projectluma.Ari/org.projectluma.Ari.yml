@@ -22,7 +22,7 @@
       "buildsystem": "simple",
       "build-commands": [
         "install -d /app/lib/python3.14/site-packages /app/bin",
-        "cp -a src/luma-ari/ari_ui /app/lib/python3.14/site-packages/",
+        "cp -a --no-preserve=ownership src/luma-ari/ari_ui /app/lib/python3.14/site-packages/",
         "printf '#!/bin/sh\\nexec python3 -m ari_ui.app \"$@\"\\n' > /app/bin/org.projectluma.Ari",
         "chmod 755 /app/bin/org.projectluma.Ari",
         "install -d /app/share/dbus-1/services",

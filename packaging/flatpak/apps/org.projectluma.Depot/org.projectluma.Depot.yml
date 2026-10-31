@@ -26,7 +26,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -d /app/lib/python3.14/site-packages /app/bin
-      - cp -a src/luma-depot/luma_depot src/luma-installer/luma_installer /app/lib/python3.14/site-packages/
+      - cp -a --no-preserve=ownership src/luma-depot/luma_depot src/luma-installer/luma_installer /app/lib/python3.14/site-packages/
       - printf '#!/bin/sh\nexec python3 -m luma_depot.window "$@"\n' > /app/bin/luma-depot-real
       - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup luma-depot-real "$@"\n' > /app/bin/luma-depot
       - chmod 755 /app/bin/luma-depot /app/bin/luma-depot-real
