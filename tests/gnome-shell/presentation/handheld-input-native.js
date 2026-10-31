@@ -45,7 +45,9 @@ async function work() {
         'Typing fixture', Gio.AppInfoCreateFlags.NONE).launch([], context);
     const app = () => global.display.focus_window?.get_wm_class()?.includes('TypingFixture')
         ? global.display.focus_window : null;
-    await until(() => app() && app().is_fullscreen());
+    // Wait for the client to take the full-screen size: the keyboard closes
+    // when its window moves, as upstream does.
+    await until(() => app() && frame(app()) === full);
     const window = app();
     check('application opens full screen', window && frame(window) === full, window ? frame(window) : 'no window');
     if (!window)
