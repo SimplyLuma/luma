@@ -272,9 +272,11 @@ capabilities_sha=$(sha256sum "$build_dir/desktop-capabilities.json" | awk '{prin
 # draws GTK's broken-image placeholder. The recipe's own checker reads the
 # image's themes and resources and the recipe's sources and patches.
 if ! luma_os_podman run --rm --net=none --security-opt label=disable \
-    -v "$source_dir:/luma-source:ro" "$image_tag" \
+    -v "$source_dir:/luma-source:ro" \
+    -v "$build_dir/packages-installed.tsv:/luma-packages-installed.tsv:ro" "$image_tag" \
     python3 /luma-source/scripts/os/lib/icon_references.py --root / \
       --source /luma-source/src --patches /luma-source/patches --installed \
+      --package-inventory /luma-packages-installed.tsv \
       --allowlist /luma-source/config/os/icon-reference-allowlist.txt \
       >"$build_dir/icon-references.log" 2>&1; then
   grep '^FAIL' "$build_dir/icon-references.log" | head -n 20 >&2

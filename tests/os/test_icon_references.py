@@ -71,6 +71,18 @@ class IconReferenceTest(unittest.TestCase):
             code = icon_references.main(["--root", str(self.root), "--source", str(self.source), *extra])
         return code, output.getvalue()
 
+    def test_mobile_patch_requires_icons_when_keyboard_is_installed_or_unknown(self):
+        patches = self.source / "patches"
+        self.write(patches / "stevia/0001.patch",
+                   "+++ b/src/key.c\n@@ -0,0 +1 @@\n+const char *icon = \"mobile-only-symbolic\";\n")
+        self.write(patches / "gnome-shell/0001.patch",
+                   "+++ b/js/key.js\n@@ -0,0 +1 @@\n+const icon = 'desktop-only-symbolic';\n")
+        self.assertEqual(len(icon_references.scan_patches(patches)), 2)
+        for name in ("stevia", "luma-stevia", "phosh-osk-stub"):
+            self.assertEqual(len(icon_references.scan_patches(patches, {name})), 2)
+        refs = icon_references.scan_patches(patches, {"gnome-shell", "rpm"})
+        self.assertEqual([ref.name for ref in refs], ["desktop-only-symbolic"])
+
     def preview_wine_stubs(self):
         caps = {"schema": "org.projectluma.desktop-capabilities/v1", "architecture": "aarch64",
                 "profile": "arm-preview", "capabilities": {"desktop": True, "windows_apps": False},

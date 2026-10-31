@@ -374,11 +374,17 @@ def scan_components(base: Path, launchers: set[str]) -> tuple[list[Reference], l
     return found, absent
 
 
-def scan_patches(base: Path) -> list[Reference]:
+def scan_patches(base: Path, installed_packages: set[str] | None = None) -> list[Reference]:
     """Names on the added lines of patches, attributed to the patched file."""
     found: list[Reference] = []
     for patch in sorted(base.rglob("*.patch")):
         if skipped(patch.relative_to(base)):
+            continue
+        # Stevia is the separate mobile keyboard, not GNOME Shell Keycap.
+        # Only omit its sources with an actual image RPM inventory; callers
+        # without that evidence retain the full check.
+        if (installed_packages is not None and patch.relative_to(base).parts[0] == "stevia"
+                and not {"stevia", "luma-stevia", "phosh-osk-stub"} & installed_packages):
             continue
         target, lines, numbers, new_line = None, [], [], 0
 
@@ -546,6 +552,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--theme", default="Prairie")
     parser.add_argument("--source", action="append", default=[], type=Path)
     parser.add_argument("--patches", action="append", default=[], type=Path)
+    parser.add_argument("--package-inventory", type=Path,
+                        help="actual image RPM inventory (tab-separated, package name first)")
     parser.add_argument("--installed", action="store_true",
                         help="also scan first-party code installed in the image")
     parser.add_argument("--allowlist", type=Path)
@@ -570,8 +578,14 @@ def main(argv: list[str] | None = None) -> int:
         skipped_components.extend(absent)
     if skipped_components:
         print(f"note: not in the image, not checked: {', '.join(sorted(skipped_components))}")
+    installed_packages = None
+    if args.package_inventory:
+        rows = args.package_inventory.read_text().splitlines()
+        if not rows or any(len(row.split("\t")) != 8 for row in rows):
+            parser.error("package inventory must be the eight-column image RPM inventory")
+        installed_packages = {row.split("\t", 1)[0] for row in rows}
     for patches in args.patches:
-        references.extend(scan_patches(patches))
+        references.extend(scan_patches(patches, installed_packages))
     if args.installed:
         references.extend(scan_installed(args.root))
     entries = load_allowlist(args.allowlist)
