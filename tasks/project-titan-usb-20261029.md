@@ -907,3 +907,96 @@ the matching source cohort and build/qualify their packages; do not copy private
 Titan overlays or claim that Home paging/Quick Options rendering now achieves60FPS.
 Private measurements/scripts: account experiments/titan-launch-20261030; bounded
 cross-build inputs/binaries live on the existing titan-kernel-20261030 HDD bind.
+
+### 2026-10-31 — current cohort and Android delivery (in progress)
+
+Owner requested the newest compatible work, especially Android, including other
+branches. Fast-forwarded this owned branch from8397c1dda to the converged
+work/fold-current-20261031 commit0ac8cfba0, which retains the measured startup
+work and incorporates current main. Other owners' worktrees/jobs were not changed.
+
+Recovered the office route through the Dell's existing unprivileged stream
+proxy, authenticating the Titan against its existing pinned host key. The generic
+luma.local name resolved to a different machine; its different key was rejected,
+never trusted. Private SSH addressing/proxy configuration remains outside Git.
+Phone kernel retains accepted audio build#2 2026-10-30 23:00UTC, 4KiB pages,
+Binder/hwbinder/vndbinder devices, wake services active and Mobile presentation.
+
+Selected actual successful ARM/noarch component artifacts from GitHub runs
+41242715357 (Shell139),41240614908 (Platform121/toolkit),41240614877
+(runtime98, Mutter17 and other shared components), and41242715267 (Search9).
+Components' PR merge source9a5433863 and Platform's bcef0c949 have matching relevant
+source at0ac8cfba0; Shell artifact is directly from0ac8cfba0. Relevant individual
+jobs passed; the overall UI run failed in Filer, so that run is not claimed fully
+passing. Runtime98's standard package tests ran in its successful producer.
+Reused the already-admitted ARM Android image10 and installer82 from the nightly
+owner's artifact cohort, without rebuilding or changing that owner's state.
+Image RPM transfer SHA20a0c2a0fb2b53c091b0263a3a5749ae34ab41031aa20b0ad0da558442a156cf
+matches the source artifact. Package payload digests and supplied sidecars checked;
+individual components without sidecars retain their producer/source identity.
+
+Device dependencies Waydroid1.6.3, its SELinux package and python3-gbinder staged
+successfully. First cohort solve rejected old local Shell/widget pins and the old
+installer's exact metadata requirement; no partial package change. Corrected the
+local-package requests and included matching installer82/metadata2. The next
+transaction found a launcher-policy file ownership collision with the device's
+base; kept that existing policy instead of forcing a conflicting package.
+Third transaction is running with those corrections. Do not call delivery
+complete until actual staging/live apply/login/Android results below exist.
+
+Current Python app sources are staged with checked hashes/bytecode for core UI,
+Tide, Monitor, Terminal and Continuity at the same source revision. Source-backed
+private overlays and environment backup live under
+/var/lib/project-titan/update-20261031; generated packages/evidence stay outside
+Git. Keep device settings70/esim and hardware/kernel packages; an older-numbered
+shared settings artifact is not substituted over device-specific work.
+
+Actual bounded source check c1308bf1 exit0: launch cohort2, app inventory12,
+checked-hash bytecode1, Meson AST and git diff checks pass. New source payload
+compiles on the server and Titan. No new Android physical-device acceptance or
+new animation-performance result is claimed at this checkpoint.
+
+Delivery result: staged deployment0f2e65164ddb5e194399ee9ef9f9032aa22abc70bebff444264705cc6e70ab2b
+successfully booted. Live application had failed while checking out/usr/local;
+its partial live result was not accepted as installation. Normal reboot selected
+the staged tuple: Shell139, Mutter17, Platform121, runtime98/images10 and matching
+installer82/metadata2. Existing audio kernel#2 and wake services survived. Native
+password login succeeds and the prepared app host/native timer are active.
+Removed previous full Shell/GDM/kit overlays; current source-backed Python apps
+are active from the new source directory. Desktop Settings70/esim was retained.
+
+Root's old authorized_keys did not persist across the formerly transient root
+filesystem. Existing luma public-key login and sudo authenticated successfully;
+restored the SAME developer key through a root-only/etc/ssh AuthorizedKeysFile,
+retaining PermitRootLogin prohibit-password. No password login was enabled.
+
+Android image verification/initialization passed in56.6s, container and session
+started. Physical graphics acceptance FAILED: allocator could not allocate GPU
+buffers and SurfaceFlinger crashed with output-buffer GPU usage errors; no guest
+app acceptance is claimed. User explicitly assigned GPU fixes to another agent.
+Stopped this task's tests and removed ONLY its two exact temporary properties
+(ro.hardware.gralloc=gbm and gralloc.gbm.device), regenerating the original
+properties. No software fallback/driver/image/kernel workaround was retained.
+Cross-task factual handoff is in the shared coordination directory under
+project-titan-android-delivery-20261031.md. Subsequent GPU state belongs to that
+agent; do not stop their jobs or overwrite their configuration.
+
+User asked why Home had four columns, renewing their earlier five-column request.
+Found explicit four-column cap in homeLayout. Shared geometry now admits five
+68px cells where they fit and reduces columns on narrower screens. Kept vertical
+spacing independent of the extra column, so ordinary390x844 phones retain nine
+rows rather than unexpectedly packing twelve. Titan fits5x4 with44px icons;
+widgets keep integer spans and the separate dock is unchanged. Shell candidate
+pins/spec advanced together to140; the installed139 build receives only the
+source-backed layout.js hotfix until a140 package is built.
+
+Actual Node compact geometry/migration/cutout tests pass; same tests pass under
+GJS on the physical Titan. Cohort pins2tests pass. Live native proof reports
+columns5,rows4,pages2,items28,iconSize44,wholeCells=true,Home visible. Applied
+_rebuild from the matching source through a temporary developer-console module
+without restarting the session or interrupting the other agent's GPU work.
+The sole persistent resource override is the new source-backed layout.js;
+it does not mask the installed Shell/GDM/kit cohort. Temporary inspection
+extensions/idle override are retired after verification. Private scripts,
+package payloads and screenshots remain outside Git. No new60FPS or universal
+Android compatibility claim follows from this deployment.

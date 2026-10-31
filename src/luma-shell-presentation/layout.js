@@ -21,12 +21,13 @@ export function homeLayout(width, height, mode, count, metrics = {}) {
         const dotsHeight = 16;
         const bottom = dockHeight + dockBottom + dotsHeight + 4;
         const availableHeight = Math.max(1, height - top - bottom);
-        // Phones show four icon columns (three on very narrow screens); rows
-        // keep cells near square and icons grow with the cell.
+        // Fit five columns when 68px cells fit, and reduce density on narrower
+        // displays. Additional columns must not also compress the row spacing.
         const contentWidth = width - 2 * inset;
-        const iconColumns = Math.max(3, Math.min(4, Math.floor(contentWidth / 80)));
+        const iconColumns = Math.max(3, Math.min(5, Math.floor(contentWidth / 68)));
         const cellWidth = contentWidth / iconColumns;
-        const minimumRow = Math.max(56, metrics.cellHeight ?? 0, Math.round(cellWidth * 0.78));
+        const minimumRow = Math.max(56, metrics.cellHeight ?? 0,
+            Math.round(contentWidth / Math.min(iconColumns, 4) * 0.78));
         const rows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
         const rowHeight = availableHeight / rows;
         const iconSize = Math.floor(Math.max(28, Math.min(64, rowHeight - 24, cellWidth * 0.66)));

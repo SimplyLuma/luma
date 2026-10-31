@@ -40,7 +40,7 @@ boundaries, measured first-frame timings and remaining qualification gates.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The converged nightly source pins Shell `1.luma.139`,
+The converged nightly source pins Shell `1.luma.140`,
 Mutter `1.luma.17.keycap20261031.1`, developer platform `1.luma.121`,
 core apps `1.luma.126`, Tide `2.luma.38` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
@@ -87,7 +87,7 @@ composition/session profile and build/install the matched native cohort.
 ## Current behavior and remaining work
 
 Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
-screen, Home has four columns and four rows plus the dock; each widget spans
+screen, Home has five columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
 Notifications are pulled from the top island; Quick Options is pulled from the
 right status area. Full pages use the dock palette's opaque treatment for readable text.
