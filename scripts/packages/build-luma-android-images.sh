@@ -9,7 +9,11 @@ fi
 [ "$#" -eq 0 ] || { printf 'usage: %s [--reference]\n' "$0" >&2; exit 2; }
 source "$repo_root/config/desktop/inputs.env"
 arch=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
-[ "$arch" = x86_64 ] || { printf 'error: current native Android frame pair is not qualified for %s\n' "$arch" >&2; exit 1; }
+case "$arch" in
+  x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
+  aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
+  *) printf 'error: unsupported Android image architecture: %s\n' "$arch" >&2; exit 1 ;;
+esac
 : "${LUMA_ANDROID_TERMINAL_PAIR_DIR:?actual terminal native image pair required}"
 : "${LUMA_ANDROID_IMAGE_MEMBERS:?actual read-only inside-image membership proof required}"
 export LUMA_RPM_BUILDER_ARCHITECTURE=$arch
@@ -28,7 +32,7 @@ remaining=max(0, receipt['actual_full_scratch_budget']-allocated)
 if shutil.disk_usage(root).free < remaining+receipt['physical_reserve_bytes']:
     raise SystemExit('Insufficient measured remaining scratch plus 10 GiB reserve')
 PY
-"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$FEDORA_RPM_BUILD_CONTAINER" '
+"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$builder_container" '
   set -euo pipefail
   dnf5 -y install rpm-build python3
   rpmbuild -ba --define "_topdir $PWD" SPECS/luma-android-images.spec

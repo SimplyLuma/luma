@@ -271,7 +271,7 @@
       "recipe": "packaging/flatpak/apps/org.gnome.Nautilus/org.gnome.Nautilus.yml",
       "canonical_native_builder": "scripts/packages/build-nautilus.sh",
       "minimum_host_packages": {
-        "luma-application-installer": 60
+        "luma-application-installer": 82
       }
     },
     {

@@ -29,6 +29,7 @@ def verify(root,producer_path,members_path,materials,system_notice,vendor_notice
   raise ValueError('No matching actual inside-image verification')
  if members.get('actual_Lineage_TaskStackListener_closeRemovedTask_and_HIDL13_native_java_VINTF_coherent') is not True:
   raise ValueError('Authoritative task-removal Java/native/HIDL13/VINTF pair not proven')
+ if manifest['architecture']!=producer.get('architecture','x86_64'):raise ValueError('Image producer architecture differs from packaged images')
  origin=manifest['origin']
  if origin['kind']!='luma-native-builder' or origin['source_manifest_sha256']!=source_manifest(producer) or origin['compiler_invocation_id']!=producer['compiler_invocation_id']:
   raise ValueError('Packaged image identity differs from its actual producer')
@@ -54,5 +55,7 @@ def verify(root,producer_path,members_path,materials,system_notice,vendor_notice
  print('Actual terminal pair, exact image membership, aggregate NOTICE and Luma material source correspondence PASS')
 if __name__=='__main__':
  if len(sys.argv)!=9:raise SystemExit('usage: ROOT PRODUCER MEMBERS MATERIALS SYSTEM-NOTICE VENDOR-NOTICE FONT ARCH')
- if sys.argv[8]!='x86_64':raise ValueError('No current frame pair qualified for this architecture')
+ if sys.argv[8] not in ('x86_64','aarch64'):raise ValueError('Unsupported Android image architecture')
+ producer=json.loads(Path(sys.argv[2]).read_text())
+ if producer.get('architecture','x86_64')!=sys.argv[8]:raise ValueError('Producer architecture differs from package target')
  verify(*(Path(p) for p in sys.argv[1:8]))

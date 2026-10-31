@@ -21,3 +21,34 @@
 - Android branch79ff12e6d pushed to GitHub. Physical Dell uses the verified229a7a3ed x86 Android build with native settings transport and corrected desktop canvas. ARM Android output exists from an earlier source and needs a current incremental build. The current image RPM admits x86 only; both-CPU packaging must be made real.
 - Three existing PRs:41 ARM pipeline,83 installer/runtime reuse,99 mobile Shell. Do not close until their intended changes are integrated or demonstrably superseded.
 - SSD capacity is tight (main about21GiB, secondary about19GiB free); HDD has1.8TiB. Resolve actual scratch placement before starting compose. Preserve current reserve and other owners' storage.
+
+## Integration checkpoint, October30 local evening
+
+All four heads are merged into this branch with conflict resolutions preserving
+new Ari services, Mobile/Keycap, native Android drawer/notification support and
+the ARM-aware installer/runtime pipeline. Package cohort: Shell132, Platform120,
+installer82, Android runtime97/images10, Filer76, core107, icons44 and Tide36.
+ARM preview now includes the architecture-matched Android runtime/images.
+
+Focused checks actually passed:94 source contracts,13 device-checker cases and
+22 device-tree tests,12 image-admission cases including ARM/cross-CPU rejection,
+two actual RPM patch-number parser controls,113 package/spec comparisons with
+the existing Phosh exception,31 release-note fragments and four app-registry
+checks. Initial duplicate Shell-row/profile mismatch and missing jsonschema
+were corrected before package builds. Later checks caught one Depot Tide pin
+and four old unformatted note fragments; affected checks now pass. No OS build
+or install acceptance is claimed by these source results.
+
+Current Android ARM build: dev-android-window-native-build-r469-68d3386f.service,
+guard dcdf6e7e, monitor b7ed5a6c. Private window-controls-build-r469 under the
+Android task HDD binding. Uses original229a7a3ed runtime source and retained ARM
+compiler outputs, no reset. Worker90min/root controller110min hard deadlines.
+Input hashes passed, VM booted and Ninja startup entered03:05Z. Keep current
+x86 r453 image byte proofs and existing public compiler/source notices.
+
+Root preflight ef8a6635 passed: no other nightly build unit active; only the
+existing OS HTTP server and this Android VM are active. Mac ARM port22442 is
+currently disconnected; native package CI on GitHub supplies both CPU runners.
+Physical free: main23.15GB, secondary20.40GB (below20GiB floor), HDD1.92TB.
+Use dedicated HDD pipeline/storage and resolve the secondary reserve before
+compose; no arbitrary old-cache deletion or shared global prune.

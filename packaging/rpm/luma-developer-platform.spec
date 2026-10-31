@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.119.creator20261030.1%{?dist}
+Release:        1.luma.120.nightly20261030.1%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -328,7 +328,7 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
-* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.119.creator20261030.1
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.120.nightly20261030.1
 - Expose shared search, command and invitation text fields to accessibility.
 
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.118.nightly20261026.1

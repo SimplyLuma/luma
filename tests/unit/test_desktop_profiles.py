@@ -24,16 +24,18 @@ class DesktopProfiles(unittest.TestCase):
         self.assertEqual(preview, [p for p in full if not t.excluded(t.package_name(p), selection)])
         names = {t.package_name(p) for p in preview}
         self.assertTrue({'luma-relay', 'luma-application-installer', 'luma-apk-metadata', 'prairie-core-apps'}.issubset(names))
-        for name in ['luma-android-runtime', 'luma-android-images', 'wine-luma-relay-explorer', 'luma-cast', 'luma-cast-googlecast', 'luma-cast-backend-common', 'luma-cast-dlna', 'luma-cast-miracast']:
+        self.assertTrue({'luma-android-runtime', 'luma-android-images'}.issubset(names))
+        for name in ['wine-luma-relay-explorer', 'luma-cast', 'luma-cast-googlecast', 'luma-cast-backend-common', 'luma-cast-dlna', 'luma-cast-miracast']:
             self.assertNotIn(name, names)
 
     def test_preview_filters_fedora_packages_and_shared_roles(self):
         fedora = t.packages(ROOT, 'aarch64', fedora=True, profile_name='arm-preview')
-        for name in ['waydroid', 'wine', 'ntsync-autoload', 'wine-dxvk', 'winetricks']:
+        self.assertIn('waydroid', fedora)
+        for name in ['wine', 'ntsync-autoload', 'wine-dxvk', 'winetricks']:
             self.assertNotIn(name, fedora)
         self.assertIn('greenboot', fedora)
         roles = t.roles(ROOT, 'aarch64', 'arm-preview')
-        self.assertNotIn('luma-android-runtime', roles)
+        self.assertIn('luma-android-runtime', roles)
         self.assertIn('luma-application-installer', roles)
         self.assertIn('prairie-core-apps', roles)
 
@@ -50,11 +52,11 @@ class DesktopProfiles(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
         env = {**os.environ, 'LUMA_OS_PROFILE': 'arm-preview'}
         result = subprocess.run(['python3', 'scripts/os/lib/desktop_target.py', '--arch', 'aarch64', 'roles'], cwd=ROOT, env=env, text=True, capture_output=True, check=True)
-        self.assertNotIn('luma-android-runtime', result.stdout.splitlines())
+        self.assertIn('luma-android-runtime', result.stdout.splitlines())
 
     def test_capabilities_describe_preview_honestly(self):
         self.assertEqual(t.capabilities(ROOT, 'aarch64', 'arm-preview')['capabilities'],
-                         dict(desktop=True, android_apps=False, windows_apps=False, casting=False))
+                         dict(desktop=True, android_apps=True, windows_apps=False, casting=False))
 
     def test_shell_environment_passes_profile_and_rejects_x86(self):
         env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview'}

@@ -7,6 +7,13 @@ main merge `91e4a6d4eedf421d071280d6536cb674ff44449b`. Build from the converged
 main revision selected by the Nightly owner, retaining these changes and the
 matching packaging pins. Source readiness does not establish release acceptance.
 
+## Coordinated October 30 build
+
+The converged Android/Mobile/Ari source advances the shared native Platform/SDK
+and sandbox runtime inputs to generation120. Ari's host remains generation21.
+Earlier generation119 evidence below remains evidence for its actual inputs;
+rebuild the changed platform cohort and use the resulting runtime for both CPUs.
+
 ## Deliver together
 
 | Component | Required delivery |

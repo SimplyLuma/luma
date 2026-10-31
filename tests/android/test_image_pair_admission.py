@@ -34,6 +34,7 @@ class PairAdmission(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix='synthetic-pair-negative-')
         self.root = Path(self.tmp.name)
         self.output = self.root / 'output'; self.output.mkdir()
+        self.arch='x86_64'
         self.values = {'LUMA_ANDROID_IMAGE_ORIGIN':'luma-native-builder',
                       'LUMA_ANDROID_SOURCE_MANIFEST_SHA256':'a'*64,
                       'LUMA_ANDROID_COMPILER_INVOCATION_ID':'b'*32}
@@ -53,7 +54,7 @@ class PairAdmission(unittest.TestCase):
 
     def tearDown(self): self.tmp.cleanup()
     def write_pin(self): self.pin.write_text(''.join(k+'='+v+'\n' for k,v in self.values.items()))
-    def prepare(self): package.prepare(self.pin, self.archives, self.output, 'x86_64')
+    def prepare(self): package.prepare(self.pin, self.archives, self.output, self.arch)
 
     def evidence(self):
         self.prepare()
@@ -70,7 +71,7 @@ class PairAdmission(unittest.TestCase):
                             'sha256':provenance.sha(notice)})
         members.append({'role':'vendor','image_path':'/etc/licenses/prairie-figtree/OFL.txt',
                         'sha256':provenance.sha(self.font)})
-        self.producer = {'result':'CANONICAL-PAIR-RETAINED','actual_container_exit_code':0,
+        self.producer = {'architecture':self.arch,'result':'CANONICAL-PAIR-RETAINED','actual_container_exit_code':0,
             'actual_systemd_terminal_success':True,'source63_sha256':'a'*64,
             'compiler_invocation_id':'b'*32,
             'images':{n:{'sha256':r['sha256'],'bytes':r['size']} for n,r in manifest['images'].items()},
@@ -86,6 +87,18 @@ class PairAdmission(unittest.TestCase):
     def save_members(self): self.member_path.write_text(json.dumps(self.members))
     def verify(self): provenance.verify(self.output,self.producer_path,self.member_path,
                                        self.materials,*self.notices,self.font)
+
+    def test_arm_pair_and_cross_architecture_rejection(self):
+        self.arch='aarch64'
+        for i,archive in enumerate(self.archives):
+            target=archive.with_name(archive.name.replace('waydroid_x86_64','waydroid_arm64_only'))
+            archive.rename(target);self.archives[i]=target
+            self.values['LUMA_ANDROID_'+('SYSTEM','VENDOR')[i]+'_FILENAME']=target.name
+        self.write_pin();self.evidence();self.verify();package.verify(self.output,'aarch64')
+        self.producer['architecture']='x86_64';self.save_producer()
+        self.members['terminal_pair_receipt_sha256']=provenance.sha(self.producer_path);self.save_members()
+        with self.assertRaisesRegex(ValueError,'architecture'):
+            self.verify()
 
     def test_official_reference_backwards_compatible(self):
         del self.values['LUMA_ANDROID_IMAGE_ORIGIN']; self.write_pin(); self.prepare()
