@@ -73,3 +73,54 @@ with full verification before retiring only its old SSD inode. No cache prune.
 
 Final source-cohort alignment includes Shell spec132 and installer compatibility
 constant82, matching the already updated pins. No full image acceptance claimed.
+
+## Native packaging checkpoint, October30 23:20 Chicago
+
+Both current Android compiler/image exports completed successfully. Native image
+RPMs and SRPMs for x86_64 and AArch64 are built (normal job11daf54a exit0);
+inside-image architecture, task-removal Java/native/VINTF correspondence,
+notices and exact byte/provenance checks passed. These are private candidates;
+Android device, platform-security and full source-offer gates remain open.
+
+Native CI results: toolkit41165040069 both CPUs PASS; Android runtime97 run
+41165557492 PASS with143 tests/no skips; Valet82 run41166369625 PASS; Ari21
+jobs for both CPUs in41165777568 PASS (the older failed Valet job in that matrix
+is retained and was superseded separately). Selected widgets, icons, Shell
+state and APK metadata run41164195195 passed. Complete archives were checked
+against GitHub's digest, source receipts and RPM headers before staging.
+
+The first combined Shell numbering incorrectly followed builder copy order,
+changing historical patch dependencies. The current68a24e0d8 restores the main
+sequence and merges added patches around their original anchors. All277 patches
+were applied to the actual source; three affected modules parsed. Two new
+contexts were rebased while preserving native touch, wheel scrolling and the
+bounded Desktop-only presentation wait. Filer's actual161-patch preparation
+also succeeded after restoring lexical declaration order. Native UI run
+41167355646 has x86 Shell PASS; ARM Shell and both Filer compilers are active.
+
+Resolved actual package integration failures: final Filer release76; optional
+Android sources/licenses included only as Valet test dependencies; OS baseline
+excludes separate Office/Creative products; service test follows the actual
+packaged baseline entrypoint. Updated matrix consumer tests passed19 cases;
+baseline tests passed8. No skipped package tests or waived failures were used.
+
+Root HDD release alias: /srv/luma-build/nightly-20261030. Protected source v2 is
+e95b48cec before OS compose, with its prior source record retained. The final
+Shell/Filer source update is still needed before compose. Core107/Tide36 build
+is job1a221ab6 using a short private builder path,6GiB admission and a4GiB actual
+container cap. Long temporary paths were rejected by a socket preflight; no
+package checks were skipped. Local rootless socket failures were avoided by
+using the native CI producer for runtime97. Compiler images were not rebuilt.
+
+The old Nightly21 pipeline was restored read-only from its retained filesystem.
+One inactive Oct11 ISO was fully verified and relocated to HDD with a persistent
+read-only original-path bind (job3518e703 PASS), restoring secondary reserve to
+about25.7GiB. Current OS/build/signer work stays on HDD. No shared cache prune.
+WebKit's unchanged native provider artifacts from40433447051 are being reused;
+their GitHub merge receipt has the exact head tree and declared parent.
+
+Still required: finish affected native UI/Core/Tide packages, assemble/sign the
+matching app runtimes and updated apps, compose both complete OS candidates and
+matching media, run bounded basic candidate checks, merge PR102 and reconcile
+PR41/83/99/101 against the actual integrated heads. No complete OS image,
+installation-media acceptance or public nightly publication is claimed yet.
