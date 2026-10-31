@@ -1054,3 +1054,31 @@ saved monitors.xml already specify scale2.0 at1080x1200. Scrolling investigation
 uses a bounded native Weather fixture on the physical device; no user weather
 store is modified by that profiling fixture. No smoothness improvement is yet
 claimed from the initial measurements.
+
+Native touch verification in the current matching Settings59 build subsequently
+passed: changed200→250 and200→300 through the actual scale menu and Apply bar.
+At300 the window is360x400; the bottom confirmation occupies[0,340,360,60],
+with both Revert and Keep fully inside it. Countdown rollback restored2.0,
+independently verified through Mutter. The previous compatible Settings package
+repair already carries0079/0080; no additional Settings workaround was installed.
+The native mode also advertises preferred scale2.0 and monitors.xml saves2;
+200percent is the selected Titan default, preserving explicit later user choices.
+
+Weather profiling remains unresolved, not a60FPS qualification. Bounded native
+fixture drags update the scroll adjustment during movement, while after-paint
+intervals are commonly50–67ms; a simple shared-kit list is near33ms. A private
+edge-strip mask prototype reduces ScrollView snapshot CPU time from about3ms
+to1ms and improves some intervals, but does not eliminate the wider rendering
+delay. CPU/GPU frequencies already scale dynamically under interaction and the
+GPU returns to runtime suspend; no performance governor/frequency floor changed.
+No evidence supports rewriting Weather's application language from these tests.
+No experimental mask or renderer policy was deployed to production modules.
+The private harness/captures are under the owned update-20261031 artifact folder.
+
+At approximately22:52UTC both the Titan proxy and the Dell reverse SSH endpoint
+stopped answering their SSH banners. Direct Dell probe failed too, so further
+physical qualification awaits the relay connection. A Cairo comparison was not
+executed (connection failed before remote startup). All successfully launched
+profile units have RuntimeMaxSec18 or35 and their UI self-exits after9 or20s;
+no persistent polling/inhibitor or rendering override was installed. Last device
+readback remains200percent; normal Terminal and Settings launch are repaired.
