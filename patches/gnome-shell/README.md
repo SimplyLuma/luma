@@ -336,3 +336,14 @@ frame, tail-only surrounding text), and on the lock screen the keyboard serves
 only the visible unlock entry, closes on lock and keeps the compact prompt
 above it. Tests: `keycap-keypath-native.js`, `keycap-lock-native.js`.
 Shell .133.
+
+`0299-single-layer-shadows.patch`: every multi-layer shadow (lock/login
+poster card, avatar, password field and focus ring, away well, Quick Options
+radio hover, dock icons, detached dock folder) reduced to the single layer St
+paints, ending the "Ignoring excess values in shadow definition" journal
+flood; `tools/check-shell-shadows.py` guards it in the build.
+
+`0300-keycap-cached-grid-and-press-overlay.patch`: key layers cached as one
+texture, the pressed cap drawn over them, previews without offscreen text
+caches shown by opacity above their keys, a warm-up that runs on a timer
+after the keyboard shows, and a vocabulary built in 3 ms slices. Shell .134.

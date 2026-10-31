@@ -23,7 +23,7 @@ are separate historical paths.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The converged nightly source pins Shell `1.luma.133.nightly20261030.1`,
+The converged nightly source pins Shell `1.luma.137.keycap20261031.1`,
 Mutter `1.luma.15.keycap20261030.1`, developer platform
 `1.luma.120.nightly20261030.1`, core apps `1.luma.107.nightly20261030.1`
 and widgets `1.luma.3`. These identify requested
