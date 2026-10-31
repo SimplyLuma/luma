@@ -138,3 +138,12 @@ Individual physical loudspeaker/receiver isolation was not completed; do not
 interpret mixer labels or the manual diagram as independent acoustic evidence.
 Keep this limitation with the source/build handoff. The tested corrected kernel
 and rollback image are retained privately; no general release was published.
+
+Touch wake candidate: kernel patch0066 and the optional shared
+`scripts/mobile/touch-wake-policy.py` / `config/mobile/luma-touch-wake-policy.service`
+use FT3383 hardware gesture detection and compositor display-power signals.
+Device profiles opt in with `wakeup-source`; unsupported devices are unchanged.
+The Titan has this candidate staged, with protocol/event/lifecycle checks passed
+and zero service CPU measured during20s idle. Physical double-tap acceptance,
+fresh boot and system-sleep/battery qualification remain pending. Lift-to-wake
+requires a real motion event backend, which this Titan build does not expose.

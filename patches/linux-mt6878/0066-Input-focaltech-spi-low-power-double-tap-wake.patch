@@ -1,0 +1,326 @@
+Subject: [PATCH] Input: focaltech-spi: recognize double tap in controller low-power mode
+
+Use controller-side double-tap detection and KEY_WAKEUP instead of a host
+sampling loop. Expose a narrow wake_gesture switch for display-power policy,
+serialize SPI configuration with IRQ reads and restore normal touch on wake.
+System sleep arms the touchscreen IRQ only when wakeup is enabled.
+---
+--- a/drivers/input/touchscreen/focaltech-spi.c
++++ b/drivers/input/touchscreen/focaltech-spi.c
+@@ -16,6 +16,8 @@
+ #include <linux/input/touchscreen.h>
+ #include <linux/interrupt.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/pm_wakeup.h>
+ #include <linux/of.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/spi/spi.h>
+@@ -35,6 +37,10 @@
+ #define FTS_REG_CHIP_ID		0xa3
+ #define FTS_REG_FW_VER		0xa6
+ 
++#define FTS_REG_GESTURE_EN	0xd0
++#define FTS_REG_GESTURE_OUT	0xd3
++#define FTS_GESTURE_DOUBLE_TAP	0x24
++
+ #define FTS_MAX_POINTS		10
+ #define FTS_POINT_LEN		6
+ /* Data from register 0x01: a 4-byte header ([1] low nibble = point count), then 6 bytes per point. */
+@@ -55,6 +61,12 @@
+ 	struct touchscreen_properties prop;
+ 	struct gpio_desc *reset;
+ 	u32 edge_margin[4];	/* left, top, right, bottom, in screen pixels */
++	struct mutex lock;
++	bool gesture_mode;
++	bool suspended;
++	bool irq_wake;
++	bool resume_gesture;
++	u64 wake_count;
+ 	u8 *tx;
+ 	u8 *rx;
+ };
+@@ -104,6 +116,121 @@
+ 	}
+ 	return ret;
+ }
++
++
++/* Called with lock held: the normal IRQ and configuration share SPI buffers. */
++static int fts_write_reg(struct fts_spi *ts, u8 reg, u8 val)
++{
++	struct spi_transfer t = {
++		.tx_buf = ts->tx, .rx_buf = ts->rx,
++		.len = FTS_HDR_LEN + FTS_DUMMY_LEN + 1,
++	};
++	int i, ret = -EIO;
++
++	for (i = 0; i < FTS_RETRIES; i++) {
++		memset(ts->tx, 0, t.len);
++		ts->tx[0] = reg;
++		ts->tx[3] = 1;
++		ts->tx[FTS_HDR_LEN + FTS_DUMMY_LEN] = val;
++		ret = spi_sync_transfer(ts->spi, &t, 1);
++		udelay(FTS_CS_HIGH_US);
++		if (!ret && !(ts->rx[3] & 0xa0))
++			return 0;
++		if (!ret)
++			ret = -EIO;
++	}
++	return ret;
++}
++
++static int fts_gesture_mode(struct fts_spi *ts, bool enable)
++{
++	static const u8 masks[] = { 0xd1, 0xd2, 0xd5, 0xd6, 0xd7, 0xd8 };
++	u8 val;
++	int i, ret;
++
++	if (ts->gesture_mode == enable)
++		return 0;
++	if (enable) {
++		/* Only double tap; do not interrupt the host for drawn letters. */
++		for (i = 0; i < ARRAY_SIZE(masks); i++) {
++			ret = fts_write_reg(ts, masks[i], i == 0 ? BIT(4) : 0);
++			if (ret)
++				return ret;
++		}
++	}
++	ret = fts_write_reg(ts, FTS_REG_GESTURE_EN, enable);
++	if (ret)
++		return ret;
++	usleep_range(1000, 2000);
++	ret = fts_read(ts, FTS_REG_GESTURE_EN, &val, 1);
++	if (ret || val != enable) {
++		fts_write_reg(ts, FTS_REG_GESTURE_EN, 0);
++		return ret ?: -EIO;
++	}
++	ts->gesture_mode = enable;
++	if (enable) {
++		for (i = 0; i < FTS_MAX_POINTS; i++) {
++			input_mt_slot(ts->input, i);
++			input_mt_report_slot_inactive(ts->input);
++		}
++		input_mt_sync_frame(ts->input);
++		input_sync(ts->input);
++	}
++	return 0;
++}
++
++static void fts_wake(struct fts_spi *ts)
++{
++	ts->wake_count++;
++	pm_wakeup_event(&ts->spi->dev, 500);
++	input_report_key(ts->input, KEY_WAKEUP, 1);
++	input_sync(ts->input);
++	input_report_key(ts->input, KEY_WAKEUP, 0);
++	input_sync(ts->input);
++}
++
++static ssize_t wake_gesture_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	struct fts_spi *ts = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%u\n", READ_ONCE(ts->gesture_mode));
++}
++
++static ssize_t wake_gesture_store(struct device *dev,
++		struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct fts_spi *ts = dev_get_drvdata(dev);
++	bool enable;
++	int ret;
++
++	ret = kstrtobool(buf, &enable);
++	if (ret)
++		return ret;
++	disable_irq(ts->spi->irq);
++	mutex_lock(&ts->lock);
++	ret = ts->suspended ? -EBUSY : fts_gesture_mode(ts, enable);
++	mutex_unlock(&ts->lock);
++	enable_irq(ts->spi->irq);
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_RW(wake_gesture);
++
++static ssize_t wake_gesture_count_show(struct device *dev,
++		struct device_attribute *attr, char *buf)
++{
++	struct fts_spi *ts = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%llu\n", READ_ONCE(ts->wake_count));
++}
++static DEVICE_ATTR_RO(wake_gesture_count);
++
++static struct attribute *fts_attrs[] = {
++	&dev_attr_wake_gesture.attr,
++	&dev_attr_wake_gesture_count.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(fts);
+ 
+ #define FTS_EDGE_BAND		96
+ 
+@@ -165,14 +292,90 @@
+ 	struct fts_spi *ts = data;
+ 	u8 buf[FTS_DATA_LEN];
+ 
++	mutex_lock(&ts->lock);
++	if (ts->gesture_mode) {
++		if (!fts_read(ts, FTS_REG_GESTURE_OUT, buf, 8) &&
++		    buf[0] == FTS_GESTURE_DOUBLE_TAP &&
++		    !fts_gesture_mode(ts, false))
++			fts_wake(ts);
++		goto out;
++	}
+ 	if (fts_read(ts, FTS_REG_POINTS, buf, sizeof(buf))) {
+ 		dev_err_ratelimited(&ts->spi->dev, "touch read failed\n");
+-		return IRQ_HANDLED;
++		goto out;
+ 	}
+ 	if (dump)
+ 		dev_info(&ts->spi->dev, "%*ph\n", FTS_HDR_POINTS + FTS_POINT_LEN * 2, buf);
+ 	fts_report(ts, buf);
++out:
++	mutex_unlock(&ts->lock);
+ 	return IRQ_HANDLED;
++}
++
++static int fts_suspend(struct device *dev)
++{
++	struct fts_spi *ts = dev_get_drvdata(dev);
++	int ret;
++
++	disable_irq(ts->spi->irq);
++	mutex_lock(&ts->lock);
++	ts->resume_gesture = ts->gesture_mode && device_may_wakeup(dev);
++	ret = fts_gesture_mode(ts, device_may_wakeup(dev));
++	ts->suspended = !ret;
++	mutex_unlock(&ts->lock);
++	if (ret)
++		goto fail;
++	if (!device_may_wakeup(dev))
++		return 0;
++	ret = enable_irq_wake(ts->spi->irq);
++	if (ret) {
++		mutex_lock(&ts->lock);
++		ts->suspended = false;
++		fts_gesture_mode(ts, false);
++		mutex_unlock(&ts->lock);
++		goto fail;
++	}
++	ts->irq_wake = true;
++fail:
++	enable_irq(ts->spi->irq);
++	return ret;
++}
++
++static int fts_resume(struct device *dev)
++{
++	struct fts_spi *ts = dev_get_drvdata(dev);
++	u8 gesture[8] = {};
++	int ret;
++
++	if (ts->irq_wake) {
++		disable_irq(ts->spi->irq);
++		disable_irq_wake(ts->spi->irq);
++		ts->irq_wake = false;
++	}
++	mutex_lock(&ts->lock);
++	if (ts->gesture_mode)
++		fts_read(ts, FTS_REG_GESTURE_OUT, gesture, sizeof(gesture));
++	/* Background resumes must not leave a still-blank screen scanning. */
++	ret = fts_gesture_mode(ts, ts->resume_gesture &&
++			       gesture[0] != FTS_GESTURE_DOUBLE_TAP);
++	ts->suspended = false;
++	if (!ret && gesture[0] == FTS_GESTURE_DOUBLE_TAP)
++		fts_wake(ts);
++	mutex_unlock(&ts->lock);
++	enable_irq(ts->spi->irq);
++	return ret;
++}
++static DEFINE_SIMPLE_DEV_PM_OPS(fts_pm_ops, fts_suspend, fts_resume);
++
++static void fts_remove(struct spi_device *spi)
++{
++	struct fts_spi *ts = spi_get_drvdata(spi);
++
++	disable_irq(spi->irq);
++	mutex_lock(&ts->lock);
++	fts_gesture_mode(ts, false);
++	mutex_unlock(&ts->lock);
++	device_init_wakeup(&spi->dev, false);
+ }
+ 
+ 
+@@ -189,6 +392,8 @@
+ 	if (!ts)
+ 		return -ENOMEM;
+ 	ts->spi = spi;
++	mutex_init(&ts->lock);
++	spi_set_drvdata(spi, ts);
+ 	ts->tx = devm_kzalloc(dev, 2 * FTS_BUF_LEN, GFP_KERNEL | GFP_DMA);
+ 	if (!ts->tx)
+ 		return -ENOMEM;
+@@ -227,6 +432,7 @@
+ 	ts->input = input;
+ 	input->name = "FocalTech touchscreen";
+ 	input->id.bustype = BUS_SPI;
++	input_set_capability(input, EV_KEY, KEY_WAKEUP);
+ 
+ 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, 4095, 0, 0);
+ 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, 4095, 0, 0);
+@@ -250,6 +456,9 @@
+ 	if (ret)
+ 		return ret;
+ 
++	device_set_wakeup_capable(dev, true);
++	device_set_wakeup_enable(dev, device_property_read_bool(dev, "wakeup-source"));
++
+ 	dev_info(dev, "chip 0x%02x%02x, firmware 0x%02x\n", id_hi, id_lo, fw);
+ 	return 0;
+ }
+@@ -270,9 +479,12 @@
+ 	.driver = {
+ 		.name = "focaltech-spi",
+ 		.of_match_table = fts_of_match,
++		.dev_groups = fts_groups,
++		.pm = pm_sleep_ptr(&fts_pm_ops),
+ 	},
+ 	.id_table = fts_spi_ids,
+ 	.probe = fts_probe,
++	.remove = fts_remove,
+ };
+ module_spi_driver(fts_driver);
+ 
+--- /dev/null
++++ b/Documentation/ABI/testing/sysfs-driver-focaltech-spi
+@@ -0,0 +1,17 @@
++What:           /sys/bus/spi/devices/.../wake_gesture
++Date:           October 2026
++Contact:        Luma device maintainers
++Description:
++                Boolean controller low-power gesture mode. Root display-power
++                policy writes 1 only while the screen is blank, and 0 on unblank
++                or policy shutdown. Only a double tap generates KEY_WAKEUP;
++                recognizing it restores normal touch reporting. It does not
++                unlock the session. Transport/readback errors reject the write.
++                System sleep also uses gesture mode when power/wakeup is enabled.
++
++What:           /sys/bus/spi/devices/.../wake_gesture_count
++Date:           October 2026
++Contact:        Luma device maintainers
++Description:
++                Read-only count of recognized double-tap wake reports since
++                driver probe. Reading this does not query the controller.
+--- a/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt6878-unihertz-titan2-elite.dts
+@@ -317,6 +317,7 @@
+ 			reg = <0>;
+ 			spi-max-frequency = <6000000>;
+ 			interrupts-extended = <&pio 7 IRQ_TYPE_EDGE_FALLING>;
++			wakeup-source;
+ 			reset-gpios = <&pio 6 GPIO_ACTIVE_LOW>;
+ 			iovcc-gpios = <&pio 119 GPIO_ACTIVE_HIGH>;
+ 			vdd-supply = <&mt6369_vtp>;

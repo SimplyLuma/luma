@@ -701,3 +701,38 @@ config, System.map, kernel release,0065 source patch and private acceptance
 snapshot with readback SHA256 checksums on the8TB drive. Existing original boot
 backup remains. This preserves a recoverable accepted device build; no general
 OS release or upstream merge is implied.
+
+### 2026-10-30 — low-power double-tap wake candidate
+
+Owner requested double-tap/lift wake with low battery impact. Current FT3383
+SPI driver had no wake mode; the only IIO device is the MT6363 ADC, with no motion
+sensor/event interface. Added0066 with controller gesture configuration, only
+double-tap recognition, KEY_WAKEUP, serialized register/IRQ operations, ABI docs,
+and a Titan `wakeup-source` DT opt-in. Normal touch remains the default on other
+profiles. PM code preserves the gesture state during background resumes; actual
+system-sleep testing remains pending.
+
+Added a shared optional display-power policy and system unit. It follows active
+seat/display events, uses a child with the session owner's bus credentials, and
+keeps root sysfs writes limited to discovered boolean capability nodes. Session
+startup retries are bounded; idle processing has no periodic sampling. Both
+normal shutdown and ExecStopPost restore normal touch. Unit capabilities permit
+only dropping monitor credentials and terminating that child. No OSK, audio,
+Home layout or motion-polling change was made.
+
+Final module compile passes in admitted job246c77c9. Source provenance job
+72cfa94d applies the patch to exact retained driver/DT, verifies the patched C
+matches the compiled input, checks the opt-in/ABI file, and parses Python.
+Actual phone systemd unit verification passes. Live mode writes read back1/0;
+native wake-key injection turns the display on while retaining the lock. The
+native power-key path disarms on unblank and rearms on blank. A 20-second service
+idle check measured0ns CPU, with a later final-version check recorded privately.
+These checks do not simulate or prove a physical double tap.
+
+Live source-backed module/policy are installed and enabled for subsequent boots;
+the original packaged touch module remains the fallback, and the accepted audio
+kernel/boot image is unchanged. Policy-stop restoration passes. A fresh boot,
+physical gesture recognition, system suspend/resume and battery-life measurement
+are pending. Async physical tap question is still unanswered; driver wake count
+has been zero during observation. Lift-to-wake stays unavailable until the
+motion sensor/hub backend exposes a low-power event path.
