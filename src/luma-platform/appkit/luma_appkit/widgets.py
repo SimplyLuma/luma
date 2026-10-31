@@ -210,9 +210,10 @@ def install_appkit() -> None:
     _appearance_policies[display] = surface_policy
 
     loading_tokens = False
+    loaded_appearance = None
 
     def load_for_appearance(*_arguments: object) -> None:
-        nonlocal loading_tokens
+        nonlocal loading_tokens, loaded_appearance
         if loading_tokens:
             return
         loading_tokens = True
@@ -246,6 +247,12 @@ def install_appkit() -> None:
                 "luma-appkit-glass-tokens.css" if glass else
                 "luma-appkit-dark-tokens.css" if dark else "luma-appkit-tokens.css",
             )
+            # Protocol capability notifications do not necessarily change the
+            # painted treatment. Re-parsing every sheet on window realization
+            # blocks the first frame even when the tokens are identical.
+            appearance_key = (token_sheet, dark, frost, glass, high_contrast, chosen)
+            if appearance_key == loaded_appearance:
+                return
             if token_sheet:
                 tokens.load_from_path(token_sheet)
             appearance["name"] = (
@@ -270,6 +277,7 @@ def install_appkit() -> None:
             provider.load_from_path(path)
             window_frame.reload_toolkit(display)
             _reload_style_sheets()
+            loaded_appearance = appearance_key
 
         finally:
             loading_tokens = False

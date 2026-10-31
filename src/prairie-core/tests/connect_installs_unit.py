@@ -331,14 +331,13 @@ class NotesTests(unittest.TestCase):
 
 
 class TideTests(unittest.TestCase):
-    def test_a_flatpak_tide_is_left_out_of_server_sources(self):
-        from prairie_apps.connect_tide import sync_tide
+    def test_flatpak_tide_targets_its_active_sandbox_not_retained_native_data(self):
+        from prairie_apps.connect_tide import library, FlatpakRuntime
         with tempfile.TemporaryDirectory() as root:
             h = Home(Path(root))
-            h.flatpak_app(TIDE)
-            status = sync_tide(address="https://hub.test", token="t", http=None, state={}, scope="s",
-                               environment=h.env, remote_changed=True)
-        self.assertIn("Flatpak", status)
+            data = h.flatpak_app(TIDE)
+            found = library(h.env)
+            self.assertEqual(found, (data / "luma-tide/library.db", FlatpakRuntime(TIDE)))
 
 
 if __name__ == "__main__":

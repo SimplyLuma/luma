@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma prepared application runtime
+PartOf=graphical-session.target
+# Capture the display environment after GNOME publishes WAYLAND_DISPLAY/DISPLAY.
+# Starting alongside Shell can otherwise prepare a context no launch can reuse.
+After=graphical-session-pre.target gnome-session-initialized.target
+ConditionEnvironment=!XDG_SESSION_CLASS=greeter
+StartLimitIntervalSec=60
+StartLimitBurst=2
+
+[Service]
+ExecStart=/usr/bin/python3 -sP -m luma_appkit.apphost
+Restart=on-failure
+RestartSec=5
+# A child that could not join its launcher's cgroup must survive a host restart.
+KillMode=process
+
+[Install]
+WantedBy=graphical-session.target

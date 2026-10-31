@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -sP
 from pathlib import Path
 if not Path('/.flatpak-info').exists():
     from luma_installer.native_app_roles import launch_if_owned

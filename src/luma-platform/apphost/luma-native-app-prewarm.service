@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Prepare native Luma application services
+PartOf=graphical-session.target
+# Capture the display environment after GNOME publishes WAYLAND_DISPLAY/DISPLAY.
+# Starting alongside Shell can otherwise prepare a context no launch can reuse.
+After=graphical-session-pre.target gnome-session-initialized.target
+ConditionEnvironment=!XDG_SESSION_CLASS=greeter
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-native-app-prewarm
+KillMode=process
+TimeoutStartSec=30

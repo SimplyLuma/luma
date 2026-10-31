@@ -354,16 +354,42 @@ export class PanelReveal {
         this.start = this.progress = start;
         this.target = target;
         this._lastTime = GLib.get_monotonic_time(); this._lastDelta = this._velocity = 0;
-        this._contentState = this.contents.map(child => [child, child.opacity, child.translation_x]);
+        this._contentState = this.contents.map(child =>
+            [child, child.opacity, child.translation_x, child.get_offscreen_redirect()]);
         this.mask = new PanelMask();
         this.actor.add_effect_with_name('luma-panel-reveal', this.mask);
-        this.ready = true;
+        // First map can upload icons/text and allocate the native controls.
+        // Warm their cached layers before starting the opening clock, otherwise
+        // that first expensive paint consumes most of the animation's duration.
+        this._warming = start === 0 && target !== 0 && St.Settings.get().enable_animations;
+        for (const [child] of this._contentState)
+            child.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
+        this.ready = !this._warming;
         this.seek(start);
-        if (target !== null) this.settle(target);
+        if (this._warming) {
+            this._warmPaint = global.stage.connect_after('after-paint', () => {
+                global.stage.disconnect(this._warmPaint); this._warmPaint = 0;
+                this._warmIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                    this._warmIdle = 0;
+                    if (this.cancelled) return GLib.SOURCE_REMOVE;
+                    this._warming = false; this.ready = true;
+                    this.seek(this.progress);
+                    if (this.target !== null) this.settle(this.target);
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+        } else if (target !== null) this.settle(target);
     }
     seek(progress) {
         if (this.cancelled) return;
         this.progress = Math.max(0, Math.min(1, progress));
+        if (this._warming) {
+            // Populate the offscreen texture without flashing the full page.
+            // Finger updates are retained and applied after this first paint.
+            this.mask.bounds = [0, 0, 0, 0]; this.mask.radius = 0;
+            this.mask.queue_repaint();
+            return;
+        }
         const w = this.initialWidth + (this.width - this.initialWidth) * this.progress;
         const h = this.initialHeight + (this.height - this.initialHeight) * this.progress;
         const left = this.right ? this.width - w : (this.width - w) / 2;
@@ -417,11 +443,15 @@ export class PanelReveal {
     cancel() {
         if (this.cancelled) return;
         this.cancelled = true;
+        if (this._warmPaint) global.stage.disconnect(this._warmPaint);
+        if (this._warmIdle) GLib.source_remove(this._warmIdle);
+        this._warmPaint = this._warmIdle = 0;
         this.timeline?.stop(); this.timeline = null;
         if (this.mask) this.actor.remove_effect(this.mask);
         this.mask = null;
-        for (const [child, opacity, translation] of this._contentState ?? []) {
+        for (const [child, opacity, translation, redirect] of this._contentState ?? []) {
             child.opacity = opacity; child.translation_x = translation;
+            child.set_offscreen_redirect(redirect);
         }
         this._contentState = null;
         this.actor.remove_clip();

@@ -82,3 +82,18 @@ install_headers(
   'compat/luma-window-frame.h', 'compat/luma-frame-tokens.h', 'compat/luma-frame-glyphs.h',
   subdir: 'luma-1/compat',
 )
+
+# A tap reaches the prepared Python/GTK runtime without starting Python twice.
+executable('luma-app-launch', 'apphost/luma-app-launch.c',
+  c_args: ['-DLUMA_LAUNCHER_DIR="' + get_option('prefix') / get_option('libexecdir') / 'luma-app-launchers' + '"'],
+  install: true, install_dir: get_option('libexecdir'))
+
+install_emptydir(get_option('libexecdir') / 'luma-app-launchers')
+
+# Opt-in preparation for the explicitly declared native OS applications.
+shared_module('luma-app-prepare', 'apphost/native-prepare.c',
+  dependencies: [gtk_dep, meson.get_compiler('c').find_library('dl')],
+  install: true)
+install_data('apphost/native-prewarm.py', rename: 'luma-native-app-prewarm',
+  install_mode: 'rwxr-xr-x', install_dir: get_option('libexecdir'))
+install_data('apphost/native.json', install_dir: get_option('datadir') / 'luma-app-host')

@@ -7,7 +7,7 @@
 # (org.projectluma.Terminal) and desktop file, and no Obsoletes or Conflicts.
 Name:           luma-terminal
 Version:        0.1.0
-Release:        1.luma.7.creator20261021.1%{?dist}
+Release:        1.luma.9%{?dist}
 Summary:        Terminal for Luma
 License:        MPL-2.0
 URL:            https://projectluma.org/
@@ -28,7 +28,7 @@ Requires:       python3
 Requires:       python3-gobject
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.78~preview.20260923.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.121
 Requires:       vte291-gtk4
 
 %description
@@ -48,13 +48,16 @@ install -d %{buildroot}%{_datadir}/%{name}
 cp -R $app/luma_terminal $app/style %{buildroot}%{_datadir}/%{name}/
 install -d %{buildroot}%{_bindir}
 cat >%{buildroot}%{_bindir}/%{name} <<'EOF'
-#!%{python3} -s
+#!%{python3} -sP
 import sys
 sys.path.insert(0, "%{_datadir}/%{name}")
 from luma_terminal.terminal import main
 raise SystemExit(main())
 EOF
 chmod 0755 %{buildroot}%{_bindir}/%{name}
+install -d %{buildroot}%{_libexecdir}/luma-app-launchers
+mv %{buildroot}%{_bindir}/%{name} %{buildroot}%{_libexecdir}/luma-app-launchers/%{name}
+ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/%{name}
 install -D -m 0644 $app/data/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
 # The checkout's entry runs `python3 -m luma_terminal` from the tree; the
@@ -92,6 +95,7 @@ SHELL=/bin/bash XDG_DATA_HOME="$open_data" PYTHONPATH=$PWD GSK_RENDERER=cairo xv
   %{python3} tests/smoke_open.py
 
 %files
+%{_libexecdir}/luma-app-launchers/%{name}
 %license MPL-2.0.txt
 %{_bindir}/%{name}
 %{_datadir}/%{name}/
@@ -100,6 +104,12 @@ SHELL=/bin/bash XDG_DATA_HOME="$open_data" PYTHONPATH=$PWD GSK_RENDERER=cairo xv
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.9
+- Require the developer platform that ships the shared application launcher.
+
+* Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.8.mobile20261030.1
+- Use the shared prepared application launcher
+
 * Mon Oct 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.6.creator20261019.1
 - Close exited terminal panes and terminate shells and foreground jobs on close.
 
