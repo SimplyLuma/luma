@@ -124,7 +124,7 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
             # Seal the same maintained artwork that the app installs, including
             # legacy source filenames whose installed identity is canonical.
             icon = source / creative_icons[app_id]
-        if app_id in {'org.projectluma.Displays', 'org.projectluma.Imager'}:
+        if app_id in {'org.projectluma.Displays', 'org.projectluma.Imager', 'org.projectluma.Ari'}:
             # These maintained applications ship their own canonical artwork.
             icon = source / 'data' / f'{app_id}.svg'
         if app_id == 'org.projectluma.Charlie':
