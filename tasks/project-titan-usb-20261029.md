@@ -1000,3 +1000,38 @@ it does not mask the installed Shell/GDM/kit cohort. Temporary inspection
 extensions/idle override are retired after verification. Private scripts,
 package payloads and screenshots remain outside Git. No new60FPS or universal
 Android compatibility claim follows from this deployment.
+
+### 2026-10-31 — Settings launch compatibility follow-up
+
+User reported Settings would not open. Actual journal and ldd-r show retained
+Settings70/esim immediately exits127 because Platform121 lacks seven old
+activation-code/QR-scanner symbols, beginning with luma_activation_code_new.
+Retaining the numerically higher device branch package during the earlier update
+was the wrong compatibility decision. Other-agent Android GPU work is untouched.
+
+Used the matching successful ARM Settings producer from run41242715357,
+Settings59.dash20261026.1 plus its exact filesystem subpackage. RPM digests pass;
+main RPM SHA576315266fa148d04cc4a26a97ab367de31c7eb0c9a5eee077ba5a8e935152f4
+matches its published artifact sidecar. Extracted current executable has no
+unresolved dynamic symbols against the Titan's current libraries. Started this
+actual current build in the existing graphical session, obtaining the Settings
+D-Bus owner and a real360x400 native window. This is the normal compiled app,
+not a launcher placeholder or replacement UI. Both current packages are being
+installed transactionally; final result is recorded below. The temporary running
+verification binary is bounded and will be closed/reopened from/usr after install.
+
+The retained device-specific70 QR/eSIM Settings frontend is not qualified with
+Platform121; do not claim that device-private frontend remains supported in the
+current cohort. Device eSIM broker, modem firmware/kernel and user profiles were
+not changed. Shared migration notes now explicitly distinguish branch release
+numbers from runtime binary compatibility.
+
+Permanent replacement completed: project-titan-settings-package exit0, actual
+pending commitcb0adb9716a4fdd6b286db08b28178731d353160db49308fd7d6f5047e76fdc6.
+Live application also PASSED this time (normal/usr/local state after reboot);
+normal/usr/bin and RPM database now identify matching Settings59 and filesystem59.
+ldd-r reports no unresolved symbols. Closed the bounded verification process and
+launched normal installed/usr/bin/gnome-control-center. Accessibility inspection
+confirms a real Settings frame showing/visible. No shell restart, OS reboot or
+Android service operation was needed for this follow-up. No launcher override,
+old shared-library injection, platform downgrade or inert symbol shim was used.

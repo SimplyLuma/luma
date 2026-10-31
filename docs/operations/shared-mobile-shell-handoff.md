@@ -48,6 +48,13 @@ the receiving branch/device; the Titan's private development install includes
 newer unrelated platform UI work, so do not downgrade an installed package tuple
 just to match an older base.
 
+Release counters from different device branches do not establish compatibility.
+Keep native callers and the shared toolkit in a checked cohort, and verify their
+dynamic symbols when combining builds. The Titan Settings70/eSIM binary required
+legacy activation-code/QR symbols absent from Platform121; matching current
+Settings59 loads with that toolkit. Keeping the higher-numbered binary caused
+Settings to exit before opening.
+
 ## Moving another phone from Phosh
 
 1. Keep that phone's working kernel, boot chain, firmware, modem, audio, power
