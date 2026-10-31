@@ -328,3 +328,11 @@ touch, grab-free alternatives, commits at once, sentence case from the
 keyboard's own text, adjustResize through Mutter 0025, D-Bus activated haptics,
 no per-key IBus traffic with layout sources). Rules and tests:
 `docs/mobile/keycap-keyboard.md` ("Key path"). Shell .132.
+
+`0298-keycap-press-path-and-lock-screen.patch`: a press costs a translation
+(cached cell geometry, one stage read, no restyle: a tint actor and
+per-character preview labels, priors computed in idle, haptic after the press
+frame, tail-only surrounding text), and on the lock screen the keyboard serves
+only the visible unlock entry, closes on lock and keeps the compact prompt
+above it. Tests: `keycap-keypath-native.js`, `keycap-lock-native.js`.
+Shell .133.

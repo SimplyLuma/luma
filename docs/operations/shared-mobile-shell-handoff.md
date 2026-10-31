@@ -93,3 +93,5 @@ Validation and physical-device evidence are recorded in
 keys, user data, raw backups, captures, generated libraries/RPMs and diagnostic
 scripts are intentionally excluded. All product implementation belongs in the
 maintained source paths above, rather than copying the private override tree.
+
+Nightly integration also includes the e970f249b Keycap press/lock-screen follow-up; the combined Shell package is 1.luma.134.nightly20261030.1.

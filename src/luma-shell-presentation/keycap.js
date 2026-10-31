@@ -116,10 +116,18 @@ export function cellDistance(cell, x, y) {
 }
 
 export function nearestCell(cells, x, y) {
+    // Almost every touch lands inside a cell: find it without measuring.
+    for (const cell of cells) {
+        if (x >= cell.x1 && x < cell.x2 && y >= cell.y1 && y < cell.y2)
+            return cell;
+    }
     let best = null, bestDistance = Infinity, bestCentre = Infinity;
     for (const cell of cells) {
-        const distance = cellDistance(cell, x, y);
-        const centre = Math.hypot(x - (cell.x1 + cell.x2) / 2, y - (cell.y1 + cell.y2) / 2);
+        const dx = Math.max(cell.x1 - x, 0, x - cell.x2);
+        const dy = Math.max(cell.y1 - y, 0, y - cell.y2);
+        const distance = dx * dx + dy * dy;
+        const cx = x - (cell.x1 + cell.x2) / 2, cy = y - (cell.y1 + cell.y2) / 2;
+        const centre = cx * cx + cy * cy;
         if (distance < bestDistance || (distance === bestDistance && centre < bestCentre)) {
             best = cell;
             bestDistance = distance;
@@ -213,18 +221,67 @@ export class TouchCorrection {
 const MIRROR_TAIL = 48;
 const MIRROR_SENT = 64;
 
+const SURROGATE = /[\uD800-\uDFFF]/;
+const NOT_HIGH_SURROGATE = /[^\uD800-\uDBFF]+/g;
+
+// The last `max` code units of `text`, never splitting a surrogate pair.
+function tailUnits(text, max) {
+    if (text.length <= max)
+        return text;
+    let start = text.length - max;
+    const unit = text.charCodeAt(start);
+    if (unit >= 0xDC00 && unit <= 0xDFFF)
+        start++;
+    return text.slice(start);
+}
+
+// The text just before the caret, at most `max` code units of it, for a
+// surrounding text whose caret counts characters (code points), as Clutter's
+// does. It neither walks nor copies a long document: a text without
+// surrogates is indexed directly, and only one with them is scanned (without
+// building arrays) to find the caret.
+export function textBeforeCursor(text, cursor, max = 4 * MIRROR_TAIL) {
+    if (!text || !(cursor > 0))
+        return '';
+    let end;
+    if (!SURROGATE.test(text)) {
+        end = Math.min(cursor, text.length);
+    } else {
+        // Characters in the text, counted natively; then walk to the caret
+        // from whichever end is nearer (usually zero steps from the end).
+        const total = text.length - text.replace(NOT_HIGH_SURROGATE, '').length;
+        if (cursor >= total) {
+            end = text.length;
+        } else if (total - cursor < cursor) {
+            end = text.length;
+            for (let points = total; points > cursor && end > 0; points--) {
+                const unit = text.charCodeAt(end - 1);
+                end -= unit >= 0xDC00 && unit <= 0xDFFF && end > 1 ? 2 : 1;
+            }
+        } else {
+            end = 0;
+            for (let points = 0; end < text.length && points < cursor; points++) {
+                const unit = text.charCodeAt(end);
+                end += unit >= 0xD800 && unit <= 0xDBFF && end + 1 < text.length ? 2 : 1;
+            }
+        }
+    }
+    return tailUnits(text.slice(Math.max(0, end - max - 1), end), max);
+}
+
 export class TextMirror {
     constructor() {
         this.reset();
     }
 
     reset(before = '') {
-        this.before = before;
+        this.before = tailUnits(before ?? '', 4 * MIRROR_TAIL);
         this._sent = [];
     }
 
+    // Bounded whatever the text's length (reports can be whole documents).
     _tail(text) {
-        return [...text].slice(-MIRROR_TAIL).join('');
+        return [...tailUnits(text, 2 * MIRROR_TAIL)].slice(-MIRROR_TAIL).join('');
     }
 
     // This keyboard replaced `count` characters before the caret with `text`.
@@ -251,7 +308,7 @@ export class TextMirror {
         if (index >= 0) {
             this._sent.splice(0, index + 1);
             if (this._sent.length === 0)
-                this.before = before ?? '';
+                this.before = tailUnits(before ?? '', 4 * MIRROR_TAIL);
             return false;
         }
         if (this._sent.length === 0 && tail === this._tail(this.before))
@@ -431,9 +488,16 @@ export class WordSuggester {
 
     // How common a word is, including the person's accepted choices.
     frequency(word) {
-        const lower = word.toLowerCase();
+        return this._frequencyOf(word.toLowerCase());
+    }
+
+    _frequencyOf(lower) {
         return (this._frequency.get(lower) ?? (this._known.has(lower) ? 1 : 0)) +
             (this._accepted.get(lower) ?? 0) * 1000;
+    }
+
+    _hasLower(lower) {
+        return this._known.has(lower) || this._kept.has(lower);
     }
 
     // The person's own words: one they kept by undoing a correction is never
@@ -479,7 +543,8 @@ export class WordSuggester {
             if (sorted[i] !== lower)
                 found.push(sorted[i]);
         }
-        return found.sort((a, b) => this.frequency(b) - this.frequency(a) || a.length - b.length || (a < b ? -1 : 1))
+        const weight = new Map(found.map(word => [word, this._frequencyOf(word)]));
+        return found.sort((a, b) => weight.get(b) - weight.get(a) || a.length - b.length || (a < b ? -1 : 1))
             .slice(0, limit);
     }
 
@@ -490,31 +555,39 @@ export class WordSuggester {
         const p = keycap.prediction;
         const weights = new Map();
         const add = (candidate, weight) => {
-            if (candidate !== lower && this.has(candidate) && !(weights.get(candidate) >= weight))
+            if (candidate !== lower && this._hasLower(candidate) && !(weights.get(candidate) >= weight))
                 weights.set(candidate, weight);
         };
+        // Candidates are joined from prefixes and suffixes computed once per
+        // word: no array is built or joined per candidate.
         const chars = [...lower];
-        const join = parts => parts.join('');
-        for (let i = 0; i < chars.length - 1; i++)
-            add(join([...chars.slice(0, i), chars[i + 1], chars[i], ...chars.slice(i + 2)]), p.transpose);
-        for (let i = 0; i < chars.length; i++) {
-            add(join([...chars.slice(0, i + 1), chars[i], ...chars.slice(i + 1)]), p.double);
+        const n = chars.length;
+        const prefix = [''], suffix = [];
+        for (let i = 0; i < n; i++)
+            prefix.push(prefix[i] + chars[i]);
+        suffix[n] = '';
+        for (let i = n - 1; i >= 0; i--)
+            suffix[i] = chars[i] + suffix[i + 1];
+        for (let i = 0; i < n - 1; i++)
+            add(prefix[i] + chars[i + 1] + chars[i] + suffix[i + 2], p.transpose);
+        for (let i = 0; i < n; i++) {
+            add(prefix[i + 1] + chars[i] + suffix[i + 1], p.double);
             if (chars[i] === chars[i + 1])
-                add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.double);
+                add(prefix[i] + suffix[i + 1], p.double);
             for (const letter of LETTERS) {
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i + 1)]),
+                add(prefix[i] + letter + suffix[i + 1],
                     neighbours(chars[i], letter) ? p.neighbour : p.other);
             }
         }
-        for (let i = 0; i <= chars.length; i++) {
+        for (let i = 0; i <= n; i++) {
             for (const letter of LETTERS) {
                 const near = neighbours(chars[i - 1], letter) || neighbours(chars[i], letter);
-                add(join([...chars.slice(0, i), letter, ...chars.slice(i)]), near ? p.near_insert : p.other);
+                add(prefix[i] + letter + suffix[i], near ? p.near_insert : p.other);
             }
         }
-        for (let i = 0; i < chars.length; i++)
-            add(join([...chars.slice(0, i), ...chars.slice(i + 1)]), p.other);
-        return [...weights].map(([candidate, weight]) => [candidate, weight * Math.max(1, this.frequency(candidate))])
+        for (let i = 0; i < n; i++)
+            add(prefix[i] + suffix[i + 1], p.other);
+        return [...weights].map(([candidate, weight]) => [candidate, weight * Math.max(1, this._frequencyOf(candidate))])
             .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
     }
 
@@ -555,7 +628,7 @@ export class WordSuggester {
     // How likely `prefix` continues into a word: the summed frequency of up
     // to `cap` known words starting with it (a bounded scan of the sorted
     // index, cheap enough for the touch that asks).
-    prefixMass(prefix, cap = 256) {
+    prefixMass(prefix, cap = 64) {
         const lower = (prefix ?? '').toLowerCase();
         if (!lower)
             return 0;
@@ -575,7 +648,7 @@ export class WordSuggester {
         }
         let mass = 0;
         for (let i = low, n = 0; i < sorted.length && n < cap && sorted[i].startsWith(lower); i++, n++)
-            mass += Math.max(1, this.frequency(sorted[i]));
+            mass += Math.max(1, this._frequencyOf(sorted[i]));
         return mass;
     }
 }

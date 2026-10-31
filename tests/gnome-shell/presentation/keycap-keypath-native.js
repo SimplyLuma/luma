@@ -218,17 +218,64 @@ async function work() {
     keyboard._setActiveLevel('default');
     keyboard._latched = true;
     await sleep(300);
+    // The press path itself: how long handling a TOUCH_BEGIN takes, how
+    // often it reads actor geometry, and whether it restyles anything.
+    const pressHandling = [];
+    const handle = keyboard.handleKeyEvent;
+    keyboard.handleKeyEvent = function (event) {
+        const start = now();
+        const type = event.type();
+        try {
+            return handle.call(this, event);
+        } finally {
+            if (type === Clutter.EventType.TOUCH_BEGIN)
+                pressHandling.push((now() - start) / 1000);
+        }
+    };
+    let geometryReads = 0, counting = false;
+    const geometry = ['get_transformed_extents', 'get_transformed_position', 'get_transformed_size']
+        .map(name => [name, Clutter.Actor.prototype[name]]);
+    for (const [name, original] of geometry) {
+        Clutter.Actor.prototype[name] = function (...args) {
+            if (counting)
+                geometryReads++;
+            return original.apply(this, args);
+        };
+    }
+    const nodes = actor => [actor, ...descendants(actor, () => true)].filter(a => a instanceof St.Widget)
+        .map(a => a.get_theme_node());
+    let restyled = 0;
+    let presses = 0;
     for (const letter of 'thequickbrownfoxjumpsoverthelazydog') {
         const key = keyFor(letter);
         const [x, y] = centre(key);
+        const before = nodes(key);
         tapTimes.push(now());
+        counting = true;
         down(0, x, y);
         await sleep(70);
+        counting = false;
+        presses++;
+        const during = nodes(key);
+        if (during.some((node, i) => node !== before[i]))
+            restyled++;
         tapTimes.push(now());
         up(0);
         await sleep(90);
     }
+    keyboard.handleKeyEvent = handle;
+    for (const [name, original] of geometry)
+        Clutter.Actor.prototype[name] = original;
     await sleep(300);
+    const sortedPress = [...pressHandling].sort((a, b) => a - b);
+    const pressMedian = sortedPress[Math.floor(sortedPress.length / 2)] ?? Infinity;
+    const pressP90 = sortedPress[Math.floor(sortedPress.length * 0.9)] ?? Infinity;
+    check('handling a press takes well under its 2 ms device budget', pressMedian < 0.75 && pressP90 < 1.5,
+        `TOUCH_BEGIN median ${pressMedian.toFixed(3)} ms, p90 ${pressP90.toFixed(3)} ms, max ${(sortedPress.at(-1) ?? 0).toFixed(3)} ms over ${sortedPress.length}`);
+    check('a press reads actor geometry at most once', geometryReads <= presses,
+        `${geometryReads} geometry reads over ${presses} presses`);
+    check('a press restyles nothing (the cap and its labels keep their theme nodes)', restyled === 0,
+        `${restyled} of ${presses} presses restyled the pressed key`);
     stageIds.forEach(id => global.stage.disconnect(id));
     keyboard.remove_effect(probe);
     // The frame that shows a press (the cap going down, the preview) and
@@ -260,7 +307,7 @@ async function work() {
     }
     check('a stand-in feedbackd was activated and asked for a quiet tick per press',
         await until(() => read(feedbackLog).split('\n').filter(l => l.includes('button-pressed quiet')).length >= 30, 3000),
-        `${read(feedbackLog).split('\n').filter(l => l.includes('button-pressed')).length} feedback calls; direct call ${direct}; retry ${keyboard._feedbackRetryAt}`);
+        `${read(feedbackLog).split('\n').filter(l => l.includes('button-pressed')).length} feedback calls; direct call ${direct}`);
 
     // 2. Commit at once: a release commits within the event that ended it,
     // also with the main loop kept busy at the frame clock's priority (as
@@ -494,6 +541,32 @@ async function work() {
     Main.inputMethod.vfunc_set_cursor_location(rect);
     Main.inputMethod._context = realContext;
     check('a layout source sends IBus no caret or surrounding text', sent.length === 0, JSON.stringify(sent));
+
+    // A long document: a surrounding-text report costs the same whatever its
+    // length (only the tail before the caret is read), and the keyboard's
+    // view of that tail is right, emoji included.
+    const documentText = `${'lorem ipsum 😀 '.repeat(20000)}Hello. `;
+    const caret = [...documentText].length;
+    let started = now();
+    Main.inputMethod.vfunc_set_surrounding(documentText, caret, caret);
+    const reportMs = (now() - started) / 1000;
+    const mirrored = keyboard._mirror.before;
+    check('a surrounding-text report of a 300k-unit document is handled in under 3 ms', reportMs < 3,
+        `${documentText.length} code units in ${reportMs.toFixed(3)} ms`);
+    check('the keyboard keeps the right text before the caret of a long document',
+        mirrored.endsWith('lorem ipsum 😀 Hello. ') && mirrored.length <= 400, JSON.stringify(mirrored.slice(-40)));
+    Main.inputMethod.vfunc_set_surrounding('', 0, 0);
+    // Word analysis runs when the Shell is idle, between frames: it must be
+    // short enough never to hold the next touch.
+    const analyses = [];
+    for (const word of ['internationalizatoin', 'recieve', 'quikcly', 'teh', 'somethign']) {
+        started = now();
+        await keyboard._suggester.analyse(word);
+        analyses.push((now() - started) / 1000);
+    }
+    const worstAnalysis = Math.max(...analyses.slice(1));
+    check('analysing a word takes under 1 ms', worstAnalysis < 1,
+        `${analyses.map(ms => ms.toFixed(2)).join(', ')} ms`);
 
     // Desktop keeps the platform behaviour: the keyboard keeps no inset and
     // applications are not resized.
