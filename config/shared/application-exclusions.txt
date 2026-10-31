@@ -1,0 +1,7 @@
+# Applications excluded from default Luma installs on every device.
+# Optional Creative apps remain available through Depot.
+gnome-tour
+yelp
+gnome-system-monitor
+luma-reel
+luma-darkroom

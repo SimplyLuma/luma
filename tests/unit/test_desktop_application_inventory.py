@@ -8,7 +8,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 FORBIDDEN = {'gnome-disk-utility', 'gnome-calculator', 'ptyxis', 'gnome-terminal',
              'gnome-console', 'yelp', 'firefox', 'gnome-extensions-app',
-             'openemu-linux', 'luma-imager'}
+             'openemu-linux', 'luma-imager', 'gnome-tour', 'gnome-system-monitor',
+             'luma-reel', 'luma-darkroom'}
 REPLACEMENTS = {'luma-calculator', 'luma-terminal', 'luma-disks', 'luma-tide'}
 
 
@@ -43,17 +44,30 @@ class DesktopApplicationInventoryTests(unittest.TestCase):
 
     def test_shared_native_apps_keep_exact_noarch_inputs_on_both_images(self):
         roles = lines('config/shared/application-packages.txt')
-        self.assertTrue({'luma-calculator', 'luma-terminal', 'luma-tide'} <= set(roles))
+        self.assertTrue({'luma-calculator', 'luma-terminal', 'luma-tide', 'luma-monitor'} <= set(roles))
         self.assertFalse(FORBIDDEN & set(roles))
         inputs = dict(line.split('=', 1) for line in lines('config/desktop/inputs.env') if '=' in line)
         pins = lines('config/desktop/packages.txt')
         mobile = (ROOT / 'scripts/mobile/compose-fp6-rootfs.sh').read_text()
-        for name in ('CALCULATOR', 'TERMINAL', 'TIDE'):
+        for name in ('CALCULATOR', 'TERMINAL', 'TIDE', 'MONITOR'):
             alias = 'LUMA_' + name + '_NEVRA'
             self.assertIn(inputs[alias], pins)
             self.assertTrue(inputs[alias].endswith('.noarch'))
             self.assertIn('$' + alias + '.rpm', mobile)
         self.assertNotIn('$PTYXIS_AARCH64_NEVRA.rpm', mobile)
+
+    def test_mobile_exclusions_match_desktop_and_never_reenter_shared_roles(self):
+        excluded = set(lines('config/shared/application-exclusions.txt'))
+        self.assertEqual(excluded, {'gnome-tour', 'yelp', 'gnome-system-monitor',
+                                    'luma-reel', 'luma-darkroom'})
+        self.assertLessEqual(excluded, set(lines('config/os/removed-packages.txt')))
+        self.assertFalse(excluded & set(lines('config/shared/application-packages.txt')))
+        mobile = (ROOT / 'scripts/mobile/compose-fp6-rootfs.sh').read_text()
+        self.assertIn('--exclude=', mobile)
+        self.assertIn('config/shared/application-exclusions.txt', mobile)
+        self.assertNotIn('$LUMA_DARKROOM_NEVRA.rpm', mobile)
+        desktop = (ROOT / 'scripts/vm/compose-desktop-image.sh').read_text()
+        self.assertNotIn('$LUMA_DARKROOM_NEVRA.rpm', desktop)
 
     def test_dock_defaults_match_and_only_pin_baseline_apps(self):
         docks = []

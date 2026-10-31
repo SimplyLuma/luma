@@ -30,16 +30,10 @@ grep -Fq 'use_proxies=False' "$source_root/luma_reel/export.py" || \
 grep -Fq 'os.replace' "$source_root/luma_reel/export.py" || \
   fail 'export does not atomically finalize its temporary sibling'
 
-grep -Fxq 'luma-reel' "$repo_root/config/shared/application-packages.txt" || \
-  fail 'Reel is absent from the shared application role'
-# Both composition paths must consume the exact declared package.
-. "$repo_root/config/desktop/inputs.env"
-grep -Fxq "$LUMA_REEL_NEVRA" \
-  "$repo_root/config/desktop/packages.txt" || fail 'desktop Reel package is not exactly pinned'
-grep -Fq '$LUMA_REEL_NEVRA.rpm' "$repo_root/scripts/vm/compose-desktop-image.sh" || \
-  fail 'desktop composition does not consume the pinned Reel RPM'
-grep -Fq '$LUMA_REEL_NEVRA.rpm' "$repo_root/scripts/mobile/compose-fp6-rootfs.sh" || \
-  fail 'mobile composition does not consume the same pinned Reel RPM'
+# Creative applications are optional Depot installs, never baseline roles.
+grep -Fxq 'luma-reel' "$repo_root/config/shared/application-exclusions.txt" || fail 'optional app is not excluded from phone images'
+grep -Fxq 'luma-reel' "$repo_root/config/os/removed-packages.txt" || fail 'optional app is not excluded from desktop images'
+if grep -Fxq 'luma-reel' "$repo_root/config/shared/application-packages.txt"; then fail 'optional app leaked into shared defaults'; fi
 
 if command -v rg >/dev/null 2>&1; then
   forbidden_runtime=$(rg -ni '(waydroid|android\.media|android\.provider|webview|webkit|electron)' \

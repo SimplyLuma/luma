@@ -74,7 +74,7 @@ class KeycapTokens(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_shell_patch_is_registered(self):
-        self.assertIn("Patch1284:      0294-keycap-keyboard.patch", SPEC)
+        self.assertIn("Patch1274:      0294-keycap-keyboard.patch", SPEC)
         self.assertIn("0294-keycap-keyboard.patch", BUILDER)
         self.assertIn("keycap.js keycapTokens.js keycap.css", BUILDER)
         self.assertIn("gjs -m %{SOURCE9033} js/ui/lumaPresentation/keycap.js js/ui/keyboard.js", SPEC)

@@ -7,13 +7,30 @@ shared Luma GNOME Shell with Mobile presentation, using the Desktop/Tablet
 services and native controls. The old GNOME Mobile 48 bake-off and Phosh renderer
 are separate historical paths.
 
+If a checkout cannot find these sources, inspect the development ref explicitly;
+they are not yet integrated into `main`. This does not switch or reset the
+receiving agent's worktree:
+
+```sh
+git fetch origin refs/heads/codex/project-titan-usb-20261029:refs/remotes/origin/codex/project-titan-usb-20261029
+git show origin/codex/project-titan-usb-20261029:src/luma-shell-presentation/presentation.js
+```
+
+## App startup
+
+The prepared GTK runtime, native launch frontend, bounded native Settings/Filer
+preparation and immutable-image Python caches are maintained in the shared
+platform. Carry the matching package cohort, not just the shell JS. See
+[Mobile application startup](mobile-app-startup.md) for architecture, confinement
+boundaries, measured first-frame timings and remaining qualification gates.
+
 ## Source to carry over
 
 | Area | Maintained source |
 | --- | --- |
 | Home, dock, paging, widgets, shared search, gestures and app motion | `src/luma-shell-presentation/` |
 | Compact login, automatic hardware-keyboard/OSK behavior | `patches/gnome-shell/0290-compact-login-action-bar.patch`, `0291-shared-handheld-startup-and-input.patch` |
-| Notification island, full-screen Mobile tray, lock privacy and touch target | `patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch`, `0293-mobile-lock-notification-island.patch` |
+| Notification island, full-screen Mobile tray, lock privacy and touch target | `patches/gnome-shell/0292-display-exclusions-and-notification-touch.patch`, `0293-mobile-lock-notification-island.patch`, `0294-notification-dismissal-policy.patch` |
 | Shared window geometry, safe areas and app action bars | `src/luma-platform/appkit/luma_appkit/`, `src/luma-platform/ui/` and maintained app/Mutter patches |
 | Live Weather/Calendar models and background refresh | `src/luma-home-widgets/`, `src/prairie-core/prairie_apps/weather*.py` |
 | Maintained native Terminal and shared command action bar | `src/luma-terminal/` |
@@ -23,10 +40,9 @@ are separate historical paths.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The converged nightly source pins Shell `1.luma.137.keycap20261031.1`,
-Mutter `1.luma.17.keycap20261031.1`, developer platform
-`1.luma.120.nightly20261030.1`, core apps `1.luma.107.nightly20261030.1`
-and widgets `1.luma.3`. These identify requested
+The converged nightly source pins Shell `1.luma.139`,
+Mutter `1.luma.17.keycap20261031.1`, developer platform `1.luma.121`,
+core apps `1.luma.126`, Tide `2.luma.38` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
 the receiving branch/device; the Titan's private development install includes
 newer unrelated platform UI work, so do not downgrade an installed package tuple
@@ -78,7 +94,11 @@ right status area. Full pages use the dock palette's opaque treatment for readab
 Both fill the screen, scroll internally, follow/reverse with
 the finger and snap on release. Mobile lock uses the same notification anatomy,
 with lock visibility/redaction rules and authentication before app activation.
-Desktop/Tablet lock presentation remains separate.
+Desktop/Tablet lock presentation remains separate. Mobile bottom-edge taps reach
+application controls; Home and the app switcher require an actual upward drag.
+Home and right-edge Back observe the native stage instead of using a reactive
+button over the app. Back waits for a deliberate inward horizontal drag; ordinary
+scrolls and taps remain in the app. Tablet retains its explicit Home control.
 
 Home's interrupted-settle jump is corrected, but steady page animation remains
 around 30 painted FPS on the Titan's current 60 Hz mode. Hardware acceleration
@@ -95,3 +115,67 @@ scripts are intentionally excluded. All product implementation belongs in the
 maintained source paths above, rather than copying the private override tree.
 
 Nightly integration also includes the e970f249b Keycap press/lock-screen follow-up; the combined Shell package is 1.luma.134.nightly20261030.1.
+
+Native Tide/Connect source synchronization repairs and the matching Tide build
+are documented in [Tide server sync](tide-connect-sync.md).
+
+Titan boot health: the older board check requires greetd, Phoc and Phosh.
+Migrating that phone to GDM/GNOME also requires a session-aware check, or the
+initramfs attempt counter can return it to the pinned older deployment.
+`scripts/mobile/session-healthcheck.py` preserves required update checks and
+validates the selected display manager and its corresponding shell. The
+development Titan uses this helper through a scoped
+`greenboot-healthcheck.service` drop-in. Retain the existing success/bless
+service and fallback mechanism; do not mark a candidate successful before its
+health check passes. This is a Titan operator integration, not a replacement
+for other boards' boot backends.
+
+
+The restored native GDM selection has now passed a fresh reboot and required
+update/session health checks. Physical-keyboard login and the shared Home work.
+A legacy explicit `screen-keyboard-enabled=true` user setting was cleared on
+the Titan; maintained physical-keyboard detection and touch-only/accessibility
+behavior remain unchanged. Keep the shared false default when migrating old
+Phosh configurations; do not force-enable the OSK in recovery scripts.
+
+The MT6878 audio PLL correction is maintained separately under
+`patches/linux-mt6878/0065-clk-mediatek-mt6878-preserve-independent-PLL-gates.patch`.
+It is hardware-specific and belongs after the device branch's preceding kernel
+series. Its full kernel has booted on the owner's Titan, and the owner confirms
+Tide playback is smooth. Doom/call-path listening checks remain untested. It is not a desktop/tablet audio-policy change or OS release.
+
+
+Owner has accepted the current Titan playback and requested retaining it.
+Individual physical loudspeaker/receiver isolation was not completed; do not
+interpret mixer labels or the manual diagram as independent acoustic evidence.
+Keep this limitation with the source/build handoff. The tested corrected kernel
+and rollback image are retained privately; no general release was published.
+
+Touch wake candidate: kernel patch0066 and the optional shared
+`scripts/mobile/touch-wake-policy.py` / `config/mobile/luma-touch-wake-policy.service`
+use FT3383 hardware gesture detection and compositor display-power signals.
+Device profiles opt in with `wakeup-source`; unsupported devices are unchanged.
+The driver reports KEY_WAKEUP on a separate input device and retains low-power
+mode until actual unblank. Shared handheld `powerButton.js` explicitly handles
+XF86WakeUp as wake-only, including while locked: relying on ordinary input idle
+activity was inconsistent after manual display blank. Physical recognition was
+observed, but the initial implementation failed to unblank. Three consecutive
+injected events now pass with the revised shell handler and keep the lock.
+The owner confirmed physical double-tap wake on October30; counter5→6 and
+gesture mode0 corroborate the wake. Both services remain active/enabled. Fresh
+boot and system-sleep/battery qualification remain pending. Lift-to-wake requires a real motion event backend, which this
+Titan build does not expose. Idle policy checks have measured zero service CPU;
+this is not a whole-device battery-life measurement.
+
+
+2026-10-30 input/inventory follow-up: patch `0294-notification-dismissal-policy` restores descendant picking in
+the drawer and touch-down gesture eligibility. Clear all and swipes share the
+native card's incoming-call protection instead of excluding all critical alerts.
+Phone composition now selects Luma Monitor and enforces shared default-app
+exclusions for Tour, Help/Yelp, GNOME System Monitor, Reel and Darkroom. Desktop
+already excludes these; Creative offerings remain optional Depot installs.
+Visible Home pages cache unchanged content, and opening reveal work owns and
+cancels its first-paint preparation. Performance is still unqualified: the Titan
+has a60Hz reported mode but even a minimal compositor rectangle often paints
+around30FPS through its simpledrm/Panfrost path. Do not promise60FPS or fixed
+90Hz battery behavior from these changes. No CPU/GPU performance floor remains.

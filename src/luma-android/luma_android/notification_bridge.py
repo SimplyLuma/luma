@@ -44,8 +44,10 @@ class Notification:
     reply_action: str = ""
 
     def validate(self) -> None:
+        # The framework posts its own notifications as the platform package
+        # "android"; every other package name has at least two segments.
         if (not isinstance(self.package, str) or len(self.package) > 255
-                or not PACKAGE.fullmatch(self.package)):
+                or not (self.package == "android" or PACKAGE.fullmatch(self.package))):
             raise ValueError("Invalid Android notification package")
         for value, limit in ((self.app_name, 256), (self.summary, 4096),
                              (self.body, 65536), (self.category, 256)):

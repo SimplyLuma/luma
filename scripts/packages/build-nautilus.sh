@@ -12,7 +12,7 @@ surface_candidate_release=$NAUTILUS_LUMA_RELEASE
 # An explicitly recorded private candidate can qualify a newer shared toolkit
 # before its successful installed checks promote the global image pin.
 platform_release=${LUMA_FILER_PLATFORM_RELEASE_OVERRIDE:-$LUMA_DEVELOPER_PLATFORM_RELEASE}
-[[ "$platform_release" =~ ^1\.luma\.[0-9]+\.[A-Za-z0-9.-]+$ ]] || {
+[[ "$platform_release" =~ ^1\.luma\.[0-9]+(\.[A-Za-z0-9.-]+)?$ ]] || {
   printf 'error: malformed Filer platform candidate release\n' >&2
   exit 1
 }

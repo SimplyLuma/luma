@@ -368,6 +368,17 @@ export function keyboardHeight(monitor, rows, columns = 10, inset = 0) {
     return Math.round(Math.min(keys + g.strip_height + inset, limit));
 }
 
+// Logical pixels kept clear below the keys: the home gesture zone (`gesture`,
+// 0 where there is none) and, on a phone held upright, thumb_gap so the
+// bottom row sits where a thumb rests rather than at the screen edge. iOS
+// keeps a band of about 75 pt below its keys, Android a 48 dp navigation
+// frame. Tablets and phones on their side keep only the gesture zone.
+export function bottomInset(monitor, phone, gesture = 0) {
+    if (!phone || monitor.width >= monitor.height)
+        return gesture;
+    return Math.max(gesture, keycap.geometry.thumb_gap);
+}
+
 // Horizontal drag on space moves the caret one character per step once the
 // drag is clearly sideways; returns the caret steps not yet sent.
 export function spaceCursorSteps(dx, dy, sent) {

@@ -109,6 +109,43 @@ class SecretServiceStore:
                 return value
             return self._lookup_legacy_and_migrate(reference)
 
+    def lookup_background(self, reference: str) -> str | None:
+        """Read the current or preview sign-in without an unlock prompt.
+
+        Connect uses this worker-only path. Search metadata first, then load
+        only an unlocked item's secret; do not request UNLOCK or LOAD_SECRETS.
+        Preview entries remain usable and migrate through the interactive app.
+        """
+        with self._lock:
+            try:
+                service = self.Secret.Service.get_sync(self.Secret.ServiceFlags.OPEN_SESSION, None)
+                locked = False
+                for schema in (self.schema, self._legacy_schema):
+                    items = service.search_sync(schema, self._attributes(reference),
+                                                self.Secret.SearchFlags.ALL, None)
+                    for item in items:
+                        if item.get_locked():
+                            locked = True
+                            continue
+                        item.load_secret_sync(None)
+                        if item.get_locked():
+                            locked = True
+                            continue
+                        value = item.get_secret()
+                        if value is None:
+                            raise CredentialUnavailable("Tide couldn't read the saved sign-in.")
+                        text = value.get_text()
+                        if not isinstance(text, str):
+                            raise CredentialUnavailable("Tide couldn't read the saved sign-in.")
+                        return text
+                    if locked:
+                        # An existing current sign-in must be unlocked, rather
+                        # than silently falling back to an older password.
+                        raise CredentialUnavailable("Unlock the keyring and sync again.")
+                return None
+            except self.GLib.Error:
+                raise CredentialUnavailable("Tide couldn't read the saved sign-in. Unlock the keyring and sync again.") from None
+
     def _lookup_legacy_and_migrate(self, reference: str) -> str | None:
         """Called with `self._lock` already held, on a miss under the
         current schema. A dev-preview build stored the same reference under

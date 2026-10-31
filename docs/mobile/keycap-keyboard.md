@@ -76,6 +76,14 @@ is memory-only, collected while the on-screen keyboard exists, and skips
 copies marked `x-kde-passwordManagerHint`. Automatic keyboard presence policy
 (patch 0291) is unchanged.
 
+Below the keys the keyboard keeps a bottom inset (`Keycap.bottomInset`). On a
+phone held upright it is `keycap.geometry.thumb_gap` (72 logical px), so the
+bottom row sits where a thumb rests instead of at the screen edge. For
+comparison, iOS keeps a band of about 75 pt below its keys and Android keeps
+a 48 dp navigation frame. The home gesture (28 px) sits inside that inset.
+The lock screen keeps the thumb gap without the gesture. Tablets and phones
+on their side keep only the gesture zone, and Desktop keeps nothing.
+
 Not ported to the Shell: the eight-column emoji grid with search and recents
 (the Shell's paged emoji chooser is themed instead), drag-select of accent
 alternatives, and the Settings page bindings.

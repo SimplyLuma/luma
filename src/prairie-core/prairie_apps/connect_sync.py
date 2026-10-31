@@ -565,6 +565,11 @@ def source_stamp(environment: dict[str, str] | None = None) -> int:
                 newest = max(newest, entry.stat().st_mtime_ns)
             except OSError:
                 continue
+    from .connect_tide import source_marker
+    try:
+        newest = max(newest, source_marker(environment).stat().st_mtime_ns)
+    except OSError:
+        pass
     return newest
 
 

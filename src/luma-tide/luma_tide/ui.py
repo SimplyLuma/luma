@@ -80,7 +80,7 @@ class TideWindow(AppWindow):
         self.set_name('td-window')
         self.add_css_class('tide-window')
         self.trail = NavigationTrail(Place(self.view, 'Tide', self.album_id), on_change=self._navigated)
-        bind_navigation_input(self, self.trail.back, self.trail.forward)
+        bind_navigation_input(self, self.go_back, self.go_forward)
         self.pane_trail = NavigationTrail(Place('sources', 'Sources'), on_change=self._pane_navigated)
         self.root = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, vexpand=True)
         self.island = named(Island(), 'td-island')
@@ -151,7 +151,6 @@ class TideWindow(AppWindow):
 
     def _breakpoints(self):
         phone = Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 559px'))
-        phone.add_setter(self.root, 'margin-start', 8)
         phone.add_setter(self.deck.previous, 'visible', False)
         self.add_breakpoint(phone)
         self._deck_layout = _LayoutWatch(self.layer, self._size_deck)
@@ -337,6 +336,16 @@ class TideWindow(AppWindow):
         self.scroll.get_vadjustment().set_value(0)
 
     def go_back(self):
+        if self.pane.shown:
+            if self.pane_kind != 'sources' or not self.pane_trail.back():
+                self.pane.close()
+            return True
+        if self.now_tab:
+            self.close_now_playing()
+            return True
+        if self.phone and self.phone_bar.center.searching:
+            self.phone_bar.center.close_search()
+            return True
         return self.trail.back()
 
     def go_forward(self):
@@ -1437,9 +1446,13 @@ class TideWindow(AppWindow):
         self.pane_kind, self.source_id = None, None
 
     def _pane_navigated(self, place, _direction):
+        # A phone menu temporarily replaces the details drawer. Navigation
+        # owns presenting its destination again after that menu dismisses.
+        self.pane_kind = 'sources'
         self.source_id = place.subject
         self.editing = place.view == 'edit'
         self._fill_pane()
+        self.pane.open(subject='sources')
 
     def _open_source(self, identifier, edit=False):
         source = self.library.source(identifier)

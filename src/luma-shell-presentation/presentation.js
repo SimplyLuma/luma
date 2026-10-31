@@ -17,12 +17,13 @@ import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificati
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
+import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
-import {TabletTasks, HandheldMotion} from './tabletTasks.js';
+import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
@@ -30,6 +31,8 @@ import {gettext as _} from 'gettext';
 
 const BUS = 'org.project_luma.ShellState1';
 const PATH = '/org/project_luma/ShellState1';
+// Logical height of the home gesture zone at the bottom of a handheld screen.
+const GESTURE_HEIGHT = 28;
 
 function move(actor, parent) {
     actor.get_parent()?.remove_child(actor);
@@ -143,6 +146,7 @@ export class Presentation {
         Main.layoutManager.addChrome(this._gestureBar, {affectsStruts: false, trackFullscreen: false});
         this._gestureBar.hide();
         this._tasks = new TabletTasks(this);
+        this._backNavigation = new HandheldBackNavigation(this);
         this._gridDrag = new SwitcherDrag(this);
         this._pageSwipe = new SwipeTracker(this._home, Clutter.Orientation.HORIZONTAL,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, {
@@ -167,9 +171,19 @@ export class Presentation {
         });
         const homePan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
             pan_axis: Clutter.PanAxis.Y});
-        homePan.set_begin_threshold(4);
-        homePan.connect('may-recognize', () => this.mode !== 'desktop' &&
-            !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter);
+        homePan.set_begin_threshold(8);
+        homePan.connect('may-recognize', gesture => {
+            if (!this._gestureBar.visible || Main.actionMode !== Shell.ActionMode.NORMAL ||
+                !this._tasks.navigationEnabled) return false;
+            const event = gesture.get_point_event(0);
+            if (!event) return false;
+            const delta = gesture.get_accumulated_delta_abs();
+            const [x, y] = event.get_coords();
+            const [left, top] = this._gestureBar.get_transformed_position();
+            const [width, height] = this._gestureBar.get_transformed_size();
+            return x - delta.get_x() >= left && x - delta.get_x() < left + width &&
+                y - delta.get_y() >= top && y - delta.get_y() < top + height;
+        });
         homePan.connect('recognize', gesture => {
             this._homePanDistance = 0;
             this._tasks.beginNavigation(this._gestureBar, gesture);
@@ -190,7 +204,11 @@ export class Presentation {
             this._tasks._held = false;
             this._tasks.finishLift(false);
         });
-        this._gestureBar.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
+        // Observe the edge without a reactive overlay above client controls.
+        // Clutter cancels the client sequence only after a pan is recognized;
+        // stationary taps therefore remain ordinary application input.
+        global.stage.add_action_full('LumaHome', Clutter.EventPhase.CAPTURE, homePan);
+        this._homePan = homePan;
         this._connect(this._home, 'notify::visible', () => {
             this._pageSwipe.enabled = this._home.visible && (this._layout?.pages ?? 1) > 1;
             this._updateStatusStyle();
@@ -245,7 +263,12 @@ export class Presentation {
                 }
             }
         });
-        this._connect(Main.sessionMode, 'updated', () => this._syncVisibility());
+        this._connect(Main.sessionMode, 'updated', () => {
+            this._syncVisibility();
+            this._queueVisibilitySync();
+        });
+        this._connect(Main.screenShield, 'locked-changed', () => this._queueVisibilitySync());
+        this._connect(Main.screenShield, 'active-changed', () => this._queueVisibilitySync());
         if (Main.keyboard)
             this._connect(Main.keyboard, 'visibility-changed', () => this._syncGestureVisibility());
         this._connect(Main.overview, 'showing', () => {
@@ -599,10 +622,16 @@ export class Presentation {
         return this.mode !== 'desktop' && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
     }
 
-    // Logical pixels the on-screen keyboard keeps clear at its bottom for
-    // the home gesture, which stays above it.
+    // Logical pixels the on-screen keyboard keeps clear below its keys: the
+    // home gesture, which stays above it, and on a phone held upright the
+    // thumb gap. The lock screen and greeter have no home gesture but keep
+    // the thumb gap; Desktop keeps nothing.
     keyboardInset() {
-        return this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter ? 0 : 28;
+        const monitor = Main.layoutManager.keyboardMonitor;
+        if (this.mode === 'desktop' || !monitor)
+            return 0;
+        const locked = Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
+        return bottomInset(monitor, this.mode === 'mobile', locked ? 0 : GESTURE_HEIGHT);
     }
 
     _manage(window) {
@@ -661,6 +690,17 @@ export class Presentation {
         this._mobileLockPanel = null;
     }
 
+    _queueVisibilitySync() {
+        if (this._destroyed || this._visibilitySource) return;
+        // Session-mode listeners and the screen shield finish their transition
+        // in the same main-loop turn. Restore borrowed status actors afterwards.
+        this._visibilitySource = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._visibilitySource = 0;
+            if (!this._destroyed) this._syncVisibility();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _syncVisibility() {
         const unlocked = !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
         const mobileLock = this.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
@@ -704,6 +744,7 @@ export class Presentation {
     }
 
     _syncGestureVisibility() {
+        this._gestureBar.reactive = this.mode !== 'mobile';
         this._gestureBar.visible = !this._destroyed && this.mode !== 'desktop' &&
             !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
             !Main.panel.statusArea.quickSettings.menu.isOpen && !peekNotificationLip()?.isOpen;
@@ -772,6 +813,7 @@ export class Presentation {
     showHome() {
         if (this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        this._syncVisibility();
         this._tasks.beginLift();
         this._tasks.beforeHome();
         // State, app and monitor signals keep Home current while hidden. Reuse
@@ -814,7 +856,8 @@ export class Presentation {
         try {
             if (app) app.activate();
             else info.launch([], global.create_app_launch_context(0, -1));
-            this._home.hide();
+            // The map/focus handlers replace Home when the app has a buffer.
+            // Hiding it at dispatch exposed bare wallpaper throughout startup.
         } catch (error) { Main.notifyError(_('Unable to open application'), error.message); }
     }
 
@@ -883,8 +926,8 @@ export class Presentation {
             lip._place();
         }
         this._setHandheldQuickOptions(true);
-        this._gestureBar.set_position(display.x, display.y + display.height - 28 * scale);
-        this._gestureBar.set_size(display.width, 28 * scale);
+        this._gestureBar.set_position(display.x, display.y + display.height - GESTURE_HEIGHT * scale);
+        this._gestureBar.set_size(display.width, GESTURE_HEIGHT * scale);
         this._apps = this._catalog();
         this._layout = homeLayout(monitor.width / scale, monitor.height / scale,
             this.mode, this._apps.length);
@@ -1076,7 +1119,15 @@ export class Presentation {
         const key = `${first}:${last}`;
         if (key === this._pageVisibilityKey) return;
         this._pageVisibilityKey = key;
-        this._pageViews.forEach((view, index) => {view.visible = index >= first && index <= last;});
+        this._pageViews.forEach((view, index) => {
+            const visible = index >= first && index <= last;
+            // Moving an unchanged page composites one cached layer rather than
+            // traversing every icon mask, label and widget for every frame.
+            // Hidden pages release their cache; model updates invalidate it.
+            view.set_offscreen_redirect(visible ? Clutter.OffscreenRedirect.ALWAYS :
+                Clutter.OffscreenRedirect.AUTOMATIC_FOR_OPACITY);
+            view.visible = visible;
+        });
     }
 
     _settlePage(page, duration) {
@@ -1094,6 +1145,8 @@ export class Presentation {
 
     destroy() {
         this._destroyed = true;
+        global.stage.remove_action(this._homePan);
+        this._backNavigation.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
         this._motion.destroy();
@@ -1106,6 +1159,7 @@ export class Presentation {
         this._tasks.destroy();
         this._tasks = null;
         if (this._rebuildSource) GLib.source_remove(this._rebuildSource);
+        if (this._visibilitySource) GLib.source_remove(this._visibilitySource);
         for (const [object, id] of this._signals) object.disconnect(id);
         this._editor.destroy();
         this._pageSwipe.destroy();
