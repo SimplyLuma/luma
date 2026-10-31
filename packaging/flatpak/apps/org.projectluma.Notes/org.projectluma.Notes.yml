@@ -29,7 +29,7 @@ modules:
     buildsystem: simple
     build-commands:
       - install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core
-      - cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/
+      - cp -a --no-preserve=ownership src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/
       - install -Dm755 src/prairie-core/bin/prairie-notes /app/bin/prairie-notes-real
       - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup prairie-notes-real "$@"\n' > /app/bin/prairie-notes
       - chmod 755 /app/bin/prairie-notes
