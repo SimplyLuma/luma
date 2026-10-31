@@ -42,8 +42,19 @@ def copy_snapshot_bytes(origin, output):
             output.write(block)
         digest.update(block)
     output.flush()
-    os.fsync(output.fileno())
+    # The snapshot caller synchronizes every completed member before exposing
+    # its manifest. Doing that here forces one journal transaction per object.
     return digest.hexdigest()
+
+def sync_member(path, *, directory=False):
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    if directory:
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 def file_hash(path):
     with path.open('rb') as stream:
@@ -152,11 +163,22 @@ def seal(source, target, inputs=False, graph=False):
             directories[directory.relative_to(target).as_posix()] = 0o500
     data = (json.dumps({'schema': schema, 'files': records, 'directories': directories},
                        sort_keys=True, indent=2) + '\n').encode()
-    (target / MANIFEST).write_bytes(data)
-    (target / MANIFEST).chmod(0o400)
-    for path in target.rglob('*'):
-        if path.is_dir(): path.chmod(0o500)
+    # All copies, digest/race checks and final member permissions precede the
+    # durability pass. With no intervening member writes, a filesystem can
+    # commit their journal records together instead of once per tiny object.
+    # Every file is still fsynced, and a failure publishes no manifest.
+    for name in records:
+        sync_member(target / name)
+    for name in sorted(directories, key=lambda name: len(Path(name).parts), reverse=True):
+        sync_member(target / name, directory=True)
+    with (target / MANIFEST).open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fchmod(stream.fileno(), 0o400)
+        os.fsync(stream.fileno())
     target.chmod(0o500)
+    sync_member(target, directory=True)
+    sync_member(target.parent, directory=True)
     digest = hashlib.sha256(data).hexdigest()
     verify(target, digest, schema)
     return digest

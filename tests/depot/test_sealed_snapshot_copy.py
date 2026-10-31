@@ -126,6 +126,36 @@ class SnapshotCopyControls(unittest.TestCase):
             self.seal()
         self.assertEqual(sentinel.read_bytes(), b'original')
 
+    def test_copy_and_protection_complete_before_sync_and_manifest(self):
+        second = self.source / 'second'
+        second.write_bytes(b'another real snapshot member')
+        second.chmod(0o644)
+        synced = set()
+        original_sync = os.fsync
+        def observe(descriptor):
+            path = Path(os.readlink(f'/proc/self/fd/{descriptor}'))
+            if path == self.target or self.target in path.parents:
+                for name in ('payload', 'second'):
+                    member = self.target / name
+                    self.assertTrue(member.is_file())
+                    self.assertEqual(stat.S_IMODE(member.stat().st_mode), 0o400)
+                if path.name == sealer.MANIFEST:
+                    self.assertTrue({'payload', 'second'} <= synced)
+                elif stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    self.assert_no_manifest()
+                synced.add(path.relative_to(self.target).as_posix())
+            return original_sync(descriptor)
+        with mock.patch.object(sealer.os, 'fsync', side_effect=observe):
+            digest = self.seal()
+        self.assertTrue({'payload', 'second', sealer.MANIFEST, '.'} <= synced)
+        sealer.verify(self.target, digest, 'org.projectluma.signing-inputs/v1')
+
+    def test_payload_sync_failure_never_publishes_manifest(self):
+        with mock.patch.object(sealer.os, 'fsync', side_effect=OSError(errno.EIO, 'sync failed')):
+            with self.assertRaises(OSError):
+                self.seal()
+        self.assert_no_manifest()
+
     def test_symlink_member_is_rejected(self):
         (self.source / 'alias').symlink_to(self.file)
         with self.assertRaisesRegex(ValueError, 'nonregular publisher source'):
