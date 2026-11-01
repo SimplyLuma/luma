@@ -230,3 +230,12 @@ Mobile regression module tests the actual bottom-edge touchscreen gesture and
 modal cleanup; all11 checks passed on the Titan, with a301ms hold measurement.
 This does not qualify frame rate on every GPU. The Titan uses source resource
 overlays; matching package builds remain necessary for other devices.
+
+
+Shell144 refines Mobile switcher opacity ordering: Home icons stay hidden during
+the main card fade, and a nonzero preparation paint warms previews before entry.
+The handheld hold is220ms and requires60ms of settled motion; continuing swipes
+and early release do not activate it. Seventeen native checks passed on the
+Titan, including real bottom-edge touch and sampled exit stacking/phasing.
+Matching source resource overlays are installed; this is not a packaged OS
+release or a universal frame-rate qualification.

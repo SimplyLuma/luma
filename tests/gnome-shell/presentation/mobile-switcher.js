@@ -22,10 +22,10 @@ async function run() {
     fake.openSwitcher = () => { opens++; elapsed = (GLib.get_monotonic_time() - start) / 1000; };
     fake._switcherFeedback = () => ticks++;
     fake.verticalUpdate(-80 * p._scale);
-    await sleep(220);
-    check('Hold does not trigger before 300ms', opens === 0);
+    await sleep(170);
+    check('Hold does not trigger before 220ms', opens === 0);
     await sleep(160);
-    check('Hold triggers once near 300ms with one feedback request', opens === 1 && ticks === 1 && elapsed >= 285 && elapsed < 450, elapsed);
+    check('Hold triggers once near 220ms with one feedback request', opens === 1 && ticks === 1 && elapsed >= 205 && elapsed < 370, elapsed);
     fake._held = false;
     fake.verticalUpdate(-80 * p._scale); await sleep(60);
     fake.verticalUpdate(-20 * p._scale); await sleep(330);
@@ -33,9 +33,23 @@ async function run() {
     fake.verticalUpdate(-80 * p._scale); await sleep(60);
     fake.verticalEnd(0); await sleep(330);
     check('Release cancels hold', opens === 1 && !fake._hold);
+    // Continuing motion beyond the hold time must not count as a pause.
+    fake.verticalUpdate(-80 * p._scale);
+    for (let i = 1; i <= 9; i++) {
+        await sleep(35);
+        fake.verticalUpdate((-80 - i * 12) * p._scale);
+    }
+    check('Continuing upward motion does not open switcher', opens === 1 && ticks === 1);
+    await sleep(85);
+    check('Settling after motion activates once', opens === 2 && ticks === 2);
+    const aboveHome = popup => {
+        const siblings = Main.uiGroup.get_children();
+        return siblings.indexOf(popup) > siblings.indexOf(p._home);
+    };
     p.showHome(); tasks.openSwitcher();
     const popup = tasks._switcherPopup;
     await sleep(500);
+    check('Switcher is stacked above Home', aboveHome(popup));
     check('Mobile cards have titles without state, close or lift', popup._cards.every(c =>
         !c._time.visible && !c._close.reactive && c._close.opacity === 0 && c.lift === 0 && c.translation_y === 0));
     // Exercise the actual bottom-edge pan, separately from card dismissal.
@@ -52,6 +66,18 @@ async function run() {
         touch.notify_touch_up(GLib.get_monotonic_time(), 0);
         await sleep(30);
         check('Bottom swipe starts animated return to Home', popup.leaving && !popup._destroyed);
+        check('Returning Home stays below switcher', aboveHome(popup));
+        check('Home icons wait until cards are mostly faded',
+            popup._travelProgress < .35 || p._home.opacity === 0);
+        const frames = [];
+        const paintId = global.stage.connect('after-paint', () => {
+            if (!popup._destroyed) frames.push({above: aboveHome(popup),
+                progress: popup._travelProgress, home: p._home.opacity});
+        });
+        await sleep(300);
+        global.stage.disconnect(paintId);
+        check('Every sampled exit frame retains layering and phased icons', frames.length > 0 &&
+            frames.every(f => f.above && (f.progress < .35 || f.home === 0)));
         await sleep(350);
         check('Bottom swipe restores Home and releases modal popup', popup._destroyed && !tasks._switcherPopup && p._home.visible && p._home.opacity === 255);
     } finally { touch.run_dispose(); }

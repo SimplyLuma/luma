@@ -22,7 +22,8 @@ function control(name, run, icon = null) {
     return button;
 }
 const live = window => Boolean(window?.get_compositor_private());
-const SWITCHER_HOLD_MS = 300;
+const SWITCHER_HOLD_MS = 220;
+const SWITCHER_SETTLE_MS = 60;
 
 export class TabletTasks {
     constructor(home) {
@@ -230,15 +231,30 @@ export class TabletTasks {
             this._hold = 0;
             return;
         }
-        if (this._hold || this._held) return;
-        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWITCHER_HOLD_MS, () => {
+        if (this._held) return;
+        const now = GLib.get_monotonic_time();
+        if (!this._hold || Math.abs(distance - this._holdDistance) >= 6 * this.home._scale) {
+            this._holdDistance = distance;
+            this._holdMotionAt = now;
+        }
+        if (this._hold) return;
+        const trigger = () => {
             this._hold = 0;
             if (!this.navigationEnabled || this._destroyed) return GLib.SOURCE_REMOVE;
+            // A continuing upward swipe is Home, not a hold. Ignore small
+            // finger tremor but require a short settled interval before buzz.
+            const quietMs = (GLib.get_monotonic_time() - this._holdMotionAt) / 1000;
+            if (quietMs < SWITCHER_SETTLE_MS) {
+                this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+                    Math.max(1, Math.ceil(SWITCHER_SETTLE_MS - quietMs)), trigger);
+                return GLib.SOURCE_REMOVE;
+            }
             this._held = true;
             this._switcherFeedback();
             this.openSwitcher();
             return GLib.SOURCE_REMOVE;
-        });
+        };
+        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWITCHER_HOLD_MS, trigger);
     }
     _switcherFeedback() {
         // One short, theme-owned haptic, without sound, polling or a rendering

@@ -1284,3 +1284,51 @@ syntax after the first-paint scheduling refinement. The final native test also
 passed all11 checks on the Titan. This commit includes the previously approved
 Home Screen release-note fragment. Both features are installed for the owner;
 there are no active owned build jobs or remaining approval gates for Home settings.
+
+
+### 2026-10-31 — Home/card fade ordering and faster settled hold
+
+Owner observed Home icons competing in front of fading cards and a hesitation
+on entry. Baseline native actor order already placed Grid above Home; the
+halfway screenshot showed that simultaneous equal-opacity fades made Home icons
+visible through the previews. Patch0304 reasserts that stacking after Home is
+shown and phases icon opacity out of the cards' main fade, using the same
+progress in both directions. It also paints previews at opacity1 on the
+preparation frame instead of culling them at zero and deferring their first
+texture paint until movement. No new idle render loop or refresh-rate override.
+
+The handheld hold is now220ms with a60ms settled interval. Motion of at least
+six logical pixels updates the last-motion time; continued swipes defer the
+trigger, release/retreat cancel it, and small tremor is ignored. One-shot checks
+exist only while the finger is held. The existing single haptic request remains.
+
+Actual maintained native mobile-switcher.js passed17 checks on the Titan,
+including a221.417ms settled trigger, continued motion refusal, activation after
+settling, actual bottom-edge touch dismissal, frame-by-frame layering and icon
+phasing, modal cleanup and interrupted entry. Additional native entry/exit
+captures show the first preparation frames at progress0/stage opacity1, correct
+stacking throughout, Home opacity0 during the main card fade and intermediate
+card opacities. The paused mid-exit screenshot was reviewed: no Home icons
+show through the cards. This is not proof of universal60FPS or elimination of
+every first-frame delay; native construction still takes about100ms in that
+capture and the device's rendering limit remains a separate concern.
+
+Bounded check8e9855a6 passes launch/package cohort consistency, RPM patch identity
+parsing, syntax, patch application and whitespace. Job48d0f6cb applies all16
+maintained Grid source patches and matches the candidate exactly. Shell source
+pins are144. No new RPM or OS release is built/installed.
+
+Source-backed hotload and persistent resource overlays now point to
+/var/lib/project-titan/switcher-layering-20261031. Both exact raw resource files
+were read back in a fresh process before updating only the two owned overlay
+entries in/etc/environment. CANDIDATE.json records source hashes, and
+native-check-results.json retains the17 checks. Previous candidate and the new
+root-private before/environment remain for rollback; local Home schema and the
+Settings development executable bind are unchanged. No session/Android restart
+or reboot. Source/tests/captures are on owned HDD update-20261031/switcher-layering;
+private phone frame proof is project-titan/switcher-layer-fixed.json. Initial
+module import was blocked by the open modal picker; a normal Escape dismissed
+it before running the test. No owner data/layout/preferences were changed.
+
+Final source check337234dd also passes after the release fragment and handoff
+updates, including113 matching package pins and40 valid release fragments.
