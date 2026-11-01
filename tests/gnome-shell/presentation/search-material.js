@@ -17,8 +17,8 @@ async function run() {
     const p = Main.presentation, snapshot = p._state, dialog = Main.lumaSearch._dialog;
     const settings = new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
     const a11y = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y.interface'});
-    const reduce = settings.get_boolean('reduce-transparency'), high = a11y.get_boolean('high-contrast');
-    const treatment = settings.get_string('surface-treatment');
+    const reduce = settings.get_user_value('reduce-transparency'), high = a11y.get_user_value('high-contrast');
+    const treatment = settings.get_user_value('surface-treatment');
     const reloadStyle = () => {
         const path = GLib.getenv('LUMA_SEARCH_MATERIAL_CSS');
         if (path) St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(Gio.File.new_for_path(path));
@@ -67,10 +67,16 @@ async function run() {
         Main.lumaSearch.close(); await sleep(250);
         check('Closing search unmaps all material surfaces', surfaces.every(a => !a.mapped));
     } finally {
-        settings.set_string('surface-treatment', treatment);
-        settings.set_boolean('reduce-transparency', reduce); a11y.set_boolean('high-contrast', high);
+        if (treatment) settings.set_value('surface-treatment', treatment);
+        else settings.reset('surface-treatment');
+        if (reduce) settings.set_value('reduce-transparency', reduce); else settings.reset('reduce-transparency');
+        if (high) a11y.set_value('high-contrast', high); else a11y.reset('high-contrast');
         Main.lumaSearch.close();p._snapshot(snapshot);await sleep(300);reloadStyle();p.showHome();Main.lumaSearch.open();
     }
+    const same = (current, expected) => expected === null ? current === null : Boolean(current?.equal(expected));
+    check('Appearance test restores explicit or unset treatment', same(settings.get_user_value('surface-treatment'), treatment));
+    check('Appearance test restores explicit or unset transparency', same(settings.get_user_value('reduce-transparency'), reduce));
+    check('Appearance test restores explicit or unset contrast', same(a11y.get_user_value('high-contrast'), high));
 }
 GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,2400,()=>run().catch(e=>results.push({name:'Native test error',ok:false,detail:String(e.stack??e)}))
     .finally(()=>GLib.file_set_contents('/tmp/search-material.json',JSON.stringify({results}))));

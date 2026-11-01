@@ -1,0 +1,56 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: keep Dark Style and explicit Luma appearance in sync
+
+--- a/js/ui/status/darkMode.js
++++ b/js/ui/status/darkMode.js
+@@ -2,6 +2,7 @@
+ import GObject from 'gi://GObject';
+ 
+ import * as Main from '../main.js';
++import * as SurfaceMaterials from '../lumaSurfaceMaterials.js';
+ 
+ import {QuickToggle, SystemIndicator} from '../quickSettings.js';
+ 
+@@ -16,25 +17,37 @@
+         this._settings = new Gio.Settings({
+             schema_id: 'org.gnome.desktop.interface',
+         });
++        const schema = Gio.SettingsSchemaSource.get_default()?.lookup(
++            'org.project_luma.shell-state', true);
++        this._surfaceSettings = schema?.has_key('surface-treatment')
++            ? new Gio.Settings({settings_schema: schema}) : null;
++        this._surfaceSettings?.connect('changed::surface-treatment', () => this._sync());
+         this._changedId = this._settings.connect('changed::color-scheme',
+             () => this._sync());
+ 
+         this.connectObject(
+-            'destroy', () => this._settings.run_dispose(),
++            'destroy', () => {
++                this._surfaceSettings?.run_dispose();
++                this._settings.run_dispose();
++            },
+             'clicked', () => this._toggleMode(),
+             this);
+         this._sync();
+     }
+ 
+     _toggleMode() {
++        const dark = !this.checked;
+         Main.layoutManager.screenTransition.run();
+-        this._settings.set_string('color-scheme',
+-            this.checked ? 'default' : 'prefer-dark');
++        // An explicit Luma treatment overrides GNOME's color-scheme. Update
++        // both preferences so Shell, Luma apps and other GTK apps agree.
++        // Capture the target first: settings signals may sync checked now.
++        this._surfaceSettings?.set_string('surface-treatment', dark ? 'dark' : 'light');
++        this._settings.set_string('color-scheme', dark ? 'prefer-dark' : 'default');
+     }
+ 
+     _sync() {
+-        const colorScheme = this._settings.get_string('color-scheme');
+-        const checked = colorScheme === 'prefer-dark';
++        const treatment = SurfaceMaterials.effectiveTreatment();
++        const checked = treatment === 'dark' || treatment === 'frost';
+         if (this.checked !== checked)
+             this.set({checked});
+     }
