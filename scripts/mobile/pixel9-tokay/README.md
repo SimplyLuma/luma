@@ -47,7 +47,8 @@ opens once frames stop). The Mobile Data toggle is GNOME Shell patch 0303 on mai
 
 ## Android
 
-`build-tokay-v20.sh` adds `ANDROID_BINDER_IPC`, `ANDROID_BINDERFS` and the container netfilter set in
+`build-tokay-v22.sh` adds `ANDROID_BINDER_IPC`, `ANDROID_BINDERFS`, `DMABUF_HEAPS`/`DMABUF_HEAPS_SYSTEM`
+(Codec2 allocates from /dev/dma_heap; without it media playback fails with NO_MEMORY) and the container netfilter set in
 `kernel/android-netfilter.list` (nf_tables, iptables-nft compat, NAT/masquerade v4/v6, bridge netfilter,
 UNIX/PACKET/NETLINK_DIAG) with `DYNAMIC_DEBUG` off; the clobber guard still covers the zone.
 Images: the Mesa 26.3 pair (luma-android-images 1.luma.11 payload) at `/usr/share/waydroid-extra/images`
@@ -58,8 +59,8 @@ scriptlets take labels from the booted policy (`--selinux-policy=/`), not the ba
 
 ## Build and install
 
-- `build-tokay-v20.sh` (luma-build, `OSTREE_PATH=/ostree/boot.N/luma/<bootcsum>/0`) →
-  `candidates/luma-tokay-v20/boot.img`; `probe/build-tokay.sh` is `build-comet-probe.sh` with the model
+- `build-tokay-v22.sh` (luma-build, `OSTREE_PATH=/ostree/boot.N/luma/<bootcsum>/0`) →
+  `candidates/luma-tokay-v22/boot.img`; `probe/build-tokay.sh` is `build-comet-probe.sh` with the model
   check set to "Pixel 9". Every `ostree admin deploy` flips boot.0/boot.1: build the boot image for the
   new path before rebooting.
 - Root: Fold shell6 userdata image (`fastboot flash userdata`), then the alpha2 commit by static
