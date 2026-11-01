@@ -56,6 +56,7 @@ export class Presentation {
             St.ThemeContext.get_for_stage(global.stage).get_theme().load_stylesheet(stylesheet);
         this._signals = [];
         this._windows = new Map();
+        this._initialWindows = new Map();
         this._homeMinimized = new Set();
         this._lastFocusedWindow = global.display.focus_window;
         this._statusWindowSignals = [];
@@ -219,6 +220,7 @@ export class Presentation {
         this._connect(themeContext, 'notify::scale-factor', () => this._queueRebuild());
         this._connect(themeContext, 'notify::font', () => this._queueRebuild());
         this._connect(global.display, 'window-created', (_display, window) => {
+            this._watchInitialConfigure(window);
             if (this.mode !== 'desktop') {
                 GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                     if (this._destroyed || this.mode === 'desktop' || Main.sessionMode.isLocked ||
@@ -591,7 +593,9 @@ export class Presentation {
             if (saved.keepSource) GLib.source_remove(saved.keepSource);
             if (!saved.fullscreen) window.unmake_fullscreen();
             if (!saved.maximized) window.unmaximize();
-            if (!saved.fullscreen && !saved.maximized)
+            // A window first configured in Mobile has no earlier windowed
+            // rectangle. Let Mutter/client defaults restore it on Desktop.
+            if (!saved.fullscreen && !saved.maximized && saved.rect.width > 0 && saved.rect.height > 0)
                 window.move_resize_frame(false, saved.rect.x, saved.rect.y,
                     saved.rect.width, saved.rect.height);
         }
@@ -633,6 +637,37 @@ export class Presentation {
             return 0;
         const locked = Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
         return bottomInset(monitor, this.mode === 'mobile', locked ? 0 : GESTURE_HEIGHT);
+    }
+
+    _watchInitialConfigure(window) {
+        if (this.mode !== 'mobile' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
+            return;
+        const stop = () => {
+            for (const id of this._initialWindows.get(window) ?? []) window.disconnect(id);
+            this._initialWindows.delete(window);
+        };
+        this._initialWindows.set(window, [
+            window.connect('configure', (_window, config) => {
+                if (!config.get_is_initial()) return;
+                this._configureMobileWindow(window, config);
+                stop();
+            }),
+            window.connect('unmanaged', stop),
+        ]);
+    }
+
+    _configureMobileWindow(window, config) {
+        if (this.mode !== 'mobile' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter ||
+            window.get_transient_for() || !this._manage(window))
+            return;
+        const monitor = Main.layoutManager.monitors[window.get_monitor()] ?? Main.layoutManager.primaryMonitor;
+        if (!monitor) return;
+        // The client must draw its first buffer at its real fullscreen size.
+        // Changing fullscreen at map is already too late: GTK has painted its
+        // remembered windowed size and will expose it before the resize reply.
+        config.set_is_fullscreen(true);
+        config.set_position(monitor.x, monitor.y);
+        config.set_size(monitor.width, monitor.height);
     }
 
     _manage(window) {
@@ -1150,6 +1185,9 @@ export class Presentation {
 
     destroy() {
         this._destroyed = true;
+        for (const [window, ids] of this._initialWindows)
+            ids.forEach(id => window.disconnect(id));
+        this._initialWindows.clear();
         global.stage.remove_action(this._homePan);
         this._backNavigation.destroy();
         this._liveWidgets?.destroy();

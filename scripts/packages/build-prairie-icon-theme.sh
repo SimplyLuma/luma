@@ -182,6 +182,8 @@ xmllint --noout "$theme_dir"/upstream/lucide/fills/*.svg
 tar -C "$theme_dir" -cf "$rpmbuild_dir/SOURCES/lucide-fills-sources.tar" \
   upstream/lucide/fills
 install -m 0644 "$theme_dir/application-manifest.json" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/assets/icon-theme/tools/render-application-icons.py" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/assets/icon-theme/tools/test-application-icon-cache.py" "$rpmbuild_dir/SOURCES/"
 # Explicit allowlist staging: unapproved studies cannot enter new contexts.
 python3 - "$theme_dir" "$rpmbuild_dir/SOURCES" <<'PY_STAGE'
 import json, pathlib, tarfile, shutil, sys
@@ -213,7 +215,7 @@ install -m 0644 "$repo_root/packaging/rpm/prairie-icon-theme.spec" \
   "$rpmbuild_dir" \
   "${LUMA_ICON_RPM_BUILD_CONTAINER:-$builder_container}" '
     set -euo pipefail
-    dnf5 -y install rpm-build cpio libxml2 python3
+    dnf5 -y install rpm-build cpio libxml2 python3 librsvg2-tools python3-gobject gtk4
     rpmbuild -ba --define "_topdir $PWD" SPECS/prairie-icon-theme.spec
     rpm_path=$(find RPMS/noarch -maxdepth 1 -type f \
       -name "prairie-icon-theme-*.rpm" -print -quit)
