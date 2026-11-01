@@ -75,7 +75,7 @@ scriptlets take labels from the booted policy (`--selinux-policy=/`), not the ba
 - `system/60-luma-tokay-aoc-quantum.conf`: PipeWire drop-in (`/etc/pipewire/pipewire.conf.d`), minimum
   quantum 1024; Android audio drove the graph to 32-frame quanta and the AoC speaker PCM stopped recovering.
 - `system/60-luma-tokay-thermal.rules` + `60-luma-tokay-x4-cap.conf` (tmpfiles): CPU and GPU thermal zones on
-  step_wise (power_allocator held the X4 at 700 MHz at 53 C); X4 capped at 2.0 GHz (98 C uncapped).
+  step_wise (power_allocator held the X4 at 700 MHz at 53 C); X4 capped at 2.363 GHz, the fastest OPP within the 1.2 W sustainable budget (98 C uncapped).
 - `system/luma-tokay-aoc-audio-watchdog.*`: the AoC speaker PCM never recovers from an underrun; on
   PipeWire's "snd_pcm_avail after recover" it restarts the owner's PipeWire and Android's audioserver.
 - `stopgaps/`: `mobile-mode-nm-nudge.py` (data switch asks NetworkManager for the connection when it does
