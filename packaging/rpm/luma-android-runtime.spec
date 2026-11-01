@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.98%{?dist}
+Release:        1.luma.99%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -200,6 +200,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.99
+- Give Waydroid the GPU render node, not a display-only one
+- Use ANGLE and pastel for software rendering on ARM
+- Let Android apps fill the window on phones and tablets
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
 - Declare the Android state directory 0755 so setup accepts it
 - Forward notifications from the Android framework package

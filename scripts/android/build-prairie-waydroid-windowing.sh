@@ -17,6 +17,7 @@ window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-de
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
+codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
 vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
@@ -24,7 +25,7 @@ hardware_root="$source_root/hardware/waydroid"
 framework_root="$source_root/frameworks/base"
 device_root="$source_root/device/waydroid/waydroid"
 waydroid_patch_script="$source_root/vendor/extra/waydroid-patches/apply-patches.sh"
-mesa_tool_root="$source_root/prebuilts/mesa-tools"
+mesa_tool_root=${LUMA_ANDROID_MESA_TOOLS:-$source_root/prebuilts/mesa-tools}
 expected_font_sha=26ad3db9b31ff7dde67a91ff515d022d2f495cd506590699cf264f0bfe6fb714
 build_jobs=${LUMA_BUILD_JOBS:-}
 soong_gc=${LUMA_ANDROID_SOONG_GOGC:-20}
@@ -45,6 +46,7 @@ task_admission_patch="$repo_root/patches/android-hardware-waydroid/0017-luma-nat
 task_channel_patch="$repo_root/patches/android-hardware-waydroid/0018-luma-bound-task-channel-io.patch"
 app_settings_patch="$repo_root/patches/android-hardware-waydroid/0019-luma-native-app-settings-action.patch"
 desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-logical-desktop-canvas.patch"
+handheld_fill_patch="$repo_root/patches/android-hardware-waydroid/0021-luma-handheld-task-window-fill.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -103,6 +105,11 @@ test -x "$mesa_tool_root/mesa_clc" || {
   printf 'error: pinned Waydroid mesa_clc wrapper is missing\n' >&2
   exit 1
 }
+# Mesa runs its host compilers only from the identical source version.
+grep -Fqx "MESA_VERSION=$(cat "$source_root/external/mesa/VERSION")" "$mesa_tool_root/BUILD-INFO" 2>/dev/null || {
+  printf 'error: Mesa host tools do not match external/mesa; build them with scripts/android/build-mesa-host-tools.sh and set LUMA_ANDROID_MESA_TOOLS\n' >&2
+  exit 1
+}
 
 test -d "$source_root/.repo" || {
   printf 'error: synchronize the pinned Android source first\n' >&2
@@ -157,7 +164,7 @@ fi
 # compilers through this directory. LineageOS 20 does not add that directory to
 # the shell PATH inherited by external/mesa/android/mesa3d_cross.mk, so make the
 # upstream-pinned wrappers explicit rather than substituting a host binary.
-export PATH="$source_root/prebuilts/build-tools/path/linux-x86:$PATH"
+export PATH="$mesa_tool_root:$source_root/prebuilts/build-tools/path/linux-x86:$PATH"
 command -v mesa_clc >/dev/null || {
   printf 'error: official Waydroid mesa_clc PATH patch was not applied\n' >&2
   exit 1
@@ -189,6 +196,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$hardware_root" apply "$task_channel_patch"
   git -C "$hardware_root" apply "$app_settings_patch"
   git -C "$hardware_root" apply "$desktop_canvas_patch"
+  git -C "$hardware_root" apply "$handheld_fill_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -213,11 +221,13 @@ if [ "$incremental" = 0 ]; then
   # than one Android application is open.
   git -C "$source_root/frameworks/native" apply "$native_patch"
   git -C "$device_root" apply "$device_patch"
+  git -C "$device_root" apply "$codec_patch"
   git -C "$source_root/packages/apps/Jelly" apply "$jelly_patch"
   git -C "$source_root/vendor/extra" apply "$vendor_extra_patch"
   git -C "$source_root/system/libhidl" apply "$libhidl_patch"
   python3 "$repo_root/scripts/android/integrate-software-gralloc.py" "$source_root"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
+  git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
   git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"
