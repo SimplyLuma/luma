@@ -35,6 +35,12 @@
       <summary>Preferred shell presentation</summary>
       <description>Automatic follows the device profile and native seat posture. An explicit choice persists across restarts and accessory changes. Layout size and input capabilities remain independent.</description>
     </key>
+    <key name="posture" type="s">
+      <choices><choice value="automatic"/><choice value="tv"/></choices>
+      <default>'automatic'</default>
+      <summary>Shell posture</summary>
+      <description>TV runs the shell's TV home, driven by a remote, with apps full screen. Automatic follows the presentation, or TV when the device declares itself a television. The presentation choice is kept underneath and returns unchanged when TV is turned off.</description>
+    </key>
     <key name="surface-treatment" type="s">
       <choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices>
       <default>'light'</default>

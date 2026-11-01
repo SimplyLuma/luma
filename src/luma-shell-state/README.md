@@ -43,3 +43,30 @@ names. Grid positions remain in `home-layouts`, keyed by presentation and grid
 size, so switching density can return to a saved arrangement. Resetting Home
 preferences never clears saved layouts. Desktop presentation does not consume
 these keys.
+
+## Posture (TV Mode)
+
+`posture` (`automatic` or `tv`, default `automatic`) is the experience above
+the presentation. It never changes the presentation: `presentation.effective`
+stays desktop, tablet or mobile, so every existing reader is unaffected, and
+the presentation choice underneath returns unchanged when TV is turned off.
+
+The resolved posture is published three ways, all from the same rule
+(`posture_state`):
+
+- the snapshot's additive `posture` object: `selected`, `effective` (one of
+  `desktop`, `tablet`, `mobile` or `tv`), `reason` (`user`, `device` or
+  `presentation`) and `tv`;
+- the `Posture` D-Bus property beside `Presentation`, with the same
+  `PropertiesChanged` notification, which LumaUI's session context follows
+  live;
+- the `posture` key itself, for readers without the session bus.
+
+Automatic resolves to TV when the device declares itself a television:
+`tv` in `/run/luma/experience` or `/etc/luma-device-class` (the install-time
+default). Its presentation underneath is Desktop.
+
+Ways in and out: `luma-shell-statectl set posture tv|auto` (or
+`luma-shell-statectl posture tv|automatic`), the `SetPosture` method, and the
+TV choice in the shell's Experience options. The switch is live: the shell
+and LumaUI follow the property change without a log-out.

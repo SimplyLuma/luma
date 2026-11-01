@@ -371,5 +371,53 @@ class ShellStateModelTests(unittest.TestCase):
         block = schema.split('name="shelf-free-placement"')[1].split("</key>")[0]
         self.assertIn("<default>false</default>", block)
 
+    def test_posture_is_tv_or_the_presentation(self):
+        for presentation in ("desktop", "tablet", "mobile"):
+            with self.subTest(presentation=presentation):
+                off = state.posture_state(presentation=presentation)
+                self.assertEqual(off["effective"], presentation)
+                self.assertFalse(off["tv"])
+                on = state.posture_state("tv", presentation=presentation)
+                self.assertEqual((on["effective"], on["reason"], on["tv"]), ("tv", "user", True))
+        self.assertEqual(state.posture_state(device="tv")["effective"], "tv")
+        self.assertEqual(state.posture_state(device="tv")["reason"], "device")
+        self.assertEqual(state.posture_state(presentation="bogus")["effective"], "desktop")
+        self.assertEqual(state.normalize_posture("auto"), "automatic")
+        for value in ("television", "desktop", "", None):
+            with self.subTest(value=value), self.assertRaises(state.InvalidState):
+                state.normalize_posture(value)
+
+    def test_device_posture_reads_the_device_class(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.assertIsNone(state.read_device_posture(root))
+            (root / "etc").mkdir()
+            (root / "etc/luma-device-class").write_text("desktop\n")
+            self.assertIsNone(state.read_device_posture(root))
+            (root / "etc/luma-device-class").write_text("tv\n")
+            self.assertEqual(state.read_device_posture(root), "tv")
+            # A television is a desktop underneath: presentation is unchanged.
+            self.assertEqual(state.read_presentation_profile(root), "desktop")
+
+    def test_snapshot_posture_follows_presentation_until_tv(self):
+        presentation = state.presentation_state("tablet")
+        kwargs = dict(favorites=[], home_apps=[], wallpaper_uri="file:///a.jpg",
+                      wallpaper_uri_dark="file:///a.jpg", wallpaper_style="zoom",
+                      appearance="default", idle_delay=0, screen_keyboard_enabled=False,
+                      launcher_columns=4, input_method="luma-latin", restore_app_state=True,
+                      renderer="gnome", presentation=presentation)
+        snapshot = state.build_snapshot(**kwargs)
+        self.assertEqual(snapshot["posture"]["effective"], "tablet")
+        self.assertEqual(snapshot["presentation"], presentation)
+        tv = state.build_snapshot(**kwargs, posture=state.posture_state("tv", presentation="tablet"))
+        self.assertEqual(tv["posture"]["effective"], "tv")
+        self.assertEqual(tv["presentation"], presentation)
+
+    def test_schema_declares_posture_automatic(self):
+        schema = (ROOT / "src/luma-shell-state/org.project_luma.shell-state.gschema.xml").read_text()
+        block = schema.split('name="posture"')[1].split("</key>")[0]
+        self.assertIn("<default>'automatic'</default>", block)
+        self.assertIn('<choice value="tv"/>', block)
+
 if __name__ == "__main__":
     unittest.main()
