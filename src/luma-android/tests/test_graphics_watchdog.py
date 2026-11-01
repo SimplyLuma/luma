@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import signal
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,11 +46,11 @@ class GraphicsWatchdog(unittest.TestCase):
             if now[0] > 20:
                 raise StopIteration
 
-        with patch("luma_android.graphics_watchdog.os.kill") as kill:
+        with patch("luma_android.graphics_watchdog.restart_android") as restart:
             with self.assertRaises(StopIteration):
                 watchdog.monitor(self.proc, sleep=sleep, clock=lambda: now[0])
-        self.assertEqual(kill.call_args_list[0].args, (12, signal.SIGKILL))
-        self.assertLessEqual(kill.call_count, watchdog.MAX_RESTARTS)
+        restart.assert_called()
+        self.assertLessEqual(restart.call_count, watchdog.MAX_RESTARTS)
 
     def test_restarts_are_bounded(self):
         process(self.proc, 10, "surfaceflinger", 500)
@@ -63,10 +62,27 @@ class GraphicsWatchdog(unittest.TestCase):
             if now[0] > 300:
                 raise StopIteration
 
-        with patch("luma_android.graphics_watchdog.os.kill") as kill:
+        with patch("luma_android.graphics_watchdog.restart_android") as restart:
             with self.assertRaises(StopIteration):
                 watchdog.monitor(self.proc, sleep=sleep, clock=lambda: now[0])
-        self.assertEqual(kill.call_count, watchdog.MAX_RESTARTS)
+        self.assertEqual(restart.call_count, watchdog.MAX_RESTARTS)
+
+    def test_recovery_starts_the_owner_unit(self):
+        entry = self.proc / "40"
+        entry.mkdir()
+        (entry / "cmdline").write_bytes(b"/usr/bin/python3\0/usr/libexec/luma-waydroid-session\0")
+        with patch("luma_android.graphics_watchdog.pwd.getpwuid") as user, \
+             patch("luma_android.graphics_watchdog.subprocess.run") as run:
+            user.return_value.pw_name = "luma"
+            watchdog.restart_android(self.proc)
+        run.assert_called_once_with(
+            ["/usr/bin/systemctl", "--no-block", "start", "luma-android-recover@luma.service"],
+            check=False, timeout=10)
+
+    def test_no_session_owner_restarts_nothing(self):
+        with patch("luma_android.graphics_watchdog.subprocess.run") as run:
+            watchdog.restart_android(self.proc)
+        run.assert_not_called()
 
 
 if __name__ == "__main__":
