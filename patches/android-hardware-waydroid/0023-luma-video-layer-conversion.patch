@@ -11,19 +11,22 @@ index fd23eca..3539d02 100644
          "libEGL",
          "libGLESv2",
 diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
-index 480ae91..88ae6c7 100644
+index 480ae91..bdfe505 100644
 --- a/hwcomposer/gralloc_handler.cpp
 +++ b/hwcomposer/gralloc_handler.cpp
-@@ -27,6 +27,8 @@
+@@ -27,6 +27,11 @@
  
  #include <cstdint>
  #include <memory>
 +#include <mutex>
++#include <set>
++#include <utility>
++#include <vector>
 +#include <unordered_set>
  #include <sys/stat.h>
  #include <cutils/ashmem.h>
  #include <log/log.h>
-@@ -41,6 +43,7 @@
+@@ -41,6 +46,7 @@
  #include <log/log.h>
  #include <ui/Rect.h>
  #include <ui/GraphicBufferMapper.h>
@@ -31,7 +34,7 @@ index 480ae91..88ae6c7 100644
  #include <gralloc_handle.h>
  #include <cros_gralloc/cros_gralloc_handle.h>
  
-@@ -50,7 +53,56 @@
+@@ -50,7 +56,56 @@
  #include "egl-tools.h"
  #include "wayland-hwc.h"
  
@@ -88,7 +91,7 @@ index 480ae91..88ae6c7 100644
      uint32_t ConvertHalFormatToShm(uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -85,8 +137,19 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
+@@ -85,8 +140,19 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
      buf->isShm = true;
      buf->size = size;
  
@@ -109,7 +112,7 @@ index 480ae91..88ae6c7 100644
  
      int fd = syscall(SYS_memfd_create, "buffer", MFD_ALLOW_SEALING);
      ftruncate(fd, size);
-@@ -122,6 +185,20 @@ namespace {
+@@ -122,6 +188,20 @@ namespace {
          return display->formats.count(format) == 1;
      }
  
@@ -130,7 +133,88 @@ index 480ae91..88ae6c7 100644
      uint32_t ConvertHalFormatToDrm(struct display *display, uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -173,16 +250,24 @@ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_m
+@@ -167,22 +247,105 @@ namespace {
+         return fmt;
+     }
+ }
++namespace {
++    // minigbm keeps YV12 under a private code; compositors know it as YVU420.
++    constexpr uint32_t MINIGBM_YVU420_ANDROID = fourcc_code('9', '9', '9', '7');
++
++    struct video_import {
++        wl_buffer *buffer = nullptr;
++        bool done = false;
++    };
++
++    const zwp_linux_buffer_params_v1_listener video_import_listener = {
++        [](void *data, zwp_linux_buffer_params_v1 *, wl_buffer *buffer) {
++            auto *import = static_cast<video_import *>(data);
++            import->buffer = buffer;
++            import->done = true;
++        },
++        [](void *data, zwp_linux_buffer_params_v1 *) {
++            static_cast<video_import *>(data)->done = true;
++        },
++    };
++
++    std::mutex refused_lock;
++    std::set<std::pair<uint32_t, uint64_t>> refused;
++
++    // Offers a video dmabuf to the compositor and waits for its answer on a
++    // private queue: a refusal is an event, not a protocol error, and the
++    // format then falls back to conversion for the rest of the session.
++    std::unique_ptr<buffer> import_video_dmabuf(display *display, const buffer_metadata &metadata,
++                                                buffer_handle_t handle, const cros_gralloc_handle *cros_handle) {
++        const uint32_t format = cros_handle->format == MINIGBM_YVU420_ANDROID ? DRM_FORMAT_YVU420 : cros_handle->format;
++        const uint64_t modifier = cros_handle->format_modifier;
++        if (!display->dmabuf || !cros_handle->num_planes || !isImportSupported(display, format, modifier))
++            return nullptr;
++        {
++            std::lock_guard<std::mutex> guard(refused_lock);
++            if (refused.count({format, modifier}))
++                return nullptr;
++        }
++
++        wl_event_queue *queue = wl_display_create_queue(display->display);
++        auto *dmabuf = static_cast<zwp_linux_dmabuf_v1 *>(wl_proxy_create_wrapper(display->dmabuf));
++        wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(dmabuf), queue);
++        zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(dmabuf);
++        wl_proxy_wrapper_destroy(dmabuf);
++        for (uint32_t i = 0; i < cros_handle->num_planes && i < DRV_MAX_PLANES; i++)
++            zwp_linux_buffer_params_v1_add(params, cros_handle->fds[i], i, cros_handle->offsets[i],
++                                           cros_handle->strides[i], modifier >> 32, modifier & 0xffffffff);
++        video_import import;
++        zwp_linux_buffer_params_v1_add_listener(params, &video_import_listener, &import);
++        zwp_linux_buffer_params_v1_create(params, metadata.width, metadata.height, format, 0);
++        while (!import.done && wl_display_roundtrip_queue(display->display, queue) != -1) {}
++        zwp_linux_buffer_params_v1_destroy(params);
++        if (import.buffer)
++            wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(import.buffer), nullptr);
++        wl_event_queue_destroy(queue);
++
++        std::lock_guard<std::mutex> guard(refused_lock);
++        if (!import.buffer) {
++            if (refused.insert({format, modifier}).second)
++                ALOGW("Compositor refused video format 0x%x modifier 0x%llx; converting it",
++                      format, (unsigned long long)modifier);
++            return nullptr;
++        }
++        static std::set<uint32_t> forwarded;
++        if (forwarded.insert(format).second)
++            ALOGI("Video layer format 0x%x (%ux%u): forwarded as dmabuf", format, metadata.width, metadata.height);
++
++        std::unique_ptr<buffer> buf { new buffer() };
++        buf->metadata = metadata;
++        buf->handle = handle;
++        buf->wl_buffer = import.buffer;
++        wl_buffer_add_listener(buf->wl_buffer, &buffer_listener, nullptr);
++        return buf;
++    }
++}
++
+ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_metadata& metadata,
+                                                                 int prime_fd, int drm_format, int byte_stride,
+                                                                 int offset, uint64_t modifier, buffer_handle_t handle)
  {
      assert(prime_fd >= 0);
  
@@ -160,7 +244,7 @@ index 480ae91..88ae6c7 100644
      zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
      zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
      zwp_linux_buffer_params_v1_add_listener(params, &params_listener, nullptr);
-@@ -265,10 +350,14 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
+@@ -265,11 +428,18 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
      return create_shm_wl_buffer(display, metadata, handle);
  }
  std::unique_ptr<buffer> create_buffer_gbm(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
@@ -170,12 +254,16 @@ index 480ae91..88ae6c7 100644
      return create_dmabuf_wl_buffer(display, metadata, drm_handle->prime_fd, -1 /* compute drm format */, drm_handle->stride, 0 /* offset */, drm_handle->modifier, handle);
  }
  std::unique_ptr<buffer> create_buffer_cros(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
-+    if (hal_format_needs_conversion(metadata.format))
-+        return create_shm_wl_buffer(display, metadata, handle);
      auto *cros_handle = reinterpret_cast<const cros_gralloc_handle *>(handle);
++    if (hal_format_needs_conversion(metadata.format)) {
++        if (auto buf = import_video_dmabuf(display, metadata, handle, cros_handle))
++            return buf;
++        return create_shm_wl_buffer(display, metadata, handle);
++    }
      return create_dmabuf_wl_buffer(display, metadata, cros_handle->fds[0], cros_handle->format, cros_handle->strides[0], cros_handle->offsets[0], cros_handle->format_modifier, handle);
  }
-@@ -316,6 +405,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
+ std::unique_ptr<buffer> create_buffer_android(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
+@@ -316,6 +486,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
  }
  
  bool update_shm_buffer_generic(display *display, buffer *buffer) {
