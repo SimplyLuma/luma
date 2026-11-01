@@ -71,7 +71,9 @@ unreliably: minigbm names YV12 with a private code, and panthor's EGL
 rejected the YV12 layout outright. A dmabuf the compositor cannot import was
 a protocol error that disconnected and aborted the composer, leaving Android
 without a display until it restarted. Other dmabuf layers are forwarded only
-in a format and modifier the compositor advertised.
+in a format and modifier the compositor advertised. libwayland-client treats a
+full send buffer as fatal, so while the compositor is not reading (the screen
+waking, a modeset) the composer drops frames instead of queueing them.
 
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`

@@ -174,3 +174,52 @@ index 480ae91..d9f99dc 100644
      display->egl_work_queue.emplace_back(std::bind(egl_render_to_pixels, display, buffer));
      sem_post(&display->egl_go);
      sem_wait(&display->egl_done);
+diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
+index 8b8d61f..d98a7a3 100644
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -484,6 +484,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
+     }
+ }
+ 
++// libwayland-client treats a full send buffer as fatal. While the compositor
++// is not reading (the screen waking, a modeset) frames are dropped instead of
++// queued; the frame's fences still complete so SurfaceFlinger carries on.
++static bool drop_frame_while_unwritable(waydroid_hwc_composer_device_1 *pdev,
++                                        hwc_display_contents_1_t *contents) {
++    static unsigned dropped = 0;
++    if (wl_display_flush(pdev->display->display) >= 0 || errno != EAGAIN) {
++        if (dropped) {
++            ALOGW("compositor reading again; dropped %u frames", dropped);
++            dropped = 0;
++        }
++        return false;
++    }
++    if (!dropped++)
++        ALOGW("compositor is not reading; dropping frames");
++    for (size_t l = 0; l < contents->numHwLayers; l++) {
++        auto *layer = &contents->hwLayers[l];
++        if (layer->acquireFenceFd != -1) {
++            close(layer->acquireFenceFd);
++            layer->acquireFenceFd = -1;
++        }
++        layer->releaseFenceFd = -1;
++    }
++    sw_sync_timeline_inc(pdev->timeline_fd, 1);
++    contents->retireFenceFd = sw_sync_fence_create(pdev->timeline_fd, "hwc_contents_release", ++pdev->next_sync_point);
++    return true;
++}
++
+ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
+                    hwc_display_contents_1_t** displays) {
+     if (HWC_DISPLAY_PRIMARY >= numDisplays || !displays)
+@@ -494,6 +522,9 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
+     hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
+     assert(contents);
+ 
++    if (drop_frame_while_unwritable(pdev, contents))
++        return 0;
++
+     if (pdev->should_compose && contents->flags & HWC_GEOMETRY_CHANGED) {
+         pdev->display->buffer_map.clear();
+     }
