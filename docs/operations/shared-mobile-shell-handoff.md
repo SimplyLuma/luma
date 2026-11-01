@@ -197,3 +197,24 @@ cancels its first-paint preparation. Performance is still unqualified: the Titan
 has a60Hz reported mode but even a minimal compositor rectangle often paints
 around30FPS through its simpledrm/Panfrost path. Do not promise60FPS or fixed
 90Hz battery behavior from these changes. No CPU/GPU performance floor remains.
+
+
+Home Screen preferences (owner approved October31): Settings → Personalization →
+Home Screen now controls Mobile and Tablet columns, rows, icon size and app
+names. Shared shell-state keys are home-columns, home-rows, home-icon-size and
+home-show-labels. Automatic defaults preserve existing layouts; manual counts
+are bounded by available touch space. Reset changes only these preferences,
+not saved arrangements. Desktop rendering is unchanged.
+
+Matching source cohort: Shell142, Settings60.home20261031.1,
+shell-state38.home20261031.1 and Search10. Pure layout regressions, ARM native
+settings-owner checks, the actual native Settings build, seven physical Shell
+checks and eight physical Settings UI checks passed. The owner accepted the
+Titan experience. Other devices require matching package builds; these new
+RPM versions have not been built or release-qualified.
+
+The Titan retains a development resource overlay, additive local schema and
+native Settings binary bind via project-titan-home-settings.service. Before
+installing a proper Settings RPM, close Settings and disable/stop that service
+so its bind cannot hide the packaged executable. Keep other overlays and user
+layouts intact; deployment and rollback details are in the Titan task record.

@@ -10,7 +10,19 @@ export function formOf(width, height) {
     return short >= 560 ? 'fold' : 'phone';
 }
 
-export function homeLayout(width, height, mode, count, metrics = {}) {
+// User density is a preference, not permission to create undersized targets.
+// Keep automatic geometry unchanged when no override is set.
+function preferredCount(requested, automatic, available, minimumCell, minimum) {
+    if (!Number.isInteger(requested) || requested <= 0) return automatic;
+    const limit = Math.max(1, Math.min(12, Math.floor(available / minimumCell)));
+    return Math.min(limit, Math.max(Math.min(minimum, limit), requested));
+}
+function preferredIcon(choice, automatic, width, height, labels) {
+    const wanted = {small: 32, medium: 48, large: 64}[choice] ?? automatic;
+    return Math.floor(Math.max(20, Math.min(wanted, width - 12, height - (labels ? 24 : 12))));
+}
+
+export function homeLayout(width, height, mode, count, metrics = {}, preferences = {}) {
     // Widgets and apps share the same whole icon-cell grid.
     // Density depends on usable geometry, independently of device or mode.
     if (width <= 480 && height >= 280) {
@@ -24,13 +36,16 @@ export function homeLayout(width, height, mode, count, metrics = {}) {
         // Fit five columns when 68px cells fit, and reduce density on narrower
         // displays. Additional columns must not also compress the row spacing.
         const contentWidth = width - 2 * inset;
-        const iconColumns = Math.max(3, Math.min(5, Math.floor(contentWidth / 68)));
+        const automaticColumns = Math.max(3, Math.min(5, Math.floor(contentWidth / 68)));
+        const iconColumns = preferredCount(preferences.columns, automaticColumns, contentWidth, 56, 3);
         const cellWidth = contentWidth / iconColumns;
         const minimumRow = Math.max(56, metrics.cellHeight ?? 0,
             Math.round(contentWidth / Math.min(iconColumns, 4) * 0.78));
-        const rows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
+        const automaticRows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
+        const rows = preferredCount(preferences.rows, automaticRows, availableHeight, 56, 2);
         const rowHeight = availableHeight / rows;
-        const iconSize = Math.floor(Math.max(28, Math.min(64, rowHeight - 24, cellWidth * 0.66)));
+        const iconSize = preferredIcon(preferences.iconSize, Math.min(64, rowHeight - 24, cellWidth * 0.66),
+            cellWidth, rowHeight, preferences.showLabels !== false);
         const columns = iconColumns;
         const capacity = rows * iconColumns;
         return {width, height, form: formOf(width, height), compact: true, inset,
@@ -44,17 +59,23 @@ export function homeLayout(width, height, mode, count, metrics = {}) {
     const inset = tablet ? Math.min(56, width / 16) : 20;
     const contentWidth = Math.max(1, width - 2 * inset);
     const cellWidth = Math.max(tablet ? 112 : 84, metrics.minimumCellWidth ?? 0);
-    const columns = Math.max(1, Math.floor(contentWidth / cellWidth));
+    const columns = preferredCount(preferences.columns, Math.max(1, Math.floor(contentWidth / cellWidth)),
+        contentWidth, 56, 3);
     const top = height < 440 ? 44 : 64;
     const bottom = 156;
     const cellHeight = Math.max(100, metrics.cellHeight ?? 0);
-    const rowHeight = cellHeight + 8;
+    let rowHeight = cellHeight + 8;
+    if (preferences.rows > 0) {
+        const rows = preferredCount(preferences.rows, 1, height - top - bottom, 56, 2);
+        rowHeight = Math.max(1, (height - top - bottom) / rows);
+    }
     const firstRows = Math.max(0, Math.floor((height - top - bottom + 8) / rowHeight));
     const otherRows = Math.max(1, Math.floor((height - top - bottom + 8) / rowHeight));
     const firstCapacity = firstRows * columns;
     const laterCapacity = otherRows * columns;
     const pages = Math.max(1, 1 + Math.ceil(Math.max(0, count - firstCapacity) / laterCapacity));
-    return {width, height, form: formOf(width, height), inset, contentWidth, columns, top, bottom, cellHeight, rowHeight, firstRows, otherRows,
+    const iconSize = preferredIcon(preferences.iconSize, 60, contentWidth / columns, rowHeight, preferences.showLabels !== false);
+    return {width, height, form: formOf(width, height), inset, contentWidth, columns, top, bottom, cellHeight, rowHeight, iconSize, firstRows, otherRows,
         firstCapacity, laterCapacity, pages};
 }
 

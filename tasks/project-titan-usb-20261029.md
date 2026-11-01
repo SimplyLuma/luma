@@ -1148,3 +1148,80 @@ source cohort. To roll back the feature,
 replace only its G_RESOURCE_OVERLAYS entry with the prior five-column entry;
 do not restore an entire stale environment file over other-agent changes.
 Weather scrolling remains a separate unresolved follow-up; do not report it fixed.
+
+### 2026-10-31 — Home Screen preferences: owner approved
+
+Owner requests an obvious native Settings page for Home grid rows/columns, icon
+size and app labels, with room for future dock options. Implementation and Titan
+installation were authorized subject to physical review before commit/push.
+The owner has now tested and approved it: “looks great, works grewat. Lock it in”.
+Implemented on top of ccf489e4d in this same owned worktree.
+Shared Home presentations will consume bounded preferences; Desktop stays
+unchanged. Keep saved layouts and widget spans; reset only the new preferences.
+Private build/test material: update-20261031/home-settings on owned HDD storage.
+
+Implementation: Settings gets a Home Screen destination beside Appearance in
+Personalization, for both Mobile and Tablet. New additive shell-state keys:
+home-columns/home-rows (0 = automatic), home-icon-size and home-show-labels.
+Whole-cell grid geometry bounds manual counts by usable touch cells. Saved
+layouts stay separate per presentation/grid dimensions. The native Settings
+owner uses the existing GSettings table and controls; Reset changes only these
+four preferences, with policy checks before applying, not layout data.
+
+Pure checks349b1917 pass existing grid/compact/cutout/resize regressions plus
+new preference cases for Mobile and Tablet at five screen shapes. ARM native
+owner checks c9a82088 pass real schema writes for all choices, invalid-value
+refusal, reopen, reset/layout preservation, and missing-schema refusal. During
+testing, fixed a string-choice mapping that incorrectly included quote characters.
+The new spec patch applies cleanly to the original Fedora source spec.
+
+Titan source-backed Home candidate passed seven checks: real density changes,
+icon size, accessible names with visual labels hidden, preservation of every
+item, bounded dense requests, unchanged saved layout bytes and exact restoration
+of original geometry/preferences. Screenshots reviewed; no owner layout changes
+left by the test. Private proof: ~/.local/state/project-titan/home-settings.json.
+Initial Settings ARM build e4de9e83 used an owned HDD rootfs and was stopped
+in favor of the successful native cross build below. No physical toolkit
+change, session restart or Android operation was performed.
+
+Native Settings build completed: dbe50ac7, full maintained Fedora50.4 source plus
+patches through0089; configured on ARM and compiled with the host ARM cross
+compiler. The compiler/tool libraries and assembler temporary files used RAM to
+avoid shared HDD contention. Original ARM emulation-only build was deliberately
+stopped after configuration. Final target links successfully; device ldd-r has
+no missing library/symbol. No RPM build/release qualification is claimed.
+
+Installed the real compiled native Settings executable under
+/var/lib/project-titan/home-settings-20261031/gnome-control-center. A development
+oneshot project-titan-home-settings.service bind-mounts it onto the normal
+/usr/bin path (enabled before display-manager); normal launch and D-Bus activation
+therefore use the same app. Stop Settings and disable/stop that oneshot before
+replacing the candidate with a proper future package; do not leave it hiding a
+newer Settings RPM. Original executable is retained under before/ (0700 parent).
+Added the source schema under /usr/local/share/glib-2.0/schemas and replaced only
+the prior widget resource-overlay entry with this candidate's override. Both
+survive login. The previous resize feature is retained in the candidate files.
+
+Physical Settings UI passed all four real controls, Reset and unchanged-layout
+readback. Native Settings list includes Home Screen under Personalization; its
+selection opens the native page. Eight UI checks pass in private
+~/.local/state/project-titan/home-settings-ui.json. AT-SPI list rows have no
+standalone action; navigation was checked through selection plus fresh page
+readback. Root input pixel coordinates were not a reliable way to pick a row,
+so do not reuse guessed physical scale factors. Preference values were restored
+after testing, retaining the owner's original Home layout. Screenshots reviewed;
+controls fit the Titan using shared Settings/LumaUI row parts and scrolling.
+
+Status: owner approved for commit and push. This commit advances source pins
+to Shell142, Settings60.home20261031.1, shell-state38.home20261031.1 and
+Search10. These new package versions have not been built or installed; the
+approved source-backed candidate remains on the Titan. This feature applies
+to Mobile and Tablet Home; Desktop rendering and other-agent Android work are
+untouched. Weather scrolling remains a separate unresolved follow-up.
+
+Approval-time package checks bae2a9da pass launch cohort consistency, the full
+package release contract, Settings spec application and whitespace checks.
+The contract caught stale Shell139 shared package-list pins; these now match
+Shell142 and its architecture pins. Initial check invocation be62a0d7 used the
+artifact cwd and did not run tests; corrected r2 caught the pins, corrected r3
+passes. No new feature build or deployment was necessary for approval.
