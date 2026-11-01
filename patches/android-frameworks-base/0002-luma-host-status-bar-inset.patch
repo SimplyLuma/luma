@@ -16,7 +16,7 @@ index 57a55fc..907ede2 100644
  
      /**
 diff --git a/core/java/com/android/internal/policy/SystemBarUtils.java b/core/java/com/android/internal/policy/SystemBarUtils.java
-index 55fca06..6a3231d 100644
+index 55fca06..2345de4 100644
 --- a/core/java/com/android/internal/policy/SystemBarUtils.java
 +++ b/core/java/com/android/internal/policy/SystemBarUtils.java
 @@ -19,6 +19,7 @@ package com.android.internal.policy;
@@ -27,7 +27,7 @@ index 55fca06..6a3231d 100644
  import android.util.RotationUtils;
  import android.view.DisplayCutout;
  import android.view.Surface;
-@@ -34,6 +35,18 @@ import com.android.internal.R;
+@@ -34,6 +35,29 @@ import com.android.internal.R;
   */
  public final class SystemBarUtils {
  
@@ -43,10 +43,21 @@ index 55fca06..6a3231d 100644
 +        return Math.max(0, SystemProperties.getInt("persist.luma.status_bar_px", 0));
 +    }
 +
++    /**
++     * Luma host bottom gesture-strip height in physical pixels, or 0 when the host owns none.
++     *
++     * When set, SystemUI's navigation bar window provides exactly that bottom inset in gesture
++     * form (full width, untouchable, invisible), so content and IME-adjusted layouts end above
++     * the host strip. Unset or 0 keeps Waydroid's policy_control behaviour.
++     */
++    public static int getLumaHostNavigationBarHeight() {
++        return Math.max(0, SystemProperties.getInt("persist.luma.nav_bar_px", 0));
++    }
++
      public static boolean isImmersive(Context context) {
          String policy = Settings.Global.getString(context.getContentResolver(), Settings.Global.POLICY_CONTROL);
          return
-@@ -45,6 +58,9 @@ public final class SystemBarUtils {
+@@ -45,6 +69,9 @@ public final class SystemBarUtils {
       * Gets the status bar height.
       */
      public static int getStatusBarHeight(Context context) {
@@ -56,7 +67,7 @@ index 55fca06..6a3231d 100644
          if (isImmersive(context))
              return 0;
          return getStatusBarHeight(context.getResources(), context.getDisplay().getCutout());
-@@ -67,6 +83,9 @@ public final class SystemBarUtils {
+@@ -67,6 +94,9 @@ public final class SystemBarUtils {
       */
      public static int getStatusBarHeightForRotation(
              Context context, @Surface.Rotation int targetRot) {
@@ -66,6 +77,77 @@ index 55fca06..6a3231d 100644
          if (isImmersive(context))
              return 0;
          final int rotation = context.getDisplay().getRotation();
+diff --git a/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBar.java b/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBar.java
+index fbc3c25..d6a83f1 100644
+--- a/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBar.java
++++ b/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBar.java
+@@ -111,6 +111,7 @@ import com.android.internal.logging.MetricsLogger;
+ import com.android.internal.logging.UiEvent;
+ import com.android.internal.logging.UiEventLogger;
+ import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
++import com.android.internal.policy.SystemBarUtils;
+ import com.android.internal.statusbar.LetterboxDetails;
+ import com.android.internal.util.LatencyTracker;
+ import com.android.internal.view.AppearanceRegion;
+@@ -286,6 +287,7 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+     private final Rect mSamplingBounds = new Rect();
+ 
+     private boolean mImmersive;
++    private boolean mLumaHostOwned;
+ 
+     /**
+      * When quickswitching between apps of different orientations, we draw a secondary home handle
+@@ -711,6 +713,7 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+         mWindowManager.addView(mFrame,
+                 getBarLayoutParams(mContext.getResources().getConfiguration().windowConfiguration
+                         .getRotation()));
++        applyLumaHostOwnership();
+         mDisplayId = mContext.getDisplayId();
+         mIsOnDefaultDisplay = mDisplayId == mDisplayTracker.getDefaultDisplayId();
+ 
+@@ -1274,6 +1277,16 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+         prepareNavigationBarView();
+ 
+         mWindowManager.updateViewLayout(mFrame, getBarLayoutParams(rotation));
++        applyLumaHostOwnership();
++    }
++
++    /** Luma draws the visible gesture strip; this window only provides its inset. */
++    private void applyLumaHostOwnership() {
++        final boolean hostOwned = SystemBarUtils.getLumaHostNavigationBarHeight() > 0;
++        if (mLumaHostOwned != hostOwned) {
++            mLumaHostOwned = hostOwned;
++            mFrame.setAlpha(hostOwned ? 0f : 1f);
++        }
+     }
+ 
+     private void updateScreenPinningGestures() {
+@@ -1703,6 +1716,14 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+             width = 0;
+             insetsHeight = 0;
+         }
++        // A Luma host gesture strip spans the bottom edge in every rotation.
++        final int hostHeight = SystemBarUtils.getLumaHostNavigationBarHeight();
++        if (hostHeight > 0) {
++            gravity = Gravity.BOTTOM;
++            width = WindowManager.LayoutParams.MATCH_PARENT;
++            height = hostHeight;
++            insetsHeight = hostHeight;
++        }
+         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                 width,
+                 height,
+@@ -1715,6 +1736,10 @@ public class NavigationBar extends ViewController<NavigationBarView> implements
+                         | WindowManager.LayoutParams.FLAG_SLIPPERY,
+                 PixelFormat.TRANSLUCENT);
+         lp.gravity = gravity;
++        if (hostHeight > 0) {
++            // Untouchable, so WM reports no tappable element: gesture navigation form.
++            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
++        }
+         if (insetsHeight != -1) {
+             lp.providedInsets = new InsetsFrameProvider[] {
+                 new InsetsFrameProvider(ITYPE_NAVIGATION_BAR, Insets.of(0, 0, 0, insetsHeight))
 diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java b/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java
 index fb82caa..8cccf2e 100644
 --- a/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java
@@ -117,7 +199,7 @@ index fb82caa..8cccf2e 100644
          if (mLp != null && mLp.copyFrom(mLpChanged) != 0) {
              mWindowManager.updateViewLayout(mStatusBarWindowView, mLp);
 diff --git a/services/core/java/com/android/server/wm/InsetsPolicy.java b/services/core/java/com/android/server/wm/InsetsPolicy.java
-index f578fe0..365689d 100644
+index f578fe0..fa3938d 100644
 --- a/services/core/java/com/android/server/wm/InsetsPolicy.java
 +++ b/services/core/java/com/android/server/wm/InsetsPolicy.java
 @@ -19,6 +19,7 @@ package com.android.server.wm;
@@ -136,22 +218,27 @@ index f578fe0..365689d 100644
  import com.android.server.DisplayThread;
  import com.android.server.statusbar.StatusBarManagerInternal;
  
-@@ -402,7 +404,12 @@ class InsetsPolicy {
+@@ -402,8 +404,16 @@ class InsetsPolicy {
                  state = new InsetsState(state);
                  stateCopied = true;
              }
 -            state.removeSource(ITYPE_STATUS_BAR);
-+            // Each Luma task is a host window under the host top bar, so freeform tasks keep
-+            // the status bar inset the host publishes.
+-            state.removeSource(ITYPE_NAVIGATION_BAR);
++            // Each Luma task is a host window between the host top bar and gesture strip, so
++            // freeform tasks keep the status and navigation bar insets the host publishes.
 +            if (windowingMode != WINDOWING_MODE_FREEFORM
 +                    || SystemBarUtils.getLumaHostStatusBarHeight() == 0) {
 +                state.removeSource(ITYPE_STATUS_BAR);
 +            }
-             state.removeSource(ITYPE_NAVIGATION_BAR);
++            if (windowingMode != WINDOWING_MODE_FREEFORM
++                    || SystemBarUtils.getLumaHostNavigationBarHeight() == 0) {
++                state.removeSource(ITYPE_NAVIGATION_BAR);
++            }
              state.removeSource(ITYPE_EXTRA_NAVIGATION_BAR);
              if (windowingMode == WINDOWING_MODE_PINNED) {
+                 state.removeSource(ITYPE_IME);
 diff --git a/services/core/java/com/android/server/wm/Task.java b/services/core/java/com/android/server/wm/Task.java
-index 1ddc3e8..d5d1cd1 100644
+index 1ddc3e8..be1af19 100644
 --- a/services/core/java/com/android/server/wm/Task.java
 +++ b/services/core/java/com/android/server/wm/Task.java
 @@ -189,6 +189,7 @@ import android.window.WindowContainerToken;
@@ -162,15 +249,16 @@ index 1ddc3e8..d5d1cd1 100644
  import com.android.internal.protolog.ProtoLogGroup;
  import com.android.internal.protolog.common.ProtoLog;
  import com.android.internal.util.XmlUtils;
-@@ -2133,7 +2134,10 @@ class Task extends TaskFragment {
+@@ -2133,7 +2134,11 @@ class Task extends TaskFragment {
          final Rect parentBounds =
                  new Rect(newParentConfig.windowConfiguration.getBounds());
          final DisplayContent display = getDisplayContent();
 -        if (display != null) {
 +        // Luma tasks are host windows without an Android caption, placed under the host top
-+        // bar. Keep their bounds over the status bar so the bar becomes their top inset
-+        // instead of pushing the task down by its height.
-+        if (display != null && SystemBarUtils.getLumaHostStatusBarHeight() == 0) {
++        // bar and gesture strip. Keep their bounds over both so they become the task's insets
++        // instead of moving or shrinking the task.
++        if (display != null && SystemBarUtils.getLumaHostStatusBarHeight() == 0
++                && SystemBarUtils.getLumaHostNavigationBarHeight() == 0) {
              // If a freeform window moves below system bar, there is no way to move it again
              // by touch. Because its caption is covered by system bar. So we exclude them
              // from root task bounds. and then caption will be shown inside stable area.

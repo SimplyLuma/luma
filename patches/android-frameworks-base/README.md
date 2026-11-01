@@ -33,7 +33,13 @@ tablet), SystemUI's status bar window takes that height and remains the inset
 source, transparent and untouchable, and freeform tasks keep their bounds and
 the inset.
 Applications lay out below the host bar and draw their own status bar colour
-behind it. Unset or `0` (desktop) keeps the previous behaviour. SystemUI reads
+behind it. `persist.luma.nav_bar_px` does the same for the host gesture strip:
+SystemUI's navigation bar window (zero-sized under `immersive.full=*`) spans
+the bottom edge at that height in every rotation, provides it as the
+navigation bar inset, and is transparent and untouchable, so WindowManager
+reports no tappable element, the gesture-navigation form. Freeform tasks keep
+that inset too, and content and the IME end above the strip.
+Unset or `0` (desktop) keeps the previous behaviour. SystemUI reads
 the height at start and on configuration or `policy_control` changes; the
 property persists, so a changed value applies from the next Android start.
 
