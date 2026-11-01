@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.103%{?dist}
+Release:        1.luma.104%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -139,7 +139,7 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 135
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 137
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
@@ -222,6 +222,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.104
+- Reconnect the desktop session during Android recovery and bound repeated recovery
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103
 - Cut Android app icons to Luma's app tile
 

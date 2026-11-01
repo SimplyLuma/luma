@@ -70,7 +70,7 @@ def restart_android(proc: Path = Path("/proc")) -> None:
         print("No Android session owner; leaving the container alone", file=sys.stderr)
         return
     # This watchdog is PartOf the container; the recovery unit outlives it.
-    subprocess.run(["/usr/bin/systemctl", "--no-block", "start",
+    subprocess.run(["/usr/bin/systemctl", "--no-block", "restart",
                     f"luma-android-recover@{owner}.service"], check=False, timeout=10)
 
 
