@@ -22,6 +22,8 @@ function control(name, run, icon = null) {
     return button;
 }
 const live = window => Boolean(window?.get_compositor_private());
+const SWITCHER_HOLD_MS = 220;
+const SWITCHER_SETTLE_MS = 60;
 
 export class TabletTasks {
     constructor(home) {
@@ -191,7 +193,7 @@ export class TabletTasks {
         }, () => this.verticalEnd(this._vertical, side));
     }
     beginLift() {
-        if (this._navigationLift || this.home._home.visible) return;
+        if (this._navigationLift || this.home._home.visible || this._switcherPopup) return;
         const actor = this.focused()?.get_compositor_private();
         if (!actor) return;
         const [x, y] = actor.get_transformed_position();
@@ -203,13 +205,14 @@ export class TabletTasks {
         this._navigationSource = actor;
         actor.hide();
     }
-    finishLift(home) {
+    finishLift(home, animate = true) {
         const clone = this._navigationLift;
         this._navigationLift = null;
         const actor = this._navigationSource;
         this._navigationSource = null;
         if (actor && live(actor.meta_window) && !actor.meta_window.minimized) actor.show();
         if (!clone) return;
+        if (!animate) { clone.destroy(); return; }
         clone.ease({scale_x: home ? .78 : 1, scale_y: home ? .78 : 1,
             translation_y: home ? -64 * this.home._scale : 0, opacity: home ? 0 : 255,
             duration: St.Settings.get().enable_animations ? 120 : 0,
@@ -224,10 +227,48 @@ export class TabletTasks {
             // Fade follows the finger from the first movement, not only release.
             this._navigationLift.opacity = Math.round(255 * (1 - progress * .9));
         }
-        if (distance > -56 * this.home._scale || this._hold || this._held) return;
-        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-            this._hold = 0; this._held = true; this.openSwitcher(); return GLib.SOURCE_REMOVE;
-        });
+        if (distance > -56 * this.home._scale) {
+            if (this._hold) GLib.source_remove(this._hold);
+            this._hold = 0;
+            return;
+        }
+        if (this._held) return;
+        const now = GLib.get_monotonic_time();
+        if (!this._hold || Math.abs(distance - this._holdDistance) >= 6 * this.home._scale) {
+            this._holdDistance = distance;
+            this._holdMotionAt = now;
+        }
+        if (this._hold) return;
+        const trigger = () => {
+            this._hold = 0;
+            if (!this.navigationEnabled || this._destroyed) return GLib.SOURCE_REMOVE;
+            // A continuing upward swipe is Home, not a hold. Ignore small
+            // finger tremor but require a short settled interval before buzz.
+            const quietMs = (GLib.get_monotonic_time() - this._holdMotionAt) / 1000;
+            if (quietMs < SWITCHER_SETTLE_MS) {
+                this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+                    Math.max(1, Math.ceil(SWITCHER_SETTLE_MS - quietMs)), trigger);
+                return GLib.SOURCE_REMOVE;
+            }
+            this._held = true;
+            this._switcherFeedback();
+            this.openSwitcher();
+            return GLib.SOURCE_REMOVE;
+        };
+        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWITCHER_HOLD_MS, trigger);
+    }
+    _switcherFeedback() {
+        // One short, theme-owned haptic, without sound, polling or a rendering
+        // wait. feedbackd owns device support and the user's feedback policy.
+        if (GLib.get_monotonic_time() < (this._feedbackRetryAt ?? 0)) return;
+        Gio.DBus.session.call('org.sigxcpu.Feedback', '/org/sigxcpu/Feedback',
+            'org.sigxcpu.Feedback', 'TriggerFeedback',
+            new GLib.Variant('(ssa{sv}i)', ['org.gnome.Shell', 'button-pressed',
+                {profile: new GLib.Variant('s', 'quiet')}, -1]),
+            null, Gio.DBusCallFlags.NONE, 1000, null, (bus, result) => {
+                try { bus.call_finish(result); }
+                catch { this._feedbackRetryAt = GLib.get_monotonic_time() + 60 * GLib.USEC_PER_SEC; }
+            });
     }
     verticalEnd(distance, side = null) {
         if (this._hold) GLib.source_remove(this._hold);
@@ -235,6 +276,8 @@ export class TabletTasks {
         if (this._held) { this._held = false; return; }
         if (distance < -(this.home.mode === 'mobile' ? 48 : 140) * this.home._scale) {
             if (side) this.showPaneHome(side);
+            else if (this.home._home.visible && !this.pickerSide && !this.home._editor.editing && Main.lumaSearch)
+                Main.lumaSearch.open();
             else this.home.showHome();
         }
         else { this.finishLift(false); if (distance < -24 * this.home._scale) this.peek(); }
@@ -550,7 +593,7 @@ export class TabletTasks {
         return {x: m.x + (this.pickerSide === 'right' ? half : 0), y: m.y,
             width: this.pickerSide === 'right' ? m.width - half : half, height: m.height};
     }
-    beforeHome() { this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
+    beforeHome() { if (this.home.mode !== 'mobile' || !this._switcherPopup?.leaving) this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
     sync() {
         const pairVisible = this.enabled && this.active && !this._switcherPopup && !Main.sessionMode.isLocked &&
             (this.pickerSide || !this.home._home.visible);
@@ -628,7 +671,7 @@ export class TabletTasks {
         this._switcherPopup = popup;
         const returnHome = this.home._home.visible || this._returnHomeAfterSwitcher;
         this._returnHomeAfterSwitcher = returnHome;
-        this.home._home.hide();
+        if (this.home.mode !== 'mobile') this.home._home.hide();
         this.sync();
         const base = returnHome ? null : this.focused();
         popup.connect('destroy', () => {
@@ -655,8 +698,8 @@ export class TabletTasks {
         });
         home.connect('end', gesture => {
             if (gesture.get_accumulated_delta().get_y() >= -24 * this.home._scale) return;
-            popup.destroy();
-            this.home.showHome();
+            if (this.home.mode === 'mobile') popup.dismiss(null, true);
+            else { popup.destroy(); this.home.showHome(); }
         });
         popup.add_action_full('LumaGridHome', Clutter.EventPhase.CAPTURE, home);
         if (!this.enabled) return; // Split placement belongs to Tablet only.
@@ -754,10 +797,12 @@ export class TabletTasks {
     }
     openSwitcher() {
         if (!this.navigationEnabled) return;
-        this.finishLift(false);
+        // Grid takes over the app preview. Returning this separate gesture
+        // clone to fullscreen would animate above its cards for another120ms.
+        this.finishLift(false, this.home.mode !== 'mobile');
         this.closeOverlay();
         this._returnHomeAfterSwitcher = this.home._home.visible;
-        this.home._home.hide();
+        if (this.home.mode !== 'mobile') this.home._home.hide();
         LumaGrid.show();
     }
     closeOverlay() {
@@ -876,12 +921,13 @@ export class HandheldMotion {
     }
     // Full-page notifications keep their final layout throughout the reveal.
     // Reflowing every card at every intermediate width is costly and changes
-    // text wrapping in flight. Only the cached frame's centered clip moves.
+    // text wrapping in flight. Only the GPU reveal bounds change.
     revealNotification(actor, startWidth, startHeight) {
         this.cancelReveal(actor);
         const reveal = new PanelReveal(actor, {
             width: actor.width, height: actor.height, initialWidth: startWidth,
-            initialHeight: startHeight, contents: [actor._surface.child], done: target => {
+            initialHeight: startHeight, drawer: this.home.mode === 'mobile',
+            contents: [actor._surface.child], done: target => {
                 this._surfaceReveals.delete(actor);
                 if (!target) {
                     actor.set_size(startWidth, startHeight);

@@ -34,3 +34,12 @@ before changing the canonical settings.
 Dash spacing uses `shelf-padding` (integer, 4–24 logical pixels, default 14).
 It controls content insets, floating screen-edge gaps and island separation;
 inter-icon spacing remains independent. The additive snapshot field is `shelf.padding`.
+
+Home Screen preferences apply to both Mobile and Tablet Home. `home-columns`
+and `home-rows` use zero for automatic density; manual counts are bounded by
+available space. `home-icon-size` changes artwork within usable touch targets,
+and `home-show-labels` controls visual app names without removing accessible
+names. Grid positions remain in `home-layouts`, keyed by presentation and grid
+size, so switching density can return to a saved arrangement. Resetting Home
+preferences never clears saved layouts. Desktop presentation does not consume
+these keys.

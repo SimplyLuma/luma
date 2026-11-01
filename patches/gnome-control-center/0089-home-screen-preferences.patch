@@ -1,0 +1,185 @@
+diff --git a/shell/cc-luma-live-shelf.c b/shell/cc-luma-live-shelf.c
+index 1300e65..df0e72e 100644
+--- a/shell/cc-luma-live-shelf.c
++++ b/shell/cc-luma-live-shelf.c
+@@ -370,3 +370,49 @@ shelf_stop (gpointer state)
+ const CcLumaAdapter cc_luma_adapter_shelf = {
+   "shelf", (const char * const[]) { "shelf", NULL }, shelf_start, shelf_write, shelf_stop
+ };
++
++/* Home shares the same native owner on Mobile and Tablet. Missing keys leave
++ * the page readable but unavailable, never bind to an unrelated GNOME panel. */
++static const CcLumaGsRow home_rows[] = {
++  { "homeColumns", SCHEMA, "home-columns", CC_LUMA_GS_CHOICE,
++    (const char * const[]) { "auto", "0", "3", "3", "4", "4", "5", "5", "6", "6", "7", "7", "8", "8", "9", "9", "10", "10", "11", "11", "12", "12", NULL } },
++  { "homeRows", SCHEMA, "home-rows", CC_LUMA_GS_CHOICE,
++    (const char * const[]) { "auto", "0", "2", "2", "3", "3", "4", "4", "5", "5", "6", "6", "7", "7", "8", "8", "9", "9", "10", "10", "11", "11", "12", "12", NULL } },
++  { "homeIconSize", SCHEMA, "home-icon-size", CC_LUMA_GS_CHOICE,
++    (const char * const[]) { "automatic", "automatic", "small", "small", "medium", "medium", "large", "large", NULL } },
++  { "homeLabels", SCHEMA, "home-show-labels", CC_LUMA_GS_BOOLEAN },
++};
++static const char * const home_keys[] = { "homeColumns", "homeRows", "homeIconSize", "homeLabels", NULL };
++static gpointer home_start (CcLumaFixture *model)
++{
++  CcLumaGsTable *table = cc_luma_gs_table_new (model, home_rows, G_N_ELEMENTS (home_rows));
++  gboolean available = TRUE;
++  for (guint i = 0; home_keys[i]; i++) available &= cc_luma_gs_table_covers (table, home_keys[i]);
++  cc_luma_fixture_publish_boolean (model, "homeAvailable", available);
++  cc_luma_gs_table_verify (table, home_keys);
++  cc_luma_fixture_publish_boolean (model, "homeReset", FALSE);
++  cc_luma_fixture_own_key (model, "homeReset");
++  cc_luma_fixture_verify_key (model, "homeReset");
++  cc_luma_live_ready (model, "home");
++  return table;
++}
++static gboolean home_write (gpointer state, const char *key, JsonNode *value, GError **error)
++{
++  if (!g_str_equal (key, "homeReset")) return cc_luma_gs_table_write (state, key, value, error);
++  if (!value || !JSON_NODE_HOLDS_VALUE (value) || json_node_get_value_type (value) != G_TYPE_BOOLEAN || !json_node_get_boolean (value))
++    { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid Home reset"); return FALSE; }
++  for (guint i = 0; home_keys[i]; i++)
++    if (!cc_luma_gs_table_covers (state, home_keys[i]))
++      { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Home preferences are unavailable"); return FALSE; }
++  g_autoptr (GSettings) settings = g_settings_new (SCHEMA);
++  for (guint i = 0; i < G_N_ELEMENTS (home_rows); i++)
++    if (!g_settings_is_writable (settings, home_rows[i].name))
++      { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Home preferences are locked by policy"); return FALSE; }
++  g_settings_delay (settings);
++  for (guint i = 0; i < G_N_ELEMENTS (home_rows); i++) g_settings_reset (settings, home_rows[i].name);
++  g_settings_apply (settings);
++  return TRUE;
++}
++const CcLumaAdapter cc_luma_adapter_home = {
++  "home", (const char * const[]) { "home-screen", NULL }, home_start, home_write, (GDestroyNotify) cc_luma_gs_table_free
++};
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+index b52c04d..3fc29a0 100644
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -5,7 +5,7 @@
+ 
+ extern const CcLumaAdapter cc_luma_adapter_power, cc_luma_adapter_sound, cc_luma_adapter_appearance,
+                            cc_luma_adapter_displays, cc_luma_adapter_keyboard;
+-extern const CcLumaAdapter cc_luma_adapter_shelf, cc_luma_adapter_windows, cc_luma_adapter_notifications,
++extern const CcLumaAdapter cc_luma_adapter_home, cc_luma_adapter_shelf, cc_luma_adapter_windows, cc_luma_adapter_notifications,
+                            cc_luma_adapter_search, cc_luma_adapter_printers;
+ 
+ /* Adapters, one per owning service. Each lives in its own file. */
+@@ -31,7 +31,7 @@ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_users, &cc_luma_adapter_about, &cc_luma_adapter_ssh, &cc_luma_adapter_datetime,
+   &cc_luma_adapter_sharing, &cc_luma_adapter_region,
+   &cc_luma_adapter_privacy, &cc_luma_adapter_accounts, &cc_luma_adapter_wellbeing, &cc_luma_adapter_security,
+-  &cc_luma_adapter_shelf, &cc_luma_adapter_windows, &cc_luma_adapter_notifications, &cc_luma_adapter_search,
++  &cc_luma_adapter_home, &cc_luma_adapter_shelf, &cc_luma_adapter_windows, &cc_luma_adapter_notifications, &cc_luma_adapter_search,
+   &cc_luma_adapter_printers,
+   &cc_luma_adapter_apps, &cc_luma_adapter_appoptions,
+   NULL
+diff --git a/shell/cc-luma-shell.c b/shell/cc-luma-shell.c
+index 4ab8aa1..f8b5646 100644
+--- a/shell/cc-luma-shell.c
++++ b/shell/cc-luma-shell.c
+@@ -35,7 +35,7 @@ enum { PROP_0, PROP_ACTIVE_PANEL };
+ static const struct { const char *page; const char *panel; } routes[] = {
+   { "wifi", "wifi" }, { "wifi-net", "wifi" }, { "wifi-known", "wifi" }, { "hotspot", "wifi" },
+   { "network", "network" }, { "bluetooth", "bluetooth" },
+-  { "appearance", "background" }, { "shelf", "dash" }, { "windows", "multitasking" },
++  { "appearance", "background" }, { "home-screen", "background" }, { "shelf", "dash" }, { "windows", "multitasking" },
+   { "notifications", "notifications" }, { "search", "search" }, { "search-places", "search" },
+   { "displays", "display" }, { "nightlight", "display" },
+   { "sound", "sound" }, { "sound-levels", "sound" }, { "sound-alert", "sound" },
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index e3fd780..3b3085e 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -164,3 +164,5 @@ void cc_luma_view_choose (View *v, const char *key, const char *value);
+ /* Live: block a remaining fixture-only action and report it in this view.
+  * Native callbacks do not use this guard. Never switches Settings panels. */
+ gboolean cc_luma_view_delegated (View *v);
++
++void cc_luma_view_home_render (View *v);
+diff --git a/shell/cc-luma-view-shelf.c b/shell/cc-luma-view-shelf.c
+index 58cf409..8a1949e 100644
+--- a/shell/cc-luma-view-shelf.c
++++ b/shell/cc-luma-view-shelf.c
+@@ -370,3 +370,31 @@ void cc_luma_view_shelf_render (View *v)
+   cf_nv (v, card, "datetime", "Clock", "Format, weekday and seconds", NULL, NULL);
+   cf_nv (v, card, "power", "Battery percentage", NULL, cc_luma_view_flag (v, "pct") ? "Shown" : "Hidden", NULL);
+ }
++
++static void home_reset (GtkButton *button, View *v)
++{
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_fixture_set_flag (v->model, "homeReset", TRUE, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++void cc_luma_view_home_render (View *v)
++{
++  cc_luma_view_header (v, "Home Screen", "Mobile & Tablet", NULL);
++  if (cc_luma_fixture_is_live (v->model) && !cc_luma_view_flag (v, "homeAvailable"))
++    {
++      GtkBox *group = cf_group (v, NULL, "Home preferences require the matching Luma shell state service.");
++      cf_vl (v, group, "Home Screen", "Unavailable", NULL, FALSE, NULL, NULL);
++      return;
++    }
++  GtkBox *grid = cf_group (v, "Layout", "Applies to Mobile and Tablet Home. Counts fit the available screen space; icons and widgets share the same grid. Your saved arrangements are kept.");
++  cf_pk (v, grid, "homeColumns", "Columns", "Across each page",
++    (const char * const[]) { "auto", "Automatic", "3", "3", "4", "4", "5", "5", "6", "6", "7", "7", "8", "8", "9", "9", "10", "10", "11", "11", "12", "12", NULL });
++  cf_pk (v, grid, "homeRows", "Rows", "Above the dock",
++    (const char * const[]) { "auto", "Automatic", "2", "2", "3", "3", "4", "4", "5", "5", "6", "6", "7", "7", "8", "8", "9", "9", "10", "10", "11", "11", "12", "12", NULL });
++  GtkBox *icons = cf_group (v, "Icons", "Icon size stays within each cell. Hiding app names keeps their screen reader labels.");
++  cf_pk (v, icons, "homeIconSize", "Icon size", NULL,
++    (const char * const[]) { "automatic", "Automatic", "small", "Small", "medium", "Medium", "large", "Large", NULL });
++  cf_sw (v, icons, "homeLabels", "Show app names", NULL, NULL);
++  GtkBox *reset = cf_group (v, NULL, "Restores automatic sizing and app names. Keeps your apps, widgets and saved layouts.");
++  cf_bt (v, reset, "Reset Home preferences", NULL, "Reset", FALSE, G_CALLBACK (home_reset));
++}
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index a10baa8..46fd1ea 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -85,7 +85,7 @@ static gboolean page_supported (const char *page)
+   if (page && g_str_has_prefix (page, "app:")) return TRUE;
+   if (cc_luma_view_hardware_page (page) || cc_luma_view_people_page (page) || cc_luma_view_system_page (page)) return TRUE;
+   const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
+-    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
++    "bluetooth", "windows", "shelf", "appearance", "home-screen", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
+   for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
+     if (g_strcmp0 (page, pages[i]) == 0) return TRUE;
+   return FALSE;
+@@ -1133,6 +1133,7 @@ static void render_page (View *v)
+   else if (g_str_equal (v->page, "network")) network (v);
+   else if (g_str_equal (v->page, "bluetooth")) cc_luma_view_bluetooth_render (v);
+   else if (g_str_equal (v->page, "windows")) cc_luma_view_windows_render (v);
++  else if (g_str_equal (v->page, "home-screen")) cc_luma_view_home_render (v);
+   else if (g_str_equal (v->page, "shelf")) cc_luma_view_shelf_render (v);
+   else if (g_str_equal (v->page, "appearance")) cc_luma_view_appearance_render (v);
+   else if (g_str_equal (v->page, "notifications")) cc_luma_view_notifications_render (v);
+@@ -1349,6 +1350,7 @@ static gboolean page_valid (CcLumaFixture *model, const char *page)
+   if (g_str_equal (page, "nightlight")) return cc_luma_night_validate (model);
+   if (g_str_equal (page, "bluetooth")) return cc_luma_bluetooth_validate (model);
+   if (g_str_equal (page, "windows")) return cc_luma_windows_validate (model);
++  if (g_str_equal (page, "home-screen")) return TRUE;
+   if (g_str_equal (page, "shelf")) return cc_luma_shelf_validate (model);
+   if (g_str_equal (page, "appearance")) return cc_luma_appearance_validate (model);
+   if (g_str_equal (page, "notifications")) return cc_luma_notifications_validate (model);
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 3530bc1..0e0bd73 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -21,6 +21,7 @@ static const Destination destinations[] = {
+   { "network", "Network", "ethernet-port" },
+   { "bluetooth", "Bluetooth", "bluetooth" },
+   { "appearance", "Appearance", "palette" },
++  { "home-screen", "Home Screen", "layout-grid" },
+   { "shelf", "Dash", "panel-bottom" },
+   { "windows", "Windows & Workspaces", "square-stack" },
+   { "notifications", "Notifications", "bell" },
+diff --git a/shell/luma-settings-structure.json b/shell/luma-settings-structure.json
+index c77eaa7..a884611 100644
+--- a/shell/luma-settings-structure.json
++++ b/shell/luma-settings-structure.json
+@@ -1 +1 @@
+-{"version":1,"spec_sha256":"66d185165a453b0691e3b1603260651652d575110280af0855369aa7423ba454","selected":"wifi","settings":{},"data":{"CFGRPS":[["",["wifi","network","bluetooth"]],["Desktop",["appearance","shelf","windows","notifications","search"]],["Devices",["displays","sound","power","mouse","keyboard","printers"]],["You",["apps","accounts","privacy","wellbeing","a11y"]],["System",["sharing","region","datetime","users","remote","ssh","about"]]],"CFACC":[[250,"Blue"],[195,"Teal"],[150,"Green"],[95,"Yellow"],[55,"Orange"],[25,"Red"],[350,"Pink"],[300,"Purple"]],"CFPRE":[["luma","Luma",{"edge":"bottom","spread":"together","joined":"separate","float":"floating"}],["one","One bar",{"edge":"bottom","spread":"together","joined":"joined","float":"floating"}],["grown","Grown",{"edge":"bottom","spread":"together","joined":"separate","float":"edge"}],["tabs","Tabs",{"edge":"bottom","spread":"spread","joined":"separate","float":"edge"}],["taskbar","Taskbar",{"edge":"bottom","spread":"spread","joined":"joined","float":"edge"}],["split","Split",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}],["side","Side",{"edge":"left","spread":"spread","joined":"separate","float":"floating"}],["free","Free",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}]],"CFPERM":{"search":["Search","Offers results when you search"],"notif":["Notifications","Shows notifications"],"bg":["Run in background","Keeps working when its window is closed"],"shot":["Screenshots","Can take pictures of the screen at any time"],"wall":["Change wallpaper","Can set the desktop background"],"sound":["Sounds","Plays sounds"],"inh":["Keyboard shortcuts","Can block system shortcuts while focused"],"cam":["Camera","Takes pictures and video"],"mic":["Microphone","Records sound"],"loc":["Location","Knows where this computer is"]},"CFMINS":[["1","1 minute"],["2","2 minutes"],["3","3 minutes"],["5","5 minutes"],["8","8 minutes"],["10","10 minutes"],["15","15 minutes"],["0","Never"]],"CFAPPCATS":{"filer":"tools","photos":"media","viola":"work","write":"work","tide":"media","messages":"work","notes":"work","contacts":"work","calendar":"work","maps":"tools","camera":"media","memos":"tools","canvas":"create","reel":"create","term":"tools"},"CFFMT":{"US":["United States","Thursday, September 24, 2026","3:42 PM","1,234,567.89","$1,234.56","Imperial","Letter"],"GB":["United Kingdom","Thursday 24 September 2026","15:42","1,234,567.89","£1,234.56","Metric","A4"],"DE":["Deutschland","Donnerstag, 24. September 2026","15:42","1.234.567,89","1.234,56 €","Metric","A4"],"FR":["France","jeudi 24 septembre 2026","15:42","1 234 567,89","1 234,56 €","Metric","A4"],"IN":["India","Thursday, 24 September 2026","3:42 pm","12,34,567.89","₹1,234.56","Metric","A4"],"JP":["日本","2026年9月24日木曜日","15:42","1,234,567.89","￥1,235","Metric","A4"]},"CFLANG":[["en-US","English (United States)"],["en-GB","English (United Kingdom)"],["de-DE","Deutsch"],["es-ES","Español"],["fr-FR","Français"],["hi-IN","हिन्दी"],["ja-JP","日本語"],["pt-BR","Português (Brasil)"]],"CFZONE":[["America/Chicago","Chicago"],["America/New_York","New York"],["America/Los_Angeles","Los Angeles"],["Europe/London","London"],["Europe/Berlin","Berlin"],["Asia/Kolkata","Kolkata"],["Asia/Tokyo","Tokyo"],["Australia/Sydney","Sydney"]],"CFKB":{"codes":[["Backquote","Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7","Digit8","Digit9","Digit0","Minus","Equal","Backspace"],["Tab","KeyQ","KeyW","KeyE","KeyR","KeyT","KeyY","KeyU","KeyI","KeyO","KeyP","BracketLeft","BracketRight","Backslash"],["CapsLock","KeyA","KeyS","KeyD","KeyF","KeyG","KeyH","KeyJ","KeyK","KeyL","Semicolon","Quote","Enter"],["ShiftLeft","KeyZ","KeyX","KeyC","KeyV","KeyB","KeyN","KeyM","Comma","Period","Slash","ShiftRight"],["ControlLeft","MetaLeft","AltLeft","Space","AltRight","ContextMenu","ControlRight"]],"w":{"Backspace":1.9,"Tab":1.5,"Backslash":1.4,"CapsLock":1.8,"Enter":2.1,"ShiftLeft":2.35,"ShiftRight":2.55,"ControlLeft":1.3,"MetaLeft":1.3,"AltLeft":1.3,"Space":6,"AltRight":1.3,"ContextMenu":1.3,"ControlRight":1.3},"L":{"English (US)":["` 1 2 3 4 5 6 7 8 9 0 - = ⌫","Tab q w e r t y u i o p [ ] \\","Caps a s d f g h j k l ; ' Return","Shift z x c v b n m , . / Shift","Ctrl Super Alt _ Alt Menu Ctrl"],"Deutsch":["^ 1 2 3 4 5 6 7 8 9 0 ß ´ ⌫","Tab q w e r t z u i o p ü + #","Caps a s d f g h j k l ö ä Return","Shift y x c v b n m , . - Shift","Strg Super Alt _ AltGr Menu Strg"],"Français":["² & é \" ' ( - è _ ç à ) = ⌫","Tab a z e r t y u i o p ^ $ *","Caps q s d f g h j k l m ù Return","Shift w x c v b n , ; : ! Shift","Ctrl Super Alt _ AltGr Menu Ctrl"]}}},"pages":[{"id":"me","title":"Luma account","parent":null},{"id":"wifi","title":"Wi‑Fi","parent":null},{"id":"wifi-net","title":"Studio North","parent":"wifi"},{"id":"wifi-known","title":"Known networks","parent":"wifi"},{"id":"hotspot","title":"Hotspot","parent":"wifi"},{"id":"network","title":"Network","parent":null},{"id":"bluetooth","title":"Bluetooth","parent":null},{"id":"appearance","title":"Appearance","parent":null},{"id":"shelf","title":"Dash","parent":null},{"id":"windows","title":"Windows & Workspaces","parent":null},{"id":"notifications","title":"Notifications","parent":null},{"id":"search","title":"Search","parent":null},{"id":"search-places","title":"Folders to search","parent":"search"},{"id":"displays","title":"Displays","parent":null},{"id":"nightlight","title":"Night Light","parent":"displays"},{"id":"sound","title":"Sound","parent":null},{"id":"sound-levels","title":"Volume by app","parent":"sound"},{"id":"sound-alert","title":"Alert sound","parent":"sound"},{"id":"power","title":"Power","parent":null},{"id":"mouse","title":"Mouse & Touchpad","parent":null},{"id":"keyboard","title":"Keyboard","parent":null},{"id":"shortcuts","title":"Keyboard shortcuts","parent":"keyboard"},{"id":"printers","title":"Printers","parent":null},{"id":"apps","title":"Apps","parent":null},{"id":"defaults","title":"Default apps","parent":"apps"},{"id":"media","title":"Removable media","parent":"apps"},{"id":"accounts","title":"Online Accounts","parent":null},{"id":"acct-fm","title":"Fastmail","parent":"accounts"},{"id":"acct-nc","title":"Nextcloud","parent":"accounts"},{"id":"privacy","title":"Privacy & Security","parent":null},{"id":"p-lock","title":"Screen lock","parent":"privacy"},{"id":"p-loc","title":"Location","parent":"privacy"},{"id":"p-cam","title":"Camera","parent":"privacy"},{"id":"p-mic","title":"Microphone","parent":"privacy"},{"id":"p-files","title":"File history and trash","parent":"privacy"},{"id":"p-diag","title":"Problem reports","parent":"privacy"},{"id":"p-dev","title":"Device security","parent":"privacy"},{"id":"wellbeing","title":"Wellbeing","parent":null},{"id":"a11y","title":"Accessibility","parent":null},{"id":"a-see","title":"Seeing","parent":"a11y"},{"id":"a-hear","title":"Hearing","parent":"a11y"},{"id":"a-type","title":"Typing","parent":"a11y"},{"id":"a-point","title":"Pointing and clicking","parent":"a11y"},{"id":"a-zoom","title":"Zoom","parent":"a11y"},{"id":"sharing","title":"Sharing","parent":null},{"id":"region","title":"Region & Language","parent":null},{"id":"datetime","title":"Date & Time","parent":null},{"id":"users","title":"Users","parent":null},{"id":"user-priya","title":"Priya Raman","parent":"users"},{"id":"remote","title":"Remote Desktop","parent":null},{"id":"ssh","title":"Secure Shell","parent":null},{"id":"about","title":"About","parent":null},{"id":"about-sys","title":"System details","parent":"about"}]}
+\ No newline at end of file
++{"version":1,"spec_sha256":"66d185165a453b0691e3b1603260651652d575110280af0855369aa7423ba454","selected":"wifi","settings":{"homeColumns":"auto","homeRows":"auto","homeIconSize":"automatic","homeLabels":true,"homeReset":false},"data":{"CFGRPS":[["",["wifi","network","bluetooth"]],["Personalization",["appearance","home-screen","shelf","windows","notifications","search"]],["Devices",["displays","sound","power","mouse","keyboard","printers"]],["You",["apps","accounts","privacy","wellbeing","a11y"]],["System",["sharing","region","datetime","users","remote","ssh","about"]]],"CFACC":[[250,"Blue"],[195,"Teal"],[150,"Green"],[95,"Yellow"],[55,"Orange"],[25,"Red"],[350,"Pink"],[300,"Purple"]],"CFPRE":[["luma","Luma",{"edge":"bottom","spread":"together","joined":"separate","float":"floating"}],["one","One bar",{"edge":"bottom","spread":"together","joined":"joined","float":"floating"}],["grown","Grown",{"edge":"bottom","spread":"together","joined":"separate","float":"edge"}],["tabs","Tabs",{"edge":"bottom","spread":"spread","joined":"separate","float":"edge"}],["taskbar","Taskbar",{"edge":"bottom","spread":"spread","joined":"joined","float":"edge"}],["split","Split",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}],["side","Side",{"edge":"left","spread":"spread","joined":"separate","float":"floating"}],["free","Free",{"edge":"bottom","spread":"spread","joined":"separate","float":"floating"}]],"CFPERM":{"search":["Search","Offers results when you search"],"notif":["Notifications","Shows notifications"],"bg":["Run in background","Keeps working when its window is closed"],"shot":["Screenshots","Can take pictures of the screen at any time"],"wall":["Change wallpaper","Can set the desktop background"],"sound":["Sounds","Plays sounds"],"inh":["Keyboard shortcuts","Can block system shortcuts while focused"],"cam":["Camera","Takes pictures and video"],"mic":["Microphone","Records sound"],"loc":["Location","Knows where this computer is"]},"CFMINS":[["1","1 minute"],["2","2 minutes"],["3","3 minutes"],["5","5 minutes"],["8","8 minutes"],["10","10 minutes"],["15","15 minutes"],["0","Never"]],"CFAPPCATS":{"filer":"tools","photos":"media","viola":"work","write":"work","tide":"media","messages":"work","notes":"work","contacts":"work","calendar":"work","maps":"tools","camera":"media","memos":"tools","canvas":"create","reel":"create","term":"tools"},"CFFMT":{"US":["United States","Thursday, September 24, 2026","3:42 PM","1,234,567.89","$1,234.56","Imperial","Letter"],"GB":["United Kingdom","Thursday 24 September 2026","15:42","1,234,567.89","\u00a31,234.56","Metric","A4"],"DE":["Deutschland","Donnerstag, 24. September 2026","15:42","1.234.567,89","1.234,56 \u20ac","Metric","A4"],"FR":["France","jeudi 24 septembre 2026","15:42","1\u202f234\u202f567,89","1\u202f234,56 \u20ac","Metric","A4"],"IN":["India","Thursday, 24 September 2026","3:42 pm","12,34,567.89","\u20b91,234.56","Metric","A4"],"JP":["\u65e5\u672c","2026\u5e749\u670824\u65e5\u6728\u66dc\u65e5","15:42","1,234,567.89","\uffe51,235","Metric","A4"]},"CFLANG":[["en-US","English (United States)"],["en-GB","English (United Kingdom)"],["de-DE","Deutsch"],["es-ES","Espa\u00f1ol"],["fr-FR","Fran\u00e7ais"],["hi-IN","\u0939\u093f\u0928\u094d\u0926\u0940"],["ja-JP","\u65e5\u672c\u8a9e"],["pt-BR","Portugu\u00eas (Brasil)"]],"CFZONE":[["America/Chicago","Chicago"],["America/New_York","New York"],["America/Los_Angeles","Los Angeles"],["Europe/London","London"],["Europe/Berlin","Berlin"],["Asia/Kolkata","Kolkata"],["Asia/Tokyo","Tokyo"],["Australia/Sydney","Sydney"]],"CFKB":{"codes":[["Backquote","Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7","Digit8","Digit9","Digit0","Minus","Equal","Backspace"],["Tab","KeyQ","KeyW","KeyE","KeyR","KeyT","KeyY","KeyU","KeyI","KeyO","KeyP","BracketLeft","BracketRight","Backslash"],["CapsLock","KeyA","KeyS","KeyD","KeyF","KeyG","KeyH","KeyJ","KeyK","KeyL","Semicolon","Quote","Enter"],["ShiftLeft","KeyZ","KeyX","KeyC","KeyV","KeyB","KeyN","KeyM","Comma","Period","Slash","ShiftRight"],["ControlLeft","MetaLeft","AltLeft","Space","AltRight","ContextMenu","ControlRight"]],"w":{"Backspace":1.9,"Tab":1.5,"Backslash":1.4,"CapsLock":1.8,"Enter":2.1,"ShiftLeft":2.35,"ShiftRight":2.55,"ControlLeft":1.3,"MetaLeft":1.3,"AltLeft":1.3,"Space":6,"AltRight":1.3,"ContextMenu":1.3,"ControlRight":1.3},"L":{"English (US)":["` 1 2 3 4 5 6 7 8 9 0 - = \u232b","Tab q w e r t y u i o p [ ] \\","Caps a s d f g h j k l ; ' Return","Shift z x c v b n m , . / Shift","Ctrl Super Alt _ Alt Menu Ctrl"],"Deutsch":["^ 1 2 3 4 5 6 7 8 9 0 \u00df \u00b4 \u232b","Tab q w e r t z u i o p \u00fc + #","Caps a s d f g h j k l \u00f6 \u00e4 Return","Shift y x c v b n m , . - Shift","Strg Super Alt _ AltGr Menu Strg"],"Fran\u00e7ais":["\u00b2 & \u00e9 \" ' ( - \u00e8 _ \u00e7 \u00e0 ) = \u232b","Tab a z e r t y u i o p ^ $ *","Caps q s d f g h j k l m \u00f9 Return","Shift w x c v b n , ; : ! Shift","Ctrl Super Alt _ AltGr Menu Ctrl"]}}},"pages":[{"id":"me","title":"Luma account","parent":null},{"id":"wifi","title":"Wi\u2011Fi","parent":null},{"id":"wifi-net","title":"Studio North","parent":"wifi"},{"id":"wifi-known","title":"Known networks","parent":"wifi"},{"id":"hotspot","title":"Hotspot","parent":"wifi"},{"id":"network","title":"Network","parent":null},{"id":"bluetooth","title":"Bluetooth","parent":null},{"id":"appearance","title":"Appearance","parent":null},{"id":"home-screen","title":"Home Screen","parent":null},{"id":"shelf","title":"Dash","parent":null},{"id":"windows","title":"Windows & Workspaces","parent":null},{"id":"notifications","title":"Notifications","parent":null},{"id":"search","title":"Search","parent":null},{"id":"search-places","title":"Folders to search","parent":"search"},{"id":"displays","title":"Displays","parent":null},{"id":"nightlight","title":"Night Light","parent":"displays"},{"id":"sound","title":"Sound","parent":null},{"id":"sound-levels","title":"Volume by app","parent":"sound"},{"id":"sound-alert","title":"Alert sound","parent":"sound"},{"id":"power","title":"Power","parent":null},{"id":"mouse","title":"Mouse & Touchpad","parent":null},{"id":"keyboard","title":"Keyboard","parent":null},{"id":"shortcuts","title":"Keyboard shortcuts","parent":"keyboard"},{"id":"printers","title":"Printers","parent":null},{"id":"apps","title":"Apps","parent":null},{"id":"defaults","title":"Default apps","parent":"apps"},{"id":"media","title":"Removable media","parent":"apps"},{"id":"accounts","title":"Online Accounts","parent":null},{"id":"acct-fm","title":"Fastmail","parent":"accounts"},{"id":"acct-nc","title":"Nextcloud","parent":"accounts"},{"id":"privacy","title":"Privacy & Security","parent":null},{"id":"p-lock","title":"Screen lock","parent":"privacy"},{"id":"p-loc","title":"Location","parent":"privacy"},{"id":"p-cam","title":"Camera","parent":"privacy"},{"id":"p-mic","title":"Microphone","parent":"privacy"},{"id":"p-files","title":"File history and trash","parent":"privacy"},{"id":"p-diag","title":"Problem reports","parent":"privacy"},{"id":"p-dev","title":"Device security","parent":"privacy"},{"id":"wellbeing","title":"Wellbeing","parent":null},{"id":"a11y","title":"Accessibility","parent":null},{"id":"a-see","title":"Seeing","parent":"a11y"},{"id":"a-hear","title":"Hearing","parent":"a11y"},{"id":"a-type","title":"Typing","parent":"a11y"},{"id":"a-point","title":"Pointing and clicking","parent":"a11y"},{"id":"a-zoom","title":"Zoom","parent":"a11y"},{"id":"sharing","title":"Sharing","parent":null},{"id":"region","title":"Region & Language","parent":null},{"id":"datetime","title":"Date & Time","parent":null},{"id":"users","title":"Users","parent":null},{"id":"user-priya","title":"Priya Raman","parent":"users"},{"id":"remote","title":"Remote Desktop","parent":null},{"id":"ssh","title":"Secure Shell","parent":null},{"id":"about","title":"About","parent":null},{"id":"about-sys","title":"System details","parent":"about"}]}
+\ No newline at end of file

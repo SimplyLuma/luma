@@ -4,21 +4,26 @@ import {reconcileGrid, overlaps} from '../../../src/luma-shell-presentation/grid
 import {readDisplayGeometry, readDisplayProfiles, selectDisplayProfile, displayExclusions, statusInsets, avoidDisplayExclusions, surfaceInsets} from '../../../src/luma-shell-presentation/safeAreas.js';
 function assert(value, message) { if (!value) throw Error(message); }
 const layout=homeLayout(360,400,'tablet',50,{cellHeight:60});
-assert(layout.iconColumns===4 && layout.otherRows===4 && layout.iconSize===44,'Titan must fit four by four with cell-sized icons');
+assert(layout.iconColumns===5 && layout.otherRows===4 && layout.iconSize===44,'Titan must fit five by four with cell-sized icons');
 const fold=homeLayout(404,908,'mobile',50);
-assert(fold.iconColumns===4 && fold.iconSize>40,'phones use four columns with icons sized to the cell');
-assert(homeLayout(300,640,'mobile',50).iconColumns===3,'very narrow screens use three columns');
+assert(fold.iconColumns===5 && fold.iconSize>40,'phones fit five columns with icons sized to the cell');
+assert(homeLayout(320,640,'mobile',50).iconColumns===4,'narrow screens reduce to four columns');
+assert(homeLayout(280,640,'mobile',50).iconColumns===3,'very narrow screens use three columns');
 assert(homeLayout(390,844,'mobile',35).otherRows>4,'tall phones use their available rows');
 assert(statusInsets(null,{width:1280,height:800},44,24).left===24,'unprofiled tablet keeps its original edge');
 const definitions=[{id:'weather',kind:'widget',w:2,h:2},{id:'calendar',kind:'widget',w:3,h:2},
     ...Array.from({length:35},(_,id)=>({id:String(id),kind:'app',w:1,h:1}))];
 const grid=reconcileGrid(null,definitions,layout.columns,layout.otherRows);
 assert(grid.pages.flat().filter(item=>item.kind==='app').every(item=>item.w===1&&item.h===1),'apps must satisfy shared state contract');
-assert(grid.pages[0].length===8,'two widgets plus six apps fill the first four-by-four page');
+assert(grid.pages[0].length===12,'whole-cell widgets plus ten apps fill the first five-by-four page');
 const old={columns:2,rows:2,pages:definitions.map(item=>[{...item,x:0,y:0,w:1,h:1}])};
-const migrated=reconcileGrid(old,definitions,4,4);
+const migrated=reconcileGrid(old,definitions,5,4);
 assert(JSON.stringify(grid)===JSON.stringify(migrated),'resize must repack sparse old pages');
-assert(JSON.stringify(reconcileGrid(grid,definitions,4,4))===JSON.stringify(grid),'same geometry keeps arranged positions');
+assert(JSON.stringify(reconcileGrid(grid,definitions,5,4))===JSON.stringify(grid),'same geometry keeps arranged positions');
+const previous=reconcileGrid(null,definitions,4,4);
+const widened=reconcileGrid(previous,definitions,5,4);
+assert(widened.pages.flat().length===definitions.length,'four-to-five-column migration preserves every item');
+assert(homeLayout(390,844,'mobile',35).otherRows===9,'extra columns retain ordinary-phone row spacing');
 for (const [width,height,metrics] of [[320,320,{}],[360,400,{}],[390,844,{}],[360,400,{cellHeight:90}],[1280,800,{}]]) {
     const l=homeLayout(width,height,'tablet',35,metrics);
     assert(l.top+l.otherRows*l.rowHeight <= height-l.bottom+8,'grid overlaps dock');

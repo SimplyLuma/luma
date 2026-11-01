@@ -32,6 +32,7 @@ from luma_shell_state import (
     normalize_capabilities,
     normalize_home_layout,
     presentation_state,
+    read_fold_posture,
     read_presentation_profile,
 )
 
@@ -97,6 +98,11 @@ class ShellStateService:
         self._capabilities = {}
         self._posture_source = 0
         self._profile = read_presentation_profile()
+        self._fold = read_fold_posture()
+        # A foldable's device service replaces this on every hinge change.
+        self._fold_monitor = Gio.File.new_for_path("/run/luma/posture").monitor_file(
+            Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self._fold_monitor.connect("changed", self._on_fold_changed)
         self._phosh = None
         self._syncing_favorites = False
         schema_source = Gio.SettingsSchemaSource.get_default()
@@ -120,11 +126,20 @@ class ShellStateService:
         self._sync_idle_default()
         self._sync_button_layout()
 
+    def _presentation(self):
+        return presentation_state(self._luma.get_string("presentation-mode"), profile=self._profile,
+                                  capabilities=self._capabilities, fold=self._fold)
+
+    def _on_fold_changed(self, *_args) -> None:
+        fold = read_fold_posture()
+        if fold != self._fold:
+            self._fold = fold
+            self._on_settings_changed(self._luma, "fold-posture", "presentation")
+
     def _sync_button_layout(self) -> None:
         if not self._luma.props.settings_schema.has_key("presentation-button-layout"):
             return
-        mode = presentation_state(self._luma.get_string("presentation-mode"),
-            profile=self._profile, capabilities=self._capabilities)["effective"]
+        mode = self._presentation()["effective"]
         current = self._wm.get_user_value("button-layout")
         kept = self._luma.get_value("presentation-button-layout").get_maybe()
         saved = kept.get_string() if kept is not None else None
@@ -141,8 +156,7 @@ class ShellStateService:
     def _sync_idle_default(self) -> None:
         if not self._luma.props.settings_schema.has_key("presentation-idle-default"):
             return
-        mode = presentation_state(self._luma.get_string("presentation-mode"),
-            profile=self._profile, capabilities=self._capabilities)["effective"]
+        mode = self._presentation()["effective"]
         current = self._session.get_user_value("idle-delay")
         value = presentation_idle_default(mode, current.get_uint32() if current is not None else None,
             self._luma.get_int("presentation-idle-default"))
@@ -260,9 +274,7 @@ class ShellStateService:
             input_method=self._luma.get_string("input-method"),
             restore_app_state=self._luma.get_boolean("restore-app-state"),
             renderer=self._renderer(),
-            presentation=presentation_state(
-                self._luma.get_string("presentation-mode"), profile=self._profile,
-                capabilities=self._capabilities),
+            presentation=self._presentation(),
             home_layouts=self._home_layouts(),
             shelf=normalize_shelf(
                 layout_version=self._luma.get_uint("shelf-layout-version"),
@@ -302,8 +314,7 @@ class ShellStateService:
         return encode_snapshot(snapshot)
 
     def _context_properties(self):
-        state = presentation_state(self._luma.get_string("presentation-mode"),
-                                   profile=self._profile, capabilities=self._capabilities)
+        state = self._presentation()
         return {
             "Presentation": GLib.Variant("s", state["effective"]),
             "InputCapabilities": GLib.Variant("a{sb}", {

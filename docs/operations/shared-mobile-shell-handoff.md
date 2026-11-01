@@ -7,9 +7,9 @@ shared Luma GNOME Shell with Mobile presentation, using the Desktop/Tablet
 services and native controls. The old GNOME Mobile 48 bake-off and Phosh renderer
 are separate historical paths.
 
-If a checkout cannot find these sources, inspect the development ref explicitly;
-they are not yet integrated into `main`. This does not switch or reset the
-receiving agent's worktree:
+Use `main` for integrated source. The development ref retains the Titan history;
+if a checkout cannot find a recent change, inspect that ref explicitly without
+switching or resetting the receiving agent's worktree:
 
 ```sh
 git fetch origin refs/heads/codex/project-titan-usb-20261029:refs/remotes/origin/codex/project-titan-usb-20261029
@@ -23,6 +23,25 @@ preparation and immutable-image Python caches are maintained in the shared
 platform. Carry the matching package cohort, not just the shell JS. See
 [Mobile application startup](mobile-app-startup.md) for architecture, confinement
 boundaries, measured first-frame timings and remaining qualification gates.
+
+## Search material
+
+Search uses the same native surface renderer as the dock for its field and
+intro/results. One blur belongs to each visible surface; result rows remain
+transparent. Light/Dark/Frost/Glass and opaque accessibility fallbacks use the
+shared policy. Native checks cover both presentation paths on the Titan,
+including actual results, palette changes and closing the surfaces.
+
+## Widget resizing
+
+Shell source candidate 141 adds shared Mobile/Tablet widget resizing in Home edit
+mode. A selected widget exposes a corner handle; nearby items move aside while
+preserving whole-cell spans. Release saves, Escape cancels, and provider size
+limits apply. Keyboard resizing and reduced motion use the same transaction.
+The Titan passed 12 native checks and the owner approved the physical candidate.
+The source and regression tests are on this branch; other devices require a
+matching package build. The Titan currently uses a source-backed override on
+installed Shell 139, not a built 141 package.
 
 ## Source to carry over
 
@@ -40,13 +59,20 @@ boundaries, measured first-frame timings and remaining qualification gates.
 | No window controls in Tablet and Mobile | `presentation_button_layout` in `src/luma-shell-state/`, LumaUI window controls |
 | Input, power and appearance defaults | `config/mobile/luma-shell-handheld.dconf` |
 
-The converged nightly source pins Shell `1.luma.139`,
+The converged nightly source pins Shell `1.luma.140`,
 Mutter `1.luma.17.keycap20261031.1`, developer platform `1.luma.121`,
 core apps `1.luma.126`, Tide `2.luma.38` and widgets `1.luma.3`. These identify requested
 builds, not published or qualified RPMs. Preserve newer work already present in
 the receiving branch/device; the Titan's private development install includes
 newer unrelated platform UI work, so do not downgrade an installed package tuple
 just to match an older base.
+
+Release counters from different device branches do not establish compatibility.
+Keep native callers and the shared toolkit in a checked cohort, and verify their
+dynamic symbols when combining builds. The Titan Settings70/eSIM binary required
+legacy activation-code/QR symbols absent from Platform121; matching current
+Settings59 loads with that toolkit. Keeping the higher-numbered binary caused
+Settings to exit before opening.
 
 ## Moving another phone from Phosh
 
@@ -87,12 +113,19 @@ composition/session profile and build/install the matched native cohort.
 ## Current behavior and remaining work
 
 Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
-screen, Home has four columns and four rows plus the dock; each widget spans
+screen, Home has five columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
-Notifications are pulled from the top island; Quick Options is pulled from the
-right status area. Full pages use the dock palette's opaque treatment for readable text.
-Both fill the screen, scroll internally, follow/reverse with
-the finger and snap on release. Mobile lock uses the same notification anatomy,
+Notifications are pulled from the top island, including generous invisible
+padding around it. Quick Options is pulled from the clock or right status area;
+a clock tap still opens Calendar. Full pages use the dock palette's opaque treatment for readable text.
+Both Mobile surfaces fill the screen and scroll internally. Their controls stay
+in their final layout: a finger-controlled backdrop/content fade and small
+vertical settle reveal them without a moving crop edge. Reversing a pull uses
+the same path; release snaps open or closed. Source146 also fixes the zero-mask
+preparation frame when starting to dismiss an already-open Quick Options page.
+Desktop/Tablet retain their anchored panel motion. A short bottom swipe on an
+idle handheld Home opens the same master search as Desktop; holding still opens
+the switcher, and a swipe from an app still returns Home. Mobile lock uses the same notification anatomy,
 with lock visibility/redaction rules and authentication before app activation.
 Desktop/Tablet lock presentation remains separate. Mobile bottom-edge taps reach
 application controls; Home and the app switcher require an actual upward drag.
@@ -179,3 +212,56 @@ cancels its first-paint preparation. Performance is still unqualified: the Titan
 has a60Hz reported mode but even a minimal compositor rectangle often paints
 around30FPS through its simpledrm/Panfrost path. Do not promise60FPS or fixed
 90Hz battery behavior from these changes. No CPU/GPU performance floor remains.
+
+
+Home Screen preferences (owner approved October31): Settings → Personalization →
+Home Screen now controls Mobile and Tablet columns, rows, icon size and app
+names. Shared shell-state keys are home-columns, home-rows, home-icon-size and
+home-show-labels. Automatic defaults preserve existing layouts; manual counts
+are bounded by available touch space. Reset changes only these preferences,
+not saved arrangements. Desktop rendering is unchanged.
+
+Matching source cohort: Shell142, Settings60.home20261031.1,
+shell-state38.home20261031.1 and Search10. Pure layout regressions, ARM native
+settings-owner checks, the actual native Settings build, seven physical Shell
+checks and eight physical Settings UI checks passed. The owner accepted the
+Titan experience. Other devices require matching package builds; these new
+RPM versions have not been built or release-qualified.
+
+The Titan retains a development resource overlay, additive local schema and
+native Settings binary bind via project-titan-home-settings.service. Before
+installing a proper Settings RPM, close Settings and disable/stop that service
+so its bind cannot hide the packaged executable. Keep other overlays and user
+layouts intact; deployment and rollback details are in the Titan task record.
+
+
+Mobile switcher follow-up advances Shell to143. The handheld swipe-and-hold is
+300ms with one theme-owned quiet haptic request and normal cancellation. Mobile
+cards have no close control or selection lift; Mobile/Tablet hide recency/state
+labels. Mobile entry and bottom-swipe return to Home use the same fixed-geometry
+opacity progress, including the dock, and can reverse interrupted entry.
+Desktop/Tablet retain their existing window travel and hover controls. The native
+Mobile regression module tests the actual bottom-edge touchscreen gesture and
+modal cleanup; all11 checks passed on the Titan, with a301ms hold measurement.
+This does not qualify frame rate on every GPU. The Titan uses source resource
+overlays; matching package builds remain necessary for other devices.
+
+
+Shell144 refines Mobile switcher opacity ordering: Home icons stay hidden during
+the main card fade, and a nonzero preparation paint warms previews before entry.
+The handheld hold is220ms and requires60ms of settled motion; continuing swipes
+and early release do not activate it. Seventeen native checks passed on the
+Titan, including real bottom-edge touch and sampled exit stacking/phasing.
+Matching source resource overlays are installed; this is not a packaged OS
+release or a universal frame-rate qualification.
+
+
+Shell145 fixes the remaining scene handoffs: Mobile entry retires the gesture
+app clone immediately, returning Home cannot create another fullscreen copy,
+and background/keyboard/toggle dismissal uses the same Mobile return as the
+bottom swipe. An owned opaque backdrop stays below Home/cards and is released
+with the popup. Explicit card selection still opens its app; Desktop/Tablet
+retain their wallpaper/window-travel path. The new native handoff regression
+module starts from a running app and tests actual touch entry/tap/swipe exits:
+38 checks/86 painted frames pass, plus all17 prior gesture regressions. Source
+overlays are installed on the Titan; other devices need matching package builds.

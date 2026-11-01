@@ -544,6 +544,26 @@
     "check for updates",
     "os update"
    ]
+  },
+  {
+   "id": "home-screen",
+   "title": "Home Screen",
+   "path": "Home Screen",
+   "panel": "home-screen",
+   "keywords": [
+    "home screen",
+    "homescreen",
+    "home",
+    "grid",
+    "columns",
+    "rows",
+    "icon size",
+    "app names",
+    "app labels",
+    "widgets",
+    "tablet",
+    "mobile"
+   ]
   }
  ]
 }

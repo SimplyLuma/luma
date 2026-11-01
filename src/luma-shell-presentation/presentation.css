@@ -20,6 +20,10 @@
 .luma-converged-app.selected, .luma-converged-app.dragging { box-shadow: inset 0 0 0 2px #99c1f1; }
 .luma-home-drop-target { border: 2px solid #99c1f1; border-radius: 16px; background: rgba(153,193,241,0.16); }
 .luma-home-edit-done { min-width: 44px; min-height: 36px; padding: 0 10px; border-radius: 12px; background: rgba(127,127,127,0.24); font-weight: 600; }
+.luma-converged-widget.selected { border-color: #99c1f1; }
+.luma-home-resize-handle { padding: 0; border-radius: 22px; color: white; background: rgba(30,25,43,0.92); border: 2px solid #99c1f1; }
+.luma-home-resize-handle:hover, .luma-home-resize-handle:focus { background: #202638; border-color: white; }
+.luma-converged-home.high-contrast .luma-home-resize-handle { background: black; color: white; border-color: white; }
 .luma-converged-app-content { spacing: 8px; }
 .luma-converged-app-label { font-size: 0.9em; font-weight: 400; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
 .luma-converged-home.opaque .luma-converged-dock { background-color: #1e192b; }

@@ -1,6 +1,6 @@
 # Project Titan recovery and shared shell
 
-- Status: shared Mobile presentation active on owner Titan; compact Home, full-screen overlays, power-button lock/blank and background Weather verified. Source candidate ready for integration.
+- Status: source147 search polish installed and native-tested; remaining Home/widget/gesture work reconciled with main for integration. No general OS release.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -907,3 +907,715 @@ the matching source cohort and build/qualify their packages; do not copy private
 Titan overlays or claim that Home paging/Quick Options rendering now achieves60FPS.
 Private measurements/scripts: account experiments/titan-launch-20261030; bounded
 cross-build inputs/binaries live on the existing titan-kernel-20261030 HDD bind.
+
+### 2026-10-31 — current cohort and Android delivery (in progress)
+
+Owner requested the newest compatible work, especially Android, including other
+branches. Fast-forwarded this owned branch from8397c1dda to the converged
+work/fold-current-20261031 commit0ac8cfba0, which retains the measured startup
+work and incorporates current main. Other owners' worktrees/jobs were not changed.
+
+Recovered the office route through the Dell's existing unprivileged stream
+proxy, authenticating the Titan against its existing pinned host key. The generic
+luma.local name resolved to a different machine; its different key was rejected,
+never trusted. Private SSH addressing/proxy configuration remains outside Git.
+Phone kernel retains accepted audio build#2 2026-10-30 23:00UTC, 4KiB pages,
+Binder/hwbinder/vndbinder devices, wake services active and Mobile presentation.
+
+Selected actual successful ARM/noarch component artifacts from GitHub runs
+41242715357 (Shell139),41240614908 (Platform121/toolkit),41240614877
+(runtime98, Mutter17 and other shared components), and41242715267 (Search9).
+Components' PR merge source9a5433863 and Platform's bcef0c949 have matching relevant
+source at0ac8cfba0; Shell artifact is directly from0ac8cfba0. Relevant individual
+jobs passed; the overall UI run failed in Filer, so that run is not claimed fully
+passing. Runtime98's standard package tests ran in its successful producer.
+Reused the already-admitted ARM Android image10 and installer82 from the nightly
+owner's artifact cohort, without rebuilding or changing that owner's state.
+Image RPM transfer SHA20a0c2a0fb2b53c091b0263a3a5749ae34ab41031aa20b0ad0da558442a156cf
+matches the source artifact. Package payload digests and supplied sidecars checked;
+individual components without sidecars retain their producer/source identity.
+
+Device dependencies Waydroid1.6.3, its SELinux package and python3-gbinder staged
+successfully. First cohort solve rejected old local Shell/widget pins and the old
+installer's exact metadata requirement; no partial package change. Corrected the
+local-package requests and included matching installer82/metadata2. The next
+transaction found a launcher-policy file ownership collision with the device's
+base; kept that existing policy instead of forcing a conflicting package.
+Third transaction is running with those corrections. Do not call delivery
+complete until actual staging/live apply/login/Android results below exist.
+
+Current Python app sources are staged with checked hashes/bytecode for core UI,
+Tide, Monitor, Terminal and Continuity at the same source revision. Source-backed
+private overlays and environment backup live under
+/var/lib/project-titan/update-20261031; generated packages/evidence stay outside
+Git. Keep device settings70/esim and hardware/kernel packages; an older-numbered
+shared settings artifact is not substituted over device-specific work.
+
+Actual bounded source check c1308bf1 exit0: launch cohort2, app inventory12,
+checked-hash bytecode1, Meson AST and git diff checks pass. New source payload
+compiles on the server and Titan. No new Android physical-device acceptance or
+new animation-performance result is claimed at this checkpoint.
+
+Delivery result: staged deployment0f2e65164ddb5e194399ee9ef9f9032aa22abc70bebff444264705cc6e70ab2b
+successfully booted. Live application had failed while checking out/usr/local;
+its partial live result was not accepted as installation. Normal reboot selected
+the staged tuple: Shell139, Mutter17, Platform121, runtime98/images10 and matching
+installer82/metadata2. Existing audio kernel#2 and wake services survived. Native
+password login succeeds and the prepared app host/native timer are active.
+Removed previous full Shell/GDM/kit overlays; current source-backed Python apps
+are active from the new source directory. Desktop Settings70/esim was retained.
+
+Root's old authorized_keys did not persist across the formerly transient root
+filesystem. Existing luma public-key login and sudo authenticated successfully;
+restored the SAME developer key through a root-only/etc/ssh AuthorizedKeysFile,
+retaining PermitRootLogin prohibit-password. No password login was enabled.
+
+Android image verification/initialization passed in56.6s, container and session
+started. Physical graphics acceptance FAILED: allocator could not allocate GPU
+buffers and SurfaceFlinger crashed with output-buffer GPU usage errors; no guest
+app acceptance is claimed. User explicitly assigned GPU fixes to another agent.
+Stopped this task's tests and removed ONLY its two exact temporary properties
+(ro.hardware.gralloc=gbm and gralloc.gbm.device), regenerating the original
+properties. No software fallback/driver/image/kernel workaround was retained.
+Cross-task factual handoff is in the shared coordination directory under
+project-titan-android-delivery-20261031.md. Subsequent GPU state belongs to that
+agent; do not stop their jobs or overwrite their configuration.
+
+User asked why Home had four columns, renewing their earlier five-column request.
+Found explicit four-column cap in homeLayout. Shared geometry now admits five
+68px cells where they fit and reduces columns on narrower screens. Kept vertical
+spacing independent of the extra column, so ordinary390x844 phones retain nine
+rows rather than unexpectedly packing twelve. Titan fits5x4 with44px icons;
+widgets keep integer spans and the separate dock is unchanged. Shell candidate
+pins/spec advanced together to140; the installed139 build receives only the
+source-backed layout.js hotfix until a140 package is built.
+
+Actual Node compact geometry/migration/cutout tests pass; same tests pass under
+GJS on the physical Titan. Cohort pins2tests pass. Live native proof reports
+columns5,rows4,pages2,items28,iconSize44,wholeCells=true,Home visible. Applied
+_rebuild from the matching source through a temporary developer-console module
+without restarting the session or interrupting the other agent's GPU work.
+The sole persistent resource override is the new source-backed layout.js;
+it does not mask the installed Shell/GDM/kit cohort. Temporary inspection
+extensions/idle override are retired after verification. Private scripts,
+package payloads and screenshots remain outside Git. No new60FPS or universal
+Android compatibility claim follows from this deployment.
+
+### 2026-10-31 — Settings launch compatibility follow-up
+
+User reported Settings would not open. Actual journal and ldd-r show retained
+Settings70/esim immediately exits127 because Platform121 lacks seven old
+activation-code/QR-scanner symbols, beginning with luma_activation_code_new.
+Retaining the numerically higher device branch package during the earlier update
+was the wrong compatibility decision. Other-agent Android GPU work is untouched.
+
+Used the matching successful ARM Settings producer from run41242715357,
+Settings59.dash20261026.1 plus its exact filesystem subpackage. RPM digests pass;
+main RPM SHA576315266fa148d04cc4a26a97ab367de31c7eb0c9a5eee077ba5a8e935152f4
+matches its published artifact sidecar. Extracted current executable has no
+unresolved dynamic symbols against the Titan's current libraries. Started this
+actual current build in the existing graphical session, obtaining the Settings
+D-Bus owner and a real360x400 native window. This is the normal compiled app,
+not a launcher placeholder or replacement UI. Both current packages are being
+installed transactionally; final result is recorded below. The temporary running
+verification binary is bounded and will be closed/reopened from/usr after install.
+
+The retained device-specific70 QR/eSIM Settings frontend is not qualified with
+Platform121; do not claim that device-private frontend remains supported in the
+current cohort. Device eSIM broker, modem firmware/kernel and user profiles were
+not changed. Shared migration notes now explicitly distinguish branch release
+numbers from runtime binary compatibility.
+
+Permanent replacement completed: project-titan-settings-package exit0, actual
+pending commitcb0adb9716a4fdd6b286db08b28178731d353160db49308fd7d6f5047e76fdc6.
+Live application also PASSED this time (normal/usr/local state after reboot);
+normal/usr/bin and RPM database now identify matching Settings59 and filesystem59.
+ldd-r reports no unresolved symbols. Closed the bounded verification process and
+launched normal installed/usr/bin/gnome-control-center. Accessibility inspection
+confirms a real Settings frame showing/visible. No shell restart, OS reboot or
+Android service operation was needed for this follow-up. No launcher override,
+old shared-library injection, platform downgrade or inert symbol shim was used.
+
+### 2026-10-31 — Terminal source-directory access repair
+
+Terminal launch failed with ModuleNotFoundError for luma_terminal. The imported
+package and launcher were correct, but the private update's top-level source
+directory was root:root0770, preventing the signed-in user from traversing it.
+Changed that public source-only directory to0755; kept private backup/evidence
+permissions unchanged. Corrected both private source preparation/application
+scripts to set the root directory mode explicitly, alongside their existing
+descendant permissions. No shared app/runtime patch was needed for this error.
+Actual signed-in-user module resolution now succeeds. Normal accelerated
+Terminal launch started a VTE shell process; AT-SPI confirms a showing/visible
+Terminal frame. No Shell/Android restart or reboot was performed.
+
+Scaling/Weather follow-up remains active. Current Mutter readback and the user's
+saved monitors.xml already specify scale2.0 at1080x1200. Scrolling investigation
+uses a bounded native Weather fixture on the physical device; no user weather
+store is modified by that profiling fixture. No smoothness improvement is yet
+claimed from the initial measurements.
+
+Native touch verification in the current matching Settings59 build subsequently
+passed: changed200→250 and200→300 through the actual scale menu and Apply bar.
+At300 the window is360x400; the bottom confirmation occupies[0,340,360,60],
+with both Revert and Keep fully inside it. Countdown rollback restored2.0,
+independently verified through Mutter. The previous compatible Settings package
+repair already carries0079/0080; no additional Settings workaround was installed.
+The native mode also advertises preferred scale2.0 and monitors.xml saves2;
+200percent is the selected Titan default, preserving explicit later user choices.
+
+Weather profiling remains unresolved, not a60FPS qualification. Bounded native
+fixture drags update the scroll adjustment during movement, while after-paint
+intervals are commonly50–67ms; a simple shared-kit list is near33ms. A private
+edge-strip mask prototype reduces ScrollView snapshot CPU time from about3ms
+to1ms and improves some intervals, but does not eliminate the wider rendering
+delay. CPU/GPU frequencies already scale dynamically under interaction and the
+GPU returns to runtime suspend; no performance governor/frequency floor changed.
+No evidence supports rewriting Weather's application language from these tests.
+No experimental mask or renderer policy was deployed to production modules.
+The private harness/captures are under the owned update-20261031 artifact folder.
+
+At approximately22:50UTC both the Titan proxy and the Dell reverse SSH endpoint
+stopped answering their SSH banners. Direct Dell probe failed too, so further
+physical qualification awaits the relay connection. A Cairo comparison was not
+executed (connection failed before remote startup). All successfully launched
+profile units have RuntimeMaxSec18 or35 and their UI self-exits after9 or20s;
+no persistent polling/inhibitor or rendering override was installed. Last device
+readback remains200percent; normal Terminal and Settings launch are repaired.
+
+Next connection: verify prepared-host module provenance and restart only
+luma-app-host.service after confirming KillMode=process. Its preloaded Python
+modules may still be the installed fallback source: the formerly inaccessible
+PYTHONPATH directory would allow imports to fall through to installed packages
+at host startup. This is an inference, not a live sys.modules readback. Retain
+running app children; relaunch Weather alone for the real-source acceptance.
+The isolated profiling fixture explicitly imported the current source directory
+after its permissions were repaired, so it did not depend on that prepared host.
+
+### 2026-10-31 — Resizable widgets: owner accepted, source ready
+
+Owner tested the Titan candidate and explicitly approved: “Looks good—commit it”.
+This change advances the matching Shell spec and architecture pins to 141.
+The physical checks below used the source-backed override on installed 139;
+no 141 RPM build or OS release qualification is claimed. Credentials and access
+helpers remain private.
+Titan is now directly reachable at192.168.1.211 through the same pinned SSH key;
+the private project-titan alias is updated. Dell is back on the home network.
+
+Shared HomeEditor now exposes a44logical-pixel corner resize handle for a
+selected widget in edit mode. Touch/mouse pan and focused-handle arrow keys
+(orCtrl+Shift+arrows on a widget) use the same whole-cell transaction. Provider
+minimum/maximum spans are respected; resize previews start from the original
+snapshot, use cell hysteresis, and persist only on release/acknowledgement.
+Nearby items glide from their painted positions with native180ms easing;
+unchanged items get no animation. Whole widgets keep their spans, with adjacent
+icons moved aside before ejecting a large widget to another page. Pending
+reflows finish before a model rebuild. Escape/gesture cancellation and save
+refusal restore the original placement. Saved spans survive reconciliation and
+grid migration. No continuously running frame/timer loop or display boost added.
+
+Changed files: grid.js, homeEditor.js, widgets.js, presentation.js/CSS; new
+pure widget-resize.js and native widget-resize-native.js regressions integrated
+with the existing editor harness. Normal bounded0a246e4d passes existing grid,
+compact/cutout, and new resize tests, covering multiple phone/tablet grids,
+collision/overflow, strict wire item fields, persistence/migration, page-limit
+failure atomicity and hysteresis. Node syntax and git-diff whitespace pass. Approval-time job
+1cf6891f also passed both native launch package-cohort checks, including Shell
+spec and all architecture pins at 141.
+
+Actual Titan native candidate r2 passed12checks: real touch preview, no pre-drop
+write, observable intermediate neighbour motion without stretching, motion
+progress while held, Escape cancellation, real ShellState save, rebuild
+persistence, keyboard/reduced motion, and injected asynchronous save-refusal
+rollback. This is not a new universal60FPS qualification. Screenshots reviewed;
+original owner layout and animation preference restored after tests. The test
+leaves Home in edit mode with a selected widget for owner review.
+
+Source-backed candidate on phone:
+/var/lib/project-titan/widget-resize-20261031/r2/override.
+It is hot-loaded without session/Android restart and replaces only the previous
+five-column presentation resource overlay in/etc/environment so it survives
+login. Installed Shell remains139; no RPM/OS deployment changed. Parent/source
+permissions are explicitly0755/0644. Native proof is the user's private state
+project-titan/widget-resize-r2.json; CANDIDATE.json records source SHA256 values.
+Private before/environment and before/home-layouts.gvariant are retained under
+that candidate root. Host source/test harnesses and screenshots are in owned HDD
+update-20261031/widget-resize-r2 (r1 retained as earlier evidence).
+
+Owner acceptance completes the physical review gate; commit and push these
+source/tests with matching 141 pins. Other devices must build the matching
+source cohort. To roll back the feature,
+replace only its G_RESOURCE_OVERLAYS entry with the prior five-column entry;
+do not restore an entire stale environment file over other-agent changes.
+Weather scrolling remains a separate unresolved follow-up; do not report it fixed.
+
+### 2026-10-31 — Home Screen preferences: owner approved
+
+Owner requests an obvious native Settings page for Home grid rows/columns, icon
+size and app labels, with room for future dock options. Implementation and Titan
+installation were authorized subject to physical review before commit/push.
+The owner has now tested and approved it: “looks great, works grewat. Lock it in”.
+Implemented on top of ccf489e4d in this same owned worktree.
+Shared Home presentations will consume bounded preferences; Desktop stays
+unchanged. Keep saved layouts and widget spans; reset only the new preferences.
+Private build/test material: update-20261031/home-settings on owned HDD storage.
+
+Implementation: Settings gets a Home Screen destination beside Appearance in
+Personalization, for both Mobile and Tablet. New additive shell-state keys:
+home-columns/home-rows (0 = automatic), home-icon-size and home-show-labels.
+Whole-cell grid geometry bounds manual counts by usable touch cells. Saved
+layouts stay separate per presentation/grid dimensions. The native Settings
+owner uses the existing GSettings table and controls; Reset changes only these
+four preferences, with policy checks before applying, not layout data.
+
+Pure checks349b1917 pass existing grid/compact/cutout/resize regressions plus
+new preference cases for Mobile and Tablet at five screen shapes. ARM native
+owner checks c9a82088 pass real schema writes for all choices, invalid-value
+refusal, reopen, reset/layout preservation, and missing-schema refusal. During
+testing, fixed a string-choice mapping that incorrectly included quote characters.
+The new spec patch applies cleanly to the original Fedora source spec.
+
+Titan source-backed Home candidate passed seven checks: real density changes,
+icon size, accessible names with visual labels hidden, preservation of every
+item, bounded dense requests, unchanged saved layout bytes and exact restoration
+of original geometry/preferences. Screenshots reviewed; no owner layout changes
+left by the test. Private proof: ~/.local/state/project-titan/home-settings.json.
+Initial Settings ARM build e4de9e83 used an owned HDD rootfs and was stopped
+in favor of the successful native cross build below. No physical toolkit
+change, session restart or Android operation was performed.
+
+Native Settings build completed: dbe50ac7, full maintained Fedora50.4 source plus
+patches through0089; configured on ARM and compiled with the host ARM cross
+compiler. The compiler/tool libraries and assembler temporary files used RAM to
+avoid shared HDD contention. Original ARM emulation-only build was deliberately
+stopped after configuration. Final target links successfully; device ldd-r has
+no missing library/symbol. No RPM build/release qualification is claimed.
+
+Installed the real compiled native Settings executable under
+/var/lib/project-titan/home-settings-20261031/gnome-control-center. A development
+oneshot project-titan-home-settings.service bind-mounts it onto the normal
+/usr/bin path (enabled before display-manager); normal launch and D-Bus activation
+therefore use the same app. Stop Settings and disable/stop that oneshot before
+replacing the candidate with a proper future package; do not leave it hiding a
+newer Settings RPM. Original executable is retained under before/ (0700 parent).
+Added the source schema under /usr/local/share/glib-2.0/schemas and replaced only
+the prior widget resource-overlay entry with this candidate's override. Both
+survive login. The previous resize feature is retained in the candidate files.
+
+Physical Settings UI passed all four real controls, Reset and unchanged-layout
+readback. Native Settings list includes Home Screen under Personalization; its
+selection opens the native page. Eight UI checks pass in private
+~/.local/state/project-titan/home-settings-ui.json. AT-SPI list rows have no
+standalone action; navigation was checked through selection plus fresh page
+readback. Root input pixel coordinates were not a reliable way to pick a row,
+so do not reuse guessed physical scale factors. Preference values were restored
+after testing, retaining the owner's original Home layout. Screenshots reviewed;
+controls fit the Titan using shared Settings/LumaUI row parts and scrolling.
+
+Status: owner approved for commit and push. This commit advances source pins
+to Shell142, Settings60.home20261031.1, shell-state38.home20261031.1 and
+Search10. These new package versions have not been built or installed; the
+approved source-backed candidate remains on the Titan. This feature applies
+to Mobile and Tablet Home; Desktop rendering and other-agent Android work are
+untouched. Weather scrolling remains a separate unresolved follow-up.
+
+Approval-time package checks bae2a9da pass launch cohort consistency, the full
+package release contract, Settings spec application and whitespace checks.
+The contract caught stale Shell139 shared package-list pins; these now match
+Shell142 and its architecture pins. Initial check invocation be62a0d7 used the
+artifact cwd and did not run tests; corrected r2 caught the pins, corrected r3
+passes. No new feature build or deployment was necessary for approval.
+
+
+### 2026-10-31 — Mobile switcher gesture and motion refinement
+
+Owner requested a roughly one-third-second hold, a brief haptic at activation,
+name-only cards, no Mobile close buttons or selected-card jump, and a bottom
+swipe that reverses entry instead of abruptly destroying the picker. Closing a
+card by swiping it up remains a separate existing gesture.
+
+The shared handheld hold is300ms, cancelled by release, retreat below its
+threshold, lock/mode changes and destruction. It sends one asynchronous
+feedbackd button-pressed request using the quiet theme (Titan theme specifies a
+7ms vibration); unavailable services back off60seconds, without polling or sound.
+The request precedes expensive popup construction. Actual actuator sensation is
+not independently confirmed by these software tests.
+
+Patch0303 keeps Mobile cards at their final geometry with one220ms opacity
+progress driving cards, wallpaper and Home including its dock. Entry and
+bottom-swipe exit share that progress; interrupted entry reverses from its
+current value. Both directions begin their clock after the first paint, so
+initial Home layout cannot consume most of the animation. Mobile close controls
+remain unreactive/transparent and card lift is zero. Mobile/Tablet omit visible
+state/recency labels; Desktop retains them. Tablet/Desktop window travel and
+hover behavior retain their prior path. Source package pins advance to Shell143.
+
+All14 maintained Grid source patches applied and reconstructed exactly the
+Titan's prior Grid resource before0303. Check06fbff93 passes native launch
+cohort, real RPM patch-number parsing, full package release contract, JavaScript
+syntax, new patch application and whitespace. Initial check0e6c4836 caught a
+Patch1283 identity collision; assigned the new patch1284 after the existing
+notification-policy patch. A final source check is recorded below.
+
+Actual Titan candidate checks passed15 cases, with sampled intermediate card /
+wallpaper / Home fades and screenshots reviewed. The maintained native test
+mobile-switcher.js then passed11 checks, including a real virtual-touchscreen
+bottom-edge swipe, animation still alive immediately after that swipe, completed
+Home/modal restoration and interrupted-entry continuity. Final rerun measured
+301.29ms for the real main-loop hold. These are functional transition checks,
+not a universal60FPS or battery-life qualification. No app was force-killed.
+
+Source-backed candidate: /var/lib/project-titan/switcher-refinement-20261031.
+It preserves approved Home settings/widget resize sources and adds raw
+lumaGrid.js plus tabletTasks.js. Fresh-process GResource readback matched both
+exact files before replacing only the owned presentation overlay and adding the
+scoped UI overlay. Private before/environment and source SHA256 metadata are
+retained there; final packaged Shell143 has not been built/installed. Current
+session methods/modules are hot-loaded; no Shell/Android restart or reboot.
+Home Settings native executable bind and local schema remain as documented
+above, including their future RPM upgrade cleanup requirement. Other-source
+work and Home preferences/layouts are untouched. Private source/test/capture
+material is on owned HDD update-20261031/switcher-refinement; native test output
+is /tmp/mobile-switcher.json and earlier sampled proof is in the user's private
+state project-titan/switcher-refinement.json.
+
+Final job521f25df passes the source/cohort checks and maintained native-test
+syntax after the first-paint scheduling refinement. The final native test also
+passed all11 checks on the Titan. This commit includes the previously approved
+Home Screen release-note fragment. Both features are installed for the owner;
+there are no active owned build jobs or remaining approval gates for Home settings.
+
+
+### 2026-10-31 — Home/card fade ordering and faster settled hold
+
+Owner observed Home icons competing in front of fading cards and a hesitation
+on entry. Baseline native actor order already placed Grid above Home; the
+halfway screenshot showed that simultaneous equal-opacity fades made Home icons
+visible through the previews. Patch0304 reasserts that stacking after Home is
+shown and phases icon opacity out of the cards' main fade, using the same
+progress in both directions. It also paints previews at opacity1 on the
+preparation frame instead of culling them at zero and deferring their first
+texture paint until movement. No new idle render loop or refresh-rate override.
+
+The handheld hold is now220ms with a60ms settled interval. Motion of at least
+six logical pixels updates the last-motion time; continued swipes defer the
+trigger, release/retreat cancel it, and small tremor is ignored. One-shot checks
+exist only while the finger is held. The existing single haptic request remains.
+
+Actual maintained native mobile-switcher.js passed17 checks on the Titan,
+including a221.417ms settled trigger, continued motion refusal, activation after
+settling, actual bottom-edge touch dismissal, frame-by-frame layering and icon
+phasing, modal cleanup and interrupted entry. Additional native entry/exit
+captures show the first preparation frames at progress0/stage opacity1, correct
+stacking throughout, Home opacity0 during the main card fade and intermediate
+card opacities. The paused mid-exit screenshot was reviewed: no Home icons
+show through the cards. This is not proof of universal60FPS or elimination of
+every first-frame delay; native construction still takes about100ms in that
+capture and the device's rendering limit remains a separate concern.
+
+Bounded check8e9855a6 passes launch/package cohort consistency, RPM patch identity
+parsing, syntax, patch application and whitespace. Job48d0f6cb applies all16
+maintained Grid source patches and matches the candidate exactly. Shell source
+pins are144. No new RPM or OS release is built/installed.
+
+Source-backed hotload and persistent resource overlays now point to
+/var/lib/project-titan/switcher-layering-20261031. Both exact raw resource files
+were read back in a fresh process before updating only the two owned overlay
+entries in/etc/environment. CANDIDATE.json records source hashes, and
+native-check-results.json retains the17 checks. Previous candidate and the new
+root-private before/environment remain for rollback; local Home schema and the
+Settings development executable bind are unchanged. No session/Android restart
+or reboot. Source/tests/captures are on owned HDD update-20261031/switcher-layering;
+private phone frame proof is project-titan/switcher-layer-fixed.json. Initial
+module import was blocked by the open modal picker; a normal Escape dismissed
+it before running the test. No owner data/layout/preferences were changed.
+
+Final source check337234dd also passes after the release fragment and handoff
+updates, including113 matching package pins and40 valid release fragments.
+
+
+### 2026-10-31 — Reproduced fullscreen switcher handoff conflicts
+
+Owner continued to see fullscreen apps crossing Home/card layers on entry and
+both swipe/tap exit. The earlier Home-only opacity checks missed real entry
+from an active app and background-tap dismissal. New native baseline proves:
+entry paints the separate navigation lift clone above Grid; default dismissal
+has returningHome=false and grows a216px card to540px screen width; swipe-to-Home
+creates another root app clone for several frames. These are competing scene
+owners, not merely a fade-curve issue. Private proof is the user's
+project-titan/switcher-handoff-before.json.
+
+Source fix: Mobile openSwitcher immediately retires its gesture clone when Grid
+takes ownership. beginLift refuses to start another copy while a picker owns
+the scene. Normal swipe-to-Home keeps its animation. Grid's Mobile dismiss with
+no chosen window now always uses the Mobile return path, covering background
+tap, Escape and toggle as well as bottom swipe; explicit app selection keeps
+its window activation/travel. Patch0305 keeps an opaque, constraint-sized
+wallpaper below Home and cards while native windows are hidden. That owned
+root backdrop is explicitly destroyed on every popup teardown; Desktop/Tablet
+keep their existing attached wallpaper/window-travel path. No frame loop remains
+idle and no CPU/GPU floor or refresh-rate override was added. Source cohort145.
+
+Actual Titan native mobile-switcher-handoff.js passes38 checks across86 painted
+frames. Real virtual touchscreen entry starts inside a running Photos app;
+background tap and bottom swipe both return Home. Every sampled transition
+retains thumbnail geometry, zero extra fullscreen gesture clones, opaque full
+stage coverage below Home/cards and hidden live windows. Home entry, explicit
+card selection and interrupted teardown also pass, including backdrop cleanup.
+Existing maintained mobile-switcher.js passes all17 regression checks on this
+same candidate, retaining the220ms settled hold and cancellation behavior.
+Paused mid-entry from Weather and late tap-exit screenshots were reviewed:
+only thumbnail cards during entry, then Home without any fullscreen app copy.
+This verifies the reproduced rendering conflicts, not universal frame-rate
+smoothness on all GPUs or physical qualification of other devices.
+
+Bounded source checks a3180422 pass cohort/spec identity, package release
+contract, JavaScript syntax, patch application and whitespace. Job6f601533
+reconstructs all17 maintained Grid patches and matches the exact candidate.
+No new packaged Shell145 or OS release is built/installed.
+
+Hot-loaded and persistent source candidate:
+/var/lib/project-titan/switcher-handoff-20261031. Fresh GResource readback of
+both raw files and38+17 native check results were verified before replacing
+only the two previous owned overlays in/etc/environment. Metadata and source
+hashes are in CANDIDATE.json, with root-private before/environment and prior
+candidate preserved for rollback. The local schema and Settings executable bind
+remain as documented; no session/Android restart or reboot. Private source,
+source checks and screenshots are on owned HDD update-20261031/switcher-handoff.
+No owner layout, preferences, apps or data were removed.
+
+Final source check29054652 passes after the handoff/release fragment update.
+Both source-backed fixes and the native regression modules are ready to push;
+there are no active owned build jobs or pending device steps for this change.
+
+
+### 2026-10-31 — Mobile panel reveal and Home swipe search
+
+Owner requested larger notification pull targets, Quick Options from the clock,
+shared search from a short idle-Home swipe, and refined the drawer direction
+into a finger-controlled full-screen fade with controls already in position.
+Source146 keeps Mobile controls at their final allocation, fades the backdrop
+and content separately and adds only a small vertical arrival. Reversal uses the
+same progress curve; release retains flick/snap behavior. Desktop/Tablet keep
+their existing anchored panel path. There is no live background capture/blur,
+continuous idle timer, refresh override or CPU/GPU clock floor.
+
+A real-touch baseline captured one zero-mask frame when starting to dismiss
+already-open Quick Options: beginPull started opening preparation at0 before
+seeking1. The corrected pull supplies its actual starting progress before
+preparation. Taking over a partial reveal preserves its progress. Screenshot
+review also exposed a hidden QuickSettingsMenu wrapper during opening pulls;
+map it alongside the pointer without taking the modal grab before release, and
+hide it again when an opening pull cancels closed. Native tests now require
+mapped actors, rather than only visible child flags.
+
+The stage status gesture uses actual rendered clock/island/indicator geometry,
+not a device ID. Invisible nib padding stays inside the status band and avoids
+clock/right controls; the painted nib retains its own native tap/pull handling.
+Clock taps retain Calendar. Locked notification privacy remains in the native
+beacon. A short bottom swipe on idle handheld Home opens Main.lumaSearch;
+settled hold still opens the switcher, and from-app swipes still return Home.
+
+Native mobile-drawers.js passes40 checks across98 painted frames on the Titan:
+clock/right/native nib/padded nib pulls select the correct mapped surface;
+fixed full-width geometry, progress-driven coverage, reversal, release and
+upward dismissal pass. Real bottom touch verifies Home search, held switcher
+and app-to-Home isolation. Bounded job2541e452 passes panel-motion, pull-zone
+geometry at360/390/540/700 widths, JavaScript syntax, cohort identity, package
+release contract and whitespace. This verifies these paths on the current
+Titan; it is not a universal frame-rate claim or another device qualification.
+
+Design references reviewed: AOSP QuickSettingsControllerImpl separately drives
+shade expansion/depth and small content parallax; Apple's Motion guidance
+recommends brief, gesture-consistent feedback. These inform Luma's own shared
+controller, not a claim of matching proprietary One UI internals:
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+https://developer.apple.com/design/human-interface-guidelines/motion
+
+Private candidate and screenshots: owned HDD update-20261031/mobile-drawers.
+Persistent candidate is /var/lib/project-titan/mobile-surfaces-final-20261031;
+existing native Grid override remains switcher-handoff-20261031/shell. No app,
+layout or service data was removed; no Shell/Android restart or reboot.
+
+Final native options-drag.js passes19 checks across43 painted frames with no
+hidden preparation frames. Both reports and reviewed partial-surface/search
+screenshots are retained privately. Fresh process GResource byte readback
+matches all eight raw source files before persisting only the presentation
+prefix in /etc/environment; before/environment is root-private. Existing Grid,
+local schema and Settings bind remain intact. This is a source-backed hotfix on
+the installed RPM cohort, not a newly built Shell146 package or OTA release.
+
+### 2026-10-31 — Search material and upstream integration
+
+Search now binds its existing field/intro/results actors to the shared native
+surface renderer, matching the Desktop dock's neutral tint and24px blur recipe.
+Rows retain one transparent parent material; no nested blur or new background
+actors. Shared settings still govern Light/Dark/Frost/Glass, software fallback,
+reduce transparency and high contrast. A lighter backdrop dim, restrained rims,
+visible focus/selection and brighter secondary dark text replace opaque gray
+panes. Intro labels wrap; three useful suggestion chips fit compact screens.
+
+Actual Titan native search-material.js passes27 checks: Mobile and Desktop
+presentation paths, real app results, identical65% dark veil, existing blur,
+Light/Glass/Frost ink/palette, opaque no-blur accessibility modes, and unmapping
+on close. Screenshots reviewed for intro/results in both presentations. Desktop
+presentation was tested on the Titan's compact display, not a separate large
+Desktop monitor. Owner's appearance/accessibility and Mobile state restored.
+Seven registered search patches reconstruct the exact candidate. Bounded
+job8fc9d47d passed syntax, cohort identity and release contract; final checks
+follow before committing. No Shell restart or newly built RPM/OTA.
+
+Private source/evidence: owned HDD update-20261031/search-material. Scoped
+persistent search/theme overrides are /var/lib/project-titan/search-material-20261031;
+root-private before/environment retains rollback, and earlier gesture/Grid
+resource overlays remain intact. Settings, Home layout and app data preserved.
+User explicitly requests pushing recent work and merging appropriate work to
+main; integrate the remaining Home/widget/gesture commits with current main,
+retain its Android/Mobile Data/app retirement changes, and use a concise PR.
+
+Final search source job46a1d56d passes. Integration jobb2efab34 passes Home grid,
+widget reflow, Home preference geometry, panel motion and pull zones; all26
+shell-state tests, package cohort/release contract, exact search patch chain,
+unique registered patch IDs, JS/builder syntax and whitespace. The first grid
+runner attempt used Node without GJS print; reran with print mapped to
+console.log, without changing product tests.
+
+The remaining12 development commits (including this search polish) reconcile
+with main787cd92f0. Package conflicts retain the newer matching Home/Settings
+and Shell147 cohort; Mobile Data keeps its patch with a unique spec ID, and
+main's Android99/images11, installer83, Core127, retired-app policy and defensive
+shell-state snapshot filtering remain intact. Prior startup/audio/kernel work
+is already in the shared main ancestry; no private evidence or device secrets
+are promoted. A new-worktree attempt was refused by the20GiB storage gate;
+integration uses this existing owned worktree instead, with no deleted files.
+
+### 2026-10-31 — Dark Style and test preference restoration
+
+PR119 merged to main5ace46423451eb70773af6a6dee13e6cc5140c0f.
+Owner then reported Dark Style no longer changed the light appearance. Actual
+state was GNOME prefer-dark plus explicit Luma light. The search appearance
+probe saved get_string's default light and restored it with set_string even
+when the original user value was unset; this accidentally pinned Light. Reset
+that treatment to its previous inherited state, immediately restoring Dark.
+
+Source148 fixes the native Quick Options action to write Luma light/dark and
+GNOME default/prefer-dark together, capturing the target before synchronous
+settings signals can change checked. Its indicator follows effective Luma
+appearance and external surface changes. Optional Luma schema lookup preserves
+normal GNOME preference fallback. Settings signals dispose with the toggle.
+Search probe now saves/restores nullable user values for appearance and both
+accessibility keys, including reset when originally unset.
+
+Actual Titan virtual-touch dark-style.js passes16 checks across Mobile/Desktop:
+explicit Light conflicting with GNOME Dark, actual button taps in each direction,
+Shell/search/app preference agreement, external Glass, inherited Dark/Light,
+and preservation of the originally unset treatment. Corrected search probe
+passes30 checks including exact explicit/unset restoration for all three keys.
+Source job62acc5ef verifies the exact patch/candidate, JS, package cohort and
+release contract. No restart or RPM replacement. Private source/reports live on
+owned HDD update-20261031/dark-style; persistent native resource override is
+/var/lib/project-titan/dark-style-20261031 with root-private before/environment.
+Prior search, Home and Grid overlays remain intact; leave the owner in Dark.
+
+Next authorized task: cold-launch each installed Luma app, measure initial and
+usable state, identify startup stalls and first-frame layout/state flashes,
+and fix meaningful causes with shared platform solutions where appropriate.
+Prior startup architecture/timings are in docs/operations/mobile-app-startup.md.
+Preserve app/user state and distinguish cold process launches from warm resumes.
+
+
+### 2026-10-31 — Cold-launch audit baseline (active)
+
+Dark Style follow-up PR120 is merged to mainc38ea03ddf0c929213e4a80b0a683bfa4e0d6654.
+Cold-launch audit uses private native Shell instrumentation from
+/var/lib/project-titan/startup-audit-20261031. It closes app windows normally,
+waits for autosave/exit, terminates remaining known UI PIDs (never the host or
+phone daemon), verifies those PIDs are gone, returns Home and launches through
+Presentation._launch. It measures map and first focused real painted window,
+plus35 natural painted frames; it requests no extra frames or screenshots in
+the timing run. Shared prepared runtime remains enabled and is labeled.
+
+First baseline,2 process-cold samples each: Notes2120/1020ms,
+Weather710/713ms, Contacts661/654ms. Phone exceeded the6-second first-frame
+wait in both samples; separate CPU profiling measured7772ms to first GTK
+paint,7399ms spent in AppWindow.present/native GTK, only~110ms before present.
+One Notes and Weather launch visibly started at360x400/360x420, then expanded
+to the actual540x600 viewport220/273ms after exposure. DisplayConfig remains
+scale2 at1080x1200; those were window changes, not monitor scale changes.
+
+Prepared profiling proves cached prairie_apps/phone.py came from installed
+/usr/lib/python3.14/site-packages, while launch environment now points at the
+repaired current source overlay. The previously documented provenance concern
+is confirmed. Restarting only luma-app-host.service is safe (KillMode=process)
+after a coherent source candidate is prepared; preserve other app children.
+No new product startup edits yet. WidthWatch currently rebuilds tier-dependent
+UI after paint, and Phone starts is_phone=False before first allocation; both
+are hypotheses for the observed first-state flash pending captures/comparisons.
+Private profiles and baselines are on owned HDD update-20261031/startup-audit.
+
+
+### 2026-11-01 — Cold-launch and first-frame fixes, source149/122 (validated)
+
+Owner/worktree/branch remain luma-dev-2, project-titan-usb-20261029,
+codex/project-titan-usb-20261029; base main d88ffa742. Audit completed two
+process-cold launches for22 native Luma/system app entries. Targets closed
+normally before terminating any remaining known UI PID; agents preserved.
+An initial auto-lock invalidated later first-pass observations; these were
+excluded and the complete baseline/final runs used a bounded idle inhibitor.
+Terminal's visible Ptyxis launcher maps to org.projectluma.Terminal; measure
+and stop that actual UI identity, not just the alias.
+
+Phone's ~7.4-second native present wait was libglycin decoding filtered window
+icons, not Python layout CPU. Build-time PNGs now cover logical16–128 at1–4x,
+with real GTK scale metadata and vector fallback. Pixel-size-only caches left
+holes in GTK's scaled window-icon enumeration; large logical sizes also made
+GTK request unnecessary giant textures. Final2324 variants (83 identities)
+validate, and all32 actual GTK startup lookups choose PNG. No sandbox changes.
+
+Shared LayerHost now adapts before native overlay allocation; WidthWatch follows
+hidden/reparented/embedded controls in that allocation. First-snapshot tests
+at390/540/800/1100px and resize/idle/embedded cases pass; the same new tests
+reproduce failures on the preceding kit. Existing hidden/reparent tests pass.
+Mobile uses initial Mutter configure to supply fullscreen geometry before the
+first buffer. Desktop/Tablet placement is unchanged; zero pre-Mobile window
+rectangles are not restored on a later Desktop transition.
+
+Final native sweep:44/44 correct540x600 first-visible frames, no errors. Phone
+7984/7933ms baseline ->506/564ms final (~93% less wait); isolated same-source
+icon comparison7863->514ms. Actual first GTK snapshots show Notes already
+phone/list-first and Phone already phone/keypad, stable across subsequent
+snapshots. All22 app timings and remaining startup budgets are recorded in
+docs/operations/mobile-app-startup.md. Do not present concurrent cProfile
+network totals as main-thread blocking time. Depot/Charlie remain slower;
+there is no blanket instant-launch or broad hardware qualification claim.
+
+Private evidence/build jobs on owned HDD update-20261031/startup-audit:
+353fd80a builds2324variants; fbb38a5f validates actual1–4xGTK lookups, fixture
+render/corruption checks and payload; 0bb2e131 verifies shared first-frame and
+hidden-width regressions, JS and package pins/release contract; 4b89de6e proves
+new snapshot checks fail on old code. No RPM or image rebuild claimed.
+
+Physical development hot deployment: coherent Python modules replace the former
+source/python (backup startup-audit-20261031/python-before); only app host was
+restarted (KillMode=process). GTK/Prairie uses a developer user-theme symlink to
+startup-audit-20261031/icons/Prairie. Remove that owned symlink when replacing
+with the corresponding packaged icon build; retain private evidence/backups.
+Presentation changes patch the existing native resource override, preserving
+all previous drawer/search/status/switcher changes. No reboot, Android or audio
+changes. Final native policy/visual receipts and GitHub integration follow.
+
+
+Final source job9a86fab2 passes all focused checks, including the package recipe's
+Trash aliases (2352 PNG variants across84 identities) and existing approved
+artwork/hash validation. The earlier source-art-only hot payload had2324/83;
+this difference is the recipe's full-Trash alias, not a changed app image.
+Native initial-configure policy passes8 checks including Desktop/Tablet and
+transient exclusions. Pending configure hooks belong only to deliberately
+unmapped prepared windows; mapped clients release them. Three actual touch
+reopens each for Notes and Phone pass with unchanged UI PIDs, correct focus,
+and Home hidden. Actual Phone first snapshots are already phone-shaped at293ms;
+settled Notes/Phone screenshots were inspected privately. A script-only warm
+activation can be denied focus because it lacks a fresh user input serial;
+real touch validation is the relevant result. Phone's unavailable-calling toast
+and scrollable short-screen dial pad remain functional/UI follow-up areas;
+calling and Android runtime acceptance are not claimed by this launch audit.

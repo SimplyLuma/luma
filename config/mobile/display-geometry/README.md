@@ -29,6 +29,12 @@ The Titan profile uses a conservative 132 × 132 native-pixel top-left exclusion
 calibrated visually on the owner's device. It is not an exact hardware measurement.
 Refine that profile independently of shared layout code.
 
-The Pixel 9 Pro Fold profile (`google-comet.json`) lists provisional corner
-exclusions for both panels. It is an estimate, not a measurement: calibrate it
-on the device, add the camera openings, and install it from the device image.
+The Pixel 9 Pro Fold profile (`google-comet.json`) describes both panels in
+the coordinates Mutter reports with transform 0: the outer panel (DSI-1) as
+1080 × 2424, the inner panel (DSI-2) upright as 2076 × 2152 (its panel
+orientation is applied by Mutter). Camera openings and corner curves come from
+the device's display outline: the outer camera is excluded as a 112 × 152
+rectangle from the top edge, the inner camera together with its corner as
+136 × 136 at the top right. The corners are continuous curves; each square
+reaches past the curve's 45° point and clears status content whose top sits at
+half the square's height.

@@ -28,7 +28,7 @@ from typing import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, GObject, Gtk  # noqa: E402
 
 from . import lumaui  # noqa: E402
 
@@ -100,15 +100,34 @@ class ModalHandle:
         GLib.timeout_add(lumaui.duration("nudge") + 20, lambda: (self.card.remove_css_class("nudge"), False)[1])
 
 
+class _WindowLayerLayout(Gtk.OverlayLayout):
+    """Keep native overlay measurement/allocation, adapting before its children."""
+
+    __gtype_name__ = "LumaUIWindowLayerLayout"
+
+    def do_allocate(self, widget, width: int, height: int, baseline: int) -> None:
+        changed = width != widget._layout_width
+        widget._layout_width = width
+        if changed:
+            widget.emit("layout-width-changed", width)
+        Gtk.OverlayLayout.do_allocate(self, widget, width, height, baseline)
+
+
 class LayerHost(Gtk.Overlay):
     """An overlay that owns what floats over one region (toasts, dialogs, drawers)."""
 
     __gtype_name__ = "LumaUILayerHost"
+    __gsignals__ = {
+        "layout-width-changed": (GObject.SignalFlags.RUN_LAST, None, (int,)),
+    }
 
     def __init__(self, child: Gtk.Widget | None = None, *, name: str = "content") -> None:
         super().__init__()
         self.add_css_class("lumaui-layer-host")
         self.layer_name = name
+        self._layout_width = 0
+        if name == "window":
+            self.set_layout_manager(_WindowLayerLayout())
         self._modal: ModalHandle | None = None
         if child is not None:
             self.set_child(child)
