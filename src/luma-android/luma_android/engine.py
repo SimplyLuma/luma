@@ -118,6 +118,67 @@ class AndroidDeviceProfile:
     locale: str
 
 
+def _session_identity() -> str | None:
+    """Start stamps of this user's session broker and the Waydroid container.
+
+    Either restarting gives a new identity, so a stamp never outlives the
+    session whose readiness it records. None when either is not running.
+    """
+    found: dict[str, str] = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+            if b"/usr/libexec/luma-waydroid-session" in argv[:2]:
+                if entry.stat().st_uid != os.getuid():
+                    continue
+                role = "session"
+            elif argv[:3] == [b"lxc-start", b"-P", b"/var/lib/waydroid/lxc"]:
+                role = "container"
+            else:
+                continue
+            start = (entry / "stat").read_text().rsplit(")", 1)[1].split()[19]
+        except (OSError, IndexError):
+            continue
+        found[role] = f"{entry.name}:{start}"
+    if set(found) != {"session", "container"}:
+        return None
+    return f"{found['session']}/{found['container']}"
+
+
+def _ready_stamp_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "luma-android" / "ready"
+
+
+def _ready_key(idle_freeze: bool, multi_window: bool) -> str | None:
+    identity = _session_identity()
+    if identity is None:
+        return None
+    return json.dumps([identity, idle_freeze, device_class(), multi_window, surface_treatment()])
+
+
+def _ready_stamp() -> str | None:
+    try:
+        return _ready_stamp_path().read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _write_ready_stamp(key: str | None) -> None:
+    if key is None:
+        return
+    path = _ready_stamp_path()
+    try:
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        temporary = path.with_name(f".ready-{os.getpid()}")
+        temporary.write_text(key, encoding="utf-8")
+        temporary.replace(path)
+    except OSError as error:
+        LOGGER.debug("Android readiness stamp not written: %s", error)
+
+
 class WaydroidEngine:
     def __init__(self, executable: str = "waydroid") -> None:
         self.executable = executable
@@ -327,6 +388,11 @@ class WaydroidEngine:
         if os.environ.get(FP6_SOFTWARE_PRESENTATION_ENV) == "1":
             multi_window = False
         deadline = time.monotonic() + timeout
+        ready_key = _ready_key(runtime_config.idle_freeze, multi_window)
+        if ready_key is not None and _ready_stamp() == ready_key:
+            # This exact session already passed the readiness and policy work
+            # below; a warm launch needs none of its Waydroid round trips.
+            return False
         started_session = False
         status = self.status()
         if status.get("initialized") is False:
@@ -503,6 +569,7 @@ class WaydroidEngine:
                     "Android input policy is not ready; installation may continue: %s",
                     error,
                 )
+        _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window))
         return started_session
 
     def sync_host_appearance(self, appearance: str | None = None) -> None:
