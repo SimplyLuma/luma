@@ -1,0 +1,121 @@
+From 8fae3730a1f24341513cb0f73d8faffc143183f1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 15:20:21 -0500
+Subject: [PATCH] ASoC: google: aoc: run the playback position on the clock
+
+On a start the AOC reads everything queued in the playback ring, up to a
+ring, at once, and only then reads at the stream rate. Reporting its read
+counter as the position put hw_ptr on appl_ptr at every start with less
+than a ring queued, as after an underrun at a small quantum, so the
+stream underran again immediately on every recover.
+
+Advance the position at the stream rate from the start, capped at what
+the AOC has read and at most a ring behind it, and poll every tick so
+the position moves without new reads.
+---
+ sound/soc/google/aoc-audio.c | 49 ++++++++++++++++++++++++++++++++----
+ 1 file changed, 44 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/google/aoc-audio.c b/sound/soc/google/aoc-audio.c
+index 3f1a12747..939aa3354 100644
+--- a/sound/soc/google/aoc-audio.c
++++ b/sound/soc/google/aoc-audio.c
+@@ -424,9 +424,11 @@ struct aoc_audio_stream {
+ 	unsigned int voice_start;		/* voice: the start that was sent */
+ 	u32 rx_prev;				/* AOC read counter last seen */
+ 	u64 consumed;				/* bytes the AOC has read since prepare */
++	u64 pos;				/* playback position reported, bytes */
++	u64 pos_base;				/* playback: position at the start */
+ 	unsigned int jumps;			/* read-counter discontinuities seen */
+ 	struct device *dev;
+-	ktime_t started;			/* voice: when the stream started */
++	ktime_t started;			/* when the stream started */
+ 	u64 periods;				/* voice: periods reported so far */
+ 	snd_pcm_uframes_t pushed;		/* frames handed to the ring */
+ 	spinlock_t ring_lock;			/* serialises ring fill: .ack vs tick */
+@@ -1395,8 +1397,12 @@ static enum hrtimer_restart aoc_pcm_tick(struct hrtimer *t)
+ 		return HRTIMER_RESTART;
+ 	}
+ 
++	/*
++	 * Playback's position runs on the clock (aoc_pcm_playback_pos), so it
++	 * moves whether or not the AOC has read since the last tick.
++	 */
+ 	consumed = aoc_service_progress(s->svc, s->playback);
+-	if (consumed != s->prev_consumed) {
++	if (s->playback || consumed != s->prev_consumed) {
+ 		s->prev_consumed = consumed;
+ 		/* the link is nonatomic: the core must not be entered here */
+ 		schedule_work(&s->period_work);
+@@ -1552,6 +1558,33 @@ static void aoc_pcm_voice_clock(struct aoc_audio_stream *s)
+ 	s->consumed = min(bytes, (u64)frames_to_bytes(rt, s->pushed));
+ }
+ 
++/*
++ * Where playback has got to.  The AOC does not read the ring at the rate it
++ * plays it: on a start it takes everything queued, up to a ring's worth, at
++ * once, and only then reads at the stream's rate.  Reported as the position,
++ * that read put the hardware pointer on the application's at every start with
++ * less than a ring queued -- as after an underrun at a small quantum, where the
++ * application restarts with a couple of quanta -- and the stream went straight
++ * back into an underrun, over and over.  Run the position on the clock from
++ * the start instead, never past what the AOC has read, and never more than a
++ * ring behind it, so that a drift between the two clocks cannot build up.
++ * Called with ring_lock held.
++ */
++static void aoc_pcm_playback_pos(struct aoc_audio_stream *s)
++{
++	struct snd_pcm_runtime *rt = s->substream->runtime;
++	u64 ns = ktime_to_ns(ktime_sub(ktime_get(), s->started));
++	u64 clock = s->pos_base +
++		    frames_to_bytes(rt, div_u64(ns * rt->rate, NSEC_PER_SEC));
++	u64 pos = min(clock, s->consumed);
++	u32 tx, rx, size;
++
++	aoc_service_ring_state(s->svc, true, &tx, &rx, &size);
++	if (s->consumed > size)
++		pos = max(pos, s->consumed - size);
++	s->pos = max(pos, s->pos);
++}
++
+ static int aoc_pcm_prepare(struct snd_soc_component *comp,
+ 			   struct snd_pcm_substream *substream)
+ {
+@@ -1563,6 +1596,8 @@ static int aoc_pcm_prepare(struct snd_soc_component *comp,
+ 	s->rx_prev = aoc_service_progress(s->svc, s->playback);
+ 	s->prev_consumed = s->rx_prev;
+ 	s->consumed = 0;
++	s->pos = 0;
++	s->pos_base = 0;
+ 	s->jumps = 0;
+ 	s->periods = 0;
+ 	s->pushed = 0;
+@@ -1671,11 +1706,14 @@ static snd_pcm_uframes_t aoc_pcm_pointer(struct snd_soc_component *comp,
+ 		return s->pushed % rt->buffer_size;
+ 
+ 	spin_lock_irqsave(&s->ring_lock, flags);
+-	if (s->voice)
++	if (s->voice) {
+ 		aoc_pcm_voice_clock(s);
+-	else
++		s->pos = s->consumed;
++	} else {
+ 		aoc_pcm_update_consumed(s);
+-	div_u64_rem(s->consumed, buf_bytes, &pos);
++		aoc_pcm_playback_pos(s);
++	}
++	div_u64_rem(s->pos, buf_bytes, &pos);
+ 	spin_unlock_irqrestore(&s->ring_lock, flags);
+ 	return bytes_to_frames(rt, pos);
+ }
+@@ -1864,6 +1902,7 @@ static int aoc_pcm_trigger(struct snd_soc_component *comp,
+ 		s->voice ? "voice" : s->playback ? "playback" : "capture", cmd);
+ 
+ 	if (on) {
++		s->pos_base = s->pos;
+ 		s->started = ktime_get();
+ 		hrtimer_start(&s->tick, ns_to_ktime(AOC_PCM_TICK_NS),
+ 			      HRTIMER_MODE_REL);
+-- 
+2.55.0
+

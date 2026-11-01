@@ -15,6 +15,7 @@ builds for tokay with `PROBE_DTB=zumapro-tokay`.
 - 0005: arm64 luma boot: import the bootloader's runtime no-map carve-outs (`sec_dram`, `sec_pt`, `pkvm_guest_firmware`). Without it Linux used TrustZone memory as RAM: under memory pressure, corrupted reads and hard lockups (a 2.9 GB ostree apply died every time; passes at full speed with it). Shared code: the Fold needs it too.
 - 0006-0009: panel experiments and their reverts (net: the 0003 driver).
 - 0010: `google,dsc-comp-align = <4>` on `&dsim0`. The DSIM default of 8 expected 2 x 184 compressed pixels a line where the DECON sends 2 x 180: no frame ever completed and the panel kept the boot logo. This is what makes the screen work.
+- 0011: AoC speaker playback position runs on the clock, capped at the AoC read counter and at most a ring behind it. The AoC reads up to a ring at once on a start, so after an underrun at a small quantum hw_ptr hit appl_ptr at every restart and the stream never recovered (`snd_pcm_avail after recover: Broken pipe`). Branch `luma/tokay-aoc-xrun`.
 
 ## Initramfs
 
