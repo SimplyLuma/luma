@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.101%{?dist}
+Release:        1.luma.102%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -120,6 +120,8 @@ install -D -m 0644 data/luma-waydroid-fp6-gpu-watchdog.service \
   %{buildroot}%{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 install -D -m 0644 data/luma-waydroid-graphics-watchdog.service \
   %{buildroot}%{_unitdir}/luma-waydroid-graphics-watchdog.service
+install -D -m 0644 data/luma-android-recover@.service \
+  %{buildroot}%{_unitdir}/luma-android-recover@.service
 install -D -m 0644 data/luma-android-fp6-software-compositor.service \
   %{buildroot}%{_userunitdir}/luma-android-fp6-software-compositor.service
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
@@ -217,8 +219,12 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_tmpfilesdir}/luma-android.conf
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 %{_unitdir}/luma-waydroid-graphics-watchdog.service
+%{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.102
+- Recover from graphics failures by restarting Android whole, with its network
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101
 - Restart Android's framework after its graphics services restart
 

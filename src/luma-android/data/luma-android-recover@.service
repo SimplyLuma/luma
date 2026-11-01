@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart Android for %i after a graphics failure
+Documentation=https://project-luma.local/android
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart waydroid-container.service
+# The session and the readiness pass, exactly as after sign-in.
+ExecStart=/usr/bin/systemctl --user --machine=%i@ start luma-android-prewarm.service
+TimeoutStartSec=240

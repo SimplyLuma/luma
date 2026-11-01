@@ -1,5 +1,5 @@
 [Unit]
-Description=Restart Android's framework after its graphics services restart
+Description=Restart Android after its graphics services restart
 Documentation=https://project-luma.local/android
 PartOf=waydroid-container.service
 After=waydroid-container.service
@@ -21,6 +21,7 @@ ProtectKernelTunables=yes
 RestrictAddressFamilies=AF_UNIX
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-# Signalling the container's system_server (another UID) is its only power.
-CapabilityBoundingSet=CAP_KILL
+# It only reads /proc and asks systemd to start the recovery unit.
+CapabilityBoundingSet=
+AmbientCapabilities=
 DevicePolicy=closed
