@@ -74,6 +74,8 @@ scriptlets take labels from the booted policy (`--selinux-policy=/`), not the ba
   Wi-Fi power save off; with it on, the BCM4390 stopped passing traffic for hours while associated.
 - `system/60-luma-tokay-aoc-quantum.conf`: PipeWire drop-in (`/etc/pipewire/pipewire.conf.d`), minimum
   quantum 1024; Android audio drove the graph to 32-frame quanta and the AoC speaker PCM stopped recovering.
+- `system/60-luma-tokay-thermal.rules`: udev rule (`/etc/udev/rules.d`), CPU and GPU thermal zones on
+  step_wise; power_allocator capped the X4 core at 700 MHz (cooling 17/17) at 53 C.
 - `stopgaps/`: `mobile-mode-nm-nudge.py` (data switch asks NetworkManager for the connection when it does
   not autoconnect; also in the initramfs modem input), `daemon-phone-theme.py` and
   `daemon-gnome-lock.py` (prairie-core-apps 1.luma.126; fixed in 1.luma.127).

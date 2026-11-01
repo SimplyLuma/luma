@@ -1,0 +1,4 @@
+# Pixel 9: power_allocator held the CPUs at their lowest steps at ~53 C (no
+# usable power model for its budget); step_wise throttles only past the 70 C
+# passive trip. The 115 C critical trip is unchanged.
+ACTION=="add|change", SUBSYSTEM=="thermal", KERNEL=="thermal_zone*", ATTR{type}=="big-thermal|mid-thermal|little-thermal|g3d-thermal", ATTR{policy}="step_wise"
