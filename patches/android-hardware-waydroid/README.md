@@ -70,7 +70,9 @@ with libyuv, then sent over wl_shm, because compositors import video layouts
 unreliably (minigbm names YV12 with a private code and, before
 android-minigbm 0001, described it as a single plane). Conversion runs before
 the window lock that input handlers share, once per frame, and converted
-buffers survive geometry changes: they re-read their handle every frame. A dmabuf the compositor cannot import was
+buffers survive geometry changes: they re-read their handle every frame. A
+buffer presented again in consecutive frames (paused video under moving UI)
+is neither converted nor damaged, so the compositor keeps its texture. A dmabuf the compositor cannot import was
 a protocol error that disconnected and aborted the composer, leaving Android
 without a display until it restarted. Other dmabuf layers are forwarded only
 in a format and modifier the compositor advertised. libwayland-client treats a

@@ -11,7 +11,7 @@ index fd23eca..3539d02 100644
          "libEGL",
          "libGLESv2",
 diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
-index 480ae91..80a8dde 100644
+index 480ae91..88ae6c7 100644
 --- a/hwcomposer/gralloc_handler.cpp
 +++ b/hwcomposer/gralloc_handler.cpp
 @@ -27,6 +27,8 @@
@@ -88,20 +88,28 @@ index 480ae91..80a8dde 100644
      uint32_t ConvertHalFormatToShm(uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -85,8 +137,11 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
+@@ -85,8 +137,19 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
      buf->isShm = true;
      buf->size = size;
  
 -    auto shm_format = ConvertHalFormatToShm(metadata.format);
 +    // Converted video is opaque RGB.
 +    const bool converted = hal_format_needs_conversion(metadata.format);
++    if (converted) {
++        static std::mutex logged_lock;
++        static std::unordered_set<uint32_t> logged;
++        std::lock_guard<std::mutex> guard(logged_lock);
++        if (logged.insert(metadata.format).second)
++            ALOGI("Video layer format 0x%x (%ux%u): converted to RGB over wl_shm",
++                  metadata.format, metadata.width, metadata.height);
++    }
 +    int shm_format = converted ? WL_SHM_FORMAT_XRGB8888 : ConvertHalFormatToShm(metadata.format);
      assert(shm_format >= 0);
 +    buf->converted = converted;
  
      int fd = syscall(SYS_memfd_create, "buffer", MFD_ALLOW_SEALING);
      ftruncate(fd, size);
-@@ -122,6 +177,20 @@ namespace {
+@@ -122,6 +185,20 @@ namespace {
          return display->formats.count(format) == 1;
      }
  
@@ -122,7 +130,7 @@ index 480ae91..80a8dde 100644
      uint32_t ConvertHalFormatToDrm(struct display *display, uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -173,16 +242,24 @@ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_m
+@@ -173,16 +250,24 @@ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_m
  {
      assert(prime_fd >= 0);
  
@@ -152,7 +160,7 @@ index 480ae91..80a8dde 100644
      zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
      zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
      zwp_linux_buffer_params_v1_add_listener(params, &params_listener, nullptr);
-@@ -265,10 +342,14 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
+@@ -265,10 +350,14 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
      return create_shm_wl_buffer(display, metadata, handle);
  }
  std::unique_ptr<buffer> create_buffer_gbm(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
@@ -167,7 +175,7 @@ index 480ae91..80a8dde 100644
      auto *cros_handle = reinterpret_cast<const cros_gralloc_handle *>(handle);
      return create_dmabuf_wl_buffer(display, metadata, cros_handle->fds[0], cros_handle->format, cros_handle->strides[0], cros_handle->offsets[0], cros_handle->format_modifier, handle);
  }
-@@ -316,6 +397,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
+@@ -316,6 +405,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
  }
  
  bool update_shm_buffer_generic(display *display, buffer *buffer) {
@@ -191,10 +199,10 @@ index 1a718d2..e03fa52 100644
  std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_metadata& metadata,
                                                                  int prime_fd, int format, int byte_stride,
 diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
-index 8b8d61f..e2130e2 100644
+index 8b8d61f..778d0d2 100644
 --- a/hwcomposer/hwcomposer.cpp
 +++ b/hwcomposer/hwcomposer.cpp
-@@ -124,8 +124,15 @@ namespace {
+@@ -124,8 +124,16 @@ namespace {
              buf = emplace_result.first->second.get();
          }
  
@@ -204,7 +212,8 @@ index 8b8d61f..e2130e2 100644
 +            // Converted video is refreshed once per frame, ahead of the window lock.
 +            if (buf->converted && buf->converted_frame == pdev->frame)
 +                return buf;
-+            if (!gralloc_handler.update_shm_buffer(pdev->display, buf))
++            buf->unchanged = buf->converted && buf->converted_frame && buf->converted_frame + 1 == pdev->frame;
++            if (!buf->unchanged && !gralloc_handler.update_shm_buffer(pdev->display, buf))
 +                return nullptr;
 +            if (buf->converted)
 +                buf->converted_frame = pdev->frame;
@@ -212,7 +221,17 @@ index 8b8d61f..e2130e2 100644
          return buf;
      }
  
-@@ -484,6 +491,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
+@@ -352,7 +360,8 @@ static int apply_hwc_layer_to_surface_context(waydroid_hwc_composer_device_1 *pd
+     hwc_layer->releaseFenceFd = -1;
+ 
+     surface_context.attach_buffer(*buf);
+-    apply_surface_damage(hwc_layer, surface_context);
++    if (!buf->unchanged)
++        apply_surface_damage(hwc_layer, surface_context);
+     surface_context.set_buffer_transform(hwc_transform_to_buffer_transform(hwc_layer->transform));
+     // Scaling can only be supported correctly with wp_viewport
+     if (surface_context.viewport) {
+@@ -484,6 +493,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
      }
  }
  
@@ -247,7 +266,7 @@ index 8b8d61f..e2130e2 100644
  static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     hwc_display_contents_1_t** displays) {
      if (HWC_DISPLAY_PRIMARY >= numDisplays || !displays)
-@@ -494,13 +529,38 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
+@@ -494,13 +531,38 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
      assert(contents);
  
@@ -300,10 +319,10 @@ index ee2455c..4310f2a 100644
  
      std::unique_ptr<waydroid_mode> selected_mode;
 diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
-index a80a05b..c2e0eb9 100644
+index a80a05b..f3ec1db 100644
 --- a/hwcomposer/wayland-hwc.h
 +++ b/hwcomposer/wayland-hwc.h
-@@ -140,6 +140,11 @@ struct buffer {
+@@ -140,6 +140,14 @@ struct buffer {
      void *shm_data;
      int size;
  
@@ -311,6 +330,9 @@ index a80a05b..c2e0eb9 100644
 +    // the cache, so it may outlive geometry changes.
 +    bool converted = false;
 +    uint64_t converted_frame = 0;
++    // Presented again in consecutive frames (paused video under moving UI):
++    // neither converted nor damaged, so the compositor keeps its texture.
++    bool unchanged = false;
 +
      ~buffer();
  };
