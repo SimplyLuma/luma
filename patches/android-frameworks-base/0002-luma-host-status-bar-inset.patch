@@ -1,0 +1,152 @@
+diff --git a/core/java/android/view/InsetsState.java b/core/java/android/view/InsetsState.java
+index 57a55fc..907ede2 100644
+--- a/core/java/android/view/InsetsState.java
++++ b/core/java/android/view/InsetsState.java
+@@ -520,9 +520,11 @@ public class InsetsState implements Parcelable {
+     }
+ 
+     public static boolean shouldForceHide(@InternalInsetsType int type) {
++        // A Luma host top bar keeps the status bar inset effective under policy_control.
+         return (type == ITYPE_CLIMATE_BAR ||
+                 type == ITYPE_STATUS_BAR) &&
+-            (sWmContext != null ? SystemBarUtils.isImmersive(sWmContext) : false);
++            (sWmContext != null ? SystemBarUtils.isImmersive(sWmContext)
++                    && SystemBarUtils.getLumaHostStatusBarHeight() == 0 : false);
+     }
+ 
+     /**
+diff --git a/core/java/com/android/internal/policy/SystemBarUtils.java b/core/java/com/android/internal/policy/SystemBarUtils.java
+index 55fca06..6a3231d 100644
+--- a/core/java/com/android/internal/policy/SystemBarUtils.java
++++ b/core/java/com/android/internal/policy/SystemBarUtils.java
+@@ -19,6 +19,7 @@ package com.android.internal.policy;
+ import android.content.Context;
+ import android.content.res.Resources;
+ import android.graphics.Insets;
++import android.os.SystemProperties;
+ import android.util.RotationUtils;
+ import android.view.DisplayCutout;
+ import android.view.Surface;
+@@ -34,6 +35,18 @@ import com.android.internal.R;
+  */
+ public final class SystemBarUtils {
+ 
++    /**
++     * Luma host top-bar height in physical pixels, or 0 when the host owns no top inset.
++     *
++     * Luma draws its own status bar above every Android task window. When the host publishes
++     * its height, Android reserves exactly that area as the status bar inset so applications
++     * lay out below it and paint their status-bar colour behind it. SystemUI's own status bar
++     * contents stay hidden. Unset or 0 keeps Waydroid's policy_control behaviour.
++     */
++    public static int getLumaHostStatusBarHeight() {
++        return Math.max(0, SystemProperties.getInt("persist.luma.status_bar_px", 0));
++    }
++
+     public static boolean isImmersive(Context context) {
+         String policy = Settings.Global.getString(context.getContentResolver(), Settings.Global.POLICY_CONTROL);
+         return
+@@ -45,6 +58,9 @@ public final class SystemBarUtils {
+      * Gets the status bar height.
+      */
+     public static int getStatusBarHeight(Context context) {
++        final int hostHeight = getLumaHostStatusBarHeight();
++        if (hostHeight > 0)
++            return hostHeight;
+         if (isImmersive(context))
+             return 0;
+         return getStatusBarHeight(context.getResources(), context.getDisplay().getCutout());
+@@ -67,6 +83,9 @@ public final class SystemBarUtils {
+      */
+     public static int getStatusBarHeightForRotation(
+             Context context, @Surface.Rotation int targetRot) {
++        final int hostHeight = getLumaHostStatusBarHeight();
++        if (hostHeight > 0)
++            return hostHeight;
+         if (isImmersive(context))
+             return 0;
+         final int rotation = context.getDisplay().getRotation();
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java b/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java
+index fb82caa..8cccf2e 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/window/StatusBarWindowController.java
+@@ -16,6 +16,7 @@
+ 
+ package com.android.systemui.statusbar.window;
+ 
++import static android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+ import static android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+ import static android.view.WindowManager.LayoutParams.PRIVATE_FLAG_COLOR_SPACE_AGNOSTIC;
+ import static android.view.WindowManager.LayoutParams.PRIVATE_FLAG_FORCE_SHOW_STATUS_BAR;
+@@ -86,6 +87,7 @@ public class StatusBarWindowController {
+     private final WindowManager.LayoutParams mLpChanged;
+ 
+     private boolean mImmersive;
++    private boolean mLumaHostOwned;
+ 
+     @Inject
+     public StatusBarWindowController(
+@@ -315,11 +317,29 @@ public class StatusBarWindowController {
+         }
+     }
+ 
++    /**
++     * Luma draws the visible status bar. Keep this window as the inset source at the host bar
++     * height, but transparent and untouchable so only the host bar shows and takes input.
++     */
++    private void applyLumaHostOwnership() {
++        final boolean hostOwned = SystemBarUtils.getLumaHostStatusBarHeight() > 0;
++        if (hostOwned) {
++            mLpChanged.flags |= FLAG_NOT_TOUCHABLE;
++        } else {
++            mLpChanged.flags &= ~FLAG_NOT_TOUCHABLE;
++        }
++        if (mLumaHostOwned != hostOwned) {
++            mLumaHostOwned = hostOwned;
++            mStatusBarWindowView.setAlpha(hostOwned ? 0f : 1f);
++        }
++    }
++
+     private void apply(State state) {
+         if (!mIsAttached) {
+             return;
+         }
+         applyForceStatusBarVisibleFlag(state);
++        applyLumaHostOwnership();
+         applyHeight(state);
+         if (mLp != null && mLp.copyFrom(mLpChanged) != 0) {
+             mWindowManager.updateViewLayout(mStatusBarWindowView, mLp);
+diff --git a/services/core/java/com/android/server/wm/InsetsPolicy.java b/services/core/java/com/android/server/wm/InsetsPolicy.java
+index f578fe0..365689d 100644
+--- a/services/core/java/com/android/server/wm/InsetsPolicy.java
++++ b/services/core/java/com/android/server/wm/InsetsPolicy.java
+@@ -19,6 +19,7 @@ package com.android.server.wm;
+ import static android.app.StatusBarManager.WINDOW_STATE_HIDDEN;
+ import static android.app.StatusBarManager.WINDOW_STATE_SHOWING;
+ import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
++import static android.app.WindowConfiguration.WINDOWING_MODE_FREEFORM;
+ import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
+ import static android.app.WindowConfiguration.WINDOWING_MODE_MULTI_WINDOW;
+ import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
+@@ -72,6 +73,7 @@ import android.view.WindowManager;
+ 
+ import com.android.internal.R;
+ import com.android.internal.annotations.VisibleForTesting;
++import com.android.internal.policy.SystemBarUtils;
+ import com.android.server.DisplayThread;
+ import com.android.server.statusbar.StatusBarManagerInternal;
+ 
+@@ -402,7 +404,12 @@ class InsetsPolicy {
+                 state = new InsetsState(state);
+                 stateCopied = true;
+             }
+-            state.removeSource(ITYPE_STATUS_BAR);
++            // Each Luma task is a host window under the host top bar, so freeform tasks keep
++            // the status bar inset the host publishes.
++            if (windowingMode != WINDOWING_MODE_FREEFORM
++                    || SystemBarUtils.getLumaHostStatusBarHeight() == 0) {
++                state.removeSource(ITYPE_STATUS_BAR);
++            }
+             state.removeSource(ITYPE_NAVIGATION_BAR);
+             state.removeSource(ITYPE_EXTRA_NAVIGATION_BAR);
+             if (windowingMode == WINDOWING_MODE_PINNED) {

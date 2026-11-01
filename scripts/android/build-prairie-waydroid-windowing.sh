@@ -15,6 +15,7 @@ treatment_patch="$repo_root/patches/android-hardware-waydroid/0004-luma-surface-
 lumaui_frame_patch="$repo_root/patches/android-hardware-waydroid/0007-lumaui-current-inset-frame.patch"
 window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-desktop-window-behavior-recovery.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
+framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
@@ -213,6 +214,7 @@ if [ "$incremental" = 0 ]; then
     cmp "$repo_root/src/luma-platform/compat/$header" "$hardware_root/hwcomposer/$header"
   done
   git -C "$framework_root" apply "$framework_patch"
+  git -C "$framework_root" apply "$framework_status_bar_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_task_lifetime_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_notification_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"

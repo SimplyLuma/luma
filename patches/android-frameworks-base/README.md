@@ -19,9 +19,25 @@ This is deliberately a product source decision rather than a runtime CSS or
 view-hiding workaround. Handheld builds may omit the property and retain their
 normal Android presentation.
 
+## Host status bar inset
+
+`0002-luma-host-status-bar-inset.patch` reserves Luma's top bar as Android's
+status bar. Waydroid's `app launch` writes `policy_control=immersive.full=*` in
+multi-window mode, and its PolicyControl port then reports a 0 px status bar
+and force-hides the `ITYPE_STATUS_BAR` source; freeform tasks also drop that
+source in `InsetsPolicy`. When the host sets `persist.luma.status_bar_px` (the
+top bar in physical pixels, from luma-android's readiness pass on handheld and
+tablet), SystemUI's status bar window takes that height and remains the inset
+source, transparent and untouchable, and freeform tasks keep the inset.
+Applications lay out below the host bar and draw their own status bar colour
+behind it. Unset or `0` (desktop) keeps the previous behaviour. SystemUI reads
+the height at start and on configuration or `policy_control` changes; the
+property persists, so a changed value applies from the next Android start.
+
 ## Patch order
 
 1. `0001-prairie-host-owned-window-chrome.patch`
+2. `0002-luma-host-status-bar-inset.patch`
 
 This patch changes both the boot framework and WindowManager Shell. Deploy it
 only in a system image built from the same resolved manifest as SystemUI and

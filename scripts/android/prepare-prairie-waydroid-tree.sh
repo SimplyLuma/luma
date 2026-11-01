@@ -63,6 +63,7 @@ lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native
 lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
 lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
+framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
@@ -190,6 +191,7 @@ write_state() {
     printf 'BLUEPRINT_CPU_PATCH_SHA=%s\n' "$(patch_sha "$blueprint_cpu_patch")"
     printf 'MAKE_HOST_PATCH_SHA=%s\n' "$(patch_sha "$make_host_patch")"
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
+    printf 'FRAMEWORK_STATUS_BAR_PATCH_SHA=%s\n' "$(patch_sha "$framework_status_bar_patch")"
     printf 'VENDOR_EXTRA_OFFICIAL_HEAD=%s\n' "$vendor_extra_official_head"
     printf 'VENDOR_EXTRA_PATCH_SHA=%s\n' "$(patch_sha "$vendor_extra_patch")"
     printf 'LIBHIDL_OFFICIAL_HEAD=%s\n' "$libhidl_official_head"
@@ -321,6 +323,7 @@ if [ ! -f "$state_file" ]; then
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'
   git -C "$framework_root" apply "$framework_patch"
+  git -C "$framework_root" apply "$framework_status_bar_patch"
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
   git -C "$native_root" apply "$native_patch"
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
@@ -568,10 +571,12 @@ cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
   "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
 cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
   "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
-if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ]; then
+if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$framework_status_bar_patch")" != "${FRAMEWORK_STATUS_BAR_PATCH_SHA:-}" ]; then
   git -C "$framework_root" reset --hard -q "$FRAMEWORK_OFFICIAL_HEAD"
   git -C "$framework_root" clean -fdq
   git -C "$framework_root" apply "$framework_patch"
+  git -C "$framework_root" apply "$framework_status_bar_patch"
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
   changed=1
 fi
