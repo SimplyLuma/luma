@@ -238,7 +238,7 @@ index f578fe0..fa3938d 100644
              if (windowingMode == WINDOWING_MODE_PINNED) {
                  state.removeSource(ITYPE_IME);
 diff --git a/services/core/java/com/android/server/wm/Task.java b/services/core/java/com/android/server/wm/Task.java
-index 1ddc3e8..be1af19 100644
+index 1ddc3e8..e105f89 100644
 --- a/services/core/java/com/android/server/wm/Task.java
 +++ b/services/core/java/com/android/server/wm/Task.java
 @@ -189,6 +189,7 @@ import android.window.WindowContainerToken;
@@ -249,16 +249,27 @@ index 1ddc3e8..be1af19 100644
  import com.android.internal.protolog.ProtoLogGroup;
  import com.android.internal.protolog.common.ProtoLog;
  import com.android.internal.util.XmlUtils;
-@@ -2133,7 +2134,11 @@ class Task extends TaskFragment {
+@@ -2133,6 +2134,23 @@ class Task extends TaskFragment {
          final Rect parentBounds =
                  new Rect(newParentConfig.windowConfiguration.getBounds());
          final DisplayContent display = getDisplayContent();
--        if (display != null) {
 +        // Luma tasks are host windows without an Android caption, placed under the host top
-+        // bar and gesture strip. Keep their bounds over both so they become the task's insets
-+        // instead of moving or shrinking the task.
-+        if (display != null && SystemBarUtils.getLumaHostStatusBarHeight() == 0
-+                && SystemBarUtils.getLumaHostNavigationBarHeight() == 0) {
++        // bar and gesture strip. Fit them wholly within the full parent bounds, not the stable
++        // area, so the bars become the task's insets and a task can never exceed the display.
++        if (SystemBarUtils.getLumaHostStatusBarHeight() > 0
++                || SystemBarUtils.getLumaHostNavigationBarHeight() > 0) {
++            if (outBounds.isEmpty() || parentBounds.isEmpty()) {
++                return;
++            }
++            final int width = Math.min(outBounds.width(), parentBounds.width());
++            final int height = Math.min(outBounds.height(), parentBounds.height());
++            final int left = Math.max(parentBounds.left,
++                    Math.min(outBounds.left, parentBounds.right - width));
++            final int top = Math.max(parentBounds.top,
++                    Math.min(outBounds.top, parentBounds.bottom - height));
++            outBounds.set(left, top, left + width, top + height);
++            return;
++        }
+         if (display != null) {
              // If a freeform window moves below system bar, there is no way to move it again
              // by touch. Because its caption is covered by system bar. So we exclude them
-             // from root task bounds. and then caption will be shown inside stable area.

@@ -30,8 +30,9 @@ to the stable area, shifting each task down by the status bar height so it no
 longer meets the bar and gets no inset. When the host sets `persist.luma.status_bar_px` (the
 top bar in physical pixels, from luma-android's readiness pass on handheld and
 tablet), SystemUI's status bar window takes that height and remains the inset
-source, transparent and untouchable, and freeform tasks keep their bounds and
-the inset.
+source, transparent and untouchable, and freeform tasks keep the inset. They
+are fitted within the full display rather than the stable area, so they stay
+under the host bars and never exceed the display.
 Applications lay out below the host bar and draw their own status bar colour
 behind it. `persist.luma.nav_bar_px` does the same for the host gesture strip:
 SystemUI's navigation bar window (zero-sized under `immersive.full=*`) spans
