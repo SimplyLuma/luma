@@ -16,9 +16,9 @@ if [ "$(systemctl get-default)" != graphical.target ]; then
   exit 0
 fi
 timeout=${LUMA_HEALTH_SHELL_TIMEOUT:-180}
-deadline=$((SECONDS + timeout))
+deadline=$(($(luma_uptime) + timeout))
 last=
-while [ "$SECONDS" -lt "$deadline" ]; do
+while [ "$(luma_uptime)" -lt "$deadline" ]; do
   if session=$(/usr/libexec/luma-os/graphical-session); then
     read -r id class type user uid <<<"$session"
     bus="/run/user/$uid/bus"

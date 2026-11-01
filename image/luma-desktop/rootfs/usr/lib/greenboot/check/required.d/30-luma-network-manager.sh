@@ -10,8 +10,8 @@ set -euo pipefail
 # failing on every other boot.
 . /usr/lib/luma-update/luma-greenboot-common.sh
 timeout=${LUMA_HEALTH_NETWORK_TIMEOUT:-120}
-deadline=$((SECONDS + timeout))
-while [ "$SECONDS" -lt "$deadline" ]; do
+deadline=$(($(luma_uptime) + timeout))
+while [ "$(luma_uptime)" -lt "$deadline" ]; do
   if systemctl is-active --quiet NetworkManager.service &&
      state=$(timeout 15 busctl --system --timeout=10 get-property \
        org.freedesktop.NetworkManager /org/freedesktop/NetworkManager \

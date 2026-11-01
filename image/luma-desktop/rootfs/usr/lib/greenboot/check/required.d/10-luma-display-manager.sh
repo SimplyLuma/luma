@@ -20,7 +20,7 @@ timeout=${LUMA_HEALTH_DISPLAY_TIMEOUT:-300}
 # moment before GDM tears it down and tries again, so a session only counts
 # once it has stayed up this long.
 settle=${LUMA_HEALTH_DISPLAY_SETTLE:-30}
-deadline=$((SECONDS + timeout))
+deadline=$(($(luma_uptime) + timeout))
 dm_unit=$(systemctl show -p Id --value display-manager.service 2>/dev/null || true)
 
 dm_gave_up() {
@@ -32,7 +32,7 @@ dm_gave_up() {
 
 candidate=
 since=0
-while [ "$SECONDS" -lt "$deadline" ]; do
+while [ "$(luma_uptime)" -lt "$deadline" ]; do
   if dm_gave_up; then
     journalctl -b -u "$dm_unit" --no-pager -o cat 2>/dev/null | tail -n 20 >&2 || true
     luma_check_failed 'Luma: the display manager gave up after repeated greeter or session failures'
@@ -45,8 +45,8 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     read -r id class type user _ <<<"$session"
     if [ "$id" != "$candidate" ]; then
       candidate=$id
-      since=$SECONDS
-    elif [ $((SECONDS - since)) -ge "$settle" ]; then
+      since=$(luma_uptime)
+    elif [ $(($(luma_uptime) - since)) -ge "$settle" ]; then
       printf 'Luma: display manager reached a %s session that stayed up %ss (%s, %s, session %s)\n' \
         "$class" "$settle" "$type" "$user" "$id"
       exit 0
