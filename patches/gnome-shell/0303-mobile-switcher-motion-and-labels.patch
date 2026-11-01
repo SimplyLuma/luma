@@ -1,0 +1,170 @@
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -314,7 +314,7 @@
+     // changing visibility while allocating queues another layout.
+     syncTimeVisible(width) {
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const visible = width >= 120 * scale;
++        const visible = !['mobile', 'tablet'].includes(Main.presentation?.mode) && width >= 120 * scale;
+         if (this._time.visible !== visible)
+             this._time.visible = visible;
+     }
+@@ -326,7 +326,9 @@
+ 
+     _syncName() {
+         this._time.text = this.window.minimized ? _('Minimized') : this._recency;
+-        this.accessible_name = `${this._name.text}: ${this.window.title}, ${this._time.text}`;
++        const name = `${this._name.text}: ${this.window.title}`;
++        this.accessible_name = ['mobile', 'tablet'].includes(Main.presentation?.mode)
++            ? name : `${name}, ${this._time.text}`;
+     }
+ 
+     setSelected(selected) {
+@@ -335,19 +337,21 @@
+     }
+ 
+     get lift() {
++        if (Main.presentation?.mode === 'mobile') return 0;
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         return this._selected || this.hover ? -3 * scale : 0;
+     }
+ 
+     _syncSelection() {
+-        const lifted = this._selected || this.hover;
++        const mobile = Main.presentation?.mode === 'mobile';
++        const lifted = !mobile && (this._selected || this.hover);
+         // While the card travels, the travel owns its transform and ends on
+         // this lift.
+         if (!this._popup.travelling) {
+             this.ease({translation_y: this.lift,
+                 duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+         }
+-        this._name.opacity = lifted ? 255 : 204;
++        this._name.opacity = mobile || lifted ? 255 : 204;
+         this.setCloseShown(lifted && this.window.can_close());
+         // A card its preview does not fill (a short or very wide window)
+         // shows a quiet surface behind it, so every card reads as one shape.
+@@ -362,6 +366,7 @@
+     // re-picked once cards move), and showing a hidden button there left it
+     // unallocated for a frame.
+     setCloseShown(shown) {
++        if (Main.presentation?.mode === 'mobile') shown = false;
+         if (this._close.reactive === shown)
+             return;
+         this._close.reactive = shown;
+@@ -407,6 +412,7 @@
+         // Grid is not a hold-to-preview switcher: it stays open until Return,
+         // a click, or Escape, so the invoking modifier is deliberately ignored.
+         this._mask = 0;
++        this._mobile = Main.presentation?.mode === 'mobile';
+         this._scroll = 0;
+         this._scrollX = null;
+         this._scrollMin = 0;
+@@ -510,6 +516,7 @@
+             // Clutter can still allocate Grid while it tears down its children;
+             // from here on there is nothing left to place.
+             this._destroyed = true;
++            if (this._mobile) Main.presentation?._home.set_opacity(255);
+             this._cards = [];
+             this._geometry = null;
+             this._wallpaperManagers.forEach(manager => manager.destroy());
+@@ -575,7 +582,58 @@
+     // Travel animates each card's allocation between its window's place on
+     // the desktop and its place in the row. Scaling a card instead would draw
+     // its preview texture at the row's size and stretch it over the window.
++    // Mobile uses fixed card geometry and one opacity timeline in both
++    // directions. No per-frame preview layout, blur-radius update or resize.
++    _fadeMobile(leaving, onDone) {
++        const start = this._travelProgress ?? (leaving ? 1 : 0);
++        const previous = this._travelTimeline;
++        this._travelTimeline = null;
++        previous?.stop();
++        this._cancelTravelStart();
++        this._travelLeaving = leaving;
++        this._stage.clip_to_allocation = true;
++        this._cards.forEach(card => {
++            card.remove_all_transitions();
++            card.translation_y = 0;
++            card.setCloseShown(false);
++        });
++        const home = Main.presentation?._home;
++        const fadingHome = Boolean(home?.visible);
++        const target = leaving ? 0 : 1;
++        const paint = progress => {
++            this._travelProgress = progress;
++            this._stage.opacity = Math.round(255 * progress);
++            this._wallpaper.opacity = Math.round(255 * progress);
++            if (fadingHome) home.opacity = Math.round(255 * (1 - progress));
++        };
++        paint(start);
++        const timeline = this._travelTimeline = new Clutter.Timeline({actor: this,
++            duration: St.Settings.get().enable_animations
++                ? Math.max(1, Math.round(220 * Math.abs(target - start))) : 1,
++            progress_mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        timeline.connect('new-frame', () => paint(lerp(start, target, timeline.get_progress())));
++        timeline.connect('stopped', (_timeline, finished) => {
++            if (this._travelTimeline !== timeline) return;
++            this._travelTimeline = null;
++            if (!finished) return;
++            paint(target);
++            if (!leaving && fadingHome) { home.hide(); home.opacity = 255; }
++            onDone();
++        });
++        // Home can need its first layout when returning from an app. Start
++        // after that paint in either direction, so it cannot consume the fade.
++        this._travelStartId = global.stage.connect_after('after-paint', () => {
++            this._cancelTravelStart();
++            if (this._travelTimeline === timeline) timeline.start();
++        });
++        this.queue_redraw();
++    }
++
+     _travel(leaving, onDone) {
++        if (this._mobile && (!leaving || this._returningHome)) {
++            this._fadeMobile(leaving, onDone);
++            return;
++        }
+         this._travelTimeline?.stop();
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const label = 28 * scale;
+@@ -643,6 +701,12 @@
+ 
+     // Where a card is drawn this frame: its row place, or on the way to or from its window.
+     _placeTravelling(card, home, stageOrigin, restRadius) {
++        if (this._mobile && (!this._travelLeaving || this._returningHome)) {
++            card._shapeRadius = restRadius;
++            card._header.opacity = 255;
++            card.opacity = 255;
++            return home;
++        }
+         const progress = this._travelProgress ?? 1;
+         if (progress >= 1 || !this.travelling && !this._leaving) {
+             card._shapeRadius = null;
+@@ -713,10 +777,15 @@
+ 
+     // Send every card back to its window, the chosen one last and on top,
+     // then hand the desktop back.
+-    dismiss(chosen = null) {
++    dismiss(chosen = null, toHome = false) {
+         if (this._leaving)
+             return;
+         this._leaving = true;
++        this._returningHome = this._mobile && toHome;
++        if (this._returningHome) {
++            Main.presentation.showHome();
++            Main.presentation._home.opacity = Math.round(255 * (1 - (this._travelProgress ?? 1)));
++        }
+         this.reactive = false;
+         this._stopFling();
+         this._dismissSwipe?.destroy();
+@@ -811,7 +880,8 @@
+         // while Grid is open. The live windows are hidden instead of stacked
+         // under, because every one of them is already represented by a card and
+         // leaving them painted behind the grid makes it unreadable.
+-        Main.uiGroup.set_child_above_sibling(this, global.window_group);
++        Main.uiGroup.set_child_above_sibling(this,
++            this._mobile ? Main.presentation._home : global.window_group);
+         // The windows are hidden the way the overview hides them, as groups.
+         // Hiding each actor lost to Mutter showing actors again as windows
+         // mapped or changed, and the desktop flickered through behind Grid.

@@ -218,3 +218,15 @@ native Settings binary bind via project-titan-home-settings.service. Before
 installing a proper Settings RPM, close Settings and disable/stop that service
 so its bind cannot hide the packaged executable. Keep other overlays and user
 layouts intact; deployment and rollback details are in the Titan task record.
+
+
+Mobile switcher follow-up advances Shell to143. The handheld swipe-and-hold is
+300ms with one theme-owned quiet haptic request and normal cancellation. Mobile
+cards have no close control or selection lift; Mobile/Tablet hide recency/state
+labels. Mobile entry and bottom-swipe return to Home use the same fixed-geometry
+opacity progress, including the dock, and can reverse interrupted entry.
+Desktop/Tablet retain their existing window travel and hover controls. The native
+Mobile regression module tests the actual bottom-edge touchscreen gesture and
+modal cleanup; all11 checks passed on the Titan, with a301ms hold measurement.
+This does not qualify frame rate on every GPU. The Titan uses source resource
+overlays; matching package builds remain necessary for other devices.

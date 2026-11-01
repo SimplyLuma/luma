@@ -1,6 +1,6 @@
 # Project Titan recovery and shared shell
 
-- Status: shared Mobile presentation active on owner Titan; compact Home, full-screen overlays, power-button lock/blank and background Weather verified. Source candidate ready for integration.
+- Status: owner-approved Home Screen settings pushed at03ed2e8b9; Mobile switcher refinements installed and native touch checks pass. Shared source ready for integration; no general OS release.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -1225,3 +1225,62 @@ The contract caught stale Shell139 shared package-list pins; these now match
 Shell142 and its architecture pins. Initial check invocation be62a0d7 used the
 artifact cwd and did not run tests; corrected r2 caught the pins, corrected r3
 passes. No new feature build or deployment was necessary for approval.
+
+
+### 2026-10-31 — Mobile switcher gesture and motion refinement
+
+Owner requested a roughly one-third-second hold, a brief haptic at activation,
+name-only cards, no Mobile close buttons or selected-card jump, and a bottom
+swipe that reverses entry instead of abruptly destroying the picker. Closing a
+card by swiping it up remains a separate existing gesture.
+
+The shared handheld hold is300ms, cancelled by release, retreat below its
+threshold, lock/mode changes and destruction. It sends one asynchronous
+feedbackd button-pressed request using the quiet theme (Titan theme specifies a
+7ms vibration); unavailable services back off60seconds, without polling or sound.
+The request precedes expensive popup construction. Actual actuator sensation is
+not independently confirmed by these software tests.
+
+Patch0303 keeps Mobile cards at their final geometry with one220ms opacity
+progress driving cards, wallpaper and Home including its dock. Entry and
+bottom-swipe exit share that progress; interrupted entry reverses from its
+current value. Both directions begin their clock after the first paint, so
+initial Home layout cannot consume most of the animation. Mobile close controls
+remain unreactive/transparent and card lift is zero. Mobile/Tablet omit visible
+state/recency labels; Desktop retains them. Tablet/Desktop window travel and
+hover behavior retain their prior path. Source package pins advance to Shell143.
+
+All14 maintained Grid source patches applied and reconstructed exactly the
+Titan's prior Grid resource before0303. Check06fbff93 passes native launch
+cohort, real RPM patch-number parsing, full package release contract, JavaScript
+syntax, new patch application and whitespace. Initial check0e6c4836 caught a
+Patch1283 identity collision; assigned the new patch1284 after the existing
+notification-policy patch. A final source check is recorded below.
+
+Actual Titan candidate checks passed15 cases, with sampled intermediate card /
+wallpaper / Home fades and screenshots reviewed. The maintained native test
+mobile-switcher.js then passed11 checks, including a real virtual-touchscreen
+bottom-edge swipe, animation still alive immediately after that swipe, completed
+Home/modal restoration and interrupted-entry continuity. Final rerun measured
+301.29ms for the real main-loop hold. These are functional transition checks,
+not a universal60FPS or battery-life qualification. No app was force-killed.
+
+Source-backed candidate: /var/lib/project-titan/switcher-refinement-20261031.
+It preserves approved Home settings/widget resize sources and adds raw
+lumaGrid.js plus tabletTasks.js. Fresh-process GResource readback matched both
+exact files before replacing only the owned presentation overlay and adding the
+scoped UI overlay. Private before/environment and source SHA256 metadata are
+retained there; final packaged Shell143 has not been built/installed. Current
+session methods/modules are hot-loaded; no Shell/Android restart or reboot.
+Home Settings native executable bind and local schema remain as documented
+above, including their future RPM upgrade cleanup requirement. Other-source
+work and Home preferences/layouts are untouched. Private source/test/capture
+material is on owned HDD update-20261031/switcher-refinement; native test output
+is /tmp/mobile-switcher.json and earlier sampled proof is in the user's private
+state project-titan/switcher-refinement.json.
+
+Final job521f25df passes the source/cohort checks and maintained native-test
+syntax after the first-paint scheduling refinement. The final native test also
+passed all11 checks on the Titan. This commit includes the previously approved
+Home Screen release-note fragment. Both features are installed for the owner;
+there are no active owned build jobs or remaining approval gates for Home settings.

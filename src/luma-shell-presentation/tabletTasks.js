@@ -22,6 +22,7 @@ function control(name, run, icon = null) {
     return button;
 }
 const live = window => Boolean(window?.get_compositor_private());
+const SWITCHER_HOLD_MS = 300;
 
 export class TabletTasks {
     constructor(home) {
@@ -224,10 +225,33 @@ export class TabletTasks {
             // Fade follows the finger from the first movement, not only release.
             this._navigationLift.opacity = Math.round(255 * (1 - progress * .9));
         }
-        if (distance > -56 * this.home._scale || this._hold || this._held) return;
-        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-            this._hold = 0; this._held = true; this.openSwitcher(); return GLib.SOURCE_REMOVE;
+        if (distance > -56 * this.home._scale) {
+            if (this._hold) GLib.source_remove(this._hold);
+            this._hold = 0;
+            return;
+        }
+        if (this._hold || this._held) return;
+        this._hold = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SWITCHER_HOLD_MS, () => {
+            this._hold = 0;
+            if (!this.navigationEnabled || this._destroyed) return GLib.SOURCE_REMOVE;
+            this._held = true;
+            this._switcherFeedback();
+            this.openSwitcher();
+            return GLib.SOURCE_REMOVE;
         });
+    }
+    _switcherFeedback() {
+        // One short, theme-owned haptic, without sound, polling or a rendering
+        // wait. feedbackd owns device support and the user's feedback policy.
+        if (GLib.get_monotonic_time() < (this._feedbackRetryAt ?? 0)) return;
+        Gio.DBus.session.call('org.sigxcpu.Feedback', '/org/sigxcpu/Feedback',
+            'org.sigxcpu.Feedback', 'TriggerFeedback',
+            new GLib.Variant('(ssa{sv}i)', ['org.gnome.Shell', 'button-pressed',
+                {profile: new GLib.Variant('s', 'quiet')}, -1]),
+            null, Gio.DBusCallFlags.NONE, 1000, null, (bus, result) => {
+                try { bus.call_finish(result); }
+                catch { this._feedbackRetryAt = GLib.get_monotonic_time() + 60 * GLib.USEC_PER_SEC; }
+            });
     }
     verticalEnd(distance, side = null) {
         if (this._hold) GLib.source_remove(this._hold);
@@ -550,7 +574,7 @@ export class TabletTasks {
         return {x: m.x + (this.pickerSide === 'right' ? half : 0), y: m.y,
             width: this.pickerSide === 'right' ? m.width - half : half, height: m.height};
     }
-    beforeHome() { this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
+    beforeHome() { if (this.home.mode !== 'mobile' || !this._switcherPopup?.leaving) this._switcherPopup?.destroy(); this.pickerSide = null; this.closeOverlay(); }
     sync() {
         const pairVisible = this.enabled && this.active && !this._switcherPopup && !Main.sessionMode.isLocked &&
             (this.pickerSide || !this.home._home.visible);
@@ -628,7 +652,7 @@ export class TabletTasks {
         this._switcherPopup = popup;
         const returnHome = this.home._home.visible || this._returnHomeAfterSwitcher;
         this._returnHomeAfterSwitcher = returnHome;
-        this.home._home.hide();
+        if (this.home.mode !== 'mobile') this.home._home.hide();
         this.sync();
         const base = returnHome ? null : this.focused();
         popup.connect('destroy', () => {
@@ -655,8 +679,8 @@ export class TabletTasks {
         });
         home.connect('end', gesture => {
             if (gesture.get_accumulated_delta().get_y() >= -24 * this.home._scale) return;
-            popup.destroy();
-            this.home.showHome();
+            if (this.home.mode === 'mobile') popup.dismiss(null, true);
+            else { popup.destroy(); this.home.showHome(); }
         });
         popup.add_action_full('LumaGridHome', Clutter.EventPhase.CAPTURE, home);
         if (!this.enabled) return; // Split placement belongs to Tablet only.
@@ -757,7 +781,7 @@ export class TabletTasks {
         this.finishLift(false);
         this.closeOverlay();
         this._returnHomeAfterSwitcher = this.home._home.visible;
-        this.home._home.hide();
+        if (this.home.mode !== 'mobile') this.home._home.hide();
         LumaGrid.show();
     }
     closeOverlay() {
