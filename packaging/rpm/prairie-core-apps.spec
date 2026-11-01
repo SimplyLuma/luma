@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.126%{?dist}
+Release:        1.luma.127%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -692,6 +692,10 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.127
+- Restore install_phone_theme for the call presenter; never dismiss the
+  GNOME Shell lock screen for an incoming call.
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.126
 - Merge the shared prepared application runtime with the October 30 nightly.
 
