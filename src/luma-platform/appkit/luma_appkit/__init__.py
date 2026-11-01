@@ -89,6 +89,10 @@ __all__ = [
     "person_hue",
     "oklch_rgba",
     "reduced_motion",
+    # LumaUI TV posture (API level 3)
+    "tv_posture",
+    "watch_posture",
+    "tv_unit",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -337,7 +341,7 @@ def __getattr__(name: str):
         return getattr(menus, name)
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
-                "media_context", "in_media_context", "hue_tint"}:
+                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
         from . import lumaui
         return getattr(lumaui, name)
     if name in {"lumaui_icon"}:

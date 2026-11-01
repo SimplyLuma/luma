@@ -37,7 +37,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 
 #: The public LumaUI API level. See the module docstring for the policy.
 # 2: the F2, F3 and F0 parts; hues (hue_class, person_hue); Card(recessed=); PersonAvatar(hue=).
-LUMAUI_API_LEVEL = 2
+# 3: TV posture (tv_posture, watch_posture, tv_unit, AppContext.posture, AppWindow tv-posture).
+LUMAUI_API_LEVEL = 3
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()
@@ -328,14 +329,87 @@ def _hue_css(hues: set[int], dark: bool) -> str:
     return "\n".join(rules)
 
 
+# ── Posture ────────────────────────────────────────────────────────────────
+#
+# TV is a posture of the same app, not a different app
+# (docs/developer-platform/tv-mode.md). The shell owns the setting
+# (luma-shell-state `posture`); an app asks LumaUI, never the screen size, and
+# switches presentation live.
+
+def tv_posture() -> bool:
+    """Whether the shell is in TV posture: the app should show its TV presentation.
+
+    Reads the live session context (the shell-state `Posture` property) once
+    the session bus has answered, and the system setting before that.
+    `LUMA_POSTURE=tv` forces it for tests and reviews. Never inferred from the
+    size or aspect of a screen.
+    """
+    from .context import AppContext
+    return AppContext.from_environment().tv
+
+
+def watch_posture(callback: Callable[[bool], None]) -> Callable[[], None]:
+    """Call `callback(tv)` now and whenever TV posture turns on or off.
+
+    Returns the function that stops watching; the callback is held until then.
+    Windows can follow `AppWindow`'s `tv-posture` property instead, which ends
+    with the window.
+    """
+    from .session_context import session_context
+    state = {"tv": None}
+
+    def changed(context) -> None:
+        if context.tv != state["tv"]:
+            state["tv"] = context.tv
+            callback(context.tv)
+
+    watcher = _PostureWatcher(changed)
+    unsubscribe = session_context().watch(watcher.changed)
+
+    def stop() -> None:
+        unsubscribe()
+        _posture_watchers.discard(watcher)
+
+    _posture_watchers.add(watcher)
+    return stop
+
+
+class _PostureWatcher:
+    """A strong owner for a posture callback (session context holds methods weakly)."""
+
+    def __init__(self, callback: Callable[[object], None]) -> None:
+        self._callback = callback
+
+    def changed(self, context: object) -> None:
+        self._callback(context)
+
+
+_posture_watchers: set[_PostureWatcher] = set()
+
+
+def tv_unit(width: float, height: float) -> float:
+    """One TV layout pixel on a screen of this size: min(width/1920, height/1080).
+
+    Every TV length (the safe area, the bar, type, covers) is given in this
+    unit and pinned to an edge or the centre, so any size or aspect works.
+    """
+    base_width, base_height = tokens.TV["layout"]["base_width"], tokens.TV["layout"]["base_height"]
+    if width <= 0 or height <= 0:
+        return 0.0
+    return min(width / base_width, height / base_height)
+
+
 def mobile_form_factor() -> bool:
     """Whether this device is a phone (not whether a window is narrow).
 
     An explicit form-factor override takes precedence over Luma's device-class
     contract (environment, then /etc/luma-device-class). Older installations
     can still identify themselves through CHASSIS=handset in /etc/machine-info.
-    A desktop never qualifies merely because its windows are narrow.
+    A desktop never qualifies merely because its windows are narrow. In TV
+    posture nothing is a phone: the TV presentation replaces the phone one.
     """
+    if tv_posture():
+        return False
     value = os.environ.get("LUMA_FORM_FACTOR", "").strip().lower()
     if value:
         return value in ("phone", "handset", "mobile")

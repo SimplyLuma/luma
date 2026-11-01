@@ -1661,6 +1661,12 @@ class AppWindow(Adw.ApplicationWindow):
     window, Tiling Shell's window memory puts it back and the kit stands aside.
     """
 
+    #: Whether the shell is in TV posture (`lumaui.tv_posture()`), kept live.
+    #: Follow `notify::tv-posture` to switch to and from the TV presentation.
+    #: In TV posture the window has no title row (the shell runs it full
+    #: screen), and Back that nothing in the window took returns to the TV home.
+    tv_posture = GObject.Property(type=bool, default=False)
+
     #: Set while the kit is applying the shared opening-size rule, so
     #: `set_default_size` can tell the rule's own call from an application's.
     #: A class attribute because `__init__` sizes the window before any
@@ -1738,7 +1744,7 @@ class AppWindow(Adw.ApplicationWindow):
             self._opening_size_applied = False
         # Windowed keeps the frame. Handheld fullscreen has none to keep: the
         # shell owns that surface's chrome, and a title row would be a second.
-        decorated = self.context.presentation is PresentationMode.WINDOWED
+        decorated = self.context.presentation is PresentationMode.WINDOWED and not self.context.tv
         self.set_decorated(decorated)
         # One native binding owns the window's compositor backdrop. It follows
         # the same accessibility and capability policy as the C AppKit, and
@@ -1842,6 +1848,14 @@ class AppWindow(Adw.ApplicationWindow):
         self._chrome_corrections = 0
         self.title_bar.connect("notify::visible", self._keep_close_affordance)
         self.connect("notify::decorated", self._keep_close_affordance)
+        # TV Back: the remote's Back (Escape, or the Back key) at the window's
+        # top level, meaning nothing inside took it, returns to the TV home.
+        # Minimising is the request: the TV home shows whenever no app window
+        # is, so any application, Luma or not, gets the same behaviour.
+        tv_back = Gtk.EventControllerKey()
+        tv_back.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
+        tv_back.connect("key-pressed", self._tv_back_pressed)
+        self.add_controller(tv_back)
         # Everything the window listens to up to here is the toolkit's and the
         # kit's. Controllers added after this line are the application's, and
         # a sheet parks them while it is open so its keys reach nothing else.
@@ -1879,6 +1893,16 @@ class AppWindow(Adw.ApplicationWindow):
     def _apply_session_context(self, context: AppContext) -> None:
         from .session_context import _apply_window_context
         _apply_window_context(self, context)
+        if self.tv_posture != context.tv:
+            self.tv_posture = context.tv
+
+    def _tv_back_pressed(self, _controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> bool:
+        if not self.context.tv or state & Gtk.accelerator_get_default_mod_mask():
+            return False
+        if keyval not in (Gdk.KEY_Escape, Gdk.KEY_Back):
+            return False
+        self.minimize()
+        return True
 
     def _controllers(self) -> list[Gtk.EventController]:
         model = self.observe_controllers()

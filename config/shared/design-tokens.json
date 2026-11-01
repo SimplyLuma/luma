@@ -485,6 +485,271 @@
       "ttl_seconds": 3600
     }
   },
+  "tv": {
+    "_doc": "LumaUI on TV: the one scale every TV surface builds on (the shell's TV home and every app's TV presentation), from Design Center mockups/tv/lumaui-tv.css and tv/bar.css (1 Nov 2026). Lengths are TV units: one pixel of a 1920x1080 layout, unit = min(width/1920, height/1080), everything pinned to an edge or the centre. Colours are OKLCH [L, C, h, alpha]; the generator writes them as rgba() for the Shell (tvTokens.js) and Python (lumaui_tokens.TV). Materials: well = recessed track, chip = chosen, key = focus (the one bright thing), bar = floating panel; all translucent over the room.",
+    "layout": {
+      "base_width": 1920,
+      "base_height": 1080,
+      "safe_x": 96,
+      "safe_y": 56
+    },
+    "bar": {
+      "top": 56,
+      "height": 74,
+      "gap": 24,
+      "track_padding": 9,
+      "track_radius": 25,
+      "tab_gap": 4,
+      "tab_height": 56,
+      "tab_padding_x": 26,
+      "tab_radius": 16,
+      "tab_size": 26,
+      "tab_weight": 650,
+      "tab_icon": 28,
+      "tab_icon_gap": 10,
+      "clock_size": 28,
+      "clock_weight": 700,
+      "clock_line": 34,
+      "now_gap": 24,
+      "now_icon_gap": 10,
+      "divider_width": 2,
+      "divider_height": 30
+    },
+    "type": {
+      "h1": {
+        "size": 52,
+        "weight": 750
+      },
+      "h2": {
+        "size": 30,
+        "weight": 700
+      },
+      "body": {
+        "size": 26,
+        "weight": 500
+      },
+      "meta": {
+        "size": 20,
+        "weight": 600
+      },
+      "caption_title": {
+        "size": 22,
+        "weight": 650
+      },
+      "caption_meta": {
+        "size": 19,
+        "weight": 500
+      }
+    },
+    "cover": {
+      "square": 260,
+      "portrait": 230,
+      "landscape": 400,
+      "radius": 20,
+      "focus_scale": 1.08,
+      "ring": 5
+    },
+    "button": {
+      "height": 66,
+      "radius": 22,
+      "padding_x": 30,
+      "size": 25,
+      "weight": 650,
+      "icon": 26,
+      "round": 84,
+      "round_main": 108
+    },
+    "tile": {
+      "width": 304,
+      "aspect_width": 16,
+      "aspect_height": 9,
+      "corner_x": 0.11875,
+      "corner_y": 0.21111,
+      "row_gap": 52,
+      "column_gap": 32,
+      "label_gap": 16,
+      "label_size": 26,
+      "label_weight": 650,
+      "focus_scale": 1.06,
+      "ring": 5
+    },
+    "home": {
+      "greeting_size": 112,
+      "greeting_weight": 750,
+      "greeting_baseline": 56,
+      "greeting_tracking": -0.045,
+      "apps_top": 210,
+      "search_top": 190,
+      "search_gap": 40,
+      "field_width": 900,
+      "field_height": 88,
+      "field_radius": 28,
+      "field_padding_x": 32,
+      "field_size": 32,
+      "field_icon": 34,
+      "field_gap": 18,
+      "wallpaper_blur": 80,
+      "wallpaper_saturate": 1.25,
+      "wallpaper_brightness": 0.62
+    },
+    "materials": {
+      "ink": [
+        0.98,
+        0.003,
+        265,
+        1
+      ],
+      "ink_2": [
+        1,
+        0,
+        0,
+        0.74
+      ],
+      "ink_3": [
+        1,
+        0,
+        0,
+        0.52
+      ],
+      "well": [
+        0.12,
+        0.01,
+        265,
+        0.45
+      ],
+      "well_rim": [
+        0,
+        0,
+        0,
+        0.42
+      ],
+      "well_shade": [
+        0,
+        0,
+        0,
+        0.38
+      ],
+      "chip": [
+        0.42,
+        0.01,
+        265,
+        0.9
+      ],
+      "chip_rim": [
+        0,
+        0,
+        0,
+        0.32
+      ],
+      "chip_drop": [
+        0,
+        0,
+        0,
+        0.35
+      ],
+      "key_top": [
+        0.97,
+        0.003,
+        265,
+        1
+      ],
+      "key_bottom": [
+        0.86,
+        0.004,
+        265,
+        1
+      ],
+      "key_ink": [
+        0.2,
+        0.006,
+        265,
+        1
+      ],
+      "key_rim": [
+        0,
+        0,
+        0,
+        0.45
+      ],
+      "key_drop": [
+        0,
+        0,
+        0,
+        0.4
+      ],
+      "bar": [
+        0.26,
+        0.008,
+        265,
+        0.62
+      ],
+      "bar_rim": [
+        0,
+        0,
+        0,
+        0.45
+      ],
+      "bar_drop": [
+        0,
+        0,
+        0,
+        0.55
+      ],
+      "ring": [
+        1,
+        0,
+        0,
+        1
+      ],
+      "tile_drop": [
+        0,
+        0,
+        0,
+        0.3
+      ],
+      "focus_drop": [
+        0,
+        0,
+        0,
+        0.4
+      ],
+      "sun": [
+        0.86,
+        0.16,
+        85,
+        1
+      ],
+      "moon": [
+        0.88,
+        0.05,
+        260,
+        1
+      ],
+      "divider": [
+        1,
+        0,
+        0,
+        0.35
+      ],
+      "greeting_accent": "#fe6819",
+      "shade_top": [
+        0,
+        0,
+        0,
+        0.18
+      ],
+      "shade_bottom": [
+        0,
+        0,
+        0,
+        0.35
+      ]
+    },
+    "motion": {
+      "page_ms": 250,
+      "focus_ms": 150
+    }
+  },
   "lumaui": {
     "_doc": "LumaUI (luma-next-70, 25 Sep 2026). Colours become @define-color luma_<role> in every appkit token sheet (frost and glass take light, high contrast takes its own map); metrics and motion become CSS custom properties --lumaui-* on :root and constants in luma_appkit/lumaui_tokens.py. A design change is a change here, then scripts/developer/generate-luma-platform-tokens.py. oklch sources from v70 are noted in _source.",
     "_source": "v70 CSS: --cat-* hues at oklch(.93 .045 h)/(.42 .12 h) light and (.34 .065 h)/(.88 .07 h) dark (6.2-8.2:1 measured); count accent oklch(.52 .15 250); --lui-danger oklch(.55 .19 25) light, (.7 .17 25) dark; danger fill oklch(.64 .19 25) to (.56 .19 25); --good, --love, --chip, --chip-edge, --pop, --sh-float, --bar, --bar-edge, --acc-ink, --card-sky oklch(.2 .035 255 / .42).",

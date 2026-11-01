@@ -18,7 +18,7 @@ G_BEGIN_DECLS
  * `luma_appkit.LUMAUI_API_LEVEL`. It rises by one whenever a public name, an
  * argument or a toast kind is added; within a level nothing is removed.
  */
-#define LUMA_UI_API_LEVEL 2
+#define LUMA_UI_API_LEVEL 3
 
 /**
  * luma_ui_get_api_level:
