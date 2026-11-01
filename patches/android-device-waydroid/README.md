@@ -17,7 +17,9 @@ replace host suspend coordination.
 The OMX codec service is 32-bit only, so 64-bit-only images never build it.
 `0002` declares OMX only where it is built and keeps Codec2 on otherwise;
 declaring it made mediaserver wait forever, so MediaProvider never mounted
-shared storage.
+shared storage. It also lets the software codecs set a thread's scheduling
+policy: Mesa does that while mapping a decoded frame, and the codec seccomp
+filter killed the process on the first video frame.
 
 `0003` ships `LumaInputMethod` (hardware/waydroid `0022`). At boot it selects
 itself in place of Android's keyboard where the composer offers host text input

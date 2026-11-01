@@ -132,10 +132,10 @@ index 0000000..8bb08f5
 +}
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
 new file mode 100644
-index 0000000..1f885ec
+index 0000000..df6b928
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,176 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
@@ -164,6 +164,8 @@ index 0000000..1f885ec
 +final class HostTextInput {
 +    interface Listener {
 +        void onHostEdit(int deleteBefore, int deleteAfter, String commit, String preedit);
++        /** Android pixels of the focused task covered by the host keyboard. */
++        void onHostInset(int height);
 +    }
 +
 +    static final int MAX_TEXT = 4000;
@@ -171,7 +173,7 @@ index 0000000..1f885ec
 +    private static final String SOCKET = "luma-android-text-input-v1";
 +    private static final int MAGIC = 0x4c545849;
 +    private static final short VERSION = 1;
-+    private static final short ENABLE = 1, DISABLE = 2, SURROUNDING = 3, DONE = 16;
++    private static final short ENABLE = 1, DISABLE = 2, SURROUNDING = 3, DONE = 16, INSET = 17;
 +
 +    private final Listener listener;
 +    private final Handler main;
@@ -202,6 +204,16 @@ index 0000000..1f885ec
 +        close();
 +    }
 +
++    /** Connect ahead of a show request, so the composer knows this window is ours. */
++    void connect() {
++        try {
++            writer.execute(() -> {
++                if (socket == null) open();
++            });
++        } catch (RejectedExecutionException ignored) {
++        }
++    }
++
 +    void enable(int purpose, int hints) {
 +        send(record(ENABLE, 8).putInt(purpose).putInt(hints), true);
 +    }
@@ -224,7 +236,7 @@ index 0000000..1f885ec
 +        final byte[] bytes = record.array();
 +        try {
 +            writer.execute(() -> {
-+                if (socket == null && (!connect || !connect())) return;
++                if (socket == null && (!connect || !open())) return;
 +                try {
 +                    socket.getOutputStream().write(bytes);
 +                } catch (IOException e) {
@@ -236,7 +248,7 @@ index 0000000..1f885ec
 +        }
 +    }
 +
-+    private boolean connect() {
++    private boolean open() {
 +        final LocalSocket current = new LocalSocket(LocalSocket.SOCKET_SEQPACKET);
 +        try {
 +            current.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
@@ -276,9 +288,16 @@ index 0000000..1f885ec
 +    }
 +
 +    private void dispatch(byte[] data, int length) {
-+        if (length < 8 + 24) return;
++        if (length < 8) return;
 +        final ByteBuffer in = ByteBuffer.wrap(data, 0, length).order(ByteOrder.LITTLE_ENDIAN);
-+        if (in.getInt() != MAGIC || in.getShort() != VERSION || in.getShort() != DONE) return;
++        if (in.getInt() != MAGIC || in.getShort() != VERSION) return;
++        final short type = in.getShort();
++        if (type == INSET && length == 8 + 4) {
++            final int height = in.getInt();
++            if (height >= 0) main.post(() -> listener.onHostInset(height));
++            return;
++        }
++        if (type != DONE || length < 8 + 24) return;
 +        final int deleteBefore = in.getInt(), deleteAfter = in.getInt();
 +        in.getInt(); // Preedit cursor range: the Android composing span has no caret.
 +        in.getInt();
@@ -295,28 +314,33 @@ index 0000000..1f885ec
 +}
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
 new file mode 100644
-index 0000000..36bd34b
+index 0000000..27c2ec0
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,291 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
++import android.graphics.drawable.ColorDrawable;
 +import android.inputmethodservice.InputMethodService;
 +import android.os.Handler;
 +import android.os.Looper;
 +import android.os.ResultReceiver;
 +import android.text.InputType;
++import android.view.View;
++import android.view.ViewGroup;
 +import android.view.inputmethod.EditorInfo;
 +import android.view.inputmethod.InputConnection;
 +
 +import java.nio.charset.StandardCharsets;
 +
 +/**
-+ * An input method with no window of its own. A field asking for a keyboard
-+ * enables the host's text input, so the person types on Luma's keyboard or a
-+ * physical one with the host's input methods; their edits arrive here and are
-+ * applied to the field.
++ * An input method that draws nothing. A field asking for a keyboard enables
++ * the host's text input, so the person types on Luma's keyboard or a physical
++ * one with the host's input methods; their edits arrive here and are applied to
++ * the field. Its empty, transparent input view is as tall as the host keyboard
++ * over the task, so apps lay out above it as they would on a phone; the
++ * composer does not map this window.
 + */
 +public final class LumaInputMethodService extends InputMethodService
 +        implements HostTextInput.Listener {
@@ -335,11 +359,14 @@ index 0000000..36bd34b
 +    private boolean wanted, composing, sensitive;
 +    private String beforeCursor = "", afterCursor = "", sentText;
 +    private int sentCursor = -1, sentAnchor = -1;
++    private int keyboardHeight;
++    private View inset;
 +
 +    @Override
 +    public void onCreate() {
 +        super.onCreate();
 +        host = new HostTextInput(this, main);
++        getWindow().getWindow().setBackgroundDrawable(new ColorDrawable(0));
 +    }
 +
 +    @Override
@@ -348,11 +375,27 @@ index 0000000..36bd34b
 +        super.onDestroy();
 +    }
 +
-+    // Android's input window would sit on top of the app as another surface.
++    // The input view carries the host keyboard's height, physical keyboard or not.
 +    @Override
 +    public boolean onEvaluateInputViewShown() {
 +        super.onEvaluateInputViewShown();
-+        return false;
++        return true;
++    }
++
++    @Override
++    public View onCreateInputView() {
++        inset = new View(this);
++        inset.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
++                keyboardHeight));
++        return inset;
++    }
++
++    @Override
++    public void onComputeInsets(Insets outInsets) {
++        super.onComputeInsets(outInsets);
++        // Touches over the keyboard area belong to the host keyboard.
++        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION;
++        outInsets.touchableRegion.setEmpty();
 +    }
 +
 +    @Override
@@ -367,6 +410,7 @@ index 0000000..36bd34b
 +            wanted = true;
 +            sensitive = isSensitive(info.inputType);
 +            enableHost(info);
++            return true;
 +        }
 +        return false;
 +    }
@@ -377,6 +421,7 @@ index 0000000..36bd34b
 +        composing = false;
 +        sentText = null;
 +        sensitive = attribute != null && isSensitive(attribute.inputType);
++        if (attribute != null && attribute.inputType != InputType.TYPE_NULL) host.connect();
 +        // A restarted field keeps the host keyboard it already had.
 +        if (restarting && wanted && attribute != null) enableHost(attribute);
 +    }
@@ -409,6 +454,15 @@ index 0000000..36bd34b
 +        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
 +                candidatesStart, candidatesEnd);
 +        if (wanted) sendSurrounding();
++    }
++
++    @Override
++    public void onHostInset(int height) {
++        keyboardHeight = height;
++        if (inset == null) return;
++        final ViewGroup.LayoutParams params = inset.getLayoutParams();
++        params.height = height;
++        inset.setLayoutParams(params);
 +    }
 +
 +    @Override
@@ -603,10 +657,10 @@ index d641393..fd23eca 100644
 +}
 diff --git a/hwcomposer/luma-text-input-channel.h b/hwcomposer/luma-text-input-channel.h
 new file mode 100644
-index 0000000..1149d5f
+index 0000000..7c27146
 --- /dev/null
 +++ b/hwcomposer/luma-text-input-channel.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,49 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +#pragma once
 +#include <cstdint>
@@ -625,6 +679,7 @@ index 0000000..1149d5f
 +    Disable = 2,     // no body
 +    Surrounding = 3, // SurroundingBody, then UTF-8 text
 +    Done = 16,       // DoneBody, then commit and preedit UTF-8 bytes
++    Inset = 17,      // InsetBody: Android pixels the host keyboard covers
 +};
 +
 +struct Header {
@@ -648,15 +703,19 @@ index 0000000..1149d5f
 +    uint32_t commit_length;
 +    uint32_t preedit_length;
 +};
++struct InsetBody {
++    uint32_t height;
++};
 +static_assert(sizeof(Header) == 8 && sizeof(EnableBody) == 8 &&
-+              sizeof(SurroundingBody) == 8 && sizeof(DoneBody) == 24);
++              sizeof(SurroundingBody) == 8 && sizeof(DoneBody) == 24 &&
++              sizeof(InsetBody) == 4);
 +}
 diff --git a/hwcomposer/luma-text-input.cpp b/hwcomposer/luma-text-input.cpp
 new file mode 100644
-index 0000000..d581ee1
+index 0000000..4329438
 --- /dev/null
 +++ b/hwcomposer/luma-text-input.cpp
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,308 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +#include "luma-text-input.h"
 +#include "luma-text-input-channel.h"
@@ -691,6 +750,7 @@ index 0000000..d581ee1
 +
 +    std::mutex mutex; // everything below, and requests on `input`
 +    int client = -1;
++    uint32_t inset = 0;
 +    bool focused = false, wanted = false, enabled = false;
 +    uint32_t purpose = 0, hints = 0;
 +    bool have_surrounding = false;
@@ -900,6 +960,7 @@ index 0000000..d581ee1
 +                if (client >= 0) close(client);
 +                client = state.client = incoming;
 +                state.wanted = false;
++                state.inset = 0;
 +                send_state_locked();
 +            }
 +        }
@@ -927,6 +988,23 @@ index 0000000..d581ee1
 +        wl_registry_bind(registry, id, &zwp_text_input_manager_v3_interface, state.version));
 +}
 +
++bool luma_text_input_connected() {
++    std::scoped_lock lock(state.mutex);
++    return state.client >= 0;
++}
++
++void luma_text_input_set_inset(uint32_t pixels) {
++    std::scoped_lock lock(state.mutex);
++    if (state.inset == pixels || state.client < 0) return;
++    state.inset = pixels;
++    uint8_t record[sizeof(Header) + sizeof(InsetBody)];
++    const Header header{magic, version, Inset};
++    const InsetBody body{pixels};
++    memcpy(record, &header, sizeof(header));
++    memcpy(record + sizeof(header), &body, sizeof(body));
++    send(state.client, record, sizeof(record), MSG_DONTWAIT | MSG_NOSIGNAL);
++}
++
 +bool luma_text_input_active() {
 +    std::scoped_lock lock(state.mutex);
 +    return state.enabled && state.focused;
@@ -948,10 +1026,10 @@ index 0000000..d581ee1
 +}
 diff --git a/hwcomposer/luma-text-input.h b/hwcomposer/luma-text-input.h
 new file mode 100644
-index 0000000..5064d71
+index 0000000..27f2bdf
 --- /dev/null
 +++ b/hwcomposer/luma-text-input.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,17 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +#pragma once
 +#include <cstdint>
@@ -965,6 +1043,32 @@ index 0000000..5064d71
 +void luma_text_input_start(display* d);
 +// A field has the host keyboard (text input enabled on a focused surface).
 +bool luma_text_input_active();
++// Luma's input method is connected; its own Android window stays unmapped.
++bool luma_text_input_connected();
++// Tell the input method how much of the focused task the host keyboard covers.
++void luma_text_input_set_inset(uint32_t pixels);
+diff --git a/hwcomposer/modes/multi-window.cpp b/hwcomposer/modes/multi-window.cpp
+index 174bce3..e22a690 100644
+--- a/hwcomposer/modes/multi-window.cpp
++++ b/hwcomposer/modes/multi-window.cpp
+@@ -24,6 +24,7 @@
+  */
+ 
+ #include "multi-window.h"
++#include "../luma-text-input.h"
+ 
+ #include <log/log.h>
+ #include <cutils/properties.h>
+@@ -79,7 +80,8 @@ window *multi_window_mode::get_window(waydroid_hwc_composer_device_1 *pdev, laye
+         }
+     } else if (layer_info.type == LayerSplitType::RawName) {
+         if (layer_info.aid == "InputMethod") {
+-            if (desktop_posture())
++            // Luma's input method draws nothing; the host shows the keyboard.
++            if (desktop_posture() || luma_text_input_connected())
+                 return nullptr;
+             auto it = windows.find("InputMethod");
+             if (it != windows.end()) {
 diff --git a/hwcomposer/text-input-unstable-v3.xml b/hwcomposer/text-input-unstable-v3.xml
 new file mode 100644
 index 0000000..01c1e21
@@ -1576,7 +1680,7 @@ index 0000000..01c1e21
 +  </interface>
 +</protocol>
 diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
-index 4fff1fb..a93e9b8 100644
+index 4fff1fb..ae41f09 100644
 --- a/hwcomposer/wayland-hwc.cpp
 +++ b/hwcomposer/wayland-hwc.cpp
 @@ -35,6 +35,7 @@
@@ -1587,21 +1691,62 @@ index 4fff1fb..a93e9b8 100644
  #include "xdg-output-unstable-v1-client-protocol.h"
  
  #include <stdint.h>
-@@ -416,6 +417,13 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
+@@ -416,6 +417,20 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
      // size that task to the window. Resizing the whole Android display here
      // hotplugged it on every app configure and left fixed-size tasks small.
      if (window->taskID != "none" && window->taskID != "0") {
 +        // The host keeps its on-screen keyboard clear of windows by making
 +        // them shorter. Resizing the task for that relaunches most activities,
-+        // which drops the field and closes the keyboard again; the task keeps
-+        // its size and the keyboard covers its lower part instead.
++        // which drops the field and closes the keyboard again. The task keeps
++        // its size, the window stays anchored at its top, and Android learns
++        // the covered height as input method insets, as on a phone.
 +        if (luma_text_input_active() && width == window->content_width &&
-+                height < window->content_height)
++                height < window->content_height) {
++            luma_text_input_set_inset(luma::logical_to_pixels(
++                window->content_height - height, display->scale));
++            xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
 +            return;
++        }
++        luma_text_input_set_inset(0);
++        xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
          const bool changed = window->maximized != maximized ||
              window->content_width != width || window->content_height != height;
          window->maximized = maximized;
-@@ -2489,6 +2497,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
+@@ -785,6 +800,16 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+ 
+     if (window->taskID != "none" && window->taskID != "0")
+         prairie::create_titlebar(*window);
++    // A handheld task window starts at the full work area and asks Android
++    // for that task size at once, so even its first commit is not the default
++    // freeform size that the shell would centre (see the maximize below).
++    if (window->taskID != "none" && window->taskID != "0" && !window->has_prairie_titlebar &&
++            display->width > 0 && display->height > 0) {
++        window->maximized = true;
++        window->content_width = display->width;
++        window->content_height = display->height;
++        window->request_task_resize(display->width, display->height, false);
++    }
+ 
+     int fd = syscall(SYS_memfd_create, "buffer", 0);
+     ftruncate(fd, 4);
+@@ -823,9 +848,13 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+         abort();
+     }
+ 
+-    if ((display->isMaximized || calibrating) &&
+-            !(window->taskID != "none" && window->taskID != "0" &&
+-              window->content_width > 0)) {
++    // A handheld task window (no host chrome) fills the work area from its
++    // first map. Mapped at Android's default freeform size, the shell centred
++    // it and kept that position once the task grew, leaving the app half off
++    // screen; new tasks such as an app's browser tab start that way.
++    const bool task_window = window->taskID != "none" && window->taskID != "0";
++    if (((display->isMaximized || calibrating) && !(task_window && window->content_width > 0)) ||
++            (task_window && !window->has_prairie_titlebar)) {
+         window->set_maximize(true);
+     }
+     // Set title
+@@ -2489,6 +2518,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
                  &wl_data_device_manager_interface, std::min(version,  3U));
          if (d->data_device_manager && d->seat)
              d->data_device = wl_data_device_manager_get_data_device(d->data_device_manager, d->seat);
@@ -1610,7 +1755,7 @@ index 4fff1fb..a93e9b8 100644
      } else if (strcmp(interface, "wp_cursor_shape_manager_v1") == 0) {
          d->cursor_shape_manager = (struct wp_cursor_shape_manager_v1*)wl_registry_bind(
              registry, id, &wp_cursor_shape_manager_v1_interface, 1);
-@@ -2646,6 +2656,7 @@ create_display(const char *gralloc)
+@@ -2646,6 +2677,7 @@ create_display(const char *gralloc)
      // Registry callbacks bind xdg-output objects. Receive their initial logical
      // geometry before the first window calibrates the Android display.
      wl_display_roundtrip(display->display);
