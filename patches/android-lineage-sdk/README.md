@@ -53,6 +53,13 @@ and unsupported reply actions retain the app-open flow and are never exposed
 as ordinary buttons that send an empty reply. No network-delivery guarantee is
 inferred from a successful PendingIntent handoff.
 
+`0006` exports adaptive application icons unmasked. Drawing an
+`AdaptiveIconDrawable` whole applies system_server's icon mask, which a theme
+overlay cannot change in a running system_server; the host would then mask an
+already-masked icon. The background and foreground layers are composited over
+the visible square of the layer canvas instead, so the host's own mask gives
+every application the same silhouette. Other drawables export unchanged.
+
 The dispatcher bounds queued calls, text and request receipts. A repeated UUID
 with the same grant and text cannot send twice; replacements, removals and host
 reset revoke grants. A five-second Binder wait cancels queued work, but an
