@@ -1,0 +1,26 @@
+[Unit]
+Description=Restart Android's framework after its graphics services restart
+Documentation=https://project-luma.local/android
+PartOf=waydroid-container.service
+After=waydroid-container.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-waydroid-graphics-watchdog
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# Signalling the container's system_server (another UID) is its only power.
+CapabilityBoundingSet=CAP_KILL
+DevicePolicy=closed

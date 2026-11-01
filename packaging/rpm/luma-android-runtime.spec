@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.100%{?dist}
+Release:        1.luma.101%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -77,6 +77,8 @@ install -D -m 0755 bin/luma-waydroid-fp6-graphics-compat \
   %{buildroot}%{_libexecdir}/luma-waydroid-fp6-graphics-compat
 install -D -m 0755 bin/luma-waydroid-fp6-gpu-watchdog \
   %{buildroot}%{_libexecdir}/luma-waydroid-fp6-gpu-watchdog
+install -D -m 0755 bin/luma-waydroid-graphics-watchdog \
+  %{buildroot}%{_libexecdir}/luma-waydroid-graphics-watchdog
 install -D -m 0755 bin/luma-waydroid-fp6-software-compositor \
   %{buildroot}%{_libexecdir}/luma-waydroid-fp6-software-compositor
 
@@ -116,6 +118,8 @@ install -D -m 0644 data/luma-android-system.conf \
   %{buildroot}%{_tmpfilesdir}/luma-android.conf
 install -D -m 0644 data/luma-waydroid-fp6-gpu-watchdog.service \
   %{buildroot}%{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
+install -D -m 0644 data/luma-waydroid-graphics-watchdog.service \
+  %{buildroot}%{_unitdir}/luma-waydroid-graphics-watchdog.service
 install -D -m 0644 data/luma-android-fp6-software-compositor.service \
   %{buildroot}%{_userunitdir}/luma-android-fp6-software-compositor.service
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
@@ -188,6 +192,7 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_libexecdir}/luma-waydroid-binder-compat
 %{_libexecdir}/luma-waydroid-fp6-graphics-compat
 %{_libexecdir}/luma-waydroid-fp6-gpu-watchdog
+%{_libexecdir}/luma-waydroid-graphics-watchdog
 %{_libexecdir}/luma-waydroid-fp6-software-compositor
 %{python3_sitelib}/luma_android/
 %{_datadir}/applications/org.projectluma.AndroidInstaller.desktop
@@ -211,8 +216,12 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_user_tmpfilesdir}/luma-android.conf
 %{_tmpfilesdir}/luma-android.conf
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
+%{_unitdir}/luma-waydroid-graphics-watchdog.service
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101
+- Restart Android's framework after its graphics services restart
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.100
 - Start Android in the background after sign-in; set it up on first boot
 - Skip the readiness pass on warm launches
