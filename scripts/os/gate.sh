@@ -825,7 +825,13 @@ elif install_vm no-account "$candidate" first-boot-setup; then
     guest "$na" 'id luma-gate-apps >/dev/null 2>&1 || useradd -m luma-gate-apps' >/dev/null 2>&1 || true
     : >"$gate_dir/no-account-apps.log"
     if guest "$na" 'rpm -q viola-browser-stable' >/dev/null 2>&1; then
+      # The first-boot machine has no user session, so the signed desktop
+      # launch (a second headless Shell for a throwaway account beside the
+      # setup greeter) is not reachable here; the fresh stage proves it with a
+      # real account. Viola must still render as an unprivileged user.
+      guest "$na" 'touch /run/luma-gate-first-boot-setup' >/dev/null 2>&1 || true
       gate_release_check "$na" no-account default-browser || no_account_result=fail
+      guest "$na" 'rm -f /run/luma-gate-first-boot-setup' >/dev/null 2>&1 || true
       gate_release_check "$na" no-account luma-identity || no_account_result=fail
     fi
     if guest "$na" 'rpm -q luma-charlie' >/dev/null 2>&1; then
