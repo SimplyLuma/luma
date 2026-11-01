@@ -19,7 +19,13 @@ The OMX codec service is 32-bit only, so 64-bit-only images never build it.
 declaring it made mediaserver wait forever, so MediaProvider never mounted
 shared storage.
 
+`0003` ships `LumaInputMethod` (hardware/waydroid `0022`). At boot it selects
+itself in place of Android's keyboard where the composer offers host text input
+(unless the person chose another keyboard), and gives Android's keyboard back
+where it does not, such as a nested compositor without `zwp_text_input_v3`.
+
 ## Patch order
 
 1. `0001-prairie-host-window-product-property.patch`
 2. `0002-luma-codec-services-match-the-image.patch`
+3. `0003-luma-input-method.patch`

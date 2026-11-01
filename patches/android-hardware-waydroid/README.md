@@ -45,6 +45,18 @@ device qualification.
 task, as framed windows do. It previously resized and hotplugged the whole
 Android display on every configure, which left fixed-size apps letterboxed.
 
+`0022` gives Android text fields the host keyboard. The composer speaks
+`zwp_text_input_v3` and serves a system-UID-only channel
+(`luma-text-input-channel.h`) to `LumaInputMethod`, a window-less input
+method: a field asking for a keyboard enables host text input, and the
+host's commits, preedit and deletions are applied to the field. Android's
+own keyboard window, which blacked out the app behind it and lost focus
+while typing, no longer appears.
+While a field has the host keyboard, a window the host shortens to keep the
+keyboard clear does not resize its task: that relaunched most activities,
+which dropped the field and closed the keyboard. The bridge uses
+text-input v2 `show_input_panel`; on v1 a repeated enable requests the panel.
+
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
 3. `0003-luma-appkit-content-island.patch`

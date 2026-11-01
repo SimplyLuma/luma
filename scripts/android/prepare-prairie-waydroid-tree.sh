@@ -52,6 +52,7 @@ hardware_task_channel_patch="$repo_root/patches/android-hardware-waydroid/0018-l
 hardware_app_settings_patch="$repo_root/patches/android-hardware-waydroid/0019-luma-native-app-settings-action.patch"
 hardware_desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-logical-desktop-canvas.patch"
 hardware_handheld_fill_patch="$repo_root/patches/android-hardware-waydroid/0021-luma-handheld-task-window-fill.patch"
+hardware_text_input_patch="$repo_root/patches/android-hardware-waydroid/0022-luma-host-text-input.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -60,6 +61,7 @@ lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-not
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
+device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 
 test -d "$source_root/.repo" || {
@@ -157,6 +159,7 @@ write_state() {
     printf 'HARDWARE_APP_SETTINGS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_app_settings_patch")"
     printf 'HARDWARE_DESKTOP_CANVAS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_desktop_canvas_patch")"
     printf 'HARDWARE_HANDHELD_FILL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_handheld_fill_patch")"
+    printf 'HARDWARE_TEXT_INPUT_PATCH_SHA=%s\n' "$(patch_sha "$hardware_text_input_patch")"
     printf 'FRAMEWORK_OFFICIAL_HEAD=%s\n' "$framework_official_head"
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
@@ -185,6 +188,7 @@ write_state() {
     printf 'LIBHIDL_PATCH_SHA=%s\n' "$(patch_sha "$libhidl_patch")"
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
     printf 'DEVICE_CODEC_PATCH_SHA=%s\n' "$(patch_sha "$device_codec_patch")"
+    printf 'DEVICE_INPUT_METHOD_PATCH_SHA=%s\n' "$(patch_sha "$device_input_method_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
 }
@@ -283,6 +287,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$hardware_root" apply "$hardware_app_settings_patch"
   git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
+  git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -311,6 +316,7 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
+  git -C "$device_root" apply "$device_input_method_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$jelly_root" apply "$jelly_patch"
   commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
@@ -465,7 +471,8 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_task_channel_patch")" != "${HARDWARE_TASK_CHANNEL_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_app_settings_patch")" != "${HARDWARE_APP_SETTINGS_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_desktop_canvas_patch")" != "${HARDWARE_DESKTOP_CANVAS_PATCH_SHA:-}" ] || \
-    [ "$(patch_sha "$hardware_handheld_fill_patch")" != "${HARDWARE_HANDHELD_FILL_PATCH_SHA:-}" ]; then
+    [ "$(patch_sha "$hardware_handheld_fill_patch")" != "${HARDWARE_HANDHELD_FILL_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_text_input_patch")" != "${HARDWARE_TEXT_INPUT_PATCH_SHA:-}" ]; then
   git -C "$hardware_root" reset --hard -q "$HARDWARE_OFFICIAL_HEAD"
   git -C "$hardware_root" clean -fdq
   git -C "$hardware_root" apply --binary "$hardware_patch"
@@ -487,6 +494,7 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   git -C "$hardware_root" apply "$hardware_app_settings_patch"
   git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
+  git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -532,11 +540,13 @@ if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ]; then
   changed=1
 fi
 if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ]; then
   git -C "$device_root" reset --hard -q "$DEVICE_OFFICIAL_HEAD"
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
+  git -C "$device_root" apply "$device_input_method_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   changed=1
 fi

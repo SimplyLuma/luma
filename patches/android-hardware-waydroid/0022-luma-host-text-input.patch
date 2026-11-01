@@ -1,0 +1,1620 @@
+diff --git a/LumaInputMethod/Android.bp b/LumaInputMethod/Android.bp
+new file mode 100644
+index 0000000..1c3322c
+--- /dev/null
++++ b/LumaInputMethod/Android.bp
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: Apache-2.0
++// Luma's Android input method: text fields use the host's keyboard and
++// input methods through the composer's zwp_text_input_v3 bridge.
++android_app {
++    name: "LumaInputMethod",
++    srcs: ["src/**/*.java"],
++    resource_dirs: ["res"],
++    manifest: "AndroidManifest.xml",
++    certificate: "platform",
++    privileged: true,
++    platform_apis: true,
++    system_ext_specific: true,
++}
+diff --git a/LumaInputMethod/AndroidManifest.xml b/LumaInputMethod/AndroidManifest.xml
+new file mode 100644
+index 0000000..4f38146
+--- /dev/null
++++ b/LumaInputMethod/AndroidManifest.xml
+@@ -0,0 +1,29 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 -->
++<!-- The system UID is the composer channel's admission identity. -->
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="org.projectluma.inputmethod"
++    android:sharedUserId="android.uid.system">
++
++    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
++
++    <application android:label="@string/label" android:persistent="false">
++        <service
++            android:name=".LumaInputMethodService"
++            android:label="@string/label"
++            android:permission="android.permission.BIND_INPUT_METHOD"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.view.InputMethod" />
++            </intent-filter>
++            <meta-data android:name="android.view.im" android:resource="@xml/method" />
++        </service>
++        <receiver
++            android:name=".DefaultInputMethod"
++            android:exported="true">
++            <intent-filter>
++                <action android:name="android.intent.action.BOOT_COMPLETED" />
++            </intent-filter>
++        </receiver>
++    </application>
++</manifest>
+diff --git a/LumaInputMethod/res/values/strings.xml b/LumaInputMethod/res/values/strings.xml
+new file mode 100644
+index 0000000..95b03ce
+--- /dev/null
++++ b/LumaInputMethod/res/values/strings.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 -->
++<resources>
++    <string name="label">Luma keyboard</string>
++</resources>
+diff --git a/LumaInputMethod/res/xml/method.xml b/LumaInputMethod/res/xml/method.xml
+new file mode 100644
+index 0000000..df4a0a3
+--- /dev/null
++++ b/LumaInputMethod/res/xml/method.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- SPDX-License-Identifier: Apache-2.0 -->
++<input-method xmlns:android="http://schemas.android.com/apk/res/android"
++    android:isDefault="true"
++    android:supportsSwitchingToNextInputMethod="false" />
+diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java b/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java
+new file mode 100644
+index 0000000..8bb08f5
+--- /dev/null
++++ b/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java
+@@ -0,0 +1,50 @@
++// SPDX-License-Identifier: Apache-2.0
++package org.projectluma.inputmethod;
++
++import android.content.BroadcastReceiver;
++import android.content.ComponentName;
++import android.content.ContentResolver;
++import android.content.Context;
++import android.content.Intent;
++import android.provider.Settings;
++
++/**
++ * Selects this input method in place of Android's keyboard where the composer
++ * offers host text input, and gives Android's keyboard back where it does not
++ * (a nested compositor without zwp_text_input_v3).
++ */
++public final class DefaultInputMethod extends BroadcastReceiver {
++    private static final String LATIN_IME = "com.android.inputmethod.latin";
++    private static final String LATIN_IME_ID = LATIN_IME + "/.LatinIME";
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
++        final PendingResult result = goAsync();
++        final ContentResolver resolver = context.getContentResolver();
++        final String self = new ComponentName(context, LumaInputMethodService.class)
++                .flattenToShortString();
++        new Thread(() -> {
++            try {
++                final String current = Settings.Secure.getString(resolver,
++                        Settings.Secure.DEFAULT_INPUT_METHOD);
++                if (HostTextInput.available()) {
++                    // A keyboard the person installed and chose stays selected.
++                    if (self.equals(current) || (current != null && !current.isEmpty()
++                            && !current.startsWith(LATIN_IME + "/")))
++                        return;
++                    select(resolver, self);
++                } else if (self.equals(current)) {
++                    select(resolver, LATIN_IME_ID);
++                }
++            } finally {
++                result.finish();
++            }
++        }, "LumaDefaultInputMethod").start();
++    }
++
++    private static void select(ContentResolver resolver, String id) {
++        Settings.Secure.putString(resolver, Settings.Secure.ENABLED_INPUT_METHODS, id);
++        Settings.Secure.putString(resolver, Settings.Secure.DEFAULT_INPUT_METHOD, id);
++    }
++}
+diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
+new file mode 100644
+index 0000000..1f885ec
+--- /dev/null
++++ b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
+@@ -0,0 +1,157 @@
++// SPDX-License-Identifier: Apache-2.0
++package org.projectluma.inputmethod;
++
++import android.net.LocalSocket;
++import android.net.LocalSocketAddress;
++import android.os.Handler;
++import android.util.Log;
++
++import java.io.IOException;
++import java.io.InputStream;
++import java.nio.ByteBuffer;
++import java.nio.ByteOrder;
++import java.nio.charset.StandardCharsets;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++import java.util.concurrent.RejectedExecutionException;
++
++/**
++ * The composer's text-input channel (hwcomposer luma-text-input-channel.h):
++ * SOCK_SEQPACKET records, little endian, admitted for the system UID only.
++ * The composer serves one input method at a time and the newest connection
++ * wins, so this connects only when a field asks for the keyboard and never
++ * reconnects by itself: a process left over from a restarted Android, whose
++ * service is no longer bound, cannot take the channel back.
++ */
++final class HostTextInput {
++    interface Listener {
++        void onHostEdit(int deleteBefore, int deleteAfter, String commit, String preedit);
++    }
++
++    static final int MAX_TEXT = 4000;
++    private static final String TAG = "LumaInputMethod";
++    private static final String SOCKET = "luma-android-text-input-v1";
++    private static final int MAGIC = 0x4c545849;
++    private static final short VERSION = 1;
++    private static final short ENABLE = 1, DISABLE = 2, SURROUNDING = 3, DONE = 16;
++
++    private final Listener listener;
++    private final Handler main;
++    private final ExecutorService writer = Executors.newSingleThreadExecutor();
++    private LocalSocket socket; // writer thread only
++
++    HostTextInput(Listener listener, Handler main) {
++        this.listener = listener;
++        this.main = main;
++    }
++
++    /** Whether the composer serves the channel (it does only with host text input). */
++    static boolean available() {
++        try (LocalSocket probe = new LocalSocket(LocalSocket.SOCKET_SEQPACKET)) {
++            probe.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
++            return true;
++        } catch (IOException e) {
++            return false;
++        }
++    }
++
++    void stop() {
++        writer.shutdownNow();
++        try {
++            writer.execute(this::close);
++        } catch (RejectedExecutionException ignored) {
++        }
++        close();
++    }
++
++    void enable(int purpose, int hints) {
++        send(record(ENABLE, 8).putInt(purpose).putInt(hints), true);
++    }
++
++    void disable() {
++        send(record(DISABLE, 0), false);
++    }
++
++    /** Text around the caret; cursor and anchor are byte offsets into it. */
++    void surrounding(byte[] text, int cursor, int anchor) {
++        send(record(SURROUNDING, 8 + text.length).putInt(cursor).putInt(anchor).put(text), false);
++    }
++
++    private static ByteBuffer record(short type, int body) {
++        return ByteBuffer.allocate(8 + body).order(ByteOrder.LITTLE_ENDIAN)
++                .putInt(MAGIC).putShort(VERSION).putShort(type);
++    }
++
++    private void send(ByteBuffer record, boolean connect) {
++        final byte[] bytes = record.array();
++        try {
++            writer.execute(() -> {
++                if (socket == null && (!connect || !connect())) return;
++                try {
++                    socket.getOutputStream().write(bytes);
++                } catch (IOException e) {
++                    close();
++                }
++            });
++        } catch (RejectedExecutionException ignored) {
++            // Stopped.
++        }
++    }
++
++    private boolean connect() {
++        final LocalSocket current = new LocalSocket(LocalSocket.SOCKET_SEQPACKET);
++        try {
++            current.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
++        } catch (IOException e) {
++            Log.w(TAG, "Composer text input is unavailable");
++            return false;
++        }
++        socket = current;
++        new Thread(() -> read(current), "LumaHostTextInput").start();
++        return true;
++    }
++
++    private synchronized void close() {
++        if (socket == null) return;
++        try {
++            socket.close();
++        } catch (IOException ignored) {
++        }
++        socket = null;
++    }
++
++    private void read(LocalSocket current) {
++        final byte[] buffer = new byte[8 + 24 + 2 * MAX_TEXT];
++        try {
++            final InputStream in = current.getInputStream();
++            int length;
++            while ((length = in.read(buffer)) > 0) dispatch(buffer, length);
++        } catch (IOException e) {
++            // Replaced by a newer input method, or the composer restarted.
++        }
++        try {
++            writer.execute(() -> {
++                if (socket == current) close();
++            });
++        } catch (RejectedExecutionException ignored) {
++        }
++    }
++
++    private void dispatch(byte[] data, int length) {
++        if (length < 8 + 24) return;
++        final ByteBuffer in = ByteBuffer.wrap(data, 0, length).order(ByteOrder.LITTLE_ENDIAN);
++        if (in.getInt() != MAGIC || in.getShort() != VERSION || in.getShort() != DONE) return;
++        final int deleteBefore = in.getInt(), deleteAfter = in.getInt();
++        in.getInt(); // Preedit cursor range: the Android composing span has no caret.
++        in.getInt();
++        final int commitLength = in.getInt(), preeditLength = in.getInt();
++        if (commitLength < 0 || preeditLength < 0 || commitLength + preeditLength != in.remaining()) {
++            Log.w(TAG, "Malformed host text record");
++            return;
++        }
++        final String commit = new String(data, in.position(), commitLength, StandardCharsets.UTF_8);
++        final String preedit = new String(data, in.position() + commitLength, preeditLength,
++                StandardCharsets.UTF_8);
++        main.post(() -> listener.onHostEdit(deleteBefore, deleteAfter, commit, preedit));
++    }
++}
+diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
+new file mode 100644
+index 0000000..36bd34b
+--- /dev/null
++++ b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
+@@ -0,0 +1,256 @@
++// SPDX-License-Identifier: Apache-2.0
++package org.projectluma.inputmethod;
++
++import android.inputmethodservice.InputMethodService;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.ResultReceiver;
++import android.text.InputType;
++import android.view.inputmethod.EditorInfo;
++import android.view.inputmethod.InputConnection;
++
++import java.nio.charset.StandardCharsets;
++
++/**
++ * An input method with no window of its own. A field asking for a keyboard
++ * enables the host's text input, so the person types on Luma's keyboard or a
++ * physical one with the host's input methods; their edits arrive here and are
++ * applied to the field.
++ */
++public final class LumaInputMethodService extends InputMethodService
++        implements HostTextInput.Listener {
++    // zwp_text_input_v3 content_purpose / content_hint
++    private static final int PURPOSE_NORMAL = 0, PURPOSE_DIGITS = 2, PURPOSE_NUMBER = 3,
++            PURPOSE_PHONE = 4, PURPOSE_URL = 5, PURPOSE_EMAIL = 6, PURPOSE_NAME = 7,
++            PURPOSE_PASSWORD = 8, PURPOSE_PIN = 9, PURPOSE_DATE = 10, PURPOSE_TIME = 11,
++            PURPOSE_DATETIME = 12;
++    private static final int HINT_COMPLETION = 0x1, HINT_SPELLCHECK = 0x2,
++            HINT_AUTO_CAPITALIZATION = 0x4, HINT_LOWERCASE = 0x8, HINT_UPPERCASE = 0x10, HINT_TITLECASE = 0x20,
++            HINT_HIDDEN_TEXT = 0x40, HINT_SENSITIVE_DATA = 0x80, HINT_MULTILINE = 0x200;
++    private static final int CONTEXT_CHARS = 1000;
++
++    private final Handler main = new Handler(Looper.getMainLooper());
++    private HostTextInput host;
++    private boolean wanted, composing, sensitive;
++    private String beforeCursor = "", afterCursor = "", sentText;
++    private int sentCursor = -1, sentAnchor = -1;
++
++    @Override
++    public void onCreate() {
++        super.onCreate();
++        host = new HostTextInput(this, main);
++    }
++
++    @Override
++    public void onDestroy() {
++        host.stop();
++        super.onDestroy();
++    }
++
++    // Android's input window would sit on top of the app as another surface.
++    @Override
++    public boolean onEvaluateInputViewShown() {
++        super.onEvaluateInputViewShown();
++        return false;
++    }
++
++    @Override
++    public boolean onEvaluateFullscreenMode() {
++        return false;
++    }
++
++    @Override
++    public boolean onShowInputRequested(int flags, boolean configChange) {
++        final EditorInfo info = getCurrentInputEditorInfo();
++        if (getCurrentInputStarted() && info != null && info.inputType != InputType.TYPE_NULL) {
++            wanted = true;
++            sensitive = isSensitive(info.inputType);
++            enableHost(info);
++        }
++        return false;
++    }
++
++    @Override
++    public void onStartInput(EditorInfo attribute, boolean restarting) {
++        super.onStartInput(attribute, restarting);
++        composing = false;
++        sentText = null;
++        sensitive = attribute != null && isSensitive(attribute.inputType);
++        // A restarted field keeps the host keyboard it already had.
++        if (restarting && wanted && attribute != null) enableHost(attribute);
++    }
++
++    @Override
++    public void onFinishInput() {
++        if (wanted) host.disable();
++        wanted = false;
++        composing = false;
++        super.onFinishInput();
++    }
++
++    @Override
++    public AbstractInputMethodImpl onCreateInputMethodInterface() {
++        return new Impl();
++    }
++
++    private final class Impl extends InputMethodImpl {
++        @Override
++        public void hideSoftInput(int flags, ResultReceiver resultReceiver) {
++            if (wanted) host.disable();
++            wanted = false;
++            super.hideSoftInput(flags, resultReceiver);
++        }
++    }
++
++    @Override
++    public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd,
++            int candidatesStart, int candidatesEnd) {
++        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
++                candidatesStart, candidatesEnd);
++        if (wanted) sendSurrounding();
++    }
++
++    @Override
++    public void onHostEdit(int deleteBefore, int deleteAfter, String commit, String preedit) {
++        final InputConnection ic = getCurrentInputConnection();
++        if (ic == null) return;
++        ic.beginBatchEdit();
++        if (composing) {
++            ic.setComposingText("", 1);
++            composing = false;
++        }
++        if (deleteBefore > 0 || deleteAfter > 0) {
++            ic.deleteSurroundingText(charsBefore(beforeCursor, deleteBefore),
++                    charsAfter(afterCursor, deleteAfter));
++        }
++        if (!commit.isEmpty()) ic.commitText(commit, 1);
++        if (!preedit.isEmpty()) {
++            ic.setComposingText(preedit, 1);
++            composing = true;
++        }
++        ic.endBatchEdit();
++    }
++
++    private void enableHost(EditorInfo info) {
++        host.enable(purpose(info.inputType), hints(info.inputType));
++        sentText = null;
++        sendSurrounding();
++    }
++
++    private void sendSurrounding() {
++        final InputConnection ic = getCurrentInputConnection();
++        if (ic == null) return;
++        if (sensitive) {
++            // Password text never leaves the field; byte counts fall back to UTF-16.
++            beforeCursor = afterCursor = "";
++            return;
++        }
++        String before = text(ic.getTextBeforeCursor(CONTEXT_CHARS, 0));
++        final String selected = text(ic.getSelectedText(0));
++        String after = text(ic.getTextAfterCursor(CONTEXT_CHARS, 0));
++        while (utf8(before + selected + after) > HostTextInput.MAX_TEXT && !before.isEmpty())
++            before = before.substring(before.offsetByCodePoints(0, 1));
++        while (utf8(before + selected + after) > HostTextInput.MAX_TEXT && !after.isEmpty())
++            after = after.substring(0, after.offsetByCodePoints(after.length(), -1));
++        final String all = before + selected + after;
++        if (utf8(all) > HostTextInput.MAX_TEXT) return;
++        beforeCursor = before + selected;
++        afterCursor = after;
++        final int anchor = utf8(before), cursor = utf8(beforeCursor);
++        if (all.equals(sentText) && cursor == sentCursor && anchor == sentAnchor) return;
++        sentText = all;
++        sentCursor = cursor;
++        sentAnchor = anchor;
++        host.surrounding(all.getBytes(StandardCharsets.UTF_8), cursor, anchor);
++    }
++
++    private static String text(CharSequence value) {
++        return value == null ? "" : value.toString();
++    }
++
++    private static int utf8(String value) {
++        return value.getBytes(StandardCharsets.UTF_8).length;
++    }
++
++    /** UTF-16 units covering `bytes` UTF-8 bytes before the caret. */
++    static int charsBefore(String before, int bytes) {
++        int index = before.length(), counted = 0;
++        while (index > 0 && counted < bytes) {
++            final int point = before.codePointBefore(index);
++            counted += utf8(new String(Character.toChars(point)));
++            index -= Character.charCount(point);
++        }
++        return counted < bytes ? before.length() - index + (bytes - counted) : before.length() - index;
++    }
++
++    static int charsAfter(String after, int bytes) {
++        int index = 0, counted = 0;
++        while (index < after.length() && counted < bytes) {
++            final int point = after.codePointAt(index);
++            counted += utf8(new String(Character.toChars(point)));
++            index += Character.charCount(point);
++        }
++        return counted < bytes ? index + (bytes - counted) : index;
++    }
++
++    private static boolean isSensitive(int type) {
++        final int variation = type & InputType.TYPE_MASK_VARIATION;
++        final int kind = type & InputType.TYPE_MASK_CLASS;
++        return (kind == InputType.TYPE_CLASS_TEXT
++                && (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
++                    || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
++                    || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD))
++                || (kind == InputType.TYPE_CLASS_NUMBER
++                    && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD);
++    }
++
++    static int purpose(int type) {
++        final int variation = type & InputType.TYPE_MASK_VARIATION;
++        switch (type & InputType.TYPE_MASK_CLASS) {
++            case InputType.TYPE_CLASS_NUMBER:
++                if (variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD) return PURPOSE_PIN;
++                return (type & (InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED)) != 0
++                        ? PURPOSE_NUMBER : PURPOSE_DIGITS;
++            case InputType.TYPE_CLASS_PHONE:
++                return PURPOSE_PHONE;
++            case InputType.TYPE_CLASS_DATETIME:
++                if (variation == InputType.TYPE_DATETIME_VARIATION_DATE) return PURPOSE_DATE;
++                if (variation == InputType.TYPE_DATETIME_VARIATION_TIME) return PURPOSE_TIME;
++                return PURPOSE_DATETIME;
++            case InputType.TYPE_CLASS_TEXT:
++                switch (variation) {
++                    case InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS:
++                    case InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS:
++                        return PURPOSE_EMAIL;
++                    case InputType.TYPE_TEXT_VARIATION_URI:
++                        return PURPOSE_URL;
++                    case InputType.TYPE_TEXT_VARIATION_PERSON_NAME:
++                        return PURPOSE_NAME;
++                    case InputType.TYPE_TEXT_VARIATION_PASSWORD:
++                    case InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD:
++                    case InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD:
++                        return PURPOSE_PASSWORD;
++                    default:
++                        return PURPOSE_NORMAL;
++                }
++            default:
++                return PURPOSE_NORMAL;
++        }
++    }
++
++    static int hints(int type) {
++        if (isSensitive(type)) return HINT_HIDDEN_TEXT | HINT_SENSITIVE_DATA;
++        if ((type & InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) return 0;
++        int hints = 0;
++        if ((type & InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0)
++            hints |= HINT_COMPLETION | HINT_SPELLCHECK;
++        if ((type & InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS) != 0) hints |= HINT_UPPERCASE;
++        else if ((type & InputType.TYPE_TEXT_FLAG_CAP_WORDS) != 0) hints |= HINT_TITLECASE;
++        else if ((type & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0) hints |= HINT_AUTO_CAPITALIZATION;
++        // Android fields without a capitalization flag (user names, codes) expect none.
++        else hints |= HINT_LOWERCASE;
++        if ((type & (InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE)) != 0)
++            hints |= HINT_MULTILINE;
++        return hints;
++    }
++}
+diff --git a/hwcomposer/Android.bp b/hwcomposer/Android.bp
+index d641393..fd23eca 100644
+--- a/hwcomposer/Android.bp
++++ b/hwcomposer/Android.bp
+@@ -62,6 +62,7 @@ cc_library_shared {
+         "modes/single-window.cpp",
+         "prairie-titlebar.cpp",
+         "sw-sync-compat.cpp",
++        "luma-text-input.cpp",
+     ],
+     header_libs: [
+         "libhwbinder_headers",
+@@ -83,11 +84,13 @@ cc_library_shared {
+         "wayland_android_client_protocol_sources",
+         "wayland_fractional_scale_client_protocol_sources",
+         "luma_cursor_shape_client_sources",
++        "luma_text_input_client_sources",
+     ],
+     generated_headers: [
+         "wayland_android_client_protocol_headers",
+         "wayland_fractional_scale_client_protocol_headers",
+         "luma_cursor_shape_client_headers",
++        "luma_text_input_client_headers",
+     ],
+ }
+ 
+@@ -158,3 +161,19 @@ prebuilt_etc {
+     filename: "OFL.txt",
+     vendor: true,
+ }
++
++// Unmodified wayland-protocols text-input-unstable-v3, MIT license retained in the XML.
++genrule {
++    name: "luma_text_input_client_sources",
++    srcs: ["text-input-unstable-v3.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
++    out: ["luma-text-input-v3-client-protocol.c"],
++}
++genrule {
++    name: "luma_text_input_client_headers",
++    srcs: ["text-input-unstable-v3.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
++    out: ["luma-text-input-v3-client-protocol.h"],
++}
+diff --git a/hwcomposer/luma-text-input-channel.h b/hwcomposer/luma-text-input-channel.h
+new file mode 100644
+index 0000000..1149d5f
+--- /dev/null
++++ b/hwcomposer/luma-text-input-channel.h
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include <cstdint>
++
++// Records between the composer and Luma's Android input method, which runs
++// as the system UID. SOCK_SEQPACKET, little endian; one record per message.
++namespace luma::text_input {
++constexpr uint32_t magic = 0x4c545849; // LTXI
++constexpr uint16_t version = 1;
++constexpr char socket_name[] = "luma-android-text-input-v1";
++// zwp_text_input_v3 limits surrounding text to 4000 bytes.
++constexpr uint32_t max_text = 4000;
++
++enum Type : uint16_t {
++    Enable = 1,      // EnableBody: a field wants the host keyboard
++    Disable = 2,     // no body
++    Surrounding = 3, // SurroundingBody, then UTF-8 text
++    Done = 16,       // DoneBody, then commit and preedit UTF-8 bytes
++};
++
++struct Header {
++    uint32_t magic;
++    uint16_t version;
++    uint16_t type;
++};
++struct EnableBody {
++    uint32_t purpose; // zwp_text_input_v3 content_purpose
++    uint32_t hints;   // zwp_text_input_v3 content_hint
++};
++struct SurroundingBody {
++    int32_t cursor; // byte offsets into the text that follows
++    int32_t anchor;
++};
++struct DoneBody {
++    uint32_t delete_before; // bytes, as zwp_text_input_v3 counts them
++    uint32_t delete_after;
++    int32_t preedit_begin;
++    int32_t preedit_end;
++    uint32_t commit_length;
++    uint32_t preedit_length;
++};
++static_assert(sizeof(Header) == 8 && sizeof(EnableBody) == 8 &&
++              sizeof(SurroundingBody) == 8 && sizeof(DoneBody) == 24);
++}
+diff --git a/hwcomposer/luma-text-input.cpp b/hwcomposer/luma-text-input.cpp
+new file mode 100644
+index 0000000..d581ee1
+--- /dev/null
++++ b/hwcomposer/luma-text-input.cpp
+@@ -0,0 +1,289 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#include "luma-text-input.h"
++#include "luma-text-input-channel.h"
++#include "wayland-hwc.h"
++#include "luma-text-input-v3-client-protocol.h"
++
++#include <cerrno>
++#include <cstddef>
++#include <algorithm>
++#include <cstring>
++#include <mutex>
++#include <string>
++#include <thread>
++#include <vector>
++
++#include <log/log.h>
++#include <poll.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
++namespace {
++using namespace luma::text_input;
++
++constexpr uid_t kSystemUid = 1000;
++
++struct bridge {
++    display* d = nullptr;
++    zwp_text_input_manager_v3* manager = nullptr;
++    zwp_text_input_v3* input = nullptr;
++    uint32_t version = 1;
++
++    std::mutex mutex; // everything below, and requests on `input`
++    int client = -1;
++    bool focused = false, wanted = false, enabled = false;
++    uint32_t purpose = 0, hints = 0;
++    bool have_surrounding = false;
++    std::string surrounding;
++    int32_t cursor = 0, anchor = 0;
++    bool changed_by_input_method = false;
++    // zwp_text_input_v3 state pending until done
++    std::string commit, preedit;
++    int32_t preedit_begin = 0, preedit_end = 0;
++    uint32_t delete_before = 0, delete_after = 0;
++};
++
++bridge state;
++
++// Each request from Android is a field asking for a keyboard, so it also asks
++// the compositor to show its panel: explicitly since text-input v2, and on v1
++// by enabling again while already enabled, which compositors read as a show
++// request (the first enable only focuses the field).
++void send_state_locked() {
++    if (!state.input) return;
++    if (state.wanted && state.focused) {
++        if (!state.enabled) {
++            zwp_text_input_v3_enable(state.input);
++            uint32_t hints = state.hints;
++            // Android draws the composing text in the field itself.
++            if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++                hints |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_PREEDIT_SHOWN;
++            zwp_text_input_v3_set_content_type(state.input, hints, state.purpose);
++            if (state.have_surrounding)
++                zwp_text_input_v3_set_surrounding_text(state.input, state.surrounding.c_str(),
++                                                       state.cursor, state.anchor);
++            zwp_text_input_v3_set_text_change_cause(state.input,
++                ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_OTHER);
++            if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++                zwp_text_input_v3_show_input_panel(state.input);
++            zwp_text_input_v3_commit(state.input);
++            state.enabled = true;
++        }
++        if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++            zwp_text_input_v3_show_input_panel(state.input);
++        else
++            zwp_text_input_v3_enable(state.input);
++        zwp_text_input_v3_commit(state.input);
++    } else if (state.enabled) {
++        zwp_text_input_v3_disable(state.input);
++        zwp_text_input_v3_commit(state.input);
++        state.enabled = false;
++    }
++    wl_display_flush(state.d->display);
++}
++
++void send_surrounding_locked() {
++    if (!state.input || !state.enabled || !state.have_surrounding) return;
++    zwp_text_input_v3_set_surrounding_text(state.input, state.surrounding.c_str(),
++                                           state.cursor, state.anchor);
++    zwp_text_input_v3_set_text_change_cause(state.input, state.changed_by_input_method
++        ? ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD
++        : ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_OTHER);
++    state.changed_by_input_method = false;
++    zwp_text_input_v3_commit(state.input);
++    wl_display_flush(state.d->display);
++}
++
++void handle_enter(void*, zwp_text_input_v3*, wl_surface*) {
++    std::scoped_lock lock(state.mutex);
++    state.focused = true;
++    state.enabled = false;
++    if (state.wanted) send_state_locked();
++}
++
++void handle_leave(void*, zwp_text_input_v3*, wl_surface*) {
++    std::scoped_lock lock(state.mutex);
++    // The compositor disables text input for the surface it left.
++    state.focused = false;
++    state.enabled = false;
++}
++
++void handle_preedit(void*, zwp_text_input_v3*, const char* text, int32_t begin, int32_t end) {
++    std::scoped_lock lock(state.mutex);
++    state.preedit = text ? text : "";
++    state.preedit_begin = begin;
++    state.preedit_end = end;
++}
++
++void handle_commit(void*, zwp_text_input_v3*, const char* text) {
++    std::scoped_lock lock(state.mutex);
++    state.commit = text ? text : "";
++}
++
++void handle_delete(void*, zwp_text_input_v3*, uint32_t before, uint32_t after) {
++    std::scoped_lock lock(state.mutex);
++    state.delete_before = before;
++    state.delete_after = after;
++}
++
++void handle_done(void*, zwp_text_input_v3*, uint32_t) {
++    std::scoped_lock lock(state.mutex);
++    const size_t commit_length = std::min<size_t>(state.commit.size(), max_text);
++    const size_t preedit_length = std::min<size_t>(state.preedit.size(), max_text);
++    std::vector<uint8_t> record(sizeof(Header) + sizeof(DoneBody) + commit_length + preedit_length);
++    const Header header{magic, version, Done};
++    const DoneBody body{state.delete_before, state.delete_after, state.preedit_begin,
++                        state.preedit_end, uint32_t(commit_length), uint32_t(preedit_length)};
++    memcpy(record.data(), &header, sizeof(header));
++    memcpy(record.data() + sizeof(header), &body, sizeof(body));
++    memcpy(record.data() + sizeof(header) + sizeof(body), state.commit.data(), commit_length);
++    memcpy(record.data() + sizeof(header) + sizeof(body) + commit_length,
++           state.preedit.data(), preedit_length);
++    if (state.client >= 0 &&
++            send(state.client, record.data(), record.size(), MSG_DONTWAIT | MSG_NOSIGNAL) < 0)
++        ALOGW("Android text input record dropped: %s", strerror(errno));
++    state.changed_by_input_method = !state.commit.empty() || state.delete_before ||
++        state.delete_after;
++    state.commit.clear();
++    state.preedit.clear();
++    state.preedit_begin = state.preedit_end = 0;
++    state.delete_before = state.delete_after = 0;
++}
++
++void handle_action(void*, zwp_text_input_v3*, uint32_t, uint32_t) {}
++void handle_language(void*, zwp_text_input_v3*, const char*) {}
++void handle_preedit_hint(void*, zwp_text_input_v3*, uint32_t, uint32_t, uint32_t) {}
++
++const zwp_text_input_v3_listener listener = {
++    handle_enter, handle_leave, handle_preedit, handle_commit, handle_delete, handle_done,
++    handle_action, handle_language, handle_preedit_hint,
++};
++
++void handle_record(const uint8_t* data, size_t length) {
++    Header header;
++    if (length < sizeof(header)) return;
++    memcpy(&header, data, sizeof(header));
++    if (header.magic != magic || header.version != version) return;
++    data += sizeof(header);
++    length -= sizeof(header);
++    std::scoped_lock lock(state.mutex);
++    switch (header.type) {
++    case Enable: {
++        EnableBody body;
++        if (length != sizeof(body)) return;
++        memcpy(&body, data, sizeof(body));
++        state.purpose = body.purpose;
++        state.hints = body.hints;
++        state.wanted = true;
++        send_state_locked();
++        break;
++    }
++    case Disable:
++        state.wanted = false;
++        state.have_surrounding = false;
++        send_state_locked();
++        break;
++    case Surrounding: {
++        SurroundingBody body;
++        if (length < sizeof(body) || length - sizeof(body) > max_text) return;
++        memcpy(&body, data, sizeof(body));
++        const size_t text_length = length - sizeof(body);
++        if (body.cursor < 0 || body.anchor < 0 || size_t(body.cursor) > text_length ||
++                size_t(body.anchor) > text_length ||
++                memchr(data + sizeof(body), 0, text_length))
++            return;
++        state.surrounding.assign(reinterpret_cast<const char*>(data + sizeof(body)), text_length);
++        state.cursor = body.cursor;
++        state.anchor = body.anchor;
++        state.have_surrounding = true;
++        send_surrounding_locked();
++        break;
++    }
++    }
++}
++
++bool admitted(int fd) {
++    ucred credentials{};
++    socklen_t size = sizeof(credentials);
++    return getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &credentials, &size) == 0 &&
++        size == sizeof(credentials) && credentials.uid == kSystemUid;
++}
++
++void serve() {
++    const int listener_fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++    if (listener_fd < 0) return;
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    memcpy(address.sun_path + 1, socket_name, sizeof(socket_name) - 1);
++    const socklen_t address_length = offsetof(sockaddr_un, sun_path) + sizeof(socket_name);
++    if (bind(listener_fd, reinterpret_cast<sockaddr*>(&address), address_length) < 0 ||
++            listen(listener_fd, 2) < 0) {
++        ALOGE("Android text input channel unavailable: %s", strerror(errno));
++        close(listener_fd);
++        return;
++    }
++    std::vector<uint8_t> buffer(sizeof(Header) + sizeof(SurroundingBody) + max_text + 1);
++    int client = -1;
++    for (;;) {
++        pollfd fds[2] = {{listener_fd, POLLIN, 0}, {client, POLLIN, 0}};
++        if (poll(fds, client >= 0 ? 2 : 1, -1) < 0) {
++            if (errno == EINTR) continue;
++            break;
++        }
++        if (fds[0].revents & POLLIN) {
++            const int incoming = accept4(listener_fd, nullptr, nullptr, SOCK_CLOEXEC);
++            if (incoming >= 0 && !admitted(incoming)) {
++                close(incoming);
++            } else if (incoming >= 0) {
++                // One input method at a time; a restarted service replaces it.
++                std::scoped_lock lock(state.mutex);
++                if (client >= 0) close(client);
++                client = state.client = incoming;
++                state.wanted = false;
++                send_state_locked();
++            }
++        }
++        if (client >= 0 && (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
++            const ssize_t length = recv(client, buffer.data(), buffer.size(), 0);
++            if (length > 0) {
++                if (size_t(length) < buffer.size()) handle_record(buffer.data(), size_t(length));
++            } else if (length == 0 || (errno != EINTR && errno != EAGAIN)) {
++                std::scoped_lock lock(state.mutex);
++                close(client);
++                client = state.client = -1;
++                state.wanted = false;
++                send_state_locked();
++            }
++        }
++    }
++    close(listener_fd);
++}
++}
++
++void luma_text_input_bind(display* d, wl_registry* registry, uint32_t id, uint32_t version) {
++    state.d = d;
++    state.version = std::min<uint32_t>(version, 2);
++    state.manager = static_cast<zwp_text_input_manager_v3*>(
++        wl_registry_bind(registry, id, &zwp_text_input_manager_v3_interface, state.version));
++}
++
++bool luma_text_input_active() {
++    std::scoped_lock lock(state.mutex);
++    return state.enabled && state.focused;
++}
++
++void luma_text_input_start(display* d) {
++    state.d = d;
++    if (!state.manager || !d->seat) {
++        ALOGI("Host text input unavailable; Android keeps its own keyboard");
++        return;
++    }
++    {
++        std::scoped_lock lock(state.mutex);
++        state.input = zwp_text_input_manager_v3_get_text_input(state.manager, d->seat);
++        zwp_text_input_v3_add_listener(state.input, &listener, nullptr);
++    }
++    std::thread(serve).detach();
++    ALOGI("Host text input bridge ready");
++}
+diff --git a/hwcomposer/luma-text-input.h b/hwcomposer/luma-text-input.h
+new file mode 100644
+index 0000000..5064d71
+--- /dev/null
++++ b/hwcomposer/luma-text-input.h
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include <cstdint>
++
++struct display;
++struct wl_registry;
++
++// The host's on-screen keyboard and input methods reach Android text fields
++// through zwp_text_input_v3 and Luma's Android input method.
++void luma_text_input_bind(display* d, wl_registry* registry, uint32_t id, uint32_t version);
++void luma_text_input_start(display* d);
++// A field has the host keyboard (text input enabled on a focused surface).
++bool luma_text_input_active();
+diff --git a/hwcomposer/text-input-unstable-v3.xml b/hwcomposer/text-input-unstable-v3.xml
+new file mode 100644
+index 0000000..01c1e21
+--- /dev/null
++++ b/hwcomposer/text-input-unstable-v3.xml
+@@ -0,0 +1,604 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<protocol name="text_input_unstable_v3">
++  <copyright>
++    Copyright © 2012, 2013 Intel Corporation
++    Copyright © 2015, 2016 Jan Arne Petersen
++    Copyright © 2017, 2018 Red Hat, Inc.
++    Copyright © 2018       Purism SPC
++
++    Permission to use, copy, modify, distribute, and sell this
++    software and its documentation for any purpose is hereby granted
++    without fee, provided that the above copyright notice appear in
++    all copies and that both that copyright notice and this permission
++    notice appear in supporting documentation, and that the name of
++    the copyright holders not be used in advertising or publicity
++    pertaining to distribution of the software without specific,
++    written prior permission.  The copyright holders make no
++    representations about the suitability of this software for any
++    purpose.  It is provided "as is" without express or implied
++    warranty.
++
++    THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
++    SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
++    FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
++    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
++    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
++    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
++    THIS SOFTWARE.
++  </copyright>
++
++  <description summary="Protocol for composing text">
++    This protocol allows compositors to act as input methods and to send text
++    to applications. A text input object is used to manage state of what are
++    typically text entry fields in the application.
++
++    This document adheres to the RFC 2119 when using words like "must",
++    "should", "may", etc.
++
++    Warning! The protocol described in this file is experimental and
++    backward incompatible changes may be made. Backward compatible changes
++    may be added together with the corresponding interface version bump.
++    Backward incompatible changes are done by bumping the version number in
++    the protocol and interface names and resetting the interface version.
++    Once the protocol is to be declared stable, the 'z' prefix and the
++    version number in the protocol and interface names are removed and the
++    interface version number is reset.
++  </description>
++
++  <interface name="zwp_text_input_v3" version="2">
++    <description summary="text input">
++      The zwp_text_input_v3 interface represents text input and input methods
++      associated with a seat. It provides enter/leave events to follow the
++      text input focus for a seat.
++
++      Requests are used to enable/disable the text-input object and set
++      state information like surrounding and selected text or the content type.
++      The information about the entered text is sent to the text-input object
++      via the preedit_string and commit_string events.
++
++      Text is valid UTF-8 encoded, indices and lengths are in bytes. Indices
++      must not point to middle bytes inside a code point: they must either
++      point to the first byte of a code point or to the end of the buffer.
++      Lengths must be measured between two valid indices.
++
++      Focus moving throughout surfaces will result in the emission of
++      zwp_text_input_v3.enter and zwp_text_input_v3.leave events. The focused
++      surface must commit zwp_text_input_v3.enable and
++      zwp_text_input_v3.disable requests as the keyboard focus moves across
++      editable and non-editable elements of the UI. Those two requests are not
++      expected to be paired with each other, the compositor must be able to
++      handle consecutive series of the same request.
++
++      State is sent by the state requests (set_surrounding_text,
++      set_content_type and set_cursor_rectangle) and a commit request. After an
++      enter event or disable request all state information is invalidated and
++      needs to be resent by the client.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="Destroy the wp_text_input">
++        Destroy the wp_text_input object. Also disables all surfaces enabled
++        through this wp_text_input object.
++      </description>
++    </request>
++
++    <request name="enable">
++      <description summary="Request text input to be enabled">
++        Requests text input on the surface previously obtained from the enter
++        event.
++
++        This request must be issued every time the focused text input changes
++        to a new one, including within the current surface. Use
++        zwp_text_input_v3.disable when there is no longer any input focus on
++        the current surface.
++
++        Clients must not enable more than one text input on the single seat
++        and should disable the current text input before enabling the new one.
++        Requests to enable a text input when another text input is enabled
++        on the same seat must be ignored by compositor.
++
++        This request resets all state associated with previous enable, disable,
++        set_surrounding_text, set_text_change_cause, set_content_type, and
++        set_cursor_rectangle requests, as well as the state associated with
++        preedit_string, commit_string, and delete_surrounding_text events.
++
++        The set_surrounding_text, set_content_type and set_cursor_rectangle
++        requests must follow if the text input supports the necessary
++        functionality.
++
++        State set with this request is double-buffered. It will get applied on
++        the next zwp_text_input_v3.commit request, and stay valid until the
++        next committed enable or disable request.
++
++        The changes must be applied by the compositor after issuing a
++        zwp_text_input_v3.commit request.
++      </description>
++    </request>
++
++    <request name="disable">
++      <description summary="Disable text input on a surface">
++        Explicitly disable text input on the current surface (typically when
++        there is no focus on any text entry inside the surface).
++
++        State set with this request is double-buffered. It will get applied on
++        the next zwp_text_input_v3.commit request.
++      </description>
++    </request>
++
++    <request name="set_surrounding_text">
++      <description summary="sets the surrounding text">
++        Sets the surrounding plain text around the input, excluding the preedit
++        text.
++
++        The client should notify the compositor of any changes in any of the
++        values carried with this request, including changes caused by handling
++        incoming text-input events as well as changes caused by other
++        mechanisms like keyboard typing.
++
++        If the client is unaware of the text around the cursor, it should not
++        issue this request, to signify lack of support to the compositor.
++
++        Text is UTF-8 encoded, and should include the cursor position, the
++        complete selection and additional characters before and after them.
++        There is a maximum length of wayland messages, so text can not be
++        longer than 4000 bytes.
++
++        Cursor is the byte offset of the cursor within text buffer.
++
++        Anchor is the byte offset of the selection anchor within text buffer.
++        If there is no selected text, anchor is the same as cursor.
++
++        If any preedit text is present, it is replaced with a cursor for the
++        purpose of this event.
++
++        Values set with this request are double-buffered. They will get applied
++        on the next zwp_text_input_v3.commit request, and stay valid until the
++        next committed enable or disable request.
++
++        The initial state for affected fields is empty, meaning that the text
++        input does not support sending surrounding text. If the empty values
++        get applied, subsequent attempts to change them may have no effect.
++      </description>
++      <arg name="text" type="string"/>
++      <arg name="cursor" type="int"/>
++      <arg name="anchor" type="int"/>
++    </request>
++
++    <enum name="change_cause">
++      <description summary="text change reason">
++        Reason for the change of surrounding text or cursor posision.
++      </description>
++      <entry name="input_method" value="0" summary="input method caused the change"/>
++      <entry name="other" value="1" summary="something else than the input method caused the change"/>
++    </enum>
++
++    <request name="set_text_change_cause">
++      <description summary="indicates the cause of surrounding text change">
++        Tells the compositor why the text surrounding the cursor changed.
++
++        Whenever the client detects an external change in text, cursor, or
++        anchor posision, it must issue this request to the compositor. This
++        request is intended to give the input method a chance to update the
++        preedit text in an appropriate way, e.g. by removing it when the user
++        starts typing with a keyboard.
++
++        cause describes the source of the change.
++
++        The value set with this request is double-buffered. It must be applied
++        and reset to initial at the next zwp_text_input_v3.commit request.
++
++        The initial value of cause is input_method.
++      </description>
++      <arg name="cause" type="uint" enum="change_cause"/>
++    </request>
++
++    <enum name="content_hint" bitfield="true">
++      <description summary="content hint">
++        Content hint is a bitmask to allow to modify the behavior of the text
++        input.
++      </description>
++      <entry name="none" value="0x0" summary="no special behavior"/>
++      <entry name="completion" value="0x1" summary="suggest word completions"/>
++      <entry name="spellcheck" value="0x2" summary="suggest word corrections"/>
++      <entry name="auto_capitalization" value="0x4" summary="switch to uppercase letters at the start of a sentence"/>
++      <entry name="lowercase" value="0x8" summary="prefer lowercase letters"/>
++      <entry name="uppercase" value="0x10" summary="prefer uppercase letters"/>
++      <entry name="titlecase" value="0x20" summary="prefer casing for titles and headings (can be language dependent)"/>
++      <entry name="hidden_text" value="0x40" summary="characters should be hidden"/>
++      <entry name="sensitive_data" value="0x80" summary="typed text should not be stored"/>
++      <entry name="latin" value="0x100" summary="just Latin characters should be entered"/>
++      <entry name="multiline" value="0x200" summary="the text input is multiline"/>
++      <entry
++        name="on_screen_input_provided" value="0x400" since="2"
++        summary="an on-screen way to fill in the input is already provided by the client"/>
++      <entry
++        name="no_emoji" value="0x800" since="2"
++        summary="prefer not offering emoji support"/>
++      <entry
++        name="preedit_shown" value="0x1000" since="2"
++        summary="the text input will display preedit text in place"/>
++    </enum>
++
++    <enum name="content_purpose">
++      <description summary="content purpose">
++        The content purpose allows to specify the primary purpose of a text
++        input.
++
++        This allows an input method to show special purpose input panels with
++        extra characters or to disallow some characters.
++      </description>
++      <entry name="normal" value="0" summary="default input, allowing all characters"/>
++      <entry name="alpha" value="1" summary="allow only alphabetic characters"/>
++      <entry name="digits" value="2" summary="allow only digits"/>
++      <entry name="number" value="3" summary="input a number (including decimal separator and sign)"/>
++      <entry name="phone" value="4" summary="input a phone number"/>
++      <entry name="url" value="5" summary="input an URL"/>
++      <entry name="email" value="6" summary="input an email address"/>
++      <entry name="name" value="7" summary="input a name of a person"/>
++      <entry name="password" value="8" summary="input a password (combine with sensitive_data hint)"/>
++      <entry name="pin" value="9" summary="input is a numeric password (combine with sensitive_data hint)"/>
++      <entry name="date" value="10" summary="input a date"/>
++      <entry name="time" value="11" summary="input a time"/>
++      <entry name="datetime" value="12" summary="input a date and time"/>
++      <entry name="terminal" value="13" summary="input for a terminal"/>
++    </enum>
++
++    <request name="set_content_type">
++      <description summary="set content purpose and hint">
++        Sets the content purpose and content hint. While the purpose is the
++        basic purpose of an input field, the hint flags allow to modify some of
++        the behavior.
++
++        Values set with this request are double-buffered. They will get applied
++        on the next zwp_text_input_v3.commit request.
++        Subsequent attempts to update them may have no effect. The values
++        remain valid until the next committed enable or disable request.
++
++        The initial value for hint is none, and the initial value for purpose
++        is normal.
++      </description>
++      <arg name="hint" type="uint" enum="content_hint"/>
++      <arg name="purpose" type="uint" enum="content_purpose"/>
++    </request>
++
++    <request name="set_cursor_rectangle">
++      <description summary="set cursor position">
++        Marks an area around the cursor as a x, y, width, height rectangle in
++        surface local coordinates.
++
++        Allows the compositor to put a window with word suggestions near the
++        cursor, without obstructing the text being input.
++
++        If the client is unaware of the position of edited text, it should not
++        issue this request, to signify lack of support to the compositor.
++
++        Values set with this request are double-buffered. They will get applied
++        on the next zwp_text_input_v3.commit request, and stay valid until the
++        next committed enable or disable request.
++
++        The initial values describing a cursor rectangle are empty. That means
++        the text input does not support describing the cursor area. If the
++        empty values get applied, subsequent attempts to change them may have
++        no effect.
++
++        As of version 2, the zwp_text_input_v3.commit request does not apply
++        values sent with this request. Instead, it stores them in a separate
++        "committed" area. The committed values, if still valid, get applied on
++        the next wl_surface.commit request on the surface with text-input focus.
++        Both committed and applied values get invalidated on:
++
++        - the next committed enable or disable request, or
++        - a change of the focused surface of the text-input (leave or enter events).
++
++        This double stage application allows the compositor to position
++        the input method popup in the same frame as the contents
++        of the text on the surface are updated.
++      </description>
++      <arg name="x" type="int"/>
++      <arg name="y" type="int"/>
++      <arg name="width" type="int"/>
++      <arg name="height" type="int"/>
++    </request>
++
++    <request name="commit">
++      <description summary="commit state">
++        Atomically applies state changes recently sent to the compositor.
++
++        The commit request establishes and updates the state of the client, and
++        must be issued after any changes to apply them.
++
++        Text input state (enabled status, content purpose, content hint,
++        surrounding text and change cause, cursor rectangle) is conceptually
++        double-buffered within the context of a text input, i.e. between a
++        committed enable request and the following committed enable or disable
++        request.
++
++        Protocol requests modify the pending state, as opposed to the current
++        state in use by the input method. A commit request atomically applies
++        all pending state, replacing the current state. After commit, the new
++        pending state is as documented for each related request.
++
++        Requests are applied in the order of arrival.
++
++        Neither current nor pending state are modified unless noted otherwise.
++
++        The compositor must count the number of commit requests coming from
++        each zwp_text_input_v3 object and use the count as the serial in done
++        events.
++      </description>
++    </request>
++
++    <event name="enter">
++      <description summary="enter event">
++        Notification that this seat's text-input focus is on a certain surface.
++
++        If client has created multiple text input objects, compositor must send
++        this event to all of them.
++
++        When the seat has the keyboard capability the text-input focus follows
++        the keyboard focus. This event sets the current surface for the
++        text-input object.
++      </description>
++      <arg name="surface" type="object" interface="wl_surface"/>
++    </event>
++
++    <event name="leave">
++      <description summary="leave event">
++        Notification that this seat's text-input focus is no longer on a
++        certain surface. The client should reset any preedit string previously
++        set.
++
++        The leave notification clears the current surface. It is sent before
++        the enter notification for the new focus. After leave event, compositor
++        must ignore requests from any text input instances until next enter
++        event.
++
++        When the seat has the keyboard capability the text-input focus follows
++        the keyboard focus.
++      </description>
++      <arg name="surface" type="object" interface="wl_surface"/>
++    </event>
++
++    <event name="preedit_string">
++      <description summary="pre-edit">
++        Notify when a new composing text (pre-edit) should be set at the
++        current cursor position. Any previously set composing text must be
++        removed. Any previously existing selected text must be removed.
++
++        The argument text contains the pre-edit string buffer.
++
++        The parameters cursor_begin and cursor_end are counted in bytes
++        relative to the beginning of the submitted text buffer. Cursor should
++        be hidden when both are equal to -1.
++
++        They could be represented by the client as a line if both values are
++        the same, or as a text highlight otherwise.
++
++        Values set with this event are double-buffered. They must be applied
++        and reset to initial on the next zwp_text_input_v3.done event.
++
++        The initial value of text is an empty string, and cursor_begin,
++        cursor_end and cursor_hidden are all 0.
++      </description>
++      <arg name="text" type="string" allow-null="true"/>
++      <arg name="cursor_begin" type="int"/>
++      <arg name="cursor_end" type="int"/>
++    </event>
++
++    <event name="commit_string">
++      <description summary="text commit">
++        Notify when text should be inserted into the editor widget. The text to
++        commit could be either just a single character after a key press or the
++        result of some composing (pre-edit).
++
++        Values set with this event are double-buffered. They must be applied
++        and reset to initial on the next zwp_text_input_v3.done event.
++
++        The initial value of text is an empty string.
++      </description>
++      <arg name="text" type="string" allow-null="true"/>
++    </event>
++
++    <event name="delete_surrounding_text">
++      <description summary="delete surrounding text">
++        Notify when the text around the current cursor position should be
++        deleted.
++
++        Before_length and after_length are the number of bytes before and after
++        the current cursor index (excluding the selection) to delete.
++
++        If a preedit text is present, in effect before_length is counted from
++        the beginning of it, and after_length from its end (see done event
++        sequence).
++
++        Values set with this event are double-buffered. They must be applied
++        and reset to initial on the next zwp_text_input_v3.done event.
++
++        The initial values of both before_length and after_length are 0.
++      </description>
++      <arg name="before_length" type="uint" summary="length of text before current cursor position"/>
++      <arg name="after_length" type="uint" summary="length of text after current cursor position"/>
++    </event>
++
++    <event name="done">
++      <description summary="apply changes">
++        Instruct the application to apply changes to state requested by the
++        preedit_string, commit_string delete_surrounding_text, and action
++        events.
++
++        The state relating to these events is double-buffered, and each one
++        modifies the pending state. This event replaces the current state with
++        the pending state.
++
++        The application must proceed by evaluating the changes in the following
++        order:
++
++        1. Replace existing preedit string with the cursor.
++        2. Delete requested surrounding text.
++        3. Insert commit string with the cursor at its end.
++        4. Calculate surrounding text to send.
++        5. Insert new preedit text in cursor position.
++        6. Place cursor inside preedit text.
++        7. Perform the requested action.
++
++        The serial number reflects the last state of the zwp_text_input_v3
++        object known to the compositor. The value of the serial argument must
++        be equal to the number of commit requests already issued on that object.
++
++        When the client receives a done event with a serial different than the
++        number of past commit requests, it must proceed with evaluating and
++        applying the changes as normal, except it should not change the current
++        state of the zwp_text_input_v3 object. All pending state requests
++        (set_surrounding_text, set_content_type and set_cursor_rectangle) on
++        the zwp_text_input_v3 object should be sent and committed after
++        receiving a zwp_text_input_v3.done event with a matching serial.
++      </description>
++      <arg name="serial" type="uint"/>
++    </event>
++
++    <!-- Version 2 additions -->
++    <enum name="error" since="2">
++      <entry name="invalid_action" value="0" summary="an invalid or duplicate action was specified"/>
++    </enum>
++
++    <enum name="action" since="2">
++      <description summary="action">
++        A possible action to perform on a text input.
++
++        The submit action is intended for input entries that expect some sort of
++        activation after user interaction, e.g. the URL entry in a browser.
++      </description>
++      <entry name="none" value="0" summary="no action"/>
++      <entry name="submit" value="1" summary="the action is submitted"/>
++    </enum>
++
++    <event name="action" since="2">
++      <description summary="action performed">
++        An action was performed on this text input.
++
++        Values set with this event are double-buffered. They must be applied
++        and reset to initial on the next zwp_text_input_v3.done event.
++
++        The initial value of action is none.
++      </description>
++      <arg name="action" type="uint" enum="action" summary="action performed"/>
++      <arg name="serial" type="uint" summary="serial number of the action event"/>
++    </event>
++
++    <event name="language" since="2">
++      <description summary="notify of language selection">
++        Notify the application of language used by the input method.
++
++        This event will be sent on creation if known and for all subsequent changes.
++
++        The language should be specified as an IETF BCP 47 tag.
++        Setting an empty string will reset any known language back to the default unknown state.
++      </description>
++      <arg name="language" type="string" summary="new language set by IME"/>
++    </event>
++
++    <request name="set_available_actions" since="2">
++      <description summary="set the available actions">
++        Set the actions available for this text input.
++
++        Values set with this request are double-buffered. They will get applied
++        on the next zwp_text_input_v3.commit request.
++
++        If the available_actions array contains the none action, or contains the
++        same action multiple times, the compositor must raise the invalid_action
++        protocol error.
++
++        Initially, no actions are available.
++      </description>
++      <arg name="available_actions" type="array" summary="available actions"/>
++    </request>
++
++    <request name="show_input_panel" since="2">
++      <description summary="show input panel">
++	Requests an input panel to be shown (e.g. a on-screen keyboard).
++
++	This request only hints the desired interaction pattern from the
++	client side, and its effect may be ignored by compositors given
++	other environmental factors. Repeated calls will be ignored.
++      </description>
++    </request>
++
++    <request name="hide_input_panel" since="2">
++      <description summary="hide input panel">
++	Requests an input panel to be hidden.
++
++	This request only hints the desired interaction pattern from the
++	client side, and its effect may be ignored by compositors given
++	other environmental factors. Repeated calls will be ignored.
++      </description>
++    </request>
++
++    <enum name="preedit_hint">
++      <description summary="preedit style hint">
++	Style hints for the preedit string.
++      </description>
++      <entry name="whole" value="1" summary="simple pre-edit text style, typically underlined"/>
++      <entry name="selection" value="2"
++        summary="hint for a selected piece of text, e.g. per-character navigation and composition"/>
++      <entry name="prediction" value="3" summary="predicted text, not typed by the user"/>
++      <entry name="prefix" value="4"
++        summary="prefixed text not being currently edited, e.g. prior to a 'selection' section"/>
++      <entry name="suffix" value="5"
++        summary="suffixed text not being currently edited, e.g. after a 'selection' section"/>
++      <entry name="spelling_error" value="6" summary="spelling error"/>
++      <entry name="compose_error" value="7"
++        summary="wrong composition, e.g. user input that can not be transliterated"/>
++    </enum>
++
++    <event name="preedit_hint" since="2">
++      <description summary="pre-edit">
++        Notify of contextual hints for the pre-edit string. This
++        event is always sent together with a zwp_text_input_v3.preedit_string
++        event.
++
++        The parameters start and end are counted in bytes relative to the
++        beginning of the text buffer submitted through
++        zwp_text_input_v3.preedit_string, and represent the substring in the
++        pre-edit text affected by the hint.
++
++        Multiple events may be submitted if the preedit string has different
++        sections. The extent of hints may overlap. The parts of the preedit
++        string that are not covered by any zwp_text_input_v3.preedit_hint event,
++        the text will be considered unhinted. This is also the case if no
++        preedit_hint event is sent.
++
++        Clients should provide recognizable visuals to these hints. if they are
++        unable to comply with this requisition, it may be preferable for them
++        keep the preedit_shown content hint disabled.
++
++        Values set with this event are double-buffered. They must be applied
++        and reset on the next zwp_text_input_v3.done event.
++      </description>
++      <arg name="start" type="uint" summary="starting point of the affected substring"/>
++      <arg name="end" type="uint" summary="end point of the affected substring"/>
++      <arg name="hint" type="uint" enum="preedit_hint" summary="hint to apply"/>
++    </event>
++  </interface>
++
++  <interface name="zwp_text_input_manager_v3" version="2">
++    <description summary="text input manager">
++      A factory for text-input objects. This object is a global singleton.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="Destroy the wp_text_input_manager">
++        Destroy the wp_text_input_manager object.
++      </description>
++    </request>
++
++    <request name="get_text_input">
++      <description summary="create a new text input object">
++        Creates a new text-input object for a given seat.
++      </description>
++      <arg name="id" type="new_id" interface="zwp_text_input_v3"/>
++      <arg name="seat" type="object" interface="wl_seat"/>
++    </request>
++  </interface>
++</protocol>
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+index 4fff1fb..a93e9b8 100644
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -35,6 +35,7 @@
+ #include "luma-window-callbacks.h"
+ #include "luma-app-settings-channel.h"
+ #include "luma-desktop-canvas.h"
++#include "luma-text-input.h"
+ #include "xdg-output-unstable-v1-client-protocol.h"
+ 
+ #include <stdint.h>
+@@ -416,6 +417,13 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
+     // size that task to the window. Resizing the whole Android display here
+     // hotplugged it on every app configure and left fixed-size tasks small.
+     if (window->taskID != "none" && window->taskID != "0") {
++        // The host keeps its on-screen keyboard clear of windows by making
++        // them shorter. Resizing the task for that relaunches most activities,
++        // which drops the field and closes the keyboard again; the task keeps
++        // its size and the keyboard covers its lower part instead.
++        if (luma_text_input_active() && width == window->content_width &&
++                height < window->content_height)
++            return;
+         const bool changed = window->maximized != maximized ||
+             window->content_width != width || window->content_height != height;
+         window->maximized = maximized;
+@@ -2489,6 +2497,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
+                 &wl_data_device_manager_interface, std::min(version,  3U));
+         if (d->data_device_manager && d->seat)
+             d->data_device = wl_data_device_manager_get_data_device(d->data_device_manager, d->seat);
++    } else if (strcmp(interface, "zwp_text_input_manager_v3") == 0) {
++        luma_text_input_bind(d, registry, id, version);
+     } else if (strcmp(interface, "wp_cursor_shape_manager_v1") == 0) {
+         d->cursor_shape_manager = (struct wp_cursor_shape_manager_v1*)wl_registry_bind(
+             registry, id, &wp_cursor_shape_manager_v1_interface, 1);
+@@ -2646,6 +2656,7 @@ create_display(const char *gralloc)
+     // Registry callbacks bind xdg-output objects. Receive their initial logical
+     // geometry before the first window calibrates the Android display.
+     wl_display_roundtrip(display->display);
++    luma_text_input_start(display);
+ 
+     if (pthread_create(&display->wayland_thread, nullptr, hwc_wayland_thread, display->display) != 0) {
+         ALOGE("Couldn't create wayland thread");

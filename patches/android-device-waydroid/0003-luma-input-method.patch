@@ -1,0 +1,15 @@
+diff --git a/device.mk b/device.mk
+index d26e171..245d12c 100644
+--- a/device.mk
++++ b/device.mk
+@@ -127,6 +127,10 @@ PRODUCT_PACKAGES += \
+ PRODUCT_PACKAGES += \
+     android.hardware.health@2.0-service.waydroid
+ 
++# Input method: text fields use the host keyboard through the composer
++PRODUCT_PACKAGES += \
++    LumaInputMethod
++
+ # Init
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/init.waydroid.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.waydroid.vendor.rc
