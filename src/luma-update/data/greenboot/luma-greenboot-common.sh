@@ -3,6 +3,7 @@
 # and the OS image's display manager, shell and NetworkManager checks.
 # Interface: luma_trial_boot: 0 trial, 1 ordinary, 2 unknown native FP6 state.
 # luma_check_failed MESSAGE fails for trial or unknown FP6 state; otherwise passes.
+# luma_uptime prints whole seconds since boot, for check deadlines.
 # FP6 requires the qualified native qbootctl error-return patch and greenboot
 # A/B backend. No GRUB fallback is permitted when the FP6 image marker exists.
 #
@@ -18,6 +19,15 @@
 # never enters a reboot loop over a missing tool, but it says so at error
 # priority in the journal: a failed update would not roll back on such a
 # machine, and the OS image's contract test must catch that before release.
+
+# Check deadlines use the monotonic boot clock. Bash's SECONDS follows the wall
+# clock, and a machine without a battery-backed RTC (Raspberry Pi) boots with a
+# stale date that NTP then moves forward by days, ending every wait at once.
+luma_uptime() {
+  local up _
+  read -r up _ </proc/uptime
+  printf '%s\n' "${up%.*}"
+}
 
 luma_greenboot_grubenv() {
   printf '%s\n' "${LUMA_GREENBOOT_GRUBENV:-/boot/grub2/grubenv}"
