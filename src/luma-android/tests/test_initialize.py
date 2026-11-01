@@ -226,9 +226,10 @@ class PackagedImagesTest(unittest.TestCase):
                 (lxc / name).write_text("finished configuration")
             (state / "waydroid_base.prop").write_text("finished properties")
         with patch.object(initialize, "STATE", state), \
+                patch.object(initialize.platform, "machine", return_value="x86_64"), \
                 patch.object(initialize, "verify_images"), \
                 patch.object(initialize, "is_fp6", return_value=False), \
-                patch.object(initialize, "_software_graphics_required", return_value=True), \
+                patch.object(initialize, "_graphics_selection", return_value=(True, None)), \
                 patch.object(initialize.subprocess, "run", side_effect=command) as run:
             initialize.initialize()
             self.assertTrue(initialize.runtime_complete(state))
@@ -241,7 +242,7 @@ class PackagedImagesTest(unittest.TestCase):
         cfg = state / "waydroid.cfg"
         for payload in (b"[waydroid]\n[properties]\n", b"# User choices\n[properties]\nro.hardware.egl=angle\n"):
             cfg.write_bytes(payload)
-            with patch.object(initialize, "_software_graphics_required") as probe:
+            with patch.object(initialize, "_graphics_selection") as probe:
                 initialize._seed_initial_graphics(state)
             self.assertEqual(cfg.read_bytes(), payload)
             probe.assert_not_called()
@@ -256,7 +257,7 @@ class PackagedImagesTest(unittest.TestCase):
         cfg.unlink()
         state.chmod(0o777)
         with patch.object(initialize, "is_fp6", return_value=False), \
-                patch.object(initialize, "_software_graphics_required", return_value=True):
+                patch.object(initialize, "_graphics_selection", return_value=(True, None)):
             with self.assertRaisesRegex(RuntimeError, "directories"):
                 initialize._seed_initial_graphics(state)
         self.assertFalse(cfg.exists())
@@ -265,11 +266,30 @@ class PackagedImagesTest(unittest.TestCase):
         for fp6, software in ((False, False), (True, True)):
             state = self.root / f"unchanged-{fp6}"
             with patch.object(initialize, "is_fp6", return_value=fp6), \
-                    patch.object(initialize, "_software_graphics_required", return_value=software) as probe:
+                    patch.object(initialize, "_graphics_selection", return_value=(software, None)) as probe:
                 initialize._seed_initial_graphics(state)
             self.assertFalse(state.exists())
             if fp6:
                 probe.assert_not_called()
+
+    def test_arm_software_fallback_uses_the_renderers_its_image_ships(self):
+        state = self.root / "arm-software-state"
+        with patch.object(initialize, "is_fp6", return_value=False), \
+                patch.object(initialize.platform, "machine", return_value="aarch64"), \
+                patch.object(initialize, "_graphics_selection", return_value=(True, None)):
+            initialize._seed_initial_graphics(state)
+        self.assertEqual((state / "waydroid.cfg").read_text(),
+                         "[waydroid]\n\n[properties]\nro.hardware.gralloc=default\n"
+                         "ro.hardware.egl=angle\nro.hardware.vulkan=pastel\n")
+
+    def test_gpu_behind_display_only_node_is_named_for_waydroid(self):
+        state = self.root / "gpu-state"
+        with patch.object(initialize, "is_fp6", return_value=False), \
+                patch.object(initialize, "_graphics_selection",
+                             return_value=(False, Path("/dev/dri/renderD129"))):
+            initialize._seed_initial_graphics(state)
+        self.assertEqual((state / "waydroid.cfg").read_text(),
+                         "[waydroid]\ndrm_device = /dev/dri/renderD129\n")
 
 
 class GraphicsCapabilityTest(unittest.TestCase):
@@ -302,27 +322,33 @@ class GraphicsCapabilityTest(unittest.TestCase):
                 return SimpleNamespace(st_mode=actual.st_mode, st_uid=0)
             return actual
         with patch.object(Path, "lstat", metadata):
-            return initialize._software_graphics_required(self.dri, self.sys_drm)
+            return initialize._graphics_selection(self.dri, self.sys_drm)
 
     def test_no_render_node_and_only_upstream_unsupported_gpu_use_software(self):
-        self.assertTrue(self.probe())
+        self.assertEqual(self.probe(), (True, None))
         self.node("renderD128", "nvidia")
         with patch.object(initialize, "_virtio_has_3d") as virtio:
-            self.assertTrue(self.probe())
+            self.assertEqual(self.probe(), (True, None))
         virtio.assert_not_called()
 
     def test_real_gpu_keeps_upstream_selection(self):
         self.node("renderD128", "i915")
         with patch.object(initialize, "_virtio_has_3d") as virtio:
-            self.assertFalse(self.probe())
+            self.assertEqual(self.probe(), (False, None))
         virtio.assert_not_called()
 
-    def test_virtio_3d_control_and_first_node_order_match_upstream(self):
+    def test_display_only_node_is_skipped_for_the_gpu(self):
+        self.node("renderD128", "exynos-drm")
+        self.assertEqual(self.probe(), (True, None))
+        gpu = self.node("renderD129", "panthor")
+        self.assertEqual(self.probe(), (False, gpu))
+
+    def test_virtio_without_3d_yields_to_a_later_gpu(self):
         first = self.node("renderD128", "virtio_gpu")
-        self.node("renderD129", "amdgpu")
-        for accelerated in (False, True):
+        second = self.node("renderD129", "amdgpu")
+        for accelerated, expected in ((False, (False, second)), (True, (False, None))):
             with patch.object(initialize, "_virtio_has_3d", return_value=accelerated) as virtio:
-                self.assertEqual(self.probe(), not accelerated)
+                self.assertEqual(self.probe(), expected)
                 virtio.assert_called_once_with(first)
 
     def test_virtio_transport_resolves_real_gpu_child_and_queries_capability(self):
@@ -340,7 +366,7 @@ class GraphicsCapabilityTest(unittest.TestCase):
         for accelerated in (False, True):
             with patch.object(Path, "lstat", metadata), \
                     patch.object(initialize, "_virtio_has_3d", return_value=accelerated) as query:
-                self.assertEqual(self.probe(), not accelerated)
+                self.assertEqual(self.probe(), (not accelerated, None))
                 query.assert_called_once_with(node)
 
     def test_missing_ambiguous_and_unrelated_virtio_children_fail_closed(self):
@@ -389,7 +415,7 @@ class GraphicsCapabilityTest(unittest.TestCase):
     def test_fake_regular_render_node_cannot_claim_gpu_capability(self):
         self.node("renderD128", "virtio_gpu")
         with self.assertRaisesRegex(RuntimeError, "genuine"):
-            initialize._software_graphics_required(self.dri, self.sys_drm)
+            initialize._graphics_selection(self.dri, self.sys_drm)
 
     def test_native_ioctl_abi_and_result_pointer(self):
         def ioctl(descriptor, operation, request):

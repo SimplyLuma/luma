@@ -10,13 +10,19 @@ fi
 source "$repo_root/config/desktop/inputs.env"
 arch=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 case "$arch" in
+  x86_64|aarch64) ;;
+  *) printf 'error: unsupported Android image architecture: %s\n' "$arch" >&2; exit 1 ;;
+esac
+# The package holds image files and no compiled code: build every target in
+# the host's own builder (rpmbuild --target) rather than under emulation.
+case "$(uname -m)" in
   x86_64) builder_container=$FEDORA_RPM_BUILD_CONTAINER ;;
   aarch64) builder_container=$FEDORA_RPM_BUILD_CONTAINER_AARCH64 ;;
-  *) printf 'error: unsupported Android image architecture: %s\n' "$arch" >&2; exit 1 ;;
+  *) printf 'error: unsupported RPM builder host: %s\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 : "${LUMA_ANDROID_TERMINAL_PAIR_DIR:?actual terminal native image pair required}"
 : "${LUMA_ANDROID_IMAGE_MEMBERS:?actual read-only inside-image membership proof required}"
-export LUMA_RPM_BUILDER_ARCHITECTURE=$arch
+export LUMA_RPM_BUILDER_ARCHITECTURE=$(uname -m)
 output="$repo_root/build/packages/luma-android-images/$arch"
 mkdir -p "$output"
 work="$output/work.native.$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
@@ -32,13 +38,13 @@ remaining=max(0, receipt['actual_full_scratch_budget']-allocated)
 if shutil.disk_usage(root).free < remaining+receipt['physical_reserve_bytes']:
     raise SystemExit('Insufficient measured remaining scratch plus 10 GiB reserve')
 PY
-"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$builder_container" '
+"$repo_root/scripts/packages/run-in-rpm-builder.sh" "$work" "$builder_container" "
   set -euo pipefail
   dnf5 -y install rpm-build python3
-  rpmbuild -ba --define "_topdir $PWD" SPECS/luma-android-images.spec
-  test "$(find RPMS -name "luma-android-images-*.rpm" | wc -l)" -eq 1
-  test "$(find SRPMS -name "luma-android-images-*.src.rpm" | wc -l)" -eq 1
-'
+  rpmbuild -ba --target $arch --define \"_topdir \$PWD\" SPECS/luma-android-images.spec
+  test \"\$(find RPMS -name 'luma-android-images-*.$arch.rpm' | wc -l)\" -eq 1
+  test \"\$(find SRPMS -name 'luma-android-images-*.src.rpm' | wc -l)\" -eq 1
+"
 mkdir -p "$output/RPMS" "$output/SRPMS"
 find "$work/RPMS" -name 'luma-android-images-*.rpm' -exec cp --reflink=auto -t "$output/RPMS" {} +
 find "$work/SRPMS" -name 'luma-android-images-*.src.rpm' -exec cp --reflink=auto -t "$output/SRPMS" {} +

@@ -41,6 +41,10 @@ so a window is not clipped to the first portrait output. Runtime monitor changes
 and per-monitor density transitions still require separate implementation and
 device qualification.
 
+`0021` sizes a task window without host chrome (handheld) by resizing its own
+task, as framed windows do. It previously resized and hotplugged the whole
+Android display on every configure, which left fixed-size apps letterboxed.
+
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
 3. `0003-luma-appkit-content-island.patch`

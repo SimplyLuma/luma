@@ -8,6 +8,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -471,6 +472,8 @@ class WaydroidEngine:
             timeout=30,
         )
         self.set_multi_window_policy(multi_window)
+        if started_session and multi_window and runtime_device_class != "desktop":
+            self.set_force_resizable()
         self._run(
             "prop",
             "set",
@@ -569,6 +572,22 @@ class WaydroidEngine:
         current = self._run("prop", "get", "persist.waydroid.multi_windows", timeout=15)
         if current.stdout.strip() != expected:
             self._run("prop", "set", "persist.waydroid.multi_windows", expected, timeout=30)
+
+    def set_force_resizable(self) -> None:
+        # A fixed-size or fixed-orientation activity otherwise keeps a small
+        # letterboxed freeform task, and its phone window follows that size
+        # instead of filling the screen. The desktop helper sets this too, but
+        # touch profiles cannot use it; Android keeps the setting in /data.
+        if Path(self.executable).name != "waydroid":
+            return
+        try:
+            subprocess.run(
+                [sys.executable, "-I", "-m", "luma_android.android_settings",
+                 "force_resizable_activities", "1"],
+                check=True, capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            LOGGER.warning("Android resizable-window policy is not applied: %s", error)
 
     def list_apps(self) -> str:
         return self._run("app", "list", timeout=30).stdout
