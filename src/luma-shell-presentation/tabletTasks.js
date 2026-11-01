@@ -276,6 +276,8 @@ export class TabletTasks {
         if (this._held) { this._held = false; return; }
         if (distance < -(this.home.mode === 'mobile' ? 48 : 140) * this.home._scale) {
             if (side) this.showPaneHome(side);
+            else if (this.home._home.visible && !this.pickerSide && !this.home._editor.editing && Main.lumaSearch)
+                Main.lumaSearch.open();
             else this.home.showHome();
         }
         else { this.finishLift(false); if (distance < -24 * this.home._scale) this.peek(); }
@@ -919,12 +921,13 @@ export class HandheldMotion {
     }
     // Full-page notifications keep their final layout throughout the reveal.
     // Reflowing every card at every intermediate width is costly and changes
-    // text wrapping in flight. Only the cached frame's centered clip moves.
+    // text wrapping in flight. Only the GPU reveal bounds change.
     revealNotification(actor, startWidth, startHeight) {
         this.cancelReveal(actor);
         const reveal = new PanelReveal(actor, {
             width: actor.width, height: actor.height, initialWidth: startWidth,
-            initialHeight: startHeight, contents: [actor._surface.child], done: target => {
+            initialHeight: startHeight, drawer: this.home.mode === 'mobile',
+            contents: [actor._surface.child], done: target => {
                 this._surfaceReveals.delete(actor);
                 if (!target) {
                     actor.set_size(startWidth, startHeight);

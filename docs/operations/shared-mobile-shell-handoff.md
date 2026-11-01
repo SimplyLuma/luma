@@ -107,10 +107,17 @@ composition/session profile and build/install the matched native cohort.
 Mobile uses the shared Home and master search. On the Titan's 360 by 400 logical
 screen, Home has five columns and four rows plus the dock; each widget spans
 whole cells, usually two rows. Density follows usable geometry, not a Titan ID.
-Notifications are pulled from the top island; Quick Options is pulled from the
-right status area. Full pages use the dock palette's opaque treatment for readable text.
-Both fill the screen, scroll internally, follow/reverse with
-the finger and snap on release. Mobile lock uses the same notification anatomy,
+Notifications are pulled from the top island, including generous invisible
+padding around it. Quick Options is pulled from the clock or right status area;
+a clock tap still opens Calendar. Full pages use the dock palette's opaque treatment for readable text.
+Both Mobile surfaces fill the screen and scroll internally. Their controls stay
+in their final layout: a finger-controlled backdrop/content fade and small
+vertical settle reveal them without a moving crop edge. Reversing a pull uses
+the same path; release snaps open or closed. Source146 also fixes the zero-mask
+preparation frame when starting to dismiss an already-open Quick Options page.
+Desktop/Tablet retain their anchored panel motion. A short bottom swipe on an
+idle handheld Home opens the same master search as Desktop; holding still opens
+the switcher, and a swipe from an app still returns Home. Mobile lock uses the same notification anatomy,
 with lock visibility/redaction rules and authentication before app activation.
 Desktop/Tablet lock presentation remains separate. Mobile bottom-edge taps reach
 application controls; Home and the app switcher require an actual upward drag.

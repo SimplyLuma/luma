@@ -1,6 +1,6 @@
 # Project Titan recovery and shared shell
 
-- Status: owner-approved Home Screen settings pushed at03ed2e8b9; Mobile switcher refinements installed and native touch checks pass. Shared source ready for integration; no general OS release.
+- Status: source146 Mobile panel gestures and Home search native-tested and persistent on Titan; shared source ready for integration. No general OS release.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -1387,3 +1387,60 @@ No owner layout, preferences, apps or data were removed.
 Final source check29054652 passes after the handoff/release fragment update.
 Both source-backed fixes and the native regression modules are ready to push;
 there are no active owned build jobs or pending device steps for this change.
+
+
+### 2026-10-31 — Mobile panel reveal and Home swipe search
+
+Owner requested larger notification pull targets, Quick Options from the clock,
+shared search from a short idle-Home swipe, and refined the drawer direction
+into a finger-controlled full-screen fade with controls already in position.
+Source146 keeps Mobile controls at their final allocation, fades the backdrop
+and content separately and adds only a small vertical arrival. Reversal uses the
+same progress curve; release retains flick/snap behavior. Desktop/Tablet keep
+their existing anchored panel path. There is no live background capture/blur,
+continuous idle timer, refresh override or CPU/GPU clock floor.
+
+A real-touch baseline captured one zero-mask frame when starting to dismiss
+already-open Quick Options: beginPull started opening preparation at0 before
+seeking1. The corrected pull supplies its actual starting progress before
+preparation. Taking over a partial reveal preserves its progress. Screenshot
+review also exposed a hidden QuickSettingsMenu wrapper during opening pulls;
+map it alongside the pointer without taking the modal grab before release, and
+hide it again when an opening pull cancels closed. Native tests now require
+mapped actors, rather than only visible child flags.
+
+The stage status gesture uses actual rendered clock/island/indicator geometry,
+not a device ID. Invisible nib padding stays inside the status band and avoids
+clock/right controls; the painted nib retains its own native tap/pull handling.
+Clock taps retain Calendar. Locked notification privacy remains in the native
+beacon. A short bottom swipe on idle handheld Home opens Main.lumaSearch;
+settled hold still opens the switcher, and from-app swipes still return Home.
+
+Native mobile-drawers.js passes40 checks across98 painted frames on the Titan:
+clock/right/native nib/padded nib pulls select the correct mapped surface;
+fixed full-width geometry, progress-driven coverage, reversal, release and
+upward dismissal pass. Real bottom touch verifies Home search, held switcher
+and app-to-Home isolation. Bounded job2541e452 passes panel-motion, pull-zone
+geometry at360/390/540/700 widths, JavaScript syntax, cohort identity, package
+release contract and whitespace. This verifies these paths on the current
+Titan; it is not a universal frame-rate claim or another device qualification.
+
+Design references reviewed: AOSP QuickSettingsControllerImpl separately drives
+shade expansion/depth and small content parallax; Apple's Motion guidance
+recommends brief, gesture-consistent feedback. These inform Luma's own shared
+controller, not a claim of matching proprietary One UI internals:
+https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/packages/SystemUI/src/com/android/systemui/shade/QuickSettingsControllerImpl.java
+https://developer.apple.com/design/human-interface-guidelines/motion
+
+Private candidate and screenshots: owned HDD update-20261031/mobile-drawers.
+Persistent candidate is /var/lib/project-titan/mobile-surfaces-final-20261031;
+existing native Grid override remains switcher-handoff-20261031/shell. No app,
+layout or service data was removed; no Shell/Android restart or reboot.
+
+Final native options-drag.js passes19 checks across43 painted frames with no
+hidden preparation frames. Both reports and reviewed partial-surface/search
+screenshots are retained privately. Fresh process GResource byte readback
+matches all eight raw source files before persisting only the presentation
+prefix in /etc/environment; before/environment is root-private. Existing Grid,
+local schema and Settings bind remain intact. This is a source-backed hotfix on
+the installed RPM cohort, not a newly built Shell146 package or OTA release.

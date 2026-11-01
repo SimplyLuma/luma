@@ -115,3 +115,19 @@ export function visiblePageRange(progress, pages) {
     const bounded = Math.max(0, Math.min(pages - 1, progress));
     return [Math.floor(bounded), Math.ceil(bounded)];
 }
+
+// Pull regions use painted chrome geometry. Padding grows the notification
+// target without moving the nib or overlapping the clock/right indicators.
+export function statusPullZone(x, y, {status, clock = null, island = null, right, scale = 1}) {
+    if (x < status.x || x > status.x + status.width || y < status.y ||
+        y > status.y + Math.max(status.height, 44 * scale)) return null;
+    if (island) {
+        const center = island.x + island.width / 2;
+        const half = Math.max(96 * scale, island.width + 48 * scale) / 2;
+        const left = Math.max(status.x, center - half, clock ? clock.x + clock.width + 8 * scale : status.x);
+        const end = Math.min(status.x + status.width, center + half, right.x - 8 * scale);
+        if (x >= left && x <= end) return 'notifications';
+    }
+    if (clock && x >= clock.x && x <= clock.x + clock.width) return 'options';
+    return x >= Math.min(right.x, status.x + status.width / 2) ? 'options' : null;
+}

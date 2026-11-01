@@ -25,7 +25,7 @@ import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
 import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
-import {HandheldOptions} from './handheldOptions.js';
+import {HandheldOptions, StatusPulls} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
 import {gettext as _} from 'gettext';
 
@@ -116,22 +116,6 @@ export class Presentation {
             const [rightX] = this._statusRight.get_transformed_position();
             return x >= Math.min(rightX, statusX + this._status.width / 2);
         };
-        const settingsPan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
-            pan_axis: Clutter.PanAxis.Y});
-        settingsPan.set_begin_threshold(4);
-        settingsPan.connect('may-recognize', gesture => this.mode !== 'desktop' &&
-            !Main.sessionMode.isLocked && quickOptionsPoint(gesture));
-        settingsPan.connect('recognize', () => {
-            if (this.mode === 'mobile') this._handheldOptions.beginPull();
-        });
-        settingsPan.connect('pan-update', gesture => {
-            const delta = gesture.get_accumulated_delta_abs().get_y();
-            if (this.mode === 'mobile') this._handheldOptions.updatePull(delta);
-            else if (delta > 24 * (this._scale ?? 1)) Main.panel.statusArea.quickSettings.menu.open();
-        });
-        settingsPan.connect('end', () => this._handheldOptions.endPull());
-        settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
-        this._status.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
         // Indicators answer their own taps; the empty status area and its
         // inset open Quick Options.
         const settingsTap = new Clutter.ClickGesture();
@@ -293,6 +277,7 @@ export class Presentation {
         this._connect(seat, 'device-removed', () => this._reportInput());
         this._addModeOptions();
         this._handheldOptions = new HandheldOptions(this);
+        this._statusPulls = new StatusPulls(this);
         this._syncAccessibilityStyles();
         Gio.DBusProxy.new_for_bus(Gio.BusType.SESSION,
             Gio.DBusProxyFlags.DO_NOT_LOAD_PROPERTIES, null, BUS, PATH, BUS,
@@ -1174,6 +1159,7 @@ export class Presentation {
         this.mode = 'desktop';
         Main.shelf?.setPresentationMode?.('desktop');
         this._leaveHandheld();
+        this._statusPulls.destroy();
         this._handheldOptions.destroy();
         this._gridDrag.destroy();
         this._tasks.destroy();
