@@ -70,6 +70,8 @@ scriptlets take labels from the booted policy (`--selinux-policy=/`), not the ba
   and the Android image payload.
 - `system/luma-tokay-ims-watchdog.*`: restarts ModemManager and the radio when IMS has not registered
   3 minutes after ModemManager started (monotonic time; calls mode only; at most 5 per boot).
+- `system/50-luma-tokay-wifi-powersave.conf`: NetworkManager drop-in (`/etc/NetworkManager/conf.d`),
+  Wi-Fi power save off; with it on, the BCM4390 stopped passing traffic for hours while associated.
 - `stopgaps/`: `mobile-mode-nm-nudge.py` (data switch asks NetworkManager for the connection when it does
   not autoconnect; also in the initramfs modem input), `daemon-phone-theme.py` and
   `daemon-gnome-lock.py` (prairie-core-apps 1.luma.126; fixed in 1.luma.127).
