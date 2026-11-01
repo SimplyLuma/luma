@@ -893,7 +893,7 @@ export class Presentation {
     _queueRebuild() {
         if (this._rebuildSource) return;
         this._rebuildSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-            if (this._editor.dragging) return GLib.SOURCE_CONTINUE;
+            if (this._editor.dragging || this._editor.resizing || this._editor.savingResize || this._editor.reflowing) return GLib.SOURCE_CONTINUE;
             this._rebuildSource = 0;
             this._rebuild();
             return GLib.SOURCE_REMOVE;
@@ -902,7 +902,7 @@ export class Presentation {
 
     _rebuild() {
         if (this.mode === 'desktop') return;
-        if (this._editor.dragging) { this._queueRebuild(); return; }
+        if (this._editor.dragging || this._editor.resizing || this._editor.savingResize || this._editor.reflowing) { this._queueRebuild(); return; }
         const display = Main.layoutManager.primaryMonitor;
         if (!display) return;
         const monitor = this._tasks.homeRect() ?? display;
@@ -953,7 +953,9 @@ export class Presentation {
         this._status.set_style(`padding: 0 ${safe.right / scale}px 0 ${safe.left / scale}px;` +
             `color: ${this._statusInk === 'light' ? '#ffffff' : '#191b1f'};`);
         const definitions = [...this._widgetHosts.values()].map((widget, index) => ({id: widget.id,
-            kind: 'widget', w: layout.compact ? (index % 2 ? layout.columns - layout.widgetColumns : layout.widgetColumns) : widget.columns ?? 2, h: widget.rows ?? 2}));
+            kind: 'widget', w: layout.compact ? (index % 2 ? layout.columns - layout.widgetColumns : layout.widgetColumns) : widget.columns ?? 2, h: widget.rows ?? 2,
+            minW: widget.minColumns ?? widget.columns ?? 2, minH: widget.minRows ?? widget.rows ?? 2,
+            maxW: widget.maxColumns, maxH: widget.maxRows}));
         definitions.push(...this._apps.map(info => ({id: info.get_id(), kind: 'app', w: layout.appColumns ?? 1, h: 1})));
         const columns = Math.min(32, layout.columns);
         const rows = Math.min(32, Math.max(1, layout.otherRows));
@@ -1042,12 +1044,13 @@ export class Presentation {
         }
     }
 
-    _saveHomeGrid(grid) {
+    _saveHomeGrid(grid, saved = null, failed = null) {
         if (!this._proxy?.g_name_owner) throw new Error(_('Home layout service is unavailable'));
         this._call('SetHomeLayout', new GLib.Variant('(ss)', [this._gridKey, JSON.stringify(grid)]),
-            () => this._refresh(), error => {
+            () => { saved?.(); this._refresh(); }, error => {
+                failed?.(error);
                 Main.notifyError(_('Unable to save Home layout'), error.message);
-                this._queueRebuild();
+                if (!failed) this._queueRebuild();
             });
     }
 

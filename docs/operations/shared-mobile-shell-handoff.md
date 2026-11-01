@@ -24,6 +24,17 @@ platform. Carry the matching package cohort, not just the shell JS. See
 [Mobile application startup](mobile-app-startup.md) for architecture, confinement
 boundaries, measured first-frame timings and remaining qualification gates.
 
+## Widget resizing
+
+Shell source candidate 141 adds shared Mobile/Tablet widget resizing in Home edit
+mode. A selected widget exposes a corner handle; nearby items move aside while
+preserving whole-cell spans. Release saves, Escape cancels, and provider size
+limits apply. Keyboard resizing and reduced motion use the same transaction.
+The Titan passed 12 native checks and the owner approved the physical candidate.
+The source and regression tests are on this branch; other devices require a
+matching package build. The Titan currently uses a source-backed override on
+installed Shell 139, not a built 141 package.
+
 ## Source to carry over
 
 | Area | Maintained source |

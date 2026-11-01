@@ -1091,3 +1091,60 @@ at host startup. This is an inference, not a live sys.modules readback. Retain
 running app children; relaunch Weather alone for the real-source acceptance.
 The isolated profiling fixture explicitly imported the current source directory
 after its permissions were repaired, so it did not depend on that prepared host.
+
+### 2026-10-31 — Resizable widgets: owner accepted, source ready
+
+Owner tested the Titan candidate and explicitly approved: “Looks good—commit it”.
+This change advances the matching Shell spec and architecture pins to 141.
+The physical checks below used the source-backed override on installed 139;
+no 141 RPM build or OS release qualification is claimed. Credentials and access
+helpers remain private.
+Titan is now directly reachable at192.168.1.211 through the same pinned SSH key;
+the private project-titan alias is updated. Dell is back on the home network.
+
+Shared HomeEditor now exposes a44logical-pixel corner resize handle for a
+selected widget in edit mode. Touch/mouse pan and focused-handle arrow keys
+(orCtrl+Shift+arrows on a widget) use the same whole-cell transaction. Provider
+minimum/maximum spans are respected; resize previews start from the original
+snapshot, use cell hysteresis, and persist only on release/acknowledgement.
+Nearby items glide from their painted positions with native180ms easing;
+unchanged items get no animation. Whole widgets keep their spans, with adjacent
+icons moved aside before ejecting a large widget to another page. Pending
+reflows finish before a model rebuild. Escape/gesture cancellation and save
+refusal restore the original placement. Saved spans survive reconciliation and
+grid migration. No continuously running frame/timer loop or display boost added.
+
+Changed files: grid.js, homeEditor.js, widgets.js, presentation.js/CSS; new
+pure widget-resize.js and native widget-resize-native.js regressions integrated
+with the existing editor harness. Normal bounded0a246e4d passes existing grid,
+compact/cutout, and new resize tests, covering multiple phone/tablet grids,
+collision/overflow, strict wire item fields, persistence/migration, page-limit
+failure atomicity and hysteresis. Node syntax and git-diff whitespace pass. Approval-time job
+1cf6891f also passed both native launch package-cohort checks, including Shell
+spec and all architecture pins at 141.
+
+Actual Titan native candidate r2 passed12checks: real touch preview, no pre-drop
+write, observable intermediate neighbour motion without stretching, motion
+progress while held, Escape cancellation, real ShellState save, rebuild
+persistence, keyboard/reduced motion, and injected asynchronous save-refusal
+rollback. This is not a new universal60FPS qualification. Screenshots reviewed;
+original owner layout and animation preference restored after tests. The test
+leaves Home in edit mode with a selected widget for owner review.
+
+Source-backed candidate on phone:
+/var/lib/project-titan/widget-resize-20261031/r2/override.
+It is hot-loaded without session/Android restart and replaces only the previous
+five-column presentation resource overlay in/etc/environment so it survives
+login. Installed Shell remains139; no RPM/OS deployment changed. Parent/source
+permissions are explicitly0755/0644. Native proof is the user's private state
+project-titan/widget-resize-r2.json; CANDIDATE.json records source SHA256 values.
+Private before/environment and before/home-layouts.gvariant are retained under
+that candidate root. Host source/test harnesses and screenshots are in owned HDD
+update-20261031/widget-resize-r2 (r1 retained as earlier evidence).
+
+Owner acceptance completes the physical review gate; commit and push these
+source/tests with matching 141 pins. Other devices must build the matching
+source cohort. To roll back the feature,
+replace only its G_RESOURCE_OVERLAYS entry with the prior five-column entry;
+do not restore an entire stale environment file over other-agent changes.
+Weather scrolling remains a separate unresolved follow-up; do not report it fixed.

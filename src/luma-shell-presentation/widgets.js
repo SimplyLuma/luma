@@ -48,8 +48,11 @@ export class HomeWidgets {
     }
 
     definitions() {
-        return Object.entries(this.snapshot).map(([id, data]) => ({id,
-            columns: data.columns, rows: data.rows, gap: data.gap, createActor: () => this._create(id)}));
+        return Object.entries(this.snapshot).map(([id, data]) => ({id, name: data.name,
+            columns: data.columns, rows: data.rows, gap: data.gap,
+            minColumns: data.min_columns ?? data.columns, minRows: data.min_rows ?? data.rows,
+            maxColumns: data.max_columns, maxRows: data.max_rows,
+            createActor: () => this._create(id)}));
     }
 
     _create(id) {

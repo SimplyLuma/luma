@@ -13,6 +13,7 @@ if [ -n "${PRESENTATION_WIDGETS_LIB:-}" ]; then
     export LD_LIBRARY_PATH="$PRESENTATION_WIDGETS_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 gjs -m "$PRESENTATION_SOURCE/tests/gnome-shell/presentation/grid.js"
+gjs -m "$PRESENTATION_SOURCE/tests/gnome-shell/presentation/widget-resize.js"
 export GSETTINGS_SCHEMA_DIR=/tmp/presentation-schemas GSETTINGS_BACKEND=keyfile
 export LIBGL_ALWAYS_SOFTWARE=1 LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
 # Only inside this networkless, capability-free test container; screenshot
