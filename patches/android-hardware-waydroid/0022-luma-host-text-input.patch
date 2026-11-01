@@ -112,10 +112,10 @@ index 0000000..f2566a6
 +}
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
 new file mode 100644
-index 0000000..425e2f9
+index 0000000..0989937
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,147 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
@@ -126,21 +126,23 @@ index 0000000..425e2f9
 +
 +import java.io.IOException;
 +import java.io.InputStream;
-+import java.io.OutputStream;
 +import java.nio.ByteBuffer;
 +import java.nio.ByteOrder;
 +import java.nio.charset.StandardCharsets;
 +import java.util.concurrent.ExecutorService;
 +import java.util.concurrent.Executors;
++import java.util.concurrent.RejectedExecutionException;
 +
 +/**
 + * The composer's text-input channel (hwcomposer luma-text-input-channel.h):
 + * SOCK_SEQPACKET records, little endian, admitted for the system UID only.
++ * The composer serves one input method at a time and the newest connection
++ * wins, so this connects only when a field asks for the keyboard and never
++ * reconnects by itself: a process left over from a restarted Android, whose
++ * service is no longer bound, cannot take the channel back.
 + */
 +final class HostTextInput {
 +    interface Listener {
-+        /** The channel (re)connected; resend the active field, if any. */
-+        void onHostConnected();
 +        void onHostEdit(int deleteBefore, int deleteAfter, String commit, String preedit);
 +    }
 +
@@ -154,38 +156,33 @@ index 0000000..425e2f9
 +    private final Listener listener;
 +    private final Handler main;
 +    private final ExecutorService writer = Executors.newSingleThreadExecutor();
-+    private volatile boolean running;
-+    private volatile LocalSocket socket;
-+    private Thread reader;
++    private LocalSocket socket; // writer thread only
 +
 +    HostTextInput(Listener listener, Handler main) {
 +        this.listener = listener;
 +        this.main = main;
 +    }
 +
-+    void start() {
-+        running = true;
-+        reader = new Thread(this::run, "LumaHostTextInput");
-+        reader.start();
-+    }
-+
 +    void stop() {
-+        running = false;
-+        closeSocket();
 +        writer.shutdownNow();
++        try {
++            writer.execute(this::close);
++        } catch (RejectedExecutionException ignored) {
++        }
++        close();
 +    }
 +
 +    void enable(int purpose, int hints) {
-+        send(record(ENABLE, 8).putInt(purpose).putInt(hints));
++        send(record(ENABLE, 8).putInt(purpose).putInt(hints), true);
 +    }
 +
 +    void disable() {
-+        send(record(DISABLE, 0));
++        send(record(DISABLE, 0), false);
 +    }
 +
 +    /** Text around the caret; cursor and anchor are byte offsets into it. */
 +    void surrounding(byte[] text, int cursor, int anchor) {
-+        send(record(SURROUNDING, 8 + text.length).putInt(cursor).putInt(anchor).put(text));
++        send(record(SURROUNDING, 8 + text.length).putInt(cursor).putInt(anchor).put(text), false);
 +    }
 +
 +    private static ByteBuffer record(short type, int body) {
@@ -193,47 +190,58 @@ index 0000000..425e2f9
 +                .putInt(MAGIC).putShort(VERSION).putShort(type);
 +    }
 +
-+    private void send(ByteBuffer record) {
++    private void send(ByteBuffer record, boolean connect) {
 +        final byte[] bytes = record.array();
 +        try {
 +            writer.execute(() -> {
-+                final LocalSocket current = socket;
-+                if (current == null) return;
++                if (socket == null && (!connect || !connect())) return;
 +                try {
-+                    final OutputStream out = current.getOutputStream();
-+                    out.write(bytes);
++                    socket.getOutputStream().write(bytes);
 +                } catch (IOException e) {
-+                    closeSocket();
++                    close();
 +                }
 +            });
-+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
++        } catch (RejectedExecutionException ignored) {
 +            // Stopped.
 +        }
 +    }
 +
-+    private void run() {
++    private boolean connect() {
++        final LocalSocket current = new LocalSocket(LocalSocket.SOCKET_SEQPACKET);
++        try {
++            current.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
++        } catch (IOException e) {
++            Log.w(TAG, "Composer text input is unavailable");
++            return false;
++        }
++        socket = current;
++        new Thread(() -> read(current), "LumaHostTextInput").start();
++        return true;
++    }
++
++    private synchronized void close() {
++        if (socket == null) return;
++        try {
++            socket.close();
++        } catch (IOException ignored) {
++        }
++        socket = null;
++    }
++
++    private void read(LocalSocket current) {
 +        final byte[] buffer = new byte[8 + 24 + 2 * MAX_TEXT];
-+        while (running) {
-+            final LocalSocket current = new LocalSocket(LocalSocket.SOCKET_SEQPACKET);
-+            try {
-+                current.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
-+                socket = current;
-+                main.post(listener::onHostConnected);
-+                final InputStream in = current.getInputStream();
-+                int length;
-+                while (running && (length = in.read(buffer)) > 0) dispatch(buffer, length);
-+            } catch (IOException e) {
-+                // The composer is not running yet or restarted.
-+            } finally {
-+                closeSocket();
-+            }
-+            if (running) {
-+                try {
-+                    Thread.sleep(1000);
-+                } catch (InterruptedException e) {
-+                    return;
-+                }
-+            }
++        try {
++            final InputStream in = current.getInputStream();
++            int length;
++            while ((length = in.read(buffer)) > 0) dispatch(buffer, length);
++        } catch (IOException e) {
++            // Replaced by a newer input method, or the composer restarted.
++        }
++        try {
++            writer.execute(() -> {
++                if (socket == current) close();
++            });
++        } catch (RejectedExecutionException ignored) {
 +        }
 +    }
 +
@@ -254,23 +262,13 @@ index 0000000..425e2f9
 +                StandardCharsets.UTF_8);
 +        main.post(() -> listener.onHostEdit(deleteBefore, deleteAfter, commit, preedit));
 +    }
-+
-+    private synchronized void closeSocket() {
-+        final LocalSocket current = socket;
-+        socket = null;
-+        if (current == null) return;
-+        try {
-+            current.close();
-+        } catch (IOException ignored) {
-+        }
-+    }
 +}
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
 new file mode 100644
-index 0000000..87cf0b5
+index 0000000..36bd34b
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/LumaInputMethodService.java
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,256 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
@@ -298,7 +296,7 @@ index 0000000..87cf0b5
 +            PURPOSE_PASSWORD = 8, PURPOSE_PIN = 9, PURPOSE_DATE = 10, PURPOSE_TIME = 11,
 +            PURPOSE_DATETIME = 12;
 +    private static final int HINT_COMPLETION = 0x1, HINT_SPELLCHECK = 0x2,
-+            HINT_AUTO_CAPITALIZATION = 0x4, HINT_UPPERCASE = 0x10, HINT_TITLECASE = 0x20,
++            HINT_AUTO_CAPITALIZATION = 0x4, HINT_LOWERCASE = 0x8, HINT_UPPERCASE = 0x10, HINT_TITLECASE = 0x20,
 +            HINT_HIDDEN_TEXT = 0x40, HINT_SENSITIVE_DATA = 0x80, HINT_MULTILINE = 0x200;
 +    private static final int CONTEXT_CHARS = 1000;
 +
@@ -312,7 +310,6 @@ index 0000000..87cf0b5
 +    public void onCreate() {
 +        super.onCreate();
 +        host = new HostTextInput(this, main);
-+        host.start();
 +    }
 +
 +    @Override
@@ -382,13 +379,6 @@ index 0000000..87cf0b5
 +        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
 +                candidatesStart, candidatesEnd);
 +        if (wanted) sendSurrounding();
-+    }
-+
-+    @Override
-+    public void onHostConnected() {
-+        final EditorInfo info = getCurrentInputEditorInfo();
-+        sentText = null;
-+        if (wanted && getCurrentInputStarted() && info != null) enableHost(info);
 +    }
 +
 +    @Override
@@ -528,13 +518,15 @@ index 0000000..87cf0b5
 +        if ((type & InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS) != 0) hints |= HINT_UPPERCASE;
 +        else if ((type & InputType.TYPE_TEXT_FLAG_CAP_WORDS) != 0) hints |= HINT_TITLECASE;
 +        else if ((type & InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) != 0) hints |= HINT_AUTO_CAPITALIZATION;
++        // Android fields without a capitalization flag (user names, codes) expect none.
++        else hints |= HINT_LOWERCASE;
 +        if ((type & (InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE)) != 0)
 +            hints |= HINT_MULTILINE;
 +        return hints;
 +    }
 +}
 diff --git a/hwcomposer/Android.bp b/hwcomposer/Android.bp
-index d641393..985fb7c 100644
+index d641393..fd23eca 100644
 --- a/hwcomposer/Android.bp
 +++ b/hwcomposer/Android.bp
 @@ -62,6 +62,7 @@ cc_library_shared {
@@ -570,14 +562,14 @@ index d641393..985fb7c 100644
 +    srcs: ["text-input-unstable-v3.xml"],
 +    tools: ["wayland_scanner"],
 +    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
-+    out: ["text-input-unstable-v3-client-protocol.c"],
++    out: ["luma-text-input-v3-client-protocol.c"],
 +}
 +genrule {
 +    name: "luma_text_input_client_headers",
 +    srcs: ["text-input-unstable-v3.xml"],
 +    tools: ["wayland_scanner"],
 +    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
-+    out: ["text-input-unstable-v3-client-protocol.h"],
++    out: ["luma-text-input-v3-client-protocol.h"],
 +}
 diff --git a/hwcomposer/luma-text-input-channel.h b/hwcomposer/luma-text-input-channel.h
 new file mode 100644
@@ -631,18 +623,19 @@ index 0000000..1149d5f
 +}
 diff --git a/hwcomposer/luma-text-input.cpp b/hwcomposer/luma-text-input.cpp
 new file mode 100644
-index 0000000..d3f89e8
+index 0000000..d581ee1
 --- /dev/null
 +++ b/hwcomposer/luma-text-input.cpp
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,289 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +#include "luma-text-input.h"
 +#include "luma-text-input-channel.h"
 +#include "wayland-hwc.h"
-+#include "text-input-unstable-v3-client-protocol.h"
++#include "luma-text-input-v3-client-protocol.h"
 +
 +#include <cerrno>
 +#include <cstddef>
++#include <algorithm>
 +#include <cstring>
 +#include <mutex>
 +#include <string>
@@ -664,6 +657,7 @@ index 0000000..d3f89e8
 +    display* d = nullptr;
 +    zwp_text_input_manager_v3* manager = nullptr;
 +    zwp_text_input_v3* input = nullptr;
++    uint32_t version = 1;
 +
 +    std::mutex mutex; // everything below, and requests on `input`
 +    int client = -1;
@@ -681,24 +675,35 @@ index 0000000..d3f89e8
 +
 +bridge state;
 +
++// Each request from Android is a field asking for a keyboard, so it also asks
++// the compositor to show its panel: explicitly since text-input v2, and on v1
++// by enabling again while already enabled, which compositors read as a show
++// request (the first enable only focuses the field).
 +void send_state_locked() {
 +    if (!state.input) return;
 +    if (state.wanted && state.focused) {
-+        // Re-enabling asks the compositor to show its keyboard again, as a
-+        // tap into an already focused field should.
-+        if (state.enabled) {
-+            zwp_text_input_v3_disable(state.input);
++        if (!state.enabled) {
++            zwp_text_input_v3_enable(state.input);
++            uint32_t hints = state.hints;
++            // Android draws the composing text in the field itself.
++            if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++                hints |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_PREEDIT_SHOWN;
++            zwp_text_input_v3_set_content_type(state.input, hints, state.purpose);
++            if (state.have_surrounding)
++                zwp_text_input_v3_set_surrounding_text(state.input, state.surrounding.c_str(),
++                                                       state.cursor, state.anchor);
++            zwp_text_input_v3_set_text_change_cause(state.input,
++                ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_OTHER);
++            if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++                zwp_text_input_v3_show_input_panel(state.input);
 +            zwp_text_input_v3_commit(state.input);
++            state.enabled = true;
 +        }
-+        zwp_text_input_v3_enable(state.input);
-+        zwp_text_input_v3_set_content_type(state.input, state.hints, state.purpose);
-+        if (state.have_surrounding)
-+            zwp_text_input_v3_set_surrounding_text(state.input, state.surrounding.c_str(),
-+                                                   state.cursor, state.anchor);
-+        zwp_text_input_v3_set_text_change_cause(state.input,
-+            ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_OTHER);
++        if (state.version >= ZWP_TEXT_INPUT_V3_SHOW_INPUT_PANEL_SINCE_VERSION)
++            zwp_text_input_v3_show_input_panel(state.input);
++        else
++            zwp_text_input_v3_enable(state.input);
 +        zwp_text_input_v3_commit(state.input);
-+        state.enabled = true;
 +    } else if (state.enabled) {
 +        zwp_text_input_v3_disable(state.input);
 +        zwp_text_input_v3_commit(state.input);
@@ -775,8 +780,13 @@ index 0000000..d3f89e8
 +    state.delete_before = state.delete_after = 0;
 +}
 +
++void handle_action(void*, zwp_text_input_v3*, uint32_t, uint32_t) {}
++void handle_language(void*, zwp_text_input_v3*, const char*) {}
++void handle_preedit_hint(void*, zwp_text_input_v3*, uint32_t, uint32_t, uint32_t) {}
++
 +const zwp_text_input_v3_listener listener = {
 +    handle_enter, handle_leave, handle_preedit, handle_commit, handle_delete, handle_done,
++    handle_action, handle_language, handle_preedit_hint,
 +};
 +
 +void handle_record(const uint8_t* data, size_t length) {
@@ -880,10 +890,16 @@ index 0000000..d3f89e8
 +}
 +}
 +
-+void luma_text_input_bind(display* d, wl_registry* registry, uint32_t id, uint32_t) {
++void luma_text_input_bind(display* d, wl_registry* registry, uint32_t id, uint32_t version) {
 +    state.d = d;
++    state.version = std::min<uint32_t>(version, 2);
 +    state.manager = static_cast<zwp_text_input_manager_v3*>(
-+        wl_registry_bind(registry, id, &zwp_text_input_manager_v3_interface, 1));
++        wl_registry_bind(registry, id, &zwp_text_input_manager_v3_interface, state.version));
++}
++
++bool luma_text_input_active() {
++    std::scoped_lock lock(state.mutex);
++    return state.enabled && state.focused;
 +}
 +
 +void luma_text_input_start(display* d) {
@@ -898,13 +914,14 @@ index 0000000..d3f89e8
 +        zwp_text_input_v3_add_listener(state.input, &listener, nullptr);
 +    }
 +    std::thread(serve).detach();
++    ALOGI("Host text input bridge ready");
 +}
 diff --git a/hwcomposer/luma-text-input.h b/hwcomposer/luma-text-input.h
 new file mode 100644
-index 0000000..d130a62
+index 0000000..5064d71
 --- /dev/null
 +++ b/hwcomposer/luma-text-input.h
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,13 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +#pragma once
 +#include <cstdint>
@@ -916,6 +933,8 @@ index 0000000..d130a62
 +// through zwp_text_input_v3 and Luma's Android input method.
 +void luma_text_input_bind(display* d, wl_registry* registry, uint32_t id, uint32_t version);
 +void luma_text_input_start(display* d);
++// A field has the host keyboard (text input enabled on a focused surface).
++bool luma_text_input_active();
 diff --git a/hwcomposer/text-input-unstable-v3.xml b/hwcomposer/text-input-unstable-v3.xml
 new file mode 100644
 index 0000000..01c1e21
@@ -1527,7 +1546,7 @@ index 0000000..01c1e21
 +  </interface>
 +</protocol>
 diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
-index 4fff1fb..7b8b759 100644
+index 4fff1fb..a93e9b8 100644
 --- a/hwcomposer/wayland-hwc.cpp
 +++ b/hwcomposer/wayland-hwc.cpp
 @@ -35,6 +35,7 @@
@@ -1538,7 +1557,21 @@ index 4fff1fb..7b8b759 100644
  #include "xdg-output-unstable-v1-client-protocol.h"
  
  #include <stdint.h>
-@@ -2489,6 +2490,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
+@@ -416,6 +417,13 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
+     // size that task to the window. Resizing the whole Android display here
+     // hotplugged it on every app configure and left fixed-size tasks small.
+     if (window->taskID != "none" && window->taskID != "0") {
++        // The host keeps its on-screen keyboard clear of windows by making
++        // them shorter. Resizing the task for that relaunches most activities,
++        // which drops the field and closes the keyboard again; the task keeps
++        // its size and the keyboard covers its lower part instead.
++        if (luma_text_input_active() && width == window->content_width &&
++                height < window->content_height)
++            return;
+         const bool changed = window->maximized != maximized ||
+             window->content_width != width || window->content_height != height;
+         window->maximized = maximized;
+@@ -2489,6 +2497,8 @@ registry_handle_global(void *data, struct wl_registry *registry,
                  &wl_data_device_manager_interface, std::min(version,  3U));
          if (d->data_device_manager && d->seat)
              d->data_device = wl_data_device_manager_get_data_device(d->data_device_manager, d->seat);
@@ -1547,7 +1580,7 @@ index 4fff1fb..7b8b759 100644
      } else if (strcmp(interface, "wp_cursor_shape_manager_v1") == 0) {
          d->cursor_shape_manager = (struct wp_cursor_shape_manager_v1*)wl_registry_bind(
              registry, id, &wp_cursor_shape_manager_v1_interface, 1);
-@@ -2646,6 +2649,7 @@ create_display(const char *gralloc)
+@@ -2646,6 +2656,7 @@ create_display(const char *gralloc)
      // Registry callbacks bind xdg-output objects. Receive their initial logical
      // geometry before the first window calibrates the Android display.
      wl_display_roundtrip(display->display);
