@@ -56,6 +56,13 @@ While a field has the host keyboard, a window the host shortens to keep the
 keyboard clear does not resize its task: that relaunched most activities,
 which dropped the field and closed the keyboard. The bridge uses
 text-input v2 `show_input_panel`; on v1 a repeated enable requests the panel.
+The host keyboard's height over the focused task reaches the input method as
+an inset; its empty, transparent input view takes that height, so apps resize
+or pan above the keyboard as on a phone, while the window stays anchored at its
+top. That Android window is not mapped while the input method is connected.
+Handheld task windows map maximized at the full work area: mapped at Android's
+default freeform size, the shell centred them and kept them off to the side
+once the task grew (an app's first launch, a browser tab it opens).
 
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
