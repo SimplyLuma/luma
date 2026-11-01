@@ -64,6 +64,13 @@ Handheld task windows map maximized at the full work area: mapped at Android's
 default freeform size, the shell centred them and kept them off to the side
 once the task grew (an app's first launch, a browser tab it opens).
 
+`0023` forwards a dmabuf layer only in a format and modifier the compositor
+advertised. minigbm hands out YV12 video buffers under its private
+`YVU420_ANDROID` code; the composer now sends them as `YVU420` with every
+plane. A buffer the compositor cannot import was a protocol error that
+disconnected and aborted the composer, leaving Android without a display
+until the container restarted; such a layer is now left out instead.
+
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
 3. `0003-luma-appkit-content-island.patch`
