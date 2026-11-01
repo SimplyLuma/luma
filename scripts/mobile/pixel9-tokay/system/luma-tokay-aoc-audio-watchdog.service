@@ -1,0 +1,10 @@
+[Unit]
+Description=Pixel 9: restart PipeWire when the AoC speaker sticks after an underrun
+
+[Service]
+ExecStart=/var/lib/luma-tokay/aoc-audio-watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
