@@ -10,6 +10,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {start} from '../../../src/luma-shell-presentation/preview-adapter.js';
 import {homeLayout, pageRange, formOf} from '../../../src/luma-shell-presentation/layout.js';
 import {testEditor} from './editor.js';
+import {testWidgetResize} from './widget-resize-native.js';
 import {testTabletTasks} from './tablet-tasks.js';
 import {testWidgets} from './widgets.js';
 import {testRealSplit} from './real-split.js';
@@ -301,6 +302,7 @@ async function work() {
             await mode(value);
             presentation.showHome();
             await testEditor(presentation, value, check, sleep);
+            await testWidgetResize(presentation, check, sleep, tag => shot(`${value}-${tag}`));
             await shot(`${value}-home-editing`);
         }
         await mode('automatic');

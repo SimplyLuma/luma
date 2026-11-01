@@ -2,7 +2,7 @@
 
 Name:           luma-search
 Version:        0.1.0
-Release:        1.luma.9%{?dist}
+Release:        1.luma.10%{?dist}
 Summary:        Shared Project Luma system Search service
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -110,6 +110,9 @@ install -D -m 0644 %{SOURCE10} \
 glib-compile-schemas %{_datadir}/glib-2.0/schemas &>/dev/null || :
 
 %changelog
+* Sat Oct 31 2026 Luma contributors - 0.1.0-1.luma.10
+- Add Home Screen settings to Search.
+
 * Thu Oct 22 2026 Luma contributors - 0.1.0-1.luma.9
 - Keep Search available when optional applications or Settings panels are missing.
 

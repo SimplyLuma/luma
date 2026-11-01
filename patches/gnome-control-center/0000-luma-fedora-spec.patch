@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,115 @@
+@@ -28,14 +28,116 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.59.dash20261026.1%{?dist}
++Release:        1.luma.60.home20261031.1%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -104,6 +104,7 @@
 +Patch1085:      0086-applications-dock-folder-settings.patch
 +Patch1086:      0087-live-dock-shortcut-controls.patch
 +Patch1087:      0088-dash-presets-and-shared-layout.patch
++Patch1088:      0089-home-screen-preferences.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1

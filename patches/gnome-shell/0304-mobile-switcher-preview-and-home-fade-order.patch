@@ -1,0 +1,26 @@
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -599,12 +599,20 @@
+         });
+         const home = Main.presentation?._home;
+         const fadingHome = Boolean(home?.visible);
++        // Showing Home can restack its chrome. This transition remains above
++        // that content and below the existing status/modal layers.
++        Main.uiGroup.set_child_above_sibling(this, home);
+         const target = leaving ? 0 : 1;
+         const paint = progress => {
+             this._travelProgress = progress;
+-            this._stage.opacity = Math.round(255 * progress);
++            // Barely paint previews on the preparation frame: opacity zero
++            // culls their textures, deferring expensive first paint into motion.
++            // Keep Home out of the cards' main fade, in both directions, so its
++            // icons do not show through the previews as competing foreground.
++            this._stage.opacity = Math.max(leaving ? 0 : 1,
++                Math.round(255 * Math.clamp((progress - .25) / .75, 0, 1)));
+             this._wallpaper.opacity = Math.round(255 * progress);
+-            if (fadingHome) home.opacity = Math.round(255 * (1 - progress));
++            if (fadingHome) home.opacity = Math.round(255 * Math.clamp((.35 - progress) / .35, 0, 1));
+         };
+         paint(start);
+         const timeline = this._travelTimeline = new Clutter.Timeline({actor: this,

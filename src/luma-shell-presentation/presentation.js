@@ -25,7 +25,7 @@ import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
 import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks.js';
 import {SwitcherDrag} from './switcherDrag.js';
-import {HandheldOptions} from './handheldOptions.js';
+import {HandheldOptions, StatusPulls} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
 import {gettext as _} from 'gettext';
 
@@ -61,6 +61,7 @@ export class Presentation {
         this._statusWindowSignals = [];
         this._statusActionSignals = [];
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
+        this._watchHomePreferences();
         this._powerButton = new HandheldPowerButton();
         this._motion = new HandheldMotion(this);
         this._page = 0;
@@ -115,22 +116,6 @@ export class Presentation {
             const [rightX] = this._statusRight.get_transformed_position();
             return x >= Math.min(rightX, statusX + this._status.width / 2);
         };
-        const settingsPan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1,
-            pan_axis: Clutter.PanAxis.Y});
-        settingsPan.set_begin_threshold(4);
-        settingsPan.connect('may-recognize', gesture => this.mode !== 'desktop' &&
-            !Main.sessionMode.isLocked && quickOptionsPoint(gesture));
-        settingsPan.connect('recognize', () => {
-            if (this.mode === 'mobile') this._handheldOptions.beginPull();
-        });
-        settingsPan.connect('pan-update', gesture => {
-            const delta = gesture.get_accumulated_delta_abs().get_y();
-            if (this.mode === 'mobile') this._handheldOptions.updatePull(delta);
-            else if (delta > 24 * (this._scale ?? 1)) Main.panel.statusArea.quickSettings.menu.open();
-        });
-        settingsPan.connect('end', () => this._handheldOptions.endPull());
-        settingsPan.connect('cancel', () => this._handheldOptions.endPull(true));
-        this._status.add_action_full('LumaQuickOptions', Clutter.EventPhase.CAPTURE, settingsPan);
         // Indicators answer their own taps; the empty status area and its
         // inset open Quick Options.
         const settingsTap = new Clutter.ClickGesture();
@@ -292,6 +277,7 @@ export class Presentation {
         this._connect(seat, 'device-removed', () => this._reportInput());
         this._addModeOptions();
         this._handheldOptions = new HandheldOptions(this);
+        this._statusPulls = new StatusPulls(this);
         this._syncAccessibilityStyles();
         Gio.DBusProxy.new_for_bus(Gio.BusType.SESSION,
             Gio.DBusProxyFlags.DO_NOT_LOAD_PROPERTIES, null, BUS, PATH, BUS,
@@ -329,6 +315,21 @@ export class Presentation {
                     if (!this._destroyed) onError?.(error);
                 }
             });
+    }
+
+    _watchHomePreferences() {
+        for (const key of ['home-columns', 'home-rows', 'home-icon-size', 'home-show-labels']) {
+            if (this._settings.settings_schema.has_key(key))
+                this._connect(this._settings, `changed::${key}`, () => this._queueRebuild());
+        }
+    }
+
+    _homePreferences() {
+        const value = (key, method, fallback) => this._settings.settings_schema.has_key(key)
+            ? this._settings[method](key) : fallback;
+        return {columns: value('home-columns', 'get_uint', 0), rows: value('home-rows', 'get_uint', 0),
+            iconSize: value('home-icon-size', 'get_string', 'automatic'),
+            showLabels: value('home-show-labels', 'get_boolean', true)};
     }
 
     _refresh() {
@@ -871,7 +872,7 @@ export class Presentation {
             x_align: Clutter.ActorAlign.CENTER, style_class: 'luma-converged-app-content'});
         box.add_child(new St.Icon({gicon: info.get_icon(), icon_size: this._homeIconSize ?? 60,
             x_align: Clutter.ActorAlign.CENTER}));
-        if (!dock) {
+        if (!dock && this._homePreferences().showLabels) {
             const caption = new St.Label({text: info.get_display_name(),
                 style_class: 'luma-converged-app-label', x_align: Clutter.ActorAlign.CENTER});
             caption.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -893,7 +894,7 @@ export class Presentation {
     _queueRebuild() {
         if (this._rebuildSource) return;
         this._rebuildSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-            if (this._editor.dragging) return GLib.SOURCE_CONTINUE;
+            if (this._editor.dragging || this._editor.resizing || this._editor.savingResize || this._editor.reflowing) return GLib.SOURCE_CONTINUE;
             this._rebuildSource = 0;
             this._rebuild();
             return GLib.SOURCE_REMOVE;
@@ -902,7 +903,7 @@ export class Presentation {
 
     _rebuild() {
         if (this.mode === 'desktop') return;
-        if (this._editor.dragging) { this._queueRebuild(); return; }
+        if (this._editor.dragging || this._editor.resizing || this._editor.savingResize || this._editor.reflowing) { this._queueRebuild(); return; }
         const display = Main.layoutManager.primaryMonitor;
         if (!display) return;
         const monitor = this._tasks.homeRect() ?? display;
@@ -930,7 +931,7 @@ export class Presentation {
         this._gestureBar.set_size(display.width, GESTURE_HEIGHT * scale);
         this._apps = this._catalog();
         this._layout = homeLayout(monitor.width / scale, monitor.height / scale,
-            this.mode, this._apps.length);
+            this.mode, this._apps.length, {}, this._homePreferences());
         this._homeIconSize = this._layout.iconSize ?? 60;
         if (this._layout.compact) this._home.add_style_class_name('compact-home');
         else this._home.remove_style_class_name('compact-home');
@@ -943,17 +944,20 @@ export class Presentation {
             probe.destroy();
         }
         this._statusInset = this.mode === 'tablet' ? tabletFrame.edge :
-            homeLayout(display.width / scale, display.height / scale, this.mode, this._apps.length, metrics).inset;
+            homeLayout(display.width / scale, display.height / scale, this.mode, this._apps.length, metrics, this._homePreferences()).inset;
         const layout = homeLayout(monitor.width / scale, monitor.height / scale,
-            this.mode, this._apps.length, metrics);
+            this.mode, this._apps.length, metrics, this._homePreferences());
         this._layout = layout;
+        this._homeIconSize = layout.iconSize ?? 60;
         const safe = statusInsets(this._displayGeometry, display, 44 * scale,
             (layout.compact ? 12 : this._statusInset) * scale, 8 * scale);
         this._safeStatus = {left: safe.left / scale, right: safe.right / scale};
         this._status.set_style(`padding: 0 ${safe.right / scale}px 0 ${safe.left / scale}px;` +
             `color: ${this._statusInk === 'light' ? '#ffffff' : '#191b1f'};`);
         const definitions = [...this._widgetHosts.values()].map((widget, index) => ({id: widget.id,
-            kind: 'widget', w: layout.compact ? (index % 2 ? layout.columns - layout.widgetColumns : layout.widgetColumns) : widget.columns ?? 2, h: widget.rows ?? 2}));
+            kind: 'widget', w: layout.compact ? (index % 2 ? layout.columns - layout.widgetColumns : layout.widgetColumns) : widget.columns ?? 2, h: widget.rows ?? 2,
+            minW: widget.minColumns ?? widget.columns ?? 2, minH: widget.minRows ?? widget.rows ?? 2,
+            maxW: widget.maxColumns, maxH: widget.maxRows}));
         definitions.push(...this._apps.map(info => ({id: info.get_id(), kind: 'app', w: layout.appColumns ?? 1, h: 1})));
         const columns = Math.min(32, layout.columns);
         const rows = Math.min(32, Math.max(1, layout.otherRows));
@@ -1042,12 +1046,13 @@ export class Presentation {
         }
     }
 
-    _saveHomeGrid(grid) {
+    _saveHomeGrid(grid, saved = null, failed = null) {
         if (!this._proxy?.g_name_owner) throw new Error(_('Home layout service is unavailable'));
         this._call('SetHomeLayout', new GLib.Variant('(ss)', [this._gridKey, JSON.stringify(grid)]),
-            () => this._refresh(), error => {
+            () => { saved?.(); this._refresh(); }, error => {
+                failed?.(error);
                 Main.notifyError(_('Unable to save Home layout'), error.message);
-                this._queueRebuild();
+                if (!failed) this._queueRebuild();
             });
     }
 
@@ -1154,6 +1159,7 @@ export class Presentation {
         this.mode = 'desktop';
         Main.shelf?.setPresentationMode?.('desktop');
         this._leaveHandheld();
+        this._statusPulls.destroy();
         this._handheldOptions.destroy();
         this._gridDrag.destroy();
         this._tasks.destroy();

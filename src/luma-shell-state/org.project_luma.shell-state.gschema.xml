@@ -6,6 +6,29 @@
       <summary>Saved Mobile and Tablet Home grids</summary>
       <description>Versioned whole-cell positions and spans, per presentation and logical grid dimensions. Explicit moves persist independently from automatic application discovery.</description>
     </key>
+    <key name="home-columns" type="u">
+      <range min="0" max="12"/>
+      <default>0</default>
+      <summary>Preferred Home icon columns</summary>
+      <description>Zero fits the screen automatically. Manual counts are limited by available space to preserve usable touch targets. Applies to Mobile and Tablet Home, not the Desktop.</description>
+    </key>
+    <key name="home-rows" type="u">
+      <range min="0" max="12"/>
+      <default>0</default>
+      <summary>Preferred Home icon rows</summary>
+      <description>Zero fits the screen automatically. Widgets share these whole cells. Counts are bounded by the space above the dock.</description>
+    </key>
+    <key name="home-icon-size" type="s">
+      <choices><choice value="automatic"/><choice value="small"/><choice value="medium"/><choice value="large"/></choices>
+      <default>'automatic'</default>
+      <summary>Home icon size</summary>
+      <description>Preferred icon size within each cell. Icons always fit their cells; touch targets do not shrink with the artwork.</description>
+    </key>
+    <key name="home-show-labels" type="b">
+      <default>true</default>
+      <summary>Show app names on Home</summary>
+      <description>Hide visual app labels without removing their accessible names. Dock icons remain unlabeled.</description>
+    </key>
     <key name="presentation-mode" type="s">
       <choices><choice value="automatic"/><choice value="desktop"/><choice value="tablet"/><choice value="mobile"/></choices>
       <default>'automatic'</default>
