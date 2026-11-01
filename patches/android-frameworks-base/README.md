@@ -25,10 +25,13 @@ normal Android presentation.
 status bar. Waydroid's `app launch` writes `policy_control=immersive.full=*` in
 multi-window mode, and its PolicyControl port then reports a 0 px status bar
 and force-hides the `ITYPE_STATUS_BAR` source; freeform tasks also drop that
-source in `InsetsPolicy`. When the host sets `persist.luma.status_bar_px` (the
+source in `InsetsPolicy`, and `Task.computeFreeformBounds` clamps freeform tasks
+to the stable area, shifting each task down by the status bar height so it no
+longer meets the bar and gets no inset. When the host sets `persist.luma.status_bar_px` (the
 top bar in physical pixels, from luma-android's readiness pass on handheld and
 tablet), SystemUI's status bar window takes that height and remains the inset
-source, transparent and untouchable, and freeform tasks keep the inset.
+source, transparent and untouchable, and freeform tasks keep their bounds and
+the inset.
 Applications lay out below the host bar and draw their own status bar colour
 behind it. Unset or `0` (desktop) keeps the previous behaviour. SystemUI reads
 the height at start and on configuration or `policy_control` changes; the

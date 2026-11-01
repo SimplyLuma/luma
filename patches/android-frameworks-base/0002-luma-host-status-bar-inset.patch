@@ -150,3 +150,27 @@ index f578fe0..365689d 100644
              state.removeSource(ITYPE_NAVIGATION_BAR);
              state.removeSource(ITYPE_EXTRA_NAVIGATION_BAR);
              if (windowingMode == WINDOWING_MODE_PINNED) {
+diff --git a/services/core/java/com/android/server/wm/Task.java b/services/core/java/com/android/server/wm/Task.java
+index 1ddc3e8..d5d1cd1 100644
+--- a/services/core/java/com/android/server/wm/Task.java
++++ b/services/core/java/com/android/server/wm/Task.java
+@@ -189,6 +189,7 @@ import android.window.WindowContainerToken;
+ import com.android.internal.annotations.GuardedBy;
+ import com.android.internal.annotations.VisibleForTesting;
+ import com.android.internal.app.IVoiceInteractor;
++import com.android.internal.policy.SystemBarUtils;
+ import com.android.internal.protolog.ProtoLogGroup;
+ import com.android.internal.protolog.common.ProtoLog;
+ import com.android.internal.util.XmlUtils;
+@@ -2133,7 +2134,10 @@ class Task extends TaskFragment {
+         final Rect parentBounds =
+                 new Rect(newParentConfig.windowConfiguration.getBounds());
+         final DisplayContent display = getDisplayContent();
+-        if (display != null) {
++        // Luma tasks are host windows without an Android caption, placed under the host top
++        // bar. Keep their bounds over the status bar so the bar becomes their top inset
++        // instead of pushing the task down by its height.
++        if (display != null && SystemBarUtils.getLumaHostStatusBarHeight() == 0) {
+             // If a freeform window moves below system bar, there is no way to move it again
+             // by touch. Because its caption is covered by system bar. So we exclude them
+             // from root task bounds. and then caption will be shown inside stable area.
