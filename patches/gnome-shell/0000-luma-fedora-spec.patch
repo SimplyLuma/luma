@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,329 @@
+@@ -32,6 +32,330 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -306,6 +306,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1285:      0304-mobile-switcher-preview-and-home-fade-order.patch
 +Patch1286:      0305-mobile-switcher-own-preview-and-dismissal-lifecycle.patch
 +Patch1287:      0306-search-shared-surface-material.patch
++Patch1288:      0303-mobile-data-quick-toggle.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

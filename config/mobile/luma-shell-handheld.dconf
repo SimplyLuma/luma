@@ -44,7 +44,7 @@ color-scheme='prefer-dark'
 [org/project-luma/shell-state]
 # Home is an ordered desktop, not the all-apps catalog. Folder entries are
 # native GNOME app-folder objects consumed directly by Luma's Phosh renderer.
-home-apps=['org.gnome.Nautilus.desktop', 'org.projectluma.Calendar.desktop', 'org.projectluma.Notes.desktop', 'org.projectluma.Contacts.desktop', 'org.projectluma.Clock.desktop', 'org.projectluma.Camera.desktop', 'org.projectluma.Weather.desktop', 'google-maps-geo-handler.desktop', 'folder:Work', 'folder:Create', 'folder:Depot', 'org.gnome.Calculator.desktop', 'org.gnome.Settings.desktop', 'org.projectluma.Viewer.desktop', 'org.projectluma.SystemReport.desktop', 'org.gnome.Ptyxis.desktop', 'org.projectluma.Phone.desktop', 'org.projectluma.Tasks.desktop', 'org.projectluma.VoiceMemos.desktop', 'org.projectluma.Photos.desktop']
+home-apps=['org.gnome.Nautilus.desktop', 'org.projectluma.Calendar.desktop', 'org.projectluma.Notes.desktop', 'org.projectluma.Contacts.desktop', 'org.projectluma.Clock.desktop', 'org.projectluma.Camera.desktop', 'org.projectluma.Weather.desktop', 'google-maps-geo-handler.desktop', 'org.gnome.Calculator.desktop', 'org.gnome.Settings.desktop', 'org.projectluma.Viewer.desktop', 'org.projectluma.SystemReport.desktop', 'org.gnome.Ptyxis.desktop', 'org.projectluma.Phone.desktop', 'org.projectluma.Tasks.desktop', 'org.projectluma.VoiceMemos.desktop', 'org.projectluma.Photos.desktop']
 
 [org/gnome/desktop/app-folders]
 folder-children=['Work', 'Create', 'Depot']

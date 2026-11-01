@@ -234,10 +234,22 @@ class ShellStateService:
         finally:
             self._syncing_favorites = False
 
+    @staticmethod
+    def _stored_app_ids(values) -> list[str]:
+        # One stored entry the snapshot does not accept (e.g. a phosh launcher
+        # folder) must not fail the whole snapshot and with it the presentation.
+        valid = []
+        for value in values:
+            try:
+                valid += normalize_app_ids([value])
+            except InvalidState:
+                pass
+        return valid
+
     def snapshot(self) -> str:
         snapshot = build_snapshot(
-            favorites=self._shell.get_strv("favorite-apps"),
-            home_apps=self._luma.get_strv("home-apps"),
+            favorites=self._stored_app_ids(self._shell.get_strv("favorite-apps")),
+            home_apps=self._stored_app_ids(self._luma.get_strv("home-apps")),
             wallpaper_uri=self._background.get_string("picture-uri"),
             wallpaper_uri_dark=self._background.get_string("picture-uri-dark"),
             wallpaper_style=self._background.get_string("picture-options"),

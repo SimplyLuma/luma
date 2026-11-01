@@ -1,0 +1,26 @@
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -412,6 +412,22 @@
+         return;
+     }
+ 
++    // Without host chrome (handheld) a task window still owns its own task:
++    // size that task to the window. Resizing the whole Android display here
++    // hotplugged it on every app configure and left fixed-size tasks small.
++    if (window->taskID != "none" && window->taskID != "0") {
++        const bool changed = window->maximized != maximized ||
++            window->content_width != width || window->content_height != height;
++        window->maximized = maximized;
++        window->content_width = width;
++        window->content_height = height;
++        window->request_task_resize(width, height, resizing);
++        chrome_lock.unlock();
++        if (changed && display->procs && display->procs->invalidate)
++            display->procs->invalidate(display->procs);
++        return;
++    }
++
+     display->req_width = width;
+     display->req_height = height;
+ 

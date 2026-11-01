@@ -157,6 +157,10 @@ PYTHONPYCACHEPREFIX=%{_builddir}/luma-state-check-pycache python3 -m py_compile 
 glib-compile-schemas %{_datadir}/glib-2.0/schemas &>/dev/null || :
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.38
+- Skip a stored favorite or Home entry the snapshot cannot accept instead of
+  failing the snapshot.
+
 * Sat Sep 26 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.35.gestures20261024.1
 - Rebuilt for the integrated Shell candidate: the luma group layout, a
   fourteen pixel Shelf padding and the Studio clock sizes.

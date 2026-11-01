@@ -1,6 +1,6 @@
 # Project Titan recovery and shared shell
 
-- Status: source146 Mobile panel gestures and Home search native-tested and persistent on Titan; shared source ready for integration. No general OS release.
+- Status: source147 search polish installed and native-tested; remaining Home/widget/gesture work reconciled with main for integration. No general OS release.
 - Owner: luma-dev-2 / Codex Project Titan chat.
 - Worktree: /srv/dev/worktrees/luma-os/project-titan-usb-20261029.
 - Branch: codex/project-titan-usb-20261029.
@@ -1472,3 +1472,19 @@ resource overlays remain intact. Settings, Home layout and app data preserved.
 User explicitly requests pushing recent work and merging appropriate work to
 main; integrate the remaining Home/widget/gesture commits with current main,
 retain its Android/Mobile Data/app retirement changes, and use a concise PR.
+
+Final search source job46a1d56d passes. Integration jobb2efab34 passes Home grid,
+widget reflow, Home preference geometry, panel motion and pull zones; all26
+shell-state tests, package cohort/release contract, exact search patch chain,
+unique registered patch IDs, JS/builder syntax and whitespace. The first grid
+runner attempt used Node without GJS print; reran with print mapped to
+console.log, without changing product tests.
+
+The remaining12 development commits (including this search polish) reconcile
+with main787cd92f0. Package conflicts retain the newer matching Home/Settings
+and Shell147 cohort; Mobile Data keeps its patch with a unique spec ID, and
+main's Android99/images11, installer83, Core127, retired-app policy and defensive
+shell-state snapshot filtering remain intact. Prior startup/audio/kernel work
+is already in the shared main ancestry; no private evidence or device secrets
+are promoted. A new-worktree attempt was refused by the20GiB storage gate;
+integration uses this existing owned worktree instead, with no deleted files.

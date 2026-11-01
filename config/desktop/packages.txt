@@ -86,7 +86,7 @@ luma-home-widgets-0.1.0-1.luma.3.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.38.home20261031.1.fc44.noarch
 luma-os-remote-1.0.0-1.luma.26.fc44.noarch
 luma-update-1.0.0-1.luma.26.fc44.noarch
-prairie-core-apps-0.1.0-1.luma.126.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.127.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.44.nightly20261030.1.fc44.noarch
 
@@ -101,10 +101,10 @@ python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
 python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
-luma-android-runtime-0.1.0-1.luma.98.fc44.noarch
-luma-android-images-20.0-1.luma.10.nightly20261030.1.fc44.x86_64
+luma-android-runtime-0.1.0-1.luma.99.fc44.noarch
+luma-android-images-20.0-1.luma.11.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
-luma-application-installer-0.1.0-1.luma.82.nightly20261030.1.fc44.noarch
+luma-application-installer-0.1.0-1.luma.83.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
 luma-homebrew-0.1.0-1.luma.1.fc44.noarch
 luma-relay-0.1.0-1.luma.12.fc44.noarch

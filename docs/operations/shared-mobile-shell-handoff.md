@@ -7,9 +7,9 @@ shared Luma GNOME Shell with Mobile presentation, using the Desktop/Tablet
 services and native controls. The old GNOME Mobile 48 bake-off and Phosh renderer
 are separate historical paths.
 
-If a checkout cannot find these sources, inspect the development ref explicitly;
-they are not yet integrated into `main`. This does not switch or reset the
-receiving agent's worktree:
+Use `main` for integrated source. The development ref retains the Titan history;
+if a checkout cannot find a recent change, inspect that ref explicitly without
+switching or resetting the receiving agent's worktree:
 
 ```sh
 git fetch origin refs/heads/codex/project-titan-usb-20261029:refs/remotes/origin/codex/project-titan-usb-20261029
@@ -23,6 +23,14 @@ preparation and immutable-image Python caches are maintained in the shared
 platform. Carry the matching package cohort, not just the shell JS. See
 [Mobile application startup](mobile-app-startup.md) for architecture, confinement
 boundaries, measured first-frame timings and remaining qualification gates.
+
+## Search material
+
+Search uses the same native surface renderer as the dock for its field and
+intro/results. One blur belongs to each visible surface; result rows remain
+transparent. Light/Dark/Frost/Glass and opaque accessibility fallbacks use the
+shared policy. Native checks cover both presentation paths on the Titan,
+including actual results, palette changes and closing the surfaces.
 
 ## Widget resizing
 
