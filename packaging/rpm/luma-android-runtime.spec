@@ -98,9 +98,6 @@ install -D -m 0644 data/luma-android.service \
   %{buildroot}%{_userunitdir}/luma-android.service
 install -D -m 0644 data/luma-android-session.service \
   %{buildroot}%{_userunitdir}/luma-android-session.service
-%{_userunitdir}/luma-android-prewarm.service
-%{_userunitdir}/luma-android-prewarm.timer
-%{_userpresetdir}/50-luma-android.preset
 install -m 0644 data/luma-android-prewarm.service data/luma-android-prewarm.timer \
   %{buildroot}%{_userunitdir}/
 install -D -m 0644 data/50-luma-android-user.preset \
@@ -201,6 +198,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_datadir}/dbus-1/services/org.projectluma.ApplicationInstaller1.service
 %{_userunitdir}/luma-android.service
 %{_userunitdir}/luma-android-session.service
+%{_userunitdir}/luma-android-prewarm.service
+%{_userunitdir}/luma-android-prewarm.timer
+%{_userpresetdir}/50-luma-android.preset
 %{_unitdir}/luma-android-initialize.service
 %{_presetdir}/50-luma-android.preset
 %{_userunitdir}/luma-android-fp6-software-compositor.service
