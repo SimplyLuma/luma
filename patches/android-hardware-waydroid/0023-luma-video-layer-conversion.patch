@@ -11,7 +11,7 @@ index fd23eca..3539d02 100644
          "libEGL",
          "libGLESv2",
 diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
-index 480ae91..d9f99dc 100644
+index 480ae91..80a8dde 100644
 --- a/hwcomposer/gralloc_handler.cpp
 +++ b/hwcomposer/gralloc_handler.cpp
 @@ -27,6 +27,8 @@
@@ -31,25 +31,26 @@ index 480ae91..d9f99dc 100644
  #include <gralloc_handle.h>
  #include <cros_gralloc/cros_gralloc_handle.h>
  
-@@ -51,6 +54,55 @@
+@@ -50,7 +53,56 @@
+ #include "egl-tools.h"
  #include "wayland-hwc.h"
  
- namespace {
-+    // Video formats compositors cannot be relied on to import (minigbm even
-+    // names YV12 with a private code, and panthor's EGL rejects its layout).
-+    // The composer converts these on the CPU and presents them over wl_shm.
-+    bool hal_format_needs_conversion(uint32_t hal_format) {
-+        switch (hal_format) {
-+            case HAL_PIXEL_FORMAT_YV12:
-+            case HAL_PIXEL_FORMAT_YCBCR_420_888:
-+            case HAL_PIXEL_FORMAT_YCRCB_420_SP:
-+            case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
-+                return true;
-+            default:
-+                return false;
-+        }
++// Compositors import video layouts unreliably (minigbm names YV12 with a
++// private code), so the composer converts these on the CPU and presents
++// them over wl_shm.
++bool hal_format_needs_conversion(uint32_t hal_format) {
++    switch (hal_format) {
++        case HAL_PIXEL_FORMAT_YV12:
++        case HAL_PIXEL_FORMAT_YCBCR_420_888:
++        case HAL_PIXEL_FORMAT_YCRCB_420_SP:
++        case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
++            return true;
++        default:
++            return false;
 +    }
++}
 +
+ namespace {
 +    // Converts a mapped 4:2:0 video frame into the layer's XRGB shm storage.
 +    // A frame that cannot be mapped or has an unknown layout is skipped.
 +    bool convert_video_to_shm(buffer *buf) {
@@ -87,18 +88,19 @@ index 480ae91..d9f99dc 100644
      uint32_t ConvertHalFormatToShm(uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -85,7 +137,10 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
+@@ -85,8 +137,11 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
      buf->isShm = true;
      buf->size = size;
  
 -    auto shm_format = ConvertHalFormatToShm(metadata.format);
-+    int shm_format = ConvertHalFormatToShm(metadata.format);
 +    // Converted video is opaque RGB.
-+    if (shm_format < 0 && hal_format_needs_conversion(metadata.format))
-+        shm_format = WL_SHM_FORMAT_XRGB8888;
++    const bool converted = hal_format_needs_conversion(metadata.format);
++    int shm_format = converted ? WL_SHM_FORMAT_XRGB8888 : ConvertHalFormatToShm(metadata.format);
      assert(shm_format >= 0);
++    buf->converted = converted;
  
      int fd = syscall(SYS_memfd_create, "buffer", MFD_ALLOW_SEALING);
+     ftruncate(fd, size);
 @@ -122,6 +177,20 @@ namespace {
          return display->formats.count(format) == 1;
      }
@@ -174,11 +176,43 @@ index 480ae91..d9f99dc 100644
      display->egl_work_queue.emplace_back(std::bind(egl_render_to_pixels, display, buffer));
      sem_post(&display->egl_go);
      sem_wait(&display->egl_done);
+diff --git a/hwcomposer/gralloc_handler.h b/hwcomposer/gralloc_handler.h
+index 1a718d2..e03fa52 100644
+--- a/hwcomposer/gralloc_handler.h
++++ b/hwcomposer/gralloc_handler.h
+@@ -30,6 +30,9 @@
+ 
+ #include "wayland-hwc.h"
+ 
++// Video formats the composer converts to RGB and presents over wl_shm.
++bool hal_format_needs_conversion(uint32_t hal_format);
++
+ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_metadata& metadata, buffer_handle_t handle);
+ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_metadata& metadata,
+                                                                 int prime_fd, int format, int byte_stride,
 diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
-index 8b8d61f..d98a7a3 100644
+index 8b8d61f..e2130e2 100644
 --- a/hwcomposer/hwcomposer.cpp
 +++ b/hwcomposer/hwcomposer.cpp
-@@ -484,6 +484,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
+@@ -124,8 +124,15 @@ namespace {
+             buf = emplace_result.first->second.get();
+         }
+ 
+-        if (buf->isShm && !gralloc_handler.update_shm_buffer(pdev->display, buf))
+-            return nullptr;
++        if (buf->isShm) {
++            // Converted video is refreshed once per frame, ahead of the window lock.
++            if (buf->converted && buf->converted_frame == pdev->frame)
++                return buf;
++            if (!gralloc_handler.update_shm_buffer(pdev->display, buf))
++                return nullptr;
++            if (buf->converted)
++                buf->converted_frame = pdev->frame;
++        }
+         return buf;
+     }
+ 
+@@ -484,6 +491,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
      }
  }
  
@@ -213,7 +247,7 @@ index 8b8d61f..d98a7a3 100644
  static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     hwc_display_contents_1_t** displays) {
      if (HWC_DISPLAY_PRIMARY >= numDisplays || !displays)
-@@ -494,6 +522,9 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
+@@ -494,13 +529,38 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
      assert(contents);
  
@@ -221,5 +255,63 @@ index 8b8d61f..d98a7a3 100644
 +        return 0;
 +
      if (pdev->should_compose && contents->flags & HWC_GEOMETRY_CHANGED) {
-         pdev->display->buffer_map.clear();
+-        pdev->display->buffer_map.clear();
++        // Converted video re-reads its handle every frame, so keeping it costs
++        // no correctness and saves a new shm buffer per geometry change.
++        auto &buffers = pdev->display->buffer_map;
++        size_t converted = 0;
++        for (auto &[handle, buf] : buffers)
++            converted += buf->converted;
++        for (auto it = buffers.begin(); it != buffers.end();) {
++            if (it->second->converted && converted <= 32)
++                ++it;
++            else
++                it = buffers.erase(it);
++        }
      }
+ 
+     auto& mode = pdev->selected_mode;
+     mode->setup_set(pdev, contents);
+ 
++    // Convert video before taking the window lock: input handlers wait on it.
++    pdev->frame++;
++    for (size_t l = 0; l < contents->numHwLayers; l++) {
++        auto *layer = &contents->hwLayers[l];
++        if (!layer->handle || (layer->flags & (HWC_IS_CURSOR_LAYER | HWC_SKIP_LAYER)) ||
++            layer->compositionType == HWC_FRAMEBUFFER_TARGET)
++            continue;
++        if (hal_format_needs_conversion(pdev->gralloc_handler.get_buffer_metadata(pdev->display, layer, l).format))
++            get_wl_buffer(pdev, layer, l);
++    }
++
+     std::scoped_lock lock(pdev->display->windowsMutex);
+     mode->cleanup_stale_windows(pdev, contents);
+ 
+diff --git a/hwcomposer/hwcomposer.h b/hwcomposer/hwcomposer.h
+index ee2455c..4310f2a 100644
+--- a/hwcomposer/hwcomposer.h
++++ b/hwcomposer/hwcomposer.h
+@@ -89,6 +89,7 @@ struct waydroid_hwc_composer_device_1 : hwc_composer_device_1_t {
+     int timeline_fd;
+     int next_sync_point;
+     bool should_compose;
++    uint64_t frame = 0; // composer thread only
+     bool multi_windows;
+ 
+     std::unique_ptr<waydroid_mode> selected_mode;
+diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
+index a80a05b..c2e0eb9 100644
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -140,6 +140,11 @@ struct buffer {
+     void *shm_data;
+     int size;
+ 
++    // Video converted into shm each frame; its contents never come from
++    // the cache, so it may outlive geometry changes.
++    bool converted = false;
++    uint64_t converted_frame = 0;
++
+     ~buffer();
+ };
+ 
