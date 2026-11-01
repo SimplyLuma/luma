@@ -110,6 +110,26 @@ class ShellStateModelTests(unittest.TestCase):
         self.assertEqual(state.presentation_state(capabilities={
             "tablet_mode": True, "touchscreen": False})["effective"], "desktop")
 
+    def test_fold_posture_picks_mobile_or_tablet_unless_chosen(self):
+        for profile in ("tablet", "mobile", "desktop"):
+            for fold, expected in (("folded", "mobile"), ("unfolded", "tablet")):
+                result = state.presentation_state(profile=profile, fold=fold,
+                    capabilities={"touchscreen": True, "tablet_mode": False})
+                self.assertEqual((result["effective"], result["reason"]), (expected, "fold"))
+                result = state.presentation_state("desktop", profile=profile, fold=fold)
+                self.assertEqual((result["effective"], result["reason"]), ("desktop", "user"))
+        for fold in (None, "", "half", 1):
+            result = state.presentation_state(profile="tablet", fold=fold)
+            self.assertEqual((result["effective"], result["fold"]), ("tablet", None))
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.assertIsNone(state.read_fold_posture(root))
+            (root / "run/luma").mkdir(parents=True)
+            for value, expected in ((b"folded\n", "folded"), (b"unfolded", "unfolded"),
+                                    (b"open\n", None), (b"\xff", None), (b"folded" * 4, None)):
+                (root / "run/luma/posture").write_bytes(value)
+                self.assertEqual(state.read_fold_posture(root), expected)
+
     def test_presentation_rejects_ambiguous_and_untyped_observations(self):
         for mode in ("phone", "Tablet", "", None, 1):
             with self.assertRaises(state.InvalidState):

@@ -127,6 +127,20 @@ def read_presentation_profile(root: Path = Path("/")) -> str:
         read("sys/firmware/devicetree/base/chassis-type") or read("proc/device-tree/chassis-type"))
 
 
+FOLD_POSTURES = frozenset({"folded", "unfolded"})
+
+
+def read_fold_posture(root: Path = Path("/")) -> str | None:
+    """A foldable's hinge posture, published by its device service at
+    /run/luma/posture; None on other devices or when the hinge is unknown."""
+    try:
+        with (root / "run/luma/posture").open("rb") as stream:
+            value = stream.read(17).decode("ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+    return value if value in FOLD_POSTURES else None
+
+
 def normalize_presentation(value: str) -> str:
     if not isinstance(value, str) or value not in PRESENTATION_MODES:
         raise InvalidState("presentation must be automatic, desktop, tablet or mobile")
@@ -145,12 +159,14 @@ def normalize_capabilities(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def presentation_state(selected: str = "automatic", *, profile: str = "desktop",
-                       capabilities: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                       capabilities: Mapping[str, Any] | None = None,
+                       fold: str | None = None) -> dict[str, Any]:
     """Resolve policy independently of CPU, viewport and last-used input.
 
     A compositor reports native seat posture (including the standard tablet
-    switch). A boot experience supplies the fallback when hardware is unknown.
-    Phone profiles remain phones when a keyboard is connected. User choice wins.
+    switch). A foldable's hinge picks Mobile folded and Tablet unfolded. A boot
+    experience supplies the fallback when hardware is unknown. Phone profiles
+    remain phones when a keyboard is connected. User choice wins.
     """
     selected = normalize_presentation(selected)
     capabilities = normalize_capabilities(capabilities or {})
@@ -160,6 +176,8 @@ def presentation_state(selected: str = "automatic", *, profile: str = "desktop",
         profile = "desktop"
     if selected != "automatic":
         effective, reason = selected, "user"
+    elif fold in FOLD_POSTURES:
+        effective, reason = ("mobile" if fold == "folded" else "tablet"), "fold"
     elif profile == "mobile":
         effective, reason = "mobile", "profile"
     elif capabilities["touchscreen"] is True and capabilities["tablet_mode"] is not None:
@@ -168,7 +186,8 @@ def presentation_state(selected: str = "automatic", *, profile: str = "desktop",
     else:
         effective, reason = profile, "profile"
     return {"selected": selected, "effective": effective, "reason": reason,
-            "profile": profile, "capabilities": capabilities}
+            "profile": profile, "capabilities": capabilities,
+            "fold": fold if fold in FOLD_POSTURES else None}
 
 
 def normalize_app_ids(values: Iterable[str]) -> list[str]:

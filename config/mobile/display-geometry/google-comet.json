@@ -6,10 +6,11 @@
       "nativeWidth": 1080,
       "nativeHeight": 2424,
       "cutouts": [
-        {"x": 0, "y": 0, "width": 104, "height": 104},
-        {"x": 976, "y": 0, "width": 104, "height": 104},
-        {"x": 0, "y": 2320, "width": 104, "height": 104},
-        {"x": 976, "y": 2320, "width": 104, "height": 104}
+        {"x": 484, "y": 0, "width": 112, "height": 152},
+        {"x": 0, "y": 0, "width": 48, "height": 48},
+        {"x": 1032, "y": 0, "width": 48, "height": 48},
+        {"x": 0, "y": 2376, "width": 48, "height": 48},
+        {"x": 1032, "y": 2376, "width": 48, "height": 48}
       ]
     },
     {
@@ -17,12 +18,12 @@
       "nativeWidth": 2076,
       "nativeHeight": 2152,
       "cutouts": [
-        {"x": 0, "y": 0, "width": 96, "height": 96},
-        {"x": 1980, "y": 0, "width": 96, "height": 96},
-        {"x": 0, "y": 2056, "width": 96, "height": 96},
-        {"x": 1980, "y": 2056, "width": 96, "height": 96}
+        {"x": 1940, "y": 0, "width": 136, "height": 136},
+        {"x": 0, "y": 0, "width": 40, "height": 40},
+        {"x": 0, "y": 2112, "width": 40, "height": 40},
+        {"x": 2036, "y": 2112, "width": 40, "height": 40}
       ]
     }
   ],
-  "provenance": "Provisional rounded-corner exclusions for the Pixel 9 Pro Fold outer (DSI-1) and inner (DSI-2) panels. All four corners are listed so the panel transform cannot move an unprotected corner to the top. Sizes are conservative estimates, not measurements; camera openings are not yet described. Calibrate on the device and refine independently of shared shell layout."
+  "provenance": "Pixel 9 Pro Fold outer (DSI-1, 1080x2424) and inner (DSI-2, 2076x2152 upright) panels, from the device's display outline and camera openings. Outer camera: 83 px hole centred at (540, 86), excluded as the 112x152 rectangle from the top edge. Inner camera: 79 px hole centred at (1988, 80), excluded with the top-right corner as 136x136. Corners are continuous curves about 195 px (outer) and 140 px (inner) long whose 45-degree point lies 43 px and 35 px in; each corner square (48 and 40 px) also clears status content whose top sits at half the square's height. All four corners are listed so the panel transform cannot move an unprotected corner to the top."
 }
