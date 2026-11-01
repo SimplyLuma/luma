@@ -12,6 +12,12 @@ emit() {
   [ "$2" = fail ] && failed=1
   return 0
 }
+# Set by gate.sh for the first-boot (no-account) stage only.
+if [ -e /run/luma-gate-first-boot-setup ]; then
+  rmdir "$work"
+  emit signed-browser-graphical-launch skip 'first-boot setup has no user session; the fresh stage proves the signed launch'
+  exit 0
+fi
 created=0
 page_runner=0
 page_runner_start=
