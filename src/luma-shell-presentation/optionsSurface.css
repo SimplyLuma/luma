@@ -228,3 +228,46 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-icon,
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-title,
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-footer-mode .quick-toggle-menu-button { color: rgba(32, 38, 49, .62); }
+
+/* Search uses the dock's single material owner, never a stack of gray panes. */
+.luma-search-dialog .luma-search-field.luma-search-material,
+.luma-search-dialog .luma-search-intro.luma-search-material,
+.luma-search-dialog #searchResults.luma-search-material {
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,.16);
+    background-gradient-direction: none;
+    box-shadow: 0 8px 24px -4px rgba(0,0,0,.24);
+}
+.luma-search-dialog .luma-search-material.luma-surface-dark,
+.luma-search-dialog #searchResults.luma-search-material.luma-surface-dark {
+    background-color: rgba(32,33,36,.65); color: #fafafa;
+}
+.luma-search-dialog .luma-search-material.luma-surface-light,
+.luma-search-dialog #searchResults.luma-search-material.luma-surface-light {
+    background-color: #f1f2f3; color: #161b20; border-color: rgba(25,27,31,.12);
+}
+.luma-search-dialog .luma-search-material.luma-surface-glass,
+.luma-search-dialog #searchResults.luma-search-material.luma-surface-glass {
+    background-color: rgba(250,250,251,.85); color: #161b20; border-color: rgba(37,46,54,.12);
+}
+.luma-search-dialog .luma-search-field.luma-search-material:focus { border-color: rgba(145,193,242,.85); }
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-entry,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-intro-title,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-result-title { color: #fafafa; }
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-intro-subtitle,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-entry .search-entry-icon,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-escape,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-result-description,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-result-kind,
+.luma-search-dialog .luma-search-material.luma-surface-dark .luma-search-section,
+.luma-search-dialog .luma-search-material.luma-surface-dark .search-statustext { color: #e1e4ea; }
+.luma-search-dialog .luma-search-intro-title { text-align: center; }
+.luma-search-dialog .luma-search-intro-subtitle { text-align: center; }
+.luma-search-dialog .luma-search-result:hover,
+.luma-search-dialog .luma-search-result:focus,
+.luma-search-dialog .luma-search-result:selected { box-shadow: inset 0 0 0 1px rgba(145,193,242,.45); }
+/* The shared renderer turns off blur and marks these owners for opaque paint. */
+.luma-search-dialog .luma-search-material.lumaui-floating-reduced,
+.luma-search-dialog #searchResults.luma-search-material.lumaui-floating-reduced { background-color: #202124; }
+.high-contrast .luma-search-dialog .luma-search-material,
+.high-contrast .luma-search-dialog #searchResults.luma-search-material { border-color: white; box-shadow: none; }

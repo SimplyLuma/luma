@@ -1,0 +1,56 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: share dock materials with search surfaces
+
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -11,6 +11,7 @@
+ import * as ModalDialog from './modalDialog.js';
+ import * as Search from './search.js';
+ import * as ShellEntry from './shellEntry.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ 
+ const LumaSearchDialog = GObject.registerClass(
+ class LumaSearchDialog extends ModalDialog.ModalDialog {
+@@ -43,7 +44,7 @@
+         this.accessible_name = _('Search this machine');
+         this._lightbox._radialEffect = false;
+         this._lightbox.remove_effect_by_name('radial');
+-        this._lightbox._fadeFactor = 0.34;
++        this._lightbox._fadeFactor = 0.12;
+         this._lightbox.set({
+             opacity: 0,
+             style: 'background-color: rgb(12, 16, 21);',
+@@ -129,11 +130,16 @@
+             text: _('Applications and settings first, then your files, mail, people, days and music.'),
+             x_align: Clutter.ActorAlign.CENTER,
+         }));
++        for (const label of this._intro.get_children()) {
++            label.x_expand = true;
++            label.x_align = Clutter.ActorAlign.FILL;
++            label.clutter_text.line_wrap = true;
++        }
+         const suggestions = new St.BoxLayout({
+             style_class: 'luma-search-suggestions',
+             x_align: Clutter.ActorAlign.CENTER,
+         });
+-        for (const suggestion of [_('Reel'), _('dark'), _('cursor size'), _('Nora'), _('wallpaper'), _('Retro')]) {
++        for (const suggestion of [_('Settings'), _('Files'), _('Weather')]) {
+             const button = new St.Button({
+                 style_class: 'luma-search-suggestion',
+                 label: suggestion,
+@@ -167,6 +173,15 @@
+         this._results.connect('result-activated', () => this.close());
+         this._results.hide();
+         stage.add_child(this._results);
++
++        // The field and the visible intro/results each own one dock material.
++        // Rows remain transparent; no nested blur or wrapper background.
++        this._surfaceBindings = [this._fieldIsland, this._intro, this._results].map(actor => {
++            actor.add_style_class_name('luma-search-material');
++            const binding = SurfaceMaterials.bindSurface(actor, {cornerRadii: 24});
++            binding.setFloatingRecipe({radius: 24, saturation: 1.5});
++            return binding;
++        });
+ 
+         this._text = this._entry.clutter_text;
+         this._text.connect('text-changed', this._onTextChanged.bind(this));

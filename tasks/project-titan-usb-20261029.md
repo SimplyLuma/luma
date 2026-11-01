@@ -1444,3 +1444,31 @@ matches all eight raw source files before persisting only the presentation
 prefix in /etc/environment; before/environment is root-private. Existing Grid,
 local schema and Settings bind remain intact. This is a source-backed hotfix on
 the installed RPM cohort, not a newly built Shell146 package or OTA release.
+
+### 2026-10-31 — Search material and upstream integration
+
+Search now binds its existing field/intro/results actors to the shared native
+surface renderer, matching the Desktop dock's neutral tint and24px blur recipe.
+Rows retain one transparent parent material; no nested blur or new background
+actors. Shared settings still govern Light/Dark/Frost/Glass, software fallback,
+reduce transparency and high contrast. A lighter backdrop dim, restrained rims,
+visible focus/selection and brighter secondary dark text replace opaque gray
+panes. Intro labels wrap; three useful suggestion chips fit compact screens.
+
+Actual Titan native search-material.js passes27 checks: Mobile and Desktop
+presentation paths, real app results, identical65% dark veil, existing blur,
+Light/Glass/Frost ink/palette, opaque no-blur accessibility modes, and unmapping
+on close. Screenshots reviewed for intro/results in both presentations. Desktop
+presentation was tested on the Titan's compact display, not a separate large
+Desktop monitor. Owner's appearance/accessibility and Mobile state restored.
+Seven registered search patches reconstruct the exact candidate. Bounded
+job8fc9d47d passed syntax, cohort identity and release contract; final checks
+follow before committing. No Shell restart or newly built RPM/OTA.
+
+Private source/evidence: owned HDD update-20261031/search-material. Scoped
+persistent search/theme overrides are /var/lib/project-titan/search-material-20261031;
+root-private before/environment retains rollback, and earlier gesture/Grid
+resource overlays remain intact. Settings, Home layout and app data preserved.
+User explicitly requests pushing recent work and merging appropriate work to
+main; integrate the remaining Home/widget/gesture commits with current main,
+retain its Android/Mobile Data/app retirement changes, and use a concise PR.
