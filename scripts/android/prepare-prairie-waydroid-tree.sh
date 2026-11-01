@@ -54,7 +54,7 @@ hardware_app_settings_patch="$repo_root/patches/android-hardware-waydroid/0019-l
 hardware_desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-logical-desktop-canvas.patch"
 hardware_handheld_fill_patch="$repo_root/patches/android-hardware-waydroid/0021-luma-handheld-task-window-fill.patch"
 hardware_text_input_patch="$repo_root/patches/android-hardware-waydroid/0022-luma-host-text-input.patch"
-hardware_dmabuf_formats_patch="$repo_root/patches/android-hardware-waydroid/0023-luma-dmabuf-advertised-formats.patch"
+hardware_video_layer_patch="$repo_root/patches/android-hardware-waydroid/0023-luma-video-layer-conversion.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -162,7 +162,7 @@ write_state() {
     printf 'HARDWARE_DESKTOP_CANVAS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_desktop_canvas_patch")"
     printf 'HARDWARE_HANDHELD_FILL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_handheld_fill_patch")"
     printf 'HARDWARE_TEXT_INPUT_PATCH_SHA=%s\n' "$(patch_sha "$hardware_text_input_patch")"
-    printf 'HARDWARE_DMABUF_FORMATS_PATCH_SHA=%s\n' "$(patch_sha "$hardware_dmabuf_formats_patch")"
+    printf 'HARDWARE_VIDEO_LAYER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_video_layer_patch")"
     printf 'FRAMEWORK_OFFICIAL_HEAD=%s\n' "$framework_official_head"
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
@@ -292,7 +292,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
   git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
-  git -C "$hardware_root" apply "$hardware_dmabuf_formats_patch"
+  git -C "$hardware_root" apply "$hardware_video_layer_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -489,7 +489,7 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_desktop_canvas_patch")" != "${HARDWARE_DESKTOP_CANVAS_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_handheld_fill_patch")" != "${HARDWARE_HANDHELD_FILL_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_text_input_patch")" != "${HARDWARE_TEXT_INPUT_PATCH_SHA:-}" ] || \
-    [ "$(patch_sha "$hardware_dmabuf_formats_patch")" != "${HARDWARE_DMABUF_FORMATS_PATCH_SHA:-}" ]; then
+    [ "$(patch_sha "$hardware_video_layer_patch")" != "${HARDWARE_VIDEO_LAYER_PATCH_SHA:-}" ]; then
   git -C "$hardware_root" reset --hard -q "$HARDWARE_OFFICIAL_HEAD"
   git -C "$hardware_root" clean -fdq
   git -C "$hardware_root" apply --binary "$hardware_patch"
@@ -512,7 +512,7 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   git -C "$hardware_root" apply "$hardware_desktop_canvas_patch"
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
   git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
-  git -C "$hardware_root" apply "$hardware_dmabuf_formats_patch"
+  git -C "$hardware_root" apply "$hardware_video_layer_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"

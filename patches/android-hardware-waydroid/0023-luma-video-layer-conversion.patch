@@ -1,0 +1,264 @@
+diff --git a/hwcomposer/egl-tools.cpp b/hwcomposer/egl-tools.cpp
+index d91e58f..dcdf44c 100644
+--- a/hwcomposer/egl-tools.cpp
++++ b/hwcomposer/egl-tools.cpp
+@@ -91,7 +91,154 @@ void egl_init(struct display* display) {
+     glBindFramebuffer(GL_FRAMEBUFFER, offscreen_framebuffer);
+ }
+ 
++bool hal_format_needs_conversion(uint32_t hal_format) {
++    switch (hal_format) {
++        case HAL_PIXEL_FORMAT_YV12:
++        case HAL_PIXEL_FORMAT_YCBCR_420_888:
++        case HAL_PIXEL_FORMAT_YCRCB_420_SP:
++        case HAL_PIXEL_FORMAT_YCBCR_422_SP:
++        case HAL_PIXEL_FORMAT_YCBCR_422_I:
++        case HAL_PIXEL_FORMAT_YCBCR_P010:
++        case HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED:
++            return true;
++        default:
++            return false;
++    }
++}
++
++namespace {
++// Only the EGL worker thread uses this state.
++struct external_converter {
++    GLuint program = 0;
++    GLint sampler = -1;
++    GLuint target = 0;
++    GLsizei width = 0;
++    GLsizei height = 0;
++} converter;
++
++GLuint compile_shader(GLenum type, const char* source) {
++    GLuint shader = glCreateShader(type);
++    glShaderSource(shader, 1, &source, nullptr);
++    glCompileShader(shader);
++    GLint compiled = GL_FALSE;
++    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
++    if (!compiled) {
++        char log[512] = {};
++        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
++        ALOGE("video conversion shader: %s", log);
++        glDeleteShader(shader);
++        return 0;
++    }
++    return shader;
++}
++
++bool ensure_converter_program() {
++    if (converter.program)
++        return true;
++    static const char* vertex =
++        "attribute vec2 position;\n"
++        "varying vec2 coordinate;\n"
++        "void main() {\n"
++        "    coordinate = position * 0.5 + 0.5;\n"
++        "    gl_Position = vec4(position, 0.0, 1.0);\n"
++        "}\n";
++    static const char* fragment =
++        "#extension GL_OES_EGL_image_external : require\n"
++        "precision mediump float;\n"
++        "uniform samplerExternalOES source;\n"
++        "varying vec2 coordinate;\n"
++        "void main() {\n"
++        "    gl_FragColor = vec4(texture2D(source, coordinate).rgb, 1.0);\n"
++        "}\n";
++    GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex);
++    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment);
++    if (!vs || !fs) {
++        glDeleteShader(vs);
++        glDeleteShader(fs);
++        return false;
++    }
++    GLuint program = glCreateProgram();
++    glAttachShader(program, vs);
++    glAttachShader(program, fs);
++    glBindAttribLocation(program, 0, "position");
++    glLinkProgram(program);
++    glDeleteShader(vs);
++    glDeleteShader(fs);
++    GLint linked = GL_FALSE;
++    glGetProgramiv(program, GL_LINK_STATUS, &linked);
++    if (!linked) {
++        ALOGE("video conversion program failed to link");
++        glDeleteProgram(program);
++        return false;
++    }
++    converter.program = program;
++    converter.sampler = glGetUniformLocation(program, "source");
++    return true;
++}
++
++// Samples a YUV buffer through an external texture into an RGB target and
++// reads it back into the layer's shm storage, row for row like the RGB path.
++void render_external_to_pixels(struct display* display, struct buffer* buf) {
++    android::sp<android::GraphicBuffer> graphicBuffer = new android::GraphicBuffer(
++            (native_handle_t*)buf->handle, android::GraphicBuffer::WRAP_HANDLE,
++            buf->metadata.width, buf->metadata.height, buf->metadata.format, 1 /* layers */,
++            (uint64_t) android::GraphicBuffer::USAGE_HW_TEXTURE,
++            buf->metadata.pixel_stride);
++    EGLint image_attrs[] = { EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE };
++    auto image = eglCreateImageKHR(display->egl_dpy, EGL_NO_CONTEXT,
++                                EGL_NATIVE_BUFFER_ANDROID, (EGLClientBuffer) graphicBuffer->getNativeBuffer(),
++                                image_attrs);
++    if (image == EGL_NO_IMAGE_KHR || !ensure_converter_program()) {
++        ALOGE("cannot convert video buffer format 0x%x: %s", buf->metadata.format, eglStrError(eglGetError()));
++        if (image != EGL_NO_IMAGE_KHR)
++            eglDestroyImageKHR(display->egl_dpy, image);
++        return;
++    }
++
++    const GLsizei width = buf->metadata.width, height = buf->metadata.height;
++    if (!converter.target || converter.width != width || converter.height != height) {
++        if (converter.target)
++            glDeleteTextures(1, &converter.target);
++        glGenTextures(1, &converter.target);
++        glBindTexture(GL_TEXTURE_2D, converter.target);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
++        converter.width = width;
++        converter.height = height;
++    }
++    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, converter.target, 0);
++
++    GLuint source;
++    glGenTextures(1, &source);
++    glActiveTexture(GL_TEXTURE0);
++    glBindTexture(GL_TEXTURE_EXTERNAL_OES, source);
++    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, image);
++
++    static const GLfloat quad[] = { -1.f, -1.f, 1.f, -1.f, -1.f, 1.f, 1.f, 1.f };
++    glViewport(0, 0, width, height);
++    glUseProgram(converter.program);
++    glUniform1i(converter.sampler, 0);
++    glBindBuffer(GL_ARRAY_BUFFER, 0);
++    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
++    glEnableVertexAttribArray(0);
++    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
++    glDisableVertexAttribArray(0);
++    glUseProgram(0);
++
++    glReadPixels(0, 0, width, height, GL_BGRA_EXT, GL_UNSIGNED_BYTE, buf->shm_data);
++    glDeleteTextures(1, &source);
++    eglDestroyImageKHR(display->egl_dpy, image);
++}
++}
++
+ void egl_render_to_pixels(struct display* display, struct buffer* buf) {
++    if (hal_format_needs_conversion(buf->metadata.format)) {
++        render_external_to_pixels(display, buf);
++        return;
++    }
+     // Wrap native handle into ANativeWindowBuffer for eglCreateImageKHR
+     android::sp<android::GraphicBuffer> graphicBuffer = new android::GraphicBuffer(
+             (native_handle_t*)buf->handle, android::GraphicBuffer::WRAP_HANDLE,
+diff --git a/hwcomposer/egl-tools.h b/hwcomposer/egl-tools.h
+index fce2dd4..9d863cb 100644
+--- a/hwcomposer/egl-tools.h
++++ b/hwcomposer/egl-tools.h
+@@ -29,3 +29,7 @@
+ 
+ void* egl_loop(void* data);
+ void egl_render_to_pixels(struct display* display, struct buffer* buf);
++
++// Video formats compositors cannot be relied on to import. The composer
++// converts these buffers to RGB itself and presents them over wl_shm.
++bool hal_format_needs_conversion(uint32_t hal_format);
+diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
+index 480ae91..074fbae 100644
+--- a/hwcomposer/gralloc_handler.cpp
++++ b/hwcomposer/gralloc_handler.cpp
+@@ -27,6 +27,8 @@
+ 
+ #include <cstdint>
+ #include <memory>
++#include <mutex>
++#include <unordered_set>
+ #include <sys/stat.h>
+ #include <cutils/ashmem.h>
+ #include <log/log.h>
+@@ -85,7 +87,10 @@ std::unique_ptr<buffer> create_shm_wl_buffer(display *display, const buffer_meta
+     buf->isShm = true;
+     buf->size = size;
+ 
+-    auto shm_format = ConvertHalFormatToShm(metadata.format);
++    int shm_format = ConvertHalFormatToShm(metadata.format);
++    // Converted video is read back as opaque RGB.
++    if (shm_format < 0 && hal_format_needs_conversion(metadata.format))
++        shm_format = WL_SHM_FORMAT_XRGB8888;
+     assert(shm_format >= 0);
+ 
+     int fd = syscall(SYS_memfd_create, "buffer", MFD_ALLOW_SEALING);
+@@ -122,6 +127,20 @@ namespace {
+         return display->formats.count(format) == 1;
+     }
+ 
++    // A dmabuf the compositor did not advertise is a protocol error that
++    // disconnects the composer, so such layers are not forwarded.
++    bool isImportSupported(struct display *display, uint32_t format, uint64_t modifier) {
++        if (!isFormatSupported(display, format))
++            return false;
++        auto it = display->modifiers.find(format);
++        if (it == display->modifiers.end() || it->second.empty() || modifier == DRM_FORMAT_MOD_INVALID)
++            return true;
++        for (uint64_t advertised : it->second)
++            if (advertised == modifier)
++                return true;
++        return false;
++    }
++
+     uint32_t ConvertHalFormatToDrm(struct display *display, uint32_t hal_format) {
+         uint32_t fmt;
+ 
+@@ -173,16 +192,24 @@ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_m
+ {
+     assert(prime_fd >= 0);
+ 
++    if (drm_format < 0) {
++        drm_format = ConvertHalFormatToDrm(display, metadata.format);
++    }
++    if (drm_format < 0 || !isImportSupported(display, drm_format, modifier)) {
++        static std::mutex warned_lock;
++        static std::unordered_set<int> warned;
++        std::lock_guard<std::mutex> guard(warned_lock);
++        if (warned.insert(drm_format).second)
++            ALOGW("Not forwarding buffer format 0x%x modifier 0x%llx: not advertised by the compositor",
++                  drm_format, (unsigned long long)modifier);
++        return nullptr;
++    }
++
+     std::unique_ptr<buffer> buf { new buffer() };
+ 
+     buf->metadata = metadata;
+     buf->handle = handle;
+ 
+-    if (drm_format < 0) {
+-        drm_format = ConvertHalFormatToDrm(display, metadata.format);
+-    }
+-    assert(drm_format >= 0);
+-
+     zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
+     zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
+     zwp_linux_buffer_params_v1_add_listener(params, &params_listener, nullptr);
+@@ -265,10 +292,16 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
+     return create_shm_wl_buffer(display, metadata, handle);
+ }
+ std::unique_ptr<buffer> create_buffer_gbm(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
++    if (hal_format_needs_conversion(metadata.format))
++        return create_shm_wl_buffer(display, metadata, handle);
+     auto *drm_handle = reinterpret_cast<const gralloc_handle_t *>(handle);
+     return create_dmabuf_wl_buffer(display, metadata, drm_handle->prime_fd, -1 /* compute drm format */, drm_handle->stride, 0 /* offset */, drm_handle->modifier, handle);
+ }
+ std::unique_ptr<buffer> create_buffer_cros(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
++    // Compositors import video layouts unreliably (minigbm even names YV12
++    // with a private code); the composer converts video to RGB itself.
++    if (hal_format_needs_conversion(metadata.format))
++        return create_shm_wl_buffer(display, metadata, handle);
+     auto *cros_handle = reinterpret_cast<const cros_gralloc_handle *>(handle);
+     return create_dmabuf_wl_buffer(display, metadata, cros_handle->fds[0], cros_handle->format, cros_handle->strides[0], cros_handle->offsets[0], cros_handle->format_modifier, handle);
+ }

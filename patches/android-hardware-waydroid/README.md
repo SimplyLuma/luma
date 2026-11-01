@@ -64,12 +64,15 @@ Handheld task windows map maximized at the full work area: mapped at Android's
 default freeform size, the shell centred them and kept them off to the side
 once the task grew (an app's first launch, a browser tab it opens).
 
-`0023` forwards a dmabuf layer only in a format and modifier the compositor
-advertised. minigbm hands out YV12 video buffers under its private
-`YVU420_ANDROID` code; the composer now sends them as `YVU420` with every
-plane. A buffer the compositor cannot import was a protocol error that
-disconnected and aborted the composer, leaving Android without a display
-until the container restarted; such a layer is now left out instead.
+`0023` presents video layers itself. YUV buffers (YV12, NV12/21, P010 and
+implementation-defined decoder output) are sampled through an external
+texture on the composer's EGL thread and sent as wl_shm RGB, because
+compositors import video layouts unreliably: minigbm names YV12 with a
+private code, and panthor's EGL rejected the YV12 layout outright. A dmabuf
+the compositor cannot import was a protocol error that disconnected and
+aborted the composer, leaving Android without a display until it restarted.
+Other dmabuf layers are forwarded only in a format and modifier the
+compositor advertised.
 
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
