@@ -76,46 +76,66 @@ index 0000000..df4a0a3
 +    android:supportsSwitchingToNextInputMethod="false" />
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java b/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java
 new file mode 100644
-index 0000000..f2566a6
+index 0000000..8bb08f5
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/DefaultInputMethod.java
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,50 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
 +import android.content.BroadcastReceiver;
 +import android.content.ComponentName;
++import android.content.ContentResolver;
 +import android.content.Context;
 +import android.content.Intent;
 +import android.provider.Settings;
 +
-+/** Selects this input method in place of Android's own keyboard. */
++/**
++ * Selects this input method in place of Android's keyboard where the composer
++ * offers host text input, and gives Android's keyboard back where it does not
++ * (a nested compositor without zwp_text_input_v3).
++ */
 +public final class DefaultInputMethod extends BroadcastReceiver {
 +    private static final String LATIN_IME = "com.android.inputmethod.latin";
++    private static final String LATIN_IME_ID = LATIN_IME + "/.LatinIME";
 +
 +    @Override
 +    public void onReceive(Context context, Intent intent) {
 +        if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
++        final PendingResult result = goAsync();
++        final ContentResolver resolver = context.getContentResolver();
 +        final String self = new ComponentName(context, LumaInputMethodService.class)
 +                .flattenToShortString();
-+        final String current = Settings.Secure.getString(context.getContentResolver(),
-+                Settings.Secure.DEFAULT_INPUT_METHOD);
-+        // A keyboard the person installed and chose stays selected.
-+        if (self.equals(current)
-+                || (current != null && !current.isEmpty() && !current.startsWith(LATIN_IME + "/")))
-+            return;
-+        Settings.Secure.putString(context.getContentResolver(),
-+                Settings.Secure.ENABLED_INPUT_METHODS, self);
-+        Settings.Secure.putString(context.getContentResolver(),
-+                Settings.Secure.DEFAULT_INPUT_METHOD, self);
++        new Thread(() -> {
++            try {
++                final String current = Settings.Secure.getString(resolver,
++                        Settings.Secure.DEFAULT_INPUT_METHOD);
++                if (HostTextInput.available()) {
++                    // A keyboard the person installed and chose stays selected.
++                    if (self.equals(current) || (current != null && !current.isEmpty()
++                            && !current.startsWith(LATIN_IME + "/")))
++                        return;
++                    select(resolver, self);
++                } else if (self.equals(current)) {
++                    select(resolver, LATIN_IME_ID);
++                }
++            } finally {
++                result.finish();
++            }
++        }, "LumaDefaultInputMethod").start();
++    }
++
++    private static void select(ContentResolver resolver, String id) {
++        Settings.Secure.putString(resolver, Settings.Secure.ENABLED_INPUT_METHODS, id);
++        Settings.Secure.putString(resolver, Settings.Secure.DEFAULT_INPUT_METHOD, id);
 +    }
 +}
 diff --git a/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
 new file mode 100644
-index 0000000..0989937
+index 0000000..1f885ec
 --- /dev/null
 +++ b/LumaInputMethod/src/org/projectluma/inputmethod/HostTextInput.java
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,157 @@
 +// SPDX-License-Identifier: Apache-2.0
 +package org.projectluma.inputmethod;
 +
@@ -161,6 +181,16 @@ index 0000000..0989937
 +    HostTextInput(Listener listener, Handler main) {
 +        this.listener = listener;
 +        this.main = main;
++    }
++
++    /** Whether the composer serves the channel (it does only with host text input). */
++    static boolean available() {
++        try (LocalSocket probe = new LocalSocket(LocalSocket.SOCKET_SEQPACKET)) {
++            probe.connect(new LocalSocketAddress(SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
++            return true;
++        } catch (IOException e) {
++            return false;
++        }
 +    }
 +
 +    void stop() {
