@@ -257,14 +257,18 @@ class WaydroidEngine:
             # Prepare once at the existing import/reconciliation boundary. All
             # desktop consumers resolve the same asset; retain the provider's
             # source path so icon updates and rollback never depend on our PNG.
-            from luma_appkit.icon_assets import prepare_application_icon
+            try:
+                from luma_appkit.icon_assets import prepare_tile_icon
+            except ImportError:  # an older developer platform
+                from luma_appkit.icon_assets import prepare_application_icon as prepare_tile_icon
             main_entry = original.split('\n[Desktop Action', 1)[0].splitlines()
             source_icon = next((line.removeprefix('X-Luma-Original-Icon=')
                                 for line in main_entry if line.startswith('X-Luma-Original-Icon=')), None)
             if source_icon is None:
                 source_icon = next((line.removeprefix('Icon=') for line in main_entry
                                     if line.startswith('Icon=')), None)
-            prepared_icon = prepare_application_icon(Path(source_icon), data_root) if source_icon else None
+            # Android exports full-bleed squares; cut them to Luma's tile.
+            prepared_icon = prepare_tile_icon(Path(source_icon), data_root) if source_icon else None
             in_main_entry = False
             has_luma_marker = "X-Luma-Android=true" in original.splitlines()
             has_startup_notify = any(
