@@ -64,8 +64,8 @@ Handheld task windows map maximized at the full work area: mapped at Android's
 default freeform size, the shell centred them and kept them off to the side
 once the task grew (an app's first launch, a browser tab it opens).
 
-`0023` presents video layers without risking the composer. A 4:2:0 YUV
-buffer from minigbm is first offered as a dmabuf (minigbm's private YV12
+`0023` presents video layers without risking the composer. A YUV or other
+multi-plane buffer from minigbm is first offered as a dmabuf (minigbm's private YV12
 code sent as `YVU420`, every plane) with `zwp_linux_buffer_params_v1.create`,
 the compositor's answer awaited on a private queue: accepted, it is shown
 zero-copy; refused, that format and modifier are converted for the rest of
@@ -79,7 +79,9 @@ consecutive frames (paused video under moving UI) is neither converted nor
 damaged. Other dmabuf layers are forwarded only in a format and modifier the
 compositor advertised. libwayland-client treats a full send buffer as fatal,
 so while the compositor is not reading (the screen waking, a modeset) the
-composer drops frames instead of queueing them.
+composer drops frames instead of queueing them. Every five seconds with video on screen
+the composer logs `frame stats:` (compositions, new buffers, skipped, dmabuf
+or shm), since Android's timestats does not track video layers.
 
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`

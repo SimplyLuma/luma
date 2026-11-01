@@ -11,7 +11,7 @@ index fd23eca..3539d02 100644
          "libEGL",
          "libGLESv2",
 diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
-index 480ae91..bdfe505 100644
+index 480ae91..2e36604 100644
 --- a/hwcomposer/gralloc_handler.cpp
 +++ b/hwcomposer/gralloc_handler.cpp
 @@ -27,6 +27,11 @@
@@ -244,7 +244,7 @@ index 480ae91..bdfe505 100644
      zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
      zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
      zwp_linux_buffer_params_v1_add_listener(params, &params_listener, nullptr);
-@@ -265,11 +428,18 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
+@@ -265,11 +428,20 @@ std::unique_ptr<buffer> create_buffer_generic(display *display, const buffer_met
      return create_shm_wl_buffer(display, metadata, handle);
  }
  std::unique_ptr<buffer> create_buffer_gbm(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
@@ -255,15 +255,17 @@ index 480ae91..bdfe505 100644
  }
  std::unique_ptr<buffer> create_buffer_cros(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
      auto *cros_handle = reinterpret_cast<const cros_gralloc_handle *>(handle);
-+    if (hal_format_needs_conversion(metadata.format)) {
++    // Video and every other multi-plane buffer go through the awaited import.
++    const bool video = hal_format_needs_conversion(metadata.format);
++    if (video || cros_handle->num_planes > 1) {
 +        if (auto buf = import_video_dmabuf(display, metadata, handle, cros_handle))
 +            return buf;
-+        return create_shm_wl_buffer(display, metadata, handle);
++        return video ? create_shm_wl_buffer(display, metadata, handle) : nullptr;
 +    }
      return create_dmabuf_wl_buffer(display, metadata, cros_handle->fds[0], cros_handle->format, cros_handle->strides[0], cros_handle->offsets[0], cros_handle->format_modifier, handle);
  }
  std::unique_ptr<buffer> create_buffer_android(display *display, const buffer_metadata& metadata, buffer_handle_t handle) {
-@@ -316,6 +486,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
+@@ -316,6 +488,8 @@ buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *lay
  }
  
  bool update_shm_buffer_generic(display *display, buffer *buffer) {
@@ -287,10 +289,18 @@ index 1a718d2..e03fa52 100644
  std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_metadata& metadata,
                                                                  int prime_fd, int format, int byte_stride,
 diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
-index 8b8d61f..778d0d2 100644
+index 8b8d61f..98c385e 100644
 --- a/hwcomposer/hwcomposer.cpp
 +++ b/hwcomposer/hwcomposer.cpp
-@@ -124,8 +124,16 @@ namespace {
+@@ -37,6 +37,7 @@
+ #include <cutils/properties.h>
+ #include <hardware/hwcomposer.h>
+ #include <libsync/sw_sync.h>
++#include <utils/Timers.h>
+ #include <sync/sync.h>
+ #include <drm_fourcc.h>
+ #include <presentation-time-client-protocol.h>
+@@ -124,8 +125,16 @@ namespace {
              buf = emplace_result.first->second.get();
          }
  
@@ -309,7 +319,7 @@ index 8b8d61f..778d0d2 100644
          return buf;
      }
  
-@@ -352,7 +360,8 @@ static int apply_hwc_layer_to_surface_context(waydroid_hwc_composer_device_1 *pd
+@@ -352,7 +361,8 @@ static int apply_hwc_layer_to_surface_context(waydroid_hwc_composer_device_1 *pd
      hwc_layer->releaseFenceFd = -1;
  
      surface_context.attach_buffer(*buf);
@@ -319,10 +329,48 @@ index 8b8d61f..778d0d2 100644
      surface_context.set_buffer_transform(hwc_transform_to_buffer_transform(hwc_layer->transform));
      // Scaling can only be supported correctly with wp_viewport
      if (surface_context.viewport) {
-@@ -484,6 +493,34 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
+@@ -484,6 +494,72 @@ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev)
      }
  }
  
++// Video layers are not tracked by Android's timestats, so the composer
++// reports them: compositions with a video layer, new video buffers among
++// them, layers it could not present, and how the rest were presented.
++static struct {
++    unsigned compositions = 0, received = 0, skipped = 0, dmabuf = 0, shm = 0;
++    buffer_handle_t last = nullptr;
++    int64_t since = 0;
++} video_stats;
++
++static void count_video_frame(waydroid_hwc_composer_device_1 *, buffer_handle_t handle, buffer *buf) {
++    video_stats.compositions++;
++    if (handle != video_stats.last)
++        video_stats.received++;
++    video_stats.last = handle;
++    if (!buf)
++        video_stats.skipped++;
++    else if (buf->isShm)
++        video_stats.shm++;
++    else
++        video_stats.dmabuf++;
++}
++
++static void log_video_frame_stats() {
++    const int64_t now = systemTime(SYSTEM_TIME_MONOTONIC);
++    if (!video_stats.since)
++        video_stats.since = now;
++    if (now - video_stats.since < 5000000000LL)
++        return;
++    if (video_stats.compositions)
++        ALOGI("frame stats: video compositions %u received %u presented %u skipped %u path dmabuf %u shm %u",
++              video_stats.compositions, video_stats.received,
++              video_stats.dmabuf + video_stats.shm, video_stats.skipped, video_stats.dmabuf, video_stats.shm);
++    const auto last = video_stats.last;
++    video_stats = {};
++    video_stats.last = last;
++    video_stats.since = now;
++}
++
 +// libwayland-client treats a full send buffer as fatal. While the compositor
 +// is not reading (the screen waking, a modeset) frames are dropped instead of
 +// queued; the frame's fences still complete so SurfaceFlinger carries on.
@@ -354,7 +402,7 @@ index 8b8d61f..778d0d2 100644
  static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
                     hwc_display_contents_1_t** displays) {
      if (HWC_DISPLAY_PRIMARY >= numDisplays || !displays)
-@@ -494,13 +531,38 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
+@@ -494,13 +570,39 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
      hwc_display_contents_1_t* contents = displays[HWC_DISPLAY_PRIMARY];
      assert(contents);
  
@@ -380,7 +428,7 @@ index 8b8d61f..778d0d2 100644
      auto& mode = pdev->selected_mode;
      mode->setup_set(pdev, contents);
  
-+    // Convert video before taking the window lock: input handlers wait on it.
++    // Prepare video before taking the window lock: input handlers wait on it.
 +    pdev->frame++;
 +    for (size_t l = 0; l < contents->numHwLayers; l++) {
 +        auto *layer = &contents->hwLayers[l];
@@ -388,8 +436,9 @@ index 8b8d61f..778d0d2 100644
 +            layer->compositionType == HWC_FRAMEBUFFER_TARGET)
 +            continue;
 +        if (hal_format_needs_conversion(pdev->gralloc_handler.get_buffer_metadata(pdev->display, layer, l).format))
-+            get_wl_buffer(pdev, layer, l);
++            count_video_frame(pdev, layer->handle, get_wl_buffer(pdev, layer, l));
 +    }
++    log_video_frame_stats();
 +
      std::scoped_lock lock(pdev->display->windowsMutex);
      mode->cleanup_stale_windows(pdev, contents);
