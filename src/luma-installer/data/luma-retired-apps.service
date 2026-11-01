@@ -3,6 +3,9 @@
 Description=Remove retired Luma apps while keeping their data
 After=basic.target
 StartLimitIntervalSec=0
+# Signed-in users only: root's and system users' managers have no user apps,
+# and user retirement refuses to run as root.
+ConditionUser=!@system
 
 [Service]
 Type=exec

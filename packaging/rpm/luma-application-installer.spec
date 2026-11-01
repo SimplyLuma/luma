@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.82.nightly20261030.1%{?dist}
+Release:        1.luma.83%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -270,6 +270,9 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.83
+- Run user app retirement only for signed-in users
+
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.77.nightly20261026.1
 - Seed older signed OS app inventories with their original role contract.
 
