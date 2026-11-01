@@ -61,6 +61,7 @@ lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-not
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
 lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
 lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
+lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
@@ -150,6 +151,7 @@ write_state() {
     printf 'LINEAGE_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$lineage_admission_patch")"
     printf 'LINEAGE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$lineage_clipboard_patch")"
     printf 'LINEAGE_REPLY_PATCH_SHA=%s\n' "$(patch_sha "$lineage_reply_patch")"
+    printf 'LINEAGE_ICON_PATCH_SHA=%s\n' "$(patch_sha "$lineage_icon_patch")"
     printf 'HARDWARE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_lifetime_patch")"
     printf 'HARDWARE_INITIAL_RESIZE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_initial_resize_patch")"
     printf 'HARDWARE_RPC_THREADPOOL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_rpc_threadpool_patch")"
@@ -312,6 +314,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$lineage_root" apply "$lineage_admission_patch"
   git -C "$lineage_root" apply "$lineage_clipboard_patch"
   git -C "$lineage_root" apply "$lineage_reply_patch"
+  git -C "$lineage_root" apply "$lineage_icon_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
@@ -544,7 +547,8 @@ if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_P
    [ "$(patch_sha "$lineage_notification_patch")" != "${LINEAGE_NOTIFICATION_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$lineage_admission_patch")" != "${LINEAGE_ADMISSION_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$lineage_clipboard_patch")" != "${LINEAGE_CLIPBOARD_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$lineage_reply_patch")" != "${LINEAGE_REPLY_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$lineage_reply_patch")" != "${LINEAGE_REPLY_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_icon_patch")" != "${LINEAGE_ICON_PATCH_SHA:-}" ]; then
   git -C "$lineage_root" reset --hard -q "$lineage_official_head"
   git -C "$lineage_root" clean -fdq
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
@@ -552,6 +556,7 @@ if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_P
   git -C "$lineage_root" apply "$lineage_admission_patch"
   git -C "$lineage_root" apply "$lineage_clipboard_patch"
   git -C "$lineage_root" apply "$lineage_reply_patch"
+  git -C "$lineage_root" apply "$lineage_icon_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \

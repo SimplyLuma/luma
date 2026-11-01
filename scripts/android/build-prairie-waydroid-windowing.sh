@@ -55,6 +55,7 @@ lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-not
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
 lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
 lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
+lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -217,6 +218,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_clipboard_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_reply_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_icon_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \

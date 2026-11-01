@@ -1,0 +1,48 @@
+--- a/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
++++ b/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
+@@ -41,6 +41,7 @@
+ import android.provider.Settings;
+ import android.util.Log;
+ import android.net.Uri;
++import android.graphics.drawable.AdaptiveIconDrawable;
+ import android.graphics.drawable.BitmapDrawable;
+ import android.graphics.drawable.Drawable;
+ import android.graphics.drawable.Icon;
+@@ -213,7 +214,10 @@
+         if (icon == null)
+             return;
+ 
+-        Bitmap iconBitmap = drawableToBitmap(icon, false);
++        Bitmap iconBitmap = icon instanceof AdaptiveIconDrawable
++                ? adaptiveIconToBitmap((AdaptiveIconDrawable) icon) : null;
++        if (iconBitmap == null)
++            iconBitmap = drawableToBitmap(icon, false);
+         File imageFile = new File(ICONS_DIR, packageName + ".png");
+         FileOutputStream fileOutStream = null;
+         try {
+@@ -234,6 +238,25 @@
+         imageFile.setWritable(true, false);
+     }
+ 
++    // The host masks every application icon itself. Drawing an adaptive icon
++    // whole applies system_server's own mask, so composite its layers
++    // unmasked instead: the visible square of the larger layer canvas.
++    private Bitmap adaptiveIconToBitmap(AdaptiveIconDrawable icon) {
++        int size = icon.getIntrinsicWidth();
++        if (size <= 0 || size != icon.getIntrinsicHeight())
++            return null;
++        int inset = Math.round(size * AdaptiveIconDrawable.getExtraInsetFraction());
++        Bitmap bitmap = Bitmap.createBitmap(size, size, Config.ARGB_8888);
++        Canvas canvas = new Canvas(bitmap);
++        for (Drawable layer : new Drawable[] {icon.getBackground(), icon.getForeground()}) {
++            if (layer == null)
++                continue;
++            layer.setBounds(-inset, -inset, size + inset, size + inset);
++            layer.draw(canvas);
++        }
++        return bitmap;
++    }
++
+     private Bitmap drawableToBitmap(Drawable drawable, boolean force) {
+         if (!force && drawable instanceof BitmapDrawable)
+             return ((BitmapDrawable)drawable).getBitmap();
