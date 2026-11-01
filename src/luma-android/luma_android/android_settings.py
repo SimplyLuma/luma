@@ -14,10 +14,30 @@ SETTINGS_GLOBAL = 2  # lineageos.waydroid.Platform.SETTINGS_GLOBAL
 ALLOWED = {"force_resizable_activities": {"0", "1"}}
 
 
+def is_set(platform, key: str) -> bool:
+    """Return whether Android holds a value for the global setting.
+
+    An unset setting replies with a null String16, and python3-gbinder 1.3
+    crashes reading one, so probe the length before settingsGetString does.
+    """
+    from tools.interfaces.IPlatform import TRANSACTION_settingsGetString
+
+    request = platform.client.new_request()
+    request.append_int32(SETTINGS_GLOBAL)
+    request.append_string16(key)
+    reply, status = platform.client.transact_sync_reply(TRANSACTION_settingsGetString, request)
+    if status:
+        raise RuntimeError("Android settings service did not reply")
+    reader = reply.init_reader()
+    _, exception = reader.read_int32()
+    _, length = reader.read_int32()
+    return exception == 0 and length >= 0
+
+
 def put(platform, key: str, value: str) -> bool:
     """Return whether Android changed; raise if it did not accept the value."""
     # Waydroid 1.6.3 settingsGetInt sends the string transaction; read strings.
-    if platform.settingsGetString(SETTINGS_GLOBAL, key) == value:
+    if is_set(platform, key) and platform.settingsGetString(SETTINGS_GLOBAL, key) == value:
         return False
     platform.settingsPutString(SETTINGS_GLOBAL, key, value)
     if platform.settingsGetString(SETTINGS_GLOBAL, key) != value:
