@@ -67,8 +67,8 @@ once the task grew (an app's first launch, a browser tab it opens).
 `0023` presents video layers itself. 4:2:0 YUV buffers (YV12, NV12/NV21
 and implementation-defined decoder output) are mapped and converted to RGB
 with libyuv, then sent over wl_shm, because compositors import video layouts
-unreliably: minigbm names YV12 with a private code, and panthor's EGL
-rejected the YV12 layout outright. A dmabuf the compositor cannot import was
+unreliably (minigbm names YV12 with a private code and, before
+android-minigbm 0001, described it as a single plane). A dmabuf the compositor cannot import was
 a protocol error that disconnected and aborted the composer, leaving Android
 without a display until it restarted. Other dmabuf layers are forwarded only
 in a format and modifier the compositor advertised. libwayland-client treats a

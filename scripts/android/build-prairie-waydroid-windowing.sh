@@ -235,6 +235,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0003-gbm-serialize-shared-context-maps.patch"
+  git -C "$source_root/external/minigbm" apply "$repo_root/patches/android-minigbm/0001-gbm-mesa-describe-yv12-planes.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
   git -C "$source_root/build/blueprint" apply "$blueprint_cpu_patch"

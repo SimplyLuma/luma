@@ -1,0 +1,71 @@
+diff --git a/gbm_mesa_driver/gbm_mesa_internals.cpp b/gbm_mesa_driver/gbm_mesa_internals.cpp
+index 9b3bf48..d289e8e 100644
+--- a/gbm_mesa_driver/gbm_mesa_internals.cpp
++++ b/gbm_mesa_driver/gbm_mesa_internals.cpp
+@@ -355,9 +355,8 @@ int gbm_mesa_bo_create(struct bo *bo, uint32_t width, uint32_t height, uint32_t
+ 
+ 	if (format == DRM_FORMAT_YVU420_ANDROID) {
+ 		alloc_args.width /= 2;
+-		alloc_args.height += height / 2;
++		alloc_args.height += DIV_ROUND_UP(height, 2);
+ 		alloc_args.width = ALIGN(alloc_args.width, 512);
+-		bo->meta.num_planes = drv_num_planes_from_format(DRM_FORMAT_R8);
+ 	}
+ 
+ 	err = wr->alloc(&alloc_args);
+@@ -373,15 +372,24 @@ int gbm_mesa_bo_create(struct bo *bo, uint32_t width, uint32_t height, uint32_t
+ 		return err;
+ 	}
+ 
+-	if (!bo_layout_ready)
+-		drv_bo_from_format(bo, alloc_args.out_stride, alloc_args.height, (format == DRM_FORMAT_YVU420_ANDROID) ? DRM_FORMAT_R8 : format);
++	/*
++	 * YV12 is allocated as a GR88 surface of width/2 and 3/2 height. Describe
++	 * it as the three planes it holds: luma at the surface stride, then Cr and
++	 * Cb at half that stride, which fills the allocation exactly. Describing it
++	 * as one R8 plane left consumers without chroma planes.
++	 */
++	if (!bo_layout_ready && format == DRM_FORMAT_YVU420_ANDROID)
++		drv_bo_from_format(bo, alloc_args.out_stride, height, format);
++	else if (!bo_layout_ready)
++		drv_bo_from_format(bo, alloc_args.out_stride, alloc_args.height, format);
+ 
+ 	drv_logv("Allocated: %dx%d, stride: %d, map_stride: %d", width, height,
+ 		 alloc_args.out_stride, alloc_args.out_map_stride);
+ 
+ 	auto priv = new GbmMesaBoPriv();
++	/* Every plane owns its own descriptor for the one buffer. */
+ 	for (size_t plane = 0; plane < bo->meta.num_planes; plane++) {
+-		priv->fds[plane] = UniqueFd(alloc_args.out_fd);
++		priv->fds[plane] = UniqueFd(plane == 0 ? alloc_args.out_fd : dup(alloc_args.out_fd));
+ 	}
+ 
+ 	priv->map_stride = alloc_args.out_map_stride;
+@@ -403,9 +411,6 @@ int gbm_mesa_bo_import(struct bo *bo, struct drv_import_fd_data *data)
+ 	}
+ 	auto priv = new GbmMesaBoPriv();
+ 
+-	if (data->format == DRM_FORMAT_YVU420_ANDROID) {
+-		bo->meta.num_planes = drv_num_planes_from_format(DRM_FORMAT_R8);
+-	}
+ 	for (size_t plane = 0; plane < bo->meta.num_planes; plane++) {
+ 		priv->fds[plane] = UniqueFd(dup(data->fds[plane]));
+ 	}
+@@ -425,7 +430,7 @@ int gbm_mesa_bo_import(struct bo *bo, struct drv_import_fd_data *data)
+ 		}
+ 		if (s_format == DRM_FORMAT_YVU420_ANDROID) {
+ 			s_width /= 2;
+-			s_height += data->height / 2;
++			s_height += DIV_ROUND_UP(data->height, 2);
+ 			s_width = ALIGN(s_width, 512);
+ 		}
+ 		priv->drv = drv;
+@@ -475,7 +480,7 @@ void *gbm_mesa_bo_map(struct bo *bo, struct vma *vma, size_t plane, uint32_t map
+ 	}
+ 	if (s_format == DRM_FORMAT_YVU420_ANDROID) {
+ 		s_width /= 2;
+-		s_height += bo->meta.height / 2;
++		s_height += DIV_ROUND_UP(bo->meta.height, 2);
+ 		s_width = ALIGN(s_width, 512);
+ 	}
+ 
