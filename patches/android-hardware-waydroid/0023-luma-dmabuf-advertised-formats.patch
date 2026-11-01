@@ -1,5 +1,5 @@
 diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
-index 480ae91..2bab6a3 100644
+index 480ae91..96362d0 100644
 --- a/hwcomposer/gralloc_handler.cpp
 +++ b/hwcomposer/gralloc_handler.cpp
 @@ -27,6 +27,8 @@
@@ -17,7 +17,7 @@ index 480ae91..2bab6a3 100644
  
 +    // minigbm keeps private codes for Android formats in its handles; the
 +    // compositor only knows the DRM format each one is laid out as.
-+    constexpr uint32_t MINIGBM_YVU420_ANDROID = fourcc_code(9, 9, 9, 7);
++    constexpr uint32_t MINIGBM_YVU420_ANDROID = fourcc_code('9', '9', '9', '7');
 +
 +    uint32_t compositor_drm_format(uint32_t format) {
 +        return format == MINIGBM_YVU420_ANDROID ? DRM_FORMAT_YVU420 : format;
@@ -40,7 +40,7 @@ index 480ae91..2bab6a3 100644
      uint32_t ConvertHalFormatToDrm(struct display *display, uint32_t hal_format) {
          uint32_t fmt;
  
-@@ -169,7 +193,8 @@ namespace {
+@@ -169,22 +193,37 @@ namespace {
  }
  std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_metadata& metadata,
                                                                  int prime_fd, int drm_format, int byte_stride,
@@ -50,11 +50,9 @@ index 480ae91..2bab6a3 100644
  {
      assert(prime_fd >= 0);
  
-@@ -181,10 +206,24 @@ std::unique_ptr<buffer> create_dmabuf_wl_buffer(display *display, const buffer_m
-     if (drm_format < 0) {
-         drm_format = ConvertHalFormatToDrm(display, metadata.format);
-     }
--    assert(drm_format >= 0);
++    if (drm_format < 0) {
++        drm_format = ConvertHalFormatToDrm(display, metadata.format);
++    }
 +    if (drm_format < 0 || !isImportSupported(display, drm_format, modifier)) {
 +        static std::mutex warned_lock;
 +        static std::unordered_set<int> warned;
@@ -64,7 +62,17 @@ index 480ae91..2bab6a3 100644
 +                  drm_format, (unsigned long long)modifier);
 +        return nullptr;
 +    }
++
+     std::unique_ptr<buffer> buf { new buffer() };
  
+     buf->metadata = metadata;
+     buf->handle = handle;
+ 
+-    if (drm_format < 0) {
+-        drm_format = ConvertHalFormatToDrm(display, metadata.format);
+-    }
+-    assert(drm_format >= 0);
+-
      zwp_linux_buffer_params_v1 *params = zwp_linux_dmabuf_v1_create_params(display->dmabuf);
 -    zwp_linux_buffer_params_v1_add(params, prime_fd, 0, offset, byte_stride, modifier >> 32, modifier & 0xffffffff);
 +    if (planes.empty()) {
