@@ -361,3 +361,8 @@ the first layer switch after it (the first capital's release) drew a whole
 layer. Layers are marked cold when the keyboard is mapped, its stage views
 change or its layout is rebuilt, and drawn again one per frame while it
 slides in or sits idle, never in a frame that handles a touch. Shell .137.
+
+`0303-mobile-data-quick-toggle.patch`: a Mobile Data Quick Settings toggle
+bound to `org.projectluma.MobileMode1` for modems that carry either IMS or
+mobile data at a time; hidden where that service does not run. Quick Options
+gives it a fifth utility slot. Shell .140.

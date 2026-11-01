@@ -77,15 +77,17 @@ export class OptionsSurface {
         }
         const second = row();
         // Providers retain their native slots; visible controls pack from the left.
-        this._secondarySlots = Array.from({length: 4}, () => {
+        // A fifth slot, for Mobile Data on phones; packing fills rows of four.
+        this._secondarySlots = Array.from({length: 5}, () => {
             const slot = new St.Bin({x_expand: true});second.add_child(slot);return slot;
         });
         this._utilitySlots.push(...this._secondarySlots);
-        this._utilityRows = [first, second];
+        this._utilityRows = [first, second, row()];
         this._utilityParking = new St.BoxLayout({visible: false});
         utilities.add_child(this._utilityParking);
         for (const [item, index] of [[indicators._rfkill.quickSettingsItems[0], 0],
-            [indicators._cast.quickSettingsItems[0], 2]]) this._put(item, index);
+            [indicators._cast.quickSettingsItems[0], 2],
+            [indicators._mobileMode?.quickSettingsItems[0], 4]]) this._put(item, index);
         indicators._cast.quickSettingsItems[0].title = _('Cast Screen');
         const hotspotSource = indicators._network?._wirelessToggle?._hotspot;
         if (hotspotSource) {

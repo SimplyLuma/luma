@@ -101,7 +101,10 @@ class ScreenWaker:
             self._proxy = None
 
     def wake(self) -> None:
-        if self._proxy is None:
+        # GNOME Shell's SetActive(false) dismisses the lock screen without
+        # authentication. Without layer-shell (GNOME Shell) the call's urgent
+        # notification wakes the lock screen instead.
+        if self._proxy is None or Gtk4LayerShell is None:
             return
         try:
             self._proxy.call_sync(
@@ -505,7 +508,7 @@ class PhoneDaemon:
         caller = self._caller_for(number)
         self._ringer.start()
         self._incoming_locked = self._waker.locked()
-        if not self._incoming_locked:
+        if not self._incoming_locked or Gtk4LayerShell is None:
             self._incoming_indicator.publish(caller)
             return
         self._show_incoming_surface()

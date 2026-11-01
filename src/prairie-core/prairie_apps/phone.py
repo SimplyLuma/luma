@@ -1747,6 +1747,14 @@ class PhoneWindow(AppWindow):
         return False
 
 
+def install_phone_theme() -> None:
+    """Install the shared Phone stylesheet for its window and call presenter."""
+    path = os.environ.get("LUMA_PHONE_STYLE_PATH", str(Path(__file__).parents[1] / "style/phone.css"))
+    if not Path(path).is_file():
+        path = "/usr/share/prairie-core/phone.css"
+    add_style_sheet(path)
+
+
 class PhoneApplication(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
@@ -1757,10 +1765,7 @@ class PhoneApplication(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         install_lumaui()
-        path = os.environ.get("LUMA_PHONE_STYLE_PATH", str(Path(__file__).parents[1] / "style/phone.css"))
-        if not Path(path).is_file():
-            path = "/usr/share/prairie-core/phone.css"
-        add_style_sheet(path)
+        install_phone_theme()
 
     def do_activate(self):
         window = self.props.active_window or PhoneWindow(self)
