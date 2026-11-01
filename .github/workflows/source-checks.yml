@@ -10,6 +10,13 @@ permissions:
   contents: read
 
 jobs:
+  android-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Android graphics recovery and restart budget regressions
+        run: PYTHONPATH=src/luma-android python3 -B -m unittest discover -s src/luma-android/tests -p 'test_graphics_watchdog.py'
   public-source-contracts:
     strategy:
       fail-fast: false
