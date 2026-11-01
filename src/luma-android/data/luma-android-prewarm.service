@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Start Android in the background after sign-in
+Documentation=https://project-luma.local/android
+PartOf=graphical-session.target
+After=graphical-session-pre.target gnome-session-initialized.target
+ConditionUser=!@system
+ConditionEnvironment=XDG_SESSION_CLASS=user
+# First-boot initialization owns setup; never ask for approval at sign-in.
+ConditionPathExists=/var/lib/waydroid/waydroid.cfg
+
+[Service]
+Type=oneshot
+# The same readiness pass as a cold launch: boot Android, apply the session
+# policy and stamp it, so the first app launch is a warm one.
+ExecStart=/usr/bin/luma-android resume
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=180
