@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,331 @@
+@@ -32,6 +32,336 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -308,6 +308,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1287:      0306-search-shared-surface-material.patch
 +Patch1288:      0303-mobile-data-quick-toggle.patch
 +Patch1289:      0307-dark-style-shared-appearance.patch
++Patch1290:      0308-tv-home.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -343,6 +344,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9032:     keycap.css
 +Source9033:     keycap-policy.js
 +Source9034:     keycap-icons.tar
++Source9035:     tv.js
++Source9036:     tvModel.js
++Source9037:     tvTokens.js
++Source9038:     tv-backdrop.jpg
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
@@ -371,7 +376,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +509,40 @@
+@@ -189,8 +509,46 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -402,6 +407,12 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9030} js/ui/lumaPresentation/keycap.js
 +cp %{SOURCE9031} js/ui/lumaPresentation/keycapTokens.js
 +cp %{SOURCE9032} js/ui/lumaPresentation/keycap.css
++# TV posture: the TV home (tv.js), its pure model and shared TV tokens, and
++# the pre-blurred backdrop (scripts/developer/render-tv-backdrop.sh).
++cp %{SOURCE9035} js/ui/lumaPresentation/tv.js
++cp %{SOURCE9036} js/ui/lumaPresentation/tvModel.js
++cp %{SOURCE9037} js/ui/lumaPresentation/tvTokens.js
++cp %{SOURCE9038} js/ui/lumaPresentation/tv-backdrop.jpg
 +# Keycap icons, derived from Stevia's Lucide outlines (generate-keycap-shell-icons.py).
 +tar -xf %{SOURCE9034} -C data/icons/scalable/status --exclude=LICENSE
 +tar -xOf %{SOURCE9034} LICENSE > LUCIDE-KEYCAP-LICENSE.txt

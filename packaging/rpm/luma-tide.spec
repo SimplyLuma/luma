@@ -169,6 +169,7 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_datadir}/dbus-1/services/org.projectluma.Tide.service
 %{_datadir}/metainfo/org.projectluma.Tide.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Tide.svg
+%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Tide-tv.svg
 %{_datadir}/luma-tide/tide.css
 %{_userunitdir}/luma-tide-retire-preview-overrides.service
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service

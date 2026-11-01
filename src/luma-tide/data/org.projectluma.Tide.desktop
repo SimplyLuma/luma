@@ -13,4 +13,7 @@ DBusActivatable=true
 # per-application notification and badge switches reach it.
 X-GNOME-UsesNotifications=true
 Keywords=Music;Audio;Library;Player;Playlist;
-
+# TV home opt-in, from the app's [tv] declaration (docs/developer-platform/tv-mode.md).
+X-Luma-TV=true
+X-Luma-TV-Tile=org.projectluma.Tide-tv
+X-Luma-TV-Presentation=tv

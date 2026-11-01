@@ -64,3 +64,38 @@ covers, buttons, wide tiles and the well/chip/key/bar materials) live in the
 `tv` block of `config/shared/design-tokens.json`. Python reads them as
 `luma_appkit.lumaui_tokens.TV`; the shell as `tvTokens.js`. Use the tokens;
 do not copy numbers into an application.
+
+## Appearing on the TV home
+
+Only applications that opt in appear on the TV home. Declare TV support in
+`luma-app.toml`:
+
+```toml
+[tv]
+supported = true
+tile = "data/org.example.App-tv.svg"   # the 16:9 wide tile
+presentation = "tv"                    # the app shows its TV presentation in TV posture
+```
+
+The shell reads applications from the same catalogue as Home and the shelf
+(installed desktop entries), so the declaration is installed as three
+desktop-entry keys, which `luma lint` checks against the manifest:
+
+```ini
+X-Luma-TV=true
+X-Luma-TV-Tile=org.example.App-tv
+X-Luma-TV-Presentation=tv
+```
+
+Install the tile as an icon named after the application ID with `-tv`
+(`share/icons/hicolor/scalable/apps/org.example.App-tv.svg`), so a Flatpak
+exports it like its other icons. Make it from the application's v4 icon with
+the Design Center's `tools/wide-tile.py` (plate, art between plate and rim,
+rim; art centred at 1.15x); its corner is a share of the tile
+(rx 190 of 1600x900), and it carries its own rim.
+
+`presentation` names what the app shows in TV posture. `tv` means the app
+follows `tv_posture()` with its own TV presentation; `fullscreen` means it has
+none yet and shows its normal view full screen. No `[tv]` table, or
+`supported = false`, means the app does not appear on the TV home; it still
+opens normally from anywhere else.

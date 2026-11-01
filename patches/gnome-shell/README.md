@@ -366,3 +366,14 @@ slides in or sits idle, never in a frame that handles a touch. Shell .137.
 bound to `org.projectluma.MobileMode1` for modems that carry either IMS or
 mobile data at a time; hidden where that service does not run. Quick Options
 gives it a fifth utility slot. Shell .140.
+
+`0308-tv-home.patch`: registers the TV posture's sources in the JS resource
+(`lumaPresentation/tv.js`, `tvModel.js`, the generated `tvTokens.js` and the
+pre-blurred `tv-backdrop.jpg`) and lists `tv.js` for translation. The sources
+live in `src/luma-shell-presentation/` and are copied in `%prep` like the rest
+of the presentation. `presentation.js` hands the screen to `TvPresentation`
+when the shell-state snapshot's `posture.effective` is `tv`; its handheld
+machinery stays on Desktop underneath, and a snapshot without a posture (an
+older shell-state) behaves exactly as before. In TV posture the TV home
+(Home, Apps, Search) replaces the Dash, panel, overview and sticky stack;
+applications run full screen, and minimising the last one returns to Apps.

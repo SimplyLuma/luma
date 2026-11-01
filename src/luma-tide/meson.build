@@ -55,6 +55,8 @@ install_data(
 )
 install_data(
   'data/org.projectluma.Tide.svg',
+  # The wide TV tile, named by X-Luma-TV-Tile in the desktop entry.
+  'data/org.projectluma.Tide-tv.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
 )
 install_data(

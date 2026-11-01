@@ -27,6 +27,7 @@ import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions, StatusPulls} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
+import {TvPresentation} from './tv.js';
 import {gettext as _} from 'gettext';
 
 const BUS = 'org.project_luma.ShellState1';
@@ -277,6 +278,8 @@ export class Presentation {
         this._connect(seat, 'notify::touch-mode', () => this._reportInput());
         this._connect(seat, 'device-added', () => this._reportInput());
         this._connect(seat, 'device-removed', () => this._reportInput());
+        // TV posture owns the screen while it is on; nothing else changes.
+        this._tv = new TvPresentation(this);
         this._addModeOptions();
         this._handheldOptions = new HandheldOptions(this);
         this._statusPulls = new StatusPulls(this);
@@ -353,8 +356,13 @@ export class Presentation {
         const homeChanged = JSON.stringify(snapshot.home_layouts) !== JSON.stringify(this._state?.home_layouts);
         this._state = snapshot;
         this._updateStatusStyle();
-        const mode = snapshot.presentation?.effective ?? 'desktop';
-        const selected = snapshot.presentation?.selected ?? 'automatic';
+        // TV posture sits above the presentation: the handheld machinery stays
+        // on Desktop underneath and TvPresentation draws the screen. Without a
+        // posture in the snapshot (an older service) this is exactly as before.
+        const tv = snapshot.posture?.effective === 'tv';
+        if (!tv) this._tv.setActive(false);
+        const mode = tv ? 'desktop' : snapshot.presentation?.effective ?? 'desktop';
+        const selected = snapshot.posture?.selected === 'tv' ? 'tv' : snapshot.presentation?.selected ?? 'automatic';
         for (const [choice, option] of this._modeButtons) {
             option.checked = selected === choice;
             option.setOrnament(option.checked ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
@@ -366,6 +374,7 @@ export class Presentation {
         this._options.subtitle = null;
         if (this.mode === mode) {
             if ((favoritesChanged || homeChanged) && mode !== 'desktop') this._queueRebuild();
+            this._tv.setActive(tv);
             return;
         }
         const previous = this.mode;
@@ -386,6 +395,7 @@ export class Presentation {
             for (const window of this._windows.keys()) this._queueKeep(window);
         }
         this._tasks.setMode();
+        this._tv.setActive(tv);
     }
 
     // Runs on every monitor change: the primary display's connector picks its
@@ -442,13 +452,19 @@ export class Presentation {
         this._options.connect('clicked', () => this._options.menu.open());
         this._modeButtons = new Map();
         for (const [mode, label] of [['automatic', _('Automatic')], ['desktop', _('Desktop')],
-            ['tablet', _('Tablet')], ['mobile', _('Mobile')]]) {
+            ['tablet', _('Tablet')], ['mobile', _('Mobile')], ['tv', _('TV')]]) {
             const option = new PopupMenu.PopupMenuItem(label);
             option.reactive = false;
             option.can_focus = false;
             option.accessible_role = Atk.Role.RADIO_MENU_ITEM;
             option.connect('activate', () => {
-                this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => this._refresh());
+                // TV is the posture; any other choice leaves TV for that presentation.
+                if (mode === 'tv') this._call('SetPosture', new GLib.Variant('(s)', ['tv']), () => this._refresh());
+                else this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => {
+                    if (this._state?.posture?.selected === 'tv')
+                        this._call('SetPosture', new GLib.Variant('(s)', ['automatic']), () => this._refresh());
+                    else this._refresh();
+                });
                 menu.close();
             });
             this._options.menu.addMenuItem(option);
@@ -1190,6 +1206,7 @@ export class Presentation {
         this._initialWindows.clear();
         global.stage.remove_action(this._homePan);
         this._backNavigation.destroy();
+        this._tv.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
         this._motion.destroy();
