@@ -1,0 +1,46 @@
+diff --git a/src/gbm/backends/dri/gbm_dri.c b/src/gbm/backends/dri/gbm_dri.c
+index 55817547..f8ae78d8 100644
+--- a/src/gbm/backends/dri/gbm_dri.c
++++ b/src/gbm/backends/dri/gbm_dri.c
+@@ -1071,12 +1071,16 @@ gbm_dri_bo_map(struct gbm_bo *_bo,
+                                              &error, NULL, true);
+    }
+    assert(dri->context);
+-   mtx_unlock(&dri->mutex);
+ 
++   /* The mapping context is shared by every thread using this device, and
++    * gallium contexts are not thread-safe: keep the lock while it is used.
++    */
+    /* GBM flags and DRI flags are the same, so just pass them on */
+-   return dri2_map_image(dri->context, bo->image, x, y,
+-                               width, height, flags, (int *)stride,
+-                               map_data);
++   void *map = dri2_map_image(dri->context, bo->image, x, y,
++                              width, height, flags, (int *)stride,
++                              map_data);
++   mtx_unlock(&dri->mutex);
++   return map;
+ }
+ 
+ static void
+@@ -1092,8 +1096,11 @@ gbm_dri_bo_unmap(struct gbm_bo *_bo, void *map_data)
+       return;
+    }
+ 
+-   if (!dri->context)
++   mtx_lock(&dri->mutex);
++   if (!dri->context) {
++      mtx_unlock(&dri->mutex);
+       return;
++   }
+ 
+    dri2_unmap_image(dri->context, bo->image, map_data);
+ 
+@@ -1103,6 +1110,7 @@ gbm_dri_bo_unmap(struct gbm_bo *_bo, void *map_data)
+     * mechanism, we need to flush here.
+     */
+    dri_flush(dri->context, NULL, __DRI2_FLUSH_CONTEXT, 0);
++   mtx_unlock(&dri->mutex);
+ }
+ 
+ 

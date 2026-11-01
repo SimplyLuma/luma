@@ -29,6 +29,17 @@ index 0000000..0b6ce80
 +        </interface>
 +    </hal>
 +</manifest>
+diff --git a/configs/mediacodec.mesa.policy b/configs/mediacodec.mesa.policy
+index 689baf9..d588652 100644
+--- a/configs/mediacodec.mesa.policy
++++ b/configs/mediacodec.mesa.policy
+@@ -1,5 +1,6 @@
+ # Required by mesa3d
+ kcmp: 1
+ sched_getaffinity: 1
++sched_setscheduler: 1
+ sysinfo: 1
+ mkdirat: 1
 diff --git a/device.mk b/device.mk
 index 7c17ece..d26e171 100644
 --- a/device.mk

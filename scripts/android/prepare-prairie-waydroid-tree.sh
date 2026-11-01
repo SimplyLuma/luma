@@ -28,6 +28,7 @@ libhidl_root="$source_root/system/libhidl"
 libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 mesa_android_patch="$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
+mesa_gbm_patch="$repo_root/patches/android-mesa/0003-gbm-serialize-shared-context-maps.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
 blueprint_cpu_patch="$repo_root/patches/android-blueprint/0001-honor-host-go-concurrency.patch"
@@ -176,6 +177,7 @@ write_state() {
     printf 'ALLOCATOR_PATCH_SHA=%s\n' "$(patch_sha "$repo_root/patches/android-hardware-libhardware/0001-luma-software-yuv-buffers.patch")"
     printf 'MESA_BUILD_PATCH_SHA=%s\n' "$(patch_sha "$mesa_build_patch")"
     printf 'MESA_ANDROID_PATCH_SHA=%s\n' "$(patch_sha "$mesa_android_patch")"
+    printf 'MESA_GBM_PATCH_SHA=%s\n' "$(patch_sha "$mesa_gbm_patch")"
     printf 'PROPERTY_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$property_admission_patch")"
     printf 'SOONG_GC_PATCH_SHA=%s\n' "$(patch_sha "$soong_gc_patch")"
     printf 'SOONG_CPU_PATCH_SHA=%s\n' "$(patch_sha "$soong_cpu_patch")"
@@ -330,6 +332,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$source_root/external/mesa" 'Bound nested Mesa jobs to the admitted build budget'
   git -C "$source_root/external/mesa" apply "$mesa_android_patch"
   commit_patch "$source_root/external/mesa" 'Waydroid Android formats and aarch64 radeonsi GTT'
+  git -C "$source_root/external/mesa" apply "$mesa_gbm_patch"
+  commit_patch "$source_root/external/mesa" 'Serialize gbm maps on the shared context'
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go GC tuning in the isolated compiler'
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
@@ -441,6 +445,15 @@ fi
 if [ -z "${MESA_ANDROID_PATCH_SHA:-}" ]; then
   git -C "$source_root/external/mesa" apply "$mesa_android_patch"
   commit_patch "$source_root/external/mesa" 'Waydroid Android formats and aarch64 radeonsi GTT'
+  changed=1
+fi
+if [ -n "${MESA_GBM_PATCH_SHA:-}" ] && [ "$(patch_sha "$mesa_gbm_patch")" != "$MESA_GBM_PATCH_SHA" ]; then
+  printf 'error: Mesa gbm patch changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${MESA_GBM_PATCH_SHA:-}" ]; then
+  git -C "$source_root/external/mesa" apply "$mesa_gbm_patch"
+  commit_patch "$source_root/external/mesa" 'Serialize gbm maps on the shared context'
   changed=1
 fi
 if [ -n "${ALLOCATOR_PATCH_SHA:-}" ] &&
