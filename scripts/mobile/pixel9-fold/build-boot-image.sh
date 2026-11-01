@@ -30,8 +30,7 @@ MODULES=$(cat "$ROOT/config/kernel/pixel9fold.modules")
 DTB=zumapro-comet-dual
 ROLLBACK=1791158400   # stock comet cp3a.261005.005 boot.img
 BOOT_BYTES=67108864
-GUARD_BYTES=2097152
-GUARD_ZONE=0x17f0000:0x1840000
+FW_ZONE=0x1800000:0x1800a00   # the bootloader's write
 : "${ROOT_UUID:?}" "${BOOT_UUID:?}" "${OSTREE_PATH:?}" "${MALI_FIRMWARE_DIR:?}" "${MKBOOTIMG:?}" "${AVBTOOL:?}" "${AVB_KEY:?}"
 CACHE=${CACHE:-$HOME/.cache/luma-kernel}
 JOBS=${JOBS:-$(nproc)}
@@ -83,17 +82,10 @@ $G init -q; $G add -A -f; $G commit -q -m base --date=@0
 xargs $G am -q --committer-date-is-author-date <"$W/patches.list"
 COMMIT=$($G rev-parse HEAD)
 
-# Initramfs: the given tree plus the clobber guard. Something overwrites RAM
-# around Image offset 0x1800000 before the kernel unpacks its initramfs (seen
-# as "broken padding" when it hits a cpio header; silent file corruption
-# otherwise). A patterned file that sorts first in the archive takes the hit;
-# the check after the Image build makes sure it covers that zone.
+# Initramfs: the given tree as is. The bootloader writes a 0xa00-byte table
+# at Image offset 0x1800000 after loading the kernel; the kernel keeps
+# CONFIG_LUMA_FW_HOLE_START..END of its Image empty for it (checked below).
 cp -a "$INITRAMFS" "$W/initramfs-root"
-python3 -I - "$W/initramfs-root/.luma-clobber-guard" "$GUARD_BYTES" <<'PY'
-import sys
-n = int(sys.argv[2])
-open(sys.argv[1], "wb").write(bytes((i ^ (i >> 8) ^ (i >> 16) ^ 0x5a) & 0xff for i in range(n)))
-PY
 
 export SOURCE_DATE_EPOCH=$($G show -s --format=%ct HEAD)
 export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=luma KBUILD_BUILD_HOST=comet-builder KBUILD_BUILD_VERSION=1
@@ -147,20 +139,22 @@ echo "modules: $(tr '\n' ' ' <"$W/load-order")"
 $M -s -j"$JOBS" Image
 IMG=$W/build/arch/arm64/boot/Image
 
-python3 -I - "$IMG" "$GUARD_ZONE" <<'PY'
+# The bootloader write zone must sit inside the linker hole: nothing of the
+# kernel, its init data or the initramfs may start or end inside it.
+python3 -I - "$IMG" "$W/build/System.map" "$FW_ZONE" <<'PY'
 import sys
-img = open(sys.argv[1], "rb").read()
-lo, hi = (int(x, 16) for x in sys.argv[2].split(":"))
-n = b".luma-clobber-guard\0"; hits = []; i = img.find(n)
-while i != -1:
-    if i >= 110 and img[i - 110:i - 104] == b"070701": hits.append(i)
-    i = img.find(n, i + 1)
-if len(hits) != 1: raise SystemExit(f"clobber guard entries: {len(hits)}, want 1")
-i = hits[0]
-size = int(img[i - 110 + 54:i - 110 + 62], 16)
-d = i + len(n); d += (-(d - (i - 110))) % 4
-print(f"clobber guard data at Image {d:#x}..{d + size:#x}, zone {lo:#x}..{hi:#x}")
-if not (d <= lo and d + size >= hi): raise SystemExit("clobber guard does not cover the zone")
+img_len = len(open(sys.argv[1], "rb").read())
+syms = {}
+for l in open(sys.argv[2]):
+    a, _, n = l.split()[:3]
+    syms.setdefault(n, int(a, 16))
+lo, hi = (int(x, 16) for x in sys.argv[3].split(":"))
+t = syms["_text"]; s = syms["__luma_fw_hole_start"] - t; e = syms["__luma_fw_hole_end"] - t
+print(f"fw hole at Image {s:#x}..{e:#x}, zone {lo:#x}..{hi:#x}, text+rodata headroom {lo - s:#x}")
+if not (s <= lo and e >= hi): raise SystemExit("fw hole does not cover the zone")
+inside = sorted(n for n, a in syms.items() if s < a - t < e)
+if inside: raise SystemExit(f"symbols inside the fw hole: {inside[:5]}")
+if img_len < hi: raise SystemExit("Image ends inside the zone")
 PY
 python3 -I - "$IMG" "$W/build/luma/embedded.dtb" <<'PY'
 import sys, pathlib

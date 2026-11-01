@@ -6,7 +6,7 @@ install guide is [INSTALL.md](../../../devices/google/comet/INSTALL.md).
 
 | Path | What |
 |---|---|
-| `patches/linux-zumapro/comet/` | Kernel series on linux-zumapro `c03f06b6` (displays, touch, GPU, Wi-Fi, Bluetooth, audio, call audio, sensors, charging, modem link, GNSS) |
+| `patches/linux-zumapro/comet/` | Kernel series on linux-zumapro `c03f06b6` (displays, touch, GPU, Wi-Fi, Bluetooth, audio, call audio, sensors, charging, modem link, GNSS, firmware memory map) |
 | `config/kernel/pixel9fold-source.json` | Source lock: kernel archive, patches and built-in GPU firmware, with SHA-256 pins |
 | `config/kernel/pixel9fold.fragment` | Options on top of `zumapro_defconfig` (boot, SELinux, F2FS, binder, netfilter) |
 | `config/kernel/pixel9fold.config` | The resolved `.config`; the build fails if its own differs |
@@ -95,19 +95,27 @@ kmod, git, python3 3.11+, simg2img, lpunpack and erofs-utils.
    `out/` gets `boot.img`, the `.config`, the embedded DTB and `manifest.env`.
 
 The kernel tree is the pinned archive plus the series applied with `git am`;
-its tree matches the `luma/comet-daily8-try` branch the phone's kernel was
-built from. Built with the `luma-daily-v8-mobile5` inputs, this produces the
-same `.config` apart from `CONFIG_INITRAMFS_SOURCE`, kernel release
-`7.3.0-rc5-zumapro+`, a 103950848-byte Image and the same device tree.
+its tree matches the `luma/comet-fwhole` branch the phone's kernel was built
+from. Built with the `luma-daily-v8-fwhole1` inputs, this produces the same
+`.config` apart from `CONFIG_INITRAMFS_SOURCE` and kernel release
+`7.3.0-rc5-zumapro+`.
 
-### RAM clobber zone
+### Firmware memory
 
-Before the kernel unpacks its initramfs, something in the boot chain writes a
-2560-byte table at physical `0x81800000`, which is Image offset `0x1800000`.
-The build puts a 2 MiB patterned file first in the initramfs to absorb it and
-fails if that file does not cover `0x17f0000`-`0x1840000`. With
-`CONFIG_DYNAMIC_DEBUG` off the margin is about 332 KB; a kernel that grows
-past it needs a different fix (reserving the range in the linker script).
+`0089`-`0091` keep Linux off memory the firmware owns. Without them, heavy I/O
+ended in "synchronous external abort" panics in ext4: TrustZone and firmware
+carve-outs were being used as RAM.
+
+- `0089` imports the bootloader's no-map carve-outs from its device tree.
+- `0090` reserves the firmware-owned ranges the stock device tree reserves
+  (`zumapro-comet-stock-rmem.dtsi`).
+- `0091` keeps the bootloader write zone of the Image empty. After loading the
+  kernel and before jumping to it, the bootloader writes a 0xa00-byte table at
+  Image offset `0x1800000` (physical `0x81800000`). The linker leaves
+  `CONFIG_LUMA_FW_HOLE_START`..`END` (`0x17f0000`-`0x1840000`) empty; init
+  text, init data and the built-in initramfs start after it, and the link
+  fails if text or rodata reach it. The build checks `System.map` that no
+  symbol lies in the hole.
 
 ## Test images
 

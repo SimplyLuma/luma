@@ -1,0 +1,96 @@
+From 28a1ebb0f5be000e444c6594514339234420c1e9 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 21:15:07 -0400
+Subject: [PATCH 89/91] arm64: luma: import the bootloader no-map carve-outs
+
+The bootloader adds TrustZone DRAM (sec_dram), the secure page tables
+(sec_pt) and pKVM guest firmware to /reserved-memory at boot. With the
+embedded DTB Linux used them as RAM; under memory pressure the Pixel 9
+read corrupted data and locked up. Mark every enabled no-map region of
+the bootloader tree that is still unclaimed RAM as no-map.
+---
+ arch/arm64/kernel/luma_boot_fdt.c | 64 +++++++++++++++++++++++++++++++
+ 1 file changed, 64 insertions(+)
+
+diff --git a/arch/arm64/kernel/luma_boot_fdt.c b/arch/arm64/kernel/luma_boot_fdt.c
+index ba151658d..22773ddb4 100644
+--- a/arch/arm64/kernel/luma_boot_fdt.c
++++ b/arch/arm64/kernel/luma_boot_fdt.c
+@@ -85,6 +85,69 @@ static bool __init luma_range_is_free(phys_addr_t base, phys_addr_t size)
+ 	return true;
+ }
+ 
++/*
++ * The bootloader adds carve-outs at boot that no static device tree carries:
++ * TrustZone DRAM (sec_dram), the secure page tables (sec_pt), pKVM guest
++ * firmware.  Linux used them as ordinary RAM until memory filled up, then read
++ * garbage or took bus errors.  Mark every enabled no-map region of the
++ * bootloader's /reserved-memory that is still unclaimed RAM as no-map here.
++ */
++static u8 luma_fdt_copy[SZ_1M] __aligned(8);
++
++static void __init luma_import_bootloader_nomap(phys_addr_t phys, u32 size)
++{
++	const void *fdt = luma_fdt_copy;
++	int node, child, ac, sc, n = 0;
++	u32 off, len;
++
++	/* early_memremap() maps at most 256 KiB at a time: copy the tree in pieces */
++	if (size > sizeof(luma_fdt_copy)) {
++		pr_warn("luma: bootloader FDT too large (%u), carve-outs not imported\n", size);
++		return;
++	}
++	for (off = 0; off < size; off += len) {
++		void *p;
++
++		len = min_t(u32, size - off, SZ_128K);
++		p = early_memremap(phys + off, len);
++		if (!p) {
++			pr_warn("luma: bootloader FDT not mappable, carve-outs not imported\n");
++			return;
++		}
++		memcpy(luma_fdt_copy + off, p, len);
++		early_memunmap(p, len);
++	}
++	node = fdt_path_offset(fdt, "/reserved-memory");
++	ac = node < 0 ? 0 : fdt_address_cells(fdt, node);
++	sc = node < 0 ? 0 : fdt_size_cells(fdt, node);
++	if (node < 0 || ac < 1 || ac > 2 || sc < 1 || sc > 2)
++		goto out;
++	fdt_for_each_subnode(child, fdt, node) {
++		const char *status = fdt_getprop(fdt, child, "status", NULL);
++		const __be32 *reg;
++		int len;
++
++		if (!fdt_getprop(fdt, child, "no-map", NULL) ||
++		    (status && strcmp(status, "okay") && strcmp(status, "ok")))
++			continue;
++		reg = fdt_getprop(fdt, child, "reg", &len);
++		if (!reg || len < 0)
++			continue;
++		for (len /= sizeof(*reg); len >= ac + sc; len -= ac + sc) {
++			u64 a = dt_mem_next_cell(ac, &reg);
++			u64 s = dt_mem_next_cell(sc, &reg);
++
++			if (!luma_range_is_free(a, s) || memblock_mark_nomap(a, s))
++				continue;
++			pr_info("luma: bootloader carve-out %s %#llx+%#llx no-map\n",
++				fdt_get_name(fdt, child, NULL), a, s);
++			n++;
++		}
++	}
++out:
++	pr_info("luma: %d bootloader carve-outs imported\n", n);
++}
++
+ /* Early boot: validate the bootloader FDT and keep it until the initcall. */
+ void __init luma_reserve_bootloader_fdt(void)
+ {
+@@ -106,6 +169,7 @@ void __init luma_reserve_bootloader_fdt(void)
+ 	luma_boot_fdt_phys = phys;
+ 	luma_boot_fdt_size = size;
+ 	pr_info("luma: bootloader FDT at %pa, %u bytes, reserved\n", &phys, size);
++	luma_import_bootloader_nomap(phys, size);
+ 	return;
+ none:
+ 	pr_info("luma: no usable bootloader FDT (x0 %pa)\n", &phys);

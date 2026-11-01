@@ -463,6 +463,21 @@
       "source": "repository",
       "path": "patches/linux-zumapro/comet/0088-net-wwan-s5xxx-log-rejected-and-discarded-RFS-reques.patch",
       "sha256": "230b4278afa80610e8f49b916dce416dc57a417b4ed2e0eb116f1ce65a2ab4d6"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0089-arm64-luma-import-the-bootloader-no-map-carve-outs.patch",
+      "sha256": "a1506e106c9f1e9e71579690a6c43c1e608634eb179b4fda0aa7c111c44ae34b"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0090-arm64-dts-comet-reserve-the-firmware-owned-memory-th.patch",
+      "sha256": "0524b49d4b73e89be35c976d5724a8bfa7d3c767184baddb09c53fde1c9a8195"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-zumapro/comet/0091-arm64-luma-keep-the-bootloader-write-zone-of-the-Ima.patch",
+      "sha256": "c9fdb2507e9396ea9f7249af9147a5a812e7a5f28e03fb600ce99ead132f1e1c"
     }
   ]
 }

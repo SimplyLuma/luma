@@ -1,0 +1,152 @@
+From fdd8a477f0e9c3d8724ea2d8a2a5c6dd9395c657 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 21:15:15 -0400
+Subject: [PATCH 90/91] arm64: dts: comet: reserve the firmware-owned memory
+ the stock DT reserves
+
+Secure-monitor and debug-snapshot logs, the ABL area, the GSA mailbox,
+DSP/TPU carve-outs and the xHCI DRAM pool were plain RAM here; reads
+under sustained I/O took synchronous external aborts and the phone hung.
+---
+ .../google/zumapro-comet-stock-rmem.dtsi      | 119 ++++++++++++++++++
+ .../boot/dts/exynos/google/zumapro-comet.dts  |   1 +
+ 2 files changed, 120 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/exynos/google/zumapro-comet-stock-rmem.dtsi
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet-stock-rmem.dtsi b/arch/arm64/boot/dts/exynos/google/zumapro-comet-stock-rmem.dtsi
+new file mode 100644
+index 000000000..09abc6bc1
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet-stock-rmem.dtsi
+@@ -0,0 +1,119 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Memory the Pixel 9 Pro Fold (comet) firmware owns at runtime, as the stock
++ * device tree reserves it: secure-monitor and debug-snapshot logs, the ABL
++ * area, the GSA mailbox, DSP/TPU firmware carve-outs and the xHCI DRAM pool.
++ * Without these, Linux hands the pages out and sustained I/O ends in
++ * synchronous external aborts and lockups.  Kept no-map; no driver here uses
++ * them.
++ */
++
++/ {
++	reserved-memory {
++		stock_ect_binary: stock-ect-binary@90000000 {
++			reg = <0x0 0x90000000 0x60000>;
++			no-map;
++		};
++
++		stock_gsa: stock-gsa@905ff000 {
++			reg = <0x0 0x905ff000 0x1000>;
++			no-map;
++		};
++
++		stock_gxp_scratchpad: stock-gxp-scratchpad@91300000 {
++			reg = <0x0 0x91300000 0x60000>;
++			no-map;
++		};
++
++		stock_iif_wait_table: stock-iif-wait-table@91360000 {
++			reg = <0x0 0x91360000 0x20000>;
++			no-map;
++		};
++
++		stock_iif_signal_table: stock-iif-signal-table@91380000 {
++			reg = <0x0 0x91380000 0x20000>;
++			no-map;
++		};
++
++		stock_gxp_secure_data: stock-gxp-secure-data@91400000 {
++			reg = <0x0 0x91400000 0x900000>;
++			no-map;
++		};
++
++		stock_gxp_fw: stock-gxp-fw@91d00000 {
++			reg = <0x0 0x91d00000 0x300000>;
++			no-map;
++		};
++
++		stock_gxp_mcu_fw: stock-gxp-mcu-fw@92000000 {
++			reg = <0x0 0x92000000 0x400000>;
++			no-map;
++		};
++
++		stock_xhci_dma_dram: stock-xhci-dma-dram@97000000 {
++			reg = <0x0 0x97000000 0x400000>;
++			no-map;
++		};
++
++		stock_seclog_mem: stock-seclog-mem@c3000000 {
++			reg = <0x0 0xc3000000 0x90000>;
++			no-map;
++		};
++
++		stock_header: stock-header@d8100000 {
++			reg = <0x0 0xd8100000 0x10000>;
++			no-map;
++		};
++
++		stock_log_kevents: stock-log-kevents@d8110000 {
++			reg = <0x0 0xd8110000 0x700000>;
++			no-map;
++		};
++
++		stock_log_s2d: stock-log-s2d@d8810000 {
++			reg = <0x0 0xd8810000 0x1800000>;
++			no-map;
++		};
++
++		stock_log_array_reset: stock-log-array-reset@da010000 {
++			reg = <0x0 0xda010000 0xa00000>;
++			no-map;
++		};
++
++		stock_log_array_panic: stock-log-array-panic@daa10000 {
++			reg = <0x0 0xdaa10000 0xa00000>;
++			no-map;
++		};
++
++		stock_log_slcdump: stock-log-slcdump@db410000 {
++			reg = <0x0 0xdb410000 0x1100000>;
++			no-map;
++		};
++
++		stock_log_preslcdump: stock-log-preslcdump@dc510000 {
++			reg = <0x0 0xdc510000 0x1100000>;
++			no-map;
++		};
++
++		stock_log_bcm: stock-log-bcm@dd610000 {
++			reg = <0x0 0xdd610000 0x400000>;
++			no-map;
++		};
++
++		stock_log_itmon: stock-log-itmon@dda10000 {
++			reg = <0x0 0xdda10000 0x10000>;
++			no-map;
++		};
++
++		stock_log_s2d_extract: stock-log-s2d-extract@dda20000 {
++			reg = <0x0 0xdda20000 0x600000>;
++			no-map;
++		};
++
++		stock_abl: stock-abl@f8800000 {
++			reg = <0x0 0xf8800000 0x2000000>;
++			no-map;
++		};
++
++	};
++};
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+index da416ce6e..409509dcc 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-comet.dts
+@@ -11,6 +11,7 @@
+ #include "zumapro-caimito-bcm4390.dtsi"
+ #include "zumapro-caimito-s5400.dtsi"
+ #include "zumapro-comet-cs35l41.dtsi"
++#include "zumapro-comet-stock-rmem.dtsi"
+ 
+ / {
+ 	model = "Pixel 9 Pro Fold";
