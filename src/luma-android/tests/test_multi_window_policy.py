@@ -70,6 +70,11 @@ class FakePlatform:
 
 
 class AndroidGlobalSetting(unittest.TestCase):
+    def setUp(self):
+        probe = patch.object(android_settings, "is_set", lambda platform, key: platform.value is not None)
+        probe.start()
+        self.addCleanup(probe.stop)
+
     def test_unchanged_value_is_not_rewritten(self):
         platform = FakePlatform("1")
         self.assertFalse(android_settings.put(platform, "force_resizable_activities", "1"))
