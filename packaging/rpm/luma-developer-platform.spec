@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.121%{?dist}
+Release:        1.luma.122%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -170,9 +170,9 @@ python3 - <<'PY_CHECK'
 import json
 from pathlib import Path
 rows = [json.loads(line) for line in Path("%{_vpath_builddir}/meson-logs/testlog.json").read_text().splitlines() if line.strip()]
-expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch")}
+expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch", "first-frame-width")}
 names = {row["name"] for row in rows}
-# The thirteen platform executables, plus LumaUI-1's own part tests, token check and C/Python parity.
+# Platform checks, plus LumaUI-1's own part tests, token check and C/Python parity.
 lumaui = {name for name in names if name.startswith("luma-developer-platform:lumaui-")}
 assert expected <= names, sorted(expected - names)
 assert names == expected | lumaui, sorted(names - expected - lumaui)
@@ -373,6 +373,9 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.122
+- Settle responsive layouts before the first content frame.
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.121
 - Merge the shared prepared application runtime with the October 30 nightly.
 

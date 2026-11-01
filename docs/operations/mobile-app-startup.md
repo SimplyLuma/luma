@@ -168,3 +168,100 @@ shell alone does not remove each application's initialization. Historical
 addresses boot/I/O prefetch, not a reason to run a periodic app scanner on a
 battery device. This implementation uses bounded, explicit runtime preparation
 and ordinary resident-window reuse instead.
+
+## Cold-launch and first-frame audit, 2026-11-01
+
+A second physical Titan audit ran two process-cold launches for each of 22
+native Luma/system app entries. The display was 1080×1200 at 2× (540×600 logical).
+The shared runtime was prepared; each target UI process was confirmed gone
+before dispatch. Normal close preceded termination of any remaining known UI
+PID. Background agents were preserved. Idle inhibition prevented automatic lock
+from invalidating the run. No screenshots, profiling or extra redraw requests
+were taken during timing. The measurement ends at the first focused, visible
+app frame; it excludes network completion and is not a cold-boot benchmark.
+
+Three distinct fixes came from this audit:
+
+- GTK window realization synchronously decoded filtered application SVGs.
+  Phone spent about 7.4 seconds inside `present()` waiting on libglycin; Python
+  window construction took about 0.1 seconds. The icon package now renders
+  fixed-size PNGs at build time, retaining the SVG sources and vector fallback.
+  Logical sizes 16–128 at scales 1–4 cover GTK's window-icon enumeration without
+  requesting oversized textures. Scale metadata matters: a 96px raster alone
+  does not satisfy 96 logical pixels at 2×. Actual GTK lookups test every
+  enumerated size at all four scales. Image sandboxing is unchanged.
+- Mobile now chooses fullscreen geometry in Mutter's initial configure, before
+  the client's first buffer. Previously Notes, Clock, Tasks and other apps
+  sometimes appeared at remembered 360px window widths before expanding.
+  Desktop and Tablet placement keep their existing policy. Returning a window
+  first opened in Mobile to Desktop does not restore a zero-sized rectangle.
+- The shared window `LayerHost` adapts watched widths before native overlay
+  allocation, rather than rebuilding responsive UI after painting. Hidden
+  controls, embedded previews and controls reparented during adaptation share
+  that incoming width. GTK's overlay layout remains responsible for placement;
+  there is no per-frame polling or extra idle animation. First-snapshot tests
+  at 390/540/800/1100px widths fail on the preceding kit and pass with the fix.
+
+The final run exposed 540×600 windows from the first visible frame in all 44
+launches. An additional probe recorded Notes' first actual GTK snapshots with
+its phone layout and list page already selected and stable. Phone likewise
+selected its phone layout before its first snapshot. Actual touch reopening
+passed three times each for Notes and Phone, retaining their existing UI PIDs.
+Prepared module
+provenance was also checked: the development host had retained installed modules
+from before a source overlay became readable. A coherent source replacement and
+host restart corrected that; existing app children survive the restart.
+
+| Application | First visible frame, two cold UI processes |
+| --- | ---: |
+| Notes | 902–1194 ms |
+| Phone | 506–564 ms |
+| Weather | 510–529 ms |
+| Contacts | 594–647 ms |
+| Clock | 550–645 ms |
+| Calendar | 605–676 ms |
+| Tasks | 533–631 ms |
+| Messages | 734–745 ms |
+| Photos | 438–466 ms |
+| Camera | 378–418 ms |
+| Voice Memos | 482–489 ms |
+| Tide | 1523–1537 ms |
+| Monitor | 620–620 ms |
+| Terminal | 1046–1071 ms |
+| Settings | 1095–1293 ms |
+| Filer | 1153–1239 ms |
+| Luma Connect | 837–937 ms |
+| Depot | 1840–2387 ms |
+| Charlie | 1602–1889 ms |
+| Search settings | 647–1085 ms |
+| Mods | 1302–1375 ms |
+| Valet | 1034–1181 ms |
+
+Phone's preceding two readings were 7984/7933 ms; the final readings were
+506/564 ms, about 93% less waiting in this setup. A separate controlled
+same-source icon comparison also fell from 7863 to 514 ms. These are Phone
+results, not a claim that every app or device became that much faster.
+
+Notes and Phone no longer need an initial desktop-shaped UI followed by a
+phone-shaped rebuild. Depot and Charlie still have larger startup budgets;
+this audit does not claim every app is instant. Depot profiling shows catalogue,
+AppStream and installed-package work across its asynchronous providers as well
+as initial imports and view construction. Tide also performs asynchronous source
+and artwork work. Concurrent profiler totals are not main-thread blocking time;
+inspect thread state before attributing a network call to the first-frame path.
+Full package/image builds and broad cross-device qualification remain separate
+from the tested Titan source deployment.
+
+### Launch continuity and platform references
+
+Android uses starting windows and can reuse a task snapshot until the real
+activity draws. iOS also captures UI when suspending an app and can show that
+snapshot on restoration. Neither technique makes a slow app interactive sooner;
+state, geometry and privacy must agree before replacing a snapshot with live
+content. This audit fixes measured work and first-frame state without adding a
+snapshot cache or exposing stale private app content.
+
+Primary references: [Android startup timing and TTID/TTFD](https://developer.android.com/topic/performance/issues/launch-time),
+[AOSP task snapshots](https://source.android.com/docs/core/perf/task-snapshots),
+[Apple launch profiling](https://developer.apple.com/documentation/xcode/reducing-your-app-s-launch-time),
+[Apple snapshot and launch-screen behavior](https://developer.apple.com/documentation/technotes/tn3118-debugging-your-apps-launch-screen).

@@ -8,8 +8,9 @@ Gallery's phone frame) crosses a kit breakpoint. GTK has no signal for that:
 a widget whose own size did not change is not reallocated when its window
 narrows. `watch_width` is the kit's primitive for it. It listens to the
 root window even when the part is hidden, measures the nearest
-`LayerHost` named "window" (or the window itself) after the frame allocation, and calls
-back only when the answer changes.
+`LayerHost` named "window" before that host allocates its children, and calls
+back only when the answer changes. Ordinary GTK roots without a LumaUI host
+retain the completed-layout fallback.
 
 Parts adapt on their own. An app that decides its phone bars when it draws
 (v71 "redraw on crossing the phone width") watches the tier instead:
@@ -83,15 +84,23 @@ def tier_for(width: int) -> str:
     return "compact" if width <= REGULAR_ABOVE else "regular"
 
 
-def window_width(widget: Gtk.Widget) -> int:
-    """The width of the window `widget` is in, or of the frame standing for one."""
+def _width_host(widget: Gtk.Widget):
     from .structure_layers import LayerHost
-
     node: Gtk.Widget | None = widget
     while node is not None:
         if isinstance(node, LayerHost) and node.layer_name == "window":
-            return node.get_width()
+            return node
         node = node.get_parent()
+    root = widget.get_root()
+    host = getattr(root, "layer_host", None)
+    return host if isinstance(host, LayerHost) and host.layer_name == "window" else None
+
+
+def window_width(widget: Gtk.Widget) -> int:
+    """The width of the window `widget` is in, or of the frame standing for one."""
+    host = _width_host(widget)
+    if host is not None:
+        return host._layout_width or host.get_width()
     root = widget.get_root()
     return root.get_width() if root is not None else 0
 
@@ -109,7 +118,7 @@ def tier(widget: Gtk.Widget) -> str:
 
 
 class WidthWatch(GObject.Object):
-    """Calls `callback(width)` after layout whenever the window's width changes.
+    """Calls `callback(width)` when the window host's layout width changes.
 
     `threshold`, when given, reduces the callback to crossings: it is called
     with the width only when `width <= threshold` changes truth.
@@ -134,6 +143,8 @@ class WidthWatch(GObject.Object):
         self._last: object = None
         self._root = None
         self._root_handlers = []
+        self._host = None
+        self._host_handler = 0
         self._surface = None
         self._surface_handler = 0
         self._pending = 0
@@ -150,9 +161,15 @@ class WidthWatch(GObject.Object):
         # A phone can hide its sidebar toggle before it ever realizes. The
         # window still owns the layout that toggle must adapt.
         root = self.widget.get_root()
-        if root is self._root:
+        host = _width_host(self.widget)
+        if root is self._root and host is self._host:
             return
         self._unrealized(None)
+        if self._host is not None and self._host_handler:
+            self._host.disconnect(self._host_handler)
+        self._host, self._host_handler = host, 0
+        if host is not None:
+            self._host_handler = host.connect("layout-width-changed", self._layout_width_changed)
         if self._root is not None:
             for handler in self._root_handlers:
                 self._root.disconnect(handler)
@@ -166,6 +183,15 @@ class WidthWatch(GObject.Object):
             ]
             if root.get_realized():
                 self._realized(root)
+        # A tier callback can reparent another watched control during this
+        # allocation. Its new host already knows the incoming width; do not
+        # leave that control waiting until after the frame has been painted.
+        if root is not None and host is not None and host._layout_width > 0:
+            self.check()
+
+    def _layout_width_changed(self, _host, _width) -> None:
+        self._cancel_frame()
+        self.check()
 
     def _realized(self, _widget: Gtk.Widget) -> None:
         native = self.widget.get_native()

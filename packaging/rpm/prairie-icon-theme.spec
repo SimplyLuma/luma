@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.44.nightly20261030.1%{?dist}
+Release:        1.luma.44.nightly20261030.2%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
@@ -32,7 +32,12 @@ Source24:       lucide-transport-sources.tar
 Source25:       lucide-messages-sources.tar
 Source26:       lucide-pan-sources.tar
 Source27:       lucide-fills-sources.tar
+Source28:       render-application-icons.py
+Source29:       test-application-icon-cache.py
 BuildRequires:  python3
+BuildRequires:  librsvg2-tools
+BuildRequires:  python3-gobject
+BuildRequires:  gtk4
 BuildArch:      noarch
 Requires:       adwaita-icon-theme
 Requires(post): /usr/bin/gtk-update-icon-cache
@@ -99,8 +104,11 @@ install -m0644 %{SOURCE17} %{buildroot}%{_pkgdocdir}/application-manifest.json
 install -m0644 %{SOURCE20} %{buildroot}%{_pkgdocdir}/system-manifest.json
 install -m0644 %{SOURCE21} %{buildroot}%{_pkgdocdir}/system-integration.json
 install -m0644 %{SOURCE22} %{buildroot}%{_pkgdocdir}/SYSTEM_ARTWORK_NOTICE.md
+python3 %{SOURCE28} --theme %{buildroot}%{_datadir}/icons/Prairie
 
 %check
+python3 %{SOURCE29}
+python3 %{SOURCE28} --check --theme %{buildroot}%{_datadir}/icons/Prairie
 # Third-party Firefox keeps artwork supplied by its own installed package.
 test ! -e %{buildroot}%{_datadir}/icons/Prairie/scalable/apps/firefox.svg
 test ! -e %{buildroot}%{_datadir}/icons/Prairie/scalable/apps/org.mozilla.firefox.svg
@@ -144,6 +152,9 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.44.nightly20261030.2
+- Render application icons during packaging to avoid SVG work during launch.
+
 * Fri Oct 30 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.44.nightly20261030.1
 - Keep the shared icon package and image pins ahead of the published baseline.
 

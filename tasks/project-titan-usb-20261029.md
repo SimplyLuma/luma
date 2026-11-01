@@ -1522,3 +1522,100 @@ usable state, identify startup stalls and first-frame layout/state flashes,
 and fix meaningful causes with shared platform solutions where appropriate.
 Prior startup architecture/timings are in docs/operations/mobile-app-startup.md.
 Preserve app/user state and distinguish cold process launches from warm resumes.
+
+
+### 2026-10-31 — Cold-launch audit baseline (active)
+
+Dark Style follow-up PR120 is merged to mainc38ea03ddf0c929213e4a80b0a683bfa4e0d6654.
+Cold-launch audit uses private native Shell instrumentation from
+/var/lib/project-titan/startup-audit-20261031. It closes app windows normally,
+waits for autosave/exit, terminates remaining known UI PIDs (never the host or
+phone daemon), verifies those PIDs are gone, returns Home and launches through
+Presentation._launch. It measures map and first focused real painted window,
+plus35 natural painted frames; it requests no extra frames or screenshots in
+the timing run. Shared prepared runtime remains enabled and is labeled.
+
+First baseline,2 process-cold samples each: Notes2120/1020ms,
+Weather710/713ms, Contacts661/654ms. Phone exceeded the6-second first-frame
+wait in both samples; separate CPU profiling measured7772ms to first GTK
+paint,7399ms spent in AppWindow.present/native GTK, only~110ms before present.
+One Notes and Weather launch visibly started at360x400/360x420, then expanded
+to the actual540x600 viewport220/273ms after exposure. DisplayConfig remains
+scale2 at1080x1200; those were window changes, not monitor scale changes.
+
+Prepared profiling proves cached prairie_apps/phone.py came from installed
+/usr/lib/python3.14/site-packages, while launch environment now points at the
+repaired current source overlay. The previously documented provenance concern
+is confirmed. Restarting only luma-app-host.service is safe (KillMode=process)
+after a coherent source candidate is prepared; preserve other app children.
+No new product startup edits yet. WidthWatch currently rebuilds tier-dependent
+UI after paint, and Phone starts is_phone=False before first allocation; both
+are hypotheses for the observed first-state flash pending captures/comparisons.
+Private profiles and baselines are on owned HDD update-20261031/startup-audit.
+
+
+### 2026-11-01 — Cold-launch and first-frame fixes, source149/122 (validated)
+
+Owner/worktree/branch remain luma-dev-2, project-titan-usb-20261029,
+codex/project-titan-usb-20261029; base main d88ffa742. Audit completed two
+process-cold launches for22 native Luma/system app entries. Targets closed
+normally before terminating any remaining known UI PID; agents preserved.
+An initial auto-lock invalidated later first-pass observations; these were
+excluded and the complete baseline/final runs used a bounded idle inhibitor.
+Terminal's visible Ptyxis launcher maps to org.projectluma.Terminal; measure
+and stop that actual UI identity, not just the alias.
+
+Phone's ~7.4-second native present wait was libglycin decoding filtered window
+icons, not Python layout CPU. Build-time PNGs now cover logical16–128 at1–4x,
+with real GTK scale metadata and vector fallback. Pixel-size-only caches left
+holes in GTK's scaled window-icon enumeration; large logical sizes also made
+GTK request unnecessary giant textures. Final2324 variants (83 identities)
+validate, and all32 actual GTK startup lookups choose PNG. No sandbox changes.
+
+Shared LayerHost now adapts before native overlay allocation; WidthWatch follows
+hidden/reparented/embedded controls in that allocation. First-snapshot tests
+at390/540/800/1100px and resize/idle/embedded cases pass; the same new tests
+reproduce failures on the preceding kit. Existing hidden/reparent tests pass.
+Mobile uses initial Mutter configure to supply fullscreen geometry before the
+first buffer. Desktop/Tablet placement is unchanged; zero pre-Mobile window
+rectangles are not restored on a later Desktop transition.
+
+Final native sweep:44/44 correct540x600 first-visible frames, no errors. Phone
+7984/7933ms baseline ->506/564ms final (~93% less wait); isolated same-source
+icon comparison7863->514ms. Actual first GTK snapshots show Notes already
+phone/list-first and Phone already phone/keypad, stable across subsequent
+snapshots. All22 app timings and remaining startup budgets are recorded in
+docs/operations/mobile-app-startup.md. Do not present concurrent cProfile
+network totals as main-thread blocking time. Depot/Charlie remain slower;
+there is no blanket instant-launch or broad hardware qualification claim.
+
+Private evidence/build jobs on owned HDD update-20261031/startup-audit:
+353fd80a builds2324variants; fbb38a5f validates actual1–4xGTK lookups, fixture
+render/corruption checks and payload; 0bb2e131 verifies shared first-frame and
+hidden-width regressions, JS and package pins/release contract; 4b89de6e proves
+new snapshot checks fail on old code. No RPM or image rebuild claimed.
+
+Physical development hot deployment: coherent Python modules replace the former
+source/python (backup startup-audit-20261031/python-before); only app host was
+restarted (KillMode=process). GTK/Prairie uses a developer user-theme symlink to
+startup-audit-20261031/icons/Prairie. Remove that owned symlink when replacing
+with the corresponding packaged icon build; retain private evidence/backups.
+Presentation changes patch the existing native resource override, preserving
+all previous drawer/search/status/switcher changes. No reboot, Android or audio
+changes. Final native policy/visual receipts and GitHub integration follow.
+
+
+Final source job9a86fab2 passes all focused checks, including the package recipe's
+Trash aliases (2352 PNG variants across84 identities) and existing approved
+artwork/hash validation. The earlier source-art-only hot payload had2324/83;
+this difference is the recipe's full-Trash alias, not a changed app image.
+Native initial-configure policy passes8 checks including Desktop/Tablet and
+transient exclusions. Pending configure hooks belong only to deliberately
+unmapped prepared windows; mapped clients release them. Three actual touch
+reopens each for Notes and Phone pass with unchanged UI PIDs, correct focus,
+and Home hidden. Actual Phone first snapshots are already phone-shaped at293ms;
+settled Notes/Phone screenshots were inspected privately. A script-only warm
+activation can be denied focus because it lacks a fresh user input serial;
+real touch validation is the relevant result. Phone's unavailable-calling toast
+and scrollable short-screen dial pad remain functional/UI follow-up areas;
+calling and Android runtime acceptance are not claimed by this launch audit.
