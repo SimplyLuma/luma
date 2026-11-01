@@ -1,0 +1,117 @@
+diff --git a/configs/init.waydroid.codec2.rc b/configs/init.waydroid.codec2.rc
+new file mode 100644
+index 0000000..2e55aee
+--- /dev/null
++++ b/configs/init.waydroid.codec2.rc
+@@ -0,0 +1,4 @@
++# Waydroid's host tools set debug.stagefright.ccodec=0, which turns Codec2
++# off. Without the 32-bit OMX service that would leave no codecs at all.
++on early-boot
++    setprop debug.stagefright.ccodec 4
+diff --git a/configs/media.omx.xml b/configs/media.omx.xml
+new file mode 100644
+index 0000000..0b6ce80
+--- /dev/null
++++ b/configs/media.omx.xml
+@@ -0,0 +1,15 @@
++<manifest version="1.0" type="device">
++    <hal format="hidl">
++        <name>android.hardware.media.omx</name>
++        <transport>hwbinder</transport>
++        <version>1.0</version>
++        <interface>
++            <name>IOmx</name>
++            <instance>default</instance>
++        </interface>
++        <interface>
++            <name>IOmxStore</name>
++            <instance>default</instance>
++        </interface>
++    </hal>
++</manifest>
+diff --git a/device.mk b/device.mk
+index 7c17ece..d26e171 100644
+--- a/device.mk
++++ b/device.mk
+@@ -162,6 +162,15 @@ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/mediaextractor.32bit.policy:$(TARGET_COPY_OUT_VENDOR)/etc/seccomp_policy/mediaextractor.policy
+ endif
+ 
++# Media - OMX is declared only where its (32-bit) service is built
++ifneq ($(TARGET_SUPPORTS_OMX_SERVICE),false)
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/configs/media.omx.xml:$(TARGET_COPY_OUT_VENDOR)/etc/vintf/manifest/media.omx.xml
++else
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/configs/init.waydroid.codec2.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.waydroid.codec2.rc
++endif
++
+ # Media - Stagefright FFMPEG plugin
+ ifneq ($(filter %_waydroid_x86 %_waydroid_x86_64 %_waydroid_tv_x86 %_waydroid_tv_x86_64,$(TARGET_PRODUCT)),)
+ PRODUCT_PACKAGES += \
+diff --git a/manifest.xml b/manifest.xml
+index 11ae23e..b67e4ea 100644
+--- a/manifest.xml
++++ b/manifest.xml
+@@ -108,19 +108,6 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+             <instance>default</instance>
+         </interface>
+     </hal>
+-    <hal format="hidl">
+-        <name>android.hardware.media.omx</name>
+-        <transport>hwbinder</transport>
+-        <version>1.0</version>
+-        <interface>
+-            <name>IOmx</name>
+-            <instance>default</instance>
+-        </interface>
+-        <interface>
+-            <name>IOmxStore</name>
+-            <instance>default</instance>
+-        </interface>
+-    </hal>
+     <hal format="hidl">
+         <name>android.hardware.memtrack</name>
+         <transport>hwbinder</transport>
+diff --git a/waydroid_arm64_only/bliss_waydroid_arm64_only.mk b/waydroid_arm64_only/bliss_waydroid_arm64_only.mk
+index 663410f..e02ccd5 100644
+--- a/waydroid_arm64_only/bliss_waydroid_arm64_only.mk
++++ b/waydroid_arm64_only/bliss_waydroid_arm64_only.mk
+@@ -14,7 +14,8 @@
+ # limitations under the License.
+ #
+ 
+-TARGET_SUPPORTS_OMX_SERVICE := true
++# The OMX service is 32-bit only; 64-bit-only images use Codec2.
++TARGET_SUPPORTS_OMX_SERVICE := false
+ 
+ # Inherit from those products. Most specific first.
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
+diff --git a/waydroid_arm64_only/lineage_waydroid_arm64_only.mk b/waydroid_arm64_only/lineage_waydroid_arm64_only.mk
+index 77e5619..197711f 100644
+--- a/waydroid_arm64_only/lineage_waydroid_arm64_only.mk
++++ b/waydroid_arm64_only/lineage_waydroid_arm64_only.mk
+@@ -14,7 +14,8 @@
+ # limitations under the License.
+ #
+ 
+-TARGET_SUPPORTS_OMX_SERVICE := true
++# The OMX service is 32-bit only; 64-bit-only images use Codec2.
++TARGET_SUPPORTS_OMX_SERVICE := false
+ 
+ # Inherit from those products. Most specific first.
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
+diff --git a/waydroid_tv_arm64_only/lineage_waydroid_tv_arm64_only.mk b/waydroid_tv_arm64_only/lineage_waydroid_tv_arm64_only.mk
+index 10c3ae0..c5aed45 100644
+--- a/waydroid_tv_arm64_only/lineage_waydroid_tv_arm64_only.mk
++++ b/waydroid_tv_arm64_only/lineage_waydroid_tv_arm64_only.mk
+@@ -15,7 +15,8 @@
+ #
+ 
+ PRODUCT_IS_ATV := true
+-TARGET_SUPPORTS_OMX_SERVICE := true
++# The OMX service is 32-bit only; 64-bit-only images use Codec2.
++TARGET_SUPPORTS_OMX_SERVICE := false
+ 
+ # Inherit from those products. Most specific first.
+ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)

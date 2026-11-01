@@ -14,6 +14,12 @@ runtime reapplies the explicit `idle_freeze` policy through Waydroid's supported
 property interface. This availability default does not qualify idle power or
 replace host suspend coordination.
 
+The OMX codec service is 32-bit only, so 64-bit-only images never build it.
+`0002` declares OMX only where it is built and keeps Codec2 on otherwise;
+declaring it made mediaserver wait forever, so MediaProvider never mounted
+shared storage.
+
 ## Patch order
 
 1. `0001-prairie-host-window-product-property.patch`
+2. `0002-luma-codec-services-match-the-image.patch`
