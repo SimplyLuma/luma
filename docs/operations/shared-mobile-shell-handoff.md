@@ -239,3 +239,14 @@ and early release do not activate it. Seventeen native checks passed on the
 Titan, including real bottom-edge touch and sampled exit stacking/phasing.
 Matching source resource overlays are installed; this is not a packaged OS
 release or a universal frame-rate qualification.
+
+
+Shell145 fixes the remaining scene handoffs: Mobile entry retires the gesture
+app clone immediately, returning Home cannot create another fullscreen copy,
+and background/keyboard/toggle dismissal uses the same Mobile return as the
+bottom swipe. An owned opaque backdrop stays below Home/cards and is released
+with the popup. Explicit card selection still opens its app; Desktop/Tablet
+retain their wallpaper/window-travel path. The new native handoff regression
+module starts from a running app and tests actual touch entry/tap/swipe exits:
+38 checks/86 painted frames pass, plus all17 prior gesture regressions. Source
+overlays are installed on the Titan; other devices need matching package builds.

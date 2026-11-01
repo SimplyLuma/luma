@@ -1,0 +1,57 @@
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -521,6 +521,7 @@
+             this._geometry = null;
+             this._wallpaperManagers.forEach(manager => manager.destroy());
+             this._wallpaperManagers = [];
++            if (this._detachedWallpaper) this._wallpaper.destroy();
+             this._stopReveal();
+             this._cancelTravelStart();
+             if (this._layoutLater)
+@@ -611,7 +612,7 @@
+             // icons do not show through the previews as competing foreground.
+             this._stage.opacity = Math.max(leaving ? 0 : 1,
+                 Math.round(255 * Math.clamp((progress - .25) / .75, 0, 1)));
+-            this._wallpaper.opacity = Math.round(255 * progress);
++            this._wallpaper.opacity = 255;
+             if (fadingHome) home.opacity = Math.round(255 * Math.clamp((.35 - progress) / .35, 0, 1));
+         };
+         paint(start);
+@@ -789,7 +790,7 @@
+         if (this._leaving)
+             return;
+         this._leaving = true;
+-        this._returningHome = this._mobile && toHome;
++        this._returningHome = this._mobile && (toHome || chosen === null);
+         if (this._returningHome) {
+             Main.presentation.showHome();
+             Main.presentation._home.opacity = Math.round(255 * (1 - (this._travelProgress ?? 1)));
+@@ -884,6 +885,17 @@
+         // Resolve styles now so every icon has its texture actor before the
+         // first layout, instead of creating it mid-frame and missing it.
+         this.ensure_style();
++        if (this._mobile) {
++            // Keep a fully painted backdrop below Home and the cards. Fading
++            // a backdrop together with windows hidden leaves the stage without
++            // opaque coverage and makes Home show through card textures.
++            this.remove_child(this._wallpaper);
++            this._wallpaper.name = 'luma-mobile-switcher-backdrop';
++            this._wallpaper.add_constraint(new Clutter.BindConstraint({
++                source: global.stage, coordinate: Clutter.BindCoordinate.ALL}));
++            Main.uiGroup.insert_child_below(this._wallpaper, Main.presentation._home);
++            this._detachedWallpaper = true;
++        }
+         // Above the windows but below the panel and dock: both stay available
+         // while Grid is open. The live windows are hidden instead of stacked
+         // under, because every one of them is already represented by a card and
+@@ -1144,7 +1156,8 @@
+         this.set_allocation(box);
+         if (this._destroyed)
+             return;
+-        allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
++        if (!this._detachedWallpaper)
++            allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
+         const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
+         const monitor = Main.layoutManager.primaryMonitor ?? area;
+         // Span the monitor across, clip to the work area down: the side struts

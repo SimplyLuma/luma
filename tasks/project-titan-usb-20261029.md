@@ -1332,3 +1332,58 @@ it before running the test. No owner data/layout/preferences were changed.
 
 Final source check337234dd also passes after the release fragment and handoff
 updates, including113 matching package pins and40 valid release fragments.
+
+
+### 2026-10-31 — Reproduced fullscreen switcher handoff conflicts
+
+Owner continued to see fullscreen apps crossing Home/card layers on entry and
+both swipe/tap exit. The earlier Home-only opacity checks missed real entry
+from an active app and background-tap dismissal. New native baseline proves:
+entry paints the separate navigation lift clone above Grid; default dismissal
+has returningHome=false and grows a216px card to540px screen width; swipe-to-Home
+creates another root app clone for several frames. These are competing scene
+owners, not merely a fade-curve issue. Private proof is the user's
+project-titan/switcher-handoff-before.json.
+
+Source fix: Mobile openSwitcher immediately retires its gesture clone when Grid
+takes ownership. beginLift refuses to start another copy while a picker owns
+the scene. Normal swipe-to-Home keeps its animation. Grid's Mobile dismiss with
+no chosen window now always uses the Mobile return path, covering background
+tap, Escape and toggle as well as bottom swipe; explicit app selection keeps
+its window activation/travel. Patch0305 keeps an opaque, constraint-sized
+wallpaper below Home and cards while native windows are hidden. That owned
+root backdrop is explicitly destroyed on every popup teardown; Desktop/Tablet
+keep their existing attached wallpaper/window-travel path. No frame loop remains
+idle and no CPU/GPU floor or refresh-rate override was added. Source cohort145.
+
+Actual Titan native mobile-switcher-handoff.js passes38 checks across86 painted
+frames. Real virtual touchscreen entry starts inside a running Photos app;
+background tap and bottom swipe both return Home. Every sampled transition
+retains thumbnail geometry, zero extra fullscreen gesture clones, opaque full
+stage coverage below Home/cards and hidden live windows. Home entry, explicit
+card selection and interrupted teardown also pass, including backdrop cleanup.
+Existing maintained mobile-switcher.js passes all17 regression checks on this
+same candidate, retaining the220ms settled hold and cancellation behavior.
+Paused mid-entry from Weather and late tap-exit screenshots were reviewed:
+only thumbnail cards during entry, then Home without any fullscreen app copy.
+This verifies the reproduced rendering conflicts, not universal frame-rate
+smoothness on all GPUs or physical qualification of other devices.
+
+Bounded source checks a3180422 pass cohort/spec identity, package release
+contract, JavaScript syntax, patch application and whitespace. Job6f601533
+reconstructs all17 maintained Grid patches and matches the exact candidate.
+No new packaged Shell145 or OS release is built/installed.
+
+Hot-loaded and persistent source candidate:
+/var/lib/project-titan/switcher-handoff-20261031. Fresh GResource readback of
+both raw files and38+17 native check results were verified before replacing
+only the two previous owned overlays in/etc/environment. Metadata and source
+hashes are in CANDIDATE.json, with root-private before/environment and prior
+candidate preserved for rollback. The local schema and Settings executable bind
+remain as documented; no session/Android restart or reboot. Private source,
+source checks and screenshots are on owned HDD update-20261031/switcher-handoff.
+No owner layout, preferences, apps or data were removed.
+
+Final source check29054652 passes after the handoff/release fragment update.
+Both source-backed fixes and the native regression modules are ready to push;
+there are no active owned build jobs or pending device steps for this change.

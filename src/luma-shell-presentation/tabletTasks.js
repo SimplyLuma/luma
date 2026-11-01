@@ -193,7 +193,7 @@ export class TabletTasks {
         }, () => this.verticalEnd(this._vertical, side));
     }
     beginLift() {
-        if (this._navigationLift || this.home._home.visible) return;
+        if (this._navigationLift || this.home._home.visible || this._switcherPopup) return;
         const actor = this.focused()?.get_compositor_private();
         if (!actor) return;
         const [x, y] = actor.get_transformed_position();
@@ -205,13 +205,14 @@ export class TabletTasks {
         this._navigationSource = actor;
         actor.hide();
     }
-    finishLift(home) {
+    finishLift(home, animate = true) {
         const clone = this._navigationLift;
         this._navigationLift = null;
         const actor = this._navigationSource;
         this._navigationSource = null;
         if (actor && live(actor.meta_window) && !actor.meta_window.minimized) actor.show();
         if (!clone) return;
+        if (!animate) { clone.destroy(); return; }
         clone.ease({scale_x: home ? .78 : 1, scale_y: home ? .78 : 1,
             translation_y: home ? -64 * this.home._scale : 0, opacity: home ? 0 : 255,
             duration: St.Settings.get().enable_animations ? 120 : 0,
@@ -794,7 +795,9 @@ export class TabletTasks {
     }
     openSwitcher() {
         if (!this.navigationEnabled) return;
-        this.finishLift(false);
+        // Grid takes over the app preview. Returning this separate gesture
+        // clone to fullscreen would animate above its cards for another120ms.
+        this.finishLift(false, this.home.mode !== 'mobile');
         this.closeOverlay();
         this._returnHomeAfterSwitcher = this.home._home.visible;
         if (this.home.mode !== 'mobile') this.home._home.hide();
