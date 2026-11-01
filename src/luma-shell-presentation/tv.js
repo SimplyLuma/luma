@@ -15,6 +15,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
@@ -98,6 +99,16 @@ export class TvPresentation {
         watch(this._appSystem, 'installed-changed', () => this._loadApps());
         watch(Gio.AppInfoMonitor.get(), 'changed', () => this._loadApps());
         watch(this._settings, 'changed::reduce-transparency', () => this._restyle());
+        // No notification lip on a TV; notifications still arrive and wait. The
+        // lip attaches itself lazily and re-shows on each notification, so keep
+        // it hidden for as long as the posture lasts.
+        this._notificationLip = getNotificationTray();
+        const hideLip = () => {
+            if (this.active && this._notificationLip?.visible) this._notificationLip.hide();
+        };
+        watch(this._notificationLip, 'notify::visible', hideLip);
+        watch(this._notificationLip, 'parent-set', hideLip);
+        hideLip();
         watch(St.Settings.get(), 'notify::high-contrast', () => this._restyle());
         const model = this._presentation._liveWidgets?.model;
         if (model) watch(model, 'changed', () => this._tick());
@@ -125,6 +136,8 @@ export class TvPresentation {
         }
         this._minimizedOnEnter.clear();
         if (Main.stickyDock) Main.layoutManager.setChromeHidden(Main.stickyDock, false);
+        this._notificationLip?.show();
+        this._notificationLip = null;
         if (Main.shelf) Main.layoutManager.setChromeHidden(Main.shelf, false);
         Main.layoutManager.setChromeHidden(Main.layoutManager.panelBox, false);
         Main.layoutManager.panelBox.show();
