@@ -8,8 +8,7 @@ from unittest.mock import patch
 import zlib
 
 from luma_appkit import icon_assets as icon_assets_module
-from luma_appkit.icon_assets import (background_color, prepare_application_icon, artwork_bounds,
-                                     prepare_tile_icon, tile_coverage, TILE_CORNER_RATIO)
+from luma_appkit.icon_assets import background_color, prepare_application_icon, artwork_bounds
 
 
 def artwork(kind='circle'):
@@ -163,47 +162,6 @@ class IconAssets(unittest.TestCase):
             self.assertEqual(prepare_application_icon(link,root),link)
             source.write_bytes(b'not a PNG')
             self.assertEqual(prepare_application_icon(source,root),source)
-
-
-class TileIcon(unittest.TestCase):
-    def test_tile_corner_is_cut_and_edges_kept(self):
-        n = 100
-        self.assertEqual(tile_coverage(n, 0, 0), 0.0)
-        self.assertEqual(tile_coverage(n, 50, 0), 1.0)
-        self.assertEqual(tile_coverage(n, 0, 50), 1.0)
-        self.assertEqual(tile_coverage(n, 50, 50), 1.0)
-        inner = math.ceil(n * TILE_CORNER_RATIO)
-        self.assertEqual(tile_coverage(n, inner, inner), 1.0)
-
-    def test_full_bleed_square_is_cut_to_the_tile_and_content_addressed(self):
-        try:
-            import gi
-            gi.require_version('GdkPixbuf', '2.0')
-            from gi.repository import GdkPixbuf
-        except (ImportError, ValueError):
-            self.skipTest('GdkPixbuf unavailable')
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root/'android.png'
-            source.write_bytes(png_bytes(artwork('square')))
-            output = prepare_tile_icon(source, root)
-            self.assertNotEqual(output, source)
-            self.assertIn('luma/icons/tile-v2', str(output))
-            shaped = GdkPixbuf.Pixbuf.new_from_file(str(output))
-            pixels, stride = shaped.get_pixels(), shaped.get_rowstride()
-            alpha = lambda x, y: pixels[y*stride + x*4 + 3]
-            self.assertEqual(alpha(0, 0), 0)          # margin
-            self.assertEqual(alpha(32, 32), 255)      # body
-            self.assertEqual(alpha(3, 3), 0)          # rounded corner
-            self.assertEqual(prepare_tile_icon(source, root), output)
-
-    def test_shaped_artwork_keeps_its_own_form(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root/'circle.png'
-            source.write_bytes(png_bytes(artwork('circle')))
-            output = prepare_tile_icon(source, root)
-            self.assertNotIn('tile-v2', str(output))
 
 
 if __name__ == '__main__':

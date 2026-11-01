@@ -257,10 +257,7 @@ class WaydroidEngine:
             # Prepare once at the existing import/reconciliation boundary. All
             # desktop consumers resolve the same asset; retain the provider's
             # source path so icon updates and rollback never depend on our PNG.
-            try:
-                from luma_appkit.icon_assets import prepare_tile_icon
-            except ImportError:  # an older developer platform
-                from luma_appkit.icon_assets import prepare_application_icon as prepare_tile_icon
+            from .tile_icon import prepare_tile_icon
             main_entry = original.split('\n[Desktop Action', 1)[0].splitlines()
             source_icon = next((line.removeprefix('X-Luma-Original-Icon=')
                                 for line in main_entry if line.startswith('X-Luma-Original-Icon=')), None)
