@@ -1,0 +1,56 @@
+From 19526501b95efadc57dcb7fa432eee379bf62757 Mon Sep 17 00:00:00 2001
+From: luma <luma@luma.invalid>
+Date: Fri, 30 Oct 2026 15:57:01 -0400
+Subject: [PATCH 03/10] drm/panel: tokay: keep the panel as the bootloader left
+ it across screen-off
+
+Pulsing reset in prepare and entering sleep in disable left the TK4C
+without TE after the first screen-off (DECON frame timeouts, black
+screen until reboot). Keep the bootloader setup like the comet panels:
+no reset, display-off only.
+---
+ drivers/gpu/drm/panel/panel-google-tokay.c | 20 ++++++++------------
+ 1 file changed, 8 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-google-tokay.c b/drivers/gpu/drm/panel/panel-google-tokay.c
+index aa55c9b02..6513b057f 100644
+--- a/drivers/gpu/drm/panel/panel-google-tokay.c
++++ b/drivers/gpu/drm/panel/panel-google-tokay.c
+@@ -113,16 +113,13 @@ static int tokay_panel_unprepare(struct drm_panel *panel)
+ 
+ static int tokay_panel_prepare(struct drm_panel *panel)
+ {
+-	struct tokay_panel *ctx = to_tokay_panel(panel);
+-
+-	/* Downstream TK4C reset timing: low 1 ms, high 1 ms. */
+-	if (ctx->reset_gpio) {
+-		gpiod_set_value_cansleep(ctx->reset_gpio, 0);
+-		usleep_range(1000, 1100);
+-		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+-		usleep_range(1000, 1100);
+-	}
+-
++	/*
++	 * The bootloader powers and initialises the panel.  Pulsing reset here
++	 * (as the downstream cold-start path does) leaves it needing the full
++	 * MTP/power-up sequence, which this driver does not carry, so the panel
++	 * never sent TE again after the first screen-off.  Keep it as handed
++	 * over, like the comet panels.
++	 */
+ 	return 0;
+ }
+ 
+@@ -130,9 +127,8 @@ static int tokay_panel_disable(struct drm_panel *panel)
+ {
+ 	struct tokay_panel *ctx = to_tokay_panel(panel);
+ 
++	/* display off only: sleep-in stops TE and the panel did not recover */
+ 	mipi_dsi_dcs_set_display_off(ctx->dsi);
+-	msleep(120);
+-	mipi_dsi_dcs_enter_sleep_mode(ctx->dsi);
+ 
+ 	return 0;
+ }
+-- 
+2.55.0
+

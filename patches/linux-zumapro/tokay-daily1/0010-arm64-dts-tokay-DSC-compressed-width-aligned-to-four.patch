@@ -1,0 +1,32 @@
+From c1ed0af33d6c328252c37e1bb3963fc5d8ae2dbb Mon Sep 17 00:00:00 2001
+From: luma <luma@luma.invalid>
+Date: Fri, 30 Oct 2026 22:07:33 -0400
+Subject: [PATCH 10/10] arm64: dts: tokay: DSC compressed width aligned to four
+
+The DECON sends 2 x 180 compressed pixels per line for the TK4C; the
+DSIM default alignment of eight expected 2 x 184, so no frame completed
+and the panel kept showing the boot logo.
+---
+ arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts b/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
+index a5f753431..47652a0a5 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
+@@ -173,6 +173,12 @@ &dpp0 {
+ };
+ 
+ &dsim0 {
++	/*
++	 * Google aligns the per-slice compressed width to four (exynos_panel.h):
++	 * the DECON sends 2 x 180 for the TK4C. The default of eight expected
++	 * 2 x 184, so no frame completed and the panel kept the boot logo.
++	 */
++	google,dsc-comp-align = <4>;
+ 	status = "okay";
+ 
+ 	panel0: panel@0 {
+-- 
+2.55.0
+

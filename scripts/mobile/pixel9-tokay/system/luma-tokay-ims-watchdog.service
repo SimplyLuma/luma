@@ -1,0 +1,10 @@
+[Unit]
+Description=Pixel 9: recover IMS registration after boot
+After=ModemManager.service luma-fold-modem-radio.service
+
+[Service]
+ExecStart=/bin/sh /var/lib/luma-tokay/ims-watchdog.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

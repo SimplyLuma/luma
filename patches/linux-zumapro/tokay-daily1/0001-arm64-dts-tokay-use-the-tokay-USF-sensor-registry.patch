@@ -1,0 +1,39 @@
+From 02e14cdf934ac38bba5a90307a4790b58f7de94b Mon Sep 17 00:00:00 2001
+From: luma <luma@luma.invalid>
+Date: Fri, 30 Oct 2026 13:00:25 -0400
+Subject: [PATCH 01/10] arm64: dts: tokay: use the tokay USF sensor registry
+
+---
+ .../boot/dts/exynos/google/zumapro-tokay.dts     | 16 +++++++---------
+ 1 file changed, 7 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts b/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
+index c0bb48a14..d307f9d9d 100644
+--- a/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
++++ b/arch/arm64/boot/dts/exynos/google/zumapro-tokay.dts
+@@ -87,15 +87,13 @@ &aoc {
+ 	 * matters: the common script defines the buses and the devices, the
+ 	 * stage script refines them, and the append scripts come last.
+ 	 */
+-	google,usf-registry = "google/usf/komodo/komodo_common.reg",
+-			      "google/usf/komodo/komodo_proto.reg",
+-			      "google/usf/komodo/komodo_proto_mag_doe.reg",
+-			      "google/usf/komodo/komodo_evt_1_0.reg",
+-			      "google/usf/komodo/komodo_evt_1_1.reg",
+-			      "google/usf/komodo/komodo_evt_mag_doe.reg",
+-			      "google/usf/komodo/komodo_dvt.reg",
+-			      "google/usf/komodo/append/motion_state.reg",
+-			      "google/usf/komodo/append/power.reg";
++	google,usf-registry = "google/usf/tokay/tokay_common.reg",
++			      "google/usf/tokay/tokay_proto.reg",
++			      "google/usf/tokay/tokay_evt_1_0.reg",
++			      "google/usf/tokay/tokay_evt_1_1.reg",
++			      "google/usf/tokay/tokay_dvt.reg",
++			      "google/usf/tokay/append/motion_state.reg",
++			      "google/usf/tokay/append/power.reg";
+ };
+ 
+ / {
+-- 
+2.55.0
+
