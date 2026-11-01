@@ -1488,3 +1488,37 @@ shell-state snapshot filtering remain intact. Prior startup/audio/kernel work
 is already in the shared main ancestry; no private evidence or device secrets
 are promoted. A new-worktree attempt was refused by the20GiB storage gate;
 integration uses this existing owned worktree instead, with no deleted files.
+
+### 2026-10-31 — Dark Style and test preference restoration
+
+PR119 merged to main5ace46423451eb70773af6a6dee13e6cc5140c0f.
+Owner then reported Dark Style no longer changed the light appearance. Actual
+state was GNOME prefer-dark plus explicit Luma light. The search appearance
+probe saved get_string's default light and restored it with set_string even
+when the original user value was unset; this accidentally pinned Light. Reset
+that treatment to its previous inherited state, immediately restoring Dark.
+
+Source148 fixes the native Quick Options action to write Luma light/dark and
+GNOME default/prefer-dark together, capturing the target before synchronous
+settings signals can change checked. Its indicator follows effective Luma
+appearance and external surface changes. Optional Luma schema lookup preserves
+normal GNOME preference fallback. Settings signals dispose with the toggle.
+Search probe now saves/restores nullable user values for appearance and both
+accessibility keys, including reset when originally unset.
+
+Actual Titan virtual-touch dark-style.js passes16 checks across Mobile/Desktop:
+explicit Light conflicting with GNOME Dark, actual button taps in each direction,
+Shell/search/app preference agreement, external Glass, inherited Dark/Light,
+and preservation of the originally unset treatment. Corrected search probe
+passes30 checks including exact explicit/unset restoration for all three keys.
+Source job62acc5ef verifies the exact patch/candidate, JS, package cohort and
+release contract. No restart or RPM replacement. Private source/reports live on
+owned HDD update-20261031/dark-style; persistent native resource override is
+/var/lib/project-titan/dark-style-20261031 with root-private before/environment.
+Prior search, Home and Grid overlays remain intact; leave the owner in Dark.
+
+Next authorized task: cold-launch each installed Luma app, measure initial and
+usable state, identify startup stalls and first-frame layout/state flashes,
+and fix meaningful causes with shared platform solutions where appropriate.
+Prior startup architecture/timings are in docs/operations/mobile-app-startup.md.
+Preserve app/user state and distinguish cold process launches from warm resumes.
