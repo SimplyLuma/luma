@@ -101,8 +101,8 @@ python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
 python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
-luma-android-runtime-0.1.0-1.luma.98.fc44.noarch
-luma-android-images-20.0-1.luma.10.nightly20261030.1.fc44.x86_64
+luma-android-runtime-0.1.0-1.luma.99.fc44.noarch
+luma-android-images-20.0-1.luma.11.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
 luma-application-installer-0.1.0-1.luma.82.nightly20261030.1.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
