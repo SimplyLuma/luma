@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.99%{?dist}
+Release:        1.luma.100%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -98,6 +98,13 @@ install -D -m 0644 data/luma-android.service \
   %{buildroot}%{_userunitdir}/luma-android.service
 install -D -m 0644 data/luma-android-session.service \
   %{buildroot}%{_userunitdir}/luma-android-session.service
+%{_userunitdir}/luma-android-prewarm.service
+%{_userunitdir}/luma-android-prewarm.timer
+%{_userpresetdir}/50-luma-android.preset
+install -m 0644 data/luma-android-prewarm.service data/luma-android-prewarm.timer \
+  %{buildroot}%{_userunitdir}/
+install -D -m 0644 data/50-luma-android-user.preset \
+  %{buildroot}%{_userpresetdir}/50-luma-android.preset
 install -D -m 0644 data/luma-android-initialize.service \
   %{buildroot}%{_unitdir}/luma-android-initialize.service
 install -D -m 0644 data/50-luma-android.preset \
@@ -148,6 +155,12 @@ fi
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/null 2>&1 || :
+%systemd_post luma-android-initialize.service
+%systemd_user_post luma-android-prewarm.timer
+
+%preun
+%systemd_preun luma-android-initialize.service
+%systemd_user_preun luma-android-prewarm.timer luma-android-prewarm.service
 
 %postun
 %selinux_modules_uninstall -s targeted luma_android_runtime
@@ -200,6 +213,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-waydroid-fp6-gpu-watchdog.service
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.100
+- Start Android in the background after sign-in; set it up on first boot
+- Skip the readiness pass on warm launches
+- Probe unset Android settings before reading them
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.99
 - Give Waydroid the GPU render node, not a display-only one
 - Use ANGLE and pastel for software rendering on ARM

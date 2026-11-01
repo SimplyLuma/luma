@@ -99,7 +99,7 @@ PY
       usr/lib/python3*/site-packages/luma_android/engine.py
     grep -Fqx "RuntimeDirectoryPreserve=yes" \
       usr/lib/systemd/user/luma-android.service
-    for unit in luma-android.service luma-android-session.service \
+    for unit in luma-android.service luma-android-session.service luma-android-prewarm.service \
       luma-android-fp6-software-compositor.service; do
       grep -Fqx "ConditionEnvironment=XDG_SESSION_CLASS=user" "usr/lib/systemd/user/$unit"
       grep -Fqx "ConditionUser=!@system" "usr/lib/systemd/user/$unit"

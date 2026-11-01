@@ -4,6 +4,8 @@ Description=Prepare the packaged Luma Android support images
 Wants=dev-binderfs.mount
 Conflicts=waydroid-container.service
 After=dev-binderfs.mount waydroid-container.service
+# Every user runs Android apps: set it up on first boot, not at the first launch.
+ConditionPathExists=!/var/lib/waydroid/waydroid.cfg
 
 [Service]
 Type=oneshot
@@ -12,3 +14,6 @@ TimeoutStartSec=210
 # Upstream's ordinary users read its generated configuration and properties.
 # Keep the standard initializer permissions; it owns private data separately.
 UMask=0022
+
+[Install]
+WantedBy=multi-user.target

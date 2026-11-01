@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Start Android after session startup settles
+PartOf=graphical-session.target
+
+[Timer]
+# Android's boot competes with Shell startup; let sign-in finish first.
+OnActiveSec=20
+AccuracySec=1
+
+[Install]
+WantedBy=graphical-session.target
