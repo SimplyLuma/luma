@@ -2142,11 +2142,6 @@
 #define LUMA_UI_TV_TOAST_SUB_SIZE 19
 #define LUMA_UI_TV_TOAST_SUB_WEIGHT 600
 #define LUMA_UI_TV_TOAST_RISE 200
-#define LUMA_UI_TV_KEYBOARD__DOC "The TV keyboard: the Keycap look (keycap.dark) docked to the bottom, driven by the remote. The same layout is the TV posture of the Luma keyboard (src/luma-keyboard): QWERTY in three rows, then 123, space and the blue action key; 123 swaps in digits and symbols. Rows are strings; shift and delete flank the third row."
-#define LUMA_UI_TV_KEYBOARD_LETTERS { "qwertyuiop", "asdfghjkl", "zxcvbnm" }
-#define LUMA_UI_TV_KEYBOARD_LETTERS_LEN 3
-#define LUMA_UI_TV_KEYBOARD_SYMBOLS { "1234567890", "@#&-+()/", ".,?!'":" }
-#define LUMA_UI_TV_KEYBOARD_SYMBOLS_LEN 3
 #define LUMA_UI_TV_KEYBOARD_PADDING_TOP 26
 #define LUMA_UI_TV_KEYBOARD_PADDING_X 96
 #define LUMA_UI_TV_KEYBOARD_PADDING_BOTTOM 48
@@ -2164,7 +2159,27 @@
 #define LUMA_UI_TV_KEYBOARD_ACTION_WIDTH 200
 #define LUMA_UI_TV_KEYBOARD_TRAVEL 5
 #define LUMA_UI_TV_KEYBOARD_FOCUS_SCALE 1.06
-#define LUMA_UI_TV_KEYBOARD_HEIGHT 470
+#define LUMA_UI_TV_KEYBOARD_FOCUS_LIFT 3
+#define LUMA_UI_TV_KEYBOARD_PRESS_TRAVEL 3
+#define LUMA_UI_TV_KEYBOARD_PRESS_MS 110
+#define LUMA_UI_TV_KEYBOARD_MOVE_MS 90
+#define LUMA_UI_TV_KEYBOARD_ABOVE 470
+#define LUMA_UI_TV_KEYBOARD_COLOURS_TRAY_TOP "#18181b"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_TRAY_BOTTOM "#0c0c0e"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_TRAY_SHADE "rgba(0, 0, 0, 0.45)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_CAP_TOP "#3a3a40"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_CAP_BOTTOM "#2c2c31"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_FN_TOP "#26262b"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_FN_BOTTOM "#1d1d21"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_INK "#e9e9ee"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_EDGE "#050506"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_TOP "rgba(70, 151, 228, 1)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_BOTTOM "rgba(21, 119, 200, 1)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_FOCUS_TOP "rgba(96, 176, 255, 1)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_FOCUS_BOTTOM "rgba(47, 138, 220, 1)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_INK "#ffffff"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_LOCK "rgba(70, 151, 228, 1)"
+#define LUMA_UI_TV_KEYBOARD_COLOURS_FOCUS_DROP "rgba(0, 0, 0, 0.55)"
 #define LUMA_UI_TV_IDLE__DOC "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay."
 #define LUMA_UI_TV_IDLE_WEATHER_SECONDS 20
 #define LUMA_UI_TV_IDLE_MEDIA_SECONDS 15

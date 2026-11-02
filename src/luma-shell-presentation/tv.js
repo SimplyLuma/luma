@@ -114,11 +114,14 @@ export class TvPresentation {
         if (model) watch(model, 'changed', () => this._tick());
         this._loadApps();
         this.showHome('home');
+        // Every field, the Shell's and every app's, gets the TV keyboard.
+        Main.keyboard?.setTvPosture?.(true);
     }
 
     _leave() {
         for (const [object, id] of this._activeSignals) object.disconnect(id);
         this._activeSignals = [];
+        Main.keyboard?.setTvPosture?.(false);
         if (this._homeCheck) GLib.source_remove(this._homeCheck);
         this._homeCheck = 0;
         if (this._home) {
@@ -257,6 +260,8 @@ export class TvPresentation {
             this._drawResults();
         });
         this._entry.clutter_text.connect('key-press-event', (_actor, event) => this._fieldKey(event));
+        // The TV keyboard's action key searches here.
+        Main.keyboard?.setFieldAction?.(this._entry.clutter_text, _('Search'));
         this._field.add_child(this._fieldIcon);
         this._field.add_child(this._entry);
         this._field.connect('button-press-event', () => {

@@ -377,3 +377,21 @@ machinery stays on Desktop underneath, and a snapshot without a posture (an
 older shell-state) behaves exactly as before. In TV posture the TV home
 (Home, Apps, Search) replaces the Dash, panel, overview and sticky stack;
 applications run full screen, and minimising the last one returns to Apps.
+
+`0309-tv-keyboard.patch`: the TV posture of the Keycap keyboard. While
+`TvPresentation` holds TV posture (`Main.keyboard.setTvPosture()`) every field
+gets the keyboard (a remote is a keyboard without letters), opening when a
+field takes the input focus and closing when it leaves; window moves, panel
+toggles and the window-slide/adjustResize paths are skipped. Layout: the
+language model rearranged by `tvKeyboard.js` (QWERTY rows, one shift and
+delete, then 123 / space / an action key), number pads kept; look from the
+`tv.keyboard` tokens as inline styles in TV units, dark, no tool strip,
+suggestions or previews. The remote's focus is a key-material actor in the
+layers' parent (the cached layers are never redrawn); arrows, OK, Escape and
+XF86Back are Mutter accelerators only while the keyboard is open, OK on an
+Enter key acts on release, Back or Up from the top row closes and arms OK to
+reopen. `InputMethod` reports printable keys from real devices
+(`reportPhysicalKeys`, TV only), which close the keyboard. The keyboard
+exports `org.projectluma.Shell.Keyboard1` (`SetActionLabel`, `Visible`,
+`Height` in TV units); docs/developer-platform/tv-mode.md "Typing". Test:
+`tv-keyboard-policy.js` in %check. Outside TV posture nothing changes.

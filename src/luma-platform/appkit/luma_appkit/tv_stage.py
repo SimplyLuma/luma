@@ -258,6 +258,9 @@ class TvStage(Gtk.Widget):
         self.add_css_class("lumaui-tv-stage")
         self._pins: dict[Gtk.Widget, _Pin] = {}
         _style()
+        # The system's TV keyboard docks here while a field types (tv_keyboard).
+        from .tv_keyboard import dock_stage
+        self._keyboard_stop = dock_stage(self)
 
     def place(self, child: Gtk.Widget, **pin) -> Gtk.Widget:
         """Pin `child` in TV units; placing a placed child again moves it."""
@@ -282,6 +285,9 @@ class TvStage(Gtk.Widget):
         return value * self.unit
 
     def do_dispose(self) -> None:
+        if self._keyboard_stop is not None:
+            self._keyboard_stop()
+            self._keyboard_stop = None
         for child in list(self._pins):
             child.unparent()
         self._pins.clear()

@@ -890,9 +890,7 @@
       "rise": 200
     },
     "keyboard": {
-      "_doc": "The TV keyboard: the Keycap look (keycap.dark) docked to the bottom, driven by the remote. The same layout is the TV posture of the Luma keyboard (src/luma-keyboard): QWERTY in three rows, then 123, space and the blue action key; 123 swaps in digits and symbols. Rows are strings; shift and delete flank the third row.",
-      "letters": ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
-      "symbols": ["1234567890", "@#&-+()/", ".,?!'\":"],
+      "_doc": "The TV posture of the Keycap keyboard, the one on-screen keyboard (Design Center mockups/tv/keyboard.js, 1 Nov 2026): docked to the bottom, the person's language layout as QWERTY rows, then 123, space and the blue action key; shift and delete flank the last letter row. Lengths in TV units; a key cell is a cap plus half the gaps around it, so the keyboard is padding_top + 4 x key_height + 3 x row_gap + padding_bottom (428) tall. above: where what rises over the keyboard (an action bar) sits, from the bottom. Colours: OKLCH [L, C, h, alpha] or hex; the focus uses the key material.",
       "padding_top": 26,
       "padding_x": 96,
       "padding_bottom": 48,
@@ -910,7 +908,29 @@
       "action_width": 200,
       "travel": 5,
       "focus_scale": 1.06,
-      "height": 470
+      "focus_lift": 3,
+      "press_travel": 3,
+      "press_ms": 110,
+      "move_ms": 90,
+      "above": 470,
+      "colours": {
+        "tray_top": "#18181b",
+        "tray_bottom": "#0c0c0e",
+        "tray_shade": [0, 0, 0, 0.45],
+        "cap_top": "#3a3a40",
+        "cap_bottom": "#2c2c31",
+        "fn_top": "#26262b",
+        "fn_bottom": "#1d1d21",
+        "ink": "#e9e9ee",
+        "edge": "#050506",
+        "action_top": [0.66, 0.14, 250, 1],
+        "action_bottom": [0.56, 0.15, 250, 1],
+        "action_focus_top": [0.74, 0.14, 250, 1],
+        "action_focus_bottom": [0.62, 0.15, 250, 1],
+        "action_ink": "#ffffff",
+        "lock": [0.66, 0.14, 250, 1],
+        "focus_drop": [0, 0, 0, 0.55]
+      }
     },
     "idle": {
       "_doc": "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay.",

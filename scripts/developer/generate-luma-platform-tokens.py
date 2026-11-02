@@ -955,6 +955,11 @@ def tv_tokens() -> dict:
     value = {key: group for key, group in tokens.items() if not key.startswith("_")}
     value["materials"] = {name: colour if isinstance(colour, str) else _oklch_rgba(*colour)
                           for name, colour in tokens["materials"].items()}
+    if "keyboard" in tokens:
+        keyboard = {key: group for key, group in tokens["keyboard"].items() if not key.startswith("_")}
+        keyboard["colours"] = {name: colour if isinstance(colour, str) else _oklch_rgba(*colour)
+                               for name, colour in keyboard.get("colours", {}).items()}
+        value["keyboard"] = keyboard
     return value
 
 
