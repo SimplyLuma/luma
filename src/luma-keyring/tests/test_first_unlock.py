@@ -186,7 +186,7 @@ class Ready(unittest.TestCase):
 
     def test_only_the_session_service_decides(self):
         os.environ.pop("NOTIFY_SOCKET", None)
-        self.assertFalse(ready.decide(["luma-keyring", "--check"]))
+        self.assertEqual(ready.decide(["luma-keyring", "--check"]), (False, None))
 
 
 if __name__ == "__main__":

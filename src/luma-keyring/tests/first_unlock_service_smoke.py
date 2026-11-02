@@ -31,6 +31,15 @@ from luma_keyring.prompt_gate import PROMPTER_NAME  # noqa: E402
 from luma_keyring.secrets import Keyring  # noqa: E402
 
 PASSWORD = "first-unlock-service"
+CLIENT = """
+import gi
+gi.require_version('Secret', '1')
+from gi.repository import Secret
+service = Secret.Service.get_sync(Secret.ServiceFlags.LOAD_COLLECTIONS, None)
+login = [c for c in service.get_collections() if c.get_object_path().endswith('/login')][0]
+count, _ = service.unlock_sync([login], None)
+print('unlocked' if count and not login.get_locked() else 'dismissed', flush=True)
+"""
 failures: list[str] = []
 
 
@@ -62,7 +71,10 @@ def main() -> int:
 
     argv = ["luma-keyring", "--gapplication-service"]
     started = time.monotonic()
-    ask = ready.decide(argv)
+    ask, prompter = ready.decide(argv)
+    # An app asks the instant the session starts, before the sheet is up; another
+    # while it is up. Both must be answered by the sheet, never by another prompter.
+    early = subprocess.Popen([sys.executable, "-c", CLIENT], stdout=subprocess.PIPE, text=True)
     check("the service decides " + ("not to ask at start" if by_hand else "to ask") + ", before GTK loads",
           ask is not by_hand and "gi.repository.Gtk" not in sys.modules, f"ask={ask}")
     schemas = os.path.join(folder, "schemas")
@@ -72,7 +84,7 @@ def main() -> int:
     os.environ["GSETTINGS_SCHEMA_DIR"] = schemas
 
     from luma_keyring.service import KeyringService
-    service = KeyringService(ask_first=ask)
+    service = KeyringService(ask_first=ask, prompter=prompter)
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     seen: dict = {}
 
@@ -97,6 +109,9 @@ def main() -> int:
             seen["ready"] = b""
         seen["gate_ours"] = owner() == bus.get_unique_name()
         seen["title"] = sheet.get_title()
+        seen["late"] = subprocess.Popen([sys.executable, "-c", CLIENT], stdout=subprocess.PIPE, text=True)
+        time.sleep(1.0)
+        seen["owner_during"] = owner()
         sheet.password = PASSWORD
         sheet._on_primary()
         return GLib.SOURCE_REMOVE
@@ -106,13 +121,22 @@ def main() -> int:
     GLib.timeout_add(100, drive)
     GLib.timeout_add_seconds(60, lambda: service.quit())
     code = service.run(argv)
-    check("READY once the sheet is up (at once by hand)", seen.get("ready") == b"READY=1" or by_hand,
+    check("READY before the sheet (the prompter is taken first)", by_hand or seen.get("ready") == b"READY=1",
           f"{seen.get('ready_after', 0):.1f} s")
     check("the sheet is Luma's", seen.get("title") == "Unlock your saved passwords")
-    check("the service held the prompter while asking (not needed when unlocked)",
+    check("the service was the keyring prompter while asking (not when unlocked)",
           seen.get("gate_ours", False) is not by_hand)
     check("and gave it back", owner() != bus.get_unique_name())
     check("the service exits after the answer", code == 0 and time.monotonic() - started < 45)
+    if not by_hand:
+        for name, child in (("early", early), ("late", seen.get("late"))):
+            try:
+                out = child.communicate(timeout=15)[0].strip()
+            except Exception:  # noqa: BLE001
+                child.kill()
+                out = "still waiting"
+            check(f"the app that asked {name} got its keyring from the sheet", out == "unlocked", out)
+        check("no other prompter was ever asked", seen.get("owner_during") == bus.get_unique_name())
     check("the keyring is unlocked and enrolled",
           not keyring.collection().locked and autounlock.credential_path().exists()
           and first_unlock.is_automatic())

@@ -14,6 +14,7 @@ python.install_sources(
   'luma_keyring/first_unlock.py',
   'luma_keyring/login.py',
   'luma_keyring/prompt_gate.py',
+  'luma_keyring/prompter.py',
   'luma_keyring/ready.py',
   'luma_keyring/repair.py',
   'luma_keyring/secrets.py',

@@ -3,11 +3,12 @@
 Description=Luma saved passwords (the login keyring's state, and its first unlock)
 Documentation=https://projectluma.org/saved-passwords
 PartOf=graphical-session.target
-# The shell is up (it draws the sheet; it owns the system prompter), and
-# nothing that starts with the graphical session has asked for a secret yet:
-# when the keyring needs its first unlock, Luma's sheet is the first to ask.
-After=gnome-session-initialized.target gnome-keyring-daemon.service luma-keyring-autologin.service
-Before=graphical-session.target
+# Before the Shell and anything else in the session: when the keyring needs
+# its first unlock, this process takes the keyring prompter's name first, so
+# every keyring prompt is answered by Luma's sheet (the Shell queues for the
+# name and has it back afterwards). The sheet itself waits for the display.
+After=dbus.socket gnome-keyring-daemon.socket luma-keyring-autologin.service
+Before=graphical-session-pre.target
 ConditionUser=!@system
 
 [Service]
@@ -29,4 +30,4 @@ LimitCORE=0
 MemoryHigh=256M
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical-session-pre.target

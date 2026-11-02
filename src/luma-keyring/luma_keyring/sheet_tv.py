@@ -210,5 +210,11 @@ class KeyringTV(TvStage):
     def toggle(self) -> None:
         self.switch_row.toggle()
 
+    def set_labels(self, switch: str, primary: str, cancel: str) -> None:
+        self.switch_row.title.set_label(switch)
+        self.switch_row.update_property([Gtk.AccessibleProperty.LABEL], [switch])
+        self.primary.label.set_label(primary)
+        self.cancel.label.set_label(cancel)
+
     def texts(self) -> tuple[str, str, str]:
         return self.title.get_label(), self.line.get_label(), self.switch_row.title.get_label()
