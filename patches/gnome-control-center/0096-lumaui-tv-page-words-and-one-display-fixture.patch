@@ -122,3 +122,38 @@ index aca6cfb..5df4035 100644
      if (cc_luma_view_flag (v, "display.preview")) gtk_widget_set_sensitive (GTK_WIDGET (v->body), FALSE);
      live_display_bar (v);
    }
+diff --git a/shell/cc-luma-view-system.c b/shell/cc-luma-view-system.c
+index 9688815..99ad590 100644
+--- a/shell/cc-luma-view-system.c
++++ b/shell/cc-luma-view-system.c
+@@ -1151,6 +1151,13 @@ static GtkWidget *luma_mark (View *v)
+   return mark;
+ }
+ 
++/* A fixture's own machine (sys.* keys, a TV's board), else v70's ThinkPad. */
++static const char *fixture_fact (View *v, const char *key, const char *v70)
++{
++  const char *text = cc_luma_view_text (v, key);
++  return *text ? text : v70;
++}
++
+ static void about (View *v)
+ {
+   if (live (v)) { live_about (v); return; }
+@@ -1175,11 +1182,11 @@ static void about (View *v)
+   GtkBox *g = cf_group (v, NULL, NULL);
+   tx (v, g, "devName", "Computer name", NULL);
+   g = cf_group (v, "Hardware", NULL);
+-  cf_vl (v, g, "Model", "ThinkPad X1 Carbon Gen 12", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Memory", "32 GB", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Processor", "Intel Core Ultra 7 155U", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Graphics", "Intel Arc", NULL, FALSE, NULL, NULL);
+-  app_row (v, g, "Disks", "Storage", "215 GB used of 512 GB", "Open Disks");
++  cf_vl (v, g, "Model", fixture_fact (v, "sys.model", "ThinkPad X1 Carbon Gen 12"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Memory", fixture_fact (v, "sys.mem", "32 GB"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Processor", fixture_fact (v, "sys.cpu", "Intel Core Ultra 7 155U"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Graphics", fixture_fact (v, "sys.gpu", "Intel Arc"), NULL, FALSE, NULL, NULL);
++  app_row (v, g, "Disks", "Storage", fixture_fact (v, "sys.disk", "215 GB used of 512 GB"), "Open Disks");
+   g = cf_group (v, "Software", NULL);
+   cf_vl (v, g, "Updates", "Nightly channel", "Change it in Depot", FALSE, NULL, NULL);
+   cf_nv (v, g, "about-sys", "System details", "For support and bug reports", NULL, NULL);
