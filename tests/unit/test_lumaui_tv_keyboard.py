@@ -96,7 +96,7 @@ class State(unittest.TestCase):
 
     def test_tokens_match_the_mockup(self):
         k = lumaui_tokens.TV["keyboard"]
-        height = k["padding_top"] + 4 * k["key_height"] + 3 * k["row_gap"] + k["padding_bottom"]
+        height = k["padding_top"] + 5 * k["key_height"] + 4 * k["row_gap"] + k["padding_bottom"]
         self.assertEqual(height, 428)
         self.assertEqual(k["above"], 470)
         self.assertEqual(lumaui_tokens.TV["toast"]["above_keyboard"], 586)
