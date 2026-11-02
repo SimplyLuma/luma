@@ -50,13 +50,15 @@
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-designer.svg",
    "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg",
-   "tests/fixtures/settings-tv.json"
+   "tests/fixtures/settings-tv.json",
+   "tests/fixtures/tv/blue-fog.png"
   ],
   "env": {
    "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-tv.json",
    "GSETTINGS_BACKEND": "memory",
    "XDG_CURRENT_DESKTOP": "GNOME",
-   "LUMA_POSTURE": "tv"
+   "LUMA_POSTURE": "tv",
+   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/prism.png'\"]]"
   },
   "app_id": "org.luma.Settings.Fixture",
   "binary": "bin/gnome-control-center",
@@ -166,7 +168,10 @@
     "-Dlocation-services=enabled"
    ]
   },
-  "monitor": "1920x1080"
+  "monitor": "1920x1080",
+  "exclude": [
+   ".lumaui-tv-clock"
+  ]
  },
  "pairs": [
   {
@@ -393,15 +398,11 @@
   },
   {
    "name": "keyboard",
-   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it (the mockup's island still lists Updates, which Settings leaves out: one more Down there)",
+   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it",
    "themes": [
     "dark"
    ],
    "spec": [
-    {
-     "key": "ArrowDown",
-     "wait": 300
-    },
     {
      "key": "ArrowDown",
      "wait": 300
@@ -510,5 +511,14 @@
  ],
  "text_aliases": {
   "Wi‑Fi": "Wi-Fi"
+ },
+ "icon_aliases": {
+  "monitor": "display",
+  "volume-2": "sound",
+  "layout-grid": "apps",
+  "smartphone": "remote",
+  "accessibility": "access",
+  "chevron-right": "chev",
+  "chevron-down": "down"
  }
 }

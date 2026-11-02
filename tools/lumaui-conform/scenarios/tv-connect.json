@@ -29,9 +29,16 @@
   "build": {},
   "env": {
    "LUMA_POSTURE": "tv",
-   "GSETTINGS_BACKEND": "memory"
+   "GSETTINGS_BACKEND": "memory",
+   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/prism.png'\"]]"
   },
-  "monitor": "1920x1080"
+  "monitor": "1920x1080",
+  "fixtures": [
+   "assets/wallpapers/prism.png"
+  ],
+  "exclude": [
+   ".lumaui-tv-clock"
+  ]
  },
  "pairs": [
   {
@@ -221,5 +228,18 @@
     }
    ]
   }
- ]
+ ],
+ "icon_aliases": {
+  "luma-connect-sync": "sync",
+  "luma-connect-laptop": "laptop",
+  "luma-connect-phone": "phone",
+  "luma-connect-plus": "plus",
+  "luma-connect-more": "more",
+  "luma-connect-ring": "ring",
+  "luma-connect-webcam": "webcam",
+  "luma-connect-screen": "screen",
+  "luma-connect-chevron": "chev",
+  "luma-connect-external": "ext",
+  "luma-chevron-left": "back"
+ }
 }

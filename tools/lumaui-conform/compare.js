@@ -65,6 +65,8 @@ const f1 = v => (Math.round(v * 10) / 10).toString();
 // label is not readable from Python, so its tooltip stands in, less the shortcut (Settings 12).
 const shortcutless = t => t ? t.replace(/\s*\((?:F\d{1,2}|(?:Ctrl|Shift|Alt|Super|⌘|⇧|⌥)[^)]*)\)$/, '') : t;
 const iconName = n => (n || '').replace(/^lumaui-/, '').replace(/-symbolic$/, '').replace(/-filled$/, '');
+// scenario.icon_aliases: a GTK icon's name -> the spec's (an app's own glyph set against the mockup's icon names).
+const iconAlias = n => (scenario.icon_aliases || {})[n] || n;
 const ROLE = { 'list-item': 'button', row: 'button', 'toggle-button': 'button', radio: 'button', 'column-header': 'button', 'menu-item': 'button', 'menu-item-radio': 'button', 'menu-item-checkbox': 'button', 'search-box': 'searchbox', 'text-box': 'textbox', 'check-box': 'checkbox', link: 'button' };
 const CONTROL = new Set(['button', 'switch', 'searchbox', 'textbox', 'checkbox']);
 const roleOf = r => ROLE[r] || r;
@@ -111,7 +113,12 @@ function specModel(S) {
 
 // ── GTK model ─────────────────────────────────────────────────────────────
 function gtkModel(G) {
-  const ws = G.widgets, byId = new Map(ws.map(w => [w.id, w])), vis = w => !w.offscreen;
+  // scenario.gtk.exclude: what the spec's own exclude leaves out on the GTK side (".class" or a widget
+  // name; a TV frame's live clock against the spec's #clock), with everything inside it.
+  const gx = (scenario.gtk || {}).exclude || [], gxHit = w => gx.some(s => s.startsWith('.') ? (w.classes || []).includes(s.slice(1)) : w.name === s);
+  const gxIds = new Set(), allById = new Map(G.widgets.map(w => [w.id, w]));
+  if (gx.length) for (const w of G.widgets) for (let a = w; a; a = allById.get(a.parent)) if (gxHit(a)) { gxIds.add(w.id); break; }
+  const ws = gx.length ? G.widgets.filter(w => !gxIds.has(w.id)) : G.widgets, byId = new Map(ws.map(w => [w.id, w])), vis = w => !w.offscreen;
   const box = w => B(w.visible || w.box);
   const textOps = new Map(); G.ops.filter(o => o.k === 'text' && o.widget != null && !o.hidden).forEach(o => { if (!textOps.has(o.widget)) textOps.set(o.widget, []); textOps.get(o.widget).push(o); });
   const texts = [];
@@ -145,7 +152,7 @@ function gtkModel(G) {
     const ink = gs.length ? gs.map(o => B(o.geo || o.box)).reduce((a, o) => { const x = Math.min(a.x, o.x), y = Math.min(a.y, o.y); return { x, y, w: Math.max(a.x + a.w, o.x + o.w) - x, h: Math.max(a.y + a.h, o.y + o.h) - y }; }) : b;
     // A scroller's edge cuts an icon as it does in the spec (whose box and ink are the visible part): clip to what shows.
     const vb = w.visible ? B(w.visible) : null, cut = (r) => { if (!vb) return r; const x = Math.max(r.x, vb.x), y = Math.max(r.y, vb.y); return { x, y, w: Math.max(0, Math.min(r.x + r.w, vb.x + vb.w) - x), h: Math.max(0, Math.min(r.y + r.h, vb.y + vb.h) - y) }; };
-    const app = appIconRe.test(w.icon); return { w, name: app ? 'app-icon' : iconName(w.icon), generic: app && /^application-x-executable$/.test(w.icon), box: cut(b), ink: cut(ink), clipped: !!vb && (vb.w < b.w - 0.5 || vb.h < b.h - 0.5), cutSide: vb ? { t: vb.y > b.y + 0.5, b: vb.y + vb.h < b.y + b.h - 0.5, l: vb.x > b.x + 0.5, r: vb.x + vb.w < b.x + b.w - 0.5 } : null, color: app ? null : c }; }).filter(Boolean);
+    const app = appIconRe.test(w.icon); return { w, name: app ? 'app-icon' : iconAlias(iconName(w.icon)), generic: app && /^application-x-executable$/.test(w.icon), box: cut(b), ink: cut(ink), clipped: !!vb && (vb.w < b.w - 0.5 || vb.h < b.h - 0.5), cutSide: vb ? { t: vb.y > b.y + 0.5, b: vb.y + vb.h < b.y + b.h - 0.5, l: vb.x > b.x + 0.5, r: vb.x + vb.w < b.x + b.w - 0.5 } : null, color: app ? null : c }; }).filter(Boolean);
   // Paint ops that sit exactly on a widget are that widget's own CSS box.
   const paintOps = G.ops.filter(o => ['fill', 'gradient', 'border', 'shadow'].includes(o.k) && !o.hidden);
   const near = (o, b, m) => Math.abs(o.x - b.x) <= m && Math.abs(o.y - b.y) <= m && Math.abs(o.w - b.w) <= m && Math.abs(o.h - b.h) <= m;

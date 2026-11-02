@@ -59,6 +59,33 @@ def _pin_settings() -> None:
     schema = source and source.lookup("org.gnome.desktop.interface", True)
     if schema is not None and schema.has_key("enable-animations"):
         Gio.Settings.new("org.gnome.desktop.interface").set_boolean("enable-animations", False)
+    # A scenario's own values (LUMAUI_CONFORM_GSETTINGS: [[schema, key, GVariant text], ...]), such as the
+    # wallpaper a TV room is drawn from.
+    from gi.repository import GLib
+    for schema_id, key, text in json.loads(os.environ.get("LUMAUI_CONFORM_GSETTINGS", "[]") or "[]"):
+        schema = source and source.lookup(schema_id, True)
+        if schema is not None and schema.has_key(key):
+            Gio.Settings.new(schema_id).set_value(key, GLib.Variant.parse(None, text, None, None))
+        else:
+            print(f"lumaui-conform: no GSettings key {schema_id} {key}", file=sys.stderr)
+
+
+def _pin_gtk_settings() -> None:
+    """GTK 4.22 on Wayland reads its settings from the desktop portal only, never GSettings, and a
+    capture's private bus has no portal: the pinned font, icon theme and animations go to GtkSettings
+    directly, on every display the app opens."""
+    from gi.repository import Gdk, Gtk
+
+    def opened(_manager, display) -> None:
+        settings = Gtk.Settings.get_for_display(display)
+        settings.props.gtk_font_name = FONT
+        settings.props.gtk_icon_theme_name = os.environ.get("LUMAUI_CONFORM_ICON_THEME", "Prairie")
+        settings.props.gtk_enable_animations = False
+
+    manager = Gdk.DisplayManager.get()
+    manager.connect("display-opened", opened)
+    if manager.get_default_display() is not None:
+        opened(manager, manager.get_default_display())
 
 
 def install() -> None:
@@ -78,6 +105,7 @@ def install() -> None:
     gi.require_version("Gsk", "4.0")
     from gi.repository import GLib
 
+    _pin_gtk_settings()
     _add_icon_dirs()
     _record_accessible_labels()
     Capture(GLib).start()
