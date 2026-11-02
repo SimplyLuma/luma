@@ -2,8 +2,9 @@
 # The S5400 sometimes ignores the first IMS SETUP_DATA_CALLs after boot and
 # ModemManager stops retrying: LTE works, calls go to voicemail. Restarting
 # ModemManager, then the radio service once it is up, registers IMS.
-# Checks every minute; acts when IMS has not registered 3 minutes after
-# ModemManager started; at most 5 recoveries per boot.
+# Checks every minute; acts when the IMS attach is still being retried 3
+# minutes after ModemManager started; never during a call; at most 5
+# recoveries per boot.
 tries=0
 while sleep 60; do
 	# Monotonic time and the running PID: the wall clock is still wrong when
@@ -19,9 +20,11 @@ while sleep 60; do
 	[ -z "$mode" ] || { [ "$mode" = 's "calls"' ] && [ "$state" = 's "ready"' ]; } || continue
 	# Restarting ModemManager ends every call: never act while one exists.
 	mmcli -m any --voice-list-calls 2>/dev/null | grep -q "/Call/" && continue
-	# The IMS bridge reports registration; trust its latest report.
-	journalctl -q -b -o cat --grep="luma-fold-ims-bridge: registered=" 2>/dev/null |
-		tail -n 1 | grep -q "registered=True" && continue
+	# ModemManager logs no IMS registration at its default level. A failed IMS
+	# attach is visible as its retries: it re-sends SETUP_DATA_CALL every 30 s
+	# and gives up after the third, while an accepted one is sent once.
+	tries_ims=$(journalctl -q -b _PID="$pid" -o cat 2>/dev/null | grep -c "SETUP_DATA_CALL (IMS")
+	[ "$tries_ims" -ge 2 ] || continue
 	mmcli -m any 2>/dev/null | grep -qE "state: (registered|connected)" || continue
 	[ "$tries" -lt 5 ] || continue
 	tries=$((tries + 1))
