@@ -530,6 +530,7 @@ def qr_code(uri):
     if matrix is None:return None
     area=Gtk.DrawingArea(content_width=260,content_height=260,halign=Gtk.Align.CENTER,accessible_role=Gtk.AccessibleRole.IMG)
     area.update_property([Gtk.AccessibleProperty.LABEL],['Pairing code to scan with your phone'])
+    area.add_css_class('lumaui-qr')  # LumaUI sizes a QR for the posture (on a TV, by the TV unit)
     def draw(_area,cr,width,height):
         cells=len(matrix);scale=max(1,min(width,height)//cells)
         left,top=(width-cells*scale)//2,(height-cells*scale)//2
