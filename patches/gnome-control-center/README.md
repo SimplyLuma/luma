@@ -210,3 +210,8 @@ only. Rows without an owner are hidden: Idle view (only Glance exists), Wake wit
 remote, HDMI-CEC, Match the video's frame rate, HDR, Hold OK for options, Sound's Night
 mode. Deep links `gnome-control-center tv-idle|tv-remotes` open the pages in any posture.
 
+`0092-lumaui-tv-saved-network-actions.patch`: in TV posture, OK on a saved secured network
+grows its row with its actions: Connect (with the saved password), Change password (the row
+shows a password field, focused with the TV keyboard's Join; empty is refused) and Forget
+(the destructive question, a TV sheet on Cancel). Outside TV posture nothing changes.
+

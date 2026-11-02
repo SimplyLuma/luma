@@ -1,6 +1,6 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,118 @@
+@@ -28,14 +28,119 @@
  
  Name:           gnome-control-center
  Version:        50.4
@@ -107,6 +107,7 @@
 +Patch1088:      0089-home-screen-preferences.patch
 +Patch1089:      0090-lumaui-tv-opt-in-and-panel-set.patch
 +Patch1090:      0091-lumaui-tv-pages.patch
++Patch1091:      0092-lumaui-tv-saved-network-actions.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
@@ -120,7 +121,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +183,12 @@
+@@ -85,6 +184,12 @@
  %endif
  
  # Versioned library deps
@@ -133,7 +134,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +274,10 @@
+@@ -170,16 +275,10 @@
  
  %build
  %meson \
@@ -152,7 +153,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +298,49 @@
+@@ -200,6 +299,49 @@
  
  %find_lang %{name} --all-name --with-gnome
  

@@ -192,6 +192,9 @@ typedef struct {
   guint reveal_id;
   int self_moving;       /* the frame itself is moving the focus */
   char *held_title;      /* the title of the row the remote was on: rows are found by it, not by place */
+  char *held_page;       /* the page's title then: a redraw keeps it, opening another page changes it */
+  int keying;            /* the frame is handling a key: focus moves now are the remote's own */
+  gint64 probe_at;       /* LUMA_TV_DEBUG timing: when the key arrived */
   gulong active_id;
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
@@ -354,6 +357,11 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+/* a switch outside any row (a page's on/off beside its title) holding the focus: the key's ring */
+".lumaui-tv-frame > .luma-island button:focus-visible switch, .lumaui-tv-frame > .luma-island switch:focus-visible {\n"
+"  box-shadow: 0 0 0 4tv white, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible switch,\n"
+".lumaui-tv-frame > .luma-island button.lumaui-part-row:focus-visible switch { box-shadow: none; }\n"
 /* the toast: the shared TV toast (tv/toast.js): bar material, 76 tall, one thing said */
 "window.lumaui-tv .lumaui-toast { min-height: 76tv; padding: 12tv 30tv 12tv 16tv; border-radius: 28tv; border: none; border-spacing: 18tv;\n"
 "  background-color: rgba(44, 46, 52, 0.94); background-image: none; color: @ink@;\n"
@@ -712,7 +720,10 @@ static GtkWidget *part_row_of(TvFrame *f, GtkWidget *w) {
   return w != NULL && w != f->island ? w : NULL;
 }
 
+static gboolean shown(GtkWidget *w);
 static const char *first_text(GtkWidget *w) {
+  if (!shown(w))
+    return NULL;
   if (GTK_IS_LABEL(w) && gtk_widget_get_visible(w) && *gtk_label_get_text(GTK_LABEL(w)) != '\0')
     return gtk_label_get_text(GTK_LABEL(w));
   for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
@@ -722,7 +733,14 @@ static const char *first_text(GtkWidget *w) {
   return NULL;
 }
 
+/* Shown on the page: hidden widgets and a stack's other pages are never where the remote is. */
+static gboolean shown(GtkWidget *w) {
+  return gtk_widget_get_visible(w) && gtk_widget_get_child_visible(w);
+}
+
 static GtkWidget *row_titled(TvFrame *f, GtkWidget *w, const char *title) {
+  if (!shown(w))
+    return NULL;
   if (gtk_widget_has_css_class(w, "lumaui-part-row")) {
     const char *t = first_text(w);
     return g_strcmp0(t, title) == 0 ? w : NULL;
@@ -734,8 +752,25 @@ static GtkWidget *row_titled(TvFrame *f, GtkWidget *w, const char *title) {
   return NULL;
 }
 
+static GtkWidget *find_class(GtkWidget *w, const char *cls);
+
+/* The open page's title (its header part), which a redraw of the same page keeps. */
+static const char *page_title(TvFrame *f) {
+  GtkWidget *header = find_class(f->island, "lumaui-part-header");
+  return header != NULL ? first_text(header) : NULL;
+}
+
+/* The focus moved by itself (no key, not the frame) away from a widget that is gone, on the same
+ * page: the page was redrawn under the remote (a network list refreshing). */
+static gboolean redrawn_under(TvFrame *f) {
+  return f->page_zone && f->keying == 0 && f->self_moving == 0 && f->held == NULL && f->path->len > 0 &&
+         g_strcmp0(page_title(f), f->held_page) == 0;
+}
+
 static void remember(TvFrame *f, GtkWidget *focus) {
   f->held_field = editable(focus);
+  g_free(f->held_page);
+  f->held_page = g_strdup(page_title(f));
   GtkWidget *row = part_row_of(f, focus);
   g_free(f->held_title);
   f->held_title = row != NULL ? g_strdup(first_text(row)) : NULL;
@@ -818,7 +853,7 @@ static gboolean grown_field(TvFrame *f) {
 static gboolean refind(TvFrame *f) {
   /* Lost: no focus, or GTK's fallback put it elsewhere (the first control on the page) because the
    * widget the remote was on was redrawn away, with no key moving it. */
-  gboolean redrawn = f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000;
+  gboolean redrawn = redrawn_under(f);
   if (!f->page_zone || f->path->len == 0 || (!focus_lost(f) && !redrawn))
     return FALSE;
   GtkWidget *w = path_widget(f);
@@ -832,6 +867,11 @@ static gboolean refind(TvFrame *f) {
       remember(f, focus_of(f));
       return TRUE;
     }
+  }
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) {
+    GtkWidget *r = part_row_of(f, w);
+    g_printerr("tv refind: held=%s found=%s %s drawable=%d focusable=%d\n", f->held_title ? f->held_title : "-",
+               r != NULL && first_text(r) ? first_text(r) : "-", G_OBJECT_TYPE_NAME(w), gtk_widget_is_drawable(w), gtk_widget_get_focusable(w));
   }
   for (; w != NULL && w != gtk_widget_get_parent(f->island); w = gtk_widget_get_parent(w)) {
     if (!gtk_widget_is_drawable(w)) continue;
@@ -848,7 +888,10 @@ static gboolean relax(gpointer data) {
   TvFrame *f = data;
   f->relax_id = 0;
   if (f->active) {
+    gint64 start = g_get_monotonic_time();
     release_page(f, f->island);
+    if (g_getenv("LUMA_TV_DEBUG") != NULL)
+      g_printerr("tv timing: release_page %.1f ms\n", (g_get_monotonic_time() - start) / 1000.0);
     if (hold_modal(f) != NULL) return G_SOURCE_REMOVE;
     if (!grown_field(f))
       refind(f);
@@ -912,16 +955,18 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   if (!f->active)
     return;
   GtkWidget *focus = focus_of(f);
-  if (g_get_monotonic_time() - f->key_at > 300 * 1000)
+  if (f->keying == 0 && f->self_moving == 0)
     f->moved_at = g_get_monotonic_time();
   if (g_getenv("LUMA_TV_DEBUG") != NULL) {
     g_auto(GStrv) classes = focus ? gtk_widget_get_css_classes(focus) : NULL;
     g_autofree char *joined = classes ? g_strjoinv(".", classes) : NULL;
-    g_printerr("tv focus: %s %s.%s page=%d\n", focus ? G_OBJECT_TYPE_NAME(focus) : "(none)",
-               focus ? gtk_widget_get_css_name(focus) : "", joined ? joined : "", focus ? in_page(f, focus) : 0);
+    GtkWidget *row = focus != NULL && in_page(f, focus) ? part_row_of(f, focus) : NULL;
+    g_printerr("tv focus: %s %s.%s page=%d row=%s keying=%d held=%s\n", focus ? G_OBJECT_TYPE_NAME(focus) : "(none)",
+               focus ? gtk_widget_get_css_name(focus) : "", joined ? joined : "", focus ? in_page(f, focus) : 0,
+               row != NULL && first_text(row) ? first_text(row) : "-", f->keying, f->held_title ? f->held_title : "-");
   }
   if (f->self_moving == 0 &&
-      (focus_lost(f) || (f->page_zone && f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000))) {
+      (focus_lost(f) || redrawn_under(f))) {
     queue_relax(f);  /* a page redrawn under the focus: it is found again there */
     queue_settle(f); /* or, failing that, the island takes it back */
     return;
@@ -953,10 +998,24 @@ static void to_island(TvFrame *f) {
   set_rail(f, FALSE);
 }
 
+/* Into the page at its first row: the hero or the first group, past the header's own controls
+ * (a page's on/off switch beside its title is reached with Up, never landed on). */
+static gboolean focus_into_parts(GtkWidget *w) {
+  if (!gtk_widget_is_drawable(w) || gtk_widget_has_css_class(w, "lumaui-part-header") ||
+      gtk_widget_has_css_class(w, "lumaui-part-back"))
+    return FALSE;
+  if (gtk_widget_has_css_class(w, "lumaui-part-hero") || gtk_widget_has_css_class(w, "lumaui-part-group") ||
+      gtk_widget_has_css_class(w, "lumaui-part-card") || gtk_widget_has_css_class(w, "lumaui-part-row"))
+    return gtk_widget_child_focus(w, GTK_DIR_TAB_FORWARD);
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c))
+    if (focus_into_parts(c)) return TRUE;
+  return FALSE;
+}
+
 static gboolean to_page(TvFrame *f) {
   release_page(f, f->island);
   gtk_root_set_focus(GTK_ROOT(f->window), NULL);
-  if (!gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD)) {
+  if (!focus_into_parts(f->island) && !gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD)) {
     to_island(f);
     return FALSE;
   }
@@ -1037,6 +1096,8 @@ static GtkWidget *find_modal(GtkWidget *w) {
 }
 
 static GtkWidget *find_class(GtkWidget *w, const char *cls) {
+  if (!shown(w))
+    return NULL;
   if (gtk_widget_has_css_class(w, cls) && gtk_widget_is_drawable(w))
     return w;
   for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
@@ -1084,7 +1145,7 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
   return GDK_EVENT_STOP;
 }
 
-static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
+static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code;
   if (!f->active || (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) != 0)
@@ -1148,6 +1209,18 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   if (is_back(key)) {
     if (text && key == GDK_KEY_BackSpace)
       return GDK_EVENT_PROPAGATE;
+    /* In what a row grew (a network's actions or its password): back to the row itself first. */
+    GtkWidget *row = part_row_of(f, focus);
+    GtkWidget *head = row != NULL && gtk_widget_has_css_class(row, "vertical") ? gtk_widget_get_first_child(row) : NULL;
+    if (head != NULL && focus != head && !gtk_widget_is_ancestor(focus, head) && gtk_widget_is_drawable(head)) {
+      f->self_moving++;
+      gboolean moved = (gtk_widget_get_focusable(head) && gtk_widget_grab_focus(head)) || gtk_widget_child_focus(head, GTK_DIR_TAB_FORWARD);
+      f->self_moving--;
+      if (moved) {
+        remember(f, focus_of(f));
+        return GDK_EVENT_STOP;
+      }
+    }
     GtkWidget *back = back_part(f->island);
     if (back != NULL) {
       /* Up a level: the parent page opens, and the focus lands in it once it is drawn. */
@@ -1188,6 +1261,32 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   if (!gtk_widget_child_focus(f->island, dir) && dir == GTK_DIR_LEFT)
     to_island(f); /* off the page's left edge: the island opens again */
   return GDK_EVENT_STOP;
+}
+
+/* LUMA_TV_DEBUG timing: from a key to the first frame painted after it. */
+static void probe_painted(GdkFrameClock *clock, TvFrame *f) {
+  g_signal_handlers_disconnect_by_func(clock, probe_painted, f);
+  if (f->probe_at != 0)
+    g_printerr("tv timing: key to paint %.1f ms\n", (g_get_monotonic_time() - f->probe_at) / 1000.0);
+  f->probe_at = 0;
+}
+
+static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
+                            GdkModifierType state, TvFrame *f) {
+  gboolean probe = g_getenv("LUMA_TV_DEBUG") != NULL && f->active;
+  gint64 start = probe ? g_get_monotonic_time() : 0;
+  f->keying++;
+  gboolean result = key_handled(controller, key, code, state, f);
+  f->keying--;
+  if (probe) {
+    g_printerr("tv timing: key handled in %.1f ms\n", (g_get_monotonic_time() - start) / 1000.0);
+    GdkFrameClock *clock = gtk_widget_get_frame_clock(GTK_WIDGET(f->window));
+    if (clock != NULL && f->probe_at == 0) {
+      f->probe_at = start;
+      g_signal_connect(clock, "after-paint", G_CALLBACK(probe_painted), f);
+    }
+  }
+  return result;
 }
 
 /* OK released on something other than what it was pressed on (the page redrew under it and the
@@ -1355,6 +1454,7 @@ static void frame_free(TvFrame *f) {
   g_clear_weak_pointer(&f->ok_widget);
   g_clear_weak_pointer(&f->held);
   g_free(f->held_title);
+  g_free(f->held_page);
   g_free(f);
 }
 
