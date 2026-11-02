@@ -46,6 +46,11 @@
       <summary>Reduce transparency</summary>
       <description>Use opaque surfaces for accessibility. Frost and Glass both fall back to Light without overwriting the chosen treatment.</description>
     </key>
+    <key name="backdrop-blur" type="b">
+      <default>true</default>
+      <summary>Render live backdrop blur</summary>
+      <description>Device capability, not an accessibility preference. When false, Shell surfaces skip the live blur of what lies behind them but keep their translucent fill; use it on hardware where sampling the framebuffer behind every blurred surface is costly. Reduce transparency, not this key, makes surfaces opaque.</description>
+    </key>
     <key name="schema-version" type="u">
       <default>2</default>
       <summary>Shell-state contract version</summary>
