@@ -761,7 +761,7 @@ class TideTV:
     # Search: albums, artists and songs; the system's TV keyboard presents itself for the field
     def _search(self):
         page = _box(True, "tide-tv-search")
-        field = TvField(placeholder="Albums, artists, songs", icon="search")
+        field = TvField(placeholder="Albums, artists, songs", icon="search", action="Search")
         field.set_halign(Gtk.Align.CENTER)
         field.set_value(self.query)
         field.text.connect("changed", lambda text: self._search_changed(text.get_text()))
