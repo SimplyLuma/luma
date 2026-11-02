@@ -15,7 +15,9 @@ rpm -qa --qf '%{SOURCERPM} %{VERSION}-%{RELEASE}\n' | sed 's/-[^-]*-[^-]*\.src\.
 exclude=$(grep '\.luma\.' /usr/share/lumaui-conform/rpmqa.txt | awk '{print $1}' | paste -sd, -)
 if ls rpms-app/*.rpm >/dev/null 2>&1; then
   reqs=$(rpm -qp --nosignature --requires rpms-app/*.rpm | grep -v -E '^(rpmlib\(|/|config\()|luma|nautilus|gnome-control-center|^gnome-shell|^gdm' | sed 's/ .*//' | sort -u)
-  dnf -y -q install --setopt=install_weak_deps=False --exclude="$exclude" $reqs
+  # Only what the image does not already provide (its Luma packages provide gtk4, libadwaita, ...).
+  reqs=$(for r in $reqs; do rpm -q --whatprovides "$r" >/dev/null 2>&1 || echo "$r"; done)
+  [ -z "$reqs" ] || dnf -y -q install --setopt=install_weak_deps=False --exclude="$exclude" $reqs
 fi
 tools="gcc gcc-c++ meson ninja-build vala sassc ccache python3-devel gettext desktop-file-utils itstool
  libappstream-glib appstream blueprint-compiler rpm-build patch git-core xmlto docbook-style-xsl libxslt gi-docgen
