@@ -23,7 +23,8 @@ first. Back that nothing takes falls through to the window, which returns to
 the TV home at the app's top level.
 
 Keys: arrows, OK (Return, KP_Enter, Select), Back (Escape, Back, BackSpace
-outside text). No pointer is needed and nothing depends on hover.
+outside text), Menu. Holding OK on an item with a menu (or Menu) opens the
+item's menu (`menu=`, tv_menu). No pointer is needed and nothing depends on hover.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from . import lumaui_tokens as tokens  # noqa: E402
 
@@ -99,6 +100,7 @@ class _Item:
     on_blur: Callable[[], None] | None = None
     on_key: Callable[[str], bool] | None = None
     editable: bool = False
+    menu: object = None          # a CommandRegistry, or a callable returning one
 
 
 @dataclass
@@ -126,6 +128,10 @@ class TvFocus:
         self._controller = Gtk.EventControllerKey()
         self._controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         self._controller.connect("key-pressed", self._key_pressed)
+        self._controller.connect("key-released", self._key_released)
+        self._ok_down: _Item | None = None     # OK is down on an item with a menu
+        self._hold_source = 0
+        self._swallow_release = False
         self._attached = None
         root.connect("map", lambda *_a: self._attach())
         if root.get_mapped():
@@ -134,7 +140,7 @@ class TvFocus:
     # ── registration ────────────────────────────────────────────────────
 
     def add(self, widget: Gtk.Widget, *, group: str = "", on_activate=None, on_focus=None,
-            on_blur=None, on_key=None, editable: bool = False) -> Gtk.Widget:
+            on_blur=None, on_key=None, editable: bool = False, menu=None) -> Gtk.Widget:
         """Make `widget` focusable by the remote.
 
         `on_key(direction)` returning True keeps an arrow. `editable=True` marks a
@@ -142,8 +148,13 @@ class TvFocus:
         focus and receives typing, Left/Right, Backspace and Space itself, so a
         real keyboard and the system's on-screen keyboard type straight in; Up
         and Down still move, OK calls `on_activate`, Back steps out.
+
+        `menu` is the item's command model (the `CommandRegistry` its desktop
+        context menu uses, or a callable returning one). Holding OK for
+        `tv.focus.hold_ms`, or pressing Menu, opens it as a `TvMenu`; on such an
+        item a short press runs `on_activate` when OK is released.
         """
-        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable)
+        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable, menu)
         # GTK focus follows the remote onto every item. That is what moves it off a
         # text field when the remote leaves one, so the system keyboard closes and
         # OK reaches the item instead of reopening the keyboard on the field.
@@ -230,6 +241,10 @@ class TvFocus:
         window.add_controller(self._controller)
         self._attached = window
 
+    def _key_released(self, controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> None:
+        if self.root.get_mapped() and self._grab is None:
+            self.release(keyval)
+
     def _key_pressed(self, controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> bool:
         if not self.root.get_mapped():
             return False
@@ -259,9 +274,17 @@ class TvFocus:
                 return True
             self.move(direction)
             return True
+        if keyval in (Gdk.KEY_Menu, Gdk.KEY_MenuKB):
+            return self.open_menu()
         if keyval in OK_KEYS:
             if keyval == Gdk.KEY_space and item is None:
                 return False
+            if item is not None and item.menu is not None and keyval != Gdk.KEY_space:
+                # Hold for the menu, release for OK; a repeat while held changes nothing.
+                if self._ok_down is None and not self._swallow_release:
+                    self._ok_down = item
+                    self._hold_source = GLib.timeout_add(tokens.TV["focus"]["hold_ms"], self._held)
+                return True
             if item is not None and item.on_activate is not None:
                 item.on_activate()
                 return True
@@ -275,6 +298,42 @@ class TvFocus:
                 return True
             return bool(self.on_back and self.on_back())
         return False
+
+    def release(self, keyval: int) -> bool:
+        """A key came up (tests and scripted reviews call this as `handle` for presses)."""
+        if keyval not in OK_KEYS or keyval == Gdk.KEY_space:
+            return False
+        if self._swallow_release:
+            self._swallow_release = False
+            return True
+        item, self._ok_down = self._ok_down, None
+        if item is None:
+            return False
+        if self._hold_source:
+            GLib.source_remove(self._hold_source)
+            self._hold_source = 0
+        if item.widget is self._focused and item.on_activate is not None:
+            item.on_activate()
+        return True
+
+    def _held(self) -> bool:
+        self._hold_source = 0
+        item, self._ok_down = self._ok_down, None
+        if item is not None and item.widget is self._focused:
+            self._swallow_release = True
+            self.open_menu()
+        return False
+
+    def open_menu(self) -> bool:
+        """Open the focused item's menu (`TvMenu`); False when it has none."""
+        item = self._items.get(self._focused) if self._focused is not None else None
+        if item is None or item.menu is None:
+            return False
+        registry = item.menu() if callable(item.menu) else item.menu
+        if registry is None:
+            return False
+        from .tv_menu import TvMenu
+        return TvMenu.open(self, item.widget, registry) is not None
 
     def move(self, direction: str) -> bool:
         """Move the focus one step spatially; returns whether it moved."""

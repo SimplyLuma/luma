@@ -218,6 +218,35 @@ look are the `tv.keyboard` tokens; the shell side is
 `patches/gnome-shell/0309-tv-keyboard.patch` with its pure rules in
 `src/luma-shell-presentation/tvKeyboard.js`.
 
+## Menus and long press
+
+An item's menu on TV is the same command model as its desktop context menu,
+never a TV copy. Pass the `CommandRegistry` you give `attach_context_menu`
+(or a callable returning it) when registering the item with `TvFocus`:
+
+```python
+attach_context_menu(row, commands_for(place))                      # desktop
+focus.add(tab, on_activate=open_place, menu=lambda: commands_for(place))   # TV
+```
+
+- **Hold OK** (`tv.focus.hold_ms`, 500 ms) or press **Menu** to open it. On an
+  item with a menu a short press is still OK: it runs `on_activate` when OK is
+  released; auto-repeat while OK is held changes nothing, and the release
+  that follows a hold is swallowed. Items without a menu act on the press.
+- `TvMenu` shows the model's visible commands, one level (commands with
+  children are left out), as a floating panel in the bar material anchored
+  under the item (above it when there is no room): icon, label, a tick for a
+  checked command, destructive commands in the danger colour. OK runs a
+  command; Back closes; either way the focus returns to the item.
+- A command's `visible` and `enabled` predicates decide what TV shows, so a
+  posture rule lives in the model (Weather hides Remove for your location in
+  TV posture).
+- `TvFocus.open_menu()` opens the focused item's menu from code;
+  `TvFocus.release(keyval)` feeds a key release (tests, scripted reviews).
+
+The hold needs a real key release: a keyboard, a remote, or a gamepad whose
+OK button is sent as a press on button-down and a release on button-up.
+
 ## Appearing on the TV home
 
 Only applications that opt in appear on the TV home. Declare TV support in

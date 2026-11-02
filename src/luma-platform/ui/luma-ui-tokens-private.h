@@ -2104,6 +2104,19 @@
 #define LUMA_UI_TV_FOCUS_CROSS_WEIGHT 2.0
 #define LUMA_UI_TV_FOCUS_RING 4
 #define LUMA_UI_TV_FOCUS_RING_OFFSET 6
+#define LUMA_UI_TV_FOCUS_HOLD_MS 500
+#define LUMA_UI_TV_MENU__DOC "An item's menu on TV (TvFocus menu=, opened by holding OK or the Menu key): the item's own command model as a floating panel anchored under it (above when there is no room), focusable rows, Back closes."
+#define LUMA_UI_TV_MENU_GAP 12
+#define LUMA_UI_TV_MENU_MIN_WIDTH 360
+#define LUMA_UI_TV_MENU_RADIUS 30
+#define LUMA_UI_TV_MENU_PADDING 10
+#define LUMA_UI_TV_MENU_ROW_HEIGHT 68
+#define LUMA_UI_TV_MENU_ROW_RADIUS 22
+#define LUMA_UI_TV_MENU_ROW_PADDING_X 22
+#define LUMA_UI_TV_MENU_ROW_SIZE 24
+#define LUMA_UI_TV_MENU_ROW_WEIGHT 600
+#define LUMA_UI_TV_MENU_ICON 28
+#define LUMA_UI_TV_MENU_ICON_GAP 16
 #define LUMA_UI_TV_SHEET_RADIUS 44
 #define LUMA_UI_TV_SHEET_PADDING 40
 #define LUMA_UI_TV_SHEET_GAP 22
