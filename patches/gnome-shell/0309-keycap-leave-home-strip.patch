@@ -1,0 +1,19 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: leave the home strip to the home gesture
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1894,6 +1894,13 @@
+         if (!this._keysActive())
+             return Clutter.EVENT_PROPAGATE;
+         const [x, y] = event.get_coords();
++        // The space below the key grid is the home gesture's strip, not a
++        // key's tolerance margin: claiming the sequence there cancels the
++        // home swipe and types the nearest key (the spacebar) instead.
++        const [, gridTop] = this._currentPage.get_transformed_position();
++        const [, gridHeight] = this._currentPage.get_transformed_size();
++        if (y >= gridTop + gridHeight)
++            return Clutter.EVENT_PROPAGATE;
+         const hit = this._hitKey(x, y);
+         if (!hit)
+             return Clutter.EVENT_PROPAGATE;
