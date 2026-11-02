@@ -15,8 +15,8 @@ focus and what happens there; LumaUI owns the choice and the look:
     focus.focus(band)
 
 The focused widget carries the `tv-focus` style class (and `TvLift` children
-lift), and holds GTK focus where it is focusable, so accessibility follows the
-remote. A scope (`push_scope`) confines the focus to a sheet until it closes,
+lift), and holds GTK focus, so accessibility follows the remote and leaving a
+text field takes GTK focus (and the system TV keyboard) with it. A scope (`push_scope`) confines the focus to a sheet until it closes,
 then returns it where it came from. A grab (`grab`, the TV keyboard) takes
 every key while it is up. Filters (`add_filter`, the idle hook) see each key
 first. Back that nothing takes falls through to the window, which returns to
@@ -144,8 +144,10 @@ class TvFocus:
         and Down still move, OK calls `on_activate`, Back steps out.
         """
         self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable)
-        if editable:
-            widget.set_focusable(True)
+        # GTK focus follows the remote onto every item. That is what moves it off a
+        # text field when the remote leaves one, so the system keyboard closes and
+        # OK reaches the item instead of reopening the keyboard on the field.
+        widget.set_focusable(True)
         return widget
 
     def remove(self, widget: Gtk.Widget) -> None:
@@ -324,8 +326,7 @@ class TvFocus:
                 item.on_blur()
         if widget is not None:
             _mark(widget, True)
-            if widget.get_focusable():
-                widget.grab_focus()
+            widget.grab_focus()
             item = self._items.get(widget)
             if item is not None and item.on_focus is not None and notify:
                 item.on_focus()

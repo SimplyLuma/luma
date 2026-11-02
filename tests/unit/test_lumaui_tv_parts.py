@@ -164,6 +164,32 @@ class Widgets(unittest.TestCase):
         self.assertTrue(focus.handle(Gdk.KEY_Return))
         self.assertEqual(activated, [True])
 
+    def test_leaving_a_field_takes_gtk_focus_with_it(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_parts import TvField
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        window = Gtk.Window(child=stage, default_width=960, default_height=540)
+        field = TvField(placeholder="Search")
+        row = Gtk.Box(height_request=40)
+        stage.place(field, left=96, top=100, width=600)
+        stage.place(row, left=96, top=300, width=600)
+        focus = TvFocus(stage)
+        picked = []
+        focus.add(field.text, editable=True)
+        focus.add(row, on_activate=lambda: picked.append("row"))
+        window.present()
+        for _ in range(50):
+            GLib.MainContext.default().iteration(False)
+        focus.focus(field.text)
+        self.assertIs(window.get_focus(), field.text)
+        self.assertTrue(focus.handle(Gdk.KEY_Down))
+        self.assertIs(focus.focused, row)
+        self.assertIs(window.get_focus(), row)          # not left on the text: the keyboard closes
+        self.assertTrue(focus.handle(Gdk.KEY_Return))
+        self.assertEqual(picked, ["row"])
+        window.destroy()
+
     def test_idle_waits_then_any_key_wakes_and_is_swallowed(self):
         from luma_appkit.tv_focus import TvFocus
         from luma_appkit.tv_idle import TvIdle

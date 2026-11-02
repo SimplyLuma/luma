@@ -953,6 +953,8 @@ class WeatherTV(TvStage):
         # panel): three rows then, five once the keyboard is away.
         self._all_results = tuple(results)
         results = self._all_results[:3 if self.docked == "keyboard" else 5]
+        rows = getattr(self, "_row_widgets", [])
+        held = rows.index(self.focus.focused) if self.focus.focused in rows else -1
         while child := self._list.get_first_child():
             self._list.remove(child)
         for row in getattr(self, "_row_widgets", []):
@@ -963,6 +965,8 @@ class WeatherTV(TvStage):
             if query:
                 self._list.append(_label(f"No places match “{query}”", "wx-tv-none"))
             self.focus.set_scope_items([self._field.text])
+            if held >= 0:
+                self.focus.focus(self._field.text)
             return
         for result in results:
             name, sub = self._result_text(result)
@@ -979,14 +983,13 @@ class WeatherTV(TvStage):
             self._list.append(row)
             self._row_widgets.append(row)
         self.focus.set_scope_items([self._field.text, *self._row_widgets])
+        if held >= 0:
+            # Results that arrive while a row has the focus keep it on the same line.
+            self.focus.focus(self._row_widgets[min(held, len(self._row_widgets) - 1)])
 
     def _on_docked(self) -> None:
         if self._sheet is not None and hasattr(self, "_all_results"):
-            focused = self.focus.focused
-            index = self._row_widgets.index(focused) if focused in getattr(self, "_row_widgets", []) else -1
             self._fill_results(self._all_results)
-            if index >= 0 and self._row_widgets:
-                self.focus.focus(self._row_widgets[min(index, len(self._row_widgets) - 1)])
 
     @staticmethod
     def _result_text(result) -> tuple[str, str]:

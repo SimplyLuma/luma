@@ -23,6 +23,13 @@ def settle(seconds=.5):
         time.sleep(.005)
 
 
+def until(check, seconds=5.0):
+    end = time.monotonic() + seconds
+    while not check() and time.monotonic() < end:
+        settle(.05)
+    return check()
+
+
 def key(w, keyval, state=0):
     w.tv_view.focus._key_pressed(None, keyval, 0, Gdk.ModifierType(state))
     settle(.15)
@@ -77,16 +84,28 @@ assert tv._tabs[tv._open_index()].has_css_class('tv-chip'), 'the open place step
 key(w, Gdk.KEY_Return)
 assert tv._sheet is not None and w.get_focus() is tv._field.text, 'Add opens straight into typing'
 tv._field.text.set_text('new')
-settle(1.0)
-assert len(tv._row_widgets) == 1, 'the list filters as you type'
+assert until(lambda: len(tv._row_widgets) == 1 and tv._row_widgets[0].get_mapped()), 'the list filters as you type'
+settle(.3)
 key(w, Gdk.KEY_Down)
 assert tv.focus.focused is tv._row_widgets[0]
+assert w.get_focus() is tv._row_widgets[0], 'leaving the field takes GTK focus (the keyboard closes)'
 count = len(w.places)
 key(w, Gdk.KEY_Return)
 settle(1.0)
 assert len(w.places) == count + 1 and w.places[-1].name == 'New York' and w.selected == w.places[-1].uid
 assert tv._sheet is None and getattr(tv, '_tv_toast', None) is not None, 'OK adds the place with a toast'
 print('PASS add a place', flush=True)
+
+tv.focus.focus(tv._tabs[-1])
+key(w, Gdk.KEY_Return)
+tv._field.text.set_text('chi')
+assert until(lambda: tv._row_widgets and tv._row_widgets[0].get_mapped())
+settle(.3)
+key(w, Gdk.KEY_Down)
+key(w, Gdk.KEY_Escape)
+assert tv._sheet is None and not isinstance(w.get_focus(), Gtk.Text), 'Back from a result closes the sheet, no keyboard'
+assert tv.focus.focused is tv._tabs[-1]
+print('PASS Back from a result', flush=True)
 
 for _ in range(3):
     if tv.focus.group_of(tv.focus.focused) != 'places':
