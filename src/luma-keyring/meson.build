@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-project('luma-keyring', 'c', version: '0.2.0', meson_version: '>= 1.3.0', license: 'MPL-2.0',
+project('luma-keyring', 'c', version: '0.3.0', meson_version: '>= 1.3.0', license: 'MPL-2.0',
         default_options: ['c_std=gnu17', 'warning_level=2'])
 
 python = import('python').find_installation('python3')

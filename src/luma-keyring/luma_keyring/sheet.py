@@ -30,7 +30,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from luma_appkit import Switch, TextButton, TextField, TypeLabel  # noqa: E402
+from luma_appkit import Switch, TextButton, TextField, TypeLabel, install_lumaui  # noqa: E402
 
 from . import first_unlock  # noqa: E402
 from .first_unlock import Kind, Result  # noqa: E402
@@ -60,6 +60,7 @@ class UnlockSheet(Adw.ApplicationWindow):
                  noun: str | None = None, autologin: bool | None = None,
                  work: Callable[..., Result] | None = None,
                  on_done: Callable[[Result | None], None] | None = None) -> None:
+        install_lumaui()  # the kit's sheets and icons, once per display
         super().__init__(application=application,
                          title=FIRST_TITLE if use is Use.FIRST else MANAGE_TITLE,
                          default_width=460, default_height=-1, resizable=False)
@@ -94,6 +95,11 @@ class UnlockSheet(Adw.ApplicationWindow):
                                on_activate=lambda _text: self._on_primary())
         body.append(self.field)
 
+        # Under the field it is about: a wrong password, or why it is not automatic.
+        self.message = TypeLabel("", role="caption", wrap=True)
+        self.message.set_visible(False)
+        body.append(self.message)
+
         row = Gtk.Box(spacing=12)
         self.switch_label = TypeLabel(_automatic_label(self._noun), role="row_title", wrap=True)
         self.switch_label.set_hexpand(True)
@@ -102,10 +108,6 @@ class UnlockSheet(Adw.ApplicationWindow):
         row.append(self.switch)
         self.switch_row = row
         body.append(row)
-
-        self.message = TypeLabel("", role="caption", wrap=True)
-        self.message.set_visible(False)
-        body.append(self.message)
 
         buttons = Gtk.Box(spacing=10, homogeneous=True, halign=Gtk.Align.END, margin_top=6)
         self.cancel = TextButton("Cancel", on_click=self._on_cancel)
@@ -169,7 +171,7 @@ class UnlockSheet(Adw.ApplicationWindow):
     def _say(self, text: str, error: bool = False) -> None:
         self.message.label.set_label(text)
         self.message.set_visible(bool(text))
-        (self.message.add_css_class if error else self.message.remove_css_class)("error")
+        (self.message.label.add_css_class if error else self.message.label.remove_css_class)("error")
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy

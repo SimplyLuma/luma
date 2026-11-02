@@ -110,7 +110,7 @@ class KeyringService(Adw.Application):
                                    on_done=self._first_unlock_done)
         self._window.connect("close-request", self._closed)
         self._window.present()
-        GLib.idle_add(notify_ready)
+        notify_ready()
         return GLib.SOURCE_REMOVE
 
     def _first_unlock_done(self, result) -> None:
