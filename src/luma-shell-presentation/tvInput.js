@@ -19,6 +19,7 @@ import {tv as TOKENS} from './tvTokens.js';
 import {tvEntry} from './tvModel.js';
 import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, padIdentity,
     repeatDelay, stickDirection, translates} from './tvInputModel.js';
+import {homePress} from './tvQuickPanelModel.js';
 
 const BUS_NAME = 'org.projectluma.Shell.Remote';
 const OBJECT_PATH = '/org/projectluma/Shell/Remote';
@@ -37,9 +38,13 @@ const CONFIRM_KEY = 'tv-confirm-button';
 const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
 
 export class TvInput {
-    // `home` opens the TV home.
-    constructor({home}) {
+    // `home` opens the TV home; `quickPanel` (a long press of Home) the quick
+    // panel.
+    constructor({home, quickPanel = null}) {
         this._home = home;
+        this._quickPanel = quickPanel;
+        this._homeSources = new Map();  // what holds Home down -> when it went down
+        this._homeTimer = 0;
         this._input = TOKENS.input;
         this._sources = new Map();      // a pad's control -> the action it holds
         this._repeats = new Map();      // direction -> {steps, id}
@@ -67,6 +72,9 @@ export class TvInput {
 
     destroy() {
         this._destroyed = true;
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        this._homeSources.clear();
         if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
         for (const source of [...this._okSources]) this._okUp(source);
@@ -128,14 +136,52 @@ export class TvInput {
         this._keys?.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.RELEASED);
     }
 
+    // Home is held, not tapped: a short press goes home when it is let go, a
+    // long one (quick_panel.home_hold_ms) opens the quick panel at once. No
+    // other control has a long press of Home.
+    _homeDown(source) {
+        if (this._homeSources.has(source)) return;
+        this._homeSources.set(source, GLib.get_monotonic_time());
+        if (!this._quickPanel) {
+            this._act('home');
+            return;
+        }
+        if (this._homeTimer) return;
+        this._homeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.quick_panel.home_hold_ms, () => {
+            this._homeTimer = 0;
+            if (!this._homeSources.size) return GLib.SOURCE_REMOVE;
+            // Consumed: letting go after this does nothing.
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._quickPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _homeUp(source) {
+        if (!this._quickPanel) {
+            this._homeSources.delete(source);
+            return;
+        }
+        // Reported only on release (no press seen): a short press.
+        const down = this._homeSources.has(source) ? this._homeSources.get(source) : GLib.get_monotonic_time();
+        this._homeSources.delete(source);
+        if (down < 0 || this._homeSources.size) return;
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        const held = (GLib.get_monotonic_time() - down) / 1000;
+        if (homePress(held, TOKENS.quick_panel.home_hold_ms) === 'home') this._act('home');
+        else this._quickPanel();
+    }
+
     // ── remotes: keys that are not TV keys become TV keys ─────────────────
 
-    // OK keys are taken with TRIGGER_RELEASE so their release is reported
-    // too (accelerator-deactivated) and OK can be held.
+    // OK and Home keys are taken with TRIGGER_RELEASE so their release is
+    // reported too (accelerator-deactivated) and they can be held.
     _grabRemoteKeys() {
+        const held = name => REMOTE_KEYS[name] === 'ok' || REMOTE_KEYS[name] === 'home';
         for (const name of Object.keys(REMOTE_KEYS)) {
             const flags = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT |
-                (REMOTE_KEYS[name] === 'ok' ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
+                (held(name) ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
             const action = global.display.grab_accelerator(name, flags);
             if (action === Meta.KeyBindingAction.NONE) {
                 console.warn(`TV input: ${name} is taken by another accelerator`);
@@ -149,10 +195,15 @@ export class TvInput {
                 const name = this._grabs.get(action);
                 if (!name) return;
                 if (REMOTE_KEYS[name] === 'ok') this._okDown(`remote:${action}`);
+                else if (REMOTE_KEYS[name] === 'home') this._homeDown(`remote:${action}`);
                 else this._act(REMOTE_KEYS[name]);
             }),
             global.display.connect('accelerator-deactivated', (_display, action) => {
                 const name = this._grabs.get(action);
+                if (REMOTE_KEYS[name] === 'home') {
+                    this._homeUp(`remote:${action}`);
+                    return;
+                }
                 if (REMOTE_KEYS[name] !== 'ok') return;
                 // Reported only on release (no press seen): OK as one press.
                 if (!this._okSources.has(`remote:${action}`)) this._okDown(`remote:${action}`);
@@ -206,6 +257,9 @@ export class TvInput {
         for (const source of [...this._okSources]) {
             if (source.startsWith(`${pad.id}:`)) this._okUp(source);
         }
+        for (const source of [...this._homeSources.keys()]) {
+            if (source.startsWith(`${pad.id}:`)) this._homeSources.delete(source);
+        }
         this._pads.delete(device);
         if (!this._destroyed) this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
     }
@@ -223,7 +277,12 @@ export class TvInput {
         const action = buttonAction(code, pad.confirm);
         if (!action) return;
         const source = `${pad.id}:button:${code}`;
-        if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
+        if (action === 'home') {
+            // Guide: held like a remote's Home (a long press opens the quick panel).
+            if (!pressed) {
+                if (this._homeSources.has(source)) this._homeUp(source);
+            } else if (translates(action, this._context())) this._homeDown(source);
+        } else if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
         else if (action === 'ok' && !pressed) this._okUp(source);
         else if (action === 'ok') {
             if (translates(action, this._context())) this._okDown(source);

@@ -430,3 +430,21 @@ every dialog outside TV posture are unchanged; `polkitAgent.js`,
 `dialog.js` and `modalDialog.js` are not patched. docs/developer-platform/
 tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check.
 Numbered after 0310; reconcile with `0308-backdrop-blur-capability` on merge.
+
+`0313-tv-quick-panel.patch`: registers `lumaPresentation/tvQuickPanel.js` and
+its pure rules `tvQuickPanelModel.js` in the JS resource. In TV posture, OK on
+the TV home bar's weather | time cluster (Right past Search) or a long press
+of Home (`tv.quick_panel.home_hold_ms`; a remote's Home or CEC Root Menu, a
+pad's Guide; Select+Start still goes home at once) opens the quick panel:
+Settings' floating island mirrored onto the right edge. It is a view of the
+existing Quick Options and notification list, not a second backend: the
+account (AccountsService), NetworkManager's Wi-Fi toggle, gnome-bluetooth's
+toggle and the Do Not Disturb setting as chips, the output stream slider and
+its devices, MessageTray's notifications (OK runs the default action, Clear
+all dismisses as the tray does), Settings, Sleep (suspend, or the
+screensaver's blank where logind cannot suspend) and Power (Restart… and
+Power Off… through SystemActions, confirmed by the TV dialog). Rows without
+a backend are not drawn. Back or Left off the island closes it and the focus
+returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
+Test: `tv-quick-panel-policy.js` in %check. Numbered 0313 to leave 0312 to
+`work/tv-settings` (screen edges).

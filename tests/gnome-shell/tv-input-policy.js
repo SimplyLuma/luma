@@ -103,8 +103,9 @@ assert(/for \(const name of Object\.keys\(REMOTE_KEYS\)\)[\s\S]*?Meta\.KeyBindin
 assert(/destroy\(\) \{[\s\S]*?ungrab_accelerator/.test(service), 'and given back');
 // OK is held, not tapped (TvFocus's long press opens a menu): Return down with
 // the pad's button or the remote key and up with it; everything else taps.
-assert(/REMOTE_KEYS\[name\] === 'ok' \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
-    'remote OK keys report their release');
+assert(/const held = name => REMOTE_KEYS\[name\] === 'ok' \|\| REMOTE_KEYS\[name\] === 'home'/.test(service) &&
+    /held\(name\) \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
+    'remote OK and Home keys report their release');
 assert(/'accelerator-deactivated'[\s\S]*?this\._okUp\(/.test(service), 'remote OK goes up on release');
 assert(/action === 'ok' && !pressed\) this\._okUp\(source\)/.test(service) &&
     /if \(translates\(action, this\._context\(\)\)\) this\._okDown\(source\)/.test(service),
