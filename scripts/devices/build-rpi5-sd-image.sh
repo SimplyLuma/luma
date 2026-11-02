@@ -147,7 +147,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
   done
   # Fixed modes and times: the archive must not depend on the build host's
   # umask, setgid directories or default ACLs.
-  find "$work/updates" -type d -exec chmod 0755 {} +
+  find "$work/updates" -type d -exec chmod u=rwx,go=rx,ug-s {} +
   find "$work/updates" -type f -exec chmod 0644 {} +
   find "$work/updates" -exec touch -h -d "@$epoch" {} +
   (cd "$work/updates" && find . -mindepth 1 | LC_ALL=C sort |
