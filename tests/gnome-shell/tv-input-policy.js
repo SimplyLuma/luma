@@ -127,6 +127,12 @@ assert(/settings_schema\.has_key\(CONFIRM_KEY\)/.test(service) && /changed::\$\{
     'the confirm setting is optional and applied live');
 assert(/buttonAction\(code, pad\.confirm\)/.test(service), 'per pad');
 
+// A held pad button is one press and one release: a down while down is dropped, and an up is
+// held back BOUNCE_MS so a bouncing contact is no release (Pi, 1 Nov: a stream of OKs).
+assert(/if \(pressed && pad\.buttons\.has\(code\)\) return;/.test(service), 'a down while down is not a press');
+assert(/const BOUNCE_MS = \d+;/.test(service) && /this\._released\.set\(control, GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, BOUNCE_MS/.test(service) &&
+    /if \(pressed && pending\) \{\s*GLib\.source_remove\(pending\);/.test(service), 'a bounce is no release and no new press');
+assert(/LUMA_TV_INPUT_DEBUG/.test(service) && /5 OK presses within a second/.test(service), 'a stream of OKs shows in the journal');
 print('tv-input-policy: ok');
 
 function print(message) {

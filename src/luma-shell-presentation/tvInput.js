@@ -34,6 +34,11 @@ const IFACE = `<node>
 
 const SCHEMA = 'org.project_luma.shell-state';
 const OK_SAFETY_SECONDS = 10;
+// A button that comes back down this soon after it went up is contact bounce, not a press.
+const BOUNCE_MS = 25;
+// LUMA_TV_INPUT_DEBUG=1: every pad button and every key sent, with monotonic milliseconds.
+const DEBUG = Boolean(GLib.getenv('LUMA_TV_INPUT_DEBUG'));
+const now = () => GLib.get_monotonic_time() / 1000;
 const CONFIRM_KEY = 'tv-confirm-button';
 const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
 
@@ -52,6 +57,8 @@ export class TvInput {
         this._claims = new Map();       // bus name -> {pid, watch}
         this._grabs = new Map();        // accelerator action -> keysym name
         this._okSources = new Set();    // what holds OK down: a pad's button, a remote key
+        this._released = new Map();     // a pad's control -> its release, held back BOUNCE_MS
+        this._okBurst = [];             // when OK last went down (a stream of presses is logged)
         this._okSafety = 0;
         this._nextPad = 0;
         // Which face button is OK (luma-shell-state); an older schema without
@@ -72,6 +79,8 @@ export class TvInput {
 
     destroy() {
         this._destroyed = true;
+        for (const id of this._released.values()) GLib.source_remove(id);
+        this._released.clear();
         if (this._homeTimer) GLib.source_remove(this._homeTimer);
         this._homeTimer = 0;
         this._homeSources.clear();
@@ -119,6 +128,12 @@ export class TvInput {
         if (this._okSources.has(source)) return;
         this._okSources.add(source);
         if (this._okSources.size > 1 || !this._keys) return;
+        if (DEBUG) console.log(`TV input: Return down (${source}) at ${now().toFixed(1)}`);
+        // One held button is one press: more than a few downs a second is something else (a
+        // bouncing contact, a pad that re-sends its state) and is worth seeing in the journal.
+        const t = now();
+        this._okBurst = [...this._okBurst.filter(at => t - at < 1000), t];
+        if (this._okBurst.length === 5) console.warn(`TV input: 5 OK presses within a second (last from ${source})`);
         this._keys.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.PRESSED);
         // A release that never comes (a remote out of range) must not leave
         // Return down.
@@ -133,6 +148,7 @@ export class TvInput {
         if (!this._okSources.delete(source) || this._okSources.size) return;
         if (this._okSafety) GLib.source_remove(this._okSafety);
         this._okSafety = 0;
+        if (DEBUG) console.log(`TV input: Return up (${source}) at ${now().toFixed(1)}`);
         this._keys?.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.RELEASED);
     }
 
@@ -267,6 +283,37 @@ export class TvInput {
     _button(pad, event, pressed) {
         const [ok, code] = event.get_button();
         if (!ok) return;
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} ${pressed ? 'down' : 'up'} at ${now().toFixed(1)}`);
+        // A held button is one press: a down while it is down (a pad re-sending its state) is
+        // not another one, and an up followed within BOUNCE_MS by a down (a bouncing contact)
+        // is no release at all: the up is acted on only once the button has stayed up.
+        const control = `${pad.id}:button:${code}`;
+        const pending = this._released.get(control);
+        if (pressed && pending) {
+            GLib.source_remove(pending);
+            this._released.delete(control);
+            return;
+        }
+        if (pressed && pad.buttons.has(code)) return;
+        if (!pressed) {
+            if (!pad.buttons.has(code) || pending) return;
+            this._released.set(control, GLib.timeout_add(GLib.PRIORITY_DEFAULT, BOUNCE_MS, () => {
+                this._released.delete(control);
+                this._buttonUp(pad, code);
+                return GLib.SOURCE_REMOVE;
+            }));
+            return;
+        }
+        this._buttonChanged(pad, code, true);
+    }
+
+    // The button went up and stayed up.
+    _buttonUp(pad, code) {
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} released at ${now().toFixed(1)}`);
+        this._buttonChanged(pad, code, false);
+    }
+
+    _buttonChanged(pad, code, pressed) {
         if (pressed) pad.buttons.add(code);
         else pad.buttons.delete(code);
         // Select+Start together go home: pads without a Guide button.

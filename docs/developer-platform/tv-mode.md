@@ -195,6 +195,13 @@ more.
   button (or the remote's OK, Select or CEC Select) and up with it, so a long
   press opens an item's menu (`TvFocus`); its key repeat is not more OKs.
   Back, Menu and the arrows are whole presses.
+- **One press per hold.** A pad button that is down stays one press: a repeated
+  down while it is down is dropped, and its release is held back 25 ms, so a
+  bouncing contact is neither a release nor a new press. Repeats of a held key
+  carry Clutter's repeat flag and only move the focus (`tvModel.repeatAllowed`);
+  the TV home, the quick panel and system dialogs never act on a repeated OK or
+  Back. `LUMA_TV_INPUT_DEBUG=1` in the Shell's environment logs every pad button
+  and every key sent, with times.
 - **A and B.** OK is the bottom face button (South: A on Xbox-style pads,
   Cross on PlayStation) or the right one (East: A on Nintendo-style pads),
   and Back is the other. The luma-shell-state key `tv-confirm-button`
