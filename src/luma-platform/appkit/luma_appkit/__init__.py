@@ -99,6 +99,7 @@ __all__ = [
     "set_ways",
     "set_link",
     "set_code_field",
+    "set_busy",
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
     "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
@@ -397,7 +398,7 @@ def __getattr__(name: str):
     if name == "set_part":
         from .tv_frame import set_part
         return set_part
-    if name in {"set_ways", "set_link", "set_code_field"}:
+    if name in {"set_ways", "set_link", "set_code_field", "set_busy"}:
         from . import tv_forms
         return getattr(tv_forms, name)
     if name == "open_link":

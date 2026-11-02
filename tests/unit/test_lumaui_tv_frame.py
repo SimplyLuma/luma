@@ -166,6 +166,10 @@ class TvFrame(unittest.TestCase):
         spin(200)
         field.entry.set_text("ab-12 c")
         self.assertEqual(field.entry.get_text(), "ab-12 c")     # a desktop field takes what is typed
+        from luma_appkit import set_busy
+        set_busy(go, True, "Signing In…")
+        self.assertEqual(go.get_label(), "Sign In")              # off a TV nothing changes
+        set_busy(go, False)
         window.tv_posture = True
         spin(300)
         boxes = field.get_next_sibling()
@@ -174,6 +178,11 @@ class TvFrame(unittest.TestCase):
         field.entry.set_text("k7q2xm4pzz")
         self.assertEqual(field.entry.get_text(), "K7Q2XM4P")    # at most eight
         self.assertEqual([b.get_label() for b in boxes.boxes], list("K7Q2XM4P"))
+        from luma_appkit import set_busy
+        set_busy(go, True, "Signing In…")
+        self.assertEqual(go.get_label(), "Signing In…")          # on a TV the button says it
+        set_busy(go, False)
+        self.assertEqual(go.get_label(), "Sign In")
         window.tv_posture = False
         spin(300)
         self.assertFalse(boxes.get_visible())

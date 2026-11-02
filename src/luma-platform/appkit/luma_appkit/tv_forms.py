@@ -26,7 +26,7 @@ from gi.repository import GLib, Gtk, Pango  # noqa: E402
 
 from .tv_frame import set_part  # noqa: E402
 
-__all__ = ["set_ways", "set_link", "set_code_field"]
+__all__ = ["set_ways", "set_link", "set_code_field", "set_busy"]
 
 
 def _follow_posture(widget: Gtk.Widget, apply) -> None:
@@ -284,3 +284,22 @@ def set_code_field(field: Gtk.Widget, *, length: int = 8, group: int = 4, next: 
                 boxes.status.set_visible(bool(text) and holder["status_shown"])
         boxes.redraw()
     _follow_posture(parent if parent is not None else field, apply)
+
+
+# ── busy buttons ───────────────────────────────────────────────────────────
+
+def set_busy(button: Gtk.Widget, busy: bool, label: str | None = None) -> None:
+    """Say on `button` what it is doing while busy ("Signing In…"). On a TV the button carries
+    the words (a TV has no room for a separate status line beside it); elsewhere nothing changes.
+    `set_busy(button, False)` gives the button its own label back."""
+    words = getattr(button, "label_widget", None)
+    if words is None:
+        child = button.get_child() if hasattr(button, "get_child") else None
+        words = child if isinstance(child, Gtk.Label) else None
+    if words is None:
+        return
+    if not hasattr(button, "_lumaui_own_label"):
+        button._lumaui_own_label = words.get_label()
+    root = button.get_root()
+    tv = bool(getattr(root, "tv_posture", False))
+    words.set_label(label if busy and tv and label else button._lumaui_own_label)
