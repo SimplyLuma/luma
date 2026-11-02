@@ -19,7 +19,9 @@
  },
  "phone_states": [
   "sheet",
-  "wrong"
+  "wrong",
+  "another",
+  "key"
  ],
  "gtk": {
   "module": "keyring_unlock",
@@ -68,6 +70,40 @@
     {
      "env": {
       "LUMA_CONFORM_KEYRING_STATE": "wrong"
+     }
+    }
+   ]
+  },
+  {
+   "name": "another",
+   "about": "gnome-keyring asks for another keyring: its words, its remember choice as the switch",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'another')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "another"
+     }
+    }
+   ]
+  },
+  {
+   "name": "key",
+   "about": "gnome-keyring asks for a private key's passphrase: its words, no choice",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'key')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "key"
      }
     }
    ]

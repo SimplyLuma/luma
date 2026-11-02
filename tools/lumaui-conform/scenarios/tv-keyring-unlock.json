@@ -110,6 +110,46 @@
    "themes": [
     "dark"
    ]
+  },
+  {
+   "name": "another",
+   "about": "gnome-keyring asks for another keyring: its words, its remember choice as the switch",
+   "spec": [
+    {
+     "eval": "preview('tv', 'another')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "another"
+     }
+    }
+   ],
+   "themes": [
+    "dark"
+   ]
+  },
+  {
+   "name": "key",
+   "about": "gnome-keyring asks for a private key's passphrase: its words, no choice",
+   "spec": [
+    {
+     "eval": "preview('tv', 'key')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "key"
+     }
+    }
+   ],
+   "themes": [
+    "dark"
+   ]
   }
  ]
 }

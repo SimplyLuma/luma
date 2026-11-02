@@ -9,6 +9,8 @@ tv-keyring-unlock). LUMA_CONFORM_KEYRING_STATE picks what the Design Center's mo
   wrong      after a wrong password: the error under the field
   keyboard   TV: the field typing, the TV keyboard up (the keyboard is the Shell's and
              never in the app's window; its state is set here as the Shell would report it)
+  another    gnome-keyring asks for another keyring ("Work"), with its remember choice
+  key        gnome-keyring asks for a private key's passphrase (no choice)
 
 The posture is the harness's: LUMA_POSTURE=tv for the TV scenario, the phone form factor
 for --phone, the desktop otherwise. Nothing here reads or writes a keyring.
@@ -43,6 +45,35 @@ class _Keyring:
         return True
 
 
+# gnome-keyring's own words (pkcs11/wrap-layer/gkm-wrap-prompt.c), as its prompts send them.
+PROMPTS = {
+    "another": {"title": "Unlock Keyring", "message": "Authentication required",
+                "description": "An application wants access to the keyring \u201cWork\u201d, but it is locked",
+                "choice-label": "Automatically unlock this keyring whenever I\u2019m logged in",
+                "choice-chosen": True, "continue-label": "Unlock", "cancel-label": "Cancel"},
+    "key": {"title": "Unlock private key", "message": "Unlock private key",
+            "description": "Enter password to unlock the private key",
+            "continue-label": "Unlock", "cancel-label": "Cancel"},
+}
+
+
+class _Request:
+    """A gnome-keyring prompt as the sheet sees it (nothing is sent anywhere)."""
+
+    def __init__(self, properties):
+        self.properties, self.kind, self.waiting, self.closed, self.answers = dict(properties), "password", True, False, 0
+
+    @property
+    def warning(self):
+        return ""
+
+    def answer(self, *_a, **_k):
+        pass
+
+    def confirm(self, *_a):
+        pass
+
+
 def build(app: Adw.Application) -> None:
     from pathlib import Path
     from gi.repository import Gdk, Gtk
@@ -52,8 +83,12 @@ def build(app: Adw.Application) -> None:
     theme.add_search_path(str(Path(__file__).resolve().parents[3] / "assets/icon-theme/Prairie/symbolic/actions"))
     state = os.environ.get("LUMA_CONFORM_KEYRING_STATE", "sheet")
     first_unlock.is_automatic = lambda: False
-    sheet = UnlockSheet(app, Use.FIRST, _Keyring(), noun=first_unlock.device_noun(),
-                        work=lambda _password, _automatic: Result(Kind.WRONG_PASSWORD, ""))
+    if state in PROMPTS:
+        sheet = UnlockSheet(app, Use.PROMPT, _Keyring(), noun=first_unlock.device_noun(),
+                            request=_Request(PROMPTS[state]))
+    else:
+        sheet = UnlockSheet(app, Use.FIRST, _Keyring(), noun=first_unlock.device_noun(),
+                            work=lambda _password, _automatic: Result(Kind.WRONG_PASSWORD, ""))
     if state == "wrong":
         sheet._answered(Result(Kind.WRONG_PASSWORD, "That password didn't unlock them. Try again."))
     elif state == "keyboard":
