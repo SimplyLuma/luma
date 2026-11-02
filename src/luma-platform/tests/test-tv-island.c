@@ -226,8 +226,17 @@ static void check_tv(GtkApplication *app) {
   CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* the press: the row acts */
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));   /* its repeat: nothing */
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  /* held for two seconds, repeating every 30 ms: every repeat is stopped, however long the hold */
+  for (int i = 0; i < 66; i++) {
+    spin(30);
+    CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  }
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));        /* the last repeat, then let go */
   CHECK(!luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));       /* a new press acts */
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* pressed, its release lost */
+  spin(900);
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* much later: a new press */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));        /* (its repeat, let go) */
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));     /* moves repeat */
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));        /* back to the island */
