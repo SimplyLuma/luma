@@ -44,6 +44,9 @@ ln -s ../luma-rpi5-shell-defaults.service \
   %{buildroot}%{_unitdir}/sysinit.target.wants/luma-rpi5-shell-defaults.service
 install -D -m 0755 62-luma-rpi5-schemas \
   %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/62-luma-rpi5-schemas
+%{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
+install -D -m 0755 63-luma-rpi5-gsk-renderer \
+  %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 install -D -m 0755 luma-rpi5-boot-next %{buildroot}%{_bindir}/luma-rpi5-boot-next
 install -d %{buildroot}%{_prefix}/lib/firmware/brcm
 ln -s brcmfmac43455-sdio.raspberrypi,5-model-b.txt.xz \

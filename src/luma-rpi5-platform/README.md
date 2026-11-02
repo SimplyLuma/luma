@@ -9,6 +9,7 @@ gated to Pi 5 hardware (device-tree compatible `raspberrypi,5-model-b` or
 | `/usr/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b-d0.txt.xz` | Wi-Fi NVRAM alias. D0 boards ask for the `-d0` name, which linux-firmware lacks; it points at the Pi 5 NVRAM. Only requested on D0 boards. |
 | `/usr/lib/udev/rules.d/70-luma-rpi5-v3d.rules` | V3D runtime-PM autosuspend 100 ms -> 2000 ms. Matches only `brcm,2712-v3d`. |
 | `luma-rpi5-shell-defaults.service` + `62-luma-rpi5-schemas` | Shell default `org.project_luma.shell-state backdrop-blur=false`. A gschema override would apply on every machine, so the service (`ConditionFirmware=`) compiles the installed Shell state schema with `rpi5.gschema.override` into `/run/luma-rpi5/schemas`, and the user environment generator adds that directory to `GSETTINGS_SCHEMA_DIR`. Values a person sets still win. |
+| `63-luma-rpi5-gsk-renderer` | User environment generator: `GSK_RENDERER=gl` for GTK apps on Pi 5 only (device-tree compatible). On V3D, GL draws a 4K frame in ~16 ms where the default Vulkan renderer takes ~30 ms. A `GSK_RENDERER` the person set wins. |
 | `luma-rpi5-boot-next` | Selects the SD card menu entry for the next boot only (`installed`, `install`, `rescue`, `uboot`). GRUB has no USB keyboard under U-Boot. |
 | `card/` | Sources of the SD card boot partition, used by `scripts/devices/build-rpi5-sd-image.sh`; not installed. |
 

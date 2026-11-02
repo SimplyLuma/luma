@@ -52,6 +52,26 @@ class Platform(unittest.TestCase):
         result = subprocess.run([str(HERE / "62-luma-rpi5-schemas")], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout, "")
 
+    def test_gsk_generator_picks_gl_only_on_a_pi5(self):
+        import tempfile
+        gen = str(HERE / "63-luma-rpi5-gsk-renderer")
+        cases = {b"raspberrypi,5-model-b\0brcm,bcm2712\0": "GSK_RENDERER=gl\n",
+                 b"raspberrypi,5-model-b-d0\0brcm,bcm2712\0": "GSK_RENDERER=gl\n",
+                 b"raspberrypi,4-model-b\0brcm,bcm2711\0": "",
+                 b"qcom,sm8650\0": ""}
+        with tempfile.TemporaryDirectory() as tmp:
+            compat = Path(tmp) / "compatible"
+            for blob, want in cases.items():
+                compat.write_bytes(blob)
+                env = {"PATH": "/usr/bin:/bin", "LUMA_RPI5_DT_COMPATIBLE": str(compat)}
+                out = subprocess.run([gen], capture_output=True, text=True, check=True, env=env).stdout
+                self.assertEqual(out, want, blob)
+            env = {"PATH": "/usr/bin:/bin", "LUMA_RPI5_DT_COMPATIBLE": str(compat), "GSK_RENDERER": "vulkan"}
+            compat.write_bytes(b"raspberrypi,5-model-b\0")
+            self.assertEqual(subprocess.run([gen], capture_output=True, text=True, check=True, env=env).stdout, "")
+            env = {"PATH": "/usr/bin:/bin", "LUMA_RPI5_DT_COMPATIBLE": str(Path(tmp) / "missing")}
+            self.assertEqual(subprocess.run([gen], capture_output=True, text=True, check=True, env=env).stdout, "")
+
     def test_boot_next_refuses_unknown_entries_before_touching_anything(self):
         for argv in ([], ["installed-debug"], ["install", "extra"]):
             result = subprocess.run([str(HERE / "luma-rpi5-boot-next"), *argv], capture_output=True, text=True)
