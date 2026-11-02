@@ -40,3 +40,15 @@ init trigger runs `luma-forced-density` as system, which sets or resets
 WindowManager's forced density. It replaces only an override it applied
 (`persist.luma.density_override`), so a display size chosen in Android's
 settings is kept.
+
+`0005` ships microG (Apache-2.0) as privileged system apps: GmsCore
+(`com.google.android.gms`), GsfProxy (`com.google.android.gsf`) and FakeStore
+(`com.android.vending`), so Android apps can sign in with a Google account and
+receive push messages without Google's proprietary apps. The APKs are microG's
+official signed releases, pinned with URL, version, size and SHA-256 in
+`config/android/microg.env` and placed by `scripts/android/fetch-microg.sh`;
+they are not committed. LineageOS' framework already restricts signature
+spoofing to these two package names signed with microG's certificate
+(`9bd06727…d14165`), presenting only Google's signature. The patch adds the
+privileged-permission allowlist the build enforces, default runtime grants,
+a power-save exemption for push delivery, and microG's license notice.
