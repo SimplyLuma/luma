@@ -1,7 +1,7 @@
 {
  "app": "tv-settings",
  "title": "Settings on TV",
- "about": "Settings in TV posture (LUMA_POSTURE=tv, LumaUI's TV frame) against the Design Center's TV mockup at 1920x1080: the floating island open and folded to its rail, grouped rows, chip rows, a choice list and the TV keyboard. The island must be as tall as its rows (pair \"island\"). Dark only: a TV is always dark.",
+ "about": "Settings in TV posture (LUMA_POSTURE=tv, LumaUI's TV frame) against the Design Center's TV mockup at 1920x1080: the floating island open and folded to its rail, grouped rows, chip rows, a choice list and a field taking the TV keyboard (the keyboard is the Shell's). The island must be as tall as its rows (pair \"island\"). Dark only: a TV is always dark.",
  "spec": {
   "root": "design-center",
   "url": "mockups/luma-tv-settings.html",
@@ -411,7 +411,7 @@
   },
   {
    "name": "keyboard",
-   "about": "About, Right to Updates, Down to Computer name, OK: the TV keyboard docks, the row lifts above it",
+   "about": "About, Right to Updates, Down to Computer name, OK: the field takes the text and the row stays where the keyboard leaves room for it. The keyboard itself is the Shell's (org.projectluma.Shell.Keyboard), never in an app's window: the spec's is hidden once it has docked, so both sides show the app alone",
    "themes": [
     "dark"
    ],
@@ -467,6 +467,10 @@
     {
      "key": "Enter",
      "wait": 600
+    },
+    {
+     "eval": "document.querySelectorAll('.tvkb').forEach(k => k.style.display = 'none')",
+     "wait": 300
     }
    ],
    "gtk": [
