@@ -10,10 +10,14 @@ from luma_appkit import install_appkit
 from integrated_window import IntegratedWindow
 
 
-def settle():
+def settle(ms=100):
     loop = GLib.MainLoop()
-    GLib.timeout_add(100, lambda: loop.quit() or False)
+    GLib.timeout_add(ms, lambda: loop.quit() or False)
     loop.run()
+
+
+# The bar sinks into the handle before it is hidden; wait out that motion.
+TUCKED = 450
 
 
 class BarContentAccess(unittest.TestCase):
@@ -46,9 +50,19 @@ class BarContentAccess(unittest.TestCase):
         self.chrome.render()
         settle()
 
+    def test_handle_appears_only_while_the_bar_is_tucked(self):
+        self.assertFalse(self.chrome.bar_handle.get_visible())
+        self.chrome.hide_bar()
+        settle(TUCKED)
+        self.assertTrue(self.chrome.bar_handle.get_mapped())
+        self.chrome.reveal_bar()
+        settle(TUCKED)
+        self.assertTrue(self.chrome.center.bar.get_mapped())
+        self.assertFalse(self.chrome.bar_handle.get_visible())
+
     def test_hidden_bar_stays_out_of_bottom_page_pointer_motion(self):
         self.chrome.bar_handle.emit('clicked')
-        settle()
+        settle(TUCKED)
         self.assertFalse(self.chrome.center.bar.get_mapped())
         self.assertTrue(self.chrome.bar_handle.get_mapped())
         self.assertLessEqual(self.chrome.bar_handle.get_width(), 110)
@@ -61,8 +75,9 @@ class BarContentAccess(unittest.TestCase):
 
     def test_handle_and_address_command_reveal_the_editor(self):
         self.chrome.hide_bar()
+        settle(TUCKED)
         self.chrome.bar_handle.emit('clicked')
-        settle()
+        settle(TUCKED)
         self.assertTrue(self.chrome.center.bar.get_mapped())
         self.assertTrue(self.window.address_focused())
         self.chrome.hide_bar()
@@ -75,6 +90,7 @@ class BarContentAccess(unittest.TestCase):
         self.chrome.hide_bar()
         self.window.state['activeUrl'] = 'https://chat.invalid/conversation/123'
         self.chrome.render()
+        settle(TUCKED)
         self.assertFalse(self.chrome.center.bar.get_visible())
         self.window.state['activeTabId'] = 2
         self.chrome.render()
