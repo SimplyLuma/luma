@@ -6,7 +6,7 @@ sample numbers; live forecasts never pass through those formulas.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import math
 
@@ -118,6 +118,9 @@ class Snapshot:
     tiles: tuple[Tile, ...] = ()
     plans: tuple[Plan, ...] = ()
     clock: str = ''   # the place's own time, "10:40 AM" (the Places panel)
+    #: The forecast this was made from: the TV presentation walks all of its
+    #: days hour by hour (weather_tv_model). Not part of equality.
+    forecast: object = field(default=None, compare=False, repr=False)
 
     @property
     def phone_sentence(self) -> str:
@@ -236,6 +239,17 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
     if observation is not None:
         current = replace(current, temperature_c=observation.temperature_c,
                           symbol=observation.symbol)
+    # Today's high and low cover what today has actually been: the reading
+    # now (observed where there is a station) and every forecast hour of
+    # today the payload still holds, not only the slice that is left.
+    # With neither a provider range nor any hour of today there is no range to state.
+    today_hours = [hour.temperature_c for hour, at in timed_hours if at is not None and at.date() == moment.date()]
+    if current.high_c is not None or current.low_c is not None or today_hours:
+        today_temperatures = [current.temperature_c, *today_hours]
+        current = replace(current,
+                          high_c=max(v for v in (current.high_c, *today_temperatures) if v is not None),
+                          low_c=min(v for v in (current.low_c, *today_temperatures) if v is not None))
+    today_high, today_low = current.high_c, current.low_c
     night = _night_at(current.symbol, moment)
     condition = condition_for(current.symbol)
     sky = "night" if night else "day"
@@ -262,9 +276,11 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
         at = datetime.fromisoformat(day.date)
         if at.date() < moment.date():
             continue
+        is_today = at.date() == moment.date() and today_high is not None
+        low_c, high_c = (today_low, today_high) if is_today else (day.low_c, day.high_c)
         days.append(Day("Today" if at.date() == moment.date() else at.strftime("%a"),
-                        temperature_text(day.low_c, units), temperature_text(day.high_c, units),
-                        condition_for(day.symbol).glyph, day.low_c, day.high_c))
+                        temperature_text(low_c, units), temperature_text(high_c, units),
+                        condition_for(day.symbol).glyph, low_c, high_c))
         if len(days) == 10:
             break
     metrics = []
@@ -344,4 +360,4 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
                                      moment, twelve_hour=True, include_first=not covered),
                     tuple(hours), tuple(days), tuple(metrics), current_value=current.temperature_c,
                     provenance=provenance, alerts=tuple(alerts), changes=changes, tiles=tuple(tiles),
-                    clock=clock_text(moment, twelve_hour=True))
+                    clock=clock_text(moment, twelve_hour=True), forecast=forecast)
