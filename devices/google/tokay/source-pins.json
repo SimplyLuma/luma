@@ -5,7 +5,7 @@
     "model": "Pixel 9",
     "codename": "tokay",
     "soc": "Tensor G4",
-    "status": "experimental RAM-only"
+    "status": "alpha1"
   },
   "kernel": {
     "repository": "https://github.com/orgwithsomething/linux-zumapro",
@@ -28,7 +28,6 @@
     "bytes": 4345344029,
     "sha256": "a685aacee2ec5482759c136e346c066c50c0562bf3664d9be89f85382e31d055"
   },
-  "public_boot_image_published": false,
-  "persistent_install_qualified": false,
-  "release_ready": false
+  "public_boot_image_published": true,
+  "persistent_install_qualified": true
 }
