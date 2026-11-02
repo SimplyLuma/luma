@@ -47,7 +47,7 @@ import uuid
 from .weather_observation_cache import current_observation
 
 from .weather_model import (
-    CityForecast, Current, DayPoint, HourPoint, Place, cache_directory,
+    CityForecast, Current, DayPoint, HourPoint, Place, TimelinePoint, cache_directory,
     forget_cache, parse_time, pressure_trend, read_cache, write_cache,
 )
 
@@ -404,6 +404,7 @@ def parse_forecast(payload: dict, place: Place, *, now: datetime | None = None,
         ))
 
     days = _daily(points, zone)
+    timeline = _timeline(points[current_index:], zone)
 
     head_moment, head = points[current_index]
     instant = _entry_details(head, "instant")
@@ -446,7 +447,34 @@ def parse_forecast(payload: dict, place: Place, *, now: datetime | None = None,
         current=current,
         hours=tuple(hours),
         days=tuple(days),
+        timeline=timeline,
     )
+
+
+def _timeline(points: Sequence[tuple[datetime, dict]], zone) -> tuple[TimelinePoint, ...]:
+    """Every step from the current hour to the end of the series, in local time."""
+    steps: list[TimelinePoint] = []
+    for moment, entry in points:
+        instant = _entry_details(entry, "instant")
+        temperature = _number(instant, "air_temperature")
+        if temperature is None:
+            continue
+        hourly = bool(entry.get("data", {}).get("next_1_hours"))
+        block = _entry_details(entry, "next_1_hours" if hourly else "next_6_hours")
+        steps.append(TimelinePoint(
+            time=moment.astimezone(zone).isoformat(),
+            temperature_c=temperature,
+            symbol=_entry_symbol(entry),
+            span_hours=1 if hourly else 6,
+            precipitation_probability=_number(block, "probability_of_precipitation"),
+            precipitation_mm=_number(block, "precipitation_amount"),
+            apparent_c=_number(instant, "apparent_air_temperature"),
+            humidity=_number(instant, "relative_humidity"),
+            wind_mps=_number(instant, "wind_speed"),
+            wind_degrees=_number(instant, "wind_from_direction"),
+            uv_index=_number(instant, "ultraviolet_index_clear_sky"),
+        ))
+    return tuple(steps)
 
 
 def _daily(points: Sequence[tuple[datetime, dict]], zone) -> list[DayPoint]:
@@ -568,7 +596,7 @@ def cached_forecast(place: Place, *, cache_root: Path | None = None) -> CityFore
     # the weather, not the identity.
     return CityForecast(place=place, fetched_at=forecast.fetched_at,
                         current=forecast.current, hours=forecast.hours,
-                        days=forecast.days)
+                        days=forecast.days, timeline=forecast.timeline)
 
 
 def drop_cached(place: Place, *, cache_root: Path | None = None) -> None:

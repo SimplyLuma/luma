@@ -6,7 +6,7 @@ sample numbers; live forecasts never pass through those formulas.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import math
 
@@ -118,6 +118,9 @@ class Snapshot:
     tiles: tuple[Tile, ...] = ()
     plans: tuple[Plan, ...] = ()
     clock: str = ''   # the place's own time, "10:40 AM" (the Places panel)
+    #: The forecast this was made from: the TV presentation walks all of its
+    #: days hour by hour (weather_tv_model). Not part of equality.
+    forecast: object = field(default=None, compare=False, repr=False)
 
     @property
     def phone_sentence(self) -> str:
@@ -344,4 +347,4 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
                                      moment, twelve_hour=True, include_first=not covered),
                     tuple(hours), tuple(days), tuple(metrics), current_value=current.temperature_c,
                     provenance=provenance, alerts=tuple(alerts), changes=changes, tiles=tuple(tiles),
-                    clock=clock_text(moment, twelve_hour=True))
+                    clock=clock_text(moment, twelve_hour=True), forecast=forecast)
