@@ -949,6 +949,9 @@ class ScreenViewer:
             self.window.set_content(self.picture)
         else:
             self.window.set_child(self.picture)
+        # In TV posture the phone's screen is a centred window of LumaUI's TV frame: the picture in the
+        # safe area over the dimmed room, the shared bar on top; Back stops showing it.
+        self._tv = self._tv_frame(Adw, title)
         if session.control_allowed:
             drag = Gtk.GestureDrag()
             drag.set_button(Gdk.BUTTON_PRIMARY)
@@ -960,6 +963,46 @@ class ScreenViewer:
             keys.connect('key-pressed', self._key)
             self.window.add_controller(keys)
         self.window.connect('close-request', self._closed)
+        if self._tv is not None:
+            self._tv.window_set_tv_active(self.window, True)
+            self.window.fullscreen()
+
+    def _tv_frame(self, Adw, title):
+        """Attach LumaUI's TV frame when the shell is in TV posture; returns LumaUI, or None."""
+        if Adw is None:
+            return None
+        try:
+            import gi
+            gi.require_version('LumaUI', '1')
+            from gi.repository import LumaUI
+        except (ImportError, ValueError):
+            return None
+        if not hasattr(LumaUI, 'window_set_tv_frame') or not LumaUI.ui_tv_posture():
+            return None
+        from gi.repository import Gtk
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
+        self.window.set_content(frame)
+        self.picture.add_css_class('luma-island')
+        frame.append(self.picture)
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect('key-pressed', self._tv_key)
+        self.window.add_controller(keys)
+        self._tv_title = display_name(title)
+        LumaUI.window_set_tv_frame(self.window, frame, frame, None, self.picture)
+        return LumaUI
+
+    def _tv_key(self, _controller, keyval, _keycode, _state):
+        if keyval not in (self._Gdk.KEY_Escape, self._Gdk.KEY_Back, self._Gdk.KEY_BackSpace):
+            return False
+        # Back stops showing the phone: the stream ends now, the toast says so, the window goes.
+        from gi.repository import GLib
+        self.session.close()
+        self.picture.set_paintable(None)
+        if hasattr(self._tv, 'toast_show'):
+            self._tv.toast_show(self.window, f'Stopped showing {self._tv_title}', 'done')
+        GLib.timeout_add(1600, lambda: (self.window.destroy(), False)[1])
+        return True
 
     def set_paintable(self, paintable):
         self.picture.set_paintable(paintable)

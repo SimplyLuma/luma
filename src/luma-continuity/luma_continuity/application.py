@@ -33,10 +33,13 @@ except ImportError:  # an older kit: no TV posture, and copy reads "this compute
     device_noun=None
     def tv_posture():return False
 try:
-    from luma_appkit import open_link,set_part
+    from luma_appkit import open_link,set_part,set_ways,set_link,set_code_field
 except ImportError:  # an older kit: links open in the browser, and parts are not named
     open_link=None
     def set_part(_widget,_part):pass
+    def set_ways(_box,*_ways):pass
+    def set_link(_button,_uri):pass
+    def set_code_field(_field,**_kw):pass
 from .phone_contract import BUS,PATH
 from .cloud_sync import CloudSync,DEFAULT_HUB,HUB_CONNECT_PAGE,device_name
 from .companion_contract import DEFAULT_DESKTOP_TO_PHONE,DEFAULT_PHONE_TO_DESKTOP
@@ -758,13 +761,18 @@ class ConnectWindow(PhonesMixin,AppWindow):
         pages=Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         content.append(pages)
         first=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,margin_start=2,margin_end=2,margin_top=2,margin_bottom=2)
-        for text in ('Already use Luma on another device? Open Luma Connect there, choose Devices, then Add a Device. It shows a one-time code.',
-                     'New to Luma? Create your account on Luma Hub, then choose Connect a Device to get a code.'):
-            first.append(TypeLabel(text,wrap=True))
+        # Two ways to a code (LumaUI ways: side by side on a TV), then what to do.
+        ways=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);first.append(ways)
+        other=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);web=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12)
+        other.append(TypeLabel('Already use Luma on another device? Open Luma Connect there, choose Devices, then Add a Device. It shows a one-time code.',wrap=True))
+        web.append(TypeLabel('New to Luma? Create your account on Luma Hub, then choose Connect a Device to get a code.',wrap=True))
+        ways.append(other);ways.append(web);set_ways(ways,other,web)
         hub=TextButton('Open Luma Hub',icon='arrow-up-right',style='raised',on_click=lambda:_launch(HUB_CONNECT_PAGE,self))
+        web.append(hub);set_link(hub,HUB_CONNECT_PAGE)
         have=TextButton('Enter a Code…',icon='key-round',style='key')
-        first.append(hub);first.append(have)
-        cancel=TextButton('Cancel',on_click=lambda:handle.cancel());cancel.set_halign(Gtk.Align.END);first.append(cancel)
+        actions_how=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12);first.append(actions_how);set_part(actions_how,'buttons')
+        actions_how.append(have)
+        cancel=TextButton('Cancel',on_click=lambda:handle.cancel());cancel.set_halign(Gtk.Align.END);actions_how.append(cancel)
         pages.add_named(first,'how')
         second=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,margin_start=2,margin_end=2,margin_top=2,margin_bottom=2)
         second.append(TypeLabel('The code has 8 letters and numbers and works once.',wrap=True))
@@ -775,6 +783,8 @@ class ConnectWindow(PhonesMixin,AppWindow):
         back=TextButton('Back',icon='chevron-left',style='raised')
         connect=TextButton('Sign In',style='key',sensitive=False)
         actions.append(back);actions.append(connect);second.append(actions)
+        set_part(actions,'buttons');set_part(back,'back')
+        set_code_field(code,length=8,group=4,next=connect,status=status)
         pages.add_named(second,'code')
         busy=False
         def update(*_):
