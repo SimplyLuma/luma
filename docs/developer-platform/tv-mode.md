@@ -190,8 +190,10 @@ more.
   direction steps once, again after 400 ms and then every 120 ms
   (`tv.input` in `config/shared/design-tokens.json`, with the stick's
   thresholds). North, West, the shoulders, the triggers, the stick clicks and
-  the right stick are not assigned yet. Each press is a whole key (pressed and
-  released), so a held A does not repeat Enter.
+  the right stick are not assigned yet. OK is held: Return goes down with the
+  button (or the remote's OK, Select or CEC Select) and up with it, so a long
+  press opens an item's menu (`TvFocus`); its key repeat is not more OKs.
+  Back, Menu and the arrows are whole presses.
 - **A and B.** OK is the bottom face button (South: A on Xbox-style pads,
   Cross on PlayStation) or the right one (East: A on Nintendo-style pads),
   and Back is the other. The luma-shell-state key `tv-confirm-button`

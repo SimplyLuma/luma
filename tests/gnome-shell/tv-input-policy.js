@@ -98,9 +98,24 @@ assert(M.translates('up', ctx(claimed, {keyboardVisible: true})), 'the TV keyboa
 // virtual keyboard, libmanette optional.
 assert(/_enter\(\) \{[\s\S]*?this\._input = new TvInput\(/.test(home), 'TV posture starts the service');
 assert(/_leave\(\) \{[\s\S]*?this\._input\?\.destroy\(\)/.test(home), 'leaving TV posture ends it');
-assert(/for \(const name of Object\.keys\(REMOTE_KEYS\)\)[\s\S]*?grab_accelerator\(name, Meta\.KeyBindingFlags\.IGNORE_AUTOREPEAT\)/
+assert(/for \(const name of Object\.keys\(REMOTE_KEYS\)\)[\s\S]*?Meta\.KeyBindingFlags\.IGNORE_AUTOREPEAT[\s\S]*?grab_accelerator\(name, flags\)/
     .test(service), 'every remote key is taken, without autorepeat');
 assert(/destroy\(\) \{[\s\S]*?ungrab_accelerator/.test(service), 'and given back');
+// OK is held, not tapped (TvFocus's long press opens a menu): Return down with
+// the pad's button or the remote key and up with it; everything else taps.
+assert(/REMOTE_KEYS\[name\] === 'ok' \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
+    'remote OK keys report their release');
+assert(/'accelerator-deactivated'[\s\S]*?this\._okUp\(/.test(service), 'remote OK goes up on release');
+assert(/action === 'ok' && !pressed\) this\._okUp\(source\)/.test(service) &&
+    /if \(translates\(action, this\._context\(\)\)\) this\._okDown\(source\)/.test(service),
+    "the pad's OK goes down with the button and up with it");
+assert(/_okDown\(source\) \{[\s\S]*?KeyState\.PRESSED[\s\S]*?_okUp\(source\) \{[\s\S]*?KeyState\.RELEASED/.test(service),
+    'one Return for every source holding OK');
+assert(/destroy\(\) \{[\s\S]*?this\._okUp\(source\)/.test(service), 'never left down');
+assert(/_tap\(action\) \{[\s\S]*?PRESSED\);\s*this\._keys\.notify_keyval\(time, keyval, Clutter\.KeyState\.RELEASED/.test(service),
+    'Back, Menu and the arrows stay whole presses');
+assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)/.test(home),
+    "the TV home takes a held OK once");
 assert(/create_virtual_device\(Clutter\.InputDeviceType\.KEYBOARD_DEVICE\)/.test(service), 'a virtual keyboard');
 assert(/await import\('gi:\/\/Manette\?version=0\.2'\)[\s\S]*?catch/.test(service), 'libmanette is optional');
 assert(/translates\(action, this\._context\(\)\)/.test(service), 'every pad key asks the policy');

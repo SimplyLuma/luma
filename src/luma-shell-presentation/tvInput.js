@@ -32,6 +32,7 @@ const IFACE = `<node>
 </node>`;
 
 const SCHEMA = 'org.project_luma.shell-state';
+const OK_SAFETY_SECONDS = 10;
 const CONFIRM_KEY = 'tv-confirm-button';
 const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
 
@@ -45,6 +46,8 @@ export class TvInput {
         this._pads = new Map();         // Manette.Device -> {id, signals, stick, buttons}
         this._claims = new Map();       // bus name -> {pid, watch}
         this._grabs = new Map();        // accelerator action -> keysym name
+        this._okSources = new Set();    // what holds OK down: a pad's button, a remote key
+        this._okSafety = 0;
         this._nextPad = 0;
         // Which face button is OK (luma-shell-state); an older schema without
         // the key behaves as automatic.
@@ -66,13 +69,14 @@ export class TvInput {
         this._destroyed = true;
         if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
+        for (const source of [...this._okSources]) this._okUp(source);
         this._sources.clear();
         for (const {id} of this._repeats.values()) GLib.source_remove(id);
         this._repeats.clear();
         for (const device of [...this._pads.keys()]) this._padRemoved(device);
         for (const id of this._monitorSignals ?? []) this._monitor.disconnect(id);
         this._monitor = null;
-        if (this._acceleratorId) global.display.disconnect(this._acceleratorId);
+        for (const id of this._acceleratorIds ?? []) global.display.disconnect(id);
         for (const action of this._grabs.keys()) {
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
             global.display.ungrab_accelerator(action);
@@ -100,11 +104,39 @@ export class TvInput {
         else this._tap(action);
     }
 
+    // OK is held, not tapped: Return goes down with the button and up with
+    // it, so a long press (TvFocus opens an item's menu) can be seen. Several
+    // sources share the one key; none repeats it.
+    _okDown(source) {
+        if (this._okSources.has(source)) return;
+        this._okSources.add(source);
+        if (this._okSources.size > 1 || !this._keys) return;
+        this._keys.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.PRESSED);
+        // A release that never comes (a remote out of range) must not leave
+        // Return down.
+        this._okSafety = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, OK_SAFETY_SECONDS, () => {
+            this._okSafety = 0;
+            for (const held of [...this._okSources]) this._okUp(held);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _okUp(source) {
+        if (!this._okSources.delete(source) || this._okSources.size) return;
+        if (this._okSafety) GLib.source_remove(this._okSafety);
+        this._okSafety = 0;
+        this._keys?.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.RELEASED);
+    }
+
     // ── remotes: keys that are not TV keys become TV keys ─────────────────
 
+    // OK keys are taken with TRIGGER_RELEASE so their release is reported
+    // too (accelerator-deactivated) and OK can be held.
     _grabRemoteKeys() {
         for (const name of Object.keys(REMOTE_KEYS)) {
-            const action = global.display.grab_accelerator(name, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
+            const flags = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT |
+                (REMOTE_KEYS[name] === 'ok' ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
+            const action = global.display.grab_accelerator(name, flags);
             if (action === Meta.KeyBindingAction.NONE) {
                 console.warn(`TV input: ${name} is taken by another accelerator`);
                 continue;
@@ -112,10 +144,21 @@ export class TvInput {
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
             this._grabs.set(action, name);
         }
-        this._acceleratorId = global.display.connect('accelerator-activated', (_display, action) => {
-            const name = this._grabs.get(action);
-            if (name) this._act(REMOTE_KEYS[name]);
-        });
+        this._acceleratorIds = [
+            global.display.connect('accelerator-activated', (_display, action) => {
+                const name = this._grabs.get(action);
+                if (!name) return;
+                if (REMOTE_KEYS[name] === 'ok') this._okDown(`remote:${action}`);
+                else this._act(REMOTE_KEYS[name]);
+            }),
+            global.display.connect('accelerator-deactivated', (_display, action) => {
+                const name = this._grabs.get(action);
+                if (REMOTE_KEYS[name] !== 'ok') return;
+                // Reported only on release (no press seen): OK as one press.
+                if (!this._okSources.has(`remote:${action}`)) this._okDown(`remote:${action}`);
+                this._okUp(`remote:${action}`);
+            }),
+        ];
     }
 
     // ── gamepads ──────────────────────────────────────────────────────────
@@ -160,6 +203,9 @@ export class TvInput {
         for (const source of [...this._sources.keys()]) {
             if (source.startsWith(`${pad.id}:`)) this._hold(source, null);
         }
+        for (const source of [...this._okSources]) {
+            if (source.startsWith(`${pad.id}:`)) this._okUp(source);
+        }
         this._pads.delete(device);
         if (!this._destroyed) this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
     }
@@ -176,8 +222,12 @@ export class TvInput {
         }
         const action = buttonAction(code, pad.confirm);
         if (!action) return;
-        if (DIRECTIONS.includes(action)) this._hold(`${pad.id}:button:${code}`, pressed ? action : null);
-        else if (pressed) this._press(action);
+        const source = `${pad.id}:button:${code}`;
+        if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
+        else if (action === 'ok' && !pressed) this._okUp(source);
+        else if (action === 'ok') {
+            if (translates(action, this._context())) this._okDown(source);
+        } else if (pressed) this._press(action);
     }
 
     _hat(pad, event) {
@@ -204,7 +254,7 @@ export class TvInput {
         for (const pad of this._pads.values()) pad.confirm = this._confirmFor(pad);
     }
 
-    // OK, Back, Menu and Home: once per press.
+    // Back, Menu and Home: once per press.
     _press(action) {
         if (translates(action, this._context())) this._act(action);
     }
