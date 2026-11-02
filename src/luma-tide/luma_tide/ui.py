@@ -146,8 +146,26 @@ class TideWindow(AppWindow):
         self.add_controller(keys)
         self.connect('close-request', lambda *_: self._on_close())
         self.page.append(text('Loading music…', 'caption', margin_start=30, margin_top=72))
+        # TV posture shows Tide's TV presentation (ui_tv) in this same window,
+        # over the same library and player; it follows the posture live.
+        self.tv = None
+        self.connect('notify::tv-posture', lambda *_: self._apply_posture())
+        self._apply_posture()
         self._unsubscribe = self.source.subscribe(lambda player: GLib.idle_add(self._player_changed, player))
         self.refresh_library()
+
+    def _apply_posture(self):
+        if self.tv_posture and self.tv is None and not self._closed:
+            from .ui_tv import TideTV
+            self.tv = TideTV(self)
+            self.deck.set_visible(False)
+            self.set_body(self.tv.stage)
+        elif not self.tv_posture and self.tv is not None:
+            self.tv.close()
+            self.tv = None
+            self.set_body(self.root)
+            self._render()
+            self.deck.update(self.library, self.player)
 
     def _breakpoints(self):
         phone = Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 559px'))
@@ -178,6 +196,8 @@ class TideWindow(AppWindow):
         self._render()
 
     def _size_deck(self, *_):
+        if self.tv is not None:
+            return not self._closed
         width = self.layer.get_width()
         # A drawer is detached from this row; reserve the gutter only for
         # an attached side sheet, including during desktop/phone resizing.
@@ -277,6 +297,9 @@ class TideWindow(AppWindow):
             self.library = replace(library, sources=tuple(s for s in library.sources if s.id not in self._removals.pending))
         if self.album_id and not any(a.id == self.album_id for a in library.albums):
             self.view, self.album_id = 'albums', None
+        if self.tv is not None:
+            self.tv.library_changed()
+            return False
         self._render()
         self.deck.update(self.library, self.player)
         self.phone_bar.update()
@@ -336,6 +359,8 @@ class TideWindow(AppWindow):
         self.scroll.get_vadjustment().set_value(0)
 
     def go_back(self):
+        if self.tv is not None:
+            return self.tv.back()
         if self.pane.shown:
             if self.pane_kind != 'sources' or not self.pane_trail.back():
                 self.pane.close()
@@ -1320,6 +1345,9 @@ class TideWindow(AppWindow):
         ordered = self.source.order_albums(self.library) if not self.source.fixture else self.library
         reordered = ordered is not self.library
         self.library = ordered
+        if self.tv is not None:
+            self.tv.player_changed(player, previous)
+            return False
         self.deck.update(self.library, player)
         self.phone_bar.update()
         if self.now_tab and self.phone and (player.song_id, player.playing, player.shuffle, player.repeat) == (
@@ -1398,6 +1426,8 @@ class TideWindow(AppWindow):
         return GLib.SOURCE_REMOVE
 
     def _key(self, _controller, key, _code, state):
+        if self.tv is not None:
+            return False
         if key == Gdk.KEY_Escape:
             if self.phone and self.phone_bar.center.searching:
                 self.phone_bar.center.close_search()

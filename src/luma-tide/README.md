@@ -55,6 +55,37 @@ media application built on the public Luma Developer Platform.
 - `LUMAUI-INVENTORY.md` maps the port's surfaces, actions and thirty conform
   states to their implementation and outstanding shared kit requests.
 
+## TV presentation
+
+In TV posture (`luma_appkit.lumaui.tv_posture()`, live through the window's
+`tv-posture` property) `TideWindow` shows `ui_tv.TideTV` instead of its
+desktop body: the same window, library, playback controller, queue, MPRIS and
+shelf media widget; leaving TV posture brings the desktop body back as it was.
+It is built from LumaUI's TV parts (`TvStage`, `TvTopBar`, `TvFocus`,
+`TvButton`, `TvField`, `TvIdle`) and media parts (`TvRoom`, `TvCover`,
+`TvTransportButton`, `TvNowPlayingPill`, `TvProgress`, `TvSlide`); see
+docs/developer-platform/tv-mode.md.
+
+- The room is the focused or playing record's sleeve, pre-blurred, cross-faded.
+- Listen now, Albums, Playlists and Search sit in the shared top bar; moving
+  along the bar opens each. The now-playing pill rides in the bar while
+  something plays; OK on it opens Now playing.
+- Listen now: the record to pick up (Play/Resume, Shuffle, Songs), then
+  Recently played (local album history), playlists and the library.
+- An album, playlist or artist: the sleeve, Play and Shuffle, then its songs
+  with the playing one marked. Now playing: the sleeve, song, progress, round
+  previous/play/next and Up next.
+- After 15 s on Now playing while music plays, the idle view shows the record
+  alone; any key brings it back (Shift+I forces it).
+- Space or the remote's play/pause key plays and pauses anywhere. Back steps
+  out level by level, then to the bar, then to the TV home.
+
+`Library.playlists` and `Library.played` (additive) carry the store's
+playlists and local playback history; `LiveLibrary.play_ids()` plays a list.
+`tests/luma-tide/test_tv.py` covers the data; `tv_runtime.py` (remote
+navigation over the fixture) and `tv_posture_runtime.py` (live switching at
+every test width) need a GTK display.
+
 ## Library identity and recovery
 
 A track is merged only when Tide has a strong media identity:
