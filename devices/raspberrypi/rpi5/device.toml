@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "raspberrypi"
+codename = "rpi5"
+name = "Raspberry Pi 5"
+form_factor = "desktop"
+year = 2023
+soc = "broadcom/bcm2712"
+tier = "experimental"
+maintainers = ["@nmcmil"]
+
+[kernel]
+# Fedora's stock kernel, the same package the ARM installer and OS image carry.
+# The SD card holds that kernel's own upstream device trees.
+distribution = "fedora"
+nevr = "kernel-7.2.11-200.fc44"
+release = "7.2.11-200.fc44.aarch64"
+# C1 boards. D0 boards (2 GB, 16 GB, later 4/8 GB) use broadcom/bcm2712-d-rpi-5-b.dtb.
+dtb = "broadcom/bcm2712-rpi-5-b.dtb"
+
+[boot]
+config = "boot.toml"
+
+[userspace]
+# Wi-Fi NVRAM alias, Shell defaults, V3D runtime PM; gated to Pi 5 hardware.
+rpm_requires = ["luma-rpi5-platform"]
+
+[firmware]
+# Distribution firmware (brcmfmac-firmware); the manifest records the alias
+# luma-rpi5-platform adds. No firmware is redistributed by this profile.
+manifest = "firmware.manifest"
+manifest_sha256 = "78b7de6e6f284865e1ea708259e93d6d7416287cb484dc2628bc41c20f683841"
+files = 0
+store = "/usr/lib/firmware"
+
+[install]
+guide = "INSTALL.md"
+method = "installer"
+preserve = []

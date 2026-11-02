@@ -37,7 +37,8 @@ BLOB_SUFFIXES = {
     ".ko", ".so", ".zst", ".xz", ".gz", ".zip", ".tar", ".apk", ".rpm", ".deb",
     ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".minisign", ".gpg", ".asc",
 }
-MANIFEST_PATH = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_./+-]*$")
+# Commas appear in device-tree-compatible firmware names (brcmfmac43455-sdio.raspberrypi,5-model-b.txt).
+MANIFEST_PATH = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_.,/+-]*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 DIGITS = re.compile(r"(?<![0-9A-Za-z])[0-9]{15,20}(?![0-9A-Za-z])")
 REQUIRED_ENFORCING = "enforcing=1"
@@ -257,6 +258,17 @@ class Checker:
         except (ValueError, KeyError, TypeError, OSError) as exc:
             self.error(where, f"invalid kernel source lock: {exc}")
 
+    def check_distribution_kernel(self, device_dir: Path, kernel: dict, soc: dict | None) -> None:
+        """A distribution kernel's release must be exactly its package NEVR on the SoC's architecture."""
+        if not kernel.get("distribution"):
+            return
+        nevr = kernel.get("nevr", "")
+        arch = (soc or {}).get("arch", "")
+        expected = nevr.removeprefix("kernel-") + "." + arch
+        if not nevr.startswith("kernel-") or kernel.get("release") != expected:
+            self.error(device_dir / "device.toml",
+                       f"kernel.release must be {expected!r}: the NEVR {nevr!r} on {arch or 'the SoC architecture'}")
+
     def check_initramfs(self, device_dir: Path, initramfs: dict | None) -> None:
         """Repository files the boot image's initramfs is built from must exist as recorded."""
         if not initramfs:
@@ -369,6 +381,7 @@ class Checker:
                 if tag and release and not tag.endswith("-" + release):
                     self.error(device_dir / "device.toml", "kernel.tag must end with the kernel release")
                 self.check_kernel_source(device_dir, device.get("kernel", {}))
+                self.check_distribution_kernel(device_dir, device.get("kernel", {}), soc)
                 self.check_initramfs(device_dir, device.get("initramfs"))
                 if (device_dir / "firmware.manifest").is_file():
                     self.check_firmware_manifest(device_dir, device.get("firmware", {}))

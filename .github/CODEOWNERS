@@ -16,3 +16,5 @@
 
 /socs/qcom/purwa/       @nmcmil
 /devices/microsoft/sp12in/ @nmcmil
+/socs/broadcom/bcm2712/  @nmcmil
+/devices/raspberrypi/rpi5/ @nmcmil
