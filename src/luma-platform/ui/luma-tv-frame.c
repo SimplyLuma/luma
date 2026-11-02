@@ -50,7 +50,9 @@ G_DECLARE_FINAL_TYPE(LumaTvRoom, luma_tv_room, LUMA, TV_ROOM, GtkWidget)
 
 struct _LumaTvRoom {
   GtkWidget parent_instance;
-  GdkTexture *texture; /* the wallpaper, small and blurred: scaled up it is the blur */
+  GdkPixbuf *base;     /* the wallpaper, small, blurred, saturated and dimmed: scaled up it is the blur */
+  GdkTexture *texture; /* the base with the shade baked in for the size it was drawn at */
+  int baked_width, baked_height;
   void (*resized)(gpointer data); /* the frame: the unit follows the window */
   gpointer data;
 };
@@ -107,54 +109,81 @@ static char *wallpaper_path(void) {
 
 static void room_load(LumaTvRoom *self) {
   g_clear_object(&self->texture);
+  g_clear_object(&self->base);
   g_autofree char *path = wallpaper_path();
   if (path == NULL)
     return;
-  /* 240 x 135, three box blurs of radius 11 (a Gaussian of ~11.5): scaled up 8 times this is the mockup's blur(90). */
-  g_autoptr(GdkPixbuf) loaded = gdk_pixbuf_new_from_file_at_scale(path, 240, 135, FALSE, NULL);
+  /* 240 x 135 at the picture's own shape, three box blurs of radius 9 (a Gaussian of ~9.5): covering a
+   * 1920 x 1080 screen and its bleed it is scaled ~9.8 times, the mockup's blur(90). */
+  g_autoptr(GdkPixbuf) loaded = gdk_pixbuf_new_from_file_at_scale(path, 240, 135, TRUE, NULL);
   if (loaded == NULL)
     return;
-  g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
+  GdkPixbuf *pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
   box_blur(gdk_pixbuf_get_pixels(pixbuf), gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf),
-           gdk_pixbuf_get_rowstride(pixbuf), 11);
-  /* The saturation (1.2), the dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
-   * are baked into the picture once: drawn live they were three more full-screen layers a frame. */
+           gdk_pixbuf_get_rowstride(pixbuf), 9);
+  /* the mockup's saturate(1.2) (the CSS filter matrix), then its brightness(.45), once */
+  int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
+  guchar *px = gdk_pixbuf_get_pixels(pixbuf);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++) {
+      guchar *p = px + y * stride + x * 4;
+      double r = p[0], g = p[1], b = p[2], k = 1.2;
+      double r2 = (0.213 + 0.787 * k) * r + (0.715 - 0.715 * k) * g + (0.072 - 0.072 * k) * b;
+      double g2 = (0.213 - 0.213 * k) * r + (0.715 + 0.285 * k) * g + (0.072 - 0.072 * k) * b;
+      double b2 = (0.213 - 0.213 * k) * r + (0.715 - 0.715 * k) * g + (0.072 + 0.928 * k) * b;
+      p[0] = (guchar)CLAMP(CLAMP(r2, 0, 255) * 0.45 + 0.5, 0, 255);
+      p[1] = (guchar)CLAMP(CLAMP(g2, 0, 255) * 0.45 + 0.5, 0, 255);
+      p[2] = (guchar)CLAMP(CLAMP(b2, 0, 255) * 0.45 + 0.5, 0, 255);
+      p[3] = 255;
+    }
+  self->base = pixbuf;
+  self->baked_width = self->baked_height = 0;
+}
+
+/* Where the picture lies: the mockup's .bg, 120 past every edge, covered at the picture's own shape. */
+static graphene_rect_t room_cover(LumaTvRoom *self, float width, float height) {
+  double u = luma_ui_tv_unit((int)width, (int)height);
+  float bleed = (float)(120 * u), bw = width + 2 * bleed, bh = height + 2 * bleed;
+  float pw = gdk_pixbuf_get_width(self->base), ph = gdk_pixbuf_get_height(self->base);
+  float scale = MAX(bw / pw, bh / ph), cw = pw * scale, ch = ph * scale;
+  return GRAPHENE_RECT_INIT(-bleed - (cw - bw) / 2, -bleed - (ch - bh) / 2, cw, ch);
+}
+
+/* The shade (darker behind the island: 0.35 to 0.1 black at 60% of the screen, then 0.1) baked into the
+ * picture for this size, by where each column lands on the screen: one opaque layer a frame. */
+static void room_bake(LumaTvRoom *self, int width, int height) {
+  g_clear_object(&self->texture);
+  graphene_rect_t cover = room_cover(self, width, height);
+  g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_copy(self->base);
   int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
   guchar *px = gdk_pixbuf_get_pixels(pixbuf);
   for (int x = 0; x < w; x++) {
-    double t = (double)x / MAX(1, w - 1);
-    double shade = t < 0.6 ? 0.35 + (0.1 - 0.35) * (t / 0.6) : 0.1;
-    double keep = 0.45 * (1 - shade);
+    double sx = cover.origin.x + (x + 0.5) * cover.size.width / w;
+    double t = CLAMP(sx / MAX(1, width), 0, 1);
+    double keep = 1 - (t < 0.6 ? 0.35 + (0.1 - 0.35) * (t / 0.6) : 0.1);
     for (int y = 0; y < h; y++) {
       guchar *p = px + y * stride + x * 4;
-      /* the mockup's saturate(1.2) (the CSS filter matrix), then the dimming */
-      double r = p[0], g = p[1], b = p[2], s = 1.2;
-      double r2 = (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b;
-      double g2 = (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b;
-      double b2 = (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b;
-      p[0] = (guchar)CLAMP(r2 * keep + 0.5, 0, 255); p[1] = (guchar)CLAMP(g2 * keep + 0.5, 0, 255);
-      p[2] = (guchar)CLAMP(b2 * keep + 0.5, 0, 255);
-      p[3] = 255;
+      p[0] = (guchar)(p[0] * keep + 0.5); p[1] = (guchar)(p[1] * keep + 0.5); p[2] = (guchar)(p[2] * keep + 0.5);
     }
   }
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
   self->texture = gdk_texture_new_for_pixbuf(pixbuf);
   G_GNUC_END_IGNORE_DEPRECATIONS
+  self->baked_width = width;
+  self->baked_height = height;
 }
 
 static void room_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   LumaTvRoom *self = LUMA_TV_ROOM(widget);
   float width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
-  double u = luma_ui_tv_unit((int)width, (int)height);
   graphene_rect_t all = GRAPHENE_RECT_INIT(0, 0, width, height);
-  if (self->texture == NULL) {
+  if (self->base == NULL) {
     gtk_snapshot_append_color(snapshot, &(GdkRGBA){0.02f, 0.024f, 0.04f, 1.f}, &all);
     return;
   }
-  /* One opaque layer: the picture, dimmed and shaded at load, bled past the edges (the mockup's
-   * inset -120) so the blur never shows a hard border. */
-  float bleed = (float)(120 * u);
-  graphene_rect_t cover = GRAPHENE_RECT_INIT(-bleed, -bleed, width + 2 * bleed, height + 2 * bleed);
+  if (self->texture == NULL || self->baked_width != (int)width || self->baked_height != (int)height)
+    room_bake(self, (int)width, (int)height);
+  graphene_rect_t cover = room_cover(self, width, height);
   gtk_snapshot_push_clip(snapshot, &all);
   gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
   gtk_snapshot_pop(snapshot);
@@ -169,6 +198,7 @@ static void room_size_allocate(GtkWidget *widget, int width, int height, int bas
 
 static void room_dispose(GObject *object) {
   g_clear_object(&LUMA_TV_ROOM(object)->texture);
+  g_clear_object(&LUMA_TV_ROOM(object)->base);
   G_OBJECT_CLASS(luma_tv_room_parent_class)->dispose(object);
 }
 
@@ -344,7 +374,6 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame list.lumaui-part-card { background-color: @bar@; }\n"
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
 /* the hero's lead: the thing's own tile, 92 in the accent (the mockup's .hero .big) */
-".lumaui-tv-frame .lumaui-part-hero > box.horizontal { border-spacing: 28tv; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0;\n"
 "  background-color: @accent_fill@; background-image: none; color: white; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
@@ -776,6 +805,15 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-part-hero")) {
+    /* the hero's lead, words and actions 28 apart (the mockup's .hero gap), whatever the app spaced them */
+    GtkWidget *line = gtk_widget_get_first_child(widget);
+    if (line != NULL && GTK_IS_BOX(line) && gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_HORIZONTAL &&
+        g_object_get_data(G_OBJECT(line), "luma-tv-hero-gap") == NULL) {
+      g_object_set_data(G_OBJECT(line), "luma-tv-hero-gap", GINT_TO_POINTER(gtk_box_get_spacing(GTK_BOX(line)) + 1));
+      gtk_box_set_spacing(GTK_BOX(line), (int)round(28 * f->unit));
+    }
+  }
   if (gtk_widget_has_css_class(widget, "lumaui-part-chips")) {
     /* chips 16 apart (lumaui-tv.css .chips gap), and the row that holds them is no key itself */
     GtkWidget *row = part_row_of(f, widget);
@@ -831,6 +869,11 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 
 static void restore_page(GtkWidget *widget) {
   unplace_lead(widget);
+  int hero_gap = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "luma-tv-hero-gap"));
+  if (hero_gap > 0) {
+    gtk_box_set_spacing(GTK_BOX(widget), hero_gap - 1);
+    g_object_set_data(G_OBJECT(widget), "luma-tv-hero-gap", NULL);
+  }
   gtk_widget_remove_css_class(widget, "lumaui-tv-holder");
   int *chips = g_object_get_data(G_OBJECT(widget), "luma-tv-chips");
   if (chips != NULL) {
@@ -1065,6 +1108,12 @@ static gboolean relax(gpointer data) {
     if (g_getenv("LUMA_TV_DEBUG") != NULL)
       g_printerr("tv timing: release_page %.1f ms\n", (g_get_monotonic_time() - start) / 1000.0);
     if (hold_modal(f) != NULL) return G_SOURCE_REMOVE;
+    /* OK dropped a list (a choice's floating menu): the list has the focus, nothing grew. */
+    for (GtkWidget *w = focus_of(f); w != NULL; w = gtk_widget_get_parent(w))
+      if (gtk_widget_has_css_class(w, "lumaui-menu")) {
+        f->ok_at = 0;
+        return G_SOURCE_REMOVE;
+      }
     if (!grown_field(f))
       refind(f);
     /* Until the remote is used, the focus is the open page's destination (a deep link opened it). */
