@@ -110,13 +110,13 @@ static void room_load(LumaTvRoom *self) {
   g_autofree char *path = wallpaper_path();
   if (path == NULL)
     return;
-  /* 240 x 135, blurred by ~10: scaled to the screen this is the mockup's 90-unit blur. */
+  /* 240 x 135, three box blurs of radius 11 (a Gaussian of ~11.5): scaled up 8 times this is the mockup's blur(90). */
   g_autoptr(GdkPixbuf) loaded = gdk_pixbuf_new_from_file_at_scale(path, 240, 135, FALSE, NULL);
   if (loaded == NULL)
     return;
   g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
   box_blur(gdk_pixbuf_get_pixels(pixbuf), gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf),
-           gdk_pixbuf_get_rowstride(pixbuf), 6);
+           gdk_pixbuf_get_rowstride(pixbuf), 11);
   /* The saturation (1.2), the dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
    * are baked into the picture once: drawn live they were three more full-screen layers a frame. */
   int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
@@ -267,7 +267,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-t-muted { color: @ink_3@; }\n"
 ".lumaui-tv-frame > .luma-island *:focus-visible { outline: none; }\n"
 /* LumaUI's type roles at TV size, wherever the page uses them (lumaui-tv.css's scale) */
-".lumaui-tv-frame > .luma-island label { font-family: Figtree, sans-serif; line-height: 1.25; }\n"
+/* a line as tall as the mockup's normal line height (Pango's factor is of the font's own height) */
+".lumaui-tv-frame > .luma-island label { font-family: Figtree, sans-serif; line-height: 1; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-row box.vertical { border-spacing: 3tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-display, .lumaui-tv-frame > .luma-island .lumaui-t-page-title { font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-hero, .lumaui-tv-frame > .luma-island .lumaui-t-hero-title, .lumaui-tv-frame > .luma-island .lumaui-t-title-1,\n"
@@ -282,8 +283,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-small, .lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-caption,\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-meta { font-size: 22tv; margin-top: 6tv; }\n"
 ".lumaui-tv-frame .lumaui-part-header .lumaui-t-page-title { font-family: Figtree, sans-serif; font-size: 52tv; font-weight: 750;\n"
-"  letter-spacing: -1.56tv; color: @ink@; line-height: 1.12; }\n"
-".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 10tv; }\n"
+"  letter-spacing: -1.56tv; color: @ink@; line-height: 0.88; }\n"
+/* the mockup's .tv-h1 (line-height 1.05) and .tv-body under it (8 over, line-height 1.4): ratios of Figtree's own line */
+".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; line-height: 1.14; }\n"
 ".lumaui-tv-frame .lumaui-part-header { margin: 0; padding: 0; min-height: 0; }\n"
 ".lumaui-tv-frame .lumaui-part-hero { margin-top: 28tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
 "  background-color: @bar@; background-image: none;\n"
@@ -303,12 +305,25 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island label { font-size: 23tv; }\n"
 ".lumaui-tv-frame > .luma-island image { -gtk-icon-size: 26tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero label { font-size: 26tv; font-weight: 600; }\n"
+/* a hero's words (the mockup's .hero b and small): the first line is its title, the lines under it its detail,
+ * a line of state (a dot and words) as the detail in ink 2; a control's own words keep the control's size */
+".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:first-child { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:not(:first-child) { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box { margin-top: 6tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box label { font-size: 22tv; font-weight: 400; color: @ink_2@; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label { font-size: 26tv; font-weight: 600; letter-spacing: 0; color: inherit; margin: 0; }\n"
+/* a hero's actions are TV buttons (the mockup's .tv-btn): 66 tall, radius 22, 25/650, a chip; the focused one the key */
+".lumaui-tv-frame > .luma-island .lumaui-part-hero button.text-button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none; outline: none;\n"
+"  background-color: @chip@; background-image: none; color: @ink@; box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero button.text-button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero button.text-button:focus-visible { background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
 /* the hero's own title over that: the mockup's .hero b, 34/700 */
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-hero-title, .lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-hero,\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-title-1 { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; }\n"
 /* libadwaita's rows and groups, named by the frame */
-".lumaui-tv-frame row.lumaui-part-row { min-height: 60tv; }\n"
+".lumaui-tv-frame row.lumaui-part-row, .lumaui-tv-frame .lumaui-part-row { min-height: 60tv; }\n"
 ".lumaui-tv-frame .lumaui-part-row label.title { font-size: 25tv; font-weight: 600; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row label.subtitle { font-size: 19tv; font-weight: 500; color: @ink_3@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label.subtitle { color: alpha(@key_ink@, 0.62); }\n"
@@ -324,7 +339,7 @@ static const char *const tv_sheet =
 /* a drawn lead (signal bars): 2.5 times its size, about its centre, in the lead's place */
 ".lumaui-tv-frame .lumaui-part-mark { transform: scale(2.5); transform-origin: 50% 50%; }\n"
 /* a hero's drawn mark (a logo, a monogram): larger, and no decorative ring around it */
-".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark { transform: scale(1.8); transform-origin: 50% 50%; margin: 0 24tv;\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark { transform: scale(1.533); transform-origin: 50% 50%; margin: 0 28tv 0 16tv;\n"
 "  border: none; outline: none; box-shadow: none; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark * { border: none; outline: none; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
@@ -348,10 +363,20 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-row-subtitle, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-muted,\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label.dim-label { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row label { font-size: 23tv; font-weight: 600; }\n"
+/* a row's value (what is chosen, a fact) in ink 2, a slider's figure at 22/650 (the mockup's .val and .tv-slider b) */
+".lumaui-tv-frame .lumaui-part-row label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: @ink_2@; }\n"
+".lumaui-tv-frame .lumaui-part-row scale ~ label { font-size: 22tv; font-weight: 650; color: @ink@; }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: alpha(@key_ink@, 0.62); }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within scale ~ label { color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead { min-width: 48tv; min-height: 48tv; border-radius: 14tv; padding: 0; margin: 0;\n"
 "  background-color: alpha(white, 0.08); color: @ink_2@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead { background-color: alpha(black, 0.08); color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row image { -gtk-icon-size: 26tv; color: inherit; }\n"
+/* a row's trailing glyph (a chevron, a lock) in ink 3 (the mockup's .val svg); a lead keeps its tile's ink */
+".lumaui-tv-frame .lumaui-part-row image:not(.lumaui-part-lead) { color: @ink_3@; }\n"
+".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead image { color: inherit; }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within image:not(.lumaui-part-lead) { color: alpha(@key_ink@, 0.62); }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead image { color: inherit; }\n"
 /* controls at TV size, inside rows */
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip),\n"
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):hover,\n"

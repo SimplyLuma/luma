@@ -46,7 +46,7 @@ index 990315a..758c067 100644
  /* Live: every display's diagram rectangle, in CFDISP order; @ids borrow the
   * model's. Returns how many. */
 diff --git a/shell/cc-luma-rows.c b/shell/cc-luma-rows.c
-index 86114cf..26931ee 100644
+index 86114cf..332b120 100644
 --- a/shell/cc-luma-rows.c
 +++ b/shell/cc-luma-rows.c
 @@ -108,10 +108,31 @@ static void spill_allocate (GtkWidget *w, int width, int height, int baseline)
@@ -81,7 +81,17 @@ index 86114cf..26931ee 100644
    GtkWidget *head = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
    GtkWidget *titles = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
    GtkWidget *meta_label = wrapping (meta ? meta : "", "cf-meta");
-@@ -187,7 +208,8 @@ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *to
+@@ -163,7 +184,8 @@ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *to
+       gtk_box_append (v->body, back);
+     }
+   gtk_widget_add_css_class (head, "cf-head");
+-  if (top) gtk_widget_set_layout_manager (titles, gtk_custom_layout_new (NULL, spill_measure, spill_allocate));
++  /* TV posture: the same stacking without a top control (a wrapping line measured unconstrained grew the head). */
++  if (top || luma_ui_tv_posture ()) gtk_widget_set_layout_manager (titles, gtk_custom_layout_new (NULL, spill_measure, spill_allocate));
+   gtk_widget_set_hexpand (titles, TRUE);
+   gtk_widget_set_valign (titles, GTK_ALIGN_CENTER);
+   GtkWidget *h1 = wrapping (title, "cf-h1");
+@@ -187,7 +209,8 @@ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *to
        gtk_widget_set_layout_manager (titles, gtk_box_layout_new (GTK_ORIENTATION_VERTICAL));
      }
    gtk_box_append (v->body, head);
