@@ -170,6 +170,8 @@ typedef struct {
   guint clock_id, settle_id, relax_id, restyle_id;
   gulong focus_id, visible_id;
   int sidebar_width, sidebar_height, sidebar_margin;
+  GArray *path;          /* where the focus was in the page, child by child from the island */
+  gboolean page_zone;    /* the remote is in the page */
 } TvFrame;
 
 static const char *const tv_sheet =
@@ -257,10 +259,10 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
-".lumaui-tv-frame .lumaui-part-row + .lumaui-part-row { background-image: linear-gradient(@divider@, @divider@);\n"
+".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"
 "  background-origin: content-box; background-clip: border-box; background-repeat: no-repeat;\n"
 "  background-size: 100% 1.5tv; background-position: 0 -12tv; }\n"
-".lumaui-tv-frame .lumaui-part-row.lumaui-part-leads + .lumaui-part-row.lumaui-part-leads {\n"
+".lumaui-tv-frame .lumaui-part-row.lumaui-part-leads:not(:focus-within) + .lumaui-part-row.lumaui-part-leads:not(:focus-within) {\n"
 "  background-image: linear-gradient(to right, transparent 68tv, @divider@ 68tv); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within { background-image: linear-gradient(180deg, @key_top@, @key_bottom@);\n"
 "  background-size: auto; background-position: 0 0; background-origin: border-box; color: @key_ink@;\n"
@@ -297,7 +299,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row entry, .lumaui-tv-frame .lumaui-part-row text { background: none; box-shadow: none; border: none; outline: none;\n"
 "  min-height: 0; padding: 0; font-size: 23tv; font-weight: 600; color: inherit; caret-color: @accent@; }\n"
 /* everything focusable that is not in a row: the key when it holds the focus */
-".lumaui-tv-frame > .luma-island button:focus-visible { background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
 /* a choice's list: dropped from its value, at TV size */
@@ -551,12 +553,47 @@ static void restore_page(GtkWidget *widget) {
 
 static void dump(GtkWidget *w, int depth);
 
+/* A page that redraws under the remote (a network list refreshing) must not lose its place: the
+ * focus is remembered as a path of child positions and found again in the redrawn page. */
+static void remember(TvFrame *f, GtkWidget *focus) {
+  g_array_set_size(f->path, 0);
+  for (GtkWidget *w = focus; w != NULL && w != f->island; w = gtk_widget_get_parent(w)) {
+    int index = 0;
+    for (GtkWidget *c = gtk_widget_get_prev_sibling(w); c != NULL; c = gtk_widget_get_prev_sibling(c)) index++;
+    g_array_prepend_val(f->path, index);
+  }
+}
+
+static gboolean focus_lost(TvFrame *f) {
+  GtkWidget *focus = focus_of(f);
+  return focus == NULL || (in_page(f, focus) && (!gtk_widget_get_focusable(focus) || !gtk_widget_is_drawable(focus)));
+}
+
+static gboolean refind(TvFrame *f) {
+  if (!f->page_zone || f->path->len == 0 || !focus_lost(f))
+    return FALSE;
+  GtkWidget *w = f->island;
+  for (guint i = 0; i < f->path->len; i++) {
+    GtkWidget *c = gtk_widget_get_first_child(w);
+    for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
+    if (c == NULL) break;
+    w = c;
+  }
+  for (; w != NULL && w != gtk_widget_get_parent(f->island); w = gtk_widget_get_parent(w)) {
+    if (!gtk_widget_is_drawable(w)) continue;
+    if ((gtk_widget_get_focusable(w) && gtk_widget_grab_focus(w)) || gtk_widget_child_focus(w, GTK_DIR_TAB_FORWARD))
+      return TRUE;
+  }
+  return FALSE;
+}
+
 static gboolean relax(gpointer data) {
   TvFrame *f = data;
   f->relax_id = 0;
   if (f->active) {
     release_page(f, f->island);
-    if (g_getenv("LUMA_TV_DEBUG") != NULL) dump(f->island, 0);
+    refind(f);
+    if (g_getenv("LUMA_TV_DEBUG") != NULL && g_getenv("LUMA_TV_DEBUG")[0] == '2') dump(f->island, 0);
   }
   return G_SOURCE_REMOVE;
 }
@@ -583,7 +620,10 @@ static gboolean settle(gpointer data) {
     return G_SOURCE_REMOVE;
   release_page(f, f->island);
   gtk_window_set_focus_visible(f->window, TRUE);
-  if (focus_of(f) == NULL) {
+  if (refind(f))
+    return G_SOURCE_REMOVE;
+  if (focus_lost(f)) {
+    f->page_zone = FALSE;
     GtkListBoxRow *row = selected_row(f);
     if (row != NULL)
       gtk_widget_grab_focus(GTK_WIDGET(row));
@@ -607,9 +647,22 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   if (!f->active)
     return;
   GtkWidget *focus = focus_of(f);
-  if (focus == NULL) {
-    queue_settle(f); /* a page rebuilt under the focus: the island takes it back */
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) {
+    g_auto(GStrv) classes = focus ? gtk_widget_get_css_classes(focus) : NULL;
+    g_autofree char *joined = classes ? g_strjoinv(".", classes) : NULL;
+    g_printerr("tv focus: %s %s.%s page=%d\n", focus ? G_OBJECT_TYPE_NAME(focus) : "(none)",
+               focus ? gtk_widget_get_css_name(focus) : "", joined ? joined : "", focus ? in_page(f, focus) : 0);
+  }
+  if (focus_lost(f)) {
+    queue_relax(f);  /* a page redrawn under the focus: it is found again there */
+    queue_settle(f); /* or, failing that, the island takes it back */
     return;
+  }
+  if (in_page(f, focus) && gtk_widget_get_focusable(focus)) {
+    f->page_zone = TRUE;
+    remember(f, focus);
+  } else if (gtk_widget_is_ancestor(focus, f->sidebar)) {
+    f->page_zone = FALSE;
   }
   if (in_page(f, focus) || gtk_widget_is_ancestor(focus, f->sidebar))
     set_rail(f, in_page(f, focus));
@@ -884,6 +937,7 @@ static void frame_free(TvFrame *f) {
   g_clear_object(&f->interface);
   g_clear_object(&f->state);
   g_clear_object(&f->a11y);
+  g_array_unref(f->path);
   g_free(f);
 }
 
@@ -901,6 +955,7 @@ void luma_tv_frame_attach(GtkWindow *window, GtkWidget *content, GtkWidget *fram
   if (sidebar == NULL)
     return; /* no sidebar, no island: the window's TV treatment is the title row's alone */
   TvFrame *f = g_new0(TvFrame, 1);
+  f->path = g_array_new(FALSE, FALSE, sizeof(int));
   f->window = window;
   f->content = content;
   f->frame = frame;
