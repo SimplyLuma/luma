@@ -75,6 +75,10 @@ assert(/modalDialogGroup;[\s\S]*?connectObject\('child-added'/.test(dialogs), 'e
 assert(/'notify::key-focus'/.test(dialogs) && /get_grab_actor/.test(dialogs) && /_refocus\(record\)/.test(dialogs),
     'the focus comes back to the dialog with the grab');
 assert(/'captured-event'/.test(dialogs) && /backButton\(buttons\)/.test(dialogs), 'Back in the capture phase');
+assert(/_safeFocus\(record\) \{[\s\S]*?if \(record\.fields\.some\([\s\S]*?_cancelButton\(record\)[\s\S]*?cancel\.grab_key_focus\(\)/.test(dialogs),
+    'a dialog with nothing to type opens on Cancel');
+assert(/_adopt\(dialog\) \{[\s\S]*?this\._safeFocus\(record\);[\s\S]*?idle_add[\s\S]*?this\._safeFocus\(record\)/.test(dialogs),
+    'also after the dialog places its own focus');
 assert(/effect instanceof Shell\.BlurEffect[\s\S]*?effect\.enabled = false/.test(dialogs), 'no live blur');
 assert(/setFieldAction\?\.\(entry\.clutter_text/.test(dialogs), "the keyboard's action key is the dialog's");
 assert(/for \(const effect of record\.blurs\) effect\.enabled = true/.test(dialogs) &&

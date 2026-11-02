@@ -39,6 +39,14 @@ function inside(ancestor, actor) {
     return Boolean(actor) && (ancestor === actor || ancestor.contains(actor));
 }
 
+// Shown within `root`, whether or not the dialog itself is on screen yet.
+function shownIn(root, actor) {
+    for (let a = actor; a && a !== root; a = a.get_parent()) {
+        if (!a.visible) return false;
+    }
+    return true;
+}
+
 function textButton(actor) {
     return actor instanceof St.Button && Boolean(actor.label);
 }
@@ -151,6 +159,38 @@ export class TvDialogs {
         const focus = global.stage.key_focus;
         if (inside(surface, focus)) record.lastFocus = focus;
         else this._refocus(record);
+        // Again once the dialog has placed its own focus as it opens.
+        this._safeFocus(record);
+        record._safeId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            record._safeId = 0;
+            if (this._dialogs.get(dialog) === record) this._safeFocus(record);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // The button that cancels: the shared Dialog's Escape button, or on a
+    // dialog's own card a button classed as cancel.
+    _cancelButton(record) {
+        if (record.standard)
+            return record.dialog.dialogLayout._buttonKeys?.[Clutter.KEY_Escape]?.button ?? null;
+        let found = null;
+        walk(record.surface, actor => {
+            if (found) return false;
+            if (actor instanceof St.Button && /cancel/.test(actor.get_style_class_name() ?? '')) found = actor;
+            return !found;
+        });
+        return found;
+    }
+
+    // A stray OK must never confirm: a dialog with nothing to type (end
+    // session, power off, restart, a question, an access prompt) opens on
+    // Cancel, never on its action. A dialog with a field opens on the field,
+    // where OK only opens the keyboard.
+    _safeFocus(record) {
+        if (record.fields.some(entry => shownIn(record.surface, entry))) return;
+        const cancel = this._cancelButton(record);
+        if (cancel && shownIn(record.surface, cancel) && cancel.reactive && cancel.can_focus && !inside(cancel, global.stage.key_focus))
+            cancel.grab_key_focus();
     }
 
     // `alive` is false as the dialog is destroyed: nothing to give back.
@@ -158,7 +198,7 @@ export class TvDialogs {
         const record = this._dialogs.get(dialog);
         if (!record) return;
         this._dialogs.delete(dialog);
-        for (const id of ['_restyleId', '_placeId']) {
+        for (const id of ['_restyleId', '_placeId', '_safeId']) {
             if (record[id]) GLib.source_remove(record[id]);
         }
         for (const field of record.fields) Main.keyboard?.setFieldAction?.(field.clutter_text, '');
@@ -476,7 +516,7 @@ export class TvDialogs {
 
     _refocus(record) {
         const {dialog, surface} = record;
-        const usable = actor => actor && inside(surface, actor) && actor.mapped && actor.reactive !== false;
+        const usable = actor => actor && inside(surface, actor) && shownIn(surface, actor) && actor.reactive !== false;
         const target = [record.lastFocus, dialog._initialKeyFocus, dialog.dialogLayout?.initialKeyFocus]
             .find(usable);
         if (target) target.grab_key_focus();

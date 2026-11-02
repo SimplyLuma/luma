@@ -364,6 +364,11 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
   keyboard again. Back cancels: the
   dialog's Escape button (Cancel, Deny, Close), or its only button. With the
   TV keyboard open, Back first puts the keyboard away.
+- **A stray OK never confirms.** A dialog with nothing to type (end
+  session, power off, restart, log out, a question, an access prompt) opens
+  with the focus on Cancel, never on its action, even when the dialog itself
+  puts its default button first. A dialog with a field opens on the field,
+  where OK only opens the keyboard.
 - **The focus stays in the dialog.** While a dialog holds the Shell's grab
   the focus cannot be left outside it — if anything takes it (the TV home, a
   window mapping underneath, a second prompt closing) it comes back to where
