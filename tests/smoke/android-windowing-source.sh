@@ -28,6 +28,14 @@ if grep -Fq '&& !SystemProperties.getBoolean("ro.luma.host_window_chrome"' \
 fi
 grep -Fq 'ro.luma.host_window_chrome=true' "$device_patch"
 
+# Touch presentations reserve Luma's top bar as Android's status bar inset.
+status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
+grep -Fq 'persist.luma.status_bar_px' "$status_bar_patch"
+grep -Fq 'persist.luma.nav_bar_px' "$status_bar_patch"
+grep -Fq 'SystemBarUtils.getLumaHostStatusBarHeight() == 0' "$status_bar_patch"
+grep -Fq '"$framework_status_bar_patch"' "$builder"
+grep -Fq 'FRAMEWORK_STATUS_BAR_PATCH_SHA' "$prepare"
+
 # Prairie retains one real Back action and one outer task-resize bridge.
 grep -Fq 'TitlebarTarget::Back' "$hardware_patch"
 grep -Fq 'KEY_BACK' "$hardware_patch"

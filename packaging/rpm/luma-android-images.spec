@@ -5,7 +5,7 @@
 %global _binary_payload w9.zstdio
 Name:           luma-android-images
 Version:        20.0
-Release:        1.luma.13%{?dist}
+Release:        1.luma.14%{?dist}
 Summary:        Pinned offline Android application support images
 License:        LicenseRef-Waydroid-Android-Image
 URL:            https://waydro.id/

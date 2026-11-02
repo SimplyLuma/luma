@@ -15,8 +15,8 @@
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.60.home20261031.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.60.home20261031.1.fc44.noarch
-gnome-shell-50.3-1.luma.150.fc44.x86_64
-gnome-shell-common-50.3-1.luma.150.fc44.noarch
+gnome-shell-50.3-1.luma.151.fc44.x86_64
+gnome-shell-common-50.3-1.luma.151.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.3.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.15.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
@@ -83,7 +83,7 @@ luma-rfkill-guard-0.1.0-1.luma.2.fc44.noarch
 luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.10.fc44.noarch
 luma-home-widgets-0.1.0-1.luma.3.fc44.x86_64
-luma-shell-state-0.2.0-1.luma.38.home20261031.1.fc44.noarch
+luma-shell-state-0.2.0-1.luma.39.fc44.noarch
 luma-os-remote-1.0.0-1.luma.26.fc44.noarch
 luma-update-1.0.0-1.luma.26.fc44.noarch
 prairie-core-apps-0.1.0-1.luma.127.fc44.noarch
@@ -101,8 +101,8 @@ python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
 python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
-luma-android-runtime-0.1.0-1.luma.99.fc44.noarch
-luma-android-images-20.0-1.luma.13.fc44.x86_64
+luma-android-runtime-0.1.0-1.luma.105.fc44.noarch
+luma-android-images-20.0-1.luma.14.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
 luma-application-installer-0.1.0-1.luma.83.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
