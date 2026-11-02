@@ -22,6 +22,7 @@ from .engine import WaydroidEngine
 from .activation import activate_for_caller
 from .errors import LumaAndroidError
 from .installer_activation import launch_installer
+from .presentation import SHELL_STATE_NAME, SHELL_STATE_PATH
 
 
 LAUNCHER_STARTUP_RECONCILE_SECONDS = 5
@@ -79,6 +80,10 @@ class Service:
         self.appearance_lock = threading.Lock()
         self.appearance_pending = None
         self.appearance_worker = None
+        self.presentation_lock = threading.Lock()
+        self.presentation_pending = None
+        self.presentation_worker = None
+        self.watch_presentation()
         if self.appearance_settings is not None:
             self.appearance_settings.connect("changed::color-scheme", self.on_appearance_changed)
         if self.treatment_settings is not None:
@@ -99,6 +104,47 @@ class Service:
         # The supervised session waits for a listening compositor itself.
         # A fixed delay can exhaust its restart budget before display startup.
         GLib.idle_add(self.start_warm_session_if_needed)
+
+    def watch_presentation(self) -> None:
+        try:
+            Gio.bus_get_sync(Gio.BusType.SESSION, None).signal_subscribe(
+                SHELL_STATE_NAME, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                SHELL_STATE_PATH, None, Gio.DBusSignalFlags.NONE,
+                self.on_presentation_changed,
+            )
+        except GLib.Error:
+            # Without the shell state service the presentation follows the
+            # device class, applied on every readiness pass.
+            pass
+
+    def on_presentation_changed(self, _connection, _sender, _path, _interface, _signal,
+                                parameters) -> None:
+        _name, changed, _invalidated = parameters.unpack()
+        presentation = changed.get("Presentation")
+        if presentation is None:
+            return
+        with self.presentation_lock:
+            self.presentation_pending = presentation
+            if self.presentation_worker is None:
+                self.presentation_worker = threading.Thread(
+                    target=self.sync_presentation_changes, daemon=True,
+                    name="android-presentation")
+                self.presentation_worker.start()
+
+    def sync_presentation_changes(self) -> None:
+        # Coalesced like appearance: never wake a stopped runtime for it.
+        while True:
+            with self.presentation_lock:
+                presentation = self.presentation_pending
+                self.presentation_pending = None
+                if presentation is None:
+                    self.presentation_worker = None
+                    return
+            try:
+                if self.engine.status().get("session") == "RUNNING":
+                    self.engine.sync_presentation_density(presentation)
+            except (LumaAndroidError, OSError):
+                pass
 
     def on_appearance_changed(self, settings, _key) -> None:
         appearance = surface_treatment()
