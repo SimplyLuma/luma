@@ -122,9 +122,9 @@ function dump({ winSel, groups, exclude, pairSels }) {
   // Figtree comes out about 10% wide (I1); the Mac never hints, so both routes measure the same text.
   const browser = await chromium.launch({ args: ['--font-render-hinting=none'] });
   // A state may hold for some themes only (Luma's Frost is one light appearance).
-  const states = (phone ? scenario.states.filter(s => (scenario.phone_states || []).includes(s.name)) : scenario.states).filter(s => !s.themes || s.themes.includes(theme));
-  const specUrl = phone && scenario.spec.phone_url ? scenario.spec.phone_url : scenario.spec.url;
-  const meta = { app: scenario.app, theme, phone, url: base + specUrl, states: [] };
+  const states = (phone ? scenario.states.filter(s => (scenario.phone_states || []).includes(s.name)) : scenario.states).filter(s => (!s.themes || s.themes.includes(theme)) && (phone || !s.phone_only));
+  // spec.phone_url: the phone layer's own Studio file (v71 added the mobile layer; v70's phone view is frozen).
+  const meta = { app: scenario.app, theme, phone, url: base + (phone && scenario.spec.phone_url || scenario.spec.url), states: [] };
   for (const st of states) {
     // A state may ask for its own viewport (a maximized window fills the desk, so the desk sets its size).
     const vp = st.viewport || (phone && scenario.spec.phone_viewport) || scenario.spec.viewport || { width: 1600, height: 1000 };
@@ -137,16 +137,11 @@ function dump({ winSel, groups, exclude, pairSels }) {
       let body = fs.existsSync(local) && fs.statSync(local).isFile() ? fs.readFileSync(local) : null;
       if (body == null) { for (let i = 0; i < 4 && body == null; i++) { try { const r = await route.fetch(); if (r.status() >= 400) return route.fulfill({ response: r }); body = await r.body(); } catch (e) { await new Promise(r => setTimeout(r, 150 * (i + 1))); } } }
       if (body == null) return route.abort();
-      // Take 73 loads Lucide marks in one JSON bundle. Preserve the same names
-      // that individual SVG fetches carry so these icons are measured too.
-      if (/\/icons\/_bundle\.json$/.test(u.pathname)) {
-        const bundle = JSON.parse(body.toString('utf8'));
-        for (const [name, svg] of Object.entries(bundle)) {
-          if (typeof svg === 'string' && /^[a-z0-9-]+$/.test(name)) bundle[name] = svg.replace('<svg', `<svg data-icon="${name}"`);
-        }
-        body = Buffer.from(JSON.stringify(bundle));
-      }
       if (/\/icons\/[^/]+\.svg$/.test(u.pathname)) body = Buffer.from(body.toString('utf8').replace('<svg', `<svg data-icon="${decodeURIComponent(u.pathname.split('/').pop().replace(/\.svg$/, ''))}"`));
+      // v71+ loads every icon from one bundle ({name: svg}): name each as the single files are named.
+      if (/\/icons\/_bundle\.json$/.test(u.pathname)) { const b = JSON.parse(body.toString('utf8'));
+        for (const k of Object.keys(b)) if (typeof b[k] === 'string') b[k] = b[k].replace('<svg', `<svg data-icon="${k}"`);
+        body = Buffer.from(JSON.stringify(b)); }
       route.fulfill({ status: 200, contentType: TYPES[path.extname(u.pathname).toLowerCase()] || 'application/octet-stream', body }); });
     // A fixed clock (scenario.spec.clock, e.g. "2026-09-25T22:54:00") for pages that show the time.
     if (scenario.spec.clock) await page.clock.setFixedTime(new Date(scenario.spec.clock));
@@ -161,12 +156,14 @@ function dump({ winSel, groups, exclude, pairSels }) {
     await page.evaluate(() => document.fonts.ready);
     // Studio's own switch sets body[data-mode]; colorScheme alone does not.
     await page.evaluate(t => { const b = document.querySelector(`.review [data-set-mode="${t}"]`); if (!b) throw new Error('no Studio mode switch for ' + t); b.click(); }, theme);
-    if (phone) await page.evaluate(() => document.querySelector('.review #phone, #phone').click());
+    // A phone_url page is already the phone (v71+ ?phone=1): its apps open through the phone (spec.phone_before).
+    if (phone && !scenario.spec.phone_url) await page.evaluate(() => document.querySelector('.review #phone, #phone').click());
+    if (phone) for (const a of scenario.spec.phone_before || []) { if (a.eval) await page.evaluate(a.eval); await page.waitForTimeout(a.wait || 600); }
     await page.waitForTimeout(500);
     // Pointer states (hover, press) keep the pointer where the state put it; the rest park it off the window.
     let pointer = false;
     const target = sel => sel && page.waitForSelector(sel, { state: 'attached', timeout: 15000 });
-    for (const a of [...(scenario.spec.before || []), ...(st.spec || [])]) {
+    for (const a of [...(scenario.spec.before || []), ...((phone && st.spec_phone) || st.spec || [])]) {
       if (a.waitFor) await page.waitForSelector(a.waitFor, { state: 'visible', timeout: 15000 });  // late content (Depot's monogram)
       await target(a.click || a.dblclick || a.hover || a.press || a.focus);
       if (a.click) await page.evaluate(s => { const e = document.querySelector(s); if (!e) throw new Error('no element ' + s); e.click(); }, a.click);

@@ -19,6 +19,7 @@ preview in a headless compositor, and:
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -185,6 +186,100 @@ def _rgba(c) -> list[float] | None:
     return [round(c.red * 255, 1), round(c.green * 255, 1), round(c.blue * 255, 1), round(c.alpha, 3)]
 
 
+# GSK keeps a colour in the colour state it was written in: a CSS oklch() colour
+# reaches a render node as OKLCH, and GI's get_color() hands back those raw
+# components as if they were sRGB (oklch(0.48 0.12 250) reads as #7a1fff). The
+# node's serialization names the colour state, so colours are read from there.
+_COLOR_FN = re.compile(r"color\(\s*([a-z0-9-]+)\s+([^)]*)\)")
+
+
+def _srgb_encode(v: float) -> float:
+    v = min(1.0, max(0.0, v))
+    return v * 12.92 if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+
+
+def _oklab_to_linear(L: float, a: float, b: float) -> tuple[float, float, float]:
+    l_ = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+            -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+            -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_)
+
+
+def _color_fn_rgba(text: str) -> list[float] | None:
+    """A GSK ``color(<state> c1 c2 c3 [/ alpha])`` in sRGB, as ``_rgba`` gives it."""
+    match = _COLOR_FN.fullmatch(text.strip())
+    if match is None:
+        return None
+    space, body = match.group(1), match.group(2)
+    parts, _, alpha = body.partition("/")
+    try:
+        c = [float(x) for x in parts.split()]
+        a = float(alpha) if alpha.strip() else 1.0
+    except ValueError:
+        return None
+    if len(c) != 3:
+        return None
+    if space == "srgb":
+        rgb = c
+    elif space == "srgb-linear":
+        rgb = [_srgb_encode(x) for x in c]
+    elif space in ("oklab", "oklch"):
+        L, x, y = c
+        if space == "oklch":
+            x, y = x * math.cos(math.radians(y)), x * math.sin(math.radians(y))
+        rgb = [_srgb_encode(v) for v in _oklab_to_linear(L, x, y)]
+    elif space == "display-p3":
+        lin = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        r = 1.2249401763 * lin[0] - 0.2249401763 * lin[1]
+        g = -0.0420569547 * lin[0] + 1.0420569547 * lin[1]
+        b = -0.0196375546 * lin[0] - 0.0786360456 * lin[1] + 1.0982736002 * lin[2]
+        rgb = [_srgb_encode(v) for v in (r, g, b)]
+    else:
+        return None
+    rgb = [min(1.0, max(0.0, v)) for v in rgb]
+    return [round(rgb[0] * 255, 1), round(rgb[1] * 255, 1), round(rgb[2] * 255, 1), round(min(1.0, max(0.0, a)), 3)]
+
+
+def _serialized_colors(node) -> list[list[float] | None]:
+    """Every ``color(...)`` in the node's own serialization, in order (None for rgb())."""
+    try:
+        data = node.serialize().get_data().decode("utf-8")
+    except Exception:  # noqa: BLE001 - a node GSK cannot serialize
+        return []
+    return [_color_fn_rgba(m.group(0)) for m in _COLOR_FN.finditer(data)]
+
+
+def _node_rgba(node, value):
+    """``_rgba(value)``, unless the node holds the colour in a non-sRGB colour state."""
+    if value is not None and getattr(node, "serialize", None) is not None:
+        found = [c for c in _serialized_colors(node) if c is not None]
+        if found:
+            return found[0]
+    return _rgba(value)
+
+
+def _border_colors(node) -> list:
+    raw = [_rgba(c) for c in node.get_colors()]
+    serialized = _serialized_colors(node)
+    if any(c is not None for c in serialized):
+        # GSK writes one colour per side only while the sides differ; one colour means all four.
+        if len(serialized) == 1:
+            serialized = serialized * 4
+        if len(serialized) == len(raw):
+            return [s if s is not None else r for s, r in zip(serialized, raw)]
+    return raw
+
+
+def _gradient_stops(node) -> list:
+    stops = list(node.get_color_stops())
+    serialized = _serialized_colors(node)
+    if len(serialized) == len(stops) and any(c is not None for c in serialized):
+        return [[round(s.offset, 3), c if c is not None else _rgba(s.color)] for s, c in zip(stops, serialized)]
+    return [[round(s.offset, 3), _rgba(s.color)] for s in stops]
+
+
 def _repeating_gradient(node):
     """Read stops from GSK's own serialization when GI omits the repeat-node getter.
 
@@ -206,10 +301,11 @@ def _repeating_gradient(node):
         stop = stop_pattern.match(value, position)
         if stop is None:
             raise ValueError(f"unrecognized repeating gradient stop: {value[position:]!r}")
+        converted = _color_fn_rgba(stop.group(2))
         color = Gdk.RGBA()
-        if not color.parse(stop.group(2)):
+        if converted is None and not color.parse(stop.group(2)):
             raise ValueError(f"unrecognized repeating gradient colour: {stop.group(2)!r}")
-        stops.append([round(float(stop.group(1)), 3), _rgba(color)])
+        stops.append([round(float(stop.group(1)), 3), converted or _rgba(color)])
         position = stop.end()
     if not stops:
         raise ValueError("repeating gradient serialization has empty stops")
@@ -331,6 +427,14 @@ class Capture:
         from gi.repository import Gtk
 
         for action in ACTIONS:
+            if "wait" in action:
+                # Let timed work run (a panel that grows on a timer) before the next action.
+                from gi.repository import GLib
+                context, end = GLib.MainContext.default(), time.monotonic() + action["wait"] / 1000
+                while time.monotonic() < end:
+                    if not context.iteration(False):
+                        time.sleep(0.01)
+                continue
             # Pointer and focus states the headless compositor has no pointer for: the
             # state flags GTK itself would set (hover = PRELIGHT, pressed = ACTIVE).
             if "flags" in action:
@@ -370,6 +474,13 @@ class Capture:
                     target.emit("clicked")
                 elif not target.activate():
                     self.notes.append(f"{action['activate']} did not activate")
+                # What the activation set up on idle (a grown panel, a popover's rows) exists before the next action.
+                from gi.repository import GLib
+                context = GLib.MainContext.default()
+                for _ in range(200):
+                    if not context.pending():
+                        break
+                    context.iteration(False)
 
     # ── the dump ───────────────────────────────────────────────────────
     def finish(self) -> None:
@@ -630,13 +741,13 @@ class Capture:
             cb = box(node.get_clip())
             child(node.get_child(), rc=None, c=self.narrow(cb, clip_now))
         elif kind == "color":
-            ops.append({"k": "fill", "box": box(node.get_bounds()), "color": _rgba(node.get_color()), "op": round(opacity, 3),
+            ops.append({"k": "fill", "box": box(node.get_bounds()), "color": _node_rgba(node, node.get_color()), "op": round(opacity, 3),
                         "radius": self.radius_for(box(node.get_bounds()), rclip)})
         elif kind in ("linear-gradient", "repeating-linear-gradient", "radial-gradient", "repeating-radial-gradient", "conic-gradient"):
             if kind.startswith("repeating-"):
                 stops, period = _repeating_gradient(node)
             else:
-                stops = [[round(s.offset, 3), _rgba(s.color)] for s in node.get_color_stops()]
+                stops = _gradient_stops(node)
                 period = None
             op = {"k": "gradient", "type": kind, "box": box(node.get_bounds()), "stops": stops, "op": round(opacity, 3),
                   "radius": self.radius_for(box(node.get_bounds()), rclip)}
@@ -646,11 +757,11 @@ class Capture:
         elif kind == "border":
             outline = node.get_outline()
             ops.append({"k": "border", "box": box(outline.bounds), "widths": [round(v, 2) for v in node.get_widths()],
-                        "colors": [_rgba(c) for c in node.get_colors()], "radius": [round(c.width, 2) for c in outline.corner],
+                        "colors": _border_colors(node), "radius": [round(c.width, 2) for c in outline.corner],
                         "op": round(opacity, 3)})
         elif kind in ("outset-shadow", "inset-shadow"):
             outline = node.get_outline()
-            ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _rgba(node.get_color()),
+            ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _node_rgba(node, node.get_color()),
                         "dx": node.get_dx(), "dy": node.get_dy(), "blur": node.get_blur_radius(), "spread": node.get_spread(),
                         "radius": [round(c.width, 2) for c in outline.corner], "op": round(opacity, 3)})
         elif kind == "text":
@@ -661,14 +772,14 @@ class Capture:
             origin = mapper(Graphene.Rect().init(off.x, off.y, 0, 0))
             ops.append({"k": "text", "box": box(node.get_bounds()), "x": round(origin.origin.x, 2), "baseline": round(origin.origin.y, 2),
                         "ascent": round(metrics.get_ascent() / 1024, 2), "descent": round(metrics.get_descent() / 1024, 2),
-                        "font": _font(desc), "color": _rgba(node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
+                        "font": _font(desc), "color": _node_rgba(node, node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
         elif kind in ("texture", "texture-scale"):
             ops.append({"k": "texture", "box": box(node.get_bounds()), "op": round(opacity, 3)})
         elif kind == "fill" or kind == "stroke":
             color = None
             inner = node.get_child()
             if inner is not None and inner.get_node_type().value_nick == "color-node":
-                color = _rgba(inner.get_color())
+                color = _node_rgba(inner, inner.get_color())
             rec = {"k": "glyph", "box": box(node.get_bounds()), "color": color, "op": round(opacity, 3)}
             # A stroke node's bounds are conservative (a full line width on each side); the
             # spec's ink is the path geometry (getBBox), so record that too.
@@ -709,9 +820,19 @@ class Capture:
                 child(node.get_mask())
                 for op in ops[first:]:
                     if op["k"] == "glyph":
-                        op["color"] = _rgba(source.get_color())
+                        op["color"] = _node_rgba(source, source.get_color())
             else:
+                first = len(ops)
                 child(source)
+                mask = node.get_mask()
+                # A gradient clipped to glyphs (CSS background-clip: text): the gradient is the
+                # surface, the glyphs are the mask's text.
+                if source is not None and source.get_node_type().value_nick.endswith("gradient-node"):
+                    child(mask)
+                elif mask is not None and mask.get_node_type().value_nick == "linear-gradient-node":
+                    # A content mask (the scroll fade, v70 .is-scrolled): what shows of each part is
+                    # its opacity times the mask's alpha at its centre.
+                    self._apply_fade(ops[first:], mask, mapper)
         elif kind == "shadow":
             child(node.get_child())
         elif kind == "cross-fade":
@@ -729,6 +850,32 @@ class Capture:
                 except TypeError:
                     pass
         self.mark(ops, start, clip)
+
+    @staticmethod
+    def _apply_fade(recorded, mask, mapper) -> None:
+        from gi.repository import Graphene
+
+        def point(p):
+            return mapper(Graphene.Rect().init(p.x, p.y, 0, 0)).origin
+
+        a, b = point(mask.get_start()), point(mask.get_end())
+        dx, dy = b.x - a.x, b.y - a.y
+        length = dx * dx + dy * dy
+        stops = [(offset, color[3] if color else 1.0) for offset, color in _gradient_stops(mask)]
+        if length <= 0 or not stops:
+            return
+
+        def alpha(x, y):
+            t = max(0.0, min(1.0, ((x - a.x) * dx + (y - a.y) * dy) / length))
+            for (o1, a1), (o2, a2) in zip(stops, stops[1:]):
+                if t <= o2:
+                    return a1 if o2 <= o1 else a1 + (a2 - a1) * (t - o1) / (o2 - o1)
+            return stops[-1][1]
+
+        for op in recorded:
+            box = op.get("box")
+            if "op" in op and box:
+                op["op"] = round(op["op"] * alpha(box[0] + box[2] / 2, box[1] + box[3] / 2), 3)
 
     @staticmethod
     def narrow(cb, clip):
@@ -778,6 +925,9 @@ class Capture:
                 text = w.get("text") or ""
                 return (0 if glyphs is not None and len(text) == glyphs else 1,
                         1 if glyphs is not None and text and len(text) < glyphs * 0.9 else 0,
+                        # the holder set in the run's size (a row's figure under a search placeholder
+                        # of the same length)
+                        0 if abs(((w.get("font") or {}).get("size") or 0) - ((op.get("font") or {}).get("size") or 0)) < 0.6 else 1,
                         # the one drawn last (later in the walk: a child, or a sheet over the page), then
                         # the smaller box
                         0 if text else 1, -order[w["id"]], w["box"][2] * w["box"][3])

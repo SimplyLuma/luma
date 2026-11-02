@@ -53,7 +53,7 @@ const appIconRe = new RegExp(`(?:${(scenario.app_icon || {}).gtk || '^applicatio
 const WINDOW_CONTROLS = /window-(minimize|maximize|restore|close)|^(button|icon) "?(Minimize|Maximize|Zoom|Restore|Close)"?$|icon:window-/i;
 
 // ── helpers ───────────────────────────────────────────────────────────────
-const norm = t => (t || '').replace(/\s+/g, ' ').replace(/[…]$/, '').trim();
+const norm = t => (t || '').replace(/\u200b/g, '').replace(/\s+/g, ' ').replace(/[…]$/, '').trim();
 const alias = t => { t = t.replace(/ \(LumaUI preview\)$/, ''); return (scenario.text_aliases || {})[t] || t; };
 const B = b => Array.isArray(b) ? { x: b[0], y: b[1], w: b[2], h: b[3] } : b;
 const center = b => [b.x + b.w / 2, b.y + b.h / 2];
@@ -93,7 +93,7 @@ function specModel(S) {
   const texts = S.texts.map(t => ({ ...t, offscreen: !!t.offscreen, text: alias(norm(t.text)), aliased: alias(norm(t.text)) !== norm(t.text), box: B(t.box), color: parseColor(t.color), platformFonts: (S.platformFonts || {})[norm(t.text)] }));
   const icons = S.icons.map(i => ({ ...i, name: i.name, box: B(i.box), ink: i.ink ? B(i.ink) : B(i.box), color: parseColor(i.color) }));
   // The app's own icon is an <img> in v70 and a themed app icon in GTK: compared as a box.
-  els.filter(e => e.tag === 'img' && (e.src === appIconSrc || e.src === `${scenario.app}.svg` || (e.src || '').endsWith(`-${scenario.app}.svg`) || /^luma-v3-[\w-]+\.svg$/.test(e.src || ''))).forEach(e => icons.push({ el: e.id, name: 'app-icon', box: B(e.visible), ink: B(e.visible), color: null, opacity: e.opacity }));
+  els.filter(e => e.tag === 'img' && (e.src === appIconSrc || e.src === `${scenario.app}.svg` || (e.src || '').endsWith(`-${scenario.app}.svg`) || /^luma-v\d+-[\w-]+\.svg$/.test(e.src || ''))).forEach(e => icons.push({ el: e.id, name: 'app-icon', box: B(e.visible), ink: B(e.visible), color: null, opacity: e.opacity }));
   const isComp = e => e.id !== 0 && e.visible.w >= 6 && e.visible.h >= 6 && !(e.tag === 'svg' || e.tag === 'img' && !e.cls) && (CONTROL.has(roleOf(e.role)) || /^menuitem(?:radio|checkbox)?$/.test(e.role) || e.paint.background || e.paint.backgroundImage || e.paint.border || (e.paint.boxShadow && !/^rgba\(0, 0, 0, 0\)/.test(e.paint.boxShadow)));
   const compIds = new Set(els.filter(isComp).map(e => e.id));
   const firstText = labelMap(texts.filter(t => !t.offscreen && t.el != null).map(t => [t.el, t.text]), id => byId.get(id)?.parent, id => compIds.has(id));
@@ -164,17 +164,25 @@ function gtkModel(G) {
     // still stands for the child too (a button filling its painted well).
     let ancestors = 0;
     for (let a = byId.get(w.parent), n = 0; a && n < 6; a = byId.get(a.parent), n++) if (near(B(a.box), b, 1.5)) ancestors++;
-    if (ancestors) own = own.filter(o => o.k !== 'border' && !(o.k === 'shadow' && o.inset));
+    // (An inset rule along one side is the widget's own: no ancestor draws it for the child.)
+    const insetRule = o => o.k === 'shadow' && o.inset && o.spread < 0.5 && (Math.abs(o.dx) >= 0.5) !== (Math.abs(o.dy) >= 0.5);
+    if (ancestors) own = own.filter(o => o.k !== 'border' && !(o.k === 'shadow' && o.inset && !insetRule(o)));
     const p = {}; for (const o of own) { if (o.k === 'fill' && !o.inset) p.fill = p.fill || o; if (o.k === 'gradient') p.gradient = o; if (o.k === 'border' && o.widths.some(v => v > 0) && o.colors.some(c => c && c[3] > 0.01)) p.border = o;
       if (o.k === 'shadow' && !o.inset && o.color[3] > 0.02 && (o.blur > 0.5 || o.spread > 0.5)) (p.shadows = p.shadows || []).push(o);
       // An inset ring (spread, no blur, no offset: v70's `inset 0 0 0 1px var(--hair)`) is the surface's edge, as a border is.
-      if (o.k === 'shadow' && o.inset && o.color[3] > 0.02 && o.spread >= 0.5 && o.blur <= 0.5 && Math.abs(o.dx) < 0.5 && Math.abs(o.dy) < 0.5) p.ring = p.ring || o; }
+      if (o.k === 'shadow' && o.inset && o.color[3] > 0.02 && o.spread >= 0.5 && o.blur <= 0.5 && Math.abs(o.dx) < 0.5 && Math.abs(o.dy) < 0.5) p.ring = p.ring || o;
+      // An inset rule along one side (v70's `inset 0 1px 0 var(--hair)` between table rows and groups) marks the
+      // surface too; GSK keeps it a shadow only with a trace of blur, so up to 1 px of blur is the same rule.
+      if (o.k === 'shadow' && o.inset && o.color[3] > 0.02 && o.spread < 0.5 && o.blur <= 1 && (Math.abs(o.dx) >= 0.5) !== (Math.abs(o.dy) >= 0.5)) p.rule = p.rule || o; }
+    // An opaque fill painted over a gradient at the same box (an island on its window) is the surface seen.
+    const top = own.filter(o => o.k === 'fill' && !o.inset && o.color[3] >= 0.99 && (o.op ?? 1) >= 0.99).pop();
+    if (top && p.gradient && own.indexOf(top) > own.indexOf(p.gradient)) { delete p.gradient; p.fill = top; }
     const rc = G.ops.find(o => o.k === 'rclip' && near(B(o.box), b, 1.5)); p.radius = (p.fill && p.fill.radius) || (p.gradient && p.gradient.radius) || (p.border && p.border.radius) || (p.ring && p.ring.radius) || (rc && rc.radius) || null; return p; };
   const liveOps = G.ops.filter(o => !o.hidden && (o.op ?? 1) > 0.02 && o.k !== 'rclip');
-  const shows = c => c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.shadows ? (c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.shadows[0]).op > 0.02 : liveOps.some(o => inside(B(o.box), B(c.w.box)));
+  const shows = c => c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows ? (c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows[0]).op > 0.02 : liveOps.some(o => inside(B(o.box), B(c.w.box)));
   // GtkText inside an entry is the entry's own text area, not a control of its own (its selection is paint).
   const cands = ws.filter(w => w.parent != null && vis(w) && w.box[2] >= 6 && w.box[3] >= 6 && !((w.css === 'text' || w.css === 'textview') && byId.get(w.parent)?.css === 'entry' && !(byId.get(w.parent)?.classes || []).includes('lumaui-bar-search'))).map(w => ({ w, role: w.activatable === false ? 'generic' : roleOf(w.role), paint: paintOf(w) }))
-    .filter(c => (CONTROL.has(c.role) || c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.shadows) && shows(c));
+    .filter(c => (CONTROL.has(c.role) || c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows) && shows(c));
   // A bare text field inside a painted well (SidebarFoot's search, BarSearch) is one control, as the spec
   // merges label.srch around its <input>: the field takes the well's box and paint, and the well is not a
   // control of its own.
@@ -232,6 +240,11 @@ function compareState(st, S, G, samples) {
     // Pixels that already agree settle it (Settings' accent swatches, whose paint data the capture reads
     // stale); only when they differ does each side's own paint decide.
     const px = { s: bg('spec', s.box), g: bg('gtk', g.box) };
+    // A near-tied mode on either side settles on the colour the other side shows.
+    if (px.s && px.g && dE00(px.s, px.g) > TOL.dE) {
+      if (px.s.alt && dE00(px.s.alt, px.g) <= TOL.dE) px.s = px.s.alt;
+      else if (px.g.alt && dE00(px.s, px.g.alt) <= TOL.dE) px.g = px.g.alt;
+    }
     const byPaint = opaque(sFill) && opaque(gFill) && !(px.s && px.g && dE00(px.s, px.g) <= TOL.dE);
     // Pixels that differ over the whole box may agree around its edge: a surface around a chip that
     // covers more of it in one than the other (a two-choice switch's well, in light, where its paint is
@@ -512,7 +525,12 @@ async function sampleAll(page, reqs) { // mode colour of a box, per image; reqs:
     const inner = (x, y) => edge && x >= x0 + 2 && x < x1 - 2 && y >= y0 + 2 && y < y1 - 2;
     const bins = new Map(); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { if (inner(x, y)) continue; const i = (y * W + x) * 4; const a = D[i + 3] / 255; const r = D[i] * a, g = D[i + 1] * a, bb = D[i + 2] * a;
       const k = (r >> 3) << 10 | (g >> 3) << 5 | (bb >> 3); const e = bins.get(k) || [0, 0, 0, 0]; e[0]++; e[1] += r; e[2] += g; e[3] += bb; bins.set(k, e); }
-    let best = null; for (const e of bins.values()) if (!best || e[0] > best[0]) best = e; return best ? { r: best[1] / best[0], g: best[2] / best[0], b: best[3] / best[0], a: 1 } : null; }); }, reqs);
+    let best = null, next = null; for (const e of bins.values()) { if (!best || e[0] > best[0]) { next = best; best = e; } else if (!next || e[0] > next[0]) next = e; }
+    if (!best) return null;
+    const out = { r: best[1] / best[0], g: best[2] / best[0], b: best[3] / best[0], a: 1 };
+    // A near tie (a meter half full) keeps the runner-up: either colour is the box's mode.
+    if (next && next[0] >= best[0] * 0.9) out.alt = { r: next[1] / next[0], g: next[2] / next[0], b: next[3] / next[0], a: 1 };
+    return out; }); }, reqs);
 }
 
 (async () => {
