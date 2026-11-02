@@ -3,7 +3,7 @@
 // policy, and the wiring that keeps the service to TV posture.
 // Run: gjs -m tv-input-policy.js js/ui/lumaPresentation/tvInputModel.js \
 //        js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvInput.js \
-//        js/ui/lumaPresentation/tv.js
+//        js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvPointer.js
 // (node tv-input-policy.js ... works too).
 const gjs = typeof globalThis.ARGV !== 'undefined';
 const args = gjs ? globalThis.ARGV : process.argv.slice(2);
@@ -23,6 +23,7 @@ const M = await import(`file://${absolute(args[0])}`);
 const {tv: tokens} = await import(`file://${absolute(args[1])}`);
 const service = read(args[2]);
 const home = read(args[3]);
+const pointer = args[4] ? read(args[4]) : null;
 const input = tokens.input;
 
 // The TV's keys: arrows, Return = OK, Escape = Back, Menu.
@@ -110,6 +111,41 @@ assert(/pause: \(\) => this\._quick\?\.toggle\('start'\)/.test(home) &&
 assert(/<method name="ShowQuickPanel"\/>/.test(service) && /ShowQuickPanel\(\) \{\s*this\._showQuickPanel\?\.\(\);/.test(service),
     "an app's bar clock opens the quick panel over the app (D-Bus)");
 
+
+// A pad is user activity: Mutter's idle time never sees a pad, so the service taps a key only it
+// holds as an accelerator (no window gets it), at most once per ACTIVITY_MS, while a pad is used.
+assert(M.ACTIVITY_KEY === 'XF86Launch9' && M.ACTIVITY_MS >= 1000 && M.ACTIVITY_MS <= 30000, 'the activity key');
+assert(M.activityDue(null, 0) && !M.activityDue(1000, 1000 + M.ACTIVITY_MS - 1) && M.activityDue(1000, 1000 + M.ACTIVITY_MS),
+    'at most once per ACTIVITY_MS');
+assert(/_grabActivityKey\(\) \{[\s\S]*?grab_accelerator\(ACTIVITY_KEY/.test(service) && /this\._grabActivityKey\(\);/.test(service),
+    'the activity key is the service\'s own accelerator');
+assert(/const name = this\._grabs\.get\(action\);\s*if \(!name\) return;/.test(service) && !/_grabs\.set\(this\._activityAction/.test(service),
+    'it does nothing when it fires');
+assert(/_activity\(\) \{[\s\S]*?activityDue\(this\._activityAt, t\)[\s\S]*?notify_keyval\(time, Clutter\.KEY_Launch9, Clutter\.KeyState\.PRESSED\)/.test(service),
+    'a tap of it, throttled');
+assert(/if \(pressed && pad\.buttons\.has\(code\)\) return;\s*if \(pressed\) this\._activity\(\);/.test(service) &&
+    /if \(direction\) this\._activity\(\);/.test(service) && /if \(pad\.stick && pad\.stick !== held\) this\._activity\(\);/.test(service),
+    'every press, hat push and stick push; never a resting stick or a held button');
+assert(/\[\.\.\.this\._grabs\.keys\(\), this\._activityAction\][\s\S]*?ungrab_accelerator\(action\)/.test(service), 'and given back');
+// The pointer on a TV: hidden by the remote, a pad or a keyboard and after resting; shown by the hand.
+assert(M.POINTER_IDLE_MS === 3000, 'three seconds of rest');
+assert(M.pointerAction('KEY_PRESS') === 'hide' && M.pointerAction('MOTION') === 'show' &&
+    M.pointerAction('BUTTON_PRESS') === 'show' && M.pointerAction('SCROLL') === 'show' &&
+    M.pointerAction('KEY_RELEASE') === null && M.pointerAction('TOUCH_BEGIN') === null, 'what hides and shows it');
+assert(/this\._pointer = new TvPointer\(\)/.test(home) && /_leave\(\) \{[\s\S]*?this\._pointer\?\.destroy\(\)/.test(home),
+    'only in TV posture');
+if (pointer) {
+    assert(/global\.backend\.get_cursor_tracker\(\)/.test(pointer) && /inhibit_cursor_visibility\(\)/.test(pointer) &&
+        /uninhibit_cursor_visibility\(\)/.test(pointer), "Mutter's cursor tracker hides it, nothing fakes it");
+    assert(/destroy\(\) \{[\s\S]*?if \(this\._hidden\) this\._tracker\.uninhibit_cursor_visibility\(\)/.test(pointer),
+        'never left hidden after the posture');
+    assert(/if \(!this\._hidden\) this\._tracker\.inhibit_cursor_visibility\(\)/.test(pointer) &&
+        /if \(this\._hidden\) this\._tracker\.uninhibit_cursor_visibility\(\);\s*this\._hidden = false;/.test(pointer),
+        'inhibits paired: one in, one out');
+    assert(/event_add_filter\(global\.stage[\s\S]*?return Clutter\.EVENT_PROPAGATE;/.test(pointer), 'it watches every event and takes none');
+    assert(/FLAG_SYNTHETIC\) return Clutter\.EVENT_PROPAGATE/.test(pointer), "Mutter's made-up motion is no hand");
+    assert(/timeout_add\(GLib\.PRIORITY_DEFAULT, POINTER_IDLE_MS/.test(pointer), 'hidden after resting');
+}
 
 // The service: only in TV posture, every remote key taken, keys from a
 // virtual keyboard, libmanette optional.

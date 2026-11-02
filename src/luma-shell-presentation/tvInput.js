@@ -17,8 +17,8 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {tvEntry} from './tvModel.js';
-import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, holdsHome,
-    padIdentity, repeatDelay, stickDirection, translates} from './tvInputModel.js';
+import {ACTIVITY_KEY, AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, activityDue, buttonAction, confirmButton,
+    hatDirection, holdsHome, padIdentity, repeatDelay, stickDirection, translates} from './tvInputModel.js';
 import {homePress} from './tvQuickPanelModel.js';
 import {homeSecondPress} from './tvAppSwitcherModel.js';
 
@@ -56,6 +56,8 @@ export class TvInput {
         this._pause = pause;
         this._showQuickPanel = showQuickPanel;
         this._holdOnly = new Set();     // Guide held in a game: only the long press is the Shell's
+        this._activityAction = 0;       // the accelerator that makes a pad count as input
+        this._activityAt = null;
         this._homeTap = 0;              // a short Home waiting for a second press
         this._homeTapAt = null;
         this._homeSources = new Map();  // what holds Home down -> when it went down
@@ -80,6 +82,7 @@ export class TvInput {
         this._keys = Clutter.get_default_backend().get_default_seat()
             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         this._grabRemoteKeys();
+        this._grabActivityKey();
         this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
         this._nameId = Gio.bus_own_name_on_connection(Gio.DBus.session, BUS_NAME,
@@ -107,11 +110,12 @@ export class TvInput {
         for (const id of this._monitorSignals ?? []) this._monitor.disconnect(id);
         this._monitor = null;
         for (const id of this._acceleratorIds ?? []) global.display.disconnect(id);
-        for (const action of this._grabs.keys()) {
+        for (const action of [...this._grabs.keys(), this._activityAction].filter(Boolean)) {
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
             global.display.ungrab_accelerator(action);
         }
         this._grabs.clear();
+        this._activityAction = 0;
         for (const {watch} of this._claims.values()) Gio.bus_unwatch_name(watch);
         this._claims.clear();
         this._dbus.unexport();
@@ -227,6 +231,30 @@ export class TvInput {
         }
     }
 
+    // ── a pad is user activity ────────────────────────────────────────────
+
+    // Mutter's idle time never sees a pad: tap the activity key (grabbed here,
+    // so no window gets it) at most once per ACTIVITY_MS while a pad is used.
+    _grabActivityKey() {
+        const action = global.display.grab_accelerator(ACTIVITY_KEY, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
+        if (action === Meta.KeyBindingAction.NONE) {
+            console.warn(`TV input: ${ACTIVITY_KEY} is taken; a pad alone will not keep the screen awake`);
+            return;
+        }
+        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
+        this._activityAction = action;
+    }
+
+    _activity() {
+        if (!this._activityAction || !this._keys) return;
+        const t = now();
+        if (!activityDue(this._activityAt, t)) return;
+        this._activityAt = t;
+        const time = GLib.get_monotonic_time();
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.PRESSED);
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.RELEASED);
+    }
+
     // ── remotes: keys that are not TV keys become TV keys ─────────────────
 
     // OK and Home keys are taken with TRIGGER_RELEASE so their release is
@@ -336,6 +364,7 @@ export class TvInput {
             return;
         }
         if (pressed && pad.buttons.has(code)) return;
+        if (pressed) this._activity();
         if (!pressed) {
             if (!pad.buttons.has(code) || pending) return;
             this._released.set(control, GLib.timeout_add(GLib.PRIORITY_DEFAULT, BOUNCE_MS, () => {
@@ -383,8 +412,10 @@ export class TvInput {
 
     _hat(pad, event) {
         const [ok, axis, value] = event.get_hat();
-        if (ok && (axis === AXIS.HAT0X || axis === AXIS.HAT0Y))
-            this._hold(`${pad.id}:hat:${axis}`, hatDirection(axis, value));
+        if (!ok || (axis !== AXIS.HAT0X && axis !== AXIS.HAT0Y)) return;
+        const direction = hatDirection(axis, value);
+        if (direction) this._activity();
+        this._hold(`${pad.id}:hat:${axis}`, direction);
     }
 
     _axis(pad, event) {
@@ -392,7 +423,10 @@ export class TvInput {
         if (!ok || (axis !== AXIS.X && axis !== AXIS.Y)) return;
         if (axis === AXIS.X) pad.x = value;
         else pad.y = value;
+        const held = pad.stick;
         pad.stick = stickDirection(pad.x, pad.y, pad.stick, this._input);
+        // A stick pushed past its press point is activity; drift around the centre is not.
+        if (pad.stick && pad.stick !== held) this._activity();
         this._hold(`${pad.id}:stick`, pad.stick);
     }
 

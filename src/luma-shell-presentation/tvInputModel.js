@@ -143,3 +143,33 @@ export function translates(action, context) {
 export function holdsHome(context) {
     return !translates('home', context);
 }
+
+// A gamepad is user activity even when no TV key comes of it (a game or a
+// player that reads the pad itself): Mutter's idle time does not see pads
+// (libinput leaves joysticks alone), so the screen would dim, blank or lock
+// under a playing hand. tvInput.js taps ACTIVITY_KEY, an accelerator only it
+// holds (no window ever gets it), at most once per ACTIVITY_MS, and Mutter
+// counts that as input. Held buttons and a resting stick are no activity.
+export const ACTIVITY_KEY = 'XF86Launch9';
+export const ACTIVITY_MS = 5000;
+
+export function activityDue(lastAt, now) {
+    return lastAt === null || now - lastAt >= ACTIVITY_MS;
+}
+
+// The pointer on a TV: hidden the moment the remote, a pad or a keyboard is
+// used, and POINTER_IDLE_MS after it last moved; any pointer motion, click or
+// scroll shows it again (tvPointer.js, only in TV posture).
+export const POINTER_IDLE_MS = 3000;
+
+export function pointerAction(type) {
+    switch (type) {
+    case 'KEY_PRESS':
+        return 'hide';
+    case 'MOTION': case 'BUTTON_PRESS': case 'SCROLL':
+    case 'TOUCHPAD_SWIPE': case 'TOUCHPAD_PINCH': case 'TOUCHPAD_HOLD':
+        return 'show';
+    default:
+        return null;
+    }
+}
