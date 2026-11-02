@@ -252,6 +252,16 @@
       "max_count": 2
     },
     {
+      "id": "tv-page-edge-fade",
+      "doc": "lumaui-deviations.md: tv-page-edge-fade",
+      "reason": "Nick ruled (2026-11-01) that a TV page's edge fades are longer and eased (about 128 at the bottom) instead of the mockup's 40 linear mask, so a glyph in the bottom strip stands on a different ground. Glyph colour only, in that strip.",
+      "apps": ["tv-connect", "tv-settings"],
+      "subject": "^icon ",
+      "prop": "^colour$",
+      "min_y": 952,
+      "max_delta": 8
+    },
+    {
       "id": "hinted-figtree-advance",
       "doc": "lumaui-deviations.md: Hinted glyph advances",
       "reason": "The device hints Figtree (Nick's setting, the real one): GTK rounds each glyph's advance to whole pixels where Chromium keeps fractions, so a run comes out up to about 3% wider. Text-run width only, Figtree runs only; never boxes, positions of other parts, size or weight.",

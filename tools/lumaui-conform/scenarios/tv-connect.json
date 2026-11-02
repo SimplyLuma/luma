@@ -242,6 +242,8 @@
   "luma-connect-screen": "screen",
   "luma-connect-chevron": "chev",
   "luma-connect-external": "ext",
-  "luma-chevron-left": "back"
+  "luma-chevron-left": "back",
+  "luma-connect-call": "call",
+  "adw-expander-arrow": "down"
  }
 }

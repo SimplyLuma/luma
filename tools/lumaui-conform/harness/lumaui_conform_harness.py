@@ -702,9 +702,13 @@ class Capture:
         if isinstance(widget, Gtk.Label):
             layout = widget.get_layout()
             ink, logical = layout.get_pixel_extents()
+            # A label drawn under a transform (a focused button lifted by scale) shows its words at that scale.
+            allocated = widget.get_width()
+            scale = rec["box"][2] / allocated if allocated > 0 and rec["box"][2] > 0 else 1.0
+            scale = scale if abs(scale - 1.0) > 0.005 else 1.0
             rec.update(text=widget.get_text(), xalign=widget.get_xalign(), wrap=widget.get_wrap(),
                        ellipsize=widget.get_ellipsize().value_nick, lines=layout.get_line_count(),
-                       layout=[logical.x, logical.y, logical.width, logical.height],
+                       layout=[logical.x * scale, logical.y * scale, logical.width * scale, logical.height * scale],
                        ellipsized=layout.is_ellipsized())
             spacing = self.letter_spacing(widget)
             if spacing is not None:
