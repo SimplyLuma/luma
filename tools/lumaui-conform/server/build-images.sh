@@ -99,6 +99,9 @@ for what in "$@"; do
       cp "$tools/server/pin-cbuild.sh" "$tools/server/preload.c" "$tools/server/cbuild-devel.txt" "$ctx/cbuild/"
       rm -f "$ctx/cbuild/rpms-dev"/*.rpm
       fetch "$ctx/cbuild/rpms-app" nautilus nautilus-extensions gnome-control-center
+      # The image's Luma packages, so one a -devel dependency moves can be put back.
+      mkdir -p "$ctx/cbuild/rpms-luma"; rm -f "$ctx/cbuild/rpms-luma"/*.rpm
+      cp -p "$data/build/image/rpms"/*.rpm "$ctx/cbuild/rpms-luma/"
       build "$ctx" localhost/lumaui-conform-cbuild ;;
     *) echo "build-images: thinkpad or cbuild, not $what" >&2; exit 2 ;;
   esac
