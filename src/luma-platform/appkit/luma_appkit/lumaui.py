@@ -42,7 +42,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #    TvTopBar, TvTab, TvButton, TvField, TvToast, TvIdle; media parts TvCover, TvTransportButton,
 #    TvNowPlayingPill, TvEqualizer, TvProgress, TvRoom, TvSlide).
 # 5: the system TV keyboard (set_keyboard_action, watch_tv_keyboard, tv_keyboard_state; TvField(action=)).
-LUMAUI_API_LEVEL = 5
+# 6: remotes and gamepads (claim_gamepads).
+LUMAUI_API_LEVEL = 6
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

@@ -102,6 +102,8 @@ __all__ = [
     "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
+    # remotes and gamepads: an app that reads the pad itself claims it
+    "claim_gamepads",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -373,6 +375,9 @@ def __getattr__(name: str):
     if name in {"set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state"}:
         from . import tv_keyboard
         return getattr(tv_keyboard, name)
+    if name == "claim_gamepads":
+        from .tv_input import claim_gamepads
+        return claim_gamepads
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
                 "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
