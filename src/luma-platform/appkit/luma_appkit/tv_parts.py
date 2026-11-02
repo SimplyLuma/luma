@@ -187,14 +187,17 @@ class TvField(Gtk.Box):
 
     Register `field.text` with `TvFocus.add(..., editable=True)`: while it has
     the remote's focus it holds GTK focus, so a real keyboard types straight
-    in and the system's TV keyboard presents itself for it. The field draws
-    its ring while focus is inside it. `changed(text)` follows every edit.
+    in and the system's TV keyboard presents itself for it. `action` labels
+    the keyboard's action key ("Search", "Add"; tv_keyboard.set_keyboard_action).
+    The field draws its ring while focus is inside it. `changed(text)` follows
+    every edit.
     """
 
     __gtype_name__ = "LumaUITvField"
 
     def __init__(self, *, placeholder: str = "", icon: str | None = "search",
-                 purpose: Gtk.InputPurpose = Gtk.InputPurpose.FREE_FORM) -> None:
+                 purpose: Gtk.InputPurpose = Gtk.InputPurpose.FREE_FORM,
+                 action: str | None = None) -> None:
         super().__init__(valign=Gtk.Align.START)
         self.add_css_class("tv-field")
         self.add_css_class("tv-well")
@@ -206,6 +209,9 @@ class TvField(Gtk.Box):
                              input_purpose=purpose)
         self.text.update_property([Gtk.AccessibleProperty.LABEL], [placeholder])
         self.append(self.text)
+        if action:
+            from .tv_keyboard import set_keyboard_action
+            set_keyboard_action(self.text, action)
 
     def get_value(self) -> str:
         return self.text.get_text()

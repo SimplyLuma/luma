@@ -40,7 +40,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 # 3: TV posture (tv_posture, watch_posture, tv_unit, AppContext.posture, AppWindow tv-posture).
 # 4: TV parts (TvStage, TvLift, add_tv_style, tv_css, tv_material, tv_fade, TvFocus, tv_nearest,
 #    TvTopBar, TvTab, TvButton, TvField, TvToast, TvIdle).
-LUMAUI_API_LEVEL = 4
+# 5: the system TV keyboard (set_keyboard_action, watch_tv_keyboard, tv_keyboard_state; TvField(action=)).
+LUMAUI_API_LEVEL = 5
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

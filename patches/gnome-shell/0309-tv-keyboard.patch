@@ -445,7 +445,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              translation_y: -this.height,
              opacity: 255,
 -            duration: Keycap.keycap.timing.show,
-+            duration: this._tv ? TV_TOKENS.keyboard.show_ms : Keycap.keycap.timing.show,
++            duration: this._tv ? TV_TOKENS.motion.keyboard_ms : Keycap.keycap.timing.show,
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onComplete: () => {
                  this._animateShowComplete();
