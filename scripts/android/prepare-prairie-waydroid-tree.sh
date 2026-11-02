@@ -56,6 +56,7 @@ hardware_desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020
 hardware_handheld_fill_patch="$repo_root/patches/android-hardware-waydroid/0021-luma-handheld-task-window-fill.patch"
 hardware_text_input_patch="$repo_root/patches/android-hardware-waydroid/0022-luma-host-text-input.patch"
 hardware_video_layer_patch="$repo_root/patches/android-hardware-waydroid/0023-luma-video-layer-conversion.patch"
+hardware_touch_density_patch="$repo_root/patches/android-hardware-waydroid/0024-luma-touch-presentation-density.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -68,6 +69,7 @@ device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-windo
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
+native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 
 test -d "$source_root/.repo" || {
   printf 'error: synchronize the pinned Android source first\n' >&2
@@ -167,9 +169,11 @@ write_state() {
     printf 'HARDWARE_HANDHELD_FILL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_handheld_fill_patch")"
     printf 'HARDWARE_TEXT_INPUT_PATCH_SHA=%s\n' "$(patch_sha "$hardware_text_input_patch")"
     printf 'HARDWARE_VIDEO_LAYER_PATCH_SHA=%s\n' "$(patch_sha "$hardware_video_layer_patch")"
+    printf 'HARDWARE_TOUCH_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$hardware_touch_density_patch")"
     printf 'FRAMEWORK_OFFICIAL_HEAD=%s\n' "$framework_official_head"
     printf 'NATIVE_OFFICIAL_HEAD=%s\n' "$native_official_head"
     printf 'NATIVE_PATCH_SHA=%s\n' "$(patch_sha "$native_patch")"
+    printf 'NATIVE_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$native_density_patch")"
     printf 'DEVICE_OFFICIAL_HEAD=%s\n' "$device_official_head"
     printf 'JELLY_OFFICIAL_HEAD=%s\n' "$jelly_official_head"
     printf 'JELLY_PATCH_SHA=%s\n' "$(patch_sha "$jelly_patch")"
@@ -299,6 +303,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
   git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
   git -C "$hardware_root" apply "$hardware_video_layer_patch"
+  git -C "$hardware_root" apply "$hardware_touch_density_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -327,6 +332,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
   git -C "$native_root" apply "$native_patch"
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
+  git -C "$native_root" apply "$native_density_patch"
+  commit_patch "$native_root" 'Luma reads the display density when queried'
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
@@ -433,13 +440,16 @@ if [ -z "${SOONG_CPU_PATCH_SHA:-}" ]; then
   commit_patch "$source_root/build/soong" 'Preserve explicit host Go scheduler concurrency'
   changed=1
 fi
-if [ "$(patch_sha "$native_patch")" != "${NATIVE_PATCH_SHA:-}" ]; then
+if [ "$(patch_sha "$native_patch")" != "${NATIVE_PATCH_SHA:-}" ] ||
+    [ "$(patch_sha "$native_density_patch")" != "${NATIVE_DENSITY_PATCH_SHA:-}" ]; then
   if [ -n "${NATIVE_PATCH_SHA:-}" ]; then
     git -C "$native_root" reset --hard -q "$native_official_head"
     git -C "$native_root" clean -fdq
   fi
   git -C "$native_root" apply "$native_patch"
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
+  git -C "$native_root" apply "$native_density_patch"
+  commit_patch "$native_root" 'Luma reads the display density when queried'
   changed=1
 fi
 if [ -n "${MESA_BUILD_PATCH_SHA:-}" ] && [ "$(patch_sha "$mesa_build_patch")" != "$MESA_BUILD_PATCH_SHA" ]; then
@@ -508,7 +518,8 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
     [ "$(patch_sha "$hardware_desktop_canvas_patch")" != "${HARDWARE_DESKTOP_CANVAS_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_handheld_fill_patch")" != "${HARDWARE_HANDHELD_FILL_PATCH_SHA:-}" ] || \
     [ "$(patch_sha "$hardware_text_input_patch")" != "${HARDWARE_TEXT_INPUT_PATCH_SHA:-}" ] || \
-    [ "$(patch_sha "$hardware_video_layer_patch")" != "${HARDWARE_VIDEO_LAYER_PATCH_SHA:-}" ]; then
+    [ "$(patch_sha "$hardware_video_layer_patch")" != "${HARDWARE_VIDEO_LAYER_PATCH_SHA:-}" ] || \
+    [ "$(patch_sha "$hardware_touch_density_patch")" != "${HARDWARE_TOUCH_DENSITY_PATCH_SHA:-}" ]; then
   git -C "$hardware_root" reset --hard -q "$HARDWARE_OFFICIAL_HEAD"
   git -C "$hardware_root" clean -fdq
   git -C "$hardware_root" apply --binary "$hardware_patch"
@@ -532,6 +543,7 @@ if [ "$(patch_sha "$hardware_patch")" != "${HARDWARE_PATCH_SHA:-}" ] ||
   git -C "$hardware_root" apply "$hardware_handheld_fill_patch"
   git -C "$hardware_root" apply --binary "$hardware_text_input_patch"
   git -C "$hardware_root" apply "$hardware_video_layer_patch"
+  git -C "$hardware_root" apply "$hardware_touch_density_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"

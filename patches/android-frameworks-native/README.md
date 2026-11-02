@@ -18,3 +18,7 @@ application sandbox. The paired hardware patch resolves inherited child task
 IDs to the existing task/package record before filtering client composition.
 See [Android frame evidence](../android-hardware-waydroid/README.md)
 for observed results and open multi-application, media and release gates.
+
+`0002` reads `ro.sf.lcd_density` when display info is requested. SurfaceFlinger
+read it only at construction, before it connects to the composer that
+publishes it, and fell back to TV density (213) whenever it started first.
