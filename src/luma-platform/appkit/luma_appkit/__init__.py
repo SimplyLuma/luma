@@ -99,6 +99,7 @@ __all__ = [
     "TvTopBar", "TvTab", "TvButton", "TvField",
     "TvToast",
     "TvIdle",
+    "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -364,6 +365,9 @@ def __getattr__(name: str):
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle
+    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
+        from . import tv_media
+        return getattr(tv_media, name)
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
                 "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
