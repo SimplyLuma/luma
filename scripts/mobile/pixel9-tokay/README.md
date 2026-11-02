@@ -60,8 +60,8 @@ scriptlets take labels from the booted policy (`--selinux-policy=/`), not the ba
 
 ## Build and install
 
-- `build-tokay-v23.sh` (v22 + 0011, from `luma/tokay-aoc-xrun`; luma-build, `OSTREE_PATH=/ostree/boot.N/luma/<bootcsum>/0`) →
-  `candidates/luma-tokay-v23/boot.img`; `probe/build-tokay.sh` is `build-comet-probe.sh` with the model
+- `build-tokay-v25.sh` (v23 + `aoc-gesture-wake` and `touch_bus_negotiator`: with the panel off the touch driver hands the bus to AoC and a single tap reports KEY_WAKEUP; luma-build, `OSTREE_PATH=/ostree/boot.N/luma/<bootcsum>/0`) →
+  `candidates/luma-tokay-v25/boot.img`; `probe/build-tokay.sh` is `build-comet-probe.sh` with the model
   check set to "Pixel 9". Every `ostree admin deploy` flips boot.0/boot.1: build the boot image for the
   new path before rebooting.
 - Root: Fold shell6 userdata image (`fastboot flash userdata`), then the alpha2 commit by static
