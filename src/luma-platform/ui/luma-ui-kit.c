@@ -315,6 +315,17 @@ double luma_ui_tv_unit(int width, int height) {
   return MIN((double)width / LUMA_UI_TV_LAYOUT_BASE_WIDTH, (double)height / LUMA_UI_TV_LAYOUT_BASE_HEIGHT);
 }
 
+/* A box's orientation lives in its layout manager; a box given another layout (luma-cards.c's
+ * capped layout) has none to ask. */
+static int orientation_of(GtkWidget *widget) {
+  if (widget == NULL || !GTK_IS_ORIENTABLE(widget))
+    return -1;
+  GtkLayoutManager *layout = GTK_IS_BOX(widget) ? gtk_widget_get_layout_manager(widget) : NULL;
+  if (GTK_IS_BOX(widget) && (layout == NULL || !GTK_IS_ORIENTABLE(layout)))
+    return -1;
+  return (int)gtk_orientable_get_orientation(GTK_ORIENTABLE(widget));
+}
+
 static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row", NULL };
 
 void luma_ui_set_part(GtkWidget *widget, const char *part) {
@@ -334,14 +345,13 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
   for (int depth = 0; line != NULL && depth < 3; depth++) {
     if (GTK_IS_BUTTON(line))
       line = gtk_button_get_child(GTK_BUTTON(line));
-    else if (GTK_IS_BOX(line) && gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_VERTICAL &&
+    else if (GTK_IS_BOX(line) && orientation_of(line) == GTK_ORIENTATION_VERTICAL &&
              gtk_widget_get_first_child(line) != NULL && !GTK_IS_LABEL(gtk_widget_get_first_child(line)))
       line = gtk_widget_get_first_child(line);
     else
       break;
   }
-  GtkWidget *first = line != NULL && GTK_IS_BOX(line) &&
-                     gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_HORIZONTAL
+  GtkWidget *first = line != NULL && GTK_IS_BOX(line) && orientation_of(line) == GTK_ORIENTATION_HORIZONTAL
                      ? gtk_widget_get_first_child(line) : NULL;
   gboolean leads = (g_strcmp0(part, "row") == 0 || g_strcmp0(part, "hero") == 0) && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
                    !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);

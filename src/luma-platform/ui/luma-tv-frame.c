@@ -172,6 +172,7 @@ typedef struct {
   int sidebar_width, sidebar_height, sidebar_margin;
   GArray *path;          /* where the focus was in the page, child by child from the island */
   gint64 ok_at;          /* when OK last acted in the page */
+  gboolean keyed;        /* the remote has been used in this window */
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
   gboolean page_zone;    /* the remote is in the page */
@@ -723,6 +724,12 @@ static gboolean relax(gpointer data) {
   if (f->active) {
     release_page(f, f->island);
     refind(f);
+    /* Until the remote is used, the focus is the open page's destination (a deep link opened it). */
+    GtkWidget *focus = focus_of(f);
+    GtkListBoxRow *selected = gtk_list_box_get_selected_row(sidebar_list(f));
+    if (!f->keyed && selected != NULL && focus != NULL && gtk_widget_is_ancestor(focus, f->sidebar) &&
+        focus != GTK_WIDGET(selected))
+      gtk_widget_grab_focus(GTK_WIDGET(selected));
     if (g_getenv("LUMA_TV_DEBUG") != NULL && g_getenv("LUMA_TV_DEBUG")[0] == '2') dump(f->island, 0);
   }
   return G_SOURCE_REMOVE;
@@ -880,6 +887,7 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
     return GDK_EVENT_PROPAGATE;
   GtkWidget *focus = focus_of(f);
   gboolean page = in_page(f, focus);
+  f->keyed = TRUE;
   gtk_window_set_focus_visible(f->window, TRUE);
 
   if (!page) {
