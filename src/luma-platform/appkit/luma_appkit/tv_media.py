@@ -285,6 +285,7 @@ class TvCover(_UnitFollower, Gtk.Widget):
         self._requested = 0
         self._scale, self._focus, self._focused = 1.0, 0.0, False
         self._animation: Adw.Animation | None = None
+        self._reveal, self._reveal_animation = 1.0, None  # the picture's cross-fade over its placeholder
         self.name_label = self._label(name, "tv-cover-name", wrap=True) if name else None
         self.title_label = self._label(title, "tv-caption") if title is not None else None
         self.subtitle_label = self._label(subtitle, "tv-caption-meta") if subtitle is not None else None
@@ -314,7 +315,7 @@ class TvCover(_UnitFollower, Gtk.Widget):
             return
         self._artwork, self._hues = artwork, hues
         self._cancel()
-        self._texture, self._requested = None, 0
+        self._texture, self._requested, self._reveal = None, 0, 1.0
         if self.get_width() > 0:
             u = self._unit()
             self._load(max(self._art_w, self._art_h) * u)
@@ -412,12 +413,25 @@ class TvCover(_UnitFollower, Gtk.Widget):
         self._requested = bucket
         artwork = self._artwork
 
+        waiting = [False]
+
         def arrived(texture: Gdk.Texture | None) -> None:
             self._request = None
-            if texture is not None and artwork == self._artwork:
-                self._texture = texture
-                self.queue_draw()
+            if texture is None or artwork != self._artwork:
+                return
+            first = self._texture is None
+            self._texture = texture
+            if first and waiting[0] and self.get_mapped():
+                # decoded off the main loop: the picture fades in over its placeholder colour
+                def step(value: float) -> None:
+                    self._reveal = value
+                    self.queue_draw()
+                self._reveal = 0.0
+                self._reveal_animation = _animate(self, 0.0, 1.0, int(MEDIA["cover"].get("reveal_ms", 180)), step,
+                                                  self._reveal_animation)
+            self.queue_draw()
         self._request = TextureLoader.shared().request(artwork, side, arrived)
+        waiting[0] = True
 
     def _cancel(self) -> None:
         if self._request is not None:
@@ -439,10 +453,11 @@ class TvCover(_UnitFollower, Gtk.Widget):
         c = MEDIA["cover"]
         if self._shadow:
             t = self._focus
-            shadow = _black(c["shadow_alpha"] + (c["focus_shadow_alpha"] - c["shadow_alpha"]) * t)
-            dy = (c["shadow_y"] + (c["focus_shadow_y"] - c["shadow_y"]) * t) * u
-            blur = (c["shadow_blur"] + (c["focus_shadow_blur"] - c["shadow_blur"]) * t) * u
-            snapshot.append_outset_shadow(art, shadow, 0, dy, 0, blur)
+            if t < 1e-3 or t > 1 - 1e-3:
+                _cover_shadow(self, snapshot, art_w, art_h, radius, u, t > 0.5)
+            else:
+                # mid-lift: the one moving cover draws its shadow live
+                snapshot.append_outset_shadow(art, *_shadow_args(t, u))
         if self._focus > 1e-3:
             ring = Gdk.RGBA()
             ring.parse(TV["materials"]["ring"])
@@ -450,18 +465,37 @@ class TvCover(_UnitFollower, Gtk.Widget):
             snapshot.append_outset_shadow(art, ring, 0, 0, TV["cover"]["ring"] * u, 0)
         snapshot.push_rounded_clip(art)
         bounds = Graphene.Rect().init(0, 0, art_w, art_h)
-        if self._texture is not None:
+        texture = self._texture
+        if texture is None or self._reveal < 0.999:
+            self._placeholder(snapshot, bounds, art_w, art_h)
+        if texture is not None:
             from .media_style import cover_rect
-            snapshot.append_scaled_texture(self._texture, Gsk.ScalingFilter.TRILINEAR,
-                                           cover_rect(self._texture.get_width(), self._texture.get_height(), bounds))
-        else:
-            self._generated(snapshot, bounds, art_w, art_h)
+            target = cover_rect(texture.get_width(), texture.get_height(), bounds)
+            # mipmaps only for a picture much larger than it is drawn; a near-size one filters linearly
+            ratio = texture.get_width() / max(1.0, target.get_width() * self._scale)
+            if self._reveal < 0.999:
+                snapshot.push_opacity(self._reveal)
+            snapshot.append_scaled_texture(texture, Gsk.ScalingFilter.TRILINEAR if ratio > 1.6
+                                           else Gsk.ScalingFilter.LINEAR, target)
+            if self._reveal < 0.999:
+                snapshot.pop()
         snapshot.pop()
         for label in (self.name_label, self.title_label, self.subtitle_label):
             if label is not None:
                 self.snapshot_child(label, snapshot)
         if lifted:
             snapshot.restore()
+
+    def _placeholder(self, snapshot: Gtk.Snapshot, bounds: Graphene.Rect, w: float, h: float) -> None:
+        """Before its picture: the picture's own dominant colour when known; a sleeve without one."""
+        if self._artwork:
+            from .media_style import TextureLoader
+            colour = TextureLoader.shared().colour(self._artwork)
+            if colour is not None:
+                snapshot.append_color(Gdk.RGBA(red=colour[0] / 255, green=colour[1] / 255, blue=colour[2] / 255,
+                                               alpha=1.0), bounds)
+                return
+        self._generated(snapshot, bounds, w, h)
 
     def _generated(self, snapshot: Gtk.Snapshot, bounds: Graphene.Rect, w: float, h: float) -> None:
         if self._hues is None:
@@ -478,6 +512,52 @@ class TvCover(_UnitFollower, Gtk.Widget):
 
 def _at(x: float, y: float) -> Gsk.Transform:
     return Gsk.Transform.new().translate(Graphene.Point().init(round(x), round(y)))
+
+
+def _shadow_args(t: float, u: float) -> tuple:
+    """A cover's drop shadow at lift `t` (0 resting, 1 focused): colour, dx, dy, spread, blur."""
+    c = MEDIA["cover"]
+    return (_black(c["shadow_alpha"] + (c["focus_shadow_alpha"] - c["shadow_alpha"]) * t), 0,
+            (c["shadow_y"] + (c["focus_shadow_y"] - c["shadow_y"]) * t) * u, 0,
+            (c["shadow_blur"] + (c["focus_shadow_blur"] - c["shadow_blur"]) * t) * u)
+
+
+_SHADOWS = None
+
+
+def _cover_shadow(widget: Gtk.Widget, snapshot: Gtk.Snapshot, w: float, h: float, radius: float, u: float,
+                  focused: bool) -> None:
+    """A resting or focused cover's shadow, rendered once per size and shared by every cover.
+
+    GSK computes a blurred shadow per pixel on every frame (~50 ms for a screen of
+    covers on the Raspberry Pi 5 at 4K); a texture costs a fraction. Only the band
+    around the art is drawn: the art covers the middle.
+    """
+    global _SHADOWS
+    from .tv_stage import TvRaster
+    if _SHADOWS is None:
+        _SHADOWS = TvRaster(size=8)
+    colour, _dx, dy, _spread, blur = _shadow_args(1.0 if focused else 0.0, u)
+    margin = math.ceil(2 * blur + abs(dy))
+    full_w, full_h = w + 2 * margin, h + 2 * margin
+
+    def draw(s: Gtk.Snapshot) -> None:
+        s.append_outset_shadow(_rounded(margin, margin, w, h, radius), colour, 0, dy, 0, blur)
+    key = (round(w, 1), round(h, 1), round(radius, 1), round(u, 3), focused)
+    texture = _SHADOWS.get(widget, key, full_w, full_h, draw, scale=.5)
+    if texture is None:
+        snapshot.append_outset_shadow(_rounded(0, 0, w, h, radius), colour, 0, dy, 0, blur)
+        return
+    whole = Graphene.Rect().init(-margin, -margin, full_w, full_h)
+    inner = max(radius, 1.0)
+    band = margin + inner
+    for x, y, bw, bh in ((-margin, -margin, full_w, band), (-margin, h - inner, full_w, band),
+                         (-margin, inner, band, h - 2 * inner), (w - inner, inner, band, h - 2 * inner)):
+        if bw <= 0 or bh <= 0:
+            continue
+        snapshot.push_clip(Graphene.Rect().init(x, y, bw, bh))
+        snapshot.append_texture(texture, whole)
+        snapshot.pop()
 
 
 # ── Transport ────────────────────────────────────────────────────────────────
