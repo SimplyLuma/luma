@@ -19,10 +19,13 @@ export function dialogKey(name) {
     return DIALOG_KEYS[name] ?? null;
 }
 
-// A label's part from its style classes: the title, small print, a warning,
-// or body text.
+// A label's part from its style classes: the title, a list's heading, small
+// print, a warning, or body text. A list row's own title is body text.
 export function labelRole(classes) {
     const names = classes.join(' ');
+    if (/list-item-title-description/.test(names)) return 'meta';
+    if (/list-item-title/.test(names)) return 'body';
+    if (/list-title/.test(names)) return 'heading';
     if (/(^|[-\s])(title|headline)([-\s]|$)/.test(names)) return 'title';
     if (/(error|warning)/.test(names)) return 'warning';
     if (/(fact-key|caption|hint|meta)/.test(names)) return 'meta';

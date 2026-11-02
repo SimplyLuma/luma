@@ -137,7 +137,7 @@ export class TvDialogs {
         let mover = surface;
         while (mover.get_parent() && mover.get_parent() !== dialog) mover = mover.get_parent();
         const record = {
-            dialog, surface, mover, saved: new Map(), blurs: [], fields: [], focusables: [],
+            dialog, surface, mover, saved: new Map(), blurs: [], fields: [], focusables: [], containers: new Set(),
             standard: surface === dialog.dialogLayout._dialog, lastFocus: null, spacing: null,
             fixed: mover.fixed_position_set ? {x: mover.x, y: mover.y, width: mover.natural_width_set ? mover.width : -1} : null,
         };
@@ -207,6 +207,7 @@ export class TvDialogs {
         // Still watched for its next opening.
         this._connect(dialog);
         record.surface.disconnectObject(this);
+        for (const actor of record.containers) actor.disconnectObject(this);
         for (const effect of record.blurs) effect.enabled = true;
         for (const [actor, value] of record.saved) {
             for (const [key, original] of Object.entries(value)) actor[key] = original;
@@ -284,7 +285,7 @@ export class TvDialogs {
         record.fields = [];
         record.focusables = [];
         record.fieldText = new Map();
-        const w = this._px(width);
+        const w = this._px(width / this._u);
         this._set(record, surface, 'style', `width: ${w}; min-width: ${w}; max-width: ${w}; padding: ${this._px(sheet.padding)};
             spacing: ${this._px(sheet.gap)}; border-radius: ${this._px(sheet.radius)};
             background-gradient-direction: none; background-color: ${this._m('sheet')};
@@ -302,6 +303,13 @@ export class TvDialogs {
         }
         walk(surface, actor => {
             if (actor === surface) return true;
+            // Rows a dialog adds later (the sessions end session lists, a
+            // second field) are styled as they arrive.
+            if (!record.containers.has(actor) && !(actor instanceof St.Entry) && !(actor instanceof St.Button) &&
+                !(actor instanceof St.Label) && !(actor instanceof St.Icon)) {
+                record.containers.add(actor);
+                actor.connectObject('child-added', () => this._queueRestyle(record), this);
+            }
             if (actor instanceof St.Entry) {
                 this._styleField(record, actor, inner);
                 return false;
@@ -324,9 +332,11 @@ export class TvDialogs {
                 const role = labelRole(actor.get_style_class_name()?.split(/\s+/) ?? []);
                 const font = role === 'title' ? this._font(sheet.title_size, sheet.title_weight) +
                     ` letter-spacing: ${this._px(-0.88)};`
-                    : role === 'meta' ? this._font(type.meta.size, type.meta.weight)
-                        : this._font(type.body.size, type.body.weight);
-                const colour = role === 'title' ? this._m('ink') : role === 'warning' ? this._m('danger') : this._m('ink_2');
+                    : role === 'heading' ? this._font(type.h2.size, type.h2.weight)
+                        : role === 'meta' ? this._font(type.meta.size, type.meta.weight)
+                            : this._font(type.body.size, type.body.weight);
+                const colour = role === 'title' || role === 'heading' ? this._m('ink')
+                    : role === 'warning' ? this._m('danger') : this._m('ink_2');
                 this._set(record, actor, 'style', `${font} color: ${colour};`);
                 // A width the dialog balanced for its desktop type.
                 if (actor.natural_width_set) this._set(record, actor, 'width', -1);

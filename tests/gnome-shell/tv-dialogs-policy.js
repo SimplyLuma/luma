@@ -40,6 +40,9 @@ assert(M.labelRole(['message-dialog-description']) === 'body', 'body text');
 assert(M.labelRole(['prompt-dialog-error-label']) === 'warning', 'a warning');
 assert(M.labelRole(['luma-seal-fact-key']) === 'meta', 'small print');
 assert(M.labelRole([]) === 'body', 'an unclassed label is body text');
+assert(M.labelRole(['dialog-list-title']) === 'heading', "a list's heading");
+assert(M.labelRole(['dialog-list-item-title']) === 'body', "a list row's title");
+assert(M.labelRole(['dialog-list-item-title-description']) === 'meta', "a list row's description");
 
 // Back: the Escape button, else a lone button; never a guess between two.
 const cancel = {escape: true, reactive: true};
