@@ -88,6 +88,14 @@ export class TvQuickPanel {
         }
         this.isOpen = true;
         this.origin = origin;
+        // The OK that opened the panel from the bar is still down (and may repeat): no row acts
+        // on OK until it is let go, or a moment has passed.
+        this._armed = origin !== 'bar';
+        this._armId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+            this._armId = 0;
+            this._armed = true;
+            return GLib.SOURCE_REMOVE;
+        });
         this._watch();
         this._rebuild();
         this._row = Math.max(0, firstStop(this._rows));
@@ -110,6 +118,8 @@ export class TvQuickPanel {
             return;
         }
         this.isOpen = false;
+        if (this._armId) GLib.source_remove(this._armId);
+        this._armId = 0;
         this._unwatch();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
@@ -297,6 +307,10 @@ export class TvQuickPanel {
         this._actor.set_position(monitor.x, monitor.y);
         this._actor.set_size(monitor.width, monitor.height);
         this._actor.connect('key-press-event', (_actor, event) => this._key(event));
+        this._actor.connect('key-release-event', (_actor, event) => {
+            if (remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '') === 'ok') this._armed = true;
+            return Clutter.EVENT_STOP;
+        });
         // A click outside the island closes it.
         this._actor.connect('button-press-event', (_actor, event) => {
             const [x, y] = event.get_coords();
@@ -510,6 +524,7 @@ export class TvQuickPanel {
         row._track = track;
         row._fill = fill;
         row._hint = this._label('‹ ›', 20, 700, this._m('key_ink'), 'letter-spacing: 0.3em;');
+        row._hint.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         row._hint.visible = false;
         row._value = this._label(String(levelPercent(level.value)), q.level_value_size, 650, this._m('ink'),
             `width: ${this._px(q.level_value_width)}; text-align: right; font-feature-settings: "tnum";`);
@@ -622,7 +637,7 @@ export class TvQuickPanel {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_STOP;
-        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        if (action === 'ok' && ((event.get_flags() & Clutter.EventFlags.REPEATED) || !this._armed)) return Clutter.EVENT_STOP;
         const row = this._rows[this._row];
         if (action === 'back') {
             if (this._open.outputs || this._open.power) {

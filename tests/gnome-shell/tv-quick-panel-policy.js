@@ -137,6 +137,9 @@ assert(/SystemActions\.getDefault\(\)/.test(panel) && /activateRestart\(\)/.test
 assert(/this\.close\(\(\) => this\._actions\.activateRestart\(\)\)/.test(panel), 'the panel lets go before a dialog');
 assert(/Main\.pushModal\(this\._actor/.test(panel) && /Main\.popModal\(this\._grab\)/.test(panel), 'it holds the remote while open');
 assert(/if \(Main\.modalCount > 0\) return;/.test(panel), 'never over a dialog that holds the grab');
+assert(/this\._armed = origin !== 'bar'/.test(panel) && /'key-release-event'[\s\S]*?this\._armed = true/.test(panel) &&
+    /action === 'ok' && \(\(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\) \|\| !this\._armed\)/.test(panel),
+    'the OK that opened the panel from the bar never also acts on a row');
 assert(/slider\.value = value;/.test(panel), "volume through the slider's own handler");
 assert(/fade_edges: false/.test(panel), 'fades only where the rows continue');
 
