@@ -681,6 +681,7 @@ static void restore_page(GtkWidget *widget) {
 }
 
 static void dump(GtkWidget *w, int depth);
+static GtkWidget *hold_modal(TvFrame *f);
 
 /* A page that redraws under the remote (a network list refreshing) must not lose its place: the
  * focus is remembered as a path of child positions and found again in the redrawn page. */
