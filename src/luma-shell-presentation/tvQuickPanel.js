@@ -74,13 +74,20 @@ export class TvQuickPanel {
         if (this.isOpen || Main.sessionMode.isLocked || Main.sessionMode.isGreeter) return;
         // A Shell grab (a dialog, a menu) keeps the remote.
         if (Main.modalCount > 0) return;
-        this.isOpen = true;
-        this.origin = origin;
         this._open = {outputs: false, power: false};
         this._scrollValue = 0;
         // Polkit's answers do not notify; ask again each time, as Quick Options do.
         this._actions.forceUpdate?.();
-        this._build();
+        try {
+            this._build();
+        } catch (error) {
+            // Never left half open: no actor means not open.
+            this._actor?.destroy();
+            this._actor = null;
+            throw error;
+        }
+        this.isOpen = true;
+        this.origin = origin;
         this._watch();
         this._rebuild();
         this._row = Math.max(0, firstStop(this._rows));
@@ -108,7 +115,7 @@ export class TvQuickPanel {
         this._grab = null;
         const actor = this._actor;
         this._actor = null;
-        actor.ease({opacity: 0, duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        actor?.ease({opacity: 0, duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onStopped: () => actor.destroy()});
         const origin = this.origin;
         this.origin = null;
@@ -286,7 +293,7 @@ export class TvQuickPanel {
         this._u = this._unit();
         this._actor = new St.Widget({name: 'lumaTvQuickPanel', reactive: true, can_focus: true,
             layout_manager: new Clutter.FixedLayout(), accessible_name: _('Quick panel')});
-        Main.layoutManager.addTopChrome(this._actor, {affectsInputRegion: true});
+        Main.layoutManager.addTopChrome(this._actor);
         this._actor.set_position(monitor.x, monitor.y);
         this._actor.set_size(monitor.width, monitor.height);
         this._actor.connect('key-press-event', (_actor, event) => this._key(event));
