@@ -494,6 +494,20 @@ static void tv_css(TvFrame *f) {
   }
   g_autofree char *pixels = in_pixels(css->str, f->unit);
   g_string_free(css, TRUE);
+  if (g_strcmp0(g_getenv("LUMA_TV_DEBUG"), "noshadow") == 0) {
+    /* profiling aid: the same sheet without any shadow, to weigh what shadows cost a frame */
+    GString *flat = g_string_new(NULL);
+    for (const char *p = pixels; *p;) {
+      const char *at = strstr(p, "box-shadow:");
+      if (at == NULL) { g_string_append(flat, p); break; }
+      g_string_append_len(flat, p, at - p);
+      g_string_append(flat, "box-shadow: none;");
+      const char *end = strchr(at, ';');
+      p = end != NULL ? end + 1 : at + strlen(at);
+    }
+    g_free(pixels);
+    pixels = g_string_free(flat, FALSE);
+  }
   gtk_css_provider_load_from_string(f->provider, pixels);
 }
 
