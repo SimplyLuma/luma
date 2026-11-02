@@ -219,6 +219,20 @@ static void check_tv(GtkApplication *app) {
   spin(50);
   CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
 
+  /* Key repeat: a held OK acts once (the frame stops its repeats), a held arrow keeps moving. */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Right));
+  spin(50);
+  CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), page));
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* the press: the row acts */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));   /* its repeat: nothing */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));        /* the last repeat, then let go */
+  CHECK(!luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));       /* a new press acts */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));     /* moves repeat */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));        /* back to the island */
+  spin(50);
+
   /* The toast: the shared TV toast, shown and resting on the 56 line. */
   LumaToast *toast = luma_toast_show(page, "Type the password", "error");
   spin(400);

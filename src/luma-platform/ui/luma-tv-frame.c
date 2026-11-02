@@ -1420,8 +1420,39 @@ static void probe_painted(GdkFrameClock *clock, TvFrame *f) {
   memset(probe_phase, 0, sizeof probe_phase);
 }
 
+/* Key repeat (the TV rule): a held key repeats only as moves (arrows; a focused slider's Left and
+ * Right). OK, Back and Menu act once per press: a repeat belongs to the press that started it and
+ * never activates what that press opened or toggles a switch again. Typing in a field repeats as
+ * typing does. A press long after the key's last event (its release lost) counts as new. */
+static GHashTable *held_keys(TvFrame *f) {
+  GHashTable *held = g_object_get_data(G_OBJECT(f->window), "luma-tv-held-keys");
+  if (held == NULL) {
+    held = g_hash_table_new(g_direct_hash, g_direct_equal);
+    g_object_set_data_full(G_OBJECT(f->window), "luma-tv-held-keys", held, (GDestroyNotify)g_hash_table_unref);
+  }
+  return held;
+}
+
+static gboolean repeat_guarded(guint key) {
+  return is_ok(key) || is_back(key) || key == GDK_KEY_Menu;
+}
+
+static gboolean repeated(TvFrame *f, guint key) {
+  if (!repeat_guarded(key) || editable(focus_of(f)))
+    return FALSE;
+  GHashTable *held = held_keys(f);
+  gint64 now = g_get_monotonic_time();
+  gpointer last = NULL;
+  gboolean seen = g_hash_table_lookup_extended(held, GUINT_TO_POINTER(key), NULL, &last);
+  /* timestamps in milliseconds fit a pointer on every target */
+  g_hash_table_insert(held, GUINT_TO_POINTER(key), GSIZE_TO_POINTER((gsize)(now / 1000)));
+  return seen && now / 1000 - (gint64)GPOINTER_TO_SIZE(last) < 800;
+}
+
 static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
+  if (f->active && repeated(f, key))
+    return GDK_EVENT_STOP;
   gboolean probe = g_getenv("LUMA_TV_DEBUG") != NULL && f->active;
   gint64 start = probe ? g_get_monotonic_time() : 0;
   f->keying++;
@@ -1447,6 +1478,8 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
  * focus moved): the release does nothing, so one OK never acts twice (a switch beside a row). */
 static gboolean key_released(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code; (void)state;
+  if (f->active)
+    g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(key)); /* the next press is a new one */
   if (!f->active || !is_ok(key))
     return GDK_EVENT_PROPAGATE;
   GtkWidget *focus = focus_of(f);
@@ -1680,6 +1713,14 @@ void luma_tv_frame_set_active(GtkWindow *window, gboolean tv) {
 }
 
 gboolean luma_tv_frame_key(GtkWindow *window, guint keyval) {
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  gboolean handled = f != NULL && key_pressed(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
+  if (f != NULL && f->active) /* one whole press: the key is let go again */
+    g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(keyval));
+  return handled;
+}
+
+gboolean luma_tv_frame_key_held(GtkWindow *window, guint keyval) {
   TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
   return f != NULL && key_pressed(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
 }
