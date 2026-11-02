@@ -44,6 +44,12 @@ from .weather_parts import day_rows, glyph, hour_strip, label  # noqa: E402,F401
 WIDGET_NAMES = ('wx-sidebar', 'wx-foot', 'wx-search', 'wx-island', 'wx-sky', 'wx-hero', 'wx-hours', 'wx-grid', 'wx-days')
 
 
+def _tv_view(window):
+    """The TV presentation while it is showing (TV posture), else None."""
+    view = getattr(window, 'tv_view', None)
+    return view if view is not None and view.get_visible() else None
+
+
 class WeatherWindow(AppWindow):
     def __init__(self, application):
         self.fixture = fixture_from_environment()
@@ -143,6 +149,11 @@ class WeatherWindow(AppWindow):
         self.host = ToastHost(self.island)
         body.append(self.host)
         self.set_body(body)
+        # TV posture shows the TV presentation (weather_tv) in place of this body:
+        # same places, snapshots and refresh. Built the first time TV is on.
+        self._desktop_body = body
+        self.tv_view = None
+        self.connect('notify::tv-posture', lambda *_a: self._apply_tv())
         # The phone's bar (v71 #wx-phbar): how you look, Alerts and Places. Hidden on a computer.
         self.center = ActionCenter()
         self.center.set_name('wx-phone-bar')
@@ -199,6 +210,7 @@ class WeatherWindow(AppWindow):
         phone.connect('unapply', lambda _b: self._set_phone(False))
         self.add_breakpoint(phone)
         self.connect('close-request', self._close)
+        self._apply_tv()
         self._reload()
 
         if not self.fixture:
@@ -323,6 +335,9 @@ class WeatherWindow(AppWindow):
             return
         self._removed = (index, removed, sample)
         self._rebuild_rows_keeping_selection()
+        if _tv_view(self) is not None:
+            _tv_view(self).toast(f'Removed {removed.name}', lead='map-pin')
+            return
         where = self if self.get_width() <= lumaui_tokens.PHONE_MAX_WIDTH else self.host
         Toast.show(where, f'Removed {removed.name}', kind='place', undo=self.undo_removal)
 
@@ -351,6 +366,9 @@ class WeatherWindow(AppWindow):
             self._reload()
 
     def _toast(self, message, *, kind):
+        if _tv_view(self) is not None:
+            _tv_view(self).toast(message, lead='map-pin' if kind == 'place' else 'circle-alert')
+            return None
         where = self if self.get_width() <= lumaui_tokens.PHONE_MAX_WIDTH else self.host
         return Toast.show(where, message, kind=kind)
 
@@ -631,10 +649,28 @@ class WeatherWindow(AppWindow):
         while child := box.get_first_child():
             box.remove(child)
 
+    def _apply_tv(self):
+        """Show the TV presentation in TV posture, the desktop/tablet/phone body otherwise."""
+        tv = bool(self.tv_posture)
+        if tv and self.tv_view is None:
+            from .weather_tv import WeatherTV
+            self.tv_view = WeatherTV(self)
+            self.tv_view.set_hexpand(True)
+            self.tv_view.set_vexpand(True)
+            self._desktop_body.get_parent().append(self.tv_view)
+        if self.tv_view is None:
+            return
+        self.tv_view.set_visible(tv)
+        self._desktop_body.set_visible(not tv)
+        self._render()
+
     def _render(self, message=None):
         # Older standalone AppKit runtimes retain their normal status style.
         if hasattr(self, 'set_status_bar_style'):
             self.set_status_bar_style('light' if self.places else 'auto')
+        if _tv_view(self) is not None:
+            self.tv_view.render()
+            return
         self._clear(self.page)
         self._radar = None
         self.detail_stack.set_visible_child_name('forecast' if self.places else 'empty')

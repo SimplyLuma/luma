@@ -173,7 +173,6 @@ class TideTV:
         self.bar = TvTopBar()
         self.tabs = [TvTab(title, icon=icon) for _key, title, icon in PLACES]
         self.bar.set_tabs(self.tabs)
-        self.bar.track.set_hexpand(False)  # the track keeps its natural width, as on the TV home
         self.pill = TvNowPlayingPill()
         self.bar.end.prepend(self.pill)
         self.stage.place(self.bar, **TvTopBar.PIN)
@@ -672,7 +671,7 @@ class TideTV:
             head.append(_label(note, "tide-tv-note", wrap=True, lines=3))
         acts = _box(False, "tide-tv-acts")
         ids = [s.id for _a, s in songs]
-        play = TvButton("Play", icon="play")
+        play = TvButton("Play", icon="play", accent=True)
         play.add_css_class("tide-tv-play")
         acts.append(self._add(play, "playall", lambda: self.play_ids(ids), first=True))
         acts.append(self._add(TvButton("Shuffle", icon="shuffle"), "shuffleall",

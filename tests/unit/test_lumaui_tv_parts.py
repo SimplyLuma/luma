@@ -76,13 +76,15 @@ class Spatial(unittest.TestCase):
 
 @unittest.skipUnless(HAS_DISPLAY, "needs a display")
 class Widgets(unittest.TestCase):
-    def test_open_tab_is_the_key_until_another_tab_has_the_focus(self):
+    def test_exactly_one_bright_thing_in_the_bar(self):
         from luma_appkit.tv_parts import TvTab, TvTopBar
         bar = TvTopBar(clock=False)
         tabs = [TvTab("Oakland", icon="navigation"), TvTab("Lisbon"), TvTab("", icon="plus", accessible="Add a place")]
         bar.set_tabs(tabs)
         bar.set_open(0)
-        self.assertTrue(tabs[0].has_css_class("tv-key"))
+        self.assertTrue(tabs[0].has_css_class("tv-chip"))          # focus in the page: the open tab is a chip
+        self.assertFalse(any(t.has_css_class("tv-key") for t in tabs))
+        self.assertTrue(bar.track.get_hexpand() is False or not bar.track.compute_expand(Gtk.Orientation.HORIZONTAL))
         tabs[2].set_tv_focus(True)
         self.assertTrue(tabs[0].has_css_class("tv-chip"))
         self.assertTrue(tabs[2].has_css_class("tv-key"))
@@ -90,6 +92,29 @@ class Widgets(unittest.TestCase):
         tabs[0].set_tv_focus(True)
         self.assertTrue(tabs[0].has_css_class("tv-key"))
         self.assertFalse(tabs[0].has_css_class("tv-chip"))
+
+    def test_accent_button(self):
+        from luma_appkit.tv_parts import TvButton
+        play = TvButton("Play", icon="play", accent=True)
+        self.assertTrue(play.has_css_class("tv-accent") and not play.has_css_class("tv-chip"))
+        play.set_tv_focus(True)
+        self.assertTrue(play.has_css_class("tv-key") and play.has_css_class("tv-accent"))
+        play.set_tv_focus(False)
+        self.assertFalse(play.has_css_class("tv-chip"))
+
+    def test_idle_ignores_motion_in_place(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_idle import TvIdle
+        from luma_appkit.tv_stage import TvStage
+        seen = []
+        idle = TvIdle(TvFocus(TvStage()), seconds=20, on_idle=lambda: seen.append("idle"),
+                      on_wake=lambda: seen.append("wake"))
+        idle.go_idle()
+        idle._moved(None, 500, 300)
+        idle._moved(None, 503, 301)          # relayout and jitter
+        self.assertTrue(idle.idle)
+        idle._moved(None, 600, 300)          # a real move
+        self.assertFalse(idle.idle)
 
     def test_focus_moves_in_a_window(self):
         from luma_appkit.tv_focus import TvFocus

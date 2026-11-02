@@ -505,6 +505,26 @@ class HourPoint:
 
 
 @dataclass(frozen=True)
+class TimelinePoint:
+    """One step of the provider's whole series, for presentations that walk
+    every day hour by hour (the TV band). `span_hours` is 1 while MET is
+    hourly and 6 after that; its symbol and precipitation cover the span.
+    Optional details are the provider's own per-step figures, kept missing
+    when it gives none."""
+    time: str
+    temperature_c: float
+    symbol: str
+    span_hours: int = 1
+    precipitation_probability: float | None = None
+    precipitation_mm: float | None = None
+    apparent_c: float | None = None
+    humidity: float | None = None
+    wind_mps: float | None = None
+    wind_degrees: float | None = None
+    uv_index: float | None = None
+
+
+@dataclass(frozen=True)
 class DayPoint:
     date: str
     symbol: str
@@ -539,9 +559,12 @@ class CityForecast:
     current: Current
     hours: tuple[HourPoint, ...] = ()
     days: tuple[DayPoint, ...] = ()
+    #: The whole series (TimelinePoint). Additive in the cache: readers that
+    #: predate it ignore the key, and a cache without it reads as empty.
+    timeline: tuple[TimelinePoint, ...] = ()
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "place": asdict(self.place),
             "fetched_at": self.fetched_at,
             "current": asdict(self.current),
@@ -549,6 +572,9 @@ class CityForecast:
             "days": [asdict(day) for day in self.days],
             "version": CACHE_VERSION,
         }
+        if self.timeline:
+            payload["timeline"] = [asdict(point) for point in self.timeline]
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict) -> "CityForecast":
@@ -558,6 +584,7 @@ class CityForecast:
             current=Current(**payload["current"]),
             hours=tuple(HourPoint(**hour) for hour in payload.get("hours", ())),
             days=tuple(DayPoint(**day) for day in payload.get("days", ())),
+            timeline=_timeline_from(payload.get("timeline", ())),
         )
 
     def age_seconds(self, now: datetime | None = None) -> float | None:
@@ -569,6 +596,20 @@ class CityForecast:
             return None
         reference = now or datetime.now(timezone.utc)
         return (reference - moment).total_seconds()
+
+
+_TIMELINE_FIELDS = frozenset(TimelinePoint.__dataclass_fields__)
+
+
+def _timeline_from(items) -> tuple[TimelinePoint, ...]:
+    """The optional series; fields a later writer adds are ignored, a bad entry is skipped."""
+    points = []
+    for item in items if isinstance(items, list) else ():
+        try:
+            points.append(TimelinePoint(**{k: v for k, v in item.items() if k in _TIMELINE_FIELDS}))
+        except (AttributeError, TypeError):
+            continue
+    return tuple(points)
 
 
 def parse_time(value: str) -> datetime | None:
