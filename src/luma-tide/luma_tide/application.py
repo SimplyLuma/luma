@@ -423,11 +423,12 @@ class TideApplication(Adw.Application):
         if source.kind == REMOTE_KIND:
             self.sync_remote(source, quiet=quiet)
             return
-        if self.window:
-            self.window.set_status(f"Scanning {source.name}…")
+        if self.window and not quiet:
+            self.window.set_status("Scanning your music…")
 
         def progress(done: int, total: int) -> None:
-            GLib.idle_add(self._scan_progress, source.name, done, total)
+            if not quiet:
+                GLib.idle_add(self._scan_progress, source.name, done, total)
 
         future = self.indexer.scan_async(
             source.id, progress, refresh_paths=refresh_paths or (), force=force
@@ -436,7 +437,7 @@ class TideApplication(Adw.Application):
 
     def _scan_progress(self, name: str, done: int, total: int) -> bool:
         if self.window:
-            self.window.set_status(f"Scanning {name} · {done:,} of {total:,}")
+            self.window.set_status("Scanning your music…", f"{done:,} of {total:,}" if total else "")
         return GLib.SOURCE_REMOVE
 
     def _scan_finished(self, source: Source, future) -> bool:
@@ -452,7 +453,8 @@ class TideApplication(Adw.Application):
             if result.failed:
                 self.notify_error(f"{result.failed} files in {source.name} could not be indexed.")
         if self.window:
-            self.window.set_status(None)
+            if self.window.status_showing and not self._syncing:
+                self.window.finish_status("Music is up to date.")
             self.window.refresh_library()
         self._rebuild_monitors()
         return GLib.SOURCE_REMOVE
@@ -500,7 +502,8 @@ class TideApplication(Adw.Application):
             return
         self._syncing.add(source.id)
         if self.window:
-            self.window.set_status(f"Connecting to {source.name}…")
+            if not quiet:
+                self.window.set_status(f"Connecting to {source.name}…")
             self.window._populate_sources()
 
         def progress(phase: str, done: int, total: int) -> None:
@@ -510,39 +513,46 @@ class TideApplication(Adw.Application):
                  lambda future: self._sync_finished(source, future, quiet))
 
     def _sync_progress(self, name: str, phase: str, done: int, total: int) -> bool:
+        # Real work only: a server with nothing new never reports progress, so no toast shows.
         if not self.window:
             return GLib.SOURCE_REMOVE
+        count = f"{done:,} of {total:,}" if total else ""
         if phase == "songs":
-            self.window.set_status(f"Syncing {name} · {done:,} of {total:,}")
+            self.window.set_status("Syncing music…", count)
             self.window.library_changed(throttle=True)
         else:
             if done == 0:
                 # Songs are in; let them appear while artwork arrives.
                 self.window.library_changed(throttle=True)
-            self.window.set_status(None if total and done >= total else
-                                   f"Fetching artwork from {name} · {done:,} of {total:,}")
+            if not total or done < total:
+                self.window.set_status("Syncing album art…", count)
         return GLib.SOURCE_REMOVE
 
     def _sync_finished(self, source: Source, future: concurrent.futures.Future, quiet: bool) -> None:
         self._syncing.discard(source.id)
+        problem = None
         try:
             future.result()
         except (concurrent.futures.CancelledError, Cancelled):
             pass  # removed, or Tide is quitting
         except Unreachable as error:
+            problem = f"Can’t reach {source.name}."
             if not quiet:
                 self.notify_error(f"{source.name} is out of reach. {error}")
         except (AuthenticationFailed, CredentialUnavailable) as error:
+            problem = f"Sign in to {source.name} again."
             # The library shows a Sign In banner; a notification is only for
             # something the person just asked for.
             if not quiet or not self.window:
                 self.notify_error(f"Sign in to {source.name} again. {error}")
         except SubsonicError as error:
+            problem = f"Couldn’t sync {source.name}."
             self.notify_error(f"Couldn’t sync {source.name}. {error}")
         except KeyError:
             pass  # removed while it synced
         except Exception:
             log.exception("Syncing remote source %s failed", source.id)
+            problem = f"Couldn’t sync {source.name}."
             with contextlib.suppress(KeyError):
                 self.store.set_source_state(source.id, SourceState.ERROR)
             self.notify_error(f"Couldn’t sync {source.name}.")
@@ -550,8 +560,11 @@ class TideApplication(Adw.Application):
             self.controller.refresh_metadata()
         self.remote.pump_downloads(self._downloads_changed)
         if self.window:
-            self.window.set_status(None)
-            self.window.library_changed(soon=True)
+            if problem is not None:
+                self.window.finish_status(problem, kind="error")
+            elif not self._syncing:
+                self.window.finish_status("Music is up to date.")
+            self.window.library_changed()
 
     def _network_changed(self, _monitor: Gio.NetworkMonitor, _available: bool) -> None:
         if self._network_timer:

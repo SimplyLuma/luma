@@ -348,12 +348,28 @@ class TideWindow(AppWindow):
     def refresh_offline_state(self):
         self.refresh_library()
 
-    def set_status(self, value):
-        if self._status_toast is not None:
-            self._status_toast.dismiss()
-            self._status_toast = None
+    def set_status(self, value, count=''):
+        """The one progress toast (LumaUI's, in this posture's look): `value` and an
+        optional `count` while work runs; None takes it away."""
         if value:
-            self._status_toast = Toast.show(self.layer, value, busy=True)
+            if self._status_toast is None:
+                where = self.tv.stage if self.tv is not None else self.layer
+                self._status_toast = Toast.progress(where, value, count=count)
+            else:
+                self._status_toast.update(value, count=count)
+        elif self._status_toast is not None:
+            self._status_toast.finish()
+            self._status_toast = None
+
+    def finish_status(self, message, kind='done'):
+        """End a progress toast with how it went; nothing if none was showing."""
+        if self._status_toast is not None:
+            self._status_toast.finish(message, kind=kind)
+            self._status_toast = None
+
+    @property
+    def status_showing(self):
+        return self._status_toast is not None
 
     def show_view(self, view):
         if view == 'sources':
