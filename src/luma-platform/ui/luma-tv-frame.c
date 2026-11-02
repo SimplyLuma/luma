@@ -1135,7 +1135,8 @@ static void balance_words(GtkWidget *label, double measure, double size, int wei
   g_object_set_data(G_OBJECT(label), "luma-tv-balanced", GINT_TO_POINTER(1));
 }
 
-/* An icon (or a spinner) and words, side by side in a button: the mockup's .tv-btn, 12 apart. */
+/* An icon (or a spinner) then words, side by side in a button: the mockup's .tv-btn, 12 apart.
+ * Words then a mark (a choice's value over its drop arrow) keep their own gap. */
 static gboolean button_line(GtkWidget *button) {
   if (!GTK_IS_BUTTON(button) || gtk_widget_has_css_class(button, "lumaui-part-row")) return FALSE;
   GtkWidget *line = gtk_button_get_child(GTK_BUTTON(button));
@@ -1145,8 +1146,10 @@ static gboolean button_line(GtkWidget *button) {
   gboolean words = FALSE, mark = FALSE;
   for (GtkWidget *c = gtk_widget_get_first_child(line); c != NULL; c = gtk_widget_get_next_sibling(c)) {
     if (!gtk_widget_get_visible(c)) continue;
-    if (GTK_IS_LABEL(c)) words = TRUE;
-    else if (GTK_IS_IMAGE(c) || ADW_IS_SPINNER(c) || GTK_IS_SPINNER(c)) mark = TRUE;
+    if (GTK_IS_LABEL(c)) {
+      if (!mark) return FALSE;
+      words = TRUE;
+    } else if (GTK_IS_IMAGE(c) || ADW_IS_SPINNER(c) || GTK_IS_SPINNER(c)) mark = TRUE;
     else return FALSE;
   }
   return words && mark;
