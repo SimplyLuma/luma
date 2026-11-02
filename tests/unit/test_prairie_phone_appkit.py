@@ -78,6 +78,29 @@ class PhoneAppKitContractTests(unittest.TestCase):
         self.assertNotIn("cairo", source.casefold())
         self.assertIn("icons.image(", source)
 
+    def test_shell_takes_the_screen_for_a_ringing_call(self):
+        takeover = (ROOT / "src/luma-shell-presentation/incomingCall.js").read_text(encoding="utf-8")
+        # Built from the same incoming-call contract the notification list uses.
+        self.assertIn("MessageList.isIncomingCallNotification(notification)", takeover)
+        self.assertIn("Main.layoutManager.modalDialogGroup", takeover)
+        self.assertIn("Shell.ActionMode.LOCK_SCREEN", takeover)
+        self.assertIn("'PowerSaveMode', new GLib.Variant('i', 0)", takeover)
+        self.assertIn("new CallTakeover(this)", (ROOT / "src/luma-shell-presentation/presentation.js").read_text(encoding="utf-8"))
+        self.assertIn("incomingCall.js", (ROOT / "scripts/packages/build-gnome-shell.sh").read_text(encoding="utf-8"))
+        for patch in ("0000-luma-fedora-spec.patch", "0292-display-exclusions-and-notification-touch.patch"):
+            self.assertIn("incomingCall.js", (ROOT / "patches/gnome-shell" / patch).read_text(encoding="utf-8"))
+
+    def test_daemon_logs_every_call_across_modem_restarts(self):
+        daemon = DAEMON.read_text(encoding="utf-8")
+        # Modem call ids restart with ModemManager; the log key carries the start.
+        self.assertIn('uid = f"{call_id}@{started}"', daemon)
+        # Logged when the call appears, settled when it ends.
+        self.assertIn("self._store.add(number, direction=direction, started=started,", daemon)
+        self.assertIn("self._store.finish(uid, duration=duration, outcome=outcome)", daemon)
+        # A vanished IMS service ends its calls instead of dropping them.
+        owner = daemon[daemon.index("def _owner_changed"):daemon.index("def close")]
+        self.assertLess(owner.index("self._on_ended(call_id)"), owner.index("self._calls.clear()"))
+
     def test_call_surface_leases_immersive_shell_edges(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         system = SYSTEM.read_text(encoding="utf-8")
@@ -119,7 +142,8 @@ class PhoneAppKitContractTests(unittest.TestCase):
         self.assertIn('"answer", "Answer"', source)
         self.assertIn('"decline", "Decline"', source)
         self.assertIn('"resident": GLib.Variant("b", True)', source)
-        self.assertIn("if not self._incoming_locked:", daemon)
+        # GNOME Shell has no layer-shell: the shell owns the locked call surface.
+        self.assertIn("if not self._incoming_locked or Gtk4LayerShell is None:", daemon)
         self.assertIn("self._show_incoming_surface()", daemon)
         self.assertIn("lockscreen_identity_visible()", daemon)
         self.assertIn('"Unlock to view"', daemon)
