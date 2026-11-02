@@ -37,7 +37,7 @@ from luma_keyring import autounlock, first_unlock  # noqa: E402
 from luma_keyring.first_unlock import Kind  # noqa: E402
 from luma_keyring.prompt_gate import PROMPTER_NAME, PromptGate  # noqa: E402
 from luma_keyring.secrets import Keyring  # noqa: E402
-from luma_keyring.sheet import FIRST_LINE, FIRST_TITLE, UnlockSheet, Use  # noqa: E402
+from luma_keyring.sheet import FIRST_LINE, FIRST_TITLE, Posture, UnlockSheet, Use  # noqa: E402
 
 PASSWORD = "first-unlock-smoke"
 SHOTS = os.environ.get("LUMA_KEYRING_SHOTS")
@@ -107,6 +107,29 @@ def shot(window: Gtk.Window, name: str) -> None:
     texture.save_to_png(str(Path(SHOTS) / f"{name}.png"))
 
 
+def tv_sizes(sheet) -> None:
+    """In TV posture the sheet is drawn in TV units: the real sizes, at this screen's unit."""
+    view = sheet.view
+    spin(lambda: view.sheet.get_width() > 0, 5)
+    unit = view.unit
+    def drawn(widget, axis):
+        # As drawn: the border box (get_width() is the content box, inside the CSS padding).
+        ok, box = widget.compute_bounds(view)
+        return (box.get_width() if axis == "w" else box.get_height()) if ok else -1
+
+    expected = {"sheet width": (drawn(view.sheet, "w"), 860), "field height": (drawn(view.field, "h"), 76),
+                "switch row height": (drawn(view.switch_row, "h"), 84),
+                "switch": (drawn(view.switch_row.switch, "w"), 72),
+                "Unlock height": (drawn(view.primary, "h"), 76), "Cancel height": (drawn(view.cancel, "h"), 76)}
+    for name, (actual, units) in expected.items():
+        check(f"TV: {name} is {units} units", abs(actual - units * unit) <= 2,
+              f"{actual} px at unit {unit:.3f} (want {units * unit:.1f})")
+    ok, box = view.sheet.compute_bounds(view)
+    centre = box.get_x() + box.get_width() / 2 if ok else -1
+    check("TV: the sheet is centred", ok and abs(centre - view.get_width() / 2) <= 2, f"{centre}")
+    check("TV: the field takes the remote's focus first", view.focus.focused is view.field.text)
+
+
 def seal(key, user=None):
     if os.environ.get("LUMA_KEYRING_REAL_SEAL"):
         return autounlock.seal_key(key)
@@ -149,26 +172,28 @@ def main() -> int:
                             password, automatic, keyring, seal=seal,
                             verify=lambda candidate: candidate == PASSWORD),
                         on_done=done.append)
+    if sheet.presentation is Posture.TV:
+        sheet.set_default_size(1920, 1080)  # a TV's screen; no window manager here to maximise it
     sheet.present()
     spin(lambda: sheet.get_mapped(), 5)
-    check("title, line and switch say what Nick's design says",
-          sheet.title_label.label.get_label() == FIRST_TITLE
-          and sheet.line.label.get_label() == FIRST_LINE
-          and sheet.switch.get_active()
-          and sheet.switch_label.label.get_label().startswith("Unlock automatically on this "),
-          sheet.switch_label.label.get_label())
+    title, line, switch_label = sheet.view.texts()
+    check("title, line and switch say what the design says",
+          title == FIRST_TITLE and line == FIRST_LINE and sheet.view.automatic
+          and switch_label.startswith("Unlock automatically on this "), switch_label)
+    if sheet.presentation is Posture.TV:
+        tv_sizes(sheet)
     shot(sheet, "1-sheet")
 
-    sheet.field.text = "not-the-password"
+    sheet.password = "not-the-password"
     sheet._on_primary()
-    spin(lambda: not sheet._busy and sheet.message.get_visible(), 15)
+    spin(lambda: not sheet.busy and bool(sheet.view.message_text()), 15)
     check("a wrong password stays on the sheet with an error",
-          not done and sheet.message.label.has_css_class("error") and keyring.collection().locked,
-          sheet.message.label.get_label())
-    check("the field is cleared after an answer", sheet.field.text == "")
+          not done and sheet.view.message_is_error() and keyring.collection().locked,
+          sheet.view.message_text())
+    check("the field is cleared after an answer", sheet.password == "")
     shot(sheet, "2-wrong")
 
-    sheet.field.text = PASSWORD
+    sheet.password = PASSWORD
     sheet._on_primary()
     spin(lambda: bool(done), 30)
     result = done[0] if done else None
@@ -202,19 +227,20 @@ def main() -> int:
           and autounlock.credential_path().read_bytes() == cred, repr(after))
 
     manage = UnlockSheet(app, Use.MANAGE, keyring, autologin=True)
+    if manage.presentation is Posture.TV:
+        manage.set_default_size(1920, 1080)
     manage.present()
     spin(lambda: manage.get_mapped(), 5)
     check("the keyring's page shows automatic unlock on",
-          manage.switch.get_active() and manage.switch_row.get_visible()
-          and not manage.field.get_visible())
+          manage.view.automatic and manage.view.shown()["switch"] and not manage.view.shown()["field"])
     shot(manage, "3-manage")
-    manage.switch.set_active(False)
-    spin(lambda: manage.field.get_visible(), 2)
-    check("turning it off asks for the password", manage.field.get_visible()
-          and manage.primary.label_widget.get_label() == "Turn Off")
+    manage.view.toggle()
+    spin(lambda: manage.view.shown()["field"], 2)
+    check("turning it off asks for the password", manage.view.shown()["field"]
+          and manage.view.shown()["primary"] == "Turn Off")
     shot(manage, "4-manage-off")
     manage._on_cancel()
-    check("cancel puts the switch back", manage.switch.get_active() and not manage.field.get_visible())
+    check("cancel puts the switch back", manage.view.automatic and not manage.view.shown()["field"])
     manage.close()
 
     shell.terminate()

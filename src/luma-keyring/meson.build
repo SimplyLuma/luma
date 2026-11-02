@@ -19,6 +19,7 @@ python.install_sources(
   'luma_keyring/secrets.py',
   'luma_keyring/service.py',
   'luma_keyring/sheet.py',
+  'luma_keyring/sheet_tv.py',
   'luma_keyring/state.py',
   'luma_keyring/window.py',
   subdir: 'luma_keyring',
