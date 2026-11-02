@@ -203,6 +203,36 @@ def _catalogue_entries(_stamp: int):
         return {}
 
 
+@lru_cache(maxsize=1)
+def _seed_keywords() -> dict[str, tuple[str, ...]]:
+    """The shipped catalogue's keywords (the names people arrive with), by catalogue and app id.
+
+    A downloaded catalogue from before schema 4's `keywords` carries none; search still knows
+    "iTunes" for Tide from the copy this package shipped. Words only: nothing else is taken."""
+    try:
+        from luma_installer.depot_catalog import seed_catalog
+        entries = seed_catalog().applications
+    except Exception:  # noqa: BLE001 - no seed: the catalogue's and the apps' own words decide
+        return {}
+    found: dict[str, tuple[str, ...]] = {}
+    for entry in entries:
+        words = tuple(getattr(entry, "keywords", ()) or ())
+        if words:
+            found["catalog:" + entry.id] = words
+            if getattr(entry, "app_id", ""):
+                found.setdefault(entry.app_id, words)
+    return found
+
+
+def seed_keywords(app, info: Gio.DesktopAppInfo | None = None) -> tuple[str, ...]:
+    known = _seed_keywords()
+    for key in (getattr(app, "app_id", ""), component_id(app),
+                info.get_id().removesuffix(".desktop") if info is not None and info.get_id() else ""):
+        if key and key in known:
+            return known[key]
+    return ()
+
+
 def catalogue_entry(app):
     try:
         from luma_installer.depot_catalog import cache_path
@@ -233,7 +263,7 @@ def tv_app(app, *, record=None) -> TvApp | None:
     facts = resolve(getattr(entry, "tv", None), info, meta)
     if facts is None or not facts.runs:
         return None
-    keywords = list(getattr(entry, "keywords", ()) or ()) + list(meta.keywords)
+    keywords = list(getattr(entry, "keywords", ()) or seed_keywords(app, info)) + list(meta.keywords)
     if info is not None:
         keywords += list(info.get_keywords() or ())
     categories = set(meta.categories)

@@ -117,6 +117,25 @@ class CatalogueFields(unittest.TestCase):
                         "no catalogue entry offers a download on a TV yet")
 
 
+class SeedKeywords(unittest.TestCase):
+    def test_the_shipped_seed_names_tide_by_catalogue_and_app_id(self):
+        from unittest import mock
+        seed = REPO_ROOT / "src/luma-installer/data/depot-catalog-4.json"
+        patch = mock.patch.object(depot_catalog, "SEED_PATH", seed)
+        patch.start()
+        self.addCleanup(patch.stop)
+        tv_facts._seed_keywords.cache_clear()
+        self.addCleanup(tv_facts._seed_keywords.cache_clear)
+
+        class App:
+            app_id, flatpak_id = "org.projectluma.Tide.desktop", ""
+        self.assertIn("iTunes", tv_facts.seed_keywords(App()))
+        App.app_id = "catalog:tide"
+        self.assertIn("iTunes", tv_facts.seed_keywords(App()))
+        App.app_id = "catalog:not-in-the-seed"
+        self.assertEqual(tv_facts.seed_keywords(App()), ())
+
+
 class Search(unittest.TestCase):
     def item(self, name, summary="", keywords=()):
         from luma_depot.providers import App
