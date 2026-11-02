@@ -59,7 +59,8 @@
    "GSETTINGS_BACKEND": "memory",
    "XDG_CURRENT_DESKTOP": "GNOME",
    "LUMA_POSTURE": "tv",
-   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/prism.png'\"]]"
+   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/prism.png'\"]]",
+   "LUMAUI_CONFORM_IGNORE_FADE": "1"
   },
   "app_id": "org.luma.Settings.Fixture",
   "binary": "bin/gnome-control-center",
@@ -400,7 +401,7 @@
     },
     {
      "key": "Down",
-     "wait": 400
+     "wait": 900
     },
     {
      "key": "Return",
@@ -520,7 +521,7 @@
     },
     {
      "key": "Down",
-     "wait": 400
+     "wait": 900
     },
     {
      "key": "Return",

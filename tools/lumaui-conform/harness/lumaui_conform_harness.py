@@ -906,7 +906,10 @@ class Capture:
                 elif mask is not None and mask.get_node_type().value_nick == "linear-gradient-node":
                     # A content mask (the scroll fade, v70 .is-scrolled): what shows of each part is
                     # its opacity times the mask's alpha at its centre.
-                    self._apply_fade(ops[first:], mask, mapper)
+                    # LUMAUI_CONFORM_IGNORE_FADE=1: a mockup whose page fade is a CSS mask (which the
+                    # spec's sampled colours never see) is compared without it on this side too.
+                    if os.environ.get("LUMAUI_CONFORM_IGNORE_FADE") != "1":
+                        self._apply_fade(ops[first:], mask, mapper)
         elif kind == "shadow":
             child(node.get_child())
         elif kind == "cross-fade":
