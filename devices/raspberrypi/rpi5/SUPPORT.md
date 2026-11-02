@@ -83,3 +83,28 @@ hardware path either way.
 | Bluetooth `.hcd` (BCM4345C0/C5, BCM43430A1/B0, BCM4343A2) | RPi-Distro/bluez-firmware `pios/trixie` cdf61dc | LICENCE.cypress (`LICENSES/LicenseRef-Cypress-Wireless-Firmware.txt`) | yes: object-code redistribution for use with Cypress chips; Raspberry Pi states the files are released for redistribution under that licence (Phil Elwell, 2021-09-06, in the repo's debian/copyright); Debian and Ubuntu ship them |
 | Board firmware, bootloader | Pi 5 EEPROM (on the board) | Raspberry Pi | not shipped by Luma |
 | U-Boot | Fedora uboot-images-armv8 | GPL-2.0-or-later | yes |
+
+## Boot chain with the Luma Pi kernel
+
+The plan for the preinstalled card; each step is marked as it is proved on hardware.
+
+1. The card's FAT partition holds the board firmware's inputs from
+   `kernel-luma-rpi`: `dtb/broadcom/*.dtb` at the FAT root and
+   `dtb/overlays/*` in `overlays/`, with `config.txt` carrying
+   `dtoverlay=vc4-kms-v3d-pi5,cma-256` and any user `dtoverlay=`/`dtparam=`
+   lines. The firmware applies them and fills in MAC, Bluetooth address,
+   serial and memory as on Raspberry Pi OS.
+2. No `dtb/` directory on the FAT: U-Boot then hands the firmware's tree to
+   GRUB unchanged (its own control tree on this board), and GRUB to Linux.
+   GRUB, BLS entries, ostree deployments, greenboot and rollback stay as they
+   are.
+3. A service in luma-rpi5-platform copies the booted kernel's DTBs and
+   overlays to the FAT after a successful boot (greenboot), so a kernel update
+   brings its trees; Raspberry Pi keeps trees and overlays compatible within a
+   series, so a rollback boots with the newer trees.
+4. The installer card keeps Fedora's kernel and its `dtb/` directory; the
+   Raspberry Pi trees are not used with Fedora's kernel (USB and Ethernet on
+   RP1 fail, and the firmware-tree boot hung on 2026-11-02).
+5. luma-rpi5-kmod and the card's HDMI-audio fragments are retired once the
+   preinstalled card boots `kernel-luma-rpi`: the Raspberry Pi tree has the
+   BCM2712 DMA engine and the trees describe it.
