@@ -17,6 +17,7 @@ window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-de
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
+native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
@@ -51,6 +52,7 @@ desktop_canvas_patch="$repo_root/patches/android-hardware-waydroid/0020-luma-log
 handheld_fill_patch="$repo_root/patches/android-hardware-waydroid/0021-luma-handheld-task-window-fill.patch"
 text_input_patch="$repo_root/patches/android-hardware-waydroid/0022-luma-host-text-input.patch"
 video_layer_patch="$repo_root/patches/android-hardware-waydroid/0023-luma-video-layer-conversion.patch"
+touch_density_patch="$repo_root/patches/android-hardware-waydroid/0024-luma-touch-presentation-density.patch"
 lineage_task_lifetime_patch="$repo_root/patches/android-lineage-sdk/0001-luma-authoritative-task-removal.patch"
 lineage_notification_patch="$repo_root/patches/android-lineage-sdk/0002-luma-notification-lifecycle.patch"
 lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platform-caller-admission.patch"
@@ -204,6 +206,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$hardware_root" apply "$handheld_fill_patch"
   git -C "$hardware_root" apply --binary "$text_input_patch"
   git -C "$hardware_root" apply "$video_layer_patch"
+  git -C "$hardware_root" apply "$touch_density_patch"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-clipboard-transfer.h" "$hardware_root/hwcomposer/luma-clipboard-transfer.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h" "$hardware_root/hwcomposer/luma-rgb-copy-bounds.h"
   cmp "$repo_root/patches/android-hardware-waydroid/native/luma-task-lifetime.h" "$hardware_root/hwcomposer/luma-task-lifetime.h"
@@ -229,6 +232,7 @@ if [ "$incremental" = 0 ]; then
   # inherited task ownership, child video surfaces can disappear when more
   # than one Android application is open.
   git -C "$source_root/frameworks/native" apply "$native_patch"
+  git -C "$source_root/frameworks/native" apply "$native_density_patch"
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$codec_patch"
   git -C "$device_root" apply "$input_method_patch"
