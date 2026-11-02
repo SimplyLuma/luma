@@ -147,6 +147,32 @@ def _session_identity() -> str | None:
     return f"{found['session']}/{found['container']}"
 
 
+# Luma's top bar is GNOME Shell's 34 px #panel (patches/gnome-shell/0002); its
+# handheld gesture strip is GESTURE_HEIGHT, 28 px, at the bottom edge.
+HOST_TOP_BAR_LOGICAL_PX = 34
+HOST_GESTURE_STRIP_LOGICAL_PX = 28
+
+
+def host_status_bar_px(runtime_device_class: str, display_scale: str,
+                       logical_px: int = HOST_TOP_BAR_LOGICAL_PX) -> int:
+    """Return the physical height of a Luma bar over Android task windows.
+
+    Touch presentations place each Android task under the host top bar and
+    gesture strip, so Android reserves these heights as its status and
+    navigation bar insets. Desktop task windows sit inside their own host
+    chrome and keep no inset.
+    """
+    if runtime_device_class == "desktop":
+        return 0
+    try:
+        scale = float(display_scale)
+    except ValueError:
+        scale = 1.0
+    if not 0 < scale < 16:
+        scale = 1.0
+    return round(logical_px * scale)
+
+
 def _ready_stamp_path() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
     return Path(runtime) / "luma-android" / "ready"
@@ -549,6 +575,7 @@ class WaydroidEngine:
             "false" if runtime_device_class == "handheld" else "true",
             timeout=30,
         )
+        self.sync_host_bar_insets(runtime_device_class)
         self.sync_host_appearance()
         # Android already exposes its soft keyboard alongside Waydroid's
         # virtual hardware keyboard on touch-first profiles. Only a desktop
@@ -572,6 +599,20 @@ class WaydroidEngine:
                 )
         _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window))
         return started_session
+
+    def sync_host_bar_insets(self, runtime_device_class: str) -> None:
+        # Android uses these as its status and navigation bar heights and keeps
+        # SystemUI's bars hidden (patches/android-frameworks-base/0002).
+        scale = self._run("prop", "get", "waydroid.display_scale",
+                          timeout=15, check=False).stdout.strip()
+        for prop, logical_px in (
+            ("persist.luma.status_bar_px", HOST_TOP_BAR_LOGICAL_PX),
+            ("persist.luma.nav_bar_px", HOST_GESTURE_STRIP_LOGICAL_PX),
+        ):
+            value = str(host_status_bar_px(runtime_device_class, scale, logical_px))
+            current = self._run("prop", "get", prop, timeout=15, check=False).stdout.strip()
+            if current != value:
+                self._run("prop", "set", prop, value, timeout=30)
 
     def sync_host_appearance(self, appearance: str | None = None) -> None:
         try:
