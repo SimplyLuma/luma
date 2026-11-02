@@ -88,14 +88,15 @@ class Card(unittest.TestCase):
         for line in ("kernel=u-boot.bin", "os_check=0", "arm_64bit=1"):
             self.assertIn(line, section)
 
-    def test_hdmi_audio_overlay_is_off_until_the_card_build_enables_it(self):
-        lines = (HERE / "card" / "config.txt").read_text().splitlines()
-        section = lines[lines.index("[pi5]"):lines.index("[all]")]
-        self.assertIn("#dtoverlay=luma-rpi5-hdmi-audio", section)
-        self.assertNotIn("dtoverlay=luma-rpi5-hdmi-audio", section)
+    def test_config_txt_has_no_firmware_overlays(self):
+        # Linux boots with the tree U-Boot loads from dtb/broadcom; firmware
+        # overlays never reach it.
+        active = [line for line in (HERE / "card" / "config.txt").read_text().splitlines()
+                  if not line.lstrip().startswith("#")]
+        self.assertFalse([line for line in active if line.startswith("dtoverlay")])
 
     def test_hdmi_audio_overlay_matches_the_bcm2712_dma_binding(self):
-        dts = (HERE / "card" / "overlays" / "luma-rpi5-hdmi-audio.dts").read_text()
+        dts = (HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio.dtso").read_text()
         self.assertIn('target-path = "/soc@107c000000";', dts)
         self.assertIn('compatible = "brcm,bcm2712-dma";', dts)
         self.assertIn("reg = <0x00010600 0x600>;", dts)
@@ -112,7 +113,7 @@ class Card(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
                 ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/o.dtbo",
-                 str(HERE / "card" / "overlays" / "luma-rpi5-hdmi-audio.dts")],
+                 str(HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio.dtso")],
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 

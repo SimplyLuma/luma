@@ -5,7 +5,9 @@
 #
 #   MBR, disk identifier 0x4c554d41
 #   p1  FAT32 "LUMA_PI5", 512 MiB at 1 MiB: config.txt, Fedora U-Boot, the
-#       installer kernel's upstream device trees (CMA 256 MiB), the ISO's GRUB
+#       installer kernel's upstream device trees (CMA 256 MiB; U-Boot's copies
+#       in dtb/broadcom carry HDMI audio when the payload has luma-rpi5-kmod),
+#       the ISO's GRUB
 #       as EFI/BOOT/BOOTAA64.EFI, the card menu (EFI/BOOT/grub.cfg, grubenv),
 #       the installer kernel and initramfs
 #   p2  the ISO, byte for byte
@@ -100,16 +102,20 @@ release=$(grep -oE 'usr/lib/modules/[^/]+/kernel/' "$work/stage2.lst" | sort -u 
 [ -n "$release" ] && [ "$(printf '%s\n' "$release" | wc -l)" = 1 ] || fail "installer runtime kernel is ambiguous: $release"
 echo "Installer kernel: $release"
 dtbs="usr/lib/modules/$release/dtb/broadcom"
+# Names U-Boot (rpi_arm64) asks for as fdtfile: Pi 5 C1, Pi 5 D0, Pi 500, CM5,
+# CM5 Lite. The Pi 5 pair is required; the others go on when the kernel has them.
+uboot_dtbs=()
+for name in bcm2712-rpi-5-b.dtb bcm2712-d-rpi-5-b.dtb bcm2712-rpi-500.dtb \
+            bcm2712-rpi-cm5-cm5io.dtb bcm2712-rpi-cm5l-cm5io.dtb; do
+  grep -q "/$dtbs/$name\$" "$work/stage2.lst" && uboot_dtbs+=("$name")
+done
 unsquashfs -no-progress -q -d "$work/stage2" "$work/iso/images/install.img" \
-  "$dtbs/bcm2712-rpi-5-b.dtb" "$dtbs/bcm2712-d-rpi-5-b.dtb" >/dev/null
-
-fat="$work/fat"
-mkdir -p "$fat/EFI/BOOT/fonts" "$fat/images/pxeboot"
-# Board firmware loads bcm2712-rpi-5-b.dtb on C1 and bcm2712d0-rpi-5-b.dtb on
-# D0; upstream calls the D0 tree bcm2712-d-rpi-5-b.dtb.
-install -m 0644 "$work/stage2/$dtbs/bcm2712-rpi-5-b.dtb" "$fat/bcm2712-rpi-5-b.dtb"
-install -m 0644 "$work/stage2/$dtbs/bcm2712-d-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"
-for dtb in "$fat/bcm2712-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"; do
+  "${uboot_dtbs[@]/#/$dtbs/}" >/dev/null
+for name in bcm2712-rpi-5-b.dtb bcm2712-d-rpi-5-b.dtb; do
+  [ -e "$work/stage2/$dtbs/$name" ] || fail "the installer kernel has no $name"
+done
+# 256 MB CMA in every tree, before any copy.
+for dtb in "${uboot_dtbs[@]/#/$work/stage2/$dtbs/}"; do
   node=/reserved-memory/linux,cma
   [ "$(fdtget "$dtb" "$node" compatible)" = shared-dma-pool ] || fail "$dtb: no CMA pool"
   [ "$(fdtget -t x "$dtb" "$node" alloc-ranges)" = "$cma_ranges" ] || fail "$dtb: unexpected CMA range"
@@ -117,6 +123,13 @@ for dtb in "$fat/bcm2712-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"; do
   fdtput -t x "$dtb" "$node" size $cma_size
   [ "$(fdtget -t x "$dtb" "$node" size)" = "$cma_size" ] || fail "$dtb: CMA size not applied"
 done
+
+fat="$work/fat"
+mkdir -p "$fat/EFI/BOOT/fonts" "$fat/images/pxeboot"
+# Board firmware loads bcm2712-rpi-5-b.dtb on C1 and bcm2712d0-rpi-5-b.dtb on
+# D0 (upstream calls the D0 tree bcm2712-d-rpi-5-b.dtb) and hands it to U-Boot.
+install -m 0644 "$work/stage2/$dtbs/bcm2712-rpi-5-b.dtb" "$fat/bcm2712-rpi-5-b.dtb"
+install -m 0644 "$work/stage2/$dtbs/bcm2712-d-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"
 
 # Display and USB modules the Pi needs in the installer runtime.
 mapfile -t modules < <(python3 "$repo_root/scripts/install/atlas-iso/prepare-lorax-boot.py" --list-arm-modules)
@@ -129,9 +142,8 @@ repo="$work/iso/luma/repo"
 ref=$(ostree --repo="$repo" refs | grep -vx ostree-metadata || true)
 [ -n "$ref" ] && [ "$(printf '%s\n' "$ref" | wc -l)" = 1 ] || fail "ISO payload ref is ambiguous: $ref"
 # HDMI audio needs luma-rpi5-kmod (bcm2712-dma and the BCM2712 vc4) for this
-# exact kernel. Enable the overlay only when the payload carries it: without
-# the DMA driver vc4 HDMI waits for the controller and never binds. The
-# installer gets the same modules through updates.img.
+# exact kernel; see the device trees below. The installer gets the same
+# modules through updates.img.
 hdmi_audio=no
 kmod_modules=(updates/luma-rpi5/bcm2712-dma.ko updates/luma-rpi5/vc4.ko)
 if ostree --repo="$repo" ls "$ref" "/usr/lib/modules/$release/${kmod_modules[0]}.xz" >/dev/null 2>&1; then
@@ -199,17 +211,28 @@ grub2-editenv "$fat/EFI/BOOT/grubenv" create
 install -m 0644 "$work/iso/images/pxeboot/vmlinuz" "$fat/images/pxeboot/vmlinuz"
 install -m 0644 "$work/iso/images/pxeboot/initrd.img" "$fat/images/pxeboot/initrd.img"
 install -m 0644 "$card_src/config.txt" "$fat/config.txt"
+# Linux gets U-Boot's tree: U-Boot loads dtb/<fdtfile> from the card and
+# applies its board fixups (MAC, serial). Without that file it falls back to
+# the firmware's tree, which the installed system does not boot with, so
+# firmware dtoverlay= lines never reach Linux. HDMI audio is merged into these
+# trees here, only when the payload carries luma-rpi5-kmod: without the DMA
+# driver vc4 HDMI waits for the controller and never binds.
+install -d "$fat/dtb/broadcom"
 if [ "$hdmi_audio" = yes ]; then
-  install -d "$fat/overlays"
-  dtc -q -@ -I dts -O dtb -o "$fat/overlays/luma-rpi5-hdmi-audio.dtbo" \
-    "$card_src/overlays/luma-rpi5-hdmi-audio.dts"
-  for dtb in "$fat/bcm2712-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"; do
-    fdtoverlay -i "$dtb" -o "$work/overlay-check.dtb" "$fat/overlays/luma-rpi5-hdmi-audio.dtbo" ||
-      fail "luma-rpi5-hdmi-audio does not apply to ${dtb##*/}"
-  done
-  sed -i 's|^#dtoverlay=luma-rpi5-hdmi-audio$|dtoverlay=luma-rpi5-hdmi-audio|' "$fat/config.txt"
-  grep -qx 'dtoverlay=luma-rpi5-hdmi-audio' "$fat/config.txt" || fail "config.txt: HDMI audio overlay line missing"
+  dtc -q -@ -I dts -O dtb -o "$work/luma-rpi5-hdmi-audio.dtbo" "$card_src/dtb/luma-rpi5-hdmi-audio.dtso"
 fi
+for name in "${uboot_dtbs[@]}"; do
+  dst="$fat/dtb/broadcom/$name"
+  if [ "$hdmi_audio" = yes ]; then
+    fdtoverlay -i "$work/stage2/$dtbs/$name" -o "$dst" "$work/luma-rpi5-hdmi-audio.dtbo" ||
+      fail "luma-rpi5-hdmi-audio does not apply to $name"
+    [ "$(fdtget "$dst" /soc@107c000000/dma@10600 compatible)" = brcm,bcm2712-dma ] ||
+      fail "$name: BCM2712 DMA controller missing after the merge"
+    chmod 0644 "$dst"
+  else
+    install -m 0644 "$work/stage2/$dtbs/$name" "$dst"
+  fi
+done
 sed -e "s|@ISO_NAME@|$iso_name|g" "$card_src/README.txt.in" >"$fat/README.txt"
 find "$fat" -exec touch -h -d "@$epoch" {} +
 

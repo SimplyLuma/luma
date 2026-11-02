@@ -37,7 +37,7 @@ the Fedora kernel %{kver}: bcm2712-dma, Raspberry Pi's BCM2712 DMA engine
 driver, and vc4 rebuilt from this kernel's own source with the BCM2712 HDMI
 audio address fix. The modules go to updates/, ahead of the in-tree vc4.
 They do nothing until the device tree describes the BCM2712 DMA controller,
-which the Luma Pi 5 SD card adds with the luma-rpi5-hdmi-audio overlay.
+which the Luma Pi 5 SD card's device trees carry (luma-rpi5-hdmi-audio).
 
 %prep
 %setup -q -n luma-rpi5-kmod

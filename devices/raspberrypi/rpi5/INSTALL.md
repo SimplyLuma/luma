@@ -13,7 +13,8 @@ into the card image:
 - Partition 1, FAT32 `LUMA_PI5`: `config.txt`, Fedora's U-Boot
   (`uboot-images-armv8`, `rpi_arm64/u-boot.bin`), the installer kernel's
   upstream device trees (`bcm2712-rpi-5-b.dtb` for C1, `bcm2712-d-rpi-5-b.dtb`
-  copied as `bcm2712d0-rpi-5-b.dtb` for D0) with a 256 MB CMA pool, the ISO's
+  copied as `bcm2712d0-rpi-5-b.dtb` for D0) with a 256 MB CMA pool, the same
+  trees under `dtb/broadcom/` for U-Boot (HDMI audio merged in), the ISO's
   GRUB as `EFI/BOOT/BOOTAA64.EFI`, the card menu, and the installer kernel.
 - Partition 2: the ISO, byte for byte.
 
@@ -45,7 +46,7 @@ because U-Boot stores them on the card and an entry would bypass the card menu.
 ## Known limits
 
 Bluetooth, fan control, the RTC and the power button do not work on the
-mainline kernel yet; HDMI audio needs `luma-rpi5-kmod` and the card overlay.
+mainline kernel yet; HDMI audio needs `luma-rpi5-kmod` and the card's merged device trees.
 See `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
 needs a TV input in HDMI 2.0 (enhanced) mode.
 

@@ -9,8 +9,8 @@ Compute Module 5) on Fedora's kernel, built for one kernel release at a time.
 | `vc4.ko` (in `updates/`) | the kernel's own `drivers/gpu/drm/vc4` plus one patch | The 40-bit engine maps slave addresses with `dma_map_resource()`, so on BCM2712 vc4 must hand it the physical `HDMI_MAI_DATA` address. Older SoCs keep the bus address. |
 
 Nothing changes until the device tree has the DMA controller and the HDMI
-`dmas` properties: the SD card's `luma-rpi5-hdmi-audio` overlay adds them
-(`src/luma-rpi5-platform/card/overlays/`).
+`dmas` properties: the SD card build merges `luma-rpi5-hdmi-audio`
+(`src/luma-rpi5-platform/card/dtb/`) into the trees U-Boot loads.
 
 Sources are not copied into Git. `scripts/devices/prepare-rpi5-kmod-source.sh`
 unpacks the Fedora SRPM of the kernel pinned in `config/kernel/rpi5-kmod.env`,

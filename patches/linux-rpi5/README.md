@@ -29,7 +29,7 @@ Upstream status (2026-11-02): the BCM2712 DMA series ("Add support for
 BCM2712 DMA engine", Andrea della Porta, Feb 2024; Dave Stevenson's rework)
 is not in mainline or linux-next. Drop 0001-0007 and the kmod's DMA module
 once the kernel ships a `brcm,bcm2712-dma` driver, and 0008 once vc4 passes
-physical addresses upstream; then the overlay's binding must match upstream's.
+physical addresses upstream; then the card fragment's binding must match upstream's.
 
 ## Follow-ups (not built yet)
 

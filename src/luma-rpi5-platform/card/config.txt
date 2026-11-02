@@ -17,9 +17,7 @@ hdmi_ignore_cec_init=1
 # so the installed system gets it without a kernel argument.
 # C1 boards load bcm2712-rpi-5-b.dtb, D0 boards bcm2712d0-rpi-5-b.dtb.
 os_check=0
-# HDMI audio: the BCM2712 DMA controller and the HDMI DMA requests. The card
-# build enables this line only when the installer's OS payload carries
-# luma-rpi5-kmod for its kernel (see overlays/luma-rpi5-hdmi-audio.dts).
-#dtoverlay=luma-rpi5-hdmi-audio
+# No dtoverlay= here: Linux gets the tree U-Boot loads from dtb/broadcom/, not
+# this one. HDMI audio is merged into those (dtb/luma-rpi5-hdmi-audio.dtso).
 
 [all]
