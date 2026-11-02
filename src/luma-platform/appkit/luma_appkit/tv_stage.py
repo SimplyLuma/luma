@@ -427,7 +427,9 @@ class TvRaster:
     Draw it with `append_texture` (linear when scaled up), not
     `append_scaled_texture`: GSK takes an opacity over a texture-scale node
     through an offscreen (with Vulkan a new full-size image every frame),
-    over a texture node it does not. Keep `key` to the inputs of the drawing. Holds the `size` most recent
+    over a texture node it does not. Pass `opaque=True` for content that
+    covers its rectangle, so GSK skips what lies beneath. Keep `key` to the
+    inputs of the drawing. Holds the `size` most recent
     textures; `clear()` them when the widget leaves its window.
     """
 
@@ -436,7 +438,8 @@ class TvRaster:
         self._textures: OrderedDict = OrderedDict()
 
     def get(self, widget: Gtk.Widget, key, width: float, height: float,
-            draw: Callable[[Gtk.Snapshot], None], *, scale: float = 1.0) -> Gdk.Texture | None:
+            draw: Callable[[Gtk.Snapshot], None], *, scale: float = 1.0,
+            opaque: bool = False) -> Gdk.Texture | None:
         texture = self._textures.get(key)
         if texture is not None:
             self._textures.move_to_end(key)
@@ -453,6 +456,13 @@ class TvRaster:
         if node is None:
             return None
         texture = renderer.render_texture(node, Graphene.Rect().init(0, 0, tw, th))
+        if opaque:
+            # An opaque format lets GSK skip whatever lies under the texture
+            # (a window's background gradient: ~100 ms a 4K frame on the Pi 5).
+            downloader = Gdk.TextureDownloader.new(texture)
+            downloader.set_format(Gdk.MemoryFormat.R8G8B8X8)
+            data, stride = downloader.download_bytes()
+            texture = Gdk.MemoryTexture.new(tw, th, Gdk.MemoryFormat.R8G8B8X8, data, stride)
         self._textures[key] = texture
         while len(self._textures) > self._size:
             self._textures.popitem(last=False)

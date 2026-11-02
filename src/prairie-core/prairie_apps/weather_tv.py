@@ -273,7 +273,7 @@ class TvSky(Gtk.Widget):
         key = ("light", w, h, self.stage.unit, sun_opacity,
                tuple(round(v, 4) for c in colours for v in (c.red, c.green, c.blue, c.alpha)))
         texture = self._raster.get(self, key, w, h, lambda s: self._paint_light(s, w, h, top, floor, sun_opacity),
-                                   scale=.125)
+                                   scale=.125, opaque=True)
         if opacity < 1:
             snapshot.push_opacity(opacity)
         if texture is None:
