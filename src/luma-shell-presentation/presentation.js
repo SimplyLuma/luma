@@ -1115,7 +1115,9 @@ export class Presentation {
         const count = favorites.length + 1;
         const compact = this._layout?.compact;
         const gap = compact ? 6 : Math.min(14, Math.max(0, (available - 44 * count) / (count + 1)));
-        const size = compact ? 44 : Math.min(60, Math.floor((available - gap * (count + 1)) / count));
+        // Dock icons match Home's icons; buttons shrink only when the row is full.
+        const iconSize = this._homeIconSize ?? 60;
+        const size = Math.min(compact ? iconSize + 4 : iconSize, Math.floor((available - gap * (count + 1)) / count));
         const width = count * size + (count + 1) * gap;
         const height = size + 2 * gap;
         const dock = new St.BoxLayout({style_class: 'luma-converged-dock',
@@ -1123,8 +1125,7 @@ export class Presentation {
             style: `padding: ${Math.max(0, gap - 1)}px; spacing: ${gap}px;`});
         for (const info of favorites) {
             const item = this._appButton(info, true);
-            // The compact dock keeps its 44 px buttons; Home icons may be larger.
-            item.get_child().get_first_child().icon_size = compact ? Math.min(this._homeIconSize, size - 4) : size;
+            item.get_child().get_first_child().icon_size = compact ? size - 4 : size;
             item.set_size(size * scale, size * scale);
             dock.add_child(item);
             if (draggable) this._tasks.attachDrag(item, info);

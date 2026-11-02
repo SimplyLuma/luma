@@ -308,7 +308,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1287:      0306-search-shared-surface-material.patch
 +Patch1288:      0303-mobile-data-quick-toggle.patch
 +Patch1289:      0307-dark-style-shared-appearance.patch
-+Patch1290:      0308-keycap-home-strip-and-dock-icon-size.patch
++Patch1290:      0308-keycap-leave-home-strip.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
