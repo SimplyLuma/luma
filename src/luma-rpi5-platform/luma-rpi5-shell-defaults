@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Compile the installed Shell state schema with the Raspberry Pi 5 defaults
+# into /run. The user environment generator points GSettings at it.
+set -eu
+schema=/usr/share/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml
+target=/run/luma-rpi5/schemas
+rm -rf "$target"
+[ -f "$schema" ] || exit 0
+mkdir -p "$target.new"
+cp "$schema" "$target.new/"
+cp /usr/share/luma-rpi5/rpi5.gschema.override "$target.new/90-luma-rpi5.gschema.override"
+# --strict refuses an override naming a key this Shell version lacks; then no
+# compiled file appears and the session keeps the stock defaults.
+if glib-compile-schemas --strict "$target.new"; then
+  mv "$target.new" "$target"
+else
+  rm -rf "$target.new"
+  exit 1
+fi

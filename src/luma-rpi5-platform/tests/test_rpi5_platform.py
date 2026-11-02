@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Static and runnable checks for luma-rpi5-platform and its SD card sources."""
+import configparser
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parents[1]
+SHELL_SCHEMA = HERE.parent / "luma-shell-state" / "org.project_luma.shell-state.gschema.xml"
+PI5 = ("raspberrypi,5-model-b", "raspberrypi,5-model-b-d0")
+
+
+def render(text, volid="Luma-Test-1", args="clk_ignore_unused pd_ignore_unused"):
+    return (text.replace("@ISO_VOLID@", volid).replace("@INSTALLER_ARGS@", args)
+            .replace("@ISO_NAME@", "test.iso"))
+
+
+class Platform(unittest.TestCase):
+    def test_v3d_rule_is_scoped_to_the_bcm2712_gpu_after_bind(self):
+        rule = (HERE / "70-luma-rpi5-v3d.rules").read_text()
+        active = [line for line in rule.splitlines() if line and not line.startswith("#")]
+        self.assertEqual(len(active), 1)
+        for needle in ('ACTION=="bind"', 'DRIVER=="v3d"', 'ENV{OF_COMPATIBLE_0}=="brcm,2712-v3d"',
+                       'ATTR{power/autosuspend_delay_ms}="2000"'):
+            self.assertIn(needle, active[0])
+
+    def test_shell_default_is_backdrop_blur_not_reduce_transparency(self):
+        override = configparser.ConfigParser()
+        override.read(HERE / "rpi5.gschema.override")
+        self.assertEqual(dict(override["org.project_luma.shell-state"]), {"backdrop-blur": "false"})
+
+    @unittest.skipUnless(SHELL_SCHEMA.is_file() and shutil.which("glib-compile-schemas"),
+                         "Shell state schema or glib-compile-schemas unavailable")
+    def test_override_compiles_strictly_against_the_shell_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shutil.copy(SHELL_SCHEMA, directory)
+            shutil.copy(HERE / "rpi5.gschema.override", Path(directory) / "90-luma-rpi5.gschema.override")
+            subprocess.run(["glib-compile-schemas", "--strict", directory], check=True)
+            self.assertTrue((Path(directory) / "gschemas.compiled").is_file())
+
+    def test_service_runs_only_on_pi5_boards(self):
+        unit = (HERE / "luma-rpi5-shell-defaults.service").read_text()
+        conditions = re.findall(r"^ConditionFirmware=(.*)$", unit, re.M)
+        self.assertEqual(conditions, [f"|device-tree-compatible({name})" for name in PI5])
+
+    def test_generator_is_silent_without_the_pi_schemas(self):
+        if Path("/run/luma-rpi5/schemas/gschemas.compiled").exists():
+            self.skipTest("running on a configured Pi 5")
+        result = subprocess.run([str(HERE / "62-luma-rpi5-schemas")], capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, "")
+
+    def test_boot_next_refuses_unknown_entries_before_touching_anything(self):
+        for argv in ([], ["installed-debug"], ["install", "extra"]):
+            result = subprocess.run([str(HERE / "luma-rpi5-boot-next"), *argv], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2, argv)
+
+
+class Card(unittest.TestCase):
+    def setUp(self):
+        self.grub = (HERE / "card" / "grub.cfg.in").read_text()
+
+    def test_config_txt_boots_u_boot_on_pi5(self):
+        lines = (HERE / "card" / "config.txt").read_text().splitlines()
+        section = lines[lines.index("[pi5]"):lines.index("[all]")]
+        for line in ("kernel=u-boot.bin", "os_check=0", "arm_64bit=1"):
+            self.assertIn(line, section)
+
+    def test_template_has_only_the_known_placeholders(self):
+        self.assertEqual(set(re.findall(r"@[A-Z_]+@", self.grub)), {"@ISO_VOLID@", "@INSTALLER_ARGS@", "@ISO_NAME@"})
+
+    def test_installer_entries_never_pass_console(self):
+        active = "\n".join(line for line in self.grub.splitlines() if not line.lstrip().startswith("#"))
+        self.assertNotIn("console=", active)
+        self.assertNotIn("inst.sshd", active)
+
+    def test_installed_entry_hands_off_without_naming_a_deployment(self):
+        entry = self.grub[self.grub.index("--id installed"):self.grub.index("--id install {")]
+        self.assertIn("source ($luma_esp)/EFI/fedora/bootuuid.cfg", entry)
+        self.assertIn("search --no-floppy --fs-uuid --set=boot $BOOT_UUID", entry)
+        self.assertIn("set prefix=($boot)/grub2", entry)
+        self.assertIn("configfile ($boot)/grub2/grub.cfg", entry)
+        for forbidden in ("/ostree/", "vmlinuz", "chainloader", "linux "):
+            self.assertNotIn(forbidden, entry)
+        self.assertNotRegex(self.grub, r"[0-9a-f]{8}-[0-9a-f]{4}-")
+
+    def test_one_shot_and_fallback(self):
+        self.assertIn('set default="installed"\n  set fallback="install"', self.grub)
+        self.assertIn("load_env -f ($luma_card)/EFI/BOOT/grubenv next_entry", self.grub)
+        self.assertIn('set fallback="$default"\n  set default="$next_entry"\n  set next_entry=\n'
+                      "  save_env -f ($luma_card)/EFI/BOOT/grubenv next_entry", self.grub)
+        self.assertIn("terminal_output gfxterm", self.grub)
+
+    @unittest.skipUnless(shutil.which("grub2-script-check"), "grub2-script-check unavailable")
+    def test_rendered_menu_is_valid_grub(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".cfg") as handle:
+            handle.write(render(self.grub))
+            handle.flush()
+            result = subprocess.run(["grub2-script-check", handle.name], capture_output=True, text=True)
+            output = (result.stdout + result.stderr).lower()
+            self.assertEqual(result.returncode, 0, output)
+            self.assertNotIn("error", output)
+
+
+if __name__ == "__main__":
+    unittest.main()

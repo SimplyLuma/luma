@@ -1,0 +1,6 @@
+# Raspberry Pi 5 Shell defaults. Compiled at boot into /run/luma-rpi5/schemas
+# by luma-rpi5-shell-defaults.service, on Pi 5 hardware only.
+# Mesa v3d converts the linear scanout to and from UIF tiles on the CPU, so a
+# live backdrop blur costs most of a frame. Surfaces keep their translucency.
+[org.project_luma.shell-state]
+backdrop-blur=false
