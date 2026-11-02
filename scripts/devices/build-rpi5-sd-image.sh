@@ -24,8 +24,9 @@
 # (scripts/install/atlas-iso/prepare-lorax-boot.py --list-arm-modules) get an
 # updates.img with those modules from the ISO's own OS payload.
 set -euo pipefail
-# FAT stores local times; build in UTC so the image does not depend on the host.
-export TZ=UTC
+# FAT stores local times and keeps directory entries in creation order: build
+# in UTC and copy in a fixed order so the image does not depend on the host.
+export TZ=UTC LC_ALL=C MTOOLS_SKIP_CHECK=1
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 card_src="$repo_root/src/luma-rpi5-platform/card"
@@ -61,7 +62,7 @@ done
 [ -n "$iso" ] && [ -n "$output" ] || usage
 [ "$(uname -s)" = Linux ] || fail "build the card image on Linux"
 [ "$(id -u)" = 0 ] || fail "run as root: the ISO is loop-mounted read-only"
-for tool in blkid cpio curl depmod fdtget fdtput fsck.fat grub2-editenv gzip mcopy mkfs.vfat \
+for tool in blkid cpio curl depmod fdtget fdtput fsck.fat grub2-editenv gzip mcopy mkfs.vfat mmd \
             mount ostree python3 rpm2cpio sfdisk sha256sum unsquashfs; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is missing: $tool"
 done
@@ -193,10 +194,14 @@ find "$fat" -exec touch -h -d "@$epoch" {} +
 fat_img="$work/p1.img"
 truncate -s "${fat_mib}M" "$fat_img"
 mkfs.vfat -F 32 -n "$fat_label" --invariant "$fat_img" >/dev/null
-(cd "$fat" && MTOOLS_SKIP_CHECK=1 mcopy -s -m -i "$fat_img" ./* ::/)
+(
+  cd "$fat"
+  find . -mindepth 1 -type d | sort | while read -r dir; do mmd -i "$fat_img" "::/${dir#./}"; done
+  find . -type f | sort | while read -r file; do mcopy -m -i "$fat_img" "$file" "::/${file#./}"; done
+)
 fsck.fat -n "$fat_img" >/dev/null || fail "partition 1 failed fsck"
 mkdir "$work/readback"
-MTOOLS_SKIP_CHECK=1 mcopy -s -m -n -i "$fat_img" '::/*' "$work/readback/"
+mcopy -s -m -n -i "$fat_img" '::/*' "$work/readback/"
 diff -r "$fat" "$work/readback" >/dev/null || fail "partition 1 does not read back as staged"
 
 # MBR: write the table on a sparse file of the full card size (sfdisk refuses
