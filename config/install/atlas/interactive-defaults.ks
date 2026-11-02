@@ -115,12 +115,14 @@ fi
 %end
 
 # With "Sign me in automatically", saved passwords unlock at each automatic
-# sign-in: the installed system's luma-keyring seals the password typed at the
-# Account step for the account (systemd-creds, bound to the TPM2 where there is
-# one), and the login keyring is made with that password at the first sign-in,
-# so the password still opens it anywhere. The password is only in the
-# installer's memory and is removed here whatever happens. Without a machine ID
-# or a luma-keyring that can seal, the first sign-in asks for it once instead.
+# sign-in: the installed system's luma-keyring makes a random keyring key for
+# the account, seals it (systemd-creds, bound to the TPM2 where there is one)
+# and wraps it with a key derived from the password typed at the Account step
+# (Argon2id), so the password still recovers it on other hardware. The login
+# keyring is made with the key at the first sign-in. The password itself is
+# only ever in the installer's memory and is removed here whatever happens.
+# Without a machine ID or a luma-keyring that can do this, the first sign-in
+# asks for it once instead.
 %post --nochroot --interpreter=/usr/bin/bash
 intent=/run/luma-atlas/keyring-enrol
 root=${ANA_INSTALL_PATH:-/mnt/sysroot}
@@ -131,12 +133,12 @@ if [ -s "$intent" ] && [ -n "$user" ]; then
     if ! grep -Eqx '[0-9a-f]{32}' "$root/etc/machine-id" 2>/dev/null; then
         echo "atlas: no machine ID yet; saved passwords are set up at the first sign-in"
     elif [ -z "$sealer" ]; then
-        echo "atlas: this system cannot seal the password; saved passwords are set up at the first sign-in"
+        echo "atlas: this system cannot enrol saved passwords; they are set up at the first sign-in"
     elif chroot "$root" /usr/libexec/luma-keyring --enrol "$user" < "$intent"; then
-        chroot "$root" /usr/bin/sh -c 'h=$(getent passwd "$1" | cut -d: -f6) && restorecon -RF "$h/.local"' sh "$user" 2>/dev/null || :
+        chroot "$root" /usr/bin/sh -c 'h=$(getent passwd "$1" | cut -d: -f6) && restorecon -RF "$h/.local/state"' sh "$user" 2>/dev/null || :
         echo "atlas: saved passwords of $user unlock at automatic sign-in"
     else
-        echo "atlas: the password was not sealed; saved passwords are set up at the first sign-in"
+        echo "atlas: saved passwords were not enrolled; they are set up at the first sign-in"
     fi
 fi
 if [ -e "$intent" ]; then shred -u "$intent" 2>/dev/null || rm -f "$intent"; fi

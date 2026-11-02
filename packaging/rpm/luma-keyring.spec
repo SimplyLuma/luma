@@ -15,6 +15,7 @@ BuildRequires:  meson >= 1.3
 BuildRequires:  ninja-build
 BuildRequires:  python3-devel >= 3.11
 BuildRequires:  python3-gobject-base
+BuildRequires:  python3-cryptography >= 44
 BuildRequires:  systemd-rpm-macros
 Requires:       python3 >= 3.11
 Requires:       python3-gobject
@@ -22,8 +23,10 @@ Requires:       libadwaita
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
 Requires:       pam
-# Seals the password of an account that signs in automatically.
+# Seals the keyring key of an account that signs in automatically, and wraps
+# it with Argon2id and AES-256-GCM for recovery.
 Requires:       systemd >= 256
+Requires:       python3-cryptography >= 44
 
 %description
 A login keyring whose password is no longer the account password cannot be
@@ -39,12 +42,13 @@ the old file in case they remember later. Doing nothing keeps the old
 behaviour.
 
 An account that signs in automatically types no password, so nothing could
-unlock its login keyring. Its keyring stays locked with the account password;
-the device keeps a copy of that password sealed with systemd-creds to the user
-and the machine (the TPM2 and the host key where there is a TPM2, the host key
-otherwise) and unlocks the keyring with it before the session starts. The
-installer seals it when automatic sign-in is chosen; otherwise the person is
-asked for it once.
+unlock its login keyring. Its keyring is locked with a random keyring key,
+kept sealed with systemd-creds for the user and the machine (the TPM2 and the
+host key where there is a TPM2, the host key otherwise) and wrapped with a key
+derived from the account password (Argon2id, AES-256-GCM) so the password
+recovers it on other hardware. The password itself is never stored. The
+installer enrols the account when automatic sign-in is chosen; otherwise the
+person is asked for the password once.
 
 luma-keyring --check prints the state for the capability and first-boot
 checks: a login keyring that cannot be unlocked automatically is a broken
@@ -97,9 +101,11 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %changelog
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
-- Unlock the login keyring of an automatic sign-in with the sealed account password
-- luma-keyring --enrol seals it for the installer
-- Ask once on devices set up earlier, or when the sealed copy stops working
+- Lock the login keyring of an automatic sign-in with a random key, sealed for
+  the device and wrapped with the account password for recovery
+- luma-keyring --enrol for the installer; ask once on devices set up earlier
+- Recover with the password when the seal stops opening; re-wrap after a
+  password change
 
 * Sun Sep 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - Say once, in plain words, when the login keyring cannot be unlocked at login

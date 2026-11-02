@@ -9,14 +9,18 @@ nothing to report, 1 when there is.
 `luma-keyring --autologin` is the session-start step (see autounlock): it
 always exits 0, so a keyring problem never holds up the session.
 
-`luma-keyring --enable-auto-unlock` reads the account password from
-standard input, inside the person's session, and does what the window does:
-the keyring keeps the password and the device keeps a sealed copy.
+The rest read passwords from standard input, one per line, and never
+from the command line:
 
-`luma-keyring --enrol USER` (root) reads USER's password from standard input
-and seals it for them; the installer runs it when "Sign me in automatically"
-is chosen, and the login keyring is made with the password at the first
-automatic sign-in.
+* `--enable-auto-unlock` (in the person's session): what the one-time
+  question does on a device set up earlier;
+* `--recover` (in the person's session): unwrap the keyring key with the
+  account password where the seal no longer opens, and seal it again;
+* `--rewrap` (old, then new password): Settings runs it after a password
+  change so the recovery copy follows the new password;
+* `--enrol USER` (root): the installer's step, a keyring key sealed and
+  wrapped for USER; the login keyring is made with it at the first
+  automatic sign-in.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ import sys
 
 from .state import read
 
-__all__ = ("check", "autologin", "enable_auto_unlock", "enrol")
+__all__ = ("check", "autologin", "enable_auto_unlock", "recover", "rewrap", "enrol")
 
 
 def check() -> int:
@@ -58,6 +62,23 @@ def enable_auto_unlock() -> int:
     return 0 if outcome.ok else 1
 
 
+def recover() -> int:
+    from .repair import recover as recover_key
+
+    outcome = recover_key(_read_password())
+    print(outcome.message)
+    return 0 if outcome.ok else 1
+
+
+def rewrap() -> int:
+    from .repair import rewrap as rewrap_key
+
+    old = _read_password()
+    outcome = rewrap_key(old, _read_password())
+    print(outcome.message)
+    return 0 if outcome.ok else 1
+
+
 def enrol(args: list[str]) -> int:
     from .autounlock import enrol_user
     from .secrets import KeyringError
@@ -74,5 +95,5 @@ def enrol(args: list[str]) -> int:
     except (KeyError, OSError, KeyringError) as error:
         print(f"luma-keyring: nothing sealed for {args[0]}: {error}", file=sys.stderr)
         return 1
-    print(f"luma-keyring: sealed the password of {args[0]} in {path}")
+    print(f"luma-keyring: enrolled {args[0]} ({path.parent})")
     return 0

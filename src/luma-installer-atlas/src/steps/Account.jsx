@@ -11,8 +11,8 @@
  * installer's memory (/run/luma-atlas/autologin) and applied to the installed
  * system's display manager by the Luma installer kickstart's %post. With it,
  * the password is handed to the same %post (in memory only), which has the
- * installed system seal it so saved passwords unlock at each automatic
- * sign-in while staying locked with the password.
+ * installed system enrol saved passwords with it: they unlock at each
+ * automatic sign-in, and the password recovers them on other hardware.
  */
 import React, { useContext, useEffect, useRef, useState } from "react";
 

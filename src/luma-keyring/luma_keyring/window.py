@@ -7,11 +7,11 @@ passwords it needs and why, and keeps the second choice -- starting a fresh
 keyring -- visible but not the obvious one, with what it costs said before
 it is taken rather than after.
 
-It has three shapes, one per situation (see Mode): a keyring locked with an
-older password; an account that signs in automatically whose password the
-device does not keep yet, which types it once; and one whose sealed
-password stopped working (another board, a changed password), which types
-it once again.
+It has four shapes, one per situation (see Mode): a keyring locked with an
+older password; an account that signs in automatically and is not enrolled
+yet, which types its password once; one whose sealed key stopped opening
+(another board, a cleared TPM), whose password recovers the key; and one
+that stopped signing in automatically, offered its login password back.
 """
 
 from __future__ import annotations
@@ -23,8 +23,9 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from .repair import (enable_auto_unlock, repair_in_place, start_again,  # noqa: E402
-                     start_again_with_auto_unlock)
+from .repair import (enable_auto_unlock, recover, repair_in_place,  # noqa: E402
+                     rewrap_current, start_again, start_again_with_auto_unlock,
+                     use_login_password)
 from .secrets import Keyring  # noqa: E402
 from .state import Reading, State  # noqa: E402
 
@@ -37,6 +38,8 @@ class Mode:
     MISMATCH = "mismatch"
     DEVICE = "device"
     RECOVER = "recover"
+    LOGIN = "login"
+    REWRAP = "rewrap"
 
 
 _EXPLAIN = {
@@ -53,16 +56,25 @@ _EXPLAIN = {
         "Let your saved passwords unlock by themselves",
         "This device signs in without asking for your password, so nothing "
         "unlocks your saved passwords and apps keep asking. Type your "
-        "password once and this device will keep it sealed, to unlock them "
-        "at every sign-in. They stay locked with your password, which still "
-        "opens them anywhere else.\n\n"
+        "password once: they are locked with a new key this device keeps "
+        "sealed, and your password can still recover them on other "
+        "hardware. Your password itself is not kept.\n\n"
         "Anyone who can use this device signed in can use them."),
     Mode.RECOVER: (
         "Your saved passwords need your password once",
-        "This device could not unlock them by itself -- the password it "
-        "keeps no longer opens them, for example after a password change or "
-        "on new hardware. Type your password once and it will keep the new "
-        "one."),
+        "This device could not unlock them by itself -- the key it keeps no "
+        "longer opens here, for example on new hardware. Your password "
+        "recovers the key, and this device keeps it again."),
+    Mode.REWRAP: (
+        "Your saved passwords need your new password once",
+        "You changed your password. Type the new one once so it can still "
+        "recover your saved passwords on other hardware. They keep "
+        "unlocking by themselves either way."),
+    Mode.LOGIN: (
+        "Your saved passwords unlock without your password",
+        "They were set up to unlock by themselves while this device signed "
+        "in automatically. It now asks for your password, so you can lock "
+        "them with your login password instead. Everything in them is kept."),
 }
 
 
@@ -96,7 +108,9 @@ class KeyringWindow(Adw.ApplicationWindow):
         page.add(fields)
 
         actions = Adw.PreferencesGroup()
-        label = "Unlock and keep them" if mode == Mode.MISMATCH else "Unlock by themselves"
+        label = {Mode.MISMATCH: "Unlock and keep them",
+                 Mode.LOGIN: "Use my login password",
+                 Mode.REWRAP: "Use my new password"}.get(mode, "Unlock by themselves")
         self._unlock = Gtk.Button(label=label,
                                   css_classes=["suggested-action", "pill"],
                                   halign=Gtk.Align.CENTER)
@@ -121,13 +135,14 @@ class KeyringWindow(Adw.ApplicationWindow):
                            halign=Gtk.Align.CENTER)
         start.connect("clicked", self._on_start_again)
         forgotten.add(start)
-        if mode != Mode.MISMATCH:
-            forgotten.set_title("If they are locked with a password you do not know")
+        if mode in (Mode.DEVICE, Mode.RECOVER):
+            forgotten.set_title("If they cannot be opened")
             forgotten.set_description(
                 "Type your current password and start a new keyring with it. "
                 "The old one is kept on this computer, out of reach until you "
                 "remember its password.")
-        page.add(forgotten)
+        if mode not in (Mode.LOGIN, Mode.REWRAP):
+            page.add(forgotten)
 
         if mode == Mode.MISMATCH and (reading.state is not State.LOCKED
                                       or not reading.repairable):
@@ -164,7 +179,12 @@ class KeyringWindow(Adw.ApplicationWindow):
             if not password:
                 self._say("Type your password.")
                 return
-            self._run(lambda: enable_auto_unlock(password, self._keyring))
+            work = {Mode.DEVICE: enable_auto_unlock, Mode.RECOVER: recover,
+                    Mode.LOGIN: use_login_password}.get(self._mode)
+            if work is None:
+                self._run(lambda: rewrap_current(password))
+            else:
+                self._run(lambda: work(password, self._keyring))
             return
         old = self._old.get_text()
         login = self._login.get_text()
@@ -174,7 +194,7 @@ class KeyringWindow(Adw.ApplicationWindow):
         self._run(lambda: repair_in_place(old, login, self._keyring))
 
     def _on_start_again(self, _button) -> None:
-        device = self._mode != Mode.MISMATCH
+        device = self._mode in (Mode.DEVICE, Mode.RECOVER)
         login = self._login.get_text()
         if not login:
             self._say("Type your login password, so the new keyring can be "

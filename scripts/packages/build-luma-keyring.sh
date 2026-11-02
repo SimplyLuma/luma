@@ -48,7 +48,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-keyring.spec" "$rpmbuild_dir/SPEC
   "$rpmbuild_dir" "$builder_container" "
     set -euo pipefail
     dnf5 -q -y install --allowerasing \
-      desktop-file-utils glib2 meson ninja-build python3-devel python3-gobject-base \
+      desktop-file-utils glib2 meson ninja-build python3-cryptography python3-devel python3-gobject-base \
       rpm-build systemd-rpm-macros
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-keyring.spec
   "

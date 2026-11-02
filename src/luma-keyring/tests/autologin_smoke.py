@@ -37,7 +37,8 @@ from gi.repository import Secret  # noqa: E402
 
 from luma_keyring import autounlock, state  # noqa: E402
 from luma_keyring.autounlock import Result  # noqa: E402
-from luma_keyring.repair import enable_auto_unlock  # noqa: E402
+from luma_keyring.repair import (enable_auto_unlock, recover, rewrap,  # noqa: E402
+                                 rewrap_current, use_login_password)
 from luma_keyring.secrets import Keyring  # noqa: E402
 
 SCHEMA = Secret.Schema.new("org.projectluma.AutologinSmoke", Secret.SchemaFlags.NONE,
@@ -97,7 +98,6 @@ def reset(keyrings: Path) -> None:
 
 
 def opens_with(keyring: Keyring, password: str) -> bool:
-    """The recovery path: the account password still opens the keyring."""
     keyring.lock()
     try:
         keyring.unlock_with(password)
@@ -106,58 +106,90 @@ def opens_with(keyring: Keyring, password: str) -> bool:
     return state.read(keyring).state is state.State.UNLOCKED
 
 
+def private(path: Path) -> bool:
+    info = path.stat()
+    return stat.S_IMODE(info.st_mode) == 0o600 and info.st_uid == os.getuid()
+
+
 def main() -> int:
     password = os.environ["LUMA_KEYRING_SMOKE_PASSWORD"]
+    verify = lambda typed: typed == password  # noqa: E731 - PAM stands in
     login = state.keyring_path()
     keyrings = login.parent
-    credential = autounlock.credential_path()
+    credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
     if login.exists():
         raise SystemExit(f"{login} exists; run this as a throwaway user")
 
     # -- installed with "Sign me in automatically" -----------------------
-    check("the installer sealed the password for the account",
-          credential.exists() and stat.S_IMODE(credential.stat().st_mode) == 0o600
-          and credential.stat().st_uid == os.getuid())
-    check("the sealed file does not contain the password",
-          password.encode() not in credential.read_bytes())
+    check("the installer sealed and wrapped a keyring key",
+          private(credential) and private(wrap)
+          and stat.S_IMODE(autounlock.state_dir().stat().st_mode) == 0o700)
+    check("neither file contains the password",
+          password.encode() not in credential.read_bytes() + wrap.read_bytes())
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
         check("the first automatic sign-in makes the login keyring", result == Result.CREATED, result)
-        check("it is open", state.read(keyring).state is state.State.UNLOCKED)
         store("hunter2")
         check("a secret stores in the default collection without a prompt", lookup() == "hunter2")
-        check("the account password opens it too (the recovery path)", opens_with(keyring, password))
+        check("the keyring is on the random key, not the password",
+              not opens_with(keyring, password))
     time.sleep(0.5)
     raw = login.read_bytes()
-    check("the keyring file is encrypted", raw.startswith(b"GnomeKeyring\n") and b"hunter2" not in raw)
+    check("the keyring file keeps gnome-keyring's encrypted format",
+          raw.startswith(b"GnomeKeyring\n") and b"hunter2" not in raw)
 
     with Session() as keyring:
-        check("a new session starts with it locked",
-              state.read(keyring).state is state.State.LOCKED)
         result = autounlock.ensure(keyring, autologin=True)
-        check("the next automatic sign-in opens it", result == Result.UNLOCKED, result)
+        check("the next automatic sign-in unlocks it", result == Result.UNLOCKED, result)
         check("what was stored is there", lookup() == "hunter2")
 
-    # -- the sealed copy stops working (another board, a changed password)
-    autounlock.seal_password("not-the-password")
+    # -- another board: the seal no longer opens -------------------------
+    autounlock.write_private(credential, b"sealed on another board")
+    before = digest(login)
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
-        check("a sealed password that does not open it is reported, not forced",
-              result == Result.SEAL_UNUSABLE, result)
-        outcome = enable_auto_unlock(password, keyring)
-        check("typing the password once seals it again", outcome.ok, outcome.message)
+        check("an unusable seal is reported and the keyring left locked",
+              result == Result.SEAL_UNUSABLE and digest(login) == before
+              and state.read(keyring).state is state.State.LOCKED, result)
+        outcome = recover("not-it", keyring)
+        check("the wrong password recovers nothing", not outcome.ok, outcome.message)
+        started = time.monotonic()
+        outcome = recover(password, keyring)
+        took = time.monotonic() - started
+        check("the account password recovers the key and seals it again",
+              outcome.ok and state.read(keyring).state is state.State.UNLOCKED, outcome.message)
+        check("recovery takes under a second here", took < 1.0, f"{took:.2f} s")
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
-        check("and it opens by itself again", result == Result.UNLOCKED, result)
+        check("and it unlocks by itself again", result == Result.UNLOCKED, result)
         check("with everything kept", lookup() == "hunter2")
+
+    # -- a password change ------------------------------------------------
+    outcome = rewrap(password, "a-new-password")
+    check("a password change re-wraps the key", outcome.ok, outcome.message)
+    autounlock.write_private(credential, b"sealed on another board")
+    with Session() as keyring:
+        autounlock.ensure(keyring, autologin=True)
+        check("the old password no longer recovers it", not recover(password, keyring).ok)
+        check("the new one does", recover("a-new-password", keyring).ok)
+    # After a change outside Settings: the key is unsealed here, so only the
+    # new password is needed.
+    outcome = rewrap_current(password, verify=verify)
+    check("the current password alone re-wraps it", outcome.ok, outcome.message)
+    autounlock.write_private(credential, b"sealed on another board")
+    with Session() as keyring:
+        autounlock.ensure(keyring, autologin=True)
+        check("and recovers it", recover(password, keyring).ok)
 
     # -- automatic sign-in turned off ------------------------------------
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=False)
-        check("signing in with a password again removes the sealed copy",
-              result == Result.RETIRED and not credential.exists(), result)
-        check("a password account is then left alone",
-              autounlock.ensure(keyring, autologin=False) == Result.NOT_AUTOLOGIN)
+        check("with automatic sign-in off it still unlocks", result == Result.UNLOCKED, result)
+        outcome = use_login_password(password, keyring, verify=verify)
+        check("it can go back onto the login password", outcome.ok, outcome.message)
+        check("the sealed and wrapped keys are gone", not credential.exists() and not wrap.exists())
+        check("the login password opens it", opens_with(keyring, password))
+        check("still with everything in it", lookup() == "hunter2")
 
     # -- an existing device: keyring made at a password login -------------
     reset(keyrings)
@@ -165,28 +197,24 @@ def main() -> int:
         keyring.create_login(password)
         store("kept-secret")
     before = digest(login)
-
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
-        check("without a sealed password it is left for its owner",
-              result == Result.NEEDS_PASSWORD, result)
+        check("not enrolled: left for its owner", result == Result.NEEDS_PASSWORD, result)
         check("the keyring file is unchanged", digest(login) == before)
-
-        outcome = enable_auto_unlock("not-it", keyring)
-        check("the wrong password seals nothing",
-              not outcome.ok and not credential.exists(), outcome.message)
-
-        outcome = enable_auto_unlock(password, keyring)
-        check("typing the password once enables automatic unlock", outcome.ok, outcome.message)
-        check("the keyring is still locked with the account password", opens_with(keyring, password))
-
+        outcome = enable_auto_unlock("not-it", keyring, verify=verify)
+        check("the wrong password enrols nothing",
+              not outcome.ok and not credential.exists() and digest(login) == before, outcome.message)
+        outcome = enable_auto_unlock(password, keyring, verify=verify)
+        check("typing the password once enrols it", outcome.ok, outcome.message)
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
-        check("from then on it opens by itself", result == Result.UNLOCKED, result)
+        check("from then on it unlocks by itself", result == Result.UNLOCKED, result)
         check("everything in it was kept", lookup() == "kept-secret")
 
     # -- a keyring someone gave an empty password ------------------------
     reset(keyrings)
+    for path in (credential, wrap):
+        path.unlink(missing_ok=True)
     with Session() as keyring:
         keyring.create_login("")
     with Session() as keyring:

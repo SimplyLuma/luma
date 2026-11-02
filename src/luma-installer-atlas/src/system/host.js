@@ -9,7 +9,7 @@
  *   - ejecting the installer medium before step 8 (atlas-media eject)
  *   - saving the logs after a failure (atlas-media save-logs)
  *   - recording "sign me in automatically" for the Luma kickstart %post, and
- *     the password the installed system seals to unlock saved passwords then
+ *     the password the installed system enrols saved passwords with then
  * None of these touch a target drive before the review step.
  */
 
@@ -123,9 +123,11 @@ export const setAutologinIntent = async (username) => {
 };
 
 /**
- * With "Sign me in automatically", the installed system seals the account
- * password (luma-keyring --enrol, run by the kickstart %post) so the login
- * keyring unlocks at every automatic sign-in. The password goes to the
+ * With "Sign me in automatically", the installed system enrols the account
+ * (luma-keyring --enrol, run by the kickstart %post): a random keyring key,
+ * sealed for the device and wrapped with a key derived from the password, so
+ * the login keyring unlocks at every automatic sign-in. The password is never
+ * stored. It goes to the
  * installer's own /run (memory) only, root-only from its first byte, through
  * stdin rather than a command line; the %post removes it.
  */

@@ -8,8 +8,9 @@ is told once, in a notification with a way to put it right, and never again
 this session. If they say never, they are not asked again at all.
 
 What they are told depends on the account (see autounlock): one that signs
-in automatically, whose password the device does not keep yet or whose
-sealed password stopped working, is asked for it once.
+in automatically and is not enrolled yet, or whose sealed key stopped
+opening, is asked for its password once; one that stopped signing in
+automatically is offered its login password back.
 """
 
 from __future__ import annotations
@@ -79,7 +80,11 @@ class KeyringService(Adw.Application):
                           (not sealed and autounlock.stored_unencrypted())):
             self._mode = Mode.RECOVER if sealed else Mode.DEVICE
         elif reading.state is State.LOCKED:
-            self._mode = Mode.MISMATCH
+            self._mode = Mode.RECOVER if sealed else Mode.MISMATCH
+        elif reading.state is State.UNLOCKED and sealed and not autologin:
+            self._mode = Mode.LOGIN
+        elif reading.state is State.UNLOCKED and sealed and autounlock.wrap_is_stale():
+            self._mode = Mode.REWRAP
         else:
             if reading.state is State.UNLOCKED:
                 self.withdraw_notification(NOTIFICATION_ID)
@@ -96,7 +101,19 @@ class KeyringService(Adw.Application):
 
     def _tell(self, repairable: bool) -> None:
         from .window import Mode
-        if self._mode in (Mode.DEVICE, Mode.RECOVER):
+        if self._mode == Mode.REWRAP:
+            notification = Gio.Notification.new("Type your new password once")
+            notification.set_body(
+                "You changed your password. Type it once so it can still recover "
+                "your saved passwords on other hardware.")
+            notification.add_button("Type it", "app.open")
+        elif self._mode == Mode.LOGIN:
+            notification = Gio.Notification.new("Your saved passwords unlock without your password")
+            notification.set_body(
+                "This device no longer signs in automatically. Lock your saved "
+                "passwords with your login password instead?")
+            notification.add_button("Use my password", "app.open")
+        elif self._mode in (Mode.DEVICE, Mode.RECOVER):
             notification = Gio.Notification.new("Let your saved passwords unlock by themselves")
             notification.set_body(
                 "This device signs in automatically, but your saved passwords "
@@ -174,6 +191,14 @@ def main(argv: list[str] | None = None) -> int:
         from .cli import enable_auto_unlock
 
         return enable_auto_unlock()
+    if "--recover" in argv:
+        from .cli import recover
+
+        return recover()
+    if "--rewrap" in argv:
+        from .cli import rewrap
+
+        return rewrap()
     if "--enrol" in argv:
         from .cli import enrol
 

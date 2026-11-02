@@ -13,7 +13,8 @@ Slice=session.slice
 NoNewPrivileges=yes
 LockPersonality=yes
 RestrictRealtime=yes
-MemoryHigh=64M
+# The recovery prompt derives a key with Argon2id (64 MiB).
+MemoryHigh=256M
 
 [Install]
 WantedBy=graphical-session.target
