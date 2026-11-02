@@ -39,8 +39,24 @@ assert(!Object.keys(M.REMOTE_KEYS).some(name => Object.values(M.TV_KEYS).include
 
 // Gamepad buttons.
 const B = M.BUTTON;
-assert(M.buttonAction(B.SOUTH) === 'ok', 'A is OK');
-assert(M.buttonAction(B.EAST) === 'back' && M.buttonAction(B.SELECT) === 'back', 'B and Select are Back');
+assert(M.buttonAction(B.SOUTH) === 'ok', 'South is OK by default');
+assert(M.buttonAction(B.EAST) === 'back' && M.buttonAction(B.SELECT) === 'back', 'East and Select are Back');
+assert(M.buttonAction(B.EAST, 'east') === 'ok' && M.buttonAction(B.SOUTH, 'east') === 'back',
+    'Nintendo layout: East is OK, South is Back');
+assert(M.buttonAction(B.SELECT, 'east') === 'back' && M.buttonAction(B.START, 'east') === 'menu', 'the rest stays');
+
+// Which face button is OK: the setting wins; automatic follows the layout.
+const xbox = M.padIdentity('030000005e0400008e02000014010000');
+assert(xbox.vendor === 0x045e && xbox.product === 0x028e, 'vendor and product from the GUID');
+assert(M.padIdentity('nope') === null, 'a malformed GUID');
+const pro = M.padIdentity('050000007e0500000920000001800000');
+assert(pro.vendor === 0x057e && pro.product === 0x2009, 'Switch Pro Controller');
+assert(M.confirmButton('automatic', xbox, 'Microsoft X-Box 360 pad') === 'south', 'Xbox pads: South');
+assert(M.confirmButton('automatic', pro, 'Pro Controller') === 'east', 'Nintendo pads: East');
+assert(M.confirmButton('automatic', {vendor: 0x0810, product: 0xe501}, 'usb gamepad') === 'east', 'known SNES USB pad');
+assert(M.confirmButton('automatic', null, '8BitDo SN30 Pro (Switch)') === 'east', 'by name');
+assert(M.confirmButton('east', xbox, 'Microsoft X-Box 360 pad') === 'east', 'the setting wins over a misreported pad');
+assert(M.confirmButton('south', pro, 'Pro Controller') === 'south', 'and over a Nintendo pad');
 assert(M.buttonAction(B.START) === 'menu', 'Start is Menu');
 assert(M.buttonAction(B.MODE) === 'home', 'Guide is Home');
 assert(M.buttonAction(B.DPAD_UP) === 'up' && M.buttonAction(B.DPAD_RIGHT) === 'right', 'D-pad buttons move');
@@ -91,6 +107,9 @@ assert(/translates\(action, this\._context\(\)\)/.test(service), 'every pad key 
 assert(service.includes('org.projectluma.Shell.Remote1') && service.includes('ClaimGamepadsAsync'),
     'the claim contract');
 assert(!/EVIOCGRAB|grab_device/.test(service), 'the pad is never grabbed from games');
+assert(/settings_schema\.has_key\(CONFIRM_KEY\)/.test(service) && /changed::\$\{CONFIRM_KEY\}/.test(service),
+    'the confirm setting is optional and applied live');
+assert(/buttonAction\(code, pad\.confirm\)/.test(service), 'per pad');
 
 print('tv-input-policy: ok');
 

@@ -17,8 +17,8 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {tvEntry} from './tvModel.js';
-import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, hatDirection, repeatDelay,
-    stickDirection, translates} from './tvInputModel.js';
+import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, padIdentity,
+    repeatDelay, stickDirection, translates} from './tvInputModel.js';
 
 const BUS_NAME = 'org.projectluma.Shell.Remote';
 const OBJECT_PATH = '/org/projectluma/Shell/Remote';
@@ -31,6 +31,8 @@ const IFACE = `<node>
   </interface>
 </node>`;
 
+const SCHEMA = 'org.project_luma.shell-state';
+const CONFIRM_KEY = 'tv-confirm-button';
 const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
 
 export class TvInput {
@@ -44,6 +46,12 @@ export class TvInput {
         this._claims = new Map();       // bus name -> {pid, watch}
         this._grabs = new Map();        // accelerator action -> keysym name
         this._nextPad = 0;
+        // Which face button is OK (luma-shell-state); an older schema without
+        // the key behaves as automatic.
+        this._settings = new Gio.Settings({schema_id: SCHEMA});
+        this._hasConfirm = this._settings.settings_schema.has_key(CONFIRM_KEY);
+        this._confirmId = this._hasConfirm
+            ? this._settings.connect(`changed::${CONFIRM_KEY}`, () => this._applyConfirm()) : 0;
         this._keys = Clutter.get_default_backend().get_default_seat()
             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         this._grabRemoteKeys();
@@ -56,6 +64,7 @@ export class TvInput {
 
     destroy() {
         this._destroyed = true;
+        if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
         this._sources.clear();
         for (const {id} of this._repeats.values()) GLib.source_remove(id);
@@ -131,7 +140,9 @@ export class TvInput {
 
     _padAdded(device) {
         if (this._pads.has(device)) return;
-        const pad = {id: this._nextPad++, stick: null, buttons: new Set(), x: 0, y: 0};
+        const pad = {id: this._nextPad++, stick: null, buttons: new Set(), x: 0, y: 0,
+            identity: padIdentity(device.get_guid?.()), name: device.get_name() ?? ''};
+        pad.confirm = this._confirmFor(pad);
         pad.signals = [
             device.connect('button-press-event', (_d, event) => this._button(pad, event, true)),
             device.connect('button-release-event', (_d, event) => this._button(pad, event, false)),
@@ -163,7 +174,7 @@ export class TvInput {
             this._press('home');
             return;
         }
-        const action = buttonAction(code);
+        const action = buttonAction(code, pad.confirm);
         if (!action) return;
         if (DIRECTIONS.includes(action)) this._hold(`${pad.id}:button:${code}`, pressed ? action : null);
         else if (pressed) this._press(action);
@@ -182,6 +193,15 @@ export class TvInput {
         else pad.y = value;
         pad.stick = stickDirection(pad.x, pad.y, pad.stick, this._input);
         this._hold(`${pad.id}:stick`, pad.stick);
+    }
+
+    _confirmFor(pad) {
+        return confirmButton(this._hasConfirm ? this._settings.get_string(CONFIRM_KEY) : 'automatic',
+            pad.identity, pad.name);
+    }
+
+    _applyConfirm() {
+        for (const pad of this._pads.values()) pad.confirm = this._confirmFor(pad);
     }
 
     // OK, Back, Menu and Home: once per press.

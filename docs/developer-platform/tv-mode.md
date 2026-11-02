@@ -177,8 +177,8 @@ more.
 | TV action | Key the app sees | Keyboard / remote | Gamepad |
 |---|---|---|---|
 | Move | Up, Down, Left, Right | arrows | D-pad, left stick |
-| OK | Return | Return, Enter, OK, Select | South (A) |
-| Back | Escape | Escape, Back, Exit (CEC Back) | East (B), Select (View/Back) |
+| OK | Return | Return, Enter, OK, Select | the confirm face button (A) |
+| Back | Escape | Escape, Back, Exit (CEC Back) | the other face button (B), Select (View/Back) |
 | Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | Start (Menu) |
 | Home | none: the Shell opens the TV home | Home, CEC Root Menu | Guide, or Select+Start |
 
@@ -192,6 +192,16 @@ more.
   thresholds). North, West, the shoulders, the triggers, the stick clicks and
   the right stick are not assigned yet. Each press is a whole key (pressed and
   released), so a held A does not repeat Enter.
+- **A and B.** OK is the bottom face button (South: A on Xbox-style pads,
+  Cross on PlayStation) or the right one (East: A on Nintendo-style pads),
+  and Back is the other. The luma-shell-state key `tv-confirm-button`
+  (`automatic`, `south`, `east`) chooses; `automatic` picks East for
+  controllers that identify as Nintendo layout (Nintendo's own and 8BitDo in
+  Switch mode by vendor, known SNES-style USB pads by vendor and product, or
+  the name) and South for the rest. A pad that misreports itself (an SNES-style
+  pad presenting as an Xbox 360 pad) needs the explicit choice:
+  `gsettings set org.project_luma.shell-state tv-confirm-button east`. The
+  change applies at once; TV Settings will offer it under Remotes.
 - **Remotes.** Arrows and Enter are already TV keys. Keys that are not
   (`XF86Back`, `XF86Close`, `XF86OK`, `XF86Select`, `XF86HomePage`,
   `XF86RootMenu`, `XF86MenuKB`, `XF86ContextMenu`) are taken by the Shell and

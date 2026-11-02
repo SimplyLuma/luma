@@ -38,13 +38,49 @@ export const BUTTON = Object.freeze({
 
 export const AXIS = Object.freeze({X: 0x00, Y: 0x01, HAT0X: 0x10, HAT0Y: 0x11});
 
-// South (A) is OK, East (B) and Select (Back/View) are Back, Start (Menu) is
-// Menu, the D-pad moves and Guide (Mode) goes home. North, West, the shoulders,
-// triggers, stick clicks and the right stick are not assigned.
-export function buttonAction(code) {
+// Controllers whose OK is the right face button (Nintendo layout): Nintendo's
+// own (Switch Pro, Joy-Con, the Online SNES/N64 pads, and 8BitDo pads in
+// Switch mode, which report as a Pro Controller), and SNES-style USB pads.
+export const NINTENDO_LAYOUT = Object.freeze({
+    vendors: Object.freeze([0x057e]),
+    devices: Object.freeze(['0079:0011', '0583:2060', '0810:e501', '081f:e401', '12bd:d015']),
+    names: /nintendo|switch|joy-?con|pro controller|snes|famicom/i,
+});
+
+// Vendor and product from an SDL controller GUID as libmanette reports it
+// (little-endian 16-bit fields: bus, CRC, vendor, 0, product, 0, version, 0).
+export function padIdentity(guid) {
+    if (!/^[0-9a-f]{32}$/i.test(guid ?? '')) return null;
+    const word = index => parseInt(guid.slice(index + 2, index + 4) + guid.slice(index, index + 2), 16);
+    return {vendor: word(8), product: word(16)};
+}
+
+export function nintendoLayout(identity, name) {
+    if (identity) {
+        const hex = value => value.toString(16).padStart(4, '0');
+        if (NINTENDO_LAYOUT.vendors.includes(identity.vendor)) return true;
+        if (NINTENDO_LAYOUT.devices.includes(`${hex(identity.vendor)}:${hex(identity.product)}`)) return true;
+    }
+    return NINTENDO_LAYOUT.names.test(name ?? '');
+}
+
+// Which face button is OK: the setting (luma-shell-state `tv-confirm-button`)
+// wins; `automatic` follows the controller's layout. A pad that claims to be
+// an Xbox pad but has Nintendo labels needs the explicit `east`.
+export function confirmButton(setting, identity, name) {
+    if (setting === 'south' || setting === 'east') return setting;
+    return nintendoLayout(identity, name) ? 'east' : 'south';
+}
+
+// The confirm face button is OK and the other of South/East is Back; Select
+// (Back/View) is Back, Start (Menu) is Menu, the D-pad moves and Guide (Mode)
+// goes home. North, West, the shoulders, triggers, stick clicks and the right
+// stick are not assigned.
+export function buttonAction(code, confirm = 'south') {
     switch (code) {
-    case BUTTON.SOUTH: return 'ok';
-    case BUTTON.EAST: case BUTTON.SELECT: return 'back';
+    case BUTTON.SOUTH: return confirm === 'east' ? 'back' : 'ok';
+    case BUTTON.EAST: return confirm === 'east' ? 'ok' : 'back';
+    case BUTTON.SELECT: return 'back';
     case BUTTON.START: return 'menu';
     case BUTTON.MODE: return 'home';
     case BUTTON.DPAD_UP: return 'up';
