@@ -24,6 +24,10 @@ from luma_appkit import (add_style_builder, AppWindow,AppContext,PresentationMod
     IslandSplitView,NavigationSidebar,NavigationRow,EmptyState,install_appkit,
     Card,LayerHost,TextField,TypeLabel,TextButton)
 try:
+    from luma_appkit import app_icon_paintable
+except ImportError:  # an older kit: app icons through GTK's own loader
+    app_icon_paintable=None
+try:
     from luma_appkit import Avatar
 except ImportError:  # an older kit; the account page then shows no portrait
     Avatar=None
@@ -920,6 +924,14 @@ class ConnectWindow(PhonesMixin,AppWindow):
         if style:button.add_css_class(style)
         button.connect('clicked',lambda *_:callback());return button
     def _app_icon(self,app_id,fallback,size=32):
+        if app_icon_paintable is not None:
+            # The icon's SVG drawn at its size in this process: the loader sandbox renders Luma's
+            # 1024 app icons whole, about a second each on a Pi, with the page waiting.
+            paintable=app_icon_paintable(app_id,size,self)
+            if paintable is None:return tile(fallback)
+            image=Gtk.Image.new_from_paintable(paintable);image.set_pixel_size(size);image.set_valign(Gtk.Align.CENTER)
+            image.app_id=app_id
+            return image
         display=Gdk.Display.get_default()
         theme=Gtk.IconTheme.get_for_display(display) if display else None
         if app_id and theme is not None and theme.has_icon(app_id):

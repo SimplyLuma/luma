@@ -271,6 +271,7 @@ __all__ = [
     "APP_ICON_SIZES",
     "AppIcon",
     "NoteCard",
+    "app_icon_paintable",
     # v71 (K-ROWS): swipe rows, the A-Z index, message runs
     "SWIPE_COLORS",
     "SwipeAction",
@@ -553,6 +554,9 @@ def __getattr__(name: str):
     if name in {"MenuSection", "RichMenuItem"}:
         from . import rows_menu
         return getattr(rows_menu, name)
+    if name == "app_icon_paintable":
+        from .svg_icons import app_icon_paintable
+        return app_icon_paintable
     if name in {"APP_ICON_SIZES", "AppIcon", "NoteCard"}:
         from . import rows_identity
         return getattr(rows_identity, name)

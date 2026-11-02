@@ -31,7 +31,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Gdk, Gio, Graphene, Gsk, Gtk, Pango  # noqa: E402
+from gi.repository import Gdk, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import icons, lumaui, rows_tokens  # noqa: E402
 
@@ -58,25 +58,8 @@ def app_monogram(name: str) -> str:
 
 
 def _resolve_icon(app_id: str | None, size: int, widget: Gtk.Widget) -> Gdk.Paintable | None:
-    if not app_id:
-        return None
-    display = widget.get_display() or Gdk.Display.get_default()
-    if display is None:
-        return None
-    theme = Gtk.IconTheme.get_for_display(display)
-    gicon = None
-    try:
-        info = Gio.DesktopAppInfo.new(app_id if app_id.endswith(".desktop") else f"{app_id}.desktop")
-    except (TypeError, AttributeError):
-        info = None
-    if info is not None:
-        gicon = info.get_icon()
-    if gicon is None and theme.has_icon(app_id):
-        gicon = Gio.ThemedIcon.new(app_id)
-    if gicon is None:
-        return None
-    return theme.lookup_by_gicon(gicon, size, max(1, widget.get_scale_factor()), Gtk.TextDirection.NONE,
-                                 Gtk.IconLookupFlags.PRELOAD)
+    from .svg_icons import app_icon_paintable  # its SVG drawn here at the size shown, not by the loader sandbox
+    return app_icon_paintable(app_id, size, widget)
 
 
 class AppIcon(Gtk.Widget):
