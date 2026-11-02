@@ -362,6 +362,16 @@
       "reason": "A short run that opens on a symbol the mono face lacks (Terminal's \u2303C key) is drawn by Pango from the fallback face, which it reports for the run, at that face's nearest weight; the spec reports the CSS family and weight.",
       "subject": "^text \"[\u2190-\u23ff\u2700-\u27bf].{0,3}\"$",
       "prop": "^font (family|weight)$"
+    },
+    {
+      "id": "hinted-figtree-label-small",
+      "doc": "lumaui-deviations.md: hinted-figtree-label-small",
+      "reason": "Ruled 2 November 2026: the field label (LumaUI's label role, 11.5 px semibold) is a fractional size, and the hinted Figtree advances of a short run at that size come out more than 3% wider (the phone sheet's \"Password\": 53.3 against 51.2, 4.1%). Text-run width of that label only, up to 5%; never boxes, positions, size or weight.",
+      "apps": ["keyring-unlock"],
+      "subject": "^text \"Password\"$",
+      "prop": "^width$",
+      "max_ratio": 0.05,
+      "gtk_family": "figtree"
     }
   ]
 }

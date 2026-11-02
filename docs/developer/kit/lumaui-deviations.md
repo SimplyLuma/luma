@@ -114,6 +114,10 @@ The device hints Figtree (Nick's setting, the real one): GTK rounds each glyph's
 
 The same hinted advances: an end-aligned Figtree run keeps its right edge, so its start moves by exactly its own width difference (up to 3%) and nowhere else. Only that shift of that text; never other parts.
 
+## hinted-figtree-label-small
+
+Ruled 2 November 2026. The field label (the label role, 11.5 px semibold) is a fractional size; the hinted Figtree advances of a short run at that size come out more than the 3% of hinted-figtree-advance wider: the saved-passwords phone sheet's "Password" is 53.3 px in GTK against 51.2 in the mockup (4.1%). The token stays 11.5 px (the label and caption roles share it). That label's text-run width only, up to 5%; never boxes, positions, size or weight.
+
 ## pending-nb-hyphen-line
 
 PENDING google-figtree-fonts 1.luma.4 (U+2010/U+2011 mapped to Figtree's hyphen). Until it ships, a line holding U+2011 draws its fallback face's taller line box, 1 px, and what follows on Settings' Wi‑Fi pages sits up to 2.5 px lower. Remove when the font is on the ThinkPad.
