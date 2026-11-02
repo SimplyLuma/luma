@@ -58,18 +58,15 @@ def decide(argv: list[str]):
     """
     if "--gapplication-service" not in argv:
         return False, None
-    from .first_unlock import should_ask
+    from .autounlock import is_autologin
+    from .first_unlock import is_automatic, should_ask
     from .secrets import Keyring
 
-    try:
-        # The session waits for this: a keyring daemon that does not answer
-        # is "nothing to ask" after a few seconds, not a stalled login.
-        ask = should_ask(Keyring(timeout_ms=DECIDE_TIMEOUT_MS))
-    except Exception as error:  # noqa: BLE001 - never hold the session up over this
-        log.info("could not tell whether to ask: %s", error)
-        ask = False
+    # The name first, before anything that can take time: an automatic sign-in
+    # with no device seal is the case Luma asks in, and that much is two file
+    # reads. An app whose prompt came before this would find no prompter.
     prompter = None
-    if ask:
+    if is_autologin() and not is_automatic():
         try:
             from .prompter import LumaPrompter
 
@@ -79,6 +76,16 @@ def decide(argv: list[str]):
         except Exception as error:  # noqa: BLE001 - the sheet still asks, the Shell may too
             log.info("could not become the keyring prompter: %s", error)
             prompter = None
+    try:
+        # The session waits for this: a keyring daemon that does not answer
+        # is "nothing to ask" after a few seconds, not a stalled login.
+        ask = should_ask(Keyring(timeout_ms=DECIDE_TIMEOUT_MS))
+    except Exception as error:  # noqa: BLE001 - never hold the session up over this
+        log.info("could not tell whether to ask: %s", error)
+        ask = False
+    if not ask and prompter is not None:
+        prompter.release()
+        prompter = None
     notify_ready()
     if not wait_for_display():
         log.info("no display came; nothing to ask on")
