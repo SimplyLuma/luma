@@ -293,9 +293,14 @@ export class TvDialogs {
                 return false;
             }
             if (actor instanceof St.Icon) {
-                const node = actor.get_theme_node();
-                const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
-                const size = actor.icon_size > 0 ? actor.icon_size : node.get_length('icon-size') / scale;
+                // Its desktop size, measured once: a restyle must not grow it.
+                record.iconSizes ??= new Map();
+                if (!record.iconSizes.has(actor)) {
+                    const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
+                    record.iconSizes.set(actor, actor.icon_size > 0 ? actor.icon_size
+                        : actor.get_theme_node().get_length('icon-size') / scale);
+                }
+                const size = record.iconSizes.get(actor);
                 if (size > 0) {
                     this._set(record, actor, 'icon_size', -1);
                     this._set(record, actor, 'style', `icon-size: ${this._px(Math.round(size * 1.5))};`);
