@@ -14,4 +14,8 @@ void luma_tv_frame_page_changed(GtkWindow *window);
 void luma_tv_room_load(GtkWidget *room);
 /* Tests: the remote key @keyval as the frame takes it; TRUE when the frame handled it. */
 gboolean luma_tv_frame_key(GtkWindow *window, guint keyval);
+/* The TV keyboard's height in TV units (0 hidden), followed (luma-tv-keyboard.c). */
+typedef void (*LumaTvKeyboardFunc)(guint height, gpointer data);
+gpointer luma_tv_keyboard_watch(LumaTvKeyboardFunc func, gpointer data);
+void luma_tv_keyboard_unwatch(gpointer watch);
 G_END_DECLS

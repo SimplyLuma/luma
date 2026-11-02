@@ -171,6 +171,9 @@ typedef struct {
   gulong focus_id, visible_id;
   int sidebar_width, sidebar_height, sidebar_margin;
   GArray *path;          /* where the focus was in the page, child by child from the island */
+  gint64 ok_at;          /* when OK last acted in the page */
+  gpointer keyboard;     /* the TV keyboard's height, followed */
+  int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
   gboolean page_zone;    /* the remote is in the page */
 } TvFrame;
 
@@ -261,6 +264,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0 10tv 0 0;\n"
 "  background-color: @accent@; background-image: none; color: white; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
+/* a drawn lead (signal bars): 2.5 times its size, about its centre, in the lead's place */
+".lumaui-tv-frame .lumaui-part-mark { transform: scale(2.5); transform-origin: 50% 50%; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"
@@ -272,7 +277,7 @@ static const char *const tv_sheet =
 "  background-size: auto; background-position: 0 0; background-origin: border-box; color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within + .lumaui-part-row { background-image: none; }\n"
-".lumaui-tv-frame .lumaui-part-row > box, .lumaui-tv-frame .lumaui-part-row > * > box { border-spacing: 20tv; padding: 0; margin: 0; min-height: 0; background: none; }\n"
+".lumaui-tv-frame .lumaui-part-row > box, .lumaui-tv-frame .lumaui-part-row > * > box { padding: 0; margin: 0; min-height: 0; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-title { font-size: 25tv; font-weight: 600; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-subtitle { font-size: 19tv; font-weight: 500; color: @ink_3@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-row-subtitle, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-muted,\n"
@@ -302,6 +307,22 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row scale marks, .lumaui-tv-frame .lumaui-part-row scale value { font-size: 22tv; font-weight: 650; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row entry, .lumaui-tv-frame .lumaui-part-row text { background: none; box-shadow: none; border: none; outline: none;\n"
 "  min-height: 0; padding: 0; font-size: 23tv; font-weight: 600; color: inherit; caret-color: @accent@; }\n"
+/* what a row grows in place (a network's join form): a recessed field and TV buttons, 66 tall */
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) { margin-top: 14tv; border-spacing: 14tv; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv;\n"
+"  font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) button:focus-visible { background-color: @ink@; color: @key_ink@;\n"
+"  box-shadow: 0 0 0 3tv @accent@; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) entry { min-height: 66tv; padding: 0 22tv; border-radius: 22tv; border: none;\n"
+"  font-size: 25tv; font-weight: 600; color: @ink@; background-color: @well@; background-image: none; outline: none;\n"
+"  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) entry text { font-size: 25tv; color: @ink@; background: none; }\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) entry:focus-within { box-shadow: inset 0 0 0 3tv @accent@; }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within.vertical > :not(:first-child) entry { background-color: #22252c; }\n"
+/* a drawn lead on the key: the key's ink, as its text */
+".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-mark { filter: brightness(0.15); }\n"
 /* everything focusable that is not in a row: the key when it holds the focus */
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
@@ -406,9 +427,32 @@ static void opacity_changed(TvFrame *f) {
 
 static gboolean restyle(gpointer data);
 
+/* The unit comes from the screen the window is on, not the window: in TV posture the window is full
+ * screen there, and taking it before the window has grown to it drew the first frames at the wrong
+ * size. The window's own size is used only where no monitor is known. */
+static double screen_unit(TvFrame *f) {
+  GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(f->window));
+  GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(f->window));
+  GdkMonitor *monitor = surface != NULL ? gdk_display_get_monitor_at_surface(display, surface) : NULL;
+  g_autoptr(GdkMonitor) first = NULL;
+  if (monitor == NULL) {
+    GListModel *monitors = gdk_display_get_monitors(display);
+    if (monitors != NULL && g_list_model_get_n_items(monitors) == 1) /* one screen: it is the one */
+      monitor = first = g_list_model_get_item(monitors, 0);
+  }
+  if (monitor != NULL) {
+    GdkRectangle geometry;
+    gdk_monitor_get_geometry(monitor, &geometry);
+    if (geometry.width > 0 && geometry.height > 0)
+      return luma_ui_tv_unit(geometry.width, geometry.height);
+  }
+  int w = gtk_widget_get_width(f->room), h = gtk_widget_get_height(f->room);
+  return luma_ui_tv_unit(w > 0 ? w : 1920, h > 0 ? h : 1080);
+}
+
 static void room_resized(gpointer data) {
   TvFrame *f = data;
-  double unit = luma_ui_tv_unit(gtk_widget_get_width(f->room), gtk_widget_get_height(f->room));
+  double unit = screen_unit(f);
   /* Not during allocation: the new sheet relayouts, so it loads on the next idle. */
   if (unit > 0 && fabs(unit - f->unit) >= 0.001 && f->restyle_id == 0)
     f->restyle_id = g_idle_add(restyle, f);
@@ -419,7 +463,7 @@ static gboolean restyle(gpointer data) {
   f->restyle_id = 0;
   if (!f->active)
     return G_SOURCE_REMOVE;
-  double unit = luma_ui_tv_unit(gtk_widget_get_width(f->room), gtk_widget_get_height(f->room));
+  double unit = screen_unit(f);
   if (unit > 0 && fabs(unit - f->unit) >= 0.001) {
     f->unit = unit;
     tv_css(f);
@@ -501,7 +545,53 @@ static const char *adw_part(GtkWidget *widget) {
   return NULL;
 }
 
+/* A row's lead: 48 units, then 20 to the text (the mockup's .tv-row gap), so the text and the row's
+ * divider (inset 22 + 48 + 20) line up whatever the lead is. A drawn lead (a mark such as signal
+ * bars, not an icon) is drawn larger about its centre in that place. */
+static gboolean within_row(GtkWidget *widget) {
+  for (GtkWidget *w = gtk_widget_get_parent(widget); w != NULL; w = gtk_widget_get_parent(w)) {
+    if (gtk_widget_has_css_class(w, "lumaui-part-row")) return TRUE;
+    if (gtk_widget_has_css_class(w, "lumaui-part-hero")) return FALSE;
+  }
+  return FALSE;
+}
+
+static void place_lead(TvFrame *f, GtkWidget *lead) {
+  if (g_object_get_data(G_OBJECT(lead), "luma-tv-lead") != NULL)
+    return;
+  GtkWidget *line = gtk_widget_get_parent(lead);
+  int *saved = g_new(int, 3);
+  saved[0] = gtk_widget_get_margin_start(lead);
+  saved[1] = gtk_widget_get_margin_end(lead);
+  saved[2] = GTK_IS_BOX(line) ? gtk_box_get_spacing(GTK_BOX(line)) : -1;
+  g_object_set_data_full(G_OBJECT(lead), "luma-tv-lead", saved, g_free);
+  if (gtk_widget_has_css_class(lead, "lumaui-part-mark")) {
+    int minimum = 0, natural = 0;
+    gtk_widget_measure(lead, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, NULL, NULL);
+    int side = MAX(0, (int)round((48 * f->unit - natural) / 2));
+    gtk_widget_set_margin_start(lead, side);
+    gtk_widget_set_margin_end(lead, side);
+  }
+  if (saved[2] >= 0)
+    gtk_box_set_spacing(GTK_BOX(line), (int)round(20 * f->unit));
+}
+
+static void unplace_lead(GtkWidget *lead) {
+  int *saved = g_object_get_data(G_OBJECT(lead), "luma-tv-lead");
+  if (saved == NULL)
+    return;
+  gtk_widget_set_margin_start(lead, saved[0]);
+  gtk_widget_set_margin_end(lead, saved[1]);
+  GtkWidget *line = gtk_widget_get_parent(lead);
+  if (saved[2] >= 0 && GTK_IS_BOX(line))
+    gtk_box_set_spacing(GTK_BOX(line), saved[2]);
+  g_object_set_data(G_OBJECT(lead), "luma-tv-lead", NULL);
+}
+
 static void release_page(TvFrame *f, GtkWidget *widget) {
+  if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
+      within_row(widget))
+    place_lead(f, widget);
   const char *part = adw_part(widget);
   if (part != NULL && !has_part(widget)) {
     gtk_widget_add_css_class(widget, part);
@@ -533,6 +623,7 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 }
 
 static void restore_page(GtkWidget *widget) {
+  unplace_lead(widget);
   if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {
     gtk_widget_remove_css_class(widget, "lumaui-tv-named");
     gtk_widget_remove_css_class(widget, adw_part(widget));
@@ -568,6 +659,17 @@ static void remember(TvFrame *f, GtkWidget *focus) {
   }
 }
 
+static GtkWidget *first_field(GtkWidget *widget) {
+  if (GTK_IS_EDITABLE(widget) && gtk_widget_is_drawable(widget) && gtk_widget_get_focusable(widget) &&
+      gtk_editable_get_editable(GTK_EDITABLE(widget)))
+    return widget;
+  for (GtkWidget *c = gtk_widget_get_first_child(widget); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = first_field(c);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
 static gboolean focus_lost(TvFrame *f) {
   GtkWidget *focus = focus_of(f);
   return focus == NULL || (in_page(f, focus) && (!gtk_widget_get_focusable(focus) || !gtk_widget_is_drawable(focus)));
@@ -582,6 +684,17 @@ static gboolean refind(TvFrame *f) {
     for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
     if (c == NULL) break;
     w = c;
+  }
+  /* OK grew the row in place with a field (a network's password): the field takes the focus,
+   * and with it the TV keyboard. */
+  if (g_get_monotonic_time() - f->ok_at < 2 * G_USEC_PER_SEC) {
+    GtkWidget *row = w;
+    while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
+    GtkWidget *field = row != NULL && row != f->island ? first_field(row) : NULL;
+    if (field != NULL && gtk_widget_grab_focus(field)) {
+      f->ok_at = 0;
+      return TRUE;
+    }
   }
   for (; w != NULL && w != gtk_widget_get_parent(f->island); w = gtk_widget_get_parent(w)) {
     if (!gtk_widget_is_drawable(w)) continue;
@@ -786,6 +899,8 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
 
   /* The page. A field keeps its own typing, caret and Backspace. */
   gboolean text = editable(focus);
+  if (is_ok(key) && !text)
+    f->ok_at = g_get_monotonic_time();
   if (is_back(key)) {
     if (text && key == GDK_KEY_BackSpace)
       return GDK_EVENT_PROPAGATE;
@@ -833,6 +948,14 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
 
 /* ── on and off ───────────────────────────────────────────────────────────────────────────── */
 
+/* The TV keyboard covers the bottom of the screen: the page ends above it, so the focused field
+ * (and its row) scrolls into view over the keyboard. */
+static void keyboard_height(guint height, gpointer data) {
+  TvFrame *f = data;
+  if (!f->active) return;
+  gtk_widget_set_margin_bottom(f->island, height > 0 ? (int)round(height * f->unit) : f->island_bottom);
+}
+
 static void enter(TvFrame *f) {
   f->active = TRUE;
   f->rail = FALSE;
@@ -878,9 +1001,7 @@ static void enter(TvFrame *f) {
   gtk_style_context_add_provider_for_display(gtk_widget_get_display(GTK_WIDGET(f->window)),
       GTK_STYLE_PROVIDER(f->provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 20U);
   f->opaque = setting_true(f->state, "reduce-transparency") || setting_true(f->a11y, "high-contrast");
-  f->unit = 0;
-  int w = gtk_widget_get_width(GTK_WIDGET(f->window)), h = gtk_widget_get_height(GTK_WIDGET(f->window));
-  f->unit = luma_ui_tv_unit(w > 0 ? w : 1920, h > 0 ? h : 1080);
+  f->unit = screen_unit(f);
   tv_css(f);
 
   f->keys = gtk_event_controller_key_new();
@@ -888,6 +1009,8 @@ static void enter(TvFrame *f) {
   g_signal_connect(f->keys, "key-pressed", G_CALLBACK(key_pressed), f);
   gtk_widget_add_controller(GTK_WIDGET(f->window), f->keys);
   f->focus_id = g_signal_connect(f->window, "notify::focus-widget", G_CALLBACK(focus_changed), f);
+  f->island_bottom = gtk_widget_get_margin_bottom(f->island);
+  f->keyboard = luma_tv_keyboard_watch(keyboard_height, f);
   f->visible_id = g_signal_connect(f->window, "notify::focus-visible", G_CALLBACK(focus_visible_changed), f);
   clock_tick(f);
   gtk_window_set_focus_visible(f->window, TRUE);
@@ -901,6 +1024,9 @@ static void leave(TvFrame *f) {
   g_clear_handle_id(&f->relax_id, g_source_remove);
   g_clear_handle_id(&f->restyle_id, g_source_remove);
   g_clear_signal_handler(&f->focus_id, f->window);
+  luma_tv_keyboard_unwatch(f->keyboard);
+  f->keyboard = NULL;
+  gtk_widget_set_margin_bottom(f->island, f->island_bottom);
   g_clear_signal_handler(&f->visible_id, f->window);
   if (f->keys != NULL) {
     gtk_widget_remove_controller(GTK_WIDGET(f->window), f->keys);

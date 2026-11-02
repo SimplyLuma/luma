@@ -142,6 +142,17 @@ double luma_ui_tv_unit(int width, int height);
 void luma_ui_set_part(GtkWidget *widget, const char *part);
 
 /**
+ * luma_ui_set_keyboard_action:
+ * @widget: a text field (or a widget holding one)
+ * @label: (nullable): what Enter does here, one short verb ("Join", "Search")
+ *
+ * Label the system TV keyboard's action key while @widget has the focus
+ * (docs/developer-platform/tv-mode.md "Typing"); %NULL or "" returns to the
+ * field's own label. Outside TV posture nothing visible changes. Since API level 6.
+ */
+void luma_ui_set_keyboard_action(GtkWidget *widget, const char *label);
+
+/**
  * luma_ui_is_phone_width:
  * @widget: a widget in a window
  *
