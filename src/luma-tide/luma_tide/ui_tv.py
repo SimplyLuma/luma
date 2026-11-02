@@ -20,13 +20,15 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
+from luma_appkit import icons  # noqa: E402
 from luma_appkit import lumaui_tokens as tokens  # noqa: E402
 from luma_appkit.tv_focus import TvFocus  # noqa: E402
 from luma_appkit.tv_idle import TvIdle  # noqa: E402
 from luma_appkit.tv_media import (  # noqa: E402
-    TvCover, TvEqualizer, TvNowPlayingPill, TvProgress, TvRoom, TvSlide, TvTransportButton, hues_for,
+    TvCover, TvEqualizer, TvGrid, TvNowPlayingPill, TvProgress, TvRoom, TvSlide, TvTransportButton, hues_for,
 )
 from luma_appkit.tv_parts import TvButton, TvField, TvTab, TvTopBar  # noqa: E402
 from luma_appkit.tv_stage import TvStage, add_tv_style, tv_fade  # noqa: E402
@@ -36,11 +38,11 @@ from .ui_parts import image_path  # noqa: E402
 
 TV = tokens.TV
 PLACES = (("listen", "Listen now", None), ("albums", "Albums", None), ("playlists", "Playlists", None),
-          ("search", "Search", "search"))
+          ("sources", "Sources", None), ("search", "Search", "search"))
 GRID_COLUMNS = 6
 # six covers and five 36-unit gaps fill the 1728-unit safe width
 GRID_COVER = (1920 - 2 * 96 - 5 * 36) / 6
-GRID_BATCH_ROWS = 4
+GRID_GAP, GRID_ROW_GAP = 36, 44
 SHELF_LIMIT = 12
 SEARCH_LIMIT = 8
 PLAY_KEYS = frozenset({Gdk.KEY_space, Gdk.KEY_AudioPlay, Gdk.KEY_AudioPause})
@@ -87,6 +89,25 @@ def _sheet(_opaque: bool = False) -> str:
 .tide-tv-search .tv-field image {{ -gtk-icon-size: 34tv; margin-right: 18tv; }}
 .tide-tv-results {{ padding: 0 96tv 80tv; }}
 .tide-tv-empty {{ font-size: 28tv; color: {m['ink_3']}; }}
+.tide-tv-signin {{ border-spacing: 32tv; margin-bottom: 36tv; }}
+.tide-tv-signin-words {{ border-spacing: 6tv; }}
+.tide-tv-signin-title {{ font-size: 30tv; font-weight: 650; color: {m['ink']}; }}
+.tide-tv-sources {{ border-spacing: 30tv; }}
+.tide-tv-card {{ min-width: 1180tv; padding: 8tv; border-radius: 30tv; border-spacing: 2tv; }}
+.tide-tv-source {{ min-height: 108tv; padding: 0 22tv; border-radius: 22tv; border-spacing: 20tv; }}
+.tide-tv-source .tide-tv-lead {{ min-width: 64tv; min-height: 64tv; border-radius: 18tv; background-color: rgba(255,255,255,.08); }}
+.tide-tv-source .tide-tv-lead image {{ -gtk-icon-size: 32tv; }}
+.tide-tv-source .tide-tv-name {{ font-size: 25tv; font-weight: 600; }}
+.tide-tv-source .tide-tv-where {{ font-size: 19tv; font-weight: 500; color: {m['ink_3']}; }}
+.tide-tv-source .tide-tv-state {{ font-size: 23tv; font-weight: 600; color: {m['ink_2']}; font-feature-settings: "tnum"; }}
+.tide-tv-source .tide-tv-dot {{ min-width: 12tv; min-height: 12tv; border-radius: 6tv; background-color: #4fc27a; }}
+.tide-tv-source .tide-tv-dot.busy {{ background-color: #e3b04b; }}
+.tide-tv-source .tide-tv-dot.bad {{ background-color: #e5645a; }}
+.tide-tv-source.tv-key .tide-tv-where, .tide-tv-source.tv-key .tide-tv-state {{ color: alpha({m['key_ink']}, .62); }}
+.tide-tv-source.tv-key .tide-tv-lead {{ background-color: rgba(0,0,0,.08); }}
+.tide-tv-head {{ border-spacing: 18tv; margin-bottom: 28tv; }}
+.tide-tv-form {{ border-spacing: 20tv; }}
+.tide-tv-form .tv-field {{ min-width: 900tv; }}
 """
 
 
@@ -111,6 +132,10 @@ def _label(text: str, *css: str, wrap: bool = False, lines: int = 0, **props) ->
         label.set_ellipsize(Pango.EllipsizeMode.END)
         label.set_single_line_mode(True)
     return label
+
+
+def _album_key(album: Album) -> str:
+    return album.id
 
 
 def _art(album: Album | None) -> str | None:
@@ -158,6 +183,60 @@ class SongRow(Gtk.Box):
         (self.add_css_class if on else self.remove_css_class)("tv-key")
 
 
+class SourceRow(Gtk.Box):
+    """One of Tide's sources as a TV row: what it is, where it is, its state and songs."""
+
+    def __init__(self, source) -> None:
+        super().__init__(accessible_role=Gtk.AccessibleRole.BUTTON)
+        self.add_css_class("tide-tv-source")
+        self.source = source
+        lead = Gtk.Box(valign=Gtk.Align.CENTER, hexpand=False)
+        lead.add_css_class("tide-tv-lead")
+        glyph = icons.image(source.icon)
+        glyph.set_halign(Gtk.Align.CENTER)
+        glyph.set_valign(Gtk.Align.CENTER)
+        glyph.set_hexpand(True)
+        lead.append(glyph)
+        lead.set_hexpand(False)
+        self.append(lead)
+        words = _box(True, valign=Gtk.Align.CENTER, hexpand=True)
+        words.append(_label(source.name, "tide-tv-name"))
+        words.append(_label(_source_where(source), "tide-tv-where", ellipsize=Pango.EllipsizeMode.MIDDLE))
+        self.append(words)
+        state = _box(False, valign=Gtk.Align.CENTER, spacing=10)
+        dot = Gtk.Box(valign=Gtk.Align.CENTER)
+        dot.add_css_class("tide-tv-dot")
+        if source.state in ("busy", "bad"):
+            dot.add_css_class(source.state)
+        state.append(dot)
+        state.append(_label(source.subtitle, "tide-tv-state"))
+        self.append(state)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [f"{source.name}, {source.subtitle}"])
+
+    def set_tv_focus(self, on: bool) -> None:
+        (self.add_css_class if on else self.remove_css_class)("tv-key")
+
+
+def _is_downloads(source) -> bool:
+    return source.icon == "download"
+
+
+def _source_where(source) -> str:
+    """Kind and address, as the desktop's facts give them: "Server · host:4533", "Folder · ~/Music"."""
+    facts = dict(source.facts)
+    if _is_downloads(source):
+        return "Kept offline · On this TV"
+    if source.remote:
+        return "Server · " + facts.get("Server", "")
+    folder = facts.get("Folder", "")
+    home = GLib.get_home_dir()
+    for prefix in ("file://" + home, home):
+        if folder.startswith(prefix):
+            folder = "~" + folder[len(prefix):]
+            break
+    return "Folder · " + folder.removeprefix("file://")
+
+
 class TideTV:
     """The TV presentation of one TideWindow (see the module docstring)."""
 
@@ -197,13 +276,23 @@ class TideTV:
         self._rows: list[SongRow] = []
         self._results: list[Gtk.Widget] = []
         self._page_items: list[Gtk.Widget] = []
-        self._grid_state = None
+        self._grid: TvGrid | None = None
+        self._slide: TvSlide | None = None
+        self._shown = None  # what the page was drawn from (`_signature`)
         self._field = None
         self._idle_release = None
         # idle: after 15 s on Now playing while music plays, the record alone (LumaUI's idle hook)
         self.idle_hook = TvIdle(self.focus, seconds=IDLE_SECONDS, on_idle=self._enter_idle, on_wake=self._leave_idle)
+        # Out of sight (another app in front), keep only a quarter of the decoded covers.
+        self.stage.connect("unmap", lambda *_a: self._release_pictures())
         self.render()
         self.focus.focus(self.tabs[0])
+
+    @staticmethod
+    def _release_pictures() -> None:
+        from luma_appkit.media_style import TextureLoader
+        if TextureLoader._shared is not None:
+            TextureLoader._shared.trim(0.25)
 
     # ── state ────────────────────────────────────────────────────────────────
 
@@ -223,7 +312,44 @@ class TideTV:
 
     # ── data changes from the window ─────────────────────────────────────────
 
+    @property
+    def loaded(self) -> bool:
+        """The library has been read at least once (until then a page shows nothing, not "empty")."""
+        return bool(getattr(self.window, "library_loaded", True))
+
+    def _settling(self) -> bool:
+        """No albums yet, but a source is still bringing its first songs in."""
+        return not self.library.albums and any(s.state == "busy" for s in self.library.sources)
+
+    def _signature(self):
+        """What the current page is drawn from; a library change that leaves it alone redraws nothing."""
+        library = self.library
+        sources = library.sources if self.view["kind"] in ("sources", "source") else ()
+        return (self.loaded, self._settling(),
+                tuple((a.id, a.title, a.artist, a.year, a.artwork, len(a.songs)) for a in library.albums),
+                library.played, tuple((p.id, p.name, p.song_ids) for p in library.playlists), sources)
+
     def library_changed(self) -> None:
+        signature = self._signature()
+        if signature == self._shown:
+            return
+        grid = self._grid
+        if (self.view["kind"] == "albums" and grid is not None and grid.items and self.library.albums
+                and signature[:2] == self._shown[:2]):
+            # in place: the same covers keep their widgets, the page keeps its place and the focus
+            focused = self.focus.focused
+            index = grid.index_of(focused) if focused is not None else -1
+            grid.set_items(self.library.albums, key=_album_key)
+            self._shown = signature
+            if index >= 0 and self.focus.focused is None:
+                target = grid.widget_at(min(index, len(self.library.albums) - 1))
+                if target is not None:
+                    self.focus.focus(target)
+            elif focused is not None and grid.index_of(focused) >= 0:
+                # a reorder may have moved it: keep it on screen once it is laid out again
+                GLib.idle_add(lambda: self._slide is not None and focused.get_parent() is grid
+                              and self._slide.reveal(focused, animate=False) and False)
+            return
         self.render(keep_focus=True)
 
     def player_changed(self, player, previous) -> None:
@@ -292,7 +418,8 @@ class TideTV:
     # ── navigation ───────────────────────────────────────────────────────────
 
     def push(self, view: dict) -> None:
-        self.stack.append({"view": self.view, "focus": self._focus_key()})
+        self.stack.append({"view": self.view, "focus": self._focus_key(),
+                           "offset": self._slide.offset if self._slide is not None else 0.0})
         self.view = view
         self.render()
         first = self._first_page_item(view)
@@ -304,7 +431,7 @@ class TideTV:
         if self.stack:
             entry = self.stack.pop()
             self.view = entry["view"]
-            self.render()
+            self.render(offset=entry.get("offset", 0.0))
             target = self._find_focus_key(entry["focus"]) or self._first_page_item()
             if target is not None:
                 self.focus.focus(target)
@@ -336,6 +463,9 @@ class TideTV:
     def _find_focus_key(self, key):
         if key is None or self.page is None:
             return None
+        if self._grid is not None and isinstance(key, str) and key.startswith("al:"):
+            index = next((i for i, a in enumerate(self._grid.items) if a.id == key[3:]), -1)
+            return self._grid.widget_at(index) if index >= 0 else None
         found = []
 
         def walk(widget):
@@ -356,7 +486,10 @@ class TideTV:
             return preferred
         if kind == "search" and self._field is not None:
             return self._field.text
-        return getattr(self, "_first", None)
+        first = getattr(self, "_first", None)
+        if first is None and self._grid is not None:
+            first = self._grid.widget_at(0)
+        return first
 
     # ── focus and the room ───────────────────────────────────────────────────
 
@@ -396,10 +529,21 @@ class TideTV:
         if kind == "artist":
             albums = self._artist_albums(self.view["artist"])
             return (albums[0] if albums else None), None
+        if kind == "source":
+            source = next((s for s in self.library.sources if s.id == self.view["source"]), None)
+            if source is not None:
+                album = next((a for a in self.library.albums
+                              if any(source.name in song.library_sources for song in a.songs)), None)
+                return (album, None) if album is not None else (None, hues_for(source.name))
         subject = self.playing_album()
         if subject is not None:
             return subject[0], None
-        return (self.library.albums[0] if self.library.albums else None), None
+        if self.library.albums:
+            return self.library.albums[0], None
+        # Nothing to show yet (or a server waiting on a sign-in): the room keeps a colour of
+        # its own (the waiting server's, else Tide's), never a black screen.
+        waiting = next((s for s in self.library.sources if s.remote and s.signed_out), None)
+        return None, hues_for(waiting.name if waiting else "Tide")
 
     # ── keys: play/pause anywhere, and waking from idle ──────────────────────
 
@@ -462,23 +606,34 @@ class TideTV:
 
     # ── drawing ──────────────────────────────────────────────────────────────
 
-    def render(self, keep_focus: bool = False) -> None:
+    def render(self, keep_focus: bool = False, offset: float | None = None) -> None:
         key = self._focus_key() if keep_focus else None
         was_bar = self.focus.group_of(self.focus.focused) in ("places", "deck")
+        if keep_focus and offset is None and self._slide is not None:
+            offset = self._slide.offset  # a redraw of the same page stays where it was
         self.focus.clear("page")
-        self._rows, self._first, self._preferred, self._grid_state = [], None, None, None
+        self._rows, self._first, self._preferred, self._grid, self._slide = [], None, None, None, None
+        self._shown = self._signature()
         self._field, self._results, self._page_items = None, [], []
         self._np = {}
+        layer = self._page_layer()
         if self.page is not None:
+            fade = getattr(self.page, "_tv_fade", None)
+            if fade is not None:
+                fade.pause()
             self.stage.remove(self.page)
             self.page = None
         kind = self.view["kind"]
         builder = {"listen": self._listen, "albums": self._albums, "playlists": self._playlists,
                    "search": self._search, "album": self._collection, "playlist": self._collection,
-                   "artist": self._collection, "now": self._now}[kind]
+                   "artist": self._collection, "now": self._now, "sources": self._sources,
+                   "source": self._source_page, "server": self._server_form}[kind]
         page, pin = builder()
+        if offset and self._slide is not None:
+            self._slide.offset = self._slide.target = offset
         self.page = page
         self.stage.place(page, **pin)
+        self._take_layer(page, layer)
         self.stage.raise_child(self.bar)
         self.stage.raise_child(self.calm)
         self.bar.set_open(self._place_index())
@@ -490,13 +645,37 @@ class TideTV:
         self._room_for(self.focus.focused if self.focus.group_of(self.focus.focused) == "page" else None)
         self._sync_idle()
 
-    def _add(self, widget, key, on_activate, *, album: Album | None = None, hues=None, first: bool = False):
+    def _page_layer(self) -> tuple[float, float, int]:
+        """Where the page layer's idle cross-fade stands: (opacity now, target, ms left).
+        A page rebuilt mid-fade (a new track while idle, or while waking) carries it on."""
+        target = 0.0 if self.idle else 1.0
+        old = self.page
+        if old is None:
+            return target, target, 0
+        now = old.get_opacity()
+        fade = getattr(old, "_tv_fade", None)
+        left = 0
+        if fade is not None and fade.get_state() == Adw.AnimationState.PLAYING:
+            span = abs(fade.get_value_to() - fade.get_value_from())
+            left = int(fade.get_duration() * (abs(target - now) / span)) if span > 0.001 else 0
+        return now, target, left
+
+    def _take_layer(self, page, layer) -> None:
+        now, target, left = layer
+        page.set_opacity(now)
+        if abs(now - target) > 0.001:
+            if left <= 0:
+                left = TV["motion"].get("idle_fade_ms", 900) // 2
+            tv_fade(page, target, left)
+
+    def _add(self, widget, key, on_activate, *, album: Album | None = None, hues=None, first: bool = False,
+             menu=None):
         widget.tide_key = key
         if album is not None:
             widget.tide_album = album
         if hues is not None:
             widget.tide_hues = hues
-        self.focus.add(widget, group="page", on_activate=on_activate)
+        self.focus.add(widget, group="page", on_activate=on_activate, menu=menu)
         self._page_items.append(widget)
         if first or self._first is None:
             self._first = widget
@@ -517,6 +696,7 @@ class TideTV:
 
     def _page_scroll(self, content: Gtk.Widget):
         slide = TvSlide(content, orientation=Gtk.Orientation.VERTICAL, lead=40)
+        self._slide = slide
         return slide, {"left": 0, "right": 0, "top": 150, "bottom": 0}
 
     def _shelf(self, title: str, widgets) -> Gtk.Widget:
@@ -533,8 +713,9 @@ class TideTV:
         pad = _box(True, "tide-tv-pad")
         albums = self.library.albums
         if not albums:
-            pad.append(_label("Your music will be here. Add music to Tide on a computer, or connect a server.",
-                              "tide-tv-empty", wrap=True))
+            if self.loaded and not self._settling() and not self._sign_in_notes(pad):
+                pad.append(_label("Your music will be here. Add music to Tide on a computer, or connect a server.",
+                                  "tide-tv-empty", wrap=True))
             return self._page_scroll(pad)
         subject = self.playing_album()
         played = [self._album(i) for i in self.library.played]
@@ -581,42 +762,205 @@ class TideTV:
 
     # Albums and Playlists
     def _albums(self):
-        grid = Gtk.Grid()
-        grid.add_css_class("tide-tv-grid")
         pad = _box(True, "tide-tv-pad")
-        pad.append(grid)
         albums = self.library.albums
-        if not albums:
+        waiting = self._sign_in_notes(pad)
+        pad.append(self._album_grid(albums))
+        if not albums and self.loaded and not self._settling() and not waiting:
             pad.append(_label("No albums yet.", "tide-tv-empty"))
-        self._grid_state = {"grid": grid, "items": albums, "next": 0}
-        self._grid_more(GRID_BATCH_ROWS * 2)
         return self._page_scroll(pad)
 
-    def _grid_more(self, rows: int) -> None:
-        state = self._grid_state
-        if state is None:
-            return
-        start = state["next"]
-        end = min(len(state["items"]), start + rows * GRID_COLUMNS)
-        for index in range(start, end):
-            album = state["items"][index]
-            cover = self._cover(album, f"al:{album.id}", width=GRID_COVER)
-            self.focus.remove(cover)
-            self.focus.add(cover, group="page", on_activate=lambda a=album: self.open_album(a),
-                           on_focus=lambda i=index: self._grid_focused(i))
-            state["grid"].attach(cover, index % GRID_COLUMNS, index // GRID_COLUMNS, 1, 1)
-        state["next"] = end
+    def _sign_in_notes(self, pad, sources=None) -> bool:
+        """A server that needs signing in says so where its music would be, with the way back in,
+        so a library it fills never looks empty. True when one was shown."""
+        shown = False
+        for source in self.library.sources if sources is None else sources:
+            if not (source.remote and source.signed_out):
+                continue
+            songs = dict(source.facts).get("Songs", "")
+            note = _box(False, "tide-tv-signin")
+            words = _box(True, "tide-tv-signin-words", hexpand=True)
+            words.append(_label(f"Sign in to {source.name} to play its music", "tide-tv-signin-title", wrap=True))
+            words.append(_label(f"{songs} songs wait in your library until you do." if songs not in ("", "0")
+                                else "Its songs come back when you do.", "tide-tv-meta", wrap=True))
+            note.append(words)
+            note.append(self._add(TvButton("Sign In…", icon="key-round"), f"signin:{source.id}",
+                                  lambda s=source: self.open_server(s),
+                                  first=not shown and not self.library.albums))
+            pad.append(note)
+            shown = True
+        return shown
 
-    def _grid_focused(self, index: int) -> None:
-        state = self._grid_state
-        if state is not None and index >= state["next"] - GRID_COLUMNS * 2:
-            self._grid_more(GRID_BATCH_ROWS)
+    def _album_grid(self, albums) -> TvGrid:
+        grid = TvGrid(columns=GRID_COLUMNS, cell=GRID_COVER, gap=GRID_GAP, row_gap=GRID_ROW_GAP,
+                      make=self._grid_cell, release=self._forget, update=self._grid_update)
+        self._grid = grid
+        grid.set_items(albums, key=_album_key)
+        return grid
+
+    # Sources: the desktop's Sources pane, TV size
+    def _sources(self):
+        page = _box(True, "tide-tv-sources", halign=Gtk.Align.CENTER)
+        card = _box(True, "tide-tv-card", "tv-bar")
+        for source in self.library.sources:
+            row = SourceRow(source)
+            browse = (lambda s=source: self.open_source(s)) if not _is_downloads(source) else None
+            self._add(row, f"src:{source.id}", browse or (lambda r=row: self.focus.open_menu(feedback=True)),
+                      menu=lambda s=source: self._source_menu(s))
+            card.append(row)
+        if self.library.sources:
+            page.append(card)
+        elif self.loaded:
+            page.append(_label("No sources yet. Add a server, or music to this TV’s Music folder.", "tide-tv-empty",
+                               wrap=True))
+        acts = _box(False, "tide-tv-acts", halign=Gtk.Align.CENTER)
+        acts.append(self._add(TvButton("Add a Server…", icon="plus"), "addserver", lambda: self.open_server()))
+        page.append(acts)
+        return page, {"left": 96, "right": 96, "top": 190}
+
+    def _source_menu(self, source):
+        from luma_appkit.commands import Command, CommandGroup, CommandRegistry
+        commands = [Command("tide.refresh", "Refresh", lambda: self._refresh_source(source), "refresh-cw")]
+        if source.remote:
+            commands.append(Command("tide.sign-in", "Sign In Again", lambda: self.open_server(source), "key-round"))
+        if not _is_downloads(source):
+            commands.append(Command("tide.remove", "Remove…", lambda: self._confirm_remove(source), "trash-2",
+                                    destructive=True))
+        return CommandRegistry((CommandGroup(None, tuple(commands)),))
+
+    def _refresh_source(self, source) -> None:
+        self.window.source.sync(source.id)
+        if self.window.source.fixture:
+            from luma_appkit.tv_toast import TvToast
+            TvToast.show(self.stage, "Music is up to date.", lead="check")
+
+    def _confirm_remove(self, source) -> None:
+        from luma_appkit.tv_menu import TvMenu
+        row = self._find_focus_key(f"src:{source.id}")
+        where = dict(source.facts).get("Server") or source.name
+        if row is not None:
+            TvMenu.confirm(self.focus, row, f"Remove {source.name}?",
+                           f"Its songs leave your library on this TV. Nothing is deleted from {where}.",
+                           "Remove", lambda: self._remove_source(source))
+
+    def _remove_source(self, source) -> None:
+        from luma_appkit.tv_toast import TvToast
+        window = self.window
+        if window.source.fixture:
+            window.source.remove_source(source.id)
+        else:
+            window._removals.add(source.id)  # deferred, as on the desktop; closing Tide carries it out
+        window.refresh_library()
+        TvToast.show(self.stage, f"Removed {source.name}", lead="trash-2")
+
+    def open_source(self, source) -> None:
+        self.push({"kind": "source", "source": source.id})
+
+    def _source_page(self):
+        source = next((s for s in self.library.sources if s.id == self.view["source"]), None)
+        if source is None:
+            return self._missing()
+        albums = [a for a in self.library.albums if any(source.name in song.library_sources for song in a.songs)]
+        pad = _box(True, "tide-tv-pad")
+        head = _box(False, "tide-tv-head")
+        head.append(_label(source.name, "tv-h1"))
+        songs = sum(len(a.songs) for a in albums)
+        head.append(_label(f"{len(albums):,} album{'s' if len(albums) != 1 else ''} · {songs:,} songs",
+                           "tide-tv-meta", valign=Gtk.Align.BASELINE))
+        pad.append(head)
+        waiting = self._sign_in_notes(pad, (source,))
+        pad.append(self._album_grid(albums))
+        if not albums and self.loaded and not waiting:
+            pad.append(_label("Nothing from here in your library yet.", "tide-tv-empty"))
+        return self._page_scroll(pad)
+
+    # Add a Server, or Sign In Again: the desktop's add flow with TV fields
+    def open_server(self, source=None) -> None:
+        self.push({"kind": "server", "source": source.id if source is not None else None})
+
+    def _server_form(self):
+        identifier = self.view.get("source")
+        source = next((s for s in self.library.sources if s.id == identifier), None) if identifier else None
+        facts = dict(source.facts) if source is not None else {}
+        page = _box(True, "tide-tv-form", halign=Gtk.Align.CENTER)
+        page.append(_label("Sign In Again" if source is not None else "Add a Server", "tv-h1"))
+        address = TvField(placeholder="Address (music.example.com)", icon="globe", purpose=Gtk.InputPurpose.URL,
+                          action="Next")
+        account = TvField(placeholder="Account", icon="user", action="Next")
+        password = TvField(placeholder="Password", icon="key-round", purpose=Gtk.InputPurpose.PASSWORD,
+                           action="Connect")
+        password.text.set_visibility(False)
+        if source is not None:
+            address.set_value(self.window.source.source_address(source.id)
+                              if hasattr(self.window.source, "source_address") else facts.get("Server", ""))
+            account.set_value(facts.get("Account", ""))
+        fields = (address, account, password)
+        connect = TvButton("Connect", accent=True)
+
+        def next_after(field):
+            later = fields[fields.index(field) + 1:]
+            self.focus.focus(later[0].text if later else connect)
+        for key, field in zip(("address", "account", "password"), fields):
+            field.text.tide_key = f"server:{key}"
+            self.focus.add(field.text, group="page", editable=True, on_activate=lambda f=field: next_after(f))
+            page.append(field)
+        page.append(_label("Navidrome, Subsonic and servers that speak its language. The password is kept in "
+                           "this TV’s keyring.", "tide-tv-meta", wrap=True, max_width_chars=70))
+        acts = _box(False, "tide-tv-acts", halign=Gtk.Align.CENTER)
+        acts.append(self._add(connect, "server:connect", lambda: self._connect(fields, source, connect)))
+        page.append(acts)
+        self._preferred = password.text if source is not None else address.text
+        self._form = fields
+        return page, {"left": 96, "right": 96, "top": 190}
+
+    def _connect(self, fields, source, button) -> None:
+        from luma_appkit.tv_toast import TvToast
+        address, account, password = (field.get_value() for field in fields)
+        if not address.strip() or not account.strip():
+            self.focus.focus(fields[0].text if not address.strip() else fields[1].text)
+            return
+
+        def connected(error: str = "") -> None:
+            button.set_sensitive(True)
+            if error:
+                TvToast.show(self.stage, error, lead="circle-alert")
+                return
+            TvToast.show(self.stage, "Signed in" if source is not None else "Connected", lead="check")
+            if self.view["kind"] == "server":
+                self.back()
+        button.set_sensitive(False)
+        window = self.window
+        if window.source.fixture:
+            window.source.connect(address, account, password, source.id if source is not None else None)
+            window.refresh_library()
+            connected()
+        else:
+            window.source.connect(address, account, password, source.id if source is not None else None,
+                                  callback=lambda error="": GLib.idle_add(lambda: connected(error) or False),
+                                  where=self.stage)
+
+    def _grid_cell(self, _index: int, album: Album) -> Gtk.Widget:
+        return self._cover(album, f"al:{album.id}", width=GRID_COVER)
+
+    def _grid_update(self, cover: TvCover, album: Album) -> None:
+        cover.tide_album = album
+        cover.set_artwork(_art(album), _hues(album))
+        cover.set_caption(album.title, album.artist)
+
+    def _forget(self, widget: Gtk.Widget) -> None:
+        """A grid cell left the screen: the remote forgets it (it is made again on the way back)."""
+        self.focus.remove(widget)
+        if widget in self._page_items:
+            self._page_items.remove(widget)
+        if self._first is widget:
+            self._first = None
 
     def _playlists(self):
         pad = _box(True, "tide-tv-pad")
         if not self.library.playlists:
-            pad.append(_label("No playlists yet. Playlists you make in Tide on a computer show here.",
-                              "tide-tv-empty", wrap=True))
+            if self.loaded:
+                pad.append(_label("No playlists yet. Playlists you make in Tide on a computer show here.",
+                                  "tide-tv-empty", wrap=True))
             return self._page_scroll(pad)
         grid = Gtk.Grid()
         grid.add_css_class("tide-tv-grid")

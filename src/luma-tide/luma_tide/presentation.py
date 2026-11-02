@@ -58,6 +58,7 @@ class MusicSource:
     subtitle: str
     facts: tuple[tuple[str, str], ...]
     remote: bool = False
+    signed_out: bool = False  # needs signing in; its songs wait outside the library until then
 
 
 @dataclass(frozen=True)

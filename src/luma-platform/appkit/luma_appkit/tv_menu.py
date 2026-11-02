@@ -10,6 +10,12 @@ visible command, the focus on the first. OK runs a command and closes the
 menu; Back closes it; either way the focus returns to the item.
 
 Commands with children are not shown; a TV menu is one level.
+
+A destructive command confirms in the same panel, dropped from the same item:
+
+    TvMenu.confirm(focus, row, "Remove Navidrome?", "Its songs leave your library.", "Remove", remove)
+
+the question, a quiet line saying what happens, then Cancel (focused) and the action.
 """
 from __future__ import annotations
 
@@ -35,12 +41,16 @@ def _sheet(opaque: bool) -> str:
     t = TV["menu"]
     return f"""
 .tv-menu {{ padding: {t['padding']}tv; border-radius: {t['radius']}tv; min-width: {t['min_width']}tv; }}
+.tv-menu.tv-bar {{ background-color: {m('sheet')}; }}
 .tv-menu-row {{ min-height: {t['row_height']}tv; padding: 0 {t['row_padding_x']}tv; border-radius: {t['row_radius']}tv;
   font-size: {t['row_size']}tv; font-weight: {t['row_weight']}; color: {m('ink')}; }}
 .tv-menu-row > box {{ border-spacing: {t['icon_gap']}tv; }}
 .tv-menu-row image {{ -gtk-icon-size: {t['icon']}tv; }}
 .tv-menu-row.tv-danger {{ color: {m('danger')}; }}
+.tv-menu-row.tv-key {{ color: {m('key_ink')}; }}
 .tv-menu-row.tv-key.tv-danger {{ color: {m('danger_on_key')}; }}
+.tv-menu-title {{ padding: 10tv {t['row_padding_x']}tv 12tv; font-size: 22tv; font-weight: 600; color: {m('ink_2')}; }}
+.tv-menu-body {{ padding: 0 {t['row_padding_x']}tv 12tv; margin-top: -6tv; font-size: 20tv; color: {m('ink_3')}; }}
 """
 
 
@@ -62,11 +72,22 @@ class TvMenu(Gtk.Box):
 
     __gtype_name__ = "LumaUITvMenu"
 
-    def __init__(self, registry: CommandRegistry) -> None:
+    def __init__(self, registry: CommandRegistry, title: str = "", body: str = "") -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, accessible_role=Gtk.AccessibleRole.MENU)
         add_tv_style(_sheet)
         self.add_css_class("tv-menu")
         self.add_css_class("tv-bar")
+        if title:
+            # the question a dropped list answers ("Uninstall Kodi?"), on top
+            heading = Gtk.Label(label=title, xalign=0, wrap=True, max_width_chars=36)
+            heading.add_css_class("tv-menu-title")
+            self.append(heading)
+            self.update_property([Gtk.AccessibleProperty.LABEL], [title])
+        if body:
+            # what answering does ("Its songs leave your library."), quieter, under the question
+            line = Gtk.Label(label=body, xalign=0, wrap=True, max_width_chars=36)
+            line.add_css_class("tv-menu-body")
+            self.append(line)
         self.rows: list[Gtk.Widget] = []
         self.commands = menu_commands(registry)
         for command in self.commands:
@@ -88,11 +109,26 @@ class TvMenu(Gtk.Box):
             self.rows.append(row)
 
     @classmethod
+    def confirm(cls, focus, item: Gtk.Widget, title: str, body: str, action: str,
+                on_confirm: Callable[[], None], *, cancel: str = "Cancel") -> "TvMenu | None":
+        """Ask before a destructive command: `title`, `body`, then Cancel (focused) and `action`."""
+        from .commands import Command, CommandGroup
+        registry = CommandRegistry((CommandGroup(None, (
+            Command("tv.cancel", cancel, lambda: None),
+            Command("tv.confirm", action, on_confirm, destructive=True),
+        )),))
+        return cls.open(focus, item, registry, title=title, body=body, first=0)
+
+    @classmethod
     def open(cls, focus, item: Gtk.Widget, registry: CommandRegistry,
-             on_closed: Callable[[], None] | None = None) -> "TvMenu | None":
-        """Open the menu for `item` on `focus`'s stage; None when it has no command to show."""
+             on_closed: Callable[[], None] | None = None, *, title: str = "", body: str = "",
+             first: int | None = None) -> "TvMenu | None":
+        """Open the menu for `item` on `focus`'s stage; None when it has no command to show.
+
+        `title` puts the question the list answers on top (`body`, a quieter line under it); `first` is the index of the command
+        the focus starts on (a question's Cancel, so OK never assumes an answer)."""
         stage = focus.root
-        menu = cls(registry)
+        menu = cls(registry, title, body)
         if not menu.rows or not isinstance(stage, TvStage):
             return None
         unit = stage.unit or 1.0
@@ -116,7 +152,8 @@ class TvMenu(Gtk.Box):
         for row, command in zip(menu.rows, menu.commands):
             focus.add(row, group="tv-menu", on_activate=lambda c=command: menu._run(c),
                       on_key=lambda direction, r=row: menu._step(r, direction, live))
-        focus.push_scope(live, on_back=menu._back)
+        start = menu.rows[first] if first is not None and 0 <= first < len(menu.rows) else None
+        focus.push_scope(live, on_back=menu._back, first=start if start in live else None)
         return menu
 
     def _step(self, row: Gtk.Widget, direction: str, live: list) -> bool:

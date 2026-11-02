@@ -146,6 +146,38 @@ class Widgets(unittest.TestCase):
         slide.reveal(items[9], animate=False)
         self.assertEqual(slide.offset, 3000 - slide.get_width())
 
+    def test_grid_makes_only_the_cells_near_the_screen(self):
+        from luma_appkit.tv_media import TvGrid, TvSlide
+        made, released = [], []
+
+        def make(index, item):
+            made.append(item)
+            return Gtk.Box(width_request=10, height_request=80)
+        grid = TvGrid(columns=6, cell=100, gap=10, row_gap=10, make=make, release=released.append)
+        grid.set_items(range(6000), key=lambda item: item)
+        slide = TvSlide(grid, orientation=Gtk.Orientation.VERTICAL, lead=0)
+        self.stage.place(slide, left=0, right=0, top=0, bottom=0)
+        self.window.present()
+        self.settle()
+        alive = len(grid.cells())
+        self.assertGreater(alive, 6)
+        self.assertLess(alive, 600)                            # never the whole collection
+        _w, _gap, cell_h, row_gap = grid._metrics()
+        self.assertEqual(cell_h, 80)
+        pitch = cell_h + row_gap
+        self.assertEqual(grid.get_height(), 1000 * cell_h + 999 * row_gap)
+        slide.slide_to(500 * pitch, animate=False)
+        self.settle()
+        indexes = [grid.index_of(cell) for cell in grid.cells()]
+        self.assertIn(500 * 6, indexes)                        # the rows now on screen exist
+        self.assertNotIn(0, indexes)                           # the first rows were let go
+        self.assertTrue(released)
+        kept = grid.widget_at(3000)
+        kept.add_css_class("tv-focus")                          # the remote's focus is never let go
+        grid.set_items([3000] + list(range(10)), key=lambda item: item)
+        self.assertIs(grid.widget_for(3000), kept)              # stable identity across a reorder
+        self.assertEqual(grid.index_of(kept), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

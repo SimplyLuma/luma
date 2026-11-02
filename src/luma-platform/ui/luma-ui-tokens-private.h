@@ -2269,6 +2269,10 @@
 #define LUMA_UI_TV_KEYBOARD_COLOURS_ACTION_INK "#ffffff"
 #define LUMA_UI_TV_KEYBOARD_COLOURS_LOCK "rgba(70, 151, 228, 1)"
 #define LUMA_UI_TV_KEYBOARD_COLOURS_FOCUS_DROP "rgba(0, 0, 0, 0.55)"
+#define LUMA_UI_TV_SCROLL__DOC "Pages and grids that slide past an edge (luma_appkit.tv_media.TvSlide) fade out there, never a hard cut, as the C island's page: eased (ease-out over fade_stops stops, steep only at the very edge), fade_top units at the top, fade_bottom at the bottom, each growing in over its own length only while content continues past that edge. Only the edge strips are masked."
+#define LUMA_UI_TV_SCROLL_FADE_TOP 48
+#define LUMA_UI_TV_SCROLL_FADE_BOTTOM 128
+#define LUMA_UI_TV_SCROLL_FADE_STOPS 8
 #define LUMA_UI_TV_IDLE__DOC "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay."
 #define LUMA_UI_TV_IDLE_WEATHER_SECONDS 20
 #define LUMA_UI_TV_IDLE_MEDIA_SECONDS 15

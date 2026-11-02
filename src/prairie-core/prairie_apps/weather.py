@@ -91,6 +91,7 @@ class WeatherWindow(AppWindow):
         self.units = UNITS_IMPERIAL if self.fixture else measurement_from_locale(os.environ.get('LC_MEASUREMENT', os.environ.get('LANG', '')))
         if self.store is not None:
             self.units = resolve_units(self.store.unit_setting(), self.units)
+        self._read_cached()
         commands = CommandRegistry((CommandGroup('', (
             Command('weather.find', 'Add a city', self._focus_search, 'search', shortcut=('Ctrl', 'F')),
             Command('weather.refresh', 'Refresh', self._reload, 'refresh-cw'),
@@ -167,6 +168,8 @@ class WeatherWindow(AppWindow):
         self.forecast_layout = ForecastLayout()
         self.forecast_layout.set_name('wx-grid')
         self.forecast_layout.set_margin_top(12)
+        if self.places:
+            self._render_sidebar()
         self._render()
         if self._setup_save_failed:
             Toast.show(self.host, 'Your setup city could not be saved. Add a city to try again.', kind='warning')
@@ -371,6 +374,20 @@ class WeatherWindow(AppWindow):
             return None
         where = self if self.get_width() <= lumaui_tokens.PHONE_MAX_WIDTH else self.host
         return Toast.show(where, message, kind=kind)
+
+    def _read_cached(self):
+        """Start from the forecasts already on disk, so the first frame is the weather, not 'Loading'."""
+        if self.fixture:
+            return
+        for place in self.places:
+            try:
+                cached = cached_forecast(place)
+                if cached:
+                    self.snapshots[place.uid] = snapshot_from_forecast(cached, self.units)
+            except (OSError, ValueError):
+                pass
+        if self.places and not self.selected:
+            self.selected = self.places[0].uid
 
     def _reload(self):
         self.generation += 1
