@@ -213,8 +213,8 @@ assert(/quickPanel: \(\) => this\._quick\?\.toggle\('remote'\)/.test(home), 'the
 // Home is held: short goes home on release, long opens the panel at once.
 assert(/_homeDown\(source\) \{[\s\S]*?timeout_add\([\s\S]*?home_hold_ms[\s\S]*?this\._quickPanel\(\)/.test(input),
     'a long press opens the panel without waiting for the release');
-assert(/_homeUp\(source\) \{[\s\S]*?homePress\(held, TOKENS\.quick_panel\.home_hold_ms\) === 'home'\) this\._act\('home'\)/.test(input),
-    'a short press goes home');
+assert(/_homeUp\(source\) \{[\s\S]*?homePress\(held, TOKENS\.quick_panel\.home_hold_ms\) !== 'home'\) this\._quickPanel\(\)[\s\S]*?this\._act\('home'\)/.test(input),
+    'a short press goes home (once no second press comes: tv-app-switcher-policy.js)');
 assert(/REMOTE_KEYS\[name\] === 'home'\) this\._homeDown\(/.test(input) && /'accelerator-deactivated'[\s\S]*?this\._homeUp\(/.test(input),
     "a remote's Home");
 assert(/action === 'home'\) \{[\s\S]*?this\._homeSources\.has\(source\)\) this\._homeUp\(source\)[\s\S]*?this\._homeDown\(source\)/.test(input),

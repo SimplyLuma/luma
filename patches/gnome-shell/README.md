@@ -449,3 +449,16 @@ a backend are not drawn. Back or Left off the island closes it and the focus
 returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
 Test: `tv-quick-panel-policy.js` in %check. Numbered 0313 to leave 0312 to
 `work/tv-settings` (screen edges).
+
+`0314-tv-app-switcher.patch`: registers `lumaPresentation/tvAppSwitcher.js`
+and its pure rules `tvAppSwitcherModel.js` in the JS resource. In TV posture,
+Home pressed twice (`tv.app_switcher.double_ms`) opens the app switcher: the
+running apps (`Shell.AppSystem` and `sessionApplications.js`, newest first in
+Alt+Tab order) as cards of their latest window picture (a `Clutter.Clone`) or
+TV tile over the TV home's scrim, the bar staying. OK switches, Back returns.
+Up, a held OK or Menu on a card offers Close, the desktop's Quit
+(`requestQuit`); an app still running after `force_after_ms` offers Force
+Close (`Meta.Window.kill()`, as the not-responding dialog). The TV home's
+tiles get a running dot and a held-OK menu with Open and Close. A single Home
+now goes home after the double-press window. docs/developer-platform/
+tv-mode.md "Closing apps". Test: `tv-app-switcher-policy.js` in %check.

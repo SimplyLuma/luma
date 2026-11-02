@@ -18,9 +18,12 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
+import {okPress, okRelease} from './tvQuickPanelModel.js';
+import {TvAppSwitcher, TvItemMenu, appRunning, requestQuit} from './tvAppSwitcher.js';
 import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
+import {tileMenu} from './tvAppSwitcherModel.js';
 import {greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
@@ -29,6 +32,8 @@ import {gettext as _} from 'gettext';
 // (scripts/developer/render-tv-backdrop.py): a still image, never a live blur.
 const BACKDROP = 'resource:///org/gnome/shell/ui/lumaPresentation/tv-backdrop.jpg';
 const PAGES = ['home', 'apps', 'search'];
+// Presses closer than this to the last one belong to the same held OK.
+const OK_QUIET_MS = 300;
 const iconTheme = new St.IconTheme();
 
 function normalWindow(window) {
@@ -102,6 +107,8 @@ export class TvPresentation {
         watch(this._clock, 'notify::clock', () => this._tick());
         watch(this._appSystem, 'installed-changed', () => this._loadApps());
         watch(Gio.AppInfoMonitor.get(), 'changed', () => this._loadApps());
+        // A running app's tile carries the running dot.
+        watch(this._appSystem, 'app-state-changed', () => this._syncRunning());
         watch(this._settings, 'changed::reduce-transparency', () => this._restyle());
         // No notification lip on a TV; notifications still arrive and wait. The
         // lip attaches itself lazily and re-shows on each notification, so keep
@@ -124,9 +131,18 @@ export class TvPresentation {
             opened: () => this._draw(), closed: origin => this._quickClosed(origin),
             // The cluster never moves: the panel adopts it as its header while open.
             cluster: {take: () => this._now, give: now => this._returnCluster(now)}});
+        // Running apps and closing them (tvAppSwitcher.js): Home pressed twice.
+        this._switcher = new TvAppSwitcher({unit: () => this._unit(), opaque: () => this._opaque(),
+            host: () => ({parent: this._home, below: this._track}),
+            tile: (shellApp, width, height) => this._plate(this._apps.find(app => app.id === shellApp.get_id()) ??
+                {id: shellApp.get_id(), name: shellApp.get_name(), tile: ''}, width, height),
+            closed: (reason, returnTo) => this._switcherClosed(reason, returnTo)});
+        // A tile's menu (a held OK): Open and Close while its app runs.
+        this._itemMenu = new TvItemMenu({unit: () => this._unit(), opaque: () => this._opaque()});
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
         this._input = new TvInput({home: () => this.showHome('home'),
-            quickPanel: () => this._quick?.toggle('remote')});
+            quickPanel: () => this._quick?.toggle('remote'),
+            switcher: () => this.toggleSwitcher()});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
         // System dialogs take the TV sheet and the remote (tvDialogs.js).
@@ -140,6 +156,12 @@ export class TvPresentation {
         this._input = null;
         this._quick?.destroy();
         this._quick = null;
+        this._switcher?.destroy();
+        this._switcher = null;
+        this._itemMenu?.close();
+        this._itemMenu = null;
+        if (this._holdTimer) GLib.source_remove(this._holdTimer);
+        this._holdTimer = 0;
         this._dialogs?.destroy();
         this._dialogs = null;
         Main.keyboard?.setTvPosture?.(false);
@@ -197,6 +219,8 @@ export class TvPresentation {
     showHome(page = 'home') {
         if (!this.active || !this._home) return;
         this._quick?.close();
+        this._switcher?.close('home');
+        this._itemMenu?.close();
         for (const window of visibleAppWindows()) window.minimize();
         this._open(page);
         this._focus = {kind: 'tab', index: PAGES.indexOf(page)};
@@ -300,6 +324,7 @@ export class TvPresentation {
         this._pages.search.add_child(this._noResults);
         for (const page of PAGES) this._home.add_child(this._pages[page]);
         this._home.connect('key-press-event', (_actor, event) => this._key(event));
+        this._home.connect('key-release-event', (_actor, event) => this._keyUp(event));
         this._layout();
     }
 
@@ -402,20 +427,17 @@ export class TvPresentation {
         this._buildTiles();
     }
 
-    _tileFile(app) {
+    _tileFile(app, width) {
         if (!app.tile) return null;
-        const path = iconTheme.lookup_icon(app.tile, Math.round(TOKENS.tile.width * this._u), 0)?.get_filename?.();
+        const path = iconTheme.lookup_icon(app.tile, Math.round(width), 0)?.get_filename?.();
         return path ? Gio.File.new_for_path(path) : null;
     }
 
-    _makeTile(app) {
-        const {tile} = TOKENS;
-        const u = this._u;
-        const width = tile.width * u, height = width * tile.aspect_height / tile.aspect_width;
-        const cell = new St.Widget({layout_manager: new Clutter.FixedLayout(), reactive: true});
+    // An app's TV tile at this size: its wide tile, else its icon on the bar material.
+    _plate(app, width, height) {
         const plate = new St.Widget({layout_manager: new Clutter.BinLayout(), width, height,
             pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
-        const file = this._tileFile(app);
+        const file = this._tileFile(app, width);
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
         if (file) {
             plate.add_child(St.TextureCache.get_default().load_file_async(file,
@@ -430,17 +452,46 @@ export class TvPresentation {
             }
             plate.style = `background-color: ${this._material('bar')};`;
         }
-        const label = new St.Label({text: app.name, width, x_align: Clutter.ActorAlign.CENTER});
+        return plate;
+    }
+
+    _makeTile(app) {
+        const {tile, app_switcher: s} = TOKENS;
+        const u = this._u;
+        const width = tile.width * u, height = width * tile.aspect_height / tile.aspect_width;
+        const cell = new St.Widget({layout_manager: new Clutter.FixedLayout(), reactive: true});
+        const plate = this._plate(app, width, height);
+        // The name, and before it the running dot (the dock's), centred as one.
+        const label = new St.Label({y_align: Clutter.ActorAlign.CENTER, text: app.name});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        label.clutter_text.line_alignment = Pango.Alignment.CENTER;
-        label.set_position(0, height + tile.label_gap * u);
+        const dot = new St.Widget({y_align: Clutter.ActorAlign.CENTER, width: s.running_dot * u,
+            height: s.running_dot * u, visible: false});
+        const name = new St.BoxLayout({x_align: Clutter.ActorAlign.CENTER});
+        name.style = `spacing: ${this._px(s.running_gap)};`;
+        name.add_child(dot);
+        name.add_child(label);
+        const caption = new St.Bin({child: name, width});
+        caption.set_position(0, height + tile.label_gap * u);
         cell.add_child(plate);
-        cell.add_child(label);
+        cell.add_child(caption);
         cell.connect('button-release-event', () => {
             this._launch(app);
             return Clutter.EVENT_STOP;
         });
-        return {app, cell, plate, label, baseStyle: plate.style ?? ''};
+        const made = {app, cell, plate, label, dot, baseStyle: plate.style ?? ''};
+        dot.visible = this._running(app);
+        return made;
+    }
+
+    _running(app) {
+        return appRunning(this._appSystem.lookup_app(app.id));
+    }
+
+    _syncRunning() {
+        for (const made of [...this._tiles, ...(this._resultTiles ?? [])]) made.dot.visible = this._running(made.app);
+        // A tile's menu for an app that has just quit no longer applies.
+        if (this._itemMenu?.isOpen && this._itemMenuApp && !this._running(this._itemMenuApp)) this._itemMenu.close();
+        this._draw();
     }
 
     _buildTiles() {
@@ -548,6 +599,7 @@ export class TvPresentation {
     // ── focus and the remote ──────────────────────────────────────────────
 
     _open(page) {
+        this._itemMenu?.close();
         if (this._page === 'search' && page !== 'search') this._entry.set_text('');
         this._page = page;
         for (const name of PAGES) {
@@ -619,8 +671,113 @@ export class TvPresentation {
         const {kind, index} = this._focus;
         if (kind === 'cluster') this._quick?.open('bar');
         else if (kind === 'tab' && this._page === 'search') this._focus = {kind: 'field'};
-        else if (kind === 'tile') this._launch(this._tiles[index].app);
-        else if (kind === 'result') this._launch(this._resultTiles[index].app);
+        else if (kind === 'tile' || kind === 'result') this._tileDown();
+    }
+
+    _focusedTile() {
+        const {kind, index} = this._focus;
+        return kind === 'tile' ? this._tiles[index] : kind === 'result' ? this._resultTiles?.[index] : null;
+    }
+
+    // OK on a tile opens it when let go; held (focus.hold_ms) on a running
+    // app's tile, it drops the tile's menu once instead.
+    _tileDown() {
+        const made = this._focusedTile();
+        if (!made) return;
+        this._tileHeld = made;
+        if (this._holdTimer) GLib.source_remove(this._holdTimer);
+        this._holdTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.focus.hold_ms, () => {
+            this._holdTimer = 0;
+            if (this._tileHeld !== made || !this._home?.visible) return GLib.SOURCE_REMOVE;
+            const keys = tileMenu(this._running(made.app));
+            if (!keys.length) return GLib.SOURCE_REMOVE;
+            this._tileHeld = null;
+            this._openTileMenu(made, keys);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _keyUp(event) {
+        if (remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '') !== 'ok') return Clutter.EVENT_PROPAGATE;
+        if (this._itemMenu?.isOpen) okRelease(this._itemMenu.gate);
+        if (this._holdTimer) GLib.source_remove(this._holdTimer);
+        this._holdTimer = 0;
+        const made = this._tileHeld;
+        this._tileHeld = null;
+        if (made && made === this._focusedTile()) this._launch(made.app);
+        return Clutter.EVENT_STOP;
+    }
+
+    // Under the tile and its name (tv.menu), its rows the remote's.
+    _openTileMenu(made, keys, opener = GLib.get_monotonic_time() / 1000) {
+        const {tile} = TOKENS;
+        const parent = this._page === 'search' ? this._pages.search : this._pages.apps;
+        const anchor = {x: made.rect.x, y: made.rect.y, width: made.rect.width,
+            height: made.rect.height + (tile.label_gap + tile.label_size * 1.3) * this._u};
+        this._itemMenuApp = made.app;
+        this._itemMenu.open(parent, keys, anchor, 'below', null, opener);
+        this._draw();
+    }
+
+    _itemMenuKey(action) {
+        if (action === 'ok') {
+            if (!okPress(this._itemMenu.gate, GLib.get_monotonic_time() / 1000, OK_QUIET_MS)) return;
+            const key = this._itemMenu.current;
+            const app = this._itemMenuApp;
+            this._itemMenu.close();
+            const shellApp = this._appSystem.lookup_app(app.id);
+            if (key === 'open') this._launch(app);
+            else if (key === 'close' && shellApp) requestQuit(shellApp);
+        } else if (action === 'back' || action === 'left' || action === 'right') {
+            this._itemMenu.close();
+        } else if (!this._itemMenu.move(action) && action === 'up') {
+            // Up past the first row (the menu is under the tile) returns to it.
+            this._itemMenu.close();
+        }
+    }
+
+    // ── running apps: the switcher (Home twice) ───────────────────────────
+
+    // Over an app or the TV home; double Home while it is up goes home.
+    toggleSwitcher() {
+        if (!this.active || !this._home) return;
+        if (this._switcher?.isOpen) {
+            this.showHome('home');
+            return;
+        }
+        if (Main.modalCount > 0 && !this._quick?.isOpen) return;
+        this._quick?.close();
+        this._itemMenu?.close();
+        const focused = global.display.focus_window;
+        const overApp = !this._home.visible;
+        const returnTo = overApp && normalWindow(focused) && !focused.minimized
+            ? Shell.WindowTracker.get_default().get_window_app(focused) : null;
+        this._focusBefore = overApp ? {kind: 'tab', index: PAGES.indexOf(this._page)} : this._focus;
+        for (const window of visibleAppWindows()) window.minimize();
+        this._home.show();
+        Main.uiGroup.set_child_above_sibling(this._home, global.window_group);
+        // The switcher is its own scene: the room, the bar, the cards.
+        for (const page of PAGES) this._pages[page].hide();
+        this._focus = {kind: 'switcher'};
+        if (!this._switcher.open(returnTo)) {
+            this._switcherClosed('home', null);
+            return;
+        }
+        this._draw();
+    }
+
+    _switcherClosed(reason, returnTo) {
+        if (!this.active || !this._home) return;
+        this._pages[this._page].show();
+        this._focus = this._focusBefore ?? {kind: 'tab', index: PAGES.indexOf(this._page)};
+        this._focusBefore = null;
+        if (reason === 'back' && returnTo) {
+            returnTo.activate();
+            return;
+        }
+        if (this._focus.kind === 'tile' && !this._tiles[this._focus.index])
+            this._focus = {kind: 'tab', index: PAGES.indexOf(this._page)};
+        this._draw();
     }
 
     _back() {
@@ -633,12 +790,21 @@ export class TvPresentation {
     }
 
     _key(event) {
-        const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
+        const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
+        // Menu opens a running app's tile menu, as a held OK does.
+        if (name === 'Menu' && !(event.get_flags() & Clutter.EventFlags.FLAG_REPEATED) && !this._itemMenu?.isOpen) {
+            const made = this._focusedTile();
+            const keys = made ? tileMenu(this._running(made.app)) : [];
+            if (keys.length) this._openTileMenu(made, keys, null);
+            return keys.length ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+        }
+        const action = remoteAction(name);
         if (!action) return Clutter.EVENT_PROPAGATE;
         // OK is held down for a long press: its key repeat is not more OKs (nor Back more Backs).
         if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
         if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
-        if (action === 'ok') this._ok();
+        if (this._itemMenu?.isOpen) this._itemMenuKey(action);
+        else if (action === 'ok') this._ok();
         else if (action === 'back') this._back();
         else this._move(action);
         this._draw();
@@ -685,13 +851,17 @@ export class TvPresentation {
         });
         const paint = (tiles, kind) => (tiles ?? []).forEach((made, index) => {
             const focused = this._focus.kind === kind && this._focus.index === index;
+            // Its menu down: still lifted, without the ring (the menu's row is the bright thing).
+            const ring = focused && !this._itemMenu?.isOpen;
             made.plate.remove_all_transitions();
             made.plate.ease({scale_x: focused ? tile.focus_scale : 1, scale_y: focused ? tile.focus_scale : 1,
                 duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
             made.plate.style = `${made.baseStyle} border-radius: ${this._tileStyle.radius};
-                box-shadow: ${focused ? `0 0 0 ${this._px(tile.ring)} ${m('ring')}`
+                box-shadow: ${ring ? `0 0 0 ${this._px(tile.ring)} ${m('ring')}`
         : `0 ${this._px(16)} ${this._px(40)} ${m('tile_drop')}`};`;
-            made.label.style = `${this._tileStyle.label} color: ${focused ? m('ink') : m('ink_2')};`;
+            const ink = focused ? m('ink') : m('ink_2');
+            made.label.style = `${this._tileStyle.label} color: ${ink};`;
+            made.dot.style = `border-radius: ${this._px(TOKENS.app_switcher.running_dot / 2)}; background-color: ${ink};`;
             if (focused) made.cell.get_parent()?.set_child_above_sibling(made.cell, null);
         });
         this._drawCluster();
