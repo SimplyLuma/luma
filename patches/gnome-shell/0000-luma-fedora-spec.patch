@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,345 @@
+@@ -32,6 +32,349 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -311,7 +311,8 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1290:      0308-tv-home.patch
 +Patch1291:      0309-tv-keyboard.patch
 +Patch1292:      0310-tv-input.patch
-+Patch1293:      0312-tv-screen-edges.patch
++Patch1293:      0311-tv-dialogs.patch
++Patch1294:      0312-tv-screen-edges.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -356,11 +357,14 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9041:     tvInput.js
 +Source9042:     tvInputModel.js
 +Source9043:     tv-input-policy.js
-+Source9044:     tvScreenEdges.js
++Source9044:     tvDialogs.js
++Source9045:     tvDialogsModel.js
++Source9046:     tv-dialogs-policy.js
++Source9047:     tvScreenEdges.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +386,9 @@
+@@ -71,6 +390,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -370,7 +374,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +408,16 @@
+@@ -90,6 +412,16 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -387,7 +391,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +517,50 @@
+@@ -189,8 +521,52 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -427,7 +431,9 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9039} js/ui/lumaPresentation/tvKeyboard.js
 +cp %{SOURCE9041} js/ui/lumaPresentation/tvInput.js
 +cp %{SOURCE9042} js/ui/lumaPresentation/tvInputModel.js
-+cp %{SOURCE9044} js/ui/lumaPresentation/tvScreenEdges.js
++cp %{SOURCE9044} js/ui/lumaPresentation/tvDialogs.js
++cp %{SOURCE9045} js/ui/lumaPresentation/tvDialogsModel.js
++cp %{SOURCE9047} js/ui/lumaPresentation/tvScreenEdges.js
 +# Keycap icons, derived from Stevia's Lucide outlines (generate-keycap-shell-icons.py).
 +tar -xf %{SOURCE9034} -C data/icons/scalable/status --exclude=LICENSE
 +tar -xOf %{SOURCE9034} LICENSE > LUCIDE-KEYCAP-LICENSE.txt
@@ -438,7 +444,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -207,10 +570,29 @@
+@@ -207,10 +576,30 @@
  # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
@@ -465,10 +471,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9033} js/ui/lumaPresentation/keycap.js js/ui/keyboard.js
 +gjs -m %{SOURCE9040} js/ui/lumaPresentation/tvKeyboard.js js/ui/lumaPresentation/tvTokens.js js/ui/keyboard.js
 +gjs -m %{SOURCE9043} js/ui/lumaPresentation/tvInputModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvInput.js js/ui/lumaPresentation/tv.js
++gjs -m %{SOURCE9046} js/ui/lumaPresentation/tvDialogsModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvDialogs.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +599,7 @@
+@@ -218,7 +606,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -477,7 +484,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +631,11 @@
+@@ -250,6 +638,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

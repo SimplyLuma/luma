@@ -117,6 +117,20 @@ static void room_load(LumaTvRoom *self) {
   g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
   box_blur(gdk_pixbuf_get_pixels(pixbuf), gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf),
            gdk_pixbuf_get_rowstride(pixbuf), 6);
+  /* The dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
+   * are baked into the picture once: drawn live they were three more full-screen layers a frame. */
+  int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
+  guchar *px = gdk_pixbuf_get_pixels(pixbuf);
+  for (int x = 0; x < w; x++) {
+    double t = (double)x / MAX(1, w - 1);
+    double shade = t < 0.6 ? 0.35 + (0.1 - 0.35) * (t / 0.6) : 0.1;
+    double keep = 0.45 * (1 - shade);
+    for (int y = 0; y < h; y++) {
+      guchar *p = px + y * stride + x * 4;
+      p[0] = (guchar)(p[0] * keep + 0.5); p[1] = (guchar)(p[1] * keep + 0.5); p[2] = (guchar)(p[2] * keep + 0.5);
+      p[3] = 255;
+    }
+  }
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
   self->texture = gdk_texture_new_for_pixbuf(pixbuf);
   G_GNUC_END_IGNORE_DEPRECATIONS
@@ -127,19 +141,17 @@ static void room_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   float width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
   double u = luma_ui_tv_unit((int)width, (int)height);
   graphene_rect_t all = GRAPHENE_RECT_INIT(0, 0, width, height);
-  gtk_snapshot_append_color(snapshot, &(GdkRGBA){0.02f, 0.024f, 0.04f, 1.f}, &all);
-  if (self->texture != NULL) {
-    /* Bled past the edges (the mockup's inset -120) so the blur never shows a hard border. */
-    float bleed = (float)(120 * u);
-    graphene_rect_t cover = GRAPHENE_RECT_INIT(-bleed, -bleed, width + 2 * bleed, height + 2 * bleed);
-    gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
-    /* brightness(.45) */
-    gtk_snapshot_append_color(snapshot, &(GdkRGBA){0, 0, 0, 0.55f}, &all);
+  if (self->texture == NULL) {
+    gtk_snapshot_append_color(snapshot, &(GdkRGBA){0.02f, 0.024f, 0.04f, 1.f}, &all);
+    return;
   }
-  /* The shade: darker behind the island, lighter to the right. */
-  graphene_point_t start = GRAPHENE_POINT_INIT(0, 0), end = GRAPHENE_POINT_INIT(width, 0);
-  GskColorStop stops[] = {{0.f, {0, 0, 0, 0.35f}}, {0.6f, {0, 0, 0, 0.1f}}, {1.f, {0, 0, 0, 0.1f}}};
-  gtk_snapshot_append_linear_gradient(snapshot, &all, &start, &end, stops, G_N_ELEMENTS(stops));
+  /* One opaque layer: the picture, dimmed and shaded at load, bled past the edges (the mockup's
+   * inset -120) so the blur never shows a hard border. */
+  float bleed = (float)(120 * u);
+  graphene_rect_t cover = GRAPHENE_RECT_INIT(-bleed, -bleed, width + 2 * bleed, height + 2 * bleed);
+  gtk_snapshot_push_clip(snapshot, &all);
+  gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
+  gtk_snapshot_pop(snapshot);
 }
 
 static void room_size_allocate(GtkWidget *widget, int width, int height, int baseline) {
@@ -190,10 +202,14 @@ typedef struct {
   gint64 moved_at;       /* when the focus last moved without a key (a redraw, GTK's fallback) */
   gboolean held_field;   /* the remote was in a text field */
   guint reveal_id;
+  int reveal_tries;      /* reveal_focus looks again while the page settles above the keyboard */
+  int reveal_from;       /* the page's height when the keyboard came up */
+  gint64 reveal_until;
   int self_moving;       /* the frame itself is moving the focus */
   char *held_title;      /* the title of the row the remote was on: rows are found by it, not by place */
   char *held_page;       /* the page's title then: a redraw keeps it, opening another page changes it */
   int keying;            /* the frame is handling a key: focus moves now are the remote's own */
+  guint row_depth;       /* where the held row is in the path: below it, the path inside the row */
   gint64 probe_at;       /* LUMA_TV_DEBUG timing: when the key arrived */
   gulong active_id;
   gpointer keyboard;     /* the TV keyboard's height, followed */
@@ -303,6 +319,9 @@ static const char *const tv_sheet =
 "  border: none; outline: none; box-shadow: none; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark * { border: none; outline: none; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
+/* a lead that is a picture in full colour (a logo, an app's icon): itself, no tile or ring behind it */
+".lumaui-tv-frame .lumaui-part-lead.lumaui-part-picture, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead.lumaui-part-picture {\n"
+"  background: none; box-shadow: none; border: none; outline: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"
@@ -325,7 +344,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead { background-color: alpha(black, 0.08); color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row image { -gtk-icon-size: 26tv; color: inherit; }\n"
 /* controls at TV size, inside rows */
-".lumaui-tv-frame .lumaui-part-row button, .lumaui-tv-frame .lumaui-part-row button:hover, .lumaui-tv-frame .lumaui-part-row button:focus-visible {\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip),\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):hover,\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible {\n"
 "  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
 "  background-color: @well@; background-image: none; color: transparent;\n"
@@ -344,6 +365,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row scale marks, .lumaui-tv-frame .lumaui-part-row scale value { font-size: 22tv; font-weight: 650; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row entry, .lumaui-tv-frame .lumaui-part-row text { background: none; box-shadow: none; border: none; outline: none;\n"
 "  min-height: 0; padding: 0; font-size: 23tv; font-weight: 600; color: inherit; caret-color: @accent@; }\n"
+/* a value field in a row (a computer's name) has room for its value at TV size */
+".lumaui-tv-frame .lumaui-part-row entry { min-width: 420tv; }\n"
 /* what a row grows in place (a network's join form): a recessed field and TV buttons, 66 tall */
 ".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) { margin-top: 14tv; border-spacing: 14tv; }\n"
 ".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv;\n"
@@ -363,7 +386,22 @@ static const char *const tv_sheet =
 /* everything focusable that is not in a row: the key when it holds the focus */
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
-".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+/* chip rows (lumaui-tv.css .chips): Left/Right between chips; the row holding them never lights as
+ * the key, the focused chip lifts with a white ring; the chosen one keeps a quiet ring */
+".lumaui-tv-frame .lumaui-part-row.lumaui-tv-holder:focus-within { background-image: none; background-color: transparent;\n"
+"  box-shadow: none; color: @ink@; }\n"
+".lumaui-tv-frame .lumaui-part-chips { padding: 8tv 0; }\n"
+".lumaui-tv-frame .lumaui-part-chip { border-radius: 16tv; padding: 0; margin: 0; outline: none;\n"
+"  box-shadow: 0 8tv 20tv alpha(black, 0.4); transition: transform 150ms ease-out; }\n"
+".lumaui-tv-frame .lumaui-part-chip.on, .lumaui-tv-frame .lumaui-part-chip:checked { box-shadow: 0 0 0 3tv alpha(white, 0.6), 0 8tv 20tv alpha(black, 0.4); }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-chip:focus-visible { transform: scale(1.06); background-image: none;\n"
+"  box-shadow: 0 0 0 5tv white, 0 14tv 30tv alpha(black, 0.5); }\n"
+".lumaui-tv-frame .lumaui-part-swatch { min-width: 52tv; min-height: 52tv; padding: 0; margin: 0; border-radius: 9999px; outline: none;\n"
+"  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2); transition: transform 150ms ease-out; }\n"
+".lumaui-tv-frame .lumaui-part-swatch.on, .lumaui-tv-frame .lumaui-part-swatch:checked {\n"
+"  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2), 0 0 0 4tv alpha(white, 0.5); }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-swatch:focus-visible { transform: scale(1.15); background-image: none; box-shadow: 0 0 0 4tv white; }\n"
 /* a switch outside any row (a page's on/off beside its title) holding the focus: the key's ring */
 ".lumaui-tv-frame > .luma-island button:focus-visible switch, .lumaui-tv-frame > .luma-island switch:focus-visible {\n"
 "  box-shadow: 0 0 0 4tv white, 0 3tv 10tv @key_drop@; }\n"
@@ -395,6 +433,11 @@ static const char *const tv_sheet =
 "window.lumaui-tv .lumaui-dialog button:focus-visible, window.lumaui-tv dialog button:focus-visible {\n"
 "  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv .lumaui-dialog button:focus-visible label, window.lumaui-tv dialog button:focus-visible label { color: @key_ink@; }\n"
+/* the sheet floats over a dimmed screen (lumaui-tv.css .tv-sheet): near opaque, as there is no live blur */
+"window.lumaui-tv .lumaui-scrim, window.lumaui-tv dialog-host > dimming { background-color: alpha(black, 0.55); }\n"
+"window.lumaui-tv .lumaui-dialog, window.lumaui-tv dialog > .dialog-contents, window.lumaui-tv dialog.alert > widget,\n"
+"window.lumaui-tv popover > contents { background-color: @sheet_solid@; }\n"
 "window.lumaui-tv .lumaui-dialog button.lumaui-dialog-action:focus-visible { box-shadow: 0 0 0 4tv white; background-image: none; background-color: #e0485c; color: white; }\n"
 /* a choice's list: dropped from its value, at TV size */
 "window.lumaui-tv popover > contents { padding: 12tv; border-radius: 30tv; border: none; background-color: @sheet@; color: @ink@;\n"
@@ -620,6 +663,7 @@ static void tv_css(TvFrame *f) {
     {"@key_drop@", LUMA_UI_TV_MATERIALS_KEY_DROP}, {"@key_glint@", LUMA_UI_TV_MATERIALS_KEY_GLINT},
     {"@bar@", LUMA_UI_TV_MATERIALS_BAR}, {"@bar_rim@", LUMA_UI_TV_MATERIALS_BAR_RIM},
     {"@bar_drop@", LUMA_UI_TV_MATERIALS_BAR_DROP}, {"@bar_glint@", LUMA_UI_TV_MATERIALS_BAR_GLINT},
+    {"@sheet_solid@", "rgba(36, 38, 42, 0.97)"},
     {"@sheet@", LUMA_UI_TV_MATERIALS_SHEET}, {"@accent@", LUMA_UI_TV_MATERIALS_ACCENT},
     {"@divider@", "rgba(255, 255, 255, 0.08)"},
   };
@@ -634,6 +678,20 @@ static void tv_css(TvFrame *f) {
   }
   g_autofree char *pixels = in_pixels(css->str, f->unit);
   g_string_free(css, TRUE);
+  if (g_strcmp0(g_getenv("LUMA_TV_DEBUG"), "noshadow") == 0) {
+    /* profiling aid: the same sheet without any shadow, to weigh what shadows cost a frame */
+    GString *flat = g_string_new(NULL);
+    for (const char *p = pixels; *p;) {
+      const char *at = strstr(p, "box-shadow:");
+      if (at == NULL) { g_string_append(flat, p); break; }
+      g_string_append_len(flat, p, at - p);
+      g_string_append(flat, "box-shadow: none;");
+      const char *end = strchr(at, ';');
+      p = end != NULL ? end + 1 : at + strlen(at);
+    }
+    g_free(pixels);
+    pixels = g_string_free(flat, FALSE);
+  }
   gtk_css_provider_load_from_string(f->provider, pixels);
 }
 
@@ -923,6 +981,7 @@ static void lay_out_part(GtkWidget *w) {
   }
 }
 
+static GtkWidget *part_row_of(TvFrame *f, GtkWidget *w);
 static void release_page(TvFrame *f, GtkWidget *widget) {
   lay_out_part(widget);
   /* A centred window's own action (Try Again under a sentence) keeps the buttons row's natural width,
@@ -938,6 +997,27 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-part-chips")) {
+    /* chips 16 apart (lumaui-tv.css .chips gap), and the row that holds them is no key itself */
+    GtkWidget *row = part_row_of(f, widget);
+    if (row != NULL) gtk_widget_add_css_class(row, "lumaui-tv-holder");
+    if (g_object_get_data(G_OBJECT(widget), "luma-tv-chips") == NULL) {
+      int *saved = g_new(int, 2);
+      if (ADW_IS_WRAP_BOX(widget)) {
+        saved[0] = adw_wrap_box_get_child_spacing(ADW_WRAP_BOX(widget));
+        saved[1] = adw_wrap_box_get_line_spacing(ADW_WRAP_BOX(widget));
+        adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(widget), (int)round(16 * f->unit));
+        adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(widget), (int)round(16 * f->unit));
+      } else if (GTK_IS_BOX(widget)) {
+        saved[0] = gtk_box_get_spacing(GTK_BOX(widget));
+        saved[1] = -1;
+        gtk_box_set_spacing(GTK_BOX(widget), (int)round(16 * f->unit));
+      } else {
+        saved[0] = saved[1] = -1;
+      }
+      g_object_set_data_full(G_OBJECT(widget), "luma-tv-chips", saved, g_free);
+    }
+  }
   const char *part = adw_part(widget);
   if (part != NULL && !has_part(widget)) {
     gtk_widget_add_css_class(widget, part);
@@ -983,6 +1063,17 @@ static void restore_page(GtkWidget *widget) {
     }
   }
   let_layout(widget);
+  gtk_widget_remove_css_class(widget, "lumaui-tv-holder");
+  int *chips = g_object_get_data(G_OBJECT(widget), "luma-tv-chips");
+  if (chips != NULL) {
+    if (ADW_IS_WRAP_BOX(widget)) {
+      adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(widget), chips[0]);
+      adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(widget), chips[1]);
+    } else if (GTK_IS_BOX(widget) && chips[0] >= 0) {
+      gtk_box_set_spacing(GTK_BOX(widget), chips[0]);
+    }
+    g_object_set_data(G_OBJECT(widget), "luma-tv-chips", NULL);
+  }
   if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {
     gtk_widget_remove_css_class(widget, "lumaui-tv-named");
     gtk_widget_remove_css_class(widget, adw_part(widget));
@@ -1061,8 +1152,10 @@ static const char *page_title(TvFrame *f) {
 /* The focus moved by itself (no key, not the frame) away from a widget that is gone, on the same
  * page: the page was redrawn under the remote (a network list refreshing). */
 static gboolean redrawn_under(TvFrame *f) {
+  /* A field taking the caret is the app's own choice (a password asked for), never a fallback. */
+  GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(f->window));
   return f->page_zone && f->keying == 0 && f->self_moving == 0 && f->held == NULL && f->path->len > 0 &&
-         g_strcmp0(page_title(f), f->held_page) == 0;
+         !editable(focus) && g_strcmp0(page_title(f), f->held_page) == 0;
 }
 
 static void remember(TvFrame *f, GtkWidget *focus) {
@@ -1075,11 +1168,14 @@ static void remember(TvFrame *f, GtkWidget *focus) {
   g_clear_weak_pointer(&f->held);
   g_set_weak_pointer(&f->held, focus);
   g_array_set_size(f->path, 0);
+  guint below = 0;
   for (GtkWidget *w = focus; w != NULL && w != f->island; w = gtk_widget_get_parent(w)) {
     int index = 0;
     for (GtkWidget *c = gtk_widget_get_prev_sibling(w); c != NULL; c = gtk_widget_get_prev_sibling(c)) index++;
     g_array_prepend_val(f->path, index);
+    if (w == row) below = f->path->len - 1;
   }
+  f->row_depth = row != NULL ? f->path->len - below : 0;
 }
 
 static GtkWidget *first_field(GtkWidget *widget) {
@@ -1102,6 +1198,15 @@ static GtkWidget *path_widget(TvFrame *f) {
   /* the same row by its title (a list that reordered), its first control; else the same place */
   GtkWidget *row = f->held_title != NULL ? row_titled(f, f->island, f->held_title) : NULL;
   if (row != NULL) {
+    /* the same place inside the row (a grown row's Connect), else its first control */
+    GtkWidget *inside = row;
+    for (guint i = f->row_depth; inside != NULL && f->row_depth > 0 && i < f->path->len; i++) {
+      GtkWidget *c = gtk_widget_get_first_child(inside);
+      for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
+      inside = c;
+    }
+    if (inside != NULL && inside != row && gtk_widget_get_focusable(inside) && shown(inside))
+      return inside;
     GtkWidget *first = gtk_widget_get_focusable(row) ? row : NULL;
     for (GtkWidget *c = row; first == NULL && c != NULL; c = gtk_widget_get_first_child(c))
       if (gtk_widget_get_focusable(c) && !GTK_IS_LABEL(c)) first = c;
@@ -1145,6 +1250,7 @@ static gboolean grown_field(TvFrame *f) {
   if (focus != field && !gtk_widget_is_ancestor(focus, field))
     gtk_widget_grab_focus(field);
   f->self_moving--;
+  if (focus_of(f) != NULL) remember(f, focus_of(f));
   return TRUE;
 }
 
@@ -1320,6 +1426,31 @@ static void track_app_focus(TvFrame *f, GtkWidget *focus) {
   g_set_weak_pointer(&f->app_focus, focus);
 }
 
+/* The remote's move brings its row into view at once, as far as needed and with room to spare
+ * (the mockup keeps the focused row within the page, a peek of the next below it). GTK's own
+ * scroll-to-focus animates over several frames, each a full repaint of a moving page: on a TV at
+ * 4K that was most of a move's cost. Setting the value ends that animation. */
+static void follow_focus(TvFrame *f, GtkWidget *focus) {
+  GtkWidget *row = part_row_of(f, focus);
+  GtkWidget *target = row != NULL ? row : focus;
+  GtkWidget *viewport = gtk_widget_get_ancestor(target, GTK_TYPE_VIEWPORT);
+  GtkWidget *content = viewport != NULL ? gtk_viewport_get_child(GTK_VIEWPORT(viewport)) : NULL;
+  GtkScrollable *scrollable = viewport != NULL ? GTK_SCROLLABLE(viewport) : NULL;
+  GtkAdjustment *adj = scrollable != NULL ? gtk_scrollable_get_vadjustment(scrollable) : NULL;
+  graphene_rect_t box;
+  if (adj == NULL || content == NULL || !gtk_widget_compute_bounds(target, content, &box))
+    return;
+  double value = gtk_adjustment_get_value(adj), page = gtk_adjustment_get_page_size(adj);
+  double above = 48 * f->unit, below = MIN(160 * f->unit, page * 0.25);
+  double want = value;
+  if (box.origin.y + box.size.height > value + page - below)
+    want = box.origin.y + box.size.height - page + below;
+  if (box.origin.y < want + above)
+    want = box.origin.y - above;
+  want = CLAMP(want, gtk_adjustment_get_lower(adj), gtk_adjustment_get_upper(adj) - page);
+  gtk_adjustment_set_value(adj, want); /* also when unchanged: it stops GTK's animation */
+}
+
 static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   (void)window; (void)pspec;
   if (!f->active)
@@ -1344,6 +1475,8 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   }
   if (in_page(f, focus) && gtk_widget_get_focusable(focus)) {
     f->page_zone = TRUE;
+    if (f->keying > 0)
+      follow_focus(f, focus);
     if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC) {
       remember(f, focus);
     } else {
@@ -1591,6 +1724,84 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
   return GDK_EVENT_STOP;
 }
 
+/* Hold OK for the item's menu (the Python TvFocus rule: tv.focus.hold_ms, opens once, a release
+ * before then is the OK). An item has a menu when it offers GTK's own "menu.popup" action: its
+ * desktop context menu, the same commands, drawn as the TV's list (window.lumaui-tv popover).
+ * The hold's state lives on the window: no frame fields, so other branches' frame changes merge. */
+#define TV_HOLD_MS 500
+
+typedef struct {
+  GtkWidget *item;   /* weak: OK is down on it */
+  guint source;      /* the hold timer */
+  gboolean opened;   /* the menu opened: the release does nothing */
+} TvHold;
+
+static gboolean offers_menu(GtkWidget *w) {
+  GtkWidgetClass *klass = GTK_WIDGET_GET_CLASS(w);
+  GType owner;
+  const char *name = NULL, *property = NULL;
+  const GVariantType *parameter = NULL;
+  for (guint i = 0; gtk_widget_class_query_action(klass, i, &owner, &name, &parameter, &property); i++)
+    if (g_strcmp0(name, "menu.popup") == 0)
+      return gtk_widget_is_sensitive(w);
+  return FALSE;
+}
+
+static GtkWidget *menu_item(GtkWidget *focus, GtkWidget *stop) {
+  for (GtkWidget *w = focus; w != NULL && w != stop; w = gtk_widget_get_parent(w))
+    if (offers_menu(w)) return w;
+  return NULL;
+}
+
+static TvHold *tv_hold(TvFrame *f) {
+  TvHold *hold = g_object_get_data(G_OBJECT(f->window), "luma-tv-hold");
+  if (hold == NULL) {
+    hold = g_new0(TvHold, 1);
+    g_object_set_data_full(G_OBJECT(f->window), "luma-tv-hold", hold, g_free);
+  }
+  return hold;
+}
+
+static gboolean hold_elapsed(gpointer data) {
+  TvFrame *f = data;
+  TvHold *hold = tv_hold(f);
+  hold->source = 0;
+  if (hold->item != NULL && f->active) {
+    hold->opened = TRUE;
+    gtk_widget_activate_action(hold->item, "menu.popup", NULL);
+  }
+  return G_SOURCE_REMOVE;
+}
+
+/* OK pressed on an item with a menu: nothing yet; the release is the OK, the hold the menu. */
+static gboolean hold_begin(TvFrame *f, GtkWidget *focus) {
+  GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
+  if (item == NULL || editable(focus))
+    return FALSE;
+  TvHold *hold = tv_hold(f);
+  g_clear_handle_id(&hold->source, g_source_remove);
+  g_clear_weak_pointer(&hold->item);
+  g_set_weak_pointer(&hold->item, focus);
+  hold->opened = FALSE;
+  hold->source = g_timeout_add(TV_HOLD_MS, hold_elapsed, f);
+  return TRUE;
+}
+
+/* OK let go: before the hold, the press acts now (as OK on any item); after it, nothing. */
+static gboolean hold_end(TvFrame *f) {
+  TvHold *hold = g_object_get_data(G_OBJECT(f->window), "luma-tv-hold");
+  if (hold == NULL || (hold->item == NULL && !hold->opened))
+    return FALSE;
+  gboolean pending = hold->source != 0;
+  g_clear_handle_id(&hold->source, g_source_remove);
+  GtkWidget *item = hold->item;
+  g_clear_weak_pointer(&hold->item);
+  if (pending && item != NULL && item == focus_of(f))
+    gtk_widget_activate(item);
+  hold->opened = FALSE;
+  return TRUE;
+}
+
 static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code;
@@ -1600,7 +1811,9 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     g_printerr("tv key %s\n", gdk_keyval_name(key));
   /* OK right after the focus moved by itself (the page redrew under the remote) acts on nothing:
    * the remote never acts on a control it did not choose (a power switch beside a list). */
-  if (is_ok(key) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
+  /* A field is exempt: a redraw that hands the caret back to the same field (a password being
+   * typed) is no surprise, and OK there opens the keyboard or submits what was typed. */
+  if (is_ok(key) && !editable(focus_of(f)) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
     f->key_at = g_get_monotonic_time();
     return GDK_EVENT_STOP;
   }
@@ -1652,6 +1865,13 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   gboolean text = editable(focus);
   if (is_ok(key) && !text)
     f->ok_at = g_get_monotonic_time();
+  if (is_ok(key) && key != GDK_KEY_space && hold_begin(f, focus))
+    return GDK_EVENT_STOP;
+  if (key == GDK_KEY_Menu && !text) {
+    GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
+    if (item != NULL) gtk_widget_activate_action(item, "menu.popup", NULL);
+    return GDK_EVENT_STOP;
+  }
   if (is_back(key)) {
     if (text && key == GDK_KEY_BackSpace)
       return GDK_EVENT_PROPAGATE;
@@ -1700,8 +1920,10 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     return GDK_EVENT_PROPAGATE;
   }
   if (text && (dir == GTK_DIR_LEFT || dir == GTK_DIR_RIGHT) && GTK_IS_EDITABLE(focus)) {
+    /* the caret moves within the text; past either end the remote moves on (a field's buttons) */
     int position = gtk_editable_get_position(GTK_EDITABLE(focus));
-    if (dir == GTK_DIR_RIGHT || position > 0)
+    int length = (int)g_utf8_strlen(gtk_editable_get_text(GTK_EDITABLE(focus)), -1);
+    if ((dir == GTK_DIR_RIGHT && position < length) || (dir == GTK_DIR_LEFT && position > 0))
       return GDK_EVENT_PROPAGATE;
   }
   if (text && GTK_IS_TEXT_VIEW(focus))
@@ -1712,15 +1934,58 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
 }
 
 /* LUMA_TV_DEBUG timing: from a key to the first frame painted after it. */
+static gint64 probe_phase[4]; /* layout start/end, paint start/end */
+static void probe_layout(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[0] = g_get_monotonic_time(); }
+static void probe_layout_done(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[1] = g_get_monotonic_time(); }
+static void probe_paint(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[2] = g_get_monotonic_time(); }
 static void probe_painted(GdkFrameClock *clock, TvFrame *f) {
   g_signal_handlers_disconnect_by_func(clock, probe_painted, f);
+  g_signal_handlers_disconnect_by_func(clock, probe_layout, NULL);
+  g_signal_handlers_disconnect_by_func(clock, probe_layout_done, NULL);
+  g_signal_handlers_disconnect_by_func(clock, probe_paint, NULL);
+  gint64 now = g_get_monotonic_time();
   if (f->probe_at != 0)
-    g_printerr("tv timing: key to paint %.1f ms\n", (g_get_monotonic_time() - f->probe_at) / 1000.0);
+    g_printerr("tv timing: key to paint %.1f ms (wait %.1f, layout %.1f, draw %.1f)\n", (now - f->probe_at) / 1000.0,
+               probe_phase[0] ? (probe_phase[0] - f->probe_at) / 1000.0 : -1.0,
+               probe_phase[1] && probe_phase[0] ? (probe_phase[1] - probe_phase[0]) / 1000.0 : -1.0,
+               probe_phase[2] && probe_phase[1] ? (probe_phase[2] - probe_phase[1]) / 1000.0 : -1.0);
   f->probe_at = 0;
+  memset(probe_phase, 0, sizeof probe_phase);
+}
+
+/* Key repeat (the TV rule): a held key repeats only as moves (arrows; a focused slider's Left and
+ * Right). OK, Back and Menu act once per press: a repeat belongs to the press that started it and
+ * never activates what that press opened or toggles a switch again. Typing in a field repeats as
+ * typing does. A press long after the key's last event (its release lost) counts as new. */
+static GHashTable *held_keys(TvFrame *f) {
+  GHashTable *held = g_object_get_data(G_OBJECT(f->window), "luma-tv-held-keys");
+  if (held == NULL) {
+    held = g_hash_table_new(g_direct_hash, g_direct_equal);
+    g_object_set_data_full(G_OBJECT(f->window), "luma-tv-held-keys", held, (GDestroyNotify)g_hash_table_unref);
+  }
+  return held;
+}
+
+static gboolean repeat_guarded(guint key) {
+  return is_ok(key) || is_back(key) || key == GDK_KEY_Menu;
+}
+
+static gboolean repeated(TvFrame *f, guint key) {
+  if (!repeat_guarded(key) || editable(focus_of(f)))
+    return FALSE;
+  GHashTable *held = held_keys(f);
+  gint64 now = g_get_monotonic_time();
+  gpointer last = NULL;
+  gboolean seen = g_hash_table_lookup_extended(held, GUINT_TO_POINTER(key), NULL, &last);
+  /* timestamps in milliseconds fit a pointer on every target */
+  g_hash_table_insert(held, GUINT_TO_POINTER(key), GSIZE_TO_POINTER((gsize)(now / 1000)));
+  return seen && now / 1000 - (gint64)GPOINTER_TO_SIZE(last) < 800;
 }
 
 static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
+  if (f->active && repeated(f, key))
+    return GDK_EVENT_STOP;
   gboolean probe = g_getenv("LUMA_TV_DEBUG") != NULL && f->active;
   gint64 start = probe ? g_get_monotonic_time() : 0;
   f->keying++;
@@ -1731,6 +1996,11 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
     GdkFrameClock *clock = gtk_widget_get_frame_clock(GTK_WIDGET(f->window));
     if (clock != NULL && f->probe_at == 0) {
       f->probe_at = start;
+      memset(probe_phase, 0, sizeof probe_phase);
+      /* frame phases, each handler running after GTK's own: frame start, layout done, drawn */
+      g_signal_connect(clock, "before-paint", G_CALLBACK(probe_layout), NULL);
+      g_signal_connect(clock, "layout", G_CALLBACK(probe_layout_done), NULL);
+      g_signal_connect(clock, "paint", G_CALLBACK(probe_paint), NULL);
       g_signal_connect(clock, "after-paint", G_CALLBACK(probe_painted), f);
     }
   }
@@ -1741,6 +2011,10 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
  * focus moved): the release does nothing, so one OK never acts twice (a switch beside a row). */
 static gboolean key_released(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code; (void)state;
+  if (f->active)
+    g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(key)); /* the next press is a new one */
+  if (f->active && is_ok(key) && hold_end(f))
+    return GDK_EVENT_STOP;
   if (!f->active || !is_ok(key))
     return GDK_EVENT_PROPAGATE;
   GtkWidget *focus = focus_of(f);
@@ -1754,27 +2028,56 @@ static gboolean key_released(GtkEventControllerKey *controller, guint key, guint
 /* The TV keyboard covers the bottom of the screen: the page ends above it, so the focused field
  * (and its row) scrolls into view over the keyboard. */
 /* The row the remote is on, brought into view (above the keyboard once the page has shrunk). */
-static gboolean reveal_focus(gpointer data) {
-  TvFrame *f = data;
-  f->reveal_id = 0;
+static void reveal_now(TvFrame *f) {
   GtkWidget *focus = f->active ? focus_of(f) : NULL;
   if (focus == NULL || !in_page(f, focus))
-    return G_SOURCE_REMOVE;
+    return;
   GtkWidget *row = focus;
   while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
   GtkWidget *target = row != NULL && row != f->island ? row : focus;
   GtkWidget *viewport = gtk_widget_get_ancestor(target, GTK_TYPE_VIEWPORT);
   if (viewport != NULL)
     gtk_viewport_scroll_to(GTK_VIEWPORT(viewport), target, NULL);
+  if (g_getenv("LUMA_TV_DEBUG") != NULL)
+    g_printerr("tv reveal: viewport=%p page height %d\n", (void *)viewport, viewport ? gtk_widget_get_height(viewport) : -1);
+}
+
+static gboolean reveal_focus(gpointer data) {
+  TvFrame *f = data;
+  f->reveal_id = 0;
+  if (--f->reveal_tries > 0)
+    f->reveal_id = g_timeout_add(300, reveal_focus, f);
+  reveal_now(f);
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean reveal_tick(GtkWidget *island, GdkFrameClock *clock, gpointer data) {
+  (void)clock;
+  TvFrame *f = data;
+  if (!f->active || g_get_monotonic_time() > f->reveal_until)
+    return G_SOURCE_REMOVE;
+  if (gtk_widget_get_height(island) == f->reveal_from)
+    return G_SOURCE_CONTINUE;
+  /* the page has its new height: bring the row up now */
+  reveal_now(f);
   return G_SOURCE_REMOVE;
 }
 
 static void keyboard_height(guint height, gpointer data) {
   TvFrame *f = data;
   if (!f->active) return;
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) g_printerr("tv keyboard height %u\n", height);
   gtk_widget_set_margin_bottom(f->island, height > 0 ? (int)round(height * f->unit) : f->island_bottom);
-  if (height > 0 && f->reveal_id == 0)
-    f->reveal_id = g_timeout_add(120, reveal_focus, f); /* once the page has its new height */
+  if (height > 0) {
+    /* once the page has its new height: watched frame by frame (a slow device lays out late),
+     * with a last look after a second whatever happened */
+    g_clear_handle_id(&f->reveal_id, g_source_remove);
+    f->reveal_tries = 1;
+    f->reveal_id = g_timeout_add(1000, reveal_focus, f);
+    f->reveal_from = gtk_widget_get_height(f->island);
+    f->reveal_until = g_get_monotonic_time() + G_USEC_PER_SEC;
+    gtk_widget_add_tick_callback(f->island, reveal_tick, f, NULL);
+  }
 }
 
 static void active_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
@@ -1830,7 +2133,7 @@ static void enter(TvFrame *f) {
 
   f->provider = gtk_css_provider_new();
   gtk_style_context_add_provider_for_display(gtk_widget_get_display(GTK_WIDGET(f->window)),
-      GTK_STYLE_PROVIDER(f->provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 20U);
+      GTK_STYLE_PROVIDER(f->provider), GTK_STYLE_PROVIDER_PRIORITY_USER + 10U); /* over an app's own user-level rules */
   f->opaque = setting_true(f->state, "reduce-transparency") || setting_true(f->a11y, "high-contrast");
   f->unit = screen_unit(f);
   tv_css(f);
@@ -1961,6 +2264,19 @@ void luma_tv_frame_set_active(GtkWindow *window, gboolean tv) {
 }
 
 gboolean luma_tv_frame_key(GtkWindow *window, guint keyval) {
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  gboolean handled = f != NULL && key_pressed(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
+  if (f != NULL && f->active) /* one whole press: the key is let go again */
+    g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(keyval));
+  return handled;
+}
+
+gboolean luma_tv_frame_key_release(GtkWindow *window, guint keyval) {
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  return f != NULL && key_released(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
+}
+
+gboolean luma_tv_frame_key_held(GtkWindow *window, guint keyval) {
   TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
   return f != NULL && key_pressed(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
 }

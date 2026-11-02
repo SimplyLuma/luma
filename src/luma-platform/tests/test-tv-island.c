@@ -8,6 +8,7 @@
  *   test-tv-island --show   the app itself, for a look on a TV (LUMA_POSTURE=tv) */
 #include <luma-ui.h>
 #include <adwaita.h>
+#include <math.h>
 #include "luma-tv-frame-private.h"
 
 static gboolean show_only;
@@ -17,6 +18,22 @@ static GtkWidget *page_title;
 static int pages_opened;
 
 #define CHECK(cond) do { if (!(cond)) { g_printerr("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); failures++; } } while (0)
+
+static void check_chip_parts(void);
+
+/* An item with a desktop context menu (GTK's "menu.popup"): holding OK opens it, a tap is OK. */
+static int menus_opened, items_clicked;
+static GtkWidget *menu_item_widget;
+#define PANTRY_TYPE_CARD (pantry_card_get_type())
+G_DECLARE_FINAL_TYPE(PantryCard, pantry_card, PANTRY, CARD, GtkButton)
+struct _PantryCard { GtkButton parent_instance; };
+G_DEFINE_FINAL_TYPE(PantryCard, pantry_card, GTK_TYPE_BUTTON)
+static void card_menu(GtkWidget *w, const char *name, GVariant *p) { (void)w; (void)name; (void)p; menus_opened++; }
+static void pantry_card_class_init(PantryCardClass *klass) {
+  gtk_widget_class_install_action(GTK_WIDGET_CLASS(klass), "menu.popup", NULL, card_menu);
+}
+static void pantry_card_init(PantryCard *self) { (void)self; }
+static void card_clicked(GtkButton *b, gpointer d) { (void)b; (void)d; items_clicked++; }
 
 static void spin(int ms) {
   gint64 until = g_get_monotonic_time() + ms * 1000;
@@ -67,6 +84,9 @@ static GtkWidget *page_new(const char *title) {
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(info), "Items");
   adw_action_row_add_suffix(ADW_ACTION_ROW(info), gtk_label_new("128"));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(more), info);
+  menu_item_widget = g_object_new(PANTRY_TYPE_CARD, "label", "Sourdough starter", NULL);
+  g_signal_connect(menu_item_widget, "clicked", G_CALLBACK(card_clicked), NULL);
+  gtk_box_append(GTK_BOX(body), menu_item_widget);
   GtkWidget *button = adw_button_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(button), "Clear the shopping list");
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(more), button);
@@ -221,6 +241,61 @@ static void check_tv(GtkApplication *app) {
   spin(50);
   CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
 
+  /* Key repeat: a held OK acts once (the frame stops its repeats), a held arrow keeps moving. */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Right));
+  spin(50);
+  CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), page));
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* the press: the row acts */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));   /* its repeat: nothing */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  /* held for two seconds, repeating every 30 ms: every repeat is stopped, however long the hold */
+  for (int i = 0; i < 66; i++) {
+    spin(30);
+    CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  }
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));        /* the last repeat, then let go */
+  CHECK(!luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));       /* a new press acts */
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* pressed, its release lost */
+  spin(900);
+  CHECK(!luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));  /* much later: a new press */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));        /* (its repeat, let go) */
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));     /* moves repeat */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));        /* back to the island */
+  spin(50);
+
+  /* Hold OK on an item with a menu: the menu after 500 ms, once; a tap is the OK, on release. */
+  gtk_widget_grab_focus(menu_item_widget);
+  spin(700); /* focus put there by the app: OK right after such a move acts on nothing (the frame's guard) */
+  CHECK(gtk_root_get_focus(GTK_ROOT(window)) == menu_item_widget);
+  menus_opened = items_clicked = 0;
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));    /* nothing yet */
+  spin(100);
+  CHECK(luma_tv_frame_key_release(GTK_WINDOW(window), GDK_KEY_Return)); /* a tap */
+  spin(400);                                                             /* a button clicks after its press animation */
+  CHECK(items_clicked == 1 && menus_opened == 0);
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  for (int i = 0; i < 40; i++) { spin(30); CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return)); }
+  CHECK(menus_opened == 1);                                              /* once, however long */
+  CHECK(luma_tv_frame_key_release(GTK_WINDOW(window), GDK_KEY_Return));
+  spin(400);
+  CHECK(items_clicked == 1);                                             /* the release does nothing */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Menu) && menus_opened == 2);
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));
+  spin(50);
+
+  /* The toast: the shared TV toast, shown and resting on the 56 line. */
+  LumaToast *toast = luma_toast_show(page, "Type the password", "error");
+  spin(400);
+  CHECK(toast != NULL && gtk_widget_get_mapped(GTK_WIDGET(toast)));
+  if (toast != NULL) {
+    graphene_rect_t box;
+    double u = luma_ui_tv_unit(gtk_widget_get_width(window), gtk_widget_get_height(window));
+    CHECK(gtk_widget_compute_bounds(GTK_WIDGET(toast), window, &box));
+    CHECK(box.size.height > 0 && box.origin.y + box.size.height <= gtk_widget_get_height(window));
+    CHECK(fabs(gtk_widget_get_height(window) - (box.origin.y + box.size.height) - 56 * u) < 2);
+  }
+
   /* A list longer than the screen stops at the bottom safe line and scrolls. */
   for (int i = 0; i < 24; i++)
     luma_navigation_sidebar_append_row(LUMA_NAVIGATION_SIDEBAR(sidebar), GTK_LIST_BOX_ROW(row_new("More", "timer")));
@@ -253,8 +328,23 @@ static void activate(GtkApplication *app, gpointer data) {
   g_application_hold(G_APPLICATION(app));
   check_desktop(app);
   check_tv(app);
+  check_chip_parts();
   g_application_release(G_APPLICATION(app));
   g_application_quit(G_APPLICATION(app));
+}
+
+/* Chip rows (wallpapers, accents) are page parts too: named, they carry their class, nothing else. */
+static void check_chip_parts(void) {
+  const char *parts[] = {"chips", "chip", "swatch"};
+  for (guint i = 0; i < G_N_ELEMENTS(parts); i++) {
+    GtkWidget *w = g_object_ref_sink(gtk_button_new());
+    g_autofree char *cls = g_strconcat("lumaui-part-", parts[i], NULL);
+    luma_ui_set_part(w, parts[i]);
+    CHECK(gtk_widget_has_css_class(w, cls));
+    luma_ui_set_part(w, NULL);
+    CHECK(!gtk_widget_has_css_class(w, cls));
+    g_object_unref(w);
+  }
 }
 
 int main(int argc, char **argv) {

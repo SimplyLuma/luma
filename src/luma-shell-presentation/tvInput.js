@@ -291,7 +291,9 @@ export class TvInput {
 
     _context() {
         const focus = global.stage.key_focus;
-        const shellFocus = Boolean(focus) && focus !== global.stage;
+        // A Shell grab (a system dialog, a menu) takes every key, wherever the
+        // stage focus is: the pad must reach it, never the window beneath.
+        const shellFocus = (Boolean(focus) && focus !== global.stage) || Main.modalCount > 0;
         const keyboardVisible = Boolean(Main.keyboard?.visible);
         const focused = global.display.focus_window;
         let window = null;

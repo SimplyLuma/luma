@@ -215,3 +215,31 @@ grows its row with its actions: Connect (with the saved password), Change passwo
 shows a password field, focused with the TV keyboard's Join; empty is refused) and Forget
 (the destructive question, a TV sheet on Cancel). Outside TV posture nothing changes.
 
+`0093-lumaui-tv-account-appearance-sound.patch`: TV posture only. Account opens `tv-account`,
+the Luma account as Luma Connect keeps it (`org.projectluma.Connect1` GetState, followed by
+StateChanged; adapter `tv-account`): signed in, the hero is the account's name and email with
+Syncing and devices and Sign out opening Luma Connect; signed out or locked, Sign in opens Luma
+Connect (`account_qr_hook` is where QR sign-in goes); no daemon, the hero says Connect is not
+installed. Appearance names its accents and wallpapers as LumaUI chips (`chips`, `swatch`,
+`chip`), lays the wallpapers out as 200-unit 16:9 chips 16 apart, and leaves out Light and Dark
+(the TV is always dark; the mockup's page has none). Sound's hero is the output itself (icon,
+name, volume) like every TV hero, with the outputs (when there is more than one) and Volume as
+rows. Requires LumaUI API level 8 (page parts `chips`, `chip`, `swatch`).
+
+`0094-lumaui-tv-about-board-facts.patch`: About on boards that hostnamed names no vendor for
+(a Raspberry Pi, most Arm boards) shows the device tree's model line as Model, and an Arm
+processor without a model name in /proc/cpuinfo is named from its core part number and count
+("Cortex-A76 × 4"), so the page has the desktop's rows in the desktop's order. x86 and
+anything that already reports both are unchanged.
+
+`0095-lumaui-tv-wifi-nearby-in-place.patch`: a performance fix for every posture. Each Wi-Fi
+scan report rebuilt the whole Wi-Fi page: every widget was destroyed and drawn again, the page
+re-laid out, and the focused row (and, on a TV, the remote's place) lost, several times a
+minute. The page now keeps a signature of everything it drew apart from the Nearby list; while
+that holds, a report updates the list in place, keyed by network name: rows that show the same
+thing are kept, changed rows are redrawn where they stand, new ones added, gone ones removed,
+the order follows the scan and the header's count is updated. Anything else (Wi-Fi on/off, the
+joined network, a join in progress or its outcome, a notice) still draws the page afresh, so
+what is shown is unchanged. Test: `/settings/view/nearby-in-place` (kept rows are the same
+widgets; the page reads exactly as one drawn afresh).
+

@@ -1,10 +1,10 @@
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -179,6 +179,7 @@
-     <file>ui/lumaPresentation/tvKeyboard.js</file>
-     <file>ui/lumaPresentation/tvInput.js</file>
+@@ -181,6 +181,7 @@
      <file>ui/lumaPresentation/tvInputModel.js</file>
+     <file>ui/lumaPresentation/tvDialogs.js</file>
+     <file>ui/lumaPresentation/tvDialogsModel.js</file>
 +    <file>ui/lumaPresentation/tvScreenEdges.js</file>
      <file>ui/lumaPresentation/tv-backdrop.jpg</file>
      <file>ui/shelfMetrics.js</file>

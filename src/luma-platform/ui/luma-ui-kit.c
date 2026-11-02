@@ -327,7 +327,29 @@ static int orientation_of(GtkWidget *widget) {
 }
 
 static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row",
-                                           "title", "lede", "emblem", "buttons", "footnote", "ways", "way", NULL };
+                                           "title", "lede", "emblem", "buttons", "footnote", "ways", "way",
+                                           "chips", "chip", "swatch", NULL };
+
+/* An image that is not a symbolic icon: a logo, an app's icon, a photo. */
+static gboolean full_colour(GtkWidget *w) {
+  if (GTK_IS_PICTURE(w))
+    return TRUE;
+  if (!GTK_IS_IMAGE(w))
+    return FALSE;
+  switch (gtk_image_get_storage_type(GTK_IMAGE(w))) {
+  case GTK_IMAGE_ICON_NAME:
+    return !g_str_has_suffix(gtk_image_get_icon_name(GTK_IMAGE(w)), "-symbolic");
+  case GTK_IMAGE_GICON: {
+    GIcon *icon = gtk_image_get_gicon(GTK_IMAGE(w));
+    const char *const *names = G_IS_THEMED_ICON(icon) ? g_themed_icon_get_names(G_THEMED_ICON(icon)) : NULL;
+    return names == NULL || names[0] == NULL || !g_str_has_suffix(names[0], "-symbolic");
+  }
+  case GTK_IMAGE_PAINTABLE:
+    return TRUE;
+  default:
+    return FALSE;
+  }
+}
 
 void luma_ui_set_part(GtkWidget *widget, const char *part) {
   g_return_if_fail(GTK_IS_WIDGET(widget));
@@ -360,9 +382,11 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
   /* An icon lead (an image, or a box holding one) sits on the TV's lead tile; other leads
    * (a drawn mark such as signal bars) keep their own shape. */
   GtkWidget *inner = leads && GTK_IS_BOX(first) ? gtk_widget_get_first_child(first) : NULL;
-  if (leads && (GTK_IS_IMAGE(first) || GTK_IS_PICTURE(first) || GTK_IS_IMAGE(inner) || GTK_IS_PICTURE(inner)))
+  if (leads && (GTK_IS_IMAGE(first) || GTK_IS_PICTURE(first) || GTK_IS_IMAGE(inner) || GTK_IS_PICTURE(inner))) {
     gtk_widget_add_css_class(first, "lumaui-part-lead");
-  else if (leads)
+    /* a picture in full colour (a logo, an app's icon, a photo) stands on its own, never on a tile */
+    luma_ui_set_css_class(first, "lumaui-part-picture", full_colour(GTK_IS_BOX(first) ? inner : first));
+  } else if (leads)
     gtk_widget_add_css_class(first, "lumaui-part-mark");
 }
 
