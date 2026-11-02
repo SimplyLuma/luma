@@ -117,6 +117,8 @@ def build(source_dir: Path, names: list[str], source_origin: str | None = None) 
         "naming": "lumaui-<lucide name>-symbolic; stable, never reused. Share is share-2, Export is share, "
                   "Upload is upload.",
         "icons": entries,
+        # Hand-derived glyphs are not imported; keep them as recorded.
+        **({"derived_icons": previous["derived_icons"]} if previous.get("derived_icons") else {}),
     }, indent=2) + "\n", encoding="utf-8")
     print(f"{len(entries)} LumaUI icons")
 

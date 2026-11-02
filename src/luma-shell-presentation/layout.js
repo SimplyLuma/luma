@@ -131,3 +131,56 @@ export function statusPullZone(x, y, {status, clock = null, island = null, right
     if (clock && x >= clock.x && x <= clock.x + clock.width) return 'options';
     return x >= Math.min(right.x, status.x + status.width / 2) ? 'options' : null;
 }
+
+// The LumaUI (Lucide) glyph that draws a GNOME status icon's state, or null
+// to leave an icon the family has no glyph for. GNOME's indicators keep their
+// own state logic; the handheld status bar only redraws their states.
+const STATUS_GLYPHS = [
+    [/^network-wireless-(signal-excellent|connected)/, 'lumaui-wifi-symbolic'],
+    [/^network-wireless-signal-good/, 'lumaui-wifi-high-symbolic'],
+    [/^network-wireless-(signal-ok|acquiring)/, 'lumaui-wifi-low-symbolic'],
+    [/^network-wireless-signal-(weak|none)/, 'lumaui-wifi-zero-symbolic'],
+    [/^network-wireless-(disabled|offline|no-route)/, 'luma-wifi-off-symbolic'],
+    [/^network-wireless-hotspot/, 'lumaui-wifi-symbolic'],
+    [/^network-cellular-signal-excellent/, 'lumaui-signal-symbolic'],
+    [/^network-cellular-signal-good/, 'lumaui-signal-high-symbolic'],
+    [/^network-cellular-signal-ok/, 'lumaui-signal-medium-symbolic'],
+    [/^network-cellular-signal-weak/, 'lumaui-signal-low-symbolic'],
+    [/^network-cellular-/, 'lumaui-signal-zero-symbolic'],
+    [/^network-wired/, 'lumaui-ethernet-port-symbolic'],
+    [/^network-vpn/, 'lumaui-shield-symbolic'],
+    [/^airplane-mode/, 'lumaui-plane-symbolic'],
+    [/^audio-volume-muted/, 'lumaui-volume-x-symbolic'],
+    [/^audio-volume-low/, 'lumaui-volume-symbolic'],
+    [/^audio-volume-medium/, 'lumaui-volume-1-symbolic'],
+    [/^audio-volume-(high|overamplified)/, 'lumaui-volume-2-symbolic'],
+    [/^microphone-sensitivity-muted/, 'lumaui-mic-off-symbolic'],
+    [/^(microphone-sensitivity|audio-input-microphone)/, 'lumaui-mic-symbolic'],
+    [/^bluetooth-/, 'lumaui-bluetooth-symbolic'],
+    [/^location-services-/, 'lumaui-map-pin-symbolic'],
+    [/^camera-web/, 'lumaui-camera-active-symbolic'],
+    [/^notifications-disabled/, 'luma-moon-symbolic'],
+    [/^night-light/, 'lumaui-sun-moon-symbolic'],
+    [/^power-profile-/, 'luma-gauge-symbolic'],
+    [/^rotation-locked/, 'lumaui-rotate-cw-symbolic'],
+    [/^media-record/, 'luma-capture-record-screen-symbolic'],
+    [/^accessibility-|accessibility-symbolic$/, 'lumaui-accessibility-symbolic'],
+];
+
+export function statusGlyph(name) {
+    if (!name || name.startsWith('luma'))
+        return null;
+    const battery = /^battery-level-(\d+)(-charging|-charged)?/.exec(name);
+    if (battery) {
+        if (battery[2] === '-charging')
+            return 'lumaui-battery-charging-symbolic';
+        const level = Number(battery[1]);
+        if (battery[2] === '-charged' || level >= 80)
+            return 'lumaui-battery-full-symbolic';
+        return level >= 40 ? 'lumaui-battery-medium-symbolic'
+            : level >= 20 ? 'lumaui-battery-low-symbolic' : 'lumaui-battery-warning-symbolic';
+    }
+    if (/^battery-(missing|empty|caution)/.test(name))
+        return 'lumaui-battery-warning-symbolic';
+    return STATUS_GLYPHS.find(([pattern]) => pattern.test(name))?.[1] ?? null;
+}

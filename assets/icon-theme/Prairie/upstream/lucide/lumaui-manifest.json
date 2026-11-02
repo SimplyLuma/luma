@@ -229,12 +229,48 @@
       "gtk_symbolic_sha256": "0fb9218cefc1e33045ccffbbd64beea53e5dcbb2003860f2597e0bf0bb4bba27"
     },
     {
+      "lucide": "battery-charging",
+      "icon": "lumaui-battery-charging-symbolic",
+      "source": "upstream/lucide/lumaui/battery-charging.svg",
+      "sha256": "1ac865dd4e0e6a0280d564c04637460a8d8de98cfe31acc347e2f4ff94b9e381",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "becea9dff3211b3f8550104052bcdf2df0d410ebc53fb83e080ff1aa95a09290",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/battery-charging.svg"
+    },
+    {
+      "lucide": "battery-full",
+      "icon": "lumaui-battery-full-symbolic",
+      "source": "upstream/lucide/lumaui/battery-full.svg",
+      "sha256": "526004a3000b1a081038bad6c87d7934d862a39b52ffabf21a52d8d914911f3b",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "b52ca68ee6cacab5e0c909a58049c62e1bf4495cce01a7e7fab960f0de78bbe7",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/battery-full.svg"
+    },
+    {
+      "lucide": "battery-low",
+      "icon": "lumaui-battery-low-symbolic",
+      "source": "upstream/lucide/lumaui/battery-low.svg",
+      "sha256": "9e5ef7dd0a25a2d14aaa25f4a0d41f2b9b523ea6b1af1e8bf823a2481a99deaf",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "37e9b7a06f8cd3cbedfc3fa30ec1a11ba8a68d8ee5be32fea721fcd01c424024",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/battery-low.svg"
+    },
+    {
       "lucide": "battery-medium",
       "icon": "lumaui-battery-medium-symbolic",
       "source": "upstream/lucide/lumaui/battery-medium.svg",
       "sha256": "886038523d9a5c24560053d6d2a32d91725f3f8d32d888f70eab84c6329c44ce",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "069bfe35490cb5e8a1056bd7a9e03a0bd2a6fbc663f2b1e340a367c7d48b7278"
+    },
+    {
+      "lucide": "battery-warning",
+      "icon": "lumaui-battery-warning-symbolic",
+      "source": "upstream/lucide/lumaui/battery-warning.svg",
+      "sha256": "494c2d9d82eec51cfd509eeaa260af8ce12fc07737916573831905fa7884e9e3",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "e7755c14cd25b97a1a450446061fe05a495060f5bdd441df4b13adec62747da2",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/battery-warning.svg"
     },
     {
       "lucide": "bell",
@@ -2078,6 +2114,51 @@
       "gtk_symbolic_sha256": "18f2098fa41d8e04626dcb6c3df14859587cb181f2cb62ef55f9aae10874390d"
     },
     {
+      "lucide": "signal",
+      "icon": "lumaui-signal-symbolic",
+      "source": "upstream/lucide/lumaui/signal.svg",
+      "sha256": "1012d99f7bbfd705cba1915040b2db0b58673920c2ab82bb5410a2239a1af66e",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "05fa296bdecf3d825f2ba5b49193bd4ffb1ea19713f3ef7386169287393f9b36",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/signal.svg"
+    },
+    {
+      "lucide": "signal-high",
+      "icon": "lumaui-signal-high-symbolic",
+      "source": "upstream/lucide/lumaui/signal-high.svg",
+      "sha256": "67e1a9dd82a5cc208ffa8678ae7bc396af04375d33039a5db0b1233be68cf2fe",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "f94955ec635a64815ac0267aabda84ec035d1d44c233e235036e040bacac9960",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/signal-high.svg"
+    },
+    {
+      "lucide": "signal-low",
+      "icon": "lumaui-signal-low-symbolic",
+      "source": "upstream/lucide/lumaui/signal-low.svg",
+      "sha256": "d4dd26b57bf7e4de9c204ad7e3501ec2848461c3f8c14d2b36c12c62875db14f",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "65cccfb26493299e07ca626133ffa4da25bd914e72121a8ef143835f67552deb",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/signal-low.svg"
+    },
+    {
+      "lucide": "signal-medium",
+      "icon": "lumaui-signal-medium-symbolic",
+      "source": "upstream/lucide/lumaui/signal-medium.svg",
+      "sha256": "7e356f9f5f4ee348e9f1bb3890d4f896f99320174b05b47a5f0243dcbc112ef2",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "43823fa2bc957f398b7a6161372a3a7008e6fbc0f53688b8bbf156783499a329",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/signal-medium.svg"
+    },
+    {
+      "lucide": "signal-zero",
+      "icon": "lumaui-signal-zero-symbolic",
+      "source": "upstream/lucide/lumaui/signal-zero.svg",
+      "sha256": "6ccabeb48168bd7d26e63789c46c251d9d6441988b2fb165fc3afcfbaf9810f2",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "df74bb52a75f85ad182849e005669e72ee00c0bc2dd0313f64f55196332dd7ba",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/signal-zero.svg"
+    },
+    {
       "lucide": "signature",
       "icon": "lumaui-signature-symbolic",
       "source": "upstream/lucide/lumaui/signature.svg",
@@ -2536,6 +2617,15 @@
       "gtk_symbolic_sha256": "124db2117d1c3adfffad1f4bb32faa75a8ec369304122feeea24ae64ddbd1e6d"
     },
     {
+      "lucide": "volume",
+      "icon": "lumaui-volume-symbolic",
+      "source": "upstream/lucide/lumaui/volume.svg",
+      "sha256": "35692ec6c540c40768d01c7fb76466025d4f595031ec788c1384045b889b052a",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "5858b8b44ab75b1d663a0873e632de3717b24fd15ad658ebd0ed53215eb33f20",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/volume.svg"
+    },
+    {
       "lucide": "volume-1",
       "icon": "lumaui-volume-1-symbolic",
       "source": "upstream/lucide/lumaui/volume-1.svg",
@@ -2622,6 +2712,15 @@
       "sha256": "9bf604e87a97af8aaae7410832c881fb7c0ec1b8c26368e0d1200425b6576ea3",
       "upstream_version": "1.48.0",
       "gtk_symbolic_sha256": "41ca2ea1c9cd9d8ac7785250b777438b360209caedc45b69ff79a8d4179ef84a"
+    },
+    {
+      "lucide": "wifi-zero",
+      "icon": "lumaui-wifi-zero-symbolic",
+      "source": "upstream/lucide/lumaui/wifi-zero.svg",
+      "sha256": "024b97c2b0c381bd9228742b0abf40379c264a359e037605c4fbb68ba0e3d50a",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "6c4d19f5e92b43b238419fab3b086fffb9ad18bf49527f1fd01bfb3bc6406f05",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/wifi-zero.svg"
     },
     {
       "lucide": "wind",
