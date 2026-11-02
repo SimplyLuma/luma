@@ -2688,6 +2688,94 @@
       "sha256": "cd359a6f058f0f076a358809423530c8c1ad417da32df6592f7fb7f6b1a9e32c",
       "derivation": "Filled camera body with transparent lens cutout derived from Lucide camera geometry; retains ISC notice in the vendored Lucide license.",
       "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-battery-charging",
+      "icon": "luma-status-battery-charging-symbolic",
+      "source": "upstream/lucide/status/battery-charging-symbolic.svg",
+      "sha256": "becea9dff3211b3f8550104052bcdf2df0d410ebc53fb83e080ff1aa95a09290",
+      "derivation": "Lucide 1.48.0 battery-charging (upstream/lucide/status/battery-charging.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-battery-full",
+      "icon": "luma-status-battery-full-symbolic",
+      "source": "upstream/lucide/status/battery-full-symbolic.svg",
+      "sha256": "b52ca68ee6cacab5e0c909a58049c62e1bf4495cce01a7e7fab960f0de78bbe7",
+      "derivation": "Lucide 1.48.0 battery-full (upstream/lucide/status/battery-full.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-battery-low",
+      "icon": "luma-status-battery-low-symbolic",
+      "source": "upstream/lucide/status/battery-low-symbolic.svg",
+      "sha256": "37e9b7a06f8cd3cbedfc3fa30ec1a11ba8a68d8ee5be32fea721fcd01c424024",
+      "derivation": "Lucide 1.48.0 battery-low (upstream/lucide/status/battery-low.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-battery-warning",
+      "icon": "luma-status-battery-warning-symbolic",
+      "source": "upstream/lucide/status/battery-warning-symbolic.svg",
+      "sha256": "e7755c14cd25b97a1a450446061fe05a495060f5bdd441df4b13adec62747da2",
+      "derivation": "Lucide 1.48.0 battery-warning (upstream/lucide/status/battery-warning.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-signal",
+      "icon": "luma-status-signal-symbolic",
+      "source": "upstream/lucide/status/signal-symbolic.svg",
+      "sha256": "05fa296bdecf3d825f2ba5b49193bd4ffb1ea19713f3ef7386169287393f9b36",
+      "derivation": "Lucide 1.48.0 signal (upstream/lucide/status/signal.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-signal-high",
+      "icon": "luma-status-signal-high-symbolic",
+      "source": "upstream/lucide/status/signal-high-symbolic.svg",
+      "sha256": "f94955ec635a64815ac0267aabda84ec035d1d44c233e235036e040bacac9960",
+      "derivation": "Lucide 1.48.0 signal-high (upstream/lucide/status/signal-high.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-signal-low",
+      "icon": "luma-status-signal-low-symbolic",
+      "source": "upstream/lucide/status/signal-low-symbolic.svg",
+      "sha256": "65cccfb26493299e07ca626133ffa4da25bd914e72121a8ef143835f67552deb",
+      "derivation": "Lucide 1.48.0 signal-low (upstream/lucide/status/signal-low.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-signal-medium",
+      "icon": "luma-status-signal-medium-symbolic",
+      "source": "upstream/lucide/status/signal-medium-symbolic.svg",
+      "sha256": "43823fa2bc957f398b7a6161372a3a7008e6fbc0f53688b8bbf156783499a329",
+      "derivation": "Lucide 1.48.0 signal-medium (upstream/lucide/status/signal-medium.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-signal-zero",
+      "icon": "luma-status-signal-zero-symbolic",
+      "source": "upstream/lucide/status/signal-zero-symbolic.svg",
+      "sha256": "df74bb52a75f85ad182849e005669e72ee00c0bc2dd0313f64f55196332dd7ba",
+      "derivation": "Lucide 1.48.0 signal-zero (upstream/lucide/status/signal-zero.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-volume",
+      "icon": "luma-status-volume-symbolic",
+      "source": "upstream/lucide/status/volume-symbolic.svg",
+      "sha256": "5858b8b44ab75b1d663a0873e632de3717b24fd15ad658ebd0ed53215eb33f20",
+      "derivation": "Lucide 1.48.0 volume (upstream/lucide/status/volume.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
+    },
+    {
+      "name": "status-wifi-zero",
+      "icon": "luma-status-wifi-zero-symbolic",
+      "source": "upstream/lucide/status/wifi-zero-symbolic.svg",
+      "sha256": "6c4d19f5e92b43b238419fab3b086fffb9ad18bf49527f1fd01bfb3bc6406f05",
+      "derivation": "Lucide 1.48.0 wifi-zero (upstream/lucide/status/wifi-zero.svg) adapted by import-lumaui-icons.py; named outside lumaui-, which the desktop toolkit pins, for the Shell status glyphs.",
+      "license": "upstream/lucide/LICENSE.txt"
     }
   ]
 }
