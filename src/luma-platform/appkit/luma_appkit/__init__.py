@@ -99,6 +99,7 @@ __all__ = [
     "TvTopBar", "TvTab", "TvButton", "TvField",
     "TvToast",
     "TvIdle",
+    "TvMenu",
     "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
@@ -366,6 +367,9 @@ def __getattr__(name: str):
     if name == "TvToast":
         from .tv_toast import TvToast
         return TvToast
+    if name == "TvMenu":
+        from .tv_menu import TvMenu
+        return TvMenu
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle

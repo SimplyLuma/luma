@@ -645,6 +645,7 @@ class WeatherTV(TvStage):
         focused = self.focus.focused
         refocus = self.focus.group_of(focused) == "places"
         focused_index = self._tabs.index(focused) if refocus and focused in self._tabs else -1
+        focused_uid = getattr(focused, "place_uid", None) if refocus else None
         self.focus.clear("places")
         tabs = []
         for index, place in enumerate(self.window.places):
@@ -652,8 +653,11 @@ class WeatherTV(TvStage):
                 tab = TvTab(place.name, icon="navigation", accessible=f"{place.name}, your location")
             else:
                 tab = TvTab(place.name, lead=_Dot(self, self._dot_colour(place)))
+            tab.place_uid = place.uid
+            # Hold OK or Menu: the place's own menu, the desktop row's context menu (one model).
             self.focus.add(tab, group="places", on_focus=lambda i=index: self._go_place(i),
-                           on_activate=lambda i=index: self._place_ok(i))
+                           on_activate=lambda i=index: self._place_ok(i),
+                           menu=lambda p=place: self.window.place_commands(p))
             tabs.append(tab)
         add = TvTab("Add a place" if len(self.window.places) <= 1 else "", icon="plus", accessible="Add a place")
         self.focus.add(add, group="places", on_activate=self._open_add)
@@ -662,7 +666,9 @@ class WeatherTV(TvStage):
         self.bar.set_tabs(tabs)
         self.bar.set_open(self._open_index())
         if refocus:
-            self.focus.focus(tabs[min(max(focused_index, 0), len(tabs) - 1)])
+            # The same place keeps the focus wherever it moved (Set as default, a removal).
+            same = next((t for t in tabs if focused_uid and getattr(t, "place_uid", None) == focused_uid), None)
+            self.focus.focus(same or tabs[min(max(focused_index, 0), len(tabs) - 1)])
 
     def _dot_colour(self, place) -> str:
         """A place's sky right now, as the dot beside its name."""
@@ -953,6 +959,8 @@ class WeatherTV(TvStage):
         # panel): three rows then, five once the keyboard is away.
         self._all_results = tuple(results)
         results = self._all_results[:3 if self.docked == "keyboard" else 5]
+        rows = getattr(self, "_row_widgets", [])
+        held = rows.index(self.focus.focused) if self.focus.focused in rows else -1
         while child := self._list.get_first_child():
             self._list.remove(child)
         for row in getattr(self, "_row_widgets", []):
@@ -963,6 +971,8 @@ class WeatherTV(TvStage):
             if query:
                 self._list.append(_label(f"No places match “{query}”", "wx-tv-none"))
             self.focus.set_scope_items([self._field.text])
+            if held >= 0:
+                self.focus.focus(self._field.text)
             return
         for result in results:
             name, sub = self._result_text(result)
@@ -979,14 +989,13 @@ class WeatherTV(TvStage):
             self._list.append(row)
             self._row_widgets.append(row)
         self.focus.set_scope_items([self._field.text, *self._row_widgets])
+        if held >= 0:
+            # Results that arrive while a row has the focus keep it on the same line.
+            self.focus.focus(self._row_widgets[min(held, len(self._row_widgets) - 1)])
 
     def _on_docked(self) -> None:
         if self._sheet is not None and hasattr(self, "_all_results"):
-            focused = self.focus.focused
-            index = self._row_widgets.index(focused) if focused in getattr(self, "_row_widgets", []) else -1
             self._fill_results(self._all_results)
-            if index >= 0 and self._row_widgets:
-                self.focus.focus(self._row_widgets[min(index, len(self._row_widgets) - 1)])
 
     @staticmethod
     def _result_text(result) -> tuple[str, str]:
