@@ -25,7 +25,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {remoteAction, repeatAllowed} from './tvModel.js';
 import {okGate, okPress, okRelease} from './tvQuickPanelModel.js';
-import {afterRemoval, cardMenu, closeState, rowScroll, stepCard, switcherApps} from './tvAppSwitcherModel.js';
+import {afterRemoval, cardMenu, closeState, rowScroll, shownApp, stepCard, switcherApps} from './tvAppSwitcherModel.js';
 import {gettext as _} from 'gettext';
 
 // Presses closer than this to the last one belong to the same held OK.
@@ -53,6 +53,11 @@ export function requestQuit(app) {
     } catch (error) {
         console.warn(`TV: quit ${app.get_id()} failed (${error.message})`);
     }
+}
+
+// An app people open: never a system prompt (shownApp).
+export function switcherApp(app) {
+    return !!app && shownApp(app.get_app_info?.() ?? app.app_info ?? null);
 }
 
 function runningApps() {
@@ -313,9 +318,10 @@ export class TvAppSwitcher {
     _collect() {
         const windows = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
             .filter(normalWindow)
-            .map(window => ({window, app: this._tracker.get_window_app(window)}));
+            .map(window => ({window, app: this._tracker.get_window_app(window)}))
+            .filter(entry => switcherApp(entry.app));
         // An app with no window is listed only if it is one people open (a player playing on).
-        const others = runningApps().filter(app => appRunning(app) && app.app_info?.should_show?.() !== false);
+        const others = runningApps().filter(app => appRunning(app) && switcherApp(app));
         const apps = switcherApps(windows, others, app => app.get_id());
         return apps.map(app => ({app, window: windows.find(entry => entry.app === app)?.window ?? null,
             requestedAt: null}));
