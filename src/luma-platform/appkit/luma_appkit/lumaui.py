@@ -46,7 +46,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 # 7: remotes and gamepads (claim_gamepads).
 # 8: TvIdle follows the person's tv-idle-delay; the C kit's TV island (luma_ui_tv_posture,
 #    luma_ui_tv_unit, luma_ui_set_part, luma_ui_set_keyboard_action).
-# 9: device_noun (this TV / this computer / this tablet / this phone, by posture).
+# 9: device_noun (this TV / this computer / this tablet / this phone, by posture); the floating
+#    island for every AppWindow (tv_frame; C luma_window_set_tv_frame, luma_window_set_tv_active).
 LUMAUI_API_LEVEL = 9
 
 _PACKAGE = Path(__file__).resolve().parent

@@ -54,6 +54,15 @@ posture is never TV.
   home by minimising; the TV home shows whenever no app window does.
 - No hover-only affordances: TV is driven by a remote or a gamepad (arrows,
   OK, Back); see "Remotes and gamepads".
+- A sidebar app gets the floating island with no TV code: its sidebar lifts
+  off the window edge beside the page (Up/Down in the island opens each page,
+  Right steps into the page and folds the island to a rail, Back returns).
+  A window showing one island and no sidebar (a welcome, an error) is drawn
+  centred in the safe area. `LumaApplicationWindow` (C) and `AppWindow`
+  (luma_appkit: `IslandSplitView` or a box with a `NavigationSidebar` beside an
+  `Island`) do this themselves; other toolkits call
+  `luma_window_set_tv_frame()` and `luma_window_set_tv_active()` (API level 9).
+  A window showing its own TV presentation (`TvStage`) is left alone.
 
 ## The TV scale
 

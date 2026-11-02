@@ -18,7 +18,7 @@ G_BEGIN_DECLS
  * `luma_appkit.LUMAUI_API_LEVEL`. It rises by one whenever a public name, an
  * argument or a toast kind is added; within a level nothing is removed.
  */
-#define LUMA_UI_API_LEVEL 8
+#define LUMA_UI_API_LEVEL 9
 
 /**
  * luma_ui_get_api_level:
@@ -151,6 +151,43 @@ void luma_ui_set_part(GtkWidget *widget, const char *part);
  * field's own label. Outside TV posture nothing visible changes. Since API level 8.
  */
 void luma_ui_set_keyboard_action(GtkWidget *widget, const char *label);
+
+/**
+ * luma_window_set_tv_frame:
+ * @window: an #AdwApplicationWindow
+ * @content: (nullable): the window's content widget, laid over the TV room while the frame is active
+ * @frame: (nullable): the box holding @sidebar and @island side by side (or @island alone)
+ * @sidebar: (nullable): the window's sidebar: a #LumaNavigationSidebar, or any widget holding the
+ *   destinations' #GtkListBox (it is then told by its classes: `lumaui-tv-island`, and
+ *   `lumaui-tv-rail` while folded); %NULL for a centred window (a welcome, an error) with no island
+ * @island: (nullable): the page
+ *
+ * The floating island for any window (docs/developer-platform/tv-mode.md): in TV posture
+ * (luma_window_set_tv_active()) @frame is drawn as the TV frame, the sidebar lifted into the
+ * floating island beside the page, or the page centred in the safe area when there is no sidebar.
+ * A #LumaApplicationWindow does this itself; toolkits built on other windows (luma_appkit) call it.
+ * %NULL @content, @frame or @island removes the frame. Nothing changes outside TV posture.
+ * Since API level 9.
+ */
+void luma_window_set_tv_frame(GtkWindow *window, GtkWidget *content, GtkWidget *frame,
+                              GtkWidget *sidebar, GtkWidget *island);
+
+/**
+ * luma_window_set_tv_active:
+ * @window: a window given a frame by luma_window_set_tv_frame()
+ * @tv: whether the window is in TV posture
+ *
+ * Draw the window's frame as the TV frame, or restore its own layout exactly. Since API level 9.
+ */
+void luma_window_set_tv_active(GtkWindow *window, gboolean tv);
+
+/**
+ * luma_window_get_tv_active:
+ * @window: a window
+ *
+ * Returns: whether the window's TV frame is drawn. Since API level 9.
+ */
+gboolean luma_window_get_tv_active(GtkWindow *window);
 
 /**
  * luma_ui_is_phone_width:

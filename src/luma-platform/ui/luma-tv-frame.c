@@ -199,6 +199,10 @@ typedef struct {
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
   gboolean page_zone;    /* the remote is in the page */
+  /* luma_window_set_tv_frame (any window, any sidebar): */
+  gboolean generic;      /* the sidebar is not a LumaNavigationSidebar: it is told by classes */
+  GtkWidget *scroll;     /* a generic sidebar's scrolled list */
+  GtkAlign sidebar_valign;
 } TvFrame;
 
 static const char *const tv_sheet =
@@ -400,6 +404,21 @@ static const char *const tv_sheet =
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@; outline: none; }\n"
 "window.lumaui-tv popover label { font-size: 24tv; font-weight: 600; color: inherit; }\n";
 
+/* Parts shared by every TV frame beyond the island's own (lumaui-tv.css): a centred window, the
+ * empty state, a row of TV buttons, an external link's QR. */
+static const char *const tv_parts_sheet =
+/* a centred window (no sidebar): the page in the safe area under the bar, no island */
+".lumaui-tv-frame.lumaui-tv-centred > .luma-island { margin: 166tv 96tv 56tv 96tv; }\n"
+/* a generic sidebar in the island (luma_window_set_tv_frame): the frame sizes it as the C sidebar */
+".lumaui-tv-frame > .lumaui-tv-island { margin: 166tv 0 56tv 96tv; min-width: 376tv; padding: 12tv; border-radius: 36tv;\n"
+"  background-color: @bar@; background-image: none; border: none; outline: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+".lumaui-tv-frame > .lumaui-tv-island.lumaui-tv-rail { min-width: 76tv; }\n"
+".lumaui-tv-frame > .lumaui-tv-island scrolledwindow, .lumaui-tv-frame > .lumaui-tv-island list, .lumaui-tv-frame > .lumaui-tv-island viewport {\n"
+"  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
+".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-face, .lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon {\n"
+"  min-width: 30tv; min-height: 30tv; padding: 0; margin: 0; background: none; box-shadow: none; border: none; }\n";
+
 static char *material(const char *rgba, gboolean opaque) {
   if (!opaque || !g_str_has_prefix(rgba, "rgba("))
     return g_strdup(rgba);
@@ -456,6 +475,7 @@ static void tv_css(TvFrame *f) {
   /* Reduce Transparency and High Contrast make the surfaces opaque (as the TV home). */
   static const char *const surfaces[] = {"@well@", "@chip@", "@bar@", "@sheet@", NULL};
   GString *css = g_string_new(tv_sheet);
+  g_string_append(css, tv_parts_sheet);
   for (guint i = 0; i < G_N_ELEMENTS(colours); i++) {
     g_autofree char *value = material(colours[i].value, f->opaque && g_strv_contains(surfaces, colours[i].name));
     g_string_replace(css, colours[i].name, value, 0);
@@ -557,8 +577,43 @@ static gboolean in_page(TvFrame *f, GtkWidget *focus) {
   return focus != NULL && (focus == f->island || gtk_widget_is_ancestor(focus, f->island));
 }
 
+static GtkWidget *first_of_type(GtkWidget *w, GType type) {
+  if (G_TYPE_CHECK_INSTANCE_TYPE(w, type)) return w;
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = first_of_type(c, type);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
+/* A window without a sidebar (a welcome, an error: one centred column) has no island. */
 static GtkListBox *sidebar_list(TvFrame *f) {
-  return GTK_LIST_BOX(luma_navigation_sidebar_get_list(LUMA_NAVIGATION_SIDEBAR(f->sidebar)));
+  if (f->sidebar == NULL) return NULL;
+  if (!f->generic)
+    return GTK_LIST_BOX(luma_navigation_sidebar_get_list(LUMA_NAVIGATION_SIDEBAR(f->sidebar)));
+  GtkWidget *list = first_of_type(f->sidebar, GTK_TYPE_LIST_BOX);
+  return list != NULL ? GTK_LIST_BOX(list) : NULL;
+}
+
+static gboolean in_sidebar(TvFrame *f, GtkWidget *w) {
+  return f->sidebar != NULL && w != NULL && gtk_widget_is_ancestor(w, f->sidebar);
+}
+
+/* The sidebar in (or out of) the island. A LumaNavigationSidebar does it itself; any other sidebar
+ * is told by its classes (lumaui-tv-island, with lumaui-tv-rail while folded) and is sized here:
+ * as tall as its rows, a long list stopping at the bottom safe line. */
+static void sidebar_set_tv(TvFrame *f, gboolean tv, gboolean rail) {
+  if (!f->generic) {
+    luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), tv, rail);
+    return;
+  }
+  if (tv && !gtk_widget_has_css_class(f->sidebar, "lumaui-tv-island")) {
+    f->sidebar_valign = gtk_widget_get_valign(f->sidebar);
+    f->scroll = first_of_type(f->sidebar, GTK_TYPE_SCROLLED_WINDOW);
+  }
+  if (f->scroll != NULL) gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(f->scroll), tv);
+  gtk_widget_set_valign(f->sidebar, tv ? GTK_ALIGN_START : f->sidebar_valign);
+  luma_ui_set_css_class(f->sidebar, "lumaui-tv-island", tv);
 }
 
 static gboolean row_reachable(GtkListBoxRow *row) {
@@ -568,6 +623,7 @@ static gboolean row_reachable(GtkListBoxRow *row) {
 
 static GtkListBoxRow *selected_row(TvFrame *f) {
   GtkListBox *list = sidebar_list(f);
+  if (list == NULL) return NULL;
   GtkListBoxRow *row = gtk_list_box_get_selected_row(list);
   if (row != NULL)
     return row;
@@ -578,11 +634,11 @@ static GtkListBoxRow *selected_row(TvFrame *f) {
 }
 
 static void set_rail(TvFrame *f, gboolean rail) {
-  if (f->rail == rail)
+  if (f->rail == rail || f->sidebar == NULL)
     return;
   f->rail = rail;
   luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", rail);
-  luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), TRUE, rail);
+  sidebar_set_tv(f, TRUE, rail);
 }
 
 /* The page's parts and its clamp, while on a TV.
@@ -670,9 +726,14 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
     saved[4] = child ? gtk_widget_get_margin_top(child) : 0;
     saved[5] = child ? gtk_widget_get_margin_bottom(child) : 0;
     g_object_set_data_full(G_OBJECT(widget), "luma-tv-clamp", saved, g_free);
-    adw_clamp_set_maximum_size(clamp, G_MAXINT / 4);
-    adw_clamp_set_tightening_threshold(clamp, G_MAXINT / 4);
-    if (child) {
+    /* A centred window (no sidebar: a welcome, an error) keeps one readable column, centred. */
+    const gboolean centred = f->sidebar == NULL;
+    adw_clamp_set_maximum_size(clamp, centred ? (int)round(1200 * f->unit) : G_MAXINT / 4);
+    adw_clamp_set_tightening_threshold(clamp, centred ? (int)round(1200 * f->unit) : G_MAXINT / 4);
+    if (child && centred) {
+      gtk_widget_set_margin_start(child, 0);
+      gtk_widget_set_margin_end(child, 0);
+    } else if (child) {
       /* The page's own inset (the mockup's .tv-page > .inner): 6 a side, 12 over, 160 under. */
       gtk_widget_set_margin_start(child, (int)round(6 * f->unit));
       gtk_widget_set_margin_end(child, (int)round(6 * f->unit));
@@ -709,6 +770,7 @@ static void restore_page(GtkWidget *widget) {
 }
 
 static void dump(GtkWidget *w, int depth);
+static gboolean focus_into_parts(GtkWidget *w);
 static GtkWidget *hold_modal(TvFrame *f);
 
 /* A page that redraws under the remote (a network list refreshing) must not lose its place: the
@@ -897,8 +959,8 @@ static gboolean relax(gpointer data) {
       refind(f);
     /* Until the remote is used, the focus is the open page's destination (a deep link opened it). */
     GtkWidget *focus = focus_of(f);
-    GtkListBoxRow *selected = gtk_list_box_get_selected_row(sidebar_list(f));
-    if (!f->keyed && selected != NULL && focus != NULL && gtk_widget_is_ancestor(focus, f->sidebar) &&
+    GtkListBoxRow *selected = sidebar_list(f) != NULL ? gtk_list_box_get_selected_row(sidebar_list(f)) : NULL;
+    if (!f->keyed && selected != NULL && in_sidebar(f, focus) &&
         focus != GTK_WIDGET(selected))
       gtk_widget_grab_focus(GTK_WIDGET(selected));
     if (g_getenv("LUMA_TV_DEBUG") != NULL && g_getenv("LUMA_TV_DEBUG")[0] == '2') dump(f->island, 0);
@@ -935,6 +997,8 @@ static gboolean settle(gpointer data) {
     GtkListBoxRow *row = selected_row(f);
     if (row != NULL)
       gtk_widget_grab_focus(GTK_WIDGET(row));
+    else if (f->sidebar == NULL && !focus_into_parts(f->island))
+      gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD); /* a centred window: its first control */
   }
   return G_SOURCE_REMOVE;
 }
@@ -981,10 +1045,10 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
       g_set_weak_pointer(&f->held, focus);
       f->held_field = editable(focus);
     }
-  } else if (gtk_widget_is_ancestor(focus, f->sidebar)) {
+  } else if (in_sidebar(f, focus)) {
     f->page_zone = FALSE;
   }
-  if (in_page(f, focus) || gtk_widget_is_ancestor(focus, f->sidebar))
+  if (in_page(f, focus) || in_sidebar(f, focus))
     set_rail(f, in_page(f, focus));
   queue_relax(f);
 }
@@ -1025,6 +1089,7 @@ static gboolean to_page(TvFrame *f) {
 
 static void open_neighbour(TvFrame *f, GtkWidget *focus, int step) {
   GtkListBox *list = sidebar_list(f);
+  if (list == NULL) return;
   GtkWidget *current = focus ? gtk_widget_get_ancestor(focus, GTK_TYPE_LIST_BOX_ROW) : NULL;
   int index = current ? gtk_list_box_row_get_index(GTK_LIST_BOX_ROW(current)) : -1;
   if (index < 0) {
@@ -1170,7 +1235,7 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     return modal_key(f, modal, key);
   }
   GtkWidget *focus = focus_of(f);
-  gboolean page = in_page(f, focus);
+  gboolean page = in_page(f, focus) || f->sidebar == NULL; /* a centred window is all page */
   f->keyed = TRUE;
   gtk_window_set_focus_visible(f->window, TRUE);
 
@@ -1226,6 +1291,8 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
       /* Up a level: the parent page opens, and the focus lands in it once it is drawn. */
       gtk_widget_activate(back);
       g_timeout_add_full(G_PRIORITY_LOW, 80, page_back_settled, f, NULL);
+    } else if (f->sidebar == NULL) {
+      gtk_window_minimize(f->window); /* a centred window: Back leaves the app, as from the island */
     } else {
       to_island(f);
     }
@@ -1258,7 +1325,7 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   }
   if (text && GTK_IS_TEXT_VIEW(focus))
     return GDK_EVENT_PROPAGATE;
-  if (!gtk_widget_child_focus(f->island, dir) && dir == GTK_DIR_LEFT)
+  if (!gtk_widget_child_focus(f->island, dir) && dir == GTK_DIR_LEFT && f->sidebar != NULL)
     to_island(f); /* off the page's left edge: the island opens again */
   return GDK_EVENT_STOP;
 }
@@ -1338,11 +1405,14 @@ static void enter(TvFrame *f) {
   f->active = TRUE;
   f->rail = FALSE;
   gtk_widget_add_css_class(f->frame, "lumaui-tv-frame");
-  gtk_widget_get_size_request(f->sidebar, &f->sidebar_width, &f->sidebar_height);
-  f->sidebar_margin = gtk_widget_get_margin_end(f->sidebar);
-  gtk_widget_set_size_request(f->sidebar, -1, -1);
-  gtk_widget_set_margin_end(f->sidebar, 0);
-  luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), TRUE, FALSE);
+  luma_ui_set_css_class(f->frame, "lumaui-tv-centred", f->sidebar == NULL);
+  if (f->sidebar != NULL) {
+    gtk_widget_get_size_request(f->sidebar, &f->sidebar_width, &f->sidebar_height);
+    f->sidebar_margin = gtk_widget_get_margin_end(f->sidebar);
+    gtk_widget_set_size_request(f->sidebar, -1, -1);
+    gtk_widget_set_margin_end(f->sidebar, 0);
+    sidebar_set_tv(f, TRUE, FALSE);
+  }
 
   if (f->overlay == NULL) {
     f->overlay = g_object_ref_sink(gtk_overlay_new());
@@ -1428,11 +1498,14 @@ static void leave(TvFrame *f) {
   g_object_unref(f->content);
 
   restore_page(f->island);
-  luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", FALSE);
-  luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), FALSE, FALSE);
-  gtk_widget_set_size_request(f->sidebar, f->sidebar_width, f->sidebar_height);
-  gtk_widget_set_margin_end(f->sidebar, f->sidebar_margin);
+  if (f->sidebar != NULL) {
+    luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", FALSE);
+    sidebar_set_tv(f, FALSE, FALSE);
+    gtk_widget_set_size_request(f->sidebar, f->sidebar_width, f->sidebar_height);
+    gtk_widget_set_margin_end(f->sidebar, f->sidebar_margin);
+  }
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-frame");
+  gtk_widget_remove_css_class(f->frame, "lumaui-tv-centred");
   f->rail = FALSE;
 }
 
@@ -1510,4 +1583,54 @@ void luma_tv_frame_page_changed(GtkWindow *window) {
 gboolean luma_tv_frame_is_active(GtkWindow *window) {
   TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
   return f != NULL && f->active;
+}
+
+/* ── any window: the public attach (luma-ui-kit.h) ─────────────────────────────────────────── */
+
+void luma_window_set_tv_frame(GtkWindow *window, GtkWidget *content, GtkWidget *frame,
+                              GtkWidget *sidebar, GtkWidget *island) {
+  g_return_if_fail(ADW_IS_APPLICATION_WINDOW(window));
+  g_return_if_fail(content == NULL || GTK_IS_WIDGET(content));
+  g_return_if_fail(frame == NULL || GTK_IS_WIDGET(frame));
+  g_return_if_fail(sidebar == NULL || GTK_IS_WIDGET(sidebar));
+  g_return_if_fail(island == NULL || GTK_IS_WIDGET(island));
+  TvFrame *old = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  gboolean was_active = old != NULL && old->active;
+  if (content == NULL || frame == NULL || island == NULL) {
+    luma_tv_frame_attach(window, NULL, NULL, NULL, NULL); /* no frame: the window's own layout */
+    return;
+  }
+  if (sidebar != NULL) {
+    luma_tv_frame_attach(window, content, frame, sidebar, island);
+  } else {
+    /* A centred window: the same room, bar and page treatment, no island. */
+    luma_tv_frame_attach(window, NULL, NULL, NULL, NULL);
+    TvFrame *f = g_new0(TvFrame, 1);
+    f->path = g_array_new(FALSE, FALSE, sizeof(int));
+    f->window = window;
+    f->content = content;
+    f->frame = frame;
+    f->island = island;
+    f->interface = settings_if_installed("org.gnome.desktop.interface");
+    f->state = settings_if_installed("org.project_luma.shell-state");
+    f->a11y = settings_if_installed("org.gnome.desktop.a11y.interface");
+    if (f->state != NULL)
+      g_signal_connect_swapped(f->state, "changed::reduce-transparency", G_CALLBACK(opacity_changed), f);
+    if (f->a11y != NULL)
+      g_signal_connect_swapped(f->a11y, "changed::high-contrast", G_CALLBACK(opacity_changed), f);
+    g_object_set_data_full(G_OBJECT(window), "luma-tv-frame", f, (GDestroyNotify)frame_free);
+  }
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  if (f != NULL) f->generic = sidebar != NULL && !LUMA_IS_NAVIGATION_SIDEBAR(sidebar);
+  if (was_active) luma_tv_frame_set_active(window, TRUE);
+}
+
+void luma_window_set_tv_active(GtkWindow *window, gboolean tv) {
+  g_return_if_fail(GTK_IS_WINDOW(window));
+  luma_tv_frame_set_active(window, tv);
+}
+
+gboolean luma_window_get_tv_active(GtkWindow *window) {
+  g_return_val_if_fail(GTK_IS_WINDOW(window), FALSE);
+  return luma_tv_frame_is_active(window);
 }
