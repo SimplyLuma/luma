@@ -18,6 +18,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
+import {TvInput} from './tvInput.js';
 import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
@@ -115,6 +116,8 @@ export class TvPresentation {
         if (model) watch(model, 'changed', () => this._tick());
         this._loadApps();
         this.showHome('home');
+        // Every remote and gamepad becomes the TV's keys (tvInput.js).
+        this._input = new TvInput({home: () => this.showHome('home')});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
     }
@@ -122,6 +125,8 @@ export class TvPresentation {
     _leave() {
         for (const [object, id] of this._activeSignals) object.disconnect(id);
         this._activeSignals = [];
+        this._input?.destroy();
+        this._input = null;
         Main.keyboard?.setTvPosture?.(false);
         if (this._homeCheck) GLib.source_remove(this._homeCheck);
         this._homeCheck = 0;
@@ -595,9 +600,10 @@ export class TvPresentation {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
+        // OK is held down for a long press: its key repeat is not more OKs.
+        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         if (action === 'ok') this._ok();
         else if (action === 'back') this._back();
-        else if (action === 'home') this.showHome('home');
         else this._move(action);
         this._draw();
         return Clutter.EVENT_STOP;
@@ -609,7 +615,7 @@ export class TvPresentation {
         const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
         if (name === 'Up') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
         else if (name === 'Down' && this._resultTiles?.length) this._focus = {kind: 'result', index: 0};
-        else if (name === 'Escape' || name === 'Back') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
+        else if (name === 'Escape') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
         else if (name === 'Return' || name === 'KP_Enter') {
             if (this._resultTiles?.length) this._launch(this._resultTiles[0].app);
         } else return Clutter.EVENT_PROPAGATE;

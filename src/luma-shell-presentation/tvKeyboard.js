@@ -189,8 +189,9 @@ export function tvRemoteKey(name) {
 
 // The keys the TV keyboard takes from every window while it is open (Mutter
 // accelerators, so the field keeps its focus and everything else still
-// reaches it).
-export const TV_REMOTE_KEYS = ['Up', 'Down', 'Left', 'Right', 'Return', 'KP_Enter', 'Escape', 'XF86Back'];
+// reaches it). A remote's Back and OK and a gamepad's buttons arrive as these
+// keys (tvInput.js), so there is nothing remote-specific to take.
+export const TV_REMOTE_KEYS = ['Up', 'Down', 'Left', 'Right', 'Return', 'KP_Enter', 'Escape'];
 
 // The action key's label: what the application asked for (LumaUI's
 // keyboard action, e.g. "Search" or "Add"), else what the field's purpose

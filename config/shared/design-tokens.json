@@ -949,6 +949,13 @@
       "_doc": "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay.",
       "weather_seconds": 20,
       "media_seconds": 15
+    },
+    "input": {
+      "_doc": "Gamepads in TV posture (the Shell's tvInput.js): the left stick takes a direction past stick_press on its dominant axis and lets go inside stick_release; a held direction steps once, again after repeat_delay_ms, then every repeat_interval_ms.",
+      "stick_press": 0.5,
+      "stick_release": 0.35,
+      "repeat_delay_ms": 400,
+      "repeat_interval_ms": 120
     }
   },
   "lumaui": {

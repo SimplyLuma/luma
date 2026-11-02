@@ -101,8 +101,10 @@ assert(Tv.tvRemoteKey('Return') === 'ok' && Tv.tvRemoteKey('KP_Enter') === 'ok',
 assert(Tv.tvRemoteKey('Escape') === 'back' && Tv.tvRemoteKey('Back') === 'back', 'Back puts it away');
 assert(Tv.tvRemoteKey('BackSpace') === null && Tv.tvRemoteKey('a') === null,
     'Backspace and letters go straight to the field');
-assert(Tv.TV_REMOTE_KEYS.includes('XF86Back') && !Tv.TV_REMOTE_KEYS.includes('BackSpace'),
-    'the remote Back key is taken; Backspace is not');
+assert(Tv.TV_REMOTE_KEYS.includes('Escape') && !Tv.TV_REMOTE_KEYS.includes('BackSpace'),
+    'Back (Escape) is taken; Backspace is not');
+assert(!Tv.TV_REMOTE_KEYS.some(name => name.startsWith('XF86')),
+    'remote keys arrive as TV keys (tvInput.js); the keyboard takes none of its own');
 
 const purposes = {NORMAL: 0, URL: 5, EMAIL: 6};
 assert(Tv.tvActionLabel('Search', purposes.NORMAL, purposes) === 'Search', 'the app names the action');
