@@ -19,6 +19,7 @@ python.install_sources(
   'luma_tide/ui.py',
   'luma_tide/ui_parts.py',
   'luma_tide/ui_phone.py',
+  'luma_tide/ui_tv.py',
   'luma_tide/credentials.py',
   'luma_tide/credit_markup.py',
   'luma_tide/indexer.py',

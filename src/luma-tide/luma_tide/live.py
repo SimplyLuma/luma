@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 from .model import RepeatMode, SourceState
 from .playback import PlaybackState
-from .presentation import Album, Library, MusicSource, Player, Song
+from .presentation import Album, Library, MusicSource, Player, Playlist, Song
 from .subsonic import CertificateError, Unreachable, has_scheme, is_encrypted, normalize_address
 from .remote import accepts_plaintext
 from .recency import AlbumRecency
@@ -44,6 +44,7 @@ class LiveLibrary:
         self._last_playing_track = None
         self._history_lock = threading.RLock()
         self._closed = False
+        self._played_input, self._played_output = None, ()
 
     @property
     def player(self):
@@ -115,12 +116,22 @@ class LiveLibrary:
             self._recency.load()
         except (OSError, ValueError):
             logging.getLogger(__name__).exception('Cannot read Tide album playback history')
-        self._library = Library(self._recency.order(albums), tuple(rows))
+        playlists = tuple(Playlist(identifier, name, tuple(track.id for track in self.store.playlist_tracks(identifier)))
+                          for identifier, name, _count in self.store.playlists())
+        known = {album.id for album in albums}
+        self._library = Library(self._recency.order(albums), tuple(rows), playlists,
+                                tuple(identifier for identifier in self._recency.played() if identifier in known))
         return self._library
 
     def order_albums(self, library):
         albums = self._recency.order(library.albums)
-        return replace(library, albums=albums) if albums != library.albums else library
+        played = self._recency.played()
+        if played != self._played_input:
+            known = {album.id for album in library.albums}
+            self._played_input, self._played_output = played, tuple(i for i in played if i in known)
+        if albums != library.albums or self._played_output != library.played:
+            return replace(library, albums=albums, played=self._played_output)
+        return library
 
     def source_address(self, identifier):
         """Edit the saved URI, including its scheme/path, not the display host."""
@@ -164,6 +175,17 @@ class LiveLibrary:
         ids = [s.id for s in album.songs]
         self.controller.set_shuffle(shuffle)
         self.controller.replace_queue(ids, start=ids.index(song.id), play=True)
+
+    def play_ids(self, track_ids, start=0, shuffle=False):
+        """Play a list of songs (a playlist, an artist's songs) from `start`."""
+        ids = list(track_ids)
+        if not ids:
+            return
+        if shuffle:
+            import random
+            start = random.randrange(len(ids))
+        self.controller.set_shuffle(shuffle)
+        self.controller.replace_queue(ids, start=max(0, min(start, len(ids) - 1)), play=True)
 
     def toggle(self):
         self.controller.toggle()

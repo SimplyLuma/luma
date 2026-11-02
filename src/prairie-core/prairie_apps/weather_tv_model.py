@@ -379,6 +379,9 @@ def tv_from_forecast(forecast, snapshot, units: str, *, now: datetime | None = N
             hours = (_with_now(hours[0], snapshot),) + hours[1:]
         events = tuple(sorted(e for e in all_sun if begin <= e[0] < end + timedelta(hours=12)))
         high, low = temperature_text(day.high_c, units), temperature_text(day.low_c, units)
+        if k == 0 and snapshot is not None:
+            # Today's range is the snapshot's: it includes the reading now (weather_data).
+            high, low = snapshot.high or high, snapshot.low or low
         condition = _condition(day.symbol)
         sentence = snapshot.sentence if k == 0 and snapshot is not None else day_sentence(hours, high)
         days.append(TvDay("Today" if k == 0 else day.date_value.strftime("%a"),

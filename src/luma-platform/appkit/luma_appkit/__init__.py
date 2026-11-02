@@ -99,6 +99,7 @@ __all__ = [
     "TvTopBar", "TvTab", "TvButton", "TvField",
     "TvToast",
     "TvIdle",
+    "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
@@ -366,6 +367,9 @@ def __getattr__(name: str):
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle
+    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
+        from . import tv_media
+        return getattr(tv_media, name)
     if name in {"set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state"}:
         from . import tv_keyboard
         return getattr(tv_keyboard, name)

@@ -29,7 +29,7 @@ Attribution for MET's data belongs in About and nowhere else (§11).
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 import json
 import math
@@ -566,7 +566,7 @@ def fetch_forecast(place: Place, *, cache_root: Path | None = None,
     })
     payload, _modified = _request(f"{FORECAST_ENDPOINT}?{query}")
     if on_forecast is not None:
-        essential = parse_forecast(payload, place, now=now)
+        essential = keep_today_range(parse_forecast(payload, place, now=now), read_cache(place.uid, root))
         try:
             write_cache(essential, root)
         except OSError:
@@ -579,12 +579,32 @@ def fetch_forecast(place: Place, *, cache_root: Path | None = None,
         # Sunrise is one of nine rows. Losing it drops two rows; it does not
         # lose the forecast.
         sun = None
-    forecast = parse_forecast(payload, place, now=now, sun=sun)
+    forecast = keep_today_range(parse_forecast(payload, place, now=now, sun=sun), read_cache(place.uid, root))
     try:
         write_cache(forecast, root)
     except OSError:
         pass
     return forecast
+
+
+def keep_today_range(forecast: CityForecast, previous: CityForecast | None) -> CityForecast:
+    """Keep the hours of today that have already gone out of MET's series.
+
+    MET's series starts at the current hour, so a refresh in the evening
+    would forget the afternoon's high. The previous payload's range for the
+    same local date widens today's, so the day keeps its real high and low.
+    """
+    if previous is None or not forecast.days or not previous.days:
+        return forecast
+    today = forecast.days[0]
+    earlier = next((day for day in previous.days if day.date == today.date), None)
+    if earlier is None:
+        return forecast
+    widened = replace(today, high_c=max(today.high_c, earlier.high_c), low_c=min(today.low_c, earlier.low_c))
+    current = forecast.current
+    if current.high_c is not None and current.low_c is not None:
+        current = replace(current, high_c=max(current.high_c, widened.high_c), low_c=min(current.low_c, widened.low_c))
+    return replace(forecast, days=(widened,) + forecast.days[1:], current=current)
 
 
 def cached_forecast(place: Place, *, cache_root: Path | None = None) -> CityForecast | None:

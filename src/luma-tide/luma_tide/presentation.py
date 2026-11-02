@@ -61,9 +61,20 @@ class MusicSource:
 
 
 @dataclass(frozen=True)
+class Playlist:
+    id: str
+    name: str
+    song_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Library:
     albums: tuple[Album, ...] = ()
     sources: tuple[MusicSource, ...] = ()
+    #: The library's playlists, in name order (the TV presentation lists them).
+    playlists: tuple[Playlist, ...] = ()
+    #: Albums played on this device, most recent first (local playback history).
+    played: tuple[str, ...] = ()
 
     def album(self, identifier: str) -> Album:
         return next(album for album in self.albums if album.id == identifier)
