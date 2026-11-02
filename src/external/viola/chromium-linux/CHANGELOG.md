@@ -6,6 +6,10 @@
   notch of the window's bottom frame: the frame's colour, inverted corners and
   no outline. Hiding the bar sinks it into the handle; revealing it rises back
   out. With animations disabled both happen at once.
+- Sign-in no longer stalls at a passkey step. Chromium's passkey dialog is drawn
+  on the hidden engine display, so the engine no longer advertises WebAuthn
+  (`PublicKeyCredential` is undefined) and sites offer their other methods.
+  Real passkey support returns when the host draws that dialog.
 
 ## 2026-10-08
 
