@@ -84,23 +84,32 @@ static gboolean tv_faded(GtkWidget *widget, GtkSnapshot *snapshot) {
     above = CLAMP(value / (48 * u), 0, 1);
     below = CLAMP(rest / (128 * u), 0, 1);
   }
-  float top = (float)MIN(0.45, 48 * u / height), bottom = (float)MIN(0.45, 128 * u / height);
-  GskColorStop stops[2 * TV_FADE_STOPS];
-  tv_fade_edge(stops, 0.f, top, (float)above);
-  tv_fade_edge(stops + TV_FADE_STOPS, 1.f, bottom, (float)below);
-  /* the bottom edge's stops run inwards from 1: reversed, so offsets rise along the gradient */
-  for (int i = 0; i < TV_FADE_STOPS / 2; i++) {
-    GskColorStop t = stops[TV_FADE_STOPS + i];
-    stops[TV_FADE_STOPS + i] = stops[2 * TV_FADE_STOPS - 1 - i];
-    stops[2 * TV_FADE_STOPS - 1 - i] = t;
+  /* Only the edge strips are masked: a mask over the whole page draws all of it offscreen on
+   * every frame (a focus move in a long list paid for the full page). The rest is drawn as is;
+   * the children's render nodes are cached, so drawing them again per strip costs no snapshot. */
+  float top = (float)MIN(0.45 * height, 48 * u) * (above > 0), bottom = (float)MIN(0.45 * height, 128 * u) * (below > 0);
+  GtkWidgetClass *parent = GTK_WIDGET_CLASS(luma_island_parent_class);
+  gtk_snapshot_push_clip(snapshot, &GRAPHENE_RECT_INIT(0, top, width, height - top - bottom));
+  parent->snapshot(widget, snapshot);
+  gtk_snapshot_pop(snapshot);
+  for (int edge = 0; edge < 2; edge++) {
+    float strip = edge == 0 ? top : bottom;
+    if (strip <= 0)
+      continue;
+    graphene_rect_t box = GRAPHENE_RECT_INIT(0, edge == 0 ? 0 : height - strip, width, strip);
+    GskColorStop stops[TV_FADE_STOPS];
+    tv_fade_edge(stops, 0.f, 1.f, (float)(edge == 0 ? above : below));
+    /* along the strip from the page's edge inwards: top to bottom for the top, bottom to top below */
+    graphene_point_t from = GRAPHENE_POINT_INIT(0, edge == 0 ? box.origin.y : box.origin.y + strip);
+    graphene_point_t to = GRAPHENE_POINT_INIT(0, edge == 0 ? box.origin.y + strip : box.origin.y);
+    gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
+    gtk_snapshot_append_linear_gradient(snapshot, &box, &from, &to, stops, TV_FADE_STOPS);
+    gtk_snapshot_pop(snapshot);
+    gtk_snapshot_push_clip(snapshot, &box);
+    parent->snapshot(widget, snapshot);
+    gtk_snapshot_pop(snapshot);
+    gtk_snapshot_pop(snapshot);
   }
-  gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
-  graphene_rect_t all = GRAPHENE_RECT_INIT(0, 0, width, height);
-  gtk_snapshot_append_linear_gradient(snapshot, &all, &GRAPHENE_POINT_INIT(0, 0), &GRAPHENE_POINT_INIT(0, height),
-                                      stops, G_N_ELEMENTS(stops));
-  gtk_snapshot_pop(snapshot);
-  GTK_WIDGET_CLASS(luma_island_parent_class)->snapshot(widget, snapshot);
-  gtk_snapshot_pop(snapshot);
   return TRUE;
 }
 

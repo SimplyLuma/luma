@@ -117,6 +117,20 @@ static void room_load(LumaTvRoom *self) {
   g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
   box_blur(gdk_pixbuf_get_pixels(pixbuf), gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf),
            gdk_pixbuf_get_rowstride(pixbuf), 6);
+  /* The dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
+   * are baked into the picture once: drawn live they were three more full-screen layers a frame. */
+  int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
+  guchar *px = gdk_pixbuf_get_pixels(pixbuf);
+  for (int x = 0; x < w; x++) {
+    double t = (double)x / MAX(1, w - 1);
+    double shade = t < 0.6 ? 0.35 + (0.1 - 0.35) * (t / 0.6) : 0.1;
+    double keep = 0.45 * (1 - shade);
+    for (int y = 0; y < h; y++) {
+      guchar *p = px + y * stride + x * 4;
+      p[0] = (guchar)(p[0] * keep + 0.5); p[1] = (guchar)(p[1] * keep + 0.5); p[2] = (guchar)(p[2] * keep + 0.5);
+      p[3] = 255;
+    }
+  }
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
   self->texture = gdk_texture_new_for_pixbuf(pixbuf);
   G_GNUC_END_IGNORE_DEPRECATIONS
@@ -127,19 +141,17 @@ static void room_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   float width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
   double u = luma_ui_tv_unit((int)width, (int)height);
   graphene_rect_t all = GRAPHENE_RECT_INIT(0, 0, width, height);
-  gtk_snapshot_append_color(snapshot, &(GdkRGBA){0.02f, 0.024f, 0.04f, 1.f}, &all);
-  if (self->texture != NULL) {
-    /* Bled past the edges (the mockup's inset -120) so the blur never shows a hard border. */
-    float bleed = (float)(120 * u);
-    graphene_rect_t cover = GRAPHENE_RECT_INIT(-bleed, -bleed, width + 2 * bleed, height + 2 * bleed);
-    gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
-    /* brightness(.45) */
-    gtk_snapshot_append_color(snapshot, &(GdkRGBA){0, 0, 0, 0.55f}, &all);
+  if (self->texture == NULL) {
+    gtk_snapshot_append_color(snapshot, &(GdkRGBA){0.02f, 0.024f, 0.04f, 1.f}, &all);
+    return;
   }
-  /* The shade: darker behind the island, lighter to the right. */
-  graphene_point_t start = GRAPHENE_POINT_INIT(0, 0), end = GRAPHENE_POINT_INIT(width, 0);
-  GskColorStop stops[] = {{0.f, {0, 0, 0, 0.35f}}, {0.6f, {0, 0, 0, 0.1f}}, {1.f, {0, 0, 0, 0.1f}}};
-  gtk_snapshot_append_linear_gradient(snapshot, &all, &start, &end, stops, G_N_ELEMENTS(stops));
+  /* One opaque layer: the picture, dimmed and shaded at load, bled past the edges (the mockup's
+   * inset -120) so the blur never shows a hard border. */
+  float bleed = (float)(120 * u);
+  graphene_rect_t cover = GRAPHENE_RECT_INIT(-bleed, -bleed, width + 2 * bleed, height + 2 * bleed);
+  gtk_snapshot_push_clip(snapshot, &all);
+  gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
+  gtk_snapshot_pop(snapshot);
 }
 
 static void room_size_allocate(GtkWidget *widget, int width, int height, int baseline) {
@@ -1044,6 +1056,31 @@ static void focus_visible_changed(GtkWindow *window, GParamSpec *pspec, TvFrame 
     gtk_window_set_focus_visible(window, TRUE); /* a TV has no pointer: the focus always shows */
 }
 
+/* The remote's move brings its row into view at once, as far as needed and with room to spare
+ * (the mockup keeps the focused row within the page, a peek of the next below it). GTK's own
+ * scroll-to-focus animates over several frames, each a full repaint of a moving page: on a TV at
+ * 4K that was most of a move's cost. Setting the value ends that animation. */
+static void follow_focus(TvFrame *f, GtkWidget *focus) {
+  GtkWidget *row = part_row_of(f, focus);
+  GtkWidget *target = row != NULL ? row : focus;
+  GtkWidget *viewport = gtk_widget_get_ancestor(target, GTK_TYPE_VIEWPORT);
+  GtkWidget *content = viewport != NULL ? gtk_viewport_get_child(GTK_VIEWPORT(viewport)) : NULL;
+  GtkScrollable *scrollable = viewport != NULL ? GTK_SCROLLABLE(viewport) : NULL;
+  GtkAdjustment *adj = scrollable != NULL ? gtk_scrollable_get_vadjustment(scrollable) : NULL;
+  graphene_rect_t box;
+  if (adj == NULL || content == NULL || !gtk_widget_compute_bounds(target, content, &box))
+    return;
+  double value = gtk_adjustment_get_value(adj), page = gtk_adjustment_get_page_size(adj);
+  double above = 48 * f->unit, below = MIN(160 * f->unit, page * 0.25);
+  double want = value;
+  if (box.origin.y + box.size.height > value + page - below)
+    want = box.origin.y + box.size.height - page + below;
+  if (box.origin.y < want + above)
+    want = box.origin.y - above;
+  want = CLAMP(want, gtk_adjustment_get_lower(adj), gtk_adjustment_get_upper(adj) - page);
+  gtk_adjustment_set_value(adj, want); /* also when unchanged: it stops GTK's animation */
+}
+
 static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   (void)window; (void)pspec;
   if (!f->active)
@@ -1067,6 +1104,8 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   }
   if (in_page(f, focus) && gtk_widget_get_focusable(focus)) {
     f->page_zone = TRUE;
+    if (f->keying > 0)
+      follow_focus(f, focus);
     if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC) {
       remember(f, focus);
     } else {
@@ -1362,11 +1401,23 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
 }
 
 /* LUMA_TV_DEBUG timing: from a key to the first frame painted after it. */
+static gint64 probe_phase[4]; /* layout start/end, paint start/end */
+static void probe_layout(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[0] = g_get_monotonic_time(); }
+static void probe_layout_done(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[1] = g_get_monotonic_time(); }
+static void probe_paint(GdkFrameClock *clock, gpointer data) { (void)clock; (void)data; probe_phase[2] = g_get_monotonic_time(); }
 static void probe_painted(GdkFrameClock *clock, TvFrame *f) {
   g_signal_handlers_disconnect_by_func(clock, probe_painted, f);
+  g_signal_handlers_disconnect_by_func(clock, probe_layout, NULL);
+  g_signal_handlers_disconnect_by_func(clock, probe_layout_done, NULL);
+  g_signal_handlers_disconnect_by_func(clock, probe_paint, NULL);
+  gint64 now = g_get_monotonic_time();
   if (f->probe_at != 0)
-    g_printerr("tv timing: key to paint %.1f ms\n", (g_get_monotonic_time() - f->probe_at) / 1000.0);
+    g_printerr("tv timing: key to paint %.1f ms (wait %.1f, layout %.1f, draw %.1f)\n", (now - f->probe_at) / 1000.0,
+               probe_phase[0] ? (probe_phase[0] - f->probe_at) / 1000.0 : -1.0,
+               probe_phase[1] && probe_phase[0] ? (probe_phase[1] - probe_phase[0]) / 1000.0 : -1.0,
+               probe_phase[2] && probe_phase[1] ? (probe_phase[2] - probe_phase[1]) / 1000.0 : -1.0);
   f->probe_at = 0;
+  memset(probe_phase, 0, sizeof probe_phase);
 }
 
 static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
@@ -1381,6 +1432,11 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
     GdkFrameClock *clock = gtk_widget_get_frame_clock(GTK_WIDGET(f->window));
     if (clock != NULL && f->probe_at == 0) {
       f->probe_at = start;
+      memset(probe_phase, 0, sizeof probe_phase);
+      /* frame phases, each handler running after GTK's own: frame start, layout done, drawn */
+      g_signal_connect(clock, "before-paint", G_CALLBACK(probe_layout), NULL);
+      g_signal_connect(clock, "layout", G_CALLBACK(probe_layout_done), NULL);
+      g_signal_connect(clock, "paint", G_CALLBACK(probe_paint), NULL);
       g_signal_connect(clock, "after-paint", G_CALLBACK(probe_painted), f);
     }
   }
