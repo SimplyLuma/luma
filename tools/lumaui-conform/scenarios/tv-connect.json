@@ -37,7 +37,7 @@
   {
    "name": "island",
    "spec": "#island",
-   "gtk": "LumaNavigationSidebar"
+   "gtk": "luma_appkit+widgets+NavigationSidebar"
   }
  ],
  "states": [
