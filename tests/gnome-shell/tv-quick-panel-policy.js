@@ -43,12 +43,12 @@ const full = {
     settings: true, sleep: true, power: {restart: true, powerOff: true}, open: {},
 };
 assert(kinds(M.panelRows(full)) ===
-    'me sep chips sep level sep label note note clear sep settings sleep power', 'the whole panel, top to bottom');
+    'me chips sep level sep label note note clear sep settings sleep power', 'the whole panel, top to bottom (you are the header: no line under it)');
 assert(M.panelRows(full).find(row => row.kind === 'chips').chips.map(chip => chip.key).join() === 'wifi,dnd',
     'a toggle without its backend is not drawn');
 const bare = {me: {name: 'Nick'}, toggles: [], level: {visible: false}, notes: [], settings: false, sleep: true,
     power: {restart: false, powerOff: false}, open: {}};
-assert(kinds(M.panelRows(bare)) === 'me sep sleep', 'nothing to show, nothing drawn; no stray separators');
+assert(kinds(M.panelRows(bare)) === 'me sleep', 'nothing to show, nothing drawn; no stray separators');
 assert(!M.panelRows({...full, notes: [{id: 1, clearable: false}]}).some(row => row.kind === 'clear'),
     'Clear all only when something can be cleared');
 assert(kinds(M.panelRows({...full, power: {restart: true, powerOff: false}, open: {power: true}})).endsWith('power restart'),
@@ -63,9 +63,9 @@ assert(!M.panelRows({...full, level: {...full.level, outputs: [{id: 1}]}, open: 
 // The remote: Up/Down over the rows it can stop on; never onto a separator.
 const rows = M.panelRows(full);
 assert(M.firstStop(rows) === 0, 'it opens on you');
-assert(M.firstStop(M.panelRows({...full, me: {name: 'Nick', focusable: false}})) === 2,
+assert(M.firstStop(M.panelRows({...full, me: {name: 'Nick', focusable: false}})) === 1,
     'or on the toggles when there is nothing to open for you');
-assert(rows[M.stepRow(rows, 0, 'down')].kind === 'chips', 'down skips the separator');
+assert(rows[M.stepRow(rows, 1, 'down')].kind === 'level', 'down skips the separator');
 assert(M.stepRow(rows, 0, 'up') === 0, 'the top stays');
 assert(M.stepRow(rows, rows.length - 1, 'down') === rows.length - 1, 'the bottom stays');
 const label = rows.findIndex(row => row.kind === 'label');
@@ -163,8 +163,18 @@ assert(!clash.length, `properties shadowing methods: ${clash.join(', ')}`);
 assert(/key: 'wifi'[\s\S]*?state: toggle => toggle\._client \? \{checked: toggle\._client\.wireless_enabled/.test(panel) &&
     /signal: 'notify::wireless-enabled'/.test(panel), 'the Wi-Fi chip follows the radio');
 assert(/this\._scrim = new St\.Widget/.test(panel) && /this\._m\('sheet'\)/.test(panel), 'the page steps back under an opaque-enough island');
-assert(/const owner = Boolean\(this\._quick\?\.isOpen\)/.test(home) && /opened: \(\) => this\._draw\(\)/.test(home),
-    'the cluster is a chip whenever the panel is open');
+// Nick 2026-11-02: a slide-out from the right edge that adopts the bar's cluster, which never moves.
+assert(/cluster: \{take: \(\) => this\._now, give: now => this\._returnCluster\(now\)\}/.test(home) &&
+    /_adopt\(\) \{[\s\S]*?this\._actor\.add_child\(now\)/.test(panel) && /_returnCluster\(\) \{[\s\S]*?this\._cluster\?\.give\(now\)/.test(panel),
+    'the panel adopts the cluster and gives it back');
+assert(/this\._island\.set_position\(monitor\.width - width, 0\)/.test(panel) && /height: monitor\.height/.test(panel),
+    'a full-height sheet from the right screen edge');
+assert(tokens.quick_panel.column_left + tokens.quick_panel.width + tokens.layout.safe_x === tokens.quick_panel.sheet_width,
+    'the column ends on the side safe line');
+assert(tokens.quick_panel.header_top + tokens.quick_panel.me_height / 2 === tokens.bar.top + tokens.bar.height / 2,
+    'you sit on the bar\'s line, beside the cluster');
+// A focused cluster's icon takes the key's ink, as its labels do.
+assert(/_weatherIcon\.style = this\._weatherIcon\.style\.replace\(\/color:\[\^;\]\*;\/, `color: \$\{focused \? ink/.test(home), 'the weather icon follows the ink');
 
 // Clutter's flag is EventFlags.FLAG_REPEATED: EventFlags.REPEATED is undefined in GJS, so a test
 // of it is always false (Pi, 2 Nov: every repeat of a held OK reached the panel as a press).
@@ -196,7 +206,6 @@ assert(/direction === 'right' && this\._focus\.index === PAGES\.length - 1[\s\S]
 assert(/kind === 'cluster'\) this\._quick\?\.open\('bar'\)/.test(home), 'OK on the cluster opens the panel');
 assert(/_quickClosed\(origin\) \{[\s\S]*?origin === 'bar'\) this\._focus = \{kind: 'cluster'\}/.test(home),
     'closing hands the focus back to the cluster');
-assert(/owner[\s\S]*?m\('chip'\)/.test(home), 'the cluster is a chip while its panel is up');
 assert(/_leave\(\) \{[\s\S]*?this\._quick\?\.destroy\(\)/.test(home), 'leaving TV posture ends it');
 assert(/showHome\(page = 'home'\) \{[\s\S]*?this\._quick\?\.close\(\)/.test(home), 'Home closes it');
 assert(/quickPanel: \(\) => this\._quick\?\.toggle\('remote'\)/.test(home), 'the remote shortcut');

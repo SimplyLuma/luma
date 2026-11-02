@@ -411,12 +411,16 @@ and a row whose backend is missing is not drawn.
   time cluster at the bar's far right (later the user's picture); OK opens
   the panel. From anywhere, hold Home (a remote's Home or CEC Root Menu, a
   pad's Guide) for 500 ms; a short press still goes home on release.
-- **Where.** Settings' floating island mirrored onto the right edge: bar
-  material, radius 36, rows 68 at 24/600, icons 30, as tall as its rows and
-  stopping at the bottom safe line, with edge fades only where it scrolls.
-  While it is open the cluster that opened it is a chip.
-- **Rows, top to bottom.** You (AccountsService picture and name; OK opens
-  Users when Settings has it). Wi-Fi, Bluetooth and Do Not Disturb as chips
+- **Where.** A full-height sheet slides out from the right screen edge
+  (`tv.quick_panel.sheet_width`; its 620 column ends on the side safe line),
+  over a scrim, as the phone's Quick Options pull down under its status bar:
+  the bar's weather | time cluster never moves, and the panel adopts it as the
+  right of its header, with you (picture and name) on the left on the bar's
+  line. Rows run from `list_top` to the bottom safe line, with edge fades only
+  where they scroll. Closing slides the sheet out and leaves the cluster on
+  the bar. A focused cluster takes the key's ink, its weather icon included.
+- **Rows, top to bottom.** You, in the header (AccountsService picture and
+  name; OK opens Users when Settings has it). Wi-Fi, Bluetooth and Do Not Disturb as chips
   (Left/Right between them, OK switches; on is a chip with an accent icon,
   off is recessed). Sound: the output in use over the volume (Left/Right
   steps it through the output slider; OK lists the outputs when there are

@@ -436,7 +436,8 @@ its pure rules `tvQuickPanelModel.js` in the JS resource. In TV posture, OK on
 the TV home bar's weather | time cluster (Right past Search) or a long press
 of Home (`tv.quick_panel.home_hold_ms`; a remote's Home or CEC Root Menu, a
 pad's Guide; Select+Start still goes home at once) opens the quick panel:
-Settings' floating island mirrored onto the right edge. It is a view of the
+a full-height sheet sliding out from the right screen edge that adopts the bar's
+cluster as its header. It is a view of the
 existing Quick Options and notification list, not a second backend: the
 account (AccountsService), NetworkManager's Wi-Fi toggle, gnome-bluetooth's
 toggle and the Do Not Disturb setting as chips, the output stream slider and

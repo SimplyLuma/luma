@@ -121,7 +121,9 @@ export class TvPresentation {
         // The quick panel: the TV posture of Quick Options and notifications
         // (tvQuickPanel.js), from the bar's cluster or a long press of Home.
         this._quick = new TvQuickPanel({unit: () => this._unit(), opaque: () => this._opaque(),
-            opened: () => this._draw(), closed: origin => this._quickClosed(origin)});
+            opened: () => this._draw(), closed: origin => this._quickClosed(origin),
+            // The cluster never moves: the panel adopts it as its header while open.
+            cluster: {take: () => this._now, give: now => this._returnCluster(now)}});
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
         this._input = new TvInput({home: () => this.showHome('home'),
             quickPanel: () => this._quick?.toggle('remote')});
@@ -501,8 +503,10 @@ export class TvPresentation {
         if (value) {
             const glyph = weatherGlyph(weather.description, now.get_hour());
             this._weatherIcon.icon_name = glyph.icon;
+            // Its own colour (yellow sun, pale moon), except in the key, where it takes the key's ink.
+            this._weatherTint = glyph.tint ? this._material(glyph.tint) : this._material('ink');
             this._weatherIcon.style = `icon-size: ${this._px(TOKENS.bar.tab_icon + 2)};
-                color: ${glyph.tint ? this._material(glyph.tint) : this._material('ink')};`;
+                color: ${this._focus?.kind === 'cluster' && !this._quick?.isOpen ? this._material('key_ink') : this._weatherTint};`;
             this._weatherText.text = value;
         }
         const name = GLib.get_real_name()?.split(' ')[0] || GLib.get_user_name();
@@ -707,28 +711,35 @@ export class TvPresentation {
     }
 
     // The cluster (weather | time; later the user's picture) is the quick
-    // panel's bar item: the key while the remote is on it, a chip while the
-    // panel it opened is up, plain otherwise.
+    // panel's bar item: the key while the remote is on it, plain otherwise;
+    // while the panel is open it is the right of the panel's header.
     _drawCluster() {
         const {bar, quick_panel: q} = TOKENS;
         const m = name => this._material(name);
         const focused = this._focus.kind === 'cluster' && !this._quick?.isOpen;
-        // The cluster owns the panel however it was opened (the cluster or a long press of Home).
-        const owner = Boolean(this._quick?.isOpen);
+        // While the panel is open the cluster is its header's, on the sheet: no material of its own.
         this._now.style = `spacing: ${this._px(bar.now_gap)}; min-height: ${this._px(q.cluster_height)};
             padding: 0 ${this._px(q.cluster_padding_x)}; border-radius: ${this._px(q.cluster_radius)};` + (focused
             ? `background-gradient-direction: vertical; background-gradient-start: ${m('key_top')};
                background-gradient-end: ${m('key_bottom')}; border: ${this._px(1.5)} solid ${m('key_rim')};
                box-shadow: 0 ${this._px(3)} ${this._px(10)} ${m('key_drop')};`
-            : owner
-                ? `background-gradient-direction: none; background-color: ${m('chip')};
-                   border: ${this._px(1.5)} solid ${m('chip_rim')}; box-shadow: 0 ${this._px(2)} ${this._px(5)} ${m('chip_drop')};`
-                : `background-gradient-direction: none; border: ${this._px(1.5)} solid transparent; box-shadow: none;`);
+            : `background-gradient-direction: none; border: ${this._px(1.5)} solid transparent; box-shadow: none;`);
         const ink = focused ? m('key_ink') : m('ink');
         for (const label of [this._weatherText, this._time])
             label.style = label.style.replace(/color:[^;]*;/, `color: ${ink};`);
+        // Every part follows the label's ink in the key, the weather icon too.
+        if (this._weatherIcon.style)
+            this._weatherIcon.style = this._weatherIcon.style.replace(/color:[^;]*;/, `color: ${focused ? ink : this._weatherTint ?? ink};`);
         this._divider.style = this._divider.style.replace(/background-color:[^;]*;/,
             `background-color: ${focused ? 'rgba(0, 0, 0, 0.25)' : m('divider')};`);
+    }
+
+    // The panel gives the cluster back: on the bar, exactly where it was.
+    _returnCluster(now) {
+        if (!this._home || now !== this._now) return;
+        this._home.add_child(now);
+        this._placeNow();
+        this._draw();
     }
 
     // The panel shut: opened from the cluster, the focus goes back to it.

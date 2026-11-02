@@ -18,8 +18,10 @@ const PASSIVE = new Set(['sep', 'label']);
 //   open      {outputs, power}: which rows are dropped open in place
 export function panelRows(state) {
     const rows = [];
+    // You are the header (beside the bar's cluster), so the first section needs no line above it.
     const section = () => {
-        if (rows.length && rows[rows.length - 1].kind !== 'sep') rows.push({kind: 'sep', key: `sep${rows.length}`});
+        const last = rows[rows.length - 1]?.kind;
+        if (last && last !== 'sep' && last !== 'me') rows.push({kind: 'sep', key: `sep${rows.length}`});
     };
     if (state.me) rows.push({kind: 'me', key: 'me', focusable: Boolean(state.me.focusable)});
     const toggles = (state.toggles ?? []).filter(toggle => toggle.visible);

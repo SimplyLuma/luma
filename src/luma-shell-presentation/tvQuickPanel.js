@@ -56,7 +56,10 @@ function closedStates() {
 export class TvQuickPanel {
     // `unit` and `opaque` are the TV presentation's; `closed(origin)` runs
     // after the panel shuts, so the bar can take its focus back.
-    constructor({unit, opaque, opened = null, closed}) {
+    // `cluster` lends the bar's weather | time cluster while the panel is open: take() hands
+    // the actor over, give(actor) puts it back on the bar.
+    constructor({unit, opaque, opened = null, closed, cluster = null}) {
+        this._cluster = cluster;
         this._unit = unit;
         this._opaque = opaque;
         this._opened = opened;
@@ -105,17 +108,19 @@ export class TvQuickPanel {
         this._draw();
         this._grab = Main.pushModal(this._actor, {actionMode: Shell.ActionMode.POPUP});
         this._actor.grab_key_focus();
-        const {quick_panel: q} = TOKENS;
-        this._island.translation_x = q.slide * this._u;
-        this._island.opacity = 0;
-        this._island.ease({translation_x: 0, opacity: 255, duration: TOKENS.motion.sheet_ms,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        // The sheet slides in from the screen edge under the cluster, which never moves.
+        this._island.translation_x = this._island.width;
+        this._island.ease({translation_x: 0, duration: TOKENS.motion.sheet_ms * 1.6,
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        this._scrim.opacity = 0;
+        this._scrim.ease({opacity: 255, duration: TOKENS.motion.sheet_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        this._adopt();
         this._opened?.(origin);
     }
 
     // Shuts the panel; `then` runs once its grab is gone (an app, a dialog or
     // suspend may follow, and must get the keys).
-    close(then = null) {
+    close(then = null, immediate = false) {
         if (!this.isOpen) {
             then?.();
             return;
@@ -126,10 +131,20 @@ export class TvQuickPanel {
         this._unwatch();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
-        const actor = this._actor;
+        const actor = this._actor, island = this._island, scrim = this._scrim;
         this._actor = null;
-        actor?.ease({opacity: 0, duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            onStopped: () => actor.destroy()});
+        const done = () => {
+            this._returnCluster();
+            actor?.destroy();
+        };
+        if (immediate || !island) {
+            done();
+        } else {
+            // The sheet slides back out; the cluster stays where it is and goes back to the bar.
+            scrim?.ease({opacity: 0, duration: TOKENS.motion.sheet_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            island.ease({translation_x: island.width, duration: TOKENS.motion.sheet_ms * 1.4,
+                mode: Clutter.AnimationMode.EASE_IN_CUBIC, onStopped: done});
+        }
         const origin = this.origin;
         this.origin = null;
         this._closed?.(origin);
@@ -137,7 +152,25 @@ export class TvQuickPanel {
     }
 
     destroy() {
-        this.close();
+        this.close(null, true);
+    }
+
+    // The bar's cluster joins the panel at the same place on screen (both cover the monitor),
+    // above the sheet, as the right of its header.
+    _adopt() {
+        const now = this._cluster?.take();
+        if (!now || !this._actor) return;
+        now.get_parent()?.remove_child(now);
+        this._actor.add_child(now);
+        this._adopted = now;
+    }
+
+    _returnCluster() {
+        const now = this._adopted;
+        this._adopted = null;
+        if (!now) return;
+        now.get_parent()?.remove_child(now);
+        this._cluster?.give(now);
     }
 
     // ── the backends: the desktop's own objects ───────────────────────────
@@ -339,12 +372,18 @@ export class TvQuickPanel {
             background-gradient-start: ${this._m('scrim').replace(/[\d.]+\)$/, '0.12)')};
             background-gradient-end: ${this._m('scrim')};`;
         this._actor.add_child(this._scrim);
-        this._island = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, width: q.width * u});
-        this._island.set_position(monitor.width - (layout.safe_x + q.width) * u, q.top * u);
-        this._island.style = `padding: ${this._px(q.padding)}; border-radius: ${this._px(q.radius)};
-            background-color: ${this._m('sheet')}; border: ${this._px(1.5)} solid ${this._m('bar_rim')};
-            box-shadow: 0 ${this._px(18)} ${this._px(44)} ${this._m('bar_drop')};`;
-        this._list = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        // A full-height sheet from the right screen edge; its column ends on the side safe line.
+        const width = q.sheet_width * u;
+        this._island = new St.Widget({layout_manager: new Clutter.FixedLayout(), width, height: monitor.height});
+        this._island.set_position(monitor.width - width, 0);
+        this._island.style = `border-radius: ${this._px(q.radius)} 0 0 ${this._px(q.radius)};
+            background-color: ${this._m('sheet')};
+            box-shadow: ${this._px(-18)} 0 ${this._px(50)} ${this._m('bar_drop')};`;
+        // The header: you, on the bar's line; the bar's cluster sits over its right.
+        this._header = new St.Bin({width: q.header_width * u, x_align: Clutter.ActorAlign.START});
+        this._header.set_position((q.column_left - q.row_padding_x) * u, q.header_top * u);
+        this._island.add_child(this._header);
+        this._list = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, width: q.width * u});
         this._list.style = `spacing: ${this._px(q.gap)};`;
         this._scroll = new St.ScrollView({child: this._list, x_expand: true,
             hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.EXTERNAL,
@@ -360,9 +399,11 @@ export class TvQuickPanel {
             console.warn(`TV quick panel: scroll fades unavailable (${error.message})`);
             this._scroll.style = `-st-vfade-offset: ${this._px(q.fade_top)};`;
         }
+        this._scroll.set_position(q.column_left * u, (q.list_top + q.padding) * u);
+        this._scroll.width = q.width * u;
         this._island.add_child(this._scroll);
         this._actor.add_child(this._island);
-        this._maxHeight = monitor.height - (q.top + layout.safe_y + 2 * q.padding) * u;
+        this._maxHeight = monitor.height - (q.list_top + q.padding + layout.safe_y) * u;
     }
 
     _rebuild() {
@@ -374,14 +415,22 @@ export class TvQuickPanel {
         this._chip = Math.min(this._chip, Math.max(0, chips.length - 1));
         if (chips[this._chip]?.reactive === false) this._chip = firstChip(chips);
         this._list.destroy_all_children();
+        this._header.set_child(null);
         this._actors = this._rows.map(row => this._makeRow(row));
-        for (const actor of this._actors) this._list.add_child(actor);
+        this._actors.forEach((actor, index) => {
+            if (this._rows[index].kind === 'me') {
+                actor.width = TOKENS.quick_panel.header_width * this._u;
+                this._header.set_child(actor);
+            }
+            else this._list.add_child(actor);
+        });
         // Row tops from their natural heights: fresh rows have no allocation
         // yet, and the focused one must stay in view across a rebuild.
         const {quick_panel: q} = TOKENS;
-        const width = this._island.width - 2 * q.padding * this._u;
+        const width = q.width * this._u;
         let top = 0;
-        this._tops = this._actors.map(actor => {
+        this._tops = this._actors.map((actor, index) => {
+            if (this._rows[index].kind === 'me') return null;
             // Natural height plus the CSS margins St puts on the actor (separators have them).
             const [, natural] = actor.get_preferred_height(width);
             const height = natural + actor.margin_top + actor.margin_bottom;
@@ -611,9 +660,10 @@ export class TvQuickPanel {
         // The focused row stays in view, with room under it.
         const span = this._tops?.[this._row];
         const adjustment = this._scroll.vadjustment;
-        if (span && adjustment && this._contentHeight > this._scroll.height) {
-            const value = scrollTo(span[0], span[1], this._scroll.height, this._contentHeight,
-                q.scroll_margin * this._u, this._scrollValue ?? 0);
+        if (adjustment && this._contentHeight > this._scroll.height && (span || this._scrollValue)) {
+            // The header (you) is above the list: the list goes back to its top.
+            const value = span ? scrollTo(span[0], span[1], this._scroll.height, this._contentHeight,
+                q.scroll_margin * this._u, this._scrollValue ?? 0) : 0;
             this._scrollValue = value;
             adjustment.ease(value, {duration: TOKENS.motion.page_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
         }

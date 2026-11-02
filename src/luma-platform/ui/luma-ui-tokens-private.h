@@ -2117,13 +2117,16 @@
 #define LUMA_UI_TV_MENU_ROW_WEIGHT 600
 #define LUMA_UI_TV_MENU_ICON 28
 #define LUMA_UI_TV_MENU_ICON_GAP 16
-#define LUMA_UI_TV_QUICK_PANEL__DOC "The quick panel (tvQuickPanel.js): the TV posture of the shell's Quick Options and notification list, opened with OK on the bar's weather | time cluster or a long press of Home. Settings' floating island mirrored onto the right edge: bar material, radius 36, rows 68 at 24/600, icons 30; as tall as its rows, stopping at the bottom safe line, with long eased edge fades only where it scrolls. Design Center mockups/luma-tv-quick-panel.html."
-#define LUMA_UI_TV_QUICK_PANEL_TOP 166
+#define LUMA_UI_TV_QUICK_PANEL__DOC "The quick panel (tvQuickPanel.js): the TV posture of the shell's Quick Options and notification list, opened with OK on the bar's weather | time cluster or a long press of Home. A full-height sheet that slides out from the right screen edge (sheet_width, its 620 column ending on the side safe line) and adopts the bar's weather | time cluster, which never moves, as the right of its header (you on the left, on the bar's line), as the phone's Quick Options do with its status bar. Rows as Settings' island: 68 at 24/600, icons 30, from list_top to the bottom safe line, long eased edge fades only where it scrolls. Design Center mockups/luma-tv-quick-panel.html."
+#define LUMA_UI_TV_QUICK_PANEL_SHEET_WIDTH 760
+#define LUMA_UI_TV_QUICK_PANEL_COLUMN_LEFT 44
+#define LUMA_UI_TV_QUICK_PANEL_HEADER_TOP 59
+#define LUMA_UI_TV_QUICK_PANEL_HEADER_WIDTH 330
+#define LUMA_UI_TV_QUICK_PANEL_LIST_TOP 154
 #define LUMA_UI_TV_QUICK_PANEL_WIDTH 620
 #define LUMA_UI_TV_QUICK_PANEL_RADIUS 36
 #define LUMA_UI_TV_QUICK_PANEL_PADDING 12
 #define LUMA_UI_TV_QUICK_PANEL_GAP 2
-#define LUMA_UI_TV_QUICK_PANEL_SLIDE 40
 #define LUMA_UI_TV_QUICK_PANEL_ROW_HEIGHT 68
 #define LUMA_UI_TV_QUICK_PANEL_ROW_RADIUS 22
 #define LUMA_UI_TV_QUICK_PANEL_ROW_PADDING_X 19
@@ -2133,7 +2136,7 @@
 #define LUMA_UI_TV_QUICK_PANEL_ICON_GAP 18
 #define LUMA_UI_TV_QUICK_PANEL_END_SIZE 19
 #define LUMA_UI_TV_QUICK_PANEL_END_ICON 24
-#define LUMA_UI_TV_QUICK_PANEL_ME_HEIGHT 84
+#define LUMA_UI_TV_QUICK_PANEL_ME_HEIGHT 68
 #define LUMA_UI_TV_QUICK_PANEL_AVATAR 52
 #define LUMA_UI_TV_QUICK_PANEL_NAME_SIZE 26
 #define LUMA_UI_TV_QUICK_PANEL_NAME_WEIGHT 700
