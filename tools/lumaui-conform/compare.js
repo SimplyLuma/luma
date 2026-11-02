@@ -54,6 +54,9 @@ const WINDOW_CONTROLS = /window-(minimize|maximize|restore|close)|^(button|icon)
 
 // ── helpers ───────────────────────────────────────────────────────────────
 const norm = t => (t || '').replace(/\u200b/g, '').replace(/\s+/g, ' ').replace(/[…]$/, '').trim();
+// A text's own colour, the same on both sides (the same ink at the same alpha): it is the same colour, whatever
+// the backgrounds' mode-colour sampling picks under it (a gradient behind it lands in neighbouring bins).
+const sameInk = (s, g) => ['r', 'g', 'b'].every(k => Math.abs(s.color[k] - g.color[k]) <= 1) && Math.abs((s.color.a ?? 1) * (s.opacity ?? 1) - (g.color.a ?? 1)) <= 0.01;
 const alias = t => { t = t.replace(/ \(LumaUI preview\)$/, ''); return (scenario.text_aliases || {})[t] || t; };
 const B = b => Array.isArray(b) ? { x: b[0], y: b[1], w: b[2], h: b[3] } : b;
 const center = b => [b.x + b.w / 2, b.y + b.h / 2];
@@ -368,7 +371,7 @@ function compareState(st, S, G, samples) {
           end_anchored: Math.abs(ry) <= 1 && Math.abs((g.box.x + g.box.w) - (s.box.x + s.box.w) - (mw ? mw[1] : 0)) <= 1 && Math.abs(rx + (g.box.w - s.box.w)) <= 1 }); }
     const dw = g.box.w - s.box.w; if (!s.aliased && Math.abs(dw) > Math.max(TOL.size, s.box.w * TOL.textWidthPct) && !(s.ellipsis || g.w.ellipsized)) add('minor', s.box, `text ${nm}`, 'width', f1(s.box.w), f1(g.box.w), `text ${nm}: ${f1(s.box.w)} px wide in spec, ${f1(g.box.w)} in GTK (tracking, weight or a different string)`, { ratio: s.box.w > 0 ? Math.abs(dw) / s.box.w : null, family: (g.font && g.font.family) || '' });
     if ((s.lines || 1) !== (g.lines || 1)) add('major', s.box, `text ${nm}`, 'lines', s.lines, g.lines, `text ${nm}: ${s.lines} line(s) in spec, ${g.lines} in GTK`);
-    if (s.color && g.color) { const sb = bg('spec', s.box) || { r: 0, g: 0, b: 0 }, gb2 = bg('gtk', g.box) || sb; const cs = over(s.color, sb, s.opacity ?? 1), cg = over(g.color, gb2); const d = dE00(cs, cg);
+    if (s.color && g.color && !sameInk(s, g)) { const sb = bg('spec', s.box) || { r: 0, g: 0, b: 0 }, gb2 = bg('gtk', g.box) || sb; const cs = over(s.color, sb, s.opacity ?? 1), cg = over(g.color, gb2); const d = dE00(cs, cg);
       if (d > TOL.dE) add(d > TOL.majorDE ? 'major' : 'minor', s.box, `text ${nm}`, 'colour', hex(cs), hex(cg), `text ${nm}: colour ${hex(cs)} in spec, ${hex(cg)} in GTK (ΔE ${f1(d)})`, { mag: d }); }
   }
   // A text the spec shows only a sliver of (under 30% of its line, at a scroller's edge) is where the
