@@ -17,12 +17,26 @@
 set -euo pipefail
 umask 022
 root=/srv/lumaui-conform
+# Everything a run writes (its private directory, build caches, ccache, the reference cache and
+# the container storage itself) lives on the build host's data disk, never on its nearly full
+# root filesystem; root= keeps only the tools, locks and queue.
+data=${LUMAUI_CONFORM_DATA:-/srv/dev-storage/projects/lumaui-conform}
+store=$data/containers/storage
+# podman stages image blobs and layers in TMPDIR (/var/tmp by default, on the root filesystem).
+export TMPDIR=$data/tmp
+# The Design Center (TV and later mockups), checked out by its post-receive hook.
+design_center=${LUMAUI_CONFORM_DESIGN_CENTER:-/srv/dev/projects/design-center}
 image=localhost/lumaui-conform-thinkpad
 slots=12          # at most this many variants at once...
 nightly_slots=4   # ...and this many while the nightly OS build runs, which must never starve
 min_free_gb=20
 
 say() { echo "lumaui-conform: $*" >&2; }
+# Every container and image of this service is in its own storage on the data disk.
+podman() { command podman --root "$store" --runroot /run/lumaui-conform/containers "$@"; }
+# Heavy work on the shared host goes through its luma-heavy queue (niced, idle I/O,
+# the host lock, the thermal guard), when the host has it.
+heavy=(); command -v luma-heavy >/dev/null 2>&1 && heavy=(luma-heavy)
 usage() { say "usage: <app> [--all | --theme dark|light] [--phone] [--spec-only] [--pixel]"; exit 2; }
 
 # Words only: a forced command must never evaluate what the caller sent.
@@ -47,11 +61,11 @@ if [ -n "$all" ]; then variants=("dark" "light" "dark phone" "light phone"); els
 
 id=$(date +%Y%m%d-%H%M%S)-$$
 stamp=${id%-*}
-work=$root/runs/$id
+work=$data/runs/$id
 cleanup() {
   status=$?
   trap - EXIT INT TERM HUP
-  podman ps -a -q --filter "name=^lumaui-conform-$id-" | xargs -r podman rm -f -t 3 >/dev/null 2>&1 || true
+  podman ps -a -q --filter "name=^lumaui-conform-$id-" | xargs -r podman --root "$store" --runroot /run/lumaui-conform/containers rm -f -t 3 >/dev/null 2>&1 || true
   rm -f "$root"/queue/*-"$id"-* "$root"/held/"$id".* 2>/dev/null
   jobs -p | xargs -r kill 2>/dev/null || true
   rm -rf "$work"
@@ -63,9 +77,10 @@ trap 'exit 130' INT TERM HUP
 parent=$PPID
 ( while kill -0 "$parent" 2>/dev/null; do sleep 1; done; kill -TERM $$ 2>/dev/null ) &
 
-free_gb=$(df --output=avail -BG / | tail -1 | tr -dc 0-9)
-if [ "${free_gb:-0}" -lt $min_free_gb ]; then say "the server has ${free_gb} GB free on / (keeps $min_free_gb GB); try later"; exit 4; fi
-mkdir -p "$work/src" "$work/tools" "$work/out" "$root/slots"
+mountpoint -q "$(df --output=target "$data" 2>/dev/null | tail -1)" && [ -d "$store" ] || { say "the data disk ($data) is not mounted or has no container storage; run install.sh --image"; exit 4; }
+free_gb=$(df --output=avail -BG "$data" | tail -1 | tr -dc 0-9)
+if [ "${free_gb:-0}" -lt $min_free_gb ]; then say "the server has ${free_gb} GB free on $data (keeps $min_free_gb GB); try later"; exit 4; fi
+mkdir -p "$work/src" "$work/tools" "$work/out" "$root/slots" "$TMPDIR"
 chown -R 1000:1000 "$work"
 # The nightly OS build must never starve. It is a oneshot, so while it runs systemd reports it
 # "activating" (not "active"); any luma-os-nightly* unit counts, and so does the quarter hour
@@ -77,10 +92,14 @@ nightly_near() {
 }
 
 run() {  # run <name> <podman args...>: a named throwaway container, output to stderr
+  # (Not unpack through luma-heavy: systemd-run expands $... in its arguments, and unpack's
+  # script has shell variables; it is light work anyway.)
+  local wrap=("${heavy[@]}"); [ "$1" = unpack ] && wrap=()
   local name=lumaui-conform-$id-$1; shift
   local cpus=3
   nightly_near && cpus=2
-  podman run --rm --init --name "$name" --security-opt label=disable --pids-limit 4096 --memory 8g --cpus $cpus --shm-size 1g "$@" >&2
+  "${wrap[@]}" podman --root "$store" --runroot /run/lumaui-conform/containers run --rm --init --name "$name" \
+    --security-opt label=disable --pids-limit 4096 --memory 8g --cpus $cpus --shm-size 1g "$@" >&2
 }
 
 # 1. Unpack the caller's trees and assemble the tools: the server's copy, with the
@@ -157,13 +176,13 @@ extra=()
 #    at a time (its meson dirs live in cache/<app>); ccache is shared by every app.
 if [ -z "$pixel$spec_only" ] && python3 -c 'import json, sys; sys.exit(0 if "build" in json.load(open(sys.argv[1])).get("gtk", {}) else 1)' "$work/tools/scenarios/$app.json"; then
   image_run=localhost/lumaui-conform-cbuild
-  mkdir -p "$root/cache/$app" "$root/ccache" "$root/srpms" "$work/dist/conform"
-  chown 1000:1000 "$root/cache/$app" "$root/ccache" "$work/dist" "$work/dist/conform"
-  exec {app_lock}>"$root/cache/$app.lock"
+  mkdir -p "$data/cache/$app" "$data/ccache" "$root/srpms" "$work/dist/conform"
+  chown 1000:1000 "$data/cache/$app" "$data/ccache" "$work/dist" "$work/dist/conform"
+  exec {app_lock}>"$data/cache/$app.lock"
   flock -n "$app_lock" || { say "$app: waiting for another build of $app"; flock "$app_lock"; }
   slot_take build
-  if ! run build --network=none -v "$work/src:/w/src:ro" -v "$work/tools:/w/tools:ro" -v "$root/cache/$app:/cache" \
-    -v "$root/ccache:/ccache" -v "$work/dist/conform:/opt/conform" -v "$root/srpms:/srpms:ro" \
+  if ! run build --network=none -v "$work/src:/w/src:ro" -v "$work/tools:/w/tools:ro" -v "$data/cache/$app:/cache" \
+    -v "$data/ccache:/ccache" -v "$work/dist/conform:/opt/conform" -v "$root/srpms:/srpms:ro" \
     -e LUMAUI_CONFORM_KIT=$kit -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=15G \
     "$image_run" bash /w/tools/c_build.sh "/w/tools/scenarios/$app.json" 2>&1 | sed -u "s/^/[build] /" >&2; then
     say "$app: the build failed (above)"; exit 3
@@ -176,29 +195,41 @@ fi
 # 3. Keep the served Studio tree stable while its content is hashed and captured.
 #    install.sh --design takes the exclusive lock for rsync. The cache contains
 #    only complete Studio reference pairs; native GTK runs on every invocation.
-mkdir -p "$root/reference-cache"
+mkdir -p "$data/reference-cache"
 exec {design_lock}>"$root/design.lock"
 flock -s "$design_lock"
 image_id=$(podman image inspect --format '{{.Id}}' "$image_run") || exit 2
+dc_scenario=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("spec", {}).get("root", ""))' "$work/tools/scenarios/$app.json")
+# A Design Center page: a private copy of the parts a page loads (its checkout is not readable
+# by the capture user), taken once per run.
+if [ -n "$dc_scenario" ]; then
+  mkdir -p "$work/design-center"
+  for d in mockups fonts wallpapers icons; do
+    [ -d "$design_center/$d" ] && cp -R "$design_center/$d" "$work/design-center/"
+  done
+  chown -R 1000:1000 "$work/design-center"
+  design_center=$work/design-center
+fi
 
 # 4. One container per variant, each holding one of the server's slots.
 variant() {  # variant <n> <theme> [phone]
   local n=$1 t=$2 ph=${3:-} reference_identity="$work/reference-$1.json" run_status
   local -a reference_options=()
   slot_take "v$n"
-  if python3 "$work/tools/server/reference-cache.py" prepare \
+  # Design Center scenarios (spec.root) are captured fresh: the cache keys the Studio tree only.
+  if [ -z "$dc_scenario" ] && python3 "$work/tools/server/reference-cache.py" prepare \
       --design "$root/design" --scenario "$work/tools/scenarios/$app.json" \
       --capture "$work/tools/spec_capture.js" --loader "$work/tools/lib/playwright.js" \
       --image-id "$image_id" --theme "$t" ${ph:+--phone} --output "$reference_identity"; then
-    reference_options=(-v "$root/reference-cache:/w/reference-cache:ro" -v "$reference_identity:/w/reference-identity.json:ro" \
+    reference_options=(-v "$data/reference-cache:/w/reference-cache:ro" -v "$reference_identity:/w/reference-identity.json:ro" \
       -e LUMAUI_CONFORM_REFERENCE_CACHE=/w/reference-cache -e LUMAUI_CONFORM_REFERENCE_IDENTITY=/w/reference-identity.json)
   else
-    say "$app ($t${ph:+ phone}): reference cache unavailable; capturing Studio"
+    [ -n "$dc_scenario" ] || say "$app ($t${ph:+ phone}): reference cache unavailable; capturing Studio"
     reference_identity=
   fi
-  if run "v$n" "${extra[@]}" -v "$work/src:/w/src:ro" -v "$work/tools:/w/tools:ro" -v "$root/design:/design:ro" -v "$work/out:/w/out" "${reference_options[@]}" \
+  if run "v$n" "${extra[@]}" -v "$work/src:/w/src:ro" -v "$work/tools:/w/tools:ro" -v "$root/design:/design:ro" -v "$design_center:/design-center:ro" -v "$work/out:/w/out" "${reference_options[@]}" \
     -e LUMAUI_CONFORM_HOST=local -e LUMAUI_CONFORM_OUT=/w/out -e LUMAUI_CONFORM_REPO=/w/src/wt -e LUMAUI_CONFORM_KIT=$kit \
-    -e LUMAUI_CONFORM_STUDIO_ROOT=/design -e LUMAUI_CONFORM_STAMP="$stamp" \
+    -e LUMAUI_CONFORM_STUDIO_ROOT=/design -e LUMAUI_CONFORM_DESIGN_CENTER=/design-center -e LUMAUI_CONFORM_STAMP="$stamp" \
     "$image_run" timeout "$variant_budget" sh /w/tools/run.sh "$app" --theme "$t" ${ph:+--phone} ${spec_only:+--spec-only} ${pixel:+--pixel /w/src/pixel} 2>&1 | sed -u "s/^/[$t${ph:+ phone}] /" >&2; then
     run_status=0
   else
@@ -206,7 +237,7 @@ variant() {  # variant <n> <theme> [phone]
   fi
   if [ -n "$reference_identity" ] && [ -f "$work/out/$app/$stamp-$t${ph:+-phone}/spec-meta.json" ]; then
     python3 "$work/tools/server/reference-cache.py" publish \
-      --cache "$root/reference-cache" --identity "$reference_identity" \
+      --cache "$data/reference-cache" --identity "$reference_identity" \
       --out "$work/out/$app/$stamp-$t${ph:+-phone}" || say "$app ($t${ph:+ phone}): reference cache publication failed; capture retained"
   fi
   return "$run_status"

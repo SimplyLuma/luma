@@ -132,9 +132,16 @@ def app_command(run_dir: str, plan: dict, base_env: dict) -> tuple[list[str], di
         return [binary, *plan.get("args", [])], env
     run = os.path.join(run_dir, "preview", "bin", "run")
     paths = [os.path.join(run_dir, "src", p) for p in plan.get("pythonpath", [])]
+    env = {}
+    # A Python fixture over a LumaUI-1 built from the worktree (scenario gtk.build {}): its library
+    # and typelib, not the image's packaged platform.
+    lumaui = f"{C_ROOT}/lumaui/lib64"
+    if os.path.isdir(os.path.join(lumaui, "girepository-1.0")):
+        env.update({"LD_LIBRARY_PATH": lumaui, "GI_TYPELIB_PATH": f"{lumaui}/girepository-1.0",
+                    "XDG_DATA_DIRS": f"{C_ROOT}/lumaui/share:{base_env['XDG_DATA_DIRS']}"})
     if paths or "." in plan["module"]:
-        return [run, "--module", plan["module"]], {"LUMAUI_EXTRA_PYTHONPATH": ":".join(paths)}
-    return [run, plan["module"]], {}
+        return [run, "--module", plan["module"]], {**env, "LUMAUI_EXTRA_PYTHONPATH": ":".join(paths)}
+    return [run, plan["module"]], env
 
 
 def set_form_factor(env: dict, plan: dict) -> None:
