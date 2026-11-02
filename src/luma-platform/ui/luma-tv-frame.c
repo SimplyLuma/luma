@@ -190,6 +190,9 @@ typedef struct {
   gint64 moved_at;       /* when the focus last moved without a key (a redraw, GTK's fallback) */
   gboolean held_field;   /* the remote was in a text field */
   guint reveal_id;
+  int reveal_tries;      /* reveal_focus looks again while the page settles above the keyboard */
+  int reveal_from;       /* the page's height when the keyboard came up */
+  gint64 reveal_until;
   int self_moving;       /* the frame itself is moving the focus */
   char *held_title;      /* the title of the row the remote was on: rows are found by it, not by place */
   char *held_page;       /* the page's title then: a redraw keeps it, opening another page changes it */
@@ -389,6 +392,11 @@ static const char *const tv_sheet =
 "window.lumaui-tv .lumaui-dialog button:focus-visible, window.lumaui-tv dialog button:focus-visible {\n"
 "  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv .lumaui-dialog button:focus-visible label, window.lumaui-tv dialog button:focus-visible label { color: @key_ink@; }\n"
+/* the sheet floats over a dimmed screen (lumaui-tv.css .tv-sheet): near opaque, as there is no live blur */
+"window.lumaui-tv .lumaui-scrim, window.lumaui-tv dialog-host > dimming { background-color: alpha(black, 0.55); }\n"
+"window.lumaui-tv .lumaui-dialog, window.lumaui-tv dialog > .dialog-contents, window.lumaui-tv dialog.alert > widget,\n"
+"window.lumaui-tv popover > contents { background-color: @sheet_solid@; }\n"
 "window.lumaui-tv .lumaui-dialog button.lumaui-dialog-action:focus-visible { box-shadow: 0 0 0 4tv white; background-image: none; background-color: #e0485c; color: white; }\n"
 /* a choice's list: dropped from its value, at TV size */
 "window.lumaui-tv popover > contents { padding: 12tv; border-radius: 30tv; border: none; background-color: @sheet@; color: @ink@;\n"
@@ -451,6 +459,7 @@ static void tv_css(TvFrame *f) {
     {"@key_drop@", LUMA_UI_TV_MATERIALS_KEY_DROP}, {"@key_glint@", LUMA_UI_TV_MATERIALS_KEY_GLINT},
     {"@bar@", LUMA_UI_TV_MATERIALS_BAR}, {"@bar_rim@", LUMA_UI_TV_MATERIALS_BAR_RIM},
     {"@bar_drop@", LUMA_UI_TV_MATERIALS_BAR_DROP}, {"@bar_glint@", LUMA_UI_TV_MATERIALS_BAR_GLINT},
+    {"@sheet_solid@", "rgba(36, 38, 42, 0.97)"},
     {"@sheet@", LUMA_UI_TV_MATERIALS_SHEET}, {"@accent@", LUMA_UI_TV_MATERIALS_ACCENT},
     {"@divider@", "rgba(255, 255, 255, 0.08)"},
   };
@@ -1322,27 +1331,56 @@ static gboolean key_released(GtkEventControllerKey *controller, guint key, guint
 /* The TV keyboard covers the bottom of the screen: the page ends above it, so the focused field
  * (and its row) scrolls into view over the keyboard. */
 /* The row the remote is on, brought into view (above the keyboard once the page has shrunk). */
-static gboolean reveal_focus(gpointer data) {
-  TvFrame *f = data;
-  f->reveal_id = 0;
+static void reveal_now(TvFrame *f) {
   GtkWidget *focus = f->active ? focus_of(f) : NULL;
   if (focus == NULL || !in_page(f, focus))
-    return G_SOURCE_REMOVE;
+    return;
   GtkWidget *row = focus;
   while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
   GtkWidget *target = row != NULL && row != f->island ? row : focus;
   GtkWidget *viewport = gtk_widget_get_ancestor(target, GTK_TYPE_VIEWPORT);
   if (viewport != NULL)
     gtk_viewport_scroll_to(GTK_VIEWPORT(viewport), target, NULL);
+  if (g_getenv("LUMA_TV_DEBUG") != NULL)
+    g_printerr("tv reveal: viewport=%p page height %d\n", (void *)viewport, viewport ? gtk_widget_get_height(viewport) : -1);
+}
+
+static gboolean reveal_focus(gpointer data) {
+  TvFrame *f = data;
+  f->reveal_id = 0;
+  if (--f->reveal_tries > 0)
+    f->reveal_id = g_timeout_add(300, reveal_focus, f);
+  reveal_now(f);
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean reveal_tick(GtkWidget *island, GdkFrameClock *clock, gpointer data) {
+  (void)clock;
+  TvFrame *f = data;
+  if (!f->active || g_get_monotonic_time() > f->reveal_until)
+    return G_SOURCE_REMOVE;
+  if (gtk_widget_get_height(island) == f->reveal_from)
+    return G_SOURCE_CONTINUE;
+  /* the page has its new height: bring the row up now */
+  reveal_now(f);
   return G_SOURCE_REMOVE;
 }
 
 static void keyboard_height(guint height, gpointer data) {
   TvFrame *f = data;
   if (!f->active) return;
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) g_printerr("tv keyboard height %u\n", height);
   gtk_widget_set_margin_bottom(f->island, height > 0 ? (int)round(height * f->unit) : f->island_bottom);
-  if (height > 0 && f->reveal_id == 0)
-    f->reveal_id = g_timeout_add(120, reveal_focus, f); /* once the page has its new height */
+  if (height > 0) {
+    /* once the page has its new height: watched frame by frame (a slow device lays out late),
+     * with a last look after a second whatever happened */
+    g_clear_handle_id(&f->reveal_id, g_source_remove);
+    f->reveal_tries = 1;
+    f->reveal_id = g_timeout_add(1000, reveal_focus, f);
+    f->reveal_from = gtk_widget_get_height(f->island);
+    f->reveal_until = g_get_monotonic_time() + G_USEC_PER_SEC;
+    gtk_widget_add_tick_callback(f->island, reveal_tick, f, NULL);
+  }
 }
 
 static void active_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
