@@ -244,6 +244,8 @@ static const char *const tv_sheet =
 "  background-color: @bar@; background-image: none; border: none; outline: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail { min-width: 76tv; }\n"
+/* folded, a row's icon keeps its place (19 in, as open), not centred in the rail */
+".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail .luma-navigation-row { padding: 0 27tv 0 19tv; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar scrolledwindow, .lumaui-tv-frame > .luma-navigation-sidebar list {\n"
 "  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
 ".lumaui-tv-frame scrollbar { opacity: 0; min-width: 0; min-height: 0; }\n"
@@ -287,10 +289,14 @@ static const char *const tv_sheet =
 /* the mockup's .tv-h1 (line-height 1.05) and .tv-body under it (8 over, line-height 1.4): ratios of Figtree's own line */
 ".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; line-height: 1.14; }\n"
 ".lumaui-tv-frame .lumaui-part-header { margin: 0; padding: 0; min-height: 0; }\n"
-".lumaui-tv-frame .lumaui-part-hero { margin-top: 22tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
+".lumaui-tv-frame .lumaui-part-hero { margin-top: 28tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
 "  background-color: @bar@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame .lumaui-part-group { margin-top: 34tv; }\n"
+".lumaui-tv-frame .lumaui-part-group > box:not(.lumaui-part-card) { margin: 0; padding: 0; min-height: 0; }\n"
+/* the first block under a page's header sits 6 lower than its margin says (measured); the mockup's 28 and 34 */
+".lumaui-tv-frame .lumaui-part-header + .lumaui-part-hero { margin-top: 22tv; }\n"
+".lumaui-tv-frame .lumaui-part-header + .lumaui-part-group { margin-top: 28tv; }\n"
 ".lumaui-tv-frame .lumaui-part-group .lumaui-t-group-heading { font-size: 20tv; font-weight: 650; letter-spacing: 1tv;\n"
 "  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
 ".lumaui-tv-frame .lumaui-part-card { padding: 8tv; border-radius: 30tv; border: none; background-color: @bar@; background-image: none;\n"
@@ -311,7 +317,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:not(:first-child) { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box { margin-top: 6tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box label { font-size: 22tv; font-weight: 400; color: @ink_2@; }\n"
-".lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label { font-size: 26tv; font-weight: 600; letter-spacing: 0; color: inherit; margin: 0; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:first-child, .lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:not(:first-child) {\n"
+"  font-size: 26tv; font-weight: 600; letter-spacing: 0; color: inherit; margin: 0; }\n"
 /* a hero's actions are TV buttons (the mockup's .tv-btn): 66 tall, radius 22, 25/650, a chip; the focused one the key */
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero button.text-button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none; outline: none;\n"
 "  background-color: @chip@; background-image: none; color: @ink@; box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
@@ -334,7 +341,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
 /* the hero's lead: the thing's own tile, 92 in the accent (the mockup's .hero .big) */
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0 10tv 0 0;\n"
-"  background-color: @accent@; background-image: none; color: white; box-shadow: none; }\n"
+"  background-color: @accent_fill@; background-image: none; color: white; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
 /* a drawn lead (signal bars): 2.5 times its size, about its centre, in the lead's place */
 ".lumaui-tv-frame .lumaui-part-mark { transform: scale(2.5); transform-origin: 50% 50%; }\n"
@@ -385,10 +392,10 @@ static const char *const tv_sheet =
 "  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"/* ...but the button a row is drawn as (a box holding it, the row's whole content) keeps the row's 60 */
 ".lumaui-tv-frame .lumaui-part-row.vertical > button:not(.lumaui-part-swatch):not(.lumaui-part-chip) { min-height: 60tv; }\n"
 
-".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
+".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv 2tv; border-radius: 21tv; border: none;\n"
 "  background-color: @well@; background-image: none; color: transparent;\n"
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@, 0 1.5tv 0 @well_glint@; }\n"
-".lumaui-tv-frame > .luma-island switch:checked { background-color: @accent@; box-shadow: inset 0 1.5tv 3tv alpha(black, 0.25); }\n"
+".lumaui-tv-frame > .luma-island switch:checked { background-color: @accent_fill@; box-shadow: inset 0 1.5tv 3tv alpha(black, 0.25); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within switch:not(:checked) { background-color: alpha(black, 0.14); }\n"
 ".lumaui-tv-frame > .luma-island switch > slider { min-width: 34tv; min-height: 34tv; margin: 0; border-radius: 9999px; border: none;\n"
 "  background-image: linear-gradient(white, #e6e7ea); box-shadow: 0 2tv 5tv alpha(black, 0.35); }\n"
@@ -397,7 +404,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row scale > trough { min-height: 12tv; border-radius: 6tv; border: none; background-color: @well@;\n"
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within scale > trough { background-color: alpha(black, 0.14); box-shadow: inset 0 1.5tv 3tv alpha(black, 0.2); }\n"
-".lumaui-tv-frame .lumaui-part-row scale > trough > highlight { min-height: 12tv; border-radius: 6tv; border: none; background-color: @accent@; background-image: none; }\n"
+".lumaui-tv-frame .lumaui-part-row scale > trough > highlight { min-height: 12tv; border-radius: 6tv; border: none; background-color: @accent_fill@; background-image: none; }\n"
 ".lumaui-tv-frame .lumaui-part-row scale > trough > slider { min-width: 0; min-height: 0; margin: 0; padding: 0; border: none; background: none; box-shadow: none; outline: none; }\n"
 ".lumaui-tv-frame .lumaui-part-row scale marks, .lumaui-tv-frame .lumaui-part-row scale value { font-size: 22tv; font-weight: 650; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row entry, .lumaui-tv-frame .lumaui-part-row text { background: none; box-shadow: none; border: none; outline: none;\n"
@@ -702,6 +709,8 @@ static void tv_css(TvFrame *f) {
     {"@bar_drop@", LUMA_UI_TV_MATERIALS_BAR_DROP}, {"@bar_glint@", LUMA_UI_TV_MATERIALS_BAR_GLINT},
     {"@sheet_solid@", "rgba(36, 38, 42, 0.97)"},
     {"@sheet@", LUMA_UI_TV_MATERIALS_SHEET}, {"@accent@", LUMA_UI_TV_MATERIALS_ACCENT},
+    /* a filled accent surface (a hero's tile, a switch that is on, a slider's fill): the mockup's oklch(0.62 0.15 250) */
+    {"@accent_fill@", LUMA_UI_TV_MATERIALS_ACCENT_FOCUS_LOW},
     {"@divider@", "rgba(255, 255, 255, 0.08)"},
   };
   /* Reduce Transparency and High Contrast make the surfaces opaque (as the TV home). */
