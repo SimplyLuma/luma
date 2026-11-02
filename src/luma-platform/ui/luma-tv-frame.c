@@ -553,6 +553,21 @@ static const char *const tv_parts_sheet =
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; }\n"
 "window.lumaui-tv .lumaui-modal entry:focus-within { box-shadow: inset 0 0 0 3tv @accent@; }\n";
 
+/* The focused button is the key, whatever it rests as (suggested, a key-style text button, primary):
+ * its label takes the key's ink. Last in the sheet so it outranks every resting rule. */
+static const char *const tv_key_sheet =
+"window.lumaui-tv button.suggested-action:focus-visible, window.lumaui-tv button.lumaui-text-button.key:focus-visible,\n"
+"window.lumaui-tv button.primary:focus-visible, window.lumaui-tv button.destructive-action:focus-visible,\n"
+"window.lumaui-tv .lumaui-part-buttons > button:focus-visible, window.lumaui-tv flowboxchild > button:focus-visible {\n"
+"  background-color: transparent; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv button.suggested-action:focus-visible label, window.lumaui-tv button.lumaui-text-button.key:focus-visible label,\n"
+"window.lumaui-tv button.primary:focus-visible label, window.lumaui-tv button.destructive-action:focus-visible label,\n"
+"window.lumaui-tv button.suggested-action:focus-visible image, window.lumaui-tv button.lumaui-text-button.key:focus-visible image,\n"
+"window.lumaui-tv button.primary:focus-visible image { color: @key_ink@; }\n"
+/* a QR code on a TV: its modules scale with the TV unit (the quiet zone is part of the drawing) */
+"window.lumaui-tv dialog .lumaui-qr { min-width: 400tv; min-height: 400tv; }\n";
+
 static char *material(const char *rgba, gboolean opaque) {
   if (!opaque || !g_str_has_prefix(rgba, "rgba("))
     return g_strdup(rgba);
@@ -610,6 +625,7 @@ static void tv_css(TvFrame *f) {
   static const char *const surfaces[] = {"@well@", "@chip@", "@bar@", "@sheet@", NULL};
   GString *css = g_string_new(tv_sheet);
   g_string_append(css, tv_parts_sheet);
+  g_string_append(css, tv_key_sheet);
   for (guint i = 0; i < G_N_ELEMENTS(colours); i++) {
     g_autofree char *value = material(colours[i].value, f->opaque && g_strv_contains(surfaces, colours[i].name));
     g_string_replace(css, colours[i].name, value, 0);
@@ -1205,8 +1221,19 @@ static gboolean settle(gpointer data) {
     GtkListBoxRow *row = selected_row(f);
     if (row != NULL)
       gtk_widget_grab_focus(GTK_WIDGET(row));
-    else if (f->sidebar == NULL && !focus_into_parts(f->island))
-      gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD); /* a centred window: its first control */
+    else if (f->sidebar == NULL) {
+      /* A centred window: the control the app chose (it may not be drawn yet, the content having just
+       * moved under the room), else its first. Never child_focus from a stale focus: that moves on to
+       * the next control (OK on a welcome would press its second button). */
+      GtkWidget *focus = focus_of(f);
+      if (focus != NULL && in_page(f, focus) && gtk_widget_get_focusable(focus) && gtk_widget_get_visible(focus)) {
+        gtk_widget_grab_focus(focus);
+      } else {
+        gtk_root_set_focus(GTK_ROOT(f->window), NULL);
+        if (!focus_into_parts(f->island))
+          gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD);
+      }
+    }
   }
   return G_SOURCE_REMOVE;
 }
