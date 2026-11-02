@@ -118,7 +118,10 @@ assert(tokens.keyboard.colours.action_top.startsWith('rgba('), 'OKLCH colours ar
 // Wiring: TV posture only, the remote's keys only while open.
 assert(/enableKeyboard \|\| autoEnabled \|\| this\._tv;/.test(keyboard), 'every field gets the keyboard on a TV');
 assert(/_tvShown\(\) \{[\s\S]*?_tvGrabKeys\(TvKeyboard\.TV_REMOTE_KEYS\)/.test(keyboard), 'keys taken as it shows');
-assert(/_tvHidden\(\) \{\s*this\._tvReleaseKeys\(\);/.test(keyboard), 'and given back as it hides');
+assert(/_tvHidden\(\) \{[^}]*?this\._tvReleaseKeys\(\);/.test(keyboard), 'and given back as it hides');
+assert(/this\._tv && this\._keyboardController\.purpose === this\._tvBuiltPurpose/.test(keyboard),
+    'a field re-sending its purpose does not rebuild the keys');
+assert(/const flap = this\._tvBoundField === field/.test(keyboard), 'the same field coming back keeps the focus');
 assert(/_resizesWindows\(\) \{[\s\S]*?return !this\._tv &&/.test(keyboard), 'TV apps are never resized');
 assert(/setCursorLocation\([^)]*\) \{[\s\S]*?if \(this\._tv\) \{\s*this\._setFocusWindow\(null\);/.test(keyboard),
     'TV apps are never slid up');
