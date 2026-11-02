@@ -274,7 +274,7 @@ export class TvQuickPanel {
         return `font-family: Figtree, sans-serif; font-size: ${this._px(size)}; font-weight: ${weight};`;
     }
 
-    _key() {
+    _keyLook() {
         return `background-gradient-direction: vertical; background-gradient-start: ${this._m('key_top')};
             background-gradient-end: ${this._m('key_bottom')}; background-color: transparent;
             border: ${this._px(1.5)} solid ${this._m('key_rim')};
@@ -407,8 +407,10 @@ export class TvQuickPanel {
             box.style = `padding: ${this._px(q.label_padding_top)} ${this._px(q.row_padding_x)}
                 ${this._px(q.label_padding_bottom)};`;
             const spec = `letter-spacing: ${this._px(q.label_size * 0.05)};`;
-            box.add_child(this._label(_('Notifications').toLocaleUpperCase(), q.label_size, q.label_weight,
-                this._m('ink_3'), spec));
+            const heading = this._label(_('Notifications').toLocaleUpperCase(), q.label_size, q.label_weight,
+                this._m('ink_3'), spec);
+            heading.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+            box.add_child(heading);
             box.add_child(new St.Widget({x_expand: true}));
             box.add_child(this._label(String(row.count), q.label_size, q.label_weight, this._m('ink_3')));
             return box;
@@ -553,7 +555,7 @@ export class TvQuickPanel {
             if (row.kind === 'chips') return this._drawChips(actor, focused);
             if (row.kind === 'sep' || row.kind === 'label') return;
             const base = actor.style.replace(/background-gradient-direction:[^]*$/, '');
-            actor.style = base + (focused ? this._key() : this._plain());
+            actor.style = base + (focused ? this._keyLook() : this._plain());
             const ink = focused ? (actor._danger ? this._m('danger_on_key') : this._m('key_ink')) : this._m('ink');
             const quiet = focused ? this._m('key_ink').replace(/[\d.]+\)$/, '0.62)') : this._m('ink_3');
             if (row.kind !== 'level') actor._title.style = actor._title.style.replace(/color:[^;]*;/, `color: ${ink};`);
@@ -589,7 +591,7 @@ export class TvQuickPanel {
                 ${this._px(q.chip_padding + 2)}; border-radius: ${this._px(q.chip_radius)};`;
             let look, ink, icon;
             if (key) {
-                look = this._key();
+                look = this._keyLook();
                 ink = this._m('key_ink');
                 icon = chip.checked ? this._m('accent_low') : ink;
             } else if (chip.checked) {

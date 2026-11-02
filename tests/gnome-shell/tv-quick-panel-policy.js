@@ -119,6 +119,11 @@ assert(M.scrollTo(10, 78, 400, 1000, 80, 300) === 0, 'back to the top');
 assert(M.mixRgba('rgba(100, 100, 100, 0.9)', 'rgba(0, 200, 255, 1)', 0.5) === 'rgba(50, 150, 178, 0.9)',
     'soft light keeps the chip alpha');
 
+// One definition per method: a later one silently replaces an earlier one in a class.
+const methods = [...panel.matchAll(/^    (_?[a-zA-Z]+)\([^)]*\) \{$/gm)].map(m => m[1]);
+const twice = methods.filter((m, i) => methods.indexOf(m) !== i);
+assert(!twice.length, `methods defined twice: ${twice.join(', ')}`);
+
 // The panel drives the desktop's objects; it creates none of its own.
 assert(/_network\?\._wirelessToggle/.test(panel) && /_bluetooth\?\.quickSettingsItems/.test(panel) &&
     /_doNotDisturb\?\.quickSettingsItems/.test(panel) && /_volumeOutput\?\.quickSettingsItems/.test(panel),
