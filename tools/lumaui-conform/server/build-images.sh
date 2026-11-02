@@ -53,6 +53,7 @@ fetch() {  # fetch <dest dir> <names...>: each package's shipped RPM from the po
   done
   # The Luma packages those need (prairie-core-apps needs luma-application-installer, ...):
   # every required name the nightly ships from the Luma pool, until nothing new turns up.
+  [ -n "${closure:-}" ] || return 0
   local more
   while :; do
     more=$(for f in "$dest"/*.rpm; do rpm -qp --nosignature --requires "$f" 2>/dev/null; done | awk '{print $1}' | sort -u |
@@ -86,7 +87,7 @@ for what in "$@"; do
         [ -f "$root/image/$f" ] || { echo "build-images: $root/image/$f is missing (install.sh --image with the ThinkPad up)" >&2; exit 3; }
         cp -p "$root/image/$f" "$ctx/"
       done
-      fetch "$ctx/rpms" gtk4 libadwaita luma-developer-platform luma-developer-platform-sdk prairie-core-apps prairie-icon-theme \
+      closure=1 fetch "$ctx/rpms" gtk4 libadwaita luma-developer-platform luma-developer-platform-sdk prairie-core-apps prairie-icon-theme \
         google-figtree-fonts google-caveat-fonts mutter mutter-common luma-shell-state gtk3 gnome-settings-daemon \
         gnome-control-center-filesystem ibus-libs libhandy gnome-calculator fwupd nautilus-extensions luma-stage-preview
       awk -F'\t' '{print $1, $1 "-" $3 "-" $4 "." $5}' "$manifest" | sort > "$ctx/ship-rpmqa.txt"
