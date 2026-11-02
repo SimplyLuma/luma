@@ -54,6 +54,10 @@ posture is never TV.
   home by minimising; the TV home shows whenever no app window does.
 - No hover-only affordances: TV is driven by a remote or a gamepad (arrows,
   OK, Back); see "Remotes and gamepads".
+- The pointer stays out of the way: it hides the moment a remote, pad or
+  keyboard key arrives and after 3 s of rest, and any motion, click or scroll
+  brings it back (the Shell, through Mutter's cursor tracker; never outside TV
+  posture).
 - A sidebar app gets the floating island with no TV code: its sidebar lifts
   off the window edge beside the page (Up/Down in the island opens each page,
   Right steps into the page and folds the island to a rail, Back returns).
@@ -220,9 +224,9 @@ more.
 | Move | Up, Down, Left, Right | arrows | D-pad, left stick |
 | OK | Return | Return, Enter, OK, Select | the confirm face button (A) |
 | Back | Escape | Escape, Back, Exit (CEC Back) | the other face button (B), Select (View/Back) |
-| Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | Start (Menu) |
+| Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | hold OK |
 | Home | none: the Shell opens the TV home | Home, CEC Root Menu | Guide, or Select+Start |
-| Quick panel | none: the Shell opens it | hold Home or CEC Root Menu | hold Guide |
+| Quick panel (the system pause menu) | none: the Shell opens it | hold Home or CEC Root Menu | Start, or hold Guide |
 
 - **Keys, not a protocol.** OK is Return, Back is Escape, Menu is the `Menu`
   keysym. Handle those and every controller works. Backspace still counts as
@@ -295,6 +299,14 @@ covers the calling process's windows and ends with `false` or when the caller
 leaves the bus; say it again if the name's owner changes) and property
 `Gamepads` (as, the names of connected pads). The service exists only in TV
 posture.
+
+A game that claimed the pads keeps Start too; a held Guide still opens the
+quick panel over it (its short Guide press stays the game's). Mutter's idle
+time does not see a pad, so the Shell counts pad use itself: while a pad is
+used (a press, a hat or a stick pushed past its press point, never a resting
+stick) it taps an accelerator only the Shell holds (`XF86Launch9`, at most
+every 5 s, never delivered to a window), so the screen does not dim, blank or
+lock under a playing hand.
 
 ## Typing
 
@@ -448,11 +460,19 @@ notification list (`lumaPresentation/tvQuickPanel.js`, rules in
 centre: every row drives the object the desktop's Quick Options already own,
 and a row whose backend is missing is not drawn.
 
-- **Opening it.** On the TV home, Right past Search reaches the weather |
-  time cluster at the bar's far right (later the user's picture); OK opens
-  the panel. From anywhere, hold Home (a remote's Home or CEC Root Menu, a
-  pad's Guide) for 500 ms; a short press still goes home (once no second
-  press has come: "Closing apps").
+- **Opening it.** A pad's Start, from any app or the TV home: the system's
+  pause menu over whatever is showing (Start again closes it). On the TV
+  home, Right past Search reaches the weather | time cluster at the bar's far
+  right (later the user's picture); OK opens the panel. In an app, the
+  shared bar's clock is the same cluster: Up off the top row reaches the bar
+  (in a desktop sidebar app, Up off the page's top row or the island's first
+  row), Right past the tabs the clock, OK the panel (`TvTopBar` and the C
+  kit's TV frame do this; an app adds nothing). Other toolkits call
+  `org.projectluma.Shell.Remote1.ShowQuickPanel()`. From anywhere, hold Home
+  (a remote's Home or CEC Root Menu, a pad's Guide) for 500 ms; a short press
+  still goes home (once no second press has come: "Closing apps").
+- **Over an app.** The panel is drawn over the app, which stays where it is;
+  closing it returns the keys to the app with its focus where it was.
 - **Where.** A full-height sheet slides out from the right screen edge
   (`tv.quick_panel.sheet_width`; its 620 column ends on the side safe line),
   over a scrim, as the phone's Quick Options pull down under its status bar:
@@ -471,7 +491,7 @@ and a row whose backend is missing is not drawn.
   All Settings. Sleep (suspend where logind allows it, else the screensaver's
   blank, as on a Raspberry Pi). Power drops Restart… and Power Off…, which ask
   in the TV dialog.
-- **Leaving.** Back (first folding a dropped row) or Left off the island's
+- **Leaving.** Back (first folding a dropped row), Start, or Left off the island's
   edge closes it; opened from the cluster, the focus returns there. Home
   closes it and goes home.
 

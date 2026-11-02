@@ -24,7 +24,7 @@ import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.j
 import {tv as TOKENS} from './tvTokens.js';
 import {remoteAction, repeatAllowed} from './tvModel.js';
 import {chipState, firstChip, firstStop, keepRow, levelPercent, mixRgba, noteAge, noteRecords, okGate, okPress,
-    okRelease, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
+    okRelease, originHeldOk, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
 import {gettext as _} from 'gettext';
 
 const SETTINGS_APP = 'org.gnome.Settings.desktop';
@@ -99,13 +99,17 @@ export class TvQuickPanel {
         }
         this.isOpen = true;
         this.origin = origin;
-        // One action per OK press; the OK that opened the panel from the bar is still down.
-        this._okGate = okGate(origin === 'bar' ? GLib.get_monotonic_time() / 1000 : null);
+        // One action per OK press; the OK that opened the panel from the bar (the TV home's or
+        // an app's) is still down.
+        this._okGate = okGate(originHeldOk(origin) ? GLib.get_monotonic_time() / 1000 : null);
         this._watch();
         this._rebuild();
         this._row = Math.max(0, firstStop(this._rows));
         this._chip = this._rows[this._row]?.kind === 'chips' ? firstChip(this._rows[this._row].chips) : 0;
         this._draw();
+        // Over an app, the TV keyboard steps out of the way (its keys too) and
+        // comes back as it was when the panel closes.
+        this._keyboardState = Main.keyboard?.tvSuspend?.() ?? null;
         this._grab = Main.pushModal(this._actor, {actionMode: Shell.ActionMode.POPUP});
         this._actor.grab_key_focus();
         // The sheet slides in from the screen edge under the cluster, which never moves.
@@ -131,6 +135,8 @@ export class TvQuickPanel {
         this._unwatch();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
+        Main.keyboard?.tvResume?.(this._keyboardState);
+        this._keyboardState = null;
         const actor = this._actor, island = this._island, scrim = this._scrim;
         this._actor = null;
         const done = () => {

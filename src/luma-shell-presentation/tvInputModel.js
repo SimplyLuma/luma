@@ -73,15 +73,16 @@ export function confirmButton(setting, identity, name) {
 }
 
 // The confirm face button is OK and the other of South/East is Back; Select
-// (Back/View) is Back, Start (Menu) is Menu, the D-pad moves and Guide (Mode)
-// goes home. North, West, the shoulders, triggers, stick clicks and the right
+// (Back/View) is Back, Start is the system's pause menu (the quick panel, from
+// any app or the TV home), the D-pad moves and Guide (Mode) goes home. A
+// remote's Menu key stays Menu (an item's menu); a pad holds OK for that. North, West, the shoulders, triggers, stick clicks and the right
 // stick are not assigned.
 export function buttonAction(code, confirm = 'south') {
     switch (code) {
     case BUTTON.SOUTH: return confirm === 'east' ? 'back' : 'ok';
     case BUTTON.EAST: return confirm === 'east' ? 'ok' : 'back';
     case BUTTON.SELECT: return 'back';
-    case BUTTON.START: return 'menu';
+    case BUTTON.START: return 'pause';
     case BUTTON.MODE: return 'home';
     case BUTTON.DPAD_UP: return 'up';
     case BUTTON.DPAD_DOWN: return 'down';
@@ -126,12 +127,49 @@ export function repeatDelay(steps, input) {
 //   window          the focused window: {presentation, claimed}, or null
 // TV apps (`X-Luma-TV-Presentation=tv`) are built for the remote and get keys
 // unless they claimed the gamepads; any other application keeps the pad raw,
-// as on a desktop. Home (Guide, or Select+Start) works everywhere except in
-// an application that claimed the gamepads.
+// as on a desktop. Home (Guide, or Select+Start) and Start (the pause menu)
+// work in every application except one that claimed the gamepads: a game
+// keeps Start, and only a held Guide (`holdsHome`) opens the quick panel there.
 export function translates(action, context) {
     const {shellFocus, keyboardVisible, window} = context;
     if (keyboardVisible || shellFocus || !window) return true;
     if (window.claimed) return false;
-    if (action === 'home') return true;
+    if (action === 'home' || action === 'pause') return true;
     return window.presentation === 'tv';
+}
+
+// A held Guide opens the quick panel everywhere, a game that claimed the
+// gamepads too (its short Guide press stays the game's).
+export function holdsHome(context) {
+    return !translates('home', context);
+}
+
+// A gamepad is user activity even when no TV key comes of it (a game or a
+// player that reads the pad itself): Mutter's idle time does not see pads
+// (libinput leaves joysticks alone), so the screen would dim, blank or lock
+// under a playing hand. tvInput.js taps ACTIVITY_KEY, an accelerator only it
+// holds (no window ever gets it), at most once per ACTIVITY_MS, and Mutter
+// counts that as input. Held buttons and a resting stick are no activity.
+export const ACTIVITY_KEY = 'XF86Launch9';
+export const ACTIVITY_MS = 5000;
+
+export function activityDue(lastAt, now) {
+    return lastAt === null || now - lastAt >= ACTIVITY_MS;
+}
+
+// The pointer on a TV: hidden the moment the remote, a pad or a keyboard is
+// used, and POINTER_IDLE_MS after it last moved; any pointer motion, click or
+// scroll shows it again (tvPointer.js, only in TV posture).
+export const POINTER_IDLE_MS = 3000;
+
+export function pointerAction(type) {
+    switch (type) {
+    case 'KEY_PRESS':
+        return 'hide';
+    case 'MOTION': case 'BUTTON_PRESS': case 'SCROLL':
+    case 'TOUCHPAD_SWIPE': case 'TOUCHPAD_PINCH': case 'TOUCHPAD_HOLD':
+        return 'show';
+    default:
+        return null;
+    }
 }

@@ -15,7 +15,11 @@ them while it does, so the shell sends no keys from a pad to its windows:
 
 The claim lasts until it is released or the process leaves the session bus,
 and is said again if the shell restarts. Home (a pad's Guide button, or
-Select+Start) then stays with the app too. The shell side is
+Select+Start) and Start (the system's pause menu) then stay with the app
+too; a held Guide still opens the shell's quick panel.
+
+`show_quick_panel()` opens the shell's quick panel over the app (OK on the
+TV bar's clock, `TvTopBar`), which stays underneath with its focus. The shell side is
 `org.projectluma.Shell.Remote1` (`ClaimGamepads(b)`, property `Gamepads`);
 see docs/developer-platform/tv-mode.md ("Remotes and gamepads").
 """
@@ -23,7 +27,7 @@ from __future__ import annotations
 
 from gi.repository import Gio, GLib
 
-__all__ = ["claim_gamepads"]
+__all__ = ["claim_gamepads", "show_quick_panel"]
 
 BUS_NAME = "org.projectluma.Shell.Remote"
 OBJECT_PATH = "/org/projectluma/Shell/Remote"
@@ -74,3 +78,22 @@ def claim_gamepads(claimed: bool = True) -> None:
     if _claim is None:
         _claim = _Claim()
     _claim.set(bool(claimed))
+
+
+def show_quick_panel() -> None:
+    """Open the shell's quick panel over this app (TV posture only; otherwise nothing)."""
+    def done(bus: Gio.DBusConnection, result: Gio.AsyncResult) -> None:
+        try:
+            bus.call_finish(result)
+        except GLib.Error:
+            pass  # no TV posture: there is no quick panel to open
+
+    def got(_source, result: Gio.AsyncResult) -> None:
+        try:
+            bus = Gio.bus_get_finish(result)
+        except GLib.Error:
+            return  # no session bus
+        bus.call(BUS_NAME, OBJECT_PATH, INTERFACE, "ShowQuickPanel", None, None,
+                 Gio.DBusCallFlags.NO_AUTO_START, -1, None, done)
+
+    Gio.bus_get(Gio.BusType.SESSION, None, got)

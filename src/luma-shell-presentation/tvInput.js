@@ -17,8 +17,8 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {tvEntry} from './tvModel.js';
-import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, padIdentity,
-    repeatDelay, stickDirection, translates} from './tvInputModel.js';
+import {ACTIVITY_KEY, AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, activityDue, buttonAction, confirmButton,
+    hatDirection, holdsHome, padIdentity, repeatDelay, stickDirection, translates} from './tvInputModel.js';
 import {homePress} from './tvQuickPanelModel.js';
 import {homeSecondPress} from './tvAppSwitcherModel.js';
 
@@ -29,6 +29,7 @@ const IFACE = `<node>
     <method name="ClaimGamepads">
       <arg type="b" direction="in" name="claimed"/>
     </method>
+    <method name="ShowQuickPanel"/>
     <property name="Gamepads" type="as" access="read"/>
   </interface>
 </node>`;
@@ -45,11 +46,18 @@ const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) 
 
 export class TvInput {
     // `home` opens the TV home; `quickPanel` (a long press of Home) the quick
-    // panel; `switcher` (Home pressed twice) the app switcher.
-    constructor({home, quickPanel = null, switcher = null}) {
+    // panel; `switcher` (Home pressed twice) the app switcher; `pause` (a pad's
+    // Start) toggles the quick panel as the system's pause menu; `showQuickPanel`
+    // opens it for an app's bar (ShowQuickPanel on D-Bus: OK on its clock).
+    constructor({home, quickPanel = null, switcher = null, pause = null, showQuickPanel = null}) {
         this._home = home;
         this._quickPanel = quickPanel;
         this._switcher = switcher;
+        this._pause = pause;
+        this._showQuickPanel = showQuickPanel;
+        this._holdOnly = new Set();     // Guide held in a game: only the long press is the Shell's
+        this._activityAction = 0;       // the accelerator that makes a pad count as input
+        this._activityAt = null;
         this._homeTap = 0;              // a short Home waiting for a second press
         this._homeTapAt = null;
         this._homeSources = new Map();  // what holds Home down -> when it went down
@@ -74,6 +82,7 @@ export class TvInput {
         this._keys = Clutter.get_default_backend().get_default_seat()
             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         this._grabRemoteKeys();
+        this._grabActivityKey();
         this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
         this._nameId = Gio.bus_own_name_on_connection(Gio.DBus.session, BUS_NAME,
@@ -90,6 +99,7 @@ export class TvInput {
         if (this._homeTap) GLib.source_remove(this._homeTap);
         this._homeTap = 0;
         this._homeSources.clear();
+        this._holdOnly.clear();
         if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
         for (const source of [...this._okSources]) this._okUp(source);
@@ -100,11 +110,12 @@ export class TvInput {
         for (const id of this._monitorSignals ?? []) this._monitor.disconnect(id);
         this._monitor = null;
         for (const id of this._acceleratorIds ?? []) global.display.disconnect(id);
-        for (const action of this._grabs.keys()) {
+        for (const action of [...this._grabs.keys(), this._activityAction].filter(Boolean)) {
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
             global.display.ungrab_accelerator(action);
         }
         this._grabs.clear();
+        this._activityAction = 0;
         for (const {watch} of this._claims.values()) Gio.bus_unwatch_name(watch);
         this._claims.clear();
         this._dbus.unexport();
@@ -124,6 +135,7 @@ export class TvInput {
 
     _act(action) {
         if (action === 'home') this._home();
+        else if (action === 'pause') this._pause?.();
         else this._tap(action);
     }
 
@@ -161,15 +173,16 @@ export class TvInput {
     // Home is held, not tapped: a short press goes home when it is let go, a
     // long one (quick_panel.home_hold_ms) opens the quick panel at once. No
     // other control has a long press of Home.
-    _homeDown(source) {
+    _homeDown(source, holdOnly = false) {
         if (this._homeSources.has(source)) return;
         this._homeSources.set(source, GLib.get_monotonic_time());
+        if (holdOnly) this._holdOnly.add(source);
         if (!this._quickPanel) {
-            this._act('home');
+            if (!holdOnly) this._act('home');
             return;
         }
         // The second press of a double press: the switcher at once; its release does nothing.
-        if (this._homeTap && homeSecondPress(this._homeTapAt, now(), TOKENS.app_switcher.double_ms)) {
+        if (!holdOnly && this._homeTap && homeSecondPress(this._homeTapAt, now(), TOKENS.app_switcher.double_ms)) {
             GLib.source_remove(this._homeTap);
             this._homeTap = 0;
             this._homeTapAt = null;
@@ -196,9 +209,12 @@ export class TvInput {
         // Reported only on release (no press seen): a short press.
         const down = this._homeSources.has(source) ? this._homeSources.get(source) : GLib.get_monotonic_time();
         this._homeSources.delete(source);
+        const holdOnly = this._holdOnly.delete(source);
         if (down < 0 || this._homeSources.size) return;
         if (this._homeTimer) GLib.source_remove(this._homeTimer);
         this._homeTimer = 0;
+        // A game's short Guide press was the game's.
+        if (holdOnly) return;
         const held = (GLib.get_monotonic_time() - down) / 1000;
         if (homePress(held, TOKENS.quick_panel.home_hold_ms) !== 'home') this._quickPanel();
         else if (!this._switcher) this._act('home');
@@ -213,6 +229,30 @@ export class TvInput {
                 return GLib.SOURCE_REMOVE;
             });
         }
+    }
+
+    // ── a pad is user activity ────────────────────────────────────────────
+
+    // Mutter's idle time never sees a pad: tap the activity key (grabbed here,
+    // so no window gets it) at most once per ACTIVITY_MS while a pad is used.
+    _grabActivityKey() {
+        const action = global.display.grab_accelerator(ACTIVITY_KEY, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
+        if (action === Meta.KeyBindingAction.NONE) {
+            console.warn(`TV input: ${ACTIVITY_KEY} is taken; a pad alone will not keep the screen awake`);
+            return;
+        }
+        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
+        this._activityAction = action;
+    }
+
+    _activity() {
+        if (!this._activityAction || !this._keys) return;
+        const t = now();
+        if (!activityDue(this._activityAt, t)) return;
+        this._activityAt = t;
+        const time = GLib.get_monotonic_time();
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.PRESSED);
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.RELEASED);
     }
 
     // ── remotes: keys that are not TV keys become TV keys ─────────────────
@@ -300,7 +340,10 @@ export class TvInput {
             if (source.startsWith(`${pad.id}:`)) this._okUp(source);
         }
         for (const source of [...this._homeSources.keys()]) {
-            if (source.startsWith(`${pad.id}:`)) this._homeSources.delete(source);
+            if (source.startsWith(`${pad.id}:`)) {
+                this._homeSources.delete(source);
+                this._holdOnly.delete(source);
+            }
         }
         this._pads.delete(device);
         if (!this._destroyed) this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
@@ -321,6 +364,7 @@ export class TvInput {
             return;
         }
         if (pressed && pad.buttons.has(code)) return;
+        if (pressed) this._activity();
         if (!pressed) {
             if (!pad.buttons.has(code) || pending) return;
             this._released.set(control, GLib.timeout_add(GLib.PRIORITY_DEFAULT, BOUNCE_MS, () => {
@@ -354,7 +398,11 @@ export class TvInput {
             // Guide: held like a remote's Home (a long press opens the quick panel).
             if (!pressed) {
                 if (this._homeSources.has(source)) this._homeUp(source);
-            } else if (translates(action, this._context())) this._homeDown(source);
+            } else {
+                const context = this._context();
+                if (translates(action, context)) this._homeDown(source);
+                else if (holdsHome(context)) this._homeDown(source, true);
+            }
         } else if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
         else if (action === 'ok' && !pressed) this._okUp(source);
         else if (action === 'ok') {
@@ -364,8 +412,10 @@ export class TvInput {
 
     _hat(pad, event) {
         const [ok, axis, value] = event.get_hat();
-        if (ok && (axis === AXIS.HAT0X || axis === AXIS.HAT0Y))
-            this._hold(`${pad.id}:hat:${axis}`, hatDirection(axis, value));
+        if (!ok || (axis !== AXIS.HAT0X && axis !== AXIS.HAT0Y)) return;
+        const direction = hatDirection(axis, value);
+        if (direction) this._activity();
+        this._hold(`${pad.id}:hat:${axis}`, direction);
     }
 
     _axis(pad, event) {
@@ -373,7 +423,10 @@ export class TvInput {
         if (!ok || (axis !== AXIS.X && axis !== AXIS.Y)) return;
         if (axis === AXIS.X) pad.x = value;
         else pad.y = value;
+        const held = pad.stick;
         pad.stick = stickDirection(pad.x, pad.y, pad.stick, this._input);
+        // A stick pushed past its press point is activity; drift around the centre is not.
+        if (pad.stick && pad.stick !== held) this._activity();
         this._hold(`${pad.id}:stick`, pad.stick);
     }
 
@@ -386,7 +439,7 @@ export class TvInput {
         for (const pad of this._pads.values()) pad.confirm = this._confirmFor(pad);
     }
 
-    // Back, Menu and Home: once per press.
+    // Back, Start (the pause menu) and Home: once per press.
     _press(action) {
         if (translates(action, this._context())) this._act(action);
     }
@@ -443,6 +496,12 @@ export class TvInput {
     }
 
     // ── D-Bus: org.projectluma.Shell.Remote1 ──────────────────────────────
+
+    // OK on an app's bar clock (LumaUI's TV bar, C and Python alike): the
+    // quick panel over the app, which stays underneath with its focus.
+    ShowQuickPanel() {
+        this._showQuickPanel?.();
+    }
 
     get Gamepads() {
         return [...this._pads.keys()].map(device => device.get_name() ?? '');
