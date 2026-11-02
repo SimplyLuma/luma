@@ -1079,6 +1079,7 @@ class DepotTV:
             text = window._no_updates_text()
             empty = self._empty("Every app is up to date", "" if text.startswith("Every app") else text, icon="check")
             empty.set_halign(Gtk.Align.FILL)
+            empty.add_css_class("depot-tv-group")  # a group's distance from the one above
             column.append(page.add_section(empty))
         from luma_installer import depot_app_history
         from .updates_page import _when
