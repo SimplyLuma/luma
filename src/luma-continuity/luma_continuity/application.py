@@ -33,9 +33,10 @@ except ImportError:  # an older kit: no TV posture, and copy reads "this compute
     device_noun=None
     def tv_posture():return False
 try:
-    from luma_appkit import open_link,set_part,set_ways,set_link,set_code_field
+    from luma_appkit import open_link,set_part,set_ways,set_link,set_code_field,set_busy
 except ImportError:  # an older kit: links open in the browser, and parts are not named
     open_link=None
+    def set_busy(_button,_busy,_label=None):pass
     def set_part(_widget,_part):pass
     def set_ways(_box,*_ways):pass
     def set_link(_button,_uri):pass
@@ -795,11 +796,11 @@ class ConnectWindow(PhonesMixin,AppWindow):
             value=''.join(code.entry.get_text().split())
             if handle.closed or busy or len(value)!=8:return
             busy=True;update();code.set_sensitive(False);name.set_sensitive(False);back.set_sensitive(False)
-            status.set_text('Signing in…');status.set_visible(True)
+            status.set_text('Signing in…');status.set_visible(True);set_busy(connect,True,'Signing In…')
             def done(problem):
                 nonlocal busy
                 if handle.closed:return
-                busy=False
+                busy=False;set_busy(connect,False)
                 if problem:
                     code.set_sensitive(True);name.set_sensitive(True);back.set_sensitive(True);update()
                     status.set_text(problem);code.entry.grab_focus();return
