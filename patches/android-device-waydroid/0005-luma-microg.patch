@@ -1,8 +1,8 @@
 diff --git a/device.mk b/device.mk
-index 7d225c4..4297e8d 100644
+index 7d225c4..d8f703d 100644
 --- a/device.mk
 +++ b/device.mk
-@@ -62,6 +62,12 @@ PRODUCT_PACKAGES += \
+@@ -62,6 +62,15 @@ PRODUCT_PACKAGES += \
  PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/configs/external_camera_config.xml:$(TARGET_COPY_OUT_VENDOR)/etc/external_camera_config.xml
  
@@ -11,16 +11,19 @@ index 7d225c4..4297e8d 100644
 +    LumaMicrogServices \
 +    LumaMicrogServicesFramework \
 +    LumaMicrogCompanion
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/microg/luma-microg-defaults.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/luma-microg-defaults \
++    $(LOCAL_PATH)/microg/init.luma.microg-defaults.rc:$(TARGET_COPY_OUT_SYSTEM)/etc/init/luma-microg-defaults.rc
 +
  # Host presentation changes applied as Android's forced display density
  PRODUCT_COPY_FILES += \
      $(LOCAL_PATH)/configs/luma-forced-density.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/luma-forced-density \
 diff --git a/microg/Android.bp b/microg/Android.bp
 new file mode 100644
-index 0000000..b60cbd2
+index 0000000..778d588
 --- /dev/null
 +++ b/microg/Android.bp
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,42 @@
 +// microG: Google service APIs (account sign-in, push) without Google's
 +// proprietary apps. Official signed releases from microG's own repository,
 +// fetched and verified at build time (config/android/microg.env in Luma) and
@@ -55,9 +58,17 @@ index 0000000..b60cbd2
 +    src: "sysconfig-luma-microg.xml",
 +    sub_dir: "sysconfig",
 +}
++
++prebuilt_etc {
++    name: "luma-microg-settings.xml",
++    src: "settings.xml",
++    filename: "settings.xml",
++    sub_dir: "com.google.android.gms",
++}
++
 diff --git a/microg/Android.mk b/microg/Android.mk
 new file mode 100644
-index 0000000..b99a95f
+index 0000000..e5a98d7
 --- /dev/null
 +++ b/microg/Android.mk
 @@ -0,0 +1,27 @@
@@ -85,7 +96,7 @@ index 0000000..b99a95f
 +include $(BUILD_PREBUILT)
 +endef
 +
-+$(eval $(call luma-microg-app,LumaMicrogServices,GmsCore.apk,privapp-permissions-luma-microg.xml default-permissions-luma-microg.xml sysconfig-luma-microg.xml))
++$(eval $(call luma-microg-app,LumaMicrogServices,GmsCore.apk,privapp-permissions-luma-microg.xml default-permissions-luma-microg.xml sysconfig-luma-microg.xml luma-microg-settings.xml))
 +$(eval $(call luma-microg-app,LumaMicrogServicesFramework,GsfProxy.apk,))
 +$(eval $(call luma-microg-app,LumaMicrogCompanion,FakeStore.apk,))
 diff --git a/microg/LICENSE b/microg/LICENSE
@@ -298,22 +309,72 @@ index 0000000..d645695
 +   limitations under the License.
 diff --git a/microg/default-permissions-luma-microg.xml b/microg/default-permissions-luma-microg.xml
 new file mode 100644
-index 0000000..66ed60c
+index 0000000..ba65f6f
 --- /dev/null
 +++ b/microg/default-permissions-luma-microg.xml
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,26 @@
 +<?xml version="1.0" encoding="utf-8"?>
-+<!-- Runtime permissions microG needs for accounts, push and its self-check. -->
++<!-- Every runtime permission microG requests, granted on a new device. -->
 +<exceptions>
 +    <exception package="com.google.android.gms">
++        <permission name="android.permission.ACCESS_BACKGROUND_LOCATION" fixed="false"/>
 +        <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false"/>
 +        <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false"/>
-+        <permission name="android.permission.ACCESS_BACKGROUND_LOCATION" fixed="false"/>
++        <permission name="android.permission.BLUETOOTH_ADVERTISE" fixed="false"/>
++        <permission name="android.permission.BLUETOOTH_CONNECT" fixed="false"/>
++        <permission name="android.permission.BLUETOOTH_SCAN" fixed="false"/>
++        <permission name="android.permission.BODY_SENSORS" fixed="false"/>
++        <permission name="android.permission.CAMERA" fixed="false"/>
 +        <permission name="android.permission.GET_ACCOUNTS" fixed="false"/>
 +        <permission name="android.permission.POST_NOTIFICATIONS" fixed="false"/>
++        <permission name="android.permission.READ_CONTACTS" fixed="false"/>
++        <permission name="android.permission.READ_EXTERNAL_STORAGE" fixed="false"/>
 +        <permission name="android.permission.READ_PHONE_STATE" fixed="false"/>
++        <permission name="android.permission.RECEIVE_SMS" fixed="false"/>
++        <permission name="android.permission.WRITE_EXTERNAL_STORAGE" fixed="false"/>
++    </exception>
++    <exception package="com.android.vending">
++        <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false"/>
++        <permission name="android.permission.GET_ACCOUNTS" fixed="false"/>
++        <permission name="android.permission.POST_NOTIFICATIONS" fixed="false"/>
 +    </exception>
 +</exceptions>
+diff --git a/microg/init.luma.microg-defaults.rc b/microg/init.luma.microg-defaults.rc
+new file mode 100644
+index 0000000..062f283
+--- /dev/null
++++ b/microg/init.luma.microg-defaults.rc
+@@ -0,0 +1,3 @@
++# microG's defaults that need a running system (luma-microg-defaults).
++on property:sys.boot_completed=1
++    exec_background - system system -- /system/bin/luma-microg-defaults
+diff --git a/microg/luma-microg-defaults.sh b/microg/luma-microg-defaults.sh
+new file mode 100755
+index 0000000..1cd5a81
+--- /dev/null
++++ b/microg/luma-microg-defaults.sh
+@@ -0,0 +1,21 @@
++#!/system/bin/sh
++# One-time microG defaults with no XML route: let microG draw its sign-in and
++# verification windows over apps, and work across profiles. A device whose
++# /data predates microG skipped default-permissions, so it also gets the
++# runtime permissions here.
++[ "$(getprop sys.boot_completed)" = 1 ] || exit 0
++[ "$(getprop persist.luma.microg_defaults)" = 1 ] && exit 0
++pm path com.google.android.gms >/dev/null 2>&1 || exit 0
++for op in SYSTEM_ALERT_WINDOW INTERACT_ACROSS_PROFILES; do
++    appops get com.google.android.gms "$op" | grep -qE 'allow|deny|ignore' ||
++        appops set com.google.android.gms "$op" allow
++done
++for permission in ACCESS_COARSE_LOCATION ACCESS_FINE_LOCATION BLUETOOTH_ADVERTISE \
++        BLUETOOTH_CONNECT BLUETOOTH_SCAN BODY_SENSORS CAMERA GET_ACCOUNTS \
++        POST_NOTIFICATIONS READ_CONTACTS READ_PHONE_STATE; do
++    pm grant com.google.android.gms "android.permission.$permission" 2>/dev/null
++done
++for permission in ACCESS_COARSE_LOCATION GET_ACCOUNTS POST_NOTIFICATIONS; do
++    pm grant com.android.vending "android.permission.$permission" 2>/dev/null
++done
++setprop persist.luma.microg_defaults 1
 diff --git a/microg/privapp-permissions-luma-microg.xml b/microg/privapp-permissions-luma-microg.xml
 new file mode 100644
 index 0000000..ffdbb47
@@ -343,6 +404,26 @@ index 0000000..ffdbb47
 +        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
 +    </privapp-permissions>
 +</permissions>
+diff --git a/microg/settings.xml b/microg/settings.xml
+new file mode 100644
+index 0000000..a0b8fac
+--- /dev/null
++++ b/microg/settings.xml
+@@ -0,0 +1,14 @@
++<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
++<!-- microG's defaults on Luma: services that make Android apps work are on.
++     Users can still change each in microG's settings. -->
++<map>
++    <boolean name="checkin_enable_service" value="true" />
++    <boolean name="gcm_enable_mcs_service" value="true" />
++    <boolean name="safetynet_enabled" value="true" />
++    <boolean name="droidguard_enabled" value="true" />
++    <boolean name="vending_licensing" value="true" />
++    <boolean name="vending_billing" value="true" />
++    <boolean name="vending_asset_delivery" value="true" />
++    <boolean name="vending_device_sync" value="true" />
++    <boolean name="vending_split_install" value="true" />
++</map>
 diff --git a/microg/sysconfig-luma-microg.xml b/microg/sysconfig-luma-microg.xml
 new file mode 100644
 index 0000000..7ff0587

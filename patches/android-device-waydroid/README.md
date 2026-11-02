@@ -50,5 +50,15 @@ official signed releases, pinned with URL, version, size and SHA-256 in
 they are not committed. LineageOS' framework already restricts signature
 spoofing to these two package names signed with microG's certificate
 (`9bd06727…d14165`), presenting only Google's signature. The patch adds the
-privileged-permission allowlist the build enforces, default runtime grants,
-a power-save exemption for push delivery, and microG's license notice.
+privileged-permission allowlist the build enforces, a power-save exemption for
+push delivery, and microG's license notice. The APKs are installed byte for
+byte (Make prebuilts with `LOCAL_REPLACE_PREBUILT_APK_INSTALLED`): Soong's app
+import uncompresses privileged apps and strips their v2 signature.
+
+microG works without setup: `/system/etc/com.google.android.gms/settings.xml`
+turns on device registration, cloud messaging, device attestation (which also
+gates Play Integrity) and the companion's licensing, billing, asset delivery
+and split installs; every runtime permission microG requests is a default
+grant; `luma-microg-defaults` runs once to allow its overlay and
+cross-profile app-ops, and grants the runtime permissions on a device whose
+`/data` predates microG. Users can change each in microG's settings.
