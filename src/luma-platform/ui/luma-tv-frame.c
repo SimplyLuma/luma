@@ -480,6 +480,30 @@ static const char *const tv_parts_sheet =
 ".lumaui-tv-frame .luma-empty-state .luma-empty-actions { margin-top: 32tv; }\n"
 /* a modal card over the page (luma_appkit LayerHost): a TV sheet */
 "window.lumaui-tv .lumaui-scrim { background-color: rgba(3, 4, 8, 0.78); background-image: none; }\n"
+/* a libadwaita dialog with pages (pairing): a TV sheet at TV size, its rows as the page's */
+"window.lumaui-tv dialog.floating sheet { min-width: 1040tv; min-height: 780tv; border-radius: 36tv; border: none;\n"
+"  background-color: @sheet@; background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv dialog.floating dimming { background-color: rgba(3, 4, 8, 0.78); }\n"
+"window.lumaui-tv dialog.floating sheet headerbar, window.lumaui-tv dialog.floating sheet toolbarview,\n"
+"window.lumaui-tv dialog.floating sheet preferencespage, window.lumaui-tv dialog.floating sheet scrolledwindow,\n"
+"window.lumaui-tv dialog.floating sheet viewport, window.lumaui-tv dialog.floating sheet navigation-view-page {\n"
+"  background: none; box-shadow: none; color: @ink@; }\n"
+"window.lumaui-tv dialog.floating sheet headerbar { min-height: 96tv; padding: 0 24tv; }\n"
+"window.lumaui-tv dialog.floating sheet revealer.top-bar, window.lumaui-tv dialog.floating sheet revealer.top-bar windowhandle,\n"
+"window.lumaui-tv dialog.floating sheet toolbarview > revealer > windowhandle { background: none; background-color: transparent; box-shadow: none; }\n"
+"window.lumaui-tv dialog.floating sheet headerbar label.title { font-size: 30tv; font-weight: 700; color: @ink@; }\n"
+"window.lumaui-tv dialog.floating sheet list.boxed-list { background-color: @bar@; border-radius: 30tv; border: none; padding: 8tv;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@; }\n"
+"window.lumaui-tv dialog.floating sheet row { min-height: 68tv; padding: 4tv 18tv; border-radius: 22tv; background: none; color: @ink@; border: none; }\n"
+"window.lumaui-tv dialog.floating sheet row label { font-size: 24tv; font-weight: 600; color: inherit; }\n"
+"window.lumaui-tv dialog.floating sheet row:focus-visible, window.lumaui-tv dialog.floating sheet row:focus-within {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@; outline: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@; }\n"
+"window.lumaui-tv dialog.floating sheet checkbutton check { min-width: 30tv; min-height: 30tv; border-radius: 9tv; }\n"
+"window.lumaui-tv dialog.floating sheet preferencesgroup label.heading {\n"
+"  font-size: 20tv; font-weight: 650; letter-spacing: 1tv; text-transform: uppercase; color: @ink_3@; }\n"
+"window.lumaui-tv dialog.floating sheet preferencesgroup label.description { font-size: 24tv; color: @ink_2@; }\n"
 "window.lumaui-tv .lumaui-modal { min-width: 980tv; padding: 40tv; border-radius: 36tv; border: none;\n"
 "  background-color: @sheet@; background-image: none; color: @ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
@@ -1341,7 +1365,7 @@ static GtkWidget *hold_modal(TvFrame *f) {
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
   if (modal == NULL)
     return NULL;
-  if (gtk_widget_has_css_class(modal, "lumaui-modal"))
+  if (gtk_widget_has_css_class(modal, "lumaui-modal") || (ADW_IS_DIALOG(modal) && !ADW_IS_ALERT_DIALOG(modal)))
     release_modal(f, modal);
   GtkWidget *focus = focus_of(f);
   if (focus == NULL || (focus != modal && !gtk_widget_is_ancestor(focus, modal))) {
@@ -1666,7 +1690,7 @@ static void leave(TvFrame *f) {
 
   restore_page(f->island);
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
-  if (modal != NULL && gtk_widget_has_css_class(modal, "lumaui-modal"))
+  if (modal != NULL && (gtk_widget_has_css_class(modal, "lumaui-modal") || ADW_IS_DIALOG(modal)))
     restore_page(modal);
   if (f->sidebar != NULL) {
     luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", FALSE);
