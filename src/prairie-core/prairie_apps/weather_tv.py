@@ -273,13 +273,13 @@ class TvSky(Gtk.Widget):
         key = ("light", w, h, self.stage.unit, sun_opacity,
                tuple(round(v, 4) for c in colours for v in (c.red, c.green, c.blue, c.alpha)))
         texture = self._raster.get(self, key, w, h, lambda s: self._paint_light(s, w, h, top, floor, sun_opacity),
-                                   scale=.25)
+                                   scale=.125)
         if opacity < 1:
             snapshot.push_opacity(opacity)
         if texture is None:
             self._paint_light(snapshot, w, h, top, floor, sun_opacity)
         else:
-            snapshot.append_scaled_texture(texture, Gsk.ScalingFilter.LINEAR, Graphene.Rect().init(0, 0, w, h))
+            snapshot.append_texture(texture, Graphene.Rect().init(0, 0, w, h))
         if opacity < 1:
             snapshot.pop()
 
@@ -349,7 +349,7 @@ class TvSky(Gtk.Widget):
                         snapshot.append_radial_gradient(rect, Graphene.Point().init(x + cw / 2, y + ch / 2),
                                                         cw / 2, ch / 2, 0, 1, _stops(((0, puff), (.55, puff), (1, gone))))
                     else:
-                        snapshot.append_scaled_texture(texture, Gsk.ScalingFilter.LINEAR, rect)
+                        snapshot.append_texture(texture, rect)
                     if opacity < 1:
                         snapshot.pop()
         if layers["rain"] > 0.01:
@@ -625,14 +625,8 @@ class _Card(TvLift):
     """
 
     RADIUS = 24
-
-    def __init__(self, child: Gtk.Widget, *, scale: float = 1.0) -> None:
-        super().__init__(child, scale=scale)
-        self._raster = TvRaster(size=2)
-
-    def do_unroot(self) -> None:
-        self._raster.clear()
-        Gtk.Widget.do_unroot(self)
+    #: Shared by every card: the tiles are rebuilt on each hour, the drops stay.
+    DROPS = TvRaster(size=4)
 
     def _drop(self, snapshot, child) -> None:
         if not child.has_css_class("tv-bar"):
@@ -649,11 +643,11 @@ class _Card(TvLift):
         def paint(s) -> None:
             s.translate(Graphene.Point().init(-bounds.get_x(), -bounds.get_y()))
             s.append_node(node)
-        texture = self._raster.get(self, (w, h, u, colour), bounds.get_width(), bounds.get_height(), paint)
+        texture = self.DROPS.get(self, (w, h, u, self.RADIUS, colour), bounds.get_width(), bounds.get_height(), paint)
         if texture is None:
             snapshot.append_node(node)
         else:
-            snapshot.append_scaled_texture(texture, Gsk.ScalingFilter.LINEAR, bounds)
+            snapshot.append_texture(texture, bounds)
 
     def do_snapshot(self, snapshot) -> None:
         child = self.child

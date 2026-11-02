@@ -422,9 +422,12 @@ class TvRaster:
         if tex is None:
             paint(snapshot, w, h)       # not realized yet: draw directly
         else:
-            snapshot.append_scaled_texture(tex, Gsk.ScalingFilter.LINEAR, rect)
+            snapshot.append_texture(tex, rect)
 
-    Keep `key` to the inputs of the drawing. Holds the `size` most recent
+    Draw it with `append_texture` (linear when scaled up), not
+    `append_scaled_texture`: GSK takes an opacity over a texture-scale node
+    through an offscreen (with Vulkan a new full-size image every frame),
+    over a texture node it does not. Keep `key` to the inputs of the drawing. Holds the `size` most recent
     textures; `clear()` them when the widget leaves its window.
     """
 
