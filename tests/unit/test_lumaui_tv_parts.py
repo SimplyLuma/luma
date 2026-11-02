@@ -242,6 +242,50 @@ class Widgets(unittest.TestCase):
         self.assertIs(focus.focused, item)
         window.destroy()
 
+    def test_a_held_ok_with_repeats_opens_the_menu_and_picks_nothing(self):
+        from luma_appkit.commands import Command, CommandGroup, CommandRegistry
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        window = Gtk.Window(child=stage, default_width=960, default_height=540)
+        item = Gtk.Box(width_request=200, height_request=60)
+        stage.place(item, left=96, top=100)
+        ran = []
+        registry = CommandRegistry((CommandGroup("", (
+            Command("b.first", "First", lambda: ran.append("first")),
+            Command("b.second", "Second", lambda: ran.append("second")),
+        )),))
+        focus = TvFocus(stage)
+        focus.add(item, on_activate=lambda: ran.append("ok"), menu=registry)
+        window.present()
+        context = GLib.MainContext.default()
+
+        def spin(ms):
+            end = GLib.get_monotonic_time() + ms * 1000
+            while GLib.get_monotonic_time() < end:
+                context.iteration(False)
+        spin(300)
+        focus.focus(item)
+        none = Gdk.ModifierType(0)
+        focus._key_pressed(None, Gdk.KEY_Return, 0, none)
+        start = GLib.get_monotonic_time()
+        while GLib.get_monotonic_time() - start < 650_000:     # held 650 ms, the client repeating from 500
+            spin(33)
+            if GLib.get_monotonic_time() - start > 500_000:
+                focus._key_pressed(None, Gdk.KEY_Return, 0, none)
+        focus._key_released(None, Gdk.KEY_Return, 0, none)
+        self.assertTrue(focus.in_scope)
+        self.assertEqual(ran, [])                                # neither the repeats nor the release pick
+        rows = focus._scopes[-1].items
+        focus._key_pressed(None, Gdk.KEY_Down, 0, none)          # by order, even before layout
+        focus._key_released(None, Gdk.KEY_Down, 0, none)
+        self.assertIs(focus.focused, rows[1])
+        focus._key_pressed(None, Gdk.KEY_Return, 0, none)        # a new press picks
+        focus._key_released(None, Gdk.KEY_Return, 0, none)
+        self.assertEqual(ran, ["second"])
+        self.assertIs(focus.focused, item)
+        window.destroy()
+
     def test_idle_waits_then_any_key_wakes_and_is_swallowed(self):
         from luma_appkit.tv_focus import TvFocus
         from luma_appkit.tv_idle import TvIdle

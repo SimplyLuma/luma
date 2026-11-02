@@ -231,8 +231,12 @@ focus.add(tab, on_activate=open_place, menu=lambda: commands_for(place))   # TV
 
 - **Hold OK** (`tv.focus.hold_ms`, 500 ms) or press **Menu** to open it. On an
   item with a menu a short press is still OK: it runs `on_activate` when OK is
-  released; auto-repeat while OK is held changes nothing, and the release
-  that follows a hold is swallowed. Items without a menu act on the press.
+  released. Everything that belongs to the press that opened a menu (its
+  repeats, which a Wayland client generates while a key is held, and its
+  release) is swallowed: the menu's rows act only on a new press. Items
+  without a menu act on the press. When an item's menu has nothing to offer,
+  holding OK or Menu shows a TV toast (`menu_empty=`, or "No options here").
+- In the menu Up and Down walk the rows in order; Left and Right stay.
 - `TvMenu` shows the model's visible commands, one level (commands with
   children are left out), as a floating panel in the bar material anchored
   under the item (above it when there is no room): icon, label, a tick for a

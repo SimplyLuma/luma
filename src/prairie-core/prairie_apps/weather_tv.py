@@ -657,7 +657,8 @@ class WeatherTV(TvStage):
             # Hold OK or Menu: the place's own menu, the desktop row's context menu (one model).
             self.focus.add(tab, group="places", on_focus=lambda i=index: self._go_place(i),
                            on_activate=lambda i=index: self._place_ok(i),
-                           menu=lambda p=place: self.window.place_commands(p))
+                           menu=lambda p=place: self.window.place_commands(p),
+                           menu_empty="No options for your location" if index == 0 else "")
             tabs.append(tab)
         add = TvTab("Add a place" if len(self.window.places) <= 1 else "", icon="plus", accessible="Add a place")
         self.focus.add(add, group="places", on_activate=self._open_add)

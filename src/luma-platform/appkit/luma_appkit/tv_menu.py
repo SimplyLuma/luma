@@ -112,10 +112,21 @@ class TvMenu(Gtk.Box):
                 stage.place(menu, left=x, top=max(TV["layout"]["safe_y"], bounds.get_y() / unit - TV["menu"]["gap"] - needed))
             return False
         GLib.idle_add(place_above_if_needed)
+        live = [r for r in menu.rows if r.get_sensitive()]
         for row, command in zip(menu.rows, menu.commands):
-            focus.add(row, group="tv-menu", on_activate=lambda c=command: menu._run(c))
-        focus.push_scope([r for r in menu.rows if r.get_sensitive()], on_back=menu._back)
+            focus.add(row, group="tv-menu", on_activate=lambda c=command: menu._run(c),
+                      on_key=lambda direction, r=row: menu._step(r, direction, live))
+        focus.push_scope(live, on_back=menu._back)
         return menu
+
+    def _step(self, row: Gtk.Widget, direction: str, live: list) -> bool:
+        """Up and Down walk the rows in order (a list, not a map); Left and Right stay."""
+        from .tv_focus import DOWN, UP
+        if direction in (UP, DOWN) and row in live:
+            index = live.index(row) + (1 if direction == DOWN else -1)
+            if 0 <= index < len(live):
+                self._focus.focus(live[index])
+        return True
 
     def _back(self) -> bool:
         self._dismiss()
