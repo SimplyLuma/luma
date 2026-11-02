@@ -488,7 +488,8 @@ export class TvDialogs {
         if (!record.standard || !label) {
             const buttons = [];
             walk(surface, actor => {
-                if (textButton(actor) && actor.visible) buttons.push(actor);
+                // Buttons that name their action (not a Details toggle).
+                if (actor instanceof St.Button && actor.label && actor.visible) buttons.push(actor);
                 return !(actor instanceof St.Button);
             });
             label = buttons.find(button => button.has_style_pseudo_class('default'))?.label ?? buttons.at(-1)?.label ?? '';

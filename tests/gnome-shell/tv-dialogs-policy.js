@@ -91,6 +91,8 @@ assert(/record\.containers\.add\(actor\);\s*actor\.connectObject\('child-added'/
 assert(/_scaleFixed\(record, actor\) \{[\s\S]*?node\.get_width\(\)[\s\S]*?value \* 1\.5/.test(dialogs) &&
     /if \(this\._scaleFixed\(record, actor\)\)/.test(dialogs), 'glyphs and discs a stylesheet sizes grow as icons do');
 assert(/function textButton\(actor\) \{[\s\S]*?child instanceof St\.Label/.test(dialogs), 'a button with a word in it is an action');
+assert(/_labelFields\(record\) \{[\s\S]*?actor instanceof St\.Button && actor\.label && actor\.visible/.test(dialogs),
+    "the keyboard's action key names a button's own label");
 assert(/effect instanceof Shell\.BlurEffect[\s\S]*?effect\.enabled = false/.test(dialogs), 'no live blur');
 assert(/setFieldAction\?\.\(entry\.clutter_text/.test(dialogs), "the keyboard's action key is the dialog's");
 assert(/for \(const effect of record\.blurs\) effect\.enabled = true/.test(dialogs) &&
