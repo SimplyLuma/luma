@@ -32,3 +32,15 @@ CONFIG_DEBUG_INFO_NONE Fedora's BTF debug info (BPF LSM, systemd, bpftrace).
 CONFIG_GENKSYMS Follows MODVERSIONS, off as in Fedora (rpi.config).
 CONFIG_ASM_MODVERSIONS Same.
 CONFIG_BASIC_MODVERSIONS Same.
+
+# Test suites (rpi.config turns KUnit off; Fedora ships them only in kernel-modules-internal)
+CONFIG_KUNIT* KUnit is off.
+CONFIG_*_KUNIT_TEST* KUnit is off.
+CONFIG_*_KUNIT* KUnit is off.
+CONFIG_*_TEST Test modules that depend on KUnit.
+CONFIG_*_TEST_HOOKS Same.
+CONFIG_DRM_EXPORT_FOR_TESTS Symbol exports for the DRM KUnit suites.
+CONFIG_REGMAP_RAM Only the regmap KUnit suite uses it.
+CONFIG_SND_HDA_CIRRUS_SCODEC Selected here only by its KUnit suite; the Cirrus HDA amp drivers still select it where built.
+CONFIG_CRYPTO_LIB_BENCHMARK_VISIBLE Crypto library benchmarks run under KUnit.
+CONFIG_TEST_* Test modules that depend on KUnit.

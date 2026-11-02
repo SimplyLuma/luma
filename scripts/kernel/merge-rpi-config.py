@@ -12,6 +12,7 @@ a reason, or the check fails. This keeps "Fedora userspace works" and "every
 Raspberry Pi board feature is there" true across kernel bumps.
 """
 import argparse
+import fnmatch
 import pathlib
 import re
 import sys
@@ -77,8 +78,10 @@ def check(args):
             got = final.get(sym, 'n')
             if got in ('y', 'm'):
                 continue
-            unused.discard(sym)
-            if sym not in allowed:
+            hit = sym if sym in allowed else next(
+                (pat for pat in allowed if fnmatch.fnmatchcase(sym, pat)), None)
+            unused.discard(hit)
+            if hit is None:
                 lost.append(f'{origin}: {sym}={val} -> {got}')
     bad_luma = [f'luma: {s}={v} -> {final.get(s, "n")}' for s, v in luma.items()
                 if final.get(s, 'n') != v]
