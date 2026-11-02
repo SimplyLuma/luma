@@ -22,7 +22,6 @@
  "gtk": {
   "module": "settings",
   "fixtures": [
-   "tests/fixtures/settings-v70.json",
    "assets/wallpapers/prism.png",
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-documents.svg",
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-browser.svg",
@@ -50,10 +49,11 @@
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-ari.svg",
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-designer.svg",
    "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
-   "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg"
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg",
+   "tests/fixtures/settings-tv.json"
   ],
   "env": {
-   "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-v70.json",
+   "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-tv.json",
    "GSETTINGS_BACKEND": "memory",
    "XDG_CURRENT_DESKTOP": "GNOME",
    "LUMA_POSTURE": "tv"
@@ -236,6 +236,46 @@
      "env": {
       "LUMA_SETTINGS_PAGE": "wifi"
      }
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    }
+   ]
+  },
+  {
+   "name": "sound",
+   "about": "Down three times: Sound (outputs, volume)",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Down",
+     "wait": 400
     },
     {
      "key": "Down",

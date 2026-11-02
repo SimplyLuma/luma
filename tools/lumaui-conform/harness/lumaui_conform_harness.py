@@ -65,6 +65,9 @@ def install() -> None:
     if not OUT:
         return
     os.makedirs(OUT, exist_ok=True)
+    # A crash in the app (C or Python) leaves its stack in the run's log.
+    import faulthandler
+    faulthandler.enable(all_threads=True)
     try:
         _pin_settings()
     except Exception:  # noqa: BLE001 - a missing schema is not fatal
