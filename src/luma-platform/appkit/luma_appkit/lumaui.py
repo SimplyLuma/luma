@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import warnings
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Collection
 
 import gi
 
@@ -46,7 +46,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 # 7: remotes and gamepads (claim_gamepads).
 # 8: TvIdle follows the person's tv-idle-delay; the C kit's TV island (luma_ui_tv_posture,
 #    luma_ui_tv_unit, luma_ui_set_part, luma_ui_set_keyboard_action).
-LUMAUI_API_LEVEL = 8
+# 9: device_noun (this TV / this computer / this tablet / this phone, by posture).
+LUMAUI_API_LEVEL = 9
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()
@@ -393,6 +394,29 @@ class _PostureWatcher:
 
 
 _posture_watchers: set[_PostureWatcher] = set()
+
+
+#: What a device is called in copy, by posture: "this TV", "this computer"...
+DEVICE_NOUNS = {"tv": "TV", "desktop": "computer", "tablet": "tablet", "handheld": "phone"}
+
+
+def device_noun(*, capital: bool = False, postures: Collection[str] | None = None,
+                context: object | None = None) -> str:
+    """How copy names the device the app runs on: "this TV", "this computer",
+    "this tablet" or "this phone", from the live posture (`AppContext`), never a
+    screen size.
+
+    `capital=True` starts it with "This". `postures` limits which postures get
+    their own noun ("tv", "tablet", "handheld"); any other reads "this computer",
+    so an app can move one posture at a time and leave the rest of its copy as
+    shipped. `context` is an `AppContext` to read instead of the session's.
+    """
+    from .context import AppContext
+    context = context if context is not None else AppContext.from_environment()
+    kind = "tv" if context.tv else context.device_class
+    if kind not in DEVICE_NOUNS or (kind != "desktop" and postures is not None and kind not in postures):
+        kind = "desktop"
+    return ("This " if capital else "this ") + DEVICE_NOUNS[kind]
 
 
 def tv_unit(width: float, height: float) -> float:

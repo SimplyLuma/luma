@@ -84,6 +84,8 @@ install -D -m 0644 data/luma-connect.service %{buildroot}%{_userunitdir}/luma-co
 install -D -m 0644 data/org.projectluma.Connect.toml %{buildroot}%{_datadir}/luma/background/org.projectluma.Connect.toml
 install -D -m 0644 data/org.projectluma.Connect.Agent.desktop %{buildroot}%{_sysconfdir}/xdg/autostart/org.projectluma.Connect.Agent.desktop
 install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Connect.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Connect.svg
+# The wide TV tile, named by X-Luma-TV-Tile in the desktop entry.
+install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Connect-tv.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Connect-tv.svg
 install -d %{buildroot}%{_datadir}/icons/hicolor/scalable/actions
 install -m 0644 data/icons/hicolor/scalable/actions/luma-connect-*-symbolic.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/actions/
 
@@ -124,6 +126,7 @@ node shell/test-notification-export.mjs
 %{_datadir}/luma/background/org.projectluma.Connect.toml
 %config(noreplace) %{_sysconfdir}/xdg/autostart/org.projectluma.Connect.Agent.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Connect.svg
+%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Connect-tv.svg
 %{_datadir}/icons/hicolor/scalable/actions/luma-connect-*-symbolic.svg
 
 %changelog

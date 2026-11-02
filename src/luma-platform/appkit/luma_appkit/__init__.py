@@ -93,6 +93,7 @@ __all__ = [
     "tv_posture",
     "watch_posture",
     "tv_unit",
+    "device_noun",
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
     "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
@@ -384,7 +385,8 @@ def __getattr__(name: str):
         return claim_gamepads
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
-                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
+                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit",
+                "device_noun"}:
         from . import lumaui
         return getattr(lumaui, name)
     if name in {"lumaui_icon"}:

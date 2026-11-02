@@ -27,6 +27,11 @@ try:
     from luma_appkit import Avatar
 except ImportError:  # an older kit; the account page then shows no portrait
     Avatar=None
+try:
+    from luma_appkit import device_noun,tv_posture
+except ImportError:  # an older kit: no TV posture, and copy reads "this computer"
+    device_noun=None
+    def tv_posture():return False
 from .phone_contract import BUS,PATH
 from .cloud_sync import CloudSync,DEFAULT_HUB,HUB_CONNECT_PAGE,device_name
 from .companion_contract import DEFAULT_DESKTOP_TO_PHONE,DEFAULT_PHONE_TO_DESKTOP
@@ -45,6 +50,42 @@ SERVICE_APPS={'calendar':'org.projectluma.Calendar','notes':'org.projectluma.Not
     'photos':'org.projectluma.Photos','world-clocks':'org.projectluma.Clock','weather-places':'org.projectluma.Weather',
     'messages':'org.projectluma.Messages','calls':'org.projectluma.Phone','leaf-books':'org.projectluma.Leaf',
     'tide-sources':'org.projectluma.Tide'}
+
+
+def here(capital=False):
+    """This device in copy: "this TV" in TV posture (LumaUI's device_noun), else "this computer" as shipped."""
+    if device_noun is None:return 'This computer' if capital else 'this computer'
+    return device_noun(capital=capital,postures=('tv',))
+
+def tv_words(text):
+    """Desktop copy with "this computer" read as this device; unchanged off a TV."""
+    noun=here()
+    if noun=='this computer':return text
+    return text.replace('this computer',noun).replace('This computer',here(True)).replace('This Computer','This '+noun[5:])
+
+# A TV keeps the phone actions it can use and whose owning app runs on a TV
+# (None: Connect's own). Sending text or files, a hotspot and Power Mode are not
+# for a TV; Messages is its own app.
+TV_ACTIONS={'Ring':None,'Screen':None,'Webcam':None,'Calls':None,'Messages':'org.projectluma.Messages'}
+# What pairing offers on a TV, both ways (the TV mockup's lists).
+TV_PHONE_TO_DESKTOP=('notifications.mirror','device.status','links.open','media.mirror','input.control')
+TV_DESKTOP_TO_PHONE=('device.ring','media.control','screen.view','camera.stream','bluetooth.bond')
+TV_PHONES_LEDE='Your phone on this TV: find it, show its screen, use its camera, and take its calls.'
+TV_NO_PHONES='Pair an Android phone to find it, see its screen and take its calls on this TV.'
+
+def runs_on_tv(app_id):
+    """Whether an installed app opts in to the TV (X-Luma-TV, docs/developer-platform/tv-mode.md)."""
+    if app_id is None:return True
+    try:
+        from gi.repository import GioUnix
+        info=GioUnix.DesktopAppInfo.new(app_id+'.desktop')
+    except (ImportError,TypeError,ValueError):
+        info=Gio.DesktopAppInfo.new(app_id+'.desktop') if hasattr(Gio,'DesktopAppInfo') else None
+    return info is not None and (info.get_string('X-Luma-TV') or '').strip().lower()=='true'
+
+def tv_keeps(action):
+    """Whether a phone action stays on a TV: one a TV can use, whose owning app runs on a TV."""
+    return action in TV_ACTIONS and runs_on_tv(TV_ACTIONS[action])
 
 
 def tile(icon_name):
@@ -108,13 +149,13 @@ class PhonesMixin:
         state=self.state or {};enabled=bool(state.get('enabled'))
         if not enabled:
             group=Adw.PreferencesGroup();page.add(group)
-            row=Adw.SwitchRow(title='Luma Connect',subtitle='Turn it on to use a phone with this computer.',active=False)
+            row=Adw.SwitchRow(title='Luma Connect',subtitle=tv_words('Turn it on to use a phone with this computer.'),active=False)
             row.set_sensitive(self.state is not None and not state.get('busy'))
             row.connect('notify::active',lambda widget,_p:widget.get_active() and self._invoke('SetEnabled','(b)',(True,)))
             group.add(row)
         devices=state.get('companion_devices') or []
         if not devices:
-            empty=EmptyState('No phones yet','Pair an Android phone to see its notifications and texts here, and to pass copied text and files back and forth.',
+            empty=EmptyState('No phones yet',TV_NO_PHONES if tv_posture() else 'Pair an Android phone to see its notifications and texts here, and to pass copied text and files back and forth.',
                 'luma-connect-phone-symbolic',primary=('Pair a Phone…',self._pair_phone) if enabled else None,compact=True)
             frame=Gtk.Box(css_classes=['luma-connect-empty-card']);frame.append(empty);page.add(frame)
         transfers=state.get('companion_transfers') or []
@@ -141,6 +182,7 @@ class PhonesMixin:
         head.add_suffix(more)
         group.add(head)
         reachable=enabled and device.get('reachable')
+        tv=tv_posture()
         actions=Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,min_children_per_line=2,max_children_per_line=5,
             column_spacing=6,row_spacing=6,homogeneous=True,margin_top=10,margin_bottom=10,margin_start=12,margin_end=12)
         actions.add_css_class('luma-connect-actions')
@@ -154,6 +196,7 @@ class PhonesMixin:
                                          ('Calls','luma-connect-call-symbolic','bluetooth.bond',lambda:self._set_up_calls(peer,name)),
                                          ('Power Mode','luma-connect-zap-symbolic','screen.view',lambda:self._power_mode(peer,device,state_power=(self.state.get('companion_power') or {}).get(peer)))):
             if capability not in outgoing:continue
+            if tv and not tv_keeps(label):continue
             content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4,halign=Gtk.Align.CENTER)
             content.append(Gtk.Image(icon_name=icon,pixel_size=16))
             caption=Gtk.Label(label=label,ellipsize=Pango.EllipsizeMode.END,justify=Gtk.Justification.CENTER)
@@ -174,9 +217,9 @@ class PhonesMixin:
                 cancel.connect('clicked',lambda _b,t=transfer['transfer']:self._call('CancelCompanionTransfer','(s)',(t,)))
                 row.add_suffix(cancel)
         allowed=Adw.ExpanderRow(title='What each device can do',use_markup=False,
-            subtitle=f"{len(incoming)} for your phone · {len(outgoing)} for this computer")
-        for title,grants,labels in ((f'{name} can',incoming,PHONE_TO_DESKTOP_LABELS),('This computer can',outgoing,DESKTOP_TO_PHONE_LABELS)):
-            text=self._grant_text(grants,labels)
+            subtitle=tv_words(f"{len(incoming)} for your phone · {len(outgoing)} for this computer"))
+        for title,grants,labels in ((f'{name} can',incoming,PHONE_TO_DESKTOP_LABELS),(tv_words('This computer can'),outgoing,DESKTOP_TO_PHONE_LABELS)):
+            text=tv_words(self._grant_text(grants,labels))
             row=Adw.ActionRow(title=title,subtitle=text or 'Nothing yet',use_markup=False);row.set_subtitle_lines(0)
             allowed.add_row(row)
         group.add(allowed)
@@ -197,7 +240,7 @@ class PhonesMixin:
         return ', '.join(label for capability,label in labels if capability in grants)
 
     def _confirm_remove(self,peer,name):
-        dialog=Adw.AlertDialog(heading=f'Remove {name}?',body='It stops working with this computer right away. Anything it already sent stays here. You can pair it again later.')
+        dialog=Adw.AlertDialog(heading=f'Remove {name}?',body=tv_words('It stops working with this computer right away. Anything it already sent stays here. You can pair it again later.'))
         dialog.add_response('cancel','Cancel');dialog.add_response('remove','Remove')
         dialog.set_response_appearance('remove',Adw.ResponseAppearance.DESTRUCTIVE);dialog.set_close_response('cancel')
         dialog.connect('response',lambda _d,response:self._call('RemoveCompanion','(s)',(peer,)) if response=='remove' else None)
@@ -265,7 +308,7 @@ class PhonesMixin:
         """Wireless debugging lets this computer show and control the phone fully and open apps in their own windows."""
         name=device.get('name') or 'your phone'
         dialog=Adw.AlertDialog(heading='Power Mode',
-            body=(f'Power Mode lets this computer control {name} with its mouse and keyboard, play its sound here, and open its apps in their own windows. '
+            body=tv_words(f'Power Mode lets this computer control {name} with its mouse and keyboard, play its sound here, and open its apps in their own windows. '
                   'It uses Android’s Wireless debugging, which you turn on in Developer options. No root is needed, and you can turn it off at any time on the phone.'))
         ready=(state_power or {}).get('state')=='ready'
         dialog.add_response('close','Close')
@@ -290,7 +333,7 @@ class PhonesMixin:
         code=qr_code(qr)
         if code:box.append(code)
         else:box.append(Gtk.Label(selectable=True,wrap=True,label=qr))
-        box.append(Gtk.Label(wrap=True,xalign=0,css_classes=['dim-label'],label='This computer connects on its own once the phone accepts. The code stops working after two minutes.'))
+        box.append(Gtk.Label(wrap=True,xalign=0,css_classes=['dim-label'],label=tv_words('This computer connects on its own once the phone accepts. The code stops working after two minutes.')))
         dialog.set_child(box);dialog.present(self)
 
     def _send_clipboard(self,peer):
@@ -318,15 +361,17 @@ class PhonesMixin:
         navigation=Adw.NavigationView();dialog.set_child(navigation)
         self.pairing_dialog=dialog;self.pairing_view=navigation;self.pairing_page=None;self.pairing_uri=None
         page=Adw.PreferencesPage()
-        intro=Adw.PreferencesGroup(description='Choose what your phone and this computer may do for each other. You can change your mind later, on either device.')
+        intro=Adw.PreferencesGroup(description=tv_words('Choose what your phone and this computer may do for each other. You can change your mind later, on either device.'))
         page.add(intro)
         checks={}
-        for title,labels,defaults,key in (('Your phone can',PHONE_TO_DESKTOP_LABELS,DEFAULT_PHONE_TO_DESKTOP,'in'),
-                                          ('This computer can',DESKTOP_TO_PHONE_LABELS,DEFAULT_DESKTOP_TO_PHONE,'out')):
+        tv=tv_posture()
+        for title,labels,defaults,key,offered in (('Your phone can',PHONE_TO_DESKTOP_LABELS,DEFAULT_PHONE_TO_DESKTOP,'in',TV_PHONE_TO_DESKTOP),
+                                          (tv_words('This computer can'),DESKTOP_TO_PHONE_LABELS,DEFAULT_DESKTOP_TO_PHONE,'out',TV_DESKTOP_TO_PHONE)):
             group=Adw.PreferencesGroup(title=title);page.add(group)
             for capability,label in labels:
+                if tv and capability not in offered:continue
                 check=Gtk.CheckButton(active=capability in defaults,valign=Gtk.Align.CENTER)
-                row=Adw.ActionRow(title=label,use_markup=False,activatable_widget=check);row.add_prefix(check)
+                row=Adw.ActionRow(title=tv_words(label),use_markup=False,activatable_widget=check);row.add_prefix(check)
                 group.add(row);checks[(key,capability)]=check
         hint=Gtk.Label(wrap=True,justify=Gtk.Justification.CENTER,visible=False,margin_start=24,margin_end=24)
         start=Gtk.Button(label='Show Pairing Code',margin_top=12,margin_bottom=12,halign=Gtk.Align.CENTER)
@@ -341,7 +386,7 @@ class PhonesMixin:
                 start.set_sensitive(True)
                 if self.pairing_dialog is not dialog:return
                 if value is None:
-                    hint.set_label('Pairing couldn’t start. Make sure Luma Connect is on and this computer is connected to a local network.')
+                    hint.set_label(tv_words('Pairing couldn’t start. Make sure Luma Connect is on and this computer is connected to a local network.'))
                     hint.set_visible(True);return
                 self.pairing_uri=value[0];self._pairing_code_page()
             self._call('StartCompanionPairing','(asas)',(incoming,outgoing),started,timeout=30000,trouble='')
@@ -367,7 +412,7 @@ class PhonesMixin:
         box.append(steps)
         code=qr_code(self.pairing_uri)
         if code:box.append(code)
-        else:box.append(Gtk.Label(label='This computer can’t draw the code. Enter this link on your phone instead.',wrap=True,justify=Gtk.Justification.CENTER))
+        else:box.append(Gtk.Label(label=tv_words('This computer can’t draw the code. Enter this link on your phone instead.'),wrap=True,justify=Gtk.Justification.CENTER))
         link=Gtk.Label(label=self.pairing_uri,selectable=True,wrap=True,wrap_mode=Pango.WrapMode.WORD_CHAR,justify=Gtk.Justification.CENTER)
         link.add_css_class('dim-label')
         link.update_property([Gtk.AccessibleProperty.LABEL],['Pairing link'])
@@ -413,7 +458,7 @@ class PhonesMixin:
                     'expired':'This code has expired. Go back and start again.',
                     'failed':'Pairing didn’t finish. Go back and start again.',
                     'cancelled':'Pairing was stopped. Go back and start again.',
-                    'unavailable':'Pairing couldn’t start. Make sure this computer is connected to a local network.'}.get(phase,'Waiting for your phone…'))
+                    'unavailable':tv_words('Pairing couldn’t start. Make sure this computer is connected to a local network.')}.get(phase,'Waiting for your phone…'))
         reply=state.get('companion_reply')
         if reply and not self.reply_dialog and self.reply_shown!=(reply['fingerprint'],reply['key'],reply['expires']):
             self.reply_shown=(reply['fingerprint'],reply['key'],reply['expires'])
@@ -522,6 +567,8 @@ class ConnectWindow(PhonesMixin,AppWindow):
         self.toasts=Adw.ToastOverlay()
         self.set_body(self.toasts)
         self.connect('close-request',self._close)
+        # Copy and the phone actions follow the posture (TV or not) live.
+        self.connect('notify::tv-posture',lambda *_:self.shape is not None and (setattr(self,'shape',None),self._update()))
         self.breakpoint=Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 639px'))
         self.breakpoint.connect('apply',lambda *_:self._layout_changed(True))
         self.breakpoint.connect('unapply',lambda *_:self._layout_changed(False))
@@ -555,7 +602,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
 
     def _say(self,message):
         if message and not self.closed:
-            toast=Adw.Toast(title=message,timeout=5)
+            toast=Adw.Toast(title=tv_words(message),timeout=5)
             self.toasts.add_toast(toast)
 
     # ── The Connect daemon ───────────────────────────────────────────────
@@ -682,9 +729,9 @@ class ConnectWindow(PhonesMixin,AppWindow):
         phones.connect('clicked',lambda *_:(setattr(self,'phones_only',True),self._update()));buttons.append(phones)
         center.append(buttons)
         if not self.cloud_sync.available:
-            note=Gtk.Label(label='Luma Connect sync isn’t installed on this computer.',wrap=True,justify=Gtk.Justification.CENTER)
+            note=Gtk.Label(label=tv_words('Luma Connect sync isn’t installed on this computer.'),wrap=True,justify=Gtk.Justification.CENTER)
             note.add_css_class('dim-label');note.add_css_class('caption');center.append(note);sign_in.set_sensitive(False)
-        optional=Gtk.Label(label=OPTIONAL,wrap=True,justify=Gtk.Justification.CENTER,margin_top=26)
+        optional=Gtk.Label(label=tv_words(OPTIONAL),wrap=True,justify=Gtk.Justification.CENTER,margin_top=26)
         optional.add_css_class('dim-label');optional.add_css_class('caption');center.append(optional)
         clamp=Adw.Clamp(maximum_size=420,tightening_threshold=320,child=center,vexpand=True)
         island.append(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,child=clamp,vexpand=True))
@@ -713,7 +760,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         pages.add_named(first,'how')
         second=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=12,margin_start=2,margin_end=2,margin_top=2,margin_bottom=2)
         second.append(TypeLabel('The code has 8 letters and numbers and works once.',wrap=True))
-        code=TextField('Code');name=TextField('Name for this computer',value=device_name(),purpose='name')
+        code=TextField('Code');name=TextField(tv_words('Name for this computer'),value=device_name(),purpose='name')
         second.append(code);second.append(name)
         status=TypeLabel('',wrap=True);status.set_visible(False);second.append(status)
         actions=Gtk.Box(spacing=8,halign=Gtk.Align.END)
@@ -876,7 +923,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             self._profile_groups(page)
         else:
             about=Adw.PreferencesGroup(title='Luma Connect');page.add(about)
-            row=self._row(about,'Not connected',self.cloud_problem or 'Connect this computer to keep your calendar, notes, contacts and photos in step.')
+            row=self._row(about,'Not connected',self.cloud_problem or tv_words('Connect this computer to keep your calendar, notes, contacts and photos in step.'))
             row.add_suffix(self._suffix_button('Sign In…',self._sign_in_dialog,style='suggested-action'))
 
         overview=Adw.PreferencesGroup();page.add(overview)
@@ -1018,8 +1065,8 @@ class ConnectWindow(PhonesMixin,AppWindow):
         self.cloud_sync.set_profile(changes,finished)
 
     def _confirm_sign_out_here(self):
-        dialog=Adw.AlertDialog(heading='Sign out of Luma on this computer?',
-            body=('This computer stops syncing, and phone messages and calls stop coming here. '
+        dialog=Adw.AlertDialog(heading=tv_words('Sign out of Luma on this computer?'),
+            body=tv_words('This computer stops syncing, and phone messages and calls stop coming here. '
                   'Everything on it stays, and your Luma calendar events are copied into Personal first. '
                   'Your other devices keep everything too.'))
         dialog.add_response('cancel','Cancel');dialog.add_response('signout','Sign Out')
@@ -1044,7 +1091,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             content.append(Adw.Spinner() if self.syncing_now else Gtk.Image(icon_name='luma-connect-sync-symbolic'))
             content.append(Gtk.Label(label='Syncing…' if self.syncing_now else 'Sync Now'));refresh.set_child(content)
             refresh.connect('clicked',lambda *_:self._sync_now())
-        page=Page('Syncing','Choose what this computer keeps in step with your other Luma devices. Turning something off never deletes it, here or anywhere else.',
+        page=Page('Syncing',tv_words('Choose what this computer keeps in step with your other Luma devices. Turning something off never deletes it, here or anywhere else.'),
             suffix=refresh,back=self._back())
         if not self._cloud_connected():
             group=Adw.PreferencesGroup();page.add(group)
@@ -1114,7 +1161,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             return page
         this=self._this_device().get('id')
         devices=sorted(self._cloud_devices(),key=lambda item:(item.get('id')!=this,(item.get('name') or '').casefold()))
-        here=Adw.PreferencesGroup(title='This Computer');page.add(here)
+        here=Adw.PreferencesGroup(title=tv_words('This Computer'));page.add(here)
         others=Adw.PreferencesGroup(title='Other Devices')
         for item in devices:
             last=max([service.get('last_success_at') or 0 for service in item.get('services',[])] or [0])
@@ -1191,7 +1238,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         if self.shape=='phones-only':
             back=Gtk.Button(icon_name='luma-chevron-left-symbolic',valign=Gtk.Align.CENTER,tooltip_text='Back to sign-in')
             back.add_css_class('flat');back.connect('clicked',lambda *_:(setattr(self,'phones_only',False),self._update()))
-        page=Page('Phones','Your phone’s notifications and texts on this computer, copied text and files back and forth, and calls.',suffix=pair,back=back)
+        page=Page('Phones',TV_PHONES_LEDE if tv_posture() else 'Your phone’s notifications and texts on this computer, copied text and files back and forth, and calls.',suffix=pair,back=back)
         self._phones(page,self.compact)
         if self._relay_signed_in() or (state.get('message_devices') or state.get('call_devices')):
             self._relay_section(page)
@@ -1204,7 +1251,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         state=self.state or {}
         ready=not state.get('stale') and not state.get('busy')
         group=Adw.PreferencesGroup(title='Messages and Calls Relay',
-            description='Phones on your Luma account can share texts and calls with this computer from anywhere.');page.add(group)
+            description=tv_words('Phones on your Luma account can share texts and calls with this computer from anywhere.'));page.add(group)
         status=state.get('account_status')
         if status=='locked':
             row=self._row(group,'Your keyring is locked','Unlock it to reconnect the relay.','luma-connect-lock-symbolic')
@@ -1288,7 +1335,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
                 button.connect('clicked',sending);actions.append(button)
             revoke=Gtk.Button(label='Revoke',valign=Gtk.Align.CENTER,sensitive=ready)
             def confirm(_button,peer=item['peer']):
-                dialog=Adw.AlertDialog(heading='Revoke message access?',body='Stop access for this paired device. Conversations already downloaded stay on this computer.')
+                dialog=Adw.AlertDialog(heading='Revoke message access?',body=tv_words('Stop access for this paired device. Conversations already downloaded stay on this computer.'))
                 dialog.add_response('cancel','Cancel');dialog.add_response('revoke','Revoke')
                 dialog.set_response_appearance('revoke',Adw.ResponseAppearance.DESTRUCTIVE)
                 dialog.set_close_response('cancel')
