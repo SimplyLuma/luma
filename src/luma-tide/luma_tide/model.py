@@ -1282,6 +1282,16 @@ class LibraryStore:
             pairs = self._connection.execute("SELECT DISTINCT track_id, source_id FROM copies").fetchall()
         return rows, [(track_id, source_id) for track_id, source_id in pairs]
 
+    def offline_ready_tracks(self) -> set[str]:
+        """Tracks with a completed download still on this device (TrackCopy.offline_ready), in one query."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT c.track_id, o.path FROM offline_items o JOIN copies c ON c.id=o.copy_id"
+                " WHERE o.state=? AND o.path IS NOT NULL",
+                (OfflineState.COMPLETE.value,),
+            ).fetchall()
+        return {track_id for track_id, path in rows if Path(path).is_file()}
+
     def has_tracks(self) -> bool:
         with self._lock:
             return self._connection.execute("SELECT 1 FROM tracks LIMIT 1").fetchone() is not None

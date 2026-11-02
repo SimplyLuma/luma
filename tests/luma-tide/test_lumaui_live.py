@@ -39,6 +39,8 @@ class LivePresentationTests(unittest.TestCase):
         library = self.source.load()
         self.assertEqual({s.id for a in library.albums for s in a.songs}, {both.id})
         self.assertEqual(library.source(remote.id).subtitle, 'Signed out')
+        self.assertTrue(library.source(remote.id).signed_out)
+        self.assertFalse(library.source(local.id).signed_out)
     def test_only_the_real_system_output_is_advertised(self):
         self.assertEqual(self.source.player.outputs, (('This computer', 'monitor', 'System audio output'),))
         with self.assertRaises(ValueError):

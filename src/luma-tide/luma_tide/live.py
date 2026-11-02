@@ -70,9 +70,11 @@ class LiveLibrary:
             if name is not None and name not in track_sources[track_id]:
                 track_sources[track_id].append(name)
         if signed_out:
-            rows = [row for row in rows if any(
-                copy.source_id not in signed_out or copy.offline_ready
-                for copy in self.store.copies_for_track(row['id']))]
+            # A signed-out source's songs show only where another copy plays: a signed-in
+            # source's or a finished download (one query, not one per song).
+            playable = {track_id for track_id, source_id in pairs if source_id not in signed_out}
+            playable |= self.store.offline_ready_tracks()
+            rows = [row for row in rows if row['id'] in playable]
         groups = defaultdict(list)
         for row in rows:
             groups[row['album'], row['album_artist']].append(row)
@@ -106,7 +108,8 @@ class LiveLibrary:
             else:
                 facts = [('Folder', source.uri), ('Songs', f'{count:,}'), ('Last sync', 'Watching for changes')]
             rows.append(MusicSource(source.id, source.name, 'server' if remote else 'monitor', state,
-                                    subtitle, tuple(facts), remote))
+                                    subtitle, tuple(facts), remote,
+                                    signed_out=source.state == SourceState.AUTH_REQUIRED))
         offline = self.store.offline_summary()
         if offline.complete or offline.pending or offline.failed:
             subtitle = f'Downloading {offline.pending} songs' if offline.pending else f'Kept offline · {offline.complete} songs'

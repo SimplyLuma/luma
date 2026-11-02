@@ -88,6 +88,9 @@ def _sheet(_opaque: bool = False) -> str:
 .tide-tv-search .tv-field image {{ -gtk-icon-size: 34tv; margin-right: 18tv; }}
 .tide-tv-results {{ padding: 0 96tv 80tv; }}
 .tide-tv-empty {{ font-size: 28tv; color: {m['ink_3']}; }}
+.tide-tv-signin {{ border-spacing: 32tv; margin-bottom: 36tv; }}
+.tide-tv-signin-words {{ border-spacing: 6tv; }}
+.tide-tv-signin-title {{ font-size: 30tv; font-weight: 650; color: {m['ink']}; }}
 .tide-tv-sources {{ border-spacing: 30tv; }}
 .tide-tv-card {{ min-width: 1180tv; padding: 8tv; border-radius: 30tv; border-spacing: 2tv; }}
 .tide-tv-source {{ min-height: 108tv; padding: 0 22tv; border-radius: 22tv; border-spacing: 20tv; }}
@@ -670,7 +673,7 @@ class TideTV:
         pad = _box(True, "tide-tv-pad")
         albums = self.library.albums
         if not albums:
-            if self.loaded and not self._settling():
+            if self.loaded and not self._settling() and not self._sign_in_notes(pad):
                 pad.append(_label("Your music will be here. Add music to Tide on a computer, or connect a server.",
                                   "tide-tv-empty", wrap=True))
             return self._page_scroll(pad)
@@ -721,10 +724,32 @@ class TideTV:
     def _albums(self):
         pad = _box(True, "tide-tv-pad")
         albums = self.library.albums
+        waiting = self._sign_in_notes(pad)
         pad.append(self._album_grid(albums))
-        if not albums and self.loaded and not self._settling():
+        if not albums and self.loaded and not self._settling() and not waiting:
             pad.append(_label("No albums yet.", "tide-tv-empty"))
         return self._page_scroll(pad)
+
+    def _sign_in_notes(self, pad) -> bool:
+        """A server that needs signing in says so where its music would be, with the way back in,
+        so a library it fills never looks empty. True when one was shown."""
+        shown = False
+        for source in self.library.sources:
+            if not (source.remote and source.signed_out):
+                continue
+            songs = dict(source.facts).get("Songs", "")
+            note = _box(False, "tide-tv-signin")
+            words = _box(True, "tide-tv-signin-words", hexpand=True)
+            words.append(_label(f"Sign in to {source.name} to play its music", "tide-tv-signin-title", wrap=True))
+            words.append(_label(f"{songs} songs wait in your library until you do." if songs not in ("", "0")
+                                else "Its songs come back when you do.", "tide-tv-meta", wrap=True))
+            note.append(words)
+            note.append(self._add(TvButton("Sign In…", icon="key-round"), f"signin:{source.id}",
+                                  lambda s=source: self.open_server(s),
+                                  first=not shown and not self.library.albums))
+            pad.append(note)
+            shown = True
+        return shown
 
     def _album_grid(self, albums) -> TvGrid:
         grid = TvGrid(columns=GRID_COLUMNS, cell=GRID_COVER, gap=GRID_GAP, row_gap=GRID_ROW_GAP,
