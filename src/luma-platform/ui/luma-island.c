@@ -2,6 +2,7 @@
 #include "luma-island.h"
 #include "luma-ui-tokens-private.h"
 #include "luma-tv-frame-private.h"
+#include "luma-ui-kit.h"
 
 /* GTK 4.22 has no non-deprecated lookup for named CSS colours. Keep this
  * compatibility call local until the style API supplies one. */
@@ -18,7 +19,31 @@ static void inset(GtkSnapshot *snapshot, GtkStyleContext *style, const GskRounde
     gtk_snapshot_append_inset_shadow(snapshot, outline, &colour, dx, dy, spread, blur);
 }
 
+/* TV posture: a page scrolled past its edges fades out there (the mockup's .tv-page mask: 12 at the
+ * top, 40 at the bottom), never a hard cut. */
+static gboolean tv_faded(GtkWidget *widget, GtkSnapshot *snapshot) {
+  GtkRoot *root = gtk_widget_get_root(widget);
+  if (root == NULL || !gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-tv"))
+    return FALSE;
+  float width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
+  double u = luma_ui_tv_unit(gtk_widget_get_width(GTK_WIDGET(root)), gtk_widget_get_height(GTK_WIDGET(root)));
+  if (width <= 0 || height <= 0 || u <= 0)
+    return FALSE;
+  float top = (float)MIN(0.45, 12 * u / height), bottom = (float)MAX(0.55, 1 - 40 * u / height);
+  gtk_snapshot_push_mask(snapshot, GSK_MASK_MODE_ALPHA);
+  GskColorStop stops[] = {{0.f, {0, 0, 0, 0}}, {top, {0, 0, 0, 1}}, {bottom, {0, 0, 0, 1}}, {1.f, {0, 0, 0, 0}}};
+  graphene_rect_t all = GRAPHENE_RECT_INIT(0, 0, width, height);
+  gtk_snapshot_append_linear_gradient(snapshot, &all, &GRAPHENE_POINT_INIT(0, 0), &GRAPHENE_POINT_INIT(0, height),
+                                      stops, G_N_ELEMENTS(stops));
+  gtk_snapshot_pop(snapshot);
+  GTK_WIDGET_CLASS(luma_island_parent_class)->snapshot(widget, snapshot);
+  gtk_snapshot_pop(snapshot);
+  return TRUE;
+}
+
 static void luma_island_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
+  if (tv_faded(widget, snapshot))
+    return; /* on a TV the page is open to the room: no rim */
   GTK_WIDGET_CLASS(luma_island_parent_class)->snapshot(widget, snapshot);
   GtkRoot *root = gtk_widget_get_root(widget);
   if (root != NULL && gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-phone-device"))

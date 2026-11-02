@@ -736,8 +736,15 @@ static gboolean grown_field(TvFrame *f) {
   GtkWidget *row = path_widget(f);
   while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
   GtkWidget *field = row != NULL && row != f->island ? first_field(row) : NULL;
-  if (field == NULL)
-    return FALSE;
+  if (field == NULL) {
+    /* grown with actions only (Connect, Forget …): the first of them takes the focus */
+    GtkWidget *grown = row != NULL && row != f->island && GTK_IS_BOX(row) ? gtk_widget_get_first_child(row) : NULL;
+    grown = grown != NULL ? gtk_widget_get_next_sibling(grown) : NULL;
+    if (grown == NULL || !gtk_widget_is_drawable(grown))
+      return FALSE;
+    f->ok_at = 0;
+    return gtk_widget_child_focus(grown, GTK_DIR_TAB_FORWARD);
+  }
   f->ok_at = 0;
   GtkWidget *focus = focus_of(f);
   if (focus != field && !gtk_widget_is_ancestor(focus, field))
@@ -860,8 +867,13 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   }
   if (in_page(f, focus) && gtk_widget_get_focusable(focus)) {
     f->page_zone = TRUE;
-    if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC)
+    if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC) {
       remember(f, focus);
+    } else {
+      /* waiting for a row to grow: keep the row's path, but the focus is held where it now is */
+      g_clear_weak_pointer(&f->held);
+      g_set_weak_pointer(&f->held, focus);
+    }
   } else if (gtk_widget_is_ancestor(focus, f->sidebar)) {
     f->page_zone = FALSE;
   }
