@@ -17,7 +17,11 @@ while sleep 60; do
 	mode=$(busctl --system get-property org.projectluma.MobileMode1 /org/projectluma/MobileMode1 org.projectluma.MobileMode1 Mode 2>/dev/null)
 	state=$(busctl --system get-property org.projectluma.MobileMode1 /org/projectluma/MobileMode1 org.projectluma.MobileMode1 State 2>/dev/null)
 	[ -z "$mode" ] || { [ "$mode" = 's "calls"' ] && [ "$state" = 's "ready"' ]; } || continue
-	journalctl -q -b _PID="$pid" | grep -q "IMS registered" && continue
+	# Restarting ModemManager ends every call: never act while one exists.
+	mmcli -m any --voice-list-calls 2>/dev/null | grep -q "/Call/" && continue
+	# The IMS bridge reports registration; trust its latest report.
+	journalctl -q -b -o cat --grep="luma-fold-ims-bridge: registered=" 2>/dev/null |
+		tail -n 1 | grep -q "registered=True" && continue
 	mmcli -m any 2>/dev/null | grep -qE "state: (registered|connected)" || continue
 	[ "$tries" -lt 5 ] || continue
 	tries=$((tries + 1))
