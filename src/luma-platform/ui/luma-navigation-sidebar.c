@@ -13,6 +13,7 @@ struct _LumaNavigationSidebar {
   char *variant;
   gboolean tv, rail;
   gboolean header_shown, footer_shown; /* as the app left them, for leaving TV posture */
+  GtkAlign valign_shown;
 };
 G_DEFINE_FINAL_TYPE(LumaNavigationSidebar, luma_navigation_sidebar, GTK_TYPE_BOX)
 
@@ -431,9 +432,16 @@ void luma_navigation_sidebar_set_tv(LumaNavigationSidebar *self, gboolean tv, gb
     self->header_shown = gtk_widget_get_visible(self->header);
     self->footer_shown = gtk_widget_get_visible(self->footer);
   }
+  if (tv && !self->tv)
+    self->valign_shown = gtk_widget_get_valign(GTK_WIDGET(self));
   if (tv != self->tv) {
     gtk_widget_set_visible(self->header, tv ? FALSE : self->header_shown);
     gtk_widget_set_visible(self->footer, tv ? FALSE : self->footer_shown);
+    /* The island is as tall as its rows, never a full-height panel: it takes its natural height
+     * from the top, and a list longer than the screen stops at the frame's bottom safe line and
+     * scrolls (GTK clamps a START-aligned child to what it is given). */
+    gtk_widget_set_valign(GTK_WIDGET(self), tv ? GTK_ALIGN_START : self->valign_shown);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(self->scroll), tv);
   }
   self->tv = tv;
   self->rail = tv && rail;

@@ -157,6 +157,7 @@ static void check_desktop(GtkApplication *app) {
   CHECK(!any_with_class(window, "lumaui-part-row", G_TYPE_NONE));
   CHECK(section_heading_visible(sidebar));
   CHECK(adw_clamp_get_maximum_size(find_clamp(page)) == 600);
+  CHECK(gtk_widget_get_valign(sidebar) == GTK_ALIGN_FILL);       /* the desktop sidebar spans the frame */
   CHECK(!luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down)); /* the frame takes no keys off a TV */
   gtk_window_destroy(GTK_WINDOW(window));
   spin(100);
@@ -180,6 +181,10 @@ static void check_tv(GtkApplication *app) {
   CHECK(any_with_class(page, "lumaui-part-row", ADW_TYPE_ENTRY_ROW));
   CHECK(any_with_class(page, "lumaui-part-row", ADW_TYPE_BUTTON_ROW));
   CHECK(adw_clamp_get_maximum_size(find_clamp(page)) > 10000);   /* runs to the safe margin */
+  /* The island is as tall as its rows, not a full-height panel. */
+  graphene_rect_t isle;
+  CHECK(gtk_widget_compute_bounds(sidebar, window, &isle));
+  CHECK(isle.size.height < gtk_widget_get_height(window) / 2);
 
   /* The island: Down opens the next page at once, no OK. */
   GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(window));
@@ -216,6 +221,14 @@ static void check_tv(GtkApplication *app) {
   spin(50);
   CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
 
+  /* A list longer than the screen stops at the bottom safe line and scrolls. */
+  for (int i = 0; i < 24; i++)
+    luma_navigation_sidebar_append_row(LUMA_NAVIGATION_SIDEBAR(sidebar), GTK_LIST_BOX_ROW(row_new("More", "timer")));
+  spin(200);
+  CHECK(gtk_widget_compute_bounds(sidebar, window, &isle));
+  CHECK(isle.origin.y + isle.size.height < gtk_widget_get_height(window));
+  CHECK(isle.size.height > gtk_widget_get_height(window) / 2);
+
   /* Leaving TV posture restores the desktop window exactly. */
   luma_tv_frame_set_active(GTK_WINDOW(window), FALSE);
   spin(200);
@@ -225,6 +238,7 @@ static void check_tv(GtkApplication *app) {
   CHECK(!gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));
   CHECK(section_heading_visible(sidebar));
   CHECK(adw_clamp_get_maximum_size(find_clamp(page)) == 600);
+  CHECK(gtk_widget_get_valign(sidebar) == GTK_ALIGN_FILL);
   gtk_window_destroy(GTK_WINDOW(window));
   spin(100);
 }
