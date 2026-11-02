@@ -47,7 +47,7 @@ class RaspberryPi5Profile(unittest.TestCase):
         self.assertFalse([line for line in grub if 'console=' in line and not line.lstrip().startswith('#')])
 
     def test_card_names_both_board_device_trees(self):
-        script = (ROOT / 'scripts/devices/build-rpi5-sd-image.sh').read_text()
+        script = (ROOT / 'scripts/devices/rpi5-board-dtbs.sh').read_text()
         dtb = toml('device.toml')['kernel']['dtb']
         self.assertIn(dtb.split('/', 1)[1], script)
         self.assertIn('bcm2712-d-rpi-5-b.dtb', script)

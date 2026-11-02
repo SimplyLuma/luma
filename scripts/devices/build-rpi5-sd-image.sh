@@ -44,9 +44,6 @@ installer_args="clk_ignore_unused pd_ignore_unused"
 fat_label=LUMA_PI5
 fat_mib=512
 disk_id=0x4c554d41
-# 256 MiB, inside the trees' own 0-1 GiB alloc-ranges: cma=256M@0M-1024M.
-cma_size="0 10000000"
-cma_ranges="0 0 0 40000000"
 
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
@@ -114,23 +111,8 @@ unsquashfs -no-progress -q -d "$work/stage2" "$work/iso/images/install.img" \
 for name in bcm2712-rpi-5-b.dtb bcm2712-d-rpi-5-b.dtb; do
   [ -e "$work/stage2/$dtbs/$name" ] || fail "the installer kernel has no $name"
 done
-# 256 MB CMA in every tree, before any copy.
-for dtb in "${uboot_dtbs[@]/#/$work/stage2/$dtbs/}"; do
-  node=/reserved-memory/linux,cma
-  [ "$(fdtget "$dtb" "$node" compatible)" = shared-dma-pool ] || fail "$dtb: no CMA pool"
-  [ "$(fdtget -t x "$dtb" "$node" alloc-ranges)" = "$cma_ranges" ] || fail "$dtb: unexpected CMA range"
-  # shellcheck disable=SC2086
-  fdtput -t x "$dtb" "$node" size $cma_size
-  [ "$(fdtget -t x "$dtb" "$node" size)" = "$cma_size" ] || fail "$dtb: CMA size not applied"
-done
-
 fat="$work/fat"
 mkdir -p "$fat/EFI/BOOT/fonts" "$fat/images/pxeboot"
-# Board firmware loads bcm2712-rpi-5-b.dtb on C1 and bcm2712d0-rpi-5-b.dtb on
-# D0 (upstream calls the D0 tree bcm2712-d-rpi-5-b.dtb) and hands it to U-Boot.
-install -m 0644 "$work/stage2/$dtbs/bcm2712-rpi-5-b.dtb" "$fat/bcm2712-rpi-5-b.dtb"
-install -m 0644 "$work/stage2/$dtbs/bcm2712-d-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"
-
 # Display and USB modules the Pi needs in the installer runtime.
 mapfile -t modules < <(python3 "$repo_root/scripts/install/atlas-iso/prepare-lorax-boot.py" --list-arm-modules)
 [ "${#modules[@]}" -gt 0 ] || fail "no ARM runtime module list"
@@ -215,36 +197,10 @@ install -m 0644 "$card_src/config.txt" "$fat/config.txt"
 # applies its board fixups (MAC, serial). Without that file it falls back to
 # the firmware's tree, which the installed system does not boot with, so
 # firmware dtoverlay= lines never reach Linux. HDMI audio is merged into these
-# trees here, only when the payload carries luma-rpi5-kmod: without the DMA
-# driver vc4 HDMI waits for the controller and never binds.
-install -d "$fat/dtb/broadcom"
-# The HDMI DMA request lines differ by stepping: D0 trees (compatible
-# brcm,bcm2712-d0) also get the -d0 fragment.
-if [ "$hdmi_audio" = yes ]; then
-  for frag in luma-rpi5-hdmi-audio luma-rpi5-hdmi-audio-d0; do
-    dtc -q -@ -I dts -O dtb -o "$work/$frag.dtbo" "$card_src/dtb/$frag.dtso"
-  done
-fi
-for name in "${uboot_dtbs[@]}"; do
-  dst="$fat/dtb/broadcom/$name"
-  if [ "$hdmi_audio" = yes ]; then
-    frags=("$work/luma-rpi5-hdmi-audio.dtbo")
-    dreqs="41fa000a 41fa0011"
-    if fdtget "$work/stage2/$dtbs/$name" / compatible | tr ' ' '\n' | grep -qx 'brcm,bcm2712-d0'; then
-      frags+=("$work/luma-rpi5-hdmi-audio-d0.dtbo")
-      dreqs="41fa000c 41fa000d"
-    fi
-    fdtoverlay -i "$work/stage2/$dtbs/$name" -o "$dst" "${frags[@]}" ||
-      fail "luma-rpi5-hdmi-audio does not apply to $name"
-    [ "$(fdtget "$dst" /soc@107c000000/dma@10600 compatible)" = brcm,bcm2712-dma ] ||
-      fail "$name: BCM2712 DMA controller missing after the merge"
-    got="$(fdtget -t x "$dst" "$(fdtget "$dst" /__symbols__ hdmi0)" dmas | cut -d' ' -f2) $(fdtget -t x "$dst" "$(fdtget "$dst" /__symbols__ hdmi1)" dmas | cut -d' ' -f2)"
-    [ "$got" = "$dreqs" ] || fail "$name: HDMI DMA requests are $got, expected $dreqs"
-    chmod 0644 "$dst"
-  else
-    install -m 0644 "$work/stage2/$dtbs/$name" "$dst"
-  fi
-done
+# trees only when the payload carries luma-rpi5-kmod: without the DMA driver
+# vc4 HDMI waits for the controller and never binds.
+"$repo_root/scripts/devices/rpi5-board-dtbs.sh" --kernel-dtbs "$work/stage2/$dtbs" \
+  --hdmi-audio "$hdmi_audio" --output "$fat" >/dev/null
 sed -e "s|@ISO_NAME@|$iso_name|g" "$card_src/README.txt.in" >"$fat/README.txt"
 find "$fat" -exec touch -h -d "@$epoch" {} +
 

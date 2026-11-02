@@ -1,0 +1,34 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Written by build-rpi5-disk-image.sh into the preinstalled card's /etc. On the
+# first boot it grows the root partition (the last one) and its btrfs to the
+# end of the card, then removes itself. /sysroot is read-only on an OSTree
+# system; /var is the same filesystem, mounted read-write.
+set -euo pipefail
+log() { echo "luma-rpi5-grow-root: $*"; }
+
+source=$(findmnt -n -o SOURCE --target /var)
+part=${source%%[*}
+[ -b "$part" ] || { log "/var is not on a block device ($source)"; exit 1; }
+name=${part##*/}
+disk=/dev/$(lsblk -n -d -o PKNAME "$part")
+number=$(cat "/sys/class/block/$name/partition")
+last=$(sfdisk --dump "$disk" | sed -n 's|^\(/dev/[^ ]*\) :.*|\1|p' | tail -n 1)
+if [ "$last" != "$part" ]; then
+  log "$part is not the last partition on $disk; leaving the layout alone"
+else
+  before=$(cat "/sys/class/block/$name/size")
+  # Grow to the end of the disk; the partition table stays msdos.
+  echo ', +' | sfdisk --no-reread --no-tell-kernel --quiet -N "$number" "$disk"
+  start=$(cat "/sys/class/block/$name/start")
+  size=$(sfdisk --dump "$disk" | sed -n "s|^$part : start= *$start, size= *\([0-9]*\).*|\1|p")
+  [ -n "$size" ] || { log "could not read the new size of $part"; exit 1; }
+  # The partition is in use, so tell the kernel about this one only.
+  resizepart "$disk" "$number" "$size"
+  btrfs filesystem resize max /var >/dev/null
+  log "grew $part from $((before / 2048)) MiB to $((size / 2048)) MiB"
+fi
+
+rm -f /etc/systemd/system/multi-user.target.wants/luma-rpi5-grow-root.service \
+      /etc/systemd/system/luma-rpi5-grow-root.service \
+      /etc/luma/rpi5-grow-root
