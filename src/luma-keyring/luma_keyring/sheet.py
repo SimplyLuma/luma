@@ -213,7 +213,7 @@ class UnlockSheet(Adw.ApplicationWindow):
         self._set_busy(False)
         self.field.text = ""
         self._result = result
-        if result.kind in (Kind.WRONG_PASSWORD, Kind.UNAVAILABLE):
+        if result.kind in (Kind.WRONG_PASSWORD, Kind.UNAVAILABLE, Kind.NOT_CHANGED):
             self._say(result.message, error=True)
             self.field.grab_focus()
         elif self._use is Use.MANAGE:

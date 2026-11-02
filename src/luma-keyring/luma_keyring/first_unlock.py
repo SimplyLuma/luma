@@ -41,6 +41,7 @@ class Kind(enum.Enum):
     UNLOCKED = "unlocked"            # this session only, as asked
     AUTOMATIC = "automatic"          # unlocked, and from now on by itself
     UNLOCKED_ONLY = "unlocked-only"  # unlocked, but automatic unlock could not be set up
+    NOT_CHANGED = "not-changed"      # already unlocked; the password did not enrol it
     CHANGED = "changed"              # automatic unlock turned on or off from the window
 
 
@@ -84,7 +85,8 @@ def unlock(password: str, automatic: bool, keyring: Keyring | None = None,
     collection = keyring.collection()
     if collection is None:
         return Result(Kind.UNAVAILABLE, "Your saved passwords aren't available right now.")
-    if collection.locked:
+    was_locked = collection.locked
+    if was_locked:
         try:
             keyring.unlock_with(password)
         except KeyringError as error:
@@ -95,11 +97,15 @@ def unlock(password: str, automatic: bool, keyring: Keyring | None = None,
             return Result(Kind.WRONG_PASSWORD, "That password didn't unlock them. Try again.")
     if not automatic:
         return Result(Kind.UNLOCKED)
+    # Enrolling checks the password again, with PAM and against the keyring
+    # (it re-keys from it): on an unlocked keyring that is the only check.
     outcome = repair.enable_auto_unlock(password, keyring, seal=seal, verify=verify)
     if outcome.ok:
         # Only the weak-password advice is worth saying after the sheet closes.
         return Result(Kind.AUTOMATIC, repair.password_quality_note(password).strip())
-    log.info("unlocked, but automatic unlock was not set up: %s", outcome.message)
+    log.info("automatic unlock was not set up: %s", outcome.message)
+    if not was_locked:
+        return Result(Kind.NOT_CHANGED, outcome.message)
     return Result(Kind.UNLOCKED_ONLY, "They're unlocked for now, but can't unlock "
                                       "automatically yet. " + outcome.message)
 

@@ -88,20 +88,30 @@ class KeyringService(Adw.Application):
         self._open_window()
 
     # -- the first unlock ---------------------------------------------------
-    def _first_unlock(self) -> bool:
+    def _first_unlock(self, by_hand: bool = False) -> bool:
+        """The sheet, holding the prompter while the keyring is locked.
+
+        At session start only when should_ask(); by hand (the keyring page
+        opened on an automatic sign-in that does not unlock by itself yet)
+        also when it is already unlocked, to turn automatic unlock on.
+        """
+        from .first_unlock import is_automatic, should_ask
         from .prompt_gate import PromptGate
 
-        if self._gate is None:
+        locked = read(self._keyring).state is State.LOCKED
+        if locked and self._gate is None:
             self._gate = PromptGate()
-        if not self._gate.take():
+        if locked and not self._gate.take():
             self._gate_tries += 1
             if self._gate_tries <= GATE_WAIT_SECONDS:
-                GLib.timeout_add_seconds(1, self._first_unlock)
+                GLib.timeout_add_seconds(1, self._first_unlock, by_hand)
                 return GLib.SOURCE_REMOVE
             log.info("showing the sheet without holding the prompter")
-        # Still locked? Something may have unlocked it while we waited.
-        from .first_unlock import should_ask
-        if not should_ask(self._keyring):
+        # Still worth asking? Something may have unlocked it while we waited.
+        wanted = should_ask(self._keyring) or (
+            by_hand and autounlock.is_autologin() and not is_automatic()
+            and read(self._keyring).state in (State.LOCKED, State.UNLOCKED))
+        if not wanted:
             self._first_unlock_done(None)
             return GLib.SOURCE_REMOVE
         from .sheet import UnlockSheet, Use
@@ -215,7 +225,14 @@ class KeyringService(Adw.Application):
             self._window.present()
             return
         if self._mode is None:
-            # Opened by hand with nothing to put right: the keyring's own page.
+            from .first_unlock import is_automatic
+
+            if autounlock.is_autologin() and not is_automatic():
+                # An automatic sign-in that does not unlock by itself yet: the
+                # same sheet as at session start, switch on.
+                self._first_unlock(by_hand=True)
+                return
+            # Otherwise the keyring's own page: its state and the switch.
             from .sheet import UnlockSheet, Use
 
             self._window = UnlockSheet(self, Use.MANAGE, self._keyring)

@@ -90,6 +90,13 @@ class FirstUnlock(Paths):
             self.assertEqual(self.state_files(), [])
         self.assertIs(self.unlock(password="").kind, Kind.WRONG_PASSWORD)
 
+    def test_an_unlocked_keyring_still_checks_the_password(self):
+        self.keyring.locked = False
+        self.assertIs(self.unlock(password="nope").kind, Kind.NOT_CHANGED)
+        self.assertEqual(self.keyring.password, PASSWORD)
+        self.assertEqual(self.state_files(), [])
+        self.assertIs(self.unlock().kind, Kind.AUTOMATIC)
+
     def test_a_keyring_on_another_password_unlocks_but_is_not_enrolled(self):
         keyring = Keyring(password=KEYRING_PASSWORD, locked=True, files=self.keyrings)
         result = self.unlock(password=KEYRING_PASSWORD, keyring=keyring)

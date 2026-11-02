@@ -7,7 +7,9 @@ account is made to look like an automatic sign-in and PAM is stood in for
 (no account has this password); sealing is real systemd-creds when
 LUMA_KEYRING_REAL_SEAL is set. Checks that the service tells systemd it is
 ready as soon as the sheet is up, holds the prompter while it is, and on
-Unlock enrols, gives the prompter back and exits.
+Unlock enrols, gives the prompter back and exits. LUMA_KEYRING_BY_HAND=1
+instead opens the keyring page by hand on an unlocked, unenrolled account:
+the same sheet comes up, and its password enrols it.
 """
 
 from __future__ import annotations
@@ -43,7 +45,9 @@ def main() -> int:
     if autounlock.state_dir().exists():
         raise SystemExit("refusing to run with key slots in this HOME")
     keyring.create_login(PASSWORD)
-    keyring.lock()
+    by_hand = bool(os.environ.get("LUMA_KEYRING_BY_HAND"))
+    if not by_hand:
+        keyring.lock()
 
     autounlock.is_autologin = lambda user=None, **paths: True
     repair.check_login_password = lambda password, username=None: password == PASSWORD
@@ -59,8 +63,8 @@ def main() -> int:
     argv = ["luma-keyring", "--gapplication-service"]
     started = time.monotonic()
     ask = ready.decide(argv)
-    check("the service decides to ask, before GTK loads",
-          ask and "gi.repository.Gtk" not in sys.modules, f"ask={ask}")
+    check("the service decides " + ("not to ask at start" if by_hand else "to ask") + ", before GTK loads",
+          ask is not by_hand and "gi.repository.Gtk" not in sys.modules, f"ask={ask}")
     schemas = os.path.join(folder, "schemas")
     os.mkdir(schemas)
     subprocess.run(["glib-compile-schemas", "--targetdir", schemas,
@@ -97,15 +101,18 @@ def main() -> int:
         sheet._on_primary()
         return GLib.SOURCE_REMOVE
 
+    if by_hand:
+        GLib.timeout_add(300, lambda: service.activate() and False)
     GLib.timeout_add(100, drive)
     GLib.timeout_add_seconds(60, lambda: service.quit())
     code = service.run(argv)
-    check("READY once the sheet is up", seen.get("ready") == b"READY=1",
+    check("READY once the sheet is up (at once by hand)", seen.get("ready") == b"READY=1" or by_hand,
           f"{seen.get('ready_after', 0):.1f} s")
     check("the sheet is Luma's", seen.get("title") == "Unlock your saved passwords")
-    check("the service held the prompter while asking", seen.get("gate_ours", False))
+    check("the service held the prompter while asking (not needed when unlocked)",
+          seen.get("gate_ours", False) is not by_hand)
     check("and gave it back", owner() != bus.get_unique_name())
-    check("the service exits after the answer", code == 0 and time.monotonic() - started < 60)
+    check("the service exits after the answer", code == 0 and time.monotonic() - started < 45)
     check("the keyring is unlocked and enrolled",
           not keyring.collection().locked and autounlock.credential_path().exists()
           and first_unlock.is_automatic())
