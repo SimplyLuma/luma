@@ -8,6 +8,7 @@ PartOf=graphical-session.target
 # when the keyring needs its first unlock, Luma's sheet is the first to ask.
 After=gnome-session-initialized.target gnome-keyring-daemon.service luma-keyring-autologin.service
 Before=graphical-session.target
+ConditionUser=!@system
 
 [Service]
 # READY=1 at once when there is nothing to ask, once the sheet is up when
@@ -16,7 +17,7 @@ Before=graphical-session.target
 Type=notify
 NotifyAccess=main
 ExecStart=/usr/libexec/luma-keyring --gapplication-service
-TimeoutStartSec=30
+TimeoutStartSec=20
 # It looks once, says its piece and goes; a failure is not worth a loop.
 Restart=no
 Slice=session.slice

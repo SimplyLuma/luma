@@ -18,6 +18,7 @@ __all__ = ("READY_BOUND_SECONDS", "notify_ready", "decide")
 log = logging.getLogger("luma-keyring")
 
 READY_BOUND_SECONDS = 8
+DECIDE_TIMEOUT_MS = 3000
 
 _ready_sent = False
 
@@ -50,9 +51,12 @@ def decide(argv: list[str]) -> bool:
     if "--gapplication-service" not in argv:
         return False
     from .first_unlock import should_ask
+    from .secrets import Keyring
 
     try:
-        ask = should_ask()
+        # The session waits for this: a keyring daemon that does not answer
+        # is "nothing to ask" after a few seconds, not a stalled login.
+        ask = should_ask(Keyring(timeout_ms=DECIDE_TIMEOUT_MS))
     except Exception as error:  # noqa: BLE001 - never hold the session up over this
         log.info("could not tell whether to ask: %s", error)
         ask = False

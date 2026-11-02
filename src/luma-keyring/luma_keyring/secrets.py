@@ -51,9 +51,11 @@ class Collection:
 class Keyring:
     """The session's keyring daemon, or as much of it as is there."""
 
-    def __init__(self, bus: Gio.DBusConnection | None = None) -> None:
+    def __init__(self, bus: Gio.DBusConnection | None = None,
+                 timeout_ms: int = CALL_TIMEOUT_MS) -> None:
         self._bus = bus or Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self._session: str | None = None
+        self._timeout_ms = timeout_ms
 
     # -- plumbing ---------------------------------------------------------
     def _call(self, path: str, iface: str, method: str,
@@ -62,7 +64,7 @@ class Keyring:
             return self._bus.call_sync(
                 BUS_NAME, path, iface, method, params,
                 GLib.VariantType.new(reply) if reply else None,
-                Gio.DBusCallFlags.NONE, CALL_TIMEOUT_MS, None)
+                Gio.DBusCallFlags.NONE, self._timeout_ms, None)
         except GLib.Error as error:
             raise KeyringError(error.message) from None
 
