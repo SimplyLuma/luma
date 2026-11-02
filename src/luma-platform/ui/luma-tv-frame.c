@@ -381,6 +381,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:first-child { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:not(:first-child) { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box { margin-top: 6tv; }\n"
+/* a hero drawn as a column (a person: the avatar, the name, the account) */
+".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > box + label { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; margin-top: 14tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > label + label { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box label { font-size: 22tv; font-weight: 400; color: @ink_2@; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:first-child, .lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:not(:first-child) {\n"
 "  font-size: 26tv; font-weight: 600; letter-spacing: 0; color: inherit; margin: 0; }\n"
@@ -812,6 +815,109 @@ static gboolean within_row(GtkWidget *widget) {
   return FALSE;
 }
 
+static GtkWidget *find_class(GtkWidget *w, const char *cls);
+
+/* What the TV changed on a widget the app built, kept on it and put back on leaving (restore_page). */
+typedef struct { int kind, a, b, c, d, e; } TvKept;
+enum { KEPT_FLOW = 1, KEPT_BOX, KEPT_IMAGE, KEPT_LEAD };
+
+static void keep(GtkWidget *w, TvKept kept) {
+  g_object_set_data_full(G_OBJECT(w), "luma-tv-kept", g_memdup2(&kept, sizeof kept), g_free);
+}
+
+static gboolean image_full_colour(GtkWidget *w) {
+  if (!GTK_IS_IMAGE(w))
+    return FALSE;
+  if (gtk_image_get_storage_type(GTK_IMAGE(w)) == GTK_IMAGE_ICON_NAME)
+    return !g_str_has_suffix(gtk_image_get_icon_name(GTK_IMAGE(w)), "-symbolic");
+  if (gtk_image_get_storage_type(GTK_IMAGE(w)) == GTK_IMAGE_GICON) {
+    GIcon *icon = gtk_image_get_gicon(GTK_IMAGE(w));
+    const char *const *names = G_IS_THEMED_ICON(icon) ? g_themed_icon_get_names(G_THEMED_ICON(icon)) : NULL;
+    return names == NULL || names[0] == NULL || !g_str_has_suffix(names[0], "-symbolic");
+  }
+  return gtk_image_get_storage_type(GTK_IMAGE(w)) == GTK_IMAGE_PAINTABLE;
+}
+
+/* libadwaita's own rows and an app's FlowBox of actions, in the TV's parts:
+ *  - an action row's prefix is its lead (a 48 tile; an app's own icon, full colour, 48 without one);
+ *  - a FlowBox of buttons (a phone's actions) is a row of TV buttons, each its icon beside its words. */
+static void adapt_adw(TvFrame *f, GtkWidget *widget) {
+  if (g_object_get_data(G_OBJECT(widget), "luma-tv-kept") != NULL)
+    return;
+  if (ADW_IS_ACTION_ROW(widget)) {
+    GtkWidget *prefixes = find_class(widget, "prefixes");
+    GtkWidget *lead = prefixes != NULL ? gtk_widget_get_first_child(prefixes) : NULL;
+    if (lead == NULL || !gtk_widget_get_visible(lead) || gtk_widget_has_css_class(lead, "lumaui-part-lead"))
+      return;
+    gboolean picture = image_full_colour(lead);
+    keep(widget, (TvKept){KEPT_LEAD, picture, 0, 0, 0, 0});
+    gtk_widget_add_css_class(widget, "lumaui-part-leads");
+    gtk_widget_add_css_class(lead, "lumaui-part-lead");
+    if (picture) {
+      gtk_widget_add_css_class(lead, "lumaui-part-picture");
+      keep(lead, (TvKept){KEPT_IMAGE, gtk_image_get_pixel_size(GTK_IMAGE(lead)), 0, 0, 0, 0});
+      gtk_image_set_pixel_size(GTK_IMAGE(lead), (int)round(48 * f->unit));
+    }
+    return;
+  }
+  GtkWidget *first = GTK_IS_FLOW_BOX(widget) ? gtk_widget_get_first_child(widget) : NULL;
+  if (first != NULL && GTK_IS_BUTTON(gtk_widget_get_first_child(first))) {
+    GtkFlowBox *flow = GTK_FLOW_BOX(widget);
+    keep(widget, (TvKept){KEPT_FLOW, gtk_flow_box_get_homogeneous(flow), (int)gtk_flow_box_get_column_spacing(flow),
+                          (int)gtk_flow_box_get_row_spacing(flow), (int)gtk_flow_box_get_min_children_per_line(flow), 0});
+    gtk_flow_box_set_homogeneous(flow, FALSE);
+    gtk_flow_box_set_column_spacing(flow, (guint)round(14 * f->unit));
+    gtk_flow_box_set_row_spacing(flow, (guint)round(14 * f->unit));
+    gtk_flow_box_set_min_children_per_line(flow, 1);
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL; child = gtk_widget_get_next_sibling(child)) {
+      GtkWidget *button = gtk_widget_get_first_child(child);
+      GtkWidget *content = GTK_IS_BUTTON(button) ? gtk_button_get_child(GTK_BUTTON(button)) : NULL;
+      if (content == NULL || !GTK_IS_BOX(content) || g_object_get_data(G_OBJECT(content), "luma-tv-kept") != NULL)
+        continue;
+      keep(content, (TvKept){KEPT_BOX, gtk_orientable_get_orientation(GTK_ORIENTABLE(content)), gtk_box_get_spacing(GTK_BOX(content)), 0, 0, 0});
+      gtk_orientable_set_orientation(GTK_ORIENTABLE(content), GTK_ORIENTATION_HORIZONTAL);
+      gtk_box_set_spacing(GTK_BOX(content), (int)round(12 * f->unit));
+      for (GtkWidget *c = gtk_widget_get_first_child(content); c != NULL; c = gtk_widget_get_next_sibling(c))
+        if (GTK_IS_IMAGE(c) && g_object_get_data(G_OBJECT(c), "luma-tv-kept") == NULL) {
+          keep(c, (TvKept){KEPT_IMAGE, gtk_image_get_pixel_size(GTK_IMAGE(c)), 0, 0, 0, 0});
+          gtk_image_set_pixel_size(GTK_IMAGE(c), (int)round(26 * f->unit));
+        }
+    }
+  }
+}
+
+static void unadapt(GtkWidget *widget) {
+  TvKept *kept = g_object_get_data(G_OBJECT(widget), "luma-tv-kept");
+  if (kept == NULL)
+    return;
+  switch (kept->kind) {
+  case KEPT_FLOW:
+    gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(widget), kept->a);
+    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(widget), (guint)kept->b);
+    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(widget), (guint)kept->c);
+    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(widget), (guint)kept->d);
+    break;
+  case KEPT_BOX:
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(widget), (GtkOrientation)kept->a);
+    gtk_box_set_spacing(GTK_BOX(widget), kept->b);
+    break;
+  case KEPT_IMAGE:
+    gtk_image_set_pixel_size(GTK_IMAGE(widget), kept->a);
+    gtk_widget_remove_css_class(widget, "lumaui-part-picture");
+    break;
+  case KEPT_LEAD: {
+    gtk_widget_remove_css_class(widget, "lumaui-part-leads");
+    GtkWidget *prefixes = find_class(widget, "prefixes");
+    GtkWidget *lead = prefixes != NULL ? gtk_widget_get_first_child(prefixes) : NULL;
+    if (lead != NULL) gtk_widget_remove_css_class(lead, "lumaui-part-lead");
+    break;
+  }
+  default:
+    break;
+  }
+  g_object_set_data(G_OBJECT(widget), "luma-tv-kept", NULL);
+}
+
 static void place_lead(TvFrame *f, GtkWidget *lead) {
   if (g_object_get_data(G_OBJECT(lead), "luma-tv-lead") != NULL)
     return;
@@ -849,6 +955,7 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
+  adapt_adw(f, widget);
   if (gtk_widget_has_css_class(widget, "lumaui-part-hero")) {
     /* the hero's lead, words and actions 28 apart (the mockup's .hero gap), whatever the app spaced them */
     GtkWidget *line = gtk_widget_get_first_child(widget);
@@ -913,6 +1020,7 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 
 static void restore_page(GtkWidget *widget) {
   unplace_lead(widget);
+  unadapt(widget);
   int hero_gap = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "luma-tv-hero-gap"));
   if (hero_gap > 0) {
     gtk_box_set_spacing(GTK_BOX(widget), hero_gap - 1);
