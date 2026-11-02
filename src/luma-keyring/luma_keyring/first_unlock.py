@@ -30,6 +30,7 @@ from .secrets import Keyring, KeyringError
 from .state import State, read
 
 __all__ = ("Kind", "Result", "should_ask", "unlock", "set_automatic", "is_automatic",
+           "enrol_with_login_password", "login_password_differs",
            "device_noun")
 
 log = logging.getLogger("luma-keyring")
@@ -42,6 +43,7 @@ class Kind(enum.Enum):
     AUTOMATIC = "automatic"          # unlocked, and from now on by itself
     UNLOCKED_ONLY = "unlocked-only"  # unlocked, but automatic unlock could not be set up
     NOT_CHANGED = "not-changed"      # already unlocked; the password did not enrol it
+    NEEDS_LOGIN_PASSWORD = "needs-login-password"  # unlocked with an older password: one more step
     CHANGED = "changed"              # automatic unlock turned on or off from the window
 
 
@@ -97,6 +99,10 @@ def unlock(password: str, automatic: bool, keyring: Keyring | None = None,
             return Result(Kind.WRONG_PASSWORD, "That password didn't unlock them. Try again.")
     if not automatic:
         return Result(Kind.UNLOCKED)
+    if was_locked and login_password_differs(password, verify):
+        # The keyring opened with an older password than the one this account signs in
+        # with: the recovery copy must be wrapped with the current one, so ask for it.
+        return Result(Kind.NEEDS_LOGIN_PASSWORD, "")
     # Enrolling checks the password again, with PAM and against the keyring
     # (it re-keys from it): on an unlocked keyring that is the only check.
     outcome = repair.enable_auto_unlock(password, keyring, seal=seal, verify=verify)
@@ -108,6 +114,33 @@ def unlock(password: str, automatic: bool, keyring: Keyring | None = None,
         return Result(Kind.NOT_CHANGED, outcome.message)
     return Result(Kind.UNLOCKED_ONLY, "They're unlocked for now, but can't unlock "
                                       "automatically yet. " + outcome.message)
+
+
+def login_password_differs(password: str, verify=None) -> bool:
+    """Whether PAM says this is not the account's current password (False when PAM cannot say)."""
+    from .login import PamUnavailable, check_login_password
+
+    try:
+        return not (verify or check_login_password)(password)
+    except PamUnavailable:
+        return False
+
+
+def enrol_with_login_password(login_password: str, keyring_password: str,
+                              keyring: Keyring | None = None, seal=None, verify=None) -> Result:
+    """The second step: the keyring (open, on `keyring_password`) onto a sealed key,
+    its recovery copy wrapped with the current login password."""
+    keyring = keyring or Keyring()
+    if not login_password:
+        return Result(Kind.WRONG_PASSWORD, "Type the password you sign in with.")
+    if login_password_differs(login_password, verify):
+        return Result(Kind.WRONG_PASSWORD, "That isn't the password you sign in with. Try again.")
+    outcome = repair.enable_auto_unlock(login_password, keyring, seal=seal, verify=verify,
+                                        keyring_password=keyring_password)
+    if outcome.ok:
+        return Result(Kind.AUTOMATIC, repair.password_quality_note(login_password).strip())
+    return Result(Kind.UNLOCKED_ONLY, "They're unlocked for now, but can't unlock automatically yet. "
+                                      + outcome.message)
 
 
 def set_automatic(on: bool, password: str, keyring: Keyring | None = None,

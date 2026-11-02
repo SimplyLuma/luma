@@ -150,9 +150,13 @@ class KeyringService(Adw.Application):
         done = threading.Event()
         GLib.idle_add(self._drain_start, password)
         quiet_since = time.monotonic()
-        deadline = quiet_since + 15
+        # Up to two minutes: another keyring's question, answered meanwhile in its own
+        # sheet, holds the queue; the password stays in this process's memory only.
+        deadline = quiet_since + 120
         while time.monotonic() < deadline:
-            busy = any(r.waiting and r not in self._parked for r in self._prompter.pending())
+            pending = self._prompter.pending()
+            busy = any(r not in self._parked for r in pending) or any(
+                r is self._prompter.active for r in self._parked)
             if busy:
                 quiet_since = time.monotonic()
             elif time.monotonic() - quiet_since > 0.8:
@@ -162,6 +166,8 @@ class KeyringService(Adw.Application):
         done.wait(5)
         if not automatic:
             return Result(Kind.UNLOCKED)
+        if first_unlock.login_password_differs(password):
+            return Result(Kind.NEEDS_LOGIN_PASSWORD, "")
         outcome = repair.enable_auto_unlock(password, self._keyring)
         if outcome.ok:
             return Result(Kind.AUTOMATIC, repair.password_quality_note(password).strip())
@@ -190,8 +196,7 @@ class KeyringService(Adw.Application):
             # Not opened by the sheet's password (another keyring, a key), or asked
             # when no sheet is up: it gets a sheet of its own, once the first is done.
             self._parked.append(request)
-            if self._window is None:
-                self._show_parked()
+            self._show_parked(over_first=self._draining is not None)
         # Otherwise it waits: the first-unlock sheet is up, and its Unlock answers it.
 
     def _on_prompt_closed(self, request) -> None:
@@ -202,8 +207,8 @@ class KeyringService(Adw.Application):
             sheet._finish(None)
         self._show_parked()
 
-    def _show_parked(self) -> None:
-        if self._prompt_sheet is not None or self._window is not None:
+    def _show_parked(self, over_first: bool = False) -> None:
+        if self._prompt_sheet is not None or (self._window is not None and not over_first):
             return
         waiting = [r for r in self._parked if r.waiting and not r.closed]
         if not waiting:

@@ -204,14 +204,20 @@ def _rekey_for(password: str, keyring: Keyring):
 
 
 def enable_auto_unlock(password: str, keyring: Keyring | None = None,
-                       seal=None, verify=None) -> Outcome:
-    """Asked once on an account that signs in automatically."""
+                       seal=None, verify=None, keyring_password: str | None = None) -> Outcome:
+    """Asked once on an account that signs in automatically.
+
+    `password` is the account's current login password (checked with PAM): the
+    recovery copy is wrapped with it. `keyring_password` is what the keyring is
+    locked with now, when that is an older password; the keyring is re-keyed
+    from it onto the new keyring key, its contents kept.
+    """
     keyring = keyring or Keyring()
     wrong = _login_password_is_right(password, verify)
     if wrong is not None:
         return wrong
     try:
-        return _enrol(password, keyring, _rekey_for(password, keyring), seal)
+        return _enrol(password, keyring, _rekey_for(keyring_password or password, keyring), seal)
     except KeyringError:
         return Outcome(False, "Your saved passwords are locked with a different "
                               "password than your login password. Repair them "
