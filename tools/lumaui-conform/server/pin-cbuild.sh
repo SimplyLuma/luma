@@ -14,7 +14,7 @@ rpm -qa --qf '%{SOURCERPM} %{VERSION}-%{RELEASE}\n' | sed 's/-[^-]*-[^-]*\.src\.
 # The image's Luma-built runtime packages are off limits to every transaction here.
 exclude=$(grep '\.luma\.' /usr/share/lumaui-conform/rpmqa.txt | awk '{print $1}' | paste -sd, -)
 if ls rpms-app/*.rpm >/dev/null 2>&1; then
-  reqs=$(rpm -qp --nosignature --requires rpms-app/*.rpm | grep -v -E '^(rpmlib\(|/|config\()|luma|nautilus|gnome-control-center' | sed 's/ .*//' | sort -u)
+  reqs=$(rpm -qp --nosignature --requires rpms-app/*.rpm | grep -v -E '^(rpmlib\(|/|config\()|luma|nautilus|gnome-control-center|^gnome-shell|^gdm' | sed 's/ .*//' | sort -u)
   dnf -y -q install --setopt=install_weak_deps=False --exclude="$exclude" $reqs
 fi
 tools="gcc gcc-c++ meson ninja-build vala sassc ccache python3-devel gettext desktop-file-utils itstool
