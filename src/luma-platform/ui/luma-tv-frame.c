@@ -194,6 +194,7 @@ typedef struct {
   char *held_title;      /* the title of the row the remote was on: rows are found by it, not by place */
   char *held_page;       /* the page's title then: a redraw keeps it, opening another page changes it */
   int keying;            /* the frame is handling a key: focus moves now are the remote's own */
+  guint row_depth;       /* where the held row is in the path: below it, the path inside the row */
   gint64 probe_at;       /* LUMA_TV_DEBUG timing: when the key arrived */
   gulong active_id;
   gpointer keyboard;     /* the TV keyboard's height, followed */
@@ -763,8 +764,10 @@ static const char *page_title(TvFrame *f) {
 /* The focus moved by itself (no key, not the frame) away from a widget that is gone, on the same
  * page: the page was redrawn under the remote (a network list refreshing). */
 static gboolean redrawn_under(TvFrame *f) {
+  /* A field taking the caret is the app's own choice (a password asked for), never a fallback. */
+  GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(f->window));
   return f->page_zone && f->keying == 0 && f->self_moving == 0 && f->held == NULL && f->path->len > 0 &&
-         g_strcmp0(page_title(f), f->held_page) == 0;
+         !editable(focus) && g_strcmp0(page_title(f), f->held_page) == 0;
 }
 
 static void remember(TvFrame *f, GtkWidget *focus) {
@@ -777,11 +780,14 @@ static void remember(TvFrame *f, GtkWidget *focus) {
   g_clear_weak_pointer(&f->held);
   g_set_weak_pointer(&f->held, focus);
   g_array_set_size(f->path, 0);
+  guint below = 0;
   for (GtkWidget *w = focus; w != NULL && w != f->island; w = gtk_widget_get_parent(w)) {
     int index = 0;
     for (GtkWidget *c = gtk_widget_get_prev_sibling(w); c != NULL; c = gtk_widget_get_prev_sibling(c)) index++;
     g_array_prepend_val(f->path, index);
+    if (w == row) below = f->path->len - 1;
   }
+  f->row_depth = row != NULL ? f->path->len - below : 0;
 }
 
 static GtkWidget *first_field(GtkWidget *widget) {
@@ -804,6 +810,15 @@ static GtkWidget *path_widget(TvFrame *f) {
   /* the same row by its title (a list that reordered), its first control; else the same place */
   GtkWidget *row = f->held_title != NULL ? row_titled(f, f->island, f->held_title) : NULL;
   if (row != NULL) {
+    /* the same place inside the row (a grown row's Connect), else its first control */
+    GtkWidget *inside = row;
+    for (guint i = f->row_depth; inside != NULL && f->row_depth > 0 && i < f->path->len; i++) {
+      GtkWidget *c = gtk_widget_get_first_child(inside);
+      for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
+      inside = c;
+    }
+    if (inside != NULL && inside != row && gtk_widget_get_focusable(inside) && shown(inside))
+      return inside;
     GtkWidget *first = gtk_widget_get_focusable(row) ? row : NULL;
     for (GtkWidget *c = row; first == NULL && c != NULL; c = gtk_widget_get_first_child(c))
       if (gtk_widget_get_focusable(c) && !GTK_IS_LABEL(c)) first = c;
@@ -847,6 +862,7 @@ static gboolean grown_field(TvFrame *f) {
   if (focus != field && !gtk_widget_is_ancestor(focus, field))
     gtk_widget_grab_focus(field);
   f->self_moving--;
+  if (focus_of(f) != NULL) remember(f, focus_of(f));
   return TRUE;
 }
 
