@@ -251,3 +251,5 @@ the page's live summary no longer replaces that line on a TV. Subpages and every
 keep their own words. Display: a fixture may describe its displays as the live reader does
 (each with its logical rectangle), so a fixture can be one TV on HDMI; such a fixture is checked
 and drawn by the live rules (any number of displays) instead of v70's built-in-plus-external pair.
+The fixture About page reads its machine (`sys.model`, `sys.mem`, `sys.cpu`, `sys.gpu`, `sys.disk`)
+from the fixture when it has them, else v70's ThinkPad.
