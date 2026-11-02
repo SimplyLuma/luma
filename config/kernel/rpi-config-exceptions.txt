@@ -1,0 +1,33 @@
+# Options Fedora's configuration or Raspberry Pi's bcm2711_defconfig enables
+# that the Luma Raspberry Pi kernel does not have, one per line with the reason.
+# scripts/kernel/merge-rpi-config.py check fails on any loss not listed here.
+
+# Fedora options
+CONFIG_CC_CAN_LINK The cross toolchain has no target C library; only kernel userprogs (samples, selftests) need it.
+CONFIG_EFI_SBAT Fedora sets the SBAT file at build time for shim; the Pi has no Secure Boot.
+CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT Fedora-only patch, not in Raspberry Pi's tree; the Pi has no Secure Boot.
+CONFIG_PCIEASPM_DEFAULT Raspberry Pi's choice wins: ASPM powersave (Pi 5 PCIe/NVMe as in Raspberry Pi OS).
+CONFIG_ZRAM_DEF_COMP_LZORLE Raspberry Pi's choice wins: zstd. Luma's zram-generator names its algorithm anyway.
+CONFIG_DMA_BOUNCE_UNALIGNED_KMALLOC Raspberry Pi's tree disables the arm64 select (arch/arm64/Kconfig) for DMA performance.
+CONFIG_GENERIC_PT Mainline BCM2712 IOMMU page tables; Raspberry Pi's tree uses its own BCM2712_IOMMU driver.
+CONFIG_IOMMU_PT Same: replaced by BCM2712_IOMMU.
+CONFIG_IOMMU_PT_BCM2712 Same: replaced by BCM2712_IOMMU.
+CONFIG_IOMMU_PT_KUNIT_TEST Test for the replaced mainline page-table code.
+CONFIG_PWM_RASPBERRYPI_RP1 Mainline RP1 PWM driver; Raspberry Pi's tree has PWM_RP1 for the same block.
+
+# Raspberry Pi options (Fedora's choice wins)
+CONFIG_NO_HZ_IDLE Fedora's NO_HZ_FULL.
+CONFIG_PREEMPT Fedora's PREEMPT_DYNAMIC (lazy by default, preempt=full on the command line).
+CONFIG_TICK_CPU_ACCOUNTING Fedora's VIRT_CPU_ACCOUNTING_GEN (needed by NO_HZ_FULL).
+CONFIG_ARM64_VA_BITS_39 Fedora's 48-bit virtual addresses.
+CONFIG_HZ_250 Fedora's HZ_1000.
+CONFIG_CMDLINE_FROM_BOOTLOADER No built-in command line; the bootloader's is used either way.
+CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND Fedora's schedutil.
+CONFIG_FB_SIMPLE Fedora uses simpledrm for the boot framebuffer; both cannot bind it.
+CONFIG_IOMMU_DEFAULT_DMA_STRICT Fedora's lazy IOMMU invalidation.
+CONFIG_SQUASHFS_FILE_CACHE Fedora's SQUASHFS_FILE_DIRECT.
+CONFIG_SQUASHFS_DECOMP_SINGLE Fedora's multi-threaded squashfs decompression.
+CONFIG_SQUASHFS_COMPILE_DECOMP_SINGLE Same.
+CONFIG_DEBUG_INFO_NONE Fedora's BTF debug info (BPF LSM, systemd, bpftrace).
+CONFIG_DEFAULT_SECURITY_APPARMOR Luma uses SELinux (rpi.config).
+CONFIG_PROC_MEM_FORCE_PTRACE Fedora's PROC_MEM_ALWAYS_FORCE (rpi.config).

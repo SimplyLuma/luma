@@ -1,0 +1,24 @@
+{
+  "schema": "org.projectluma.kernel-source/v1",
+  "version": "7.2.15",
+  "release": "7.2.15-1.luma.rpi.fc44.aarch64",
+  "architecture": "aarch64",
+  "branch": "rpi-7.2.y",
+  "pi_defconfig": "bcm2711_defconfig",
+  "sources": {
+    "linux": {
+      "name": "rpi-linux-dbb0de2b7b0496028bf81d9acdac93bf7ec036b1.tar.gz",
+      "url": "https://github.com/raspberrypi/linux/archive/dbb0de2b7b0496028bf81d9acdac93bf7ec036b1.tar.gz",
+      "sha256": "6ffd1fbd5757306efda292c9e69da6a2af63a03493771f4f6ff66bdb8472a319",
+      "size": 267762221,
+      "revision": "dbb0de2b7b0496028bf81d9acdac93bf7ec036b1",
+      "top": "linux-dbb0de2b7b0496028bf81d9acdac93bf7ec036b1"
+    }
+  },
+  "base_config": {
+    "source_rpm": "https://kojipkgs.fedoraproject.org/packages/kernel/7.2.11/200.fc44/aarch64/kernel-core-7.2.11-200.fc44.aarch64.rpm",
+    "source_rpm_sha256": "c71821a704919ee93c2cb9dd21439a9973952fafc558f267c2b84fda13cf40ca",
+    "member": "lib/modules/7.2.11-200.fc44.aarch64/config",
+    "sha256": "a51ef35e4ec68f0d066eb90550d9dae3c9ea7b93c91709653d86ba0778a95de6"
+  }
+}
