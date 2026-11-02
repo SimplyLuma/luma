@@ -352,11 +352,15 @@
   },
   {
    "name": "keyboard",
-   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it",
+   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it (the mockup's island still lists Updates, which Settings leaves out: one more Down there)",
    "themes": [
     "dark"
    ],
    "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
     {
      "key": "ArrowDown",
      "wait": 300
@@ -403,7 +407,7 @@
     },
     {
      "key": "Enter",
-     "wait": 300
+     "wait": 600
     }
    ],
    "gtk": [
