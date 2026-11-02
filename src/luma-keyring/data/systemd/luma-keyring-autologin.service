@@ -2,7 +2,10 @@
 [Unit]
 Description=Luma saved passwords (open the login keyring of an automatic sign-in)
 Documentation=https://projectluma.org/saved-passwords
-# Before anything in the session can ask for a secret; never holding it up.
+# Before anything in the session can ask for a secret. It is ordered before
+# graphical-session-pre.target on purpose; the bound is a few seconds (the
+# keyring daemon is activated on demand) and a failure never blocks the
+# session (WantedBy, and the command always exits 0).
 Before=graphical-session-pre.target
 After=dbus.socket gnome-keyring-daemon.socket
 ConditionUser=!@system
@@ -10,11 +13,12 @@ ConditionUser=!@system
 [Service]
 Type=oneshot
 ExecStart=/usr/libexec/luma-keyring --autologin
-TimeoutStartSec=30
+TimeoutStartSec=10
 Slice=session.slice
 NoNewPrivileges=yes
 LockPersonality=yes
 RestrictRealtime=yes
+LimitCORE=0
 MemoryHigh=64M
 
 [Install]

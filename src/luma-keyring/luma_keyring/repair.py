@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,8 @@ from .state import keyring_path
 from . import autounlock
 
 __all__ = ("Outcome", "repair_in_place", "start_again", "enable_auto_unlock",
-           "recover", "rewrap", "rewrap_current", "start_again_with_auto_unlock", "use_login_password")
+           "recover", "rewrap", "rewrap_current", "start_again_with_auto_unlock",
+           "use_login_password", "store_unencrypted", "password_quality_note")
 
 log = logging.getLogger("luma-keyring")
 
@@ -130,51 +132,75 @@ def start_again(login_password: str, keyring: Keyring | None = None,
 
 
 
+
 _UNLOCKS_BY_ITSELF = ("Your saved passwords are unlocked, and will unlock by "
                       "themselves from now on. Your password still recovers them "
                       "on other hardware.")
+_CANNOT_SEAL = ("This device could not keep a key for your saved passwords, so "
+                "nothing was changed: they stay locked with your password, and "
+                "Luma will offer this again.")
+
+
+def password_quality_note(password: str) -> str:
+    """A sentence to add when the password is weak (pwscore, libpwquality).
+
+    The recovery copy can be guessed at offline, one Argon2id run per guess,
+    by someone who has it; a weak password makes that cheap.
+    """
+    try:
+        done = subprocess.run(["pwscore"], input=password.encode("utf-8"),
+                              capture_output=True, timeout=10, check=False)
+        score = int(done.stdout.strip() or 0) if done.returncode == 0 else 0
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        score = 100 if len(password) >= 12 else 0
+    if score >= 50:
+        return ""
+    return (" Your password is weak; anyone who copies this device's files could "
+            "try to guess it. A stronger one is worth setting in Settings.")
 
 
 def _enrol(password: str, keyring: Keyring, rekey, seal=None) -> Outcome:
     """Put the keyring on a new keyring key, sealed and wrapped.
 
-    `rekey(key)` moves the keyring onto `key`. The sealed and wrapped copies
-    are written first under temporary names and put in place only once the
-    keyring has moved, so it is never on a key nothing keeps. Where nothing
-    can be sealed, the keyring goes onto an empty password instead.
+    Crash-safe: the new slots are written and fsynced as ``*.new`` before
+    `rekey(key)` moves the keyring, and promoted after; ensure() and
+    recover() try ``*.new`` too, so some slot on disk always opens it. If
+    nothing can be sealed, nothing changes (fail closed).
     """
     key = autounlock.new_key()
     try:
         sealed = (seal or autounlock.seal_key)(key)
     except KeyringError as error:
         log.warning("nothing can be sealed on this device: %s", error)
-        try:
-            rekey("")
-        except KeyringError as change_error:
-            return Outcome(False, f"The keyring could not be changed: {change_error}")
-        return Outcome(True, "Your saved passwords are unlocked and will unlock "
-                             "by themselves. This device cannot keep a sealed "
-                             "key, so they are stored without encryption.")
+        return Outcome(False, _CANNOT_SEAL)
 
     credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
-    pending_credential = credential.with_name(credential.name + ".new")
-    pending_wrap = wrap.with_name(wrap.name + ".new")
-    autounlock.write_private(pending_wrap, autounlock.wrap_key(
+    autounlock.write_private(autounlock.pending(wrap), autounlock.wrap_key(
         key, password, changed=autounlock.password_changed()))
-    autounlock.write_private(pending_credential, sealed)
+    autounlock.write_private(autounlock.pending(credential), sealed)
     try:
         rekey(key)
     except KeyringError:
-        pending_credential.unlink(missing_ok=True)
-        pending_wrap.unlink(missing_ok=True)
+        autounlock.discard_pending(credential, wrap)
         raise
-    pending_wrap.replace(wrap)
-    pending_credential.replace(credential)
+    autounlock.promote(wrap, credential)
     try:
         keyring.unlock_with(key)
     except KeyringError as error:
         log.info("the keyring did not open straight away: %s", error)
-    return Outcome(True, _UNLOCKS_BY_ITSELF)
+    return Outcome(True, _UNLOCKS_BY_ITSELF + password_quality_note(password))
+
+
+def _rekey_for(password: str, keyring: Keyring):
+    path = keyring_path()
+    if not path.exists():
+        return lambda key: keyring.create_login(key)
+    if autounlock.stored_unencrypted():
+        def rekey(key):
+            keyring.unlock_with("")
+            keyring.change_password("", key)
+        return rekey
+    return lambda key: keyring.change_password(password, key)
 
 
 def enable_auto_unlock(password: str, keyring: Keyring | None = None,
@@ -184,56 +210,83 @@ def enable_auto_unlock(password: str, keyring: Keyring | None = None,
     wrong = _login_password_is_right(password, verify)
     if wrong is not None:
         return wrong
-
-    path = keyring_path()
-    if not path.exists():
-        def rekey(key):
-            keyring.create_login(key)
-    elif autounlock.stored_unencrypted():
-        def rekey(key):
-            keyring.unlock_with("")
-            keyring.change_password("", key)
-    else:
-        def rekey(key):
-            keyring.change_password(password, key)
-
     try:
-        return _enrol(password, keyring, rekey, seal)
+        return _enrol(password, keyring, _rekey_for(password, keyring), seal)
     except KeyringError:
         return Outcome(False, "Your saved passwords are locked with a different "
                               "password than your login password. Repair them "
                               "first, or start a new keyring.")
 
 
-def recover(password: str, keyring: Keyring | None = None, seal=None) -> Outcome:
+def store_unencrypted(password: str, keyring: Keyring | None = None, verify=None) -> Outcome:
+    """Explicit opt-in only (luma-keyring --enable-auto-unlock --unencrypted).
+
+    For a device that cannot seal anything: the keyring gets an empty
+    password, which gnome-keyring stores as plain text.
+    """
+    keyring = keyring or Keyring()
+    wrong = _login_password_is_right(password, verify)
+    if wrong is not None:
+        return wrong
+    try:
+        _rekey_for(password, keyring)("")
+    except KeyringError as error:
+        return Outcome(False, f"The keyring could not be changed: {error}")
+    return Outcome(True, "Your saved passwords are now stored without encryption.")
+
+
+def recover(password: str, keyring: Keyring | None = None, seal=None, verify=None) -> Outcome:
     """The seal no longer opens: the account password unwraps the key."""
     keyring = keyring or Keyring()
+    credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
+    wrong_password = False
+    for candidate in (wrap, autounlock.pending(wrap)):
+        try:
+            wrapped = candidate.read_bytes()
+        except OSError:
+            continue
+        try:
+            key = autounlock.unwrap_key(wrapped, password)
+        except autounlock.WrongPassword:
+            wrong_password = True
+            continue
+        except KeyringError as error:
+            log.warning("%s: %s", candidate.name, error)
+            continue
+        try:
+            keyring.unlock_with(key)
+        except KeyringError:
+            continue
+        try:
+            sealed = (seal or autounlock.seal_key)(key)
+        except KeyringError as error:
+            return Outcome(True, "Your saved passwords are unlocked, but this device "
+                                 f"could not keep their key ({error}), so it will ask again.")
+        if candidate != wrap:
+            autounlock.promote(wrap)
+        autounlock.write_private(credential, sealed)
+        autounlock.discard_pending(credential)
+        return Outcome(True, _UNLOCKS_BY_ITSELF)
+
+    # A key change that never reached the keyring: it is still on the password.
     try:
-        wrapped = autounlock.wrap_path().read_bytes()
-    except OSError:
-        return Outcome(False, "This device has no way to recover them without "
-                              "the key it lost. You can start a new keyring.")
-    try:
-        key = autounlock.unwrap_key(wrapped, password)
-    except autounlock.WrongPassword:
+        keyring.change_password(password, password)
+    except KeyringError:
+        pass
+    else:
+        autounlock.discard_pending(credential, wrap)
+        return enable_auto_unlock(password, keyring, seal=seal, verify=verify)
+
+    if wrong_password:
         return Outcome(False, "That password does not open them. If you changed "
                               "your password outside Settings, type the previous one.")
-    except KeyringError as error:
-        return Outcome(False, str(error))
-    try:
-        keyring.unlock_with(key)
-    except KeyringError as error:
-        return Outcome(False, f"The keyring did not open: {error}")
-    try:
-        autounlock.write_private(autounlock.credential_path(), (seal or autounlock.seal_key)(key))
-    except KeyringError as error:
-        return Outcome(True, "Your saved passwords are unlocked, but this device "
-                             f"could not keep their key ({error}), so it will ask again.")
-    return Outcome(True, _UNLOCKS_BY_ITSELF)
+    return Outcome(False, "This device cannot recover them: the recovery copy is "
+                          "missing or damaged. The keyring is unchanged; you can "
+                          "start a new keyring and keep the old one aside.")
 
 
 def rewrap(old_password: str, new_password: str) -> Outcome:
-    """A password change: the recovery copy follows the new password."""
+    """Re-wrap the recovery copy with a new password, given the old one."""
     path = autounlock.wrap_path()
     try:
         wrapped = path.read_bytes()
@@ -255,10 +308,7 @@ def rewrap(old_password: str, new_password: str) -> Outcome:
 
 
 def rewrap_current(password: str, unseal=None, verify=None) -> Outcome:
-    """After a password change: wrap the key, unsealed here, with the new password.
-
-    The old password is not needed: the seal opens the key on this device.
-    """
+    """After a password change: wrap the key, unsealed here, with the new password."""
     wrong = _login_password_is_right(password, verify)
     if wrong is not None:
         return wrong
@@ -268,7 +318,8 @@ def rewrap_current(password: str, unseal=None, verify=None) -> Outcome:
         return Outcome(False, f"This device could not open its key: {error}")
     autounlock.write_private(autounlock.wrap_path(), autounlock.wrap_key(
         key, password, changed=autounlock.password_changed()))
-    return Outcome(True, "Your password can recover your saved passwords again.")
+    return Outcome(True, "Your password can recover your saved passwords again." +
+                   password_quality_note(password))
 
 
 def start_again_with_auto_unlock(login_password: str, keyring: Keyring | None = None,
@@ -287,6 +338,9 @@ def start_again_with_auto_unlock(login_password: str, keyring: Keyring | None = 
         if kept is not None:
             kept.rename(path)
         return Outcome(False, f"A new keyring could not be made: {error}")
+    if not outcome.ok and kept is not None:
+        kept.rename(path)
+        return outcome
     return Outcome(outcome.ok, "A new keyring is in use. " + outcome.message +
                    " The old one is kept in case you remember its password.",
                    kept_file=kept)
@@ -299,12 +353,18 @@ def use_login_password(login_password: str, keyring: Keyring | None = None,
     wrong = _login_password_is_right(login_password, verify)
     if wrong is not None:
         return wrong
+    credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
     try:
-        key = (unseal or autounlock.unseal_key)(autounlock.credential_path())
+        key = (unseal or autounlock.unseal_key)(credential)
         keyring.change_password(key, login_password)
     except KeyringError as error:
-        return Outcome(False, f"The keyring could not be changed: {error}")
-    autounlock.credential_path().unlink(missing_ok=True)
-    autounlock.wrap_path().unlink(missing_ok=True)
+        # Already moved (a crash before the slots were removed)?
+        try:
+            keyring.change_password(login_password, login_password)
+        except KeyringError:
+            return Outcome(False, f"The keyring could not be changed: {error}")
+    for path in (credential, wrap):
+        path.unlink(missing_ok=True)
+    autounlock.discard_pending(credential, wrap)
     return Outcome(True, "Your saved passwords now unlock with your login "
                          "password, and only with it.")

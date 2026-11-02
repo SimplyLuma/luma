@@ -88,6 +88,7 @@ export const AccountStep = ({ answers, back, continueRef, dispatch, index, inval
             await setKeyringIntent(answers.autologin ? accounts.password : null);
             next();
         } catch (exception) {
+            await setKeyringIntent(null).catch(() => {});
             logError("atlas: saving the account failed", exception?.message);
             setFailure("Luma could not save this account. Try again.");
         } finally {

@@ -20,6 +20,12 @@ python.install_sources(
 )
 
 install_data('bin/luma-keyring', install_dir: get_option('libexecdir'), install_mode: 'rwxr-xr-x')
+# Adds or removes the password-change hook in the passwd PAM stack.
+install_data('data/pam/luma-keyring-pam-setup', install_dir: get_option('libexecdir'),
+             install_mode: 'rwxr-xr-x')
+# Recovery that needs nothing but python3-cryptography, for an older system.
+install_data('tools/luma-keyring-recover-standalone', install_dir: datadir / 'luma-keyring',
+             install_mode: 'rwxr-xr-x')
 
 install_data('data/systemd/luma-keyring.service', 'data/systemd/luma-keyring-autologin.service',
              install_dir: prefix / 'lib' / 'systemd' / 'user')

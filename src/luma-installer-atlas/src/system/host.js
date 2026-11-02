@@ -132,13 +132,19 @@ export const setAutologinIntent = async (username) => {
  * stdin rather than a command line; the %post removes it.
  */
 export const setKeyringIntent = async (password) => {
+    const options = { err: "message", superuser: "require" };
     if (!password) {
-        await cockpit.spawn(["rm", "-f", KEYRING_INTENT], { superuser: "try" });
+        await cockpit.spawn(["rm", "-f", KEYRING_INTENT], options);
         return;
     }
-    await cockpit.spawn(["mkdir", "-p", "/run/luma-atlas"], { superuser: "try" });
-    await cockpit.spawn(["sh", "-c", 'umask 077 && cat > "$1"', "sh", KEYRING_INTENT],
-                        { superuser: "try" }).input(`${password}\n`);
+    try {
+        await cockpit.spawn(["mkdir", "-p", "-m", "0700", "/run/luma-atlas"], options);
+        await cockpit.spawn(["sh", "-c", 'umask 077 && rm -f "$1" && cat > "$1"', "sh", KEYRING_INTENT],
+                            options).input(`${password}\n`);
+    } catch (exception) {
+        await cockpit.spawn(["rm", "-f", KEYRING_INTENT], options).catch(() => {});
+        throw exception;
+    }
 };
 
 export const recordLocationIntent = timezone => spawnJson([`${LIBEXEC}/atlas-media`, "record-location", timezone]);

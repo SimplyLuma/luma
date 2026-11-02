@@ -170,7 +170,10 @@ class KeyringService(Adw.Application):
         return False
 
     def _never_again(self) -> None:
-        if self._settings is not None:
+        from .window import Mode
+        # A keyring that still opens without a password on an account that
+        # now signs in with one is worth asking about again next session.
+        if self._settings is not None and self._mode != Mode.LOGIN:
             self._settings.set_boolean("ask-about-login-keyring", False)
         self.withdraw_notification(NOTIFICATION_ID)
         self._done()
@@ -190,11 +193,15 @@ def main(argv: list[str] | None = None) -> int:
     if "--enable-auto-unlock" in argv:
         from .cli import enable_auto_unlock
 
-        return enable_auto_unlock()
+        return enable_auto_unlock(argv)
     if "--recover" in argv:
         from .cli import recover
 
         return recover()
+    if "--pam-rewrap" in argv:
+        from .cli import pam_rewrap
+
+        return pam_rewrap()
     if "--rewrap" in argv:
         from .cli import rewrap
 
@@ -203,4 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         from .cli import enrol
 
         return enrol(argv[argv.index("--enrol") + 1:])
+    # The window takes passwords: no core dumps, no tracing.
+    from .autounlock import no_core_dumps
+
+    no_core_dumps()
     return KeyringService().run(argv)

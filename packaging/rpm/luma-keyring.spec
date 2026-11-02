@@ -27,6 +27,12 @@ Requires:       pam
 # it with Argon2id and AES-256-GCM for recovery.
 Requires:       systemd >= 256
 Requires:       python3-cryptography >= 44
+# pwscore, to say when the password guarding the recovery copy is weak.
+Requires:       libpwquality
+# pam_exec, for the password-change hook in the passwd stack.
+Requires:       pam
+Requires(post): coreutils gawk grep
+Requires(preun): coreutils grep
 
 %description
 A login keyring whose password is no longer the account password cannot be
@@ -42,13 +48,14 @@ the old file in case they remember later. Doing nothing keeps the old
 behaviour.
 
 An account that signs in automatically types no password, so nothing could
-unlock its login keyring. Its keyring is locked with a random keyring key,
-kept sealed with systemd-creds for the user and the machine (the TPM2 and the
-host key where there is a TPM2, the host key otherwise) and wrapped with a key
-derived from the account password (Argon2id, AES-256-GCM) so the password
-recovers it on other hardware. The password itself is never stored. The
-installer enrols the account when automatic sign-in is chosen; otherwise the
-person is asked for the password once.
+unlock its login keyring. Its keyring is locked with a random keyring key in
+two slots: sealed with systemd-creds for the user and the machine (TPM2 and
+host key where there is a TPM2, PCR 7 with full-disk encryption; host key
+otherwise), and wrapped with Argon2id and AES-256-GCM under the account
+password for recovery. The password itself is never stored. The installer
+enrols the account when automatic sign-in is chosen; a hook in the passwd PAM
+stack re-wraps the key when the password changes; devices set up earlier are
+asked for the password once.
 
 luma-keyring --check prints the state for the capability and first-boot
 checks: a login keyring that cannot be unlocked automatically is a broken
@@ -87,9 +94,23 @@ grep -Fq "auth       include      system-auth" %{buildroot}%{_sysconfdir}/pam.d/
 PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock"
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
+%post
+%{_libexecdir}/luma-keyring-pam-setup add || :
+
+%triggerin -- shadow-utils
+# The passwd PAM file is shadow-utils' own; an update may replace it.
+%{_libexecdir}/luma-keyring-pam-setup add || :
+
+%preun
+if [ "$1" -eq 0 ]; then
+    %{_libexecdir}/luma-keyring-pam-setup remove || :
+fi
+
 %files
 %license LICENSES/MPL-2.0.txt
 %{_libexecdir}/luma-keyring
+%{_libexecdir}/luma-keyring-pam-setup
+%{_datadir}/luma-keyring/
 %{python3_sitelib}/luma_keyring/
 %{_userunitdir}/luma-keyring.service
 %{_userunitdir}/graphical-session.target.wants/luma-keyring.service
@@ -103,9 +124,10 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
 - Lock the login keyring of an automatic sign-in with a random key, sealed for
   the device and wrapped with the account password for recovery
+- Crash-safe key changes; fail closed when nothing can be sealed
 - luma-keyring --enrol for the installer; ask once on devices set up earlier
-- Recover with the password when the seal stops opening; re-wrap after a
-  password change
+- Re-wrap at password changes from the passwd PAM stack
+- Standalone recovery script for older systems
 
 * Sun Sep 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - Say once, in plain words, when the login keyring cannot be unlocked at login

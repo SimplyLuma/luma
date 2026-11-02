@@ -1,0 +1,92 @@
+#!/usr/bin/python3 -sP
+# SPDX-License-Identifier: MPL-2.0
+"""Move an automatic sign-in's login keyring back onto the login password.
+
+Standalone on purpose: it needs python3-cryptography, python3-gobject and
+systemd-creds, and nothing from luma-keyring, so it still works after a
+rollback to a luma-keyring that predates the keyring key (0.1.x), or on any
+system the home folder is restored to. Run it in the person's session:
+
+    python3 luma-keyring-recover-standalone
+
+It opens the keyring key from the device seal (~/.local/state/luma-keyring/
+login.cred) or, failing that, from the recovery copy (login.wrap) with the
+account password, then re-keys the login keyring to the login password with
+gnome-keyring's own interface, so pam_gnome_keyring unlocks it at login
+again. The slots are left in place; remove them once the keyring opens.
+Passwords are read from the terminal only.
+"""
+
+import base64
+import getpass
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+STATE = Path.home() / ".local" / "state" / "luma-keyring"
+HEADER = ("magic", "version", "kdf", "kdf_params", "aead", "salt", "nonce",
+          "password_changed", "wrapped_at")
+
+
+def from_seal():
+    done = subprocess.run(["systemd-creds", "--user", "--name=luma-login-keyring", "decrypt",
+                           str(STATE / "login.cred"), "-"], capture_output=True, check=False)
+    return done.stdout.decode("ascii").strip() if done.returncode == 0 else None
+
+
+def from_wrap(password):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+
+    record = json.loads((STATE / "login.wrap").read_bytes())
+    if record.get("magic") != "luma-login-keyring-wrap" or record.get("version") != 2:
+        raise SystemExit("unknown recovery file format")
+    params = record["kdf_params"]
+    if not (19456 <= params["memory_cost"] <= 1048576 and 2 <= params["iterations"] <= 16
+            and 1 <= params["lanes"] <= 16):
+        raise SystemExit("recovery file parameters out of bounds")
+    derived = Argon2id(salt=base64.b64decode(record["salt"]), length=32,
+                       iterations=params["iterations"], lanes=params["lanes"],
+                       memory_cost=params["memory_cost"]).derive(password.encode())
+    aad = json.dumps({k: record.get(k) for k in HEADER}, sort_keys=True,
+                     separators=(",", ":")).encode()
+    return AESGCM(derived).decrypt(base64.b64decode(record["nonce"]),
+                                   base64.b64decode(record["ciphertext"]), aad).decode("ascii")
+
+
+def change(old, new):
+    from gi.repository import Gio, GLib
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    session = bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
+                            "org.freedesktop.Secret.Service", "OpenSession",
+                            GLib.Variant("(sv)", ("plain", GLib.Variant("s", ""))),
+                            GLib.VariantType.new("(vo)"), 0, 20000, None).unpack()[1]
+
+    def secret(text):
+        return (session, b"", text.encode(), "text/plain")
+
+    bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
+                  "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
+                  "ChangeWithMasterPassword",
+                  GLib.Variant("(o(oayays)(oayays))", ("/org/freedesktop/secrets/collection/login",
+                                                      secret(old), secret(new))),
+                  None, 0, 20000, None)
+
+
+def main():
+    key = from_seal()
+    if key is None:
+        print("This device cannot open its seal; using the recovery copy.")
+        key = from_wrap(getpass.getpass("Account password the recovery copy was made with: "))
+    login = getpass.getpass("Login password to lock the keyring with: ")
+    if login != getpass.getpass("Again: "):
+        raise SystemExit("The passwords differ; nothing changed.")
+    change(key, login)
+    print("The login keyring now unlocks with your login password.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

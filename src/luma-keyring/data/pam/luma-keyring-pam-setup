@@ -1,0 +1,41 @@
+#!/bin/sh
+# SPDX-License-Identifier: MPL-2.0
+#
+# luma-keyring-pam-setup add|remove [FILE]
+#
+# Keeps the recovery copy of an automatic sign-in's keyring key in step with
+# the account password, the way pam_gnome_keyring keeps the login keyring in
+# step: one optional line in the passwd PAM stack, after the modules that set
+# the new password, handing it (expose_authtok, on stdin) to luma-keyring.
+# The leading "-" makes PAM skip the line if pam_exec is ever missing, and
+# luma-keyring always exits 0 there, so it can never fail a password change.
+set -eu
+file=${2:-/etc/pam.d/passwd}
+line='-password   optional	pam_exec.so quiet expose_authtok /usr/libexec/luma-keyring --pam-rewrap'
+marker='luma-keyring --pam-rewrap'
+
+[ -f "$file" ] || exit 0
+case "${1:-}" in
+    add)
+        grep -qF "$marker" "$file" && exit 0
+        tmp=$(mktemp "$file.XXXXXX")
+        if grep -q 'pam_gnome_keyring.so' "$file"; then
+            awk -v line="$line" '{ print } /pam_gnome_keyring\.so/ && !done { print line; done = 1 }' "$file" >"$tmp"
+        else
+            awk -v line="$line" '/^password[ \t]+substack[ \t]+postlogin/ && !done { print line; done = 1 } { print } END { if (!done) print line }' "$file" >"$tmp"
+        fi
+        ;;
+    remove)
+        grep -qF "$marker" "$file" || exit 0
+        tmp=$(mktemp "$file.XXXXXX")
+        grep -vF "$marker" "$file" >"$tmp" || :
+        ;;
+    *)
+        echo "usage: $0 add|remove [FILE]" >&2
+        exit 2
+        ;;
+esac
+chmod --reference="$file" "$tmp"
+chown --reference="$file" "$tmp"
+mv -f "$tmp" "$file"
+command -v restorecon >/dev/null 2>&1 && restorecon "$file" >/dev/null 2>&1 || :

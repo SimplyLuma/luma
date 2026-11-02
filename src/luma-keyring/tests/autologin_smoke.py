@@ -8,8 +8,7 @@ installer's step runs first, as root:
 
     useradd -m keyringtest && systemctl start user@$(id -u keyringtest)
     printf '%s\\n' "$PASSWORD" | luma-keyring --enrol keyringtest
-    systemd-run --user -M keyringtest@ --wait --pipe \\
-        -E LUMA_KEYRING_SMOKE_PASSWORD="$PASSWORD" -- \\
+    printf '%s\\n' "$PASSWORD" | systemd-run --user -M keyringtest@ --wait --pipe -- \\
         python3 /path/to/tests/autologin_smoke.py
 
 It refuses to run when a login keyring already exists. Each "session" is a
@@ -19,6 +18,7 @@ sign-in that typed no password leaves it.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import shutil
@@ -112,7 +112,7 @@ def private(path: Path) -> bool:
 
 
 def main() -> int:
-    password = os.environ["LUMA_KEYRING_SMOKE_PASSWORD"]
+    (password,) = autounlock.read_secrets(sys.stdin)
     verify = lambda typed: typed == password  # noqa: E731 - PAM stands in
     login = state.keyring_path()
     keyrings = login.parent
@@ -126,6 +126,13 @@ def main() -> int:
           and stat.S_IMODE(autounlock.state_dir().stat().st_mode) == 0o700)
     check("neither file contains the password",
           password.encode() not in credential.read_bytes() + wrap.read_bytes())
+    opened = subprocess.run(["systemd-creds", "--user", "--name=luma-login-keyring", "decrypt",
+                             str(credential), "-"], capture_output=True)
+    check("the seal opens with systemd-creds as this user", opened.returncode == 0
+          and len(base64.b64decode(opened.stdout.strip())) == 32)
+    check("but not under another credential name",
+          subprocess.run(["systemd-creds", "--user", "--name=other", "decrypt", str(credential), "-"],
+                         capture_output=True).returncode != 0)
     with Session() as keyring:
         result = autounlock.ensure(keyring, autologin=True)
         check("the first automatic sign-in makes the login keyring", result == Result.CREATED, result)
@@ -190,6 +197,22 @@ def main() -> int:
         check("the sealed and wrapped keys are gone", not credential.exists() and not wrap.exists())
         check("the login password opens it", opens_with(keyring, password))
         check("still with everything in it", lookup() == "hunter2")
+
+    # -- rolled back to a luma-keyring without slots ----------------------
+    reset(keyrings)
+    with Session() as keyring:
+        assert enable_auto_unlock(password, keyring, verify=verify).ok
+        store("rollback-secret")
+    standalone = Path(__file__).resolve().parents[1] / "tools" / "luma-keyring-recover-standalone"
+    with Session() as keyring:
+        done = subprocess.run([sys.executable, str(standalone)], capture_output=True,
+                              input=f"{password}\n{password}\n".encode())
+        check("the standalone script moves it back onto the login password",
+              done.returncode == 0, done.stderr.decode()[-200:])
+        check("which then opens it, contents kept",
+              opens_with(keyring, password) and lookup() == "rollback-secret")
+    for path in (credential, wrap):
+        path.unlink(missing_ok=True)
 
     # -- an existing device: keyring made at a password login -------------
     reset(keyrings)

@@ -6,16 +6,22 @@
  * read), the same room says so plainly and offers the log and a restart.
  * Replaces anaconda-webui 68's PatternFly error dialog and bug-report flow.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { exitGui } from "../helpers/exit.js";
 
 import { Actions, Button, Note, Spacer, Warn } from "../atlas/components.jsx";
-import { saveLogs } from "../system/host.js";
+import { saveLogs, setKeyringIntent } from "../system/host.js";
 
 export const ErrorRoom = ({ exception }) => {
     const [logs, setLogs] = useState(null);
     const detail = [exception?.context, exception?.message].filter(Boolean).join(" ");
+
+    // An install that failed never reaches the %post that removes the
+    // password handed over for saved passwords; remove it here.
+    useEffect(() => {
+        setKeyringIntent(null).catch(() => {});
+    }, []);
 
     const onSave = async () => {
         setLogs({ saving: true });
