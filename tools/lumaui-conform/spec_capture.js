@@ -58,13 +58,13 @@ function dump({ winSel, groups, exclude, pairSels }) {
   const tt = (s, cs) => cs.textTransform === 'uppercase' ? s.toUpperCase() : cs.textTransform === 'lowercase' ? s.toLowerCase() : cs.textTransform === 'capitalize' ? s.replace(/\b\w/g, c => c.toUpperCase()) : s;
   const font = cs => ({ family: cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), size: px(cs.fontSize), weight: +cs.fontWeight, style: cs.fontStyle,
     lineHeight: cs.lineHeight === 'normal' ? null : px(cs.lineHeight), letterSpacing: cs.letterSpacing === 'normal' ? 0 : px(cs.letterSpacing) });
-  const paint = cs => { const p = paint0(cs); for (const k of Object.keys(p)) p[k] = k === 'border' ? { widths: p[k].widths, colors: p[k].colors.map(col) } : col(p[k]); return p; };
-  const paint0 = cs => { const p = {};
+  const paint = (cs, drawn) => { const p = paint0(cs, drawn); for (const k of Object.keys(p)) p[k] = k === 'border' ? { widths: p[k].widths, colors: p[k].colors.map(col) } : col(p[k]); return p; };
+  const paint0 = (cs, drawn) => { const p = {};
     if (cs.backgroundColor && !/rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor)) p.background = cs.backgroundColor;
     if (cs.backgroundImage && cs.backgroundImage !== 'none') p.backgroundImage = cs.backgroundImage.slice(0, 400);
     const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(px), bs = [cs.borderTopStyle, cs.borderRightStyle, cs.borderBottomStyle, cs.borderLeftStyle];
     if (bw.some((w, i) => w > 0 && bs[i] !== 'none')) p.border = { widths: bw, colors: [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor] };
-    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(px); if (rad.some(r => r > 0)) p.radius = rad;
+    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(v => /%/.test(v) ? parseFloat(v) / 100 * (drawn ?? px(cs.width)) : px(v));   /* a share of the box as drawn (a wide tile's 11.875%, a lifted swatch's 50%): its horizontal radius in px */ if (rad.some(r => r > 0)) p.radius = rad;
     if (cs.boxShadow && cs.boxShadow !== 'none') p.boxShadow = cs.boxShadow;
     if (cs.outlineStyle !== 'none' && px(cs.outlineWidth) > 0) p.outline = `${cs.outlineWidth} ${cs.outlineStyle} ${cs.outlineColor}`;
     if (cs.backdropFilter && cs.backdropFilter !== 'none') p.backdropFilter = cs.backdropFilter;
@@ -84,7 +84,7 @@ function dump({ winSel, groups, exclude, pairSels }) {
     const id = elements.length; ids.set(el, id);
     let parent = null; for (let a = el.parentElement; a; a = a.parentElement) { if (ids.has(a)) { parent = ids.get(a); break; } if (a === win) break; }
     const rec = { id, parent, tag: t, cls: typeof el.className === 'string' ? el.className : (el.getAttribute('class') || ''), elId: el.id || undefined, role: roleOf(el),
-      label: el.getAttribute('aria-label') || el.getAttribute('title') || hiddenName(el) || undefined, box: rel(q), visible: rel(vis), opacity: op, color: col(cs.color), font: font(cs), paint: paint(cs) };
+      label: el.getAttribute('aria-label') || el.getAttribute('title') || hiddenName(el) || undefined, box: rel(q), visible: rel(vis), opacity: op, color: col(cs.color), font: font(cs), paint: paint(cs, q.width) };
     if (t === 'svg' && el.dataset.icon) { rec.icon = el.dataset.icon; let ink = null; try {
         // The glyph's geometry as drawn: each shape's client rect is its bbox after every transform (a
         // rotated twisty, a flipped arrow), without stroke, as GTK's path bounds are.
