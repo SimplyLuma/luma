@@ -51,6 +51,15 @@ fetch() {  # fetch <dest dir> <names...>: each package's shipped RPM from the po
     [ -f "$f" ] || { echo "  $v: shipped from Fedora (not in the Luma pool)"; continue; }
     cp -p "$f" "$dest/"
   done
+  # The Luma packages those need (prairie-core-apps needs luma-application-installer, ...):
+  # every required name the nightly ships from the Luma pool, until nothing new turns up.
+  local more
+  while :; do
+    more=$(for f in "$dest"/*.rpm; do rpm -qp --nosignature --requires "$f" 2>/dev/null; done | awk '{print $1}' | sort -u |
+      while read -r n; do v=$(nevra "$n"); [ -n "$v" ] && [ -f "$pool/$v.rpm" ] && [ ! -f "$dest/$v.rpm" ] && echo "$v"; done)
+    [ -n "$more" ] || break
+    for v in $more; do echo "  + $v (required)"; cp -p "$pool/$v.rpm" "$dest/"; done
+  done
 }
 # label=disable: the data disk's files carry its own SELinux type, not container_file_t; the
 # capture containers run the same way (conform-serve.sh).
