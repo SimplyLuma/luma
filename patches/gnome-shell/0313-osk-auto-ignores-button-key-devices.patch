@@ -1,0 +1,45 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: only full keyboards suppress the automatic OSK
+
+libinput reports every evdev device with keys as a keyboard, so a phone's
+power and volume buttons (gpio-keys) and wake-gesture input count as a
+physical keyboard and the automatic screen keyboard never appears on a
+fresh install. Count a keyboard only when udev marks it ID_INPUT_KEYBOARD,
+the alphanumeric classification attached keyboards carry.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -2,6 +2,7 @@
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import GUdev from 'gi://GUdev';
+ import Meta from 'gi://Meta';
+ import Graphene from 'gi://Graphene';
+ import IBus from 'gi://IBus';
+@@ -1436,6 +1437,7 @@
+         this._a11yApplicationsSettings = new Gio.Settings({schema_id: A11Y_APPLICATIONS_SCHEMA});
+         this._a11yApplicationsSettings.connect('changed', this._syncEnabled.bind(this));
+ 
++        this._udev = new GUdev.Client({subsystems: ['input']});
+         this._seat = global.stage.context.get_backend().get_default_seat();
+         this._seat.connect('notify::touch-mode', this._syncEnabled.bind(this));
+         this._seat.connect('device-added', this._syncEnabled.bind(this));
+@@ -1485,9 +1487,14 @@
+         const enableKeyboard = this._a11yApplicationsSettings.get_boolean(SHOW_KEYBOARD);
+         // Physical keyboard presence controls automatic OSK behavior. The
+         // explicit accessibility setting remains available on every device.
+-        const physicalKeyboard = this._seat.list_devices().some(device =>
+-            device.get_device_type() === Clutter.InputDeviceType.KEYBOARD_DEVICE &&
+-            !!device.get_device_node());
++        // libinput reports any device with keys as a keyboard, so power,
++        // volume and wake buttons count unless udev marks a full keyboard.
++        const physicalKeyboard = this._seat.list_devices().some(device => {
++            const node = device.get_device_node();
++            return device.get_device_type() === Clutter.InputDeviceType.KEYBOARD_DEVICE &&
++                !!node && !!this._udev.query_by_device_file(node)
++                    ?.get_property_as_boolean('ID_INPUT_KEYBOARD');
++        });
+         const autoEnabled = !physicalKeyboard && this._seat.get_touch_mode() &&
+             this._lastDeviceIsTouchscreen();
+         const enabled = enableKeyboard || autoEnabled;
