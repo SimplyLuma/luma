@@ -200,6 +200,16 @@ exec {design_lock}>"$root/design.lock"
 flock -s "$design_lock"
 image_id=$(podman image inspect --format '{{.Id}}' "$image_run") || exit 2
 dc_scenario=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("spec", {}).get("root", ""))' "$work/tools/scenarios/$app.json")
+# A Design Center page: a private copy of the parts a page loads (its checkout is not readable
+# by the capture user), taken once per run.
+if [ -n "$dc_scenario" ]; then
+  mkdir -p "$work/design-center"
+  for d in mockups fonts wallpapers icons; do
+    [ -d "$design_center/$d" ] && cp -R "$design_center/$d" "$work/design-center/"
+  done
+  chown -R 1000:1000 "$work/design-center"
+  design_center=$work/design-center
+fi
 
 # 4. One container per variant, each holding one of the server's slots.
 variant() {  # variant <n> <theme> [phone]
