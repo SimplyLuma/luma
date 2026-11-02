@@ -367,8 +367,9 @@ install -m 0644 "$repo_root/patches/gnome-shell/0309-tv-keyboard.patch" "$rpmbui
 install -m 0644 "$repo_root/patches/gnome-shell/0310-tv-input.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0311-tv-dialogs.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0313-tv-quick-panel.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0314-tv-app-switcher.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css tv.js tvModel.js tvTokens.js tv-backdrop.jpg tvKeyboard.js tvInput.js tvInputModel.js tvDialogs.js tvDialogsModel.js tvQuickPanel.js tvQuickPanelModel.js; do
+for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css tv.js tvModel.js tvTokens.js tv-backdrop.jpg tvKeyboard.js tvInput.js tvInputModel.js tvDialogs.js tvDialogsModel.js tvQuickPanel.js tvQuickPanelModel.js tvAppSwitcher.js tvAppSwitcherModel.js; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
@@ -397,6 +398,7 @@ install -m 0644 "$repo_root/tests/gnome-shell/tv-keyboard-policy.js" "$rpmbuild_
 install -m 0644 "$repo_root/tests/gnome-shell/tv-input-policy.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/tv-dialogs-policy.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/tv-quick-panel-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-app-switcher-policy.js" "$rpmbuild_dir/SOURCES/"
 # Keycap icons are derived from Stevia's outlines; refuse stale copies.
 python3 "$repo_root/scripts/developer/generate-keycap-shell-icons.py" --check
 (
