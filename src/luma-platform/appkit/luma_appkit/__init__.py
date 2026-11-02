@@ -93,6 +93,12 @@ __all__ = [
     "tv_posture",
     "watch_posture",
     "tv_unit",
+    # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
+    "TvStage", "TvLift", "add_tv_style", "tv_css", "tv_material", "tv_fade",
+    "TvFocus", "tv_nearest",
+    "TvTopBar", "TvTab", "TvButton", "TvField",
+    "TvToast",
+    "TvIdle",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -339,6 +345,25 @@ def __getattr__(name: str):
         from . import menus
 
         return getattr(menus, name)
+    # ── LumaUI TV parts
+    if name in {"TvStage", "TvLift", "add_tv_style", "tv_css", "tv_material", "tv_fade"}:
+        from . import tv_stage
+        return getattr(tv_stage, name)
+    if name == "TvFocus":
+        from .tv_focus import TvFocus
+        return TvFocus
+    if name == "tv_nearest":
+        from .tv_focus import nearest
+        return nearest
+    if name in {"TvTopBar", "TvTab", "TvButton", "TvField"}:
+        from . import tv_parts
+        return getattr(tv_parts, name)
+    if name == "TvToast":
+        from .tv_toast import TvToast
+        return TvToast
+    if name == "TvIdle":
+        from .tv_idle import TvIdle
+        return TvIdle
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
                 "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
