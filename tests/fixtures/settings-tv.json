@@ -23,12 +23,21 @@
    "off": 0.5
   },
   "d": {
+   "int": {
+    "res": "1920 × 1200",
+    "hz": "60 Hz",
+    "scale": "125",
+    "rot": "Landscape",
+    "bright": 72,
+    "prof": "Built-in, factory calibrated",
+    "primary": false
+   },
    "ext": {
     "res": "3840 × 2160",
     "hz": "60 Hz",
-    "scale": "100",
+    "scale": "150",
     "rot": "Landscape",
-    "hdr": true,
+    "hdr": false,
     "prof": "Dell U2723QE",
     "primary": true
    }
@@ -412,9 +421,24 @@
    }
   ],
   "CFDISP": {
+   "int": {
+    "n": "Built-in display",
+    "m": "14″ · ThinkPad",
+    "w": 1920,
+    "h": 1200,
+    "res": [
+     "1920 × 1200",
+     "1680 × 1050",
+     "1280 × 800"
+    ],
+    "hz": [
+     "60 Hz",
+     "48 Hz"
+    ]
+   },
    "ext": {
-    "n": "TV",
-    "m": "HDMI",
+    "n": "Dell U2723QE",
+    "m": "27″ · USB-C",
     "w": 3840,
     "h": 2160,
     "res": [
