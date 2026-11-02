@@ -207,6 +207,11 @@ static void run_helper(pam_handle_t *pamh, const char *user, const char *token,
 		if (null < 0 || dup2(pair[1], STDIN_FILENO) < 0 || dup2(null, STDOUT_FILENO) < 0 ||
 		    dup2(null, STDERR_FILENO) < 0)
 			_exit(127);
+		/* Nothing the caller holds open reaches the helper. */
+		if (close_range(3, ~0U, 0) < 0) {
+			for (int fd = 3; fd < 65536; fd++)
+				close(fd);
+		}
 		/* passwd is set-user-ID root: act as root throughout. */
 		if (geteuid() == 0 && (setresgid(0, 0, 0) < 0 || setresuid(0, 0, 0) < 0))
 			_exit(127);

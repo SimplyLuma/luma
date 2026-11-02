@@ -98,8 +98,10 @@ grep -Fq "auth       include      system-auth" %{buildroot}%{_sysconfdir}/pam.d/
 # No password may be written anywhere: they are arguments to a D-Bus call.
 ! grep -rn "log\.\(info\|warning\|error\)(.*password[^s]" %{buildroot}%{python3_sitelib}/luma_keyring/
 PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock"
-# The PAM module exports pam_sm_chauthtok and nothing else.
-test "$(nm -D --defined-only %{buildroot}%{_libdir}/security/pam_luma_keyring.so | awk '{print $3}')" = pam_sm_chauthtok
+# The PAM module's only exported function is pam_sm_chauthtok (linker
+# symbols such as _edata or __bss_start are not functions).
+test "$(nm -D --defined-only --format=posix %{buildroot}%{_libdir}/security/pam_luma_keyring.so |
+        awk '$2 ~ /^[TtWi]$/ || $1 ~ /^pam_sm_/ { print $1 }')" = pam_sm_chauthtok
 grep -Fq %{_libexecdir}/luma-keyring %{buildroot}%{_libdir}/security/pam_luma_keyring.so
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 

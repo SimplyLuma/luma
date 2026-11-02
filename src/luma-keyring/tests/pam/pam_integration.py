@@ -38,6 +38,7 @@ USER = "luma-keyring-pamtest"
 OLD = "Old-Pass-for-tests-7431"
 NEW = "New-Pass-for-tests-9182"
 NEWER = "Newer-Pass-for-tests-2654"
+NEWEST = "Newest-Pass-for-tests-5807"
 PAM_D = Path("/etc/pam.d")
 NO_SUBIDS = ("-K", "SUB_UID_COUNT=0", "-K", "SUB_GID_COUNT=0")
 SERVICES = ("luma-kt-passwd", "luma-kt-passwd-plain", "luma-kt-passwd-fail",
@@ -212,11 +213,15 @@ class PamTests(unittest.TestCase):
         self.assertEqual(self.as_user("print(autounlock.wrap_is_stale())"), "False")
         self.assertFalse((self.state / "login.wrap.prev").exists())
 
-    def test_6_a_rolled_back_change_puts_the_previous_wrap_back(self):
-        new_hash = self.shadow()
+    def test_6_a_rolled_back_change_puts_the_confirmed_wrap_back(self):
+        new_hash = self.shadow()  # confirmed in test 5
+        # Two changes, neither confirmed by a session.
         code, _, _ = self.chauthtok("luma-kt-passwd", [NEW, NEWER, NEWER])
         self.assertEqual(code, 0)
-        run("usermod", "-p", new_hash, USER)  # /etc as it was before the change
+        code, _, _ = self.chauthtok("luma-kt-passwd", [NEWER, NEWEST, NEWEST])
+        self.assertEqual(code, 0)
+        self.assertIsNotNone(self.opens("login.wrap.prev", NEW))
+        run("usermod", "-p", new_hash, USER)  # /etc as it was before both changes
         self.assertEqual(self.as_user("print(autounlock.wrap_is_stale())"), "False")
         self.assertIsNotNone(self.opens("login.wrap", NEW))
         self.assertFalse((self.state / "login.wrap.prev").exists())

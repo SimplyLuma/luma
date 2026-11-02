@@ -786,8 +786,11 @@ def pam_rewrap(user: str, new_password: str) -> bool:
     the account, so nothing planted there is opened with root's rights. The
     key is unsealed on the device, so the old password is not needed.
 
-    The wrap being replaced is kept as ``login.wrap.prev`` until the session
-    confirms the change (wrap_is_stale). Each pending seal keeps its own
+    The last confirmed wrap is kept as ``login.wrap.prev`` until the session
+    confirms the change (wrap_is_stale). An existing ``.prev`` means the
+    current wrap is itself unconfirmed, so it is kept rather than replaced:
+    after several unconfirmed changes and an /etc rolled back, the
+    confirmed password still opens it. Each pending seal keeps its own
     wrap, so a later promotion never puts back a wrap with an old password.
     An account without slots is left alone. False when no seal opened.
     """
@@ -813,7 +816,7 @@ def pam_rewrap(user: str, new_password: str) -> bool:
                 log.info("%s did not open: %s", seal_path.name, error)
                 continue
             rewrapped = wrap_key(key, new_password, changed=changed, hashed=hashed)
-            if wrap_slot == wrap:
+            if wrap_slot == wrap and not os.path.lexists(previous(wrap)):
                 try:
                     current = read_slot(wrap)
                 except KeyringError:

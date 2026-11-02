@@ -154,6 +154,7 @@ so it trusts nothing the stack says and checks the outcome itself:
   `pam_pwquality` set the token) and nothing is written.
 - Only then does it run `/usr/libexec/luma-keyring --pam-rewrap` with a
   clean environment and the password on a socket, bounded to 20 seconds.
+  No file descriptor of the caller reaches the helper (`close_range`).
   It always returns `PAM_IGNORE`, so it can neither fail nor pass a
   password change. The leading `-` skips the line if the module is missing
   (after a rollback).
@@ -161,8 +162,10 @@ so it trusts nothing the stack says and checks the outcome itself:
 The helper does everything that touches the account's files as the
 account: it reads each seal itself (no links, FIFOs or devices), opens it
 with `systemd-creds --user` on standard input, wraps the key with the new
-password, and writes the slot. The wrap it replaces is kept as
-`login.wrap.prev` until the session confirms the change. Each pending seal
+password, and writes the slot. The last confirmed wrap is kept as
+`login.wrap.prev` until the session confirms the change; a second change
+before that keeps it rather than replacing it, so an `/etc` rolled back to
+the confirmed password still finds its wrap. Each pending seal
 keeps its own wrap. `passwd`, Settings (which runs `passwd`) and an
 administrator's `passwd USER` go through it.
 

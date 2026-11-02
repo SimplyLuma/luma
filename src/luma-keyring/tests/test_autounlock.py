@@ -493,6 +493,21 @@ class PasswordChangeTests(Paths):
         self.assertEqual(json.loads(wrapped)["password_id"], autounlock.password_id(KEY, "$y$new"))
         self.assertFalse(autounlock.wrap_is_stale(hashed="$y$new", unseal=unseal))
 
+    def test_unconfirmed_changes_keep_the_last_confirmed_wrap(self):
+        account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home))
+        self.patch(autounlock.pwd, "getpwnam", lambda user: account)
+        self.slots()
+        self.hashed_wrap("login.wrap", "confirmed", "$y$confirmed")
+        for password, hashed in (("second", "$y$second"), ("third", "$y$third")):
+            self.patch(autounlock, "account_password_hash", lambda user=None, h=hashed: h)
+            self.assertTrue(autounlock.pam_rewrap("me", password))
+        earlier = autounlock.previous(autounlock.wrap_path()).read_bytes()
+        self.assertEqual(autounlock.unwrap_key(earlier, "confirmed"), KEY)
+        # /etc rolled back to the confirmed password: its wrap comes back.
+        self.assertFalse(autounlock.wrap_is_stale(hashed="$y$confirmed", unseal=unseal))
+        self.assertEqual(autounlock.unwrap_key(autounlock.wrap_path().read_bytes(), "confirmed"),
+                         KEY)
+
     def test_pam_rewrap_keeps_each_pending_seal_with_its_own_wrap(self):
         account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home))
         self.patch(autounlock.pwd, "getpwnam", lambda user: account)
