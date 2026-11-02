@@ -451,12 +451,13 @@ Subject: [PATCH] Adapt notification island and display exclusions to compact dis
          this._outsideId = 0;
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -152,6 +152,8 @@
+@@ -152,6 +152,9 @@
      <file>ui/shelf.js</file>
      <file>ui/lumaPresentation/presentation.js</file>
      <file>ui/lumaPresentation/layout.js</file>
 +    <file>ui/lumaPresentation/safeAreas.js</file>
 +    <file>ui/lumaPresentation/powerButton.js</file>
++    <file>ui/lumaPresentation/incomingCall.js</file>
      <file>ui/lumaPresentation/grid.js</file>
      <file>ui/lumaPresentation/homeEditor.js</file>
      <file>ui/lumaPresentation/widgets.js</file>
