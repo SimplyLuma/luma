@@ -31,7 +31,9 @@ def until(check, seconds=5.0):
 
 
 def key(w, keyval, state=0):
+    """A remote key: pressed, then released (OK acts on release where an item has a menu)."""
     w.tv_view.focus._key_pressed(None, keyval, 0, Gdk.ModifierType(state))
+    w.tv_view.focus._key_released(None, keyval, 0, Gdk.ModifierType(state))
     settle(.15)
 
 
@@ -119,12 +121,27 @@ settle(.5)
 assert len(w.places) == count and w.selected == w.places[-1].uid
 print('PASS remove a place', flush=True)
 
+tv.focus.focus(tv._tabs[1])
+second = w.places[1]
+key(w, Gdk.KEY_Menu)
+labels = [r.get_first_child().get_last_child().get_label() for r in tv.focus._scopes[-1].items]
+assert labels == ['Set as default', 'Remove city'], labels   # the desktop row's menu, one model
+key(w, Gdk.KEY_Return)
+settle(.5)
+assert w.places[0].uid == second.uid and w.selected == second.uid, 'Set as default moves the place to the front'
+assert tv.focus.focused is tv._tabs[0] and not tv.focus.in_scope
+key(w, Gdk.KEY_Menu)
+assert not tv.focus.in_scope, 'your location offers neither Set as default nor Remove on TV'
+print('PASS place menu (Menu key, Set as default)', flush=True)
+
+tv.focus.focus(tv._tabs[1])
+settle(.3)
 key(w, Gdk.KEY_I, Gdk.ModifierType.SHIFT_MASK)
 settle(1.5)
 assert tv.idle.idle and tv.glance.get_opacity() > .9 and tv.hero.get_opacity() < .1
 assert tv.bar.clock.get_mapped() and tv.bar.track.get_opacity() < .1, 'Glance keeps the clock'
 labels = [c.get_label() for c in [tv.glance.get_first_child()] if isinstance(c, Gtk.Label)]
-assert labels and labels[0] == w.places[-1].name, 'Glance names a place that is not home'
+assert labels and labels[0] == w.places[1].name, 'Glance names a place that is not home'
 key(w, Gdk.KEY_Down)
 settle(1.2)
 assert not tv.idle.idle and tv.hero.get_opacity() > .9 and tv.focus.focused is tv.band, 'any key comes back'
