@@ -1,6 +1,6 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,123 @@
+@@ -28,14 +28,122 @@
  
  Name:           gnome-control-center
  Version:        50.4
@@ -156,7 +156,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +303,49 @@
+@@ -200,6 +303,50 @@
  
  %find_lang %{name} --all-name --with-gnome
  
