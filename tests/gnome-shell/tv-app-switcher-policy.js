@@ -95,6 +95,7 @@ assert(/switcher: \(\) => this\.toggleSwitcher\(\)/.test(home), 'the TV home wir
 assert(/showHome\(page = 'home'\) \{[\s\S]*?this\._switcher\?\.close\('home'\)/.test(home), 'Home closes it');
 assert(/_leave\(\) \{[\s\S]*?this\._switcher\?\.destroy\(\)/.test(home), 'leaving TV posture ends it');
 assert(/returnTo\.activate\(\)/.test(home), 'Back returns to the app it opened over');
+assert(/reason === 'back' && returnTo && appRunning\(returnTo\)/.test(home), 'Back never restarts an app closed in the switcher');
 
 // The TV home's tiles: the running dot and the held-OK menu.
 assert(/watch\(this\._appSystem, 'app-state-changed', \(\) => this\._syncRunning\(\)\)/.test(home), 'the dot follows the app');

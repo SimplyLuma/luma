@@ -771,7 +771,9 @@ export class TvPresentation {
         this._pages[this._page].show();
         this._focus = this._focusBefore ?? {kind: 'tab', index: PAGES.indexOf(this._page)};
         this._focusBefore = null;
-        if (reason === 'back' && returnTo) {
+        // Back returns to the app it opened over, unless that app was closed
+        // in the switcher: activating it would start it again.
+        if (reason === 'back' && returnTo && appRunning(returnTo)) {
             returnTo.activate();
             return;
         }
