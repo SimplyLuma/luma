@@ -285,8 +285,10 @@ export class TvQuickPanel {
     }
 
     _keyLook() {
+        // St reads background-gradient-start as the background colour: nothing may set
+        // background-color after it, or the gradient starts from that colour.
         return `background-gradient-direction: vertical; background-gradient-start: ${this._m('key_top')};
-            background-gradient-end: ${this._m('key_bottom')}; background-color: transparent;
+            background-gradient-end: ${this._m('key_bottom')};
             border: ${this._px(1.5)} solid ${this._m('key_rim')};
             box-shadow: 0 ${this._px(3)} ${this._px(10)} ${this._m('key_drop')};`;
     }
@@ -364,7 +366,9 @@ export class TvQuickPanel {
         const width = this._island.width - 2 * q.padding * this._u;
         let top = 0;
         this._tops = this._actors.map(actor => {
-            const [, height] = actor.get_preferred_height(width);
+            // Natural height plus the CSS margins St puts on the actor (separators have them).
+            const [, natural] = actor.get_preferred_height(width);
+            const height = natural + actor.margin_top + actor.margin_bottom;
             const span = [top, top + height];
             top += height + q.gap * this._u;
             return span;
@@ -610,8 +614,9 @@ export class TvQuickPanel {
                 ink = this._m('key_ink');
                 icon = chip.checked ? this._m('accent_low') : ink;
             } else if (chip.checked) {
-                // On: the chip material with soft accent light behind its icon.
-                look = `background-gradient-direction: radial; background-gradient-start:
+                // On: the chip material lit softly with the accent from above (St's radial
+                // gradient is a centred disc, which reads as a spot, not light).
+                look = `background-gradient-direction: vertical; background-gradient-start:
                     ${mixRgba(this._m('chip'), this._m('accent'), 0.34)}; background-gradient-end: ${this._m('chip')};
                     border: ${this._px(1.5)} solid ${this._m('chip_rim')};
                     box-shadow: 0 ${this._px(2)} ${this._px(5)} ${this._m('chip_drop')};`;
@@ -728,6 +733,8 @@ export class TvQuickPanel {
                 if (note.clearable) note.native.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
             }
             this._rebuild();
+            // The focus goes to the row that takes the list's place.
+            this._row = keepRow(this._rows, 'settings', this._row);
             return true;
         case 'settings':
             this.close(() => this._appSystem.lookup_app(SETTINGS_APP)?.activate());

@@ -255,7 +255,7 @@ export class TvDialogs {
 
     _key() {
         return `background-gradient-direction: vertical; background-gradient-start: ${this._m('key_top')};
-            background-gradient-end: ${this._m('key_bottom')}; background-color: transparent;
+            background-gradient-end: ${this._m('key_bottom')};
             border: ${this._px(1.5)} solid ${this._m('key_rim')};
             box-shadow: 0 ${this._px(3)} ${this._px(10)} ${this._m('key_drop')}; color: ${this._m('key_ink')};`;
     }

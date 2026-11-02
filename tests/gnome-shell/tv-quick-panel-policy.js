@@ -132,6 +132,10 @@ for (const [name, source] of [['the TV home', home], ['the quick panel', panel],
     assert(/!repeatAllowed\(action\) && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)\) return Clutter\.EVENT_STOP/.test(source),
         `${name}: a repeat never activates`);
 
+// St takes background-gradient-start as the background colour: a later background-color breaks the key.
+for (const [name, source] of [['the quick panel', panel], ['system dialogs', read(args[2].replace(/tvQuickPanel\.js$/, 'tvDialogs.js'))]])
+    assert(!/background-gradient-start:[^`]*background-color:/.test(source), `${name}: nothing overrides the key's gradient start`);
+
 // The panel drives the desktop's objects; it creates none of its own.
 assert(/_network\?\._wirelessToggle/.test(panel) && /_bluetooth\?\.quickSettingsItems/.test(panel) &&
     /_doNotDisturb\?\.quickSettingsItems/.test(panel) && /_volumeOutput\?\.quickSettingsItems/.test(panel),
