@@ -53,6 +53,14 @@ done
 V=$M/ostree/deploy/luma/var
 mkdir -p $V/home
 cp -a $DEP/etc/skel $V/home/luma
+# The AoC speaker comes up at 0 and muted, and WirePlumber saves that as the
+# first route state; start it audible instead (50%, cubic).
+mkdir -p $V/home/luma/.local/state/wireplumber
+cat > $V/home/luma/.local/state/wireplumber/default-routes <<'ROUTES'
+[default-routes]
+alsa_card.platform-aoc-sound:output:\oOut\c\sSpeaker={"mute":false, "latencyOffsetNsec":0, "channelVolumes":[0.125000, 0.125000], "channelMap":["FL", "FR"]}
+alsa_card.platform-aoc-sound:profile:HiFi\s(Mic,\sSpeaker)=["[Out] Speaker"]
+ROUTES
 chown -R 1000:1000 $V/home/luma; chmod 0700 $V/home/luma
 # The FP6 lineage's /boot automount stays off, as on the tested phone.
 : > $DEP/etc/systemd/system/boot.automount

@@ -2,7 +2,7 @@
 # On the Pixel 9 (root): compose a release commit without deploying it.
 # Layers the RPMs in $RPMS (luma-android-images among them, or an image pair
 # in $IMAGES) and the device files from ../system onto $BASE, labelled with
-# the booted SELinux policy.
+# the base policy plus any packaged SELinux modules it lacks.
 # Usage: BASE=<commit> TAG=<name> RPMS=<dir> [IMAGES=<dir>] compose-release.sh
 set -euo pipefail
 : "${BASE:?}" "${TAG:?}" "${RPMS:?}"
@@ -97,11 +97,34 @@ if [ -d $O/usr/share/glib-2.0/schemas ]; then
 	glib-compile-schemas $W/schemas
 	cp $W/schemas/gschemas.compiled $O/usr/share/glib-2.0/schemas/
 fi
+# Scriptlets are skipped, so packaged SELinux modules the base policy lacks
+# were never loaded (waydroid, luma_android_runtime, luma_esim). Load them
+# into the policy this commit ships and labels with; files whose label
+# changes are copied into the overlay so the commit relabels them.
+SR=$W/sepolicy; mkdir -p $SR/etc
+ostree --repo=$REPO checkout -U --subpath=/usr/etc/selinux $BASE $SR/etc/selinux
+ostree --repo=$REPO checkout -U --subpath=/usr/share/selinux $BASE $W/selinux
+[ ! -d $O/usr/share/selinux ] || cp -a $O/usr/share/selinux/. $W/selinux/
+loaded=$(semodule -p $SR -l); mods=
+for f in $W/selinux/packages/*.cil $W/selinux/packages/*.pp.bz2 $W/selinux/targeted/*.pp; do
+	[ -e "$f" ] || continue; m=$(basename $f); m=${m%%.*}
+	grep -qx "$m" <<<"$loaded" || mods="$mods $f"
+done
+if [ -n "$mods" ]; then
+	semodule -p $SR -s targeted -X 200 -i $mods
+	mkdir -p $O/usr/etc/selinux; cp -a $SR/etc/selinux/targeted $O/usr/etc/selinux/
+	mkdir -p $W/root; ostree --repo=$REPO checkout --subpath=/usr $BASE $W/root/usr
+	{ setfiles -n -v -r $W/root $SR/etc/selinux/targeted/contexts/files/file_contexts $W/root/usr 2>&1 || :; } |
+		sed -n "s|^Would relabel $W/root\(/[^ ]*\) from .*|\1|p" | while read -r p; do
+			[ -e "$O$p" ] || { mkdir -p "$O$(dirname "$p")"; cp -a "$W/root$p" "$O$p"; echo "relabel $p"; }
+		done
+	rm -rf $W/root
+fi
 rm -f $O/usr/share/rpm/.rpm.lock; : > $O/usr/share/rpm/.rpm.lock
 KVER=$(ostree --repo=$REPO show --print-metadata-key=ostree.linux $BASE | tr -d "'")
 pkglist=$(rpm --root=$O --dbpath=/usr/share/rpm -qa --qf "('%{NAME}', '%{EPOCHNUM}', '%{VERSION}', '%{RELEASE}', '%{ARCH}'), " | sed 's/, $//')
 NEW=$(ostree --repo=$REPO commit --branch=luma/1/aarch64/google-tokay/$TAG --parent=$BASE \
-	--tree=ref=$BASE --tree=dir=$O --selinux-policy=/ \
+	--tree=ref=$BASE --tree=dir=$O --selinux-policy=$SR \
 	--subject="Pixel 9 $TAG" \
 	--add-metadata-string=version="$TAG" \
 	--add-metadata-string=org.projectluma.channel=$TAG \
