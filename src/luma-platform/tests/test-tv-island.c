@@ -146,6 +146,15 @@ static gboolean any_with_class(GtkWidget *w, const char *cls, GType type) {
   return FALSE;
 }
 
+static GtkWidget *find_with_class(GtkWidget *w, const char *cls) {
+  if (gtk_widget_has_css_class(w, cls)) return w;
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = find_with_class(c, cls);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
 static AdwClamp *find_clamp(GtkWidget *w) {
   if (ADW_IS_CLAMP(w)) return ADW_CLAMP(w);
   for (GtkWidget *c = gtk_widget_get_first_child(w); c; c = gtk_widget_get_next_sibling(c)) {
@@ -240,6 +249,59 @@ static void check_tv(GtkApplication *app) {
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Left));
   spin(50);
   CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
+
+  /* The bar's cluster (Start's pause menu from inside an app): Up off the page's top row reaches
+   * it, OK there opens the shell's quick panel (D-Bus; nothing without the shell), Down and Back
+   * return to the page. The clock stays on the safe line; the cluster's key pads past it. */
+  GtkWidget *cluster = find_with_class(window, "lumaui-tv-cluster");
+  GtkWidget *clock = find_with_class(window, "lumaui-tv-clock");
+  CHECK(cluster != NULL && clock != NULL && !gtk_widget_get_focusable(cluster));
+  if (cluster != NULL && clock != NULL) {
+    double u = luma_ui_tv_unit(gtk_widget_get_width(window), gtk_widget_get_height(window));
+    graphene_rect_t c, k;
+    CHECK(gtk_widget_compute_bounds(clock, window, &k) && gtk_widget_compute_bounds(cluster, window, &c));
+    CHECK(fabs(k.origin.x + k.size.width - (gtk_widget_get_width(window) - 96 * u)) < 2);
+    CHECK(fabs(c.origin.x + c.size.width - (gtk_widget_get_width(window) - 74 * u)) < 2);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Right));
+    spin(50);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Up));     /* the page's top row: the cluster */
+    spin(50);
+    CHECK(gtk_root_get_focus(GTK_ROOT(window)) == cluster);
+    CHECK(gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));    /* the island stays folded */
+    spin(700);                                                     /* past the frame's OK guard */
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));  /* the quick panel, asked */
+    spin(50);
+    CHECK(gtk_root_get_focus(GTK_ROOT(window)) == cluster);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down));
+    spin(50);
+    focus = gtk_root_get_focus(GTK_ROOT(window));
+    CHECK(focus != NULL && gtk_widget_is_ancestor(focus, page) && !gtk_widget_get_focusable(cluster));
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Up));
+    spin(50);
+    CHECK(gtk_root_get_focus(GTK_ROOT(window)) == cluster);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));
+    spin(50);
+    focus = gtk_root_get_focus(GTK_ROOT(window));
+    CHECK(focus != NULL && gtk_widget_is_ancestor(focus, page));
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));  /* back to the island */
+    spin(50);
+    CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
+    /* The island's first row: Up there reaches the cluster too, and Down returns to the row. */
+    for (int i = 0; i < 6 && gtk_root_get_focus(GTK_ROOT(window)) != cluster; i++) {
+      CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Up));
+      spin(50);
+    }
+    CHECK(gtk_root_get_focus(GTK_ROOT(window)) == cluster);
+    CHECK(gtk_list_box_row_get_index(gtk_list_box_get_selected_row(list)) == 0);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down));
+    spin(50);
+    CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down));   /* the page this test was on again */
+    spin(100);
+    CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down));
+    spin(100);
+    CHECK(gtk_list_box_row_get_index(gtk_list_box_get_selected_row(list)) == 3);
+  }
 
   /* Key repeat: a held OK acts once (the frame stops its repeats), a held arrow keeps moving. */
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Right));

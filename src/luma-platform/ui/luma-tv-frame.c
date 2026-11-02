@@ -6,7 +6,9 @@
  * size, in TV units (one unit = min(width/1920, height/1080)):
  *
  *  - the room: the wallpaper, heavily blurred and dimmed, behind everything;
- *  - the shared top bar's place (96 in, 56 down, 74 tall): the app's name left, the clock right;
+ *  - the shared top bar's place (96 in, 56 down, 74 tall): the app's name left, the clock right in
+ *    the bar's cluster, which the remote reaches (Up off the page's top row or the island's first
+ *    row) and where OK opens the shell's quick panel over the app (Start's pause menu);
  *  - the sidebar lifted off the window edge into a floating island on the left (bar material,
  *    radius 36, rows 68 tall at 24/600, icons 30); its header and foot step aside and a section
  *    heading becomes a hairline;
@@ -251,7 +253,9 @@ typedef struct {
   GtkWindow *window; /* weak: the frame lives as the window's data */
   GtkWidget *content; /* the window's own content (its toolbar view) */
   GtkWidget *frame, *sidebar, *island;
-  GtkWidget *overlay, *room, *bar, *title, *clock;
+  GtkWidget *overlay, *room, *bar, *title, *clock, *cluster;
+  GtkWidget *cluster_from; /* where the remote was before the cluster (weak) */
+  gboolean cluster_page_zone; /* and whether that was the page */
   GtkCssProvider *provider;
   GtkEventController *keys;
   GSettings *interface, *state, *a11y;
@@ -300,6 +304,11 @@ static const char *const tv_sheet =
 ".lumaui-tv-bar { margin: 56tv 96tv 0 96tv; min-height: 74tv; }\n"
 ".lumaui-tv-bar .lumaui-tv-title { font-family: Figtree, sans-serif; font-size: 30tv; font-weight: 750; letter-spacing: -0.3tv; color: @ink@; }\n"
 ".lumaui-tv-bar .lumaui-tv-clock { font-family: Figtree, sans-serif; font-size: 28tv; font-weight: 700; color: @ink@; font-feature-settings: \"tnum\"; }\n"
+/* the bar's cluster (the clock): the TV home's cluster, a key while the remote is on it; the clock stays put */
+".lumaui-tv-bar .lumaui-tv-cluster { min-height: 56tv; padding: 0 22tv; margin-right: -22tv; border-radius: 16tv; }\n"
+".lumaui-tv-bar .lumaui-tv-cluster:focus { background-image: linear-gradient(180deg, @key_top@, @key_bottom@);\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
+".lumaui-tv-bar .lumaui-tv-cluster:focus .lumaui-tv-clock { color: @key_ink@; }\n"
 /* the island */
 ".lumaui-tv-frame { border-spacing: 0; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar { margin: 166tv 0 56tv 96tv; min-width: 376tv; padding: 12tv; border-radius: 36tv;\n"
@@ -2102,11 +2111,17 @@ static void follow_focus(TvFrame *f, GtkWidget *focus) {
   gtk_adjustment_set_value(adj, want); /* also when unchanged: it stops GTK's animation */
 }
 
+static gboolean on_cluster(TvFrame *f, GtkWidget *focus);
+
 static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   (void)window; (void)pspec;
   if (!f->active)
     return;
   GtkWidget *focus = focus_of(f);
+  if (f->cluster != NULL && !on_cluster(f, focus) && gtk_widget_get_focusable(f->cluster))
+    gtk_widget_set_focusable(f->cluster, FALSE); /* only the remote ever lands there */
+  if (on_cluster(f, focus))
+    return;
   track_app_focus(f, focus);
   if (f->keying == 0 && f->self_moving == 0)
     f->moved_at = g_get_monotonic_time();
@@ -2178,27 +2193,115 @@ static gboolean to_page(TvFrame *f) {
   return TRUE;
 }
 
-static void open_neighbour(TvFrame *f, GtkWidget *focus, int step) {
+/* FALSE when there is no row that way (Up off the first row goes to the bar's cluster). */
+static gboolean open_neighbour(TvFrame *f, GtkWidget *focus, int step) {
   GtkListBox *list = sidebar_list(f);
-  if (list == NULL) return;
+  if (list == NULL) return FALSE;
   GtkWidget *current = focus ? gtk_widget_get_ancestor(focus, GTK_TYPE_LIST_BOX_ROW) : NULL;
   int index = current ? gtk_list_box_row_get_index(GTK_LIST_BOX_ROW(current)) : -1;
   if (index < 0) {
     GtkListBoxRow *selected = selected_row(f);
     if (selected != NULL) gtk_widget_grab_focus(GTK_WIDGET(selected));
-    return;
+    return TRUE;
   }
   for (int i = index + step; i >= 0; i += step) {
     GtkListBoxRow *row = gtk_list_box_get_row_at_index(list, i);
     if (row == NULL)
-      return;
+      return FALSE;
     if (!row_reachable(row))
       continue;
     /* Moving opens the page (as the TV home's tabs): no OK. */
     gtk_list_box_select_row(list, row);
     gtk_widget_grab_focus(GTK_WIDGET(row));
     g_signal_emit_by_name(list, "row-activated", row);
-    return;
+    return TRUE;
+  }
+  return FALSE;
+}
+
+static gboolean is_back(guint key);
+static gboolean is_ok(guint key);
+
+/* ── the bar's cluster: the quick panel ───────────────────────────────────────────────────── */
+
+static void quick_panel_done(GObject *source, GAsyncResult *result, gpointer data) {
+  (void)data;
+  g_autoptr(GVariant) reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), result, NULL);
+  (void)reply; /* no TV posture in the shell: there is no quick panel to open */
+}
+
+static void quick_panel_bus(GObject *source, GAsyncResult *result, gpointer data) {
+  (void)source; (void)data;
+  g_autoptr(GDBusConnection) bus = g_bus_get_finish(result, NULL);
+  if (bus != NULL)
+    g_dbus_connection_call(bus, "org.projectluma.Shell.Remote", "/org/projectluma/Shell/Remote",
+                           "org.projectluma.Shell.Remote1", "ShowQuickPanel", NULL, NULL,
+                           G_DBUS_CALL_FLAGS_NO_AUTO_START, -1, NULL, quick_panel_done, NULL);
+}
+
+/* OK on the cluster: the shell's quick panel over the app, which keeps its focus underneath. */
+static void show_quick_panel(void) {
+  g_bus_get(G_BUS_TYPE_SESSION, NULL, quick_panel_bus, NULL);
+}
+
+static gboolean on_cluster(TvFrame *f, GtkWidget *focus) {
+  return f->cluster != NULL && focus == f->cluster;
+}
+
+/* Up off the page's top row (or the island's first): the remote goes to the bar's cluster. */
+static gboolean to_cluster(TvFrame *f, GtkWidget *from) {
+  if (f->cluster == NULL || !gtk_widget_is_drawable(f->cluster))
+    return FALSE;
+  g_clear_weak_pointer(&f->cluster_from);
+  g_set_weak_pointer(&f->cluster_from, from);
+  f->cluster_page_zone = f->page_zone;
+  f->page_zone = FALSE; /* never "found again" in the page while the remote is up here */
+  gtk_widget_set_focusable(f->cluster, TRUE);
+  f->self_moving++;
+  gboolean moved = gtk_widget_grab_focus(f->cluster);
+  f->self_moving--;
+  if (!moved) {
+    gtk_widget_set_focusable(f->cluster, FALSE);
+    f->page_zone = f->cluster_page_zone;
+  }
+  return moved;
+}
+
+/* Down or Back from the cluster: where the remote came from. */
+static void from_cluster(TvFrame *f) {
+  GtkWidget *back = f->cluster_from;
+  g_clear_weak_pointer(&f->cluster_from);
+  f->page_zone = f->cluster_page_zone;
+  gboolean moved = back != NULL && gtk_widget_is_drawable(back) && gtk_widget_get_focusable(back) &&
+                   gtk_widget_grab_focus(back);
+  if (!moved && f->page_zone)
+    moved = to_page(f);
+  if (!moved && f->sidebar != NULL)
+    to_island(f);
+  else if (!moved) {
+    GtkWidget *first = first_control(f->island);
+    if (first != NULL) gtk_widget_grab_focus(first);
+  }
+  gtk_widget_set_focusable(f->cluster, FALSE);
+}
+
+static gboolean cluster_key(TvFrame *f, guint key) {
+  if (is_ok(key)) {
+    show_quick_panel();
+    return GDK_EVENT_STOP;
+  }
+  switch (key) {
+  case GDK_KEY_Down: case GDK_KEY_KP_Down: case GDK_KEY_Left: case GDK_KEY_KP_Left:
+    from_cluster(f);
+    return GDK_EVENT_STOP;
+  case GDK_KEY_Up: case GDK_KEY_KP_Up: case GDK_KEY_Right: case GDK_KEY_KP_Right:
+    return GDK_EVENT_STOP;
+  default:
+    if (is_back(key)) {
+      from_cluster(f);
+      return GDK_EVENT_STOP;
+    }
+    return GDK_EVENT_PROPAGATE;
   }
 }
 
@@ -2480,6 +2583,10 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     return modal_key(f, modal, key);
   }
   GtkWidget *focus = focus_of(f);
+  if (on_cluster(f, focus)) {
+    f->keyed = TRUE;
+    return cluster_key(f, key);
+  }
   gboolean page = in_page(f, focus) || f->sidebar == NULL; /* a centred window is all page */
   f->keyed = TRUE;
   gtk_window_set_focus_visible(f->window, TRUE);
@@ -2488,7 +2595,8 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     /* The island (or nothing yet). */
     switch (key) {
     case GDK_KEY_Up: case GDK_KEY_KP_Up:
-      open_neighbour(f, focus, -1);
+      if (!open_neighbour(f, focus, -1))
+        to_cluster(f, focus); /* off the first row: the bar's cluster */
       return GDK_EVENT_STOP;
     case GDK_KEY_Down: case GDK_KEY_KP_Down:
       open_neighbour(f, focus, 1);
@@ -2579,8 +2687,18 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   }
   if (text && GTK_IS_TEXT_VIEW(focus))
     return GDK_EVENT_PROPAGATE;
-  if (!gtk_widget_child_focus(f->island, dir) && dir == GTK_DIR_LEFT && f->sidebar != NULL)
-    to_island(f); /* off the page's left edge: the island opens again */
+  gboolean moved = gtk_widget_child_focus(f->island, dir);
+  if (moved && dir == GTK_DIR_UP && !in_page(f, focus_of(f))) {
+    /* GTK's Up off the page's top row spills into the island beside it: the bar's cluster instead */
+    f->page_zone = TRUE;
+    if (to_cluster(f, focus))
+      set_rail(f, TRUE); /* the island stays folded beside the page the remote came from */
+  } else if (!moved) {
+    if (dir == GTK_DIR_LEFT && f->sidebar != NULL)
+      to_island(f); /* off the page's left edge: the island opens again */
+    else if (dir == GTK_DIR_UP)
+      to_cluster(f, focus); /* off the page's top row: the bar's cluster */
+  }
   return GDK_EVENT_STOP;
 }
 
@@ -2765,8 +2883,15 @@ static void enter(TvFrame *f) {
     gtk_label_set_xalign(GTK_LABEL(f->title), 0);
     f->clock = gtk_label_new("");
     gtk_widget_add_css_class(f->clock, "lumaui-tv-clock");
+    /* The cluster takes the focus only while the remote is on it (never GTK's fallback). */
+    f->cluster = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(f->cluster, "lumaui-tv-cluster");
+    gtk_widget_set_valign(f->cluster, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(f->clock, GTK_ALIGN_CENTER);
+    gtk_accessible_update_property(GTK_ACCESSIBLE(f->cluster), GTK_ACCESSIBLE_PROPERTY_LABEL, "Quick panel", -1);
+    gtk_box_append(GTK_BOX(f->cluster), f->clock);
     gtk_box_append(GTK_BOX(f->bar), f->title);
-    gtk_box_append(GTK_BOX(f->bar), f->clock);
+    gtk_box_append(GTK_BOX(f->bar), f->cluster);
     LUMA_TV_ROOM(f->room)->resized = room_resized;
     LUMA_TV_ROOM(f->room)->data = f;
     LUMA_TV_ROOM(f->room)->panel = room_panel;
@@ -2810,6 +2935,9 @@ static void enter(TvFrame *f) {
 
 static void leave(TvFrame *f) {
   f->active = FALSE;
+  if (f->cluster != NULL)
+    gtk_widget_set_focusable(f->cluster, FALSE);
+  g_clear_weak_pointer(&f->cluster_from);
   g_clear_handle_id(&f->clock_id, g_source_remove);
   g_clear_handle_id(&f->settle_id, g_source_remove);
   g_clear_handle_id(&f->relax_id, g_source_remove);
@@ -2875,6 +3003,7 @@ static void frame_free(TvFrame *f) {
   g_clear_weak_pointer(&f->held);
   g_clear_weak_pointer(&f->page_modal);
   g_clear_weak_pointer(&f->app_focus);
+  g_clear_weak_pointer(&f->cluster_from);
   g_free(f->held_title);
   g_free(f->held_page);
   g_free(f);
