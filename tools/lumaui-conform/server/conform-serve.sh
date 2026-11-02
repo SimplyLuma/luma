@@ -92,10 +92,13 @@ nightly_near() {
 }
 
 run() {  # run <name> <podman args...>: a named throwaway container, output to stderr
+  # (Not unpack through luma-heavy: systemd-run expands $... in its arguments, and unpack's
+  # script has shell variables; it is light work anyway.)
+  local wrap=("${heavy[@]}"); [ "$1" = unpack ] && wrap=()
   local name=lumaui-conform-$id-$1; shift
   local cpus=3
   nightly_near && cpus=2
-  "${heavy[@]}" podman --root "$store" --runroot /run/lumaui-conform/containers run --rm --init --name "$name" \
+  "${wrap[@]}" podman --root "$store" --runroot /run/lumaui-conform/containers run --rm --init --name "$name" \
     --security-opt label=disable --pids-limit 4096 --memory 8g --cpus $cpus --shm-size 1g "$@" >&2
 }
 
