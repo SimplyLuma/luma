@@ -426,7 +426,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
          const [columns, rows] = this._currentPage?.getRatio() ?? [10, 4];
 +        if (this._tv) {
-+            this._tvRelayout(monitor, rows || 4);
++            this._tvRelayout(monitor, rows || 5);
 +            return;
 +        }
          const inset = Main.presentation?.keyboardInset?.() ?? 0;
@@ -528,7 +528,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this.close(true);
      }
  
-@@ -3980,9 +4187,382 @@ export const Keyboard = GObject.registerClass({
+@@ -3980,9 +4187,391 @@ export const Keyboard = GObject.registerClass({
          this._focusWindow = window;
      }
  
@@ -569,7 +569,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +    }
 +
 +    get tvHeight() {
-+        return this._tv ? TvKeyboard.tvKeyboardHeight(TV_TOKENS, this._currentPage?.getRatio()[1] || 4) : 0;
++        return this._tv ? TvKeyboard.tvKeyboardHeight(TV_TOKENS, this._currentPage?.getRatio()[1] || 5) : 0;
 +    }
 +
 +    _tvUnitFor(monitor) {
@@ -658,7 +658,9 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +    _tvShown() {
 +        this._tvDisarmReopen();
 +        this._tvSyncAction();
-+        this._tvFocus = 0;
++        // The focus starts on the first letter once the keys are measured.
++        this._tvFocus = -1;
++        this._tvAnchor = null;
 +        this._tvGrabKeys(TvKeyboard.TV_REMOTE_KEYS);
 +        // The cells are measured once the keys are laid out in place.
 +        global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
@@ -758,13 +760,18 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +            else
 +                this._tvPress();
 +        } else if (what) {
-+            const next = TvKeyboard.tvMove(this._tvCells(), this._tvFocus, what);
-+            if (next < 0) {
++            // An aligned grid: Left and Right wrap in the row, Up and Down
++            // keep the column they started from.
++            const {index, anchor} = TvKeyboard.tvMove(this._tvCells(), this._tvFocus, what, this._tvAnchor);
++            if (index < 0) {
 +                this.close(true);
 +                this._tvArmReopen();
-+            } else if (next !== this._tvFocus) {
-+                this._tvFocus = next;
-+                this._tvDrawFocus(true);
++            } else {
++                this._tvAnchor = anchor;
++                if (index !== this._tvFocus) {
++                    this._tvFocus = index;
++                    this._tvDrawFocus(true);
++                }
 +            }
 +        }
 +    }
@@ -834,6 +841,8 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +    // scaled over the grid; the grid's cached texture is never redrawn.
 +    _tvDrawFocus(animate) {
 +        const cells = this._tvCells();
++        if (this._tvFocus < 0 && cells.length)
++            this._tvFocus = TvKeyboard.tvStart(cells);
 +        const cell = cells[Math.min(this._tvFocus, cells.length - 1)];
 +        if (!cell || !this._keyboardVisible) {
 +            this._tvFocusActor?.hide();
