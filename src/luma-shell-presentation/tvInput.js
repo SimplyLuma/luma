@@ -19,6 +19,8 @@ import {tv as TOKENS} from './tvTokens.js';
 import {tvEntry} from './tvModel.js';
 import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, padIdentity,
     repeatDelay, stickDirection, translates} from './tvInputModel.js';
+import {homePress} from './tvQuickPanelModel.js';
+import {homeSecondPress} from './tvAppSwitcherModel.js';
 
 const BUS_NAME = 'org.projectluma.Shell.Remote';
 const OBJECT_PATH = '/org/projectluma/Shell/Remote';
@@ -33,13 +35,25 @@ const IFACE = `<node>
 
 const SCHEMA = 'org.project_luma.shell-state';
 const OK_SAFETY_SECONDS = 10;
+// A button that comes back down this soon after it went up is contact bounce, not a press.
+const BOUNCE_MS = 25;
+// LUMA_TV_INPUT_DEBUG=1: every pad button and every key sent, with monotonic milliseconds.
+const DEBUG = Boolean(GLib.getenv('LUMA_TV_INPUT_DEBUG'));
+const now = () => GLib.get_monotonic_time() / 1000;
 const CONFIRM_KEY = 'tv-confirm-button';
 const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
 
 export class TvInput {
-    // `home` opens the TV home.
-    constructor({home}) {
+    // `home` opens the TV home; `quickPanel` (a long press of Home) the quick
+    // panel; `switcher` (Home pressed twice) the app switcher.
+    constructor({home, quickPanel = null, switcher = null}) {
         this._home = home;
+        this._quickPanel = quickPanel;
+        this._switcher = switcher;
+        this._homeTap = 0;              // a short Home waiting for a second press
+        this._homeTapAt = null;
+        this._homeSources = new Map();  // what holds Home down -> when it went down
+        this._homeTimer = 0;
         this._input = TOKENS.input;
         this._sources = new Map();      // a pad's control -> the action it holds
         this._repeats = new Map();      // direction -> {steps, id}
@@ -47,6 +61,8 @@ export class TvInput {
         this._claims = new Map();       // bus name -> {pid, watch}
         this._grabs = new Map();        // accelerator action -> keysym name
         this._okSources = new Set();    // what holds OK down: a pad's button, a remote key
+        this._released = new Map();     // a pad's control -> its release, held back BOUNCE_MS
+        this._okBurst = [];             // when OK last went down (a stream of presses is logged)
         this._okSafety = 0;
         this._nextPad = 0;
         // Which face button is OK (luma-shell-state); an older schema without
@@ -67,6 +83,13 @@ export class TvInput {
 
     destroy() {
         this._destroyed = true;
+        for (const id of this._released.values()) GLib.source_remove(id);
+        this._released.clear();
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        if (this._homeTap) GLib.source_remove(this._homeTap);
+        this._homeTap = 0;
+        this._homeSources.clear();
         if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
         for (const source of [...this._okSources]) this._okUp(source);
@@ -111,6 +134,12 @@ export class TvInput {
         if (this._okSources.has(source)) return;
         this._okSources.add(source);
         if (this._okSources.size > 1 || !this._keys) return;
+        if (DEBUG) console.log(`TV input: Return down (${source}) at ${now().toFixed(1)}`);
+        // One held button is one press: more than a few downs a second is something else (a
+        // bouncing contact, a pad that re-sends its state) and is worth seeing in the journal.
+        const t = now();
+        this._okBurst = [...this._okBurst.filter(at => t - at < 1000), t];
+        if (this._okBurst.length === 5) console.warn(`TV input: 5 OK presses within a second (last from ${source})`);
         this._keys.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.PRESSED);
         // A release that never comes (a remote out of range) must not leave
         // Return down.
@@ -125,17 +154,76 @@ export class TvInput {
         if (!this._okSources.delete(source) || this._okSources.size) return;
         if (this._okSafety) GLib.source_remove(this._okSafety);
         this._okSafety = 0;
+        if (DEBUG) console.log(`TV input: Return up (${source}) at ${now().toFixed(1)}`);
         this._keys?.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.RELEASED);
+    }
+
+    // Home is held, not tapped: a short press goes home when it is let go, a
+    // long one (quick_panel.home_hold_ms) opens the quick panel at once. No
+    // other control has a long press of Home.
+    _homeDown(source) {
+        if (this._homeSources.has(source)) return;
+        this._homeSources.set(source, GLib.get_monotonic_time());
+        if (!this._quickPanel) {
+            this._act('home');
+            return;
+        }
+        // The second press of a double press: the switcher at once; its release does nothing.
+        if (this._homeTap && homeSecondPress(this._homeTapAt, now(), TOKENS.app_switcher.double_ms)) {
+            GLib.source_remove(this._homeTap);
+            this._homeTap = 0;
+            this._homeTapAt = null;
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._switcher();
+            return;
+        }
+        if (this._homeTimer) return;
+        this._homeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.quick_panel.home_hold_ms, () => {
+            this._homeTimer = 0;
+            if (!this._homeSources.size) return GLib.SOURCE_REMOVE;
+            // Consumed: letting go after this does nothing.
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._quickPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _homeUp(source) {
+        if (!this._quickPanel) {
+            this._homeSources.delete(source);
+            return;
+        }
+        // Reported only on release (no press seen): a short press.
+        const down = this._homeSources.has(source) ? this._homeSources.get(source) : GLib.get_monotonic_time();
+        this._homeSources.delete(source);
+        if (down < 0 || this._homeSources.size) return;
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        const held = (GLib.get_monotonic_time() - down) / 1000;
+        if (homePress(held, TOKENS.quick_panel.home_hold_ms) !== 'home') this._quickPanel();
+        else if (!this._switcher) this._act('home');
+        else {
+            // A short press goes home once a second press has not come.
+            if (this._homeTap) GLib.source_remove(this._homeTap);
+            this._homeTapAt = now();
+            this._homeTap = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.app_switcher.double_ms, () => {
+                this._homeTap = 0;
+                this._homeTapAt = null;
+                this._act('home');
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     // ── remotes: keys that are not TV keys become TV keys ─────────────────
 
-    // OK keys are taken with TRIGGER_RELEASE so their release is reported
-    // too (accelerator-deactivated) and OK can be held.
+    // OK and Home keys are taken with TRIGGER_RELEASE so their release is
+    // reported too (accelerator-deactivated) and they can be held.
     _grabRemoteKeys() {
+        const held = name => REMOTE_KEYS[name] === 'ok' || REMOTE_KEYS[name] === 'home';
         for (const name of Object.keys(REMOTE_KEYS)) {
             const flags = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT |
-                (REMOTE_KEYS[name] === 'ok' ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
+                (held(name) ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
             const action = global.display.grab_accelerator(name, flags);
             if (action === Meta.KeyBindingAction.NONE) {
                 console.warn(`TV input: ${name} is taken by another accelerator`);
@@ -149,10 +237,15 @@ export class TvInput {
                 const name = this._grabs.get(action);
                 if (!name) return;
                 if (REMOTE_KEYS[name] === 'ok') this._okDown(`remote:${action}`);
+                else if (REMOTE_KEYS[name] === 'home') this._homeDown(`remote:${action}`);
                 else this._act(REMOTE_KEYS[name]);
             }),
             global.display.connect('accelerator-deactivated', (_display, action) => {
                 const name = this._grabs.get(action);
+                if (REMOTE_KEYS[name] === 'home') {
+                    this._homeUp(`remote:${action}`);
+                    return;
+                }
                 if (REMOTE_KEYS[name] !== 'ok') return;
                 // Reported only on release (no press seen): OK as one press.
                 if (!this._okSources.has(`remote:${action}`)) this._okDown(`remote:${action}`);
@@ -206,6 +299,9 @@ export class TvInput {
         for (const source of [...this._okSources]) {
             if (source.startsWith(`${pad.id}:`)) this._okUp(source);
         }
+        for (const source of [...this._homeSources.keys()]) {
+            if (source.startsWith(`${pad.id}:`)) this._homeSources.delete(source);
+        }
         this._pads.delete(device);
         if (!this._destroyed) this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
     }
@@ -213,6 +309,37 @@ export class TvInput {
     _button(pad, event, pressed) {
         const [ok, code] = event.get_button();
         if (!ok) return;
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} ${pressed ? 'down' : 'up'} at ${now().toFixed(1)}`);
+        // A held button is one press: a down while it is down (a pad re-sending its state) is
+        // not another one, and an up followed within BOUNCE_MS by a down (a bouncing contact)
+        // is no release at all: the up is acted on only once the button has stayed up.
+        const control = `${pad.id}:button:${code}`;
+        const pending = this._released.get(control);
+        if (pressed && pending) {
+            GLib.source_remove(pending);
+            this._released.delete(control);
+            return;
+        }
+        if (pressed && pad.buttons.has(code)) return;
+        if (!pressed) {
+            if (!pad.buttons.has(code) || pending) return;
+            this._released.set(control, GLib.timeout_add(GLib.PRIORITY_DEFAULT, BOUNCE_MS, () => {
+                this._released.delete(control);
+                this._buttonUp(pad, code);
+                return GLib.SOURCE_REMOVE;
+            }));
+            return;
+        }
+        this._buttonChanged(pad, code, true);
+    }
+
+    // The button went up and stayed up.
+    _buttonUp(pad, code) {
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} released at ${now().toFixed(1)}`);
+        this._buttonChanged(pad, code, false);
+    }
+
+    _buttonChanged(pad, code, pressed) {
         if (pressed) pad.buttons.add(code);
         else pad.buttons.delete(code);
         // Select+Start together go home: pads without a Guide button.
@@ -223,7 +350,12 @@ export class TvInput {
         const action = buttonAction(code, pad.confirm);
         if (!action) return;
         const source = `${pad.id}:button:${code}`;
-        if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
+        if (action === 'home') {
+            // Guide: held like a remote's Home (a long press opens the quick panel).
+            if (!pressed) {
+                if (this._homeSources.has(source)) this._homeUp(source);
+            } else if (translates(action, this._context())) this._homeDown(source);
+        } else if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
         else if (action === 'ok' && !pressed) this._okUp(source);
         else if (action === 'ok') {
             if (translates(action, this._context())) this._okDown(source);

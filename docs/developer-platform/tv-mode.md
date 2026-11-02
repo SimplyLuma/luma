@@ -213,6 +213,7 @@ more.
 | Back | Escape | Escape, Back, Exit (CEC Back) | the other face button (B), Select (View/Back) |
 | Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | Start (Menu) |
 | Home | none: the Shell opens the TV home | Home, CEC Root Menu | Guide, or Select+Start |
+| Quick panel | none: the Shell opens it | hold Home or CEC Root Menu | hold Guide |
 
 - **Keys, not a protocol.** OK is Return, Back is Escape, Menu is the `Menu`
   keysym. Handle those and every controller works. Backspace still counts as
@@ -226,6 +227,13 @@ more.
   button (or the remote's OK, Select or CEC Select) and up with it, so a long
   press opens an item's menu (`TvFocus`); its key repeat is not more OKs.
   Back, Menu and the arrows are whole presses.
+- **One press per hold.** A pad button that is down stays one press: a repeated
+  down while it is down is dropped, and its release is held back 25 ms, so a
+  bouncing contact is neither a release nor a new press. Repeats of a held key
+  carry Clutter's repeat flag and only move the focus (`tvModel.repeatAllowed`);
+  the TV home, the quick panel and system dialogs never act on a repeated OK or
+  Back. `LUMA_TV_INPUT_DEBUG=1` in the Shell's environment logs every pad button
+  and every key sent, with times.
 - **A and B.** OK is the bottom face button (South: A on Xbox-style pads,
   Cross on PlayStation) or the right one (East: A on Nintendo-style pads),
   and Back is the other. The luma-shell-state key `tv-confirm-button`
@@ -422,6 +430,74 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
 
 Nothing here is per dialog: a new `ModalDialog` with buttons gets all of it.
 A dialog without buttons (Luma Search) keeps its own presentation.
+
+## The quick panel
+
+The quick panel is the TV posture of the Shell's Quick Options and
+notification list (`lumaPresentation/tvQuickPanel.js`, rules in
+`tvQuickPanelModel.js`, sizes `tv.quick_panel`). It is not a second control
+centre: every row drives the object the desktop's Quick Options already own,
+and a row whose backend is missing is not drawn.
+
+- **Opening it.** On the TV home, Right past Search reaches the weather |
+  time cluster at the bar's far right (later the user's picture); OK opens
+  the panel. From anywhere, hold Home (a remote's Home or CEC Root Menu, a
+  pad's Guide) for 500 ms; a short press still goes home (once no second
+  press has come: "Closing apps").
+- **Where.** A full-height sheet slides out from the right screen edge
+  (`tv.quick_panel.sheet_width`; its 620 column ends on the side safe line),
+  over a scrim, as the phone's Quick Options pull down under its status bar:
+  the bar's weather | time cluster never moves, and the panel adopts it as the
+  right of its header, with you (picture and name) on the left on the bar's
+  line. Rows run from `list_top` to the bottom safe line, with edge fades only
+  where they scroll. Closing slides the sheet out and leaves the cluster on
+  the bar. A focused cluster takes the key's ink, its weather icon included.
+- **Rows, top to bottom.** You, in the header (AccountsService picture and
+  name; OK opens Users when Settings has it). Wi-Fi, Bluetooth and Do Not Disturb as chips
+  (Left/Right between them, OK switches; on is a chip with an accent icon,
+  off is recessed). Sound: the output in use over the volume (Left/Right
+  steps it through the output slider; OK lists the outputs when there are
+  several). Notifications, newest first (OK runs the notification's default
+  action, as a click on its card does) and Clear all (never a critical one).
+  All Settings. Sleep (suspend where logind allows it, else the screensaver's
+  blank, as on a Raspberry Pi). Power drops Restart… and Power Off…, which ask
+  in the TV dialog.
+- **Leaving.** Back (first folding a dropped row) or Left off the island's
+  edge closes it; opened from the cluster, the focus returns there. Home
+  closes it and goes home.
+
+## Closing apps
+
+Apps on a TV are not minimised forever: the app switcher is the TV posture
+of the Shell's running apps and the desktop's Quit
+(`lumaPresentation/tvAppSwitcher.js`, rules in `tvAppSwitcherModel.js`, sizes
+`tv.app_switcher`), as tvOS's app switcher and Google TV's recents are. There
+is no second app model: the apps are `Shell.AppSystem`'s (with
+`sessionApplications.js`'s D-Bus apps), newest first in Alt+Tab's order.
+
+- **Opening it.** Press Home twice within `double_ms` (350 ms; a remote's
+  Home or CEC Root Menu, a pad's Guide). A single press goes home once that
+  window has passed; a held Home still opens the quick panel.
+- **Where.** Over the TV home's room under a scrim, the shared bar staying
+  where it always is: one row of 16:9 cards from the side safe line, each the
+  app's latest window picture (a clone, as the window switcher draws it), or
+  its TV tile when it has no window, with its icon and name above. The row
+  scrolls only as far as the focused card and a peek of the next need.
+- **The remote.** Left/Right move; OK (on release) switches to the app; Back
+  returns to the app it was opened over (or stays home); Home goes home.
+- **Closing.** Up on a card, a held OK (`tv.focus.hold_ms`) or Menu drops the
+  card's menu above it: Close asks the app to quit exactly as the desktop's
+  Quit does (`requestQuit`: the app's quit action or a close request for each
+  window; an app may still ask to save). The card waits, dimmed, "Closing…";
+  when the app is gone its card leaves, and the last one closes the switcher.
+  An app still running after `force_after_ms` (3 s) says "Not responding" and
+  its menu offers Force Close (each window's `kill()`, the desktop's Force
+  Quit) and Wait.
+- **The TV home's tiles.** A running app's tile carries a small dot before its
+  name (the dock's running dot). A held OK or Menu on it drops Open and Close
+  under it; on an app that is not running a held OK is an ordinary OK.
+- A held OK opens a menu once; the menu acts only on a new press, and a key's
+  repeat never activates anything.
 
 ## Appearing on the TV home
 
