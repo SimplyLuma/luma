@@ -69,6 +69,7 @@ device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-windo
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
 device_forced_density_patch="$repo_root/patches/android-device-waydroid/0004-luma-forced-display-density.patch"
+device_microg_patch="$repo_root/patches/android-device-waydroid/0005-luma-microg.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 
@@ -205,6 +206,7 @@ write_state() {
     printf 'DEVICE_CODEC_PATCH_SHA=%s\n' "$(patch_sha "$device_codec_patch")"
     printf 'DEVICE_INPUT_METHOD_PATCH_SHA=%s\n' "$(patch_sha "$device_input_method_patch")"
     printf 'DEVICE_FORCED_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$device_forced_density_patch")"
+    printf 'DEVICE_MICROG_PATCH_SHA=%s\n' "$(patch_sha "$device_microg_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
 }
@@ -340,6 +342,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
   git -C "$device_root" apply "$device_forced_density_patch"
+  git -C "$device_root" apply "$device_microg_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$jelly_root" apply "$jelly_patch"
   commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
@@ -598,16 +601,20 @@ fi
 if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$device_forced_density_patch")" != "${DEVICE_FORCED_DENSITY_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$device_forced_density_patch")" != "${DEVICE_FORCED_DENSITY_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_microg_patch")" != "${DEVICE_MICROG_PATCH_SHA:-}" ]; then
   git -C "$device_root" reset --hard -q "$DEVICE_OFFICIAL_HEAD"
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
   git -C "$device_root" apply "$device_forced_density_patch"
+  git -C "$device_root" apply "$device_microg_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   changed=1
 fi
+# microG's release APKs are pinned, not committed; place the verified files.
+bash "$repo_root/scripts/android/fetch-microg.sh" "$device_root/microg"
 
 if [ "$(patch_sha "$jelly_patch")" != "${JELLY_PATCH_SHA:-}" ]; then
   git -C "$jelly_root" reset --hard -q "$jelly_official_head"
