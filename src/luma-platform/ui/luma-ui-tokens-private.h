@@ -2183,6 +2183,11 @@
 #define LUMA_UI_TV_IDLE__DOC "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay."
 #define LUMA_UI_TV_IDLE_WEATHER_SECONDS 20
 #define LUMA_UI_TV_IDLE_MEDIA_SECONDS 15
+#define LUMA_UI_TV_INPUT__DOC "Gamepads in TV posture (the Shell's tvInput.js): the left stick takes a direction past stick_press on its dominant axis and lets go inside stick_release; a held direction steps once, again after repeat_delay_ms, then every repeat_interval_ms."
+#define LUMA_UI_TV_INPUT_STICK_PRESS 0.5
+#define LUMA_UI_TV_INPUT_STICK_RELEASE 0.35
+#define LUMA_UI_TV_INPUT_REPEAT_DELAY_MS 400
+#define LUMA_UI_TV_INPUT_REPEAT_INTERVAL_MS 120
 #define LUMA_UI_TV_MEDIA_COVER_PORTRAIT_ASPECT 1.3333
 #define LUMA_UI_TV_MEDIA_COVER_LANDSCAPE_ASPECT 0.5625
 #define LUMA_UI_TV_MEDIA_COVER_CAPTION_GAP 16

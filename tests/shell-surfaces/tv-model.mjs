@@ -58,8 +58,9 @@ assert.equal(nearest(items, items[0], 'up'), null);
 
 // Remote keys.
 assert.equal(remoteAction('Return'), 'ok');
-assert.equal(remoteAction('Select'), 'ok');
-assert.equal(remoteAction('Back'), 'back');
+// Remote and gamepad keys reach the TV home as these (tvInput.js).
+assert.equal(remoteAction('XF86Back'), null);
+assert.equal(remoteAction('XF86OK'), null);
 assert.equal(remoteAction('Escape'), 'back');
 assert.equal(remoteAction('Left'), 'left');
 assert.equal(remoteAction('a'), null);
