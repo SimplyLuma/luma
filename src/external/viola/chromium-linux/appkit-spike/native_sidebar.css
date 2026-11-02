@@ -41,16 +41,42 @@
 .viola-address.secure entry image.left { color: @luma_green; }
 /* A deliberate, narrow control at the frame edge leaves bottom web inputs
  * accessible without revealing the whole bar on ordinary pointer movement. */
+/* It is a notch of the window's bottom frame: the frame's own colour, no
+ * outline or shadow, joined to the edge by inverted corners. It appears only
+ * while the bar is tucked into it. */
 .viola-bar-handle {
-  min-width: 84px; min-height: 14px; padding: 0 6px;
-  border: 1px solid @luma_line; border-bottom: 0;
-  border-radius: 10px 10px 0 0;
-  background: @luma_content; color: @luma_muted;
-  box-shadow: 0 -1px 4px @luma_island_shadow;
+  min-width: 0; min-height: 0; padding: 0;
+  /* Overlap the page edge's rim so no seam runs under the notch. */
+  margin: 0 0 -2px 0;
+  border: 0; border-radius: 0; background: none; box-shadow: none;
+  color: @luma_frame_muted;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 180ms ease-out, transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.viola-bar-handle.viola-bar-handle-shown { opacity: 1; transform: none; }
+.viola-bar-handle-tab {
+  min-width: 68px; min-height: 14px;
+  border-radius: 9px 9px 0 0;
+  background: @luma_window_bottom;
+  transition: background 120ms ease;
+}
+.viola-bar-handle-start, .viola-bar-handle-end { min-width: 8px; min-height: 8px; }
+.viola-bar-handle-start {
+  background: radial-gradient(circle at 0 0, transparent 7.5px, @luma_window_bottom 8.5px);
+}
+.viola-bar-handle-end {
+  background: radial-gradient(circle at 100% 0, transparent 7.5px, @luma_window_bottom 8.5px);
 }
 .viola-bar-handle image { -gtk-icon-size: 10px; }
-.viola-bar-handle:hover { background: @luma_hover; color: @luma_ink; }
-.viola-bar-handle:focus-visible { outline: 2px solid @luma_focus_ring; }
+.viola-bar-handle:hover { background: none; color: @luma_frame_ink; }
+.viola-bar-handle:hover .viola-bar-handle-tab { background: shade(@luma_window_bottom, 1.12); }
+.viola-bar-handle:focus-visible { outline: none; }
+.viola-bar-handle:focus-visible .viola-bar-handle-tab { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+/* The bar sinks into the handle and rises back out of it. */
+.viola-page-bar-motion {
+  transition: transform 280ms cubic-bezier(0.32, 0.72, 0, 1), opacity 220ms ease;
+}
+.viola-page-bar-motion.viola-bar-tucked { transform: translateY(44px) scale(0.16, 0.3); opacity: 0; }
 .viola-footer { padding: 4px; }
 .viola-notice-header { min-height: 22px; }
 .viola-notice-heading { font-size: 9px; font-weight: 700; letter-spacing: .09em; color: @luma_muted; }
