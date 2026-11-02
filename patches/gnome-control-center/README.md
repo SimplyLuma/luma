@@ -232,3 +232,14 @@ processor without a model name in /proc/cpuinfo is named from its core part numb
 ("Cortex-A76 × 4"), so the page has the desktop's rows in the desktop's order. x86 and
 anything that already reports both are unchanged.
 
+`0095-lumaui-tv-wifi-nearby-in-place.patch`: a performance fix for every posture. Each Wi-Fi
+scan report rebuilt the whole Wi-Fi page: every widget was destroyed and drawn again, the page
+re-laid out, and the focused row (and, on a TV, the remote's place) lost, several times a
+minute. The page now keeps a signature of everything it drew apart from the Nearby list; while
+that holds, a report updates the list in place, keyed by network name: rows that show the same
+thing are kept, changed rows are redrawn where they stand, new ones added, gone ones removed,
+the order follows the scan and the header's count is updated. Anything else (Wi-Fi on/off, the
+joined network, a join in progress or its outcome, a notice) still draws the page afresh, so
+what is shown is unchanged. Test: `/settings/view/nearby-in-place` (kept rows are the same
+widgets; the page reads exactly as one drawn afresh).
+
