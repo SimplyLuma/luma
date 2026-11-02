@@ -88,6 +88,34 @@ class Card(unittest.TestCase):
         for line in ("kernel=u-boot.bin", "os_check=0", "arm_64bit=1"):
             self.assertIn(line, section)
 
+    def test_hdmi_audio_overlay_is_off_until_the_card_build_enables_it(self):
+        lines = (HERE / "card" / "config.txt").read_text().splitlines()
+        section = lines[lines.index("[pi5]"):lines.index("[all]")]
+        self.assertIn("#dtoverlay=luma-rpi5-hdmi-audio", section)
+        self.assertNotIn("dtoverlay=luma-rpi5-hdmi-audio", section)
+
+    def test_hdmi_audio_overlay_matches_the_bcm2712_dma_binding(self):
+        dts = (HERE / "card" / "overlays" / "luma-rpi5-hdmi-audio.dts").read_text()
+        self.assertIn('target-path = "/soc@107c000000";', dts)
+        self.assertIn('compatible = "brcm,bcm2712-dma";', dts)
+        self.assertIn("reg = <0x00010600 0x600>;", dts)
+        self.assertIn("brcm,dma-channel-mask = <0x0fc0>;", dts)
+        # DREQ | burst (bit 30) | wide source (bit 24) | QoS 10 | panic QoS 15
+        flags = (1 << 30) | (1 << 24) | (10 << 16) | (15 << 20)
+        for target, dreq in (("hdmi0", 10), ("hdmi1", 17)):
+            fragment = dts[dts.index(f"target = <&{target}>;"):]
+            self.assertIn(f"dmas = <&dma40 {flags | dreq:#010x}>;", fragment.split("};")[0])
+            self.assertIn('dma-names = "audio-rx";', fragment.split("};")[0])
+
+    @unittest.skipUnless(shutil.which("dtc"), "dtc unavailable")
+    def test_hdmi_audio_overlay_compiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/o.dtbo",
+                 str(HERE / "card" / "overlays" / "luma-rpi5-hdmi-audio.dts")],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_template_has_only_the_known_placeholders(self):
         self.assertEqual(set(re.findall(r"@[A-Z_]+@", self.grub)), {"@ISO_VOLID@", "@INSTALLER_ARGS@", "@ISO_NAME@"})
 

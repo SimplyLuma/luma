@@ -44,8 +44,9 @@ because U-Boot stores them on the card and an entry would bypass the card menu.
 
 ## Known limits
 
-HDMI audio, Bluetooth, fan control, the RTC and the power button do not work on
-the mainline kernel yet; see `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
+Bluetooth, fan control, the RTC and the power button do not work on the
+mainline kernel yet; HDMI audio needs `luma-rpi5-kmod` and the card overlay.
+See `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
 needs a TV input in HDMI 2.0 (enhanced) mode.
 
 ## Hardware results

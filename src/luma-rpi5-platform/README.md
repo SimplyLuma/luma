@@ -11,13 +11,13 @@ gated to Pi 5 hardware (device-tree compatible `raspberrypi,5-model-b` or
 | `luma-rpi5-shell-defaults.service` + `62-luma-rpi5-schemas` | Shell default `org.project_luma.shell-state backdrop-blur=false`. A gschema override would apply on every machine, so the service (`ConditionFirmware=`) compiles the installed Shell state schema with `rpi5.gschema.override` into `/run/luma-rpi5/schemas`, and the user environment generator adds that directory to `GSETTINGS_SCHEMA_DIR`. Values a person sets still win. |
 | `63-luma-rpi5-gsk-renderer` | User environment generator: `GSK_RENDERER=gl` for GTK apps on Pi 5 only (device-tree compatible). On V3D, GL draws a 4K frame in ~16 ms where the default Vulkan renderer takes ~30 ms. A `GSK_RENDERER` the person set wins. |
 | `luma-rpi5-boot-next` | Selects the SD card menu entry for the next boot only (`installed`, `install`, `rescue`, `uboot`). GRUB has no USB keyboard under U-Boot. |
-| `card/` | Sources of the SD card boot partition, used by `scripts/devices/build-rpi5-sd-image.sh`; not installed. |
+| `card/` | Sources of the SD card boot partition, used by `scripts/devices/build-rpi5-sd-image.sh`; not installed. `card/overlays/luma-rpi5-hdmi-audio.dts` is the HDMI audio overlay. |
 
 ## Hardware status (kernel 7.2.11, mainline device trees)
 
 - Display (vc4 KMS, V3D GL/Vulkan), USB, Ethernet, NVMe on PCIe and Wi-Fi work.
-- **HDMI audio** does not work on mainline yet: it needs the BCM2712 DMA-Lite
-  driver, which is still downstream. Use USB audio or an I2S DAC on the header.
+- **HDMI audio** (both ports) comes from `luma-rpi5-kmod` plus the card's
+  `luma-rpi5-hdmi-audio` overlay; see "HDMI audio" below.
 - **4K at 60 Hz** needs an HDMI 2.0 TV input. Many TVs expose only 4K 24/25/30
   until the input's enhanced or UHD colour mode is switched on in the TV's own
   settings; also use a cable rated for 18 Gbit/s.
@@ -31,3 +31,43 @@ gated to Pi 5 hardware (device-tree compatible `raspberrypi,5-model-b` or
 - **Power button**: needs a gpio-keys node in the device tree; untested.
 - CMA: the card's device trees reserve 256 MB below 1 GB (Fedora recommends
   `cma=256M@0M-1024M`); the kernel's 64 MB default runs out at 4K.
+
+## HDMI audio
+
+Mainline vc4 already registers an HDMI sound card per port (with jack
+detection) when the HDMI node has a `dmas` property. On BCM2712 two things are
+missing upstream: a driver for the 40-bit DMA engine, and vc4 handing that
+engine a physical address. Both live in `luma-rpi5-kmod`
+(`src/luma-rpi5-kmod`, patches in `patches/linux-rpi5`): `bcm2712-dma.ko`
+is Raspberry Pi's `bcm2835-dma` (rpi-7.2.y) built for BCM2712 only, and
+`vc4.ko` is the kernel's own vc4 with the BCM2712 address fix, installed to
+`updates/`. The card overlay `luma-rpi5-hdmi-audio` adds the DMA controller
+(DMA6-DMA11, `brcm,bcm2712-dma`) and the HDMI0/HDMI1 DMA requests, with the
+same cells as Raspberry Pi's device tree. It applies to the Pi 5 (C1, D0),
+Pi 500 and CM5 trees alike, since all are BCM2712.
+
+Why a kmod per Fedora kernel and not a Luma Pi kernel:
+
+- The Pi stays on the generic ARM image and Fedora's kernel, so kernel
+  security updates arrive on Fedora's schedule; a rebuild is seconds, from
+  that kernel's own SRPM, against its `kernel-devel`.
+- Every Pi item still missing upstream is a module that can be built the same
+  way (Bluetooth UART, RTC, RP1 fan PWM, HEVC decoder); only vc4 needs a
+  replacement module, and its change is one function.
+- `luma-rpi5-kmod` requires `kernel-uname-r` of exactly its kernel, so an
+  image compose that bumps the kernel without rebuilding it fails instead of
+  shipping a kernel without the DMA driver.
+- A separate kernel package would mean a separate image ref, installer and
+  full kernel builds for every Fedora update, for patches that are all
+  module-sized.
+
+Safety: the overlay is only written into `config.txt` when the card's OS
+payload carries `luma-rpi5-kmod` for its kernel, because stock vc4 waits
+forever for a DMA controller it has no driver for (the display then stays on
+the firmware framebuffer). If an initramfs ever pairs stock vc4 with
+`bcm2712-dma`, the DMA driver refuses vc4's legacy bus address (it is RAM on
+BCM2712) instead of writing to it. The in-tree `bcm2835-dma` is untouched,
+so Pi 4 and older keep their mainline behaviour.
+
+Drop the kmod pieces as they land upstream (status in
+`patches/linux-rpi5/README.md`).

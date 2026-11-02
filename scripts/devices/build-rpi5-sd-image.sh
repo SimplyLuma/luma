@@ -62,7 +62,7 @@ done
 [ -n "$iso" ] && [ -n "$output" ] || usage
 [ "$(uname -s)" = Linux ] || fail "build the card image on Linux"
 [ "$(id -u)" = 0 ] || fail "run as root: the ISO is loop-mounted read-only"
-for tool in blkid cpio curl depmod fdtget fdtput fsck.fat grub2-editenv gzip mcopy mkfs.vfat mmd \
+for tool in blkid cpio curl depmod dtc fdtget fdtoverlay fdtput fsck.fat grub2-editenv gzip mcopy mkfs.vfat mmd \
             mount ostree python3 rpm2cpio sfdisk sha256sum unsquashfs; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is missing: $tool"
 done
@@ -125,12 +125,24 @@ missing=()
 for module in "${modules[@]}"; do
   grep -q "usr/lib/modules/$release/$module" "$work/stage2.lst" || missing+=("$module")
 done
+repo="$work/iso/luma/repo"
+ref=$(ostree --repo="$repo" refs | grep -vx ostree-metadata || true)
+[ -n "$ref" ] && [ "$(printf '%s\n' "$ref" | wc -l)" = 1 ] || fail "ISO payload ref is ambiguous: $ref"
+# HDMI audio needs luma-rpi5-kmod (bcm2712-dma and the BCM2712 vc4) for this
+# exact kernel. Enable the overlay only when the payload carries it: without
+# the DMA driver vc4 HDMI waits for the controller and never binds. The
+# installer gets the same modules through updates.img.
+hdmi_audio=no
+kmod_modules=(updates/luma-rpi5/bcm2712-dma.ko updates/luma-rpi5/vc4.ko)
+if ostree --repo="$repo" ls "$ref" "/usr/lib/modules/$release/${kmod_modules[0]}.xz" >/dev/null 2>&1; then
+  hdmi_audio=yes
+  missing+=("${kmod_modules[@]}")
+else
+  echo "warning: the ISO payload has no luma-rpi5-kmod for $release; HDMI audio stays off" >&2
+fi
 compat_updates=no
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "Installer runtime lacks ${#missing[@]} Pi modules; adding updates.img from the ISO payload"
-  repo="$work/iso/luma/repo"
-  ref=$(ostree --repo="$repo" refs | grep -vx ostree-metadata || true)
-  [ -n "$ref" ] && [ "$(printf '%s\n' "$ref" | wc -l)" = 1 ] || fail "ISO payload ref is ambiguous: $ref"
   ostree --repo="$repo" ls "$ref" "/usr/lib/modules/$release" >/dev/null 2>&1 ||
     fail "the ISO payload does not carry the installer kernel $release"
   # depmod over the runtime's own modules plus the added ones, so the module
@@ -187,6 +199,17 @@ grub2-editenv "$fat/EFI/BOOT/grubenv" create
 install -m 0644 "$work/iso/images/pxeboot/vmlinuz" "$fat/images/pxeboot/vmlinuz"
 install -m 0644 "$work/iso/images/pxeboot/initrd.img" "$fat/images/pxeboot/initrd.img"
 install -m 0644 "$card_src/config.txt" "$fat/config.txt"
+if [ "$hdmi_audio" = yes ]; then
+  install -d "$fat/overlays"
+  dtc -q -@ -I dts -O dtb -o "$fat/overlays/luma-rpi5-hdmi-audio.dtbo" \
+    "$card_src/overlays/luma-rpi5-hdmi-audio.dts"
+  for dtb in "$fat/bcm2712-rpi-5-b.dtb" "$fat/bcm2712d0-rpi-5-b.dtb"; do
+    fdtoverlay -i "$dtb" -o "$work/overlay-check.dtb" "$fat/overlays/luma-rpi5-hdmi-audio.dtbo" ||
+      fail "luma-rpi5-hdmi-audio does not apply to ${dtb##*/}"
+  done
+  sed -i 's|^#dtoverlay=luma-rpi5-hdmi-audio$|dtoverlay=luma-rpi5-hdmi-audio|' "$fat/config.txt"
+  grep -qx 'dtoverlay=luma-rpi5-hdmi-audio' "$fat/config.txt" || fail "config.txt: HDMI audio overlay line missing"
+fi
 sed -e "s|@ISO_NAME@|$iso_name|g" "$card_src/README.txt.in" >"$fat/README.txt"
 find "$fat" -exec touch -h -d "@$epoch" {} +
 
@@ -254,6 +277,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "uboot $uboot_nevra $uboot_rpm_sha256"
   echo "compat_updates_img $compat_updates"
   echo "installer_args $installer_args"
+  echo "hdmi_audio $hdmi_audio"
   echo "partition1:"
   (cd "$fat" && find . -type f | LC_ALL=C sort | xargs sha256sum | sed 's/^/  /')
 } >"$output/$image_name.manifest.txt"
