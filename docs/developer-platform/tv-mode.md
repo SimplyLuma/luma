@@ -106,7 +106,8 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
 - **TvTopBar / TvTab**: the track of tabs and the clock; the open tab is the
   key unless another tab holds the focus.
 - **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
-- **TvField**: a recessed field around a real `Gtk.Text`.
+- **TvField**: a recessed field around a real `Gtk.Text`; `action=` labels the
+  TV keyboard's action key (see "Typing").
 - **TvToast**: lead, kicker, title, value, sub, tint, ms; one at a time.
 - **TvIdle**: an app's idle layer after a delay without input; any key wakes
   and does nothing else; Shift+I forces it, `LUMA_TV_IDLE_MS` sets the delay;
@@ -114,6 +115,61 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
 
 Values come from the `tv` block of `config/shared/design-tokens.json`
 (`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`).
+
+## Typing
+
+There is one on-screen keyboard. In TV posture the shell's Keycap keyboard
+(the one phones and tablets use) takes its TV form for every text field, the
+shell's and every application's: docked to the bottom, the person's language
+layout as QWERTY rows, then 123 / ABC, space and a blue action key, with
+shift and delete beside the last letter row. Applications use ordinary text
+widgets (a `TvField`'s `Gtk.Text`, a `Gtk.Entry`); there is no keyboard
+widget to embed and nothing to draw.
+
+- **It belongs to its field.** It opens when a field takes the focus (the
+  remote moving onto it is the request to type) and closes when the focus
+  leaves the field. Back, or Up from the top row, puts it away and leaves the
+  field focused; OK on the field opens it again.
+- **The remote.** While it is open the shell takes Up, Down, Left, Right, OK
+  (Return, KP_Enter) and Back (Escape, XF86Back) from every window, so a
+  `TvFocus` sees none of them and needs no grab; when it closes they reach the
+  app again. Backspace and letters always go to the field.
+- **A real keyboard types straight in.** The first letter typed on a real
+  keyboard puts the on-screen keyboard away; Return then submits as usual.
+- **The action key** sends Enter to the field (its `activate` signal, or the
+  `on_activate` of a `TvFocus` editable item) and puts the keyboard away. Its
+  label says what Enter does here. Set it, the one way:
+
+  ```python
+  field = TvField(placeholder=_("Add a place"), action=_("Add"))
+  set_keyboard_action(entry, _("Search"))   # any Gtk widget; applies to fields inside it
+  ```
+
+  Without a label it reads Go for an address field
+  (`Gtk.InputPurpose.URL`) and Done otherwise. Number, PIN and phone
+  purposes get the number pads.
+- **Its height.** The keyboard is 428 TV units tall and never resizes or
+  slides a TV window: the app keeps its whole screen and lifts what sits at
+  the bottom. A `TvStage` does this by itself: `docked` is `"keyboard"`
+  while it is up, so `TvToast` rises to `toast.above_keyboard` (586) and an
+  action bar should sit at `keyboard.above` (470). Anything else can follow
+  it:
+
+  ```python
+  stop = watch_tv_keyboard(lambda visible, height: lift(height))   # TV units, 0 when hidden
+  visible, height = tv_keyboard_state()
+  ```
+
+The contract underneath, for toolkits other than LumaUI, is the session-bus
+service `org.projectluma.Shell.Keyboard` at `/org/projectluma/Shell/Keyboard`,
+interface `org.projectluma.Shell.Keyboard1`: `SetActionLabel(s label)` labels
+the action key for the window that has the focus (call it as a field takes
+the focus, and with `""` as it leaves), and the properties `Visible` (b) and
+`Height` (u, TV units) change with the keyboard. Outside TV posture the
+keyboard ignores the label and never reports itself visible. The layout and
+look are the `tv.keyboard` tokens; the shell side is
+`patches/gnome-shell/0309-tv-keyboard.patch` with its pure rules in
+`src/luma-shell-presentation/tvKeyboard.js`.
 
 ## Appearing on the TV home
 

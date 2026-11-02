@@ -87,8 +87,8 @@ class _Shell:
                 self._watchers.remove(callback)
         return stop
 
-    def send(self, label: str) -> None:
-        if self._proxy is None or label == self._sent:
+    def send(self, label: str, *, again: bool = False) -> None:
+        if self._proxy is None or (label == self._sent and not again):
             return
         self._sent = label
         self._proxy.call("SetActionLabel", GLib.Variant("(s)", (label,)),
@@ -130,17 +130,41 @@ def set_keyboard_action(widget: Gtk.Widget, label: str | None) -> None:
         focus.connect("enter", lambda *_a: _focus(ref(), True))
         focus.connect("leave", lambda *_a: _focus(ref(), False))
         widget.add_controller(focus)
+        widget.connect("realize", lambda w: _follow_window(w))
+        if widget.get_realized():
+            _follow_window(widget)
     if widget.has_focus() or (widget.get_focus_child() is not None):
         _focus(widget, True)
 
 
-def _focus(widget: Gtk.Widget | None, entered: bool) -> None:
+def _follow_window(widget: Gtk.Widget) -> None:
+    # The shell keeps the label for the window that has the focus, so a field
+    # focused before its window was (a window opening) says it again then.
+    root = widget.get_root()
+    if not isinstance(root, Gtk.Window) or getattr(root, "_lumaui_keyboard_follow", False):
+        return
+    root._lumaui_keyboard_follow = True
+    ref = weakref.ref(root)
+
+    def active(*_a) -> None:
+        window = ref()
+        if window is None or not window.is_active():
+            return
+        focused = window.get_focus()
+        label = keyboard_action(focused) if focused is not None else ""
+        if label:
+            _focus(focused, True, again=True)
+
+    root.connect("notify::is-active", active)
+
+
+def _focus(widget: Gtk.Widget | None, entered: bool, *, again: bool = False) -> None:
     if widget is None:
         return
     from .lumaui import tv_posture
     if not tv_posture():
         return
-    _get().send(keyboard_action(widget) if entered else "")
+    _get().send(keyboard_action(widget) if entered else "", again=again)
 
 
 def tv_keyboard_state() -> tuple[bool, float]:
