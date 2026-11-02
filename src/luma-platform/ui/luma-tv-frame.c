@@ -214,7 +214,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-t-muted { color: @ink_3@; }\n"
 ".lumaui-tv-frame > .luma-island *:focus-visible { outline: none; }\n"
 /* LumaUI's type roles at TV size, wherever the page uses them (lumaui-tv.css's scale) */
-".lumaui-tv-frame > .luma-island label { font-family: Figtree, sans-serif; }\n"
+".lumaui-tv-frame > .luma-island label { font-family: Figtree, sans-serif; line-height: 1.25; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-row box.vertical { border-spacing: 3tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-display, .lumaui-tv-frame > .luma-island .lumaui-t-page-title { font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-hero, .lumaui-tv-frame > .luma-island .lumaui-t-hero-title, .lumaui-tv-frame > .luma-island .lumaui-t-title-1,\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-detail-title { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; }\n"
@@ -327,6 +328,13 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+/* the toast: the shared TV toast (tv/toast.js): bar material, 76 tall, one thing said */
+"window.lumaui-tv .lumaui-toast { min-height: 76tv; padding: 12tv 30tv 12tv 16tv; border-radius: 28tv; border: none; border-spacing: 18tv;\n"
+"  background-color: rgba(44, 46, 52, 0.94); background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-toast .lumaui-toast-text, window.lumaui-tv .lumaui-toast label { font-family: Figtree, sans-serif; font-size: 25tv; font-weight: 650; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-toast .lumaui-toast-icon { min-width: 52tv; min-height: 52tv; border-radius: 16tv; -gtk-icon-size: 28tv;\n"
+"  background-color: alpha(white, 0.08); color: @ink@; }\n"
 /* a choice's list: dropped from its value, at TV size */
 "window.lumaui-tv popover > contents { padding: 12tv; border-radius: 30tv; border: none; background-color: @sheet@; color: @ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
