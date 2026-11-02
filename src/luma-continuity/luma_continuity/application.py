@@ -81,6 +81,7 @@ TV_PHONE_TO_DESKTOP=('notifications.mirror','device.status','links.open','media.
 TV_DESKTOP_TO_PHONE=('device.ring','media.control','screen.view','camera.stream','bluetooth.bond')
 TV_PHONES_LEDE='Your phone on this TV: find it, show its screen, use its camera, and take its calls.'
 TV_NO_PHONES='Pair an Android phone to find it, see its screen and take its calls on this TV.'
+TV_SIGN_IN_ROW='Keep your photos, contacts, calendar and notes in step on this TV too.'
 
 def runs_on_tv(app_id):
     """Whether an installed app opts in to the TV (X-Luma-TV, docs/developer-platform/tv-mode.md)."""
@@ -183,7 +184,8 @@ class PhonesMixin:
         if network and device.get('reachable'):details.append(network)
         if device.get('seen_at') and not device.get('reachable'):details.append(when_text(device['seen_at'],prefix='Seen '))
         head=Adw.ActionRow(title=name,subtitle=' · '.join(details) or (device.get('model') or ''),use_markup=False)
-        head.add_css_class('luma-connect-phone-head')
+        head.add_css_class('luma-connect-phone-head');set_part(head,'subject')
+        if not (enabled and device.get('reachable')):head.add_css_class('lumaui-away')
         head.add_prefix(tile('luma-connect-phone-symbolic'))
         more=Gtk.MenuButton(icon_name='luma-connect-more-symbolic',valign=Gtk.Align.CENTER,tooltip_text=f'More for {name}')
         more.add_css_class('flat')
@@ -786,7 +788,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         connect=TextButton('Sign In',style='key',sensitive=False)
         actions.append(back);actions.append(connect);second.append(actions)
         set_part(actions,'buttons');set_part(back,'back')
-        set_code_field(code,length=8,group=4,next=connect,status=status)
+        set_code_field(code,length=8,group=4,next=connect,status=status,alphabet='base32')
         pages.add_named(second,'code')
         busy=False
         def update(*_):
@@ -1261,6 +1263,14 @@ class ConnectWindow(PhonesMixin,AppWindow):
             back.add_css_class('flat');back.connect('clicked',lambda *_:(setattr(self,'phones_only',False),self._update()))
         page=Page('Phones',TV_PHONES_LEDE if tv_posture() else 'Your phone’s notifications and texts on this computer, copied text and files back and forth, and calls.',suffix=pair,back=back)
         self._phones(page,self.compact)
+        if self.shape=='phones-only' and tv_posture():
+            # On a TV the way back to an account is a row the remote reaches, not only the header's Back.
+            group=Adw.PreferencesGroup(title='Luma Account');page.add(group)
+            row=Adw.ActionRow(title='Sign In…',subtitle=TV_SIGN_IN_ROW,use_markup=False,activatable=True)
+            row.add_prefix(Gtk.Image(icon_name='luma-connect-user-symbolic'))
+            def sign_in(*_):
+                self.phones_only=False;self._update();self._sign_in_dialog()
+            row.connect('activated',sign_in);group.add(row)
         if self._relay_signed_in() or (state.get('message_devices') or state.get('call_devices')):
             self._relay_section(page)
         elif state.get('account_status')=='locked':

@@ -328,7 +328,7 @@ static int orientation_of(GtkWidget *widget) {
 
 static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row",
                                            "title", "lede", "emblem", "buttons", "footnote", "ways", "way",
-                                           "chips", "chip", "swatch", NULL };
+                                           "chips", "chip", "swatch", "subject", NULL };
 
 /* An image that is not a symbolic icon: a logo, an app's icon, a photo. */
 static gboolean full_colour(GtkWidget *w) {
@@ -361,6 +361,10 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
     g_autofree char *name = g_strconcat("lumaui-part-", page_parts[i], NULL);
     luma_ui_set_css_class(widget, name, g_strcmp0(page_parts[i], part) == 0);
   }
+  /* A subject (the thing a card is about, heading it: a phone) is a row drawn larger; the class
+   * lumaui-away on it says the thing is out of reach. */
+  if (g_strcmp0(part, "subject") == 0)
+    gtk_widget_add_css_class(widget, "lumaui-part-row");
   /* A row that starts with a lead (an icon or picture before its text): its divider insets past it. */
   /* The row's line: the row itself, a button's child, or the first line of a row that grows
    * (a vertical row whose first child is the line, e.g. a network with its join form below). */
@@ -376,7 +380,7 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
   }
   GtkWidget *first = line != NULL && GTK_IS_BOX(line) && orientation_of(line) == GTK_ORIENTATION_HORIZONTAL
                      ? gtk_widget_get_first_child(line) : NULL;
-  gboolean leads = (g_strcmp0(part, "row") == 0 || g_strcmp0(part, "hero") == 0) && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
+  gboolean leads = (g_strcmp0(part, "row") == 0 || g_strcmp0(part, "subject") == 0 || g_strcmp0(part, "hero") == 0) && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
                    !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);
   luma_ui_set_css_class(widget, "lumaui-part-leads", leads);
   /* An icon lead (an image, or a box holding one) sits on the TV's lead tile; other leads
