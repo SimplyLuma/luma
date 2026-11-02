@@ -121,3 +121,21 @@ StWidget.luma-notification-lip.luma-mobile-notifications.tray.high-contrast .lum
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-mobile-options.high-contrast {
   background-color: #111111;
 }
+
+/* Incoming call takeover (incomingCall.js): above the lock screen while ringing. */
+.luma-call-takeover { background-color: rgba(18,14,26,0.96); }
+.luma-call-takeover-column { padding: 96px 32px 72px 32px; spacing: 10px; }
+.luma-call-takeover-status { color: rgba(255,255,255,0.64); font-size: 15px; font-weight: 600; }
+.luma-call-takeover-caller { color: #ffffff; font-size: 34px; font-weight: 600; text-align: center; }
+.luma-call-takeover-detail { color: rgba(255,255,255,0.64); font-size: 15px; }
+.luma-call-takeover-buttons { spacing: 88px; }
+.luma-call-takeover-action { spacing: 10px; }
+.luma-call-takeover-button { width: 76px; height: 76px; border-radius: 38px; color: #ffffff; }
+.luma-call-takeover-button StIcon { icon-size: 30px; }
+.luma-call-takeover-answer { background-color: #47a179; }
+.luma-call-takeover-answer:hover, .luma-call-takeover-answer:active { background-color: #3f8f6c; }
+.luma-call-takeover-decline { background-color: #b4534f; }
+.luma-call-takeover-decline:hover, .luma-call-takeover-decline:active { background-color: #a74b47; }
+.luma-call-takeover-neutral { background-color: rgba(255,255,255,0.14); }
+.luma-call-takeover-neutral:hover, .luma-call-takeover-neutral:active { background-color: rgba(255,255,255,0.22); }
+.luma-call-takeover-label { color: rgba(255,255,255,0.86); font-size: 14px; }
