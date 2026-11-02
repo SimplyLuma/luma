@@ -1,0 +1,19 @@
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.cc b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.cc
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+@@ -1250,6 +1250,15 @@ void ViolaProductShellView::ShowInitialIncognitoPalette() {
+   if (!browser_ || !browser_->profile()->IsOffTheRecord()) {
+     return;
+   }
++#if BUILDFLAG(IS_LINUX)
++  // The native host focuses its address entry on the window's existing new
++  // tab. Opening another about:blank tab here left every new private window
++  // with two tabs.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
++          "viola-native-frame-probe")) {
++    return;
++  }
++#endif
+   OpenNewTabAndShowPalette();
+ }
+ 
