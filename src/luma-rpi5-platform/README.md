@@ -43,7 +43,11 @@ is Raspberry Pi's `bcm2835-dma` (rpi-7.2.y) built for BCM2712 only, and
 `vc4.ko` is the kernel's own vc4 with the BCM2712 address fix, installed to
 `updates/`. The fragment `card/dtb/luma-rpi5-hdmi-audio.dtso` adds the DMA
 controller (DMA6-DMA11, `brcm,bcm2712-dma`) and the HDMI0/HDMI1 DMA requests,
-with the same cells as Raspberry Pi's device tree. The card build merges it
+with the same cells as Raspberry Pi's device tree. The request lines depend
+on the stepping: C1 uses DREQ 10/17, D0 (and Pi 500) DREQ 12/13, so D0 trees
+(compatible `brcm,bcm2712-d0`) also get `luma-rpi5-hdmi-audio-d0.dtso`. CM5
+trees are C1-compatible; a D0 CM5 would stay silent (the DMA waits for a
+request that never comes) until it has its own tree. The card build merges it
 (`fdtoverlay`) into every BCM2712 tree the kernel ships under the names U-Boot
 loads (`dtb/broadcom/bcm2712-rpi-5-b.dtb`, `bcm2712-d-rpi-5-b.dtb`, and
 `bcm2712-rpi-500.dtb`, `bcm2712-rpi-cm5-cm5io.dtb`, `bcm2712-rpi-cm5l-cm5io.dtb`

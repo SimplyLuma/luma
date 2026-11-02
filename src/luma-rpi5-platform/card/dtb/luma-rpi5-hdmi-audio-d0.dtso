@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * D0 silicon (Pi 5 2 GB/16 GB and later boards, Pi 500) routes the HDMI MAI
+ * DMA requests to DREQ 12 (HDMI0) and 13 (HDMI1), as in Raspberry Pi's
+ * bcm2712d0-rpi-5-b.dts. Applied after luma-rpi5-hdmi-audio.dtso, whose
+ * dma40 label it uses; same burst, wide source and QoS bits.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2712-d0";
+
+	fragment@0 {
+		target = <&hdmi0>;
+		__overlay__ {
+			dmas = <&dma40 0x41fa000c>;
+		};
+	};
+
+	fragment@1 {
+		target = <&hdmi1>;
+		__overlay__ {
+			dmas = <&dma40 0x41fa000d>;
+		};
+	};
+};

@@ -218,16 +218,28 @@ install -m 0644 "$card_src/config.txt" "$fat/config.txt"
 # trees here, only when the payload carries luma-rpi5-kmod: without the DMA
 # driver vc4 HDMI waits for the controller and never binds.
 install -d "$fat/dtb/broadcom"
+# The HDMI DMA request lines differ by stepping: D0 trees (compatible
+# brcm,bcm2712-d0) also get the -d0 fragment.
 if [ "$hdmi_audio" = yes ]; then
-  dtc -q -@ -I dts -O dtb -o "$work/luma-rpi5-hdmi-audio.dtbo" "$card_src/dtb/luma-rpi5-hdmi-audio.dtso"
+  for frag in luma-rpi5-hdmi-audio luma-rpi5-hdmi-audio-d0; do
+    dtc -q -@ -I dts -O dtb -o "$work/$frag.dtbo" "$card_src/dtb/$frag.dtso"
+  done
 fi
 for name in "${uboot_dtbs[@]}"; do
   dst="$fat/dtb/broadcom/$name"
   if [ "$hdmi_audio" = yes ]; then
-    fdtoverlay -i "$work/stage2/$dtbs/$name" -o "$dst" "$work/luma-rpi5-hdmi-audio.dtbo" ||
+    frags=("$work/luma-rpi5-hdmi-audio.dtbo")
+    dreqs="41fa000a 41fa0011"
+    if fdtget "$work/stage2/$dtbs/$name" / compatible | tr ' ' '\n' | grep -qx 'brcm,bcm2712-d0'; then
+      frags+=("$work/luma-rpi5-hdmi-audio-d0.dtbo")
+      dreqs="41fa000c 41fa000d"
+    fi
+    fdtoverlay -i "$work/stage2/$dtbs/$name" -o "$dst" "${frags[@]}" ||
       fail "luma-rpi5-hdmi-audio does not apply to $name"
     [ "$(fdtget "$dst" /soc@107c000000/dma@10600 compatible)" = brcm,bcm2712-dma ] ||
       fail "$name: BCM2712 DMA controller missing after the merge"
+    got="$(fdtget -t x "$dst" "$(fdtget "$dst" /__symbols__ hdmi0)" dmas | cut -d' ' -f2) $(fdtget -t x "$dst" "$(fdtget "$dst" /__symbols__ hdmi1)" dmas | cut -d' ' -f2)"
+    [ "$got" = "$dreqs" ] || fail "$name: HDMI DMA requests are $got, expected $dreqs"
     chmod 0644 "$dst"
   else
     install -m 0644 "$work/stage2/$dtbs/$name" "$dst"

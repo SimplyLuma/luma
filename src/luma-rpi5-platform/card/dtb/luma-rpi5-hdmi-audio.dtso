@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * HDMI audio for BCM2712 boards (Raspberry Pi 5, Pi 500, CM5) on mainline
- * device trees: the 40-bit DMA controller (channels 6-11) and the HDMI MAI
- * DMA requests. The node and request cells follow Raspberry Pi's
+ * device trees: the 40-bit DMA controller (channels 6-10) and the HDMI MAI
+ * DMA requests of C1 silicon; luma-rpi5-hdmi-audio-d0.dtso then moves the
+ * requests to the D0 lines. The node and request cells follow Raspberry Pi's
  * bcm2712-ds.dtsi and bcm2712-rpi.dtsi (raspberrypi/linux rpi-7.2.y).
  *
  * Needs the bcm2712-dma driver and the BCM2712 vc4 HDMI audio address fix
@@ -33,7 +34,7 @@
 	};
 
 	/*
-	 * DREQ 10 (HDMI0 MAI) and 17 (HDMI1 MAI) with multi-beat burst
+	 * C1: DREQ 10 (HDMI0 MAI) and 17 (HDMI1 MAI) with multi-beat burst
 	 * (bit 30), wide source (bit 24), QoS 10 and panic QoS 15.
 	 */
 	fragment@1 {

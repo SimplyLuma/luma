@@ -108,12 +108,25 @@ class Card(unittest.TestCase):
             self.assertIn(f"dmas = <&dma40 {flags | dreq:#010x}>;", fragment.split("};")[0])
             self.assertIn('dma-names = "audio-rx";', fragment.split("};")[0])
 
+    def test_hdmi_audio_d0_fragment_uses_the_d0_request_lines(self):
+        # Raspberry Pi's bcm2712d0-rpi-5-b.dts: HDMI0 DREQ 12, HDMI1 DREQ 13.
+        dts = (HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio-d0.dtso").read_text()
+        flags = (1 << 30) | (1 << 24) | (10 << 16) | (15 << 20)
+        for target, dreq in (("hdmi0", 12), ("hdmi1", 13)):
+            fragment = dts[dts.index(f"target = <&{target}>;"):]
+            self.assertIn(f"dmas = <&dma40 {flags | dreq:#010x}>;", fragment.split("};")[0])
+
     @unittest.skipUnless(shutil.which("dtc"), "dtc unavailable")
     def test_hdmi_audio_overlay_compiles(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
                 ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/o.dtbo",
                  str(HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio.dtso")],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run(
+                ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/d0.dtbo",
+                 str(HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio-d0.dtso")],
                 capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
