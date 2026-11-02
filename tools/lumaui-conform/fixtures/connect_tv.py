@@ -68,13 +68,13 @@ CLOUD = {
     "device": {"id": "tv"},
     "devices": [{"id": "tv", "name": "Living room", "model": "Raspberry Pi 5", "services": [{"last_success_at": _AT(20, 45)}]},
                 {"id": "xps", "name": "Nick’s XPS", "services": [{"last_success_at": _AT(21, 2)}]},
-                {"id": "thinkpad", "name": "ThinkPad", "services": [{"last_success_at": _AT(23, 40) - 86400}]},
+                {"id": "thinkpad", "name": "ThinkPad", "services": [{"last_success_at": NOW - 81120}]},  # Oct 31, 11:40 PM CDT
                 {"id": "fold", "name": "Nick’s Fold", "services": [{"last_success_at": _AT(20, 51)}]}],
     "services": [{"id": k, "name": n, "enabled": e, "last_success_at": _AT(20, 45) if e else None} for k, n, e in SERVICES],
 }
 FOLD = {"fingerprint": "fold", "name": "Nick’s Fold", "model": "Pixel 9 Pro Fold", "reachable": True,
         "status": {"battery": 78, "network": "wifi"},
-        "outgoing": ["device.ring", "media.control", "screen.view", "camera.stream", "call.control"],
+        "outgoing": ["device.ring", "media.control", "screen.view", "camera.stream", "bluetooth.bond"],
         "incoming": ["notifications.mirror", "device.status", "links.open", "media.mirror", "input.remote"]}
 PIXEL = {"fingerprint": "p9", "name": "Pixel 9", "model": "Pixel 9", "reachable": False, "last_seen_at": _AT(8, 12),
          "outgoing": ["device.ring", "media.control", "screen.view"],
