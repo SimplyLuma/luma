@@ -328,12 +328,28 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
     luma_ui_set_css_class(widget, name, g_strcmp0(page_parts[i], part) == 0);
   }
   /* A row that starts with a lead (an icon or picture before its text): its divider insets past it. */
-  GtkWidget *line = GTK_IS_BUTTON(widget) ? gtk_button_get_child(GTK_BUTTON(widget)) : widget;
-  GtkWidget *first = line != NULL && GTK_IS_BOX(line) ? gtk_widget_get_first_child(line) : NULL;
+  /* The row's line: the row itself, a button's child, or the first line of a row that grows
+   * (a vertical row whose first child is the line, e.g. a network with its join form below). */
+  GtkWidget *line = widget;
+  for (int depth = 0; line != NULL && depth < 3; depth++) {
+    if (GTK_IS_BUTTON(line))
+      line = gtk_button_get_child(GTK_BUTTON(line));
+    else if (GTK_IS_BOX(line) && gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_VERTICAL &&
+             gtk_widget_get_first_child(line) != NULL && !GTK_IS_LABEL(gtk_widget_get_first_child(line)))
+      line = gtk_widget_get_first_child(line);
+    else
+      break;
+  }
+  GtkWidget *first = line != NULL && GTK_IS_BOX(line) &&
+                     gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_HORIZONTAL
+                     ? gtk_widget_get_first_child(line) : NULL;
   gboolean leads = g_strcmp0(part, "row") == 0 && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
                    !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);
   luma_ui_set_css_class(widget, "lumaui-part-leads", leads);
-  if (leads)
+  /* An icon lead (an image, or a box holding one) sits on the TV's lead tile; other leads
+   * (a drawn mark such as signal bars) keep their own shape. */
+  GtkWidget *inner = leads && GTK_IS_BOX(first) ? gtk_widget_get_first_child(first) : NULL;
+  if (leads && (GTK_IS_IMAGE(first) || GTK_IS_PICTURE(first) || GTK_IS_IMAGE(inner) || GTK_IS_PICTURE(inner)))
     gtk_widget_add_css_class(first, "lumaui-part-lead");
 }
 

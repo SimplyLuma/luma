@@ -168,7 +168,7 @@ typedef struct {
   double unit;
   gboolean active, rail, opaque;
   guint clock_id, settle_id, relax_id, restyle_id;
-  gulong focus_id;
+  gulong focus_id, visible_id;
   int sidebar_width, sidebar_height, sidebar_margin;
 } TvFrame;
 
@@ -208,9 +208,24 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island label { color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-t-muted { color: @ink_3@; }\n"
 ".lumaui-tv-frame > .luma-island *:focus-visible { outline: none; }\n"
+/* LumaUI's type roles at TV size, wherever the page uses them (lumaui-tv.css's scale) */
+".lumaui-tv-frame > .luma-island label { font-family: Figtree, sans-serif; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-display, .lumaui-tv-frame > .luma-island .lumaui-t-page-title { font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-hero, .lumaui-tv-frame > .luma-island .lumaui-t-hero-title, .lumaui-tv-frame > .luma-island .lumaui-t-title-1,\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-detail-title { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-title-2, .lumaui-tv-frame > .luma-island .lumaui-t-section-title { font-size: 30tv; font-weight: 700; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-lead, .lumaui-tv-frame > .luma-island .lumaui-t-intro, .lumaui-tv-frame > .luma-island .lumaui-t-meta,\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-body { font-size: 26tv; font-weight: 500; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-row-title, .lumaui-tv-frame > .luma-island .lumaui-t-list-title, .lumaui-tv-frame > .luma-island .lumaui-t-card-title { font-size: 25tv; font-weight: 600; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-label, .lumaui-tv-frame > .luma-island .lumaui-t-numeric, .lumaui-tv-frame > .luma-island .lumaui-t-button-small { font-size: 22tv; font-weight: 650; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-small, .lumaui-tv-frame > .luma-island .lumaui-t-caption, .lumaui-tv-frame > .luma-island .lumaui-t-row-subtitle { font-size: 19tv; font-weight: 500; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-t-group-heading { font-size: 20tv; font-weight: 650; letter-spacing: 1tv; text-transform: uppercase; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-small, .lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-caption,\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero .lumaui-t-meta { font-size: 22tv; margin-top: 6tv; }\n"
 ".lumaui-tv-frame .lumaui-part-header .lumaui-t-page-title { font-family: Figtree, sans-serif; font-size: 52tv; font-weight: 750;\n"
-"  letter-spacing: -1.56tv; color: @ink@; }\n"
-".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; }\n"
+"  letter-spacing: -1.56tv; color: @ink@; line-height: 1.12; }\n"
+".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 10tv; }\n"
+".lumaui-tv-frame .lumaui-part-header { margin: 0; padding: 0; min-height: 0; }\n"
 ".lumaui-tv-frame .lumaui-part-hero { margin-top: 28tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
 "  background-color: @bar@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
@@ -219,8 +234,27 @@ static const char *const tv_sheet =
 "  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
 ".lumaui-tv-frame .lumaui-part-card { padding: 8tv; border-radius: 30tv; border: none; background-color: @bar@; background-image: none;\n"
 "  border-spacing: 2tv; box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
-".lumaui-tv-frame .lumaui-part-row { min-height: 60tv; padding: 12tv 22tv; border-radius: 22tv; border: none; outline: none;\n"
+".lumaui-tv-frame .lumaui-part-row { min-height: 0; padding: 12tv 22tv; border-radius: 22tv; border: none; outline: none;\n"
 "  background-color: transparent; background-image: none; box-shadow: none; color: @ink@; }\n"
+/* a row is 84 tall (60 + padding) with its content centred: a row that is its own line, or the
+ * first line of a row that grows (a network's join form) */
+".lumaui-tv-frame .lumaui-part-row.horizontal, .lumaui-tv-frame button.lumaui-part-row,\n"
+".lumaui-tv-frame .lumaui-part-row.vertical > :first-child { min-height: 60tv; }\n"
+/* fallbacks for anything the page draws without a LumaUI type role or icon size */
+".lumaui-tv-frame > .luma-island label { font-size: 23tv; }\n"
+".lumaui-tv-frame > .luma-island image { -gtk-icon-size: 26tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero label { font-size: 26tv; font-weight: 600; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; }\n"
+/* libadwaita's rows and groups, named by the frame */
+".lumaui-tv-frame row.lumaui-part-row { min-height: 60tv; }\n"
+".lumaui-tv-frame .lumaui-part-row label.title { font-size: 25tv; font-weight: 600; color: inherit; }\n"
+".lumaui-tv-frame .lumaui-part-row label.subtitle { font-size: 19tv; font-weight: 500; color: @ink_3@; }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within label.subtitle { color: alpha(@key_ink@, 0.62); }\n"
+".lumaui-tv-frame .lumaui-part-row box.header { min-height: 0; padding: 0; margin: 0; border-spacing: 20tv; }\n"
+".lumaui-tv-frame .lumaui-part-group label.heading, .lumaui-tv-frame .lumaui-part-group label.title-4 { font-size: 20tv; font-weight: 650; letter-spacing: 1tv;\n"
+"  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
+".lumaui-tv-frame list.lumaui-part-card { background-color: @bar@; }\n"
+".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row + .lumaui-part-row { background-image: linear-gradient(@divider@, @divider@);\n"
@@ -245,14 +279,14 @@ static const char *const tv_sheet =
 /* controls at TV size, inside rows */
 ".lumaui-tv-frame .lumaui-part-row button, .lumaui-tv-frame .lumaui-part-row button:hover, .lumaui-tv-frame .lumaui-part-row button:focus-visible {\n"
 "  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"
-".lumaui-tv-frame .lumaui-part-row switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
+".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
 "  background-color: @well@; background-image: none; color: transparent;\n"
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@, 0 1.5tv 0 @well_glint@; }\n"
-".lumaui-tv-frame .lumaui-part-row switch:checked { background-color: @accent@; box-shadow: inset 0 1.5tv 3tv alpha(black, 0.25); }\n"
+".lumaui-tv-frame > .luma-island switch:checked { background-color: @accent@; box-shadow: inset 0 1.5tv 3tv alpha(black, 0.25); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within switch:not(:checked) { background-color: alpha(black, 0.14); }\n"
-".lumaui-tv-frame .lumaui-part-row switch > slider { min-width: 34tv; min-height: 34tv; margin: 0; border-radius: 9999px; border: none;\n"
+".lumaui-tv-frame > .luma-island switch > slider { min-width: 34tv; min-height: 34tv; margin: 0; border-radius: 9999px; border: none;\n"
 "  background-image: linear-gradient(white, #e6e7ea); box-shadow: 0 2tv 5tv alpha(black, 0.35); }\n"
-".lumaui-tv-frame .lumaui-part-row switch image { opacity: 0; }\n"
+".lumaui-tv-frame > .luma-island switch image { opacity: 0; }\n"
 ".lumaui-tv-frame .lumaui-part-row scale { min-width: 460tv; padding: 0; margin: 0; }\n"
 ".lumaui-tv-frame .lumaui-part-row scale > trough { min-height: 12tv; border-radius: 6tv; border: none; background-color: @well@;\n"
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; }\n"
@@ -439,8 +473,34 @@ static void set_rail(TvFrame *f, gboolean rail) {
   luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), TRUE, rail);
 }
 
-/* The page's parts (luma_ui_set_part) and its clamp: released to the safe margin while on a TV. */
+/* The page's parts and its clamp, while on a TV.
+ *
+ * A page that names its parts (luma_ui_set_part) is drawn from those names. A page built from
+ * libadwaita's own preference widgets needs nothing: a preferences group is a group, a boxed list
+ * its card, and every preferences row (action, switch, combo, entry, expander, button, spin) a row.
+ * These names are added here and taken away again when the posture ends. A clamp is released to
+ * the page's full width (the safe margin, no maximum). */
+static gboolean has_part(GtkWidget *widget) {
+  static const char *const parts[] = {"lumaui-part-header", "lumaui-part-back", "lumaui-part-hero", "lumaui-part-group",
+                                      "lumaui-part-card", "lumaui-part-row", NULL};
+  for (guint i = 0; parts[i] != NULL; i++)
+    if (gtk_widget_has_css_class(widget, parts[i])) return TRUE;
+  return FALSE;
+}
+
+static const char *adw_part(GtkWidget *widget) {
+  if (ADW_IS_PREFERENCES_GROUP(widget)) return "lumaui-part-group";
+  if (GTK_IS_LIST_BOX(widget) && gtk_widget_has_css_class(widget, "boxed-list")) return "lumaui-part-card";
+  if (ADW_IS_PREFERENCES_ROW(widget)) return "lumaui-part-row";
+  return NULL;
+}
+
 static void release_page(TvFrame *f, GtkWidget *widget) {
+  const char *part = adw_part(widget);
+  if (part != NULL && !has_part(widget)) {
+    gtk_widget_add_css_class(widget, part);
+    gtk_widget_add_css_class(widget, "lumaui-tv-named");
+  }
   if (ADW_IS_CLAMP(widget) && g_object_get_data(G_OBJECT(widget), "luma-tv-clamp") == NULL) {
     AdwClamp *clamp = ADW_CLAMP(widget);
     GtkWidget *child = adw_clamp_get_child(clamp);
@@ -461,13 +521,16 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
       gtk_widget_set_margin_top(child, (int)round(12 * f->unit));
       gtk_widget_set_margin_bottom(child, (int)round(160 * f->unit));
     }
-    return; /* nothing inside a clamp is another clamp worth releasing */
   }
   for (GtkWidget *c = gtk_widget_get_first_child(widget); c != NULL; c = gtk_widget_get_next_sibling(c))
     release_page(f, c);
 }
 
 static void restore_page(GtkWidget *widget) {
+  if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {
+    gtk_widget_remove_css_class(widget, "lumaui-tv-named");
+    gtk_widget_remove_css_class(widget, adw_part(widget));
+  }
   int *saved = ADW_IS_CLAMP(widget) ? g_object_get_data(G_OBJECT(widget), "luma-tv-clamp") : NULL;
   if (saved != NULL) {
     AdwClamp *clamp = ADW_CLAMP(widget);
@@ -481,17 +544,20 @@ static void restore_page(GtkWidget *widget) {
       gtk_widget_set_margin_bottom(child, saved[5]);
     }
     g_object_set_data(G_OBJECT(widget), "luma-tv-clamp", NULL);
-    return;
   }
   for (GtkWidget *c = gtk_widget_get_first_child(widget); c != NULL; c = gtk_widget_get_next_sibling(c))
     restore_page(c);
 }
 
+static void dump(GtkWidget *w, int depth);
+
 static gboolean relax(gpointer data) {
   TvFrame *f = data;
   f->relax_id = 0;
-  if (f->active)
+  if (f->active) {
     release_page(f, f->island);
+    if (g_getenv("LUMA_TV_DEBUG") != NULL) dump(f->island, 0);
+  }
   return G_SOURCE_REMOVE;
 }
 
@@ -516,7 +582,7 @@ static gboolean settle(gpointer data) {
   if (!f->active)
     return G_SOURCE_REMOVE;
   release_page(f, f->island);
-  if (g_getenv("LUMA_TV_DEBUG") != NULL) dump(f->island, 0);
+  gtk_window_set_focus_visible(f->window, TRUE);
   if (focus_of(f) == NULL) {
     GtkListBoxRow *row = selected_row(f);
     if (row != NULL)
@@ -528,6 +594,12 @@ static gboolean settle(gpointer data) {
 static void queue_settle(TvFrame *f) {
   if (f->settle_id == 0)
     f->settle_id = g_timeout_add_full(G_PRIORITY_LOW, 60, settle, f, NULL);
+}
+
+static void focus_visible_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
+  (void)pspec;
+  if (f->active && !gtk_window_get_focus_visible(window))
+    gtk_window_set_focus_visible(window, TRUE); /* a TV has no pointer: the focus always shows */
 }
 
 static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
@@ -759,6 +831,7 @@ static void enter(TvFrame *f) {
   g_signal_connect(f->keys, "key-pressed", G_CALLBACK(key_pressed), f);
   gtk_widget_add_controller(GTK_WIDGET(f->window), f->keys);
   f->focus_id = g_signal_connect(f->window, "notify::focus-widget", G_CALLBACK(focus_changed), f);
+  f->visible_id = g_signal_connect(f->window, "notify::focus-visible", G_CALLBACK(focus_visible_changed), f);
   clock_tick(f);
   gtk_window_set_focus_visible(f->window, TRUE);
   queue_settle(f);
@@ -771,6 +844,7 @@ static void leave(TvFrame *f) {
   g_clear_handle_id(&f->relax_id, g_source_remove);
   g_clear_handle_id(&f->restyle_id, g_source_remove);
   g_clear_signal_handler(&f->focus_id, f->window);
+  g_clear_signal_handler(&f->visible_id, f->window);
   if (f->keys != NULL) {
     gtk_widget_remove_controller(GTK_WIDGET(f->window), f->keys);
     f->keys = NULL;
@@ -848,6 +922,17 @@ void luma_tv_frame_set_active(GtkWindow *window, gboolean tv) {
     return;
   if (tv) enter(f);
   else leave(f);
+}
+
+gboolean luma_tv_frame_key(GtkWindow *window, guint keyval) {
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  return f != NULL && key_pressed(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
+}
+
+void luma_tv_frame_page_changed(GtkWindow *window) {
+  TvFrame *f = window != NULL ? g_object_get_data(G_OBJECT(window), "luma-tv-frame") : NULL;
+  if (f != NULL && f->active)
+    queue_relax(f);
 }
 
 gboolean luma_tv_frame_is_active(GtkWindow *window) {

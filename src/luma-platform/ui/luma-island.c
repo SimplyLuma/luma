@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "luma-island.h"
 #include "luma-ui-tokens-private.h"
+#include "luma-tv-frame-private.h"
 
 /* GTK 4.22 has no non-deprecated lookup for named CSS colours. Keep this
  * compatibility call local until the style API supplies one. */
@@ -64,6 +65,9 @@ static void island_layout_allocate(GtkLayoutManager *manager, GtkWidget *widget,
   box_layout_class->measure(manager, widget, GTK_ORIENTATION_HORIZONTAL, -1, &need, &natural, &mb, &nb);
   g_object_set_data(G_OBJECT(widget), "lumaui-overflow", GINT_TO_POINTER(MAX(0, need - width)));
   box_layout_class->allocate(manager, widget, MAX(width, need), height, baseline);
+  GtkRoot *root = gtk_widget_get_root(widget);
+  if (root != NULL && gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-tv"))
+    luma_tv_frame_page_changed(GTK_WINDOW(root)); /* a page drawn or redrawn: the TV page takes its width */
 }
 
 static void island_layout_class_init(gpointer klass, gpointer data G_GNUC_UNUSED) {
