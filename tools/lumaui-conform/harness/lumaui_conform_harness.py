@@ -496,6 +496,18 @@ class Capture:
                 if controller.emit("key-pressed", keyval, 0, Gdk.ModifierType(0)):
                     controller.emit("key-released", keyval, 0, Gdk.ModifierType(0))
                     return
+        # Nothing stopped it: GTK's own activation shortcut (Return, Enter, space on the focused
+        # widget, a GtkShortcutController this emulation does not reach) acts, as on a real press.
+        if focus is not None or self.window.get_focus() is not None:
+            target = self.window.get_focus()
+            if name in ("Return", "KP_Enter", "ISO_Enter", "space") and target is not None and target.activate():
+                for widget in targets:
+                    controllers = widget.observe_controllers()
+                    for index in range(controllers.get_n_items()):
+                        controller = controllers.get_item(index)
+                        if isinstance(controller, Gtk.EventControllerKey):
+                            controller.emit("key-released", keyval, 0, Gdk.ModifierType(0))
+                return
         self.notes.append(f"no key controller took {name}")
 
     def act_one(self, action) -> None:
