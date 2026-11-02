@@ -157,11 +157,13 @@ class PhonesMixin:
             Gio.DBusCallFlags.NONE,timeout,None,finished)
 
     def _phones(self,page,mobile):
-        state=self.state or {};enabled=bool(state.get('enabled'))
+        # Nothing until the first load: never "No phones yet" or a dead switch before the service answers.
+        if self.state is None:return
+        state=self.state;enabled=bool(state.get('enabled'))
         if not enabled:
             group=Adw.PreferencesGroup();page.add(group)
             row=Adw.SwitchRow(title='Luma Connect',subtitle=tv_words('Turn it on to use a phone with this computer.'),active=False)
-            row.set_sensitive(self.state is not None and not state.get('busy'))
+            row.set_sensitive(not state.get('busy'))
             row.connect('notify::active',lambda widget,_p:widget.get_active() and self._invoke('SetEnabled','(b)',(True,)))
             group.add(row)
         devices=state.get('companion_devices') or []
