@@ -1,5 +1,19 @@
 #!/usr/bin/python3 -sP
 # SPDX-License-Identifier: MPL-2.0
-from luma_keyring.service import main
+import logging
+import sys
 
-raise SystemExit(main())
+from luma_keyring.cli import dispatch
+
+logging.basicConfig(level=logging.INFO, format="luma-keyring: %(message)s")
+# The command-line steps (the PAM hook among them) never load GTK.
+code = dispatch(sys.argv)
+if code is None:
+    # Decided before GTK loads: the session waits for this when it has nothing to ask.
+    from luma_keyring.ready import decide
+
+    ask_first = decide(sys.argv)
+    from luma_keyring.service import main
+
+    code = main(ask_first=ask_first)
+raise SystemExit(code)
