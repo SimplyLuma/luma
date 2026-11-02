@@ -125,18 +125,24 @@ index fb844f9..181e015 100644
    for (guint i = 0; i < G_N_ELEMENTS (map); i++)
      if (gtk_widget_has_css_class (w, map[i].cls))
 diff --git a/shell/cc-luma-shell.c b/shell/cc-luma-shell.c
-index 0144897..9c0e10c 100644
+index 0144897..cbacd69 100644
 --- a/shell/cc-luma-shell.c
 +++ b/shell/cc-luma-shell.c
-@@ -50,7 +50,7 @@ static const struct { const char *page; const char *panel; } routes[] = {
+@@ -50,12 +50,13 @@ static const struct { const char *page; const char *panel; } routes[] = {
    { "region", "system" }, { "datetime", "system" }, { "users", "system" }, { "user-priya", "system" },
    { "remote", "system" }, { "ssh", "system" }, { "about", "system" }, { "about-sys", "system" }, { "me", "system" },
    /* TV posture's pages; their nearest GNOME panels, should the LumaUI page be unavailable. */
 -  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" },
-+  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" }, { "tv-account", "users" },
++  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" }, { "tv-account", "system" },
  };
  /* System's subpages are opened with a parameter naming them. */
  static const struct { const char *page; const char *sub; } system_pages[] = {
+   { "region", "region" }, { "datetime", "datetime" }, { "users", "users" }, { "user-priya", "users" },
+   { "remote", "remote-desktop" }, { "ssh", "remote-desktop" }, { "about", "about" }, { "about-sys", "about" }, { "me", "users" },
++  { "tv-account", "users" },
+ };
+ static const struct { const char *panel; const char *page; } panel_pages[] = {
+   { "background", "appearance" }, { "appearance", "appearance" }, { "dash", "shelf" }, { "multitasking", "windows" },
 diff --git a/shell/cc-luma-view-appearance.c b/shell/cc-luma-view-appearance.c
 index ba938e9..3fccd18 100644
 --- a/shell/cc-luma-view-appearance.c
