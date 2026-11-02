@@ -318,6 +318,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .luma-navigation-row { min-height: 68tv; padding: 0 19tv; margin: 0 0 2tv 0; border-radius: 22tv;\n"
 "  background: none; box-shadow: none; border: none; outline: none; color: @ink_2@; }\n"
 ".lumaui-tv-frame .luma-navigation-row > .luma-navigation-line { padding: 0; margin: 0; min-height: 0; border-spacing: 18tv; }\n"
+".lumaui-tv-frame .luma-navigation-row > .luma-navigation-line > box { padding: 0; margin: 0; }\n"
 ".lumaui-tv-frame .luma-navigation-row label { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 600; color: inherit; margin: 0; padding: 0; }\n"
 ".lumaui-tv-frame .luma-navigation-row image { -gtk-icon-size: 30tv; min-width: 30tv; min-height: 30tv; margin: 0; padding: 0; color: inherit; }\n"
 ".lumaui-tv-frame .luma-navigation-row:selected { background-color: @chip@; background-image: none; color: @ink@;\n"
@@ -382,8 +383,12 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > label:not(:first-child) { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box { margin-top: 6tv; }\n"
 /* a hero drawn as a column (a person: the avatar, the name, the account) */
-".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > box + label { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; margin-top: 14tv; }\n"
-".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > label + label { font-size: 22tv; font-weight: 400; color: @ink_3@; margin-top: 6tv; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > box + label { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; opacity: 1; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero.vertical > label + label { font-size: 22tv; font-weight: 400; color: @ink_3@; opacity: 1; }\n"
+/* an avatar on a TV: its tone as a solid disc, the initials in white (the mockup's .avatar) */
+".lumaui-tv-frame .luma-avatar { border-radius: 9999px; }\n"
+".lumaui-tv-frame .luma-avatar.tone-green { background-color: #33854a; background-image: none; }\n"
+".lumaui-tv-frame .luma-avatar.tone-green .luma-avatar-initials { color: white; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero box.vertical > box label { font-size: 22tv; font-weight: 400; color: @ink_2@; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:first-child, .lumaui-tv-frame > .luma-island .lumaui-part-hero button box.vertical > label:not(:first-child) {\n"
 "  font-size: 26tv; font-weight: 600; letter-spacing: 0; color: inherit; margin: 0; }\n"
@@ -436,6 +441,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row > box, .lumaui-tv-frame .lumaui-part-row > * > box { padding: 0; margin: 0; min-height: 0; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-title { font-size: 25tv; font-weight: 600; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-subtitle { font-size: 19tv; font-weight: 500; color: @ink_3@; }\n"
+/* a row's detail is ink 3 itself, never dimmed again (libadwaita's subtitle opacity) */
+".lumaui-tv-frame .lumaui-part-row label.subtitle, .lumaui-tv-frame .lumaui-part-row label.dim-label { opacity: 1; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-row-subtitle, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-muted,\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label.dim-label { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row label { font-size: 23tv; font-weight: 600; }\n"
@@ -1012,6 +1019,10 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
       gtk_widget_set_margin_end(child, (int)round(6 * f->unit));
       gtk_widget_set_margin_top(child, (int)round(12 * f->unit));
       gtk_widget_set_margin_bottom(child, (int)round(160 * f->unit));
+      if (GTK_IS_BOX(child) && g_object_get_data(G_OBJECT(child), "luma-tv-column") == NULL) {
+        g_object_set_data(G_OBJECT(child), "luma-tv-column", GINT_TO_POINTER(gtk_box_get_spacing(GTK_BOX(child)) + 1));
+        gtk_box_set_spacing(GTK_BOX(child), 0);
+      }
     }
   }
   for (GtkWidget *c = gtk_widget_get_first_child(widget); c != NULL; c = gtk_widget_get_next_sibling(c))
@@ -1053,6 +1064,11 @@ static void restore_page(GtkWidget *widget) {
       gtk_widget_set_margin_end(child, saved[3]);
       gtk_widget_set_margin_top(child, saved[4]);
       gtk_widget_set_margin_bottom(child, saved[5]);
+      int column = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(child), "luma-tv-column"));
+      if (column > 0 && GTK_IS_BOX(child)) {
+        gtk_box_set_spacing(GTK_BOX(child), column - 1);
+        g_object_set_data(G_OBJECT(child), "luma-tv-column", NULL);
+      }
     }
     g_object_set_data(G_OBJECT(widget), "luma-tv-clamp", NULL);
   }
