@@ -351,7 +351,7 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
   GtkWidget *inner = leads && GTK_IS_BOX(first) ? gtk_widget_get_first_child(first) : NULL;
   if (leads && (GTK_IS_IMAGE(first) || GTK_IS_PICTURE(first) || GTK_IS_IMAGE(inner) || GTK_IS_PICTURE(inner)))
     gtk_widget_add_css_class(first, "lumaui-part-lead");
-  else if (leads && g_strcmp0(part, "row") == 0)
+  else if (leads)
     gtk_widget_add_css_class(first, "lumaui-part-mark");
 }
 

@@ -267,6 +267,11 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
 /* a drawn lead (signal bars): 2.5 times its size, about its centre, in the lead's place */
 ".lumaui-tv-frame .lumaui-part-mark { transform: scale(2.5); transform-origin: 50% 50%; }\n"
+/* a hero's drawn mark (a logo, a monogram): larger, and no decorative ring around it */
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark { transform: scale(1.8); transform-origin: 50% 50%; margin: 0 24tv;\n"
+"  border: none; outline: none; box-shadow: none; background: none; }\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark * { border: none; outline: none; box-shadow: none; }\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"
