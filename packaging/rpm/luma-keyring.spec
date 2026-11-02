@@ -22,7 +22,7 @@ Requires:       libadwaita
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
 Requires:       pam
-# Seals the device key of an account that signs in automatically.
+# Seals the password of an account that signs in automatically.
 Requires:       systemd >= 256
 
 %description
@@ -39,11 +39,12 @@ the old file in case they remember later. Doing nothing keeps the old
 behaviour.
 
 An account that signs in automatically types no password, so nothing could
-unlock its login keyring. Its keyring is keyed instead to a random key that
-systemd-creds seals to the user and the machine (the TPM2 and the host key
-where there is a TPM2, the host key otherwise), and opened with it before the
-session starts. An existing password-locked keyring is switched over only
-when the person types its password once.
+unlock its login keyring. Its keyring stays locked with the account password;
+the device keeps a copy of that password sealed with systemd-creds to the user
+and the machine (the TPM2 and the host key where there is a TPM2, the host key
+otherwise) and unlocks the keyring with it before the session starts. The
+installer seals it when automatic sign-in is chosen; otherwise the person is
+asked for it once.
 
 luma-keyring --check prints the state for the capability and first-boot
 checks: a login keyring that cannot be unlocked automatically is a broken
@@ -96,9 +97,9 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %changelog
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
-- Open the login keyring of an automatic sign-in with a sealed device key
-- Offer once to switch an existing password-locked keyring to the device key
-- Offer the login password back when automatic sign-in is turned off
+- Unlock the login keyring of an automatic sign-in with the sealed account password
+- luma-keyring --enrol seals it for the installer
+- Ask once on devices set up earlier, or when the sealed copy stops working
 
 * Sun Sep 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - Say once, in plain words, when the login keyring cannot be unlocked at login

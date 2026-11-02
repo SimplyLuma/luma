@@ -8,9 +8,8 @@ is told once, in a notification with a way to put it right, and never again
 this session. If they say never, they are not asked again at all.
 
 What they are told depends on the account (see autounlock): one that signs
-in automatically is offered the device key, one whose device key stopped
-working is offered a fresh keyring, and one that stopped signing in
-automatically is offered its login password back.
+in automatically, whose password the device does not keep yet or whose
+sealed password stopped working, is asked for it once.
 """
 
 from __future__ import annotations
@@ -75,17 +74,12 @@ class KeyringService(Adw.Application):
         autologin = autounlock.is_autologin()
         sealed = autounlock.credential_path().exists()
 
-        if reading.state is State.LOCKED:
-            from .window import Mode
-            if sealed:
-                self._mode = Mode.DEVICE_KEY_LOST
-            elif autologin:
-                self._mode = Mode.DEVICE
-            else:
-                self._mode = Mode.MISMATCH
-        elif reading.state is State.UNLOCKED and sealed and not autologin:
-            from .window import Mode
-            self._mode = Mode.LOGIN
+        from .window import Mode
+        if autologin and (reading.state in (State.LOCKED, State.NO_KEYRING) or
+                          (not sealed and autounlock.stored_unencrypted())):
+            self._mode = Mode.RECOVER if sealed else Mode.DEVICE
+        elif reading.state is State.LOCKED:
+            self._mode = Mode.MISMATCH
         else:
             if reading.state is State.UNLOCKED:
                 self.withdraw_notification(NOTIFICATION_ID)
@@ -102,25 +96,13 @@ class KeyringService(Adw.Application):
 
     def _tell(self, repairable: bool) -> None:
         from .window import Mode
-        if self._mode == Mode.DEVICE:
+        if self._mode in (Mode.DEVICE, Mode.RECOVER):
             notification = Gio.Notification.new("Let your saved passwords unlock by themselves")
             notification.set_body(
                 "This device signs in automatically, but your saved passwords "
-                "are still locked with a password. Type it once and they will "
+                "need your password to unlock. Type it once and they will "
                 "unlock by themselves from now on.")
             notification.add_button("Set up", "app.open")
-        elif self._mode == Mode.DEVICE_KEY_LOST:
-            notification = Gio.Notification.new("Your saved passwords are locked")
-            notification.set_body(
-                "This device can no longer unlock them by itself. Luma can "
-                "start a new keyring and keep the old one aside.")
-            notification.add_button("See what to do", "app.open")
-        elif self._mode == Mode.LOGIN:
-            notification = Gio.Notification.new("Your saved passwords unlock without your password")
-            notification.set_body(
-                "This device no longer signs in automatically. Lock your saved "
-                "passwords with your login password too?")
-            notification.add_button("Use my password", "app.open")
         else:
             notification = Gio.Notification.new("Your saved passwords are locked")
             if repairable:
@@ -188,8 +170,12 @@ def main(argv: list[str] | None = None) -> int:
         from .cli import autologin
 
         return autologin()
-    if "--switch-to-device-key" in argv:
-        from .cli import switch_to_device_key
+    if "--enable-auto-unlock" in argv:
+        from .cli import enable_auto_unlock
 
-        return switch_to_device_key()
+        return enable_auto_unlock()
+    if "--enrol" in argv:
+        from .cli import enrol
+
+        return enrol(argv[argv.index("--enrol") + 1:])
     return KeyringService().run(argv)

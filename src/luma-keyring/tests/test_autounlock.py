@@ -104,146 +104,153 @@ class AutologinUsersTests(Paths):
 
 
 class EnsureTests(Paths):
-    def seal(self, path):
-        path.write_text("sealed")
-        return "device-key"
+    """The keyring keeps the account password; the device keeps a sealed copy."""
 
-    def unseal(self, path):
-        return "device-key"
+    PASSWORD = "account-password"
 
-    def ensure(self, keyring, autologin, **kwargs):
-        return autounlock.ensure(keyring, autologin=autologin, seal=self.seal,
-                                 unseal=self.unseal, wait=0, **kwargs)
+    def seal(self):
+        autounlock.credential_path().write_text("sealed")
+
+    def ensure(self, keyring, autologin, unseal=None):
+        return autounlock.ensure(keyring, autologin=autologin, wait=0,
+                                 unseal=unseal or (lambda path: self.PASSWORD))
+
+    def keyring_file(self, text="GnomeKeyring\n"):
+        self.keyrings.joinpath("login.keyring").write_text(text)
 
     def test_password_accounts_are_untouched(self):
         keyring = FakeKeyring(password=None, files=self.keyrings)
         self.assertEqual(self.ensure(keyring, False), Result.NOT_AUTOLOGIN)
         self.assertEqual(keyring.created, [])
-        self.assertFalse(autounlock.credential_path().exists())
 
-    def test_first_automatic_sign_in_makes_a_device_keyed_keyring(self):
+    def test_first_automatic_sign_in_makes_the_keyring_with_the_account_password(self):
+        self.seal()
         keyring = FakeKeyring(password=None, files=self.keyrings)
         self.assertEqual(self.ensure(keyring, True), Result.CREATED)
-        self.assertEqual(keyring.created, ["device-key"])
-        self.assertTrue(autounlock.credential_path().exists())
+        self.assertEqual(keyring.created, [self.PASSWORD])
 
-    def test_without_a_sealed_key_the_keyring_has_an_empty_password(self):
-        def cannot_seal(path):
-            raise KeyringError("no host key")
-
-        keyring = FakeKeyring(password=None, files=self.keyrings)
-        result = autounlock.ensure(keyring, autologin=True, seal=cannot_seal, wait=0)
-        self.assertEqual(result, Result.CREATED)
-        self.assertEqual(keyring.created, [""])
-        self.assertFalse(autounlock.credential_path().exists())
-
-    def test_later_sign_ins_open_it_with_the_sealed_key(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        autounlock.credential_path().write_text("sealed")
-        keyring = FakeKeyring(password="device-key", files=self.keyrings)
+    def test_later_sign_ins_open_it_with_the_sealed_password(self):
+        self.seal()
+        self.keyring_file()
+        keyring = FakeKeyring(password=self.PASSWORD, files=self.keyrings)
         self.assertEqual(self.ensure(keyring, True), Result.UNLOCKED)
         self.assertFalse(keyring.locked)
+        self.assertEqual(keyring.password, self.PASSWORD)
 
-    def test_a_password_locked_keyring_is_never_rekeyed_silently(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        keyring = FakeKeyring(password="their-password", files=self.keyrings)
+    def test_without_a_sealed_password_nothing_is_made_or_changed(self):
+        keyring = FakeKeyring(password=None, files=self.keyrings)
         self.assertEqual(self.ensure(keyring, True), Result.NEEDS_PASSWORD)
-        self.assertEqual(keyring.password, "their-password")
-        self.assertTrue(keyring.locked)
         self.assertEqual(keyring.created, [])
+        self.keyring_file()
+        keyring = FakeKeyring(password="theirs", files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, True), Result.NEEDS_PASSWORD)
+        self.assertEqual(keyring.password, "theirs")
+        self.assertTrue(keyring.locked)
 
-    def test_already_unlocked_is_left_alone(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        keyring = FakeKeyring(password="", locked=False, files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, True), Result.ALREADY_UNLOCKED)
-
-    def test_an_unencrypted_keyring_is_sealed_without_asking(self):
-        self.keyrings.joinpath("login.keyring").write_text("[keyring]\ndisplay-name=Login\n")
-        keyring = FakeKeyring(password="", locked=False, files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, True), Result.SEALED)
-        self.assertEqual(keyring.password, "device-key")
-        self.assertTrue(autounlock.credential_path().exists())
-
-    def test_an_unencrypted_keyring_shown_locked_is_sealed_too(self):
-        self.keyrings.joinpath("login.keyring").write_text("[keyring]\ndisplay-name=Login\n")
-        keyring = FakeKeyring(password="", locked=True, files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, True), Result.SEALED)
-        self.assertEqual(keyring.password, "device-key")
-
-    def test_an_unencrypted_keyring_of_a_password_account_is_left(self):
-        self.keyrings.joinpath("login.keyring").write_text("[keyring]\ndisplay-name=Login\n")
-        keyring = FakeKeyring(password="", locked=False, files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, False), Result.NOT_AUTOLOGIN)
+    def test_an_unencrypted_keyring_opens_without_a_prompt(self):
+        self.keyring_file("[keyring]\ndisplay-name=Login\n")
+        keyring = FakeKeyring(password="", files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, True), Result.UNENCRYPTED)
         self.assertEqual(keyring.password, "")
 
-    def test_sealed_key_still_opens_it_after_automatic_sign_in_is_turned_off(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        autounlock.credential_path().write_text("sealed")
-        keyring = FakeKeyring(password="device-key", files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, False), Result.UNLOCKED)
+    def test_already_unlocked_is_left_alone(self):
+        self.keyring_file()
+        keyring = FakeKeyring(password=self.PASSWORD, locked=False, files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, True), Result.ALREADY_UNLOCKED)
 
-    def test_a_key_that_no_longer_opens_it_is_reported(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        autounlock.credential_path().write_text("sealed")
-        keyring = FakeKeyring(password="some-other-key", files=self.keyrings)
-        self.assertEqual(self.ensure(keyring, True), Result.KEY_UNUSABLE)
+    def test_a_stale_sealed_password_is_reported_not_forced(self):
+        self.seal()
+        self.keyring_file()
+        keyring = FakeKeyring(password="changed-since", files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, True), Result.SEAL_UNUSABLE)
+        self.assertEqual(keyring.password, "changed-since")
+
+    def test_a_seal_this_device_cannot_open_is_reported(self):
+        self.seal()
+        self.keyring_file()
+
+        def cannot(path):
+            raise KeyringError("Bad credential format.")
+
+        keyring = FakeKeyring(password=self.PASSWORD, files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, True, unseal=cannot), Result.SEAL_UNUSABLE)
+
+    def test_the_sealed_copy_goes_when_automatic_sign_in_is_turned_off(self):
+        self.seal()
+        self.keyring_file()
+        keyring = FakeKeyring(password=self.PASSWORD, locked=False, files=self.keyrings)
+        self.assertEqual(self.ensure(keyring, False), Result.RETIRED)
+        self.assertFalse(autounlock.credential_path().exists())
+        self.assertEqual(keyring.password, self.PASSWORD)
 
     def test_no_daemon_is_not_an_error(self):
         keyring = FakeKeyring(running=False, files=self.keyrings)
         self.assertEqual(self.ensure(keyring, True), Result.NO_DAEMON)
 
 
-class SwitchTests(Paths):
-    def seal(self, path):
-        path.write_text("sealed")
-        return "device-key"
+class EnableTests(Paths):
+    PASSWORD = "account-password"
 
-    def test_switch_with_the_right_password_keeps_the_keyring(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        keyring = FakeKeyring(password="their-password", files=self.keyrings)
-        outcome = repair.switch_to_device_key("their-password", keyring, seal=self.seal)
+    def seal(self, password):
+        self.sealed = password
+        autounlock.credential_path().write_text("sealed")
+
+    def cannot_seal(self, password):
+        raise KeyringError("no host key")
+
+    def enable(self, keyring, password, seal=None):
+        return repair.enable_auto_unlock(password, keyring, seal=seal or self.seal,
+                                         verify=lambda p: p == self.PASSWORD)
+
+    def test_existing_keyring_keeps_its_password_and_gets_a_sealed_copy(self):
+        self.keyrings.joinpath("login.keyring").write_text("GnomeKeyring\n")
+        keyring = FakeKeyring(password=self.PASSWORD, files=self.keyrings)
+        outcome = self.enable(keyring, self.PASSWORD)
         self.assertTrue(outcome.ok, outcome.message)
-        self.assertEqual(keyring.password, "device-key")
+        self.assertEqual(keyring.password, self.PASSWORD)
         self.assertFalse(keyring.locked)
-        self.assertTrue(autounlock.credential_path().exists())
-        self.assertFalse(autounlock.credential_path().with_name("login.cred.new").exists())
+        self.assertEqual(self.sealed, self.PASSWORD)
 
-    def test_switch_with_the_wrong_password_changes_nothing(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        keyring = FakeKeyring(password="their-password", files=self.keyrings)
-        outcome = repair.switch_to_device_key("wrong", keyring, seal=self.seal)
+    def test_the_wrong_password_seals_nothing(self):
+        self.keyrings.joinpath("login.keyring").write_text("GnomeKeyring\n")
+        keyring = FakeKeyring(password=self.PASSWORD, files=self.keyrings)
+        outcome = self.enable(keyring, "wrong")
         self.assertFalse(outcome.ok)
-        self.assertEqual(keyring.password, "their-password")
         self.assertFalse(autounlock.credential_path().exists())
-        self.assertFalse(autounlock.credential_path().with_name("login.cred.new").exists())
+        self.assertTrue(keyring.locked)
 
-    def test_start_again_keeps_the_old_file(self):
+    def test_no_keyring_yet_makes_one_with_the_login_password(self):
+        keyring = FakeKeyring(password=None, files=self.keyrings)
+        self.assertFalse(self.enable(keyring, "not-the-login-password").ok)
+        self.assertEqual(keyring.created, [])
+        outcome = self.enable(keyring, self.PASSWORD)
+        self.assertTrue(outcome.ok, outcome.message)
+        self.assertEqual(keyring.created, [self.PASSWORD])
+
+    def test_an_unencrypted_keyring_gets_the_login_password(self):
+        self.keyrings.joinpath("login.keyring").write_text("[keyring]\n")
+        keyring = FakeKeyring(password="", files=self.keyrings)
+        outcome = self.enable(keyring, self.PASSWORD)
+        self.assertTrue(outcome.ok, outcome.message)
+        self.assertEqual(keyring.password, self.PASSWORD)
+
+    def test_empty_password_only_when_nothing_can_be_sealed(self):
+        self.keyrings.joinpath("login.keyring").write_text("GnomeKeyring\n")
+        keyring = FakeKeyring(password=self.PASSWORD, files=self.keyrings)
+        outcome = self.enable(keyring, self.PASSWORD, seal=self.cannot_seal)
+        self.assertTrue(outcome.ok, outcome.message)
+        self.assertEqual(keyring.password, "")
+        self.assertIn("without encryption", outcome.message)
+
+    def test_start_again_uses_the_login_password_and_keeps_the_old_file(self):
         self.keyrings.joinpath("login.keyring").write_text("old")
         keyring = FakeKeyring(password="forgotten", files=self.keyrings)
-        outcome = repair.start_again_with_device_key(keyring, seal=self.seal)
+        outcome = repair.start_again_with_auto_unlock(
+            self.PASSWORD, keyring, seal=self.seal, verify=lambda p: p == self.PASSWORD)
         self.assertTrue(outcome.ok, outcome.message)
         self.assertEqual(outcome.kept_file.read_text(), "old")
-        self.assertEqual(keyring.created, ["device-key"])
-        self.assertTrue(autounlock.credential_path().exists())
-
-    def test_back_to_the_login_password(self):
-        self.keyrings.joinpath("login.keyring").write_text("keyring")
-        autounlock.credential_path().write_text("sealed")
-        keyring = FakeKeyring(password="device-key", locked=False, files=self.keyrings)
-        outcome = repair.use_login_password("login-pw", keyring, unseal=lambda p: "device-key",
-                                            verify=lambda p: p == "login-pw")
-        self.assertTrue(outcome.ok, outcome.message)
-        self.assertEqual(keyring.password, "login-pw")
-        self.assertFalse(autounlock.credential_path().exists())
-
-    def test_back_to_a_wrong_login_password_changes_nothing(self):
-        autounlock.credential_path().write_text("sealed")
-        keyring = FakeKeyring(password="device-key", locked=False, files=self.keyrings)
-        outcome = repair.use_login_password("nope", keyring, unseal=lambda p: "device-key",
-                                            verify=lambda p: p == "login-pw")
-        self.assertFalse(outcome.ok)
-        self.assertEqual(keyring.password, "device-key")
-        self.assertTrue(autounlock.credential_path().exists())
+        self.assertEqual(keyring.created, [self.PASSWORD])
+        self.assertEqual(self.sealed, self.PASSWORD)
 
 
 if __name__ == "__main__":

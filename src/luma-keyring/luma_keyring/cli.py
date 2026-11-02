@@ -9,9 +9,14 @@ nothing to report, 1 when there is.
 `luma-keyring --autologin` is the session-start step (see autounlock): it
 always exits 0, so a keyring problem never holds up the session.
 
-`luma-keyring --switch-to-device-key` reads the keyring's current password
-from standard input and keys the keyring to this device, for setting up an
-existing account that signs in automatically from a terminal or over SSH.
+`luma-keyring --enable-auto-unlock` reads the account password from
+standard input, inside the person's session, and does what the window does:
+the keyring keeps the password and the device keeps a sealed copy.
+
+`luma-keyring --enrol USER` (root) reads USER's password from standard input
+and seals it for them; the installer runs it when "Sign me in automatically"
+is chosen, and the login keyring is made with the password at the first
+automatic sign-in.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ import sys
 
 from .state import read
 
-__all__ = ("check", "autologin", "switch_to_device_key")
+__all__ = ("check", "autologin", "enable_auto_unlock", "enrol")
 
 
 def check() -> int:
@@ -40,10 +45,34 @@ def autologin() -> int:
     return 0
 
 
-def switch_to_device_key() -> int:
-    from .repair import switch_to_device_key as switch
+def _read_password() -> str:
+    line = sys.stdin.readline()
+    return line[:-1] if line.endswith("\n") else line
 
-    password = sys.stdin.readline().rstrip("\n")
-    outcome = switch(password)
+
+def enable_auto_unlock() -> int:
+    from .repair import enable_auto_unlock as enable
+
+    outcome = enable(_read_password())
     print(outcome.message)
     return 0 if outcome.ok else 1
+
+
+def enrol(args: list[str]) -> int:
+    from .autounlock import enrol_user
+    from .secrets import KeyringError
+
+    if len(args) != 1 or not args[0] or args[0].startswith("-"):
+        print("usage: luma-keyring --enrol USER < password", file=sys.stderr)
+        return 2
+    password = _read_password()
+    if not password:
+        print("luma-keyring: no password given; nothing sealed", file=sys.stderr)
+        return 1
+    try:
+        path = enrol_user(args[0], password)
+    except (KeyError, OSError, KeyringError) as error:
+        print(f"luma-keyring: nothing sealed for {args[0]}: {error}", file=sys.stderr)
+        return 1
+    print(f"luma-keyring: sealed the password of {args[0]} in {path}")
+    return 0

@@ -9,7 +9,10 @@
  *
  * "Sign me in automatically" has no Anaconda property. It is recorded in the
  * installer's memory (/run/luma-atlas/autologin) and applied to the installed
- * system's display manager by the Luma installer kickstart's %post.
+ * system's display manager by the Luma installer kickstart's %post. With it,
+ * the password is handed to the same %post (in memory only), which has the
+ * installed system seal it so saved passwords unlock at each automatic
+ * sign-in while staying locked with the password.
  */
 import React, { useContext, useEffect, useRef, useState } from "react";
 
@@ -24,7 +27,7 @@ import { fullNameProblem, guessUsername, secretProblems, usernameProblem } from 
 import { ProbeContext, RuntimeContext, UsersContext } from "../contexts/Common.jsx";
 
 import { Actions, Button, Pair, SecretField, Spacer, Step, SwitchRow, TextField, Warn } from "../atlas/components.jsx";
-import { setAutologinIntent } from "../system/host.js";
+import { setAutologinIntent, setKeyringIntent } from "../system/host.js";
 import { usePasswordQuality } from "./Lock.jsx";
 
 export const AccountStep = ({ answers, back, continueRef, dispatch, index, invalidateAfter, next, panelRef, setAnswers }) => {
@@ -82,6 +85,7 @@ export const AccountStep = ({ answers, back, continueRef, dispatch, index, inval
         try {
             await applyAccounts({ ...accounts, isRootEnabled: false, skipAccountCreation: false });
             await setAutologinIntent(answers.autologin ? accounts.userName : null);
+            await setKeyringIntent(answers.autologin ? accounts.password : null);
             next();
         } catch (exception) {
             logError("atlas: saving the account failed", exception?.message);

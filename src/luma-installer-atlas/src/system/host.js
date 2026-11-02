@@ -8,7 +8,8 @@
  *   - a suspend and lid-switch inhibitor held for the whole of step 7
  *   - ejecting the installer medium before step 8 (atlas-media eject)
  *   - saving the logs after a failure (atlas-media save-logs)
- *   - recording "sign me in automatically" for the Luma kickstart %post
+ *   - recording "sign me in automatically" for the Luma kickstart %post, and
+ *     the password the installed system seals to unlock saved passwords then
  * None of these touch a target drive before the review step.
  */
 
@@ -18,6 +19,7 @@ import { error as logError } from "../helpers/log.js";
 
 export const LIBEXEC = "/usr/libexec/luma-installer-atlas";
 export const AUTOLOGIN_INTENT = "/run/luma-atlas/autologin";
+export const KEYRING_INTENT = "/run/luma-atlas/keyring-enrol";
 
 const spawnJson = async (args) => {
     let output;
@@ -118,6 +120,23 @@ export const setAutologinIntent = async (username) => {
     } finally {
         file.close();
     }
+};
+
+/**
+ * With "Sign me in automatically", the installed system seals the account
+ * password (luma-keyring --enrol, run by the kickstart %post) so the login
+ * keyring unlocks at every automatic sign-in. The password goes to the
+ * installer's own /run (memory) only, root-only from its first byte, through
+ * stdin rather than a command line; the %post removes it.
+ */
+export const setKeyringIntent = async (password) => {
+    if (!password) {
+        await cockpit.spawn(["rm", "-f", KEYRING_INTENT], { superuser: "try" });
+        return;
+    }
+    await cockpit.spawn(["mkdir", "-p", "/run/luma-atlas"], { superuser: "try" });
+    await cockpit.spawn(["sh", "-c", 'umask 077 && cat > "$1"', "sh", KEYRING_INTENT],
+                        { superuser: "try" }).input(`${password}\n`);
 };
 
 export const recordLocationIntent = timezone => spawnJson([`${LIBEXEC}/atlas-media`, "record-location", timezone]);
