@@ -47,6 +47,12 @@
       <summary>TV idle view delay</summary>
       <description>Seconds without input before a TV app shows its idle view, in TV posture. -1 leaves the delay to each app (Weather 20 s, Tide 15 s while playing); 0 never shows it. Settings › Idle &amp; Sleep › Show the idle view after.</description>
     </key>
+    <key name="tv-screen-edges" type="u">
+      <range min="0" max="10"/>
+      <default>0</default>
+      <summary>TV screen edges</summary>
+      <description>Percent of the screen given back at the edges in TV posture, for a TV that cuts off the picture (overscan): the shell draws everything that much smaller about the centre. Settings › Display › Fit › Screen edges.</description>
+    </key>
     <key name="surface-treatment" type="s">
       <choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices>
       <default>'light'</default>

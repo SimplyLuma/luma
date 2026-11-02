@@ -75,3 +75,8 @@ and LumaUI follow the property change without a log-out.
 app shows its idle view (Settings › Idle & Sleep). `-1` leaves it to each app
 (LumaUI `TvIdle`'s own delay), `0` never shows it; any other value overrides
 every app's delay and is followed live.
+
+`tv-screen-edges` (0–10, default 0) is the share of the screen given back at
+each edge in TV posture, for a TV that overscans (Settings › Display › Fit ›
+Screen edges). The shell's TV presentation scales its UI group, which holds
+the TV home and every window, about the centre, live.

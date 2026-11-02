@@ -17,6 +17,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
+import {TvScreenEdges} from './tvScreenEdges.js';
 import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
@@ -116,12 +117,17 @@ export class TvPresentation {
         this.showHome('home');
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
+        // Screen edges: the whole picture, drawn smaller for a TV that overscans.
+        this._edges = new TvScreenEdges(this._settings, Main.uiGroup);
+        this._edges.enable();
     }
 
     _leave() {
         for (const [object, id] of this._activeSignals) object.disconnect(id);
         this._activeSignals = [];
         Main.keyboard?.setTvPosture?.(false);
+        this._edges?.destroy();
+        this._edges = null;
         if (this._homeCheck) GLib.source_remove(this._homeCheck);
         this._homeCheck = 0;
         if (this._home) {
