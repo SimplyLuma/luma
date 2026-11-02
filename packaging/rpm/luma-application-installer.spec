@@ -99,6 +99,7 @@ install -D -m 0755 bin/luma-installer %{buildroot}%{_bindir}/luma-installer
 ln -s luma-installer %{buildroot}%{_bindir}/luma-install
 install -D -m 0755 bin/luma-depot %{buildroot}%{_bindir}/luma-depot
 install -D -m 0644 data/org.projectluma.Depot.desktop %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
+install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 install -D -m 0644 data/depot-catalog.json %{buildroot}%{_datadir}/luma/installer/depot-catalog.json
 install -D -m 0644 data/depot-catalog-4.json %{buildroot}%{_datadir}/luma/installer/depot-catalog-4.json
 # The catalogue key and the Luma remote's .flatpakrepo come from the
@@ -220,6 +221,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_bindir}/luma-install
 %{_bindir}/luma-depot
 %{_datadir}/applications/org.projectluma.Depot.desktop
+%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 %{_datadir}/luma/installer/depot-catalog.json
 %dir %{_datadir}/luma/firmware
 %{_datadir}/luma/energy-flag-exceptions.txt
